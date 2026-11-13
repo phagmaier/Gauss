@@ -1,0 +1,818 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 1.0 pulled forward.
+  Question: what should Gauss look like?
+  Three structurally different directions for the library, course and session
+  views, switchable with ?variant=A|B|C&view=library|course|session&phase=teach|discuss|check|graded
+  or the floating bar at the bottom (arrow keys cycle variants, H hides the bar).
+  All data is simulated. No backend, no persistence, grading is canned.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss look prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Caveat:wght@500;600&family=Recursive:slnt,wght,CASL,MONO@-15..0,300..800,0..1,0..1&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{min-height:100vh}
+button{font:inherit;color:inherit;cursor:pointer}
+textarea,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.katex{font-size:1.06em}
+
+/* ---------- prototype switcher (deliberately not part of any design) ---------- */
+#bar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:1000;
+  display:flex;align-items:center;gap:10px;padding:6px 10px;background:#fff;color:#111;
+  border:2px dashed #ff2d95;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.25);
+  font:13px/1.2 system-ui,sans-serif;white-space:nowrap}
+#bar button{border:0;background:#f1f1f1;border-radius:999px;padding:5px 10px}
+#bar button.on{background:#111;color:#fff}
+#bar .arrow{background:#ff2d95;color:#fff;width:28px;height:28px;padding:0;font-size:15px}
+#bar .lbl{min-width:132px;text-align:center;font-weight:600}
+#bar .grp{display:flex;gap:3px;padding-left:10px;border-left:1px solid #ddd}
+#bar .tag{font-size:11px;color:#ff2d95;font-weight:700}
+#toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);z-index:1001;background:#111;color:#fff;
+  padding:8px 14px;border-radius:8px;font:13px system-ui,sans-serif;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.show{opacity:1}
+
+/* =====================================================================
+   A. FOLIO: a book you work through. Single reading column, margin notes,
+   artifacts as inline figures, grading in red pencil.
+   ===================================================================== */
+.vA{--paper:#F4F6F5;--ink:#1D2433;--faded:#5B6475;--rule:#D3D9DE;--prussian:#24477A;--pencil:#C2362B;--wash:#E8EDF0;
+  background:var(--paper);color:var(--ink);font-family:Newsreader,Georgia,serif;font-size:19px;line-height:1.62;
+  font-optical-sizing:auto;min-height:100vh;padding-bottom:90px}
+.vA a,.vA .lnk{color:var(--prussian);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;background:none;border:0;padding:0;cursor:pointer}
+.vA .a-head{display:flex;gap:28px;align-items:baseline;max-width:1180px;margin:0 auto;padding:22px 32px 0;font-size:15px;color:var(--faded);font-style:italic}
+.vA .a-head .home{font-style:normal;font-weight:600;color:var(--ink);text-decoration:none;font-size:17px;letter-spacing:.02em}
+.vA .a-head .sp{flex:1}
+.vA .a-grid{display:grid;grid-template-columns:190px minmax(0,640px) 250px;gap:0 44px;max-width:1180px;margin:0 auto;padding:28px 32px}
+.vA .a-rail{position:sticky;top:20px;align-self:start;font-size:15px;line-height:1.45;color:var(--faded)}
+.vA .a-rail h4{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 10px}
+.vA .a-rail ol{list-style:none;margin:0;padding:0}
+.vA .a-rail li{padding:5px 0 5px 22px;position:relative}
+.vA .a-rail li .n{position:absolute;left:0;font-variant-numeric:oldstyle-nums}
+.vA .a-rail li.done{color:var(--faded)}
+.vA .a-rail li.done::after{content:"passed";font-style:italic;font-size:13px;margin-left:6px;color:#2E6B4E}
+.vA .a-rail li.cur{color:var(--ink);font-weight:600}
+.vA .a-rail .phases{list-style:none;padding:4px 0 0 0;margin:0;font-weight:400}
+.vA .a-rail .phases li{padding:2px 0 2px 16px;font-size:14px;color:var(--faded)}
+.vA .a-rail .phases li::before{content:"";position:absolute;left:2px;top:12px;width:6px;height:6px;border-radius:50%;border:1px solid var(--faded)}
+.vA .a-rail .phases li.now{color:var(--prussian);font-style:italic}
+.vA .a-rail .phases li.now::before{background:var(--prussian);border-color:var(--prussian)}
+.vA .a-rail .phases li.past::before{background:var(--faded)}
+.vA .row{display:contents}
+.vA .note{font-size:14.5px;line-height:1.45;color:var(--faded);padding-top:6px}
+.vA .note .sup{color:var(--prussian);font-weight:600;margin-right:4px}
+.vA .note blockquote{margin:6px 0;padding-left:10px;border-left:2px solid var(--rule);font-style:italic;color:var(--ink)}
+.vA .note .ok{color:#2E6B4E;font-style:italic}
+.vA h1{font-size:44px;line-height:1.08;font-weight:500;margin:0 0 6px;letter-spacing:-.01em}
+.vA .lede{font-style:italic;color:var(--faded);margin:0 0 26px;font-size:18px}
+.vA p{margin:0 0 16px;hyphens:auto}
+.vA sup.ref{color:var(--prussian);font-weight:600;font-size:.7em;cursor:pointer}
+.vA .phase-mark{font-size:15px;font-style:italic;color:var(--faded);margin:30px 0 12px;display:flex;align-items:center;gap:12px}
+.vA .phase-mark::after{content:"";flex:1;height:1px;background:var(--rule)}
+.vA figure{margin:22px 0 26px;padding:0}
+.vA figure .fig{background:#fff;border:1px solid var(--rule);padding:12px}
+.vA figcaption{font-size:15px;color:var(--faded);margin-top:8px;font-style:italic}
+.vA figcaption b{font-style:normal;color:var(--ink);font-weight:600}
+.vA .slider{display:flex;align-items:center;gap:12px;font-size:15px;margin-top:8px}
+.vA .slider input{flex:1;accent-color:var(--prussian)}
+.vA .slider button{border:1px solid var(--rule);background:#fff;padding:2px 10px;font-size:14px;border-radius:2px;color:var(--faded)}
+.vA .slider button.on{border-color:var(--ink);color:var(--ink);font-weight:600}
+.vA .dlg p{padding-left:78px;position:relative}
+.vA .dlg .who{position:absolute;left:0;width:68px;text-align:right;font-style:italic;color:var(--faded);font-size:16px}
+.vA .dlg .you{color:var(--ink)}
+.vA .ask{display:flex;gap:16px;align-items:flex-end;margin:22px 0 0 78px}
+.vA .ask input{flex:1;border:0;border-bottom:1px solid var(--faded);background:transparent;padding:6px 0;font-style:italic}
+.vA .btn{border:1px solid var(--ink);background:var(--ink);color:var(--paper);padding:7px 16px;font-size:16px;border-radius:2px}
+.vA .btn.ghost{background:transparent;color:var(--ink)}
+.vA .exercise{border-top:3px double var(--ink);border-bottom:1px solid var(--ink);padding:16px 0 20px;margin-top:8px}
+.vA .exercise h3{font-size:17px;font-weight:600;margin:0 0 8px}
+.vA .exercise .q{font-size:20px;margin-bottom:16px}
+.vA label.fld{display:block;font-size:15px;font-style:italic;color:var(--faded);margin:14px 0 4px}
+.vA .tex-in{width:100%;font-family:"Recursive",monospace;font-variation-settings:"MONO" 1;font-size:15px;border:1px solid var(--rule);background:#fff;padding:8px 10px;border-radius:2px}
+.vA .preview{min-height:44px;padding:8px 0;font-size:20px}
+.vA .conf{display:flex;gap:22px;font-size:17px}
+.vA .conf button{border:0;background:none;padding:2px 0;border-bottom:1px solid transparent;color:var(--faded)}
+.vA .conf button.on{color:var(--ink);border-bottom:2px solid var(--prussian);font-weight:600}
+.vA .conf kbd{font-family:inherit;font-size:13px;color:var(--faded);margin-right:3px}
+.vA textarea.reason{width:100%;min-height:62px;border:1px solid var(--rule);background:#fff;padding:8px 10px;font-size:16px;border-radius:2px}
+.vA .submitrow{display:flex;justify-content:flex-end;margin-top:14px}
+.vA .answered{position:relative;padding:4px 0 8px}
+.vA .answered .x{position:absolute;left:-58px;top:-12px;font-family:Caveat,cursive;font-size:56px;color:var(--pencil);line-height:1}
+.vA .answered .struck{text-decoration:underline wavy var(--pencil);text-decoration-thickness:1.5px;text-underline-offset:8px}
+.vA .verdict{font-size:16px;color:var(--pencil);font-style:italic;margin:4px 0 14px}
+.vA .redpen{font-family:Caveat,cursive;font-size:23px;line-height:1.15;color:var(--pencil);transform:rotate(-1.5deg);padding-top:2px}
+.vA .redpen .katex{font-size:.8em}
+.vA .detour{background:var(--wash);border-left:3px solid var(--prussian);padding:14px 18px;margin:20px 0}
+.vA .detour p{margin:0 0 12px}
+.vA .detour .acts{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.vA .caret{display:inline-block;width:9px;height:1.05em;background:var(--ink);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+/* Folio: library & course */
+.vA .contents{max-width:820px;margin:0 auto;padding:48px 32px}
+.vA .contents h1{font-size:64px;margin-bottom:4px}
+.vA .contents .sub{font-style:italic;color:var(--faded);margin-bottom:40px}
+.vA .contents h2{font-size:17px;font-weight:600;margin:40px 0 4px;color:var(--faded);font-style:italic;font-weight:400}
+.vA .toc{list-style:none;margin:0;padding:0}
+.vA .toc li{padding:14px 0;border-bottom:1px solid var(--rule)}
+.vA .toc .line{display:flex;align-items:baseline;gap:8px;font-size:24px}
+.vA .toc .line .t{cursor:pointer}
+.vA .toc .line .t:hover{color:var(--prussian)}
+.vA .toc .dots{flex:1;border-bottom:2px dotted var(--rule);transform:translateY(-6px)}
+.vA .toc .frac{font-size:18px;color:var(--faded);font-variant-numeric:oldstyle-nums}
+.vA .toc .next{font-size:16px;font-style:italic;color:var(--faded);margin-top:2px}
+.vA .toc .next .lnk{font-style:normal}
+.vA .course-grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:48px;max-width:1080px;margin:0 auto;padding:40px 32px}
+.vA .course-grid h1{font-size:48px}
+.vA .units{list-style:none;padding:0;margin:20px 0 0;counter-reset:u}
+.vA .units li{display:grid;grid-template-columns:34px 1fr auto;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--rule);cursor:pointer}
+.vA .units li .n{font-variant-numeric:oldstyle-nums;color:var(--faded);font-size:20px}
+.vA .units li .t{font-size:21px}
+.vA .units li .g{grid-column:2;font-size:15.5px;color:var(--faded);font-style:italic}
+.vA .units li .s{font-size:14px;color:var(--faded);font-style:italic;text-align:right}
+.vA .units li.sel{background:var(--wash);margin:0 -10px;padding:12px 10px}
+.vA .units li.cur .t{font-weight:600}
+.vA .side-list{font-size:15px;color:var(--faded);margin-top:28px}
+.vA .side-list h4{color:var(--ink);font-size:15px;margin:0 0 6px;font-weight:600}
+.vA .side-list ul{margin:0;padding-left:16px}
+
+/* =====================================================================
+   B. WORKBENCH: a blackboard you work at. Dense three-pane layout,
+   course tree always visible, a side pane for artifacts, sources and
+   the evidence record, keyboard-first.
+   ===================================================================== */
+.vB{--board:#1F2B28;--panel:#25332F;--deep:#1A2421;--line:#384943;--chalk:#E7E5DA;--dim:#9DA79F;--yellow:#F2CC60;--pink:#EF8F8A;--blue:#8EC5E8;--green:#9AD39A;
+  background:var(--board);color:var(--chalk);font-family:Recursive,system-ui,sans-serif;font-variation-settings:"CASL" 0.2;font-size:14px;line-height:1.55;
+  height:100vh;display:grid;grid-template-rows:auto 1fr;overflow:hidden}
+.vB .b-top{display:flex;align-items:center;gap:18px;padding:0 16px;height:46px;border-bottom:1px solid var(--line);background:var(--deep)}
+.vB .logo{font-variation-settings:"CASL" 1;font-weight:800;font-size:17px;color:var(--yellow);cursor:pointer;background:none;border:0;padding:0}
+.vB .crumbs{color:var(--dim);display:flex;gap:8px;align-items:center}
+.vB .crumbs b{color:var(--chalk);font-weight:500}
+.vB .crumbs .sep{opacity:.5}
+.vB .phases{display:flex;gap:2px;margin-left:auto}
+.vB .phases span{padding:3px 12px;border:1px solid var(--line);color:var(--dim);font-size:12.5px}
+.vB .phases span:first-child{border-radius:4px 0 0 4px}
+.vB .phases span:last-child{border-radius:0 4px 4px 0}
+.vB .phases span.past{color:var(--chalk)}
+.vB .phases span.now{background:var(--yellow);color:var(--deep);border-color:var(--yellow);font-weight:700}
+.vB kbd{font-family:Recursive,monospace;font-variation-settings:"MONO" 1;font-size:11.5px;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;color:var(--chalk);background:var(--deep)}
+.vB .hint{color:var(--dim);font-size:12px;display:flex;gap:10px;align-items:center}
+.vB .b-body{display:grid;grid-template-columns:250px minmax(0,1fr) 400px;min-height:0}
+.vB .b-tree{border-right:1px solid var(--line);overflow:auto;padding:12px 0;background:var(--deep)}
+.vB .b-tree h5{margin:6px 16px 8px;font-size:12px;font-weight:500;color:var(--dim)}
+.vB .tu{display:flex;gap:8px;align-items:center;padding:4px 16px;cursor:pointer;color:var(--chalk)}
+.vB .tu:hover{background:var(--panel)}
+.vB .tu.cur{background:var(--panel);box-shadow:inset 2px 0 var(--yellow)}
+.vB .tu.locked{color:var(--dim)}
+.vB .dot{width:8px;height:8px;border-radius:50%;flex:none;border:1.5px solid var(--dim)}
+.vB .dot.retained{background:var(--green);border-color:var(--green)}
+.vB .dot.passed{border-color:var(--green);background:radial-gradient(var(--green) 40%,transparent 45%)}
+.vB .dot.current{border-color:var(--yellow);background:var(--yellow)}
+.vB .dot.open{border-color:var(--chalk)}
+.vB .dot.miss{border-color:var(--pink);background:var(--pink)}
+.vB .ts{padding:3px 16px 3px 34px;color:var(--dim);display:flex;gap:8px;align-items:center;font-size:13px}
+.vB .ts.cur{color:var(--chalk)}
+.vB .to{padding:2px 16px 2px 50px;color:var(--dim);font-size:12.5px;display:flex;gap:7px;align-items:baseline}
+.vB .to .dot{width:6px;height:6px;transform:translateY(-1px)}
+.vB .b-chat{display:grid;grid-template-rows:1fr auto;min-height:0}
+.vB .scroll{overflow:auto;padding:22px 28px 30px}
+.vB .msg{display:grid;grid-template-columns:52px minmax(0,680px);gap:14px;margin-bottom:16px}
+.vB .msg .who{color:var(--dim);font-size:12.5px;text-align:right;padding-top:2px}
+.vB .msg.you .who{color:var(--blue)}
+.vB .msg p{margin:0 0 10px;font-size:15px;line-height:1.65}
+.vB .msg.you .body{color:var(--blue)}
+.vB .event{margin:4px 0 16px 66px;color:var(--dim);font-size:12.5px;display:flex;gap:10px;align-items:center;max-width:680px}
+.vB .event::before,.vB .event::after{content:"";height:1px;background:var(--line);flex:1}
+.vB .cite{color:var(--blue);border-bottom:1px dashed var(--blue);cursor:pointer}
+.vB .qbox{border:1px solid var(--yellow);border-radius:6px;background:var(--panel);padding:14px 16px;max-width:680px}
+.vB .qbox .qh{display:flex;justify-content:space-between;color:var(--yellow);font-size:12.5px;margin-bottom:8px}
+.vB .qbox .q{font-size:16px;margin-bottom:12px}
+.vB .fl{font-size:12px;color:var(--dim);margin:10px 0 4px;display:block}
+.vB .tex-in,.vB textarea.reason,.vB .composer input{width:100%;background:var(--deep);border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-variation-settings:"MONO" 1;font-size:13.5px}
+.vB textarea.reason{font-variation-settings:"MONO" 0,"CASL" 0.2;min-height:56px}
+.vB .preview{min-height:40px;padding:6px 2px;font-size:18px}
+.vB .conf{display:flex;gap:6px}
+.vB .conf button{background:var(--deep);border:1px solid var(--line);border-radius:4px;padding:6px 12px;display:flex;gap:8px;align-items:center}
+.vB .conf button.on{border-color:var(--yellow);color:var(--yellow)}
+.vB .row-end{display:flex;justify-content:flex-end;gap:10px;align-items:center;margin-top:12px}
+.vB .bbtn{background:var(--yellow);color:var(--deep);border:0;border-radius:4px;padding:6px 14px;font-weight:700;display:inline-flex;gap:8px;align-items:center}
+.vB .bbtn kbd{background:transparent;border-color:rgba(0,0,0,.3);color:var(--deep)}
+.vB .bbtn.ghost{background:transparent;color:var(--chalk);border:1px solid var(--line);font-weight:500}
+.vB .bbtn.ghost kbd{color:var(--chalk);border-color:var(--line)}
+.vB .grade{border:1px solid var(--pink);border-radius:6px;max-width:680px;padding:12px 16px;margin:0 0 16px 66px;background:rgba(239,143,138,.07)}
+.vB .grade .gh{color:var(--pink);font-weight:700;margin-bottom:6px;display:flex;gap:10px;align-items:baseline}
+.vB .grade .gh span{color:var(--dim);font-weight:400;font-size:12.5px}
+.vB .grade .ans{font-size:17px;margin:6px 0}
+.vB .grade .flaw{color:var(--chalk);font-size:14px}
+.vB .offer{margin:0 0 16px 66px;max-width:680px;border-left:2px solid var(--yellow);padding:6px 0 6px 14px}
+.vB .offer p{margin:0 0 10px;font-size:14.5px}
+.vB .composer{border-top:1px solid var(--line);padding:12px 28px;display:flex;gap:10px;align-items:center;background:var(--deep)}
+.vB .composer input{flex:1;font-variation-settings:"MONO" 0,"CASL" 0.2;font-size:14.5px;padding:9px 12px}
+.vB .composer.off{opacity:.5}
+.vB .b-pane{border-left:1px solid var(--line);display:grid;grid-template-rows:auto 1fr;min-height:0;background:var(--panel)}
+.vB .tabs{display:flex;border-bottom:1px solid var(--line)}
+.vB .tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;padding:10px 0;color:var(--dim)}
+.vB .tabs button.on{color:var(--chalk);border-bottom-color:var(--yellow)}
+.vB .pane-body{overflow:auto;padding:16px}
+.vB .pane-body h4{margin:0 0 4px;font-size:14px;font-variation-settings:"CASL" 0.8}
+.vB .pane-body .sm{color:var(--dim);font-size:12.5px;margin-bottom:12px}
+.vB .sandbox{border:1px dashed var(--line);border-radius:4px;padding:10px;background:var(--board)}
+.vB .slider{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:13px}
+.vB .slider input{flex:1;accent-color:var(--yellow)}
+.vB .toggle{display:flex;gap:4px;margin-top:10px}
+.vB .toggle button{flex:1;background:var(--deep);border:1px solid var(--line);border-radius:4px;padding:5px;font-size:12.5px;color:var(--dim)}
+.vB .toggle button.on{color:var(--chalk);border-color:var(--chalk)}
+.vB .quote{border-left:2px solid var(--blue);padding:4px 0 4px 12px;font-size:15px;margin:10px 0}
+.vB .verified{color:var(--green);font-size:12.5px}
+.vB table{width:100%;border-collapse:collapse;font-size:12.5px}
+.vB th{text-align:left;color:var(--dim);font-weight:500;padding:6px 6px 6px 0;border-bottom:1px solid var(--line)}
+.vB td{padding:7px 6px 7px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.vB td.ok{color:var(--green)} .vB td.bad{color:var(--pink)}
+.vB tr.new td{background:rgba(239,143,138,.08)}
+.vB .caret{display:inline-block;width:8px;height:1.1em;background:var(--chalk);vertical-align:-3px;animation:blink 1s steps(1) infinite}
+/* Workbench library & course */
+.vB .lib{padding:28px 36px;overflow:auto}
+.vB .cmd{display:flex;gap:10px;align-items:center;max-width:820px;background:var(--deep);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin-bottom:28px;color:var(--dim)}
+.vB .cmd input{flex:1;background:none;border:0;outline:0;font-size:15px}
+.vB .lib table{font-size:14px;max-width:1100px}
+.vB .lib td,.vB .lib th{padding:12px 12px 12px 0}
+.vB .lib tr.click{cursor:pointer}
+.vB .lib tr.click:hover td{background:var(--panel)}
+.vB .bars{display:flex;gap:2px}
+.vB .bars i{width:14px;height:8px;border-radius:2px;background:var(--line)}
+.vB .bars i.retained,.vB .bars i.passed{background:var(--green)}
+.vB .bars i.current{background:var(--yellow)}
+.vB .lib h5{font-size:12.5px;color:var(--dim);font-weight:500;margin:28px 0 0}
+.vB .pill{font-size:12px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);color:var(--dim)}
+.vB .pill.y{border-color:var(--yellow);color:var(--yellow)}
+.vB .graph{overflow:auto;padding:24px;display:flex;align-items:center;justify-content:center}
+.vB .ud h3{margin:0 0 4px;font-size:18px;font-variation-settings:"CASL" 0.9}
+.vB .ud .goal{color:var(--dim);margin-bottom:14px}
+.vB .ud ul{list-style:none;padding:0;margin:0 0 16px}
+.vB .ud li{display:flex;gap:8px;align-items:baseline;padding:4px 0}
+
+/* =====================================================================
+   C. STAGE: one thing at a time. The current phase fills the screen in
+   its own colour; the segment track on top says where you are.
+   ===================================================================== */
+.vC{--white:#FFFFFF;--ink:#171A26;--mute:#5F6679;--line:#E2E5EE;--teach:#3F51D9;--teach-t:#EEF0FF;--discuss:#0D8A78;--discuss-t:#E3F5F1;--check:#B86E00;--check-t:#FFF2DA;--wrong:#C93636;--right:#1E8F4F;
+  background:var(--white);color:var(--ink);font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:18px;line-height:1.6;min-height:100vh}
+.vC h1,.vC h2,.vC h3,.vC .disp{font-family:"Bricolage Grotesque",sans-serif;letter-spacing:-.015em}
+.vC .c-top{display:flex;align-items:center;gap:18px;padding:14px 28px;font-size:15px}
+.vC .c-top .logo{font-family:"Bricolage Grotesque";font-weight:800;font-size:22px;background:none;border:0;padding:0;letter-spacing:-.02em}
+.vC .c-top .sp{flex:1}
+.vC .c-top .tb{background:none;border:1.5px solid var(--line);border-radius:999px;padding:5px 14px;font-size:15px}
+.vC .c-top .tb:hover{border-color:var(--ink)}
+.vC .track{display:flex;align-items:center;gap:0;padding:6px 28px 18px;max-width:1100px;margin:0 auto}
+.vC .seg{display:flex;align-items:center;gap:8px;color:var(--mute);font-size:15px;white-space:nowrap}
+.vC .seg .c{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:13px;font-weight:700;background:#fff}
+.vC .seg.done .c{background:var(--ink);border-color:var(--ink);color:#fff}
+.vC .seg.cur{color:var(--ink);font-weight:700}
+.vC .seg.cur .c{border-color:var(--ink)}
+.vC .link{flex:1;height:2px;background:var(--line);margin:0 12px;min-width:20px}
+.vC .link.done{background:var(--ink)}
+.vC .ph{display:flex;gap:4px;margin-left:6px}
+.vC .ph span{font-size:13px;padding:2px 10px;border-radius:999px;font-weight:700;color:var(--mute);background:#F2F3F7}
+.vC .ph span.now{color:#fff;background:var(--phc)}
+.vC .stage{background:var(--pht);padding:48px 28px 120px;min-height:calc(100vh - 114px);transition:background .35s}
+.vC .inner{max-width:720px;margin:0 auto}
+.vC .kicker{color:var(--phc);font-weight:700;font-size:15px;margin-bottom:6px}
+.vC .stage h1{font-size:50px;line-height:1.05;margin:0 0 26px;font-weight:700}
+.vC .lesson p{font-size:21px;line-height:1.6;margin:0 0 18px}
+.vC .cbtn{background:var(--ink);color:#fff;border:0;border-radius:999px;padding:12px 22px;font-weight:700;font-size:17px}
+.vC .cbtn.phase{background:var(--phc)}
+.vC .cbtn.line{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+.vC .acts{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:22px}
+.vC .tlink{background:none;border:0;padding:0;color:var(--ink);text-decoration:underline;text-underline-offset:3px;font-size:16px}
+.vC .cite{background:#fff;border:1.5px solid var(--line);border-radius:999px;padding:0 9px;font-size:14px;font-weight:700;color:var(--teach);vertical-align:2px}
+.vC .recap{background:#fff;border-radius:14px;padding:14px 18px;margin-bottom:26px;font-size:16px;color:var(--mute);display:flex;gap:12px;align-items:center}
+.vC .recap b{color:var(--ink)}
+.vC .chat .m{margin:0 0 18px;max-width:620px}
+.vC .chat .m.you{margin-left:auto;background:#fff;border-radius:16px 16px 4px 16px;padding:12px 16px}
+.vC .chat .m.tutor{font-size:19px}
+.vC .composer{display:flex;gap:10px;background:#fff;border-radius:999px;padding:6px 6px 6px 20px;margin-top:20px;border:1.5px solid var(--line)}
+.vC .composer input{flex:1;border:0;outline:0;background:none;font-size:17px}
+.vC .readybar{display:flex;justify-content:space-between;align-items:center;margin-top:34px;padding-top:22px;border-top:2px dashed rgba(0,0,0,.1)}
+.vC .readybar span{color:var(--mute);font-size:16px}
+.vC .sheet{background:#fff;border-radius:22px;padding:34px 38px;box-shadow:0 1px 0 rgba(0,0,0,.04),0 18px 50px -20px rgba(120,80,0,.35)}
+.vC .sheet .q{font-size:24px;line-height:1.45;margin:0 0 22px;font-family:"Bricolage Grotesque";font-weight:600}
+.vC .lab{font-weight:700;font-size:15px;margin:20px 0 8px;display:block}
+.vC .tex-in{width:100%;font-family:Recursive,monospace;font-variation-settings:"MONO" 1;font-size:16px;border:2px solid var(--line);border-radius:12px;padding:12px 14px}
+.vC .tex-in:focus{border-color:var(--check);outline:0}
+.vC .preview{font-size:24px;min-height:52px;padding:10px 0 0}
+.vC .conf{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.vC .conf button{border:2px solid var(--line);background:#fff;border-radius:14px;padding:14px 10px;text-align:left;font-size:17px;font-weight:700}
+.vC .conf button small{display:block;font-weight:400;color:var(--mute);font-size:13px}
+.vC .conf button.on{border-color:var(--check);background:var(--check-t)}
+.vC details{margin-top:16px;font-size:16px}
+.vC summary{cursor:pointer;color:var(--mute)}
+.vC textarea.reason{width:100%;min-height:70px;border:2px solid var(--line);border-radius:12px;padding:10px 14px;margin-top:8px;font-size:16px}
+.vC .verdict{display:flex;gap:18px;align-items:center;margin-bottom:22px}
+.vC .verdict .big{width:64px;height:64px;border-radius:50%;background:var(--wrong);color:#fff;display:grid;place-items:center;font-size:34px;font-weight:700;flex:none}
+.vC .verdict h1{margin:0;font-size:42px}
+.vC .verdict .sub{color:var(--mute);font-size:16px}
+.vC .yours{background:#fff;border-radius:14px;padding:12px 18px;font-size:20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.vC .yours small{font-size:14px;color:var(--mute)}
+.vC .flaw{border-left:4px solid var(--wrong);padding:4px 0 4px 16px;margin:0 0 22px;font-size:18px}
+.vC .flaw b{display:block;font-size:14px;color:var(--wrong)}
+.vC .detour{background:var(--ink);color:#fff;border-radius:22px;padding:26px 30px;margin-top:28px}
+.vC .detour h3{margin:0 0 6px;font-size:24px}
+.vC .detour p{margin:0 0 18px;color:#C9CDDA;font-size:17px}
+.vC .detour .cbtn{background:#fff;color:var(--ink)}
+.vC .detour .tlink{color:#fff}
+.vC .overlay{position:fixed;inset:0;background:rgba(23,26,38,.45);display:grid;place-items:center;z-index:50}
+.vC .modal{background:#fff;border-radius:22px;padding:24px 26px;width:min(560px,92vw)}
+.vC .modal h3{margin:0 0 4px;font-size:22px}
+.vC .modal .sm{color:var(--mute);font-size:14px;margin-bottom:12px}
+.vC .slider{display:flex;gap:12px;align-items:center;font-size:15px;margin-top:10px}
+.vC .slider input{flex:1;accent-color:var(--teach)}
+.vC .seg2{display:flex;gap:6px;margin-top:10px}
+.vC .seg2 button{flex:1;border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:6px;font-size:14px}
+.vC .seg2 button.on{border-color:var(--ink);font-weight:700}
+.vC .popq{background:#fff;border-radius:14px;border:1.5px solid var(--line);padding:14px 18px;margin:-4px 0 20px;font-size:16px}
+.vC .popq .q{font-style:italic}
+.vC .popq .ok{color:var(--right);font-size:14px;font-weight:700}
+/* Stage: library & course */
+.vC .lib{max-width:980px;margin:0 auto;padding:30px 28px 110px}
+.vC .resume{background:var(--check-t);border-radius:28px;padding:40px 44px;margin:10px 0 44px;display:grid;grid-template-columns:1fr auto;gap:20px;align-items:end}
+.vC .resume .k{font-size:16px;color:var(--check);font-weight:700}
+.vC .resume h1{font-size:58px;line-height:1;margin:6px 0 14px;font-weight:800}
+.vC .resume .where{font-size:19px}
+.vC .resume .where b{font-weight:700}
+.vC .resume .cbtn{font-size:20px;padding:16px 30px;background:var(--check)}
+.vC .lib h2{font-size:22px;margin:0 0 8px}
+.vC .crow{display:grid;grid-template-columns:14px 1fr 200px 130px;gap:16px;align-items:center;padding:16px 4px;border-top:1.5px solid var(--line);cursor:pointer}
+.vC .crow:hover{background:#FAFAFC}
+.vC .crow .pd{width:12px;height:12px;border-radius:50%}
+.vC .crow .t{font-weight:700;font-size:19px}
+.vC .crow .w{color:var(--mute);font-size:15px}
+.vC .crow .when{color:var(--mute);font-size:15px;text-align:right}
+.vC .prog{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.vC .prog i{display:block;height:100%;background:var(--ink)}
+.vC .newc{margin-top:28px}
+.vC .course{max-width:1150px;margin:0 auto;padding:24px 28px 110px}
+.vC .course h1{font-size:54px;margin:0 0 4px}
+.vC .course .goal{color:var(--mute);font-size:19px;max-width:700px}
+.vC .metro{background:#FAFBFD;border-radius:24px;padding:20px;margin:26px 0;overflow:auto}
+.vC .udet{display:grid;grid-template-columns:1fr 300px;gap:40px}
+.vC .udet h2{font-size:32px;margin:0 0 4px}
+.vC .obj{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1.5px solid var(--line)}
+.vC .obj .st{font-size:14px;font-weight:700;padding:2px 10px;border-radius:999px;background:#F2F3F7;color:var(--mute);margin-left:auto;white-space:nowrap}
+.vC .obj .st.p{background:#E3F4EA;color:var(--right)}
+.vC .obj .st.w{background:var(--check-t);color:var(--check)}
+.vC .aside h4{margin:0 0 6px;font-size:16px}
+.vC .aside ul{margin:0 0 20px;padding-left:18px;color:var(--mute);font-size:16px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="bar"></div>
+<div id="toast"></div>
+<script>
+/* ------------------------------------------------------------------ data (simulated) */
+const R = String.raw;
+const COURSE = {
+  title: 'Calculus to Analysis',
+  goal: 'Go from computing limits and derivatives to proving things about them, ending at the start of real analysis.',
+  units: [
+    {id:'u1', n:1, t:'Functions and notation', g:'Read and write function notation, domains and compositions fluently.', s:'retained', L:0, deps:[]},
+    {id:'u2', n:2, t:'Limits, intuitively', g:'Estimate and compute limits from graphs, tables and algebra.', s:'passed', L:1, deps:['u1']},
+    {id:'u6', n:3, t:'Completeness and the supremum', g:'Use the least-upper-bound property in short proofs.', s:'open', L:1, deps:['u1']},
+    {id:'u3', n:4, t:R`ε–δ limits`, g:R`Prove limits from the ε–δ definition, and show when a limit fails.`, s:'current', L:2, deps:['u2']},
+    {id:'u4', n:5, t:'Continuity', g:'Prove continuity at a point and use the intermediate value theorem.', s:'locked', L:3, deps:['u3']},
+    {id:'u5', n:6, t:'The derivative', g:'Derive the derivative rules from the limit definition.', s:'locked', L:3, deps:['u3']},
+    {id:'u7', n:7, t:'Sequences', g:'Prove convergence of sequences and use the monotone convergence theorem.', s:'locked', L:3, deps:['u3','u6']},
+    {id:'u8', n:8, t:'Series', g:'Test series for convergence and explain why the tests work.', s:'locked', L:4, deps:['u7']},
+    {id:'u9', n:9, t:'Uniform continuity', g:'Tell continuity from uniform continuity and prove each.', s:'locked', L:4, deps:['u4','u7']},
+  ]
+};
+const STATUS = {retained:'Retained', passed:'Passed', current:'In progress', open:'Ready to start', locked:'Needs earlier units'};
+const SEGMENTS = [
+  {n:1, t:'The definition', s:'done'},
+  {n:2, t:'Linear functions', s:'done'},
+  {n:3, t:R`Quadratics: capping δ`, s:'cur'},
+  {n:4, t:'When a limit fails', s:'todo'},
+];
+const OBJECTIVES = [
+  {t:R`State the ε–δ definition of a limit`, s:'passed'},
+  {t:'Prove limits of linear functions', s:'passed'},
+  {t:R`Prove limits of quadratics by capping δ`, s:'working'},
+  {t:'Show a limit fails by negating the definition', s:'not yet'},
+];
+const LIBRARY = [
+  {id:'calc', t:'Calculus to Analysis', units:COURSE.units.map(u=>u.s), passed:2, total:9, where:R`ε–δ limits, segment 3, check`, when:'Yesterday', phase:'check'},
+  {id:'llm', t:'Modern AI and LLMs', units:['passed','current','open','locked','locked','locked','locked'], passed:1, total:7, where:'Attention from scratch, segment 2, discuss', when:'4 days ago', phase:'discuss'},
+  {id:'hegel', t:'Hegel, Phenomenology of Spirit', units:['open','locked','locked','locked','locked','locked','locked','locked'], passed:0, total:8, where:'Curriculum waiting for your approval', when:'2 weeks ago', phase:'none'},
+];
+const ONEOFFS = [
+  {id:'bayes', t:"Bayes' theorem refresher", units:['current'], passed:0, total:1, where:'Segment 2, teach', when:'3 days ago', phase:'teach'},
+  {id:'tcp', t:'How TCP congestion control works', units:['passed'], passed:1, total:1, where:'Finished, notes saved', when:'Oct 30', phase:'none'},
+];
+const EVIDENCE = [
+  {d:'Nov 11', o:'Definition', r:'correct', c:'sure', h:'no'},
+  {d:'Nov 11', o:'Linear', r:'correct', c:'fairly sure', h:'no'},
+  {d:'Nov 12', o:'Linear', r:'correct', c:'sure', h:'no'},
+];
+const TEACH = [
+  R`A quadratic needs one more move than a linear function. Take $\lim_{x\to 3} x^2 = 9$. By the definition, we want $|x^2 - 9| < \varepsilon$ whenever $0 < |x-3| < \delta$.`,
+  R`Factor first: $|x^2-9| = |x-3|\,|x+3|$. You control $|x-3|$ with $\delta$. The $|x+3|$ part changes with $x$, so no single $\delta$ handles it yet.`,
+  R`The move is to cap $\delta$ before you choose it. Agree that $\delta \le 1$. Then $|x-3| < 1$ puts $x$ in $(2, 4)$, so $|x+3| < 7$, and $$|x^2-9| < 7\,|x-3|.$$`,
+  R`Now $\delta = \min\!\left(1, \tfrac{\varepsilon}{7}\right)$ does both jobs: the cap keeps the bound on $|x+3|$ true, and $\varepsilon/7$ makes $7|x-3| < \varepsilon$.`,
+];
+const DISCUSS = [
+  {who:'you', t:R`Why cap at 1? Could I use $\delta \le \tfrac12$ instead?`},
+  {who:'tutor', t:R`Yes. Any fixed cap works; it only changes the bound. With $\delta \le \tfrac12$, $x$ is in $(2.5, 3.5)$, so $|x+3| < 6.5$ and you'd choose $\delta = \min\!\left(\tfrac12, \tfrac{\varepsilon}{6.5}\right)$. People use 1 because the arithmetic stays clean.`},
+  {who:'tutor', t:R`When you're ready, I'll give you one to try on your own.`},
+];
+const QUESTION = R`Prove that $\lim_{x\to 2} x^2 = 4$. Which $\delta$ would you choose, as a function of $\varepsilon$?`;
+const DEFAULT_ANSWER = R`\min\left(1, \frac{\varepsilon}{4}\right)`;
+const DEFAULT_REASON = 'Cap δ at 1, then |x+2| < 4, so |x²−4| < 4|x−2| < ε.';
+const FEEDBACK = R`Your cap is right, but the bound after it isn't. With $\delta \le 1$, $x$ can be anywhere in $(1, 3)$, so $|x+2|$ gets close to $5$, not $4$. A counterexample: with $\varepsilon = 4$ your $\delta$ is $1$, and $x = 2.9$ gives $|x^2 - 4| = 4.41 > 4$.`;
+const FLAW = R`Step 2 bounds $|x+2|$ by $4$, which assumes $x < 2$. The cap allows $x$ up to $3$.`;
+const DETOUR = 'You were sure of this answer, so it may be a misunderstanding rather than a slip. Want to trace your reasoning with the tutor before moving on?';
+const SOURCE = {where:'analysis-notes.pdf, section 2.3, page 14', text:R`Let $f$ be defined on an open interval containing $c$, except possibly at $c$. Then $\lim_{x\to c} f(x) = L$ if for every $\varepsilon > 0$ there is a $\delta > 0$ such that $0 < |x-c| < \delta$ implies $|f(x) - L| < \varepsilon$.`};
+
+/* ------------------------------------------------------------------ state */
+const VARIANTS = ['A','B','C'];
+const NAMES = {A:'Folio', B:'Workbench', C:'Stage'};
+const VIEWS = ['library','course','session'];
+const PHASES = ['teach','discuss','check','graded'];
+const P = new URLSearchParams(location.search);
+const S = {
+  variant: VARIANTS.includes(P.get('variant')) ? P.get('variant') : 'A',
+  view: VIEWS.includes(P.get('view')) ? P.get('view') : 'session',
+  phase: PHASES.includes(P.get('phase')) ? P.get('phase') : 'check',
+  conf: 'sure', answer: DEFAULT_ANSWER, reason: DEFAULT_REASON,
+  eps: 2, mode: 'working', pane: 'artifact', unit: 'u3', overlay: null, showSource: false,
+};
+function syncURL(){
+  const u = new URL(location.href);
+  u.searchParams.set('variant', S.variant); u.searchParams.set('view', S.view); u.searchParams.set('phase', S.phase);
+  history.replaceState(null, '', u);
+}
+
+/* ------------------------------------------------------------------ helpers */
+function k(tex, display){
+  if (!window.katex) return `<code>${tex}</code>`;
+  return katex.renderToString(tex, {throwOnError:false, displayMode:!!display});
+}
+function tx(s){
+  return s.replace(/\$\$([\s\S]+?)\$\$/g, (_,t)=>k(t,true)).replace(/\$([^$]+?)\$/g, (_,t)=>k(t,false));
+}
+function esc(s){ return s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const at = p => PHASES.indexOf(S.phase) >= PHASES.indexOf(p);
+function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 2200); }
+
+/* ε–δ figure: f(x)=x² near x=2. "working" δ = min(1, ε/5); "yours" δ = min(1, ε/4). */
+function epsFig(c){
+  const W = 380, H = 230, pad = 26;
+  const x0 = 0.6, x1 = 3.4, y0 = -0.5, y1 = 11.5;
+  const X = x => pad + (x - x0) / (x1 - x0) * (W - 2*pad);
+  const Y = y => H - pad - (y - y0) / (y1 - y0) * (H - 2*pad);
+  const eps = S.eps, d = Math.min(1, eps / (S.mode === 'yours' ? 4 : 5));
+  const worst = (2 + d) ** 2 - 4, ok = worst < eps + 1e-9;
+  let path = ''; for (let i = 0; i <= 80; i++){ const x = x0 + (x1 - x0) * i / 80; path += (i ? 'L' : 'M') + X(x).toFixed(1) + ' ' + Y(x*x).toFixed(1); }
+  let inner = ''; for (let i = 0; i <= 30; i++){ const x = 2 - d + 2*d*i/30; inner += (i ? 'L' : 'M') + X(x).toFixed(1) + ' ' + Y(x*x).toFixed(1); }
+  const boxCol = ok ? c.good : c.bad;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Graph of x squared near 2 with epsilon and delta bands" style="display:block;font-family:inherit">
+    <rect x="${pad}" y="${Y(4+eps)}" width="${W-2*pad}" height="${Y(4-eps)-Y(4+eps)}" fill="${c.eps}" opacity=".22"/>
+    <rect x="${X(2-d)}" y="${pad}" width="${X(2+d)-X(2-d)}" height="${H-2*pad}" fill="${c.delta}" opacity=".22"/>
+    <line x1="${pad}" x2="${W-pad}" y1="${Y(0)}" y2="${Y(0)}" stroke="${c.axis}" stroke-width="1"/>
+    <line x1="${X(1)}" x2="${X(1)}" y1="${pad}" y2="${H-pad}" stroke="${c.axis}" stroke-width=".5" stroke-dasharray="2 3"/>
+    <path d="${path}" fill="none" stroke="${c.curve}" stroke-width="1.6"/>
+    <path d="${inner}" fill="none" stroke="${boxCol}" stroke-width="3.2"/>
+    <rect x="${X(2-d)}" y="${Y(Math.min(4+eps, y1))}" width="${X(2+d)-X(2-d)}" height="${Y(Math.max(4-eps,y0))-Y(Math.min(4+eps,y1))}" fill="none" stroke="${boxCol}" stroke-width="1" stroke-dasharray="4 3"/>
+    <circle cx="${X(2)}" cy="${Y(4)}" r="3.5" fill="${c.bg}" stroke="${c.curve}" stroke-width="1.5"/>
+    <text x="${W-pad}" y="${Y(4+eps)-5}" text-anchor="end" font-size="11" fill="${c.text}">4 + ε</text>
+    <text x="${X(2+d)+4}" y="${H-pad-6}" font-size="11" fill="${c.text}">2 + δ</text>
+    <text x="${pad+2}" y="${pad+2}" font-size="11.5" fill="${boxCol}">${ok ? 'curve stays inside the box' : 'curve leaves the box'}</text>
+  </svg>
+  <div style="font-size:.82em;margin-top:6px;color:${c.text}">ε = ${eps.toFixed(2)}, δ = ${d.toFixed(3)}; largest |x² − 4| in the δ band is ${worst.toFixed(3)} ${ok ? '&lt;' : '&gt;'} ε</div>`;
+}
+function epsControls(cls){
+  return `<div class="${cls}"><span>ε</span><input id="eps" type="range" min="0.3" max="6" step="0.05" value="${S.eps}" aria-label="epsilon"></div>`;
+}
+function modeToggle(cls){
+  if (!at('graded')) return '';
+  return `<div class="${cls}"><button data-act="mode:working" class="${S.mode==='working'?'on':''}">δ = min(1, ε/5)</button><button data-act="mode:yours" class="${S.mode==='yours'?'on':''}">your δ = min(1, ε/4)</button></div>`;
+}
+
+/* layered DAG layout for the curriculum diagram */
+function layout(dir, gx, gy, pad){
+  const layers = {};
+  COURSE.units.forEach(u => (layers[u.L] = layers[u.L] || []).push(u));
+  const maxN = Math.max(...Object.values(layers).map(l=>l.length));
+  const pos = {};
+  Object.entries(layers).forEach(([L, us]) => us.forEach((u, i) => {
+    const a = +L * gx + pad, b = (i - (us.length - 1) / 2) * gy + ((maxN - 1) / 2) * gy + pad;
+    pos[u.id] = dir === 'h' ? {x:a, y:b} : {x:b, y:a};
+  }));
+  const nL = Object.keys(layers).length;
+  const size = dir === 'h' ? {w:(nL-1)*gx + 2*pad, h:(maxN-1)*gy + 2*pad} : {w:(maxN-1)*gy + 2*pad, h:(nL-1)*gx + 2*pad};
+  return {pos, ...size};
+}
+function edges(pos, dir, cls){
+  let out = '';
+  COURSE.units.forEach(u => u.deps.forEach(d => {
+    const a = pos[d], b = pos[u.id];
+    const m = dir === 'h' ? `M${a.x} ${a.y} C${(a.x+b.x)/2} ${a.y} ${(a.x+b.x)/2} ${b.y} ${b.x} ${b.y}` : `M${a.x} ${a.y} C${a.x} ${(a.y+b.y)/2} ${b.x} ${(a.y+b.y)/2} ${b.x} ${b.y}`;
+    out += `<path d="${m}" class="${cls}"/>`;
+  }));
+  return out;
+}
+
+/* ------------------------------------------------------------------ question widget pieces */
+function confLabel(c){ return {guess:'Guessing', fairly:'Fairly sure', sure:'Sure'}[c]; }
+const CONFS = ['guess','fairly','sure'];
+
+/* =================================================================== A: FOLIO */
+const A = {
+  head(extra){
+    return `<header class="a-head"><a class="home" data-act="view:library" href="#">Gauss</a>${S.view!=='library'?`<span>${COURSE.title}</span>`:''}${extra||''}<span class="sp"></span><span>Session of Nov 13</span></header>`;
+  },
+  session(){
+    const phaseIdx = Math.min(PHASES.indexOf(S.phase), 2);
+    const rail = `<nav class="a-rail"><h4>${tx(R`Unit 4: ε–δ limits`)}</h4><ol>${SEGMENTS.map(s=>`
+      <li class="${s.s==='done'?'done':s.s==='cur'?'cur':''}"><span class="n">${s.n}</span>${tx(s.t)}
+      ${s.s==='cur' ? `<ol class="phases">${['Teach','Discuss','Check'].map((p,i)=>`<li class="${i===phaseIdx?'now':i<phaseIdx?'past':''}">${p}</li>`).join('')}</ol>` : ''}</li>`).join('')}</ol></nav>`;
+    let rows = '';
+    rows += `<div class="main"><h1>${tx(R`Quadratics: capping δ`)}</h1><p class="lede">${tx(R`Segment 3 of 4. Objective: prove limits of quadratics by capping δ.`)}</p></div><div class="note"></div>`;
+    // teach
+    rows += `<div class="main"><div class="phase-mark">Teach</div><p>${tx(TEACH[0]).replace('definition', 'definition<sup class="ref" data-act="cite">1</sup>')}</p><p>${tx(TEACH[1])}</p><p>${tx(TEACH[2])}</p></div>
+      <div class="note" style="padding-top:62px"><span class="sup">1</span>${SOURCE.where}.<blockquote>${tx(SOURCE.text)}</blockquote><span class="ok">Quote checked against the source.</span></div>`;
+    rows += `<div class="main"><figure><div class="fig">${epsFig({bg:'#fff',axis:'#9AA3AE',curve:'#1D2433',eps:'#24477A',delta:'#8A6D1E',good:'#2E6B4E',bad:'#C2362B',text:'#5B6475'})}
+      ${epsControls('slider')}${modeToggle('slider')}</div>
+      <figcaption><b>Figure 4.3.</b> ${tx(R`Drag ε. The box is the δ the rule picks; the curve must stay inside it. Made by the tutor for this segment.`)}</figcaption></figure></div>
+      <div class="note" style="padding-top:30px">Figures are interactive pages the tutor writes. They sit in the text where they're used, like a book's figures.</div>`;
+    if (S.phase === 'teach') rows += `<div class="main"><p>${tx(TEACH[3])}<span class="caret"></span></p></div><div class="note"></div>`;
+    else rows += `<div class="main"><p>${tx(TEACH[3])}</p></div><div class="note"></div>`;
+    // discuss
+    if (at('discuss')){
+      rows += `<div class="main"><div class="phase-mark">Discuss</div><div class="dlg">${DISCUSS.map(m=>`<p class="${m.who}"><span class="who">${m.who==='you'?'You':'Tutor'}</span>${tx(m.t)}</p>`).join('')}</div>
+        ${S.phase==='discuss' ? `<div class="ask"><input placeholder="Ask anything about this; nothing here is graded"><button class="btn" data-act="ready">I'm ready for the check</button></div>` : ''}</div>
+        <div class="note" style="padding-top:62px">Nothing in the discussion is graded. Ask as long as you like.</div>`;
+    }
+    // check
+    if (S.phase === 'check'){
+      rows += `<div class="main"><div class="phase-mark">Check</div><div class="exercise"><h3>Exercise 4.3.1</h3><div class="q">${tx(QUESTION)}</div>
+        <label class="fld" for="ans">Your answer, in LaTeX or plain text</label><input id="ans" class="tex-in" value="${esc(S.answer)}" autocomplete="off">
+        <div class="preview" id="ans-preview">${k(S.answer,true)}</div>
+        <label class="fld">How sure are you?</label>
+        <div class="conf">${CONFS.map((c,i)=>`<button data-act="conf:${c}" class="${S.conf===c?'on':''}"><kbd>${i+1}</kbd>${confLabel(c)}</button>`).join('')}</div>
+        <label class="fld" for="reason">Your reasoning (optional)</label><textarea id="reason" class="reason">${esc(S.reason)}</textarea>
+        <div class="submitrow"><button class="btn" data-act="submit">Submit answer</button></div></div></div>
+        <div class="note" style="padding-top:70px">Graded by a rubric. You see the result only after you commit an answer and how sure you are.</div>`;
+    }
+    if (S.phase === 'graded'){
+      rows += `<div class="main"><div class="phase-mark">Check</div><div class="exercise"><h3>Exercise 4.3.1</h3><div class="q">${tx(QUESTION)}</div>
+        <div class="answered"><span class="x">✗</span><span class="struck">${k(S.answer,true)}</span></div>
+        <div class="verdict">Incorrect. You said: ${confLabel(S.conf).toLowerCase()}.</div>
+        <p>${tx(FEEDBACK)}</p></div>
+        <div class="detour"><p>${DETOUR}</p><div class="acts"><button class="btn" data-act="detour">Trace my reasoning</button><button class="lnk" data-act="next">Move on</button><button class="lnk" data-act="dispute">Dispute this grade</button></div></div></div>
+        <div class="note" style="padding-top:150px"><div class="redpen">${tx(FLAW)}</div></div>`;
+    }
+    return `<div>${A.head(`<span>${tx(R`Unit 4, ε–δ limits`)}</span>`)}<div class="a-grid">${rail}<div style="grid-column:2/4;display:grid;grid-template-columns:minmax(0,640px) 250px;gap:0 44px;align-content:start">${rows}</div></div></div>`;
+  },
+  library(){
+    const item = c => `<li><div class="line"><span class="t" data-act="${c.id==='calc'?'view:course':'stub'}">${c.t}</span><span class="dots"></span><span class="frac">${c.total>1?`${c.passed} of ${c.total} units`:(c.passed?'finished':'in progress')}</span></div>
+      <div class="next">${c.phase==='none' ? c.where : `Next: ${tx(c.where)}. <button class="lnk" data-act="${c.id==='calc'?'view:session':'stub'}">Resume</button>`}</div></li>`;
+    return `<div>${A.head()}<div class="contents"><h1>Contents</h1><div class="sub">Everything you're learning, and where you stopped.</div>
+      <h2>Courses</h2><ul class="toc">${LIBRARY.map(item).join('')}</ul>
+      <h2>One-off topics</h2><ul class="toc">${ONEOFFS.map(item).join('')}</ul>
+      <p style="margin-top:36px"><button class="btn" data-act="stub">Start a course</button> <span style="font-style:italic;color:var(--faded);margin-left:10px">or ask a single question as a one-off</span></p></div></div>`;
+  },
+  course(){
+    const L = layout('v', 70, 80, 30);
+    const node = u => { const p = L.pos[u.id]; const col = {retained:'#2E6B4E',passed:'#2E6B4E',current:'#24477A',open:'#1D2433',locked:'#A7AFBA'}[u.s];
+      const filled = u.s==='retained'||u.s==='passed'||u.s==='current';
+      return `<g data-act="unit:${u.id}" style="cursor:pointer"><title>${u.t}: ${STATUS[u.s]}</title>${u.id===S.unit?`<circle cx="${p.x}" cy="${p.y}" r="21" fill="none" stroke="${col}" stroke-width="1" stroke-dasharray="2 3"/>`:''}<circle cx="${p.x}" cy="${p.y}" r="15" fill="${filled?col:'#F4F6F5'}" stroke="${col}" stroke-width="1.5"/>
+        <text x="${p.x}" y="${p.y+5}" text-anchor="middle" font-size="15" fill="${filled?'#fff':col}" font-family="Newsreader">${u.n}</text></g>`; };
+    const svg = `<svg viewBox="0 0 ${L.w} ${L.h+20}" width="100%" style="display:block">${edges(L.pos,'v','')}${COURSE.units.map(node).join('')}</svg>`.replace(/<path /g,'<path fill="none" stroke="#B9C1CA" stroke-width="1.2" ');
+    const sorted = [...COURSE.units].sort((a,b)=>a.n-b.n);
+    return `<div>${A.head()}<div class="course-grid"><aside><div style="font-style:italic;color:var(--faded);font-size:15px;margin-bottom:8px">Each unit needs the ones above it that lead into it. Filled circles are passed or in progress; numbers match the list.</div>${svg}
+      <div class="side-list"><h4>Notes</h4><ul><li><a href="#" data-act="stub">Functions and notation</a></li><li><a href="#" data-act="stub">Limits, intuitively</a></li></ul></div>
+      <div class="side-list"><h4>Sources</h4><ul><li>analysis-notes.pdf</li></ul></div></aside>
+      <main><h1>${COURSE.title}</h1><p class="lede" style="margin-bottom:6px">${COURSE.goal}</p>
+      <p style="font-size:16px"><button class="btn" data-act="view:session">${tx(R`Resume ε–δ limits`)}</button> <button class="lnk" data-act="stub" style="margin-left:14px">Edit the style note</button></p>
+      <ol class="units">${sorted.map(u=>`<li data-act="unit:${u.id}" class="${u.id===S.unit?'sel':''} ${u.s==='current'?'cur':''}"><span class="n">${u.n}</span><span class="t">${tx(u.t)}</span><span class="s">${STATUS[u.s]}</span><span class="g">${tx(u.g)}</span></li>`).join('')}</ol></main></div></div>`;
+  },
+};
+
+/* =================================================================== B: WORKBENCH */
+const B = {
+  top(){
+    const pi = Math.min(PHASES.indexOf(S.phase), 2);
+    const phases = S.view==='session' ? `<div class="phases">${['Teach','Discuss','Check'].map((p,i)=>`<span class="${i===pi?'now':i<pi?'past':''}">${p}</span>`).join('')}</div>` : '<span style="margin-left:auto"></span>';
+    const crumbs = S.view==='library' ? '<b>Library</b>' : `<span>${COURSE.title}</span>${S.view==='session'?`<span class="sep">/</span><span>${tx(R`ε–δ limits`)}</span><span class="sep">/</span><b>${tx(SEGMENTS[2].t)}</b>`:''}`;
+    return `<div class="b-top"><button class="logo" data-act="view:library">gauss</button><div class="crumbs">${crumbs}</div>${phases}
+      <div class="hint">${S.view==='session'?'<span><kbd>R</kbd> ready</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> confidence</span>':''}<span><kbd>⌘K</kbd> jump</span></div></div>`;
+  },
+  tree(){
+    const sorted = [...COURSE.units].sort((a,b)=>a.n-b.n);
+    return `<aside class="b-tree"><h5>${COURSE.title}</h5>${sorted.map(u=>{
+      let h = `<div class="tu ${u.s==='current'?'cur':''} ${u.s==='locked'?'locked':''}" data-act="unit:${u.id}"><span class="dot ${u.s}"></span>${tx(u.t)}</div>`;
+      if (u.s==='current') h += SEGMENTS.map((s,i)=>`<div class="ts ${s.s==='cur'?'cur':''}"><span class="dot ${s.s==='done'?'passed':s.s==='cur'?'current':''}"></span>${tx(s.t)}</div>` +
+        (s.s==='cur' ? OBJECTIVES.slice(2,3).map(o=>`<div class="to"><span class="dot ${at('graded')?'miss':'open'}"></span>${tx(o.t)}</div>`).join('') : '')).join('');
+      return h; }).join('')}</aside>`;
+  },
+  pane(){
+    const tabs = `<div class="tabs">${[['artifact','Artifact'],['source','Source'],['record','Record']].map(([k2,l])=>`<button data-act="pane:${k2}" class="${S.pane===k2?'on':''}">${l}</button>`).join('')}</div>`;
+    let body = '';
+    if (S.pane==='artifact') body = `<h4>${tx(R`ε–δ explorer`)}</h4><div class="sm">artifacts/eps-delta.html, made by the tutor in segment 3. Runs sandboxed.</div>
+      <div class="sandbox" id="fig">${epsFig({bg:'#1F2B28',axis:'#5B6C66',curve:'#E7E5DA',eps:'#8EC5E8',delta:'#F2CC60',good:'#9AD39A',bad:'#EF8F8A',text:'#9DA79F'})}</div>
+      ${epsControls('slider')}${modeToggle('toggle')}`;
+    if (S.pane==='source') body = `<h4>analysis-notes.pdf</h4><div class="sm">Section 2.3, page 14. Opened from citation [1].</div><div class="quote">${tx(SOURCE.text)}</div><div class="verified">✓ Quote matches the source text</div>`;
+    if (S.pane==='record') body = `<h4>Evidence, unit 4</h4><div class="sm">Every graded answer, newest last. Status is worked out from these rows.</div>
+      <table><tr><th>Date</th><th>Objective</th><th>Result</th><th>Conf.</th><th>Help</th></tr>
+      ${EVIDENCE.map(e=>`<tr><td>${e.d}</td><td>${e.o}</td><td class="ok">${e.r}</td><td>${e.c}</td><td>${e.h}</td></tr>`).join('')}
+      ${at('graded')?`<tr class="new"><td>Nov 13</td><td>Quadratic</td><td class="bad">incorrect</td><td>${confLabel(S.conf).toLowerCase()}</td><td>no</td></tr>`:''}</table>
+      ${at('graded')?'<div class="sm" style="margin-top:12px;color:var(--pink)">Confident miss: detour offered.</div>':''}`;
+    return `<aside class="b-pane">${tabs}<div class="pane-body">${body}</div></aside>`;
+  },
+  session(){
+    const msg = (who, html) => `<div class="msg ${who}"><div class="who">${who==='you'?'you':'tutor'}</div><div class="body">${html}</div></div>`;
+    let log = msg('tutor', TEACH.map((t,i)=>`<p>${tx(t).replace('definition','definition <span class="cite" data-act="pane:source">[1]</span>')}${S.phase==='teach'&&i===3?'<span class="caret"></span>':''}</p>`).join('') +
+      `<p><span class="cite" data-act="pane:artifact">Open the ε–δ explorer in the side pane</span></p>`);
+    if (at('discuss')) log += `<div class="event">teach finished, discussion open</div>` + DISCUSS.map(m=>msg(m.who, `<p>${tx(m.t)}</p>`)).join('');
+    if (S.phase==='check') log += `<div class="event">you pressed ready</div><div class="msg"><div class="who">check</div><div class="qbox"><div class="qh"><span>Question 1 of 1</span><span>${tx(R`objective: quadratics by capping δ`)}</span></div>
+      <div class="q">${tx(QUESTION)}</div>
+      <label class="fl" for="ans">answer (LaTeX or plain)</label><input id="ans" class="tex-in" value="${esc(S.answer)}" autocomplete="off"><div class="preview" id="ans-preview">${k(S.answer,true)}</div>
+      <span class="fl">confidence</span><div class="conf">${CONFS.map((c,i)=>`<button data-act="conf:${c}" class="${S.conf===c?'on':''}"><kbd>${i+1}</kbd>${confLabel(c)}</button>`).join('')}</div>
+      <label class="fl" for="reason">reasoning (optional)</label><textarea id="reason" class="reason">${esc(S.reason)}</textarea>
+      <div class="row-end"><button class="bbtn" data-act="submit">Submit <kbd>⌘⏎</kbd></button></div></div></div>`;
+    if (S.phase==='graded') log += `<div class="event">you pressed ready</div><div class="grade"><div class="gh">✗ Incorrect <span>graded by rubric, you said ${confLabel(S.conf).toLowerCase()}</span></div><div class="ans">${k(S.answer)}</div><div class="flaw">${tx(FLAW)}</div></div>
+      ${msg('tutor', `<p>${tx(FEEDBACK)}</p>`)}
+      <div class="offer"><p>${DETOUR}</p><div style="display:flex;gap:8px"><button class="bbtn" data-act="detour">Start detour <kbd>D</kbd></button><button class="bbtn ghost" data-act="next">Move on</button><button class="bbtn ghost" data-act="dispute">Dispute grade</button></div></div>`;
+    const composer = S.phase==='discuss'
+      ? `<div class="composer"><input placeholder="Ask anything. Nothing here is graded."><button class="bbtn" data-act="ready">Ready for check <kbd>R</kbd></button></div>`
+      : `<div class="composer off"><input placeholder="${S.phase==='teach'?'The tutor is teaching. You can ask once it finishes.':S.phase==='check'?'Answer the question above first.':'Reply to the tutor'}" ${S.phase==='graded'?'':'disabled'}><button class="bbtn ghost" data-act="stub">Override</button></div>`;
+    return `${B.top()}<div class="b-body">${B.tree()}<main class="b-chat"><div class="scroll">${log}</div>${composer}</main>${B.pane()}</div>`;
+  },
+  library(){
+    const row = c => `<tr class="click" data-act="${c.id==='calc'?'view:course':'stub'}"><td style="font-weight:600;font-size:15px">${c.t}</td><td><div class="bars">${c.units.map(s=>`<i class="${s}"></i>`).join('')}</div></td><td>${c.passed}/${c.total}</td><td>${c.phase==='none'?`<span class="pill ${c.id==='hegel'?'y':''}">${c.where}</span>`:tx(c.where)}</td><td style="color:var(--dim)">${c.when}</td></tr>`;
+    return `${B.top()}<div class="lib"><div class="cmd"><kbd>⌘K</kbd><input placeholder="Open a course, or describe something new to learn"></div>
+      <table><tr><th>Course</th><th>Units</th><th>Passed</th><th>Where you stopped</th><th>Last</th></tr>${LIBRARY.map(row).join('')}
+      <tr><td colspan="5" style="border:0;padding-top:28px"><h5 style="margin:0">One-off topics</h5></td></tr>${ONEOFFS.map(row).join('')}</table></div>`;
+  },
+  course(){
+    const L = layout('h', 210, 92, 96);
+    const col = s => ({retained:'#9AD39A',passed:'#9AD39A',current:'#F2CC60',open:'#E7E5DA',locked:'#5B6C66'}[s]);
+    const node = u => { const p = L.pos[u.id], w = 168, h = 50, sel = u.id===S.unit;
+      return `<g data-act="unit:${u.id}" style="cursor:pointer"><rect x="${p.x-w/2}" y="${p.y-h/2}" width="${w}" height="${h}" rx="6" fill="${sel?'#2E3E39':'#25332F'}" stroke="${col(u.s)}" stroke-width="${sel?2:1.2}" ${u.s==='locked'?'stroke-dasharray="4 3"':''}/>
+        <text x="${p.x-w/2+12}" y="${p.y-4}" font-size="13" fill="#E7E5DA" font-family="Recursive">${u.t.length>21?u.t.slice(0,20)+'…':u.t}</text>
+        <text x="${p.x-w/2+12}" y="${p.y+14}" font-size="11" fill="${col(u.s)}" font-family="Recursive">${STATUS[u.s].toLowerCase()}</text></g>`; };
+    const svg = `<svg viewBox="0 0 ${L.w} ${L.h}" width="${L.w}" style="display:block">${edges(L.pos,'h','e')}${COURSE.units.map(node).join('')}</svg>`.replace(/class="e"/g,'fill="none" stroke="#4A5C56" stroke-width="1.4"');
+    const u = COURSE.units.find(x=>x.id===S.unit);
+    const detail = `<aside class="b-pane"><div class="tabs"><button class="on">Unit</button><button data-act="stub">Notes</button><button data-act="stub">Sources</button></div><div class="pane-body ud">
+      <h3>${tx(u.t)}</h3><div class="goal">${tx(u.g)}</div>
+      <div class="sm">Needs: ${u.deps.length?u.deps.map(d=>COURSE.units.find(x=>x.id===d).t).join(', '):'nothing'}</div>
+      ${u.id==='u3'?`<h4 style="margin-top:14px">Objectives</h4><ul>${OBJECTIVES.map(o=>`<li><span class="dot ${o.s==='passed'?'passed':o.s==='working'?'current':''}"></span>${tx(o.t)}</li>`).join('')}</ul><button class="bbtn" data-act="view:session">Resume segment 3</button>`
+        : `<div class="sm" style="margin-top:14px">Objectives are planned when the unit starts.</div>${u.s==='open'?'<button class="bbtn" data-act="stub">Start unit</button>':''}`}</div></aside>`;
+    return `${B.top()}<div class="b-body">${B.tree()}<main class="graph">${svg}</main>${detail}</div>`;
+  },
+};
+
+/* =================================================================== C: STAGE */
+const C = {
+  top(right){
+    return `<div class="c-top"><button class="logo" data-act="view:library">Gauss</button><span style="color:var(--mute)">${S.view!=='library'?COURSE.title:''}</span><span class="sp"></span>${right||''}</div>`;
+  },
+  session(){
+    const ph = {teach:['teach','Teach'], discuss:['discuss','Discuss'], check:['check','Check'], graded:['check','Check']}[S.phase];
+    const vars = `--phc:var(--${ph[0]});--pht:var(--${ph[0]}-t)`;
+    const pi = Math.min(PHASES.indexOf(S.phase), 2);
+    const track = `<div class="track">${SEGMENTS.map((s,i)=>`${i?`<span class="link ${s.s!=='todo'?'done':''}"></span>`:''}<span class="seg ${s.s}"><span class="c">${s.s==='done'?'✓':s.n}</span>${tx(s.t)}${s.s==='cur'?`<span class="ph">${['Teach','Discuss','Check'].map((p,j)=>`<span class="${j===pi?'now':''}">${p}</span>`).join('')}</span>`:''}</span>`).join('')}</div>`;
+    let body = '';
+    if (S.phase==='teach'){
+      body = `<div class="kicker">${tx(R`Unit 4, ε–δ limits`)}</div><h1>${tx(SEGMENTS[2].t)}</h1><div class="lesson">
+        ${TEACH.map((t,i)=>`<p>${tx(t).replace('definition','definition <button class="cite" data-act="cite">1</button>')}${i===3?'<span class="caret" style="display:inline-block;width:9px;height:1.05em;background:var(--ink);vertical-align:-2px;animation:blink 1s steps(1) infinite"></span>':''}</p>${i===0&&S.showSource?`<div class="popq"><div class="q">${tx(SOURCE.text)}</div><div style="margin-top:6px;font-size:14px;color:var(--mute)">${SOURCE.where}</div><div class="ok">✓ Quote matches the source</div></div>`:''}`).join('')}</div>
+        <div class="acts"><button class="cbtn phase" data-act="phase:discuss">Ask about this</button><button class="tlink" data-act="overlay">${tx(R`Open the ε–δ explorer`)}</button></div>`;
+    }
+    if (S.phase==='discuss'){
+      body = `<div class="recap"><span>Lesson</span><b>${tx(R`Cap δ at 1 first, bound the other factor, then δ = min(1, ε/7).`)}</b><span style="flex:1"></span><button class="tlink" data-act="phase:teach">Reread</button><button class="tlink" data-act="overlay">Explorer</button></div>
+        <h1 style="font-size:38px">Ask anything</h1><div class="chat">${DISCUSS.map(m=>`<div class="m ${m.who}">${tx(m.t)}</div>`).join('')}</div>
+        <div class="composer"><input placeholder="Nothing here is graded"><button class="cbtn phase" data-act="stub" style="padding:8px 18px">Send</button></div>
+        <div class="readybar"><span>The check is one question on capping δ.</span><button class="cbtn" data-act="ready">I'm ready for the check</button></div>`;
+    }
+    if (S.phase==='check'){
+      body = `<div class="kicker">Check, question 1 of 1</div><div class="sheet"><div class="q">${tx(QUESTION)}</div>
+        <label class="lab" for="ans">Your answer</label><input id="ans" class="tex-in" value="${esc(S.answer)}" autocomplete="off"><div class="preview" id="ans-preview">${k(S.answer,true)}</div>
+        <span class="lab">How sure are you?</span><div class="conf">${CONFS.map((c,i)=>`<button data-act="conf:${c}" class="${S.conf===c?'on':''}">${confLabel(c)}<small>press ${i+1}</small></button>`).join('')}</div>
+        <details ${S.reason?'open':''}><summary>Add your reasoning (optional)</summary><textarea id="reason" class="reason">${esc(S.reason)}</textarea></details>
+        <div class="acts" style="justify-content:flex-end"><button class="cbtn phase" data-act="submit">Submit answer</button></div></div>`;
+    }
+    if (S.phase==='graded'){
+      body = `<div class="verdict"><div class="big">✗</div><div><h1>Not this time</h1><div class="sub">Graded by rubric. You said ${confLabel(S.conf).toLowerCase()}.</div></div></div>
+        <div class="yours">${k(S.answer)}<small>your answer</small></div>
+        <div class="flaw"><b>Where it went wrong</b>${tx(FLAW)}</div>
+        <div class="lesson"><p>${tx(FEEDBACK)}</p></div>
+        <button class="tlink" data-act="overlay">See it in the explorer</button>
+        <div class="detour"><h3>Trace your reasoning?</h3><p>${DETOUR}</p><div class="acts" style="margin-top:0"><button class="cbtn" data-act="detour">Start a detour</button><button class="tlink" data-act="next">Move on</button><button class="tlink" data-act="dispute">Dispute this grade</button></div></div>`;
+    }
+    const overlay = S.overlay ? `<div class="overlay" data-act="overlay-close"><div class="modal" data-stop><h3>${tx(R`ε–δ explorer`)}</h3><div class="sm">Made by the tutor for this segment.</div><div id="fig">${epsFig({bg:'#fff',axis:'#B8BDCB',curve:'#171A26',eps:'#3F51D9',delta:'#B86E00',good:'#1E8F4F',bad:'#C93636',text:'#5F6679'})}</div>${epsControls('slider')}${modeToggle('seg2')}<div class="acts" style="justify-content:flex-end"><button class="cbtn line" data-act="overlay-close">Close</button></div></div></div>` : '';
+    return `<div style="${vars}">${C.top(`<button class="tb" data-act="view:course">Course map</button><button class="tb" data-act="stub">Override</button>`)}${track}<div class="stage"><div class="inner">${body}</div></div>${overlay}</div>`;
+  },
+  library(){
+    const phc = p => ({teach:'var(--teach)',discuss:'var(--discuss)',check:'var(--check)',none:'var(--line)'}[p]);
+    const row = c => `<div class="crow" data-act="${c.id==='calc'?'view:course':'stub'}"><span class="pd" style="background:${phc(c.phase)}"></span><div><div class="t">${c.t}</div><div class="w">${tx(c.where)}</div></div><div class="prog"><i style="width:${c.passed/c.total*100}%"></i></div><div class="when">${c.when}</div></div>`;
+    const top = LIBRARY[0];
+    return `<div>${C.top()}<div class="lib"><div class="resume"><div><div class="k">Pick up where you left off</div><h1>${top.t}</h1><div class="where">${tx(R`<b>ε–δ limits</b>, segment 3 of 4. One check question is waiting.`)}</div></div><button class="cbtn" data-act="view:session">Resume</button></div>
+      <h2>Courses</h2>${LIBRARY.slice(1).map(row).join('')}<h2 style="margin-top:34px">One-off topics</h2>${ONEOFFS.map(row).join('')}
+      <div class="newc"><button class="cbtn line" data-act="stub">Learn something new</button></div></div></div>`;
+  },
+  course(){
+    const L = layout('h', 230, 110, 80);
+    const col = s => ({retained:'#1E8F4F',passed:'#1E8F4F',current:'#B86E00',open:'#171A26',locked:'#C3C8D4'}[s]);
+    const node = u => { const p = L.pos[u.id], sel = u.id===S.unit;
+      return `<g data-act="unit:${u.id}" style="cursor:pointer">${sel?`<circle cx="${p.x}" cy="${p.y}" r="22" fill="${col(u.s)}" opacity=".18"/>`:''}<circle cx="${p.x}" cy="${p.y}" r="13" fill="${u.s==='locked'||u.s==='open'?'#fff':col(u.s)}" stroke="${col(u.s)}" stroke-width="4"/>
+        <text x="${p.x}" y="${p.y+38}" text-anchor="middle" font-size="15" font-weight="${sel?700:400}" fill="#171A26" font-family="Atkinson Hyperlegible">${u.t}</text>
+        <text x="${p.x}" y="${p.y+56}" text-anchor="middle" font-size="12.5" fill="${u.s==='locked'?'#8A90A2':col(u.s)}" font-family="Atkinson Hyperlegible">${STATUS[u.s]}</text></g>`; };
+    const svg = `<svg viewBox="0 0 ${L.w} ${L.h+40}" width="100%" style="display:block;min-width:900px">${edges(L.pos,'h','e')}${COURSE.units.map(node).join('')}</svg>`.replace(/class="e"/g,'fill="none" stroke="#D4D8E2" stroke-width="6" stroke-linecap="round"');
+    const u = COURSE.units.find(x=>x.id===S.unit);
+    return `<div>${C.top()}<div class="course"><h1>${COURSE.title}</h1><div class="goal">${COURSE.goal}</div><div class="metro">${svg}</div>
+      <div class="udet"><div><div class="kicker" style="color:var(--mute)">Unit ${u.n}</div><h2>${tx(u.t)}</h2><p style="color:var(--mute);margin-top:0">${tx(u.g)}</p>
+        ${u.id==='u3'?OBJECTIVES.map(o=>`<div class="obj">${tx(o.t)}<span class="st ${o.s==='passed'?'p':o.s==='working'?'w':''}">${o.s}</span></div>`).join('')+`<div class="acts"><button class="cbtn" style="background:var(--check)" data-act="view:session">Resume segment 3</button></div>`
+          : `<p style="color:var(--mute)">Objectives are planned when the unit starts.</p>`}</div>
+      <div class="aside"><h4>Notes</h4><ul><li>Functions and notation</li><li>Limits, intuitively</li></ul><h4>Sources</h4><ul><li>analysis-notes.pdf</li></ul><h4>Teaching style</h4><ul style="list-style:none;padding:0"><li>Short explanations, many small proofs, one worked example per idea.</li></ul></div></div></div></div>`;
+  },
+};
+
+/* ------------------------------------------------------------------ render & events */
+const IMPL = {A, B, C};
+function render(){
+  const root = document.getElementById('root');
+  root.className = 'v' + S.variant;
+  root.innerHTML = IMPL[S.variant][S.view]();
+  const phaseBtns = S.view==='session' ? `<div class="grp">${PHASES.map(p=>`<button data-act="phase:${p}" class="${S.phase===p?'on':''}">${p}</button>`).join('')}</div>` : '';
+  document.getElementById('bar').innerHTML = `<span class="tag" title="Press H to hide this bar">PROTOTYPE</span><button class="arrow" data-act="prev" aria-label="Previous variant">‹</button><span class="lbl">${S.variant} · ${NAMES[S.variant]}</span><button class="arrow" data-act="next-variant" aria-label="Next variant">›</button>
+    <div class="grp">${VIEWS.map(v=>`<button data-act="view:${v}" class="${S.view===v?'on':''}">${v}</button>`).join('')}</div>${phaseBtns}`;
+  document.title = `Gauss ${S.variant} ${NAMES[S.variant]}`;
+  const sc = document.querySelector('.vB .scroll'); if (sc) sc.scrollTop = sc.scrollHeight;
+  syncURL();
+}
+function cycle(d){ S.variant = VARIANTS[(VARIANTS.indexOf(S.variant) + d + VARIANTS.length) % VARIANTS.length]; S.overlay = null; render(); window.scrollTo(0,0); }
+
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-stop]') && !e.target.closest('[data-act]')) return;
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  e.preventDefault();
+  const [a, v] = el.dataset.act.split(':');
+  if (a==='prev') return cycle(-1);
+  if (a==='next-variant') return cycle(1);
+  if (a==='view'){ S.view = v; S.overlay = null; render(); return window.scrollTo(0,0); }
+  if (a==='phase'){ S.phase = v; if (v!=='graded') S.mode='working'; render(); return; }
+  if (a==='conf'){ S.conf = v; render(); return; }
+  if (a==='ready'){ S.phase = 'check'; render(); return; }
+  if (a==='submit'){ S.phase = 'graded'; S.mode = 'yours'; S.eps = 4; render(); return; }
+  if (a==='pane'){ S.pane = v; render(); return; }
+  if (a==='unit'){ S.unit = v; render(); return; }
+  if (a==='mode'){ S.mode = v; render(); return; }
+  if (a==='overlay'){ S.overlay = 'fig'; render(); return; }
+  if (a==='overlay-close'){ S.overlay = null; render(); return; }
+  if (a==='cite'){ if (S.variant==='B'){ S.pane='source'; } else { S.showSource = !S.showSource; } render(); return; }
+  if (a==='detour') return toast('A detour would start here: the tutor asks you to walk through your steps.');
+  if (a==='dispute') return toast('A dispute form would open here. Not in the prototype.');
+  if (a==='next') return toast('Would move to segment 4, recorded as a miss on this objective.');
+  toast('Not in the prototype.');
+});
+document.addEventListener('input', e => {
+  if (e.target.id==='ans'){ S.answer = e.target.value; const p = document.getElementById('ans-preview'); if (p) p.innerHTML = k(S.answer, true); }
+  if (e.target.id==='reason'){ S.reason = e.target.value; }
+  if (e.target.id==='eps'){ S.eps = +e.target.value; refreshFig(); }
+});
+function refreshFig(){
+  const svgHost = document.querySelector('#root svg[aria-label^="Graph"]');
+  if (!svgHost) return;
+  const host = svgHost.parentElement;
+  const pal = {A:{bg:'#fff',axis:'#9AA3AE',curve:'#1D2433',eps:'#24477A',delta:'#8A6D1E',good:'#2E6B4E',bad:'#C2362B',text:'#5B6475'},
+    B:{bg:'#1F2B28',axis:'#5B6C66',curve:'#E7E5DA',eps:'#8EC5E8',delta:'#F2CC60',good:'#9AD39A',bad:'#EF8F8A',text:'#9DA79F'},
+    C:{bg:'#fff',axis:'#B8BDCB',curve:'#171A26',eps:'#3F51D9',delta:'#B86E00',good:'#1E8F4F',bad:'#C93636',text:'#5F6679'}}[S.variant];
+  // replace only the svg and its caption line so the slider keeps focus
+  const caption = svgHost.nextElementSibling;
+  const tmp = document.createElement('div'); tmp.innerHTML = epsFig(pal);
+  svgHost.replaceWith(tmp.firstElementChild);
+  if (caption) caption.replaceWith(tmp.lastElementChild);
+}
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t.closest && (t.closest('input,textarea,[contenteditable]'))) return;
+  if (e.key==='h' || e.key==='H'){ const b = document.getElementById('bar'); b.style.display = b.style.display==='none' ? '' : 'none'; return; }
+  if (e.key==='ArrowLeft') return cycle(-1);
+  if (e.key==='ArrowRight') return cycle(1);
+  if (S.view!=='session') return;
+  if (S.phase==='check' && ['1','2','3'].includes(e.key)){ S.conf = CONFS[+e.key-1]; render(); }
+  if (S.phase==='discuss' && (e.key==='r' || e.key==='R')){ S.phase='check'; render(); }
+  if (e.key==='Escape' && S.overlay){ S.overlay=null; render(); }
+});
+render();
+</script>
+</body>
+</html>

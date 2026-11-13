@@ -86,11 +86,15 @@ multiple-choice question, and see the tutor respond to the answer.
 Tasks may be revised by 0.7.
 
 ### 1.0 Page layout
-- Status: todo
-- Depends on: stage 0
+- Status: in progress
+- Depends on: none (pulled ahead of stage 0 at the user's request on
+  2026-11-13; it is a static mock and needs no code from stage 0)
 - Do: a static mock of the three views (library, course, session) for the user
   to react to before any real page work.
 - Done when: the user has approved a layout, and it is saved under `docs/`.
+- Note: three directions are in `docs/prototype/look.html` (Folio, Workbench,
+  Stage). Once the user picks, record the choice and why in
+  `docs/decisions.md` and delete the losing variants.
 
 ### 1.1 Course and curriculum schemas
 - Status: todo
