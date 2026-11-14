@@ -2,7 +2,8 @@
 <!--
   PROTOTYPE, throwaway. Plan task 1.0 pulled forward.
   Question: what should Gauss look like?
-  Round 2 (2026-11-13): D combines the user's picks (A's look, C's map and
+  Round 3 (2026-11-13): D's session view stripped to the text, the message
+  box, and things that open on click. Round 2: D combines the user's picks (A's look, C's map and
   clarity, a chat layout with one message box). A and C kept for comparison;
   B (Workbench) dropped. Switch with
   ?variant=D|A|C&view=library|course|session&phase=teach|discuss|check|graded
@@ -29,7 +30,7 @@ textarea,input{font:inherit;color:inherit}
 .katex{font-size:1.06em}
 
 /* ---------- prototype switcher (deliberately not part of any design) ---------- */
-#bar{position:fixed;left:12px;bottom:12px;z-index:1000;
+#bar{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:1000;
   display:flex;align-items:center;gap:6px;padding:5px 8px;background:#fff;color:#111;
   border:2px dashed #ff2d95;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.25);
   font:13px/1.2 system-ui,sans-serif;white-space:nowrap}
@@ -37,7 +38,7 @@ textarea,input{font:inherit;color:inherit}
 #bar .lbl{min-width:104px;text-align:center;font-weight:600}
 #bar select{font:13px system-ui,sans-serif;border:1px solid #ddd;border-radius:999px;padding:3px 6px;background:#f6f6f6;color:#111}
 #bar .tag{font-size:11px;color:#ff2d95;font-weight:700}
-#toast{position:fixed;left:12px;bottom:62px;z-index:1001;background:#111;color:#fff;
+#toast{position:fixed;left:50%;transform:translateX(-50%);top:58px;z-index:1001;background:#111;color:#fff;
   padding:8px 14px;border-radius:8px;font:13px system-ui,sans-serif;opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
 
@@ -169,16 +170,108 @@ textarea,input{font:inherit;color:inherit}
 .vD .d-btn:disabled{opacity:.35;cursor:not-allowed}
 .vD .d-tl{background:none;border:0;padding:0;color:inherit;text-decoration:underline;text-underline-offset:3px;font-size:15.5px}
 
-/* session shell */
+/* session shell (round 3: minimal; everything but the text opens on demand) */
 .vD .d-app{display:grid;grid-template-columns:auto minmax(0,1fr) auto;height:100vh;overflow:hidden}
-.vD .d-side{width:272px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 16px 16px;overflow:auto}
-.vD .d-sidetop{display:flex;align-items:center;gap:2px;margin-bottom:6px}
-.vD .d-sidetop .d-word{margin-right:auto}
-.vD .d-back{background:none;border:0;padding:4px 0;color:var(--muted);display:flex;gap:4px;align-items:center;font-size:14.5px;align-self:flex-start}
-.vD .d-back:hover{color:var(--ink)}
-.vD .d-ctitle{font-size:22px;font-weight:500;margin-top:12px;line-height:1.2}
+.vD .d-side{width:256px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:12px 10px 12px;overflow:auto}
+.vD .d-sidetop{display:flex;align-items:center;justify-content:space-between;padding:0 6px 10px}
+.vD .d-nav{display:flex;flex-direction:column;gap:2px}
+.vD .d-nav button{display:flex;gap:10px;align-items:center;background:none;border:0;padding:8px 10px;border-radius:10px;color:var(--muted);font-size:15px;text-align:left}
+.vD .d-nav button:hover{background:var(--line);color:var(--ink)}
+.vD .d-navsec{font-size:13px;color:var(--muted);padding:18px 10px 6px}
+.vD .d-crs{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:10px}
+.vD .d-crs:hover{background:var(--line)}
+.vD .d-crs.on{background:var(--surface);box-shadow:0 0 0 1px var(--line)}
+.vD .d-crs .t{font-family:Newsreader,serif;font-size:17px;color:var(--ink);line-height:1.25}
+.vD .d-crs .w{font-size:13px;color:var(--muted)}
+.vD .d-sidebot{margin-top:auto;display:flex;gap:2px;align-items:center;padding:10px 2px 0}
+
+.vD .d-main{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0}
+.vD .d-head{display:flex;align-items:center;gap:8px;padding:10px 16px}
+.vD .d-head h1{font-family:Newsreader,serif;font-weight:500;font-size:21px;margin:0 0 0 4px}
+.vD .d-head .sp{flex:1}
+.vD .d-phase{display:flex;align-items:center;gap:7px;font-size:14px;color:var(--muted);margin-right:10px}
+.vD .d-phase i{width:8px;height:8px;border-radius:50%;background:var(--phc)}
+.vD .d-pillbtn{display:inline-flex;gap:7px;align-items:center;background:none;border:1px solid var(--line);border-radius:999px;padding:5px 13px 5px 10px;font-size:14px;color:var(--muted)}
+.vD .d-pillbtn:hover,.vD .d-pillbtn.on{color:var(--ink);border-color:var(--line2)}
+.vD .d-scroll{overflow:auto}
+.vD .d-col{max-width:680px;margin:0 auto;padding:28px 32px 48px}
+.vD .d-segtitle{font-family:Newsreader,serif;font-weight:500;font-size:42px;line-height:1.08;margin:12px 0 6px;letter-spacing:-.012em}
+.vD .d-segsub{font-family:Newsreader,serif;font-style:italic;color:var(--muted);font-size:17px;margin:0 0 6px}
+.vD .d-mark{display:flex;align-items:center;gap:12px;font-family:Newsreader,serif;font-style:italic;color:var(--muted);font-size:16px;margin:34px 0 14px}
+.vD .d-mark::after{content:"";flex:1;height:1px;background:var(--line)}
+.vD .tut{font-family:Newsreader,Georgia,serif;font-size:20px;line-height:1.62;margin:0 0 16px}
+.vD .d-cite{border:1px solid var(--line2);background:var(--surface);border-radius:999px;font:700 11.5px "Atkinson Hyperlegible",sans-serif;color:var(--teach);padding:0 6px;vertical-align:3px;margin-left:2px}
+.vD .d-quote{border-left:2px solid var(--teach);padding:2px 0 2px 16px;margin:-4px 0 18px;font-size:14px;color:var(--muted)}
+.vD .d-quote .q{font-family:Newsreader,serif;font-style:italic;font-size:17.5px;color:var(--ink);margin-bottom:4px}
+.vD .d-quote .ok{color:var(--right)}
+.vD .d-fig{margin:10px 0 24px}
+.vD .d-fig .box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.vD .d-fig figcaption{font-family:Newsreader,serif;font-style:italic;color:var(--muted);font-size:15.5px;margin-top:8px}
+.vD .d-figmini{font-family:Newsreader,serif;font-style:italic;color:var(--muted);font-size:15.5px;margin:6px 0 22px}
+.vD .d-slider{display:flex;gap:12px;align-items:center;font-size:14.5px;margin-top:8px}
+.vD .d-slider input{flex:1;accent-color:var(--teach)}
+.vD .d-seg2{display:flex;gap:6px;margin-top:10px}
+.vD .d-seg2 button{flex:1;border:1px solid var(--line);background:none;border-radius:999px;padding:5px;font-size:13.5px;color:var(--muted)}
+.vD .d-seg2 button.on{border-color:var(--ink);color:var(--ink);font-weight:700}
+.vD .d-you{margin:0 0 18px auto;max-width:80%;width:fit-content;background:var(--you);border-radius:18px 18px 4px 18px;padding:10px 16px;font-size:16.5px}
+.vD .caret{display:inline-block;width:9px;height:1.05em;background:var(--ink);vertical-align:-2px;animation:blink 1s steps(1) infinite;margin-left:2px}
+
+/* questions: quiet cards in the flow */
+.vD .d-q{border:1px solid var(--line2);border-radius:16px;padding:18px 20px;margin:4px 0 20px;background:var(--surface)}
+.vD .d-qh{font-size:13.5px;color:var(--muted);margin-bottom:6px}
+.vD .d-qt{font-size:20px;line-height:1.45;margin-bottom:14px}
+.vD .d-opts{display:grid;gap:6px}
+.vD .d-opt{display:flex;gap:12px;align-items:center;text-align:left;background:none;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:18px}
+.vD .d-opt:hover{border-color:var(--line2)}
+.vD .d-opt .key{font-size:13px;font-weight:700;color:var(--muted);width:14px}
+.vD .d-opt.on{border-color:var(--check);background:var(--check-t)}
+.vD .d-opt.on .key{color:var(--check)}
+.vD .d-confrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:16px;font-size:14.5px;color:var(--muted)}
+.vD .d-confrow span{margin-right:4px}
+.vD .d-confrow button{border:1px solid var(--line);background:none;border-radius:999px;padding:4px 13px;font-size:14.5px;color:var(--ink)}
+.vD .d-confrow button.on{border-color:var(--check);background:var(--check-t);font-weight:700}
+.vD .tex-in{width:100%;font-family:Recursive,monospace;font-variation-settings:"MONO" 1;font-size:15px;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 12px}
+.vD .preview{min-height:46px;padding:8px 0 0;font-size:22px}
+.vD details.d-why{margin-top:12px;font-size:14.5px}
+.vD details.d-why summary{cursor:pointer;color:var(--muted);list-style:none}
+.vD details.d-why summary::-webkit-details-marker{display:none}
+.vD details.d-why summary::before{content:"+ "}
+.vD details.d-why[open] summary::before{content:"− "}
+.vD textarea.reason{width:100%;min-height:56px;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:8px 12px;margin-top:6px;font-size:15px}
+.vD .d-qf{display:flex;justify-content:flex-end;align-items:center;margin-top:14px;gap:14px;font-size:14px;color:var(--muted)}
+.vD .d-qf .d-btn{padding:8px 18px;font-size:15px}
+.vD .d-done{display:flex;gap:10px;align-items:baseline;margin:0 0 14px;font-size:14.5px;color:var(--muted)}
+.vD .d-done .mark{font-weight:700}
+.vD .d-done.ok .mark{color:var(--right)}
+.vD .d-done.bad .mark{color:var(--wrong)}
+.vD .d-done .a{font-size:17px;color:var(--ink)}
+.vD .d-q.graded{border-color:color-mix(in srgb,var(--wrong) 45%,transparent)}
+.vD .d-q.graded .d-qh{color:var(--wrong)}
+.vD .d-yours{display:flex;align-items:center;gap:12px;font-size:19px}
+.vD .d-yours .x{font-family:Caveat,cursive;font-size:36px;color:var(--wrong);line-height:1}
+.vD .d-yours .muted{margin-left:auto;font-size:14px}
+.vD .redpen{font-family:Caveat,cursive;font-size:25px;line-height:1.2;color:var(--wrong);margin-top:8px}
+.vD .redpen .katex{font-size:.78em}
+.vD .d-offer{border-left:2px solid var(--teach);padding:2px 0 2px 18px;margin:22px 0 8px}
+.vD .d-offer p{margin:0 0 12px;font-size:16.5px}
+.vD .d-acts{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+
+/* message box */
+.vD .d-foot{padding:6px 32px 18px}
+.vD .d-footin{max-width:720px;margin:0 auto}
+.vD .d-composer{display:flex;align-items:flex-end;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:7px}
+.vD .d-composer:focus-within{border-color:var(--line2)}
+.vD .d-composer textarea{flex:1;border:0;outline:0;background:none;resize:none;font-size:16.5px;padding:8px 6px;min-height:40px;max-height:160px}
+.vD .d-send{width:40px;height:40px;border-radius:13px;border:0;background:var(--ink);color:var(--bg);display:grid;place-items:center;flex:none}
+.vD .d-ready{border:0;background:var(--check);color:var(--on-fill);border-radius:13px;padding:0 14px;height:40px;font-weight:700;font-size:14.5px;flex:none}
+
+/* drawer: map or figure, only when asked for */
+.vD .d-drawer{width:320px;border-left:1px solid var(--line);background:var(--side);overflow:auto;padding:14px 18px 18px;display:flex;flex-direction:column}
+.vD .d-drawer.wide{width:440px;background:var(--surface)}
+.vD .d-panehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.vD .d-panehead h3{margin:0;font-family:Newsreader,serif;font-weight:500;font-size:21px}
 .vD .d-cmeta{font-size:14px;color:var(--muted)}
-.vD .d-mini{margin:12px 0 4px;display:flex;justify-content:center}
+.vD .d-mini{margin:14px 0 4px;display:flex;justify-content:center}
 .vD .d-mini g{cursor:pointer}
 .vD .d-link{background:none;border:0;padding:0;color:var(--teach);font-size:14px;align-self:center;margin-bottom:16px}
 .vD .d-sec{font-weight:700;font-size:14.5px;padding-top:16px;margin-bottom:8px;border-top:1px solid var(--line)}
@@ -190,104 +283,11 @@ textarea,input{font:inherit;color:inherit}
 .vD .d-segs li.done::before{background:var(--right);border-color:var(--right)}
 .vD .d-segs li.done::after{background:var(--right)}
 .vD .d-segs li.cur{color:var(--ink);font-weight:700}
-.vD .d-segs li.cur::before{border-color:var(--phc);background:var(--phc);box-shadow:0 0 0 4px color-mix(in srgb,var(--phc) 22%,transparent)}
-.vD .d-subph{display:flex;gap:4px;margin-top:6px;font-weight:400}
-.vD .d-subph span{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--line);color:var(--muted)}
-.vD .d-subph span.now{background:var(--phc);color:var(--on-fill);font-weight:700}
+.vD .d-segs li.cur::before{border-color:var(--phc);background:var(--phc)}
+.vD .d-subph{font-weight:400;font-size:13.5px;color:var(--muted);margin-top:2px}
 .vD .d-sidelinks{display:flex;gap:16px;font-size:14.5px;margin-top:8px}
 .vD .d-sidelinks button{background:none;border:0;padding:0;color:var(--muted)}
 .vD .d-sidelinks button:hover{color:var(--ink)}
-
-.vD .d-main{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0;border-top:4px solid var(--phc);transition:border-color .3s}
-.vD .d-head{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:12px 32px;border-bottom:1px solid var(--line)}
-.vD .d-headl{display:flex;gap:10px;align-items:center;min-width:0}
-.vD .d-crumb{font-size:14px;color:var(--muted)}
-.vD .d-head h1{font-size:30px;font-weight:500;margin:0;line-height:1.15;letter-spacing:-.01em}
-.vD .d-steps{display:flex;align-items:center;justify-content:flex-end}
-.vD .d-step{display:flex;align-items:center;gap:7px;font-size:14.5px;color:var(--muted);font-weight:700}
-.vD .d-step i{font-style:normal;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;border:2px solid var(--line2)}
-.vD .d-step.past{color:var(--ink)}
-.vD .d-step.past i{border-color:var(--ink)}
-.vD .d-step.now{color:var(--c)}
-.vD .d-step.now i{background:var(--c);border-color:var(--c);color:var(--on-fill)}
-.vD .d-steplink{width:24px;height:2px;background:var(--line2);margin:0 8px}
-.vD .d-hint{font-size:14px;color:var(--muted);text-align:right;margin-top:5px}
-
-.vD .d-scroll{overflow:auto}
-.vD .d-col{max-width:720px;margin:0 auto;padding:30px 32px 30px}
-.vD .tut{font-family:Newsreader,Georgia,serif;font-size:20px;line-height:1.62;margin:0 0 16px}
-.vD .d-cite{border:1px solid var(--line2);background:var(--surface);border-radius:999px;font:700 12px "Atkinson Hyperlegible",sans-serif;color:var(--teach);padding:0 7px;vertical-align:3px;margin-left:2px}
-.vD .d-quote{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--teach);border-radius:4px 12px 12px 4px;padding:12px 16px;margin:-4px 0 18px;font-size:14.5px;color:var(--muted)}
-.vD .d-quote .q{font-family:Newsreader,serif;font-style:italic;font-size:17.5px;color:var(--ink);margin-bottom:4px}
-.vD .d-quote .ok{color:var(--right);font-weight:700}
-.vD .d-fig{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:6px 0 22px}
-.vD .d-fighead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:14.5px;gap:12px}
-.vD .d-fighead b{font-size:15.5px}
-.vD .d-figmini{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px dashed var(--line2);border-radius:14px;padding:10px 16px;margin:6px 0 22px;font-size:15px;color:var(--muted)}
-.vD .d-slider{display:flex;gap:12px;align-items:center;font-size:14.5px;margin-top:8px}
-.vD .d-slider input{flex:1;accent-color:var(--teach)}
-.vD .d-seg2{display:flex;gap:6px;margin-top:10px}
-.vD .d-seg2 button{flex:1;border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px;font-size:13.5px;color:var(--muted)}
-.vD .d-seg2 button.on{border-color:var(--ink);color:var(--ink);font-weight:700}
-.vD .d-event{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13.5px;margin:28px 0 18px}
-.vD .d-event::before,.vD .d-event::after{content:"";flex:1;height:1px;background:var(--line)}
-.vD .d-you{margin:0 0 18px auto;max-width:80%;width:fit-content;background:var(--you);border-radius:18px 18px 4px 18px;padding:10px 16px;font-size:16.5px}
-.vD .caret{display:inline-block;width:9px;height:1.05em;background:var(--ink);vertical-align:-2px;animation:blink 1s steps(1) infinite;margin-left:2px}
-
-/* questions */
-.vD .d-q{background:var(--surface);border:1.5px solid color-mix(in srgb,var(--check) 50%,transparent);border-radius:18px;padding:20px 22px;margin:6px 0 20px;box-shadow:0 14px 34px -22px color-mix(in srgb,var(--check) 70%,transparent)}
-.vD .d-qh{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;color:var(--check);margin-bottom:8px}
-.vD .d-qh span:last-child{color:var(--muted);font-weight:400}
-.vD .d-qt{font-size:21px;line-height:1.45;margin-bottom:14px}
-.vD .d-opts{display:grid;gap:8px}
-.vD .d-opt{display:flex;gap:12px;align-items:center;text-align:left;background:var(--bg);border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;font-size:18px}
-.vD .d-opt:hover{border-color:var(--line2)}
-.vD .d-opt .key{width:24px;height:24px;border-radius:7px;border:1.5px solid var(--line2);display:grid;place-items:center;font-size:12.5px;font-weight:700;color:var(--muted);flex:none}
-.vD .d-opt.on{border-color:var(--check);background:var(--check-t)}
-.vD .d-opt.on .key{background:var(--check);border-color:var(--check);color:var(--on-fill)}
-.vD .d-lab{display:block;font-size:14px;font-weight:700;margin:18px 0 6px}
-.vD .d-conf{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.vD .d-conf button{border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:9px 12px;font-weight:700;font-size:15px;display:flex;justify-content:space-between;align-items:center}
-.vD .d-conf button.on{border-color:var(--check);background:var(--check-t)}
-.vD .tex-in{width:100%;font-family:Recursive,monospace;font-variation-settings:"MONO" 1;font-size:15px;border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 12px}
-.vD .preview{min-height:46px;padding:8px 0 0;font-size:22px}
-.vD details.d-why{margin-top:14px;font-size:15px}
-.vD details.d-why summary{cursor:pointer;color:var(--muted)}
-.vD textarea.reason{width:100%;min-height:60px;border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:8px 12px;margin-top:6px;font-size:15px}
-.vD .d-qf{display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:12px;font-size:14px;color:var(--muted)}
-.vD .d-done{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:6px 0 18px;font-size:14.5px;color:var(--muted)}
-.vD .d-done .mark{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:var(--on-fill);font-weight:700;font-size:13px;flex:none}
-.vD .d-done.ok .mark{background:var(--right)}
-.vD .d-done.bad .mark{background:var(--wrong)}
-.vD .d-done .a{font-size:17px;color:var(--ink);margin-right:6px}
-.vD .d-q.graded{border-color:color-mix(in srgb,var(--wrong) 50%,transparent);box-shadow:none}
-.vD .d-q.graded .d-qh{color:var(--wrong)}
-.vD .d-yours{display:flex;align-items:center;gap:14px;background:var(--wrong-t);border-radius:12px;padding:8px 14px;font-size:19px}
-.vD .d-yours .x{font-family:Caveat,cursive;font-size:36px;color:var(--wrong);line-height:1}
-.vD .d-yours .muted{margin-left:auto;font-size:14px}
-.vD .d-flaw{margin-top:14px}
-.vD .d-flaw .d-lab{color:var(--wrong);margin-top:0}
-.vD .redpen{font-family:Caveat,cursive;font-size:25px;line-height:1.2;color:var(--wrong)}
-.vD .redpen .katex{font-size:.78em}
-.vD .d-detour{background:var(--detour);color:var(--detour-ink);border-radius:20px;padding:22px 24px;margin:24px 0 8px}
-.vD .d-detour h3{font-family:Newsreader,serif;font-weight:500;font-size:26px;margin:0 0 6px}
-.vD .d-detour p{margin:0 0 16px;opacity:.8;font-size:16.5px}
-.vD .d-detour .d-btn{background:var(--detour-ink);color:var(--detour)}
-.vD .d-acts{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
-
-/* message box */
-.vD .d-foot{padding:10px 32px 18px}
-.vD .d-footin{max-width:720px;margin:0 auto}
-.vD .d-action{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;font-size:14.5px;color:var(--muted)}
-.vD .d-composer{display:flex;align-items:flex-end;gap:6px;background:var(--surface);border:1.5px solid var(--line);border-radius:20px;padding:7px}
-.vD .d-composer:focus-within{border-color:var(--line2)}
-.vD .d-composer textarea{flex:1;border:0;outline:0;background:none;resize:none;font-size:16.5px;padding:8px 6px;min-height:40px;max-height:160px}
-.vD .d-send{width:40px;height:40px;border-radius:13px;border:0;background:var(--ink);color:var(--bg);display:grid;place-items:center;flex:none}
-
-/* side pane */
-.vD .d-pane{width:440px;border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;overflow:auto;padding:16px 20px;gap:8px}
-.vD .d-panehead{display:flex;justify-content:space-between;align-items:center}
-.vD .d-panehead h3{margin:0;font-family:Newsreader,serif;font-weight:500;font-size:22px}
 
 /* library & course */
 .vD .d-top{display:flex;align-items:center;gap:18px;padding:16px 32px}
@@ -515,7 +515,7 @@ const S = {
   phase: PHASES.includes(P.get('phase')) ? P.get('phase') : 'check',
   conf: 'sure', answer: DEFAULT_ANSWER, reason: DEFAULT_REASON,
   eps: 2, mode: 'working', pane: 'artifact', unit: 'u3', overlay: null, showSource: false,
-  q: P.get('phase')==='graded' ? 2 : 1, pick: null, conf1: null, side: true, dpane: false, toBottom: false,
+  q: P.get('phase')==='graded' ? 2 : 1, pick: null, conf1: null, side: false, drawer: null, toBottom: false,
   theme: (P.get('theme')==='dark' || (!P.get('theme') && matchMedia('(prefers-color-scheme: dark)').matches)) ? 'dark' : 'light',
 };
 function syncURL(){
@@ -679,6 +679,10 @@ const ICON = {
   moon:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>',
   sun:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   back:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+  home:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 015.5 4H10l2 2h6.5A1.5 1.5 0 0120 7.5v11a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 18.5z"/></svg>',
+  plus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  gear:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
+  map:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M7 11l10-4M7 13l10 4"/></svg>',
   close:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
 };
 const DPAL = {bg:'var(--surface)',axis:'var(--line2)',curve:'var(--ink)',eps:'var(--teach)',delta:'var(--check)',good:'var(--right)',bad:'var(--wrong)',text:'var(--muted)'};
@@ -721,67 +725,75 @@ function dLine(units, r=5, gap=22){
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><line x1="${r+4}" x2="${w-r-4}" y1="${y}" y2="${y}" style="stroke:var(--track);stroke-width:3;stroke-linecap:round"/>${units.map((s,i)=>{ const c = stn(s); return `<circle cx="${r+4+i*gap}" cy="${y}" r="${s==='current'?r+1.5:r}" style="fill:${c.f};stroke:${c.s};stroke-width:2"/>`; }).join('')}</svg>`;
 }
 function dThemeBtn(){ return `<button class="d-icon" data-act="theme" title="Switch to ${S.theme==='dark'?'light':'dark'} mode">${S.theme==='dark'?ICON.sun:ICON.moon}</button>`; }
-function dConf(cur){ return `<span class="d-lab">How sure are you?</span><div class="d-conf">${CONFS.map((c,i)=>`<button data-act="conf:${c}" class="${cur===c?'on':''}">${confLabel(c)}<kbd>${i+1}</kbd></button>`).join('')}</div>`; }
+function dConf(cur){ return `<div class="d-confrow"><span>How sure are you?</span>${CONFS.map(c=>`<button data-act="conf:${c}" class="${cur===c?'on':''}">${confLabel(c)}</button>`).join('')}</div>`; }
 function dFigure(){
-  if (S.dpane) return `<div class="d-figmini"><span>${tx(R`Figure: the ε–δ explorer is open beside the chat.`)}</span><button class="d-tl" data-act="dpane-close">Close it</button></div>`;
-  return `<div class="d-fig"><div class="d-fighead"><b>${tx(R`ε–δ explorer`)}</b><button class="d-tl" data-act="dpane">Open beside the chat</button></div>
-    ${epsFig(DPAL)}${epsControls('d-slider')}${modeToggle('d-seg2')}</div>`;
+  if (S.drawer==='fig') return `<p class="d-figmini">${tx(R`The ε–δ explorer is open beside the text.`)} <button class="d-tl" data-act="drawer-close">Put it back</button></p>`;
+  return `<figure class="d-fig"><div class="box">${epsFig(DPAL)}${epsControls('d-slider')}${modeToggle('d-seg2')}</div>
+    <figcaption>${tx(R`ε–δ explorer. Drag ε; the curve has to stay inside the box.`)} <button class="d-tl" data-act="fig">Open beside the text</button></figcaption></figure>`;
 }
 
 const D = {
   side(){
-    const ph = S.phase==='graded' ? 'check' : S.phase, pi = ['teach','discuss','check'].indexOf(ph);
-    return `<aside class="d-side"><div class="d-sidetop"><span class="d-word">Gauss</span>${dThemeBtn()}<button class="d-icon" data-act="side" title="Hide the sidebar">${ICON.side}</button></div>
-      <button class="d-back" data-act="view:library">${ICON.back}Library</button>
-      <div class="d-ctitle serif">${COURSE.title}</div><div class="d-cmeta">2 of 9 units passed</div>
-      <div class="d-mini">${dMiniMap()}</div><button class="d-link" data-act="view:course">Open the full map</button>
+    const item = c => `<button class="d-crs ${c.id==='calc'?'on':''}" data-act="${c.id==='calc'?'noop':'stub'}"><div class="t">${c.t}</div><div class="w">${c.when}</div></button>`;
+    return `<aside class="d-side"><div class="d-sidetop"><span class="d-word">Gauss</span><button class="d-icon" data-act="side" title="Hide the sidebar">${ICON.side}</button></div>
+      <nav class="d-nav"><button data-act="view:library">${ICON.home}Library</button><button data-act="stub">${ICON.plus}Learn something new</button></nav>
+      <div class="d-navsec">Courses</div>${LIBRARY.map(item).join('')}
+      <div class="d-navsec">One-off topics</div>${ONEOFFS.map(item).join('')}
+      <div class="d-sidebot">${dThemeBtn()}<button class="d-icon" data-act="stub" title="Settings">${ICON.gear}</button></div></aside>`;
+  },
+  drawer(){
+    const ph = S.phase==='graded' ? 'check' : S.phase;
+    if (S.drawer==='map') return `<aside class="d-drawer"><div class="d-panehead"><h3>${COURSE.title}</h3><button class="d-icon" data-act="drawer-close" title="Close">${ICON.close}</button></div>
+      <div class="d-cmeta">2 of 9 units passed</div><div class="d-mini">${dMiniMap()}</div><button class="d-link" data-act="view:course">Open the full map</button>
       <div class="d-sec">${tx(R`Unit 4: ε–δ limits`)}</div>
-      <ol class="d-segs">${SEGMENTS.map(s=>`<li class="${s.s}">${tx(s.t)}${s.s==='cur'?`<div class="d-subph">${['Teach','Discuss','Check'].map((p,j)=>`<span class="${j===pi?'now':''}">${p}</span>`).join('')}</div>`:''}</li>`).join('')}</ol>
+      <ol class="d-segs">${SEGMENTS.map(s=>`<li class="${s.s}">${tx(s.t)}${s.s==='cur'?`<div class="d-subph">Now: ${cap(ph)}</div>`:''}</li>`).join('')}</ol>
       <div class="d-sidelinks"><button data-act="stub">Notes</button><button data-act="stub">Sources</button><button data-act="stub">Style</button></div></aside>`;
+    if (S.drawer==='fig') return `<aside class="d-drawer wide"><div class="d-panehead"><h3>${tx(R`ε–δ explorer`)}</h3><button class="d-icon" data-act="drawer-close" title="Close">${ICON.close}</button></div>
+      <div class="d-cmeta" style="margin-bottom:12px">Made by the tutor for this segment.</div>${epsFig(DPAL)}${epsControls('d-slider')}${modeToggle('d-seg2')}</aside>`;
+    return '';
   },
   session(){
-    const ph = S.phase==='graded' ? 'check' : S.phase, pi = ['teach','discuss','check'].indexOf(ph);
-    const steps = ['teach','discuss','check'].map((p,i)=>`<span class="d-step ${i===pi?'now':i<pi?'past':''}" style="--c:var(--${p})"><i>${i<pi?'✓':i+1}</i>${cap(p)}</span>`).join('<span class="d-steplink"></span>');
-    const head = `<div class="d-head"><div class="d-headl">${S.side?'':`<button class="d-icon" data-act="side" title="Show the sidebar">${ICON.side}</button>`}<div><div class="d-crumb">${tx(R`Unit 4, ε–δ limits. Segment 3 of 4`)}</div><h1 class="serif">${tx(SEGMENTS[2].t)}</h1></div></div>
-      <div><div class="d-steps">${steps}</div><div class="d-hint">${HINT[S.phase]}</div></div></div>`;
+    const ph = S.phase==='graded' ? 'check' : S.phase;
+    const head = `<div class="d-head">${S.side?'':`<button class="d-icon" data-act="side" title="Show the sidebar">${ICON.side}</button>`}<h1>${tx(R`ε–δ limits`)}</h1><span class="sp"></span>
+      <span class="d-phase" title="Teach, then discuss, then a check"><i></i>${cap(ph)}</span><button class="d-pillbtn ${S.drawer==='map'?'on':''}" data-act="map">${ICON.map}Map</button></div>`;
 
-    let c = `<p class="tut">${tx(TEACH[0]).replace('definition', 'definition<button class="d-cite" data-act="cite" title="Show the source">1</button>')}</p>`;
-    if (S.showSource) c += `<div class="d-quote"><div class="q">${tx(SOURCE.text)}</div>${SOURCE.where}. <span class="ok">✓ Matches the source</span></div>`;
+    let c = `<h2 class="d-segtitle">${tx(SEGMENTS[2].t)}</h2><p class="d-segsub">${tx(R`Segment 3 of 4. Proving limits of quadratics by capping δ.`)}</p>`;
+    c += `<div class="d-mark">Teach</div><p class="tut">${tx(TEACH[0]).replace('definition', 'definition<button class="d-cite" data-act="cite" title="Show the source">1</button>')}</p>`;
+    if (S.showSource) c += `<div class="d-quote"><div class="q">${tx(SOURCE.text)}</div>${SOURCE.where}. <span class="ok">Matches the source.</span></div>`;
     c += `<p class="tut">${tx(TEACH[1])}</p><p class="tut">${tx(TEACH[2])}</p>${dFigure()}<p class="tut">${tx(TEACH[3])}${S.phase==='teach'?'<span class="caret"></span>':''}</p>`;
-    if (at('discuss')) c += `<div class="d-event">Discussion open. Nothing here is graded.</div>` + DISCUSS.map(m => m.who==='you' ? `<div class="d-you">${tx(m.t)}</div>` : `<p class="tut">${tx(m.t)}</p>`).join('');
+    if (at('discuss')) c += `<div class="d-mark">Discuss</div>` + DISCUSS.map(m => m.who==='you' ? `<div class="d-you">${tx(m.t)}</div>` : `<p class="tut">${tx(m.t)}</p>`).join('');
     if (at('check')){
-      c += `<div class="d-event">You pressed Ready</div>`;
+      c += `<div class="d-mark">Check</div>`;
       const pick = S.pick ?? 0, ok1 = pick===0, conf1 = S.conf1 ?? 'fairly';
       if (S.phase==='check' && S.q===1){
         const ready = S.pick!=null && S.conf1;
-        c += `<div class="d-q"><div class="d-qh"><span>Question 1 of 2</span><span>Pick one</span></div><div class="d-qt serif">${tx(Q1.t)}</div>
+        c += `<div class="d-q"><div class="d-qh">Question 1 of 2</div><div class="d-qt serif">${tx(Q1.t)}</div>
           <div class="d-opts">${Q1.opts.map((o,i)=>`<button class="d-opt ${S.pick===i?'on':''}" data-act="pick:${i}"><span class="key">${'ABCD'[i]}</span>${tx(o)}</button>`).join('')}</div>
-          ${dConf(S.conf1)}<details class="d-why"><summary>Add your reasoning (optional)</summary><textarea class="reason"></textarea></details>
-          <div class="d-qf"><span>${ready?'You can still change your answer.':'Pick an answer and how sure you are.'}</span><button class="d-btn check" data-act="submit" ${ready?'':'disabled'}>Submit answer</button></div></div>`;
+          ${dConf(S.conf1)}<details class="d-why"><summary>Add your reasoning</summary><textarea class="reason"></textarea></details>
+          <div class="d-qf">${ready?'':'<span>Pick an answer and how sure you are</span>'}<button class="d-btn check" data-act="submit" ${ready?'':'disabled'}>Submit</button></div></div>`;
       } else {
-        c += `<div class="d-done ${ok1?'ok':'bad'}"><span class="mark">${ok1?'✓':'✗'}</span><span class="a">${tx(Q1.opts[pick])}</span><span>Question 1. ${ok1?'Correct':'Incorrect'}. You said ${confLabel(conf1).toLowerCase()}.</span></div>
+        c += `<div class="d-done ${ok1?'ok':'bad'}"><span class="mark">${ok1?'✓':'✗'}</span><span>Question 1:</span><span class="a">${tx(Q1.opts[pick])}</span><span>${ok1?'correct':'incorrect'}, you said ${confLabel(conf1).toLowerCase()}</span></div>
           <p class="tut">${ok1 ? tx(R`Right. The cap keeps $x$ within $1$ of $2$. Now put that to work.`) : tx(R`Not quite. With $\delta$ up to $1$, $x$ can be anywhere within $1$ of $2$, which is $(1, 3)$. Keep that in mind for this one.`)}</p>`;
         if (S.phase==='check'){
-          c += `<div class="d-q"><div class="d-qh"><span>Question 2 of 2</span><span>Type math as LaTeX or plain text</span></div><div class="d-qt serif">${tx(QUESTION)}</div>
+          c += `<div class="d-q"><div class="d-qh">Question 2 of 2. Type math as LaTeX or plain text.</div><div class="d-qt serif">${tx(QUESTION)}</div>
             <input id="ans" class="tex-in" value="${esc(S.answer)}" autocomplete="off" aria-label="Your answer"><div class="preview" id="ans-preview">${k(S.answer,true)}</div>
-            ${dConf(S.conf)}<details class="d-why" ${S.reason?'open':''}><summary>Add your reasoning (optional)</summary><textarea id="reason" class="reason">${esc(S.reason)}</textarea></details>
-            <div class="d-qf"><span>${S.conf?'You can still change your answer.':'Say how sure you are to submit.'}</span><button class="d-btn check" data-act="submit" ${S.conf?'':'disabled'}>Submit answer</button></div></div>`;
+            ${dConf(S.conf)}<details class="d-why" ${S.reason?'open':''}><summary>Add your reasoning</summary><textarea id="reason" class="reason">${esc(S.reason)}</textarea></details>
+            <div class="d-qf">${S.conf?'':'<span>Say how sure you are</span>'}<button class="d-btn check" data-act="submit" ${S.conf?'':'disabled'}>Submit</button></div></div>`;
         } else {
-          c += `<div class="d-q graded"><div class="d-qh"><span>Question 2 of 2. Not quite</span><span>Graded by rubric</span></div><div class="d-qt serif">${tx(QUESTION)}</div>
-            <div class="d-yours"><span class="x">✗</span>${k(S.answer)}<span class="muted">Your answer. You said ${confLabel(S.conf||'sure').toLowerCase()}.</span></div>
-            <div class="d-flaw"><span class="d-lab">Where it went wrong</span><div class="redpen">${tx(FLAW)}</div></div></div>
+          const sure = (S.conf||'sure')==='sure';
+          c += `<div class="d-q graded"><div class="d-qh">Question 2 of 2. Not quite.</div><div class="d-qt serif">${tx(QUESTION)}</div>
+            <div class="d-yours"><span class="x">✗</span>${k(S.answer)}<span class="muted">you said ${confLabel(S.conf||'sure').toLowerCase()}</span></div>
+            <div class="redpen">${tx(FLAW)}</div></div>
             <p class="tut">${tx(FEEDBACK)} <button class="d-tl" data-act="seefig">See it in the explorer</button></p>
-            <div class="d-detour"><h3>Trace your reasoning?</h3><p>${(S.conf||'sure')==='sure' ? DETOUR : 'Want to walk through your steps with the tutor before moving on? It usually finds the problem faster than another try.'}</p>
-            <div class="d-acts"><button class="d-btn" data-act="detour">Start a detour</button><button class="d-tl" data-act="next">Move on</button><button class="d-tl" data-act="dispute">Dispute this grade</button></div></div>`;
+            <div class="d-offer"><p>${sure ? DETOUR : 'Want to walk through your steps with the tutor before moving on? It usually finds the problem faster than another try.'}</p>
+            <div class="d-acts"><button class="d-btn" data-act="detour">Trace my reasoning</button><button class="d-tl" data-act="next">Move on</button><button class="d-tl" data-act="dispute">Dispute the grade</button></div></div>`;
         }
       }
     }
-    const action = S.phase==='discuss' ? `<div class="d-action"><span>The check is a couple of questions on capping δ.</span><button class="d-btn check" data-act="ready">I'm ready for the check<kbd>R</kbd></button></div>`
-      : S.phase==='check' ? `<div class="d-action"><span>Asking the tutor now counts as help on this question.</span></div>` : '';
-    const foot = `<div class="d-foot"><div class="d-footin">${action}<div class="d-composer"><button class="d-icon" data-act="stub" title="Attach a file or photo">${ICON.clip}</button><textarea rows="1" placeholder="${PLACEHOLDER[S.phase]}" aria-label="Message the tutor"></textarea><button class="d-send" data-act="stub" title="Send">${ICON.send}</button></div></div></div>`;
-    const pane = S.dpane ? `<aside class="d-pane"><div class="d-panehead"><h3>${tx(R`ε–δ explorer`)}</h3><button class="d-icon" data-act="dpane-close" title="Close">${ICON.close}</button></div>
-      <div class="muted" style="font-size:14px">Made by the tutor for this segment. Runs in a sandbox.</div>${epsFig(DPAL)}${epsControls('d-slider')}${modeToggle('d-seg2')}</aside>` : '';
-    return `<div class="d-app" style="--phc:var(--${ph})">${S.side?D.side():'<div></div>'}<main class="d-main">${head}<div class="d-scroll"><div class="d-col">${c}</div></div>${foot}</main>${pane}</div>`;
+    const placeholder = {teach:'Ask a question at any time', discuss:'Ask anything. Nothing here is graded.', check:'Stuck? Ask for a hint (counts as help on this question)', graded:'Reply to the tutor'}[S.phase];
+    const ready = S.phase==='discuss' ? `<button class="d-ready" data-act="ready">Ready for the check</button>` : '';
+    const foot = `<div class="d-foot"><div class="d-footin"><div class="d-composer"><button class="d-icon" data-act="stub" title="Attach a file or photo">${ICON.clip}</button><textarea rows="1" placeholder="${placeholder}" aria-label="Message the tutor"></textarea>${ready}<button class="d-send" data-act="stub" title="Send">${ICON.send}</button></div></div></div>`;
+    return `<div class="d-app" style="--phc:var(--${ph})">${S.side?D.side():'<div></div>'}<main class="d-main">${head}<div class="d-scroll"><div class="d-col">${c}</div></div>${foot}</main>${D.drawer()}</div>`;
   },
   top(back){ return `<div class="d-top"><span class="d-word">Gauss</span>${back?`<button class="d-back" data-act="view:library">${ICON.back}Library</button>`:''}<span class="sp"></span>${dThemeBtn()}</div>`; },
   library(){
@@ -919,9 +931,11 @@ document.addEventListener('click', e => {
   if (a==='cite'){ S.showSource = !S.showSource; render(); return; }
   if (a==='side'){ S.side = !S.side; render(); return; }
   if (a==='theme'){ S.theme = S.theme==='dark' ? 'light' : 'dark'; render(); return; }
-  if (a==='dpane'){ S.dpane = true; render(); return; }
-  if (a==='dpane-close'){ S.dpane = false; render(); return; }
-  if (a==='seefig'){ S.dpane = true; S.mode = 'yours'; S.eps = 4; render(); return; }
+  if (a==='map'){ S.drawer = S.drawer==='map' ? null : 'map'; render(); return; }
+  if (a==='fig'){ S.drawer = 'fig'; render(); return; }
+  if (a==='drawer-close'){ S.drawer = null; render(); return; }
+  if (a==='seefig'){ S.drawer = 'fig'; S.mode = 'yours'; S.eps = 4; render(); return; }
+  if (a==='noop') return;
   if (a==='detour') return toast('A detour would start here: the tutor asks you to walk through your steps.');
   if (a==='dispute') return toast('A dispute form would open here. Not in the prototype.');
   if (a==='next') return toast('Would move to segment 4, recorded as a miss on this objective.');
@@ -959,7 +973,7 @@ document.addEventListener('keydown', e => {
   if (S.phase==='check' && ['1','2','3'].includes(e.key)) return setConf(CONFS[+e.key-1]);
   if (S.variant==='D' && S.phase==='check' && S.q===1 && 'abcd'.includes(e.key.toLowerCase()) && e.key.length===1){ S.pick = 'abcd'.indexOf(e.key.toLowerCase()); render(); return; }
   if (S.phase==='discuss' && (e.key==='r' || e.key==='R')) return setPhase('check');
-  if (e.key==='Escape' && S.overlay){ S.overlay=null; render(); }
+  if (e.key==='Escape' && (S.overlay || S.drawer)){ S.overlay=null; S.drawer=null; render(); }
 });
 render();
 </script>

@@ -96,8 +96,11 @@ Tasks may be revised by 0.7.
   Stage. The user liked Folio's look but found it plain, liked Stage's map and
   ease of use, and asked for a chat layout with one message box. Workbench was
   dropped. Round 2 is variant D (Folio + Stage), with A and C kept for
-  comparison. Once the user approves, record the choice in `docs/decisions.md`
-  and delete the other variants.
+  comparison. The user found D's session view cluttered and worse than A:
+  while learning, show only the text, the message box and navigation;
+  everything else (map, aids, course list) opens on click. Round 3 rebuilt
+  D's session view that way. Once the user approves, record the choice in
+  `docs/decisions.md` and delete the other variants.
 
 ### 1.1 Course and curriculum schemas
 - Status: todo
