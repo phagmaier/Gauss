@@ -92,9 +92,12 @@ Tasks may be revised by 0.7.
 - Do: a static mock of the three views (library, course, session) for the user
   to react to before any real page work.
 - Done when: the user has approved a layout, and it is saved under `docs/`.
-- Note: three directions are in `docs/prototype/look.html` (Folio, Workbench,
-  Stage). Once the user picks, record the choice and why in
-  `docs/decisions.md` and delete the losing variants.
+- Note: `docs/prototype/look.html`. Round 1 offered Folio, Workbench and
+  Stage. The user liked Folio's look but found it plain, liked Stage's map and
+  ease of use, and asked for a chat layout with one message box. Workbench was
+  dropped. Round 2 is variant D (Folio + Stage), with A and C kept for
+  comparison. Once the user approves, record the choice in `docs/decisions.md`
+  and delete the other variants.
 
 ### 1.1 Course and curriculum schemas
 - Status: todo

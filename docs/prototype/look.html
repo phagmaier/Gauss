@@ -2,8 +2,10 @@
 <!--
   PROTOTYPE, throwaway. Plan task 1.0 pulled forward.
   Question: what should Gauss look like?
-  Three structurally different directions for the library, course and session
-  views, switchable with ?variant=A|B|C&view=library|course|session&phase=teach|discuss|check|graded
+  Round 2 (2026-11-13): D combines the user's picks (A's look, C's map and
+  clarity, a chat layout with one message box). A and C kept for comparison;
+  B (Workbench) dropped. Switch with
+  ?variant=D|A|C&view=library|course|session&phase=teach|discuss|check|graded
   or the floating bar at the bottom (arrow keys cycle variants, H hides the bar).
   All data is simulated. No backend, no persistence, grading is canned.
 -->
@@ -27,17 +29,15 @@ textarea,input{font:inherit;color:inherit}
 .katex{font-size:1.06em}
 
 /* ---------- prototype switcher (deliberately not part of any design) ---------- */
-#bar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:1000;
-  display:flex;align-items:center;gap:10px;padding:6px 10px;background:#fff;color:#111;
+#bar{position:fixed;left:12px;bottom:12px;z-index:1000;
+  display:flex;align-items:center;gap:6px;padding:5px 8px;background:#fff;color:#111;
   border:2px dashed #ff2d95;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.25);
   font:13px/1.2 system-ui,sans-serif;white-space:nowrap}
-#bar button{border:0;background:#f1f1f1;border-radius:999px;padding:5px 10px}
-#bar button.on{background:#111;color:#fff}
-#bar .arrow{background:#ff2d95;color:#fff;width:28px;height:28px;padding:0;font-size:15px}
-#bar .lbl{min-width:132px;text-align:center;font-weight:600}
-#bar .grp{display:flex;gap:3px;padding-left:10px;border-left:1px solid #ddd}
+#bar .arrow{border:0;border-radius:999px;background:#ff2d95;color:#fff;width:26px;height:26px;padding:0;font-size:15px}
+#bar .lbl{min-width:104px;text-align:center;font-weight:600}
+#bar select{font:13px system-ui,sans-serif;border:1px solid #ddd;border-radius:999px;padding:3px 6px;background:#f6f6f6;color:#111}
 #bar .tag{font-size:11px;color:#ff2d95;font-weight:700}
-#toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);z-index:1001;background:#111;color:#fff;
+#toast{position:fixed;left:12px;bottom:62px;z-index:1001;background:#111;color:#fff;
   padding:8px 14px;border-radius:8px;font:13px system-ui,sans-serif;opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
 
@@ -145,119 +145,182 @@ textarea,input{font:inherit;color:inherit}
 .vA .side-list ul{margin:0;padding-left:16px}
 
 /* =====================================================================
-   B. WORKBENCH: a blackboard you work at. Dense three-pane layout,
-   course tree always visible, a side pane for artifacts, sources and
-   the evidence record, keyboard-first.
+   D. FOLIO + STAGE (round 2). Folio's reading type for what the tutor
+   says, a plain sans for the controls, Stage's phase colours and map.
+   Sidebar holds the course map; one message box is always at the bottom;
+   questions arrive inline in the conversation.
    ===================================================================== */
-.vB{--board:#1F2B28;--panel:#25332F;--deep:#1A2421;--line:#384943;--chalk:#E7E5DA;--dim:#9DA79F;--yellow:#F2CC60;--pink:#EF8F8A;--blue:#8EC5E8;--green:#9AD39A;
-  background:var(--board);color:var(--chalk);font-family:Recursive,system-ui,sans-serif;font-variation-settings:"CASL" 0.2;font-size:14px;line-height:1.55;
-  height:100vh;display:grid;grid-template-rows:auto 1fr;overflow:hidden}
-.vB .b-top{display:flex;align-items:center;gap:18px;padding:0 16px;height:46px;border-bottom:1px solid var(--line);background:var(--deep)}
-.vB .logo{font-variation-settings:"CASL" 1;font-weight:800;font-size:17px;color:var(--yellow);cursor:pointer;background:none;border:0;padding:0}
-.vB .crumbs{color:var(--dim);display:flex;gap:8px;align-items:center}
-.vB .crumbs b{color:var(--chalk);font-weight:500}
-.vB .crumbs .sep{opacity:.5}
-.vB .phases{display:flex;gap:2px;margin-left:auto}
-.vB .phases span{padding:3px 12px;border:1px solid var(--line);color:var(--dim);font-size:12.5px}
-.vB .phases span:first-child{border-radius:4px 0 0 4px}
-.vB .phases span:last-child{border-radius:0 4px 4px 0}
-.vB .phases span.past{color:var(--chalk)}
-.vB .phases span.now{background:var(--yellow);color:var(--deep);border-color:var(--yellow);font-weight:700}
-.vB kbd{font-family:Recursive,monospace;font-variation-settings:"MONO" 1;font-size:11.5px;padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;color:var(--chalk);background:var(--deep)}
-.vB .hint{color:var(--dim);font-size:12px;display:flex;gap:10px;align-items:center}
-.vB .b-body{display:grid;grid-template-columns:250px minmax(0,1fr) 400px;min-height:0}
-.vB .b-tree{border-right:1px solid var(--line);overflow:auto;padding:12px 0;background:var(--deep)}
-.vB .b-tree h5{margin:6px 16px 8px;font-size:12px;font-weight:500;color:var(--dim)}
-.vB .tu{display:flex;gap:8px;align-items:center;padding:4px 16px;cursor:pointer;color:var(--chalk)}
-.vB .tu:hover{background:var(--panel)}
-.vB .tu.cur{background:var(--panel);box-shadow:inset 2px 0 var(--yellow)}
-.vB .tu.locked{color:var(--dim)}
-.vB .dot{width:8px;height:8px;border-radius:50%;flex:none;border:1.5px solid var(--dim)}
-.vB .dot.retained{background:var(--green);border-color:var(--green)}
-.vB .dot.passed{border-color:var(--green);background:radial-gradient(var(--green) 40%,transparent 45%)}
-.vB .dot.current{border-color:var(--yellow);background:var(--yellow)}
-.vB .dot.open{border-color:var(--chalk)}
-.vB .dot.miss{border-color:var(--pink);background:var(--pink)}
-.vB .ts{padding:3px 16px 3px 34px;color:var(--dim);display:flex;gap:8px;align-items:center;font-size:13px}
-.vB .ts.cur{color:var(--chalk)}
-.vB .to{padding:2px 16px 2px 50px;color:var(--dim);font-size:12.5px;display:flex;gap:7px;align-items:baseline}
-.vB .to .dot{width:6px;height:6px;transform:translateY(-1px)}
-.vB .b-chat{display:grid;grid-template-rows:1fr auto;min-height:0}
-.vB .scroll{overflow:auto;padding:22px 28px 30px}
-.vB .msg{display:grid;grid-template-columns:52px minmax(0,680px);gap:14px;margin-bottom:16px}
-.vB .msg .who{color:var(--dim);font-size:12.5px;text-align:right;padding-top:2px}
-.vB .msg.you .who{color:var(--blue)}
-.vB .msg p{margin:0 0 10px;font-size:15px;line-height:1.65}
-.vB .msg.you .body{color:var(--blue)}
-.vB .event{margin:4px 0 16px 66px;color:var(--dim);font-size:12.5px;display:flex;gap:10px;align-items:center;max-width:680px}
-.vB .event::before,.vB .event::after{content:"";height:1px;background:var(--line);flex:1}
-.vB .cite{color:var(--blue);border-bottom:1px dashed var(--blue);cursor:pointer}
-.vB .qbox{border:1px solid var(--yellow);border-radius:6px;background:var(--panel);padding:14px 16px;max-width:680px}
-.vB .qbox .qh{display:flex;justify-content:space-between;color:var(--yellow);font-size:12.5px;margin-bottom:8px}
-.vB .qbox .q{font-size:16px;margin-bottom:12px}
-.vB .fl{font-size:12px;color:var(--dim);margin:10px 0 4px;display:block}
-.vB .tex-in,.vB textarea.reason,.vB .composer input{width:100%;background:var(--deep);border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-variation-settings:"MONO" 1;font-size:13.5px}
-.vB textarea.reason{font-variation-settings:"MONO" 0,"CASL" 0.2;min-height:56px}
-.vB .preview{min-height:40px;padding:6px 2px;font-size:18px}
-.vB .conf{display:flex;gap:6px}
-.vB .conf button{background:var(--deep);border:1px solid var(--line);border-radius:4px;padding:6px 12px;display:flex;gap:8px;align-items:center}
-.vB .conf button.on{border-color:var(--yellow);color:var(--yellow)}
-.vB .row-end{display:flex;justify-content:flex-end;gap:10px;align-items:center;margin-top:12px}
-.vB .bbtn{background:var(--yellow);color:var(--deep);border:0;border-radius:4px;padding:6px 14px;font-weight:700;display:inline-flex;gap:8px;align-items:center}
-.vB .bbtn kbd{background:transparent;border-color:rgba(0,0,0,.3);color:var(--deep)}
-.vB .bbtn.ghost{background:transparent;color:var(--chalk);border:1px solid var(--line);font-weight:500}
-.vB .bbtn.ghost kbd{color:var(--chalk);border-color:var(--line)}
-.vB .grade{border:1px solid var(--pink);border-radius:6px;max-width:680px;padding:12px 16px;margin:0 0 16px 66px;background:rgba(239,143,138,.07)}
-.vB .grade .gh{color:var(--pink);font-weight:700;margin-bottom:6px;display:flex;gap:10px;align-items:baseline}
-.vB .grade .gh span{color:var(--dim);font-weight:400;font-size:12.5px}
-.vB .grade .ans{font-size:17px;margin:6px 0}
-.vB .grade .flaw{color:var(--chalk);font-size:14px}
-.vB .offer{margin:0 0 16px 66px;max-width:680px;border-left:2px solid var(--yellow);padding:6px 0 6px 14px}
-.vB .offer p{margin:0 0 10px;font-size:14.5px}
-.vB .composer{border-top:1px solid var(--line);padding:12px 28px;display:flex;gap:10px;align-items:center;background:var(--deep)}
-.vB .composer input{flex:1;font-variation-settings:"MONO" 0,"CASL" 0.2;font-size:14.5px;padding:9px 12px}
-.vB .composer.off{opacity:.5}
-.vB .b-pane{border-left:1px solid var(--line);display:grid;grid-template-rows:auto 1fr;min-height:0;background:var(--panel)}
-.vB .tabs{display:flex;border-bottom:1px solid var(--line)}
-.vB .tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;padding:10px 0;color:var(--dim)}
-.vB .tabs button.on{color:var(--chalk);border-bottom-color:var(--yellow)}
-.vB .pane-body{overflow:auto;padding:16px}
-.vB .pane-body h4{margin:0 0 4px;font-size:14px;font-variation-settings:"CASL" 0.8}
-.vB .pane-body .sm{color:var(--dim);font-size:12.5px;margin-bottom:12px}
-.vB .sandbox{border:1px dashed var(--line);border-radius:4px;padding:10px;background:var(--board)}
-.vB .slider{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:13px}
-.vB .slider input{flex:1;accent-color:var(--yellow)}
-.vB .toggle{display:flex;gap:4px;margin-top:10px}
-.vB .toggle button{flex:1;background:var(--deep);border:1px solid var(--line);border-radius:4px;padding:5px;font-size:12.5px;color:var(--dim)}
-.vB .toggle button.on{color:var(--chalk);border-color:var(--chalk)}
-.vB .quote{border-left:2px solid var(--blue);padding:4px 0 4px 12px;font-size:15px;margin:10px 0}
-.vB .verified{color:var(--green);font-size:12.5px}
-.vB table{width:100%;border-collapse:collapse;font-size:12.5px}
-.vB th{text-align:left;color:var(--dim);font-weight:500;padding:6px 6px 6px 0;border-bottom:1px solid var(--line)}
-.vB td{padding:7px 6px 7px 0;border-bottom:1px solid var(--line);vertical-align:top}
-.vB td.ok{color:var(--green)} .vB td.bad{color:var(--pink)}
-.vB tr.new td{background:rgba(239,143,138,.08)}
-.vB .caret{display:inline-block;width:8px;height:1.1em;background:var(--chalk);vertical-align:-3px;animation:blink 1s steps(1) infinite}
-/* Workbench library & course */
-.vB .lib{padding:28px 36px;overflow:auto}
-.vB .cmd{display:flex;gap:10px;align-items:center;max-width:820px;background:var(--deep);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin-bottom:28px;color:var(--dim)}
-.vB .cmd input{flex:1;background:none;border:0;outline:0;font-size:15px}
-.vB .lib table{font-size:14px;max-width:1100px}
-.vB .lib td,.vB .lib th{padding:12px 12px 12px 0}
-.vB .lib tr.click{cursor:pointer}
-.vB .lib tr.click:hover td{background:var(--panel)}
-.vB .bars{display:flex;gap:2px}
-.vB .bars i{width:14px;height:8px;border-radius:2px;background:var(--line)}
-.vB .bars i.retained,.vB .bars i.passed{background:var(--green)}
-.vB .bars i.current{background:var(--yellow)}
-.vB .lib h5{font-size:12.5px;color:var(--dim);font-weight:500;margin:28px 0 0}
-.vB .pill{font-size:12px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);color:var(--dim)}
-.vB .pill.y{border-color:var(--yellow);color:var(--yellow)}
-.vB .graph{overflow:auto;padding:24px;display:flex;align-items:center;justify-content:center}
-.vB .ud h3{margin:0 0 4px;font-size:18px;font-variation-settings:"CASL" 0.9}
-.vB .ud .goal{color:var(--dim);margin-bottom:14px}
-.vB .ud ul{list-style:none;padding:0;margin:0 0 16px}
-.vB .ud li{display:flex;gap:8px;align-items:baseline;padding:4px 0}
+.vD{--bg:#F6F7F9;--side:#EEF0F4;--surface:#FFFFFF;--ink:#1B2030;--muted:#5F677C;--line:#E1E4EC;--line2:#C9CEDA;--track:#D6DAE4;
+  --teach:#4152D6;--discuss:#0E8A78;--check:#B5650A;--teach-t:#ECEEFD;--discuss-t:#E3F4F0;--check-t:#FCF0DE;
+  --right:#1E8A4C;--wrong:#C8372D;--wrong-t:#FBEAE8;--on-fill:#FFFFFF;--you:#E9ECF3;--detour:#1B2030;--detour-ink:#FFFFFF;
+  background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:16px;line-height:1.5;min-height:100vh}
+.vD[data-theme=dark]{--bg:#131722;--side:#181D29;--surface:#1D2331;--ink:#E6E8F0;--muted:#9AA2B7;--line:#2A3142;--line2:#3B4459;--track:#333B4F;
+  --teach:#8F9AFF;--discuss:#45CDB4;--check:#F0B24A;--teach-t:#23294C;--discuss-t:#15302B;--check-t:#352A18;
+  --right:#5ACB86;--wrong:#FF8277;--wrong-t:#3A2326;--on-fill:#131722;--you:#232A3B;--detour:#E6E8F0;--detour-ink:#131722}
+.vD .serif{font-family:Newsreader,Georgia,serif;font-optical-sizing:auto}
+.vD .muted{color:var(--muted)}
+.vD kbd{font-family:inherit;font-size:11.5px;border:1px solid currentColor;border-radius:4px;padding:0 5px;opacity:.65;margin-left:8px;font-weight:400}
+.vD .d-icon{background:none;border:0;padding:7px;border-radius:9px;color:var(--muted);display:inline-grid;place-items:center}
+.vD .d-icon:hover{background:var(--line);color:var(--ink)}
+.vD .d-word{font-family:Newsreader,serif;font-weight:600;font-size:23px;letter-spacing:-.01em}
+.vD .d-btn{border:0;border-radius:999px;padding:10px 20px;font-weight:700;font-size:16px;background:var(--ink);color:var(--bg);display:inline-flex;align-items:center}
+.vD .d-btn.check{background:var(--check);color:var(--on-fill)}
+.vD .d-btn.line{background:transparent;color:var(--ink);border:1.5px solid var(--line2)}
+.vD .d-btn:disabled{opacity:.35;cursor:not-allowed}
+.vD .d-tl{background:none;border:0;padding:0;color:inherit;text-decoration:underline;text-underline-offset:3px;font-size:15.5px}
+
+/* session shell */
+.vD .d-app{display:grid;grid-template-columns:auto minmax(0,1fr) auto;height:100vh;overflow:hidden}
+.vD .d-side{width:272px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 16px 16px;overflow:auto}
+.vD .d-sidetop{display:flex;align-items:center;gap:2px;margin-bottom:6px}
+.vD .d-sidetop .d-word{margin-right:auto}
+.vD .d-back{background:none;border:0;padding:4px 0;color:var(--muted);display:flex;gap:4px;align-items:center;font-size:14.5px;align-self:flex-start}
+.vD .d-back:hover{color:var(--ink)}
+.vD .d-ctitle{font-size:22px;font-weight:500;margin-top:12px;line-height:1.2}
+.vD .d-cmeta{font-size:14px;color:var(--muted)}
+.vD .d-mini{margin:12px 0 4px;display:flex;justify-content:center}
+.vD .d-mini g{cursor:pointer}
+.vD .d-link{background:none;border:0;padding:0;color:var(--teach);font-size:14px;align-self:center;margin-bottom:16px}
+.vD .d-sec{font-weight:700;font-size:14.5px;padding-top:16px;margin-bottom:8px;border-top:1px solid var(--line)}
+.vD .d-segs{list-style:none;margin:0;padding:0}
+.vD .d-segs li{position:relative;padding:3px 0 14px 28px;font-size:15px;color:var(--muted)}
+.vD .d-segs li::before{content:"";position:absolute;left:3px;top:6px;width:10px;height:10px;border-radius:50%;border:2px solid var(--line2);background:var(--side);z-index:1}
+.vD .d-segs li::after{content:"";position:absolute;left:9px;top:16px;bottom:-4px;width:2px;background:var(--line2)}
+.vD .d-segs li:last-child::after{display:none}
+.vD .d-segs li.done::before{background:var(--right);border-color:var(--right)}
+.vD .d-segs li.done::after{background:var(--right)}
+.vD .d-segs li.cur{color:var(--ink);font-weight:700}
+.vD .d-segs li.cur::before{border-color:var(--phc);background:var(--phc);box-shadow:0 0 0 4px color-mix(in srgb,var(--phc) 22%,transparent)}
+.vD .d-subph{display:flex;gap:4px;margin-top:6px;font-weight:400}
+.vD .d-subph span{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--line);color:var(--muted)}
+.vD .d-subph span.now{background:var(--phc);color:var(--on-fill);font-weight:700}
+.vD .d-sidelinks{display:flex;gap:16px;font-size:14.5px;margin-top:8px}
+.vD .d-sidelinks button{background:none;border:0;padding:0;color:var(--muted)}
+.vD .d-sidelinks button:hover{color:var(--ink)}
+
+.vD .d-main{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0;border-top:4px solid var(--phc);transition:border-color .3s}
+.vD .d-head{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:12px 32px;border-bottom:1px solid var(--line)}
+.vD .d-headl{display:flex;gap:10px;align-items:center;min-width:0}
+.vD .d-crumb{font-size:14px;color:var(--muted)}
+.vD .d-head h1{font-size:30px;font-weight:500;margin:0;line-height:1.15;letter-spacing:-.01em}
+.vD .d-steps{display:flex;align-items:center;justify-content:flex-end}
+.vD .d-step{display:flex;align-items:center;gap:7px;font-size:14.5px;color:var(--muted);font-weight:700}
+.vD .d-step i{font-style:normal;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;border:2px solid var(--line2)}
+.vD .d-step.past{color:var(--ink)}
+.vD .d-step.past i{border-color:var(--ink)}
+.vD .d-step.now{color:var(--c)}
+.vD .d-step.now i{background:var(--c);border-color:var(--c);color:var(--on-fill)}
+.vD .d-steplink{width:24px;height:2px;background:var(--line2);margin:0 8px}
+.vD .d-hint{font-size:14px;color:var(--muted);text-align:right;margin-top:5px}
+
+.vD .d-scroll{overflow:auto}
+.vD .d-col{max-width:720px;margin:0 auto;padding:30px 32px 30px}
+.vD .tut{font-family:Newsreader,Georgia,serif;font-size:20px;line-height:1.62;margin:0 0 16px}
+.vD .d-cite{border:1px solid var(--line2);background:var(--surface);border-radius:999px;font:700 12px "Atkinson Hyperlegible",sans-serif;color:var(--teach);padding:0 7px;vertical-align:3px;margin-left:2px}
+.vD .d-quote{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--teach);border-radius:4px 12px 12px 4px;padding:12px 16px;margin:-4px 0 18px;font-size:14.5px;color:var(--muted)}
+.vD .d-quote .q{font-family:Newsreader,serif;font-style:italic;font-size:17.5px;color:var(--ink);margin-bottom:4px}
+.vD .d-quote .ok{color:var(--right);font-weight:700}
+.vD .d-fig{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:6px 0 22px}
+.vD .d-fighead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:14.5px;gap:12px}
+.vD .d-fighead b{font-size:15.5px}
+.vD .d-figmini{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px dashed var(--line2);border-radius:14px;padding:10px 16px;margin:6px 0 22px;font-size:15px;color:var(--muted)}
+.vD .d-slider{display:flex;gap:12px;align-items:center;font-size:14.5px;margin-top:8px}
+.vD .d-slider input{flex:1;accent-color:var(--teach)}
+.vD .d-seg2{display:flex;gap:6px;margin-top:10px}
+.vD .d-seg2 button{flex:1;border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px;font-size:13.5px;color:var(--muted)}
+.vD .d-seg2 button.on{border-color:var(--ink);color:var(--ink);font-weight:700}
+.vD .d-event{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13.5px;margin:28px 0 18px}
+.vD .d-event::before,.vD .d-event::after{content:"";flex:1;height:1px;background:var(--line)}
+.vD .d-you{margin:0 0 18px auto;max-width:80%;width:fit-content;background:var(--you);border-radius:18px 18px 4px 18px;padding:10px 16px;font-size:16.5px}
+.vD .caret{display:inline-block;width:9px;height:1.05em;background:var(--ink);vertical-align:-2px;animation:blink 1s steps(1) infinite;margin-left:2px}
+
+/* questions */
+.vD .d-q{background:var(--surface);border:1.5px solid color-mix(in srgb,var(--check) 50%,transparent);border-radius:18px;padding:20px 22px;margin:6px 0 20px;box-shadow:0 14px 34px -22px color-mix(in srgb,var(--check) 70%,transparent)}
+.vD .d-qh{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;color:var(--check);margin-bottom:8px}
+.vD .d-qh span:last-child{color:var(--muted);font-weight:400}
+.vD .d-qt{font-size:21px;line-height:1.45;margin-bottom:14px}
+.vD .d-opts{display:grid;gap:8px}
+.vD .d-opt{display:flex;gap:12px;align-items:center;text-align:left;background:var(--bg);border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;font-size:18px}
+.vD .d-opt:hover{border-color:var(--line2)}
+.vD .d-opt .key{width:24px;height:24px;border-radius:7px;border:1.5px solid var(--line2);display:grid;place-items:center;font-size:12.5px;font-weight:700;color:var(--muted);flex:none}
+.vD .d-opt.on{border-color:var(--check);background:var(--check-t)}
+.vD .d-opt.on .key{background:var(--check);border-color:var(--check);color:var(--on-fill)}
+.vD .d-lab{display:block;font-size:14px;font-weight:700;margin:18px 0 6px}
+.vD .d-conf{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.vD .d-conf button{border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:9px 12px;font-weight:700;font-size:15px;display:flex;justify-content:space-between;align-items:center}
+.vD .d-conf button.on{border-color:var(--check);background:var(--check-t)}
+.vD .tex-in{width:100%;font-family:Recursive,monospace;font-variation-settings:"MONO" 1;font-size:15px;border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 12px}
+.vD .preview{min-height:46px;padding:8px 0 0;font-size:22px}
+.vD details.d-why{margin-top:14px;font-size:15px}
+.vD details.d-why summary{cursor:pointer;color:var(--muted)}
+.vD textarea.reason{width:100%;min-height:60px;border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:8px 12px;margin-top:6px;font-size:15px}
+.vD .d-qf{display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:12px;font-size:14px;color:var(--muted)}
+.vD .d-done{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:6px 0 18px;font-size:14.5px;color:var(--muted)}
+.vD .d-done .mark{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:var(--on-fill);font-weight:700;font-size:13px;flex:none}
+.vD .d-done.ok .mark{background:var(--right)}
+.vD .d-done.bad .mark{background:var(--wrong)}
+.vD .d-done .a{font-size:17px;color:var(--ink);margin-right:6px}
+.vD .d-q.graded{border-color:color-mix(in srgb,var(--wrong) 50%,transparent);box-shadow:none}
+.vD .d-q.graded .d-qh{color:var(--wrong)}
+.vD .d-yours{display:flex;align-items:center;gap:14px;background:var(--wrong-t);border-radius:12px;padding:8px 14px;font-size:19px}
+.vD .d-yours .x{font-family:Caveat,cursive;font-size:36px;color:var(--wrong);line-height:1}
+.vD .d-yours .muted{margin-left:auto;font-size:14px}
+.vD .d-flaw{margin-top:14px}
+.vD .d-flaw .d-lab{color:var(--wrong);margin-top:0}
+.vD .redpen{font-family:Caveat,cursive;font-size:25px;line-height:1.2;color:var(--wrong)}
+.vD .redpen .katex{font-size:.78em}
+.vD .d-detour{background:var(--detour);color:var(--detour-ink);border-radius:20px;padding:22px 24px;margin:24px 0 8px}
+.vD .d-detour h3{font-family:Newsreader,serif;font-weight:500;font-size:26px;margin:0 0 6px}
+.vD .d-detour p{margin:0 0 16px;opacity:.8;font-size:16.5px}
+.vD .d-detour .d-btn{background:var(--detour-ink);color:var(--detour)}
+.vD .d-acts{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+
+/* message box */
+.vD .d-foot{padding:10px 32px 18px}
+.vD .d-footin{max-width:720px;margin:0 auto}
+.vD .d-action{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;font-size:14.5px;color:var(--muted)}
+.vD .d-composer{display:flex;align-items:flex-end;gap:6px;background:var(--surface);border:1.5px solid var(--line);border-radius:20px;padding:7px}
+.vD .d-composer:focus-within{border-color:var(--line2)}
+.vD .d-composer textarea{flex:1;border:0;outline:0;background:none;resize:none;font-size:16.5px;padding:8px 6px;min-height:40px;max-height:160px}
+.vD .d-send{width:40px;height:40px;border-radius:13px;border:0;background:var(--ink);color:var(--bg);display:grid;place-items:center;flex:none}
+
+/* side pane */
+.vD .d-pane{width:440px;border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;overflow:auto;padding:16px 20px;gap:8px}
+.vD .d-panehead{display:flex;justify-content:space-between;align-items:center}
+.vD .d-panehead h3{margin:0;font-family:Newsreader,serif;font-weight:500;font-size:22px}
+
+/* library & course */
+.vD .d-top{display:flex;align-items:center;gap:18px;padding:16px 32px}
+.vD .d-top .sp{flex:1}
+.vD .d-page{max-width:980px;margin:0 auto;padding:6px 32px 110px}
+.vD .d-resume{background:var(--check-t);border-radius:26px;padding:32px 38px;display:grid;grid-template-columns:1fr auto;gap:16px 24px;align-items:end;margin:8px 0 42px}
+.vD .d-resume .k{color:var(--check);font-weight:700;font-size:15px}
+.vD .d-resume h1{font-family:Newsreader,serif;font-weight:500;font-size:56px;line-height:1.02;margin:4px 0 10px;letter-spacing:-.015em}
+.vD .d-resume .where{font-size:18px}
+.vD .d-resume .d-btn{font-size:19px;padding:15px 30px}
+.vD .d-h2{font-family:Newsreader,serif;font-weight:500;font-size:26px;margin:0 0 6px}
+.vD .d-row{display:grid;grid-template-columns:1fr auto 110px;gap:24px;align-items:center;padding:16px 8px;border-top:1px solid var(--line);cursor:pointer;border-radius:6px}
+.vD .d-row:hover{background:var(--surface)}
+.vD .d-row .t{font-family:Newsreader,serif;font-size:23px;line-height:1.2}
+.vD .d-row .w{color:var(--muted);font-size:15px}
+.vD .d-row .when{color:var(--muted);font-size:14.5px;text-align:right}
+.vD .d-new{display:flex;gap:14px;align-items:center;margin-top:32px;color:var(--muted)}
+.vD .d-course{max-width:1150px;margin:0 auto;padding:6px 32px 110px}
+.vD .d-course h1{font-family:Newsreader,serif;font-weight:500;font-size:56px;margin:0 0 6px;letter-spacing:-.015em;line-height:1.05}
+.vD .d-goal{color:var(--muted);font-size:20px;max-width:700px;font-family:Newsreader,serif;font-style:italic;margin:0}
+.vD .d-map{background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:16px 16px 6px;margin:24px 0 30px;overflow:auto}
+.vD .d-map g{cursor:pointer}
+.vD .d-legend{display:flex;gap:20px;flex-wrap:wrap;font-size:13.5px;color:var(--muted);padding:4px 10px 10px}
+.vD .d-legend span{display:flex;gap:7px;align-items:center}
+.vD .d-legend i{width:12px;height:12px;border-radius:50%;border:2.5px solid}
+.vD .d-udet{display:grid;grid-template-columns:1fr 280px;gap:44px}
+.vD .d-udet h2{font-family:Newsreader,serif;font-weight:500;font-size:34px;margin:0 0 4px}
+.vD .d-obj{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);font-size:16.5px}
+.vD .d-pill{margin-left:auto;font-size:13px;font-weight:700;padding:2px 10px;border-radius:999px;background:var(--line);color:var(--muted);white-space:nowrap}
+.vD .d-pill.p{background:color-mix(in srgb,var(--right) 16%,transparent);color:var(--right)}
+.vD .d-pill.w{background:var(--teach-t);color:var(--teach)}
+.vD .d-aside h4{margin:0 0 6px;font-size:15px}
+.vD .d-aside ul{margin:0 0 22px;padding-left:18px;color:var(--muted)}
 
 /* =====================================================================
    C. STAGE: one thing at a time. The current phase fills the screen in
@@ -441,21 +504,23 @@ const DETOUR = 'You were sure of this answer, so it may be a misunderstanding ra
 const SOURCE = {where:'analysis-notes.pdf, section 2.3, page 14', text:R`Let $f$ be defined on an open interval containing $c$, except possibly at $c$. Then $\lim_{x\to c} f(x) = L$ if for every $\varepsilon > 0$ there is a $\delta > 0$ such that $0 < |x-c| < \delta$ implies $|f(x) - L| < \varepsilon$.`};
 
 /* ------------------------------------------------------------------ state */
-const VARIANTS = ['A','B','C'];
-const NAMES = {A:'Folio', B:'Workbench', C:'Stage'};
+const VARIANTS = ['D','A','C'];
+const NAMES = {D:'Folio + Stage', A:'Folio', C:'Stage'};
 const VIEWS = ['library','course','session'];
 const PHASES = ['teach','discuss','check','graded'];
 const P = new URLSearchParams(location.search);
 const S = {
-  variant: VARIANTS.includes(P.get('variant')) ? P.get('variant') : 'A',
+  variant: VARIANTS.includes(P.get('variant')) ? P.get('variant') : 'D',
   view: VIEWS.includes(P.get('view')) ? P.get('view') : 'session',
   phase: PHASES.includes(P.get('phase')) ? P.get('phase') : 'check',
   conf: 'sure', answer: DEFAULT_ANSWER, reason: DEFAULT_REASON,
   eps: 2, mode: 'working', pane: 'artifact', unit: 'u3', overlay: null, showSource: false,
+  q: P.get('phase')==='graded' ? 2 : 1, pick: null, conf1: null, side: true, dpane: false, toBottom: false,
+  theme: (P.get('theme')==='dark' || (!P.get('theme') && matchMedia('(prefers-color-scheme: dark)').matches)) ? 'dark' : 'light',
 };
 function syncURL(){
   const u = new URL(location.href);
-  u.searchParams.set('variant', S.variant); u.searchParams.set('view', S.view); u.searchParams.set('phase', S.phase);
+  u.searchParams.set('variant', S.variant); u.searchParams.set('view', S.view); u.searchParams.set('phase', S.phase); u.searchParams.set('theme', S.theme);
   history.replaceState(null, '', u);
 }
 
@@ -483,17 +548,17 @@ function epsFig(c){
   let inner = ''; for (let i = 0; i <= 30; i++){ const x = 2 - d + 2*d*i/30; inner += (i ? 'L' : 'M') + X(x).toFixed(1) + ' ' + Y(x*x).toFixed(1); }
   const boxCol = ok ? c.good : c.bad;
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Graph of x squared near 2 with epsilon and delta bands" style="display:block;font-family:inherit">
-    <rect x="${pad}" y="${Y(4+eps)}" width="${W-2*pad}" height="${Y(4-eps)-Y(4+eps)}" fill="${c.eps}" opacity=".22"/>
-    <rect x="${X(2-d)}" y="${pad}" width="${X(2+d)-X(2-d)}" height="${H-2*pad}" fill="${c.delta}" opacity=".22"/>
-    <line x1="${pad}" x2="${W-pad}" y1="${Y(0)}" y2="${Y(0)}" stroke="${c.axis}" stroke-width="1"/>
-    <line x1="${X(1)}" x2="${X(1)}" y1="${pad}" y2="${H-pad}" stroke="${c.axis}" stroke-width=".5" stroke-dasharray="2 3"/>
-    <path d="${path}" fill="none" stroke="${c.curve}" stroke-width="1.6"/>
-    <path d="${inner}" fill="none" stroke="${boxCol}" stroke-width="3.2"/>
-    <rect x="${X(2-d)}" y="${Y(Math.min(4+eps, y1))}" width="${X(2+d)-X(2-d)}" height="${Y(Math.max(4-eps,y0))-Y(Math.min(4+eps,y1))}" fill="none" stroke="${boxCol}" stroke-width="1" stroke-dasharray="4 3"/>
-    <circle cx="${X(2)}" cy="${Y(4)}" r="3.5" fill="${c.bg}" stroke="${c.curve}" stroke-width="1.5"/>
-    <text x="${W-pad}" y="${Y(4+eps)-5}" text-anchor="end" font-size="11" fill="${c.text}">4 + ε</text>
-    <text x="${X(2+d)+4}" y="${H-pad-6}" font-size="11" fill="${c.text}">2 + δ</text>
-    <text x="${pad+2}" y="${pad+2}" font-size="11.5" fill="${boxCol}">${ok ? 'curve stays inside the box' : 'curve leaves the box'}</text>
+    <rect x="${pad}" y="${Y(4+eps)}" width="${W-2*pad}" height="${Y(4-eps)-Y(4+eps)}" style="fill:${c.eps};opacity:.2"/>
+    <rect x="${X(2-d)}" y="${pad}" width="${X(2+d)-X(2-d)}" height="${H-2*pad}" style="fill:${c.delta};opacity:.2"/>
+    <line x1="${pad}" x2="${W-pad}" y1="${Y(0)}" y2="${Y(0)}" style="stroke:${c.axis};stroke-width:1"/>
+    <line x1="${X(1)}" x2="${X(1)}" y1="${pad}" y2="${H-pad}" style="stroke:${c.axis};stroke-width:.5;stroke-dasharray:2 3"/>
+    <path d="${path}" style="fill:none;stroke:${c.curve};stroke-width:1.6"/>
+    <path d="${inner}" style="fill:none;stroke:${boxCol};stroke-width:3.2"/>
+    <rect x="${X(2-d)}" y="${Y(Math.min(4+eps, y1))}" width="${X(2+d)-X(2-d)}" height="${Y(Math.max(4-eps,y0))-Y(Math.min(4+eps,y1))}" style="fill:none;stroke:${boxCol};stroke-width:1;stroke-dasharray:4 3"/>
+    <circle cx="${X(2)}" cy="${Y(4)}" r="3.5" style="fill:${c.bg};stroke:${c.curve};stroke-width:1.5"/>
+    <text x="${W-pad}" y="${Y(4+eps)-5}" text-anchor="end" style="font-size:11px;fill:${c.text}">4 + ε</text>
+    <text x="${X(2+d)+4}" y="${H-pad-6}" style="font-size:11px;fill:${c.text}">2 + δ</text>
+    <text x="${pad+2}" y="${pad+2}" style="font-size:11.5px;fill:${boxCol}">${ok ? 'curve stays inside the box' : 'curve leaves the box'}</text>
   </svg>
   <div style="font-size:.82em;margin-top:6px;color:${c.text}">ε = ${eps.toFixed(2)}, δ = ${d.toFixed(3)}; largest |x² − 4| in the δ band is ${worst.toFixed(3)} ${ok ? '&lt;' : '&gt;'} ε</div>`;
 }
@@ -606,77 +671,137 @@ const A = {
   },
 };
 
-/* =================================================================== B: WORKBENCH */
-const B = {
-  top(){
-    const pi = Math.min(PHASES.indexOf(S.phase), 2);
-    const phases = S.view==='session' ? `<div class="phases">${['Teach','Discuss','Check'].map((p,i)=>`<span class="${i===pi?'now':i<pi?'past':''}">${p}</span>`).join('')}</div>` : '<span style="margin-left:auto"></span>';
-    const crumbs = S.view==='library' ? '<b>Library</b>' : `<span>${COURSE.title}</span>${S.view==='session'?`<span class="sep">/</span><span>${tx(R`ε–δ limits`)}</span><span class="sep">/</span><b>${tx(SEGMENTS[2].t)}</b>`:''}`;
-    return `<div class="b-top"><button class="logo" data-act="view:library">gauss</button><div class="crumbs">${crumbs}</div>${phases}
-      <div class="hint">${S.view==='session'?'<span><kbd>R</kbd> ready</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> confidence</span>':''}<span><kbd>⌘K</kbd> jump</span></div></div>`;
-  },
-  tree(){
-    const sorted = [...COURSE.units].sort((a,b)=>a.n-b.n);
-    return `<aside class="b-tree"><h5>${COURSE.title}</h5>${sorted.map(u=>{
-      let h = `<div class="tu ${u.s==='current'?'cur':''} ${u.s==='locked'?'locked':''}" data-act="unit:${u.id}"><span class="dot ${u.s}"></span>${tx(u.t)}</div>`;
-      if (u.s==='current') h += SEGMENTS.map((s,i)=>`<div class="ts ${s.s==='cur'?'cur':''}"><span class="dot ${s.s==='done'?'passed':s.s==='cur'?'current':''}"></span>${tx(s.t)}</div>` +
-        (s.s==='cur' ? OBJECTIVES.slice(2,3).map(o=>`<div class="to"><span class="dot ${at('graded')?'miss':'open'}"></span>${tx(o.t)}</div>`).join('') : '')).join('');
-      return h; }).join('')}</aside>`;
-  },
-  pane(){
-    const tabs = `<div class="tabs">${[['artifact','Artifact'],['source','Source'],['record','Record']].map(([k2,l])=>`<button data-act="pane:${k2}" class="${S.pane===k2?'on':''}">${l}</button>`).join('')}</div>`;
-    let body = '';
-    if (S.pane==='artifact') body = `<h4>${tx(R`ε–δ explorer`)}</h4><div class="sm">artifacts/eps-delta.html, made by the tutor in segment 3. Runs sandboxed.</div>
-      <div class="sandbox" id="fig">${epsFig({bg:'#1F2B28',axis:'#5B6C66',curve:'#E7E5DA',eps:'#8EC5E8',delta:'#F2CC60',good:'#9AD39A',bad:'#EF8F8A',text:'#9DA79F'})}</div>
-      ${epsControls('slider')}${modeToggle('toggle')}`;
-    if (S.pane==='source') body = `<h4>analysis-notes.pdf</h4><div class="sm">Section 2.3, page 14. Opened from citation [1].</div><div class="quote">${tx(SOURCE.text)}</div><div class="verified">✓ Quote matches the source text</div>`;
-    if (S.pane==='record') body = `<h4>Evidence, unit 4</h4><div class="sm">Every graded answer, newest last. Status is worked out from these rows.</div>
-      <table><tr><th>Date</th><th>Objective</th><th>Result</th><th>Conf.</th><th>Help</th></tr>
-      ${EVIDENCE.map(e=>`<tr><td>${e.d}</td><td>${e.o}</td><td class="ok">${e.r}</td><td>${e.c}</td><td>${e.h}</td></tr>`).join('')}
-      ${at('graded')?`<tr class="new"><td>Nov 13</td><td>Quadratic</td><td class="bad">incorrect</td><td>${confLabel(S.conf).toLowerCase()}</td><td>no</td></tr>`:''}</table>
-      ${at('graded')?'<div class="sm" style="margin-top:12px;color:var(--pink)">Confident miss: detour offered.</div>':''}`;
-    return `<aside class="b-pane">${tabs}<div class="pane-body">${body}</div></aside>`;
+/* =================================================================== D: FOLIO + STAGE (round 2) */
+const ICON = {
+  side:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg>',
+  clip:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 11.5l-8.2 8.2a5 5 0 01-7.1-7.1l8.5-8.5a3.3 3.3 0 014.7 4.7l-8.5 8.5a1.7 1.7 0 01-2.4-2.4l7.8-7.8"/></svg>',
+  send:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  moon:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>',
+  sun:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  back:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+  close:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+};
+const DPAL = {bg:'var(--surface)',axis:'var(--line2)',curve:'var(--ink)',eps:'var(--teach)',delta:'var(--check)',good:'var(--right)',bad:'var(--wrong)',text:'var(--muted)'};
+const Q1 = {t:R`With the cap $\delta \le 1$, what is the widest range $x$ can fall in when $0 < |x-2| < \delta$?`, opts:[R`$(1, 3)$`, R`$(1.5,\ 2.5)$`, R`$(2, 3)$`, R`$(1, 2)$`]};
+const HINT = {
+  teach:'The tutor is explaining. You can ask a question at any time.',
+  discuss:'Ask anything; nothing here is graded. Press Ready when you want the check.',
+  check:'Answer, then say how sure you are. You see the result after you submit.',
+  graded:'See where it went wrong, then choose what to do next.',
+};
+const PLACEHOLDER = {teach:'Ask a question at any time', discuss:'Ask anything about this', check:'Stuck? Ask for a hint', graded:'Reply to the tutor'};
+const cap = s => s[0].toUpperCase() + s.slice(1);
+
+function stn(s){
+  if (s==='retained' || s==='passed') return {f:'var(--right)', s:'var(--right)', t:'var(--on-fill)', l:'var(--right)'};
+  if (s==='current') return {f:'var(--teach)', s:'var(--teach)', t:'var(--on-fill)', l:'var(--teach)'};
+  if (s==='open') return {f:'var(--surface)', s:'var(--ink)', t:'var(--ink)', l:'var(--ink)'};
+  return {f:'var(--surface)', s:'var(--line2)', t:'var(--muted)', l:'var(--muted)'};
+}
+function dEdges(L, dir, w){ return edges(L.pos, dir, 'e').replace(/class="e"/g, `style="fill:none;stroke:var(--track);stroke-width:${w};stroke-linecap:round"`); }
+function dBigMap(){
+  const L = layout('h', 230, 110, 90);
+  const nodes = COURSE.units.map(u => { const p = L.pos[u.id], c = stn(u.s), sel = u.id===S.unit;
+    return `<g data-act="unit:${u.id}"><title>${u.t}</title>${sel?`<circle cx="${p.x}" cy="${p.y}" r="24" style="fill:var(--teach);opacity:.16"/>`:''}${u.s==='retained'?`<circle cx="${p.x}" cy="${p.y}" r="19.5" style="fill:none;stroke:var(--right);stroke-width:1.5"/>`:''}
+      <circle cx="${p.x}" cy="${p.y}" r="13" style="fill:${c.f};stroke:${c.s};stroke-width:4"/>
+      <text x="${p.x}" y="${p.y+41}" text-anchor="middle" style="font:${sel?700:400} 15px 'Atkinson Hyperlegible',sans-serif;fill:var(--ink)">${u.t}</text>
+      <text x="${p.x}" y="${p.y+59}" text-anchor="middle" style="font:12.5px 'Atkinson Hyperlegible',sans-serif;fill:${c.l}">${STATUS[u.s]}</text></g>`; }).join('');
+  return `<svg viewBox="0 0 ${L.w} ${L.h+40}" width="100%" style="display:block;min-width:900px">${dEdges(L,'h',6)}${nodes}</svg>`;
+}
+function dMiniMap(){
+  const L = layout('v', 50, 58, 20);
+  const nodes = COURSE.units.map(u => { const p = L.pos[u.id], c = stn(u.s);
+    return `<g data-act="unitmap:${u.id}"><title>${u.n}. ${u.t}: ${STATUS[u.s]}</title>${u.s==='current'?`<circle cx="${p.x}" cy="${p.y}" r="17" style="fill:var(--teach);opacity:.2"/>`:''}
+      <circle cx="${p.x}" cy="${p.y}" r="11" style="fill:${c.f};stroke:${c.s};stroke-width:2.5"/>
+      <text x="${p.x}" y="${p.y+4.5}" text-anchor="middle" style="font:700 12px 'Atkinson Hyperlegible',sans-serif;fill:${c.t}">${u.n}</text></g>`; }).join('');
+  return `<svg viewBox="0 0 ${L.w} ${L.h}" width="${L.w}" aria-label="Course map">${dEdges(L,'v',3.5)}${nodes}</svg>`;
+}
+function dLine(units, r=5, gap=22){
+  const w = (units.length-1)*gap + 2*r + 8, h = 2*r + 8, y = h/2;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><line x1="${r+4}" x2="${w-r-4}" y1="${y}" y2="${y}" style="stroke:var(--track);stroke-width:3;stroke-linecap:round"/>${units.map((s,i)=>{ const c = stn(s); return `<circle cx="${r+4+i*gap}" cy="${y}" r="${s==='current'?r+1.5:r}" style="fill:${c.f};stroke:${c.s};stroke-width:2"/>`; }).join('')}</svg>`;
+}
+function dThemeBtn(){ return `<button class="d-icon" data-act="theme" title="Switch to ${S.theme==='dark'?'light':'dark'} mode">${S.theme==='dark'?ICON.sun:ICON.moon}</button>`; }
+function dConf(cur){ return `<span class="d-lab">How sure are you?</span><div class="d-conf">${CONFS.map((c,i)=>`<button data-act="conf:${c}" class="${cur===c?'on':''}">${confLabel(c)}<kbd>${i+1}</kbd></button>`).join('')}</div>`; }
+function dFigure(){
+  if (S.dpane) return `<div class="d-figmini"><span>${tx(R`Figure: the ε–δ explorer is open beside the chat.`)}</span><button class="d-tl" data-act="dpane-close">Close it</button></div>`;
+  return `<div class="d-fig"><div class="d-fighead"><b>${tx(R`ε–δ explorer`)}</b><button class="d-tl" data-act="dpane">Open beside the chat</button></div>
+    ${epsFig(DPAL)}${epsControls('d-slider')}${modeToggle('d-seg2')}</div>`;
+}
+
+const D = {
+  side(){
+    const ph = S.phase==='graded' ? 'check' : S.phase, pi = ['teach','discuss','check'].indexOf(ph);
+    return `<aside class="d-side"><div class="d-sidetop"><span class="d-word">Gauss</span>${dThemeBtn()}<button class="d-icon" data-act="side" title="Hide the sidebar">${ICON.side}</button></div>
+      <button class="d-back" data-act="view:library">${ICON.back}Library</button>
+      <div class="d-ctitle serif">${COURSE.title}</div><div class="d-cmeta">2 of 9 units passed</div>
+      <div class="d-mini">${dMiniMap()}</div><button class="d-link" data-act="view:course">Open the full map</button>
+      <div class="d-sec">${tx(R`Unit 4: ε–δ limits`)}</div>
+      <ol class="d-segs">${SEGMENTS.map(s=>`<li class="${s.s}">${tx(s.t)}${s.s==='cur'?`<div class="d-subph">${['Teach','Discuss','Check'].map((p,j)=>`<span class="${j===pi?'now':''}">${p}</span>`).join('')}</div>`:''}</li>`).join('')}</ol>
+      <div class="d-sidelinks"><button data-act="stub">Notes</button><button data-act="stub">Sources</button><button data-act="stub">Style</button></div></aside>`;
   },
   session(){
-    const msg = (who, html) => `<div class="msg ${who}"><div class="who">${who==='you'?'you':'tutor'}</div><div class="body">${html}</div></div>`;
-    let log = msg('tutor', TEACH.map((t,i)=>`<p>${tx(t).replace('definition','definition <span class="cite" data-act="pane:source">[1]</span>')}${S.phase==='teach'&&i===3?'<span class="caret"></span>':''}</p>`).join('') +
-      `<p><span class="cite" data-act="pane:artifact">Open the ε–δ explorer in the side pane</span></p>`);
-    if (at('discuss')) log += `<div class="event">teach finished, discussion open</div>` + DISCUSS.map(m=>msg(m.who, `<p>${tx(m.t)}</p>`)).join('');
-    if (S.phase==='check') log += `<div class="event">you pressed ready</div><div class="msg"><div class="who">check</div><div class="qbox"><div class="qh"><span>Question 1 of 1</span><span>${tx(R`objective: quadratics by capping δ`)}</span></div>
-      <div class="q">${tx(QUESTION)}</div>
-      <label class="fl" for="ans">answer (LaTeX or plain)</label><input id="ans" class="tex-in" value="${esc(S.answer)}" autocomplete="off"><div class="preview" id="ans-preview">${k(S.answer,true)}</div>
-      <span class="fl">confidence</span><div class="conf">${CONFS.map((c,i)=>`<button data-act="conf:${c}" class="${S.conf===c?'on':''}"><kbd>${i+1}</kbd>${confLabel(c)}</button>`).join('')}</div>
-      <label class="fl" for="reason">reasoning (optional)</label><textarea id="reason" class="reason">${esc(S.reason)}</textarea>
-      <div class="row-end"><button class="bbtn" data-act="submit">Submit <kbd>⌘⏎</kbd></button></div></div></div>`;
-    if (S.phase==='graded') log += `<div class="event">you pressed ready</div><div class="grade"><div class="gh">✗ Incorrect <span>graded by rubric, you said ${confLabel(S.conf).toLowerCase()}</span></div><div class="ans">${k(S.answer)}</div><div class="flaw">${tx(FLAW)}</div></div>
-      ${msg('tutor', `<p>${tx(FEEDBACK)}</p>`)}
-      <div class="offer"><p>${DETOUR}</p><div style="display:flex;gap:8px"><button class="bbtn" data-act="detour">Start detour <kbd>D</kbd></button><button class="bbtn ghost" data-act="next">Move on</button><button class="bbtn ghost" data-act="dispute">Dispute grade</button></div></div>`;
-    const composer = S.phase==='discuss'
-      ? `<div class="composer"><input placeholder="Ask anything. Nothing here is graded."><button class="bbtn" data-act="ready">Ready for check <kbd>R</kbd></button></div>`
-      : `<div class="composer off"><input placeholder="${S.phase==='teach'?'The tutor is teaching. You can ask once it finishes.':S.phase==='check'?'Answer the question above first.':'Reply to the tutor'}" ${S.phase==='graded'?'':'disabled'}><button class="bbtn ghost" data-act="stub">Override</button></div>`;
-    return `${B.top()}<div class="b-body">${B.tree()}<main class="b-chat"><div class="scroll">${log}</div>${composer}</main>${B.pane()}</div>`;
+    const ph = S.phase==='graded' ? 'check' : S.phase, pi = ['teach','discuss','check'].indexOf(ph);
+    const steps = ['teach','discuss','check'].map((p,i)=>`<span class="d-step ${i===pi?'now':i<pi?'past':''}" style="--c:var(--${p})"><i>${i<pi?'✓':i+1}</i>${cap(p)}</span>`).join('<span class="d-steplink"></span>');
+    const head = `<div class="d-head"><div class="d-headl">${S.side?'':`<button class="d-icon" data-act="side" title="Show the sidebar">${ICON.side}</button>`}<div><div class="d-crumb">${tx(R`Unit 4, ε–δ limits. Segment 3 of 4`)}</div><h1 class="serif">${tx(SEGMENTS[2].t)}</h1></div></div>
+      <div><div class="d-steps">${steps}</div><div class="d-hint">${HINT[S.phase]}</div></div></div>`;
+
+    let c = `<p class="tut">${tx(TEACH[0]).replace('definition', 'definition<button class="d-cite" data-act="cite" title="Show the source">1</button>')}</p>`;
+    if (S.showSource) c += `<div class="d-quote"><div class="q">${tx(SOURCE.text)}</div>${SOURCE.where}. <span class="ok">✓ Matches the source</span></div>`;
+    c += `<p class="tut">${tx(TEACH[1])}</p><p class="tut">${tx(TEACH[2])}</p>${dFigure()}<p class="tut">${tx(TEACH[3])}${S.phase==='teach'?'<span class="caret"></span>':''}</p>`;
+    if (at('discuss')) c += `<div class="d-event">Discussion open. Nothing here is graded.</div>` + DISCUSS.map(m => m.who==='you' ? `<div class="d-you">${tx(m.t)}</div>` : `<p class="tut">${tx(m.t)}</p>`).join('');
+    if (at('check')){
+      c += `<div class="d-event">You pressed Ready</div>`;
+      const pick = S.pick ?? 0, ok1 = pick===0, conf1 = S.conf1 ?? 'fairly';
+      if (S.phase==='check' && S.q===1){
+        const ready = S.pick!=null && S.conf1;
+        c += `<div class="d-q"><div class="d-qh"><span>Question 1 of 2</span><span>Pick one</span></div><div class="d-qt serif">${tx(Q1.t)}</div>
+          <div class="d-opts">${Q1.opts.map((o,i)=>`<button class="d-opt ${S.pick===i?'on':''}" data-act="pick:${i}"><span class="key">${'ABCD'[i]}</span>${tx(o)}</button>`).join('')}</div>
+          ${dConf(S.conf1)}<details class="d-why"><summary>Add your reasoning (optional)</summary><textarea class="reason"></textarea></details>
+          <div class="d-qf"><span>${ready?'You can still change your answer.':'Pick an answer and how sure you are.'}</span><button class="d-btn check" data-act="submit" ${ready?'':'disabled'}>Submit answer</button></div></div>`;
+      } else {
+        c += `<div class="d-done ${ok1?'ok':'bad'}"><span class="mark">${ok1?'✓':'✗'}</span><span class="a">${tx(Q1.opts[pick])}</span><span>Question 1. ${ok1?'Correct':'Incorrect'}. You said ${confLabel(conf1).toLowerCase()}.</span></div>
+          <p class="tut">${ok1 ? tx(R`Right. The cap keeps $x$ within $1$ of $2$. Now put that to work.`) : tx(R`Not quite. With $\delta$ up to $1$, $x$ can be anywhere within $1$ of $2$, which is $(1, 3)$. Keep that in mind for this one.`)}</p>`;
+        if (S.phase==='check'){
+          c += `<div class="d-q"><div class="d-qh"><span>Question 2 of 2</span><span>Type math as LaTeX or plain text</span></div><div class="d-qt serif">${tx(QUESTION)}</div>
+            <input id="ans" class="tex-in" value="${esc(S.answer)}" autocomplete="off" aria-label="Your answer"><div class="preview" id="ans-preview">${k(S.answer,true)}</div>
+            ${dConf(S.conf)}<details class="d-why" ${S.reason?'open':''}><summary>Add your reasoning (optional)</summary><textarea id="reason" class="reason">${esc(S.reason)}</textarea></details>
+            <div class="d-qf"><span>${S.conf?'You can still change your answer.':'Say how sure you are to submit.'}</span><button class="d-btn check" data-act="submit" ${S.conf?'':'disabled'}>Submit answer</button></div></div>`;
+        } else {
+          c += `<div class="d-q graded"><div class="d-qh"><span>Question 2 of 2. Not quite</span><span>Graded by rubric</span></div><div class="d-qt serif">${tx(QUESTION)}</div>
+            <div class="d-yours"><span class="x">✗</span>${k(S.answer)}<span class="muted">Your answer. You said ${confLabel(S.conf||'sure').toLowerCase()}.</span></div>
+            <div class="d-flaw"><span class="d-lab">Where it went wrong</span><div class="redpen">${tx(FLAW)}</div></div></div>
+            <p class="tut">${tx(FEEDBACK)} <button class="d-tl" data-act="seefig">See it in the explorer</button></p>
+            <div class="d-detour"><h3>Trace your reasoning?</h3><p>${(S.conf||'sure')==='sure' ? DETOUR : 'Want to walk through your steps with the tutor before moving on? It usually finds the problem faster than another try.'}</p>
+            <div class="d-acts"><button class="d-btn" data-act="detour">Start a detour</button><button class="d-tl" data-act="next">Move on</button><button class="d-tl" data-act="dispute">Dispute this grade</button></div></div>`;
+        }
+      }
+    }
+    const action = S.phase==='discuss' ? `<div class="d-action"><span>The check is a couple of questions on capping δ.</span><button class="d-btn check" data-act="ready">I'm ready for the check<kbd>R</kbd></button></div>`
+      : S.phase==='check' ? `<div class="d-action"><span>Asking the tutor now counts as help on this question.</span></div>` : '';
+    const foot = `<div class="d-foot"><div class="d-footin">${action}<div class="d-composer"><button class="d-icon" data-act="stub" title="Attach a file or photo">${ICON.clip}</button><textarea rows="1" placeholder="${PLACEHOLDER[S.phase]}" aria-label="Message the tutor"></textarea><button class="d-send" data-act="stub" title="Send">${ICON.send}</button></div></div></div>`;
+    const pane = S.dpane ? `<aside class="d-pane"><div class="d-panehead"><h3>${tx(R`ε–δ explorer`)}</h3><button class="d-icon" data-act="dpane-close" title="Close">${ICON.close}</button></div>
+      <div class="muted" style="font-size:14px">Made by the tutor for this segment. Runs in a sandbox.</div>${epsFig(DPAL)}${epsControls('d-slider')}${modeToggle('d-seg2')}</aside>` : '';
+    return `<div class="d-app" style="--phc:var(--${ph})">${S.side?D.side():'<div></div>'}<main class="d-main">${head}<div class="d-scroll"><div class="d-col">${c}</div></div>${foot}</main>${pane}</div>`;
   },
+  top(back){ return `<div class="d-top"><span class="d-word">Gauss</span>${back?`<button class="d-back" data-act="view:library">${ICON.back}Library</button>`:''}<span class="sp"></span>${dThemeBtn()}</div>`; },
   library(){
-    const row = c => `<tr class="click" data-act="${c.id==='calc'?'view:course':'stub'}"><td style="font-weight:600;font-size:15px">${c.t}</td><td><div class="bars">${c.units.map(s=>`<i class="${s}"></i>`).join('')}</div></td><td>${c.passed}/${c.total}</td><td>${c.phase==='none'?`<span class="pill ${c.id==='hegel'?'y':''}">${c.where}</span>`:tx(c.where)}</td><td style="color:var(--dim)">${c.when}</td></tr>`;
-    return `${B.top()}<div class="lib"><div class="cmd"><kbd>⌘K</kbd><input placeholder="Open a course, or describe something new to learn"></div>
-      <table><tr><th>Course</th><th>Units</th><th>Passed</th><th>Where you stopped</th><th>Last</th></tr>${LIBRARY.map(row).join('')}
-      <tr><td colspan="5" style="border:0;padding-top:28px"><h5 style="margin:0">One-off topics</h5></td></tr>${ONEOFFS.map(row).join('')}</table></div>`;
+    const row = c => `<div class="d-row" data-act="${c.id==='calc'?'view:course':'stub'}"><div><div class="t">${c.t}</div><div class="w">${tx(c.where)}</div></div><div>${dLine(c.units)}</div><div class="when">${c.when}</div></div>`;
+    const top = LIBRARY[0];
+    return `<div>${D.top(false)}<div class="d-page">
+      <div class="d-resume"><div><div class="k">Pick up where you left off</div><h1>${top.t}</h1><div class="where">${tx(R`<b>ε–δ limits</b>, segment 3 of 4. A check is waiting.`)}</div><div style="margin-top:14px">${dLine(top.units, 7, 30)}</div></div><button class="d-btn check" data-act="view:session">Resume</button></div>
+      <h2 class="d-h2">Courses</h2>${LIBRARY.slice(1).map(row).join('')}
+      <h2 class="d-h2" style="margin-top:36px">One-off topics</h2>${ONEOFFS.map(row).join('')}
+      <div class="d-new"><button class="d-btn" data-act="stub">Learn something new</button><span>A whole course, or a single question.</span></div></div></div>`;
   },
   course(){
-    const L = layout('h', 210, 92, 96);
-    const col = s => ({retained:'#9AD39A',passed:'#9AD39A',current:'#F2CC60',open:'#E7E5DA',locked:'#5B6C66'}[s]);
-    const node = u => { const p = L.pos[u.id], w = 168, h = 50, sel = u.id===S.unit;
-      return `<g data-act="unit:${u.id}" style="cursor:pointer"><rect x="${p.x-w/2}" y="${p.y-h/2}" width="${w}" height="${h}" rx="6" fill="${sel?'#2E3E39':'#25332F'}" stroke="${col(u.s)}" stroke-width="${sel?2:1.2}" ${u.s==='locked'?'stroke-dasharray="4 3"':''}/>
-        <text x="${p.x-w/2+12}" y="${p.y-4}" font-size="13" fill="#E7E5DA" font-family="Recursive">${u.t.length>21?u.t.slice(0,20)+'…':u.t}</text>
-        <text x="${p.x-w/2+12}" y="${p.y+14}" font-size="11" fill="${col(u.s)}" font-family="Recursive">${STATUS[u.s].toLowerCase()}</text></g>`; };
-    const svg = `<svg viewBox="0 0 ${L.w} ${L.h}" width="${L.w}" style="display:block">${edges(L.pos,'h','e')}${COURSE.units.map(node).join('')}</svg>`.replace(/class="e"/g,'fill="none" stroke="#4A5C56" stroke-width="1.4"');
     const u = COURSE.units.find(x=>x.id===S.unit);
-    const detail = `<aside class="b-pane"><div class="tabs"><button class="on">Unit</button><button data-act="stub">Notes</button><button data-act="stub">Sources</button></div><div class="pane-body ud">
-      <h3>${tx(u.t)}</h3><div class="goal">${tx(u.g)}</div>
-      <div class="sm">Needs: ${u.deps.length?u.deps.map(d=>COURSE.units.find(x=>x.id===d).t).join(', '):'nothing'}</div>
-      ${u.id==='u3'?`<h4 style="margin-top:14px">Objectives</h4><ul>${OBJECTIVES.map(o=>`<li><span class="dot ${o.s==='passed'?'passed':o.s==='working'?'current':''}"></span>${tx(o.t)}</li>`).join('')}</ul><button class="bbtn" data-act="view:session">Resume segment 3</button>`
-        : `<div class="sm" style="margin-top:14px">Objectives are planned when the unit starts.</div>${u.s==='open'?'<button class="bbtn" data-act="stub">Start unit</button>':''}`}</div></aside>`;
-    return `${B.top()}<div class="b-body">${B.tree()}<main class="graph">${svg}</main>${detail}</div>`;
+    const leg = [['retained','Passed'],['current','In progress'],['open','Ready to start'],['locked','Needs earlier units']].map(([s,l])=>{ const c = stn(s); return `<span><i style="background:${c.f};border-color:${c.s}"></i>${l}</span>`; }).join('');
+    return `<div>${D.top(true)}<div class="d-course"><h1>${COURSE.title}</h1><p class="d-goal">${COURSE.goal}</p>
+      <div class="d-map">${dBigMap()}<div class="d-legend">${leg}<span style="margin-left:auto">Lines show which units come first. Click a unit for details.</span></div></div>
+      <div class="d-udet"><div><div class="muted" style="font-weight:700;font-size:14.5px">Unit ${u.n}. ${STATUS[u.s]}</div><h2>${tx(u.t)}</h2><p class="muted" style="margin-top:0;font-size:17px">${tx(u.g)}</p>
+        ${u.id==='u3' ? OBJECTIVES.map(o=>`<div class="d-obj">${tx(o.t)}<span class="d-pill ${o.s==='passed'?'p':o.s==='working'?'w':''}">${o.s==='working'?'in progress':o.s}</span></div>`).join('') + `<div class="d-acts" style="margin-top:22px"><button class="d-btn check" data-act="view:session">Resume segment 3</button></div>`
+          : `<p class="muted">The tutor plans this unit's objectives when you start it, using what you know by then.</p>${u.s==='open'?'<button class="d-btn" data-act="stub">Start this unit</button>':''}`}</div>
+      <div class="d-aside"><h4>Notes</h4><ul><li>Functions and notation</li><li>Limits, intuitively</li></ul><h4>Sources</h4><ul><li>analysis-notes.pdf</li></ul><h4>Teaching style</h4><ul style="list-style:none;padding:0"><li>Short explanations, many small proofs, one worked example per idea.</li></ul><button class="d-tl" data-act="stub">Change the style</button></div></div></div></div>`;
   },
 };
 
@@ -746,19 +871,29 @@ const C = {
 };
 
 /* ------------------------------------------------------------------ render & events */
-const IMPL = {A, B, C};
+const IMPL = {D, A, C};
 function render(){
   const root = document.getElementById('root');
+  const sc = document.querySelector('.d-scroll'), keep = sc ? sc.scrollTop : null;
   root.className = 'v' + S.variant;
+  root.dataset.theme = S.theme;
   root.innerHTML = IMPL[S.variant][S.view]();
-  const phaseBtns = S.view==='session' ? `<div class="grp">${PHASES.map(p=>`<button data-act="phase:${p}" class="${S.phase===p?'on':''}">${p}</button>`).join('')}</div>` : '';
-  document.getElementById('bar').innerHTML = `<span class="tag" title="Press H to hide this bar">PROTOTYPE</span><button class="arrow" data-act="prev" aria-label="Previous variant">‹</button><span class="lbl">${S.variant} · ${NAMES[S.variant]}</span><button class="arrow" data-act="next-variant" aria-label="Next variant">›</button>
-    <div class="grp">${VIEWS.map(v=>`<button data-act="view:${v}" class="${S.view===v?'on':''}">${v}</button>`).join('')}</div>${phaseBtns}`;
+  const sc2 = document.querySelector('.d-scroll');
+  if (sc2) sc2.scrollTop = (S.toBottom || keep == null) ? sc2.scrollHeight : keep;
+  S.toBottom = false;
+  document.getElementById('bar').innerHTML = `<span class="tag" title="Press H to hide this bar">PROTOTYPE</span><button class="arrow" data-act="prev" aria-label="Previous variant">‹</button><span class="lbl">${S.variant} ${NAMES[S.variant]}</span><button class="arrow" data-act="next-variant" aria-label="Next variant">›</button>
+    <select id="sel-view" aria-label="View">${VIEWS.map(v=>`<option ${S.view===v?'selected':''}>${v}</option>`).join('')}</select>${S.view==='session'?`<select id="sel-phase" aria-label="Phase">${PHASES.map(p=>`<option ${S.phase===p?'selected':''}>${p}</option>`).join('')}</select>`:''}`;
   document.title = `Gauss ${S.variant} ${NAMES[S.variant]}`;
-  const sc = document.querySelector('.vB .scroll'); if (sc) sc.scrollTop = sc.scrollHeight;
   syncURL();
 }
 function cycle(d){ S.variant = VARIANTS[(VARIANTS.indexOf(S.variant) + d + VARIANTS.length) % VARIANTS.length]; S.overlay = null; render(); window.scrollTo(0,0); }
+function setPhase(v){
+  S.phase = v; S.mode = v==='graded' ? 'yours' : 'working'; if (v==='graded') S.eps = 4;
+  if (v==='check'){ S.q = 1; S.pick = null; S.conf1 = null; }
+  if (v==='graded') S.q = 2;
+  S.toBottom = true; render();
+}
+function setConf(v){ if (S.variant==='D' && S.phase==='check' && S.q===1) S.conf1 = v; else S.conf = v; render(); }
 
 document.addEventListener('click', e => {
   if (e.target.closest('[data-stop]') && !e.target.closest('[data-act]')) return;
@@ -768,32 +903,45 @@ document.addEventListener('click', e => {
   if (a==='prev') return cycle(-1);
   if (a==='next-variant') return cycle(1);
   if (a==='view'){ S.view = v; S.overlay = null; render(); return window.scrollTo(0,0); }
-  if (a==='phase'){ S.phase = v; if (v!=='graded') S.mode='working'; render(); return; }
-  if (a==='conf'){ S.conf = v; render(); return; }
-  if (a==='ready'){ S.phase = 'check'; render(); return; }
-  if (a==='submit'){ S.phase = 'graded'; S.mode = 'yours'; S.eps = 4; render(); return; }
-  if (a==='pane'){ S.pane = v; render(); return; }
+  if (a==='phase') return setPhase(v);
+  if (a==='conf') return setConf(v);
+  if (a==='pick'){ S.pick = +v; render(); return; }
+  if (a==='ready') return setPhase('check');
+  if (a==='submit'){
+    if (S.variant==='D' && S.phase==='check' && S.q===1){ if (S.pick==null || !S.conf1) return; S.q = 2; S.toBottom = true; render(); return; }
+    S.phase = 'graded'; S.mode = 'yours'; S.eps = 4; S.toBottom = true; render(); return;
+  }
   if (a==='unit'){ S.unit = v; render(); return; }
+  if (a==='unitmap'){ S.unit = v; S.view = 'course'; render(); return window.scrollTo(0,0); }
   if (a==='mode'){ S.mode = v; render(); return; }
   if (a==='overlay'){ S.overlay = 'fig'; render(); return; }
   if (a==='overlay-close'){ S.overlay = null; render(); return; }
-  if (a==='cite'){ if (S.variant==='B'){ S.pane='source'; } else { S.showSource = !S.showSource; } render(); return; }
+  if (a==='cite'){ S.showSource = !S.showSource; render(); return; }
+  if (a==='side'){ S.side = !S.side; render(); return; }
+  if (a==='theme'){ S.theme = S.theme==='dark' ? 'light' : 'dark'; render(); return; }
+  if (a==='dpane'){ S.dpane = true; render(); return; }
+  if (a==='dpane-close'){ S.dpane = false; render(); return; }
+  if (a==='seefig'){ S.dpane = true; S.mode = 'yours'; S.eps = 4; render(); return; }
   if (a==='detour') return toast('A detour would start here: the tutor asks you to walk through your steps.');
   if (a==='dispute') return toast('A dispute form would open here. Not in the prototype.');
   if (a==='next') return toast('Would move to segment 4, recorded as a miss on this objective.');
   toast('Not in the prototype.');
 });
+document.addEventListener('change', e => {
+  if (e.target.id==='sel-view'){ S.view = e.target.value; S.overlay = null; render(); window.scrollTo(0,0); }
+  if (e.target.id==='sel-phase') setPhase(e.target.value);
+});
 document.addEventListener('input', e => {
   if (e.target.id==='ans'){ S.answer = e.target.value; const p = document.getElementById('ans-preview'); if (p) p.innerHTML = k(S.answer, true); }
   if (e.target.id==='reason'){ S.reason = e.target.value; }
   if (e.target.id==='eps'){ S.eps = +e.target.value; refreshFig(); }
+  if (e.target.matches && e.target.matches('.d-composer textarea')){ e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; }
 });
 function refreshFig(){
   const svgHost = document.querySelector('#root svg[aria-label^="Graph"]');
   if (!svgHost) return;
-  const host = svgHost.parentElement;
-  const pal = {A:{bg:'#fff',axis:'#9AA3AE',curve:'#1D2433',eps:'#24477A',delta:'#8A6D1E',good:'#2E6B4E',bad:'#C2362B',text:'#5B6475'},
-    B:{bg:'#1F2B28',axis:'#5B6C66',curve:'#E7E5DA',eps:'#8EC5E8',delta:'#F2CC60',good:'#9AD39A',bad:'#EF8F8A',text:'#9DA79F'},
+  const pal = {D:DPAL,
+    A:{bg:'#fff',axis:'#9AA3AE',curve:'#1D2433',eps:'#24477A',delta:'#8A6D1E',good:'#2E6B4E',bad:'#C2362B',text:'#5B6475'},
     C:{bg:'#fff',axis:'#B8BDCB',curve:'#171A26',eps:'#3F51D9',delta:'#B86E00',good:'#1E8F4F',bad:'#C93636',text:'#5F6679'}}[S.variant];
   // replace only the svg and its caption line so the slider keeps focus
   const caption = svgHost.nextElementSibling;
@@ -803,13 +951,14 @@ function refreshFig(){
 }
 document.addEventListener('keydown', e => {
   const t = e.target;
-  if (t.closest && (t.closest('input,textarea,[contenteditable]'))) return;
+  if (t.closest && t.closest('input,textarea,select,[contenteditable]')) return;
   if (e.key==='h' || e.key==='H'){ const b = document.getElementById('bar'); b.style.display = b.style.display==='none' ? '' : 'none'; return; }
   if (e.key==='ArrowLeft') return cycle(-1);
   if (e.key==='ArrowRight') return cycle(1);
   if (S.view!=='session') return;
-  if (S.phase==='check' && ['1','2','3'].includes(e.key)){ S.conf = CONFS[+e.key-1]; render(); }
-  if (S.phase==='discuss' && (e.key==='r' || e.key==='R')){ S.phase='check'; render(); }
+  if (S.phase==='check' && ['1','2','3'].includes(e.key)) return setConf(CONFS[+e.key-1]);
+  if (S.variant==='D' && S.phase==='check' && S.q===1 && 'abcd'.includes(e.key.toLowerCase()) && e.key.length===1){ S.pick = 'abcd'.indexOf(e.key.toLowerCase()); render(); return; }
+  if (S.phase==='discuss' && (e.key==='r' || e.key==='R')) return setPhase('check');
   if (e.key==='Escape' && S.overlay){ S.overlay=null; render(); }
 });
 render();
