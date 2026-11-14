@@ -1,0 +1,112 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 1.0, piece 1: reading and chat. SETTLED.
+  Question: what should reading the tutor's text and talking to it look like?
+
+  Round 1 (2026-11-13): three layouts (Thread, Page, Split) times three looks
+  (Slate, Night, Lamp). The user picked Thread and Night's type, and asked for
+  Catppuccin-style colour.
+  Round 2: Thread in the Catppuccin dark flavours. The user picked Frappé,
+  mauve accent, colour in the text. That look now lives in base.css and the
+  options were removed. See docs/decisions.md.
+
+  Everything here is simulated. There is no backend; replies to what you type
+  are canned.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 1: reading and chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const LESSON = String.raw`
+<h1>The chain rule</h1>
+<p>Most functions you meet are built by feeding one function into another. Take $h(x) = \sin(x^2)$: first square $x$, then take the sine of the result. The chain rule tells you how fast $h$ changes, given how fast each step changes.</p>
+$$\frac{d}{dx}\,f\bigl(g(x)\bigr) = f'\bigl(g(x)\bigr)\cdot g'(x)$$
+<p>Read it from the outside in. Differentiate the <strong>outer function</strong> and leave its input alone, then multiply by the derivative of the <strong>inner function</strong>.</p>
+<h2>Working through $\sin(x^2)$</h2>
+<p>The outer function is $f(u) = \sin u$, so $f'(u) = \cos u$. The inner function is $g(x) = x^2$, so $g'(x) = 2x$. Put them together:</p>
+$$h'(x) = \cos(x^2)\cdot 2x = 2x\cos(x^2)$$
+<h2>Why the rates multiply</h2>
+<p>Think of gears. If $u$ turns three times as fast as $x$, and $y$ turns twice as fast as $u$, then $y$ turns six times as fast as $x$. Leibniz's notation says exactly this:</p>
+$$\frac{dy}{dx} = \frac{dy}{du}\cdot\frac{du}{dx}$$
+<p>The one thing to watch is where each rate is measured. The outer rate $f'$ is taken at $g(x)$, the value the outer function actually receives, not at $x$.</p>`;
+
+const turns = [
+  {who:'you', html:String.raw`Why isn't the answer just $\cos(2x)$? I'd have differentiated the inside and taken the cosine of that.`},
+  {who:'tutor', html:String.raw`<p>That would answer a different question. $\cos(2x)$ is how fast the sine changes when its input is $2x$. But in $\sin(x^2)$ the sine never sees $2x$. It sees $x^2$.</p><p>Try $x = 1$. The sine is being evaluated at $1^2 = 1$, so its rate there is $\cos(1) \approx 0.54$. Meanwhile the inside is moving at $2x = 2$. Multiply them: $h'(1) \approx 1.08$. Your version gives $\cos(2) \approx -0.42$, which says $h$ is falling at $x = 1$ when it is in fact rising.</p>`},
+  {who:'you', html:String.raw`So $2x$ is how fast the input to the sine is moving?`},
+  {who:'tutor', html:String.raw`<p>Yes. $2x$ is the speed of the inside, and $\cos(x^2)$ is how sensitive the sine is at the spot it has reached. Speed times sensitivity gives the overall rate.</p>`}
+];
+
+const CANNED = [
+  [String.raw`This reply is simulated. The real tutor will answer what you asked.`,
+   String.raw`It is here so you can see how a longer exchange reads, with a little math for spacing: $(e^{3x})' = 3e^{3x}$.`],
+  [String.raw`Another simulated reply, a short one this time.`]
+];
+let cannedAt = 0;
+
+/* ---------------- the thread ---------------- */
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const app = document.getElementById('app');
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const turnHtml = t => t.who === 'you' ? `<div class="th-you">${t.html}</div>` : `<div class="th-tutor prose">${t.html}</div>`;
+
+app.innerHTML = `<div class="th"><div class="th-scroll"><div class="th-col"><div class="prose">${LESSON}</div><div id="turns">${turns.map(turnHtml).join('')}</div></div></div>
+  <div class="th-foot"><form class="box" id="form"><textarea id="msg" rows="1" placeholder="Ask about this lesson" aria-label="Message"></textarea><button class="send" id="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+math(app);
+
+function addTurn(t){
+  const box = document.getElementById('turns');
+  box.insertAdjacentHTML('beforeend', turnHtml(t));
+  const el = box.lastElementChild;
+  math(el);
+  el.scrollIntoView({block:'end', behavior: calm ? 'auto' : 'smooth'});
+  return el;
+}
+
+const form = document.getElementById('form'), msg = document.getElementById('msg'), send = document.getElementById('send');
+const fit = () => { msg.style.height = 'auto'; msg.style.height = msg.scrollHeight + 'px'; send.disabled = !msg.value.trim(); };
+msg.addEventListener('input', fit);
+msg.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+form.addEventListener('submit', e => {
+  e.preventDefault();
+  const text = msg.value.trim();
+  if (!text) return;
+  addTurn({who:'you', html: esc(text)});
+  msg.value = ''; fit();
+  reply();
+});
+
+function reply(){
+  const paras = CANNED[cannedAt++ % CANNED.length];
+  const el = addTurn({who:'tutor', html:'<p><span class="wait" aria-label="The tutor is writing"></span></p>'});
+  let i = 0;
+  const step = () => {
+    if (i === 0) el.innerHTML = '';
+    el.insertAdjacentHTML('beforeend', `<p>${paras[i]}</p>`);
+    math(el.lastElementChild);
+    el.scrollIntoView({block:'end', behavior: calm ? 'auto' : 'smooth'});
+    if (++i < paras.length) setTimeout(step, calm ? 0 : 650);
+  };
+  setTimeout(step, calm ? 0 : 900);
+}
+
+</script>
+</body>
+</html>

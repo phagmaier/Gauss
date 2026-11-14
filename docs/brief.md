@@ -78,6 +78,7 @@ model's discretion:
    is graded.
 3. **Check.** One or more questions. The learner commits an answer and a
    confidence level before seeing any feedback, and can add their reasoning.
+   The learner can always answer "I don't know" instead.
 
 The learner moves from discuss to check with a "ready" control; the tutor may
 suggest it. A segment cannot close without its check unless the learner
@@ -112,9 +113,13 @@ resume at the same segment and phase.
   can bypass the gate.
 - **Override**: the learner can always move on. It is recorded as an override,
   not as mastery.
-- **Confidence**: three levels, one keystroke. A confident wrong answer is
-  treated as a likely misconception and can trigger a detour, as can two misses
-  on the same objective.
+- **Confidence**: five levels given as percentages (under 50%, 50%, 75%, 90%,
+  100%), one keystroke. A confident wrong answer is treated as a likely
+  misconception and can trigger a detour, as can two misses on the same
+  objective. "Confident" means 90% or 100%.
+- **"I don't know"**: always available on a question in place of an answer. No
+  confidence is asked, and the tutor explains. It is recorded as a miss on the
+  objective and never as a confident wrong answer.
 - **Disputes**: the learner can contest a grade; the dispute is recorded.
 
 Grading method depends on the question, not the subject:
@@ -216,6 +221,15 @@ Settled on 2026-11-13:
   into the gate was the agent's addition.
 - Teaching style is a per-course text note, changed only with the learner's
   agreement. The learner was unsure and delegated this.
+
+Settled on 2026-11-13 from the page prototype (`docs/decisions.md`):
+
+- Confidence is five percentage levels, replacing the earlier three levels.
+- "I don't know" is always available on a question, and counts as a miss but
+  never as a confident wrong answer (the agent's proposal, accepted).
+- "Confident" means 90% or 100%. The learner offered to drop the percentages
+  and delegated the choice; the agent kept them because they make this rule
+  concrete and allow calibration feedback later.
 
 Open questions: none at the product level. Technical choices are in
 `architecture.md`.

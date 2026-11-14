@@ -94,12 +94,42 @@ Tasks may be revised by 0.7.
 
 ### 1.0 Page layout
 
-- Status: in progress
+- Status: done
 - Depends on: none (pulled ahead of stage 0 at the user's request on
   2026-11-13; it is a static mock and needs no code from stage 0)
 - Do: a static mock of the three views (library, course, session) for the user
   to react to before any real page work.
 - Done when: the user has approved a layout, and it is saved under `docs/`.
+- Note: restarted on 2026-11-13. The user disliked the earlier whole-app mocks
+  (`look.html`, deleted); do not reuse them or their findings. The mock is now
+  built one piece at a time, dark theme first, one file per piece in
+  `docs/prototype/`, with the chosen look in `docs/prototype/base.css`. Picks
+  are recorded in `docs/decisions.md`.
+  - Piece 1, reading and chat (`01-reading-chat.html`): settled.
+  - Piece 2, check question (`02-check-question.html`): settled. A card in
+    the thread, percentage confidence, "I don't know" on every question.
+  - Piece 3, phases (`03-phases.html`): settled. Marker lines in the thread,
+    with the "ready" and override controls where the conversation has got to.
+  - Piece 4, session navigation (`04-session-nav.html`): settled. One line
+    across the top: the path out on the left, the position in the unit on the
+    right, which opens the unit's outline.
+  - Piece 5, artifacts and source passages (`05-side-pane.html`): settled. A
+    pane beside the thread, as the brief says.
+  - Piece 6, library (`06-library.html`): settled. One plain list, newest
+    first; "New course" in the top line.
+  - Piece 7, course view (`07-course.html`): settled. The page is the unit
+    list; the diagram opens in the side pane.
+  - Piece 8, starting a course (`08-intake.html`): settled. Intake is a
+    conversation; the proposed curriculum is a card in the thread.
+  - All eight pieces are settled and `docs/prototype/index.html` lists them.
+    The user approved the layout as a whole on 2026-11-13. What was not
+    designed is listed at the end of the page design entry in
+    `docs/decisions.md`; settle each when its stage needs it, the same way
+    (one mock per question, the user picks).
+  - For the real frontend: `docs/prototype/base.css` holds every settled
+    style, grouped by piece, and each mock's header comment says what it
+    decided. The mocks are references for look and behaviour, not code to
+    reuse.
 
 ### 1.1 Course and curriculum schemas
 

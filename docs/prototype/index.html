@@ -1,0 +1,54 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 1.0: the page layout, settled piece by
+  piece on 2026-11-13. This page lists the eight pieces in the order a
+  learner meets them. Each file is a static mock with simulated content; its
+  header comment says what was asked, what was picked and what was rejected.
+  The shared look is base.css. The picks are recorded in ../decisions.md.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+a.lc{color:inherit;text-decoration:none}
+.lc-where{max-width:34em}
+</style>
+</head>
+<body>
+<div class="pg"><header class="nl"><nav class="crumbs"><b>Gauss prototype</b></nav></header>
+<div class="pg-scroll"><div class="pg-col">
+  <h1 class="cv-title">The page layout</h1>
+  <p class="cv-at">Eight static mocks, in the order a learner meets them. Everything in them is simulated.</p>
+
+  <h2 class="pg-h">Outside a session</h2>
+  <div class="lib-list">
+    <a class="lc" href="06-library.html"><span class="lc-title">Library</span><span class="lc-when">Piece 6</span>
+      <span class="lc-where">One plain list of courses and one-offs, newest first. "New course" is in the top line.</span></a>
+    <a class="lc" href="08-intake.html"><span class="lc-title">Starting a course</span><span class="lc-when">Piece 8</span>
+      <span class="lc-where">An intake conversation, then the proposed curriculum as a card in the thread to push back on or approve.</span></a>
+    <a class="lc" href="07-course.html"><span class="lc-title">Course</span><span class="lc-when">Piece 7</span>
+      <span class="lc-where">The unit list with goals and status. The diagram opens in the side pane.</span></a>
+  </div>
+
+  <h2 class="pg-h">In a session</h2>
+  <div class="lib-list">
+    <a class="lc" href="01-reading-chat.html"><span class="lc-title">Reading and chat</span><span class="lc-when">Piece 1</span>
+      <span class="lc-where">One centred column, the learner's messages on the right, one message box at the bottom.</span></a>
+    <a class="lc" href="03-phases.html"><span class="lc-title">Teach, discuss, check</span><span class="lc-when">Piece 3</span>
+      <span class="lc-where">Marker lines in the thread, with the "ready" and override controls where the conversation has got to.</span></a>
+    <a class="lc" href="02-check-question.html"><span class="lc-title">Check question</span><span class="lc-when">Piece 2</span>
+      <span class="lc-where">A card in the thread, for all four answer kinds, with confidence and "I don't know".</span></a>
+    <a class="lc" href="04-session-nav.html"><span class="lc-title">Finding your way</span><span class="lc-when">Piece 4</span>
+      <span class="lc-where">One line across the top: the path out on the left, the position in the unit on the right.</span></a>
+    <a class="lc" href="05-side-pane.html"><span class="lc-title">Artifacts and source passages</span><span class="lc-when">Piece 5</span>
+      <span class="lc-where">A pane beside the thread, opened from a reference or a citation.</span></a>
+  </div>
+</div></div></div>
+</body>
+</html>

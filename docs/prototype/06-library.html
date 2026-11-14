@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 1.0, piece 6: the library. SETTLED 2026-11-13.
+  Question: what does the home view look like? It holds every course and
+  one-off, and has three jobs: resume one, open one, start a new one.
+
+  Picked: one plain list, newest first, with finished courses grouped at the
+  bottom. Each row gives the title, where the course stands, one tick per
+  unit, and when it was last opened. "New course" is a button in the top
+  line. The styles are in base.css.
+  Rejected: putting the place you stopped first with its own Continue button,
+  and opening with a "What do you want to learn?" message box.
+
+  Every row and button leads to a placeholder with a way back.
+
+  Everything is simulated: the five courses, their progress and dates. Not in
+  this piece: the course view, the intake chat, the curriculum review,
+  deleting or archiving a course, settings.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 6: library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+// `at` is the index of the unit in progress; `units` the number of units in the approved curriculum.
+const COURSES = [
+  {id:'calc', title:'Calculus I', units:8, at:2, unit:'Differentiation rules', segment:'The chain rule', seg:[3, 5], phase:'discuss', when:'Today'},
+  {id:'hegel', title:'Phenomenology of Spirit', todo:'The curriculum is ready for your review', when:'Yesterday'},
+  {id:'llm', title:'Transformers from the papers', units:6, at:1, unit:'Attention', segment:'Scaled dot-product attention', seg:[1, 4], phase:'teach', when:'4 days ago'},
+  {id:'tls', title:'How a TLS handshake works', oneoff:true, segment:'Key exchange', seg:[2, 3], phase:'check', when:'Last week'},
+  {id:'bayes', title:"Bayes' theorem", oneoff:true, done:'Passed', when:'2 weeks ago'}
+];
+
+/* ---------------- state ---------------- */
+let away = null;           // {title, text} once something has been opened
+
+/* ---------------- parts ---------------- */
+const app = document.querySelector('#app');
+const ticks = c => c.units ? `<span class="ticks" aria-hidden="true">${Array.from({length:c.units}, (_, i) => `<i class="${i < c.at ? 'past' : i === c.at ? 'now' : ''}"></i>`).join('')}</span>` : '';
+function where(c){         // one line saying where the course stands
+  if (c.todo) return c.todo;
+  if (c.done) return c.done;
+  const seg = `segment ${c.seg[0]} of ${c.seg[1]}`;
+  return c.oneoff ? seg[0].toUpperCase() + seg.slice(1) : `Unit ${c.at + 1} of ${c.units}: ${c.unit}, ${seg}`;
+}
+const row = c => `<button type="button" class="lc${c.done ? ' done' : ''}" data-open="${c.id}">
+  <span class="lc-title">${c.title}${c.oneoff ? '<small>One-off</small>' : ''}</span><span class="lc-when">${c.when}</span>
+  <span class="lc-where${c.todo ? ' todo' : ''}">${where(c)}</span>${ticks(c)}</button>`;
+const list = cs => `<div class="lib-list">${cs.map(row).join('')}</div>`;
+const libraryView = () => `<div class="pg"><header class="nl"><nav class="crumbs" aria-label="Where you are"><b>Library</b></nav>
+  <button type="button" class="btn sm" data-act="new">New course</button></header>
+  <div class="pg-scroll"><div class="pg-col">
+    <h2 class="pg-h">In progress</h2>${list(COURSES.filter(c => !c.done))}
+    <h2 class="pg-h">Finished</h2>${list(COURSES.filter(c => c.done))}
+  </div></div></div>`;
+const awayView = () => `<div class="away"><h1>${away.title}</h1><p>${away.text}</p><button type="button" class="btn" data-act="back">Back to the library</button></div>`;
+
+/* ---------------- render and input ---------------- */
+function render(){ app.innerHTML = away ? awayView() : libraryView(); }
+function leave(title, text){ away = {title, text}; render(); }
+function openCourse(c){
+  if (c.todo) leave(c.title, 'This opens the curriculum review: the proposed units as a diagram, for you to push back on or approve. A later piece.');
+  else if (c.done) leave(c.title, 'This one is finished, so it opens the course view, with its notes. Piece 7.');
+  else leave(c.title, `This opens the session where you stopped: ${c.segment}, segment ${c.seg[0]} of ${c.seg[1]}, in the ${c.phase} phase. The session is pieces 1 to 5.`);
+}
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.open) openCourse(COURSES.find(c => c.id === b.dataset.open));
+  else if (b.dataset.act === 'new') leave('New course', 'This starts the intake chat: what you want to learn, your background, and any sources. A later piece.');
+  else if (b.dataset.act === 'back') { away = null; render(); }
+});
+render();
+</script>
+</body>
+</html>

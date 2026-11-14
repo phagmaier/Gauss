@@ -1,0 +1,172 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 1.0, piece 8: starting a course.
+  SETTLED 2026-11-13.
+  Question: a course starts with an intake conversation, then the tutor
+  proposes a curriculum that the learner reviews, pushes back on, and
+  approves. Where does the proposal appear, and where are "push back" and
+  "approve"?
+
+  Picked: in the thread. The proposal is a card in the conversation, like a
+  check question: the units with their goals and what each builds on. Approve
+  is on the card, and pushing back is just replying. A revision arrives as a
+  new card below, with what changed marked, and the old card shrinks to one
+  line. The diagram opens in the side pane. The styles are in base.css.
+  Rejected: keeping the proposal in the side pane beside the conversation,
+  and showing it as a page laid out like the course view.
+
+  The flow works: the message box is filled in with a request, so pressing
+  Enter sends it and the tutor revises the proposal; Approve then closes the
+  review. The bar at the top jumps between the stages
+  (?stage=first|revised|approved). Keys: Esc closes the pane, H hides the bar.
+
+  Everything is simulated. Whatever is sent, the tutor makes the same one
+  revision. Not in this piece: the optional baseline questions (skipped in
+  this conversation), really attaching a file, editing a unit by hand,
+  curriculum changes proposed in the middle of a course.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 8: starting a course</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: in the empty middle of the top line */
+#bar{top:8px}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-stage"><span class="lbl">Jump to</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+// `needs` are indexes of the units a unit builds on. `x` (percent) and `row` place it in the diagram.
+const TITLE = 'Linear algebra for PCA';
+const FIRST = [
+  {t:'Vectors and linear maps', goal:'Describe a linear map by what it does to a basis.', needs:[], x:50, row:0},
+  {t:'Matrices as maps', goal:'Read a matrix as a linear map, and a product as a composition.', needs:[0], x:25, row:1},
+  {t:'Subspaces, basis and dimension', goal:'Find a basis for a subspace and state its dimension.', needs:[0], x:75, row:1},
+  {t:'Orthogonality and projections', goal:'Project a vector onto a subspace, and explain least squares with it.', needs:[2], x:75, row:2},
+  {t:'Eigenvalues and eigenvectors', goal:'Find the directions a map only stretches, and by how much.', needs:[1, 2], x:25, row:2},
+  {t:'The spectral theorem', goal:'Explain why a symmetric matrix has an orthogonal basis of eigenvectors.', needs:[3, 4], x:50, row:3},
+  {t:'Principal component analysis', goal:'Derive PCA from the covariance matrix, and say what each component means.', needs:[5], x:50, row:4}
+];
+const REVISED = [
+  {t:'Vectors, maps and matrices', goal:'Describe a linear map by what it does to a basis, and read a matrix that way.', needs:[], x:50, row:0, changed:true},
+  {t:'Subspaces, basis and dimension', goal:FIRST[2].goal, needs:[0], x:75, row:1},
+  {t:'Orthogonality and projections', goal:FIRST[3].goal, needs:[1], x:75, row:2},
+  {t:'Eigenvalues and eigenvectors', goal:FIRST[4].goal, needs:[0, 1], x:25, row:2},
+  {t:'The spectral theorem', goal:FIRST[5].goal, needs:[2, 3], x:50, row:3},
+  {t:'Principal component analysis', goal:FIRST[6].goal, needs:[4], x:50, row:4}
+];
+const INTAKE = [
+  ['tutor', 'What do you want to learn? Tell me what you already know, and attach anything you want to learn from.'],
+  ['you', 'Linear algebra, enough to really understand how PCA works. I use it at work as a black box. I know calculus and can multiply matrices, but eigenvectors never clicked.', 'linear-algebra-notes.pdf'],
+  ['tutor', 'Before I plan the course, I can ask five or six quick questions to find where to start. It is optional.'],
+  ['you', 'Skip the questions.']
+];
+const PROPOSE = 'Here is a course built backwards from PCA: seven units, each with one goal. Your notes cover all of it, so their chapters are the skeleton. Push back on anything: the order, the depth, what is missing. Nothing starts until you approve.';
+const ASK = 'I can already multiply matrices. Can the start be shorter?';
+const REVISE = 'You can already multiply matrices, so I merged the first two units into one shorter unit. Everything after it is the same, renumbered.';
+const DONE = 'Approved. The course is in your library.';
+const ONCE = 'This mock has one canned revision, so nothing more changes.';
+
+/* ---------------- state ---------------- */
+const STAGES = {first:'First proposal', revised:'Revised', approved:'Approved'};
+const url = new URLSearchParams(location.search);
+let stage = STAGES[url.get('stage')] ? url.get('stage') : 'first';
+let said = ASK;            // what the learner sent to push back
+let diagramOpen = false, once = false, away = null;
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const CLOSE_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg>';
+const FILE_ICON = '<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5h5l3 3v8H3z"/><path d="M8 1.5v3h3"/></svg>';
+const units = () => stage === 'first' ? FIRST : REVISED;
+const tutor = html => `<div class="th-tutor prose"><p>${html}</p></div>`;
+const you = (text, file) => `<div class="th-you">${text}${file ? `<div class="att">${FILE_ICON}${file}</div>` : ''}</div>`;
+const unitList = us => `<ol class="cu">${us.map((u, i) => `<li class="cu-row"><span class="cu-n">${i + 1}</span>
+  <div><div class="cu-t">${u.t}</div><div class="cu-g">${u.goal}</div>${u.needs.length ? `<div class="cu-m"><span>Builds on unit${u.needs.length > 1 ? 's' : ''} ${u.needs.map(n => n + 1).join(' and ')}</span></div>` : ''}</div>
+  <span class="cu-s${u.changed ? ' chg' : ''}">${u.changed ? 'Changed' : ''}</span></li>`).join('')}</ol>`;
+function diagram(us){      // as in the course view, but nothing here has a status yet
+  const PITCH = 100, H = 58, height = (Math.max(...us.map(u => u.row)) * PITCH) + H;
+  const leads = i => us.map((v, j) => v.needs.includes(i) ? j : -1).filter(j => j >= 0).sort((p, q) => us[p].x - us[q].x);
+  const spread = (k, n) => (k - (n - 1) / 2) * 8;
+  const edges = us.flatMap((u, i) => u.needs.map(n => {
+    const a = us[n], out = leads(n), into = [...u.needs].sort((p, q) => us[p].x - us[q].x);
+    const x1 = a.x + spread(out.indexOf(i), out.length), x2 = u.x + spread(into.indexOf(n), into.length);
+    const y1 = a.row * PITCH + H, y2 = u.row * PITCH, ym = (y1 + y2) / 2;
+    return `<path vector-effect="non-scaling-stroke" d="M${x1} ${y1} C${x1} ${ym} ${x2} ${ym} ${x2} ${y2}"/>`;
+  })).join('');
+  const nodes = us.map((u, i) => `<div class="dn${u.changed ? ' chg' : ''}" style="left:${u.x - 23}%;top:${u.row * PITCH}px"><b>${i + 1}</b><span class="t">${u.t}</span>${u.changed ? '<small>Changed</small>' : ''}</div>`).join('');
+  return `<div class="dg" style="height:${height}px"><svg viewBox="0 0 100 ${height}" preserveAspectRatio="none" aria-hidden="true">${edges}</svg>${nodes}</div>`;
+}
+// the proposal as a card in the thread; only the newest one is live
+const card = us => `<div class="qa-card cp"><div class="q-count"><b>Proposed curriculum</b>${us.length} units${us === REVISED ? ', revised' : ''}</div>${unitList(us)}
+  <div class="qa-foot"><button type="button" class="textbtn" data-act="diagram">${diagramOpen ? 'Hide the diagram' : 'Show the diagram'}</button>
+  ${stage === 'approved' ? '<span class="ok">Approved</span>' : '<button type="button" class="btn" data-act="approve">Approve</button>'}</div></div>`;
+const conversation = () => INTAKE.map(([who, text, file]) => who === 'you' ? you(text, file) : tutor(text)).join('') + tutor(PROPOSE)
+  + (stage === 'first' ? card(FIRST) : `<div class="cp-old">First proposal, ${FIRST.length} units. Replaced by the one below.</div>${you(said)}${tutor(REVISE)}${card(REVISED)}`)
+  + (stage === 'approved' ? `<div class="ph-note">${DONE}</div><div class="pf-act"><button type="button" class="btn sm" data-act="start">Start unit 1</button></div>` : '')
+  + (once ? `<div class="ph-note">${ONCE}</div>` : '');
+const view = () => `<div class="th has-top${diagramOpen ? ' has-pane' : ''}">
+  <header class="nl"><nav class="crumbs" aria-label="Where you are"><button type="button" data-act="library">Library</button><span>/</span><b>${TITLE}</b></nav></header>
+  <div class="th-scroll"><div class="th-col">${conversation()}</div></div>
+  <div class="th-foot"><form class="box" id="form"><textarea id="msg" rows="1" placeholder="Push back, or ask a question" aria-label="Message">${stage === 'first' ? ASK : ''}</textarea><button class="send" id="send" aria-label="Send"${stage === 'first' ? '' : ' disabled'}>${SEND_ICON}</button></form></div>
+  ${diagramOpen ? `<aside class="sp" aria-label="Curriculum diagram"><div class="sv-head"><b>Curriculum</b><span>How the units build on each other</span><button type="button" class="sv-close" data-act="diagram" aria-label="Close">${CLOSE_ICON}</button></div><div class="sv-body">${diagram(units())}</div></aside>` : ''}</div>`;
+const awayView = () => `<div class="away"><h1>${away.title}</h1><p>${away.text}</p><button type="button" class="btn" data-act="back">Back</button></div>`;
+
+/* ---------------- render and input ---------------- */
+function render(keepScroll){
+  const top = keepScroll ? $('.th-scroll')?.scrollTop ?? 0 : null;
+  app.innerHTML = away ? awayView() : view();
+  const s = $('.th-scroll'); if (s) s.scrollTop = top ?? s.scrollHeight;       // the conversation opens at its end
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.v === stage);
+  history.replaceState(null, '', `?stage=${stage}`);
+}
+function leave(title, text){ away = {title, text}; render(false); }
+function jump(s){ stage = s; said = ASK; diagramOpen = false; once = false; away = null; render(false); }
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'approve') { stage = 'approved'; render(false); }
+  else if (act === 'diagram') { diagramOpen = !diagramOpen; render(true); }
+  else if (act === 'start') leave('Unit 1', `This opens the first session of ${TITLE}. The session is pieces 1 to 5.`);
+  else if (act === 'library') leave('Library', 'This goes back to the library, piece 6. The conversation and the proposal are kept.');
+  else if (act === 'back') { away = null; render(false); }
+});
+app.addEventListener('input', e => { if (e.target.id === 'msg') $('#send').disabled = !e.target.value.trim(); });
+app.addEventListener('submit', e => {
+  e.preventDefault();
+  const t = $('#msg').value.trim(); if (!t) return;
+  if (stage === 'first') { said = t; stage = 'revised'; } else once = true;
+  render(false);
+});
+app.addEventListener('keydown', e => { if (e.target.id === 'msg' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#form').requestSubmit(); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && diagramOpen) { diagramOpen = false; render(true); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [v, name] of Object.entries(STAGES)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.v = v;
+  b.addEventListener('click', () => jump(v));
+  $('#g-stage').appendChild(b);
+}
+render(false);
+</script>
+</body>
+</html>

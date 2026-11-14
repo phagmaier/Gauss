@@ -1,0 +1,196 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 1.0, piece 3: the teach / discuss / check
+  rhythm. SETTLED 2026-11-13.
+  Question: how does the learner see which phase a segment is in, and where do
+  the "ready" control (discuss to check) and the override (move on without
+  the check) live?
+
+  Picked: in the thread. A marker line where each phase begins, and the one
+  next-step control at the point the conversation has reached. Nothing is
+  fixed to the screen except the message box. The styles are in base.css.
+  Rejected: a strip across the top holding the three phases and the control,
+  and a line attached to the message box.
+
+  The controls work: Stop ends the tutor's explanation, "I'm ready for the
+  check" opens the question, answering or moving on closes the segment.
+  The bar on the right jumps to a phase (?phase=teach|discuss|check|closed).
+  Keys (when not typing): H hides the bar, and the question keys from piece 2
+  (A to D, 1 to 5, Enter).
+
+  Everything is simulated. One canned multiple-choice question stands in for
+  the check. Not in this piece: where you are in the unit, detours, the side
+  pane.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 3: phases</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar at the side, out of the way of the thread */
+#bar{top:50%;left:auto;right:12px;transform:translateY(-50%);margin:0;flex-direction:column;align-items:stretch;width:150px;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch;gap:2px}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px;line-height:1.35}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-phase"><span class="lbl">Jump to</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const LESSON = String.raw`
+<h1>The chain rule</h1>
+<p>Most functions you meet are built by feeding one function into another. Take $h(x) = \sin(x^2)$: first square $x$, then take the sine of the result. The chain rule tells you how fast $h$ changes, given how fast each step changes.</p>
+$$\frac{d}{dx}\,f\bigl(g(x)\bigr) = f'\bigl(g(x)\bigr)\cdot g'(x)$$
+<p>Read it from the outside in. Differentiate the <strong>outer function</strong> and leave its input alone, then multiply by the derivative of the <strong>inner function</strong>.</p>`;
+const LESSON_END = String.raw`<p>For $\sin(x^2)$ the outer derivative is $\cos(x^2)$ and the inner one is $2x$, so $h'(x) = 2x\cos(x^2)$.</p>`;
+const TALK = [
+  ['you', String.raw`Why isn't the answer just $\cos(2x)$?`],
+  ['tutor', String.raw`<p>Because the sine never sees $2x$. It sees $x^2$, so that is where its rate, $\cos$, is measured. The $2x$ is how fast that input is moving, and it multiplies.</p>`],
+  ['tutor', String.raw`<p>You have the idea. When you are ready, I have one question to check it.</p>`]
+];
+const Q = {
+  prompt:String.raw`What is the derivative of $\cos(3x^2)$?`,
+  options:[String.raw`$-\sin(3x^2)$`, String.raw`$-6x\sin(3x^2)$`, String.raw`$-\sin(6x)$`, String.raw`$6x\cos(3x^2)$`],
+  correct:1,
+  fb:[String.raw`You differentiated the outer function and stopped. The inside, $3x^2$, is changing too, at a rate of $6x$, and that factor is missing.`,
+      String.raw`The derivative of $\cos u$ is $-\sin u$, taken at $u = 3x^2$, and the inside contributes $6x$.`,
+      String.raw`This takes the outer derivative at $6x$, which is the derivative of the inside. The cosine never sees $6x$. It sees $3x^2$.`,
+      String.raw`The $6x$ from the inside is right, but the derivative of $\cos u$ is $-\sin u$, not $\cos u$.`],
+  unknown:String.raw`That is fine. The outer function is $\cos u$, whose derivative is $-\sin u$, taken at $u = 3x^2$. The inside changes at rate $6x$. Multiply them: $-6x\sin(3x^2)$.`
+};
+const CONF = ['Under 50%', '50%', '75%', '90%', '100%'];
+const NEXT_SEGMENT = 'three functions nested inside each other';
+
+/* ---------------- state ---------------- */
+const PHASES = {teach:'Teach', discuss:'Discuss', check:'Check', closed:'Done'};
+const url = new URLSearchParams(location.search);
+let phase, result, overridden, confirming, draft, pending;
+function go(p){     // jump to the start of a phase
+  clearTimeout(pending);
+  phase = p; confirming = false; overridden = false; draft = {ans:null, conf:null};
+  result = p === 'closed' ? {ans:1, conf:3, ok:true, fb:Q.fb[1]} : null;
+  render();
+}
+function answer(unknown){
+  if (result || (!unknown && (draft.ans === null || draft.conf === null))) return;
+  result = unknown ? {unknown:true, ok:false, fb:Q.unknown} : {ans:draft.ans, conf:draft.conf, ok:draft.ans === Q.correct, fb:Q.fb[draft.ans]};
+  render();
+  pending = setTimeout(() => { phase = 'closed'; render(); }, 1600);   // the tutor closes the segment
+}
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const STOP_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="2" width="10" height="10" rx="2" fill="currentColor"/></svg>';
+const SAYS = {       // one plain sentence per phase
+  teach: 'The tutor is explaining.',
+  discuss: 'Ask anything. Nothing here is graded.',
+  check: 'One question.',
+  closed: 'This segment is finished.'
+};
+function control(){  // the one thing the learner can do to move the segment on
+  if (phase === 'discuss') return `<button type="button" class="btn sm" data-act="ready">I'm ready for the check</button>`;
+  if (phase === 'check' && !result) return confirming
+    ? `<span class="confirm"><span>This will be recorded as an override.</span><button type="button" class="textbtn" data-act="skip-yes">Move on</button><button type="button" class="textbtn" data-act="skip-no">Stay</button></span>`
+    : `<button type="button" class="textbtn" data-act="skip">Move on without the check</button>`;
+  if (phase === 'closed') return `<button type="button" class="btn sm" data-act="next">Start the next segment</button>`;
+  return '';
+}
+function card(){
+  const choice = i => `${'ABCD'[i]}. ${Q.options[i]}`;
+  if (result) return `<div class="qa-card done"><div class="q-count">Question 1 of 1 ${result.unknown ? '<span class="dk">Did not know</span>' : result.ok ? '<span class="ok">Correct</span>' : '<span class="no">Not quite</span>'}</div>
+    <div class="qa-prompt">${Q.prompt}</div>
+    <div class="qa-line"><span class="k">Your answer</span><span>${result.unknown ? "I don't know" : choice(result.ans)}</span>${result.unknown ? '' : `<span class="c">${result.conf === 0 ? 'under 50%' : CONF[result.conf]} sure</span>`}</div>
+    ${result.ok ? '' : `<div class="qa-line"><span class="k">Correct answer</span><span>${choice(Q.correct)}</span></div>`}</div>`;
+  return `<div class="qa-card"><div class="q-count">Question 1 of 1</div><div class="qa-prompt">${Q.prompt}</div>
+    <div class="qa-opts">${Q.options.map((o, i) => `<button type="button" class="opt" data-opt="${i}" aria-pressed="false"><kbd>${'ABCD'[i]}</kbd><span>${o}</span></button>`).join('')}</div>
+    <div class="qa-conf"><span>How sure are you?</span><div class="chips" role="group" aria-label="How sure are you?">${CONF.map((c, i) => `<button type="button" class="chip" data-conf="${i}" aria-pressed="false">${c}</button>`).join('')}</div></div>
+    <div class="qa-foot"><button type="button" class="textbtn" data-act="unknown">I don't know</button><button type="button" class="btn" data-act="submit" disabled>Submit answer</button></div></div>`;
+}
+const mark = p => `<div class="pf-mark"><span><b>${PHASES[p]}</b>${p === 'closed' ? '' : ' ' + SAYS[p]}</span></div>`;
+const act = () => { const c = control(); return c ? `<div class="pf-act">${c}</div>` : ''; };
+function conversation(){
+  let h = `<div class="th-tutor prose">${LESSON}${phase === 'teach' ? '<p><span class="wait" aria-label="The tutor is writing"></span></p>' : LESSON_END}</div>`;
+  if (phase === 'teach') return h;
+  h += mark('discuss') + TALK.map(([who, html]) => who === 'you' ? `<div class="th-you">${html}</div>` : `<div class="th-tutor prose">${html}</div>`).join('');
+  if (phase === 'discuss') return h + act();
+  h += mark('check');
+  if (overridden) h += `<div class="ph-note">You moved on without the check. Recorded as an override.</div>`;
+  else h += card() + (result ? `<div class="th-tutor prose"><p>${result.fb}</p></div>` : act());
+  if (phase === 'closed') h += mark('closed') + `<div class="th-tutor prose"><p>${overridden ? 'Moving on.' : 'That closes this segment.'} Next: ${NEXT_SEGMENT}.</p></div>` + act();
+  return h;
+}
+const composer = () => phase === 'teach'
+  ? `<form class="box" id="form"><textarea id="msg" rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button type="button" class="send stop" data-act="stop" aria-label="Stop the tutor">${STOP_ICON}</button></form>`
+  : `<form class="box" id="form"><textarea id="msg" rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" id="send" aria-label="Send" disabled>${SEND_ICON}</button></form>`;
+
+const view = () => `<div class="th"><div class="th-scroll"><div class="th-col">${conversation()}</div></div><div class="th-foot">${composer()}</div></div>`;
+
+/* ---------------- render and input ---------------- */
+function render(){
+  app.innerHTML = view();
+  math(app); sync();
+  const s = $('.th-scroll'); s.scrollTop = phase === 'teach' ? 0 : s.scrollHeight;
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.v === phase);
+  history.replaceState(null, '', `?phase=${phase}`);
+}
+function sync(){
+  for (const b of app.querySelectorAll('[data-opt]')) b.setAttribute('aria-pressed', draft.ans === +b.dataset.opt);
+  for (const b of app.querySelectorAll('[data-conf]')) b.setAttribute('aria-pressed', draft.conf === +b.dataset.conf);
+  const s = app.querySelector('[data-act=submit]'); if (s) s.disabled = draft.ans === null || draft.conf === null;
+}
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (b.dataset.opt !== undefined) { draft.ans = +b.dataset.opt; sync(); }
+  else if (b.dataset.conf !== undefined) { draft.conf = +b.dataset.conf; sync(); }
+  else if (act === 'submit') answer(false);
+  else if (act === 'unknown') answer(true);
+  else if (act === 'stop') go('discuss');
+  else if (act === 'ready') go('check');
+  else if (act === 'skip') { confirming = true; render(); }
+  else if (act === 'skip-no') { confirming = false; render(); }
+  else if (act === 'skip-yes') { overridden = true; confirming = false; phase = 'closed'; render(); }
+  else if (act === 'next') go('teach');
+});
+app.addEventListener('input', e => { if (e.target.id === 'msg' && $('#send')) $('#send').disabled = !e.target.value.trim(); });
+app.addEventListener('submit', e => e.preventDefault());   // sending messages is piece 1; not wired here
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  const k = e.key.toLowerCase();
+  if (phase === 'check' && !result && !overridden && k.length === 1) {
+    if ('abcd'.includes(k)) { draft.ans = 'abcd'.indexOf(k); sync(); return; }
+    if ('12345'.includes(k)) { draft.conf = +k - 1; sync(); return; }
+  }
+  if (e.key === 'Enter' && phase === 'check' && !result && draft.ans !== null && draft.conf !== null && !e.target.closest?.('[data-act],#bar')) { e.preventDefault(); answer(false); return; }
+  if (k === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [v, name] of Object.entries(PHASES)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.v = v;
+  b.addEventListener('click', () => go(v));
+  $('#g-phase').appendChild(b);
+}
+go(PHASES[url.get('phase')] ? url.get('phase') : 'discuss');
+</script>
+</body>
+</html>

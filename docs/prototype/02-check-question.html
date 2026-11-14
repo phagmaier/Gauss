@@ -1,0 +1,264 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 1.0, piece 2: the check question.
+  Question: where and how does the learner answer a check question, say how
+  sure they are, and see the grade?
+
+  Round 1 (2026-11-13): three ways of answering (a card in the thread, the
+  message box turning into an answer box, a full-screen focus view). The user
+  picked the card in the thread, asked for confidence as percentages
+  (under 50%, 50%, 75%, 90%, 100%), and asked that "I don't know" always be
+  available. The other two variants were removed.
+  Round 2: the card only, with all four answer kinds: multiple choice, typed
+  math, a written explanation, and code checked by tests.
+  Jump to a kind from the bar or with ?q=choice|math|written|code
+  Keys (when not typing): A to D pick an option, 1 to 5 pick how sure,
+  Enter submits, H hides the bar.
+
+  Everything is simulated. Multiple choice is a real exact match. Math
+  recognises a handful of spellings of the answer. The written grade only
+  looks for a few words. The code question never runs anything: its first try
+  always fails one test and its second try always passes.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 2: check question</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+.th-col{padding-top:84px}   /* room for the prototype bar */
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-jump"><span class="lbl">Start at</span></div>
+  <span class="keys">A to D answer, 1 to 5 how sure, Enter submits. H hides this bar</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const TOTAL = 4;
+const QS = [
+  {kind:'choice',
+   prompt:String.raw`What is the derivative of $\cos(3x^2)$?`,
+   options:[String.raw`$-\sin(3x^2)$`, String.raw`$-6x\sin(3x^2)$`, String.raw`$-\sin(6x)$`, String.raw`$6x\cos(3x^2)$`],
+   correct:1,
+   fb:[String.raw`You differentiated the outer function and stopped. The inside, $3x^2$, is changing too, at a rate of $6x$, and that factor is missing.`,
+       String.raw`The derivative of $\cos u$ is $-\sin u$, taken at $u = 3x^2$, and the inside contributes $6x$.`,
+       String.raw`This takes the outer derivative at $6x$, which is the derivative of the inside. The cosine never sees $6x$. It sees $3x^2$, so that is where $-\sin$ is evaluated.`,
+       String.raw`The $6x$ from the inside is right, but the derivative of $\cos u$ is $-\sin u$, not $\cos u$.`],
+   unknown:String.raw`That is fine. Take it in two steps. The outer function is $\cos u$, whose derivative is $-\sin u$, taken at $u = 3x^2$. The inside, $3x^2$, changes at rate $6x$. Multiply them: $-6x\sin(3x^2)$.`},
+  {kind:'math',
+   prompt:String.raw`Differentiate $h(x) = (2x+1)^5$.`,
+   answer:String.raw`$10(2x+1)^4$`,
+   accept:['10(2x+1)^4','10(2x+1)^{4}','5(2x+1)^4*2','2*5(2x+1)^4','5*2(2x+1)^4','5(2x+1)^4\\cdot2','2\\cdot5(2x+1)^4','10(1+2x)^4'],
+   right:String.raw`The outer power gives $5(2x+1)^4$ and the inside contributes $2$.`,
+   wrong:String.raw`The outer power gives $5(2x+1)^4$, and the inside $2x+1$ changes at rate $2$, so the answer is $10(2x+1)^4$. (This prototype recognises only a few ways of writing that. The real app compares answers symbolically.)`,
+   unknown:String.raw`No problem. Treat $2x+1$ as one thing, $u$. The outer function is $u^5$, with derivative $5u^4$. The inside changes at rate $2$. Together: $5(2x+1)^4\cdot 2 = 10(2x+1)^4$.`},
+  {kind:'written',
+   prompt:String.raw`In your own words, why does the chain rule multiply the two rates instead of adding them?`,
+   right:String.raw`That is the idea. A change in $x$ is scaled by the inner rate, and that scaled change is scaled again by the outer rate, so the two effects compound. (Simulated grade: this prototype only looks for a few words.)`,
+   wrong:String.raw`<strong>What is missing:</strong> you have not said why the two rates combine by multiplying. A small change in $x$ is first scaled by the inner rate, and the result is then scaled again by the outer rate. Scaling twice is multiplying. (Simulated grade: the real app grades against a rubric and points at the first gap.)`,
+   unknown:String.raw`Here is the short version. A small change in $x$ is first scaled by the inner rate $g'(x)$. That scaled change is what the outer function receives, and it scales it again by $f'$. Scaling twice in a row is multiplying.`},
+  {kind:'code', file:'workspace/chain.py', attempt:1,
+   prompt:String.raw`Finish <code>d_power(a, b, n, x)</code> so that it returns the derivative of $(ax+b)^n$ at $x$.`,
+   out:[['p','passed  test_power_one'],['p','passed  test_inside_is_x'],['p','passed  test_slope_one_shifted'],['f','FAILED  test_linear_inside'],['f','        d_power(2, 1, 5, 0) returned 5, expected 10']],
+   tally:'3 of 4 tests passed',
+   fb:String.raw`Three tests pass and one fails. <code>d_power(2, 1, 5, 0)</code> should be $5\cdot(2\cdot 0+1)^4\cdot 2 = 10$. Yours returns $5$, so the factor from the inside, $a$, is missing. Fix it and run the tests again.`,
+   unknown:String.raw`That is fine. The function should return $n\,(ax+b)^{n-1}\cdot a$: the power rule on the outside, times $a$, the rate of the inside. Write that one line and run the tests.`},
+  {kind:'code', file:'workspace/chain.py', attempt:2, label:'Question 4 of 4, second try',
+   prompt:String.raw`Finish <code>d_power(a, b, n, x)</code> so that it returns the derivative of $(ax+b)^n$ at $x$.`,
+   out:[['p','passed  test_power_one'],['p','passed  test_inside_is_x'],['p','passed  test_slope_one_shifted'],['p','passed  test_linear_inside']],
+   tally:'4 of 4 tests passed',
+   fb:String.raw`All four pass. The extra factor of $a$ was the chain rule at work.`,
+   unknown:String.raw`The function should return $n\,(ax+b)^{n-1}\cdot a$.`}
+];
+const CONF = ['Under 50%', '50%', '75%', '90%', '100%'];
+const sure = c => (c === 0 ? 'under 50%' : CONF[c]) + ' sure';
+const JUMP = {choice:['Multiple choice', 0], math:['Math', 1], written:['Written', 2], code:['Code', 3]};
+
+/* ---------------- state ---------------- */
+let from = JUMP[new URLSearchParams(location.search).get('q')] ? new URLSearchParams(location.search).get('q') : 'choice';
+let timeline, results, draft, advanced, pending;
+function reset(){
+  clearTimeout(pending);
+  const qi = JUMP[from][1];
+  timeline = [
+    {t:'you', html:String.raw`So $2x$ is how fast the input to the sine is moving?`},
+    {t:'tutor', html:String.raw`<p>Yes. $2x$ is the speed of the inside, and $\cos(x^2)$ is how sensitive the sine is at the spot it has reached. Speed times sensitivity gives the overall rate.</p>`},
+    {t:'tutor', html: qi === 0 ? '<p>Four questions to check the chain rule.</p>' : '<p>Next question.</p>'},
+    {t:'q', qi}
+  ];
+  results = []; advanced = -1;
+  draft = {ans:null, conf:null, reason:''};
+}
+const lastQ = () => timeline.filter(i => i.t === 'q').pop().qi;
+const openQ = () => results[lastQ()] ? null : lastQ();
+const hasAnswer = q => q.kind === 'choice' ? draft.ans !== null : q.kind === 'code' ? true : !!(draft.ans || '').trim();
+const ready = () => { const qi = openQ(); return qi !== null && hasAnswer(QS[qi]) && draft.conf !== null; };
+
+/* ---------------- grading (simulated) ---------------- */
+const norm = s => s.toLowerCase().replace(/\s+|\\left|\\right/g, '');
+function grade(q, ans){
+  if (q.kind === 'choice') return {ok: ans === q.correct, fb: q.fb[ans]};
+  if (q.kind === 'math') { const ok = q.accept.some(a => norm(a) === norm(ans)); return {ok, fb: ok ? q.right : q.wrong}; }
+  if (q.kind === 'written') { const ok = ans.length >= 40 && /multipl|times|scal|product|compound/i.test(ans); return {ok, fb: ok ? q.right : q.wrong}; }
+  return {ok: q.attempt === 2, fb: q.fb};
+}
+function submit(unknown){
+  const qi = openQ();
+  if (qi === null || (!unknown && !ready())) return;
+  const q = QS[qi];
+  if (unknown) results[qi] = {unknown:true, ok:false, fb:q.unknown};
+  else {
+    const ans = q.kind === 'choice' ? draft.ans : q.kind === 'code' ? null : draft.ans.trim().replace(/\$/g, '');
+    results[qi] = {ans, conf: draft.conf, reason: draft.reason, ...grade(q, ans)};
+  }
+  timeline.push({t:'fb', qi});
+  render();
+  pending = setTimeout(() => { advance(); render(); }, 1500);
+}
+function advance(){   // the tutor moves on: the next question, or a closing line
+  const qi = lastQ(), res = results[qi];
+  if (!res || advanced >= qi) return;
+  advanced = qi;
+  draft = {ans:null, conf:null, reason:''};
+  const next = qi + 1;
+  const retryNotNeeded = QS[next] && QS[next].attempt === 2 && (res.ok || res.unknown);
+  if (next < QS.length && !retryNotNeeded) timeline.push({t:'q', qi: next});
+  else timeline.push({t:'tutor', html:'<p>That is the check for this part.</p>'});
+}
+
+/* ---------------- the card ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const count = qi => QS[qi].label || `Question ${qi + 1} of ${TOTAL}`;
+const verdict = res => res.unknown ? '<span class="dk">Did not know</span>' : res.ok ? '<span class="ok">Correct</span>' : '<span class="no">Not quite</span>';
+const choiceHtml = (q, i) => `${'ABCD'[i]}. ${q.options[i]}`;
+
+function openCard(qi){
+  const q = QS[qi];
+  const area = {
+    choice: () => `<div class="qa-opts">${q.options.map((o, i) => `<button type="button" class="opt" data-opt="${i}" aria-pressed="false"><kbd>${'ABCD'[i]}</kbd><span>${o}</span></button>`).join('')}</div>`,
+    math: () => `<textarea class="field mathin" id="ans" rows="1" placeholder="Type your answer, for example 3x^2" aria-label="Your answer" spellcheck="false"></textarea><div class="prev" id="prev"></div>`,
+    written: () => `<textarea class="field written" id="ans" placeholder="Write your explanation" aria-label="Your answer"></textarea>`,
+    code: () => `<div class="qa-file">Edit <code>${q.file}</code> in your own editor, then run the tests.</div>`
+  }[q.kind]();
+  const reasoning = q.kind === 'choice' || q.kind === 'math'
+    ? `<details class="why"><summary>Add your reasoning</summary><textarea class="field reason" id="reason" aria-label="Your reasoning"></textarea></details>` : '';
+  return `<div class="qa-card">
+    <div class="q-count">${count(qi)}</div>
+    <div class="qa-prompt">${q.prompt}</div>
+    ${area}
+    <div class="qa-conf"><span>How sure are you?</span><div class="chips" role="group" aria-label="How sure are you?">${CONF.map((c, i) => `<button type="button" class="chip" data-conf="${i}" aria-pressed="false">${c}</button>`).join('')}</div></div>
+    ${reasoning}
+    <div class="qa-foot"><button type="button" class="textbtn" data-act="unknown">I don't know</button>
+      <button type="button" class="btn" data-act="submit" disabled>${q.kind === 'code' ? 'Run the tests' : 'Submit answer'}</button></div></div>`;
+}
+function doneCard(qi){
+  const q = QS[qi], res = results[qi];
+  let body;
+  if (res.unknown) body = `<div class="qa-line"><span class="k">Your answer</span><span>I don't know</span></div>`
+    + (q.kind === 'choice' ? `<div class="qa-line"><span class="k">Correct answer</span><span>${choiceHtml(q, q.correct)}</span></div>` : q.kind === 'math' ? `<div class="qa-line"><span class="k">Correct answer</span><span>${q.answer}</span></div>` : '');
+  else if (q.kind === 'choice') body = `<div class="qa-line"><span class="k">Your answer</span><span>${choiceHtml(q, res.ans)}</span><span class="c">${sure(res.conf)}</span></div>`
+    + (res.ok ? '' : `<div class="qa-line"><span class="k">Correct answer</span><span>${choiceHtml(q, q.correct)}</span></div>`);
+  else if (q.kind === 'math') body = `<div class="qa-line"><span class="k">Your answer</span><span>$${esc(res.ans)}$</span><span class="c">${sure(res.conf)}</span></div>`
+    + (res.ok ? '' : `<div class="qa-line"><span class="k">Correct answer</span><span>${q.answer}</span></div>`);
+  else if (q.kind === 'written') body = `<div class="qa-said">${esc(res.ans)}</div><div class="qa-line"><span class="c">${sure(res.conf)}</span></div>`;
+  else body = `<div class="qa-line"><span class="k">Tests</span><span>${q.tally}</span><span class="c">${sure(res.conf)}</span></div>
+    <div class="qa-out">${q.out.map(([c, l]) => `<span class="${c}">${esc(l)}</span>`).join('\n')}</div>`;
+  const dispute = res.unknown ? '' : res.disputed ? '<span class="faint">Dispute recorded</span>'
+    : `<button type="button" class="textbtn" data-act="dispute" data-qi="${qi}">Dispute this grade</button>`;
+  return `<div class="qa-card done"><div class="q-count">${count(qi)} ${verdict(res)}</div><div class="qa-prompt">${q.prompt}</div>${body}${dispute}</div>`;
+}
+
+/* ---------------- render and input ---------------- */
+function render(){
+  const item = i => i.t === 'you' ? `<div class="th-you">${i.html}</div>`
+    : i.t === 'tutor' ? `<div class="th-tutor prose">${i.html}</div>`
+    : i.t === 'fb' ? `<div class="th-tutor prose"><p>${results[i.qi].fb}</p></div>`
+    : results[i.qi] ? doneCard(i.qi) : openCard(i.qi);
+  app.innerHTML = `<div class="th"><div class="th-scroll"><div class="th-col">${timeline.map(item).join('')}</div></div>
+    <div class="th-foot"><form class="box" id="form"><textarea id="msg" rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" id="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+  math(app);
+  const a = $('#ans'); if (a) { a.value = typeof draft.ans === 'string' ? draft.ans : ''; preview(); }
+  const r = $('#reason'); if (r && draft.reason) { r.value = draft.reason; r.closest('details').open = true; }
+  sync();
+  const s = $('.th-scroll'); s.scrollTop = s.scrollHeight;
+  for (const b of document.querySelectorAll('#g-jump button')) b.setAttribute('aria-pressed', b.dataset.v === from);
+  history.replaceState(null, '', '?q=' + from);
+}
+function sync(){   // reflect the draft answer without rebuilding (keeps the caret where it is)
+  for (const b of app.querySelectorAll('[data-opt]')) b.setAttribute('aria-pressed', draft.ans === +b.dataset.opt);
+  for (const b of app.querySelectorAll('[data-conf]')) b.setAttribute('aria-pressed', draft.conf === +b.dataset.conf);
+  const s = app.querySelector('[data-act=submit]'); if (s) s.disabled = !ready();
+}
+function preview(){
+  const p = $('#prev'); if (!p) return;
+  const v = (typeof draft.ans === 'string' ? draft.ans : '').trim().replace(/\$/g, '');
+  if (!v) { p.innerHTML = '<span class="faint">What you type appears here as math</span>'; return; }
+  try { p.innerHTML = katex.renderToString(v, {throwOnError:false}); } catch { p.textContent = v; }
+}
+
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.opt !== undefined) { draft.ans = +b.dataset.opt; sync(); }
+  else if (b.dataset.conf !== undefined) { draft.conf = +b.dataset.conf; sync(); }
+  else if (b.dataset.act === 'submit') submit(false);
+  else if (b.dataset.act === 'unknown') submit(true);
+  else if (b.dataset.act === 'dispute') { results[+b.dataset.qi].disputed = true; render(); }
+});
+app.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'ans') { draft.ans = t.value; if (t.classList.contains('mathin')) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; } preview(); sync(); }
+  else if (t.id === 'reason') draft.reason = t.value;
+  else if (t.id === 'msg') { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; $('#send').disabled = !t.value.trim(); }
+});
+app.addEventListener('submit', e => {
+  e.preventDefault();
+  const text = $('#msg').value.trim(); if (!text) return;
+  timeline.push({t:'you', html: esc(text)}, {t:'tutor', html:'<p>This reply is simulated. The real tutor will answer what you asked.</p>'});
+  render();
+});
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t.closest?.('input,textarea,[contenteditable]')) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (t.id === 'msg') { e.preventDefault(); $('#form').requestSubmit(); }
+      else if (t.classList.contains('mathin')) { e.preventDefault(); if (ready()) submit(false); else app.querySelector('[data-conf]').focus(); }
+    }
+    return;
+  }
+  const k = e.key.toLowerCase(), qi = openQ();
+  if (qi !== null && k.length === 1) {
+    if (QS[qi].kind === 'choice' && 'abcd'.includes(k)) { draft.ans = 'abcd'.indexOf(k); sync(); return; }
+    if ('12345'.includes(k)) { draft.conf = +k - 1; sync(); return; }
+  }
+  if (e.key === 'Enter' && qi !== null && ready() && !t.closest?.('[data-act],#bar')) { e.preventDefault(); submit(false); return; }
+  if (k === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [v, [name]] of Object.entries(JUMP)) {
+  const b = document.createElement('button');
+  b.textContent = name; b.dataset.v = v;
+  b.addEventListener('click', () => { from = v; reset(); render(); });
+  $('#g-jump').appendChild(b);
+}
+reset(); render();
+</script>
+</body>
+</html>

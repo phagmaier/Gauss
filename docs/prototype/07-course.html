@@ -1,0 +1,121 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 1.0, piece 7: the course view. SETTLED 2026-11-13.
+  Question: how is one course laid out? It holds the curriculum (the units,
+  what each builds on, and how each stands), the notes of finished units, and
+  the sources. The curriculum exists both as a list and as a diagram; the
+  question was which one the page is built around.
+
+  Picked: the page is the unit list. Each unit gives its goal, what it builds
+  on and its status, with a Notes link once it is finished. "Show the diagram"
+  opens the diagram in the side pane; clicking a unit there marks it in the
+  list. Continue sits at the right of the top line. Sources are listed below
+  the units. The styles are in base.css.
+  Rejected: building the page around the diagram with unit details in the
+  side pane, and showing the diagram and the list in one scroll.
+
+  Continue, Notes, the source and Library lead to placeholders with a way
+  back. Esc closes the pane.
+
+  Everything is simulated: the eight units, their goals and their order. The
+  mock does not lock units whose prerequisites are unfinished; the brief does
+  not say whether the learner may choose the order. Not in this piece:
+  reviewing or changing the curriculum, the notes themselves, the source
+  reader, review mode, the teaching style note.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 7: course</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+// `needs` are indexes of the units a unit builds on. `x` (percent) and `row` place it in the diagram.
+const COURSE = 'Calculus I';
+const UNITS = [
+  {t:'Limits and continuity', goal:'Evaluate limits and decide where a function is continuous.', needs:[], status:'pass', x:50, row:0},
+  {t:'The derivative', goal:'Compute a derivative from its definition and read it as a rate of change.', needs:[0], status:'over', x:25, row:1},
+  {t:'Differentiation rules', goal:'Differentiate any combination of elementary functions.', needs:[1], status:'now', x:25, row:2},
+  {t:'Optimisation and related rates', goal:'Use derivatives to find extreme values and to relate changing quantities.', needs:[2], x:25, row:3},
+  {t:'The integral as area', goal:'Define the definite integral as a limit of sums, and estimate it.', needs:[0], x:75, row:1},
+  {t:'The fundamental theorem', goal:'Connect derivatives and integrals, and evaluate integrals with antiderivatives.', needs:[1, 4], x:75, row:2},
+  {t:'Integration by substitution', goal:'Reverse the chain rule to integrate composite functions.', needs:[2, 5], x:75, row:3},
+  {t:'Areas and volumes', goal:'Set up and evaluate integrals for areas between curves and volumes of revolution.', needs:[6], x:50, row:4}
+];
+const NOW = 2, SEG = [3, 5], SEGMENT = 'The chain rule';
+const SOURCE = {title:'Calculus notes', what:'PDF, 212 pages'};
+
+/* ---------------- state ---------------- */
+let diagramOpen = false;   // the diagram in the side pane
+let sel = null;            // the unit marked in the list and the diagram
+let away = null;           // {title, text} once something has been opened
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const CLOSE_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg>';
+const done = u => u.status === 'pass' || u.status === 'over';
+const says = u => ({pass:'Passed', over:'Overridden', now:`Segment ${SEG[0]} of ${SEG[1]}`})[u.status] || '';
+const unitRow = (u, i) => `<li class="cu-row ${u.status || 'todo'}${sel === i ? ' sel' : ''}" id="u${i}">
+  <span class="cu-n">${i + 1}</span>
+  <div><div class="cu-t">${u.t}</div><div class="cu-g">${u.goal}</div>
+    <div class="cu-m">${u.needs.length ? `<span>Builds on unit${u.needs.length > 1 ? 's' : ''} ${u.needs.map(n => n + 1).join(' and ')}</span>` : ''}${done(u) ? `<button type="button" class="textbtn" data-notes="${i}">Notes</button>` : ''}${u.status === 'now' ? '<button type="button" class="textbtn" data-act="continue">Continue</button>' : ''}</div></div>
+  <span class="cu-s ${u.status || ''}">${says(u)}</span></li>`;
+function diagram(){        // units in rows; a line from each unit to the ones that build on it
+  const PITCH = 100, H = 58, height = (Math.max(...UNITS.map(u => u.row)) * PITCH) + H;
+  // lines that share a unit leave and arrive side by side, in left-to-right order, so they never merge
+  const leads = i => UNITS.map((v, j) => v.needs.includes(i) ? j : -1).filter(j => j >= 0).sort((p, q) => UNITS[p].x - UNITS[q].x);
+  const spread = (k, n) => (k - (n - 1) / 2) * 8;
+  const edges = UNITS.flatMap((u, i) => u.needs.map(n => {
+    const a = UNITS[n], out = leads(n), into = [...u.needs].sort((p, q) => UNITS[p].x - UNITS[q].x);
+    const x1 = a.x + spread(out.indexOf(i), out.length), x2 = u.x + spread(into.indexOf(n), into.length);
+    const y1 = a.row * PITCH + H, y2 = u.row * PITCH, ym = (y1 + y2) / 2;
+    return `<path vector-effect="non-scaling-stroke" d="M${x1} ${y1} C${x1} ${ym} ${x2} ${ym} ${x2} ${y2}"/>`;
+  })).join('');
+  const nodes = UNITS.map((u, i) => `<button type="button" class="dn ${u.status || 'todo'}${sel === i ? ' sel' : ''}" data-unit="${i}" style="left:${u.x - 23}%;top:${u.row * PITCH}px">
+    <b>${i + 1}</b><span class="t">${u.t}</span>${says(u) ? `<small>${says(u)}</small>` : ''}</button>`).join('');
+  return `<div class="dg" style="height:${height}px"><svg viewBox="0 0 100 ${height}" preserveAspectRatio="none" aria-hidden="true">${edges}</svg>${nodes}</div>`;
+}
+const courseView = () => `<div class="pg${diagramOpen ? ' has-pane' : ''}"><header class="nl"><nav class="crumbs" aria-label="Where you are"><button type="button" data-act="library">Library</button><span>/</span><b>${COURSE}</b></nav>
+  <button type="button" class="btn sm" data-act="continue">Continue</button></header>
+  <div class="pg-scroll"><div class="pg-col">
+    <h1 class="cv-title">${COURSE}</h1><p class="cv-at">You are in unit ${NOW + 1} of ${UNITS.length}, ${UNITS[NOW].t}, at segment ${SEG[0]} of ${SEG[1]}.</p>
+    <div class="cv-hrow"><h2 class="pg-h">Units</h2><button type="button" class="textbtn" data-act="diagram" aria-expanded="${diagramOpen}">${diagramOpen ? 'Hide the diagram' : 'Show the diagram'}</button></div>
+    <ol class="cu">${UNITS.map(unitRow).join('')}</ol>
+    <h2 class="pg-h">Sources</h2><div class="lib-list"><button type="button" class="lc" data-act="source"><span class="lc-title">${SOURCE.title}</span><span class="lc-when">${SOURCE.what}</span></button></div>
+  </div></div>
+  ${diagramOpen ? `<aside class="sp" aria-label="Curriculum diagram"><div class="sv-head"><b>Curriculum</b><span>How the units build on each other</span><button type="button" class="sv-close" data-act="diagram" aria-label="Close">${CLOSE_ICON}</button></div><div class="sv-body">${diagram()}</div></aside>` : ''}</div>`;
+const awayView = () => `<div class="away"><h1>${away.title}</h1><p>${away.text}</p><button type="button" class="btn" data-act="back">Back to the course</button></div>`;
+
+/* ---------------- render and input ---------------- */
+function render(keepScroll){
+  const top = keepScroll ? $('.pg-scroll')?.scrollTop ?? 0 : 0;
+  app.innerHTML = away ? awayView() : courseView();
+  if ($('.pg-scroll')) $('.pg-scroll').scrollTop = top;
+}
+function leave(title, text){ away = {title, text}; render(false); }
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (b.dataset.unit !== undefined) { sel = +b.dataset.unit; render(true); $(`#u${sel}`).scrollIntoView({block:'nearest', behavior:'smooth'}); }
+  else if (b.dataset.notes !== undefined) leave(`Notes: ${UNITS[b.dataset.notes].t}`, 'This opens the notes written when the unit closed. A later stage of the build.');
+  else if (act === 'diagram') { diagramOpen = !diagramOpen; if (!diagramOpen) sel = null; render(true); }
+  else if (act === 'continue') leave(SEGMENT, `This opens the session where you stopped: segment ${SEG[0]} of ${SEG[1]} of ${UNITS[NOW].t}. The session is pieces 1 to 5.`);
+  else if (act === 'source') leave(SOURCE.title, 'This opens the source to read. A later stage of the build.');
+  else if (act === 'library') leave('Library', 'This goes back to the library, piece 6.');
+  else if (act === 'back') { away = null; render(false); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && diagramOpen) { diagramOpen = false; sel = null; render(true); } });
+render(false);
+</script>
+</body>
+</html>

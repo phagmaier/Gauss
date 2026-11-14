@@ -275,6 +275,10 @@ drafted in the stage that first needs it and revised against real transcripts.
 
 Artifacts render in a sandboxed frame so generated HTML cannot touch the app.
 
+The layout of these views was settled with static mocks: `docs/prototype/`
+(start at `index.html`; the shared look is `base.css`), with the choices
+recorded in `docs/decisions.md`.
+
 ## 11. Testing
 
 - **Automated (Vitest)**: status derivation from evidence, phase rules and
