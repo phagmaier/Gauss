@@ -69,5 +69,28 @@ Do not start the next stage before that.
 
 ## Commands
 
-None yet. Stage 0 task 0.1 sets up the toolchain and replaces this section
-with the install, test, lint, type-check and run commands.
+Runtimes are pinned in `mise.toml`. Run everything inside mise: a shell with
+mise activated, or `mise exec -- <command>`.
+
+| Purpose | Command |
+| --- | --- |
+| Install the pinned runtimes | `mise install` |
+| Install dependencies | `mise run setup` (`pnpm install`, then `uv sync --directory pytools`) |
+| Lint, type-check and both test suites | `mise run check` |
+| Lint and format check | `pnpm lint` |
+| Apply formatting and safe fixes | `pnpm format` |
+| Type-check | `pnpm typecheck` |
+| Test, TypeScript | `pnpm test` (`pnpm test:watch` while working) |
+| Test, Python helpers | `uv run --directory pytools pytest` |
+
+There is no run command yet; task 0.5 adds the server and the page.
+
+- TypeScript tests sit beside the code as `src/**/*.test.ts`. Python tests are
+  in `pytools/tests/`.
+- Imports name the real file, with its `.ts` extension, and only erasable
+  TypeScript syntax is allowed (no `enum`, no parameter properties). See
+  `tsconfig.json`.
+- Biome lints and formats code and config. Markdown and `docs/` are excluded.
+- Add dependencies with `pnpm add` and `uv add --directory pytools`, and
+  commit both lockfiles. pnpm refuses releases less than a day old
+  (`pnpm-workspace.yaml`).

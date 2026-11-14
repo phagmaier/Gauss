@@ -1,0 +1,25 @@
+{
+  // Type-checking only: nothing is compiled to disk. Imports name the real
+  // ".ts" files and only erasable syntax is allowed, so the same source runs
+  // unchanged under Node, Vite and Vitest.
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext"],
+    "types": ["node"],
+
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedSideEffectImports": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "*.config.ts"]
+}

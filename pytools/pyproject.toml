@@ -1,0 +1,18 @@
+[project]
+name = "gauss-pytools"
+version = "0.1.0"
+description = "Python helpers for Gauss: document conversion and symbolic math checks"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.uv]
+# Use the Python that mise pins for the repository, never one uv downloads.
+python-preference = "only-system"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

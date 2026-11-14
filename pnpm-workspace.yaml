@@ -1,0 +1,4 @@
+# pnpm settings for this single-package project.
+
+# A release must be a day old before it can be installed.
+minimumReleaseAge: 1440

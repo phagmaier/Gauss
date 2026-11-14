@@ -1,0 +1,16 @@
+# dependencies and environments
+node_modules/
+.venv/
+
+# build and tool output
+dist/
+coverage/
+*.tsbuildinfo
+__pycache__/
+.pytest_cache/
+
+# local only
+.env
+.env.*
+.playwright-mcp/
+.DS_Store

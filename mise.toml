@@ -1,0 +1,15 @@
+# Runtimes and tools for this project, pinned to exact versions.
+# `mise install` fetches them; upgrade one deliberately by editing its line.
+[tools]
+node = "24.22.2"
+pnpm = "12.18.0"
+python = "3.14.10"
+uv = "0.13.7"
+
+[tasks.setup]
+description = "Install the JavaScript and Python dependencies"
+run = ["pnpm install", "uv sync --directory pytools"]
+
+[tasks.check]
+description = "Lint, type-check and run both test suites"
+run = ["pnpm lint", "pnpm typecheck", "pnpm test", "uv run --directory pytools pytest"]

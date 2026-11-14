@@ -16,13 +16,17 @@ not.
 
 ### 0.1 Toolchain
 
-- Status: todo
+- Status: done
 - Depends on: none
 - Do: `git init` and `.gitignore`; `mise.toml` pinning node, pnpm, python, uv;
   `package.json` with TypeScript, Vitest, and one linter/formatter; a `pytools/`
   uv project with pytest. Fill in the Commands section of `AGENTS.md`.
 - Done when: install, test, lint and type-check commands all run clean on the
   empty project, and `AGENTS.md` lists them.
+- Note: done on 2026-11-13. `mise run check` runs everything. The choices and
+  two things later tasks will meet (TypeScript 7 and pnpm 12 are newer than
+  most written guidance; the web side still needs `jsx` and the DOM library
+  in `tsconfig.json`) are in `docs/decisions.md` under "Toolchain".
 
 ### 0.2 Claude on the plan login
 
@@ -48,7 +52,7 @@ not.
 
 ### 0.4 Resume and confinement
 
-- Status: todo
+- Status: in progress
 - Depends on: 0.2
 - Do: resume a session by id after restarting the process. Find the `sandbox`
   and permission options that let the agent run a test command and write files
@@ -69,7 +73,7 @@ not.
 
 ### 0.6 Codex spike (limit: about one hour of work)
 
-- Status: todo
+- Status: in progress
 - Depends on: 0.1
 - Do: run one prompt through `@openai/codex-sdk` on the ChatGPT login. Find how
   a custom tool server is configured for it and how text is streamed.
@@ -78,7 +82,7 @@ not.
 
 ### 0.7 Close the stage
 
-- Status: todo
+- Status: in progress
 - Depends on: 0.2, 0.3, 0.4, 0.5, 0.6
 - Do: move each "to verify" item in `architecture.md` section 7 to verified or
   changed. Delete spike code that will not be kept.
@@ -180,7 +184,7 @@ Tasks may be revised by 0.7.
 
 ### 1.6 Library and course views
 
-- Status: todo
+- Status: in progress
 - Depends on: 1.0, 1.5
 - Do: the library view, the intake chat, the curriculum review screen, and the
   diagram generated from `curriculum.json`.
@@ -228,7 +232,7 @@ quotes, and one unit taught from a paper.
 
 ### 5.0 Break down the stage
 
-- Status: todo
+- Status: in progress
 - Depends on: stage 4
 
 **User check:** one course runs from intake through a baseline to a closed

@@ -88,3 +88,35 @@ theme, detours, the baseline questions, the unit gate and unit close, the
 notes and source readers, review mode, settings, and narrow screens.
 `docs/prototype/index.html` lists the eight mocks in the order a learner
 meets them.
+
+## Toolchain (plan task 0.1)
+
+Set up on 2026-11-13. Every command in `AGENTS.md` was run and passed.
+
+- **Pinned runtimes** (`mise.toml`): Node 24.22.2, pnpm 12.18.0, Python
+  3.14.10, uv 0.13.7. These were the versions already installed on the
+  user's machine.
+- **TypeScript 7.0.2, Vitest 5.1.0, Biome 2.6.7.** All three are recent major
+  versions, so check their documentation before relying on remembered
+  behaviour. `tsconfig.json` started from what `tsc --init` writes for
+  version 7.
+- **Type-checking only, no build step.** `tsc` never emits. Imports carry the
+  `.ts` extension and `erasableSyntaxOnly` is on, so the same source can run
+  under Node directly, under Vite and under Vitest. How the server is started
+  is still task 0.5's decision; this only keeps the simplest option open.
+- **`tsconfig.json` covers the server side only so far.** The page needs
+  `jsx` and the DOM library added when task 0.5 creates it.
+- **Biome is the one linter and formatter.** Version 2.6 also formats
+  Markdown, which would rewrite every table in the documents, so Markdown and
+  `docs/` are excluded.
+- **`@types/node` was added** though `architecture.md` section 2 does not
+  list it: TypeScript needs it to type-check Node's own modules. It is pinned
+  to major 24 to match the runtime.
+- **pnpm settings** (`pnpm-workspace.yaml`): a release must be a day old
+  before it installs. No dependency needed a build script. If one does,
+  pnpm 12 fails the install until it is named under `allowBuilds`.
+- **`pytools/` uses mise's Python only** (`python-preference = "only-system"`),
+  so uv never downloads a second interpreter.
+- **One test on each side checks the runtime pin**: the suite fails if it
+  runs on a Node or Python other than the one in `mise.toml`, which is what
+  happens when a command is run outside mise.
