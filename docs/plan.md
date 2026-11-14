@@ -15,6 +15,7 @@ before anything depends on them. Spike code may be thrown away; findings may
 not.
 
 ### 0.1 Toolchain
+
 - Status: todo
 - Depends on: none
 - Do: `git init` and `.gitignore`; `mise.toml` pinning node, pnpm, python, uv;
@@ -24,6 +25,7 @@ not.
   empty project, and `AGENTS.md` lists them.
 
 ### 0.2 Claude on the plan login
+
 - Status: todo
 - Depends on: 0.1
 - Do: a script that sends one prompt through `@anthropic-ai/claude-agent-sdk`
@@ -35,6 +37,7 @@ not.
   session; which built-in tools the session reports.
 
 ### 0.3 Question round trip
+
 - Status: todo
 - Depends on: 0.2
 - Do: an in-process `ask_question` tool that stores a question and returns
@@ -44,6 +47,7 @@ not.
   without a search step, and the working option set.
 
 ### 0.4 Resume and confinement
+
 - Status: todo
 - Depends on: 0.2
 - Do: resume a session by id after restarting the process. Find the `sandbox`
@@ -53,6 +57,7 @@ not.
   refusal when the agent is asked to write outside the directory.
 
 ### 0.5 Minimal page
+
 - Status: todo
 - Depends on: 0.3
 - Do: a Hono server and a React page. Stream one tutor reply to the page over
@@ -63,6 +68,7 @@ not.
   needed.
 
 ### 0.6 Codex spike (limit: about one hour of work)
+
 - Status: todo
 - Depends on: 0.1
 - Do: run one prompt through `@openai/codex-sdk` on the ChatGPT login. Find how
@@ -71,6 +77,7 @@ not.
   the adapter interface would need to change for Codex.
 
 ### 0.7 Close the stage
+
 - Status: todo
 - Depends on: 0.2, 0.3, 0.4, 0.5, 0.6
 - Do: move each "to verify" item in `architecture.md` section 7 to verified or
@@ -86,23 +93,16 @@ multiple-choice question, and see the tutor respond to the answer.
 Tasks may be revised by 0.7.
 
 ### 1.0 Page layout
+
 - Status: in progress
 - Depends on: none (pulled ahead of stage 0 at the user's request on
   2026-11-13; it is a static mock and needs no code from stage 0)
 - Do: a static mock of the three views (library, course, session) for the user
   to react to before any real page work.
 - Done when: the user has approved a layout, and it is saved under `docs/`.
-- Note: `docs/prototype/look.html`. Round 1 offered Folio, Workbench and
-  Stage. The user liked Folio's look but found it plain, liked Stage's map and
-  ease of use, and asked for a chat layout with one message box. Workbench was
-  dropped. Round 2 is variant D (Folio + Stage), with A and C kept for
-  comparison. The user found D's session view cluttered and worse than A:
-  while learning, show only the text, the message box and navigation;
-  everything else (map, aids, course list) opens on click. Round 3 rebuilt
-  D's session view that way. Once the user approves, record the choice in
-  `docs/decisions.md` and delete the other variants.
 
 ### 1.1 Course and curriculum schemas
+
 - Status: todo
 - Depends on: stage 0
 - Do: zod schemas in `src/shared/` for `course.json` and `curriculum.json`
@@ -112,6 +112,7 @@ Tasks may be revised by 0.7.
   cycle.
 
 ### 1.2 Record module
+
 - Status: todo
 - Depends on: 1.1
 - Do: resolve the data root (default `~/gauss/`, environment override); create,
@@ -120,6 +121,7 @@ Tasks may be revised by 0.7.
   a reload after a simulated crash mid-write.
 
 ### 1.3 Backend adapter
+
 - Status: todo
 - Depends on: stage 0
 - Do: the adapter interface, the scripted fake backend, and the Claude backend
@@ -128,6 +130,7 @@ Tasks may be revised by 0.7.
   through the fake backend, and a manual run does the same through Claude.
 
 ### 1.4 Intake and curriculum proposal
+
 - Status: todo
 - Depends on: 1.2, 1.3
 - Do: `prompts/planner.md`; the intake chat; the `propose_curriculum` tool,
@@ -138,6 +141,7 @@ Tasks may be revised by 0.7.
   revised proposal, and approval.
 
 ### 1.5 Routes and event stream
+
 - Status: todo
 - Depends on: 1.4
 - Do: HTTP routes for the library, course creation, chat turns and curriculum
@@ -145,6 +149,7 @@ Tasks may be revised by 0.7.
 - Done when: route tests pass against the fake backend.
 
 ### 1.6 Library and course views
+
 - Status: todo
 - Depends on: 1.0, 1.5
 - Do: the library view, the intake chat, the curriculum review screen, and the
@@ -158,6 +163,7 @@ still there.
 ## Stage 2: session engine
 
 ### 2.0 Break down the stage
+
 - Status: todo
 - Depends on: stage 1
 - Do: write this stage's tasks here in the same format, covering the scope in
@@ -171,6 +177,7 @@ stopping in the middle of a segment.
 ## Stage 3: checked grading and aids
 
 ### 3.0 Break down the stage
+
 - Status: todo
 - Depends on: stage 2
 
@@ -180,15 +187,17 @@ tests and the symbolic check, and an artifact appears in the side pane.
 ## Stage 4: sources
 
 ### 4.0 Break down the stage
+
 - Status: todo
 - Depends on: stage 3
 
-**User check:** a lecture on one chapter of the *Phenomenology* with verified
+**User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
 ## Stage 5: mastery loop
 
 ### 5.0 Break down the stage
+
 - Status: todo
 - Depends on: stage 4
 
