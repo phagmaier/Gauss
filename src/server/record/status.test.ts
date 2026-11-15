@@ -1,0 +1,335 @@
+import { describe, expect, test } from "vitest";
+import { StoredUnit } from "../../shared/curriculum.ts";
+import { EvidenceEntry } from "../../shared/evidence.ts";
+import type { Confidence } from "../../shared/question.ts";
+import type { UnitPosition } from "../../shared/state.ts";
+import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
+import { objectiveStatus, unitStatus } from "./status.ts";
+
+// Every expected status below was worked out by hand from the rules in
+// docs/decisions.md, "Objective status", not by running the code.
+
+const CHAIN = "chain-rule";
+const PRODUCT = "product-rule";
+const IMPLICIT = "implicit";
+
+interface Given {
+  /** The chain rule unless named. */
+  objective?: string;
+  /** Each answer gets a question of its own unless the prompt is named. */
+  prompt?: string;
+  choices?: string[];
+  confidence?: Confidence;
+  assisted?: boolean;
+  recordedAt?: string;
+}
+
+let asked = 0;
+
+/** One line of evidence.jsonl, parsed as the record would read it. */
+function answer(
+  verdict: "correct" | "incorrect" | "unknown",
+  given: Given,
+): EvidenceEntry {
+  asked += 1;
+  const questionId = `q${asked}`;
+  return EvidenceEntry.parse({
+    kind: "answer",
+    recordedAt: given.recordedAt ?? "2026-11-15T10:00:00.000Z",
+    objective: given.objective ?? CHAIN,
+    question: {
+      kind: "choice",
+      prompt: given.prompt ?? `Question ${asked}: differentiate this.`,
+      choices: given.choices ?? ["$2x\\cos(x^2)$", "$\\cos(x^2)$"],
+      answer: "A",
+    },
+    answer:
+      verdict === "unknown"
+        ? { kind: "unknown", questionId }
+        : {
+            kind: "choice",
+            questionId,
+            choice: verdict === "correct" ? "A" : "B",
+            confidence: given.confidence ?? "75",
+          },
+    assisted: given.assisted ?? false,
+    verdict,
+  });
+}
+const right = (confidence: Confidence, given: Given = {}) =>
+  answer("correct", { ...given, confidence });
+const wrong = (confidence: Confidence, given: Given = {}) =>
+  answer("incorrect", { ...given, confidence });
+const dontKnow = (given: Given = {}) => answer("unknown", given);
+const override = (...objectives: string[]) =>
+  EvidenceEntry.parse({
+    kind: "override",
+    recordedAt: "2026-11-15T10:30:00.000Z",
+    objectives,
+  });
+
+const SPACED = "Differentiate $\\sin(x^2)$.";
+
+describe("objective status", () => {
+  const cases: { name: string; log: EvidenceEntry[]; is: ObjectiveStatus }[] = [
+    { name: "no evidence", log: [], is: "not-started" },
+    {
+      name: "evidence on other objectives only",
+      log: [right("100", { objective: PRODUCT }), override(PRODUCT)],
+      is: "not-started",
+    },
+
+    { name: "one correct answer at 90%", log: [right("90")], is: "passed" },
+    {
+      name: "correct answers to two questions at 75% and under 50%",
+      log: [right("75"), right("under-50")],
+      is: "passed",
+    },
+    {
+      name: "a correct answer with help between two without",
+      log: [right("75"), right("100", { assisted: true }), right("50")],
+      is: "passed",
+    },
+    {
+      name: `a correct answer at 100% after a miss and an "I don't know"`,
+      log: [wrong("100"), dontKnow(), right("100")],
+      is: "passed",
+    },
+    {
+      name: "one prompt with other choices, which is another question",
+      log: [
+        right("75", { prompt: SPACED }),
+        right("75", { prompt: SPACED, choices: ["$2x$", "$x^2$", "$0$"] }),
+      ],
+      is: "passed",
+    },
+    {
+      name: "an override after the pass",
+      log: [right("90"), override(CHAIN)],
+      is: "passed",
+    },
+    {
+      name: "a pass after an override",
+      log: [override(CHAIN), right("90")],
+      is: "passed",
+    },
+
+    {
+      name: "one correct answer at 75%",
+      log: [right("75")],
+      is: "attempted",
+    },
+    { name: "a wrong answer at 100%", log: [wrong("100")], is: "attempted" },
+    { name: `an "I don't know"`, log: [dontKnow()], is: "attempted" },
+    {
+      name: "a correct answer at 100% with help",
+      log: [right("100", { assisted: true })],
+      is: "attempted",
+    },
+    {
+      name: "two correct answers at 75%, the second with help",
+      log: [right("75"), right("75", { assisted: true })],
+      is: "attempted",
+    },
+    {
+      name: "one question answered correctly twice, spaced differently",
+      log: [
+        right("75", { prompt: SPACED }),
+        right("75", { prompt: `  Differentiate  $\\sin(x^2)$.\n` }),
+      ],
+      is: "attempted",
+    },
+    {
+      name: "a miss between two correct answers",
+      log: [right("75"), wrong("50"), right("75")],
+      is: "attempted",
+    },
+    {
+      name: `an "I don't know" between two correct answers`,
+      log: [right("75"), dontKnow(), right("75")],
+      is: "attempted",
+    },
+    {
+      name: "a miss with help between two correct answers",
+      log: [right("75"), wrong("75", { assisted: true }), right("75")],
+      is: "attempted",
+    },
+    {
+      name: "a miss after a pass",
+      log: [right("100"), wrong("75")],
+      is: "attempted",
+    },
+    {
+      name: "a miss logged after a pass, though its clock reads earlier",
+      log: [
+        right("90", { recordedAt: "2026-11-15T10:05:00.000Z" }),
+        wrong("75", { recordedAt: "2026-11-15T10:00:00.000Z" }),
+      ],
+      is: "attempted",
+    },
+    {
+      name: "a miss after an override",
+      log: [override(CHAIN), wrong("50")],
+      is: "attempted",
+    },
+
+    {
+      name: "an override of the segment's two objectives, with no answers",
+      log: [override(IMPLICIT, CHAIN)],
+      is: "overridden",
+    },
+    {
+      name: "a correct answer at 75%, then an override",
+      log: [right("75"), override(CHAIN)],
+      is: "overridden",
+    },
+  ];
+
+  test.each(cases)("$name: $is", ({ log, is }) => {
+    expect(objectiveStatus(log, CHAIN)).toBe(is);
+  });
+});
+
+// A unit of three objectives in two segments, and one sitting in it worked
+// by hand, its objectives' answers interleaved as a check interleaves them.
+const UNIT = StoredUnit.parse({
+  id: "differentiation",
+  title: "Differentiation rules",
+  goal: "Differentiate products, composites and curves given implicitly.",
+  prerequisites: [],
+  plan: {
+    objectives: [
+      { id: PRODUCT, statement: "Apply the product rule." },
+      { id: CHAIN, statement: "Apply the chain rule to a composite function." },
+      { id: IMPLICIT, statement: "Differentiate a curve given implicitly." },
+    ],
+    segments: [
+      { title: "The product rule", objectives: [PRODUCT] },
+      {
+        title: "Composites and implicit curves",
+        objectives: [CHAIN, IMPLICIT],
+      },
+    ],
+  },
+});
+const SITTING = [
+  // Segment 1's check: a miss clears the first correct answer, and two
+  // more pass the product rule.
+  right("75", { objective: PRODUCT }),
+  wrong("90", { objective: PRODUCT }),
+  right("50", { objective: PRODUCT }),
+  right("75", { objective: PRODUCT }),
+  // Segment 2's check: the learner wrote to the tutor while the first
+  // question was open, so its answer had help. Implicit passes at 90%.
+  right("100", { assisted: true }),
+  right("90", { objective: IMPLICIT }),
+  dontKnow(),
+  right("75"),
+  // "Move on without the check": the chain rule has one correct answer
+  // since its miss, so it is overridden; implicit stays passed.
+  override(CHAIN, IMPLICIT),
+  // "Go over the one again": the chain rule passes at 90%.
+  right("90"),
+];
+const CLOSED_AT_END: UnitPosition = { segment: 1, phase: "closed" };
+
+describe("a sitting worked by hand", () => {
+  test.each([
+    {
+      after: "segment 1's check",
+      log: SITTING.slice(0, 4),
+      is: {
+        [PRODUCT]: "passed",
+        [CHAIN]: "not-started",
+        [IMPLICIT]: "not-started",
+      },
+    },
+    {
+      after: "segment 2's last answer",
+      log: SITTING.slice(0, 8),
+      is: { [PRODUCT]: "passed", [CHAIN]: "attempted", [IMPLICIT]: "passed" },
+    },
+    {
+      after: "the override",
+      log: SITTING.slice(0, 9),
+      is: { [PRODUCT]: "passed", [CHAIN]: "overridden", [IMPLICIT]: "passed" },
+    },
+    {
+      after: "going over the chain rule again",
+      log: SITTING,
+      is: { [PRODUCT]: "passed", [CHAIN]: "passed", [IMPLICIT]: "passed" },
+    },
+  ])("after $after", ({ log, is }) => {
+    const statuses = Object.fromEntries(
+      [PRODUCT, CHAIN, IMPLICIT].map((id) => [id, objectiveStatus(log, id)]),
+    );
+    expect(statuses).toEqual(is);
+  });
+});
+
+describe("unit status", () => {
+  const { plan: _, ...unplanned } = UNIT;
+  const cases: {
+    name: string;
+    unit: StoredUnit;
+    log: EvidenceEntry[];
+    position?: UnitPosition;
+    is: UnitStatus;
+  }[] = [
+    {
+      name: "a unit with no plan",
+      unit: unplanned,
+      log: [],
+      is: "not-started",
+    },
+    {
+      name: "a planned unit with evidence only on another unit's objective",
+      unit: UNIT,
+      log: [right("90", { objective: "power-rule" })],
+      is: "not-started",
+    },
+    {
+      name: "a unit just started, before any answer",
+      unit: UNIT,
+      log: [],
+      position: { segment: 0, phase: "teach" },
+      is: "in-progress",
+    },
+    {
+      name: "one objective overridden and the rest passed, still at the closing card",
+      unit: UNIT,
+      log: SITTING.slice(0, 9),
+      position: CLOSED_AT_END,
+      is: "in-progress",
+    },
+    {
+      name: "every objective passed, still at the closing card",
+      unit: UNIT,
+      log: SITTING,
+      position: CLOSED_AT_END,
+      is: "in-progress",
+    },
+    {
+      name: "every objective passed, and the unit closed",
+      unit: UNIT,
+      log: SITTING,
+      is: "passed",
+    },
+    {
+      name: "one objective overridden and the rest passed, and the unit closed",
+      unit: UNIT,
+      log: SITTING.slice(0, 9),
+      is: "overridden",
+    },
+    {
+      name: "evidence on part of the unit, one objective overridden, and no position",
+      unit: UNIT,
+      log: SITTING.slice(4, 9),
+      is: "in-progress",
+    },
+  ];
+
+  test.each(cases)("$name: $is", ({ unit, log, position, is }) => {
+    expect(unitStatus(unit, log, position)).toBe(is);
+  });
+});

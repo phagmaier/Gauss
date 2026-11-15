@@ -17,6 +17,11 @@ export function confidenceLabel(confidence: Confidence): string {
   return confidence === "under-50" ? "under 50%" : `${confidence}%`;
 }
 
+/** "Confident" means 90% or 100% (brief.md, "Confidence"). */
+export function isConfident(confidence: Confidence): boolean {
+  return confidence === "90" || confidence === "100";
+}
+
 /** A multiple-choice question's fields, grading material included. */
 const choiceFields = {
   prompt: z

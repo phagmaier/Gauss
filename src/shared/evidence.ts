@@ -19,7 +19,10 @@ export const AnswerEvidence = z
     question: Question,
     /** The learner's answer as submitted, with confidence and reasoning. */
     answer: AnswerSubmission,
-    /** Whether the learner had help with it; task 2.3 settles what counts. */
+    /**
+     * Whether the learner had help: the tutor received a message from them
+     * while the question was open (docs/decisions.md, "Objective status").
+     */
     assisted: z.boolean(),
     verdict: Verdict,
   })

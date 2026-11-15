@@ -448,3 +448,23 @@ tested"). Stage 1 is finished.
   `docs/decisions.md` under "Plan, state and evidence records";
   `architecture.md` section 3 now says `state.json` holds a position per
   unit in progress, and how the logs are appended and read.
+
+### 2.3 Objective status
+
+- Status: done
+- Depends on: 2.2
+- Do: the pure function that derives each objective's status from the
+  evidence log, and a unit's from its objectives' (`architecture.md`
+  section 3). Settle the rules: what passes an objective ("unassisted
+  correct answers on varied problems"), what counts as help, how "I don't
+  know" and an override count, and what to call an objective that has
+  evidence but has not passed (section 3's list has no such status).
+  Retained and slipping depend on the unit gate and wait for stage 5.
+- Done when: tests built from hand-worked evidence logs cover every status
+  this stage can produce, and the rules are in `docs/decisions.md`.
+- Note: a proposal for "help", to test against the worked examples: an
+  answer is assisted when the learner wrote to the tutor while its question
+  was open. The engine sees that itself, without the tutor's word.
+- Note: done on 2026-11-15. The rules, the worked cases for help and the
+  checks are in `docs/decisions.md` under "Objective status";
+  `architecture.md` section 3 lists the statuses this stage produces.

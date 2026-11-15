@@ -40,6 +40,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.0 | Break down stage 2 | The choices behind the breakdown: "Stage 2 breakdown". |
 | 2.1 | Designs for stage 2 | Mocks 9 to 12 (style note, unit end, start fresh, unit order); picks and the tasks that use each are in "Stage 2 designs". |
 | 2.2 | Plan, state and evidence records | Schemas in `src/shared/plan.ts`, `state.ts`, `evidence.ts`; record operations `storePlan`, `readState` and `writePosition` (one unit's position; `null` takes it out), `appendEvidence` and `readEvidence`. An objective is taught in one segment only, so 2.7's extra segment needs a place of its own. Each read-and-write-back and each append goes through `record/file-lock.ts`; `record/json-lines.ts` serves 2.13's transcripts. |
+| 2.3 | Objective status | `objectiveStatus` and `unitStatus` in `record/status.ts`. Passed: since the last miss, unassisted correct answers to two different questions, or one at 90% or 100%. Help (2.7 records it): the tutor received a learner message while the question was open. A unit with a position in `state.json` is in progress, so 2.7 takes it out when the unit closes. |
 
 ## Stage 2: session engine
 
@@ -53,23 +54,6 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
-
-### 2.3 Objective status
-
-- Status: todo
-- Depends on: 2.2
-- Do: the pure function that derives each objective's status from the
-  evidence log, and a unit's from its objectives' (`architecture.md`
-  section 3). Settle the rules: what passes an objective ("unassisted
-  correct answers on varied problems"), what counts as help, how "I don't
-  know" and an override count, and what to call an objective that has
-  evidence but has not passed (section 3's list has no such status).
-  Retained and slipping depend on the unit gate and wait for stage 5.
-- Done when: tests built from hand-worked evidence logs cover every status
-  this stage can produce, and the rules are in `docs/decisions.md`.
-- Note: a proposal for "help", to test against the worked examples: an
-  answer is assisted when the learner wrote to the tutor while its question
-  was open. The engine sees that itself, without the tutor's word.
 
 ### 2.4 Markdown and math
 

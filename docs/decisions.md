@@ -30,6 +30,7 @@ findings are the record.
 | Stage 2 breakdown | Why stage 2's tasks are shaped as they are | Any stage 2 task, before starting |
 | Stage 2 designs | Picks from mocks 9 to 12, and which tasks use each | 2.6, 2.11, 2.12, and any stage 2 view |
 | Plan, state and evidence records | Plan rules, `state.json` positions, evidence entries, the file lock, cut log lines | Touching a unit's plan, `state.json` or the evidence (2.3, 2.5 to 2.8, 2.13) |
+| Objective status | The passing rule, help, "I don't know", overrides, unit status | Recording answers or help (2.7), showing status (2.11, 2.12), stage 5's retained and slipping |
 
 ## Page design (plan task 1.0)
 
@@ -1252,3 +1253,103 @@ in `src/server/record/`, the new operations of `data-root.ts`, with
   takes the lock was checked by reading the code. A crash is simulated by a
   cut file written by hand, not by stopping a process mid-append, unlike
   task 1.2's crash test.
+
+## Objective status (plan task 2.3)
+
+Written on 2026-11-15: the statuses in `src/shared/status.ts`, the pure
+functions `objectiveStatus(evidence, objective)` and `unitStatus(unit,
+evidence, position)` in `src/server/record/status.ts`, and `isConfident`
+in `src/shared/question.ts`. The caller reads the record; the functions do
+not. The rules were chosen by the agent and can be overturned.
+
+- **Statuses this stage can produce.** An objective is `not-started`,
+  `attempted`, `passed` or `overridden`; retained and slipping need the
+  unit gate and join in stage 5. A unit is `not-started`, `in-progress`,
+  `passed` or `overridden`.
+- **"Attempted" names an objective with evidence that has not passed**, which
+  section 3's list had no word for. Not "in progress": that is the unit's
+  word, and it would mislead for an objective whose segment closed at the
+  check's limit. Learner-facing copy says "Not passed" for both attempted
+  and overridden objectives (mock 10).
+- **The passing rule.** An objective passes once, since its last miss, it
+  has unassisted correct answers to two different questions, or one given
+  at 90% or 100%. Two questions is the brief's "varied problems"; one
+  confident answer is its "fewer after confident correct answers", without
+  which the adaptive count would have nothing to shorten. A confident
+  correct answer can still be a lucky one, so the unit gate (stage 5)
+  checks again.
+- **A miss clears the correct answers before it.** A miss is a wrong answer
+  or an "I don't know", with help or without. So a miss after a pass takes
+  the pass away, and the objective is attempted again; stage 5 may call
+  some of these "slipping". This gives 2.7 its count: an objective needs no
+  more questions once it passes, and needs at least one more after a miss.
+- **"Different questions"** means what the learner saw differs: the prompt
+  and the choices, spacing ignored, grading material not counted. The same
+  question posted twice is one problem. Code cannot judge variety beyond
+  that; the tutor's prompt (2.16) asks for it.
+- **Help.** A correct answer given with help counts for nothing either way:
+  it neither passes the objective nor clears the answers before it. A miss
+  with help is still a miss. The rule for recording help (2.7 records it):
+  **an answer is assisted when the tutor received a message from the learner
+  while its question was open**, from its posting to the answer's
+  submission. The engine sees this itself; it needs no word from the tutor.
+  Worked against these cases:
+  - The learner asks "is it the chain rule?" with a question open, and the
+    tutor hints: assisted. Right.
+  - The learner asks the tutor to rephrase the question: assisted. A
+    rephrasing can be a hint, so this errs the safe way.
+  - The learner writes "back in ten minutes": assisted, wrongly. It costs one
+    more question on that objective, no more. The page can say that writing
+    while a question is open counts as help (2.11).
+  - A message written while the tutor was still writing its lead-in, and
+    delivered once the question was posted: assisted, since the tutor's
+    reply comes while the question is open. This is why the rule counts
+    what the tutor received, not when the learner pressed Send.
+  - A question in discuss, or between two questions after the tutor's
+    feedback: not assisted, since no question was open. That is teaching,
+    and the next question checks whether it landed.
+  - Reasoning typed into the answer card: not assisted. It is not a message
+    to the tutor.
+  - A hint in the tutor's own lead-in: not caught. The tutor's prompt forbids
+    it, and 2.16 checks for it in the transcripts.
+
+  Rejected: the tutor declaring help with a tool, which relies on the
+  model's word where the design enforces rules in code, and judging the
+  tutor's replies for hints, which code cannot do.
+- **"I don't know"** is a miss like a wrong answer. It is never a confident
+  miss, which matters only to detours (stage 5).
+- **An override** marks each objective it names overridden, but never takes
+  away a pass, so a segment's "Move on without the check" can name all the
+  segment's objectives. A later answer takes the override's place: going
+  over an objective again is decided by the new answers. At the unit's
+  closing card, "Move on without them" (2.1) should record an override of
+  the objectives not passed; that makes the unit overridden.
+- **Log order decides**, not `recordedAt`: the log is appended under the
+  lock, so its order is the order of recording even if the clock jumps.
+- **Unit status.** A unit with a position in `state.json` is in progress,
+  whatever its evidence: a unit just started has none until its first
+  answer, and the course view must show it in progress. Otherwise its
+  objectives decide: no plan, or no objective with evidence, is not
+  started; all passed is passed; all passed or overridden is overridden;
+  anything else is in progress. That last case is a record left
+  half-written, with the position gone but objectives unfinished.
+- **For later tasks.** 2.7: take the unit out of `state.json` when it closes,
+  passed or after "Move on without them"; while the closing card waits on
+  the learner, the unit stays in progress. 2.7 and 2.11: page events carry
+  the statuses from `src/shared/status.ts`. 2.12: `unitStatus` with the
+  unit's position from `state.json`.
+- **Checks:** `mise run check` passed lint, type-checking, 224 TypeScript
+  tests and one Python test. The 35 new tests are hand-worked evidence
+  logs: 24 small ones for an objective, one sitting through a unit at four
+  points, and 8 for a unit. Each expected status was worked out by hand
+  from these rules. Each of these faults in the code made at least one test
+  fail: counting answers with help; a miss not clearing; "I don't know", or
+  a miss with help, not counted as a miss; an override taking a pass away,
+  covering objectives it does not name, or surviving a later answer;
+  answers to other objectives counted; the same question counted twice,
+  choices left out of what makes a question different, or spacing counted;
+  75% counted as confident; one unconfident answer passing; entries sorted
+  by time; the position ignored; one override making an unfinished unit
+  overridden; and an unfinished unit without a position called not
+  started. An early version had an override check that changed no result;
+  the fault test found it, and it was taken out.

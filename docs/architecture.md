@@ -115,10 +115,16 @@ for the work on that file before it (`record/file-lock.ts`), so writes land
 in the order they were made and none is lost. A course's id is its folder's
 name, made from its title.
 
-Objective status (not started, passed, retained, slipping, overridden) is
-**derived** from `evidence.jsonl` by a pure function and never stored, so it
-cannot disagree with the evidence. The curriculum diagram is generated from
-`curriculum.json` plus derived status.
+Objective status (not started, attempted, passed, overridden; retained and
+slipping join with the unit gate in stage 5) is **derived** from
+`evidence.jsonl` by a pure function and never stored, so it cannot disagree
+with the evidence. A unit's status (not started, in progress, passed,
+overridden) is derived from its objectives', and a unit with a position in
+`state.json` is in progress. The functions are in
+`src/server/record/status.ts`, the statuses in `src/shared/status.ts`, and
+the rules (what passes, what counts as help) in `decisions.md`, "Objective
+status". The curriculum diagram is generated from `curriculum.json` plus
+derived status.
 
 ## 4. Session engine
 
