@@ -416,3 +416,59 @@ options of the final run, added to the isolation options:
   flags (steps 1 to 10, before the temp steps were added), with
   `--temp-check` and with `--temp-check --temp-inside`, and the final run
   with `--allow-bash --temp-inside`.
+
+## Source sections (review of a proposal, 2026-11-14)
+
+The user brought a proposal, written with another model, to split sources
+into a hierarchy of size-limited sections. The agent reviewed it and
+proposed a smaller version, which the user accepted on 2026-11-14. The
+result is in `architecture.md` section 8; the size limit is left to stage 4.
+
+- **The gap was real.** Section 8 said "split by headings or the table of
+  contents" and had no size limit, no nesting, and no rule for a long
+  stretch with no headings. Most of the *Phenomenology* is subdivided, but
+  some stretches are long and have no headings: from memory of the Miller
+  translation, the Preface (about 45 pages) and "Force and the
+  Understanding" (about 30). Check on the user's edition in stage 4.
+- **The file-reading tool has a per-call limit.** The Claude Code binary
+  bundled with Agent SDK 0.3.325 (2.1.325) caps one `Read` call at 25,000
+  tokens by default; `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS` overrides it.
+  A larger file is refused with a message offering to read it anyway, so a
+  section must stay below the cap to be read in one call. Read from the
+  binary's strings, not observed in a run.
+- **Decided:** the outline nests to any depth; sections are its leaves and
+  the only entries with files; text before a node's first subheading is a
+  section of its own; a section has a size limit, and a stretch over it with
+  no headings is cut at paragraph boundaries into roughly equal parts; the
+  same file and converter give the same ids; each segment names the
+  sections it draws on, and the engine puts them in the turn header; the
+  tutor may read other sections when the discussion needs them;
+  `quote_source` checks the source's whole text in order, so a quote across
+  a cut still verifies.
+- **Not adopted from the proposal:**
+  - A change to `brief.md`. Its "sections" already fits the leaves of an
+    outline, and "subsection" or "chunk" would be synonyms for it.
+  - A field list for `outline.json` and `NN-MM.md` file names in
+    `architecture.md`. Data shapes are zod schemas in `src/shared/`, and
+    two-level names do not fit a source whose headings go four deep, as the
+    *Phenomenology*'s do in its Reason chapter.
+  - A required page range. EPUB, TXT and Markdown have no pages; a
+    paragraph range stands in.
+  - Ids that stay stable when the converter changes. Sources are converted
+    once; a different converter means mapping the units again.
+  - "Never read the whole chapter". Short chapters read better whole, and a
+    discussion may need earlier text.
+  - Agreed with the proposal: no overlap between sections, which would put
+    the same quotable text in two places.
+- **Corrections to the proposal's reasoning**, for later tasks that weigh
+  context size:
+  - What the tutor reads stays in the session, and a unit has one session.
+    Smaller files lower the cost of a unit's early turns, not of its end.
+    What bounds the context is the size of a unit.
+  - Resume does not depend on how sources are cut: `state.json` records the
+    segment and phase.
+  - The 15,000 to 19,000 input tokens measured in task 0.2 were with the
+    default tool set. The tutor's narrowed tools will take fewer.
+  - 15,000 to 30,000 characters is about 6 to 12 dense pages, not 5.
+- **Open:** the size limit, set by trial in stage 4; and where unit planning
+  reads the whole unit's text (`architecture.md` section 8).

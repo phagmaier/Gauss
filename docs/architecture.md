@@ -123,8 +123,9 @@ pops back.
 ### Turn protocol
 
 The engine composes every message the tutor receives: a short header (unit,
-segment, phase, what is allowed now) followed by either the learner's text or
-an event ("learner pressed ready", "answer submitted", "override").
+segment, phase, what is allowed now, and in a source course the segment's
+sections) followed by either the learner's text or an event ("learner pressed
+ready", "answer submitted", "override").
 
 ### Question flow
 
@@ -266,18 +267,44 @@ the SDK or the app server to stream text.
 ## 8. Sources
 
 1. **Ingest** (`pytools/convert.py`): copy the original; convert to Markdown;
-   split into sections by headings or the table of contents; write
-   `outline.json` (section id, title, page or paragraph range, file).
-2. **Map**: during curriculum planning each unit lists the sections it teaches.
-3. **Teach**: the tutor reads section files directly. For a page whose text
-   lost equations or figures, it requests the page image.
-4. **Quote**: `quote_source` checks the text against the section file after
-   normalising whitespace and punctuation variants, and the page links the
-   quote to its place in the source.
+   build an outline from the headings or the table of contents; write one
+   file per section, and `outline.json`, whose shape is a zod schema in
+   `src/shared/` written in stage 4.
+   - The outline nests as the source does, to any depth. A **section** is a
+     leaf of the outline and the only kind of entry with a file. Text between
+     a heading and its first subheading becomes a section of its own.
+   - Each section records where it sits in the original (a page range, or a
+     paragraph range for formats without pages), for citations and page
+     images.
+   - A section has a size limit, below what one file read returns
+     (25,000 tokens by default; `decisions.md`, "Source sections"). A
+     stretch over the limit with no headings is cut at paragraph boundaries
+     into parts of roughly equal size, titled from its parent and position.
+     Stage 4 sets the limit by trial on real files.
+   - The same file and converter always give the same sections and ids.
+     Ingesting again with a different converter means mapping the units
+     again.
+2. **Map**: during curriculum planning each unit lists the sections it
+   teaches. When the unit is planned, each segment names the sections it
+   draws on.
+3. **Teach**: the engine names the current segment's sections in the turn
+   header, and the tutor reads those files. It may read other sections of the
+   source when the discussion needs them. For a page whose text lost equations
+   or figures, it requests the page image.
+4. **Quote**: `quote_source` checks the text against the source's whole text,
+   its sections in order, after normalising whitespace and punctuation
+   variants, so a quote that crosses a cut still verifies. It returns the
+   section and the page or paragraph, and the page links the quote to its
+   place in the source.
 
 Converters are chosen in stage 4 by trying candidates on real files (a clean
 PDF book, an arXiv paper, an EPUB). Scanned PDFs are detected and reported as
 needing text recognition; that step is not in the first version.
+
+Open: where unit planning reads the whole unit's text. If the tutor does it in
+the unit's own session, that text is in context from the first turn, and
+reading one segment's sections at a time saves nothing. Stage 2 builds
+`plan_unit`; stage 4 settles this for source courses at the latest.
 
 ## 9. Prompts
 
@@ -340,6 +367,9 @@ task-level breakdown and status live in `plan.md`.
   pointer to the flaw, disputes. Proof grades remain a model's judgment.
 - **Poor PDF conversion.** Mitigation: page-image fallback; scanned files
   flagged at ingestion.
+- **Cutting a long stretch can split an argument.** Mitigation: cuts fall
+  only at paragraph boundaries, and the tutor can read the neighbouring
+  sections.
 - **The tutor's shell runs on the learner's machine.** Mitigation: the sandbox
   and permission settings confine writes to the course folder (confirmed in
   task 0.4). Reads are not confined, which matters once the tutor has web

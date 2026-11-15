@@ -227,6 +227,9 @@ still there.
   `architecture.md` section 12. Draft `prompts/tutor.md` and `prompts/grader.md`
   as tasks of their own.
 - Done when: the user has read the task list.
+- Note: for a source course, planning a unit needs the whole unit's text.
+  When designing `plan_unit`, decide where that reading happens or leave it
+  to 4.0 in writing (`architecture.md` section 8, "Open").
 
 **User check:** complete one unit of a math course across two sittings,
 stopping in the middle of a segment.
@@ -247,6 +250,16 @@ tests and the symbolic check, and an artifact appears in the side pane.
 
 - Status: todo
 - Depends on: stage 3
+- Note: the breakdown must settle these (`docs/decisions.md`, "Source
+  sections"):
+  - the section size limit, by trying candidates on real files: a long
+    stretch with no headings (the _Phenomenology_'s Preface, if the user's
+    edition has none), an arXiv paper and an EPUB;
+  - the `outline.json` schema in `src/shared/`;
+  - where unit planning reads the whole unit's text, unless stage 2 settled
+    it;
+  - fixture tests for the cut: the same ids on a second run, cuts only at
+    paragraph boundaries, and a quote across a cut that still verifies.
 
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
