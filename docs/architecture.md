@@ -60,8 +60,9 @@ Gauss/
 
 Dependencies, kept few: `@anthropic-ai/claude-agent-sdk`, `zod` (the SDK's
 tool helper requires it), a small HTTP framework (Hono), React with Vite,
-KaTeX, Mermaid, a Markdown renderer, Vitest. Python side: SymPy, plus a PDF and
-an EPUB converter chosen in stage 4.
+KaTeX, Mermaid, a Markdown renderer (react-markdown with remark-gfm,
+remark-math and rehype-katex, task 2.4), Vitest. Python side: SymPy, plus
+a PDF and an EPUB converter chosen in stage 4.
 
 ## 3. Data on disk
 
@@ -444,6 +445,10 @@ drafted in the stage that first needs it and revised against real transcripts.
   typed math with live preview, free text, "run my code") with confidence and
   reasoning fields; phase indicator and the "ready" and "override" controls;
   side pane for artifacts and cited source passages.
+
+Text from a model, and the learner's typed answers, are rendered as
+Markdown with `$` math by `src/web/prose.tsx`, as React elements and never
+as HTML (`decisions.md`, "Markdown and math").
 
 Artifacts render in a sandboxed frame so generated HTML cannot touch the app.
 

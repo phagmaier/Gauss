@@ -1,6 +1,7 @@
 // The check question card, as settled in docs/prototype/02-check-question.html:
 // answered inside the card, with how sure and an optional reasoning, and
-// shrunk to a record once graded. Multiple choice only so far.
+// shrunk to a record once graded. Multiple choice only so far. The prompt and
+// the choices are the tutor's Markdown, math included.
 
 import { useState } from "react";
 import {
@@ -11,6 +12,7 @@ import {
   confidenceLabel,
   type QuestionView,
 } from "../shared/question.ts";
+import { InlineProse, Prose } from "./prose.tsx";
 import type { Graded } from "./timeline.ts";
 
 const CONFIDENCE: { value: Confidence; label: string }[] = [
@@ -58,7 +60,9 @@ function OpenCard(props: {
   return (
     <div className="qa-card">
       <div className="q-count">Question {question.number}</div>
-      <div className="qa-prompt">{question.prompt}</div>
+      <div className="qa-prompt prose">
+        <Prose text={question.prompt} />
+      </div>
       <div className="qa-opts">
         {question.choices.map((text, i) => {
           const letter = CHOICE_LETTERS[i];
@@ -72,7 +76,9 @@ function OpenCard(props: {
               onClick={() => setChoice(letter)}
             >
               <kbd>{letter}</kbd>
-              <span>{text}</span>
+              <span>
+                <InlineProse text={text} />
+              </span>
             </button>
           );
         })}
@@ -137,8 +143,14 @@ function OpenCard(props: {
 
 function DoneCard(props: { question: QuestionView; graded: Graded }) {
   const { question, graded } = props;
-  const choiceText = (letter: ChoiceLetter) =>
-    `${letter}. ${question.choices[CHOICE_LETTERS.indexOf(letter)] ?? ""}`;
+  const choiceText = (letter: ChoiceLetter) => (
+    <span>
+      {letter}.{" "}
+      <InlineProse
+        text={question.choices[CHOICE_LETTERS.indexOf(letter)] ?? ""}
+      />
+    </span>
+  );
   const verdict =
     graded.verdict === "correct" ? (
       <span className="ok">Correct</span>
@@ -152,14 +164,16 @@ function DoneCard(props: { question: QuestionView; graded: Graded }) {
       <div className="q-count">
         Question {question.number} {verdict}
       </div>
-      <div className="qa-prompt">{question.prompt}</div>
+      <div className="qa-prompt prose">
+        <Prose text={question.prompt} />
+      </div>
       <div className="qa-line">
         <span className="k">Your answer</span>
         {graded.choice === null ? (
           <span>I don't know</span>
         ) : (
           <>
-            <span>{choiceText(graded.choice)}</span>
+            {choiceText(graded.choice)}
             {graded.confidence === null ? null : (
               <span className="c">
                 {confidenceLabel(graded.confidence)} sure
@@ -171,7 +185,7 @@ function DoneCard(props: { question: QuestionView; graded: Graded }) {
       {graded.verdict === "correct" ? null : (
         <div className="qa-line">
           <span className="k">Correct answer</span>
-          <span>{choiceText(graded.correctChoice)}</span>
+          {choiceText(graded.correctChoice)}
         </div>
       )}
     </div>

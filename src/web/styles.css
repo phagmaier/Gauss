@@ -33,6 +33,7 @@
   --measure: 39em;
   --r: 12px;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --math: 1.1em;
 }
 
 * {
@@ -94,6 +95,110 @@ button:focus-visible {
 }
 .prose p:last-child {
   margin-bottom: 0;
+}
+.prose h2 {
+  font-size: 1.12em;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: 2.1em 0 0.5em;
+  color: var(--head);
+}
+.prose h3 {
+  font-size: 1em;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: 1.6em 0 0.4em;
+  color: var(--head);
+}
+.prose :is(h1, h2, h3):first-child {
+  margin-top: 0;
+}
+.prose strong {
+  font-weight: 600;
+  color: var(--term);
+}
+.prose a {
+  color: var(--accent);
+}
+.prose :is(ul, ol) {
+  margin: 0 0 1em;
+  padding-left: 1.4em;
+}
+.prose li::marker {
+  color: var(--faint);
+}
+.prose li + li {
+  margin-top: 0.3em;
+}
+.prose li > :is(ul, ol) {
+  margin: 0.3em 0 0;
+}
+.prose li > p {
+  margin-bottom: 0.5em;
+}
+.prose blockquote {
+  margin: 0 0 1em;
+  padding-left: 1em;
+  border-left: 2px solid var(--surface1);
+  color: var(--soft);
+}
+.prose code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--surface0);
+  border-radius: 5px;
+  padding: 0.08em 0.35em;
+}
+.prose pre {
+  margin: 0 0 1em;
+  padding: 0.7em 0.9em;
+  background: var(--mantle);
+  border-radius: var(--r);
+  overflow-x: auto;
+}
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+.prose table {
+  border-collapse: collapse;
+  margin: 0 0 1em;
+  font-size: 0.94em;
+}
+.prose :is(th, td) {
+  border-top: 1px solid var(--surface0);
+  padding: 0.35em 1em 0.35em 0;
+  text-align: left;
+}
+.prose th {
+  font-weight: 600;
+  border-top: 0;
+}
+.prose > :is(ul, ol, blockquote, pre, table):last-child {
+  margin-bottom: 0;
+}
+/* math, from base.css */
+.katex {
+  font-size: var(--math);
+}
+.katex-display {
+  margin: 1.6em 0;
+  font-size: 1.14em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+.katex-display > .katex {
+  font-size: var(--math);
+}
+/* the learner's typed answer as it will read (mock 2), under the field */
+.prev {
+  min-height: 2.6em;
+  padding: 0.2em 0.1em;
+}
+.prev .faint {
+  font-size: 0.86em;
+  color: var(--faint);
 }
 .wait {
   display: inline-block;
@@ -230,7 +335,6 @@ button:focus-visible {
 .qa-prompt {
   font-size: 1.08em;
   margin: 0.25em 0 0.9em;
-  white-space: pre-wrap;
 }
 .qa-opts {
   display: grid;

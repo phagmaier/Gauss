@@ -41,6 +41,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.1 | Designs for stage 2 | Mocks 9 to 12 (style note, unit end, start fresh, unit order); picks and the tasks that use each are in "Stage 2 designs". |
 | 2.2 | Plan, state and evidence records | Schemas in `src/shared/plan.ts`, `state.ts`, `evidence.ts`; record operations `storePlan`, `readState` and `writePosition` (one unit's position; `null` takes it out), `appendEvidence` and `readEvidence`. An objective is taught in one segment only, so 2.7's extra segment needs a place of its own. Each read-and-write-back and each append goes through `record/file-lock.ts`; `record/json-lines.ts` serves 2.13's transcripts. |
 | 2.3 | Objective status | `objectiveStatus` and `unitStatus` in `record/status.ts`. Passed: since the last miss, unassisted correct answers to two different questions, or one at 90% or 100%. Help (2.7 records it): the tutor received a learner message while the question was open. A unit with a position in `state.json` is in progress, so 2.7 takes it out when the unit closes. |
+| 2.4 | Markdown and math | `Prose`, `InlineProse` and `AnswerPreview` in `src/web/prose.tsx` (react-markdown, remark-math, rehype-katex): the tutor's text, prompts and choices. `AnswerPreview` is not mounted yet: put it under the written answer field (2.8 or 2.11). Prompts must ask for `$` math, `$$` on a line of its own for display, and `\$` for a dollar sign (2.16); images are never shown. |
 
 ## Stage 2: session engine
 
@@ -54,20 +55,6 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
-
-### 2.4 Markdown and math
-
-- Status: todo
-- Depends on: stage 1
-- Do: render the tutor's text, question prompts and choices as Markdown
-  with KaTeX math, and preview typed LaTeX in the written answer field, as
-  mock 2 does for its math answers. Text from a model is never run as
-  HTML. Choose the Markdown renderer (`architecture.md` section 2 names one
-  without choosing), and lift the plain-text rule in `prompts/planner.md`.
-- Done when: tests of the rendering cover lists, emphasis, inline and
-  display math, a formula that fails to parse, and raw HTML and a script
-  tag shown inert; a browser check with the fake backend shows each in the
-  thread.
 
 ### 2.5 Unit planning
 
@@ -198,6 +185,9 @@ gate or notes.
 - Done when: a browser check with the fake backend covers starting a unit,
   a whole segment with a multiple-choice and a written answer, an
   override, the outline, the unit's end, and a reload mid-check.
+- Note from 2.4: mount `AnswerPreview` (`src/web/prose.tsx`) under the
+  written answer field, unless 2.8 already has, and show a written answer
+  on its graded card with `Prose`.
 
 ### 2.12 Course and library progress
 
@@ -275,6 +265,9 @@ gate or notes.
 - Note: the result depends on how well the tutor teaches, so this run may
   use Sonnet or Opus; checks of the flow alone stay on Haiku 5.5
   (`AGENTS.md`).
+- Note from 2.4: say how math is written (`$...$`, `$$` on a line of its
+  own, `\$` for a dollar sign), as `prompts/planner.md` does, and that
+  images are not shown.
 
 **User check:** complete one unit of a math course across two sittings,
 stopping in the middle of a segment.

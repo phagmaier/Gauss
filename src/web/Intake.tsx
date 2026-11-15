@@ -18,6 +18,7 @@ import { post } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Diagram, UnitList } from "./Curriculum.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
+import { Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
 import { emptyTimeline, type Item, reduce } from "./timeline.ts";
@@ -277,14 +278,7 @@ function ItemView(props: { item: Exclude<Item, Proposal> }) {
     case "tutor":
       return (
         <div className="th-tutor prose">
-          {item.text
-            .trim()
-            .split(/\n{2,}/)
-            .map((paragraph, i) => (
-              // Paragraphs only grow at the end, so their order is stable.
-              // biome-ignore lint/suspicious/noArrayIndexKey: see above
-              <p key={i}>{paragraph}</p>
-            ))}
+          <Prose text={item.text} />
         </div>
       );
     case "question":

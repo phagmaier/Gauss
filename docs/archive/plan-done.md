@@ -468,3 +468,21 @@ tested"). Stage 1 is finished.
 - Note: done on 2026-11-15. The rules, the worked cases for help and the
   checks are in `docs/decisions.md` under "Objective status";
   `architecture.md` section 3 lists the statuses this stage produces.
+
+### 2.4 Markdown and math
+
+- Status: done
+- Depends on: stage 1
+- Do: render the tutor's text, question prompts and choices as Markdown
+  with KaTeX math, and preview typed LaTeX in the written answer field, as
+  mock 2 does for its math answers. Text from a model is never run as
+  HTML. Choose the Markdown renderer (`architecture.md` section 2 names one
+  without choosing), and lift the plain-text rule in `prompts/planner.md`.
+- Done when: tests of the rendering cover lists, emphasis, inline and
+  display math, a formula that fails to parse, and raw HTML and a script
+  tag shown inert; a browser check with the fake backend shows each in the
+  thread.
+- Note: done on 2026-11-15. The choices, checks and browser run are in
+  `docs/decisions.md` under "Markdown and math"; `architecture.md`
+  sections 2 and 10 name the renderer. The preview is built but not
+  mounted, since the written answer field comes with 2.8 and 2.11.

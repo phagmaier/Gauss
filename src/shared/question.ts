@@ -27,13 +27,15 @@ const choiceFields = {
   prompt: z
     .string()
     .min(1)
-    .describe("The question, in plain text. Do not list the choices here."),
+    .describe(
+      "The question, in Markdown, with LaTeX math between $ signs. Do not list the choices here.",
+    ),
   choices: z
     .array(z.string().min(1))
     .min(2)
     .max(CHOICE_LETTERS.length)
     .describe(
-      "The choices in display order. The learner sees them labelled A, B, C and so on.",
+      "The choices in display order, each one line of Markdown with LaTeX math between $ signs. The learner sees them labelled A, B, C and so on.",
     ),
   answer: ChoiceLetter.describe(
     "The letter of the correct choice. Never shown to the learner.",

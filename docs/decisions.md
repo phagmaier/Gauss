@@ -31,6 +31,7 @@ findings are the record.
 | Stage 2 designs | Picks from mocks 9 to 12, and which tasks use each | 2.6, 2.11, 2.12, and any stage 2 view |
 | Plan, state and evidence records | Plan rules, `state.json` positions, evidence entries, the file lock, cut log lines | Touching a unit's plan, `state.json` or the evidence (2.3, 2.5 to 2.8, 2.13) |
 | Objective status | The passing rule, help, "I don't know", overrides, unit status | Recording answers or help (2.7), showing status (2.11, 2.12), stage 5's retained and slipping |
+| Markdown and math | The renderer, what happens to a model's HTML, links and images, math delimiters, the answer preview | Showing model or learner text on the page; writing a prompt's formatting rules (2.16) |
 
 ## Page design (plan task 1.0)
 
@@ -1353,3 +1354,91 @@ not. The rules were chosen by the agent and can be overturned.
   overridden; and an unfinished unit without a position called not
   started. An early version had an override check that changed no result;
   the fault test found it, and it was taken out.
+
+## Markdown and math (plan task 2.4)
+
+Written on 2026-11-15: `src/web/prose.tsx` and its tests, the question card
+and the thread using it, the styles in `src/web/styles.css`, and the
+Markdown rule in `prompts/planner.md` and `ask_question`'s field
+descriptions. The choices are the agent's and can be overturned.
+
+- **The renderer is react-markdown 10, with remark-gfm, remark-math 6 and
+  rehype-katex 7**, and `katex` 0.16 for its stylesheet. It turns Markdown
+  into React elements, so text from a model is never set as HTML: raw HTML
+  in it is shown as text, and links with unsafe protocols lose their
+  address, both by default. Its components map will also suit stage 4's
+  citations, which open a passage. `katex` is pinned to the 0.16 line that
+  rehype-katex requires: the latest, 0.19, installed a second copy whose
+  stylesheet would not match the renderer. remark-gfm adds tables,
+  strikethrough and bare links, which models write by habit. Rejected:
+  markdown-it with a math plugin, far fewer packages, but it yields an HTML
+  string for `dangerouslySetInnerHTML`, so safety rests on its escaping and
+  later interactive pieces need post-processing; and marked with DOMPurify,
+  which cleans HTML after the fact. The cost: 118 packages (the unified
+  ecosystem's many small modules) and a page script of 777 kB, 235 kB
+  gzipped, which a local app can carry.
+- **What the page does with a model's text**: raw HTML, a script tag
+  included, is shown as text, and a block of it is a paragraph of its own;
+  a link opens in a new tab with `rel="noreferrer"`, and one with an unsafe
+  protocol is only its text; an image shows its description and is never
+  fetched, because a prompt injection in a source (stage 4) could otherwise
+  carry data out in an image address; KaTeX runs untrusted (its default), so
+  `\href`, `\url` and `\includegraphics` are refused and shown in red.
+- **Math**: `$...$` in a line, and `$$...$$` for display, either with the
+  dollars on lines of their own (remark-math) or with the formula on one
+  line by itself, alone or inside a paragraph. remark-math reads that last
+  form as inline math, so a small plugin, `displayMathLines`, marks it as
+  display and drops the newlines around it. `$$` within a line stays
+  inline. A formula that fails to parse shows its source in Frappé red,
+  with KaTeX's message as its title, and the text around it renders. Dollars
+  in code are code.
+- **A dollar sign that is not math must be written `\$`.** "It costs $5 and
+  $10" is read as math, and no rule fixes that reliably: Pandoc's rule fails
+  on "$5. Then $x$". `planner.md` asks for `\$`; `tutor.md` (2.16) must too.
+- **Not supported: `\(...\)` and `\[...\]`.** Markdown reads `\(` as an
+  escaped bracket. The prompts ask for dollars; if a real run shows the
+  tutor using these, convert them.
+- **A single newline is a line break**: `.prose p` keeps the `white-space:
+  pre-wrap` it had for plain text (task 1.6), which suits a proof typed line
+  by line.
+- **Where it is used.** `Prose` renders the tutor's text in the thread and
+  the question's prompt; `InlineProse` renders each choice, on its button
+  and in the graded card's lines, without paragraphs, which a button may
+  not hold. The learner's own messages, and unit titles and goals on the
+  proposal card, stay plain text; `planner.md` asks for plain titles and
+  goals, and lets its replies use Markdown and math.
+- **The answer preview** (`AnswerPreview`) renders what the learner types as
+  Markdown with `$` math, with a line saying so while the field is blank.
+  Mock 2's preview renders its math kind as one formula; a written answer
+  (2.8) mixes words and math, so it takes the same rendering as the tutor's
+  text. It is built and tested but not mounted, because the written answer
+  field comes with 2.8 and 2.11; the `.prev` style is mock 2's, made a
+  block for paragraphs.
+- **Checks:** `mise run check` passed lint, type-checking, 245 TypeScript
+  tests and one Python test. The 21 rendering tests render to static HTML in
+  Node with `react-dom/server`, so they need no DOM. Each of these faults
+  made at least one fail: raw HTML dropped instead of shown; KaTeX trusted;
+  another error colour; an unsafe link kept as an empty link; images shown;
+  no display rule for `$$` lines; the newlines around one kept; formulas
+  decided one at a time, so the second of two consecutive lines stayed
+  inline; `$$` within a line made display; a block of raw HTML left bare;
+  paragraphs in choices; and a blank preview rendered. A fault written at
+  first changed nothing; it was rewritten and then caught.
+- **Browser run with the fake backend**, on a scratch server built like
+  `main.ts`, whose backend also had `ask_question` and posted its cards
+  into the intake's thread. The reply streamed in three pieces, one cut
+  inside a formula. The thread showed a heading, both kinds of list,
+  emphasis, inline math, three display formulas (fenced, on one line, and
+  inside a paragraph), the failed formula in red, raw HTML and a script tag
+  as text, `\$` prices and code; the unsafe link was text and the image its
+  description. Nothing ran: the script, an `onerror` and an `onclick` each
+  tried to set `window.__pwned`, which stayed unset, and the thread held no
+  `script`, `img`, `b` or `onclick` element. A graded card and an open card
+  showed Markdown and math in their prompts and choices. A reload rebuilt
+  the same thread, the KaTeX fonts loaded, and the console had no errors.
+  The run found the block of raw HTML running into the next paragraph, now
+  fixed. A production build bundles the KaTeX fonts.
+- **Not covered:** the preview updating as the learner types, until it is
+  mounted; how a real model writes Markdown and math (2.16). A render that
+  throws would blank the page, since the page has no error boundary;
+  rehype-katex catches KaTeX's errors, and no other was seen.

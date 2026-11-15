@@ -57,5 +57,9 @@ The learner approves on the card, and the app takes it from there.
 
 ## Style
 
-Write plain text in short paragraphs. Do not use Markdown or LaTeX: the page
-shows text as it is. Keep every reply under 120 words.
+Write short paragraphs. The page renders Markdown in your replies, so you
+can use emphasis and lists, and LaTeX math between dollar signs: `$x^2$` in
+a line, and `$$` on lines of their own, before and after a formula that
+stands apart. Write a dollar sign that is not math as `\$`. The card shows
+titles and goals as plain text, so write those without Markdown or LaTeX.
+Keep every reply under 120 words.
