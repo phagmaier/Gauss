@@ -638,3 +638,26 @@ within the hour the plan allows.
 - **Runs**, for repeating them: `probe` without and with `--isolate` (before
   and after the feature switches were added), and `tool --isolate` before
   and after the approval mode was added.
+
+## Stage 0 closed (plan task 0.7)
+
+Done on 2026-11-15. Every item `architecture.md` first marked "to verify"
+now has an answer in section 7. What stage 0 left open is the table "Open
+after stage 0" at the end of that section, with the stage that settles each
+row.
+
+- **Spike code deleted.** All of `spike/` went: the findings are recorded
+  in the entries above, and the code worth keeping was rebuilt in `src/`
+  by task 0.5 (the isolation options in `src/server/backends/claude.ts`).
+  The scripts the entries name are in the history:
+  `git show 349c399:spike/<file>`. `@openai/codex-sdk`, added for task 0.6
+  alone, was removed; stage 6 adds a Codex dependency again if it builds
+  that backend, possibly the app server rather than the SDK.
+- **Kept: the minimal page** (task 0.5), which is this stage's user check
+  and the only runnable app until stage 1 replaces it.
+- **Stage 1 revised.** Task 1.3 (backend adapter) was marked done, since its
+  "done when" was already met by task 0.5's test and browser run. The rest
+  of what the adapter lacks moves to where it is first needed: resume and
+  `oneShot` in stage 2, the working directory and built-in tools in stage 3.
+  Tasks 1.4 to 1.6 got notes on what they build on, and 1.4 deletes the
+  demo's prompt and turn texts once the intake chat replaces it.

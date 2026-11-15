@@ -1,12 +1,15 @@
 # Gauss: architecture and build plan
 
-Status: draft, 2026-11-13. Companion to `brief.md`, which defines the terms
-used here (course, unit, objective, segment, session, evidence, detour).
-Technical choices in this document were delegated to the agent by the learner.
+Status: draft, 2026-11-13, revised through stage 0 (closed 2026-11-15).
+Companion to `brief.md`, which defines the terms used here (course, unit,
+objective, segment, session, evidence, detour). Technical choices in this
+document were delegated to the agent by the learner.
 
-Facts about the two agent SDKs are marked **verified** (read in the official
-documentation on 2026-11-13) or **to verify** (assumed; must be confirmed in
-stage 0 before anything depends on it).
+Facts about the two agent SDKs in section 7 are either **verified** (read in
+the official documentation on 2026-11-13) or **observed** in a stage 0 run,
+with the task that observed them. Stage 0 answered every item first marked
+"to verify". What it left open is listed at the end of section 7, each with
+the stage that settles it.
 
 ## 1. Shape of the system
 
@@ -223,10 +226,11 @@ type ToolResult =
   before sending the next. It never throws: a failure is a `turn_end` whose
   outcome is `error`. The outcomes are `done`, `ended_by_tool`,
   `interrupted` and `error`.
-- To add when stage 1 needs them (task 1.3): the course folder as working
-  directory, `resumeId` with a distinct "session not found" failure for the
-  "start fresh" fallback (task 0.4), built-in tools and their confinement,
-  and `oneShot`.
+- Still to add, in the stage that first needs each: `resumeId` with a
+  distinct "session not found" failure for the "start fresh" fallback
+  (task 0.4), and `oneShot` for the grader (stage 2); the course folder as
+  working directory, built-in tools and their confinement (stage 3, when
+  the tutor first writes and runs files).
 
 A scripted fake implementation (`src/server/backends/fake.ts`) backs the
 automated tests. It runs the real teaching tools, so a test sees what the
@@ -311,6 +315,19 @@ Observed in the stage 0 spike (task 0.6; details in `decisions.md`):
   `AGENTS.md`, skills and multi-agent instructions stayed in with every
   config override tried. A separate `CODEX_HOME` with its own login is the
   likely route. Stage 6 settles these when the Codex backend is chosen.
+
+### Open after stage 0
+
+Each item names the stage that settles it; details are in `decisions.md`.
+
+| Open question | Settled in |
+| --- | --- |
+| Which course folders the tutor may write, how the record files are closed to it (an `Edit` deny rule and a sandbox `denyWrite` entry both work), and whether `CLAUDE_CODE_TMPDIR` on the real course path is short enough for the sandbox (task 0.4) | Stage 3, when the tutor first writes and runs files |
+| Reads are not confined: sandboxed commands can read most of the machine (task 0.4) | Stage 4, before the tutor gets web access |
+| Resume: rebuilding the system prompt on every request (`snapshot: false`) is untried, and the 30-day session cleanup is documented but not observed (task 0.4) | Stage 2, which builds resume |
+| Other variables that may redirect the SDK (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, the cloud-provider switches) were not tried; the backend drops `CLAUDE_CONFIG_DIR` with the other `CLAUDE` variables (tasks 0.2, 0.5) | Stage 2, which next changes the backend |
+| A reply after a mid-sentence stop was slow once (10 to 30 seconds), cause unknown (task 0.5) | Stage 2, if it recurs |
+| Codex: streaming through the app server, the thread id arriving with the first turn, and keeping the learner's own Codex setup out (task 0.6) | Stage 6, with the Codex backend |
 
 ## 8. Sources
 

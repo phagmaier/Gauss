@@ -122,19 +122,27 @@ not.
 
 ### 0.7 Close the stage
 
-- Status: todo
+- Status: done
 - Depends on: 0.2, 0.3, 0.4, 0.5, 0.6
 - Do: move each "to verify" item in `architecture.md` section 7 to verified or
   changed. Delete spike code that will not be kept.
 - Done when: no "to verify" items remain, or each remaining one names the stage
   that will resolve it.
+- Note: done on 2026-11-15. Every original "to verify" item is answered in
+  section 7; what stage 0 left open is the table "Open after stage 0" at
+  the end of that section, each row naming its stage. All of `spike/` was
+  deleted and `@openai/codex-sdk` removed; the scripts the findings name are
+  in the history (`git show 349c399:spike/<file>`). The minimal page from
+  task 0.5 is kept and stays runnable for this stage's user check. Stage 1
+  was revised: 1.3 was already met by task 0.5, and 1.4 to 1.6 note what
+  they build on. Details in `docs/decisions.md` under "Stage 0 closed".
 
 **User check:** open the page, watch a reply stream in, answer the
 multiple-choice question, and see the tutor respond to the answer.
 
 ## Stage 1: record and library
 
-Tasks may be revised by 0.7.
+Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
 
 ### 1.0 Page layout
 
@@ -196,12 +204,19 @@ Tasks may be revised by 0.7.
 
 ### 1.3 Backend adapter
 
-- Status: todo
+- Status: done (by task 0.5)
 - Depends on: stage 0
 - Do: the adapter interface, the scripted fake backend, and the Claude backend
   built from the stage 0 findings.
 - Done when: an engine-level test drives a two-turn exchange with one tool call
   through the fake backend, and a manual run does the same through Claude.
+- Note: task 0.5 built all three (`src/server/backends/`). The test "a correct
+  answer is graded by exact match and sent to the tutor as its next turn" in
+  `src/server/engine/chat.test.ts` drives that exchange through the fake
+  backend, and the 0.5 browser run did it through Claude. What the adapter
+  still lacks goes to the stage that first needs it (`architecture.md`
+  section 7): resume and `oneShot` in stage 2, the working directory and
+  built-in tools in stage 3.
 
 ### 1.4 Intake and curriculum proposal
 
@@ -213,6 +228,11 @@ Tasks may be revised by 0.7.
 - Done when: fake-backend tests cover a valid proposal, a rejected invalid
   proposal (the tutor receives the reason), a change request followed by a
   revised proposal, and approval.
+- Note: build the intake chat from `src/server/engine/chat.ts` (task 0.5),
+  whose turn queue, event log and tool wiring carry over;
+  `src/server/tools/ask-question.ts` shows the tool pattern, including a
+  refusal the tutor can read. When the intake chat replaces the demo, delete
+  the demo's turn texts and `prompts/demo-tutor.md`.
 
 ### 1.5 Routes and event stream
 
@@ -221,6 +241,10 @@ Tasks may be revised by 0.7.
 - Do: HTTP routes for the library, course creation, chat turns and curriculum
   approval; the server-to-page event stream.
 - Done when: route tests pass against the fake backend.
+- Note: the event stream exists (task 0.5, `src/server/http/app.ts`): a log
+  replayed with resumable ids, and the guard that only Gauss's own page may
+  use the API. This task adds the library, course and approval routes
+  around it.
 
 ### 1.6 Library and course views
 
@@ -229,6 +253,8 @@ Tasks may be revised by 0.7.
 - Do: the library view, the intake chat, the curriculum review screen, and the
   diagram generated from `curriculum.json`.
 - Done when: the stage's user check passes in a browser.
+- Note: replaces the demo page (`src/web/App.tsx`), keeping its thread, the
+  question card and the message box, and `src/web/styles.css`.
 
 **User check:** create a course, push back on the proposed curriculum once,
 approve the revision, see the diagram, restart the server, and find the course
