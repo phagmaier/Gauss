@@ -356,9 +356,9 @@ Each item names the stage that settles it; details are in `decisions.md`.
 | --- | --- |
 | Which course folders the tutor may write, how the record files are closed to it (an `Edit` deny rule and a sandbox `denyWrite` entry both work), and whether `CLAUDE_CODE_TMPDIR` on the real course path is short enough for the sandbox (task 0.4) | Stage 3, when the tutor first writes and runs files |
 | Reads are not confined: sandboxed commands can read most of the machine (task 0.4) | Stage 4, before the tutor gets web access |
-| Resume: rebuilding the system prompt on every request (`snapshot: false`) is untried, and the 30-day session cleanup is documented but not observed (task 0.4) | Stage 2, which builds resume |
-| Other variables that may redirect the SDK (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, the cloud-provider switches) were not tried; the backend drops `CLAUDE_CONFIG_DIR` with the other `CLAUDE` variables (tasks 0.2, 0.5) | Stage 2, which next changes the backend |
-| A reply after a mid-sentence stop was slow once (10 to 30 seconds), cause unknown (task 0.5) | Stage 2, if it recurs |
+| Resume: rebuilding the system prompt on every request (`snapshot: false`) is untried, and the 30-day session cleanup is documented but not observed (task 0.4) | Stage 2, task 2.14, which builds resume |
+| Other variables that may redirect the SDK (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, the cloud-provider switches) were not tried; the backend drops `CLAUDE_CONFIG_DIR` with the other `CLAUDE` variables (tasks 0.2, 0.5) | Stage 2, task 2.8, which next changes the backend |
+| A reply after a mid-sentence stop was slow once (10 to 30 seconds), cause unknown (task 0.5) | Stage 2, if it recurs in the real runs of tasks 2.14 and 2.16 |
 | Codex: streaming through the app server, the thread id arriving with the first turn, and keeping the learner's own Codex setup out (task 0.6) | Stage 6, with the Codex backend |
 
 ## 8. Sources
@@ -398,10 +398,12 @@ Converters are chosen in stage 4 by trying candidates on real files (a clean
 PDF book, an arXiv paper, an EPUB). Scanned PDFs are detected and reported as
 needing text recognition; that step is not in the first version.
 
-Open: where unit planning reads the whole unit's text. If the tutor does it in
-the unit's own session, that text is in context from the first turn, and
-reading one segment's sections at a time saves nothing. Stage 2 builds
-`plan_unit`; stage 4 settles this for source courses at the latest.
+Unit planning reads the whole unit's text in a planning session of its own,
+which runs before the tutor's session starts (decided in plan task 2.0,
+built in 2.5). Done in the tutor's session, that text would stay in context
+from the first turn, and reading one segment's sections at a time would
+save nothing. The tutor's session starts from the stored plan. Stage 4
+gives the planning session the unit's sections.
 
 ## 9. Prompts
 

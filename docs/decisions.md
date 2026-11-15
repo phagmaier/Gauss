@@ -1033,3 +1033,47 @@ Fixed on 2026-11-15 after reviewing tasks 1.5 and 1.6.
   No real model calls or real data-root access.
 - **Checks:** `mise run check` passed lint, type-checking, 144 TypeScript
   tests and one Python test.
+
+## Stage 2 breakdown (plan task 2.0)
+
+Written on 2026-11-15. The tasks are in `docs/plan.md`; these are the
+choices that shaped them.
+
+- **The style note comes with the proposal.** The brief has the tutor
+  propose it at intake and the learner approve it with the curriculum, so
+  `propose_curriculum` carries it and approval covers both (task 2.10).
+  Courses approved before then have none and use the default style in
+  `prompts/tutor.md`. Where it sits on the card is a design question (2.1).
+- **A unit is planned in a session of its own** (2.5), before the tutor's
+  session starts, with `prompts/unit-planner.md` and the `plan_unit` tool.
+  The tutor's session is then seeded with the plan, as `architecture.md`
+  section 4 already says, and for a source course the unit's whole text is
+  read there rather than carried through every teaching turn. This settles
+  the open item in section 8. `planner.md` stays the intake's prompt: one
+  file for both jobs would hand the intake instructions for a job it never
+  does. The cost is one more model call when a unit starts.
+- **The learner starts each segment**, with mock 3's "Start the next
+  segment", so starting one is the learner's action and not the tutor's
+  tool. Task 2.6 confirms this and revises section 5's tool list.
+- **The phase loop comes before the rules that refine it.** Task 2.6
+  builds the whole loop with the simplest closing rule (an answer for each
+  objective); 2.7 adds the adaptive question count, help and the unit's
+  close, which need the derived status (2.3) and a design pick (2.1).
+- **Four things stage 2 shows were not designed in task 1.0**, so 2.1 mocks
+  them first, one question each, for the user to pick: the style note on
+  the proposal card, a unit's end without its gate, "Start fresh", and
+  whether a unit can start before the units it builds on are finished
+  (left open by mock 7).
+- **Each prompt is its own task, checked by a real run**: the grader
+  against answers graded by hand (2.9), the tutor against transcripts of
+  real segments (2.16). Both depend on the model's judgment, so they may
+  use Sonnet or Opus. The tasks before them run on short first versions of
+  the prompts and the fake backend.
+- **The open rows of section 7 are assigned**: resume (`snapshot: false`,
+  the 30-day cleanup) to 2.14; other variables that may redirect the SDK
+  to 2.8, the first task that changes the backend; the slow reply after a
+  stop to the real runs of 2.14 and 2.16, if it recurs. The idle intake
+  sessions (notes from 1.5 and 1.6) are 2.15, after resume.
+- **Not settled here**: the passing rule and what counts as help (2.3, with
+  a proposal for help), the question count's limits (2.7), what starts a
+  new session in the transcripts (2.13), and the Markdown renderer (2.4).
