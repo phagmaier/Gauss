@@ -2,6 +2,8 @@
 // posts back.
 
 import { z } from "zod";
+import { Slug } from "./course.ts";
+import { Unit } from "./curriculum.ts";
 import { ChoiceLetter, Confidence, QuestionView, Verdict } from "./question.ts";
 
 /**
@@ -25,6 +27,23 @@ export const PageEvent = z.discriminatedUnion("type", [
     choice: ChoiceLetter.nullable(),
     confidence: Confidence.nullable(),
     correctChoice: ChoiceLetter,
+  }),
+  /**
+   * The tutor proposed a curriculum. Each revision replaces the one before;
+   * only the latest can be approved.
+   */
+  z.object({
+    type: z.literal("curriculum_proposed"),
+    courseId: Slug,
+    revision: z.number().int().positive(),
+    title: z.string(),
+    units: z.array(Unit),
+  }),
+  /** The learner approved a revision of the curriculum. The intake is over. */
+  z.object({
+    type: z.literal("curriculum_approved"),
+    courseId: Slug,
+    revision: z.number().int().positive(),
   }),
   /** The tutor's turn is over. */
   z.object({

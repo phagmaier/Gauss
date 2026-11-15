@@ -6,7 +6,8 @@ import { streamSSE } from "hono/streaming";
 import type { z } from "zod";
 import { LearnerMessage, type PageEvent } from "../../shared/events.ts";
 import { AnswerSubmission } from "../../shared/question.ts";
-import type { Chat, ChatResult } from "../engine/chat.ts";
+import type { Chat } from "../engine/chat.ts";
+import type { ChatResult } from "../engine/conversation.ts";
 
 export function createApp(chat: Chat, options: { heartbeatMs?: number } = {}) {
   const heartbeatMs = options.heartbeatMs ?? 20_000;

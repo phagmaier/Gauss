@@ -8,7 +8,7 @@
 // refused proposal sends them back to it.
 
 import { z } from "zod";
-import { Slug, Timestamp } from "./course.ts";
+import { Course, Slug, Timestamp } from "./course.ts";
 
 export const Unit = z.object({
   id: Slug.describe(
@@ -105,6 +105,18 @@ export const Curriculum = z.object({
   units: Units,
 });
 export type Curriculum = z.infer<typeof Curriculum>;
+
+/**
+ * What the tutor sends with propose_curriculum (task 1.4): the course's title
+ * and its units. Stored as a draft until the learner approves it.
+ */
+export const CurriculumProposal = z.object({
+  title: Course.shape.title.describe(
+    'The course\'s title, in a few words, such as "Linear algebra for PCA"',
+  ),
+  units: Units,
+});
+export type CurriculumProposal = z.infer<typeof CurriculumProposal>;
 
 /** One prerequisite entry: `units[at].prerequisites[slot]`. */
 interface Link {

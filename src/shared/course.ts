@@ -1,7 +1,7 @@
 // course.json: what Gauss keeps about a course besides its curriculum
-// (architecture.md section 3). Where a course stands (intake, curriculum
-// awaiting review, a unit in progress, finished) and whether it is a one-off
-// are derived from curriculum.json and the evidence log, never stored here.
+// (architecture.md section 3). Where a course stands (curriculum awaiting
+// review, a unit in progress, finished) and whether it is a one-off are
+// derived from curriculum.json and the evidence log, never stored here.
 
 import { z } from "zod";
 

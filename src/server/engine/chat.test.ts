@@ -1,6 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
-import type { PageEvent } from "../../shared/events.ts";
-import type { TutorBackend } from "../backends/backend.ts";
+import { describe, expect, test } from "vitest";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { createChat } from "./chat.ts";
 
@@ -15,20 +13,6 @@ function setUp(script: FakeTurn[]) {
   const backend = createFakeBackend(script);
   const chat = createChat({ backend, systemPrompt: "You are a test tutor." });
   return { backend, chat };
-}
-
-function nextEvent(
-  chat: ReturnType<typeof createChat>,
-  type: PageEvent["type"],
-): Promise<void> {
-  return new Promise((resolve) => {
-    const stop = chat.subscribe((event) => {
-      if (event.type === type) {
-        stop();
-        resolve();
-      }
-    });
-  });
 }
 
 test("the tutor teaches and posts a question, which ends its turn; the page gets the question without its answer", async () => {
@@ -227,67 +211,4 @@ test("answers and messages that do not fit the chat are refused", async () => {
   });
   await chat.settled();
   expect(chat.events().filter((e) => e.type === "graded")).toHaveLength(1);
-});
-
-test("turns go to the tutor one at a time, and stopping one lets the next start", async () => {
-  const { backend, chat } = setUp([
-    [{ text: "A long lecture" }, { hold: true }, { text: "never written" }],
-    [{ text: "Hello." }],
-  ]);
-  const writing = nextEvent(chat, "tutor_text");
-  chat.start();
-  await writing;
-
-  chat.say("Stop, please.");
-  expect(backend.received).toHaveLength(1);
-  await chat.interrupt();
-  await chat.settled();
-
-  expect(chat.events().map((e) => e.type)).toEqual([
-    "turn_start",
-    "tutor_text",
-    "learner",
-    "turn_end",
-    "turn_start",
-    "tutor_text",
-    "turn_end",
-  ]);
-  expect(chat.events()[3]).toEqual({
-    type: "turn_end",
-    outcome: "interrupted",
-  });
-  expect(backend.received[1]?.text).toContain("Stop, please.");
-});
-
-test("a backend that fails to start is reported to the page as an error", async () => {
-  const backend: TutorBackend = {
-    startSession: () => Promise.reject(new Error("Not logged in.")),
-  };
-  const chat = createChat({ backend, systemPrompt: "" });
-  chat.start();
-  await chat.settled();
-
-  expect(chat.events()).toEqual([
-    { type: "turn_start" },
-    { type: "turn_end", outcome: "error", error: "Not logged in." },
-  ]);
-});
-
-test("a failing listener does not stop the chat", async () => {
-  const { chat } = setUp([[{ text: "One." }], [{ text: "Two." }]]);
-  const stop = chat.subscribe(() => {
-    throw new Error("a page went away badly");
-  });
-  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
-  chat.start();
-  await chat.settled();
-  chat.say("Go on.");
-  await chat.settled();
-  stop();
-  quiet.mockRestore();
-
-  expect(chat.events().filter((e) => e.type === "turn_end")).toEqual([
-    { type: "turn_end", outcome: "done" },
-    { type: "turn_end", outcome: "done" },
-  ]);
 });

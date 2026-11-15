@@ -89,9 +89,10 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
 
 The shapes of `course.json` and `curriculum.json` are the schemas in
 `src/shared/course.ts` and `src/shared/curriculum.ts`. A curriculum is a
-draft until the learner approves it. Where a course stands (intake,
-curriculum awaiting review, a unit in progress, finished) and whether it is
-a one-off (a course with one unit) are derived from the record, not stored.
+draft until the learner approves it. Where a course stands (curriculum
+awaiting review, a unit in progress, finished) and whether it is a one-off
+(a course with one unit) are derived from the record, not stored. A course
+exists from its first proposal (section 4, the intake chat).
 
 Every record file is written whole: to a temporary file in its folder, then
 renamed over it, so a process that stops partway leaves the old version or
@@ -119,6 +120,16 @@ cannot disagree with the evidence. The curriculum diagram is generated from
   sessions after 30 days by default (task 0.4).
 - `state.json` is written after every phase change and every answer, so closing
   the tab loses nothing.
+- The intake chat (task 1.4, `src/server/engine/intake.ts`) is the one chat
+  with no unit. The page asks the opening question, so its session starts
+  with the learner's answer. The first `propose_curriculum` creates the
+  course, named by the proposal's title; each proposal replaces the draft
+  in `curriculum.json`, and a reply to one is a change request. Approving
+  the latest revision, while the tutor is not writing, ends the intake.
+  Before the first proposal nothing is stored, and the conversation is not
+  resumed.
+- Every chat is built from the event log and turn queue in
+  `src/server/engine/conversation.ts`.
 
 ### Phases
 

@@ -95,6 +95,10 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             : item,
         ),
       };
+    case "curriculum_proposed":
+    case "curriculum_approved":
+      // Not shown yet: the intake view arrives in task 1.6.
+      return { ...next, tutorOpen: false };
     case "turn_end": {
       const note =
         event.outcome === "error"

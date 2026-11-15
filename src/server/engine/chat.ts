@@ -1,10 +1,9 @@
 // One chat with the tutor, as the minimal page needs it (plan task 0.5): the
 // tutor teaches, posts a multiple-choice question, and responds to the graded
-// answer. The chat keeps an event log for the page, sends the tutor one turn
-// at a time, and grades answers itself. Everything is in memory; the course
-// record and the phase rules arrive in stages 1 and 2.
+// answer. The chat grades answers itself; its event log and turn queue are
+// the shared ones in conversation.ts. Everything is in memory. Task 1.5
+// replaces this demo with the intake chat.
 
-import { randomUUID } from "node:crypto";
 import type { PageEvent } from "../../shared/events.ts";
 import {
   type AnswerSubmission,
@@ -13,13 +12,14 @@ import {
   confidenceLabel,
   type Verdict,
 } from "../../shared/question.ts";
-import type { TutorBackend, TutorSession } from "../backends/backend.ts";
+import type { TutorBackend } from "../backends/backend.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
+import {
+  type ChatResult,
+  createConversation,
+  createEventLog,
+} from "./conversation.ts";
 import { gradeChoice } from "./grading.ts";
-
-export type ChatResult =
-  | { ok: true }
-  | { ok: false; status: 400 | 404 | 409; error: string };
 
 export interface Chat {
   /** Changes when the server restarts, so a page can tell. */
@@ -48,27 +48,8 @@ export function createChat(options: {
   backend: TutorBackend;
   systemPrompt: string;
 }): Chat {
-  const id = randomUUID();
-  const log: PageEvent[] = [];
-  const listeners = new Set<(event: PageEvent, index: number) => void>();
+  const log = createEventLog();
   const questions: PostedQuestion[] = [];
-  let session: Promise<TutorSession> | undefined;
-  let turnRunning = false;
-  let queue: Promise<void> = Promise.resolve();
-
-  function emit(event: PageEvent): void {
-    log.push(event);
-    const index = log.length - 1;
-    // A failing listener must not stop the turn: the tutor's reply has to
-    // be read to its end, or the next turn would read its leftovers.
-    for (const listener of listeners) {
-      try {
-        listener(event, index);
-      } catch (error) {
-        console.error("A chat listener failed:", error);
-      }
-    }
-  }
 
   function openQuestion(): PostedQuestion | undefined {
     return questions.find((q) => q.verdict === undefined);
@@ -79,7 +60,7 @@ export function createChat(options: {
     post(input) {
       const question = { id: `q${questions.length + 1}`, input };
       questions.push(question);
-      emit({
+      log.emit({
         type: "question",
         question: {
           id: question.id,
@@ -92,72 +73,30 @@ export function createChat(options: {
     },
   });
 
-  function enqueue(text: string): void {
-    queue = queue.then(() => runTurn(text));
-  }
-
-  async function runTurn(text: string): Promise<void> {
-    turnRunning = true;
-    emit({ type: "turn_start" });
-    try {
-      if (session === undefined) throw new Error("The chat has not started.");
-      const tutor = await session;
-      for await (const event of tutor.send({ text })) {
-        if (event.type === "text") {
-          emit({ type: "tutor_text", text: event.text });
-        } else if (event.type === "turn_end") {
-          emit({
-            type: "turn_end",
-            outcome: event.outcome === "ended_by_tool" ? "done" : event.outcome,
-            ...(event.error === undefined ? {} : { error: event.error }),
-          });
-          return;
-        }
-      }
-      emit({
-        type: "turn_end",
-        outcome: "error",
-        error: "The tutor's reply ended early.",
-      });
-    } catch (error) {
-      emit({
-        type: "turn_end",
-        outcome: "error",
-        error: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      turnRunning = false;
-    }
-  }
+  const tutor = createConversation({
+    backend: options.backend,
+    systemPrompt: options.systemPrompt,
+    tools: [askQuestion],
+    log,
+  });
 
   return {
-    id,
-    events: () => log,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    id: log.id,
+    events: log.events,
+    subscribe: log.subscribe,
     start() {
-      if (session !== undefined) {
+      if (tutor.started()) {
         return { ok: false, status: 409, error: "The chat has started." };
       }
-      session = options.backend.startSession({
-        systemPrompt: options.systemPrompt,
-        tools: [askQuestion],
-      });
-      // A failed start is reported by the first turn.
-      session.catch(() => {});
-      enqueue(OPENING_TURN);
+      tutor.send(OPENING_TURN);
       return { ok: true };
     },
     say(text) {
-      if (session === undefined) {
+      if (!tutor.started()) {
         return { ok: false, status: 409, error: "Start the chat first." };
       }
-      emit({ type: "learner", text });
-      enqueue(messageTurn(text, openQuestion()?.id));
+      log.emit({ type: "learner", text });
+      tutor.send(messageTurn(text, openQuestion()?.id));
       return { ok: true };
     },
     answer(submission) {
@@ -177,7 +116,7 @@ export function createChat(options: {
       }
       const verdict = gradeChoice(question.input.answer, submission);
       question.verdict = verdict;
-      emit({
+      log.emit({
         type: "graded",
         questionId: question.id,
         verdict,
@@ -185,17 +124,12 @@ export function createChat(options: {
         confidence: submission.kind === "choice" ? submission.confidence : null,
         correctChoice: question.input.answer,
       });
-      enqueue(answerTurn(question, submission, verdict));
+      tutor.send(answerTurn(question, submission, verdict));
       return { ok: true };
     },
-    async interrupt() {
-      if (turnRunning && session !== undefined)
-        await (await session).interrupt();
-    },
-    settled: () => queue,
-    async close() {
-      if (session !== undefined) await (await session).close();
-    },
+    interrupt: tutor.interrupt,
+    settled: tutor.settled,
+    close: tutor.close,
   };
 }
 

@@ -254,7 +254,7 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
 
 ### 1.4 Intake and curriculum proposal
 
-- Status: todo
+- Status: done
 - Depends on: 1.2, 1.3
 - Do: `prompts/planner.md`; the intake chat; the `propose_curriculum` tool,
   which validates against the schema and stores a draft; approval and
@@ -267,6 +267,14 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
   `src/server/tools/ask-question.ts` shows the tool pattern, including a
   refusal the tutor can read. When the intake chat replaces the demo, delete
   the demo's turn texts and `prompts/demo-tutor.md`.
+- Note: done on 2026-11-15 (`src/server/engine/intake.ts`,
+  `src/server/tools/propose-curriculum.ts`, `prompts/planner.md`); details
+  in `docs/decisions.md` under "Intake and curriculum proposal". The first
+  proposal creates the course and names it; approval names the revision.
+  The demo still runs: its event log and turn queue moved to
+  `src/server/engine/conversation.ts`, which both chats use. Not yet run
+  against a real model; an offline probe of the SDK's tool server showed
+  the schema and refusals work there.
 
 ### 1.5 Routes and event stream
 
@@ -279,6 +287,15 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
   replayed with resumable ids, and the guard that only Gauss's own page may
   use the API. This task adds the library, course and approval routes
   around it.
+- Note from 1.4: this task replaces the demo. `main.ts` loads
+  `prompts/planner.md`, calls `resolveDataRoot()` and passes the result to
+  `openDataRoot`; `AGENTS.md` then lists `GAUSS_DATA_ROOT`. Delete
+  `src/server/engine/chat.ts`, its tests, `prompts/demo-tutor.md` and the
+  demo's routes; the shared core and its tests stay. "New course" starts an
+  intake (`createIntake`), which has no course id until its first
+  proposal, so the routes need an id of their own for an intake in
+  progress. Approval posts the revision number (`intake.approve`), and its
+  refusals are 404 and 409.
 
 ### 1.6 Library and course views
 
@@ -289,6 +306,12 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
 - Done when: the stage's user check passes in a browser.
 - Note: replaces the demo page (`src/web/App.tsx`), keeping its thread, the
   question card and the message box, and `src/web/styles.css`.
+- Note from 1.4: the intake view shows the opening question itself
+  ("What do you want to learn? ..."); the tutor's session starts with the
+  answer. Proposals arrive as `curriculum_proposed` events, which
+  `src/web/timeline.ts` ignores for now. Mark a revision's changed units by
+  comparing unit ids with the revision before, and approve with the
+  revision number shown on the card.
 
 **User check:** create a course, push back on the proposed curriculum once,
 approve the revision, see the diagram, restart the server, and find the course
@@ -304,6 +327,9 @@ still there.
   `architecture.md` section 12. Draft `prompts/tutor.md` and `prompts/grader.md`
   as tasks of their own.
 - Done when: the user has read the task list.
+- Note from 1.4: the brief has the tutor propose the course's style note at
+  intake, approved with the curriculum. `propose_curriculum` does not
+  carry it yet; decide here whether it should, or how `style.md` is made.
 - Note: for a source course, planning a unit needs the whole unit's text.
   When designing `plan_unit`, decide where that reading happens or leave it
   to 4.0 in writing (`architecture.md` section 8, "Open").

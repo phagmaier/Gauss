@@ -790,3 +790,67 @@ Written on 2026-11-15: `src/server/record/data-root.ts` and
   tests and one Python test. Writing in place, skipping the cleanup after a
   failed write, dropping the id check in `readCourse` and dropping the list
   order each made a test fail.
+
+## Intake and curriculum proposal (plan task 1.4)
+
+Built on 2026-11-15: `src/server/engine/intake.ts`,
+`src/server/tools/propose-curriculum.ts`, `prompts/planner.md`, and two
+record operations in `src/server/record/data-root.ts`.
+
+- **The course is created by the first proposal.** The intake mock has no
+  title step: "New course" opens the conversation. So the tutor proposes
+  the title with the units (`CurriculumProposal` in
+  `src/shared/curriculum.ts`), the first proposal creates the course with
+  an id from that title, and a revision that renames the course updates
+  `course.json` but keeps the id. Before the first proposal nothing is on
+  disk, so a restart then loses the conversation; the library shows only
+  courses with a proposal. A course with no curriculum exists only if its
+  creation stopped between `course.json` and the first draft.
+- **The page asks the opening question**, as in the mock ("What do you want
+  to learn? ..."), so the tutor session starts with the learner's answer and
+  no model turn is spent on a greeting. The first turn's header says what
+  was asked. Task 1.6 shows the question.
+- **Change requests are replies.** A message while a draft is open goes to
+  the tutor with a header naming the proposal and inviting a revision; the
+  tutor sends the whole revised curriculum, which replaces the draft.
+  Revision numbers count stored proposals in memory; a refused call does
+  not count.
+- **Approval names the revision the learner saw**, and is refused if a newer
+  one exists (409), if there is no such revision (404), or while a turn is
+  queued or running (409), so the tutor cannot revise during approval. It
+  stamps `approvedAt` from the data root's clock, emits
+  `curriculum_approved`, closes the tutor session and ends the intake: later
+  messages are refused. The tutor is not told. In the mock the page notes
+  the approval itself.
+- **Record rules** live in the record module: `saveProposal` never replaces
+  an approved curriculum, and every file is checked against its schema
+  before it is written. `saveProposal` writes `curriculum.json`, then
+  `course.json` if the title changed; a crash between them leaves the new
+  draft under the old title.
+- **The shared core.** The event log and turn queue moved from the demo chat
+  into `src/server/engine/conversation.ts`, with their tests. The demo chat
+  is rebuilt on it and stays runnable, because nothing replaces its routes
+  until task 1.5; `prompts/demo-tutor.md` and the demo's turn texts go then.
+- **With Claude, the SDK checks the input first.** Probed offline through
+  the SDK's in-process tool server, with no model call: the published input
+  schema carries the field descriptions; a valid call reaches the tool; an
+  invalid one is refused by the MCP layer before the handler runs, as
+  `MCP error -32602: Input validation error` followed by the zod issues as
+  JSON, which include the schema's own messages (the cycle chain, for
+  example). With the fake backend the same refusal is `defineTool`'s
+  prettified text. Either way the tutor receives the reason.
+- **Not in this task:** the style note, which the brief says the tutor
+  proposes at intake and the learner approves with the curriculum. Nothing
+  reads it before stage 2, and the settled intake mock does not show it;
+  task 2.0 decides whether `propose_curriculum` carries it. The optional
+  baseline is stage 5; sources are stage 4. The planner prompt mentions
+  neither.
+- **Not checked with a real model.** The prompt and the tool have run only
+  against the fake backend and the offline probe; the first real run is
+  task 1.6's user check.
+- **Checks:** `mise run check` passed lint, type-checking, 100 TypeScript
+  tests and one Python test. Eight deliberate faults in the intake (a
+  proposal that does not end the turn, a new course for every proposal, a
+  stale or mid-turn approval, no change-request header, messages after
+  approval, an approval or a proposal that is not stored) each made a test
+  fail.

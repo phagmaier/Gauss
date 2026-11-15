@@ -1,14 +1,15 @@
 // The data root: the folder that holds every course (architecture.md
-// section 3). This module creates, lists and reads courses; later tasks add
-// the rest of the course record. Every write goes through writeFileAtomic,
-// and every file read is checked against its schema in src/shared/.
+// section 3). This module creates, lists and reads courses, and stores and
+// approves their curricula; later tasks add the rest of the course record.
+// Every write goes through writeFileAtomic, and every file read or written
+// is checked against its schema in src/shared/.
 
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { Course, Slug } from "../../shared/course.ts";
-import { Curriculum } from "../../shared/curriculum.ts";
+import { Curriculum, CurriculumProposal } from "../../shared/curriculum.ts";
 import { writeFileAtomic } from "./atomic-write.ts";
 
 /** `GAUSS_DATA_ROOT` when it is set and not empty, otherwise `~/gauss`. */
@@ -39,11 +40,24 @@ export interface DataRoot {
   listCourses(): Promise<StoredCourse[]>;
   /** One course, or undefined when no course has that id. */
   readCourse(id: string): Promise<StoredCourse | undefined>;
+  /**
+   * Stores the tutor's proposal as the course's draft curriculum, replacing
+   * any earlier draft, and its title as the course's title. Refused once the
+   * curriculum is approved.
+   */
+  saveProposal(
+    id: string,
+    proposal: CurriculumProposal,
+  ): Promise<StoredCourse & { curriculum: Curriculum }>;
+  /** Approves the draft curriculum, at the clock's time. */
+  approveCurriculum(
+    id: string,
+  ): Promise<StoredCourse & { curriculum: Curriculum }>;
 }
 
 export function openDataRoot(options: {
   path: string;
-  /** The clock for the dates in course.json; tests set it. */
+  /** The clock for the dates in the record; tests set it. */
   now?: () => Date;
 }): DataRoot {
   const courses = join(options.path, "courses");
@@ -61,6 +75,12 @@ export function openDataRoot(options: {
     return { id, course, curriculum: curriculum ?? null };
   }
 
+  async function existingCourse(id: string): Promise<StoredCourse> {
+    const stored = await readCourse(id);
+    if (stored === undefined) throw new Error(`There is no course "${id}".`);
+    return stored;
+  }
+
   return {
     async createCourse({ title }) {
       const stamp = now().toISOString();
@@ -73,7 +93,7 @@ export function openDataRoot(options: {
       });
       await mkdir(courses, { recursive: true });
       const id = await makeFolder(courses, idFromTitle(course.title));
-      await writeJson(join(courses, id, "course.json"), course);
+      await writeJson(join(courses, id, "course.json"), Course, course);
       return { id, course, curriculum: null };
     },
 
@@ -98,6 +118,44 @@ export function openDataRoot(options: {
     },
 
     readCourse,
+
+    async saveProposal(id, proposal) {
+      const { title, units } = CurriculumProposal.parse(proposal);
+      const stored = await existingCourse(id);
+      if (stored.curriculum?.approval.status === "approved") {
+        throw new Error(
+          `The curriculum of "${id}" is approved, so a draft cannot replace it.`,
+        );
+      }
+      const folder = join(courses, id);
+      const curriculum: Curriculum = { approval: { status: "draft" }, units };
+      await writeJson(join(folder, "curriculum.json"), Curriculum, curriculum);
+      const course = { ...stored.course, title };
+      if (title !== stored.course.title) {
+        await writeJson(join(folder, "course.json"), Course, course);
+      }
+      return { id, course, curriculum };
+    },
+
+    async approveCurriculum(id) {
+      const stored = await existingCourse(id);
+      if (stored.curriculum === null) {
+        throw new Error(`"${id}" has no curriculum to approve.`);
+      }
+      if (stored.curriculum.approval.status === "approved") {
+        throw new Error(`The curriculum of "${id}" is already approved.`);
+      }
+      const curriculum: Curriculum = {
+        ...stored.curriculum,
+        approval: { status: "approved", approvedAt: now().toISOString() },
+      };
+      await writeJson(
+        join(courses, id, "curriculum.json"),
+        Curriculum,
+        curriculum,
+      );
+      return { ...stored, curriculum };
+    },
   };
 }
 
@@ -165,8 +223,14 @@ async function readJson<T>(
   return parsed.data;
 }
 
-async function writeJson(path: string, value: unknown): Promise<void> {
-  await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+/** Writes the value as JSON once the schema accepts it. */
+async function writeJson<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  value: T,
+): Promise<void> {
+  const checked = schema.parse(value);
+  await writeFileAtomic(path, `${JSON.stringify(checked, null, 2)}\n`);
 }
 
 function hasCode(error: unknown, code: string): boolean {

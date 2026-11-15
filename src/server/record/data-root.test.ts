@@ -207,6 +207,93 @@ test("what a crash leaves behind is ignored: a folder without course.json, a tem
   );
 });
 
+const PROPOSAL = {
+  title: "Linear algebra for PCA",
+  units: [
+    {
+      id: "vectors",
+      title: "Vectors and linear maps",
+      goal: "Describe a linear map by what it does to a basis.",
+      prerequisites: [],
+    },
+    {
+      id: "eigen",
+      title: "Eigenvalues and eigenvectors",
+      goal: "Find the directions a map only stretches, and by how much.",
+      prerequisites: ["vectors"],
+    },
+  ],
+};
+
+describe("proposals and approval", () => {
+  test("a proposal is stored as the draft curriculum, and its title as the course's", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id } = await root.createCourse({ title: "Linear algebra" });
+
+    const saved = await root.saveProposal(id, PROPOSAL);
+
+    const expected = {
+      id: "linear-algebra",
+      course: expect.objectContaining({ title: "Linear algebra for PCA" }),
+      curriculum: { approval: { status: "draft" }, units: PROPOSAL.units },
+    };
+    expect(saved).toEqual(expected);
+    expect(await openDataRoot({ path: dir }).readCourse(id)).toEqual(expected);
+  });
+
+  test("an invalid proposal is refused and changes nothing", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id } = await root.createCourse({ title: "Linear algebra" });
+    const cycle = {
+      ...PROPOSAL,
+      units: PROPOSAL.units.map((u) =>
+        u.id === "vectors" ? { ...u, prerequisites: ["eigen"] } : u,
+      ),
+    };
+
+    await expect(root.saveProposal(id, cycle)).rejects.toThrow(/cycle/);
+    expect(await root.readCourse(id)).toMatchObject({
+      course: { title: "Linear algebra" },
+      curriculum: null,
+    });
+  });
+
+  test("approval stamps the draft with the clock's time, and then no draft can replace it", async () => {
+    const root = openDataRoot({
+      path: dir,
+      now: clock("2026-11-15T09:00:00.000Z", "2026-11-15T10:30:00.000Z"),
+    });
+    const { id } = await root.createCourse({ title: "Linear algebra" });
+    await root.saveProposal(id, PROPOSAL);
+
+    const approved = await root.approveCurriculum(id);
+
+    const curriculum = {
+      approval: { status: "approved", approvedAt: "2026-11-15T10:30:00.000Z" },
+      units: PROPOSAL.units,
+    };
+    expect(approved.curriculum).toEqual(curriculum);
+    await expect(root.saveProposal(id, PROPOSAL)).rejects.toThrow(/approved/);
+    await expect(root.approveCurriculum(id)).rejects.toThrow(
+      /already approved/,
+    );
+    expect((await root.readCourse(id))?.curriculum).toEqual(curriculum);
+  });
+
+  test("approval needs a course with a draft", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id } = await root.createCourse({ title: "Linear algebra" });
+
+    await expect(root.approveCurriculum(id)).rejects.toThrow(/no curriculum/);
+    await expect(root.approveCurriculum("no-such-course")).rejects.toThrow(
+      /no course/,
+    );
+    await expect(root.saveProposal("no-such-course", PROPOSAL)).rejects.toThrow(
+      /no course/,
+    );
+  });
+});
+
 // A process that stops while writing a file must not leave it half written.
 // A child process rewrites curriculum.json under a file size limit smaller
 // than the new version, so the kernel stops the write partway (Node turns
