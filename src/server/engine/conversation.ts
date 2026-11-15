@@ -1,7 +1,7 @@
 // What every chat with the tutor shares: an event log for the page, and a
 // queue that sends the tutor one turn at a time and writes its reply into
-// the log. Built from the minimal page's chat (task 0.5); the demo chat and
-// the intake chat are made from these two parts.
+// the log. Built from the minimal page's chat (task 0.5); the intake chat is
+// made from these two parts, and stage 2's unit chats will be too.
 
 import { randomUUID } from "node:crypto";
 import type { PageEvent } from "../../shared/events.ts";

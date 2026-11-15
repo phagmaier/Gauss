@@ -140,6 +140,37 @@ export function createIntake(options: {
 
 const INTAKE_OVER = "The curriculum is approved; this intake is over.";
 
+/**
+ * The intakes started since the server did, by id. An intake stays after it
+ * ends, so a page can still replay it; none outlives the server.
+ */
+export interface Intakes {
+  /** Starts an intake; its tutor session starts with the first message. */
+  start(): Intake;
+  get(id: string): Intake | undefined;
+  /** Closes the tutor session of every intake. */
+  close(): Promise<void>;
+}
+
+export function createIntakes(options: {
+  backend: TutorBackend;
+  systemPrompt: string;
+  dataRoot: DataRoot;
+}): Intakes {
+  const byId = new Map<string, Intake>();
+  return {
+    start() {
+      const intake = createIntake(options);
+      byId.set(intake.id, intake);
+      return intake;
+    },
+    get: (id) => byId.get(id),
+    async close() {
+      await Promise.allSettled([...byId.values()].map((i) => i.close()));
+    },
+  };
+}
+
 // --- Turns: a header saying what is allowed now, then the learner's text ---
 
 function openingTurn(text: string): string {

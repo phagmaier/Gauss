@@ -854,3 +854,69 @@ record operations in `src/server/record/data-root.ts`.
   stale or mid-turn approval, no change-request header, messages after
   approval, an approval or a proposal that is not stored) each made a test
   fail.
+
+## Routes and event stream (plan task 1.5)
+
+Built on 2026-11-15: `src/server/http/app.ts` with its tests, the intake
+registry (`createIntakes`) in `src/server/engine/intake.ts`,
+`src/shared/library.ts`, and the wiring in `src/server/main.ts`.
+
+- **The routes.** The library: `GET /api/courses` (every course as the
+  record holds it, most recently opened first) and `GET /api/courses/<id>`
+  (404 if there is none). "New course": `POST /api/intakes` answers 201 with
+  the new intake's id. Under `/api/intakes/<id>/`: `GET events`,
+  `POST messages` (202: accepted, and the tutor's reply comes over the event
+  stream), `POST approval` with the revision number (200 once the record is
+  written), and `POST interrupt`. An unknown intake is 404 on each. The
+  bodies are schemas in `src/shared/`: `LearnerMessage`, `Approval` and
+  `IntakeStarted` in `events.ts`, `Library` and `StoredCourse` in
+  `library.ts`. `StoredCourse` moved there from the record module so that
+  the page and the server share one definition.
+- **An intake's id is its event log's id**, a random UUID. The routes need
+  it because the course id exists only from the first proposal. Intakes
+  are kept in memory by id; `main.ts` closes their sessions on shutdown.
+  An intake stays after approval, so a page can still replay it.
+- **A restart ends an intake in progress.** Its routes answer 404, so the
+  browser's event stream gives up instead of retrying, and the page says
+  the conversation ended. A course it proposed is on disk as a draft and
+  is listed, but nothing can approve it, because approval goes through
+  the intake. Task 1.6 decides what the library offers for such a draft.
+- **The event stream is task 0.5's, one per intake.** `hello` carries the
+  intake id as `chatId`; event ids are `<intake id>.<index>`, and a
+  `Last-Event-ID` from another log replays from the start.
+- **Errors carry their reason.** A record file that cannot be read (a
+  `course.json` that is not JSON, say) or a failed write answers 500 with
+  the reason as `error`, the same shape as a refusal, so the page can show
+  it. The server logs it as well.
+- **The demo is gone**: `src/server/engine/chat.ts`, its tests,
+  `prompts/demo-tutor.md`, its routes and its start screen's styles.
+  `ask_question` and the multiple-choice grading stay for stage 2. Their
+  checks from the demo chat's tests moved to
+  `src/server/tools/ask-question.test.ts` and
+  `src/server/engine/grading.test.ts`.
+- **The page is a stand-in until task 1.6**, changed only so that the
+  running app still works. `src/web/App.tsx` shows the opening question,
+  starts an intake with the first message, keeps the intake id in the
+  address (`?intake=<id>`) so a reload finds it, and can stop a turn.
+  Proposals are not shown and cannot be approved there yet.
+- **Not handled: abandoned intakes.** An intake the learner leaves keeps
+  its tutor session, which is a Claude Code process, until the server
+  stops. Task 1.6 decides when the learner leaves an intake, and should
+  close its session then.
+- **`lastOpenedAt` is not updated** by any route yet. Stage 2 updates it
+  when the learner opens a unit.
+- **Checks:** `mise run check` passed lint, type-checking, 104 TypeScript
+  tests and one Python test. Each of seven deliberate faults in the routes
+  made a test fail: approving a fixed revision, no 404 for an unknown
+  intake, no 404 for an unknown course, a plain-text 500, a replay that
+  repeats the last event, no body check on messages, and no Origin check.
+- **Browser run with the fake backend** on a scratch server built like
+  `main.ts`. The first message started an intake and put its id in the
+  address, and the reply streamed in. A proposal put a draft course in the
+  library. A reload replayed the thread, and Stop ended a held turn.
+  Approval through the route was accepted and a later message refused.
+  After a restart the page said the conversation had ended, and the
+  approved course was still listed. `pnpm dev` itself was started with
+  `GAUSS_DATA_ROOT` pointing at a scratch folder: it served an empty
+  library, started an intake and sent its `hello`. No message was sent, so
+  no model was called.

@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { Course, Slug } from "../../shared/course.ts";
 import { Curriculum, CurriculumProposal } from "../../shared/curriculum.ts";
+import type { StoredCourse } from "../../shared/library.ts";
 import { writeFileAtomic } from "./atomic-write.ts";
 
 /** `GAUSS_DATA_ROOT` when it is set and not empty, otherwise `~/gauss`. */
@@ -19,15 +20,6 @@ export function resolveDataRoot(
 ): string {
   const chosen = env.GAUSS_DATA_ROOT;
   return chosen ? resolve(chosen) : join(home, "gauss");
-}
-
-/** A course as read from its folder. */
-export interface StoredCourse {
-  /** The name of the course's folder under `courses/`. */
-  id: Slug;
-  course: Course;
-  /** Null until the tutor has proposed one. */
-  curriculum: Curriculum | null;
 }
 
 export interface DataRoot {

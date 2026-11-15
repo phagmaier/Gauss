@@ -67,3 +67,16 @@ export const LearnerMessage = z.object({
   text: z.string().trim().min(1).max(20_000),
 });
 export type LearnerMessage = z.infer<typeof LearnerMessage>;
+
+/**
+ * The answer to starting a new course: the id of its intake, which the page
+ * uses until the intake ends. It lasts only as long as the server runs.
+ */
+export const IntakeStarted = z.object({ intakeId: z.string() });
+export type IntakeStarted = z.infer<typeof IntakeStarted>;
+
+/** The learner approves the proposal with this revision number. */
+export const Approval = z.object({
+  revision: z.number().int().positive(),
+});
+export type Approval = z.infer<typeof Approval>;

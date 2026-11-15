@@ -278,7 +278,7 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
 
 ### 1.5 Routes and event stream
 
-- Status: todo
+- Status: done
 - Depends on: 1.4
 - Do: HTTP routes for the library, course creation, chat turns and curriculum
   approval; the server-to-page event stream.
@@ -296,6 +296,12 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
   proposal, so the routes need an id of their own for an intake in
   progress. Approval posts the revision number (`intake.approve`), and its
   refusals are 404 and 409.
+- Note: done on 2026-11-15 (`src/server/http/app.ts`, `createIntakes` in
+  `src/server/engine/intake.ts`, `src/shared/library.ts`); the routes and
+  choices are in `docs/decisions.md` under "Routes and event stream".
+  `mise run check` passed with 10 route tests against the fake backend. The
+  demo is deleted. `src/web/App.tsx` was changed only enough to keep the
+  running app working as an intake chat; it does not show proposals yet.
 
 ### 1.6 Library and course views
 
@@ -312,6 +318,16 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
   `src/web/timeline.ts` ignores for now. Mark a revision's changed units by
   comparing unit ids with the revision before, and approve with the
   revision number shown on the card.
+- Note from 1.5: the routes are listed in `docs/decisions.md` under
+  "Routes and event stream". `App.tsx` is now a bare intake chat: it shows
+  the opening question, starts an intake (`POST /api/intakes`) with the
+  first message and keeps its id in the address. Three things are open
+  for this task. A draft whose intake ended in a restart is listed but
+  cannot be approved, since approval goes through the intake; decide what
+  the library offers for it. Close an intake's tutor session when the
+  learner leaves it, or each abandoned intake keeps a Claude Code process
+  until the server stops. And show the restart note (an intake route
+  answering 404) in the new views.
 
 **User check:** create a course, push back on the proposed curriculum once,
 approve the revision, see the diagram, restart the server, and find the course

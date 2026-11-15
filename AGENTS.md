@@ -90,10 +90,12 @@ mise activated, or `mise exec -- <command>`.
 | Test, Python helpers | `uv run --directory pytools pytest` |
 | Run the app (server and page, http://localhost:4320) | `pnpm dev` |
 
-- `pnpm dev` talks to the real Claude backend and spends plan usage when a
-  chat is started. Stop it with Ctrl-C. `GAUSS_PORT` changes the port, and
+- `pnpm dev` talks to the real Claude backend and spends plan usage once a
+  message is sent. Stop it with Ctrl-C. `GAUSS_PORT` changes the port,
   `GAUSS_CLAUDE_MODEL` the model (left unset, the learner's Claude Code
-  default). The server prints the model each session runs on.
+  default), and `GAUSS_DATA_ROOT` the folder that holds the courses (left
+  unset, `~/gauss`; point it at a scratch folder for trial runs). The server
+  prints the data root when it starts, and the model each session runs on.
 - The page is in `src/web` (React, built by Vite); the server starts at
   `src/server/main.ts`.
 

@@ -420,6 +420,18 @@ drafted in the stage that first needs it and revised against real transcripts.
 
 Artifacts render in a sandboxed frame so generated HTML cannot touch the app.
 
+The page talks to the server through the routes in `src/server/http/app.ts`
+(task 1.5); the bodies they take and send are schemas in `src/shared/`
+(`events.ts`, `library.ts`). The library reads courses from the record.
+"New course" starts an intake, which the page addresses by an id of its
+own until it ends, because the course exists only from the first proposal;
+the intake's event stream, messages, approval and stop are routes under
+`/api/intakes/<id>/`. Intakes are held in memory, so a restart ends one in
+progress, whose routes then answer 404; a course it proposed stays in the
+library as a draft. An event stream replays its chat's log with ids
+`<log id>.<index>`, so a page that reconnects gets only what it missed.
+Only Gauss's own page may use the API (`decisions.md`, "Minimal page").
+
 The layout of these views was settled with static mocks: `docs/prototype/`
 (start at `index.html`; the shared look is `base.css`), with the choices
 recorded in `docs/decisions.md`.

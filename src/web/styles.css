@@ -185,11 +185,6 @@ button:focus-visible {
   color: var(--ink);
 }
 
-/* before the chat starts */
-.intro p {
-  color: var(--soft);
-}
-
 /* a line from the page itself, not from the tutor */
 .ph-note {
   color: var(--soft);
@@ -391,9 +386,4 @@ details.why summary:hover {
 .qa-line .c {
   color: var(--soft);
   font-size: 0.86em;
-}
-
-/* the start button, set below the intro text */
-.intro .btn {
-  margin-top: 1.4em;
 }

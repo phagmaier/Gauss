@@ -1,5 +1,7 @@
-// The minimal page (plan task 0.5): the Thread layout from
-// docs/prototype/01-reading-chat.html, fed by the server's event stream.
+// The intake chat (plan task 1.5): the Thread layout from
+// docs/prototype/01-reading-chat.html, fed by the intake's event stream. A
+// stand-in until task 1.6 builds the library, intake and course views, so
+// proposals are not shown yet.
 
 import {
   useEffect,
@@ -10,19 +12,34 @@ import {
 } from "react";
 import { Hello, PageEvent } from "../shared/events.ts";
 import type { AnswerSubmission } from "../shared/question.ts";
-import { post } from "./api.ts";
+import { post, startIntake } from "./api.ts";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { emptyTimeline, type Item, reduce } from "./timeline.ts";
 
+/** Asked by the page itself; the tutor's session starts with the answer. */
+const OPENING_QUESTION =
+  "What do you want to learn? Tell me what you already know.";
+
+/** The intake this page shows, kept in the address so a reload finds it. */
+function intakeInAddress(): string | undefined {
+  return new URLSearchParams(window.location.search).get("intake") ?? undefined;
+}
+
+const intakePath = (id: string, route: string) =>
+  `/api/intakes/${encodeURIComponent(id)}/${route}`;
+
 export function App() {
+  const [intakeId, setIntakeId] = useState(intakeInAddress);
   const [timeline, dispatch] = useReducer(reduce, emptyTimeline);
   const [connected, setConnected] = useState(false);
+  const [lost, setLost] = useState(false);
   const [problem, setProblem] = useState<string>();
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
   useEffect(() => {
-    const source = new EventSource("/api/events");
+    if (intakeId === undefined) return;
+    const source = new EventSource(intakePath(intakeId, "events"));
     source.addEventListener("hello", (e: MessageEvent<string>) => {
       setConnected(true);
       dispatch({
@@ -37,10 +54,15 @@ export function App() {
         event: PageEvent.parse(JSON.parse(e.data)),
       });
     };
-    // EventSource reconnects by itself and resumes after the last event.
-    source.onerror = () => setConnected(false);
+    // EventSource reconnects by itself and resumes after the last event. It
+    // gives up when the server refuses, which means the intake is gone: the
+    // server restarted.
+    source.onerror = () => {
+      setConnected(false);
+      if (source.readyState === EventSource.CLOSED) setLost(true);
+    };
     return () => source.close();
-  }, []);
+  }, [intakeId]);
 
   // Follow the thread as it grows, unless the learner has scrolled up.
   useLayoutEffect(() => {
@@ -57,7 +79,26 @@ export function App() {
     return refused;
   }
 
-  const started = timeline.last >= 0;
+  /** The first message starts the intake. */
+  async function send(text: string): Promise<string | undefined> {
+    let id = intakeId;
+    if (id === undefined) {
+      const started = await startIntake();
+      if (!started.ok) {
+        setProblem(started.error);
+        return started.error;
+      }
+      id = started.intakeId;
+      window.history.replaceState(
+        null,
+        "",
+        `?intake=${encodeURIComponent(id)}`,
+      );
+      setIntakeId(id);
+    }
+    return act(intakePath(id, "messages"), { text });
+  }
+
   return (
     <div className="th">
       <div
@@ -70,28 +111,15 @@ export function App() {
         }}
       >
         <div className="th-col">
-          {started ? null : (
-            <div className="intro prose">
-              <h1>The power rule</h1>
-              <p>
-                A short demonstration: the tutor explains one idea, then asks
-                you a question about it.
-              </p>
-              <button
-                type="button"
-                className="btn"
-                disabled={!connected}
-                onClick={() => act("/api/start")}
-              >
-                Start
-              </button>
-            </div>
-          )}
+          <div className="th-tutor prose">
+            <p>{OPENING_QUESTION}</p>
+          </div>
           {timeline.items.map((item) => (
             <ItemView
               key={item.key}
               item={item}
-              onAnswer={(submission) => post("/api/answers", submission)}
+              // The intake posts no questions; stage 2's unit chats do.
+              onAnswer={async () => "This conversation takes no answers."}
             />
           ))}
           {timeline.busy && !timeline.tutorOpen ? (
@@ -104,7 +132,12 @@ export function App() {
             </div>
           ) : null}
           {problem === undefined ? null : <p className="ph-note">{problem}</p>}
-          {connected || timeline.chatId === null ? null : (
+          {lost ? (
+            <p className="ph-note">
+              This conversation ended when the server restarted. A course it
+              proposed is kept. <a href="/">Start a new one</a>
+            </p>
+          ) : connected || timeline.chatId === null ? null : (
             <p className="ph-note">
               The connection to the server was lost. Retrying…
             </p>
@@ -113,10 +146,13 @@ export function App() {
       </div>
       <div className="th-foot">
         <Composer
-          enabled={started}
+          enabled={!lost}
           busy={timeline.busy}
-          onSend={(text) => act("/api/messages", { text })}
-          onStop={() => act("/api/interrupt")}
+          onSend={send}
+          onStop={() => {
+            if (intakeId !== undefined)
+              void act(intakePath(intakeId, "interrupt"));
+          }}
         />
       </div>
     </div>
