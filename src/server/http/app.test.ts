@@ -350,6 +350,51 @@ test("a course outlives the server, and an intake in progress does not", async (
   expect(gone.status).toBe(404);
 });
 
+test("a draft opens for review in its running intake, or after a restart in a new one that starts from it", async () => {
+  const before = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
+  const intakeId = await startIntake(before.app);
+  await say(before, intakeId, ASK);
+  const review = "/api/courses/linear-algebra-for-pca/review";
+
+  const running = await post(before.app, review);
+  expect(running.status).toBe(200);
+  expect(await running.json()).toEqual({ intakeId });
+  await before.intakes.close();
+
+  const after = setUp([]);
+  const reopened = await post(after.app, review);
+  expect(reopened.status).toBe(200);
+  const { intakeId: newId } = (await reopened.json()) as { intakeId: string };
+  expect(newId).not.toBe(intakeId);
+  const stream = await readFrames(
+    await after.app.request(`/api/intakes/${newId}/events`),
+    3,
+  );
+  expect(stream.first.slice(1).map((f) => f.data)).toEqual([
+    { type: "draft_reopened" },
+    {
+      type: "curriculum_proposed",
+      courseId: "linear-algebra-for-pca",
+      revision: 1,
+      ...FIRST,
+    },
+  ]);
+  await stream.close();
+
+  expect(
+    (await post(after.app, `/api/intakes/${newId}/approval`, { revision: 1 }))
+      .status,
+  ).toBe(200);
+  const approved = await post(after.app, review);
+  expect(approved.status).toBe(409);
+  expect(await approved.json()).toEqual({
+    error: "The curriculum is approved; there is nothing to review.",
+  });
+  expect((await post(after.app, "/api/courses/no-course/review")).status).toBe(
+    404,
+  );
+});
+
 test("a record the server cannot read is reported with the reason", async () => {
   const { app } = setUp([]);
   await mkdir(join(dir, "courses", "broken"), { recursive: true });

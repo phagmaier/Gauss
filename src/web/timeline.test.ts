@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
 import { emptyTimeline, reduce, type Timeline } from "./timeline.ts";
 
@@ -80,4 +81,96 @@ test("a turn that ends in an error or is stopped leaves a note, and the tutor is
     ["note", "The tutor stopped because of an error: Rate limited."],
   ]);
   expect(state.busy).toBe(false);
+});
+
+const VECTORS: Unit = {
+  id: "vectors",
+  title: "Vectors and linear maps",
+  goal: "Describe a linear map by what it does to a basis.",
+  prerequisites: [],
+};
+const EIGEN: Unit = {
+  id: "eigen",
+  title: "Eigenvalues and eigenvectors",
+  goal: "Find the directions a map only stretches.",
+  prerequisites: ["vectors"],
+};
+const proposed = (revision: number, units: Unit[]) =>
+  ({
+    type: "curriculum_proposed",
+    courseId: "linear-algebra",
+    revision,
+    title: "Linear algebra",
+    units,
+  }) as const;
+
+test("each proposal is a card, a revision marks what changed since the one before, and approval is recorded", () => {
+  const revised = { ...VECTORS, title: "Vectors, maps and matrices" };
+  const gentler = {
+    ...EIGEN,
+    goal: "Find, with care, the stretched directions.",
+  };
+  const state = play([
+    { type: "learner", text: "Linear algebra." },
+    { type: "turn_start" },
+    proposed(1, [VECTORS, EIGEN]),
+    { type: "turn_end", outcome: "done" },
+    { type: "learner", text: "Shorter, please." },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "I renamed the first unit." },
+    proposed(2, [revised, EIGEN]),
+    { type: "turn_end", outcome: "done" },
+    { type: "learner", text: "And eigenvectors more gently." },
+    { type: "turn_start" },
+    proposed(3, [revised, gentler]),
+    { type: "turn_end", outcome: "done" },
+    {
+      type: "curriculum_approved",
+      courseId: "linear-algebra",
+      revision: 3,
+    },
+  ]);
+
+  expect(state.items.filter((i) => i.kind === "proposal")).toEqual([
+    {
+      kind: "proposal",
+      key: 2,
+      revision: 1,
+      courseId: "linear-algebra",
+      title: "Linear algebra",
+      units: [VECTORS, EIGEN],
+      changed: new Set(),
+    },
+    {
+      kind: "proposal",
+      key: 7,
+      revision: 2,
+      courseId: "linear-algebra",
+      title: "Linear algebra",
+      units: [revised, EIGEN],
+      changed: new Set(["vectors"]),
+    },
+    {
+      kind: "proposal",
+      key: 11,
+      revision: 3,
+      courseId: "linear-algebra",
+      title: "Linear algebra",
+      units: [revised, gentler],
+      // Against revision 2, not the first: the renamed unit is not new here.
+      changed: new Set(["eigen"]),
+    },
+  ]);
+  expect(state.latestRevision).toBe(3);
+  expect(state.approved).toEqual({ courseId: "linear-algebra", revision: 3 });
+  expect(state.reopened).toBe(false);
+});
+
+test("a draft reopened after a restart is marked, and its proposal is the first card", () => {
+  const state = play([{ type: "draft_reopened" }, proposed(1, [VECTORS])]);
+
+  expect(state.reopened).toBe(true);
+  expect(state.items).toMatchObject([{ kind: "proposal", revision: 1 }]);
+  expect(state.latestRevision).toBe(1);
+  expect(state.approved).toBeNull();
 });

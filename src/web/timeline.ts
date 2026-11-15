@@ -1,8 +1,11 @@
 // The thread as the page shows it, rebuilt from the chat's event log. Pure, so
 // a replay after a reload or a reconnect gives the same thread.
 
+import type { Slug } from "../shared/course.ts";
+import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
 import type { QuestionView } from "../shared/question.ts";
+import { changedUnits } from "./units.ts";
 
 export type Graded = Extract<PageEvent, { type: "graded" }>;
 
@@ -10,6 +13,16 @@ export type Item =
   | { kind: "learner"; key: number; text: string }
   | { kind: "tutor"; key: number; text: string }
   | { kind: "question"; key: number; question: QuestionView; graded?: Graded }
+  | {
+      kind: "proposal";
+      key: number;
+      revision: number;
+      courseId: Slug;
+      title: string;
+      units: Unit[];
+      /** The ids of the units this revision changed; none in the first. */
+      changed: Set<string>;
+    }
   | { kind: "note"; key: number; text: string };
 
 export interface Timeline {
@@ -21,6 +34,11 @@ export interface Timeline {
   busy: boolean;
   /** The tutor's next text continues the last item. */
   tutorOpen: boolean;
+  /** The newest proposal's revision, the only one that can be approved; 0 if none. */
+  latestRevision: number;
+  approved: { courseId: Slug; revision: number } | null;
+  /** The intake started from a stored draft, its conversation lost. */
+  reopened: boolean;
 }
 
 export const emptyTimeline: Timeline = {
@@ -29,6 +47,9 @@ export const emptyTimeline: Timeline = {
   items: [],
   busy: false,
   tutorOpen: false,
+  latestRevision: 0,
+  approved: null,
+  reopened: false,
 };
 
 export type TimelineAction =
@@ -95,10 +116,33 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             : item,
         ),
       };
-    case "curriculum_proposed":
+    case "draft_reopened":
+      return { ...next, reopened: true };
+    case "curriculum_proposed": {
+      const previous = state.items.findLast((i) => i.kind === "proposal");
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "proposal",
+            key: index,
+            revision: event.revision,
+            courseId: event.courseId,
+            title: event.title,
+            units: event.units,
+            changed: changedUnits(event.units, previous?.units),
+          },
+        ],
+        tutorOpen: false,
+        latestRevision: event.revision,
+      };
+    }
     case "curriculum_approved":
-      // Not shown yet: the intake view arrives in task 1.6.
-      return { ...next, tutorOpen: false };
+      return {
+        ...next,
+        approved: { courseId: event.courseId, revision: event.revision },
+      };
     case "turn_end": {
       const note =
         event.outcome === "error"

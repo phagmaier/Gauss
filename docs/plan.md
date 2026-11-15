@@ -305,7 +305,7 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
 
 ### 1.6 Library and course views
 
-- Status: todo
+- Status: done
 - Depends on: 1.0, 1.5
 - Do: the library view, the intake chat, the curriculum review screen, and the
   diagram generated from `curriculum.json`.
@@ -328,6 +328,14 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
   learner leaves it, or each abandoned intake keeps a Claude Code process
   until the server stops. And show the restart note (an intake route
   answering 404) in the new views.
+- Note: done on 2026-11-15 (`src/web/`); details in `docs/decisions.md`
+  under "Library and course views". The user check was run in a browser
+  with the fake backend, and the intake once on Haiku 5.5; the user has
+  not tried it yet. On the three open items: a draft opens for review in
+  its running intake, or after a restart in a new one that starts from
+  the stored draft; abandoned intakes are kept, as mock 8 says leaving
+  keeps the conversation, and stage 2 should close idle ones once resume
+  exists; the intake view shows the restart note.
 
 **User check:** create a course, push back on the proposed curriculum once,
 approve the revision, see the diagram, restart the server, and find the course
@@ -346,6 +354,14 @@ still there.
 - Note from 1.4: the brief has the tutor propose the course's style note at
   intake, approved with the curriculum. `propose_curriculum` does not
   carry it yet; decide here whether it should, or how `style.md` is made.
+- Note from 1.6: the views leave room for this stage. Unit status goes in
+  the course view's list and diagram (the classes are in
+  `docs/prototype/base.css`), the library's ticks and "where" line, and its
+  "Finished" group. Continue goes at the right of the course view's top
+  line, and "Open the course" after approval becomes "Start unit 1".
+  Nothing updates `lastOpenedAt` yet. Each intake sent a message keeps a
+  Claude Code process until the server stops; once sessions resume, close
+  idle ones.
 - Note: for a source course, planning a unit needs the whole unit's text.
   When designing `plan_unit`, decide where that reading happens or leave it
   to 4.0 in writing (`architecture.md` section 8, "Open").

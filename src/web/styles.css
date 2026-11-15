@@ -1,8 +1,7 @@
 /*
   The settled look (docs/decisions.md, "Page design"): Catppuccin Frappé with
   the mauve accent, IBM Plex Sans, dark first. Taken from
-  docs/prototype/base.css, pieces 1 to 3, keeping only what the minimal page
-  uses. Colours are the Catppuccin palette (catppuccin.com, MIT).
+  docs/prototype/base.css, pieces 1 to 8, keeping only what the page uses. Colours are the Catppuccin palette (catppuccin.com, MIT).
 */
 :root {
   --base: #303446;
@@ -54,6 +53,14 @@ body {
 }
 ::selection {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 button {
   font: inherit;
@@ -386,4 +393,402 @@ details.why summary:hover {
 .qa-line .c {
   color: var(--soft);
   font-size: 0.86em;
+}
+
+/* ---- Phases, piece 3: the next-step control where the conversation has got to ---- */
+.pf-act {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 1.5em 0 0.5em;
+  font-size: 0.94em;
+  color: var(--soft);
+  scroll-margin-bottom: 24px;
+}
+.btn.sm {
+  padding: 0.34em 0.9em;
+  font-size: 0.92em;
+}
+
+/* ---- Navigation, piece 4: one line across the top ---- */
+.th.has-top {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.th.has-top .th-col {
+  padding-top: 40px;
+}
+.nl {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  min-height: 54px;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9em;
+}
+/* the path out: library, course */
+.crumbs {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55em;
+  min-width: 0;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.crumbs a {
+  color: var(--soft);
+  text-decoration: none;
+}
+.crumbs a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.crumbs b {
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ticks {
+  display: flex;
+  gap: 4px;
+}
+.ticks i {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface1);
+}
+.ticks .past {
+  background: var(--overlay0);
+}
+.ticks .now {
+  background: var(--accent);
+}
+
+/* ---- The side pane, piece 5: beside the content, which narrows to make room ---- */
+.sv-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8em;
+  padding: 11px 12px 11px 20px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.92em;
+  min-height: 3.1em;
+}
+.sv-head b {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sv-head span {
+  color: var(--soft);
+  font-size: 0.94em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sv-close {
+  align-self: center;
+  margin-left: auto;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--soft);
+}
+.sv-close:hover {
+  background: var(--surface0);
+  color: var(--ink);
+}
+.sv-body {
+  overflow: auto;
+  min-height: 0;
+}
+.th.has-pane {
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 44%);
+}
+.th.has-pane > .nl {
+  grid-column: 1 / -1;
+}
+.th.has-pane > .th-scroll {
+  grid-column: 1;
+  grid-row: 2;
+}
+.th.has-pane > .th-foot {
+  grid-column: 1;
+  grid-row: 3;
+}
+.sp {
+  grid-column: 2;
+  grid-row: 2 / 4;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  background: var(--mantle);
+}
+@media (max-width: 900px) {
+  .sp {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    border: 0;
+  }
+}
+
+/* ---- Pages outside a session, and the library, piece 6: one plain list ---- */
+.pg {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+}
+.pg-scroll {
+  overflow: auto;
+}
+.pg-col {
+  max-width: calc(var(--measure) + 48px);
+  margin: 0 auto;
+  padding: 56px 24px 96px;
+}
+.pg-h {
+  font-size: 1em;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--head);
+  margin: 2.8em 0 0.5em;
+}
+.pg-h:first-child {
+  margin-top: 0;
+}
+.nl .btn.sm {
+  font-size: 1em;
+  padding: 0.18em 0.85em;
+}
+.lib-list {
+  display: grid;
+  gap: 2px;
+  margin: 0 -16px;
+}
+.lc {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.1em 24px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--r);
+  padding: 13px 16px 15px;
+}
+.lc:hover {
+  background: var(--mantle);
+}
+.lc:disabled {
+  cursor: progress;
+}
+.lc-title {
+  font-weight: 600;
+  font-size: 1.08em;
+}
+.lc-title small {
+  font-weight: 400;
+  font-size: 0.8em;
+  color: var(--faint);
+  margin-left: 0.7em;
+}
+.lc-when {
+  color: var(--faint);
+  font-size: 0.88em;
+  white-space: nowrap;
+}
+.lc-where {
+  grid-column: 1;
+  color: var(--soft);
+  font-size: 0.94em;
+}
+.lc-where.todo {
+  color: var(--yellow);
+}
+.lc .ticks {
+  grid-column: 1;
+  margin-top: 0.65em;
+}
+
+/* ---- The course view, piece 7: the page is the unit list ---- */
+.cv-title {
+  font-size: 2.1em;
+  line-height: 1.12;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  margin: 0 0 0.35em;
+}
+.cv-at {
+  margin: 0;
+  color: var(--soft);
+}
+.cv-hrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 2.8em 0 0.5em;
+}
+.cv-hrow .pg-h {
+  margin: 0;
+}
+.pg.has-pane {
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 44%);
+}
+.pg.has-pane > .nl {
+  grid-column: 1 / -1;
+}
+.pg > .sp {
+  grid-column: 2;
+  grid-row: 2;
+}
+.cu {
+  list-style: none;
+  margin: 0 -16px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.cu-row {
+  display: grid;
+  grid-template-columns: 1.5em minmax(0, 1fr) auto;
+  gap: 0 0.7em;
+  align-items: baseline;
+  padding: 12px 16px 13px;
+  border-radius: var(--r);
+  scroll-margin: 24px;
+}
+.cu-row.sel {
+  background: var(--mantle);
+}
+.cu-n {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.cu-t {
+  font-weight: 500;
+}
+.cu-g {
+  color: var(--soft);
+  font-size: 0.94em;
+}
+.cu-m {
+  display: flex;
+  gap: 1.3em;
+  align-items: baseline;
+  color: var(--faint);
+  font-size: 0.86em;
+  margin-top: 0.3em;
+}
+.cu-s {
+  color: var(--faint);
+  font-size: 0.88em;
+  white-space: nowrap;
+}
+/* the curriculum diagram: units in rows, a line from each unit to the ones that build on it */
+.dg {
+  position: relative;
+}
+.dg svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.dg path {
+  fill: none;
+  stroke: var(--surface1);
+  stroke-width: 1.5;
+}
+/* filled, so a line that passes behind a unit on its way down stays hidden */
+.dn {
+  position: absolute;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.75em;
+  align-content: center;
+  width: 46%;
+  height: 58px;
+  text-align: left;
+  background: var(--mantle);
+  border: 1px solid var(--surface1);
+  border-radius: var(--r);
+  padding: 0 14px;
+  font-size: 0.9em;
+  line-height: 1.32;
+}
+button.dn:hover {
+  border-color: var(--overlay0);
+}
+.dn b {
+  grid-row: 1 / 3;
+  align-self: center;
+  font-weight: 400;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.dn .t {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dn small {
+  grid-column: 2;
+  font-size: 0.88em;
+  color: var(--faint);
+}
+.dn.todo {
+  border-color: var(--surface0);
+}
+.dn.todo .t {
+  font-weight: 400;
+  color: var(--soft);
+}
+.dn.sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.sp .dg {
+  margin: 26px 22px;
+}
+
+/* ---- Starting a course, piece 8: the proposed curriculum is a card in the thread ---- */
+.cp .q-count b {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 1.14em;
+}
+.cp .cu {
+  margin: 0.5em -12px 0;
+}
+.cp .cu-row {
+  padding: 9px 12px 10px;
+}
+.cp .qa-foot {
+  margin-top: 0.8em;
+}
+.cu-s.chg,
+.dn.chg small {
+  color: var(--yellow);
+}
+.cp-old {
+  margin: 1.5em 0;
+  border: 1px solid var(--surface0);
+  border-radius: var(--r);
+  padding: 0.55em 1em;
+  color: var(--soft);
+  font-size: 0.92em;
 }

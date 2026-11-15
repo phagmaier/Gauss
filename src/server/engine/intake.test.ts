@@ -1,11 +1,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { PageEvent } from "../../shared/events.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
-import { createIntake, type Intake } from "./intake.ts";
+import { createIntake, createIntakes, type Intake } from "./intake.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
@@ -262,4 +262,100 @@ test("approval is refused before any proposal, and while the tutor is writing", 
   await intake.interrupt();
   await intake.settled();
   expect(await intake.approve(1)).toEqual({ ok: true });
+});
+
+describe("a draft reopened for review, its first conversation lost in a restart", () => {
+  const DRAFT = { id: "linear-algebra-for-pca", proposal: FIRST };
+
+  function reopen(script: FakeTurn[]) {
+    const backend = createFakeBackend(script);
+    const dataRoot = openDataRoot({
+      path: dir,
+      now: () => new Date(APPROVED_AT),
+    });
+    const intakes = createIntakes({
+      backend,
+      systemPrompt: "You are a test planner.",
+      dataRoot,
+    });
+    return { backend, intakes, dataRoot };
+  }
+
+  /** The course as the first intake left it: one draft on disk. */
+  async function storeDraft() {
+    const { intake } = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
+    intake.say(ASK);
+    await intake.settled();
+    await intake.close();
+  }
+
+  test("shows the stored draft as proposal 1, and a reply sends the tutor the whole draft", async () => {
+    await storeDraft();
+    const { backend, intakes } = reopen([
+      [{ call: "propose_curriculum", input: REVISED }],
+    ]);
+    const intake = intakes.review(DRAFT);
+
+    expect(intake.events()).toEqual([
+      { type: "draft_reopened" },
+      {
+        type: "curriculum_proposed",
+        courseId: "linear-algebra-for-pca",
+        revision: 1,
+        ...FIRST,
+      },
+    ]);
+    expect(intake.courseId()).toBe("linear-algebra-for-pca");
+    expect(backend.sessions).toEqual([]);
+
+    intake.say("Can the start be shorter?");
+    await intake.settled();
+
+    const turn = backend.received[0]?.text ?? "";
+    expect(turn).toMatch(/^\[The learner is reviewing proposal 1,/);
+    expect(turn).toContain(JSON.stringify(FIRST));
+    expect(turn).toContain(
+      "call propose_curriculum with the whole revised curriculum",
+    );
+    expect(turn.endsWith("]\nCan the start be shorter?")).toBe(true);
+    expect(proposals(intake).at(-1)).toMatchObject({
+      courseId: "linear-algebra-for-pca",
+      revision: 2,
+    });
+    expect(await reload().listCourses()).toMatchObject([
+      {
+        id: "linear-algebra-for-pca",
+        course: { title: REVISED.title },
+        curriculum: { approval: { status: "draft" }, units: REVISED.units },
+      },
+    ]);
+  });
+
+  test("can be approved without a word to the tutor", async () => {
+    await storeDraft();
+    const { backend, intakes } = reopen([]);
+    const intake = intakes.review(DRAFT);
+
+    expect(await intake.approve(1)).toEqual({ ok: true });
+    expect(backend.sessions).toEqual([]);
+    expect(intake.ended()).toBe(true);
+    expect(
+      (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
+        ?.approval,
+    ).toEqual({ status: "approved", approvedAt: APPROVED_AT });
+  });
+
+  test("is the intake still running for that course, if there is one", async () => {
+    const { intakes } = reopen([
+      [{ call: "propose_curriculum", input: FIRST }],
+    ]);
+    const first = intakes.start();
+    first.say(ASK);
+    await first.settled();
+
+    expect(intakes.review(DRAFT)).toBe(first);
+    expect(intakes.get(first.id)).toBe(first);
+    await first.approve(1);
+    expect(intakes.review(DRAFT)).not.toBe(first);
+  });
 });

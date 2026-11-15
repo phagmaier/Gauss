@@ -127,7 +127,9 @@ cannot disagree with the evidence. The curriculum diagram is generated from
   in `curriculum.json`, and a reply to one is a change request. Approving
   the latest revision, while the tutor is not writing, ends the intake.
   Before the first proposal nothing is stored, and the conversation is not
-  resumed.
+  resumed. A draft whose intake was lost in a restart is reviewed in a new
+  intake that starts from the stored draft as proposal 1, its earlier
+  conversation gone; the tutor gets the draft in the first turn (task 1.6).
 - Every chat is built from the event log and turn queue in
   `src/server/engine/conversation.ts`.
 
@@ -428,13 +430,18 @@ own until it ends, because the course exists only from the first proposal;
 the intake's event stream, messages, approval and stop are routes under
 `/api/intakes/<id>/`. Intakes are held in memory, so a restart ends one in
 progress, whose routes then answer 404; a course it proposed stays in the
-library as a draft. An event stream replays its chat's log with ids
+library as a draft. Opening a draft (`POST /api/courses/<id>/review`)
+returns the intake still running for it, or a new one that starts from the
+stored draft. An event stream replays its chat's log with ids
 `<log id>.<index>`, so a page that reconnects gets only what it missed.
 Only Gauss's own page may use the API (`decisions.md`, "Minimal page").
 
 The layout of these views was settled with static mocks: `docs/prototype/`
 (start at `index.html`; the shared look is `base.css`), with the choices
-recorded in `docs/decisions.md`.
+recorded in `docs/decisions.md`. Task 1.6 built the library, the intake and
+the course view from them (`src/web/`). The curriculum diagram is laid out
+by the page itself (`src/web/diagram.ts`), not by Mermaid, to keep the
+settled look.
 
 ## 11. Testing
 

@@ -6,9 +6,12 @@
 //
 // The first proposal creates the course, named by the proposal's title, and
 // every proposal is stored as its draft curriculum. Before the first one,
-// nothing is stored. Revision numbers and the conversation are in memory.
+// nothing is stored. Revision numbers and the conversation are in memory, so
+// a restart loses them; the stored draft can then be reopened for review in
+// a new intake, which starts from it as proposal 1 (task 1.6).
 
 import type { Slug } from "../../shared/course.ts";
+import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import type { DataRoot } from "../record/data-root.ts";
@@ -27,6 +30,8 @@ export interface Intake {
   subscribe(listener: (event: PageEvent, index: number) => void): () => void;
   /** The course, once the first proposal has created it. */
   courseId(): Slug | undefined;
+  /** Whether the curriculum is approved, which ends the intake. */
+  ended(): boolean;
   /** A message from the learner; the first one starts the tutor session. */
   say(text: string): ChatResult;
   /**
@@ -41,12 +46,20 @@ export interface Intake {
   close(): Promise<void>;
 }
 
+/** A stored draft whose intake is gone, to be reviewed again. */
+export interface StoredDraft {
+  id: Slug;
+  proposal: CurriculumProposal;
+}
+
 export function createIntake(options: {
   backend: TutorBackend;
   systemPrompt: string;
   dataRoot: DataRoot;
+  /** Starts the intake from this draft, as its proposal 1. */
+  draft?: StoredDraft;
 }): Intake {
-  const { dataRoot } = options;
+  const { dataRoot, draft } = options;
   const log = createEventLog();
   let courseId: Slug | undefined;
   let latest = 0;
@@ -80,18 +93,33 @@ export function createIntake(options: {
     log,
   });
 
+  if (draft !== undefined) {
+    courseId = draft.id;
+    latest = 1;
+    log.emit({ type: "draft_reopened" });
+    log.emit({
+      type: "curriculum_proposed",
+      courseId,
+      revision: latest,
+      ...draft.proposal,
+    });
+  }
+
   return {
     id: log.id,
     events: log.events,
     subscribe: log.subscribe,
     courseId: () => courseId,
+    ended: () => approved,
     say(text) {
       if (approved) {
         return { ok: false, status: 409, error: INTAKE_OVER };
       }
       const turn = tutor.started()
         ? messageTurn(text, latest)
-        : openingTurn(text);
+        : draft === undefined
+          ? openingTurn(text)
+          : reviewTurn(text, draft.proposal);
       log.emit({ type: "learner", text });
       tutor.send(turn);
       return { ok: true };
@@ -148,6 +176,11 @@ export interface Intakes {
   /** Starts an intake; its tutor session starts with the first message. */
   start(): Intake;
   get(id: string): Intake | undefined;
+  /**
+   * The intake still running for this draft's course, or a new one that
+   * starts from the draft. The caller checks that it is the stored draft.
+   */
+  review(draft: StoredDraft): Intake;
   /** Closes the tutor session of every intake. */
   close(): Promise<void>;
 }
@@ -158,13 +191,19 @@ export function createIntakes(options: {
   dataRoot: DataRoot;
 }): Intakes {
   const byId = new Map<string, Intake>();
+  function keep(intake: Intake): Intake {
+    byId.set(intake.id, intake);
+    return intake;
+  }
   return {
-    start() {
-      const intake = createIntake(options);
-      byId.set(intake.id, intake);
-      return intake;
-    },
+    start: () => keep(createIntake(options)),
     get: (id) => byId.get(id),
+    review(draft) {
+      for (const intake of byId.values()) {
+        if (intake.courseId() === draft.id && !intake.ended()) return intake;
+      }
+      return keep(createIntake({ ...options, draft }));
+    },
     async close() {
       await Promise.allSettled([...byId.values()].map((i) => i.close()));
     },
@@ -179,6 +218,17 @@ function openingTurn(text: string): string {
     "learn and what they already know; their answer follows. Allowed now: " +
     "ask what you still need to know, or propose a curriculum with " +
     `propose_curriculum.]\n${text}`
+  );
+}
+
+function reviewTurn(text: string, draft: CurriculumProposal): string {
+  return (
+    "[The learner is reviewing proposal 1, a curriculum proposed in an " +
+    "earlier conversation that was not kept:\n" +
+    `${JSON.stringify(draft)}\n` +
+    "They have not approved it; their message follows. Allowed now: answer " +
+    "them; if they ask for changes, call propose_curriculum with the whole " +
+    `revised curriculum, keeping the ids of the units you keep.]\n${text}`
   );
 }
 

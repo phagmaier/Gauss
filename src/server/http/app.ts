@@ -48,6 +48,28 @@ export function createApp(options: {
       : c.json(stored);
   });
 
+  // A draft is reviewed in an intake: the one that proposed it, if it is
+  // still running, or else a new one that starts from the stored draft.
+  app.post("/api/courses/:id/review", async (c) => {
+    const stored = await dataRoot.readCourse(c.req.param("id"));
+    if (stored === undefined) return c.json({ error: "No such course." }, 404);
+    const { curriculum } = stored;
+    if (curriculum === null) {
+      return c.json({ error: "No curriculum has been proposed." }, 409);
+    }
+    if (curriculum.approval.status === "approved") {
+      return c.json(
+        { error: "The curriculum is approved; there is nothing to review." },
+        409,
+      );
+    }
+    const intake = intakes.review({
+      id: stored.id,
+      proposal: { title: stored.course.title, units: curriculum.units },
+    });
+    return c.json({ intakeId: intake.id } satisfies IntakeStarted);
+  });
+
   // --- Intakes: "New course" starts one; its first proposal makes the course
 
   app.post("/api/intakes", (c) =>

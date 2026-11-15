@@ -920,3 +920,92 @@ registry (`createIntakes`) in `src/server/engine/intake.ts`,
   `GAUSS_DATA_ROOT` pointing at a scratch folder: it served an empty
   library, started an intake and sent its `hello`. No message was sent, so
   no model was called.
+
+## Library and course views (plan task 1.6)
+
+Built on 2026-11-15. The views are in `src/web/` (`Library.tsx`,
+`Intake.tsx`, `Course.tsx`, the shared `Frame.tsx`, `Curriculum.tsx` and
+`Composer.tsx`). The tested logic sits in pure modules beside them
+(`route.ts`, `diagram.ts`, `units.ts`, `library.ts`, `timeline.ts`).
+Reopening a draft is on the server.
+
+- **Three views, chosen by the address**: the library at `/`, an intake at
+  `/intakes/<id>`, a course at `/courses/<id>`. The page moves between them
+  with the history API, so Back works. Vite serves the page at every path;
+  the script tag is now `/main.tsx` so that it loads from any of them.
+  "New course" starts an intake at once and opens it.
+- **The library is mock 6.** Each row gives the title, "One-off" for a
+  course of one unit, where the course stands, a tick per unit, and when it
+  was last opened ("Today", "Yesterday", "3 days ago", "Last week", "2
+  weeks ago", then the date). A draft says "The curriculum is ready for your
+  review" in yellow, with no ticks. An approved course says "Unit 1 of N:
+  <title>, not started", and a one-off "Not started". The "Finished" group
+  is left out, since nothing can finish before stage 2.
+- **The intake is mock 8.** It shows the opening question, the thread, and
+  each proposal as a card with "Show the diagram" and Approve. The earlier
+  card shrinks to "First proposal, 7 units. Replaced by the one below." A
+  revision marks the units that are new, or whose title, goal or
+  prerequisites differ from the proposal just before it, matched by id.
+  Approve is disabled while the tutor writes. After approval the card says
+  "Approved", and the page notes "Approved. The course is in your
+  library." It then offers "Open the course" where the mock had "Start unit
+  1", which is stage 2's.
+- **The course view is mock 7**, without what later stages add (Continue,
+  notes, sources, unit status). It shows the title, "Approved on <date>. No
+  unit has started yet.", the unit list, and the diagram in the side pane,
+  where a click marks the unit in the list. Esc closes the pane. A draft
+  course shows "Review the curriculum" at the right of the top line.
+- **A draft after a restart (left open by task 1.5) opens for review.** If
+  the intake that proposed it is still running, the draft opens there, so
+  the conversation is kept, as mock 8 says. Otherwise it opens in a new
+  intake that starts from the stored draft as proposal 1
+  (`POST /api/courses/<id>/review`). That thread starts with "This
+  curriculum was proposed in a conversation that was not kept. Push back
+  on anything, or approve it.", then the card. A tutor session starts only
+  if the learner replies, and its first turn carries the whole draft;
+  `prompts/planner.md` has a paragraph for this case. Approving needs no
+  tutor turn. A new page event, `draft_reopened`, tells the page.
+- **Abandoned intakes are kept, not closed.** This revises task 1.5's note.
+  Mock 8 says that going back to the library keeps the conversation and the
+  proposal, and the draft row now leads back to them. Closing the session
+  when the learner leaves would lose what the mock keeps. The cost remains:
+  each intake that was sent a message holds a Claude Code process until
+  the server stops. Stage 2 builds session resume, which makes it cheap to
+  close an idle session and resume it later, so it should do that then.
+- **The page lays out the diagram itself** (`src/web/diagram.ts`), rather
+  than using Mermaid (listed in `architecture.md` section 2), to keep the
+  mock's look. Each unit sits one row below the deepest unit it builds on,
+  at most two to a row (the mock's node width), with any more placed further
+  down in list order. A pair is ordered by where its lines come from. A line
+  that skips a row passes beside the unit in that row, which moves aside, or
+  through the gap between two units. In the first browser run such a line
+  passed behind a unit and looked like two lines into it. The units are
+  filled for the same reason. A long title is cut short with an ellipsis,
+  and the full title shows on hover.
+- **One real run, on Haiku 5.5**, with a scratch data root. Asked for a
+  one-off on Bayes' theorem, the planner proposed one unit through
+  `propose_curriculum`, and the turn ended at the card. Asked for two
+  units, it revised and kept the first unit's id, so only the new unit was
+  marked. Approval stored the curriculum. It took two model turns, and it
+  was the first run of the planner prompt and the tool on a real model.
+- **Browser run with the fake backend**, on a scratch server built like
+  `main.ts`. It covered the whole user check: a new course, a proposal,
+  the diagram, a push-back, the revision with its changes marked,
+  approval, the course view with a unit marked from the diagram, Esc, the
+  library, and Back. It also covered leaving a draft and finding its
+  conversation again from the library. After a restart, the open intake
+  said it had ended; the draft then reopened, was revised there, and was
+  approved. An unknown intake and an unknown course each show a note.
+- **The React components have no automated tests.** The test setup has
+  no DOM environment (see "Review fixes"), so the views were checked in the
+  browser, and their logic is in the tested pure modules.
+- **Checks:** `mise run check` passed lint, type-checking, 140 TypeScript
+  tests and one Python test. Each of eleven deliberate faults made a test
+  fail: no row limit in the diagram, lines behind units, a pair kept in
+  list order, prerequisite changes left unmarked, an unsorted "Builds on",
+  a wrong week boundary, ticks on drafts, changes measured against the
+  first proposal, a new intake for every review, a reopened intake that
+  opens like a new one, and review of an approved course. The test needed
+  a third revision before the first-proposal fault failed it. The review
+  also found that a malformed address (`/courses/%E0%A4`) crashed the page;
+  it now shows the library, with a test.

@@ -1,51 +1,76 @@
-// Posts to the server. Returns the server's reason when it refuses, so the
-// page can show it, and nothing when the request was accepted.
+// Talks to the server. A refusal comes back as the server's reason, so the
+// page can show it; an answer is checked against its schema in src/shared/.
 
-import { IntakeStarted } from "../shared/events.ts";
+import type { z } from "zod";
 
-type Answer = { ok: true; data: unknown } | { ok: false; error: string };
+export type Answer<T> =
+  | { ok: true; data: T }
+  | { ok: false; status: number; error: string };
 
-async function request(path: string, body?: unknown): Promise<Answer> {
-  const init: RequestInit = { method: "POST" };
-  if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
-    init.body = JSON.stringify(body);
-  }
+async function request<T>(
+  path: string,
+  schema: z.ZodType<T> | undefined,
+  init: RequestInit,
+): Promise<Answer<T | undefined>> {
   let response: Response;
   try {
     response = await fetch(path, init);
   } catch {
-    return { ok: false, error: "The server could not be reached." };
+    return { ok: false, status: 0, error: "The server could not be reached." };
   }
   const data: unknown = await response.json().catch(() => undefined);
-  if (response.ok) return { ok: true, data };
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    "error" in data &&
-    typeof data.error === "string"
-  ) {
-    return { ok: false, error: data.error };
+  if (!response.ok) {
+    const error =
+      typeof data === "object" &&
+      data !== null &&
+      "error" in data &&
+      typeof data.error === "string"
+        ? data.error
+        : `The server answered ${response.status}.`;
+    return { ok: false, status: response.status, error };
   }
-  return { ok: false, error: `The server answered ${response.status}.` };
+  if (schema === undefined) return { ok: true, data: undefined };
+  const parsed = schema.safeParse(data);
+  return parsed.success
+    ? { ok: true, data: parsed.data }
+    : {
+        ok: false,
+        status: response.status,
+        error: "The server's answer was not understood.",
+      };
 }
 
+function postInit(body: unknown): RequestInit {
+  return body === undefined
+    ? { method: "POST" }
+    : {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      };
+}
+
+export function getJson<T>(
+  path: string,
+  schema: z.ZodType<T>,
+): Promise<Answer<T>> {
+  return request(path, schema, {}) as Promise<Answer<T>>;
+}
+
+/** Posts and reads the answer. */
+export function postFor<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  body?: unknown,
+): Promise<Answer<T>> {
+  return request(path, schema, postInit(body)) as Promise<Answer<T>>;
+}
+
+/** Posts; the server's reason when it refuses, nothing when it accepts. */
 export async function post(
   path: string,
   body?: unknown,
 ): Promise<string | undefined> {
-  const answer = await request(path, body);
+  const answer = await request(path, undefined, postInit(body));
   return answer.ok ? undefined : answer.error;
-}
-
-/** Starts a new course's intake: its id, or the server's reason for refusing. */
-export async function startIntake(): Promise<
-  { ok: true; intakeId: string } | { ok: false; error: string }
-> {
-  const answer = await request("/api/intakes");
-  if (!answer.ok) return answer;
-  const parsed = IntakeStarted.safeParse(answer.data);
-  return parsed.success
-    ? { ok: true, intakeId: parsed.data.intakeId }
-    : { ok: false, error: "The server's answer was not understood." };
 }

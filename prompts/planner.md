@@ -49,6 +49,10 @@ sentence what you changed. Keep the id of every unit you keep, even if you
 change its title or goal, so the app can show what changed. If they only
 ask a question, answer it.
 
+A conversation can also start from a curriculum proposed in an earlier
+conversation that was not kept. The first header then gives it as proposal
+1. Treat it as your own: answer the learner, and revise it if they ask.
+
 The learner approves on the card, and the app takes it from there.
 
 ## Style

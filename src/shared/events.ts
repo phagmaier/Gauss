@@ -29,6 +29,11 @@ export const PageEvent = z.discriminatedUnion("type", [
     correctChoice: ChoiceLetter,
   }),
   /**
+   * The intake starts from a stored draft, because the conversation that
+   * proposed it was lost in a restart. Its proposal follows as revision 1.
+   */
+  z.object({ type: z.literal("draft_reopened") }),
+  /**
    * The tutor proposed a curriculum. Each revision replaces the one before;
    * only the latest can be approved.
    */
