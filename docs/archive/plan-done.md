@@ -486,3 +486,23 @@ tested"). Stage 1 is finished.
   `docs/decisions.md` under "Markdown and math"; `architecture.md`
   sections 2 and 10 name the renderer. The preview is built but not
   mounted, since the written answer field comes with 2.8 and 2.11.
+
+### 2.5 Unit planning
+
+- Status: done
+- Depends on: 2.2
+- Do: the `plan_unit` tool, `prompts/unit-planner.md`, and the planning
+  session the engine runs when a unit without a plan starts: a backend
+  session of its own, given the course, its curriculum and the unit, which
+  stores the plan through `plan_unit` and then closes. A refused plan goes
+  back with its reason, as with `propose_curriculum`. A session that ends
+  without a plan is tried once more, then reported to the learner.
+- Done when: fake-backend tests cover a stored plan, a refused plan
+  corrected on the next call, a session that ends without a plan, a unit
+  that already has one (no session is started), and a curriculum that is
+  not approved; one run on Haiku 5.5, on a scratch data root, plans a unit
+  of a course made through the intake.
+- Note: update `architecture.md` section 9 for the new prompt file.
+- Note: done on 2026-11-15. The choices, checks and the Haiku run are in
+  `docs/decisions.md` under "Unit planning"; `architecture.md` sections 4,
+  5 and 9 name the planning session and its prompt.

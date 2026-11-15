@@ -32,6 +32,7 @@ findings are the record.
 | Plan, state and evidence records | Plan rules, `state.json` positions, evidence entries, the file lock, cut log lines | Touching a unit's plan, `state.json` or the evidence (2.3, 2.5 to 2.8, 2.13) |
 | Objective status | The passing rule, help, "I don't know", overrides, unit status | Recording answers or help (2.7), showing status (2.11, 2.12), stage 5's retained and slipping |
 | Markdown and math | The renderer, what happens to a model's HTML, links and images, math delimiters, the answer preview | Showing model or learner text on the page; writing a prompt's formatting rules (2.16) |
+| Unit planning | The planning session, `plan_unit`, retries, what the session is given | Starting a unit (2.6), revising `unit-planner.md`, stage 4's sections for planning |
 
 ## Page design (plan task 1.0)
 
@@ -1442,3 +1443,81 @@ descriptions. The choices are the agent's and can be overturned.
   mounted; how a real model writes Markdown and math (2.16). A render that
   throws would blank the page, since the page has no error boundary;
   rehype-katex catches KaTeX's errors, and no other was seen.
+
+## Unit planning (plan task 2.5)
+
+Built on 2026-11-15: `src/server/tools/plan-unit.ts`,
+`src/server/engine/unit-planning.ts` and `prompts/unit-planner.md`, with
+fake-backend tests beside the engine module. The choices are the agent's
+and can be overturned.
+
+- **`createUnitPlanner(...).plan(course, unit)`** returns the unit's plan, or
+  why there is none: `not-found` (no such course or unit), `not-approved`
+  (the curriculum is a draft), or `failed` (two sessions stored nothing),
+  each with a message written for the learner. The first two are checked
+  before any session starts, and a unit that already has a plan returns it
+  with no session. Task 2.6 calls it when a unit starts, reads
+  `prompts/unit-planner.md` in `main.ts`, and maps the problems to 404, 409
+  and a note in the unit's thread; nothing calls it before then.
+- **One session, one turn.** The turn's header names the unit ("unit 1 of
+  2"), says that `plan_unit` is allowed and that nobody reads the text or
+  answers questions. The curriculum follows as JSON, as the intake's review
+  turn gives a draft: every unit in order with its goal and prerequisites,
+  and for each unit already planned, its objectives with the derived status
+  of each (task 2.3). That is "the record as it stands" (brief, "How a
+  course runs"), and it shows the session which objective ids are taken.
+  After the turn the session closes.
+- **`plan_unit` takes the plan only.** The unit is the one the engine is
+  planning, bound in the tool, so the session cannot plan another unit.
+  Storing ends the turn. The plan's own rules (from `Plan`) and the
+  record's (an objective id used in another unit) refuse a plan with their
+  messages, written for this session in task 2.2, and the session can send
+  it again in the same turn.
+- **A session that ends without a plan is tried once more, in a new
+  session**, whose header adds why the first stored nothing: it ended
+  without a plan, its last plan was refused (with the reason), or the
+  backend failed (with the error). A new session rather than another turn,
+  because a session that failed in the backend may not take another turn,
+  and the one turn carries the whole context anyway. After the second, the
+  result is `failed` with the reason, and nothing is stored.
+  With Claude, a plan whose fields fail their own types (an empty list of
+  segments, say) is refused by the SDK before the tool runs (task 1.4), so
+  the retry's header then says only that the session ended without a plan.
+  The plan's cross-field rules and the record's refusals are the tool's and
+  are reported.
+- **Two starts of one unit at once share one planning session**, through a
+  map of the plannings under way. Without it, the second would run a
+  session whose plan the record then refuses. Another process writing the
+  same data root is not covered; only Gauss writes it.
+- **The prompt** asks for three to six objectives that together reach the
+  unit's goal and no further, each one testable sentence; new ids across
+  the course; nothing earlier units teach, except an objective that
+  refreshes an unpassed prerequisite in this unit's terms; segments of one
+  or two objectives in teaching order, with titles for the outline; one
+  call, fixed and repeated if refused.
+- **Not given to the session:** the learner's background from the intake,
+  which the record does not keep (the intake's conversation is gone after
+  approval, and `profile.md` in `architecture.md` section 3 is not written
+  yet), and the style note (2.10). If plans need the background, the intake
+  should keep a profile; this is open.
+- **No limit on refused calls within one turn.** A model that keeps sending
+  refused plans keeps its turn going until Claude Code's own limits stop
+  it. Not seen.
+- **Real run on Haiku 5.5**, through a throwaway script on a scratch data
+  root: the intake, with `planner.md`, was asked for a two-unit course on
+  derivatives and proposed one in its first turn; approval stored it. The
+  planning session for unit 1 called `plan_unit` once, about 3 seconds
+  after it was started, with four objectives (forming the difference
+  quotient, its limit, a derivative from the definition, the derivative as
+  a slope), each in a segment of its own, with new ids. The plan was
+  stored, and the record read back matched it. The intake's model sent no
+  text before its card, which `planner.md` asks for; a note for the
+  planner prompt's next revision. Three model sessions in all.
+- **Checks:** `mise run check` passed lint, type-checking, 257 TypeScript
+  tests and one Python test. Each of these faults made at least one test
+  fail: no second attempt; a retry not told why; a session left open; no
+  approval check before the session; a unit with a plan planned again; two
+  starts not sharing a session; no statuses in the context; the reason of a
+  plan refused by its schema lost (the tests found this one in the first
+  version, which kept only the record's refusals); the backend's error
+  left out of the failure; and storing that does not end the turn.

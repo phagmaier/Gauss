@@ -42,6 +42,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.2 | Plan, state and evidence records | Schemas in `src/shared/plan.ts`, `state.ts`, `evidence.ts`; record operations `storePlan`, `readState` and `writePosition` (one unit's position; `null` takes it out), `appendEvidence` and `readEvidence`. An objective is taught in one segment only, so 2.7's extra segment needs a place of its own. Each read-and-write-back and each append goes through `record/file-lock.ts`; `record/json-lines.ts` serves 2.13's transcripts. |
 | 2.3 | Objective status | `objectiveStatus` and `unitStatus` in `record/status.ts`. Passed: since the last miss, unassisted correct answers to two different questions, or one at 90% or 100%. Help (2.7 records it): the tutor received a learner message while the question was open. A unit with a position in `state.json` is in progress, so 2.7 takes it out when the unit closes. |
 | 2.4 | Markdown and math | `Prose`, `InlineProse` and `AnswerPreview` in `src/web/prose.tsx` (react-markdown, remark-math, rehype-katex): the tutor's text, prompts and choices. `AnswerPreview` is not mounted yet: put it under the written answer field (2.8 or 2.11). Prompts must ask for `$` math, `$$` on a line of its own for display, and `\$` for a dollar sign (2.16); images are never shown. |
+| 2.5 | Unit planning | `createUnitPlanner(...).plan(course, unit)` in `engine/unit-planning.ts` returns the stored plan or plans the unit in a session of its own (`prompts/unit-planner.md`, `tools/plan-unit.ts`); problems `not-found`, `not-approved`, `failed` with a message for the learner. Not wired yet: 2.6 reads the prompt in `main.ts` and calls it when a unit starts. The session is not given the learner's background, which the record does not keep. |
 
 ## Stage 2: session engine
 
@@ -55,23 +56,6 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
-
-### 2.5 Unit planning
-
-- Status: todo
-- Depends on: 2.2
-- Do: the `plan_unit` tool, `prompts/unit-planner.md`, and the planning
-  session the engine runs when a unit without a plan starts: a backend
-  session of its own, given the course, its curriculum and the unit, which
-  stores the plan through `plan_unit` and then closes. A refused plan goes
-  back with its reason, as with `propose_curriculum`. A session that ends
-  without a plan is tried once more, then reported to the learner.
-- Done when: fake-backend tests cover a stored plan, a refused plan
-  corrected on the next call, a session that ends without a plan, a unit
-  that already has one (no session is started), and a curriculum that is
-  not approved; one run on Haiku 5.5, on a scratch data root, plans a unit
-  of a course made through the intake.
-- Note: update `architecture.md` section 9 for the new prompt file.
 
 ### 2.6 Unit chat and phases
 

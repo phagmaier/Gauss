@@ -138,6 +138,12 @@ derived status.
 - A new unit always starts a new backend session, seeded from the record:
   profile, style note, curriculum summary, the unit's plan, the last handoff
   note, open misconceptions.
+- A unit without a plan is planned before its tutor session starts, in a
+  backend session of its own (`src/server/engine/unit-planning.ts`, task
+  2.5): one turn with the curriculum and how the learner stands on each
+  objective planned so far, the `plan_unit` tool, and then it closes. A
+  session that ends without a plan is tried once more; then the unit
+  reports that it could not be planned.
 - "Start fresh" is always available for the current unit and is the automatic
   fallback if a backend session cannot be resumed. An unknown session id fails
   at once with "No conversation found", and Claude Code deletes stored
@@ -209,7 +215,7 @@ served to it over the standard tool protocol (MCP).
 | --- | --- |
 | `propose_curriculum` | Stores a draft curriculum and shows it for review |
 | `amend_curriculum` | Proposes a change; applied only after the learner confirms |
-| `plan_unit` | Sets a unit's objectives and segments when the unit starts |
+| `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
 | `start_segment`, `close_segment` | Move through segments, subject to the phase rules |
 | `ask_question` | Posts a question (section 4) |
 | `start_detour`, `end_detour` | Open and close a detour; closing records the misconception found |
@@ -434,8 +440,10 @@ gives the planning session the unit's sections.
 Kept as editable files in `prompts/`. The tutor's system prompt is assembled
 from `tutor.md`, the course's `style.md`, and course context from the record.
 `examiner.md` drives assessments, `grader.md` rubric grading, `planner.md`
-curriculum and unit planning, `notes.md` unit notes and cheat sheets. Each is
-drafted in the stage that first needs it and revised against real transcripts.
+the intake's curriculum proposal, `unit-planner.md` the planning session that
+plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
+sheets. Each is drafted in the stage that first needs it and revised against
+real transcripts.
 
 ## 10. Page
 
