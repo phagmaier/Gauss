@@ -3,6 +3,33 @@
 Findings and choices made during the build, newest last. Each entry says what
 was decided, on what evidence, and where to look.
 
+**Do not read this file whole.** It is large. Find the entry you need in the
+index, then read only that section: `grep -n '^## ' docs/decisions.md` gives
+the line numbers, and a section runs to the next `## ` line. Where a section
+says it was observed with a `spike/` script, the script is deleted; the
+findings are the record.
+
+| Section | Holds | Read when |
+| --- | --- | --- |
+| Page design | Layout and look picked from mocks 1 to 8 | Building or changing a view |
+| Toolchain | Pinned versions, linter, test setup, TypeScript 7 and pnpm 12 quirks | Changing tooling or `tsconfig.json` |
+| Claude on the plan login | Plan login vs API key, which user settings leak into a session, built-in tools | Touching the Claude backend or its `env` |
+| Question round trip | Teaching tools, turn ending, the isolation option set | Adding or changing a teaching tool |
+| Resume and confinement | Resume by id, sandbox and permission options, refusals | Resume (stage 2), working directory or built-in tools (stage 3) |
+| Source sections | Splitting sources into size-limited sections | Stage 4 |
+| Minimal page | Adapter shape, streaming, fake backend, browser run | Touching `src/server/backends/` or the event stream |
+| Codex spike | What Codex can and cannot do on the ChatGPT login | Stage 6 |
+| Stage 0 closed | Which stage-0 questions were answered | Rarely; `architecture.md` section 7 has the answers |
+| Review fixes (0.8) | Stopping a turn, drafts during a pending send | Touching turn stop or the message box |
+| Course and curriculum schemas | Schema choices and validation messages | Touching `src/shared/course.ts` or `curriculum.ts` |
+| Record module | Data root, atomic writes, crash test | Touching `src/server/record/` |
+| Intake and curriculum proposal | Intake chat, `propose_curriculum`, approval | Touching `engine/intake.ts` |
+| Routes and event stream | The HTTP routes and their refusals | Adding or changing a route |
+| Library and course views | `src/web/` structure and choices | Touching the page |
+| Library review fixes | Intake ownership, diagram ports | Touching intakes or the diagram |
+| Stage 2 breakdown | Why stage 2's tasks are shaped as they are | Any stage 2 task, before starting |
+| Stage 2 designs | Picks from mocks 9 to 12, and which tasks use each | 2.6, 2.11, 2.12, and any stage 2 view |
+
 ## Page design (plan task 1.0)
 
 Chosen by the user from the prototypes in `docs/prototype/`, 2026-11-13.

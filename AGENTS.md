@@ -7,26 +7,44 @@ directing development are the same person, called "the user" here.
 
 ## Read before working
 
+Read only what the task needs; the documents are large.
+
 | Document | Holds | Read when |
 | --- | --- | --- |
-| `docs/plan.md` | Stages, tasks, their status and completion checks | Always, first. It says what to do next. |
-| `docs/brief.md` | What the product does, and the meaning of its terms | Before any task that touches behaviour |
-| `docs/architecture.md` | Structure, data layout, engine rules, tool list, SDK facts | Before any task that touches code |
-| `docs/decisions.md` | Findings and choices made during the build (created in stage 0) | When a task depends on an earlier finding |
+| `docs/plan.md` | Status table of finished tasks, and the open tasks with their completion checks | Always, first. It says what to do next. |
+| `docs/brief.md` | What the product does, and the meaning of its terms | Its "Terms" section always; other sections only for the behaviour the task touches |
+| `docs/architecture.md` | Structure, data layout, engine rules, tool list, SDK facts | Sections 1 and 2 for any code task; then only the sections the task touches: 3 data, 4 engine, 5 tools, 6 grading, 7 backends (long; backend and SDK work only), 8 sources (stage 4), 9 prompts, 10 page |
+| `docs/decisions.md` | Findings and choices made during the build | One section, found through the index at its top. Never the whole file. |
+| `docs/archive/plan-done.md` | Full text of finished tasks | Rarely; only to see what a finished task asked for |
 
 Use the terms as `brief.md` defines them (course, unit, objective, segment,
 session, evidence, detour). Do not introduce synonyms in code or documents.
 
+## Finding things
+
+- Locating code (where a symbol is defined, who calls it, what a change
+  affects): use the codebase-memory tools first (`search_graph`, `trace_path`,
+  `get_architecture`), then read the file. Check `index_status` first and run
+  `index_repository` if it is stale. Use grep for exact strings and known
+  paths.
+- Using a library or SDK (the Claude Agent SDK, Hono, Vite, React, zod,
+  Vitest, Biome): look it up with context7 before writing or debugging the
+  call. This project uses very new versions (see `docs/decisions.md`,
+  "Toolchain"), so memory of the API is often out of date.
+
 ## How to work a task
 
-1. In `docs/plan.md`, take the first task marked `todo` whose dependencies are
-   `done`, unless the user names a different one. Mark it `in progress`.
+1. In `docs/plan.md`, take the first open task marked `todo` whose
+   dependencies are done (in the table of finished tasks, or `done` above),
+   unless the user names a different one. Mark it `in progress`.
 2. Do that task only. If it turns out to be too large, split it in the plan
    and finish the first part.
 3. Check it against the task's "done when" line with evidence you observed:
    a passing test run, a command's output, or the behaviour in the browser.
-4. Mark it `done` and add a one-line note under it if you learned something a
-   later task needs.
+4. Mark it `done`. Then move its entry from the open list to the end of
+   `docs/archive/plan-done.md` and add a row for it to the plan's table of
+   finished tasks, with one line on anything a later task needs. Put
+   findings in `docs/decisions.md` and add the section to its index.
 5. Commit the task's changes and the plan update together as one commit, with
    the task id at the start of the message (for example `0.1: toolchain`). Do
    not commit if the "done when" check failed; leave the task `in progress`

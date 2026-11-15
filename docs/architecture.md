@@ -1,4 +1,4 @@
-# Gauss: architecture and build plan
+# Gauss: architecture
 
 Status: draft, 2026-11-13, revised through stage 0 (closed 2026-11-15).
 Companion to `brief.md`, which defines the terms used here (course, unit,
