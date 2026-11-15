@@ -1,0 +1,168 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 2.1, piece 9: the style note at intake.
+  SETTLED 2026-11-15.
+  Question: with the curriculum, the tutor proposes how it will teach the
+  course: how long explanations run, what the check questions are like, the
+  pace (brief.md, "Teaching style"). The learner approves both together.
+  Where does the style note appear, and how does the learner push back on it?
+
+  Picked: in the card. A section under the units, "How I would teach it",
+  always shown, so the learner reads it before approving. Pushing back is
+  replying, as for the units, and a revised note is marked "Changed". The
+  styles are in base.css.
+  Rejected: a folded line in the card that opens in place (folded, the start
+  of the note can look the same in two revisions), and a link on the card
+  that opens the note in the side pane.
+
+  The flow works as in piece 8: the message box holds a request about the
+  style, Enter sends it, the tutor revises the note, and Approve closes the
+  review. The bar at the left jumps between stages
+  (?stage=first|revised|approved). Keys: Esc closes the pane, H hides the
+  bar.
+
+  Everything is simulated, and the course is piece 8's. Whatever is sent,
+  the tutor makes the same one revision, to the note only.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 9: the style note</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line and its panels */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-stage"><span class="lbl">Jump to</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+// Piece 8's course. `needs` are indexes of the units a unit builds on; `x` and `row` place it in the diagram.
+const TITLE = 'Linear algebra for PCA';
+const UNITS = [
+  {t:'Vectors and linear maps', goal:'Describe a linear map by what it does to a basis.', needs:[], x:50, row:0},
+  {t:'Matrices as maps', goal:'Read a matrix as a linear map, and a product as a composition.', needs:[0], x:25, row:1},
+  {t:'Subspaces, basis and dimension', goal:'Find a basis for a subspace and state its dimension.', needs:[0], x:75, row:1},
+  {t:'Orthogonality and projections', goal:'Project a vector onto a subspace, and explain least squares with it.', needs:[2], x:75, row:2},
+  {t:'Eigenvalues and eigenvectors', goal:'Find the directions a map only stretches, and by how much.', needs:[1, 2], x:25, row:2},
+  {t:'The spectral theorem', goal:'Explain why a symmetric matrix has an orthogonal basis of eigenvectors.', needs:[3, 4], x:50, row:3},
+  {t:'Principal component analysis', goal:'Derive PCA from the covariance matrix, and say what each component means.', needs:[5], x:50, row:4}
+];
+const STYLE = {
+  first: "Short explanations, each starting from a picture in two dimensions before the algebra. Checks are mostly small computations you can do by hand, with a written explanation once a unit's main idea is in place. One new idea per segment, at a steady pace.",
+  revised: "Short explanations, each starting from a picture in two dimensions before the algebra. Checks ask you to predict and explain more than to compute: what a matrix does to a shape, which direction PCA would pick, and why. Computation by hand only where it makes an idea concrete. One new idea per segment, at a steady pace."
+};
+const INTAKE = [
+  ['tutor', 'What do you want to learn? Tell me what you already know, and attach anything you want to learn from.'],
+  ['you', 'Linear algebra, enough to really understand how PCA works. I use it at work as a black box. I know calculus and can multiply matrices, but eigenvectors never clicked.'],
+];
+const PROPOSE = 'Here is a course built backwards from PCA: seven units, each with one goal, and how I would teach them. Push back on anything: the order, the depth, the way I teach. Nothing starts until you approve.';
+const ASK = 'Fewer computations by hand, please. I want intuition I can use at work.';
+const REVISE = 'I changed how I would teach it: fewer computations by hand, and more questions that ask what a matrix does and why. The units are the same.';
+const DONE = 'Approved. The course is in your library.';
+const ONCE = 'This mock has one canned revision, so nothing more changes.';
+
+/* ---------------- state ---------------- */
+const STAGES = {first:'First proposal', revised:'Revised', approved:'Approved'};
+const url = new URLSearchParams(location.search);
+let stage = STAGES[url.get('stage')] ? url.get('stage') : 'first';
+let said = ASK, diagramOpen = false, once = false, away = null;
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const CLOSE_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg>';
+const revised = () => stage !== 'first';
+const tutor = text => `<div class="th-tutor prose"><p>${text}</p></div>`;
+const you = text => `<div class="th-you">${text}</div>`;
+const unitList = () => `<ol class="cu">${UNITS.map((u, i) => `<li class="cu-row"><span class="cu-n">${i + 1}</span>
+  <div><div class="cu-t">${u.t}</div><div class="cu-g">${u.goal}</div>${u.needs.length ? `<div class="cu-m"><span>Builds on unit${u.needs.length > 1 ? 's' : ''} ${u.needs.map(n => n + 1).join(' and ')}</span></div>` : ''}</div>
+  <span class="cu-s"></span></li>`).join('')}</ol>`;
+function diagram(){        // as in piece 8
+  const us = UNITS, PITCH = 100, H = 58, height = (Math.max(...us.map(u => u.row)) * PITCH) + H;
+  const leads = i => us.map((w, j) => w.needs.includes(i) ? j : -1).filter(j => j >= 0).sort((p, q) => us[p].x - us[q].x);
+  const spread = (k, n) => (k - (n - 1) / 2) * 8;
+  const edges = us.flatMap((u, i) => u.needs.map(n => {
+    const a = us[n], out = leads(n), into = [...u.needs].sort((p, q) => us[p].x - us[q].x);
+    const x1 = a.x + spread(out.indexOf(i), out.length), x2 = u.x + spread(into.indexOf(n), into.length);
+    const y1 = a.row * PITCH + H, y2 = u.row * PITCH, ym = (y1 + y2) / 2;
+    return `<path vector-effect="non-scaling-stroke" d="M${x1} ${y1} C${x1} ${ym} ${x2} ${ym} ${x2} ${y2}"/>`;
+  })).join('');
+  const nodes = us.map((u, i) => `<div class="dn" style="left:${u.x - 23}%;top:${u.row * PITCH}px"><b>${i + 1}</b><span class="t">${u.t}</span></div>`).join('');
+  return `<div class="dg" style="height:${height}px"><svg viewBox="0 0 100 ${height}" preserveAspectRatio="none" aria-hidden="true">${edges}</svg>${nodes}</div>`;
+}
+// the style note: a section of the card, under the units
+const styleNote = () => `<div class="cs"><div class="cs-h"><span>How I would teach it</span>${revised() ? '<span class="chg">Changed</span>' : ''}</div><p>${revised() ? STYLE.revised : STYLE.first}</p></div>`;
+const card = () => `<div class="qa-card cp"><div class="q-count"><b>Proposed curriculum</b>${UNITS.length} units${revised() ? ', revised' : ''}</div>${unitList()}${styleNote()}
+  <div class="qa-foot"><button type="button" class="textbtn" data-act="diagram">${diagramOpen ? 'Hide the diagram' : 'Show the diagram'}</button>
+  ${stage === 'approved' ? '<span class="ok">Approved</span>' : '<button type="button" class="btn" data-act="approve">Approve</button>'}</div></div>`;
+const conversation = () => INTAKE.map(([who, text]) => who === 'you' ? you(text) : tutor(text)).join('') + tutor(PROPOSE)
+  + (stage === 'first' ? card() : `<div class="cp-old">First proposal, ${UNITS.length} units. Replaced by the one below.</div>${you(said)}${tutor(REVISE)}${card()}`)
+  + (stage === 'approved' ? `<div class="ph-note">${DONE}</div><div class="pf-act"><button type="button" class="btn sm" data-act="start">Start unit 1</button></div>` : '')
+  + (once ? `<div class="ph-note">${ONCE}</div>` : '');
+const view = () => `<div class="th has-top${diagramOpen ? ' has-pane' : ''}">
+  <header class="nl"><nav class="crumbs" aria-label="Where you are"><button type="button" data-act="library">Library</button><span>/</span><b>${TITLE}</b></nav></header>
+  <div class="th-scroll"><div class="th-col">${conversation()}</div></div>
+  <div class="th-foot"><form class="box" id="form"><textarea id="msg" rows="1" placeholder="Push back, or ask a question" aria-label="Message">${stage === 'first' ? ASK : ''}</textarea><button class="send" id="send" aria-label="Send"${stage === 'first' ? '' : ' disabled'}>${SEND_ICON}</button></form></div>
+  ${diagramOpen ? `<aside class="sp" aria-label="Curriculum diagram"><div class="sv-head"><b>Curriculum</b><span>How the units build on each other</span><button type="button" class="sv-close" data-act="diagram" aria-label="Close">${CLOSE_ICON}</button></div><div class="sv-body">${diagram()}</div></aside>` : ''}</div>`;
+const awayView = () => `<div class="away"><h1>${away.title}</h1><p>${away.text}</p><button type="button" class="btn" data-act="back">Back</button></div>`;
+
+/* ---------------- render and input ---------------- */
+function render(keepScroll){
+  const top = keepScroll ? $('.th-scroll')?.scrollTop ?? 0 : null;
+  app.innerHTML = away ? awayView() : view();
+  const s = $('.th-scroll'); if (s) s.scrollTop = top ?? s.scrollHeight;
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.stage === stage);
+  history.replaceState(null, '', `?stage=${stage}`);
+}
+function leave(title, text){ away = {title, text}; render(false); }
+function jump(s){ stage = s; said = ASK; diagramOpen = false; once = false; away = null; render(false); }
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'approve') { stage = 'approved'; render(true); }
+  else if (act === 'diagram') { diagramOpen = !diagramOpen; render(true); }
+  else if (act === 'start') leave('Unit 1', `This opens the first session of ${TITLE}, taught as the note says.`);
+  else if (act === 'library') leave('Library', 'This goes back to the library. The conversation and the proposal are kept.');
+  else if (act === 'back') { away = null; render(false); }
+});
+app.addEventListener('input', e => { if (e.target.id === 'msg') $('#send').disabled = !e.target.value.trim(); });
+app.addEventListener('submit', e => {
+  e.preventDefault();
+  const t = $('#msg').value.trim(); if (!t) return;
+  if (stage === 'first') { said = t; stage = 'revised'; } else once = true;
+  render(false);
+});
+app.addEventListener('keydown', e => { if (e.target.id === 'msg' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#form').requestSubmit(); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && diagramOpen) { diagramOpen = false; render(true); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [key, name] of Object.entries(STAGES)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.stage = key;
+  b.addEventListener('click', () => jump(key));
+  $('#g-stage').appendChild(b);
+}
+render(false);
+</script>
+</body>
+</html>

@@ -1077,3 +1077,57 @@ choices that shaped them.
 - **Not settled here**: the passing rule and what counts as help (2.3, with
   a proposal for help), the question count's limits (2.7), what starts a
   new session in the transcripts (2.13), and the Markdown renderer (2.4).
+
+## Stage 2 designs (plan task 2.1)
+
+Chosen by the user from the mocks in `docs/prototype/` (pieces 9 to 12),
+2026-11-15. Each mock's header comment says what was asked, picked and
+rejected; the chosen styles are in `docs/prototype/base.css`.
+
+- **The style note is a section of the proposal card** (piece 9), under
+  the units, headed "How I would teach it" and always shown, so the
+  learner reads it before approving. A revision marks it "Changed", as it
+  marks units. Rejected: a folded line in the card (folded, two revisions
+  can look the same), and the note in the side pane.
+- **A unit ends with a closing card** (piece 10), built like the check
+  card: "Unit N finished" and how it stands, one row per objective (passed,
+  or not passed and why), and the next step in its foot. It shrinks to one
+  line once a step is taken. When every objective passed: "Back to the
+  course" and "Start unit N". When some did not: "Go over the N again"
+  teaches one more segment on those objectives, and "Move on without
+  them", confirmed once, records the unit as overridden, its objectives
+  still not passed. Rejected: a marker line with the objectives and the
+  next-step control under it, and sending the learner to the course view.
+  Stage 5's gate and notes come before this card.
+- **"Start fresh" is in the unit's outline** (piece 11), below the
+  segments, with a line saying what it does, and asks once. Afterwards the
+  earlier conversation stays in the thread, dimmed; a "Fresh start" marker
+  says the tutor has the learner's progress but not that conversation, and
+  the tutor picks up at the same segment and phase. The automatic fallback
+  when a conversation cannot be resumed looks the same, with its own
+  marker line. Rejected: a menu at the right end of the top line, and a
+  button in the message box, beside Send, where it is easy to hit.
+- **Any unit can be started at any time** (piece 12, round 1). A unit whose
+  prerequisites are not finished asks once first. Starting a unit leaves
+  any unit in progress where it is, so several can be in progress at once.
+  Rejected: Start only once a unit's prerequisites are finished, and one
+  unit at a time in the list's order. The user asked as well for the unit
+  in progress, or else the next unit in order, to stand out at the top of
+  the course view, so that continuing is one obvious step.
+- **A card at the top of the course view leads on** (piece 12, round 2).
+  Above the units, it says "In progress" with the unit and where in it the
+  learner is, or "Up next" with the next unit in order and its goal, and
+  has one Continue (or "Start unit N") button. Other units in progress get
+  one line each in the card, most recently opened first. The next unit in
+  order is the first in the list that is not started and whose
+  prerequisites are finished. The card replaces piece 7's Continue at the
+  right of the top line. Rejected: the rows of the units in progress
+  lifted into a group of their own above the list, and one wide accent
+  button under the title.
+- **For later tasks.** 2.2: a position per unit in progress, not one
+  current unit, in `state.json`. 2.7: "Go over the N again" adds one
+  segment after the plan's last. 2.10: the note's place on the card. 2.11:
+  the closing card and "Start fresh" in the outline. 2.12: the card at the
+  top, Start on every unit, and the question before a unit whose
+  prerequisites are not finished. 2.14: the "Fresh start" marker for both
+  ways a conversation is replaced.

@@ -1,0 +1,211 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 2.1, piece 12: which units can be started.
+  SETTLED 2026-11-15.
+  Question: left open by piece 7. Can the learner start a unit before the
+  units it builds on are finished (passed, or moved on from)? And so, can
+  more than one unit be in progress at once?
+
+  Round 1: three rules on piece 7's course view. The user picked "any unit,
+  any time": every unit not started has Start, and a unit whose
+  prerequisites are not finished asks once first. Starting one leaves a
+  unit in progress where it is, so several can be in progress. The user
+  also asked for the unit in progress, or else the next unit in order, to
+  stand out at the top of the page, so that continuing is one obvious step.
+  Rejected: Start only once a unit's prerequisites are finished, and one
+  unit at a time in the list's order.
+
+  Round 2: three ways to put that unit at the top. Picked: a card above the
+  units, saying "In progress" or "Up next", with the unit, where in it the
+  learner is (or its goal, if not started), and one Continue (or "Start
+  unit N") button. Other units in progress get one line each in the card,
+  most recently opened first. The next unit in order is the first in the
+  list that is not started and whose prerequisites are finished. The card
+  replaces piece 7's Continue in the top line. The styles are in base.css.
+  Rejected: the rows of the units in progress lifted into a group of their
+  own above the list, and one wide accent button under the title.
+
+  The controls work: Continue and Start open a placeholder, and Start on a
+  unit whose prerequisites are not finished asks first. The bar at the left
+  sets the state of the course (?stage=one|two|none). Keys: Esc closes the
+  pane, H hides the bar.
+
+  Everything is simulated: piece 7's eight units, with unit 1 passed and
+  unit 2 overridden.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 12: which units can be started</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line and its panels */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-stage"><span class="lbl">The course</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+// piece 7's course. `needs` are indexes of the units a unit builds on; `x` and `row` place it in the diagram.
+const COURSE = 'Calculus I';
+const UNITS = [
+  {t:'Limits and continuity', goal:'Evaluate limits and decide where a function is continuous.', needs:[], x:50, row:0},
+  {t:'The derivative', goal:'Compute a derivative from its definition and read it as a rate of change.', needs:[0], x:25, row:1},
+  {t:'Differentiation rules', goal:'Differentiate any combination of elementary functions.', needs:[1], x:25, row:2},
+  {t:'Optimisation and related rates', goal:'Use derivatives to find extreme values and to relate changing quantities.', needs:[2], x:25, row:3},
+  {t:'The integral as area', goal:'Define the definite integral as a limit of sums, and estimate it.', needs:[0], x:75, row:1},
+  {t:'The fundamental theorem', goal:'Connect derivatives and integrals, and evaluate integrals with antiderivatives.', needs:[1, 4], x:75, row:2},
+  {t:'Integration by substitution', goal:'Reverse the chain rule to integrate composite functions.', needs:[2, 5], x:75, row:3},
+  {t:'Areas and volumes', goal:'Set up and evaluate integrals for areas between curves and volumes of revolution.', needs:[6], x:50, row:4}
+];
+// where each unit in progress stands
+const POS = {2:{seg:[3, 5], name:'The chain rule'}, 4:{seg:[1, 4], name:'Riemann sums'}};
+
+/* ---------------- state ---------------- */
+const STAGES = {one:'Unit 3 in progress', two:'Units 3 and 5 in progress', none:'Unit 3 just passed'};
+const url = new URLSearchParams(location.search);
+let stage = STAGES[url.get('stage')] ? url.get('stage') : 'one';
+let asking = null, diagramOpen = false, away = null;     // asking: the unit whose Start asks first
+function reset(){ asking = null; away = null; }
+
+/* ---------------- rules ---------------- */
+function status(i){
+  if (i === 0) return 'pass';
+  if (i === 1) return 'over';
+  if (i === 2) return stage === 'none' ? 'pass' : 'now';
+  if (i === 4 && stage === 'two') return 'now';
+  return null;
+}
+const finished = i => status(i) === 'pass' || status(i) === 'over';
+const waitingFor = i => UNITS[i].needs.filter(n => !finished(n));
+// the units in progress, most recently opened first
+const inProgress = () => stage === 'two' ? [4, 2] : stage === 'one' ? [2] : [];
+// the first unit, in the list's order, that is not started and whose prerequisites are finished
+const nextInOrder = () => UNITS.findIndex((_, i) => !status(i) && waitingFor(i).length === 0);
+// what the card at the top leads to
+function lead(){
+  const now = inProgress();
+  return now.length ? {now:true, i:now[0], others:now.slice(1)} : {now:false, i:nextInOrder(), others:[]};
+}
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const CLOSE_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg>';
+const units = ns => `unit${ns.length > 1 ? 's' : ''} ${ns.map(n => n + 1).join(' and ')}`;
+const ticks = i => `<span class="ticks" aria-hidden="true">${Array.from({length:POS[i].seg[1]}, (_, k) => `<i class="${k < POS[i].seg[0] - 1 ? 'past' : k === POS[i].seg[0] - 1 ? 'now' : ''}"></i>`).join('')}</span>`;
+const where = i => `Segment ${POS[i].seg[0]} of ${POS[i].seg[1]}: ${POS[i].name}`;
+
+/* the card at the top: the unit in progress, or else the next one */
+function leadCard(){
+  const L = lead();
+  if (L.i < 0) return '';
+  const u = UNITS[L.i];
+  const also = L.others.map(j => `<div class="cn-also"><span>Also in progress: unit ${j + 1}, ${UNITS[j].t}</span><button type="button" class="textbtn" data-go="${j}">Continue</button></div>`).join('');
+  return `<section class="cn" aria-label="${L.now ? 'In progress' : 'Up next'}"><div><div class="cn-k">${L.now ? 'In progress' : 'Up next'}</div>
+    <div class="cn-t"><span>Unit ${L.i + 1}</span>${u.t}</div>
+    ${L.now ? `<div class="cn-at">${ticks(L.i)}<span>${where(L.i)}</span></div>` : `<div class="cn-g">${u.goal}</div>`}</div>
+    <button type="button" class="btn" data-go="${L.i}">${L.now ? 'Continue' : `Start unit ${L.i + 1}`}</button>${also}</section>`;
+}
+
+/* the unit list, as in piece 7, with Start on every unit not started */
+const says = i => {
+  const s = status(i);
+  if (s === 'pass') return 'Passed';
+  if (s === 'over') return 'Overridden';
+  if (s === 'now') return `Segment ${POS[i].seg[0]} of ${POS[i].seg[1]}`;
+  if (!inProgress().length && i === nextInOrder()) return 'Up next';
+  return '';
+};
+function rowMeta(i){
+  const u = UNITS[i], bits = [];
+  if (u.needs.length) bits.push(`<span>Builds on ${units(u.needs)}</span>`);
+  if (status(i) === 'now') bits.push(`<button type="button" class="textbtn" data-go="${i}">Continue</button>`);
+  if (!status(i) && asking !== i) bits.push(`<button type="button" class="textbtn" data-start="${i}">Start</button>`);
+  return `<div class="cu-m">${bits.join('')}</div>`;
+}
+const ask = i => `<span class="confirm"><span>This builds on ${units(waitingFor(i))}, not finished yet.</span><button type="button" class="textbtn" data-go="${i}">Start anyway</button><button type="button" class="textbtn" data-act="cancel">Cancel</button></span>`;
+const unitRow = (u, i) => `<li class="cu-row ${status(i) || 'todo'}" id="u${i}"><span class="cu-n">${i + 1}</span>
+  <div><div class="cu-t">${u.t}</div><div class="cu-g">${u.goal}</div>${rowMeta(i)}${asking === i ? ask(i) : ''}</div>
+  <span class="cu-s ${status(i) === 'pass' ? 'pass' : says(i) === 'Up next' ? 'next' : ''}">${says(i)}</span></li>`;
+function diagram(){        // piece 7's diagram
+  const PITCH = 100, H = 58, height = (Math.max(...UNITS.map(u => u.row)) * PITCH) + H;
+  const leads = i => UNITS.map((w, j) => w.needs.includes(i) ? j : -1).filter(j => j >= 0).sort((p, q) => UNITS[p].x - UNITS[q].x);
+  const spread = (k, n) => (k - (n - 1) / 2) * 8;
+  const edges = UNITS.flatMap((u, i) => u.needs.map(n => {
+    const a = UNITS[n], out = leads(n), into = [...u.needs].sort((p, q) => UNITS[p].x - UNITS[q].x);
+    const x1 = a.x + spread(out.indexOf(i), out.length), x2 = u.x + spread(into.indexOf(n), into.length);
+    const y1 = a.row * PITCH + H, y2 = u.row * PITCH, ym = (y1 + y2) / 2;
+    return `<path vector-effect="non-scaling-stroke" d="M${x1} ${y1} C${x1} ${ym} ${x2} ${ym} ${x2} ${y2}"/>`;
+  })).join('');
+  const nodes = UNITS.map((u, i) => `<div class="dn ${status(i) || 'todo'}" style="left:${u.x - 23}%;top:${u.row * PITCH}px">
+    <b>${i + 1}</b><span class="t">${u.t}</span>${says(i) ? `<small>${says(i)}</small>` : ''}</div>`).join('');
+  return `<div class="dg" style="height:${height}px"><svg viewBox="0 0 100 ${height}" preserveAspectRatio="none" aria-hidden="true">${edges}</svg>${nodes}</div>`;
+}
+const summary = () => `${UNITS.length} units, ${UNITS.filter((_, i) => finished(i)).length} finished.`;
+const courseView = () => `<div class="pg${diagramOpen ? ' has-pane' : ''}"><header class="nl"><nav class="crumbs" aria-label="Where you are"><button type="button" data-act="library">Library</button><span>/</span><b>${COURSE}</b></nav></header>
+  <div class="pg-scroll"><div class="pg-col">
+    <h1 class="cv-title">${COURSE}</h1><p class="cv-at">${summary()}</p>
+    ${leadCard()}
+    <div class="cv-hrow"><h2 class="pg-h">Units</h2><button type="button" class="textbtn" data-act="diagram" aria-expanded="${diagramOpen}">${diagramOpen ? 'Hide the diagram' : 'Show the diagram'}</button></div>
+    <ol class="cu">${UNITS.map(unitRow).join('')}</ol>
+  </div></div>
+  ${diagramOpen ? `<aside class="sp" aria-label="Curriculum diagram"><div class="sv-head"><b>Curriculum</b><span>How the units build on each other</span><button type="button" class="sv-close" data-act="diagram" aria-label="Close">${CLOSE_ICON}</button></div><div class="sv-body">${diagram()}</div></aside>` : ''}</div>`;
+const awayView = () => `<div class="away"><h1>${away.title}</h1><p>${away.text}</p><button type="button" class="btn" data-act="back">Back to the course</button></div>`;
+
+/* ---------------- render and input ---------------- */
+function render(keepScroll){
+  const top = keepScroll ? $('.pg-scroll')?.scrollTop ?? 0 : 0;
+  app.innerHTML = away ? awayView() : courseView();
+  if ($('.pg-scroll')) $('.pg-scroll').scrollTop = top;
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.stage === stage);
+  history.replaceState(null, '', `?stage=${stage}`);
+}
+function go(i){
+  const others = inProgress().filter(n => n !== i);
+  away = status(i) === 'now'
+    ? {title:`Unit ${i + 1}: ${UNITS[i].t}`, text:`This opens the session where you stopped: ${where(i).toLowerCase()}.`}
+    : {title:`Unit ${i + 1}: ${UNITS[i].t}`, text:`This plans the unit and opens its first session.${others.length ? ` ${others.length > 1 ? 'Units' : 'Unit'} ${others.map(n => n + 1).join(' and ')} ${others.length > 1 ? 'keep their' : 'keeps its'} place.` : ''}`};
+  asking = null; render(false);
+}
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (b.dataset.go !== undefined) go(+b.dataset.go);
+  else if (b.dataset.start !== undefined) { const i = +b.dataset.start; if (waitingFor(i).length) { asking = i; render(true); } else go(i); }
+  else if (act === 'cancel') { asking = null; render(true); }
+  else if (act === 'diagram') { diagramOpen = !diagramOpen; render(true); }
+  else if (act === 'library') { away = {title:'Library', text:'This goes back to the library.'}; render(false); }
+  else if (act === 'back') { away = null; render(false); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && diagramOpen) { diagramOpen = false; render(true); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [key, name] of Object.entries(STAGES)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.stage = key;
+  b.addEventListener('click', () => { stage = key; reset(); render(false); });
+  $('#g-stage').appendChild(b);
+}
+render(false);
+</script>
+</body>
+</html>

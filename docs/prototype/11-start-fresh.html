@@ -1,0 +1,161 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 2.1, piece 11: starting fresh.
+  SETTLED 2026-11-15.
+  Question: "Start fresh" drops the conversation with the tutor and starts a
+  new one from the record: the unit's plan, where the learner is, and the
+  evidence so far. Nothing the learner has done is lost; the tutor just no
+  longer remembers the conversation. It is always available in a session,
+  and it happens by itself when a conversation cannot be resumed (after a
+  long break, for one). Where does the learner find it, and what does the
+  thread show afterwards?
+
+  Picked: in the unit's outline, the panel the position in the top line
+  opens (piece 4), below the segments, with one line saying what it does.
+  It asks once. Afterwards the earlier conversation stays in the thread,
+  dimmed, and a marker line says what happened; the tutor then picks up at
+  the same segment and phase. When the old conversation could not be
+  resumed, the thread is the same with another marker line ("Automatic").
+  The styles are in base.css.
+  Rejected: a menu at the right end of the top line, and a button at the
+  left end of the message box (beside Send, where it is easy to hit).
+
+  The controls work: open the outline from "Segment 3 of 5". The bar at the
+  left jumps between stages (?stage=before|after|automatic). Keys: Esc
+  closes the outline, H hides the bar.
+
+  Everything is simulated; the session is piece 4's, in the discuss phase of
+  its third segment.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 11: starting fresh</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line and its panels */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-stage"><span class="lbl">Jump to</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+<div id="pop"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Calculus I';
+const UNIT = {n:3, of:8, name:'Differentiation rules'};
+const SEGMENTS = ['Power and sum rules', 'Product and quotient rules', 'The chain rule', 'Implicit differentiation', 'Derivatives of inverse functions'];
+const NOW = 2;
+const EARLIER = String.raw`
+<div class="qa-card done"><div class="q-count">Question 1 of 1 <span class="ok">Correct</span></div>
+  <div class="qa-prompt">What is the derivative of $x^2\sin x$?</div>
+  <div class="qa-line"><span class="k">Your answer</span><span>B. $2x\sin x + x^2\cos x$</span><span class="c">90% sure</span></div></div>
+<div class="th-tutor prose"><p>Each factor takes its turn being differentiated while the other one waits, and the two results add.</p></div>
+<div class="pf-mark"><span><b>Done</b></span></div>
+<div class="ns-new"><div class="th-tutor prose"><h1>The chain rule</h1>
+<p>Most functions you meet are built by feeding one function into another. Take $h(x) = \sin(x^2)$: first square $x$, then take the sine of the result. The chain rule tells you how fast $h$ changes, given how fast each step changes.</p>
+$$\frac{d}{dx}\,f\bigl(g(x)\bigr) = f'\bigl(g(x)\bigr)\cdot g'(x)$$
+<p>Read it from the outside in. Differentiate the <strong>outer function</strong> and leave its input alone, then multiply by the derivative of the <strong>inner function</strong>.</p></div></div>
+<div class="pf-mark"><span><b>Discuss</b> Ask anything. Nothing here is graded.</span></div>
+<div class="th-you">Why isn't the answer just $\cos(2x)$?</div>
+<div class="th-tutor prose"><p>Because the sine never sees $2x$. It sees $x^2$, so that is where its rate, $\cos$, is measured. The $2x$ is how fast that input is moving, and it multiplies.</p></div>
+<div class="th-you">Can you show it with a picture instead?</div>
+<div class="th-tutor prose"><p>Think of $x^2$ as a gear and the sine as a second gear driven by it. Each turn of the first gear turns the second gear, so the gears... the gears turn the gears, and so the gear ratio of the gears is the gear of the ratio.</p></div>`;
+const READY = `<div class="pf-act"><button type="button" class="btn sm">I'm ready for the check</button></div>`;
+const MARK = {
+  after: '<b>Fresh start</b> The tutor has your progress, not the conversation above.',
+  automatic: '<b>Fresh start</b> The earlier conversation could not be resumed, so the tutor started a new one from your progress.'
+};
+const HELLO = String.raw`<div class="th-tutor prose"><p>We are in the discussion of segment 3, the chain rule. Ask me anything about it, or press ready when you want the check.</p></div>`;
+
+/* ---------------- state ---------------- */
+const STAGES = {before:'Before', after:'After', automatic:'Automatic'};
+const url = new URLSearchParams(location.search);
+let stage = STAGES[url.get('stage')] ? url.get('stage') : 'before';
+let open = false, asking = false, away = null;    // open: the outline
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app'), pop = $('#pop');
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const POSITION = `Segment ${NOW + 1} of ${SEGMENTS.length}`;
+const state = i => i < NOW ? 'past' : i === NOW ? 'now' : '';
+const crumbs = last => `<nav class="crumbs" aria-label="Where this session sits"><button type="button" data-act="away">Library</button><span>/</span><button type="button" data-act="away">${COURSE}</button>${last ? `<span>/</span><b>${last}</b>` : ''}</nav>`;
+
+function outline(){        // piece 4's outline, ending with "Start fresh"
+  const fresh = `<div class="uo-fresh">${asking
+    ? `<span class="confirm"><span>The tutor will not remember this conversation.</span><button type="button" class="textbtn" data-act="fresh-yes">Start fresh</button><button type="button" class="textbtn" data-act="fresh-no">Cancel</button></span>`
+    : `<button type="button" class="textbtn" data-act="fresh">Start fresh</button><p>A new conversation with the tutor, from your progress. This one stays above.</p>`}</div>`;
+  return `<div class="np" role="dialog" aria-label="Unit outline"><div class="uo">${crumbs()}
+    <div class="uo-unit"><span>Unit ${UNIT.n} of ${UNIT.of}</span><b>${UNIT.name}</b></div>
+    <ol class="uo-list">${SEGMENTS.map((s, i) => `<li class="${state(i)}"${i === NOW ? ' aria-current="step"' : ''}><i></i>${s}</li>`).join('')}<li class="gate"><i></i>Unit gate</li></ol>${fresh}</div></div>`;
+}
+function thread(){
+  if (stage === 'before') return EARLIER + READY;
+  return `<div class="stale">${EARLIER}</div><div class="pf-mark"><span>${MARK[stage]}</span></div>${HELLO}${READY}`;
+}
+function sessionView(){
+  const ticks = SEGMENTS.map((_, i) => `<i class="${state(i)}"></i>`).join('');
+  return `<div class="th has-top"><header class="nl">${crumbs(UNIT.name)}
+    <button type="button" class="nl-pos" data-act="outline" aria-expanded="${open}"><span class="ticks" aria-hidden="true">${ticks}</span>${POSITION}</button></header>
+    <div class="th-scroll"><div class="th-col">${thread()}</div></div>
+    <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+}
+const awayView = () => `<div class="away"><h1>${away}</h1><p>A placeholder. Your place in the session is saved.</p><button type="button" class="btn" data-act="back">Back to the session</button></div>`;
+
+/* ---------------- render and input ---------------- */
+function render(){
+  app.innerHTML = away ? awayView() : sessionView();
+  pop.innerHTML = !away && open ? outline() : '';
+  math(app); math(pop);
+  const s = $('.th-scroll'); if (s) s.scrollTop = s.scrollHeight;
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.stage === stage);
+  history.replaceState(null, '', `?stage=${stage}`);
+}
+document.addEventListener('click', e => {
+  if (e.target.closest?.('#bar')) return;
+  const b = e.target.closest?.('button');
+  const act = b?.dataset.act;
+  if (act === 'outline') { open = !open; asking = false; render(); }
+  else if (act === 'fresh') { asking = true; render(); }
+  else if (act === 'fresh-no') { asking = false; render(); }
+  else if (act === 'fresh-yes') { stage = 'after'; open = false; asking = false; render(); }
+  else if (act === 'away') { away = b.textContent; open = false; render(); }
+  else if (act === 'back') { away = null; render(); }
+  else if (open && !e.target.closest?.('#pop')) { open = false; asking = false; render(); }
+});
+app.addEventListener('submit', e => e.preventDefault());   // sending messages is piece 1; not wired here
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && open) { open = false; asking = false; render(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [key, name] of Object.entries(STAGES)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.stage = key;
+  b.addEventListener('click', () => { stage = key; open = false; asking = false; away = null; render(); });
+  $('#g-stage').appendChild(b);
+}
+render();
+</script>
+</body>
+</html>

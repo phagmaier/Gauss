@@ -1,0 +1,173 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 2.1, piece 10: the end of a unit.
+  SETTLED 2026-11-15.
+  Question: the last segment of a unit has closed. In stage 2 there is no
+  unit gate and there are no notes yet (stage 5 adds both, before this
+  moment). What does the learner see, and what can they do next, when every
+  objective passed, and when some did not (missed until the check's limit,
+  or skipped with "Move on without the check")?
+
+  Picked: a closing card in the thread, built like the check card. Its head
+  says the unit is finished and how it stands; one row per objective says
+  passed or not passed, with why; the next step is in its foot. Once a step
+  is taken, the card shrinks to one line, as a graded question does. When
+  every objective passed: "Back to the course" and "Start unit N". When some
+  did not: "Go over the N again", which teaches one more segment on them,
+  or "Move on without them", confirmed once, which records the unit as
+  overridden. The styles are in base.css.
+  Rejected: a marker line with the objectives and the next-step control
+  under it, as at the end of a segment; and sending the learner to the
+  course view, where the unit's row opens.
+
+  The controls work. The bar at the left picks the case (?case=all|some).
+  Keys: H hides the bar.
+
+  Everything is simulated: the course, the unit, its objectives and the
+  tutor's text are invented for this mock.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 10: the end of a unit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line and its panels */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-case"><span class="lbl">Case</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Calculus I';
+const UNIT = {n:3, name:'Differentiation rules', segments:5};
+const NEXT = {n:4, name:'Optimisation and related rates'};
+// `miss` is why an objective did not pass, in the "some" case
+const OBJ = [
+  {t:'Differentiate powers, sums and constant multiples'},
+  {t:'Apply the product rule'},
+  {t:'Apply the quotient rule', miss:'Missed twice; the check reached its limit'},
+  {t:'Apply the chain rule to a composite function'},
+  {t:'Differentiate a curve given implicitly', miss:'You moved on without the check'},
+  {t:'Differentiate the inverse trigonometric functions'},
+  {t:"Find an inverse's derivative from the original function"}
+];
+const LAST = String.raw`
+<div class="qa-card done"><div class="q-count">Question 2 of 2 <span class="ok">Correct</span></div>
+  <div class="qa-prompt">What is the derivative of $\arctan(2x)$?</div>
+  <div class="qa-line"><span class="k">Your answer</span><span>B. $\dfrac{2}{1+4x^2}$</span><span class="c">90% sure</span></div></div>
+<div class="th-tutor prose"><p>Right. The derivative of $\arctan u$ is $\frac{1}{1+u^2}$, taken at $u = 2x$, and the inside contributes the 2.</p></div>
+<div class="pf-mark"><span><b>Done</b></span></div>`;
+const REVIEW = String.raw`
+<div class="pf-mark"><span><b>Teach</b> Going over two objectives again.</span></div>
+<div class="th-tutor prose"><h2>The quotient rule, again</h2><p>Both of your misses put the terms of the numerator the wrong way round. Start from the product rule on $f \cdot g^{-1}$ and the order falls out by itself:</p>
+$$\left(\frac{f}{g}\right)' = \frac{f'g - fg'}{g^2}$$
+<p><span class="wait" aria-label="The tutor is writing"></span></p></div>`;
+
+/* ---------------- state ---------------- */
+const CASES = {all:'Every objective passed', some:'Some did not pass'};
+const url = new URLSearchParams(location.search);
+let kase = CASES[url.get('case')] ? url.get('case') : 'all';
+let after = null;        // null, 'again' (one more segment) or 'moveon' (recorded as overridden)
+let confirming = false, away = null;
+function reset(){ after = null; confirming = false; away = null; }
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const missed = o => kase === 'some' && o.miss;
+const misses = () => OBJ.filter(missed).length;
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven'];
+const cap = s => s[0].toUpperCase() + s.slice(1);
+const passedLine = () => kase === 'all' ? `All ${WORDS[OBJ.length]} objectives passed.` : `${cap(WORDS[OBJ.length - misses()])} of ${WORDS[OBJ.length]} objectives passed.`;
+
+const objRows = () => `<ol class="ue-rows">${OBJ.map(o => `<li><span>${o.t}</span>${missed(o) ? '<span class="st miss">Not passed</span>' : '<span class="st pass">Passed</span>'}${missed(o) ? `<small>${o.miss}</small>` : ''}</li>`).join('')}</ol>`;
+const startNext = () => `<button type="button" class="btn sm" data-act="next">Start unit ${NEXT.n}: ${NEXT.name}</button>`;
+const toCourse = () => `<button type="button" class="textbtn" data-act="course">Back to the course</button>`;
+const again = () => `<button type="button" class="btn" data-act="again">Go over the ${WORDS[misses()]} again</button>`;
+const moveOn = () => confirming
+  ? `<span class="confirm"><span>The unit will be recorded as overridden.</span><button type="button" class="textbtn" data-act="moveon-yes">Move on</button><button type="button" class="textbtn" data-act="moveon-no">Stay</button></span>`
+  : `<button type="button" class="textbtn" data-act="moveon">Move on without them</button>`;
+
+/* the closing card; it shrinks to a line once its step is taken */
+function closing(){
+  const verdict = kase === 'all' ? '<span class="ok">Passed</span>' : after === 'moveon' ? '<span class="warn">Overridden</span>' : `<span class="warn">${cap(WORDS[misses()])} not passed</span>`;
+  const head = `<div class="q-count"><b>Unit ${UNIT.n} finished</b>${verdict}</div>`;
+  if (after) {
+    const line = `<div class="qa-card done">${head}<div class="qa-line"><span>${UNIT.name}</span><span class="c">${passedLine()}</span></div></div>`;
+    return line + (after === 'again' ? REVIEW
+      : `<div class="ph-note">You moved on. The unit is recorded as overridden, and the ${WORDS[misses()]} objectives stay not passed.</div><div class="pf-act">${startNext()}${toCourse()}</div>`);
+  }
+  const foot = kase === 'all'
+    ? `<div class="qa-foot">${toCourse()}<button type="button" class="btn" data-act="next">Start unit ${NEXT.n}</button></div>`
+    : `<div class="qa-foot">${moveOn()}${confirming ? '' : again()}</div>`;
+  return `<div class="qa-card ue">${head}<div class="qa-prompt">${UNIT.name}</div>${objRows()}${foot}</div>`;
+}
+
+function sessionView(){
+  const review = after === 'again';
+  const ticks = Array.from({length:UNIT.segments}, (_, i) => `<i class="${i < UNIT.segments - 1 || !review ? 'past' : 'now'}"></i>`).join('');
+  return `<div class="th has-top"><header class="nl"><nav class="crumbs" aria-label="Where this session sits"><button type="button" data-act="library">Library</button><span>/</span><button type="button" data-act="course">${COURSE}</button><span>/</span><b>${UNIT.name}</b></nav>
+    <span class="nl-pos"><span class="ticks" aria-hidden="true">${ticks}</span>${review ? 'Review' : 'Finished'}</span></header>
+    <div class="th-scroll"><div class="th-col">${LAST}${closing()}</div></div>
+    <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+}
+const awayView = () => `<div class="away"><h1>${away.title}</h1><p>${away.text}</p><button type="button" class="btn" data-act="back">Back</button></div>`;
+
+/* ---------------- render and input ---------------- */
+function render(){
+  app.innerHTML = away ? awayView() : sessionView();
+  math(app);
+  const s = $('.th-scroll'); if (s) s.scrollTop = s.scrollHeight;
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.case === kase);
+  history.replaceState(null, '', `?case=${kase}`);
+}
+function leave(title, text){ away = {title, text}; render(); }
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'again') { after = 'again'; confirming = false; render(); }
+  else if (act === 'moveon') { confirming = true; render(); }
+  else if (act === 'moveon-no') { confirming = false; render(); }
+  else if (act === 'moveon-yes') { after = 'moveon'; confirming = false; render(); }
+  else if (act === 'next') leave(`Unit ${NEXT.n}`, `This plans ${NEXT.name} and opens its first session.`);
+  else if (act === 'course') leave(COURSE, `The course view, piece 7. Unit ${UNIT.n} now says ${kase === 'all' ? 'Passed' : after === 'moveon' ? 'Overridden' : 'how many objectives did not pass'}.`);
+  else if (act === 'library') leave('Library', 'This goes back to the library.');
+  else if (act === 'back') { away = null; render(); }
+});
+app.addEventListener('submit', e => e.preventDefault());   // sending messages is piece 1; not wired here
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [key, name] of Object.entries(CASES)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.case = key;
+  b.addEventListener('click', () => { kase = key; reset(); render(); });
+  $('#g-case').appendChild(b);
+}
+render();
+</script>
+</body>
+</html>

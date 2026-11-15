@@ -279,6 +279,48 @@ button.dn:hover{border-color:var(--overlay0)}
 .cu-s.chg,.dn.chg small{color:var(--yellow)}          /* what a revision changed */
 .cp-old{margin:1.5em 0;border:1px solid var(--surface0);border-radius:var(--r);padding:.55em 1em;color:var(--soft);font-size:.92em}
 
+/* ---- The style note, settled in piece 9: a section of the proposal card, under the units ---- */
+.cs{border-top:1px solid var(--surface0);margin-top:.7em;padding-top:.8em}
+.cs-h{display:flex;gap:.8em;align-items:baseline;font-size:.86em;color:var(--soft)}
+.cs-h .chg{color:var(--yellow);font-size:.92em}
+.cs p{margin:.3em 0 0;font-size:.94em}
+
+/* ---- The end of a unit, settled in piece 10: a closing card in the thread ---- */
+.warn{color:var(--yellow);font-weight:600}
+.ue .q-count b{color:var(--ink);font-weight:600;font-size:1.14em}
+/* one row per objective, passed or not */
+.ue-rows{list-style:none;margin:.7em 0 0;padding:0;display:grid}
+.ue-rows li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 1.2em;align-items:baseline;padding:.5em 0;border-top:1px solid var(--surface0);font-size:.94em}
+.ue-rows li:first-child{border-top:0}
+.ue-rows small{grid-column:1;color:var(--faint);font-size:.88em}
+.ue-rows .st{font-size:.88em;white-space:nowrap}
+.ue-rows .st.pass{color:var(--green)}
+.ue-rows .st.miss{color:var(--yellow)}
+
+/* ---- Starting fresh, settled in piece 11: in the unit's outline ---- */
+.uo-fresh{margin-top:1.4em;padding-top:1em;border-top:1px solid var(--surface0)}
+.uo-fresh p{margin:.3em 0 0;color:var(--faint);font-size:.92em}
+.uo-fresh .confirm{margin-top:.5em}
+/* the conversation the tutor no longer has */
+.stale{opacity:.5}
+.stale .qa-card{border-color:var(--surface0)}
+
+/* ---- Which units can be started, settled in piece 12: any unit, any time ---- */
+/* Start asks once before a unit whose prerequisites are not finished */
+.cu-row .confirm{margin-top:.5em;font-size:.9em;color:var(--soft)}
+.cu-s.next{color:var(--soft)}
+/* a card above the units: the unit in progress, or else the next one */
+.cn{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.3em 24px;margin:2.2em 0 0;padding:20px 22px;
+  background:var(--mantle);border:1px solid var(--accent);border-radius:calc(var(--r) + 6px)}
+.cn-k{font-size:.84em;color:var(--accent);font-weight:600}
+.cn-t{font-size:1.2em;font-weight:600;line-height:1.3;margin:.1em 0 .25em}
+.cn-t span{color:var(--faint);font-weight:400;margin-right:.55em}
+.cn-at{display:flex;align-items:center;gap:10px;color:var(--soft);font-size:.92em}
+.cn-g{color:var(--soft);font-size:.94em}
+.cn .btn{padding:.6em 1.5em}
+/* other units in progress, one line each */
+.cn-also{grid-column:1/-1;display:flex;gap:1em;align-items:baseline;border-top:1px solid var(--surface0);margin-top:.7em;padding-top:.7em;font-size:.9em;color:var(--soft)}
+
 /* Prototype only: where a link leads until that view is designed. */
 .away{height:100dvh;display:grid;place-content:center;justify-items:start;gap:.5em;padding:24px}
 .away h1{font-size:1.7em;font-weight:600;margin:0}

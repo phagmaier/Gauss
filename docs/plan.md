@@ -403,7 +403,7 @@ gate or notes.
 
 ### 2.1 Designs the stage needs
 
-- Status: todo
+- Status: done
 - Depends on: none
 - Do: mocks in `docs/prototype/`, one question each and built as in task
   1.0, for what this stage shows that task 1.0 did not design: where the
@@ -414,6 +414,22 @@ gate or notes.
 - Done when: the user has picked an answer to each question, the picks are
   in `docs/decisions.md`, and `docs/prototype/index.html` lists the new
   mocks.
+- Note: pieces 9 to 12 in `docs/prototype/`; picks in `docs/decisions.md`
+  under "Stage 2 designs".
+  - Piece 9, the style note (`09-style-note.html`): settled. A section of
+    the proposal card, under the units.
+  - Piece 10, the end of a unit (`10-unit-end.html`): settled. A closing
+    card with a row per objective; "Go over the N again" or "Move on
+    without them".
+  - Piece 11, starting fresh (`11-start-fresh.html`): settled. In the
+    unit's outline; the old conversation stays above, dimmed.
+  - Piece 12, which units can be started (`12-unit-order.html`): settled.
+    Any unit, any time; a card at the top of the course view leads to the
+    unit in progress, or else the next one in order.
+- Note: done on 2026-11-15; the user picked all four, piece 12 in two
+  rounds. The picks change piece 7: the card replaces Continue in the top
+  line. The later tasks that use each pick are listed at the end of the
+  entry in `docs/decisions.md`.
 
 ### 2.2 Plan, state and evidence records
 
@@ -438,6 +454,10 @@ gate or notes.
   1.2). Evidence is appended, not written whole, so a crash can cut the
   last line; reading skips it. Evidence names objectives by id, so
   objective ids must be unique across the course.
+- Note from 2.1: several units can be in progress at once, each keeping its
+  place (piece 12), so `state.json` holds a position per unit in progress
+  rather than one current unit. Revise `architecture.md` section 3, which
+  says "current unit".
 
 ### 2.3 Objective status
 
@@ -532,6 +552,10 @@ gate or notes.
   question, the limit that lets the segment close anyway, a confident
   correct answer that shortens the check, an assisted answer, and a unit
   closing passed and not passed.
+- Note from 2.1: when some objectives did not pass, the closing card
+  (piece 10) offers "Go over the N again", one more segment on those
+  objectives after the plan's last, or "Move on without them", which
+  records the unit as overridden.
 
 ### 2.8 Rubric grading
 
@@ -600,13 +624,16 @@ gate or notes.
 
 - Status: todo
 - Depends on: 2.1, 2.7
-- Do: unit status in the course view's list and diagram, Continue at the
-  right of its top line, and the library's ticks, "where" line and
-  Finished group (mocks 6 and 7; the classes are in
-  `docs/prototype/base.css`), all derived from the record.
-- Done when: tests of the page's pure modules cover each status and the
-  library's line for each; a browser check with the fake backend shows a
-  unit in progress, a passed unit and an overridden one.
+- Do: unit status in the course view's list and diagram, the card at the
+  top that leads to the unit in progress or the next one, Start on every
+  unit not started (asking first when its prerequisites are not
+  finished), and the library's ticks, "where" line and Finished group
+  (mocks 6, 7 and 12; the classes are in `docs/prototype/base.css`), all
+  derived from the record.
+- Done when: tests of the page's pure modules cover each status, the
+  library's line for each, and which unit the card leads to (in progress,
+  several in progress, none); a browser check with the fake backend shows
+  a unit in progress, a passed unit and an overridden one.
 
 ### 2.13 Transcripts
 
