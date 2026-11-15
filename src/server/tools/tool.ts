@@ -1,0 +1,48 @@
+// A teaching tool, defined once and bound to each backend
+// (architecture.md section 5). It knows nothing of the transport: a backend
+// passes it the model's raw input and hands the result back to the model.
+
+import { z } from "zod";
+
+/**
+ * What a call returns to the model. A refused call tells the model why, so it
+ * can try again; only a call that was carried out can end the turn.
+ */
+export type ToolResult =
+  | { status: "done"; text: string; endTurn?: boolean }
+  | { status: "refused"; text: string };
+
+export interface TeachingTool {
+  name: string;
+  description: string;
+  /** The input's fields, for backends that describe a tool by its fields. */
+  inputShape: z.ZodRawShape;
+  /** Validates the raw input, then runs the tool. Never throws. */
+  run(input: unknown): Promise<ToolResult>;
+}
+
+export function defineTool<Shape extends z.ZodRawShape>(definition: {
+  name: string;
+  description: string;
+  /** May carry refinements across fields; they are checked here. */
+  input: z.ZodObject<Shape>;
+  run(input: z.infer<z.ZodObject<Shape>>): Promise<ToolResult> | ToolResult;
+}): TeachingTool {
+  return {
+    name: definition.name,
+    description: definition.description,
+    inputShape: definition.input.shape,
+    async run(raw) {
+      const parsed = definition.input.safeParse(raw);
+      if (!parsed.success) {
+        return { status: "refused", text: z.prettifyError(parsed.error) };
+      }
+      try {
+        return await definition.run(parsed.data);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { status: "refused", text: `The tool failed: ${message}` };
+      }
+    },
+  };
+}

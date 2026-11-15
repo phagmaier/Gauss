@@ -82,8 +82,12 @@ mise activated, or `mise exec -- <command>`.
 | Type-check | `pnpm typecheck` |
 | Test, TypeScript | `pnpm test` (`pnpm test:watch` while working) |
 | Test, Python helpers | `uv run --directory pytools pytest` |
+| Run the app (server and page, http://localhost:4320) | `pnpm dev` |
 
-There is no run command yet; task 0.5 adds the server and the page.
+- `pnpm dev` talks to the real Claude backend and spends plan usage when a
+  chat is started. Stop it with Ctrl-C. `GAUSS_PORT` changes the port.
+- The page is in `src/web` (React, built by Vite); the server starts at
+  `src/server/main.ts`.
 
 - TypeScript tests sit beside the code as `src/**/*.test.ts`. Python tests are
   in `pytools/tests/`.

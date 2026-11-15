@@ -472,3 +472,82 @@ result is in `architecture.md` section 8; the size limit is left to stage 4.
   - 15,000 to 30,000 characters is about 6 to 12 dense pages, not 5.
 - **Open:** the size limit, set by trial in stage 4; and where unit planning
   reads the whole unit's text (`architecture.md` section 8).
+
+## Minimal page (plan task 0.5)
+
+Built and run on 2026-11-15 with Agent SDK 0.3.325 on the plan login, Hono
+4.13, React 19.3 and Vite 8.3. The browser run, through Playwright: start, a
+reply streamed in, a question card appeared, a wrong answer (B at 75%) came
+back graded with the correct answer shown, and the tutor's feedback streamed
+in. Then a reload and five messages, two of which were stopped: seven
+model turns in all.
+
+- **One process, one port.** `pnpm dev` runs `src/server/main.ts` under Node,
+  which runs the TypeScript directly with no build step. It serves the API
+  with Hono and the page through Vite in middleware mode, on
+  `127.0.0.1:4320` (`GAUSS_PORT` overrides the port). This settles how the
+  server is started, left open in task 0.1. `main.ts` imports Vite, so a
+  production start without it is a later task's.
+- **The event stream replays a log.** The chat keeps a log of page events
+  (`src/shared/events.ts`). `GET /api/events` sends a `hello` with the chat's
+  id, replays the log, then sends events as they happen. Event ids are
+  `<chat id>.<index>`: a reconnecting browser sends the last one and gets
+  only what it missed, and a page that sees another chat id starts over,
+  since the server restarted. A reload rebuilt the thread exactly. The log
+  is in memory; stage 2 rebuilds the thread from the record instead.
+- **Only Gauss's own page can use the API.** The server listens on
+  `127.0.0.1` only, and the API refuses host names other than `localhost`
+  (against DNS rebinding) and any POST whose `Origin` is not the page's own
+  (against other sites posting to it). The server drives an agent on the
+  learner's login, and from stage 3 a shell.
+- **Choices are letters.** `ask_question` takes the choices as a list in
+  display order and the answer as a letter. The page labels choices by
+  position and the engine names the learner's choice by letter, so the page
+  and the tutor always mean the same choice. The 0.3 spike's
+  `{ id, text }` choices allowed ids that the page would show differently.
+  A question whose answer is not among its choices is refused with the
+  reason.
+- **The adapter was revised**; `architecture.md` section 7 has the result.
+  What changed: teaching tools are transport-free definitions passed to
+  `startSession`; a tool result can end the turn, and a refused one never
+  does; `send` handles one turn at a time and never throws; the outcomes of
+  a turn are named; the session id is known before the first turn.
+  Resume, the working directory, built-in tools and `oneShot` wait for
+  task 1.3.
+- **Ending the turn.** The tool's `endTurn` sets a flag in the Claude
+  backend, and a `PostToolUse` hook on every tool stops the turn only when
+  the flag is set; each new turn clears it. Whether a refused call fires
+  `PostToolUse` (open in task 0.3) no longer matters. In the run the turn
+  ended at the question, with no text after it.
+- **The session id is chosen up front** with the SDK's `sessionId` option
+  (a UUID), so the engine can store it before the first turn.
+- **Stopping works.** Stopped before any text, and again mid-sentence: the
+  text stayed where it was, the page showed "Stopped.", and the session
+  answered the next message normally both times. After the mid-sentence
+  stop, a one-sentence reply took between 10 and 30 seconds against a few
+  seconds otherwise; not investigated. The backend reports "interrupted"
+  from its own record of the request, because the fields of an interrupted
+  turn's result were not recorded.
+- **The SDK's environment** leaves out `ANTHROPIC_API_KEY` and every
+  variable starting with `CLAUDE`, as the stage 0 runs did. This run was
+  started from inside a Claude Code session and worked. A learner who sets
+  `CLAUDE_CONFIG_DIR` would lose it; revisit if that happens.
+- **Plain text for now.** The demo prompt (`prompts/demo-tutor.md`) asks for
+  plain text with Unicode for mathematics, and the page shows text as it
+  is. Markdown and math rendering are stage 2's.
+- **The page follows the settled look**: the Thread layout, the question
+  card with the five confidence levels and "I don't know", and the stop
+  button while the tutor writes. The styles are copied from
+  `docs/prototype/base.css` into `src/web/styles.css`, keeping what the page
+  uses. Fonts load from Google Fonts as in the prototypes, falling back to
+  the system sans offline.
+- **Dependencies added**: `hono`, `react`, `react-dom`, `vite` and
+  `@vitejs/plugin-react` (`architecture.md` section 2 lists Hono, React and
+  Vite); `@hono/node-server`, which Hono needs to run on Node; and the
+  `@types/react` and `@types/react-dom` type packages. `tsconfig.json` now
+  includes the DOM library, JSX and Vite's client types, for one
+  configuration over both sides.
+- **Not tried, for later:** the SDK's type comments mention MCP tools that
+  end the turn by themselves (`_meta['claude/endTurn']`, "end-turn tool
+  sessions"). The hook works, so this was left alone; it is a candidate if
+  the hook proves fragile.

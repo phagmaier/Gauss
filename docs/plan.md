@@ -85,7 +85,7 @@ not.
 
 ### 0.5 Minimal page
 
-- Status: todo
+- Status: done
 - Depends on: 0.3
 - Do: a Hono server and a React page. Stream one tutor reply to the page over
   an event stream; render one multiple-choice question from `ask_question`;
@@ -93,6 +93,15 @@ not.
 - Done when: the round trip works in a browser, and the adapter interface in
   `architecture.md` section 7 is confirmed or revised to match what the spike
   needed.
+- Note: done on 2026-11-15. `pnpm dev` serves the page at
+  http://localhost:4320; findings in `docs/decisions.md` under "Minimal
+  page", and the revised adapter in `architecture.md` section 7. This is
+  kept code, not spike code: the adapter, the fake backend and the Claude
+  backend in `src/server/backends/` are task 1.3's starting point, which
+  adds resume, the working directory, built-in tools and `oneShot`. The
+  chat in `src/server/engine/chat.ts` and `prompts/demo-tutor.md` are a
+  stand-in for the stage 2 engine and tutor prompt; task 0.7 or stage 1
+  decides what replaces them.
 
 ### 0.6 Codex spike (limit: about one hour of work)
 

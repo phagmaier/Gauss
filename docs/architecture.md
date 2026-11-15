@@ -190,20 +190,47 @@ passed to the tutor; the original grade is kept alongside the outcome.
 
 ### Adapter
 
+Revised in task 0.5 from what the minimal page needed. The code is the
+reference: `src/server/backends/backend.ts` and `src/server/tools/tool.ts`.
+
 ```ts
 interface TutorBackend {
-  startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: prompt, cwd, tools, resumeId
-  oneShot(prompt: string, opts: OneShotOptions): Promise<string>;  // grader, notes
+  startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools; later cwd, resumeId
+  oneShot(prompt: string, opts: OneShotOptions): Promise<string>;  // grader, notes; not built yet
 }
 interface TutorSession {
-  backendSessionId: string;
-  send(turn: EngineTurn): AsyncIterable<BackendEvent>;  // text deltas, tool activity, turn end
+  readonly backendSessionId: string;  // known from the start, before the first turn
+  send(turn: EngineTurn): AsyncIterable<BackendEvent>;  // text pieces, tool calls, then one turn_end
   interrupt(): Promise<void>;
   close(): Promise<void>;
 }
+interface TeachingTool {
+  name: string; description: string;
+  inputShape: ZodRawShape;  // the input's fields, for backends that describe tools by fields
+  run(input: unknown): Promise<ToolResult>;  // validates, then runs; never throws
+}
+type ToolResult =
+  | { status: "done"; text: string; endTurn?: boolean }
+  | { status: "refused"; text: string };  // the reason goes back to the model
 ```
 
-A scripted fake implementation backs the automated tests.
+- Teaching tools are passed to `startSession` as transport-free definitions,
+  and each backend binds them its own way.
+- A tool ends the tutor's turn by returning `endTurn` with a `done` result.
+  A refused call never ends the turn, so the model sees why and can try
+  again (task 0.3).
+- `send` handles one turn at a time; the engine waits for its `turn_end`
+  before sending the next. It never throws: a failure is a `turn_end` whose
+  outcome is `error`. The outcomes are `done`, `ended_by_tool`,
+  `interrupted` and `error`.
+- To add when stage 1 needs them (task 1.3): the course folder as working
+  directory, `resumeId` with a distinct "session not found" failure for the
+  "start fresh" fallback (task 0.4), built-in tools and their confinement,
+  and `oneShot`.
+
+A scripted fake implementation (`src/server/backends/fake.ts`) backs the
+automated tests. It runs the real teaching tools, so a test sees what the
+tool returned and whether it ended the turn.
 
 ### Claude (first)
 
@@ -244,7 +271,13 @@ Observed in stage 0 (details in `decisions.md`):
   sets `alwaysLoad: true` as well (task 0.3).
 - A `PostToolUse` hook returning `continue: false` ends the turn right after
   a tool call, and the session continues with the next message. This is how
-  the Claude backend ends the turn after `ask_question` (task 0.3).
+  the Claude backend ends the turn after `ask_question` (task 0.3): the
+  tool's `endTurn` sets a flag, and the hook stops the turn only when the
+  flag is set (task 0.5).
+- The backend picks the session id itself with the `sessionId` option, so
+  the id is known before the first turn (task 0.5).
+- `interrupt()` stops a turn before or during its text, and the session
+  answers the next message normally (task 0.5).
 - A session resumes by id in a new process (`resume`); see section 4 for what
   carries over (task 0.4).
 - Writes are confined to one directory by two layers: the Bash sandbox

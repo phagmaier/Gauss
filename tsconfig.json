@@ -1,12 +1,14 @@
 {
   // Type-checking only: nothing is compiled to disk. Imports name the real
   // ".ts" files and only erasable syntax is allowed, so the same source runs
-  // unchanged under Node, Vite and Vitest.
+  // unchanged under Node, Vite and Vitest. One configuration covers the
+  // server and the page (src/web), so both see the DOM and Node types.
   "compilerOptions": {
     "module": "nodenext",
     "target": "esnext",
-    "lib": ["esnext"],
-    "types": ["node"],
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
 
     "noEmit": true,
     "allowImportingTsExtensions": true,
