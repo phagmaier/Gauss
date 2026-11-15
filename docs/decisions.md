@@ -551,3 +551,90 @@ model turns in all.
   end the turn by themselves (`_meta['claude/endTurn']`, "end-turn tool
   sessions"). The hook works, so this was left alone; it is a candidate if
   the hook proves fragile.
+
+## Codex spike (plan task 0.6)
+
+Observed on 2026-11-15 with `spike/codex.ts`, `@openai/codex-sdk` 0.169.0
+and the Codex CLI 0.169.0 that it bundles, signed in with ChatGPT
+(`codex login status`). The model came from the learner's own Codex config
+(`gpt-6.1-sol`), at low reasoning effort. Five runs, one or two turns each,
+within the hour the plan allows.
+
+- **It runs on the ChatGPT login.** No API key was set or passed; every
+  run worked. The SDK has no `systemPrompt`, no in-process tools and no
+  hooks. It runs `codex exec --experimental-json` once per turn, a new
+  process each time, and continues a thread with `resume <id>`.
+- **Text does not stream through the SDK.** Each of the tutor's messages
+  arrived whole, as one `item.completed` event, with no `item.updated`
+  pieces in any run. A turn may hold several messages (a short preamble,
+  then the answer). The app server's protocol has `item/agentMessage/delta`
+  notifications (read from the CLI binary, not tried), so a Codex backend
+  that streams text would drive `codex app-server` instead of the SDK.
+- **A custom tool server works over MCP.** The spike served the real
+  `ask_question` teaching tool from a minimal MCP server over HTTP inside
+  its own process, given to Codex as a `--config` override:
+  `mcp_servers.gauss = { url, default_tools_approval_mode = "approve" }`.
+  The input schema came from `z.toJSONSchema(z.object(tool.inputShape))`.
+  Codex connected, listed the tool, and the model called it with valid
+  input. Without the approval mode, `approval_policy = "never"` refused the
+  call ("MCP tool call requires approval"); the accepted values are `auto`,
+  `prompt`, `writes` and `approve`. Each turn reconnects to the server,
+  since each turn is a new process.
+- **A teaching tool can end the turn.** When `ask_question` returned
+  `endTurn`, the spike aborted the turn (the SDK's per-turn `AbortSignal`,
+  which kills the process) right after answering the call. The SDK then
+  throws "The operation was aborted". The next turn resumed the thread,
+  and the tutor quoted the posted question word for word. The session file
+  shows the call but not its output, which the kill cut off; Codex resumed
+  regardless.
+- **The thread id arrives with the first turn**, in the `thread.started`
+  event, before the model is called (0.1 seconds in). It is not known when
+  `startThread()` returns, and there is no option to choose it.
+- **Custom instructions replace Codex's own.** The override
+  `model_instructions_file = <file>` put the file's text in place of Codex's
+  base instructions (the session file's `base_instructions`), and the model
+  repeated a passphrase that only the file held.
+- **Isolation is incomplete.** The learner's `~/.codex/config.toml` sets
+  `sandbox_mode = "danger-full-access"` and `approval_policy = "never"` and
+  adds three MCP servers. With no overrides, the probe listed the global
+  `~/.codex/AGENTS.md` (by its first heading), the learner's MCP servers,
+  the ChatGPT apps (`codex_apps`: sites, pets, pages and others) and many
+  built-in tools. Overrides removed some of it:
+  - `features.apps = false` removed the ChatGPT apps;
+  - `mcp_servers.<name>.enabled = false` removed each MCP server, but only
+    by name, which a backend cannot know in general;
+  - `features.tool_search_always_defer_mcp_tools = false` should keep
+    teaching tools out of tool search, which defers MCP tools by default
+    as Claude's does; its effect was not measured;
+  - the thread options set the sandbox, approval policy, working directory
+    and web search, overriding the config file (not checked with a write
+    attempt).
+
+  Still present with every override tried: the global `AGENTS.md`
+  (`project_doc_max_bytes = 0` did not remove it), a skills section of
+  about 6,600 characters, two multi-agent sections, and the collaboration
+  tools (`features.multi_agent = false` did not remove them). Candidates
+  for stage 6, untried: the CLI's `--ignore-user-config` flag ("auth still
+  uses `CODEX_HOME`"), which the SDK cannot pass; and a separate
+  `CODEX_HOME` for Gauss, which needs its own `codex login` by the learner.
+  Copying or linking `auth.json` was not tried, because a token refresh in
+  one copy could sign the learner's own Codex out.
+- **What the adapter would need for Codex** (`architecture.md` section 7):
+  - `backendSessionId` is known only once the first turn starts. The
+    interface promises it at `startSession`; for Codex it would have to be
+    reported when the first turn begins.
+  - Teaching tools fit as they are. A Codex backend serves them over MCP
+    from Gauss's process, and ends the turn by aborting it when a tool
+    returns `endTurn`, mapping the abort to `ended_by_tool` from its own
+    record, as the Claude backend does for interrupts.
+  - `interrupt()` fits (the same abort). `text` events fit, but through
+    the SDK each carries a whole message, so the page would not stream.
+  - The system prompt goes in a file (`model_instructions_file`), which
+    `startSession` can write.
+- **Left behind:** the runs saved five sessions under
+  `~/.codex/sessions/2026/11/15/` (thread ids starting `01a1de44` to
+  `01a1de46`); the SDK has no option to skip saving, though the CLI has
+  `--ephemeral`.
+- **Runs**, for repeating them: `probe` without and with `--isolate` (before
+  and after the feature switches were added), and `tool --isolate` before
+  and after the approval mode was added.

@@ -293,9 +293,24 @@ Verified: package `@openai/codex-sdk`; `startThread()`, `thread.run()`,
 `resumeThread(id)`; a `sandboxMode` option; the SDK's documentation points to
 the Codex app server for streamed events.
 
-To verify (stage 0 spike, one hour): that it runs on the ChatGPT plan login,
-how custom tool servers are configured for it, and whether the adapter needs
-the SDK or the app server to stream text.
+Observed in the stage 0 spike (task 0.6; details in `decisions.md`):
+
+- The SDK runs on the ChatGPT plan login with no API key. Each turn is a
+  new `codex exec` process, and a thread continues by id.
+- Teaching tools can be served over MCP from Gauss's own process, given to
+  Codex as a `mcp_servers` config override with
+  `default_tools_approval_mode = "approve"`. A tool ends the turn by having
+  the backend abort it; the thread resumes normally after.
+- The SDK delivers each message whole, so text does not stream. The app
+  server's protocol has text deltas; a Codex backend that streams would use
+  it instead of the SDK. Not tried.
+- The thread id is known only when the first turn starts, which the
+  adapter's `backendSessionId` does not allow yet.
+- Custom instructions replace Codex's own through `model_instructions_file`.
+  Keeping out the learner's own Codex setup is unsolved: the global
+  `AGENTS.md`, skills and multi-agent instructions stayed in with every
+  config override tried. A separate `CODEX_HOME` with its own login is the
+  likely route. Stage 6 settles these when the Codex backend is chosen.
 
 ## 8. Sources
 

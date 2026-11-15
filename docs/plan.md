@@ -105,12 +105,20 @@ not.
 
 ### 0.6 Codex spike (limit: about one hour of work)
 
-- Status: todo
+- Status: done
 - Depends on: 0.1
 - Do: run one prompt through `@openai/codex-sdk` on the ChatGPT login. Find how
   a custom tool server is configured for it and how text is streamed.
 - Done when: `docs/decisions.md` records what worked, what did not, and whether
   the adapter interface would need to change for Codex.
+- Note: done on 2026-11-15 with `spike/codex.ts`; findings in
+  `docs/decisions.md` under "Codex spike". It works on the ChatGPT login,
+  and the real `ask_question` ran over an in-process MCP server and ended
+  the turn. Three things for stage 6: the SDK does not stream text (the app
+  server would); the thread id arrives only with the first turn, so
+  `backendSessionId` would change; and the learner's global `AGENTS.md`
+  and skills could not be kept out by config overrides. For task 0.7:
+  `@openai/codex-sdk` was added as a dev dependency for this spike only.
 
 ### 0.7 Close the stage
 
