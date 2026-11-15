@@ -215,17 +215,23 @@ Verified in the Agent SDK documentation:
   partial text.
 - `systemPrompt` takes a custom string; `tools: [...]` limits which built-in
   tools exist; `cwd` sets the working folder.
-- `settingSources: []` stops the learner's personal Claude Code settings,
-  instructions and skills from loading into the tutor.
 - A `sandbox` option exists.
 - Signed in with a plan, SDK usage draws from the plan's limits (help center,
   2026-11). A move to separate metered credits was announced and paused in
   June 2026.
 
+Observed in stage 0 (details in `decisions.md`):
+
+- The SDK uses the existing `claude` plan login when no API key is set. A set
+  `ANTHROPIC_API_KEY` takes precedence over the plan login, so the backend
+  leaves it out of the environment it gives the SDK (task 0.2).
+- Keeping the learner's personal Claude Code settings, instructions, memory
+  and skills out of the tutor takes `settingSources: []`, `skills: []` and
+  `settings: { autoMemoryEnabled: false }`. `settingSources: []` alone still
+  loads the auto-memory and lists Claude Code's bundled skills (task 0.2).
+
 To verify in stage 0:
 
-- The SDK picks up the existing `claude` plan login with no API key, and what
-  happens if `ANTHROPIC_API_KEY` is set in the environment.
 - The `sandbox` and permission settings needed to confine the tutor's shell and
   file writes to the course folder.
 - Resume behaviour after a server restart.

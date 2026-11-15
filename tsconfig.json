@@ -21,5 +21,5 @@
     "noUncheckedSideEffectImports": true,
     "skipLibCheck": true
   },
-  "include": ["src", "*.config.ts"]
+  "include": ["src", "spike", "*.config.ts"]
 }

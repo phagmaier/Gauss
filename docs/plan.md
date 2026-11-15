@@ -30,7 +30,7 @@ not.
 
 ### 0.2 Claude on the plan login
 
-- Status: todo
+- Status: done
 - Depends on: 0.1
 - Do: a script that sends one prompt through `@anthropic-ai/claude-agent-sdk`
   with a custom `systemPrompt`, `settingSources: []`, and partial-message
@@ -39,6 +39,13 @@ not.
   with no API key; what happens when `ANTHROPIC_API_KEY` is set; whether the
   user's personal Claude Code instructions and skills are absent from the
   session; which built-in tools the session reports.
+- Note: done on 2026-11-14 with `spike/claude-login.ts`; findings in
+  `docs/decisions.md` under "Claude on the plan login". For task 1.3: leave
+  `ANTHROPIC_API_KEY` out of the SDK's `env` (a set key overrides the plan
+  login), and pass `skills: []` and `settings: { autoMemoryEnabled: false }`
+  as well as `settingSources: []` (the auto-memory loads without them). The
+  default tool set is large and mostly unsuitable; tasks 0.3 and 0.4 narrow
+  it with `tools`.
 
 ### 0.3 Question round trip
 
@@ -52,7 +59,7 @@ not.
 
 ### 0.4 Resume and confinement
 
-- Status: in progress
+- Status: todo
 - Depends on: 0.2
 - Do: resume a session by id after restarting the process. Find the `sandbox`
   and permission options that let the agent run a test command and write files
@@ -73,7 +80,7 @@ not.
 
 ### 0.6 Codex spike (limit: about one hour of work)
 
-- Status: in progress
+- Status: todo
 - Depends on: 0.1
 - Do: run one prompt through `@openai/codex-sdk` on the ChatGPT login. Find how
   a custom tool server is configured for it and how text is streamed.
@@ -82,7 +89,7 @@ not.
 
 ### 0.7 Close the stage
 
-- Status: in progress
+- Status: todo
 - Depends on: 0.2, 0.3, 0.4, 0.5, 0.6
 - Do: move each "to verify" item in `architecture.md` section 7 to verified or
   changed. Delete spike code that will not be kept.
@@ -184,7 +191,7 @@ Tasks may be revised by 0.7.
 
 ### 1.6 Library and course views
 
-- Status: in progress
+- Status: todo
 - Depends on: 1.0, 1.5
 - Do: the library view, the intake chat, the curriculum review screen, and the
   diagram generated from `curriculum.json`.
@@ -232,7 +239,7 @@ quotes, and one unit taught from a paper.
 
 ### 5.0 Break down the stage
 
-- Status: in progress
+- Status: todo
 - Depends on: stage 4
 
 **User check:** one course runs from intake through a baseline to a closed

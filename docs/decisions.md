@@ -120,3 +120,82 @@ Set up on 2026-11-13. Every command in `AGENTS.md` was run and passed.
 - **One test on each side checks the runtime pin**: the suite fails if it
   runs on a Node or Python other than the one in `mise.toml`, which is what
   happens when a command is run outside mise.
+
+## Claude on the plan login (plan task 0.2)
+
+Observed on 2026-11-14 in four short runs of `spike/claude-login.ts`, with
+Agent SDK 0.3.325. The SDK runs the Claude Code binary (2.1.325) that ships
+in its platform package, `@anthropic-ai/claude-agent-sdk-linux-x64`, not the
+`claude` command on the PATH. The spike passes a custom `systemPrompt`,
+`settingSources: []` and `includePartialMessages: true`, then asks one probe
+question. The runs started from the repository root with the Claude Code
+session's own environment variables removed, so the SDK saw what it would see
+when started from a plain terminal.
+
+- **It works on the plan login with no API key.** The init message reports
+  `apiKeySource: "none"` and the model `claude-opus-5-5`. A
+  `rate_limit_event` message reports the plan's five-hour and seven-day usage
+  windows. The result's `total_cost_usd` is a list-price figure, not a
+  charge. Each successful run also made one small `claude-haiku-5-5` call of
+  its own (about 1,300 input tokens).
+- **The custom system prompt replaces Claude Code's.** The model repeated a
+  passphrase that only the custom prompt contained.
+- **Streaming works.** The reply arrives as `stream_event` messages carrying
+  the Messages API stream events (`message_start`, then `content_block_delta`
+  with `text_delta` pieces, through `message_stop`). The first text arrived
+  after 2.5 to 4.3 seconds.
+- **A set `ANTHROPIC_API_KEY` takes precedence over the plan login.** With an
+  invalid key in the environment, init reported
+  `apiKeySource: "ANTHROPIC_API_KEY"` and the request failed with 401
+  ("Invalid API key · Fix external API key"). It did not fall back to the
+  plan, and `query()` threw after yielding the error result. A valid key
+  would therefore be billed as API usage. Leaving the variable out of the
+  `env` option restored the plan login, though the key was still set in the
+  server's own environment. **Decision:** the Claude backend gives the SDK an
+  environment without `ANTHROPIC_API_KEY`. Not tried: `ANTHROPIC_AUTH_TOKEN`,
+  `ANTHROPIC_BASE_URL` and the cloud-provider switches, which may redirect
+  requests the same way.
+- **`settingSources: []` keeps out almost everything personal, but not the
+  auto-memory.** The model quoted, word for word, a line from this
+  repository's auto-memory index (`~/.claude/projects/<folder>/memory/`). The
+  rest stayed out: `~/.claude/CLAUDE.md` and the file it imports, the
+  repository's `CLAUDE.md` and `AGENTS.md`, the skills in `~/.claude/skills`,
+  the user's MCP servers and plugins, and the user settings' default
+  permission mode (`bypassPermissions`; the session ran in `default`).
+  Adding `settings: { autoMemoryEnabled: false }` kept the memory out too.
+- **Claude Code's bundled skills and built-in plugins load regardless.**
+  Init listed 19 bundled skills (`claude-api`, `loop`, `schedule`,
+  `code-review` and others) and built-in plugins such as
+  `cc-plugin-telemetry`. With `skills: []` the model said it saw no skills,
+  although init still lists them as discovered.
+- **Decision:** the Claude backend passes `settingSources: []`, `skills: []`
+  and `settings: { autoMemoryEnabled: false }`. This corrects
+  `architecture.md` section 7, which said `settingSources: []` alone was
+  enough.
+- **The comparison run shows the probe would have caught a leak.** With
+  `settingSources: ["user", "project", "local"]` the model quoted all three
+  markers (from `coding.md`, `AGENTS.md` and the memory index), and init
+  listed 65 skills, the user's three MCP servers, a synced plugin, and the
+  permission mode `bypassPermissions`. Loading user settings would let the
+  tutor run any tool without asking.
+- **Built-in tools the session reports** when no `tools` option is given:
+  `Task`, `Bash`, `CronCreate`, `CronDelete`, `CronList`, `DesignSync`,
+  `Edit`, `EnterWorktree`, `ExitWorktree`, `ListAgents`, `Monitor`,
+  `NotebookEdit`, `PushNotification`, `Read`, `RemoteTrigger`,
+  `ReportFindings`, `ScheduleWakeup`, `SendMessage`, `Skill`, `TaskStop`,
+  `ToolSearch`, `WebFetch`, `WebSearch`, `Workflow`, `Write`. There is no
+  `Glob` or `Grep`. Five subagent types come with them (`claude`, `Explore`,
+  `general-purpose`, `Plan`, `statusline-setup`). Most of these have no place
+  in a tutor (scheduling, remote triggers, worktrees, messaging), so the
+  backend should name its tools with the `tools` option, which tasks 0.3 and
+  0.4 try. In the isolated runs, with the default tool set, the first request
+  was 15,000 to 19,000 input tokens.
+- **For later tasks.** `persistSession: false` kept the spike's sessions out
+  of `~/.claude/projects/`. Resume (task 0.4) needs persistence on, and the
+  SDK documents that sessions are then saved there. The SDK's
+  settings type also has `blockWritesOutsideWorkingDirectories` and
+  `blockReadsOutsideWorkingDirectories`, not tried, which are candidates for
+  task 0.4. The runs removed every inherited variable whose name starts with
+  `CLAUDE` (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID` and others); a server
+  started from inside a Claude Code session would pass them on, with effects
+  not tested.
