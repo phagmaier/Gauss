@@ -48,7 +48,7 @@ function setUp(script: FakeTurn[]) {
     dataRoot,
   });
   const app = createApp({ dataRoot, intakes });
-  return { backend, intakes, app };
+  return { backend, dataRoot, intakes, app };
 }
 
 type App = ReturnType<typeof createApp>;
@@ -393,6 +393,53 @@ test("a draft opens for review in its running intake, or after a restart in a ne
   expect((await post(after.app, "/api/courses/no-course/review")).status).toBe(
     404,
   );
+});
+
+test("review keeps the same intake during approval and when its record read is stale", async () => {
+  const setup = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
+  const { app, dataRoot, intakes } = setup;
+  const intakeId = await startIntake(app);
+  await say(setup, intakeId, ASK);
+  const courseId = "linear-algebra-for-pca";
+  const draft = await dataRoot.readCourse(courseId);
+  const writing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const approve = dataRoot.approveCurriculum;
+  vi.spyOn(dataRoot, "approveCurriculum").mockImplementationOnce(async (id) => {
+    writing.resolve();
+    await release.promise;
+    return approve(id);
+  });
+  const approval = post(app, `/api/intakes/${intakeId}/approval`, {
+    revision: 1,
+  });
+  try {
+    await writing.promise;
+    const review = await post(app, `/api/courses/${courseId}/review`);
+    expect(review.status).toBe(200);
+    expect(await review.json()).toEqual({ intakeId });
+  } finally {
+    release.resolve();
+    await approval;
+    await intakes.close();
+  }
+  expect((await approval).status).toBe(200);
+
+  // Another request may have read the draft before approval finished, then
+  // reached the registry after it finished. It must not create a new owner.
+  vi.spyOn(dataRoot, "readCourse").mockResolvedValueOnce(draft);
+  const stale = await post(app, `/api/courses/${courseId}/review`);
+  expect(await stale.json()).toEqual({ intakeId });
+  expect(intakes.get(intakeId)?.events().at(-1)).toEqual({
+    type: "curriculum_approved",
+    courseId,
+    revision: 1,
+  });
+  expect(
+    (await post(app, `/api/intakes/${intakeId}/approval`, { revision: 1 }))
+      .status,
+  ).toBe(409);
+  expect((await post(app, `/api/courses/${courseId}/review`)).status).toBe(409);
 });
 
 test("a record the server cannot read is reported with the reason", async () => {

@@ -338,14 +338,13 @@ describe("a draft reopened for review, its first conversation lost in a restart"
 
     expect(await intake.approve(1)).toEqual({ ok: true });
     expect(backend.sessions).toEqual([]);
-    expect(intake.ended()).toBe(true);
     expect(
       (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
         ?.approval,
     ).toEqual({ status: "approved", approvedAt: APPROVED_AT });
   });
 
-  test("is the intake still running for that course, if there is one", async () => {
+  test("keeps the intake for that course, including after approval", async () => {
     const { intakes } = reopen([
       [{ call: "propose_curriculum", input: FIRST }],
     ]);
@@ -356,6 +355,6 @@ describe("a draft reopened for review, its first conversation lost in a restart"
     expect(intakes.review(DRAFT)).toBe(first);
     expect(intakes.get(first.id)).toBe(first);
     await first.approve(1);
-    expect(intakes.review(DRAFT)).not.toBe(first);
+    expect(intakes.review(DRAFT)).toBe(first);
   });
 });

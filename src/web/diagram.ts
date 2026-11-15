@@ -43,8 +43,10 @@ const PER_ROW = 2;
 const LEFT = 25;
 const MIDDLE = 50;
 const RIGHT = 75;
-/** The gap between lines that share a unit, in percent. */
+/** The maximum gap between lines that share a unit, in percent. */
 const SPREAD = 8;
+/** Keep ports clear of the rounded corners of the mock's 46%-wide nodes. */
+const PORT_SPAN = 36;
 
 export function layOut(units: readonly Unit[]): Layout {
   const ids = new Set(units.map((u) => u.id));
@@ -127,7 +129,8 @@ export function layOut(units: readonly Unit[]): Layout {
       : [{ unit, index, row, x }];
   });
   const byId = new Map(nodes.map((n) => [n.unit.id, n]));
-  const offset = (k: number, n: number) => (k - (n - 1) / 2) * SPREAD;
+  const offset = (k: number, n: number) =>
+    (k - (n - 1) / 2) * Math.min(SPREAD, PORT_SPAN / Math.max(1, n - 1));
 
   // A line leaves toward its first waypoint and arrives from its last, so
   // that is the order lines sharing a unit take.

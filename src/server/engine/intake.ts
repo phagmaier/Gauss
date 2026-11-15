@@ -30,8 +30,6 @@ export interface Intake {
   subscribe(listener: (event: PageEvent, index: number) => void): () => void;
   /** The course, once the first proposal has created it. */
   courseId(): Slug | undefined;
-  /** Whether the curriculum is approved, which ends the intake. */
-  ended(): boolean;
   /** A message from the learner; the first one starts the tutor session. */
   say(text: string): ChatResult;
   /**
@@ -110,7 +108,6 @@ export function createIntake(options: {
     events: log.events,
     subscribe: log.subscribe,
     courseId: () => courseId,
-    ended: () => approved,
     say(text) {
       if (approved) {
         return { ok: false, status: 409, error: INTAKE_OVER };
@@ -177,8 +174,9 @@ export interface Intakes {
   start(): Intake;
   get(id: string): Intake | undefined;
   /**
-   * The intake still running for this draft's course, or a new one that
-   * starts from the draft. The caller checks that it is the stored draft.
+   * The course's intake, or a new one that starts from the stored draft.
+   * Ownership stays after approval, so a stale draft read cannot create a
+   * second intake. The caller checks that it is the stored draft.
    */
   review(draft: StoredDraft): Intake;
   /** Closes the tutor session of every intake. */
@@ -200,7 +198,7 @@ export function createIntakes(options: {
     get: (id) => byId.get(id),
     review(draft) {
       for (const intake of byId.values()) {
-        if (intake.courseId() === draft.id && !intake.ended()) return intake;
+        if (intake.courseId() === draft.id) return intake;
       }
       return keep(createIntake({ ...options, draft }));
     },

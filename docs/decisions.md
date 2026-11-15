@@ -1009,3 +1009,27 @@ Reopening a draft is on the server.
   a third revision before the first-proposal fault failed it. The review
   also found that a malformed address (`/courses/%E0%A4`) crashed the page;
   it now shows the library, with a test.
+
+## Library review fixes (plan task 1.7)
+
+Fixed on 2026-11-15 after reviewing tasks 1.5 and 1.6.
+
+- **One intake owns a course for the server's lifetime**, including while
+  approval is being written and after it succeeds. A review request that
+  read the draft before approval finished returns that same intake, whose
+  event log carries the approval, rather than creating an invalid second
+  review thread. A request that reads the approved record still gets 409.
+  The registry no longer needs the intake's `ended()` accessor.
+- **Diagram ports fit within the nodes.** The gap remains at most 8% of
+  diagram width, but shrinks for high-degree units to fit a 36%-wide span
+  inside the mock's 46%-wide nodes, clear of the rounded corners. Both
+  incoming and outgoing ports stay distinct instead of clamping together.
+- **Regression evidence:** the added route test failed on a second intake
+  being created during a held approval write; it also covers a stale draft
+  read reaching the registry after approval. Diagram cases with eight and
+  twenty dependents/prerequisites failed on detached ports before the fix.
+  A browser check on a scratch fake-backend server confirmed all eight
+  outgoing and incoming ports are inside their rendered nodes and distinct.
+  No real model calls or real data-root access.
+- **Checks:** `mise run check` passed lint, type-checking, 144 TypeScript
+  tests and one Python test.

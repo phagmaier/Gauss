@@ -121,3 +121,33 @@ test("between two units in a row, a line passes through the gap in the middle", 
     )?.via,
   ).toEqual([50]);
 });
+
+test.each([2, 8, 20])(
+  "edges stay attached and distinct with %i dependents and prerequisites",
+  (count) => {
+    const topics = Array.from({ length: count }, (_, i) =>
+      unit(`topic-${i + 1}`, ["foundation"]),
+    );
+    const { edges } = layOut([
+      unit("foundation"),
+      ...topics,
+      unit(
+        "capstone",
+        topics.map((u) => u.id),
+      ),
+    ]);
+
+    // The settled nodes are 46% wide. Every port must be inside its node,
+    // even when many lines leave or arrive at the same unit.
+    for (const edge of edges) {
+      expect(edge.x1).toBeGreaterThan(edge.from.x - 23);
+      expect(edge.x1).toBeLessThan(edge.from.x + 23);
+      expect(edge.x2).toBeGreaterThan(edge.to.x - 23);
+      expect(edge.x2).toBeLessThan(edge.to.x + 23);
+    }
+    const outgoing = edges.filter((e) => e.from.unit.id === "foundation");
+    const incoming = edges.filter((e) => e.to.unit.id === "capstone");
+    expect(new Set(outgoing.map((e) => e.x1)).size).toBe(count);
+    expect(new Set(incoming.map((e) => e.x2)).size).toBe(count);
+  },
+);

@@ -337,6 +337,20 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
   keeps the conversation, and stage 2 should close idle ones once resume
   exists; the intake view shows the restart note.
 
+### 1.7 Review fixes
+
+- Status: done
+- Depends on: 1.5, 1.6
+- Do: keep one intake per course when review overlaps approval, and keep
+  diagram edges attached to units with many prerequisites or dependents.
+- Done when: regression tests cover concurrent review and bounded, distinct
+  diagram ports; the high-degree diagram is checked in a browser.
+- Note: done on 2026-11-15. `mise run check` passed (144 TypeScript tests,
+  one Python test). Regression checks failed before the fixes; a scratch
+  fake-backend browser check confirmed attached, distinct high-degree ports.
+  The intake ownership and port-spacing rules are in `docs/decisions.md`
+  under "Library review fixes".
+
 **User check:** create a course, push back on the proposed curriculum once,
 approve the revision, see the diagram, restart the server, and find the course
 still there.
