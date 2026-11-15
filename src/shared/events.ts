@@ -5,7 +5,13 @@ import { z } from "zod";
 import { Slug } from "./course.ts";
 import { Unit } from "./curriculum.ts";
 import { Plan } from "./plan.ts";
-import { ChoiceLetter, Confidence, QuestionView, Verdict } from "./question.ts";
+import {
+  AnswerSubmission,
+  ChoiceLetter,
+  QuestionView,
+  Verdict,
+  WrittenAnswer,
+} from "./question.ts";
 import { Phase } from "./state.ts";
 import { ObjectiveStatus, UnitStatus } from "./status.ts";
 
@@ -25,14 +31,36 @@ export const PageEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("tutor_text"), text: z.string() }),
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),
-  /** The engine graded an answer. The correct choice is revealed here. */
+  /**
+   * A written answer was sent and is being graded (task 2.8). Sent again
+   * when it is graded again after a failure, and when a unit reopens with an
+   * answer a restart kept from its grade.
+   */
+  z.object({
+    type: z.literal("grading"),
+    questionId: z.string(),
+    answer: WrittenAnswer,
+  }),
+  /**
+   * The grading of a written answer failed. The answer is kept, the
+   * question stays open, and the learner can have it graded again.
+   */
+  z.object({
+    type: z.literal("grading_failed"),
+    questionId: z.string(),
+    error: z.string(),
+  }),
+  /** An answer was graded. The correct choice, or the flaw, is revealed here. */
   z.object({
     type: z.literal("graded"),
     questionId: z.string(),
     verdict: Verdict,
-    choice: ChoiceLetter.nullable(),
-    confidence: Confidence.nullable(),
-    correctChoice: ChoiceLetter,
+    /** The learner's answer as sent. */
+    answer: AnswerSubmission,
+    /** For a choice question: the correct choice. */
+    correctChoice: ChoiceLetter.optional(),
+    /** For a written answer graded incorrect: the first flawed step or missing element. */
+    flaw: z.string().optional(),
     /** Given with help, so a correct answer does not count toward passing. */
     assisted: z.boolean(),
   }),

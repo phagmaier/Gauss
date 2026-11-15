@@ -91,6 +91,7 @@ function setUp(script: FakeTurn[]) {
         },
       };
     },
+    oneShot: fake.oneShot,
   };
   const planner = createUnitPlanner({
     backend,

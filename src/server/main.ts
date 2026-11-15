@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { getRequestListener } from "@hono/node-server";
 import { createServer as createViteServer } from "vite";
 import { createClaudeBackend } from "./backends/claude.ts";
+import { createGrader } from "./engine/grading.ts";
 import { createIntakes } from "./engine/intake.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
@@ -18,11 +19,13 @@ const host = "127.0.0.1";
 
 const prompt = (name: string) =>
   readFile(new URL(`prompts/${name}`, root), "utf8");
-const [plannerPrompt, unitPlannerPrompt, tutorPrompt] = await Promise.all([
-  prompt("planner.md"),
-  prompt("unit-planner.md"),
-  prompt("tutor.md"),
-]);
+const [plannerPrompt, unitPlannerPrompt, tutorPrompt, graderPrompt] =
+  await Promise.all([
+    prompt("planner.md"),
+    prompt("unit-planner.md"),
+    prompt("tutor.md"),
+    prompt("grader.md"),
+  ]);
 // GAUSS_DATA_ROOT moves the course record away from ~/gauss (AGENTS.md).
 const dataRootPath = resolveDataRoot();
 const dataRoot = openDataRoot({ path: dataRootPath });
@@ -44,6 +47,8 @@ const units = createUnitChats({
   systemPrompt: tutorPrompt,
   dataRoot,
   planner,
+  // The tutor's backend and model for now; task 2.9 chooses the grader's.
+  grader: createGrader({ backend, systemPrompt: graderPrompt }),
 });
 const api = getRequestListener(createApp({ dataRoot, intakes, units }).fetch);
 

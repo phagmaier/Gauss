@@ -1,6 +1,7 @@
 // The backend adapter (architecture.md section 7). The engine talks only to
 // these types; the SDKs stay inside the files of this folder.
 
+import { z } from "zod";
 import type { TeachingTool } from "../tools/tool.ts";
 
 export interface SessionOptions {
@@ -42,6 +43,39 @@ export interface TutorSession {
   close(): Promise<void>;
 }
 
+/**
+ * One request on its own: its own system prompt, no tools, no conversation
+ * before it, and nothing kept after it (the grader; later the notes). The
+ * reply is asked for as JSON in the schema's shape and checked against it.
+ */
+export interface OneShotRequest<T> {
+  systemPrompt: string;
+  prompt: string;
+  schema: z.ZodType<T>;
+  /** Stops the request, which then fails. */
+  signal?: AbortSignal;
+}
+
+export type OneShotResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string };
+
 export interface TutorBackend {
   startSession(options: SessionOptions): Promise<TutorSession>;
+  /** Never throws: a failed request, or a reply not in the schema's shape, is a failure. */
+  oneShot<T>(request: OneShotRequest<T>): Promise<OneShotResult<T>>;
+}
+
+/** Checks a one-shot reply against the request's schema. */
+export function checkReply<T>(
+  schema: z.ZodType<T>,
+  output: unknown,
+): OneShotResult<T> {
+  const parsed = schema.safeParse(output);
+  return parsed.success
+    ? { ok: true, value: parsed.data }
+    : {
+        ok: false,
+        error: `The reply was not in the shape asked for: ${z.prettifyError(parsed.error)}`,
+      };
 }

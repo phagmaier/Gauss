@@ -56,6 +56,36 @@ function answer(
     verdict,
   });
 }
+/** A written answer, graded as the grader would. */
+function written(
+  verdict: "correct" | "incorrect",
+  prompt: string,
+  confidence: Confidence = "75",
+): EvidenceEntry {
+  asked += 1;
+  const questionId = `q${asked}`;
+  return EvidenceEntry.parse({
+    kind: "answer",
+    recordedAt: "2026-11-15T10:00:00.000Z",
+    objective: CHAIN,
+    question: {
+      kind: "written",
+      prompt,
+      rubric: "Names the outer and the inner function, and multiplies.",
+    },
+    answer: {
+      kind: "written",
+      questionId,
+      text: "By the chain rule.",
+      confidence,
+    },
+    assisted: false,
+    verdict,
+    ...(verdict === "incorrect"
+      ? { flaw: "The inner derivative is missing." }
+      : {}),
+  });
+}
 const right = (confidence: Confidence, given: Given = {}) =>
   answer("correct", { ...given, confidence });
 const wrong = (confidence: Confidence, given: Given = {}) =>
@@ -138,6 +168,24 @@ describe("objective status", () => {
         right("75", { prompt: `  Differentiate  $\\sin(x^2)$.\n` }),
       ],
       is: "attempted",
+    },
+    {
+      name: "two written answers at 75% to different questions",
+      log: [
+        written("correct", "Explain why $(\\sin x^2)' = 2x\\cos x^2$."),
+        written("correct", "Differentiate $e^{3x}$ and explain each step."),
+      ],
+      is: "passed",
+    },
+    {
+      name: "one written question answered correctly twice",
+      log: [written("correct", SPACED), written("correct", SPACED)],
+      is: "attempted",
+    },
+    {
+      name: "a written question with the prompt of a choice question",
+      log: [right("75", { prompt: SPACED }), written("correct", SPACED)],
+      is: "passed",
     },
     {
       name: "a miss between two correct answers",

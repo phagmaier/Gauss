@@ -25,11 +25,33 @@ export const AnswerEvidence = z
      */
     assisted: z.boolean(),
     verdict: Verdict,
+    /**
+     * For a written answer graded incorrect, and only there: the first
+     * flawed step or missing element, as the grader named it (task 2.8).
+     */
+    flaw: z.string().min(1).optional(),
   })
   .refine((e) => (e.answer.kind === "unknown") === (e.verdict === "unknown"), {
     message: `An "I don't know" is graded "unknown", and nothing else is.`,
     path: ["verdict"],
-  });
+  })
+  .refine(
+    (e) => e.answer.kind === "unknown" || e.answer.kind === e.question.kind,
+    {
+      message: "The answer is not of its question's kind.",
+      path: ["answer", "kind"],
+    },
+  )
+  .refine(
+    (e) =>
+      (e.flaw !== undefined) ===
+      (e.question.kind === "written" && e.verdict === "incorrect"),
+    {
+      message:
+        "A written answer graded incorrect names its flaw, and no other answer does.",
+      path: ["flaw"],
+    },
+  );
 export type AnswerEvidence = z.infer<typeof AnswerEvidence>;
 
 /** The learner moved on without passing these objectives (brief.md, "Override"). */

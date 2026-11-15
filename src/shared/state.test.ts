@@ -36,6 +36,36 @@ test("a hand-written state with two units in progress parses unchanged", () => {
   expect(State.parse(STATE)).toEqual(STATE);
 });
 
+// A written answer kept while it is graded, after the learner had help.
+const WRITTEN_OPEN = {
+  id: "q5",
+  number: 3,
+  objective: "tangent-line",
+  postedAt: "2026-11-15T10:14:00.000Z",
+  question: {
+    kind: "written",
+    prompt: "Find the tangent to $y = x^2$ at $x = 3$, and explain each step.",
+    rubric: "Slope $6$ from $y' = 2x$; the line $y - 9 = 6(x - 3)$.",
+  },
+  assisted: true,
+  answer: {
+    kind: "written",
+    questionId: "q5",
+    text: "The slope is $6$, so $y - 9 = 6(x - 3)$.",
+    confidence: "90",
+  },
+};
+
+test("a written answer kept while it is graded parses unchanged", () => {
+  const state = {
+    units: {
+      derivative: { ...STATE.units.derivative, openQuestion: WRITTEN_OPEN },
+    },
+  };
+
+  expect(State.parse(state)).toEqual(state);
+});
+
 test("a course with no unit in progress has an empty state", () => {
   expect(State.parse({ units: {} })).toEqual({ units: {} });
 });
@@ -92,6 +122,38 @@ describe("rejects", () => {
       },
       path: ["units", "derivative", "openQuestion", "question", "answer"],
       message: /one of the choices/,
+    },
+    {
+      name: "a written answer kept on a choice question",
+      input: {
+        units: {
+          derivative: {
+            ...derivative,
+            openQuestion: {
+              ...derivative.openQuestion,
+              answer: { ...WRITTEN_OPEN.answer, questionId: "q4" },
+            },
+          },
+        },
+      },
+      path: ["units", "derivative", "openQuestion", "answer"],
+      message: /Only a written question/,
+    },
+    {
+      name: "a kept answer to another question",
+      input: {
+        units: {
+          derivative: {
+            ...derivative,
+            openQuestion: {
+              ...WRITTEN_OPEN,
+              answer: { ...WRITTEN_OPEN.answer, questionId: "q4" },
+            },
+          },
+        },
+      },
+      path: ["units", "derivative", "openQuestion", "answer", "questionId"],
+      message: /another question/,
     },
   ])("$name", ({ input, path, message }) => {
     const result = State.safeParse(input);

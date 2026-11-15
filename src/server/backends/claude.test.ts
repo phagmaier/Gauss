@@ -137,14 +137,23 @@ test.each([
   expect(readAll([result(message)], interrupted)).toEqual([end]);
 });
 
-test("the SDK's environment has no API key and nothing from a parent Claude Code session", () => {
+test("the SDK's environment has no API key, nothing that could send its requests elsewhere, and nothing from a parent Claude Code session", () => {
   const env = sdkEnvironment({
     PATH: "/usr/bin",
     HOME: "/home/learner",
     ANTHROPIC_API_KEY: "sk-ant-test",
+    ANTHROPIC_BASE_URL: "http://127.0.0.1:9",
+    ANTHROPIC_AUTH_TOKEN: "bogus",
     CLAUDECODE: "1",
     CLAUDE_CODE_SESSION_ID: "abc",
+    CLAUDE_CODE_USE_VERTEX: "1",
+    // A provider's credentials do nothing without its switch, so they stay.
+    AWS_REGION: "eu-west-1",
   });
 
-  expect(env).toEqual({ PATH: "/usr/bin", HOME: "/home/learner" });
+  expect(env).toEqual({
+    PATH: "/usr/bin",
+    HOME: "/home/learner",
+    AWS_REGION: "eu-west-1",
+  });
 });

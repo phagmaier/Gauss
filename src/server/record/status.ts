@@ -87,5 +87,7 @@ function problemOf(question: Question): string {
   switch (question.kind) {
     case "choice":
       return JSON.stringify([question.prompt, ...question.choices].map(text));
+    case "written":
+      return JSON.stringify(["written", text(question.prompt)]);
   }
 }

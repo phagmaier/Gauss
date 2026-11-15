@@ -5,14 +5,14 @@
 // (the phase, a question already open, the objective it names) is the
 // engine's rule, so a refusal comes from the board with its reason.
 
-import { ChoiceQuestionInput } from "../../shared/question.ts";
+import { QuestionInput } from "../../shared/question.ts";
 import { defineTool, type TeachingTool } from "./tool.ts";
 
 /** Where questions are kept and shown. The engine provides it. */
 export interface QuestionBoard {
   /** Stores the question and shows it to the learner, or says why not. */
   post(
-    question: ChoiceQuestionInput,
+    question: QuestionInput,
   ): Promise<{ id: string; number: number } | { refused: string }>;
 }
 
@@ -20,13 +20,17 @@ export function askQuestionTool(board: QuestionBoard): TeachingTool {
   return defineTool({
     name: "ask_question",
     description:
-      "Post one multiple-choice check question to the learner, on one " +
-      "objective of the segment. It appears as a card in the conversation. " +
-      "Posting ends your turn, so say anything you want to say before " +
-      "calling this. The learner's answer, already graded, arrives in the " +
-      "next message, not as this tool's result. Only one question can be " +
-      "open at a time, and only in the check.",
-    input: ChoiceQuestionInput,
+      "Post one check question to the learner, on one objective of the " +
+      'segment. It appears as a card in the conversation. A "choice" ' +
+      "question gives choices and the letter of the correct one; a " +
+      '"written" question asks for a proof, a derivation or an ' +
+      "explanation, and gives a rubric, which a separate grader uses to " +
+      "grade the answer without seeing this conversation. Posting ends your " +
+      "turn, so say anything you want to say before calling this. The " +
+      "learner's answer, already graded, arrives in the next message, not " +
+      "as this tool's result. Only one question can be open at a time, and " +
+      "only in the check.",
+    input: QuestionInput,
     async run(question) {
       const result = await board.post(question);
       if ("refused" in result) {

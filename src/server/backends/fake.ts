@@ -2,14 +2,19 @@
 // (AGENTS.md). Each scripted turn lists what the "tutor" does in order: write
 // text, call a teaching tool, or hold until it is interrupted. Tool calls run
 // the real teaching tool, and a call that ends the turn ends it here too.
+// One-shot requests get the scripted replies in order, checked against the
+// request's schema as the real backends check theirs.
 
 import type { ToolResult } from "../tools/tool.ts";
-import type {
-  BackendEvent,
-  EngineTurn,
-  SessionOptions,
-  TutorBackend,
-  TutorSession,
+import {
+  type BackendEvent,
+  checkReply,
+  type EngineTurn,
+  type OneShotRequest,
+  type OneShotResult,
+  type SessionOptions,
+  type TutorBackend,
+  type TutorSession,
 } from "./backend.ts";
 
 export type FakeStep =
@@ -20,6 +25,17 @@ export type FakeStep =
 
 /** A turn's steps, or a function that picks them from the turn received. */
 export type FakeTurn = FakeStep[] | ((turn: EngineTurn) => FakeStep[]);
+
+/**
+ * A one-shot reply: the model's output, before it is checked; a failed
+ * request; one that holds until it is stopped; or one that comes when the
+ * test releases it.
+ */
+export type FakeReply =
+  | { output: unknown }
+  | { fail: string }
+  | { hold: true }
+  | { later: Promise<FakeReply> };
 
 export interface FakeCall {
   name: string;
@@ -34,13 +50,46 @@ export interface FakeBackend extends TutorBackend {
   readonly calls: FakeCall[];
   /** The options of every session started. */
   readonly sessions: SessionOptions[];
+  /** Every one-shot request, in order. */
+  readonly oneShots: OneShotRequest<unknown>[];
 }
 
-export function createFakeBackend(script: FakeTurn[]): FakeBackend {
+export function createFakeBackend(
+  script: FakeTurn[],
+  replies: FakeReply[] = [],
+): FakeBackend {
   const received: EngineTurn[] = [];
   const calls: FakeCall[] = [];
   const sessions: SessionOptions[] = [];
+  const oneShots: OneShotRequest<unknown>[] = [];
   let nextTurn = 0;
+  let nextReply = 0;
+
+  async function oneShot<T>(
+    request: OneShotRequest<T>,
+  ): Promise<OneShotResult<T>> {
+    oneShots.push(request);
+    let reply = replies[nextReply];
+    nextReply += 1;
+    while (reply !== undefined && "later" in reply) reply = await reply.later;
+    if (reply === undefined) {
+      return {
+        ok: false,
+        error: `The fake backend has no scripted reply ${nextReply}.`,
+      };
+    }
+    if ("hold" in reply) {
+      const { signal } = request;
+      if (signal !== undefined && !signal.aborted) {
+        await new Promise((resolve) =>
+          signal.addEventListener("abort", resolve, { once: true }),
+        );
+      }
+      return { ok: false, error: "The request was stopped." };
+    }
+    if ("fail" in reply) return { ok: false, error: reply.fail };
+    return checkReply(request.schema, reply.output);
+  }
 
   async function startSession(options: SessionOptions): Promise<TutorSession> {
     sessions.push(options);
@@ -103,5 +152,5 @@ export function createFakeBackend(script: FakeTurn[]): FakeBackend {
     };
   }
 
-  return { received, calls, sessions, startSession };
+  return { received, calls, sessions, oneShots, startSession, oneShot };
 }

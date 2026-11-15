@@ -77,8 +77,8 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
     course.json                   title, backend, settings (web search on/off), dates
     style.md                      per-course teaching style note
     curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
-    state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question, tutor session, open detour
-    evidence.jsonl                append-only: answers, grades, confidence, overrides, disputes
+    state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question (with a written answer while it is graded), tutor session, open detour
+    evidence.jsonl                append-only: answers, grades (with a written answer's flaw), confidence, overrides, disputes
     misconceptions.jsonl          append-only: findings from detours
     units/<unit-id>/handoff.md    written at the end of each session in the unit
     sessions/<session-id>.jsonl   full transcript, owned by Gauss (not the SDK's own log)
@@ -227,6 +227,21 @@ The rules of tasks 2.6 and 2.7:
   a crash between the two leaves the question open with its answer kept,
   never an answer lost.
 
+The rules of task 2.8, for written answers (section 6):
+
+- **A written answer is final once sent.** It is kept on the open question
+  in `state.json`, then graded outside the chat's queue, so messages and
+  the tutor's turns go on meanwhile. Until its grade is recorded, another
+  answer, moving on and grading again are refused, and so are the tutor's
+  `ask_question` and `close_segment`. A message then is not help: help
+  ends when the answer is sent.
+- **A failed grading is shown, and the answer graded again as sent**: the
+  question stays open with its answer, and nothing reaches the tutor until
+  there is a grade. A unit reopened with a kept answer grades it again at
+  once, as a teaching turn a restart cut off is taught again.
+- **"I don't know" on a written question** is recorded at once, with no
+  grader call.
+
 ### Turn protocol
 
 The engine composes every message the tutor receives: a short header (unit,
@@ -252,8 +267,11 @@ have time limits and a learner may take twenty minutes or close the tab.
    to the page. The engine then ends the tutor's turn itself, because the
    model does not reliably stop on its own (task 0.3). While a question is
    open, `ask_question` is rejected.
-3. The learner submits an answer, a confidence level, and optional reasoning.
-4. The engine grades it (section 6) and appends evidence.
+3. The learner submits an answer, a confidence level, and optional reasoning
+   (a written answer is its own reasoning).
+4. The engine grades it (section 6) and appends evidence. A written answer
+   is kept in `state.json` while the grader works, and the page hears
+   `grading`, then `graded` or `grading_failed` (task 2.8).
 5. The engine sends the tutor the result as the next turn; the tutor gives
    feedback and continues.
 
@@ -273,7 +291,7 @@ served to it over the standard tool protocol (MCP).
 | `amend_curriculum` | Proposes a change; applied only after the learner confirms |
 | `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
 | `close_segment` | Closes the segment once its check is done (section 4); ends the turn. The learner starts the next segment, so there is no tool for it (task 2.6) |
-| `ask_question` | Posts a question on an objective of the segment, in the check (section 4) |
+| `ask_question` | Posts a question on an objective of the segment, in the check (section 4): a `choice` question with its answer letter, or a `written` one with its rubric (task 2.8; `QuestionInput` in `src/shared/question.ts`) |
 | `start_detour`, `end_detour` | Open and close a detour; closing records the misconception found |
 | `quote_source` | Returns a verified quote block, or an error if the text is not in the source |
 | `show_artifact` | Displays an HTML file from `artifacts/` in the side pane |
@@ -295,6 +313,18 @@ cannot write the record files directly.
 | Code | Runs the question's test command in `workspace/` | Tests are written by the tutor before the question is posted |
 | Proof, explanation, reconstruction | A separate one-shot model call using `prompts/grader.md` and the question's rubric | Must name the first flawed step or missing element; no access to the tutor's conversation |
 
+Rubric grading as built in task 2.8 (`src/server/engine/grading.ts`): the
+grader is one `oneShot` request (section 7) whose system prompt is
+`grader.md` and whose message holds the question as the learner saw it, the
+rubric and the answer, each between tags, and nothing else: not the
+objective, the confidence, or anything of the tutor's conversation. The
+reply is `WrittenGrade` in `src/shared/question.ts`: `correct` or
+`incorrect`, with no partial credit, and the flaw, required when incorrect,
+which the evidence and the `graded` event keep. A reply not in that shape,
+a failed request, or one past the time limit (three minutes) is a failed
+grading, which the learner can retry. The grader runs on the tutor's
+backend and model until task 2.9 chooses its model.
+
 Every grade can be disputed. A dispute is appended to the evidence log and
 passed to the tutor; the original grade is kept alongside the outcome.
 
@@ -308,7 +338,7 @@ reference: `src/server/backends/backend.ts` and `src/server/tools/tool.ts`.
 ```ts
 interface TutorBackend {
   startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools; later cwd, resumeId
-  oneShot(prompt: string, opts: OneShotOptions): Promise<string>;  // grader, notes; not built yet
+  oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal; the grader (task 2.8), later notes
 }
 interface TutorSession {
   readonly backendSessionId: string;  // known from the start, before the first turn
@@ -335,15 +365,21 @@ type ToolResult =
   before sending the next. It never throws: a failure is a `turn_end` whose
   outcome is `error`. The outcomes are `done`, `ended_by_tool`,
   `interrupted` and `error`.
+- `oneShot` (task 2.8) is one request with its own system prompt, no tools,
+  no conversation before it and nothing kept after it. The reply is asked
+  for as JSON in the schema's shape and checked against the zod schema
+  (`checkReply` in `backend.ts`), so a reply not in shape is a failure. It
+  never throws.
 - Still to add, in the stage that first needs each: `resumeId` with a
   distinct "session not found" failure for the "start fresh" fallback
-  (task 0.4), and `oneShot` for the grader (stage 2); the course folder as
-  working directory, built-in tools and their confinement (stage 3, when
-  the tutor first writes and runs files).
+  (task 0.4, built in 2.14); the course folder as working directory,
+  built-in tools and their confinement (stage 3, when the tutor first
+  writes and runs files).
 
 A scripted fake implementation (`src/server/backends/fake.ts`) backs the
 automated tests. It runs the real teaching tools, so a test sees what the
-tool returned and whether it ended the turn.
+tool returned and whether it ended the turn, and gives one-shot requests
+scripted replies, checked as the real backend checks its own.
 
 ### Claude (first)
 
@@ -371,7 +407,17 @@ Observed in stage 0 (details in `decisions.md`):
 
 - The SDK uses the existing `claude` plan login when no API key is set. A set
   `ANTHROPIC_API_KEY` takes precedence over the plan login, so the backend
-  leaves it out of the environment it gives the SDK (task 0.2).
+  leaves it out of the environment it gives the SDK (task 0.2). So do
+  `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`, which sent requests to
+  another server with another token in task 2.8, so the backend drops
+  every `ANTHROPIC_` variable, and every `CLAUDE` one, which includes the
+  cloud-provider switches (`CLAUDE_CODE_USE_BEDROCK` and the like).
+- A one-shot request is a `query()` with a string prompt and the SDK's
+  structured output (`outputFormat` with a JSON Schema from
+  `z.toJSONSchema(schema, { target: "draft-7" })`); the reply is the
+  result's `structured_output`. It works with `tools: []` and the
+  isolation options below: a grading on Haiku 5.5 took 3.3 seconds (task
+  2.8).
 - Keeping the learner's personal Claude Code settings, instructions, memory,
   skills and connectors out of the tutor takes `settingSources: []`,
   `skills: []`, `strictMcpConfig: true` and
@@ -437,13 +483,14 @@ Observed in the stage 0 spike (task 0.6; details in `decisions.md`):
 ### Open after stage 0
 
 Each item names the stage that settles it; details are in `decisions.md`.
+Settled since: the other variables that may redirect the SDK (task 2.8,
+above).
 
 | Open question | Settled in |
 | --- | --- |
 | Which course folders the tutor may write, how the record files are closed to it (an `Edit` deny rule and a sandbox `denyWrite` entry both work), and whether `CLAUDE_CODE_TMPDIR` on the real course path is short enough for the sandbox (task 0.4) | Stage 3, when the tutor first writes and runs files |
 | Reads are not confined: sandboxed commands can read most of the machine (task 0.4) | Stage 4, before the tutor gets web access |
 | Resume: rebuilding the system prompt on every request (`snapshot: false`) is untried, and the 30-day session cleanup is documented but not observed (task 0.4) | Stage 2, task 2.14, which builds resume |
-| Other variables that may redirect the SDK (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, the cloud-provider switches) were not tried; the backend drops `CLAUDE_CONFIG_DIR` with the other `CLAUDE` variables (tasks 0.2, 0.5) | Stage 2, task 2.8, which next changes the backend |
 | A reply after a mid-sentence stop was slow once (10 to 30 seconds), cause unknown (task 0.5) | Stage 2, if it recurs in the real runs of tasks 2.14 and 2.16 |
 | Codex: streaming through the app server, the thread id arriving with the first turn, and keeping the learner's own Codex setup out (task 0.6) | Stage 6, with the Codex backend |
 
@@ -499,7 +546,8 @@ as built in task 2.6, `tutor.md`, then the course's units with their goals,
 the unit taught and its plan, then `style.md` or a line saying to use the
 default style in `tutor.md`. The learner's profile, the last handoff note
 and open misconceptions join it in stage 5.
-`examiner.md` drives assessments, `grader.md` rubric grading, `planner.md`
+`examiner.md` drives assessments, `grader.md` rubric grading (a short
+first version from task 2.8, revised in 2.9), `planner.md`
 the intake's curriculum proposal, `unit-planner.md` the planning session that
 plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
 sheets. Each is drafted in the stage that first needs it and revised against
@@ -533,7 +581,8 @@ returns the intake still running for it, or a new one that starts from the
 stored draft. A unit chat is addressed by its course and unit, under
 `/api/courses/<id>/units/<unit>/` (task 2.6): `open` starts the unit or
 picks it up and must come first, then `events`, `messages`, `ready`,
-`answers`, `override`, `next-segment`, `go-over-again` and `finish` (the
+`answers`, `grade-again` (a written answer whose grading failed, task
+2.8), `override`, `next-segment`, `go-over-again` and `finish` (the
 closing card's two steps), and `interrupt`. A unit not opened
 since the server started answers 404 on all but `open`. An event stream replays its chat's log with ids
 `<log id>.<index>`, so a page that reconnects gets only what it missed.

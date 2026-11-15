@@ -282,16 +282,17 @@ function ItemView(props: { item: Exclude<Item, Proposal> }) {
         </div>
       );
     case "question":
-      return (
+      // The intake posts no questions; the unit chats do, in the session
+      // view (task 2.11).
+      return item.question.kind === "choice" ? (
         <QuestionCard
           question={item.question}
           graded={item.graded}
-          // The intake posts no questions; stage 2's unit chats do.
           onAnswer={async (_: AnswerSubmission) =>
             "This conversation takes no answers."
           }
         />
-      );
+      ) : null;
     case "note":
       return <p className="ph-note">{item.text}</p>;
   }

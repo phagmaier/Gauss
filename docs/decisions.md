@@ -35,6 +35,7 @@ findings are the record.
 | Unit planning | The planning session, `plan_unit`, retries, what the session is given | Starting a unit (2.6), revising `unit-planner.md`, stage 4's sections for planning |
 | Unit chat and phases | Opening a unit, phase rules, refusals, "this check", restart, headers, page events | Touching `engine/unit-chat.ts` or `unit-turns.ts`, the check's rules (2.7), the session view (2.11), resume (2.14), `tutor.md` (2.16) |
 | Check rules and unit close | How many questions and the limit, help, the unit's end, going over again, moving on without them, finished units | Touching `engine/check-rules.ts` or the unit's end, the closing card (2.11), course progress (2.12), `tutor.md` (2.16) |
+| Rubric grading | `oneShot` and structured output, the variables that redirect the SDK, written questions, what the grader sees and returns, a failed grading, help once an answer is sent | Touching `backends/` or `engine/grading.ts`, `grader.md` (2.9), the written card (2.11), disputes (stage 3) |
 
 ## Page design (plan task 1.0)
 
@@ -1741,3 +1742,150 @@ choices are the agent's and can be overturned.
   the waiting card not shown after a restart; no statuses after an answer;
   and the unit's end not reached through an override. No real backend was
   run, as the task does not call for one.
+
+## Rubric grading (plan task 2.8)
+
+Built on 2026-11-15: `oneShot` in the adapter (`backends/backend.ts`,
+`claude.ts`, `fake.ts`), the grading dispatch for written answers in
+`engine/grading.ts`, the `written` kind of `ask_question`, the kept answer
+and the grading steps in `engine/unit-chat.ts`, the route `grade-again`,
+and a short first `prompts/grader.md`. The choices are the agent's and can
+be overturned.
+
+- **`oneShot` uses the SDK's structured output.** One `query()` with a
+  string prompt, the request's system prompt, no tools, no stored session
+  (`persistSession: false`), the isolation options of task 0.2, and
+  `outputFormat` with the reply's JSON Schema, made from the zod schema
+  (`z.toJSONSchema`, draft 7, which the SDK checks against). The reply is
+  the result's `structured_output`, then checked against the zod schema,
+  which can say more than JSON Schema (an incorrect verdict needs its
+  flaw); a reply the SDK passed and zod refuses is a failure. The SDK
+  retries a reply out of shape itself
+  (`error_max_structured_output_retries` when it gives up); Gauss does not
+  retry. A request can be stopped with an `AbortSignal`, passed to the SDK
+  as its `abortController`.
+- **Observed on Haiku 5.5**, with one grading through `createGrader` and
+  `oneShot` from a scratch script: structured output works with
+  `tools: []`, and the reply came in 3.3 seconds. The question was "prove
+  that the sum of two even integers is even", the answer checked two
+  examples, and the grade was incorrect with the flaw "The answer only
+  checks numerical examples (2 + 4 and 10 + 12) and then asserts the
+  general claim. It never writes the even integers as $2a$ and $2b$ ...".
+  The run had `ANTHROPIC_BASE_URL=http://127.0.0.1:9` and a bogus
+  `ANTHROPIC_AUTH_TOKEN` in its environment, which the backend dropped.
+- **Other variables that may redirect the SDK: dropped** (the open row of
+  `architecture.md` section 7). A probe with no model call pointed
+  `ANTHROPIC_BASE_URL` at a local server that recorded requests and
+  answered 500, with `ANTHROPIC_AUTH_TOKEN` set to a bogus token: the SDK
+  sent `HEAD /api/hello` and `POST /v1/messages?beta=true` there, with the
+  bogus token as its bearer, and init reported `apiKeySource: "none"`. So
+  either would take a session off the plan login. `sdkEnvironment` now
+  drops every `ANTHROPIC_` variable (the key, the base URL, the token, and
+  the rest, such as `ANTHROPIC_CUSTOM_HEADERS` and model overrides) and,
+  as before, every `CLAUDE` one. The cloud-provider switches all start with
+  `CLAUDE_CODE_USE_` (Bedrock, Claude Platform on AWS, Vertex, Foundry,
+  per the SDK's quickstart), so they are dropped too; the providers' own
+  credentials (`AWS_`, Google's, Azure's) do nothing without a switch and
+  stay, since other programs may need them. Proxy variables (`HTTPS_PROXY`)
+  stay: they route the same requests to the same API.
+- **One tool, two kinds.** `ask_question` takes `kind: "choice"` with
+  choices and an answer letter, or `kind: "written"` with a rubric
+  (`QuestionInput`). A tool's input is described by its fields, so the
+  input is one object, and which fields a kind takes is checked by the
+  schema, with a reason the tutor can act on. `kind` is required, so the
+  tutor always says which. The stored question (`Question`) is the
+  discriminated union task 2.2 prepared. A written answer
+  (`WrittenAnswer`) is its own reasoning, as mock 2 has it: text and
+  confidence, no reasoning field.
+- **What the grader is given.** Its system prompt is `grader.md`; its
+  message holds the question as the learner saw it, the rubric and the
+  answer, each between tags, so an answer that reads like instructions
+  stays part of the answer (`gradingRequest`). Not the objective's
+  statement, which the rubric covers; not the confidence, which must not
+  sway a grade; and nothing of the tutor's conversation, which the brief
+  forbids. The test of this compares the whole request with one written
+  out by hand.
+- **What the grader returns** (`WrittenGrade`): `correct` only if the
+  answer meets the rubric in full, otherwise `incorrect`, with no partial
+  credit, because task 2.3's passing rule reads verdicts; and when
+  incorrect, the first flawed step or missing element, required. A flaw
+  named on a correct answer is dropped rather than failing the grading.
+  The evidence entry keeps the flaw (`flaw`, only on a written answer
+  graded incorrect), and so do the `graded` event and the tutor's answer
+  turn, which says the grader saw only the question, the rubric and the
+  answer.
+- **A written answer is final once sent.** It is kept on the open question
+  in `state.json` (`answer`) before the grader is called, so a restart
+  cannot lose a long proof. While it is graded, a second answer, moving
+  on, grading again, and the tutor's `ask_question` and `close_segment` are
+  refused. The alternative, letting the learner change the answer after a
+  failed grading, would need help to be judged again; keeping the answer
+  as sent avoids that.
+- **Help ends when the answer is sent.** A message the tutor receives
+  while the answer is graded does not mark it, because the answer can no
+  longer change ("how long does this take?"). One received before it was
+  sent does, as for a choice.
+- **The grader runs outside the chat's queue.** A grading takes seconds
+  and could take minutes; holding the queue would hold every message and
+  tool call behind it. The grade is recorded inside the queue, and only if
+  the question is still open. Its mark of a grading in progress is cleared
+  inside the queue too, at the end: the first version cleared it before
+  recording, and the tests caught `settled()` returning before the grade
+  was written.
+- **A failed grading** (a failed request, a reply out of shape, or more
+  than three minutes) is `grading_failed`, with the reason; the question
+  stays open with its answer, nothing is recorded, and nothing goes to the
+  tutor. `grade-again` grades the kept answer as it was sent. A unit
+  reopened with a kept answer grades it at once, as a teaching turn a
+  restart cut off is taught again; the reopening is the learner's act.
+  Closing the chat (server shutdown) stops a grading in progress. The time
+  limit is generous: Haiku took 3 seconds, and 2.9 may pick a slower model
+  with more thinking.
+- **"I don't know" on a written question** is recorded at once as unknown,
+  with no grader call. A choice sent to a written question, or a written
+  answer to a choice one, is refused with 400.
+- **Distinct questions.** For the passing rule (task 2.3), a written
+  question is the same problem as another if its prompt is the same,
+  spacing aside; a written and a choice question are never the same.
+- **Page events.** `question` carries `kind` (a written question shows its
+  prompt only: never its rubric). `grading` (with the answer, so a reload
+  shows it), `grading_failed`, and `graded`, which now carries the answer
+  as sent, `correctChoice` for a choice question and `flaw` for a written
+  one graded incorrect. The page ignores the grading events and shows no
+  written card yet: that is the session view's (2.11).
+- **The grader's model** is the tutor's backend and model for now
+  (`GAUSS_CLAUDE_MODEL`); task 2.9 chooses it, and may need a model on the
+  request.
+- **For later tasks.** 2.9: revise `grader.md` against the hand-graded
+  set; `createGrader(...).grade` runs one grading; the request's format is
+  `gradingRequest`. 2.11: the written card (text field with
+  `AnswerPreview`, "Grading" while `grading`, the reason and "Grade again"
+  after `grading_failed`, the answer with `Prose` and the flaw on the
+  graded card). 2.16: `tutor.md` now says when to ask a written question
+  and how to write a rubric for a grader that sees nothing else. Stage 3's
+  disputes: the flaw is in the evidence, beside the grade.
+- **Checks:** `mise run check` passed lint, type-checking, 372 TypeScript
+  tests and one Python test. New: 10 fake-backend tests of the unit chat
+  (a correct and an incorrect written answer recorded as evidence, a
+  grader reply out of shape shown as failed and then graded again, the
+  grader's request compared whole with one written by hand, help during
+  and before a grading, the steps refused while grading, "I don't know"
+  and answers of the wrong kind, and a kept answer graded after a
+  restart), 9 of the grading dispatch (the request, each kind of reply,
+  the time limit, a stop), 9 of the Claude backend's one-shot request
+  against a stand-in SDK (its options and environment, and each kind of
+  result), a route test of `grade-again`, and schema and status cases.
+  Each of 23 faults made at least one test fail: the rubric left out of
+  the request; the tutor's prompt given to the grader; the flaw not
+  recorded; help marked during a grading; the answer not kept before
+  grading; a kept answer not graded on reopening; moving on allowed while
+  grading; a failed grading recorded as incorrect; the grading mark
+  cleared before the grade is recorded; the Claude reply not checked
+  against the schema; the one-shot request without the isolation options;
+  the environment dropping only the API key; a stop not passed to the SDK;
+  the flaw rule removed from the grade; no time limit; all written prompts
+  counted as one problem; the rubric shown to the page; the tutor told
+  "correct" whatever the grade; the header silent during a grading; a
+  second answer replacing the kept one; and two schema rules removed. One
+  real run on Haiku 5.5, above; no browser check, as the written card is
+  2.11's.

@@ -45,6 +45,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.5 | Unit planning | `createUnitPlanner(...).plan(course, unit)` in `engine/unit-planning.ts` returns the stored plan or plans the unit in a session of its own (`prompts/unit-planner.md`, `tools/plan-unit.ts`); problems `not-found`, `not-approved`, `failed` with a message for the learner. Not wired yet: 2.6 reads the prompt in `main.ts` and calls it when a unit starts. The session is not given the learner's background, which the record does not keep. |
 | 2.6 | Unit chat and phases | `engine/unit-chat.ts` (phases, refusals, routes under `/api/courses/<id>/units/<unit>/`), headers and system prompt in `engine/unit-turns.ts`, `close_segment`; no `start_segment` (the learner starts segments). The check's answers are the evidence after `checkFrom` in the position. For 2.7: help is written `false`, the last segment stays closed in `state.json`, and opening a unit with no position starts it at segment 1. A reopened unit gets a new session (2.14 resumes); a turn's header is composed when it is sent. |
 | 2.7 | Check rules and unit close | `engine/check-rules.ts`: an objective is done in a check once passed or after 3 questions, at least one per check. Help is marked on the open question when the tutor receives a message. The unit ends with its last segment: `unit_end` (the closing card), then `unit_closed` when all passed; otherwise `go-over-again` (a segment after the plan's, in the position's `again`) or `finish` (override of the rest). Events carry statuses (`unit_status`, `graded.assisted`). A finished unit opens finished, never restarted. |
+| 2.8 | Rubric grading | `oneShot` in the adapter (SDK structured output, checked against a zod schema); `ask_question` takes `kind: "written"` with a rubric; `createGrader` in `engine/grading.ts` grades from the question, rubric and answer only, and returns `WrittenGrade` (verdict, and the flaw when incorrect). A written answer is final once sent, kept in `state.json` until graded, and graded outside the chat's queue; a failure is `grading_failed`, and `grade-again` retries. Page events `grading`, `grading_failed`, and `graded` with the answer and `flaw`; no written card yet (2.11). The grader uses the tutor's model until 2.9 picks one. The backend drops every `ANTHROPIC_` and `CLAUDE` variable. |
 
 ## Stage 2: session engine
 
@@ -58,26 +59,6 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
-
-### 2.8 Rubric grading
-
-- Status: todo
-- Depends on: 2.6
-- Do: `oneShot` in the adapter (`architecture.md` section 7) for the
-  Claude and fake backends: one request with its own system prompt, no
-  tools and no stored session, whose output is checked against a zod
-  schema. A written answer kind for `ask_question`, carrying a rubric that
-  never reaches the page. Grading dispatch (section 6) gives the grader the
-  question, the rubric and the answer, never the tutor's conversation, and
-  records the verdict and the first flawed step or missing element in the
-  evidence and on the graded card. A failed grading call is shown, and the
-  answer can be graded again. A short first `prompts/grader.md` will do
-  until 2.9. Settle section 7's open row on other variables that may
-  redirect the SDK: drop them from its environment, or try them.
-- Done when: fake-backend tests cover a correct and an incorrect written
-  answer recorded as evidence, a grader reply that fails the schema, and a
-  grader request that holds nothing of the tutor's conversation; one run on
-  Haiku 5.5 grades an answer through `oneShot`.
 
 ### 2.9 Grader prompt
 
@@ -121,9 +102,12 @@ gate or notes.
 - Done when: a browser check with the fake backend covers starting a unit,
   a whole segment with a multiple-choice and a written answer, an
   override, the outline, the unit's end, and a reload mid-check.
-- Note from 2.4: mount `AnswerPreview` (`src/web/prose.tsx`) under the
-  written answer field, unless 2.8 already has, and show a written answer
-  on its graded card with `Prose`.
+- Note from 2.4 and 2.8: the written card is this task's. Mount
+  `AnswerPreview` (`src/web/prose.tsx`) under its text field; show
+  "Grading" on `grading`, the reason and "Grade again"
+  (`POST .../grade-again`) on `grading_failed`, and on the graded card the
+  answer with `Prose` and the `flaw`. `QuestionCard` takes choice
+  questions only so far, and the timeline ignores the grading events.
 
 ### 2.12 Course and library progress
 

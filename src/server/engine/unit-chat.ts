@@ -8,7 +8,9 @@
 // - in the check, the tutor posts questions with ask_question, each on an
 //   objective of the segment that still needs one (check-rules.ts); each
 //   answer is graded, recorded with whether the learner had help, and sent
-//   to the tutor;
+//   to the tutor. A choice is graded at once; a written answer is kept in
+//   state.json and graded by the grader (grading.ts), outside the chat's
+//   queue, and if the grading fails it can be graded again;
 // - check to closed: the tutor's close_segment, refused until every
 //   objective of the segment is done in this check, or the learner's
 //   override, recorded as evidence;
@@ -35,7 +37,12 @@ import type { Plan } from "../../shared/plan.ts";
 import {
   type AnswerSubmission,
   CHOICE_LETTERS,
-  type ChoiceQuestionInput,
+  postedQuestion,
+  type QuestionInput,
+  type QuestionView,
+  type Verdict,
+  type WrittenAnswer,
+  type WrittenQuestion,
 } from "../../shared/question.ts";
 import type { OpenQuestion, Phase, UnitPosition } from "../../shared/state.ts";
 import type { TutorBackend } from "../backends/backend.ts";
@@ -56,7 +63,7 @@ import {
   createConversation,
   createEventLog,
 } from "./conversation.ts";
-import { gradeChoice } from "./grading.ts";
+import { type Grader, gradeChoice } from "./grading.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
   answerTurn,
@@ -82,8 +89,13 @@ export interface UnitChat {
   say(text: string): ChatResult;
   /** The learner is ready for the check. */
   ready(): Promise<ChatResult>;
-  /** The learner's answer to the open question. */
+  /**
+   * The learner's answer to the open question. A written one is graded
+   * after this returns; the page hears the grade, or that grading failed.
+   */
   answer(submission: AnswerSubmission): Promise<ChatResult>;
+  /** Grades again the written answer whose grading failed. */
+  gradeAgain(): Promise<ChatResult>;
   /** The learner moves on without the check, which is recorded. */
   override(): Promise<ChatResult>;
   /** The learner starts the next segment, once this one is closed. */
@@ -131,6 +143,8 @@ interface ChatOptions {
   systemPrompt: string;
   dataRoot: DataRoot;
   planner: UnitPlanner;
+  /** Grades written answers. */
+  grader: Grader;
   /** The clock for the dates in the evidence and the open question. */
   now?: () => Date;
 }
@@ -199,6 +213,8 @@ interface Running {
   /** Said once, in the next turn's header. */
   notes: string[];
   tutor: Conversation;
+  /** The grading of the open question's written answer, while it runs. */
+  grading?: { stop: AbortController; done: Promise<void> };
 }
 
 function createUnitChat(
@@ -280,8 +296,14 @@ function createUnitChat(
         return;
       }
       log.emit(phaseEvent(position));
-      if (position.openQuestion !== undefined) {
-        log.emit({ type: "question", question: view(position.openQuestion) });
+      const open = position.openQuestion;
+      if (open !== undefined) {
+        log.emit({ type: "question", question: view(open) });
+        // A written answer that a restart kept from its grade is graded now,
+        // as a teaching turn a restart cut off is taught again.
+        if (open.answer !== undefined && open.question.kind === "written") {
+          startGrading(r, open, open.question, open.answer);
+        }
       }
       if (position.phase === "teach") {
         // A teaching turn that a restart cut off is sent again.
@@ -408,10 +430,90 @@ function createUnitChat(
     return segmentOf(r.context.plan, r.position).objectives;
   }
 
+  /**
+   * Records a graded answer, closes its question, and sends the grade to the
+   * tutor. Runs inside `exclusive`.
+   */
+  async function recordAnswer(
+    r: Running,
+    open: OpenQuestion,
+    submission: AnswerSubmission,
+    grade: { verdict: Verdict; flaw?: string },
+  ): Promise<void> {
+    const flaw = grade.verdict === "incorrect" ? grade.flaw : undefined;
+    const entry: AnswerEvidence = {
+      kind: "answer",
+      recordedAt: now().toISOString(),
+      objective: open.objective,
+      question: open.question,
+      answer: submission,
+      assisted: open.assisted === true,
+      verdict: grade.verdict,
+      ...(flaw === undefined ? {} : { flaw }),
+    };
+    // The evidence first: a crash before the position is written leaves the
+    // question open with its answer kept, never an answer lost.
+    await record(r, entry);
+    r.checkAnswers.push(entry);
+    const { openQuestion: _, ...rest } = r.position;
+    await move(r, rest);
+    log.emit({
+      type: "graded",
+      questionId: open.id,
+      verdict: entry.verdict,
+      answer: submission,
+      ...(open.question.kind === "choice"
+        ? { correctChoice: open.question.answer }
+        : {}),
+      ...(flaw === undefined ? {} : { flaw }),
+      assisted: entry.assisted,
+    });
+    log.emit(statusEvent(r));
+    r.tutor.send({ text: () => answerTurn(where(r), entry, open.number) });
+  }
+
+  /**
+   * Grades the open question's kept written answer. The grader runs outside
+   * `exclusive`, so the chat goes on while it works; its grade is recorded
+   * inside, if the question is still open.
+   */
+  function startGrading(
+    r: Running,
+    open: OpenQuestion,
+    question: WrittenQuestion,
+    answer: WrittenAnswer,
+  ): void {
+    const stop = new AbortController();
+    log.emit({ type: "grading", questionId: open.id, answer });
+    const done = (async () => {
+      const outcome = await options.grader.grade(
+        question,
+        answer.text,
+        stop.signal,
+      );
+      await exclusive(async () => {
+        const failed = (error: string) =>
+          log.emit({ type: "grading_failed", questionId: open.id, error });
+        try {
+          const current = r.position.openQuestion;
+          if (current?.id !== open.id || r.finished !== undefined) return;
+          if (!outcome.ok) return failed(outcome.error);
+          await recordAnswer(r, current, answer, outcome);
+        } catch (error) {
+          failed(error instanceof Error ? error.message : String(error));
+        } finally {
+          // Inside the queue, so an action queued after this sees it done.
+          if (r.grading?.stop === stop) delete r.grading;
+        }
+      });
+    })();
+    r.grading = { stop, done };
+  }
+
   // --- The teaching tools ----------------------------------------------------
 
   const questionBoard = {
-    post: (question: ChoiceQuestionInput) =>
+    post: (question: QuestionInput) =>
       exclusive(
         async (): Promise<
           { id: string; number: number } | { refused: string }
@@ -424,8 +526,12 @@ function createUnitChat(
             return { refused: outOfPhase(position.phase, "ask_question") };
           }
           if (position.openQuestion !== undefined) {
+            const { number, answer } = position.openQuestion;
             return {
-              refused: `Question ${position.openQuestion.number} is still open. End your turn and wait for the learner's answer.`,
+              refused:
+                answer === undefined
+                  ? `Question ${number} is still open. End your turn and wait for the learner's answer.`
+                  : `Question ${number} is answered and its answer is being graded. End your turn; the grade arrives in a message of its own.`,
             };
           }
           const objectives = segmentObjectives(r);
@@ -453,12 +559,7 @@ function createUnitChat(
             number: r.checkAnswers.length + 1,
             objective: question.objective,
             postedAt: now().toISOString(),
-            question: {
-              kind: "choice",
-              prompt: question.prompt,
-              choices: question.choices,
-              answer: question.answer,
-            },
+            question: postedQuestion(question),
           };
           await move(r, { ...position, openQuestion: open });
           log.emit({ type: "question", question: view(open) });
@@ -564,11 +665,16 @@ function createUnitChat(
       r.tutor.send({
         // Help is what the tutor received while a question was open
         // (docs/decisions.md, "Objective status"), so it is noted when the
-        // message is sent to the tutor, not when the learner wrote it.
+        // message is sent to the tutor, not when the learner wrote it. Once
+        // a written answer is sent, it is final, and help no longer applies.
         text: () =>
           exclusive(async () => {
             const open = r.position.openQuestion;
-            if (open !== undefined && open.assisted === undefined) {
+            if (
+              open !== undefined &&
+              open.answer === undefined &&
+              open.assisted === undefined
+            ) {
               await move(r, {
                 ...r.position,
                 openQuestion: { ...open, assisted: true },
@@ -603,10 +709,41 @@ function createUnitChat(
               `That question is not open; question ${open.number} is.`,
             );
           }
+          if (open.answer !== undefined) {
+            return refused(
+              r.grading === undefined
+                ? "Your answer to this question is kept and waits to be graded again."
+                : "Your answer to this question is being graded.",
+            );
+          }
+          const { question } = open;
+          if (
+            submission.kind !== "unknown" &&
+            submission.kind !== question.kind
+          ) {
+            return {
+              ok: false,
+              status: 400,
+              error:
+                question.kind === "choice"
+                  ? `Question ${open.number} is answered with one of its choices.`
+                  : `Question ${open.number} is answered in writing.`,
+            };
+          }
+          if (submission.kind === "written" && question.kind === "written") {
+            // Kept before it is graded, so a restart does not lose it.
+            const kept: OpenQuestion = { ...open, answer: submission };
+            await move(r, { ...r.position, openQuestion: kept });
+            startGrading(r, kept, question, submission);
+            return { ok: true };
+          }
+          if (question.kind === "written") {
+            await recordAnswer(r, open, submission, { verdict: "unknown" });
+            return { ok: true };
+          }
           if (
             submission.kind === "choice" &&
-            CHOICE_LETTERS.indexOf(submission.choice) >=
-              open.question.choices.length
+            CHOICE_LETTERS.indexOf(submission.choice) >= question.choices.length
           ) {
             return {
               ok: false,
@@ -614,36 +751,25 @@ function createUnitChat(
               error: `Question ${open.number} has no choice ${submission.choice}.`,
             };
           }
-          const entry: AnswerEvidence = {
-            kind: "answer",
-            recordedAt: now().toISOString(),
-            objective: open.objective,
-            question: open.question,
-            answer: submission,
-            assisted: open.assisted === true,
-            verdict: gradeChoice(open.question.answer, submission),
-          };
-          // The evidence first: a crash before the position is written
-          // leaves the question open with its answer kept, never an answer
-          // lost.
-          await record(r, entry);
-          r.checkAnswers.push(entry);
-          const { openQuestion: _, ...rest } = r.position;
-          await move(r, rest);
-          log.emit({
-            type: "graded",
-            questionId: open.id,
-            verdict: entry.verdict,
-            choice: submission.kind === "choice" ? submission.choice : null,
-            confidence:
-              submission.kind === "choice" ? submission.confidence : null,
-            correctChoice: open.question.answer,
-            assisted: entry.assisted,
+          await recordAnswer(r, open, submission, {
+            verdict: gradeChoice(question.answer, submission),
           });
-          log.emit(statusEvent(r));
-          r.tutor.send({
-            text: () => answerTurn(where(r), entry, open.number),
-          });
+          return { ok: true };
+        },
+        { whileWriting: true },
+      ),
+
+    gradeAgain: () =>
+      act(
+        async (r) => {
+          const open = r.position.openQuestion;
+          if (open?.answer === undefined || open.question.kind !== "written") {
+            return refused("No answer is waiting to be graded again.");
+          }
+          if (r.grading !== undefined) {
+            return refused("The answer is being graded.");
+          }
+          startGrading(r, open, open.question, open.answer);
           return { ok: true };
         },
         { whileWriting: true },
@@ -654,6 +780,11 @@ function createUnitChat(
         const { phase, segment } = r.position;
         if (phase !== "discuss" && phase !== "check") {
           return refused(NOT_NOW.override[phase]);
+        }
+        if (r.grading !== undefined) {
+          return refused(
+            "An answer is being graded. Wait for its grade, then move on.",
+          );
         }
         const objectives = [...segmentObjectives(r)];
         await record(r, {
@@ -725,9 +856,20 @@ function createUnitChat(
     },
     async settled() {
       await loading;
-      await running?.tutor.settled();
+      // A grade sends the tutor a turn, and a turn can be followed by
+      // nothing else that grades, so this ends.
+      while (true) {
+        const grading = running?.grading;
+        if (grading !== undefined) {
+          await grading.done;
+          continue;
+        }
+        await running?.tutor.settled();
+        if (running?.grading === undefined) return;
+      }
     },
     async close() {
+      running?.grading?.stop.abort();
       await running?.tutor.close();
     },
   };
@@ -794,13 +936,17 @@ function phaseEvent(position: UnitPosition): PageEvent {
   };
 }
 
-function view(open: OpenQuestion) {
-  return {
-    id: open.id,
-    number: open.number,
-    prompt: open.question.prompt,
-    choices: open.question.choices,
-  };
+function view(open: OpenQuestion): QuestionView {
+  const { id, number, question } = open;
+  return question.kind === "choice"
+    ? {
+        kind: "choice",
+        id,
+        number,
+        prompt: question.prompt,
+        choices: question.choices,
+      }
+    : { kind: "written", id, number, prompt: question.prompt };
 }
 
 function refused(error: string): ChatResult {

@@ -564,3 +564,27 @@ tested"). Stage 1 is finished.
   `docs/decisions.md` under "Check rules and unit close";
   `architecture.md` sections 3, 4 and 10 describe the rules, the extra
   segment and the routes.
+
+### 2.8 Rubric grading
+
+- Status: done
+- Depends on: 2.6
+- Do: `oneShot` in the adapter (`architecture.md` section 7) for the
+  Claude and fake backends: one request with its own system prompt, no
+  tools and no stored session, whose output is checked against a zod
+  schema. A written answer kind for `ask_question`, carrying a rubric that
+  never reaches the page. Grading dispatch (section 6) gives the grader the
+  question, the rubric and the answer, never the tutor's conversation, and
+  records the verdict and the first flawed step or missing element in the
+  evidence and on the graded card. A failed grading call is shown, and the
+  answer can be graded again. A short first `prompts/grader.md` will do
+  until 2.9. Settle section 7's open row on other variables that may
+  redirect the SDK: drop them from its environment, or try them.
+- Done when: fake-backend tests cover a correct and an incorrect written
+  answer recorded as evidence, a grader reply that fails the schema, and a
+  grader request that holds nothing of the tutor's conversation; one run on
+  Haiku 5.5 grades an answer through `oneShot`.
+- Note: done on 2026-11-15. The choices, the Haiku run and the checks are
+  in `docs/decisions.md` under "Rubric grading"; `architecture.md`
+  sections 3 to 7, 9 and 10 describe `oneShot`, the written kind, the
+  grading rules, the environment and the route.

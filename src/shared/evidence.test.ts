@@ -37,6 +37,26 @@ const UNKNOWN = {
   answer: { kind: "unknown", questionId: "q6" },
   verdict: "unknown",
 };
+// A written answer graded incorrect by the grader, with the flaw it named.
+const WRITTEN_MISS = {
+  kind: "answer",
+  recordedAt: "2026-11-15T10:16:00.000Z",
+  objective: "tangent-line",
+  question: {
+    kind: "written",
+    prompt: "Find the tangent to $y = x^2$ at $x = 3$, and explain each step.",
+    rubric: "Slope $6$ from $y' = 2x$; the line $y - 9 = 6(x - 3)$.",
+  },
+  answer: {
+    kind: "written",
+    questionId: "q7",
+    text: "The slope is $2x = 6$, so the tangent is $y = 6x$.",
+    confidence: "75",
+  },
+  assisted: false,
+  verdict: "incorrect",
+  flaw: "The line $y = 6x$ does not pass through $(3, 9)$.",
+};
 const OVERRIDE = {
   kind: "override",
   recordedAt: "2026-11-15T10:20:00.000Z",
@@ -47,6 +67,14 @@ test.each([
   { name: "a correct answer", entry: CORRECT },
   { name: "an assisted, confident miss", entry: ASSISTED_MISS },
   { name: `an "I don't know"`, entry: UNKNOWN },
+  {
+    name: "a written answer graded incorrect, with its flaw",
+    entry: WRITTEN_MISS,
+  },
+  {
+    name: "a written answer graded correct",
+    entry: { ...WRITTEN_MISS, verdict: "correct", flaw: undefined },
+  },
   { name: "an override", entry: OVERRIDE },
 ])("$name parses unchanged", ({ entry }) => {
   expect(EvidenceEntry.parse(entry)).toEqual(entry);
@@ -72,6 +100,34 @@ describe("rejects", () => {
         message: expect.stringMatching(/"I don't know"/),
       }),
     ]);
+  });
+
+  test.each([
+    {
+      name: "a written answer graded incorrect without its flaw",
+      input: { ...WRITTEN_MISS, flaw: undefined },
+      path: ["flaw"],
+    },
+    {
+      name: "a written answer graded correct with a flaw",
+      input: { ...WRITTEN_MISS, verdict: "correct" },
+      path: ["flaw"],
+    },
+    {
+      name: "a choice answer with a flaw",
+      input: { ...ASSISTED_MISS, flaw: "Step 1." },
+      path: ["flaw"],
+    },
+    {
+      name: "a choice answer to a written question",
+      input: { ...WRITTEN_MISS, answer: ASSISTED_MISS.answer, flaw: undefined },
+      path: ["answer", "kind"],
+    },
+  ])("$name", ({ input, path }) => {
+    const result = EvidenceEntry.safeParse(input);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.path)).toContainEqual(path);
   });
 
   test("an override that names no objective", () => {

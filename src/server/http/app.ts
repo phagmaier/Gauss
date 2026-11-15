@@ -176,6 +176,12 @@ export function createApp(options: {
     }),
   );
 
+  // A written answer whose grading failed, graded again as it was sent.
+  app.post(
+    `${unitPath}/grade-again`,
+    withUnit(async (c, chat) => reply(c, await chat.gradeAgain(), 202)),
+  );
+
   // Moving on sends the tutor nothing until the learner's next step.
   app.post(
     `${unitPath}/override`,

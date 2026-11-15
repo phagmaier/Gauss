@@ -121,14 +121,19 @@ export function answerTurn(
   const lines = [
     `Question ${number}, on "${entry.objective}":`,
     question.prompt,
-    ...question.choices.map((c, i) => `${CHOICE_LETTERS[i]}. ${c}`),
-    "",
   ];
+  if (question.kind === "choice") {
+    lines.push(...question.choices.map((c, i) => `${CHOICE_LETTERS[i]}. ${c}`));
+  }
+  lines.push("");
   if (answer.kind === "unknown") {
     lines.push(
-      `The learner answered "I don't know", which counts as a miss. The correct choice is ${question.answer}.`,
+      `The learner answered "I don't know", which counts as a miss.` +
+        (question.kind === "choice"
+          ? ` The correct choice is ${question.answer}.`
+          : ""),
     );
-  } else {
+  } else if (answer.kind === "choice" && question.kind === "choice") {
     lines.push(
       `The learner chose ${answer.choice}, at ${confidenceLabel(answer.confidence)} confidence.`,
       answer.reasoning === undefined || answer.reasoning.trim() === ""
@@ -137,6 +142,17 @@ export function answerTurn(
       entry.verdict === "correct"
         ? "Graded: correct."
         : `Graded: incorrect. The correct choice is ${question.answer}.`,
+    );
+  } else if (answer.kind === "written") {
+    lines.push(
+      `The learner wrote, at ${confidenceLabel(answer.confidence)} confidence:`,
+      "",
+      answer.text,
+      "",
+      entry.verdict === "correct"
+        ? "The grader, which saw only the question, your rubric and this answer, graded it correct."
+        : "The grader, which saw only the question, your rubric and this answer, graded it incorrect. " +
+            `The first flaw it found: ${entry.flaw}`,
     );
   }
   if (entry.assisted) {
@@ -216,6 +232,18 @@ function allowed(where: Where): string {
     case "check": {
       const open = position.openQuestion;
       if (open !== undefined) {
+        if (open.answer !== undefined) {
+          const help =
+            open.assisted === true
+              ? " The learner wrote to you before answering, so the answer will be recorded as given with help."
+              : "";
+          return (
+            `Question ${open.number}, on "${open.objective}", is answered, ` +
+            `and the answer is being graded.${help} Allowed now: reply to ` +
+            "the learner. ask_question and close_segment are refused until " +
+            "the grade arrives, in a message of its own."
+          );
+        }
         const help =
           open.assisted === true
             ? " The learner has written to you while it is open, so their answer will be recorded as given with help."

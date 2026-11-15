@@ -88,6 +88,7 @@ test("turns go to the tutor one at a time, and stopping one lets the next start"
 test("a backend that fails to start is reported to the page as an error", async () => {
   const { log, tutor } = setUpWith({
     startSession: () => Promise.reject(new Error("Not logged in.")),
+    oneShot: () => Promise.reject(new Error("Not used here.")),
   });
 
   tutor.send("first");

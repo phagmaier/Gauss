@@ -1,7 +1,8 @@
 // The check question card, as settled in docs/prototype/02-check-question.html:
 // answered inside the card, with how sure and an optional reasoning, and
-// shrunk to a record once graded. Multiple choice only so far. The prompt and
-// the choices are the tutor's Markdown, math included.
+// shrunk to a record once graded. Multiple choice only so far: the card for
+// written answers comes with the session view (task 2.11). The prompt and the
+// choices are the tutor's Markdown, math included.
 
 import { useState } from "react";
 import {
@@ -15,6 +16,8 @@ import {
 import { InlineProse, Prose } from "./prose.tsx";
 import type { Graded } from "./timeline.ts";
 
+export type ChoiceView = Extract<QuestionView, { kind: "choice" }>;
+
 const CONFIDENCE: { value: Confidence; label: string }[] = [
   { value: "under-50", label: "Under 50%" },
   { value: "50", label: "50%" },
@@ -24,7 +27,7 @@ const CONFIDENCE: { value: Confidence; label: string }[] = [
 ];
 
 export function QuestionCard(props: {
-  question: QuestionView;
+  question: ChoiceView;
   graded: Graded | undefined;
   onAnswer(submission: AnswerSubmission): Promise<string | undefined>;
 }) {
@@ -36,7 +39,7 @@ export function QuestionCard(props: {
 }
 
 function OpenCard(props: {
-  question: QuestionView;
+  question: ChoiceView;
   onAnswer(submission: AnswerSubmission): Promise<string | undefined>;
 }) {
   const { question } = props;
@@ -141,8 +144,9 @@ function OpenCard(props: {
   );
 }
 
-function DoneCard(props: { question: QuestionView; graded: Graded }) {
+function DoneCard(props: { question: ChoiceView; graded: Graded }) {
   const { question, graded } = props;
+  const { answer } = graded;
   const choiceText = (letter: ChoiceLetter) => (
     <span>
       {letter}.{" "}
@@ -169,20 +173,17 @@ function DoneCard(props: { question: QuestionView; graded: Graded }) {
       </div>
       <div className="qa-line">
         <span className="k">Your answer</span>
-        {graded.choice === null ? (
-          <span>I don't know</span>
-        ) : (
+        {answer.kind === "choice" ? (
           <>
-            {choiceText(graded.choice)}
-            {graded.confidence === null ? null : (
-              <span className="c">
-                {confidenceLabel(graded.confidence)} sure
-              </span>
-            )}
+            {choiceText(answer.choice)}
+            <span className="c">{confidenceLabel(answer.confidence)} sure</span>
           </>
+        ) : (
+          <span>I don't know</span>
         )}
       </div>
-      {graded.verdict === "correct" ? null : (
+      {graded.verdict === "correct" ||
+      graded.correctChoice === undefined ? null : (
         <div className="qa-line">
           <span className="k">Correct answer</span>
           {choiceText(graded.correctChoice)}

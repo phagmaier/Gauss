@@ -5,14 +5,16 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
-import type { ChoiceQuestionInput, Confidence } from "../../shared/question.ts";
+import type { ChoiceLetter, Confidence } from "../../shared/question.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
 import {
   createFakeBackend,
+  type FakeReply,
   type FakeStep,
   type FakeTurn,
 } from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
+import { createGrader } from "./grading.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner, type UnitPlanner } from "./unit-planning.ts";
 import { JOINED_NOTE } from "./unit-turns.ts";
@@ -29,6 +31,7 @@ afterEach(async () => {
 const CREATED = "2026-11-14T09:00:00.000Z";
 const NOW = "2026-11-15T14:00:00.000Z";
 const TUTOR = "You are a test tutor.";
+const GRADER = "You are a test grader.";
 const COURSE = "derivatives-from-scratch";
 
 const CURRICULUM: CurriculumProposal = {
@@ -74,14 +77,33 @@ const PLAN: Plan = {
   ],
 };
 
-const Q_QUOTIENT: ChoiceQuestionInput = {
+/** A choice question as the tutor posts it. */
+interface ChoiceInput {
+  objective: string;
+  kind: "choice";
+  prompt: string;
+  choices: string[];
+  answer: ChoiceLetter;
+}
+
+/** A written question as the tutor posts it. */
+interface WrittenInput {
+  objective: string;
+  kind: "written";
+  prompt: string;
+  rubric: string;
+}
+
+const Q_QUOTIENT: ChoiceInput = {
   objective: "difference-quotient",
+  kind: "choice",
   prompt: "Which is the difference quotient of $f$ at $a$?",
   choices: ["$\\frac{f(a+h)-f(a)}{h}$", "$f(a+h)-f(a)$", "$\\frac{f(a)}{h}$"],
   answer: "A",
 };
-const Q_SECANT: ChoiceQuestionInput = {
+const Q_SECANT: ChoiceInput = {
   objective: "secant-slope",
+  kind: "choice",
   prompt: "The difference quotient of $f$ at $a$ is the slope of which line?",
   choices: [
     "The tangent at $a$",
@@ -90,8 +112,9 @@ const Q_SECANT: ChoiceQuestionInput = {
   ],
   answer: "B",
 };
-const Q_LIMIT: ChoiceQuestionInput = {
+const Q_LIMIT: ChoiceInput = {
   objective: "derivative-limit",
+  kind: "choice",
   prompt: "What is the derivative of $x^2$ at $3$?",
   choices: ["$3$", "$6$", "$9$"],
   answer: "B",
@@ -116,7 +139,7 @@ function status(
 }
 
 const TEACH: FakeTurn = [{ text: "A secant joins two points." }];
-const ask = (question: ChoiceQuestionInput): FakeStep[] => [
+const ask = (question: ChoiceInput | WrittenInput): FakeStep[] => [
   { text: "Here is a question." },
   { call: "ask_question", input: question },
   { text: "Written after posting, which the learner must not see." },
@@ -128,9 +151,9 @@ const CLOSE: FakeTurn = [
 ];
 
 /** The question as the record keeps it, with its objective beside it. */
-function stored(question: ChoiceQuestionInput) {
+function stored(question: ChoiceInput | WrittenInput) {
   const { objective: _, ...rest } = question;
-  return { kind: "choice" as const, ...rest };
+  return rest;
 }
 
 /**
@@ -145,16 +168,31 @@ async function makeCourse(planned = true, plan = PLAN): Promise<void> {
   if (planned) await root.storePlan(id, "derivative", plan);
 }
 
-function setUp(script: FakeTurn[], planner?: UnitPlanner) {
-  const backend = createFakeBackend(script);
+function setUp(
+  script: FakeTurn[],
+  given: {
+    planner?: UnitPlanner;
+    /** The grader's replies, in order. */
+    replies?: FakeReply[];
+    gradingLimitMs?: number;
+  } = {},
+) {
+  const backend = createFakeBackend(script, given.replies);
   const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const units = createUnitChats({
     backend,
     systemPrompt: TUTOR,
     dataRoot,
     planner:
-      planner ??
+      given.planner ??
       createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+    grader: createGrader({
+      backend,
+      systemPrompt: GRADER,
+      ...(given.gradingLimitMs === undefined
+        ? {}
+        : { timeLimitMs: given.gradingLimitMs }),
+    }),
     now: () => new Date(NOW),
   });
   return { backend, dataRoot, units };
@@ -388,6 +426,7 @@ test('"ready" starts the check, and the tutor\'s question is stored in state.jso
     {
       type: "question",
       question: {
+        kind: "choice",
         id,
         number: 1,
         prompt: Q_QUOTIENT.prompt,
@@ -442,8 +481,13 @@ test("an answer is graded, appended to the evidence, and sent to the tutor with 
     type: "graded",
     questionId: id,
     verdict: "incorrect",
-    choice: "B",
-    confidence: "75",
+    answer: {
+      kind: "choice",
+      questionId: id,
+      choice: "B",
+      confidence: "75",
+      reasoning: "The change in f.",
+    },
     correctChoice: "A",
     assisted: false,
   });
@@ -492,8 +536,7 @@ test('"I don\'t know" is recorded as unknown and the tutor is told it is a miss'
 
   expect(since(chat, "graded")[0]).toMatchObject({
     verdict: "unknown",
-    choice: null,
-    confidence: null,
+    answer: { kind: "unknown" },
     correctChoice: "A",
   });
   expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
@@ -930,7 +973,7 @@ test('"ready", moving on and the next segment wait until the tutor has finished'
 
 test("a new engine over the same data root reopens a unit mid-check from state.json", async () => {
   // A second question on the first objective, so the restart lands with it open.
-  const Q_QUOTIENT_AGAIN: ChoiceQuestionInput = {
+  const Q_QUOTIENT_AGAIN: ChoiceInput = {
     ...Q_QUOTIENT,
     prompt: "Which is the difference quotient of $g$ at $2$?",
     choices: ["$\\frac{g(2+h)-g(2)}{h}$", "$\\frac{g(h)-g(2)}{h}$"],
@@ -977,6 +1020,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
     {
       type: "question",
       question: {
+        kind: "choice",
         id,
         number: 2,
         prompt: Q_QUOTIENT_AGAIN.prompt,
@@ -1074,7 +1118,7 @@ test("a unit that cannot be planned says so in its thread, takes no action, and 
         : { ok: true, plan: PLAN };
     },
   };
-  const setup = setUp([TEACH], planner);
+  const setup = setUp([TEACH], { planner });
   await makeCourse(false);
 
   const chat = await open(setup);
@@ -1148,12 +1192,12 @@ const SHORT: Plan = {
   objectives: PLAN.objectives.slice(0, 2),
   segments: [PLAN.segments[0] as Plan["segments"][number]],
 };
-const Q_QUOTIENT_2: ChoiceQuestionInput = {
+const Q_QUOTIENT_2: ChoiceInput = {
   ...Q_QUOTIENT,
   prompt: "Which is the difference quotient of $g$ at $2$?",
   choices: ["$\\frac{g(2+h)-g(2)}{h}$", "$\\frac{g(h)-g(2)}{h}$"],
 };
-const Q_SECANT_2: ChoiceQuestionInput = {
+const Q_SECANT_2: ChoiceInput = {
   ...Q_SECANT,
   prompt: "Between which points does that secant run?",
   choices: ["$a$ and $0$", "$a$ and $a+h$", "$h$ and $a+h$"],
@@ -1557,4 +1601,421 @@ test("a closing card that was waiting before a restart is shown again, and going
   expect(await position()).toEqual({
     derivative: { segment: 1, phase: "discuss", again: ["secant-slope"] },
   });
+});
+
+// --- Task 2.8: written answers, graded against a rubric ----------------------
+
+const Q_PROOF: WrittenInput = {
+  objective: "difference-quotient",
+  kind: "written",
+  prompt:
+    "Show that the difference quotient of $f(x) = x^2$ at $a$ is $2a + h$.",
+  rubric:
+    "Writes $\\frac{(a+h)^2 - a^2}{h}$, expands the square to $2ah + h^2$, and divides by $h$, which is not $0$.",
+};
+const PROOF = "$\\frac{(a+h)^2-a^2}{h} = \\frac{2ah+h^2}{h} = 2a+h$.";
+const FLAW = "It divides by $h$ without saying that $h \\neq 0$.";
+const CORRECT: FakeReply = { output: { verdict: "correct" } };
+
+/** The written answer as the learner sends it. */
+function written(chat: UnitChat, confidence: Confidence = "100") {
+  return {
+    kind: "written" as const,
+    questionId: openQuestionId(chat),
+    text: PROOF,
+    confidence,
+  };
+}
+
+/** Sends the written answer, then waits until it is graded and the tutor has replied. */
+async function write(chat: UnitChat, confidence: Confidence = "100") {
+  expect(await chat.answer(written(chat, confidence))).toEqual({ ok: true });
+  await chat.settled();
+}
+
+test("a written answer is kept, graded by the grader, and recorded with its grade, which the tutor is sent; the page never sees the rubric", async () => {
+  const setup = setUp([TEACH, ask(Q_PROOF), [{ text: "Well argued." }]], {
+    replies: [CORRECT],
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  const id = openQuestionId(chat);
+
+  expect(since(chat, "question")[0]).toEqual({
+    type: "question",
+    question: { kind: "written", id, number: 1, prompt: Q_PROOF.prompt },
+  });
+
+  await write(chat);
+
+  const sent = {
+    kind: "written",
+    questionId: id,
+    text: PROOF,
+    confidence: "100",
+  };
+  expect(since(chat, "grading")).toEqual([
+    { type: "grading", questionId: id, answer: sent },
+    {
+      type: "graded",
+      questionId: id,
+      verdict: "correct",
+      answer: sent,
+      assisted: false,
+    },
+    status("in-progress", "passed"),
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Well argued." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    {
+      kind: "answer",
+      recordedAt: NOW,
+      objective: "difference-quotient",
+      question: stored(Q_PROOF),
+      answer: sent,
+      assisted: false,
+      verdict: "correct",
+    },
+  ]);
+  expect(await position()).toEqual({
+    derivative: { segment: 0, phase: "check", checkFrom: 0 },
+  });
+  expect(setup.backend.received[2]?.text).toBe(
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner answered question 1. In this check, "difference-quotient": passed; "secant-slope": not asked yet. Allowed now: post a question on "secant-slope" with ask_question, unlike the ones asked before. Posting ends your turn, so give any feedback first. close_segment is refused until each objective is done.]\n' +
+      'Question 1, on "difference-quotient":\n' +
+      `${Q_PROOF.prompt}\n` +
+      "\n" +
+      "The learner wrote, at 100% confidence:\n" +
+      "\n" +
+      `${PROOF}\n` +
+      "\n" +
+      "The grader, which saw only the question, your rubric and this answer, graded it correct.",
+  );
+});
+
+test("a written answer graded incorrect is recorded with the flaw the grader named, which the page and the tutor are given", async () => {
+  const setup = setUp([TEACH, ask(Q_PROOF), [{ text: "Nearly." }]], {
+    replies: [{ output: { verdict: "incorrect", flaw: FLAW } }],
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  await write(chat, "90");
+
+  expect(since(chat, "graded").slice(0, 2)).toEqual([
+    expect.objectContaining({
+      type: "graded",
+      verdict: "incorrect",
+      flaw: FLAW,
+      assisted: false,
+    }),
+    status("in-progress", "attempted"),
+  ]);
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    expect.objectContaining({ verdict: "incorrect", flaw: FLAW }),
+  ]);
+  expect(setup.backend.received[2]?.text).toContain(
+    "The learner wrote, at 90% confidence:\n\n" +
+      `${PROOF}\n\n` +
+      "The grader, which saw only the question, your rubric and this answer, graded it incorrect. " +
+      `The first flaw it found: ${FLAW}`,
+  );
+  expect(setup.backend.received[2]?.text).toContain(
+    '"difference-quotient": missed, so another question is needed (1 of at most 3 asked)',
+  );
+});
+
+test("a grader reply not in the grade's shape is shown as a failed grading; the answer stays kept, is not changed, and can be graded again", async () => {
+  const setup = setUp([TEACH, ask(Q_PROOF), [{ text: "Well argued." }]], {
+    replies: [{ output: { verdict: "incorrect" } }, CORRECT],
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  const id = openQuestionId(chat);
+
+  await write(chat);
+
+  expect(since(chat, "grading")).toEqual([
+    { type: "grading", questionId: id, answer: written(chat) },
+    {
+      type: "grading_failed",
+      questionId: id,
+      error: expect.stringMatching(
+        /^The reply was not in the shape asked for: .*An incorrect verdict must name the first flawed step or missing element/s,
+      ),
+    },
+  ]);
+  expect(await reload().readEvidence(COURSE)).toEqual([]);
+  expect((await position()).derivative?.openQuestion).toMatchObject({
+    id,
+    answer: written(chat),
+  });
+  // Nothing goes to the tutor without a grade.
+  expect(setup.backend.received).toHaveLength(2);
+  expect(await chat.answer({ ...written(chat), text: "Another try." })).toEqual(
+    {
+      ok: false,
+      status: 409,
+      error:
+        "Your answer to this question is kept and waits to be graded again.",
+    },
+  );
+
+  expect(await chat.gradeAgain()).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(since(chat, "grading").slice(0, 2)).toEqual([
+    { type: "grading", questionId: id, answer: written(chat) },
+    expect.objectContaining({ type: "graded", verdict: "correct" }),
+  ]);
+  expect(setup.backend.oneShots.map((r) => r.prompt)).toEqual([
+    setup.backend.oneShots[0]?.prompt,
+    setup.backend.oneShots[0]?.prompt,
+  ]);
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    expect.objectContaining({ answer: written(chat), verdict: "correct" }),
+  ]);
+  expect(await chat.gradeAgain()).toEqual({
+    ok: false,
+    status: 409,
+    error: "No answer is waiting to be graded again.",
+  });
+});
+
+test("the grader's request holds the question, the rubric and the answer with the grader's prompt, and nothing of the tutor's conversation", async () => {
+  const setup = setUp(
+    [
+      [{ text: "A secant joins two points of the graph." }],
+      [{ text: "Here h is the step between the two points." }],
+      ask(Q_PROOF),
+      [{ text: "Well argued." }],
+    ],
+    { replies: [CORRECT] },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  chat.say("What is h?");
+  await chat.settled();
+  await toCheck(chat);
+
+  await write(chat);
+
+  // Written out by hand: the grader's request is this and only this.
+  expect(setup.backend.oneShots).toEqual([
+    {
+      systemPrompt: GRADER,
+      prompt:
+        "Grade the learner's answer to this question against the rubric.\n" +
+        "\n" +
+        "<question>\n" +
+        "Show that the difference quotient of $f(x) = x^2$ at $a$ is $2a + h$.\n" +
+        "</question>\n" +
+        "\n" +
+        "<rubric>\n" +
+        "Writes $\\frac{(a+h)^2 - a^2}{h}$, expands the square to $2ah + h^2$, and divides by $h$, which is not $0$.\n" +
+        "</rubric>\n" +
+        "\n" +
+        "<answer>\n" +
+        "$\\frac{(a+h)^2-a^2}{h} = \\frac{2ah+h^2}{h} = 2a+h$.\n" +
+        "</answer>",
+      schema: expect.anything(),
+      signal: expect.any(AbortSignal),
+    },
+  ]);
+  // The tutor's session was the only session, and it heard the grade.
+  expect(setup.backend.sessions).toHaveLength(1);
+  expect(setup.backend.received.at(-1)?.text).toContain("graded it correct");
+});
+
+test("a message while a written answer is graded is not help; the tutor is told the answer is being graded, and its tools wait for the grade", async () => {
+  const grade = Promise.withResolvers<FakeReply>();
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_PROOF),
+      [
+        { call: "ask_question", input: Q_SECANT },
+        { text: "It is being graded." },
+      ],
+      [{ text: "Well argued." }],
+    ],
+    { replies: [{ later: grade.promise }] },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  const id = openQuestionId(chat);
+
+  expect(await chat.answer(written(chat))).toEqual({ ok: true });
+  const from = chat.events().length;
+  chat.say("How long does grading take?");
+  await waitFor(chat, "turn_end", from);
+
+  expect((await position()).derivative?.openQuestion).toEqual(
+    expect.objectContaining({ id, answer: written(chat) }),
+  );
+  expect((await position()).derivative?.openQuestion?.assisted).toBeUndefined();
+  expect(setup.backend.received[2]?.text).toMatch(
+    /^\[.*Question 1, on "difference-quotient", is answered, and the answer is being graded\. Allowed now: reply to the learner\. ask_question and close_segment are refused until the grade arrives, in a message of its own\.\]\nHow long does grading take\?$/,
+  );
+  expect(setup.backend.calls.at(-1)?.result).toEqual({
+    status: "refused",
+    text: "Question 1 is answered and its answer is being graded. End your turn; the grade arrives in a message of its own.",
+  });
+
+  grade.resolve(CORRECT);
+  await chat.settled();
+
+  expect(since(chat, "graded")[0]).toMatchObject({
+    verdict: "correct",
+    assisted: false,
+  });
+  expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    assisted: false,
+  });
+});
+
+test("a message the tutor received before a written answer was sent makes it given with help", async () => {
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_PROOF),
+      [{ text: "Think of the square." }],
+      [{ text: "Right." }],
+    ],
+    { replies: [CORRECT] },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  chat.say("Do I expand the square?");
+  await chat.settled();
+
+  await write(chat);
+
+  expect(since(chat, "graded").slice(0, 2)).toEqual([
+    expect.objectContaining({ verdict: "correct", assisted: true }),
+    status("in-progress", "attempted"),
+  ]);
+  expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    assisted: true,
+  });
+});
+
+test("while a written answer is graded, another answer, grading again and moving on are refused", async () => {
+  const grade = Promise.withResolvers<FakeReply>();
+  const setup = setUp([TEACH, ask(Q_PROOF), [{ text: "Well argued." }]], {
+    replies: [{ later: grade.promise }],
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  expect(await chat.answer(written(chat))).toEqual({ ok: true });
+
+  expect(await chat.answer(written(chat))).toEqual({
+    ok: false,
+    status: 409,
+    error: "Your answer to this question is being graded.",
+  });
+  expect(await chat.gradeAgain()).toEqual({
+    ok: false,
+    status: 409,
+    error: "The answer is being graded.",
+  });
+  expect(await chat.override()).toEqual({
+    ok: false,
+    status: 409,
+    error: "An answer is being graded. Wait for its grade, then move on.",
+  });
+
+  grade.resolve(CORRECT);
+  await chat.settled();
+  expect(await reload().readEvidence(COURSE)).toHaveLength(1);
+});
+
+test('a written question takes a written answer or "I don\'t know", which is recorded at once, without the grader', async () => {
+  const setup = setUp([TEACH, ask(Q_PROOF), [{ text: "Let us look." }]]);
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  const id = openQuestionId(chat);
+
+  expect(
+    await chat.answer({
+      kind: "choice",
+      questionId: id,
+      choice: "A",
+      confidence: "90",
+    }),
+  ).toEqual({
+    ok: false,
+    status: 400,
+    error: "Question 1 is answered in writing.",
+  });
+
+  await chat.answer({ kind: "unknown", questionId: id });
+  await chat.settled();
+
+  expect(setup.backend.oneShots).toEqual([]);
+  expect(since(chat, "graded")[0]).toEqual({
+    type: "graded",
+    questionId: id,
+    verdict: "unknown",
+    answer: { kind: "unknown", questionId: id },
+    assisted: false,
+  });
+  expect(setup.backend.received[2]?.text).toContain(
+    `${Q_PROOF.prompt}\n\nThe learner answered "I don't know", which counts as a miss.`,
+  );
+  expect(setup.backend.received[2]?.text).not.toContain("correct choice");
+});
+
+test("a choice question refuses a written answer", async () => {
+  const setup = setUp([TEACH, ask(Q_QUOTIENT)]);
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  expect(await chat.answer(written(chat))).toEqual({
+    ok: false,
+    status: 400,
+    error: "Question 1 is answered with one of its choices.",
+  });
+  expect(setup.backend.oneShots).toEqual([]);
+});
+
+test("a written answer kept before a restart is graded when the unit reopens", async () => {
+  const before = setUp([TEACH, ask(Q_PROOF)], { replies: [{ hold: true }] });
+  await makeCourse();
+  const first = await open(before);
+  await toCheck(first);
+  expect(await first.answer(written(first))).toEqual({ ok: true });
+  await waitFor(first, "grading");
+  const id = openQuestionId(first);
+  // The server stops while the grader is working.
+  await before.units.close();
+
+  const after = setUp([[{ text: "Well argued." }]], { replies: [CORRECT] });
+  const chat = await open(after);
+
+  expect(chat.events().slice(0, 6)).toEqual([
+    { type: "unit_plan", plan: PLAN },
+    status("in-progress"),
+    { type: "phase", segment: 0, phase: "check" },
+    {
+      type: "question",
+      question: { kind: "written", id, number: 1, prompt: Q_PROOF.prompt },
+    },
+    { type: "grading", questionId: id, answer: written(chat) },
+    expect.objectContaining({ type: "graded", verdict: "correct" }),
+  ]);
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    expect.objectContaining({ answer: written(chat), verdict: "correct" }),
+  ]);
+  expect(after.backend.received[0]?.text).toContain(JOINED_NOTE);
 });

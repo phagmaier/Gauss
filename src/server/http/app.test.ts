@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
+import {
+  createFakeBackend,
+  type FakeReply,
+  type FakeTurn,
+} from "../backends/fake.ts";
+import { createGrader } from "../engine/grading.ts";
 import { createIntakes } from "../engine/intake.ts";
 import { createUnitChats } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
@@ -41,8 +46,8 @@ const FIRST = {
 };
 const REVISED = { ...FIRST, units: FIRST.units.slice(0, 1) };
 
-function setUp(script: FakeTurn[]) {
-  const backend = createFakeBackend(script);
+function setUp(script: FakeTurn[], replies: FakeReply[] = []) {
+  const backend = createFakeBackend(script, replies);
   const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const intakes = createIntakes({
     backend,
@@ -54,6 +59,7 @@ function setUp(script: FakeTurn[]) {
     systemPrompt: "You are a test tutor.",
     dataRoot,
     planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+    grader: createGrader({ backend, systemPrompt: "Grade." }),
     now: () => new Date(NOW),
   });
   const app = createApp({ dataRoot, intakes, units });
@@ -518,6 +524,7 @@ const VECTORS_PLAN = {
 };
 const QUESTION = {
   objective: "basis-image",
+  kind: "choice",
   prompt: "Which vectors fix a linear map on $\\mathbb{R}^2$?",
   choices: ["The images of a basis", "The image of one vector"],
   answer: "A",
@@ -651,6 +658,65 @@ test("a segment runs through the unit routes: a message, ready, an answer, movin
   expect(setup.backend.received).toHaveLength(5);
 });
 
+test("a written answer is taken by its route, and one whose grading failed is graded again through its own", async () => {
+  const setup = setUp(
+    [
+      [{ text: "A map is fixed by a basis." }],
+      [
+        {
+          call: "ask_question",
+          input: {
+            objective: "basis-image",
+            kind: "written",
+            prompt: "Why do the images of a basis fix a linear map?",
+            rubric: "Every vector is a combination of the basis; linearity.",
+          },
+        },
+      ],
+      [{ text: "Right." }],
+    ],
+    [{ fail: "Usage limit reached." }, { output: { verdict: "correct" } }],
+  );
+  await approvedCourse();
+  await openUnit(setup);
+  const chat = setup.units.get(COURSE, "vectors");
+  expect((await post(setup.app, `${UNIT}/ready`)).status).toBe(202);
+  await settle(setup);
+  const posted = chat?.events().findLast((e) => e.type === "question");
+  const questionId = posted?.type === "question" ? posted.question.id : "";
+
+  expect((await post(setup.app, `${UNIT}/grade-again`)).status).toBe(409);
+  const sent = await post(setup.app, `${UNIT}/answers`, {
+    kind: "written",
+    questionId,
+    text: "  Every vector is a combination of the basis, and the map is linear.  ",
+    confidence: "90",
+  });
+  expect(sent.status).toBe(202);
+  await settle(setup);
+
+  expect(chat?.events().at(-1)).toEqual({
+    type: "grading_failed",
+    questionId,
+    error: "Usage limit reached.",
+  });
+  // The answer is kept trimmed, as the schema reads it.
+  expect((await unitState())?.openQuestion?.answer?.text).toBe(
+    "Every vector is a combination of the basis, and the map is linear.",
+  );
+
+  const again = await post(setup.app, `${UNIT}/grade-again`);
+  expect(again.status).toBe(202);
+  expect(await again.json()).toEqual({ ok: true });
+  await settle(setup);
+
+  expect(
+    (await openDataRoot({ path: dir }).readEvidence(COURSE)).map(
+      (e) => e.kind === "answer" && e.verdict,
+    ),
+  ).toEqual(["correct"]);
+});
+
 test("stopping the tutor through its route ends the teaching turn and opens the discussion", async () => {
   const setup = setUp([[{ text: "A long lecture" }, { hold: true }]]);
   await approvedCourse();
@@ -687,6 +753,7 @@ test("a unit that is not there, of a draft, or not open is refused on every unit
     post(setup.app, `${UNIT}/messages`, { text: "Hello." }),
     post(setup.app, `${UNIT}/ready`),
     post(setup.app, `${UNIT}/answers`, { kind: "unknown", questionId: "q" }),
+    post(setup.app, `${UNIT}/grade-again`),
     post(setup.app, `${UNIT}/override`),
     post(setup.app, `${UNIT}/next-segment`),
     post(setup.app, `${UNIT}/go-over-again`),
@@ -694,7 +761,7 @@ test("a unit that is not there, of a draft, or not open is refused on every unit
     post(setup.app, `${UNIT}/interrupt`),
   ]);
   expect(notOpen.map((r) => r.status)).toEqual([
-    404, 404, 404, 404, 404, 404, 404, 404, 404,
+    404, 404, 404, 404, 404, 404, 404, 404, 404, 404,
   ]);
   expect(await notOpen[0]?.json()).toEqual({
     error: "This unit is not open. Open it first.",

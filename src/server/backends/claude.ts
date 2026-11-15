@@ -3,25 +3,34 @@
 // session: each engine turn is pushed onto its input stream, and the turn's
 // messages are read until its `result`.
 //
+// A one-shot request (the grader, task 2.8) is a `query()` of its own, with
+// the SDK's structured output: the model's reply comes back as JSON in the
+// schema's shape.
+//
 // Not yet here (task 1.3): resume, the course folder as working directory,
-// built-in tools and their confinement, and one-shot calls.
+// and built-in tools and their confinement.
 
 import { randomUUID } from "node:crypto";
 import {
   createSdkMcpServer,
   type HookCallback,
+  type Options,
   query,
   type SDKMessage,
   type SDKResultMessage,
   type SDKUserMessage,
   tool,
 } from "@anthropic-ai/claude-agent-sdk";
-import type {
-  BackendEvent,
-  EngineTurn,
-  SessionOptions,
-  TutorBackend,
-  TutorSession,
+import { z } from "zod";
+import {
+  type BackendEvent,
+  checkReply,
+  type EngineTurn,
+  type OneShotRequest,
+  type OneShotResult,
+  type SessionOptions,
+  type TutorBackend,
+  type TutorSession,
 } from "./backend.ts";
 
 const SERVER = "gauss";
@@ -41,24 +50,126 @@ export function createClaudeBackend(
 ): TutorBackend {
   return {
     startSession: (options) => startSession(options, backendOptions),
+    oneShot: (request) => oneShot(request, backendOptions),
   };
 }
 
 /**
- * The environment the SDK runs in. `ANTHROPIC_API_KEY` would take precedence
- * over the plan login (task 0.2). Variables starting with `CLAUDE` are what a
- * Claude Code session passes to the programs it starts, so they are dropped
- * as well, as in every stage 0 run.
+ * The environment the SDK runs in, without what could take it off the plan
+ * login. `ANTHROPIC_API_KEY` takes precedence over the login (task 0.2), and
+ * the other `ANTHROPIC_` variables can send requests elsewhere or sign them
+ * another way (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and the rest;
+ * task 2.8). Variables starting with `CLAUDE` are what a Claude Code session
+ * passes to the programs it starts, and they include the cloud-provider
+ * switches (`CLAUDE_CODE_USE_BEDROCK` and the like); without a switch, the
+ * providers' own credentials are not used.
  */
 export function sdkEnvironment(
   base: NodeJS.ProcessEnv,
 ): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
   for (const [name, value] of Object.entries(base)) {
-    if (name === "ANTHROPIC_API_KEY" || name.startsWith("CLAUDE")) continue;
+    if (name.startsWith("ANTHROPIC_") || name.startsWith("CLAUDE")) continue;
     env[name] = value;
   }
   return env;
+}
+
+/**
+ * The options that keep the learner's own Claude Code setup out of a
+ * session (tasks 0.2 and 0.3), with no built-in tools, and never
+ * ToolSearch (task 0.3).
+ */
+function isolated(backendOptions: ClaudeBackendOptions): Options {
+  return {
+    ...(backendOptions.model === undefined
+      ? {}
+      : { model: backendOptions.model }),
+    settingSources: [],
+    skills: [],
+    settings: { autoMemoryEnabled: false, disableClaudeAiConnectors: true },
+    strictMcpConfig: true,
+    env: sdkEnvironment(process.env),
+    tools: [],
+  };
+}
+
+async function oneShot<T>(
+  request: OneShotRequest<T>,
+  backendOptions: ClaudeBackendOptions,
+): Promise<OneShotResult<T>> {
+  const abortController = new AbortController();
+  const stop = () => abortController.abort();
+  if (request.signal?.aborted === true) stop();
+  request.signal?.addEventListener("abort", stop, { once: true });
+  let result: SDKResultMessage | undefined;
+  try {
+    const messages = query({
+      prompt: request.prompt,
+      options: {
+        ...isolated(backendOptions),
+        systemPrompt: request.systemPrompt,
+        // The SDK checks the reply against JSON Schema draft 7.
+        outputFormat: {
+          type: "json_schema",
+          schema: z.toJSONSchema(request.schema, { target: "draft-7" }),
+        },
+        persistSession: false,
+        abortController,
+      },
+    });
+    for await (const message of messages) {
+      if (message.type === "system" && message.subtype === "init") {
+        console.info(`Claude one-shot request on ${message.model}`);
+      }
+      if (message.type === "result") result = message;
+    }
+  } catch (error) {
+    // A single request throws after it yields an error result; that result
+    // says more than the error, so it is read below if there is one.
+    if (result === undefined) {
+      return {
+        ok: false,
+        error: abortController.signal.aborted
+          ? "The request was stopped."
+          : error instanceof Error
+            ? error.message
+            : String(error),
+      };
+    }
+  } finally {
+    request.signal?.removeEventListener("abort", stop);
+  }
+  return readOneShot(request, result, abortController.signal.aborted);
+}
+
+/** What a one-shot request's result message comes to. */
+export function readOneShot<T>(
+  request: Pick<OneShotRequest<T>, "schema">,
+  result: SDKResultMessage | undefined,
+  stopped: boolean,
+): OneShotResult<T> {
+  if (stopped) return { ok: false, error: "The request was stopped." };
+  if (result === undefined) {
+    return { ok: false, error: "The request ended without a result." };
+  }
+  if (result.subtype === "error_max_structured_output_retries") {
+    return {
+      ok: false,
+      error: "The model's reply was not in the shape asked for, after retries.",
+    };
+  }
+  if (result.subtype !== "success" || result.is_error) {
+    const error =
+      result.subtype === "success"
+        ? result.result
+        : result.errors.join("; ") || result.subtype;
+    return { ok: false, error };
+  }
+  if (result.structured_output === undefined) {
+    return { ok: false, error: "The reply had no structured output." };
+  }
+  return checkReply(request.schema, result.structured_output);
 }
 
 async function startSession(
@@ -114,19 +225,9 @@ async function startSession(
   const session = query({
     prompt: inbox.messages,
     options: {
+      ...isolated(backendOptions),
       systemPrompt: options.systemPrompt,
-      ...(backendOptions.model === undefined
-        ? {}
-        : { model: backendOptions.model }),
       sessionId,
-      // Isolation from the learner's own Claude Code setup (tasks 0.2, 0.3).
-      settingSources: [],
-      skills: [],
-      settings: { autoMemoryEnabled: false, disableClaudeAiConnectors: true },
-      strictMcpConfig: true,
-      env: sdkEnvironment(process.env),
-      // No built-in tools yet, and never ToolSearch (task 0.3).
-      tools: [],
       mcpServers: {
         [SERVER]: createSdkMcpServer({ name: SERVER, tools, alwaysLoad: true }),
       },

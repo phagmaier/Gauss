@@ -4,6 +4,7 @@ import type { PageEvent } from "../shared/events.ts";
 import { emptyTimeline, reduce, type Timeline } from "./timeline.ts";
 
 const QUESTION = {
+  kind: "choice" as const,
   id: "q1",
   number: 1,
   prompt: "What is the derivative of x³?",
@@ -27,8 +28,7 @@ const LOG: PageEvent[] = [
     type: "graded",
     questionId: "q1",
     verdict: "correct",
-    choice: "A",
-    confidence: "90",
+    answer: { kind: "choice", questionId: "q1", choice: "A", confidence: "90" },
     correctChoice: "A",
     assisted: false,
   },
