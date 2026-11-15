@@ -220,12 +220,21 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
 
 ### 1.2 Record module
 
-- Status: todo
+- Status: done
 - Depends on: 1.1
 - Do: resolve the data root (default `~/gauss/`, environment override); create,
   list and read courses; write files atomically.
 - Done when: tests against a temporary data root cover create, list, read, and
   a reload after a simulated crash mid-write.
+- Note: done on 2026-11-15 (`src/server/record/`); details in
+  `docs/decisions.md` under "Record module". The crash is a file size limit
+  that stops a child process's write partway, which is deterministic. For
+  task 1.4: store the draft curriculum with `writeFileAtomic` and the
+  `Curriculum` schema, beside `createCourse` in `data-root.ts`. For task
+  1.5: `main.ts` should call `resolveDataRoot()` and pass the result to
+  `openDataRoot`, and `AGENTS.md` should list `GAUSS_DATA_ROOT` with the
+  other variables. Writes to one file are not ordered against each other;
+  stage 2 must wait for each `state.json` write before the next.
 
 ### 1.3 Backend adapter
 

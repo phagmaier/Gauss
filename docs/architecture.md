@@ -66,8 +66,8 @@ an EPUB converter chosen in stage 4.
 ## 3. Data on disk
 
 Course data lives outside the repository so the code can be published without
-books, transcripts or progress. Default data root: `~/gauss/`, overridable by
-an environment variable.
+books, transcripts or progress. Default data root: `~/gauss/`, overridable
+with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
 
 ```
 <data root>/
@@ -92,6 +92,10 @@ The shapes of `course.json` and `curriculum.json` are the schemas in
 draft until the learner approves it. Where a course stands (intake,
 curriculum awaiting review, a unit in progress, finished) and whether it is
 a one-off (a course with one unit) are derived from the record, not stored.
+
+Every record file is written whole: to a temporary file in its folder, then
+renamed over it, so a process that stops partway leaves the old version or
+the new one. A course's id is its folder's name, made from its title.
 
 Objective status (not started, passed, retained, slipping, overridden) is
 **derived** from `evidence.jsonl` by a pure function and never stored, so it

@@ -742,3 +742,51 @@ with tests beside them.
   from the first unit only, reporting the path that led into the cycle, not
   rotating the report, treating a revisited unit as a cycle) each made a
   test fail.
+
+## Record module (plan task 1.2)
+
+Written on 2026-11-15: `src/server/record/data-root.ts` and
+`src/server/record/atomic-write.ts`, with tests beside them.
+
+- **The data root** is `GAUSS_DATA_ROOT` when it is set and not empty
+  (resolved to an absolute path), otherwise `~/gauss`. The server does not
+  read it yet; task 1.5 does, when routes first use the record. Code takes
+  the root as an argument (`openDataRoot({ path })`), so only `main.ts`
+  looks at the environment and tests pass a temporary folder.
+- **Atomic writes**: the new contents go to `.<name>.<uuid>.tmp` in the
+  same folder, are flushed with `fsync`, and are renamed over the target;
+  then the folder is flushed. A write that fails removes its temporary file.
+  A crash can leave one behind; the record reads only the files it knows by
+  name, so it is harmless. Nothing cleans them up yet.
+- **Not ordered**: two writes to one file in flight at once each land whole,
+  but the later one to start can finish first. The engine must wait for one
+  write before the next to the same file (stage 2, `state.json`).
+- **Course ids** come from the title: letters and digits, accents removed,
+  words joined by hyphens, cut at a word to 50 characters, `course` if
+  nothing is left, then `-2`, `-3` and so on if taken. Making the folder
+  claims the id, so two creations cannot share one. A crash between making
+  the folder and writing `course.json` leaves an empty folder, which the
+  list skips and which keeps its name taken.
+- **Reading**: a missing `course.json` means no course; a missing
+  `curriculum.json` means none proposed yet (`null`). A file that is not
+  valid JSON or does not match its schema is an error naming the file, and
+  it fails the whole list. That is loud on purpose: atomic writes cannot
+  produce such a file, so it means a hand edit or a bug. Task 1.6 can
+  revisit it if one bad course should not hide the library.
+- **The list is ordered** by `lastOpenedAt`, newest first (the library's
+  order), then by id.
+- **The crash test is deterministic.** A first version killed a child
+  process with SIGKILL while it rewrote a large file; with a writer that
+  writes in place, only 10 to 20% of kills landed inside the window where
+  the file was partial, so the test would rarely catch a regression. The
+  test now starts the child under `ulimit -f` below the new file's size, so
+  the kernel stops the write partway every time. Node ignores SIGXFSZ, so
+  the write fails with `EFBIG` and the process exits; the test checks for
+  `EFBIG`, then reloads the record (old version, whole) and runs the same
+  write without the limit (new version). A writer that writes in place left
+  the first 512 KB of the new file, and failed it on every run. Not
+  covered: power loss, which only the `fsync` calls address.
+- **Checks:** `mise run check` passed lint, type-checking, 90 TypeScript
+  tests and one Python test. Writing in place, skipping the cleanup after a
+  failed write, dropping the id check in `readCourse` and dropping the list
+  order each made a test fail.
