@@ -27,8 +27,21 @@ import type {
 const SERVER = "gauss";
 const TOOL_PREFIX = `mcp__${SERVER}__`;
 
-export function createClaudeBackend(): TutorBackend {
-  return { startSession };
+export interface ClaudeBackendOptions {
+  /**
+   * The model, such as "claude-haiku-5-5". Left out, the session uses the
+   * default of the learner's Claude Code login. Development runs that only
+   * check that something works use a cheap model (AGENTS.md).
+   */
+  model?: string;
+}
+
+export function createClaudeBackend(
+  backendOptions: ClaudeBackendOptions = {},
+): TutorBackend {
+  return {
+    startSession: (options) => startSession(options, backendOptions),
+  };
 }
 
 /**
@@ -48,7 +61,10 @@ export function sdkEnvironment(
   return env;
 }
 
-async function startSession(options: SessionOptions): Promise<TutorSession> {
+async function startSession(
+  options: SessionOptions,
+  backendOptions: ClaudeBackendOptions,
+): Promise<TutorSession> {
   const sessionId = randomUUID();
   const inbox = createInbox();
 
@@ -83,6 +99,9 @@ async function startSession(options: SessionOptions): Promise<TutorSession> {
     prompt: inbox.messages,
     options: {
       systemPrompt: options.systemPrompt,
+      ...(backendOptions.model === undefined
+        ? {}
+        : { model: backendOptions.model }),
       sessionId,
       // Isolation from the learner's own Claude Code setup (tasks 0.2, 0.3).
       settingSources: [],
@@ -131,7 +150,12 @@ async function startSession(options: SessionOptions): Promise<TutorSession> {
         yield { type: "turn_end", outcome: "error", error: finished };
         return;
       }
-      for (const event of reader.read(next.value, interruptRequested)) {
+      const message = next.value;
+      if (message.type === "system" && message.subtype === "init") {
+        // So a development run shows which model it is spending.
+        console.info(`Claude session ${sessionId} on ${message.model}`);
+      }
+      for (const event of reader.read(message, interruptRequested)) {
         yield event;
         if (event.type === "turn_end") return;
       }

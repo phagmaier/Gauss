@@ -140,6 +140,9 @@ not.
 **User check:** open the page, watch a reply stream in, answer the
 multiple-choice question, and see the tutor respond to the answer.
 
+Passed: the user tried it on 2026-11-15 ("everything seemed to work well").
+Stage 0 is finished.
+
 ## Stage 1: record and library
 
 Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).

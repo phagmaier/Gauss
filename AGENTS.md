@@ -47,6 +47,12 @@ Do not start the next stage before that.
 - **Automated tests never call a real model backend.** Use the fake backend in
   `src/server/backends/fake.ts`. Real-backend runs spend the user's plan usage:
   do them only where a task calls for one, and keep them short.
+- **Real-backend checks use a cheap model** unless the check depends on how
+  well the tutor teaches. To see that a call, a tool or a flow works, run
+  Claude Haiku 5.5 (`GAUSS_CLAUDE_MODEL=claude-haiku-5-5 pnpm dev`), or a
+  cheap OpenAI model on the Codex side, whose subscription the user minds
+  less. Use Sonnet or Opus only when the result depends on the model's
+  judgment (the user's request, 2026-11-15).
 - **Tests never touch the real data root** (`~/gauss/` by default). Point the
   data root at a temporary directory.
 - **The engine never imports an agent SDK.** Only files under
@@ -85,7 +91,9 @@ mise activated, or `mise exec -- <command>`.
 | Run the app (server and page, http://localhost:4320) | `pnpm dev` |
 
 - `pnpm dev` talks to the real Claude backend and spends plan usage when a
-  chat is started. Stop it with Ctrl-C. `GAUSS_PORT` changes the port.
+  chat is started. Stop it with Ctrl-C. `GAUSS_PORT` changes the port, and
+  `GAUSS_CLAUDE_MODEL` the model (left unset, the learner's Claude Code
+  default). The server prints the model each session runs on.
 - The page is in `src/web` (React, built by Vite); the server starts at
   `src/server/main.ts`.
 

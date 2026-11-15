@@ -17,7 +17,10 @@ const systemPrompt = await readFile(
   new URL("prompts/demo-tutor.md", root),
   "utf8",
 );
-const chat = createChat({ backend: createClaudeBackend(), systemPrompt });
+// GAUSS_CLAUDE_MODEL picks a cheap model for development runs (AGENTS.md).
+const model = process.env.GAUSS_CLAUDE_MODEL;
+const backend = createClaudeBackend(model === undefined ? {} : { model });
+const chat = createChat({ backend, systemPrompt });
 const api = getRequestListener(createApp(chat).fetch);
 
 const server = createServer();
