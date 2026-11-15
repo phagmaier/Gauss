@@ -303,3 +303,116 @@ under `mcp_tools`.
   `--builtin=Read,Bash,ToolSearch --strict-mcp --no-connectors`; enforced,
   `--always-load --strict-mcp --no-connectors --enforce-stop --one-open`,
   twice; probes, `--probe-only` with the tool options in the table.
+
+## Resume and confinement (plan task 0.4)
+
+Observed on 2026-11-14 with `spike/resume.ts` and `spike/confinement.ts`,
+Agent SDK 0.3.325, model `claude-opus-5-5`, both using the isolation options
+from tasks 0.2 and 0.3 (`spike/isolated-options.ts`).
+
+### Resume
+
+- **A session resumes by id in a new process.** One process started a
+  session (`persistSession` left at its default, true), was told a code word,
+  and exited. A second process passed `resume: <session id>` and got the code
+  word back. The session id stayed the same; the SDK forks to a new id only
+  with `forkSession: true`. The transcript is stored at
+  `~/.claude/projects/<folder named after the working directory>/<id>.jsonl`.
+- **A resumed session keeps the system prompt it started with.** The resume
+  run passed a system prompt with a different passphrase, and the model
+  still reported the first one. So a revised `prompts/tutor.md` reaches only
+  new sessions. The SDK documents `systemPrompt: { type: "custom", prompt,
+  snapshot: false }` for rebuilding the prompt on every request; not tried.
+- **An unknown id fails at once, before any model request:** a result with
+  `subtype: "error_during_execution"` and the error "No conversation found
+  with session ID: …", after which `query()` throws. This is the signal for
+  the automatic "start fresh" fallback in `architecture.md` section 4.
+- **Resuming from another working directory still finds the session**, and
+  the session's working directory becomes the new one. Since confinement
+  follows the working directory, the backend must always resume with the
+  course folder as `cwd`.
+- From the Claude Code documentation, not observed: Claude Code deletes
+  stored sessions after `cleanupPeriodDays` (30 days by default), so a unit
+  left alone for longer falls back to "start fresh".
+
+### Confinement
+
+The confinement run asked the agent to write a module and its unittest test
+inside the working directory and run the test, then to write outside the
+directory, and into a protected file inside it, by every route below. The
+script then checked the disk itself: nothing was written outside the
+directory, and the protected file was unchanged. These are the exact
+options of the final run, added to the isolation options:
+
+```ts
+{
+  cwd: dir,
+  tools: ["Read", "Write", "Edit", "Bash"],
+  permissionMode: "dontAsk", // anything not allowed is refused, never prompted
+  allowedTools: [`Edit(/${dir}/**)`, "Bash"], // "Edit(//abs/path/**)" covers Write too
+  disallowedTools: [`Edit(/${protectedFile})`],
+  sandbox: {
+    enabled: true,
+    failIfUnavailable: true, // stop rather than run unconfined
+    autoAllowBashIfSandboxed: true,
+    allowUnsandboxedCommands: false, // the dangerouslyDisableSandbox retry is ignored
+    filesystem: { denyWrite: [protectedFile] },
+  },
+  settings: { permissions: { blockWritesOutsideWorkingDirectories: true } },
+  env: { ...env, CLAUDE_CODE_TMPDIR: `${dir}/.tmp` },
+}
+```
+
+| Attempt | Outcome |
+| --- | --- |
+| `Write` two files inside, run `python3 -m unittest -v` | Done; the test passed |
+| `Write` to a file under the home directory | Refused by `blockWritesOutsideWorkingDirectories` |
+| `echo probe > /tmp/…` | Refused by the sandbox: "read-only file system" |
+| The same with `dangerouslyDisableSandbox: true` | Refused the same way; the parameter was ignored |
+| `Write` to the protected file | Refused by the `Edit` deny rule |
+| `echo '{}' >` the protected file | Refused by the sandbox's `denyWrite` |
+| `python3 -c "open('<home path>', 'w')…"` | Refused by the sandbox: `OSError` 30, read-only file system |
+| `echo probe >` Claude Code's per-user temp directory | Refused, with `CLAUDE_CODE_TMPDIR` set (see below) |
+
+- **Two layers are needed.** The sandbox confines only shell commands and
+  what they start, enforced by the operating system (bubblewrap, here
+  0.13.1, with socat). The `Write` and `Edit` tools run outside it and are
+  confined by `blockWritesOutsideWorkingDirectories` and the `Edit` rules.
+- **The sandbox leaves one more place writable by default:** Claude Code's
+  per-user temp directory (`/tmp/claude-1000` here), which every Claude Code
+  session of the user shares. A sandboxed `echo probe >` into it succeeded
+  in a run without the override. Setting `CLAUDE_CODE_TMPDIR` to a folder
+  inside the working directory moves it there: `$TMPDIR` became
+  `<dir>/.tmp/claude-1000`, Python's `tempfile` worked, and the same write was
+  refused. The documentation says sandboxed commands fall back to a short
+  temp path under `/tmp` when the override path is long. The path tried
+  here, `/tmp/gauss-confine-final/.tmp`, was short enough; the limit is not
+  documented, so the real course path needs checking.
+- **`dontAsk` needs an allow rule for `Bash`.** Without one, sandbox
+  auto-allow still let most commands run, but
+  `echo "TMPDIR=$TMPDIR"; python3 -c "import tempfile; print(tempfile.mkstemp())"`
+  was refused as a permission matter ("Permission to use Bash has been
+  denied because Claude Code is running in don't ask mode"), with no reason
+  given. With `"Bash"` allowed it ran, and it is still confined: with
+  unsandboxed retries off and no `excludedCommands`, every command runs in
+  the sandbox, which the `dangerouslyDisableSandbox` attempt confirmed.
+- **The session leaves two folders in the working directory:** `.claude/`
+  (holding an empty `.cc-writes` folder) and the `.tmp/` set above.
+- **Not confined, not tested:** reads. Sandboxed commands can read most of
+  the machine by default, credential files included, and the documentation
+  says `dontAsk` refuses the `Read` tool outside the working directory. The
+  sandbox's network is closed until domains are allowed (also documented,
+  not tried). Both matter once the
+  tutor gets web access (stage 4).
+- **For the course layout:** the tutor may write only `workspace/`,
+  `artifacts/` and `notes/` (`architecture.md` section 5). This run shows
+  that a path inside the working directory can be closed to both layers (an
+  `Edit` deny rule and a sandbox `denyWrite` entry). Whether to make the
+  course folder the working directory and close the record files, or to
+  work the other way round, is left for the task that first gives the tutor
+  files to write.
+- **Runs**, for repeating them: `resume.ts start`, then `resume` with the
+  printed id, an unknown id, and another `--dir`; `confinement.ts` without
+  flags (steps 1 to 10, before the temp steps were added), with
+  `--temp-check` and with `--temp-check --temp-inside`, and the final run
+  with `--allow-bash --temp-inside`.

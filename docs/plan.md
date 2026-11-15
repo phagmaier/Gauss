@@ -68,13 +68,20 @@ not.
 
 ### 0.4 Resume and confinement
 
-- Status: todo
+- Status: done
 - Depends on: 0.2
 - Do: resume a session by id after restarting the process. Find the `sandbox`
   and permission options that let the agent run a test command and write files
   inside one directory and nowhere else.
 - Done when: `docs/decisions.md` records the exact options, plus an observed
   refusal when the agent is asked to write outside the directory.
+- Note: done on 2026-11-14 with `spike/resume.ts` and
+  `spike/confinement.ts`; options and refusals are in `docs/decisions.md`
+  under "Resume and confinement". For later tasks: resume with the course
+  folder as `cwd`; a resumed session keeps its first system prompt; `dontAsk`
+  needs an allow rule for `Bash`; `CLAUDE_CODE_TMPDIR` must point inside the
+  course folder, or sandboxed commands can write to Claude Code's shared temp
+  directory. Which course folders the tutor may write is still open.
 
 ### 0.5 Minimal page
 

@@ -94,12 +94,16 @@ cannot disagree with the evidence. The curriculum diagram is generated from
 ### Chats and resume
 
 - A chat is one backend session bound to one unit. Reopening the unit resumes
-  that backend session by its id.
+  that backend session by its id, with the course folder as working directory.
+  A resumed session keeps the system prompt it started with, so prompt
+  revisions reach new sessions only (task 0.4).
 - A new unit always starts a new backend session, seeded from the record:
   profile, style note, curriculum summary, the unit's plan, the last handoff
   note, open misconceptions.
 - "Start fresh" is always available for the current unit and is the automatic
-  fallback if a backend session cannot be resumed.
+  fallback if a backend session cannot be resumed. An unknown session id fails
+  at once with "No conversation found", and Claude Code deletes stored
+  sessions after 30 days by default (task 0.4).
 - `state.json` is written after every phase change and every answer, so closing
   the tab loses nothing.
 
@@ -240,12 +244,14 @@ Observed in stage 0 (details in `decisions.md`):
 - A `PostToolUse` hook returning `continue: false` ends the turn right after
   a tool call, and the session continues with the next message. This is how
   the Claude backend ends the turn after `ask_question` (task 0.3).
-
-To verify in stage 0:
-
-- The `sandbox` and permission settings needed to confine the tutor's shell and
-  file writes to the course folder.
-- Resume behaviour after a server restart.
+- A session resumes by id in a new process (`resume`); see section 4 for what
+  carries over (task 0.4).
+- Writes are confined to one directory by two layers: the Bash sandbox
+  (bubblewrap on Linux) for shell commands, with unsandboxed retries off and
+  Claude Code's temp directory moved inside it (`CLAUDE_CODE_TMPDIR`); and
+  `dontAsk` mode, path-scoped `Edit` rules and
+  `blockWritesOutsideWorkingDirectories` for the file tools. Reads are not
+  confined. The exact options are in `decisions.md` (task 0.4).
 
 ### Codex (later)
 
@@ -334,5 +340,7 @@ task-level breakdown and status live in `plan.md`.
   pointer to the flaw, disputes. Proof grades remain a model's judgment.
 - **Poor PDF conversion.** Mitigation: page-image fallback; scanned files
   flagged at ingestion.
-- **The tutor's shell runs on the learner's machine.** Mitigation: sandbox and
-  permission settings confined to the course folder, confirmed in stage 0.
+- **The tutor's shell runs on the learner's machine.** Mitigation: the sandbox
+  and permission settings confine writes to the course folder (confirmed in
+  task 0.4). Reads are not confined, which matters once the tutor has web
+  access.
