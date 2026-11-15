@@ -1,0 +1,41 @@
+// course.json: what Gauss keeps about a course besides its curriculum
+// (architecture.md section 3). Where a course stands (intake, curriculum
+// awaiting review, a unit in progress, finished) and whether it is a one-off
+// are derived from curriculum.json and the evidence log, never stored here.
+
+import { z } from "zod";
+
+/**
+ * An id that names a folder under the data root: a course's folder, or a
+ * unit's under `units/`. Lowercase words joined by single hyphens, so it can
+ * never be a path of its own.
+ */
+export const Slug = z
+  .string()
+  .max(60)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+    error:
+      'Use lowercase letters, digits and single hyphens, like "chain-rule".',
+  });
+export type Slug = z.infer<typeof Slug>;
+
+/** A moment in UTC, as `Date.prototype.toISOString` writes it. */
+export const Timestamp = z.iso.datetime();
+export type Timestamp = z.infer<typeof Timestamp>;
+
+/** The backends a course can run on. Codex joins in stage 6. */
+export const BackendName = z.enum(["claude"]);
+export type BackendName = z.infer<typeof BackendName>;
+
+export const Course = z.object({
+  title: z.string().trim().min(1).max(200),
+  backend: BackendName,
+  settings: z.object({
+    /** Whether the tutor may search the web for material it lacks (stage 4). */
+    webSearch: z.boolean(),
+  }),
+  createdAt: Timestamp,
+  /** The library lists courses by this, newest first. */
+  lastOpenedAt: Timestamp,
+});
+export type Course = z.infer<typeof Course>;

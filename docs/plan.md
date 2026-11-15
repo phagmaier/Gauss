@@ -203,13 +203,20 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
 
 ### 1.1 Course and curriculum schemas
 
-- Status: todo
+- Status: done
 - Depends on: stage 0
 - Do: zod schemas in `src/shared/` for `course.json` and `curriculum.json`
   (units, prerequisites, goals, approval state).
 - Done when: tests parse hand-written valid examples and reject examples with a
   missing goal, a prerequisite pointing at an unknown unit, and a prerequisite
   cycle.
+- Note: done on 2026-11-15 (`src/shared/course.ts`, `curriculum.ts`); the
+  choices are in `docs/decisions.md` under "Course and curriculum schemas".
+  For task 1.2: the course id is the folder name and is not stored in
+  `course.json`, so the record module makes it (a `Slug`, from the title,
+  unique under `courses/`). For task 1.4: `propose_curriculum` can take
+  `{ units: Units }` as its input, since the prerequisite checks travel
+  with `Units` and their messages are written for the tutor.
 
 ### 1.2 Record module
 

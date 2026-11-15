@@ -700,3 +700,45 @@ Fixed on 2026-11-15 after reviewing `src/` and `prompts/` from `d9251b6`.
   dependency was added just for this fix.
 - **Checks:** `mise run check` passed lint, type-checking, 31 TypeScript tests
   and one Python test. No real model calls or real data-root access.
+
+## Course and curriculum schemas (plan task 1.1)
+
+Written on 2026-11-15: `src/shared/course.ts` and `src/shared/curriculum.ts`,
+with tests beside them.
+
+- **Ids are folder names.** A course id names its folder under `courses/`
+  and a unit id its folder under `units/`, so both are slugs (lowercase
+  letters and digits in words joined by single hyphens, at most 60
+  characters) and can never be a path of their own. The course id is the
+  folder name and is not repeated inside `course.json`.
+- **The tutor names the units.** Prerequisites refer to unit ids, which the
+  tutor chooses and is asked to keep when it revises a unit. Stable ids let
+  the page mark what a revision changed, as the intake mock does.
+- **Approval state is in `curriculum.json`**: a draft, or approved with the
+  time of approval. A revision replaces the draft. Changes proposed after
+  approval (`amend_curriculum`, stage 5) are not represented yet.
+- **Prerequisite rules**: each must name a unit in the curriculum, no unit
+  may list one twice, and together they must not form a cycle. They need not
+  come earlier in the list, which is only the order units are shown in; the
+  brief does not ask for more. A cycle is reported once, starting at the unit
+  that comes first in the list, with every link in it. These checks run only
+  once every unit has parsed, so a malformed unit gets the ordinary field
+  error first.
+- **Written for the tutor.** The unit fields carry descriptions and the
+  checks give messages the tutor can act on, because `propose_curriculum`
+  (task 1.4) takes the units as its input and sends a refusal's reasons
+  back. The checks sit on the units array, not on the whole file, so they
+  travel with that field into the tool's input. `prerequisites` is required,
+  empty for a starting unit; task 1.4 can relax it if the model often leaves
+  it out.
+- **`course.json`** holds the title, the backend (only `claude` until stage
+  6), `settings.webSearch` (read from stage 4, present now so older files
+  need no migration), `createdAt` and `lastOpenedAt` (the library's order).
+  Where a course stands and whether it is a one-off are derived, not stored.
+- **No schema version.** Only Gauss writes these files. A field added later
+  must be optional, or files written before it will no longer parse.
+- **Checks:** 63 TypeScript tests and one Python test passed under
+  `mise run check`. Four deliberate faults in the cycle search (searching
+  from the first unit only, reporting the path that led into the cycle, not
+  rotating the report, treating a revisited unit as a cycle) each made a
+  test fail.

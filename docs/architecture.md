@@ -87,6 +87,12 @@ an environment variable.
     workspace/                    starter code and the learner's work
 ```
 
+The shapes of `course.json` and `curriculum.json` are the schemas in
+`src/shared/course.ts` and `src/shared/curriculum.ts`. A curriculum is a
+draft until the learner approves it. Where a course stands (intake,
+curriculum awaiting review, a unit in progress, finished) and whether it is
+a one-off (a course with one unit) are derived from the record, not stored.
+
 Objective status (not started, passed, retained, slipping, overridden) is
 **derived** from `evidence.jsonl` by a pure function and never stored, so it
 cannot disagree with the evidence. The curriculum diagram is generated from
