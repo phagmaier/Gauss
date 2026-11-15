@@ -32,9 +32,20 @@ export const UnitPosition = z
     segment: z.number().int().nonnegative(),
     /** "closed" once the segment has closed, until the learner starts the next. */
     phase: Phase,
+    /**
+     * In the check, and only there: how many entries the evidence log held
+     * when the check began. The check's answers are the entries after them
+     * that name the segment's objectives (task 2.6).
+     */
+    checkFrom: z.number().int().nonnegative().optional(),
     openQuestion: OpenQuestion.optional(),
     /** The tutor's session on the backend, once the backend has reported it. */
     tutorSessionId: z.string().min(1).optional(),
+  })
+  .refine((p) => (p.phase === "check") === (p.checkFrom !== undefined), {
+    message:
+      "Where the check began in the evidence is kept in the check, and only there.",
+    path: ["checkFrom"],
   })
   .refine((p) => p.openQuestion === undefined || p.phase === "check", {
     message: "A question can be open only in the check.",

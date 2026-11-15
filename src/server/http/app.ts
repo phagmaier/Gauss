@@ -1,7 +1,7 @@
-// HTTP routes (plan task 1.5): the library, and the intake chat that starts a
-// course. Each intake has an event stream from the server to the page, and a
-// POST for each thing the learner does in it. Only Gauss's own page may use
-// any of them.
+// HTTP routes: the library and the intake chat that starts a course (plan
+// task 1.5), and the unit chats (task 2.6). Each chat has an event stream
+// from the server to the page, and a POST for each thing the learner does in
+// it. Only Gauss's own page may use any of them.
 
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -14,16 +14,19 @@ import {
   type PageEvent,
 } from "../../shared/events.ts";
 import type { Library } from "../../shared/library.ts";
+import { AnswerSubmission } from "../../shared/question.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
+import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { DataRoot } from "../record/data-root.ts";
 
 export function createApp(options: {
   dataRoot: DataRoot;
   intakes: Intakes;
+  units: UnitChats;
   heartbeatMs?: number;
 }) {
-  const { dataRoot, intakes } = options;
+  const { dataRoot, intakes, units } = options;
   const heartbeatMs = options.heartbeatMs ?? 20_000;
   const app = new Hono();
   app.use("/api/*", localOnly);
@@ -115,6 +118,79 @@ export function createApp(options: {
     "/api/intakes/:id/interrupt",
     withIntake(async (c, intake) => {
       await intake.interrupt();
+      return c.json({ ok: true });
+    }),
+  );
+
+  // --- Unit chats: opening a unit starts it or picks it up where it was ----
+
+  const unitPath = "/api/courses/:id/units/:unit";
+
+  app.post(`${unitPath}/open`, async (c) => {
+    const opened = await units.open(c.req.param("id"), c.req.param("unit"));
+    return opened.ok
+      ? c.json({ ok: true })
+      : c.json({ error: opened.error }, opened.status);
+  });
+
+  /** Runs the handler with the open chat of the unit the path names, or answers 404. */
+  function withUnit(
+    handler: (c: Context, chat: UnitChat) => Response | Promise<Response>,
+  ) {
+    return (c: Context) => {
+      const chat = units.get(
+        c.req.param("id") ?? "",
+        c.req.param("unit") ?? "",
+      );
+      return chat === undefined
+        ? c.json({ error: "This unit is not open. Open it first." }, 404)
+        : handler(c, chat);
+    };
+  }
+
+  app.get(
+    `${unitPath}/events`,
+    withUnit((c, chat) => streamLog(c, chat, heartbeatMs)),
+  );
+
+  app.post(
+    `${unitPath}/messages`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, LearnerMessage);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, chat.say(body.data.text), 202);
+    }),
+  );
+
+  app.post(
+    `${unitPath}/ready`,
+    withUnit(async (c, chat) => reply(c, await chat.ready(), 202)),
+  );
+
+  app.post(
+    `${unitPath}/answers`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, AnswerSubmission);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.answer(body.data), 202);
+    }),
+  );
+
+  // Moving on sends the tutor nothing until the learner's next step.
+  app.post(
+    `${unitPath}/override`,
+    withUnit(async (c, chat) => reply(c, await chat.override(), 200)),
+  );
+
+  app.post(
+    `${unitPath}/next-segment`,
+    withUnit(async (c, chat) => reply(c, await chat.nextSegment(), 202)),
+  );
+
+  app.post(
+    `${unitPath}/interrupt`,
+    withUnit(async (c, chat) => {
+      await chat.interrupt();
       return c.json({ ok: true });
     }),
   );

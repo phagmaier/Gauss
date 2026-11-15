@@ -4,7 +4,12 @@
 import { z } from "zod";
 import { Slug } from "./course.ts";
 import { Unit } from "./curriculum.ts";
+import { Plan } from "./plan.ts";
 import { ChoiceLetter, Confidence, QuestionView, Verdict } from "./question.ts";
+import { Phase } from "./state.ts";
+
+/** A segment by its index in the unit's plan, from 0, as in state.json. */
+const SegmentIndex = z.number().int().nonnegative();
 
 /**
  * One entry in a chat's event log. The log is replayed to every page that
@@ -49,6 +54,31 @@ export const PageEvent = z.discriminatedUnion("type", [
     type: z.literal("curriculum_approved"),
     courseId: Slug,
     revision: z.number().int().positive(),
+  }),
+  /** A unit chat: the unit has no plan yet and is being planned (task 2.5). */
+  z.object({ type: z.literal("unit_planning") }),
+  /**
+   * The unit could not be opened: it could not be planned, or its record
+   * could not be read. Opening it again tries again.
+   */
+  z.object({ type: z.literal("unit_failed"), error: z.string() }),
+  /** The unit's plan, for the outline: its objectives and segments. */
+  z.object({ type: z.literal("unit_plan"), plan: Plan }),
+  /**
+   * A phase of a segment began, or the chat opened in it. "teach" starts the
+   * segment; "closed" ends it, until the learner starts the next.
+   */
+  z.object({ type: z.literal("phase"), segment: SegmentIndex, phase: Phase }),
+  /**
+   * The learner moved on without the check, recorded as an override of the
+   * segment's objectives. A question still open is withdrawn. The segment's
+   * "closed" phase follows.
+   */
+  z.object({
+    type: z.literal("overridden"),
+    segment: SegmentIndex,
+    objectives: z.array(Slug),
+    withdrawnQuestionId: z.string().optional(),
   }),
   /** The tutor's turn is over. */
   z.object({

@@ -1,7 +1,7 @@
 // What every chat with the tutor shares: an event log for the page, and a
 // queue that sends the tutor one turn at a time and writes its reply into
-// the log. Built from the minimal page's chat (task 0.5); the intake chat is
-// made from these two parts, and stage 2's unit chats will be too.
+// the log. Built from the minimal page's chat (task 0.5); the intake chat and
+// the unit chats (task 2.6) are made from these two parts.
 
 import { randomUUID } from "node:crypto";
 import type { PageEvent } from "../../shared/events.ts";
@@ -53,11 +53,26 @@ export function createEventLog(): EventLog {
   };
 }
 
+/** How a turn ended, as the page is told. */
+export type TurnOutcome = "done" | "interrupted" | "error";
+
+/** A turn for the tutor, when its text or its end matters to the chat. */
+export interface Turn {
+  /**
+   * What the tutor receives. A function is called when the turn is sent to
+   * the tutor, after the turns before it, so its header says how things
+   * stand then.
+   */
+  text: string | (() => string);
+  /** Runs once the turn has ended, before the next turn is sent. */
+  ended?(outcome: TurnOutcome): Promise<void> | void;
+}
+
 export interface Conversation {
   /** Whether the first turn has been sent, which starts the tutor session. */
   started(): boolean;
   /** Queues a turn for the tutor. The first one starts the session. */
-  send(text: string): void;
+  send(turn: string | Turn): void;
   /** A turn is queued or running. */
   busy(): boolean;
   /** Stops the tutor's turn in progress, if there is one. */
@@ -79,44 +94,57 @@ export function createConversation(options: {
   let turnsWaiting = 0;
   let queue: Promise<void> = Promise.resolve();
 
-  async function runTurn(text: string): Promise<void> {
+  async function runTurn(turn: Turn): Promise<void> {
     turnRunning = true;
     log.emit({ type: "turn_start" });
+    let outcome: TurnOutcome = "error";
+    try {
+      outcome = await relay(turn);
+    } finally {
+      turnRunning = false;
+      try {
+        await turn.ended?.(outcome);
+      } catch (error) {
+        // The next turn must still run.
+        console.error("A chat's end-of-turn work failed:", error);
+      }
+      turnsWaiting -= 1;
+    }
+  }
+
+  /** Sends the turn and writes the reply into the log, to its turn_end. */
+  async function relay(turn: Turn): Promise<TurnOutcome> {
+    const fail = (error: string): TurnOutcome => {
+      log.emit({ type: "turn_end", outcome: "error", error });
+      return "error";
+    };
     try {
       if (session === undefined) throw new Error("The chat has not started.");
       const tutor = await session;
+      const text = typeof turn.text === "string" ? turn.text : turn.text();
       for await (const event of tutor.send({ text })) {
         if (event.type === "text") {
           log.emit({ type: "tutor_text", text: event.text });
         } else if (event.type === "turn_end") {
+          const outcome =
+            event.outcome === "ended_by_tool" ? "done" : event.outcome;
           log.emit({
             type: "turn_end",
-            outcome: event.outcome === "ended_by_tool" ? "done" : event.outcome,
+            outcome,
             ...(event.error === undefined ? {} : { error: event.error }),
           });
-          return;
+          return outcome;
         }
       }
-      log.emit({
-        type: "turn_end",
-        outcome: "error",
-        error: "The tutor's reply ended early.",
-      });
+      return fail("The tutor's reply ended early.");
     } catch (error) {
-      log.emit({
-        type: "turn_end",
-        outcome: "error",
-        error: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      turnRunning = false;
-      turnsWaiting -= 1;
+      return fail(error instanceof Error ? error.message : String(error));
     }
   }
 
   return {
     started: () => session !== undefined,
-    send(text) {
+    send(turn) {
       if (session === undefined) {
         session = options.backend.startSession({
           systemPrompt: options.systemPrompt,
@@ -126,7 +154,8 @@ export function createConversation(options: {
         session.catch(() => {});
       }
       turnsWaiting += 1;
-      queue = queue.then(() => runTurn(text));
+      const queued = typeof turn === "string" ? { text: turn } : turn;
+      queue = queue.then(() => runTurn(queued));
     },
     busy: () => turnsWaiting > 0,
     async interrupt() {

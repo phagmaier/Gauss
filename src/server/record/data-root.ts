@@ -1,11 +1,12 @@
 // The data root: the folder that holds every course (architecture.md
-// section 3). This module creates, lists and reads courses, stores and
-// approves their curricula and the plans of their units, keeps the position
-// of each unit in progress in state.json, and appends to and reads the
-// evidence log. Every write of a whole file goes through writeFileAtomic, the
-// log is appended to, and every file read or written is checked against its
-// schema in src/shared/. Work that reads a file and writes it back, and
-// every append, runs through withFileLock, so it lands in the order called.
+// section 3). This module creates, lists, reads and marks opened courses,
+// reads their style notes, stores and approves their curricula and the plans
+// of their units, keeps the position of each unit in progress in state.json,
+// and appends to and reads the evidence log. Every write of a whole file
+// goes through writeFileAtomic, the log is appended to, and every file read
+// or written is checked against its schema in src/shared/. Work that reads a
+// file and writes it back, and every append, runs through withFileLock, so
+// it lands in the order called.
 
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -40,6 +41,10 @@ export interface DataRoot {
   listCourses(): Promise<StoredCourse[]>;
   /** One course, or undefined when no course has that id. */
   readCourse(id: string): Promise<StoredCourse | undefined>;
+  /** Sets the course's lastOpenedAt to the clock's time. */
+  markOpened(id: string): Promise<StoredCourse>;
+  /** The course's style note, style.md, or undefined when it has none. */
+  readStyle(id: string): Promise<string | undefined>;
   /**
    * Stores the tutor's proposal as the course's draft curriculum, replacing
    * any earlier draft, and its title as the course's title. Refused once the
@@ -150,6 +155,29 @@ export function openDataRoot(options: {
     },
 
     readCourse,
+
+    async markOpened(id) {
+      // saveProposal writes course.json too, under the curriculum's lock, but
+      // only for a draft, and units are opened only once it is approved.
+      const path = courseFile(id, "course.json");
+      return withFileLock(path, async () => {
+        const stored = await existingCourse(id);
+        const course = { ...stored.course, lastOpenedAt: now().toISOString() };
+        await writeJson(path, Course, course);
+        return { ...stored, course };
+      });
+    },
+
+    async readStyle(id) {
+      const path = courseFile(id, "style.md");
+      await existingCourse(id);
+      try {
+        return await readFile(path, "utf8");
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return undefined;
+        throw error;
+      }
+    },
 
     async saveProposal(id, proposal) {
       const { title, units } = CurriculumProposal.parse(proposal);

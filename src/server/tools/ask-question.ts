@@ -1,41 +1,42 @@
 // The ask_question teaching tool (architecture.md section 4, "Question
 // flow"). It posts the question and returns at once; the answer arrives as the
 // tutor's next turn. Posting ends the tutor's turn, because the model does not
-// reliably stop on its own (task 0.3).
+// reliably stop on its own (task 0.3). Whether a question may be posted now
+// (the phase, a question already open, the objective it names) is the
+// engine's rule, so a refusal comes from the board with its reason.
 
 import { ChoiceQuestionInput } from "../../shared/question.ts";
 import { defineTool, type TeachingTool } from "./tool.ts";
 
 /** Where questions are kept and shown. The engine provides it. */
 export interface QuestionBoard {
-  /** The id of the question awaiting an answer, if there is one. */
-  openQuestionId(): string | undefined;
-  /** Stores the question, shows it to the learner, and returns its id. */
-  post(question: ChoiceQuestionInput): string;
+  /** Stores the question and shows it to the learner, or says why not. */
+  post(
+    question: ChoiceQuestionInput,
+  ): Promise<{ id: string; number: number } | { refused: string }>;
 }
 
 export function askQuestionTool(board: QuestionBoard): TeachingTool {
   return defineTool({
     name: "ask_question",
     description:
-      "Post one multiple-choice check question to the learner. It appears as " +
-      "a card in the conversation. Posting ends your turn, so say anything " +
-      "you want to say before calling this. The learner's answer, already " +
-      "graded, arrives in the next message, not as this tool's result. Only " +
-      "one question can be open at a time.",
+      "Post one multiple-choice check question to the learner, on one " +
+      "objective of the segment. It appears as a card in the conversation. " +
+      "Posting ends your turn, so say anything you want to say before " +
+      "calling this. The learner's answer, already graded, arrives in the " +
+      "next message, not as this tool's result. Only one question can be " +
+      "open at a time, and only in the check.",
     input: ChoiceQuestionInput,
-    run(question) {
-      const open = board.openQuestionId();
-      if (open !== undefined) {
-        return {
-          status: "refused",
-          text: `Question ${open} is still open. End your turn and wait for the learner's answer.`,
-        };
+    async run(question) {
+      const result = await board.post(question);
+      if ("refused" in result) {
+        return { status: "refused", text: result.refused };
       }
-      const id = board.post(question);
       return {
         status: "done",
-        text: `Posted as ${id}. Your turn is over; the learner's answer will arrive in the next message.`,
+        text:
+          `Posted as question ${result.number}. Your turn is over; the ` +
+          "learner's answer will arrive in the next message.",
         endTurn: true,
       };
     },

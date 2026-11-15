@@ -506,3 +506,36 @@ tested"). Stage 1 is finished.
 - Note: done on 2026-11-15. The choices, checks and the Haiku run are in
   `docs/decisions.md` under "Unit planning"; `architecture.md` sections 4,
   5 and 9 name the planning session and its prompt.
+
+### 2.6 Unit chat and phases
+
+- Status: done
+- Depends on: 2.2, 2.5
+- Do: the unit chat, built from `src/server/engine/conversation.ts` as the
+  intake is. Starting a unit plans it (2.5), then sends segment 1's teach
+  turn. The engine enforces `architecture.md` section 4's phases: the end
+  of the teaching turn, or Stop during it, moves to discuss; the learner's
+  "ready" moves to check; in check the tutor posts questions with
+  `ask_question`, now naming an objective of the segment, and each answer
+  is graded, appended to the evidence and sent to the tutor; the tutor's
+  `close_segment` is refused until every objective of the segment has an
+  answer from this check; the learner's override closes the segment and is
+  recorded as evidence; the learner starts the next segment. Tools called
+  out of phase are refused with a reason the tutor can act on. The engine
+  composes every turn's header and writes `state.json` after every change,
+  so an open question survives a restart. The tutor's system prompt is
+  assembled from `prompts/tutor.md`, `style.md` and the course context
+  (section 9); a short first `tutor.md` will do until 2.16. Routes and page
+  events for all of it; opening a unit updates `lastOpenedAt`.
+- Done when: fake-backend tests cover each transition, `ask_question` and
+  `close_segment` refused out of phase with the reason reaching the tutor,
+  an override, and a new engine over the same data root reopening a unit
+  mid-check from `state.json` (the tutor's own session resumes from 2.14);
+  route tests cover the new routes.
+- Note: mock 3 gives "Start the next segment" to the learner, so starting
+  a segment is the learner's action and not a teaching tool. If that
+  holds, revise the tool list in `architecture.md` section 5.
+- Note: done on 2026-11-15. The choices and checks are in
+  `docs/decisions.md` under "Unit chat and phases"; `architecture.md`
+  sections 3, 4, 5, 9 and 10 describe the unit chat, its rules, the tool
+  list without `start_segment`, the system prompt and the routes.

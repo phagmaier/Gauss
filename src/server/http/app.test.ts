@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { createIntakes } from "../engine/intake.ts";
+import { createUnitChats } from "../engine/unit-chat.ts";
+import { createUnitPlanner } from "../engine/unit-planning.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { createApp } from "./app.ts";
 
@@ -47,8 +49,15 @@ function setUp(script: FakeTurn[]) {
     systemPrompt: "You are a test planner.",
     dataRoot,
   });
-  const app = createApp({ dataRoot, intakes });
-  return { backend, dataRoot, intakes, app };
+  const units = createUnitChats({
+    backend,
+    systemPrompt: "You are a test tutor.",
+    dataRoot,
+    planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+    now: () => new Date(NOW),
+  });
+  const app = createApp({ dataRoot, intakes, units });
+  return { backend, dataRoot, intakes, units, app };
 }
 
 type App = ReturnType<typeof createApp>;
@@ -484,4 +493,220 @@ test("requests from other sites and other host names are refused", async () => {
   ).toEqual([403, 403, 403, 403]);
   expect(setup.backend.received).toEqual([]);
   expect(setup.intakes.get(intakeId)?.events()).toEqual([]);
+});
+
+// --- Unit chats ----------------------------------------------------------------
+
+const CREATED = "2026-11-14T09:00:00.000Z";
+const COURSE = "linear-algebra-for-pca";
+const UNIT = `/api/courses/${COURSE}/units/vectors`;
+const VECTORS_PLAN = {
+  objectives: [
+    {
+      id: "basis-image",
+      statement: "Describe a linear map by the images of a basis.",
+    },
+    {
+      id: "matrix-columns",
+      statement: "Read the columns of a matrix as the images of a basis.",
+    },
+  ],
+  segments: [
+    { title: "Bases", objectives: ["basis-image"] },
+    { title: "Matrices", objectives: ["matrix-columns"] },
+  ],
+};
+const QUESTION = {
+  objective: "basis-image",
+  prompt: "Which vectors fix a linear map on $\\mathbb{R}^2$?",
+  choices: ["The images of a basis", "The image of one vector"],
+  answer: "A",
+};
+
+/** An approved course, made the day before, with its first unit planned. */
+async function approvedCourse(draft = false) {
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  const { id } = await root.createCourse({ title: FIRST.title });
+  await root.saveProposal(id, FIRST);
+  if (draft) return;
+  await root.approveCurriculum(id);
+  await root.storePlan(id, "vectors", VECTORS_PLAN);
+}
+
+async function openUnit(setup: ReturnType<typeof setUp>) {
+  const response = await post(setup.app, `${UNIT}/open`);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ ok: true });
+  await setup.units.get(COURSE, "vectors")?.settled();
+}
+
+async function settle(setup: ReturnType<typeof setUp>) {
+  await setup.units.get(COURSE, "vectors")?.settled();
+}
+
+const unitState = async () =>
+  (await openDataRoot({ path: dir }).readState(COURSE)).units.vectors;
+
+test("opening a unit marks its course opened, and the unit's event stream replays its thread with ids", async () => {
+  const setup = setUp([[{ text: "A map is fixed by a basis." }]]);
+  await approvedCourse();
+
+  await openUnit(setup);
+
+  const course = await (
+    await setup.app.request(`/api/courses/${COURSE}`)
+  ).json();
+  expect(course).toMatchObject({ course: { lastOpenedAt: NOW } });
+  const chatId = setup.units.get(COURSE, "vectors")?.id;
+  const response = await setup.app.request(`${UNIT}/events`);
+  expect(response.headers.get("Content-Type")).toContain("text/event-stream");
+  const stream = await readFrames(response, 7);
+  expect(stream.first).toEqual([
+    { event: "hello", data: { chatId } },
+    { id: `${chatId}.0`, data: { type: "unit_plan", plan: VECTORS_PLAN } },
+    {
+      id: `${chatId}.1`,
+      data: { type: "phase", segment: 0, phase: "teach" },
+    },
+    { id: `${chatId}.2`, data: { type: "turn_start" } },
+    {
+      id: `${chatId}.3`,
+      data: { type: "tutor_text", text: "A map is fixed by a basis." },
+    },
+    { id: `${chatId}.4`, data: { type: "turn_end", outcome: "done" } },
+    {
+      id: `${chatId}.5`,
+      data: { type: "phase", segment: 0, phase: "discuss" },
+    },
+  ]);
+  await stream.close();
+});
+
+test("a segment runs through the unit routes: a message, ready, an answer, moving on and the next segment", async () => {
+  const setup = setUp([
+    [{ text: "A map is fixed by a basis." }],
+    [{ text: "Because every vector is a combination of the basis." }],
+    [{ call: "ask_question", input: QUESTION }],
+    [{ text: "Right." }],
+    [{ text: "Now matrices." }],
+  ]);
+  await approvedCourse();
+  await openUnit(setup);
+  const chat = setup.units.get(COURSE, "vectors");
+
+  const message = await post(setup.app, `${UNIT}/messages`, {
+    text: "Why a basis?",
+  });
+  expect(message.status).toBe(202);
+  await settle(setup);
+  expect((await post(setup.app, `${UNIT}/next-segment`)).status).toBe(409);
+
+  expect((await post(setup.app, `${UNIT}/ready`)).status).toBe(202);
+  await settle(setup);
+  const posted = chat?.events().findLast((e) => e.type === "question");
+  const questionId = posted?.type === "question" ? posted.question.id : "";
+  expect(await unitState()).toMatchObject({
+    phase: "check",
+    openQuestion: { id: questionId },
+  });
+
+  const answered = await post(setup.app, `${UNIT}/answers`, {
+    kind: "choice",
+    questionId,
+    choice: "A",
+    confidence: "90",
+  });
+  expect(answered.status).toBe(202);
+  await settle(setup);
+  const again = await post(setup.app, `${UNIT}/answers`, {
+    kind: "unknown",
+    questionId,
+  });
+  expect(again.status).toBe(409);
+  expect(await again.json()).toEqual({ error: "No question is open." });
+
+  const moved = await post(setup.app, `${UNIT}/override`);
+  expect(moved.status).toBe(200);
+  expect(await moved.json()).toEqual({ ok: true });
+  expect((await post(setup.app, `${UNIT}/override`)).status).toBe(409);
+
+  expect((await post(setup.app, `${UNIT}/next-segment`)).status).toBe(202);
+  await settle(setup);
+
+  expect(await unitState()).toEqual({ segment: 1, phase: "discuss" });
+  expect(
+    (await openDataRoot({ path: dir }).readEvidence(COURSE)).map((e) => e.kind),
+  ).toEqual(["answer", "override"]);
+  expect(setup.backend.received).toHaveLength(5);
+});
+
+test("stopping the tutor through its route ends the teaching turn and opens the discussion", async () => {
+  const setup = setUp([[{ text: "A long lecture" }, { hold: true }]]);
+  await approvedCourse();
+  expect((await post(setup.app, `${UNIT}/open`)).status).toBe(200);
+  const chat = setup.units.get(COURSE, "vectors");
+  while (!chat?.events().some((e) => e.type === "tutor_text")) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  const stopped = await post(setup.app, `${UNIT}/interrupt`);
+  expect(stopped.status).toBe(200);
+  await settle(setup);
+
+  expect(await unitState()).toEqual({ segment: 0, phase: "discuss" });
+});
+
+test("a unit that is not there, of a draft, or not open is refused on every unit route", async () => {
+  const setup = setUp([]);
+  await approvedCourse(true);
+
+  const draft = await post(setup.app, `${UNIT}/open`);
+  expect(draft.status).toBe(409);
+  expect(await draft.json()).toEqual({
+    error: "The curriculum is not approved yet, so its units cannot start.",
+  });
+  const missing = await Promise.all([
+    post(setup.app, "/api/courses/no-such-course/units/vectors/open"),
+    post(setup.app, `/api/courses/${COURSE}/units/no-such-unit/open`),
+  ]);
+  expect(missing.map((r) => r.status)).toEqual([404, 404]);
+
+  const notOpen = await Promise.all([
+    setup.app.request(`${UNIT}/events`),
+    post(setup.app, `${UNIT}/messages`, { text: "Hello." }),
+    post(setup.app, `${UNIT}/ready`),
+    post(setup.app, `${UNIT}/answers`, { kind: "unknown", questionId: "q" }),
+    post(setup.app, `${UNIT}/override`),
+    post(setup.app, `${UNIT}/next-segment`),
+    post(setup.app, `${UNIT}/interrupt`),
+  ]);
+  expect(notOpen.map((r) => r.status)).toEqual([
+    404, 404, 404, 404, 404, 404, 404,
+  ]);
+  expect(await notOpen[0]?.json()).toEqual({
+    error: "This unit is not open. Open it first.",
+  });
+  expect(setup.backend.sessions).toEqual([]);
+});
+
+test("malformed bodies on the unit routes are refused with a reason, and nothing reaches the tutor", async () => {
+  const setup = setUp([[{ text: "A map is fixed by a basis." }]]);
+  await approvedCourse();
+  await openUnit(setup);
+  const events = setup.units.get(COURSE, "vectors")?.events().length;
+
+  const responses = await Promise.all([
+    post(setup.app, `${UNIT}/messages`, { text: "" }),
+    post(setup.app, `${UNIT}/answers`, { kind: "choice", questionId: "q" }),
+    post(setup.app, `${UNIT}/answers`, "choice=A"),
+  ]);
+
+  expect(responses.map((r) => r.status)).toEqual([400, 400, 400]);
+  expect(await responses[2]?.json()).toEqual({
+    error: "The body must be JSON.",
+  });
+  expect(setup.backend.received).toHaveLength(1);
+  expect(setup.units.get(COURSE, "vectors")?.events()).toHaveLength(
+    events ?? -1,
+  );
 });

@@ -7,6 +7,8 @@ import { getRequestListener } from "@hono/node-server";
 import { createServer as createViteServer } from "vite";
 import { createClaudeBackend } from "./backends/claude.ts";
 import { createIntakes } from "./engine/intake.ts";
+import { createUnitChats } from "./engine/unit-chat.ts";
+import { createUnitPlanner } from "./engine/unit-planning.ts";
 import { createApp } from "./http/app.ts";
 import { openDataRoot, resolveDataRoot } from "./record/data-root.ts";
 
@@ -14,18 +16,36 @@ const root = new URL("../../", import.meta.url);
 const port = Number(process.env.GAUSS_PORT ?? 4320);
 const host = "127.0.0.1";
 
-const systemPrompt = await readFile(
-  new URL("prompts/planner.md", root),
-  "utf8",
-);
+const prompt = (name: string) =>
+  readFile(new URL(`prompts/${name}`, root), "utf8");
+const [plannerPrompt, unitPlannerPrompt, tutorPrompt] = await Promise.all([
+  prompt("planner.md"),
+  prompt("unit-planner.md"),
+  prompt("tutor.md"),
+]);
 // GAUSS_DATA_ROOT moves the course record away from ~/gauss (AGENTS.md).
 const dataRootPath = resolveDataRoot();
 const dataRoot = openDataRoot({ path: dataRootPath });
 // GAUSS_CLAUDE_MODEL picks a cheap model for development runs (AGENTS.md).
 const model = process.env.GAUSS_CLAUDE_MODEL;
 const backend = createClaudeBackend(model === undefined ? {} : { model });
-const intakes = createIntakes({ backend, systemPrompt, dataRoot });
-const api = getRequestListener(createApp({ dataRoot, intakes }).fetch);
+const intakes = createIntakes({
+  backend,
+  systemPrompt: plannerPrompt,
+  dataRoot,
+});
+const planner = createUnitPlanner({
+  backend,
+  systemPrompt: unitPlannerPrompt,
+  dataRoot,
+});
+const units = createUnitChats({
+  backend,
+  systemPrompt: tutorPrompt,
+  dataRoot,
+  planner,
+});
+const api = getRequestListener(createApp({ dataRoot, intakes, units }).fetch);
 
 const server = createServer();
 const vite = await createViteServer({
@@ -47,7 +67,7 @@ server.listen(port, host, () => {
 
 async function shutDown(): Promise<void> {
   server.closeAllConnections();
-  await Promise.allSettled([intakes.close(), vite.close()]);
+  await Promise.allSettled([intakes.close(), units.close(), vite.close()]);
   server.close();
   process.exit(0);
 }

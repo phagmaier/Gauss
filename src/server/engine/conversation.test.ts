@@ -118,3 +118,59 @@ test("a failing listener does not stop the conversation", async () => {
     { type: "turn_end", outcome: "done" },
   ]);
 });
+
+test("a turn's text is composed when it is sent, after the end-of-turn work of the turn before", async () => {
+  const { backend, tutor } = setUp([[{ text: "One." }], [{ text: "Two." }]]);
+  let phase = "teach";
+  const order: string[] = [];
+
+  tutor.send({
+    text: "first",
+    async ended(outcome) {
+      order.push(`ended: ${outcome}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      phase = "discuss";
+    },
+  });
+  // Queued while the first turn runs; its header must see the later phase.
+  tutor.send({
+    text: () => {
+      order.push("composed");
+      return `[Phase: ${phase}]`;
+    },
+  });
+  await tutor.settled();
+
+  expect(order).toEqual(["ended: done", "composed"]);
+  expect(backend.received.map((t) => t.text)).toEqual([
+    "first",
+    "[Phase: discuss]",
+  ]);
+});
+
+test("end-of-turn work hears how the turn ended, and its failure does not stop the next turn", async () => {
+  const { backend, log, tutor } = setUp([
+    [{ text: "A long lecture" }, { hold: true }],
+    [{ text: "Two." }],
+  ]);
+  const outcomes: string[] = [];
+  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+  const writing = nextEvent(log, "tutor_text");
+
+  tutor.send({
+    text: "first",
+    ended(outcome) {
+      outcomes.push(outcome);
+      throw new Error("the record could not be written");
+    },
+  });
+  tutor.send("second");
+  await writing;
+  await tutor.interrupt();
+  await tutor.settled();
+  quiet.mockRestore();
+
+  expect(outcomes).toEqual(["interrupted"]);
+  expect(backend.received.map((t) => t.text)).toEqual(["first", "second"]);
+  expect(tutor.busy()).toBe(false);
+});

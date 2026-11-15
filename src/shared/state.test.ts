@@ -10,6 +10,7 @@ const STATE = {
     derivative: {
       segment: 1,
       phase: "check",
+      checkFrom: 3,
       openQuestion: {
         id: "q4",
         number: 2,
@@ -47,11 +48,33 @@ describe("rejects", () => {
       input: {
         units: {
           ...STATE.units,
-          derivative: { ...derivative, phase: "discuss" },
+          derivative: { ...derivative, phase: "discuss", checkFrom: undefined },
         },
       },
       path: ["units", "derivative", "openQuestion"],
       message: /only in the check/,
+    },
+    {
+      name: "a check without where it began in the evidence",
+      input: {
+        units: {
+          ...STATE.units,
+          derivative: { ...derivative, checkFrom: undefined },
+        },
+      },
+      path: ["units", "derivative", "checkFrom"],
+      message: /kept in the check/,
+    },
+    {
+      name: "where a check began, kept outside the check",
+      input: {
+        units: {
+          ...STATE.units,
+          integral: { ...STATE.units.integral, checkFrom: 0 },
+        },
+      },
+      path: ["units", "integral", "checkFrom"],
+      message: /only there/,
     },
     {
       name: "a question whose answer is not one of its choices",

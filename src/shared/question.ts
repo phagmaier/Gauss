@@ -1,8 +1,10 @@
 // Check questions: what the tutor posts, what the record keeps, what the page
-// shows, and what the learner sends back. Only multiple choice so far (plan task 0.5); the other
-// answer kinds in architecture.md section 6 join in stages 2 and 3.
+// shows, and what the learner sends back. Only multiple choice so far (plan
+// task 0.5); the other answer kinds in architecture.md section 6 join in
+// stages 2 and 3.
 
 import { z } from "zod";
+import { Slug } from "./course.ts";
 
 /** Choices are labelled by position, and the tutor names them the same way. */
 export const CHOICE_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
@@ -56,10 +58,9 @@ const NOT_A_CHOICE = {
 /** A multiple-choice question as the tutor posts it, grading material included. */
 export const ChoiceQuestionInput = z
   .object({
-    objective: z
-      .string()
-      .min(1)
-      .describe("The objective the question checks, in a few words"),
+    objective: Slug.describe(
+      "The id of the objective the question checks: one of the segment's objectives, as the header lists them",
+    ),
     ...choiceFields,
   })
   .refine(answerIsAChoice, NOT_A_CHOICE);

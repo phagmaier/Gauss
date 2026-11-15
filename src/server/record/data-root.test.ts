@@ -158,6 +158,43 @@ test("the list holds every course, most recently opened first, after a restart",
   ]);
 });
 
+test("opening a course moves it to the top of the list, and only its lastOpenedAt changes", async () => {
+  const root = openDataRoot({
+    path: dir,
+    now: clock(
+      "2026-11-10T08:00:00.000Z",
+      "2026-11-12T08:00:00.000Z",
+      "2026-11-15T09:30:00.000Z",
+    ),
+  });
+  const calculus = await root.createCourse({ title: "Calculus I" });
+  await root.createCourse({ title: "Phenomenology of Spirit" });
+
+  const opened = await root.markOpened(calculus.id);
+
+  expect(opened.course).toEqual({
+    ...calculus.course,
+    lastOpenedAt: "2026-11-15T09:30:00.000Z",
+  });
+  const listed = await openDataRoot({ path: dir }).listCourses();
+  expect(listed.map((c) => c.id)).toEqual([
+    "calculus-i",
+    "phenomenology-of-spirit",
+  ]);
+  expect(listed[0]?.course).toEqual(opened.course);
+});
+
+test("a course's style note is read from style.md, and a course without one has none", async () => {
+  const root = openDataRoot({ path: dir });
+  const { id } = await root.createCourse({ title: "Calculus I" });
+
+  expect(await root.readStyle(id)).toBeUndefined();
+
+  const note = "Short explanations, many small exercises.\n";
+  await writeFile(join(dir, "courses", id, "style.md"), note);
+  expect(await root.readStyle(id)).toBe(note);
+});
+
 test("a course reads back with its curriculum once there is one", async () => {
   const root = openDataRoot({ path: dir });
   const { id } = await root.createCourse({ title: "Calculus I" });
@@ -500,6 +537,7 @@ function inCheck(promptLength = 60): UnitPosition {
   return {
     segment: 0,
     phase: "check",
+    checkFrom: 0,
     openQuestion: {
       id: "q1",
       number: 1,
@@ -589,7 +627,11 @@ describe("state", () => {
     await root.writePosition(id, "vectors", DISCUSSING);
 
     await expect(
-      root.writePosition(id, "eigen", { ...inCheck(), phase: "teach" }),
+      root.writePosition(id, "eigen", {
+        ...inCheck(),
+        phase: "teach",
+        checkFrom: undefined,
+      }),
     ).rejects.toThrow(/only in the check/);
 
     expect(await root.readState(id)).toEqual({
@@ -729,7 +771,7 @@ describe("evidence", () => {
 });
 
 test.each(["no-such-course", "../linear-algebra"])(
-  "plans, state and evidence of the course %j are refused",
+  "plans, state, evidence, opening and style of the course %j are refused",
   async (missing) => {
     const root = openDataRoot({ path: dir });
     await courseWithCurriculum(root);
@@ -745,6 +787,8 @@ test.each(["no-such-course", "../linear-algebra"])(
     await expect(root.appendEvidence(missing, OVERRIDE)).rejects.toThrow(
       /no course/,
     );
+    await expect(root.markOpened(missing)).rejects.toThrow(/no course/);
+    await expect(root.readStyle(missing)).rejects.toThrow(/no course/);
     expect(await readdir(join(dir, "courses"))).toEqual(["linear-algebra"]);
   },
 );

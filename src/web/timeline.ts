@@ -143,6 +143,32 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...next,
         approved: { courseId: event.courseId, revision: event.revision },
       };
+    // The unit chat's events (task 2.6). The session view (task 2.11) gives
+    // the plan and the phases their own items; until then they show nothing.
+    case "unit_planning":
+    case "unit_plan":
+    case "phase":
+      return next;
+    case "unit_failed":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          { kind: "note", key: index, text: event.error },
+        ],
+      };
+    case "overridden":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "note",
+            key: index,
+            text: "You moved on without the check. Recorded as an override.",
+          },
+        ],
+      };
     case "turn_end": {
       const note =
         event.outcome === "error"

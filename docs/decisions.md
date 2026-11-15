@@ -33,6 +33,7 @@ findings are the record.
 | Objective status | The passing rule, help, "I don't know", overrides, unit status | Recording answers or help (2.7), showing status (2.11, 2.12), stage 5's retained and slipping |
 | Markdown and math | The renderer, what happens to a model's HTML, links and images, math delimiters, the answer preview | Showing model or learner text on the page; writing a prompt's formatting rules (2.16) |
 | Unit planning | The planning session, `plan_unit`, retries, what the session is given | Starting a unit (2.6), revising `unit-planner.md`, stage 4's sections for planning |
+| Unit chat and phases | Opening a unit, phase rules, refusals, "this check", restart, headers, page events | Touching `engine/unit-chat.ts` or `unit-turns.ts`, the check's rules (2.7), the session view (2.11), resume (2.14), `tutor.md` (2.16) |
 
 ## Page design (plan task 1.0)
 
@@ -1521,3 +1522,118 @@ and can be overturned.
   plan refused by its schema lost (the tests found this one in the first
   version, which kept only the record's refusals); the backend's error
   left out of the failure; and storing that does not end the turn.
+
+## Unit chat and phases (plan task 2.6)
+
+Built on 2026-11-15: `src/server/engine/unit-chat.ts` (the chat and its
+registry), `src/server/engine/unit-turns.ts` (the system prompt and every
+turn's header), `src/server/tools/close-segment.ts`, a short first
+`prompts/tutor.md`, the unit routes in `src/server/http/app.ts`, and in the
+record `markOpened` and `readStyle`. Tests sit beside each. The choices are
+the agent's and can be overturned.
+
+- **The learner starts each segment; there is no `start_segment` tool.**
+  Mock 3's "Start the next segment" held up: the tutor never needs to start
+  one, and a tool for it would let the model move on by itself.
+  `architecture.md` section 5 is revised.
+- **Opening a unit** (`POST /api/courses/<id>/units/<unit>/open`) checks the
+  course and unit (404) and the approval (409) before anything else, marks
+  the course opened, and answers at once; the chat then loads over its event
+  stream. A unit without a plan shows `unit_planning` while it is planned. A
+  failed planning, or a record that cannot be read, is `unit_failed` in the
+  thread, the chat refuses everything else, and opening it again tries
+  again. Two opens of one unit share one chat.
+- **A turn's header is composed when it is sent**, not when it is queued
+  (`Turn.text` may be a function, in `conversation.ts`). A message written
+  while the tutor teaches reaches it after the teaching turn has ended, so
+  its header must say "discuss", not "teach". The same hook will let 2.7 see
+  whether a question was open when the tutor received a learner message,
+  which is its rule for help. A turn can also run work when it ends, before
+  the next is sent; the teaching turn uses it to open the discussion.
+- **Any end of the teaching turn opens the discussion**: done, stopped, or
+  failed. After a failure the learner sees the error and can ask for what
+  was missed; keeping the segment in teach would leave them nothing to do.
+- **"Ready", moving on and the next segment are refused while the tutor is
+  writing** ("Wait until the tutor has finished, or stop it."), as approval
+  is in the intake. Taken at once, each would put a phase marker in the
+  middle of a reply still streaming. An answer and a message are taken at
+  any time: an answer only closes the question, and a message is queued.
+- **Moving on is allowed from the discussion as well as the check.** The
+  brief lets the learner always move on, and making them press "ready"
+  first would cost a tutor turn that posts a question they will not answer.
+  The page (2.11) can still offer it only in the check, as mock 3 does. It
+  names all the segment's objectives, which 2.3 allows, and withdraws an
+  open question.
+- **Moving on sends the tutor nothing.** Its next turn's header says the
+  learner moved on and which question was withdrawn. A turn of its own
+  would cost a reply, and the learner would have to wait for it before
+  starting the next segment. The note is held in memory, so a restart
+  before the next turn loses it; the new session's header still says the
+  segment is closed.
+- **"From this check" is kept as a point in the evidence log.** The
+  position holds `checkFrom`, the number of entries when the learner
+  pressed "ready"; the check's answers are the entries after it that name
+  the segment's objectives, read back from the log when a unit is reopened
+  mid-check. Rejected: a list of answered objectives in `state.json`,
+  which would copy part of the evidence, and the time the check began,
+  since log order decides, not timestamps (task 2.3). Other units' answers
+  in between are left out by their objectives, which are unique in the
+  course. A question is numbered after the check's answers.
+- **`close_segment` takes no input and ends the turn**, so feedback on the
+  last answer comes before it, as with `ask_question`. Checked without a
+  model: the SDK's tool server lists it with the input schema
+  `{"type":"object","properties":{}}`, and a refused call comes back as an
+  error result with the reason (a throwaway script with an in-memory MCP
+  client).
+- **`ask_question` names the objective by id** (it was free text). The
+  engine, not the tool, decides whether a question may be posted, so the
+  `QuestionBoard` returns either the posted question or the refusal.
+- **Every change is written to `state.json` before the page hears of it.**
+  An answer is appended to the evidence first, then its question is closed,
+  so a crash between the two leaves the question open with its answer kept,
+  never an answer lost. A second answer to it would be recorded twice; not
+  guarded against, as the window is one file write.
+- **A unit reopened after a restart** shows its plan, its phase and any open
+  question, and sends nothing until the learner acts. Its tutor session is
+  new (resume is 2.14), and the first header says so ("This conversation is
+  new: the earlier conversation in this unit is not available to you, so do
+  not refer to it."). An answer's turn repeats the question and its choices
+  so a new session can give feedback. A unit reopened in teach was cut off
+  mid-teaching, so its teaching turn is sent again, saying so.
+- **The tutor's system prompt** is `tutor.md`, then the course's units with
+  their goals, the unit taught and its plan, then `style.md` or a line
+  saying to use the default style. The plan goes there rather than in each
+  header because a session keeps its first prompt; the headers carry only
+  the position. `tutor.md` is a short first version for 2.16 to revise: the
+  rhythm, posting ends the turn, no hint in a lead-in, the default style,
+  `$` math and no images.
+- **Page events.** `unit_planning`, `unit_failed`, `unit_plan` (for the
+  outline), `phase` (a segment's phase began or the chat opened in it),
+  `overridden`, and the existing `question` and `graded`. The page's
+  timeline (`src/web/timeline.ts`) shows `unit_failed` and `overridden` as
+  notes and ignores the rest until the session view (2.11) gives them
+  items.
+- **For later tasks.** 2.7: help is written `false`; the unit stays in
+  `state.json`, closed at its last segment, and "next segment" there is
+  refused ("This was the unit's last segment."); opening a unit with no
+  position starts it at segment 1 even if its objectives have evidence, so
+  2.7 or 2.12 should decide what opening a finished unit does. 2.11: the
+  refusals' messages are written for the learner; a message while the unit
+  is still opening is refused. 2.13: the chat's event log is what the
+  transcript should hold. 2.14: `tutorSessionId` is not written yet. 2.15:
+  a unit chat, like an intake, keeps its session until the server stops.
+- **Checks:** `mise run check` passed lint, type-checking, 299 TypeScript
+  tests and one Python test. The 42 new tests are 30 fake-backend tests of
+  the unit chat, 5 route tests, 2 each for the turn queue, the record and
+  `state.json`'s new rule, and one more for `ask_question`, whose tests were
+  rewritten for the engine's refusals. Each of these faults made at least one test fail: headers
+  composed when queued; Stop not opening the discussion; the check's answers
+  not read back on reopening; answers from before the check counted on
+  reopening; `close_segment` ignoring missing objectives; `ask_question` on
+  another segment's objective; `ask_question` and `close_segment` allowed
+  out of phase; an override or an answer not recorded; an open question not
+  written to `state.json`; the course not marked opened; actions allowed
+  while the tutor writes; a segment after the last; no note for a new
+  session joining a unit; the override's note dropped; and the end-of-turn
+  work not awaited before the next turn. No real backend was run, as the
+  task does not call for one.

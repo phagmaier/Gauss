@@ -43,6 +43,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.3 | Objective status | `objectiveStatus` and `unitStatus` in `record/status.ts`. Passed: since the last miss, unassisted correct answers to two different questions, or one at 90% or 100%. Help (2.7 records it): the tutor received a learner message while the question was open. A unit with a position in `state.json` is in progress, so 2.7 takes it out when the unit closes. |
 | 2.4 | Markdown and math | `Prose`, `InlineProse` and `AnswerPreview` in `src/web/prose.tsx` (react-markdown, remark-math, rehype-katex): the tutor's text, prompts and choices. `AnswerPreview` is not mounted yet: put it under the written answer field (2.8 or 2.11). Prompts must ask for `$` math, `$$` on a line of its own for display, and `\$` for a dollar sign (2.16); images are never shown. |
 | 2.5 | Unit planning | `createUnitPlanner(...).plan(course, unit)` in `engine/unit-planning.ts` returns the stored plan or plans the unit in a session of its own (`prompts/unit-planner.md`, `tools/plan-unit.ts`); problems `not-found`, `not-approved`, `failed` with a message for the learner. Not wired yet: 2.6 reads the prompt in `main.ts` and calls it when a unit starts. The session is not given the learner's background, which the record does not keep. |
+| 2.6 | Unit chat and phases | `engine/unit-chat.ts` (phases, refusals, routes under `/api/courses/<id>/units/<unit>/`), headers and system prompt in `engine/unit-turns.ts`, `close_segment`; no `start_segment` (the learner starts segments). The check's answers are the evidence after `checkFrom` in the position. For 2.7: help is written `false`, the last segment stays closed in `state.json`, and opening a unit with no position starts it at segment 1. A reopened unit gets a new session (2.14 resumes); a turn's header is composed when it is sent. |
 
 ## Stage 2: session engine
 
@@ -56,35 +57,6 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
-
-### 2.6 Unit chat and phases
-
-- Status: todo
-- Depends on: 2.2, 2.5
-- Do: the unit chat, built from `src/server/engine/conversation.ts` as the
-  intake is. Starting a unit plans it (2.5), then sends segment 1's teach
-  turn. The engine enforces `architecture.md` section 4's phases: the end
-  of the teaching turn, or Stop during it, moves to discuss; the learner's
-  "ready" moves to check; in check the tutor posts questions with
-  `ask_question`, now naming an objective of the segment, and each answer
-  is graded, appended to the evidence and sent to the tutor; the tutor's
-  `close_segment` is refused until every objective of the segment has an
-  answer from this check; the learner's override closes the segment and is
-  recorded as evidence; the learner starts the next segment. Tools called
-  out of phase are refused with a reason the tutor can act on. The engine
-  composes every turn's header and writes `state.json` after every change,
-  so an open question survives a restart. The tutor's system prompt is
-  assembled from `prompts/tutor.md`, `style.md` and the course context
-  (section 9); a short first `tutor.md` will do until 2.16. Routes and page
-  events for all of it; opening a unit updates `lastOpenedAt`.
-- Done when: fake-backend tests cover each transition, `ask_question` and
-  `close_segment` refused out of phase with the reason reaching the tutor,
-  an override, and a new engine over the same data root reopening a unit
-  mid-check from `state.json` (the tutor's own session resumes from 2.14);
-  route tests cover the new routes.
-- Note: mock 3 gives "Start the next segment" to the learner, so starting
-  a segment is the learner's action and not a teaching tool. If that
-  holds, revise the tool list in `architecture.md` section 5.
 
 ### 2.7 Check rules and unit close
 

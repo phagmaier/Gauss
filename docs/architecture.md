@@ -77,7 +77,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
     course.json                   title, backend, settings (web search on/off), dates
     style.md                      per-course teaching style note
     curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
-    state.json                    each unit in progress: segment, phase, open question, tutor session, open detour
+    state.json                    each unit in progress: segment, phase, where its check began, open question, tutor session, open detour
     evidence.jsonl                append-only: answers, grades, confidence, overrides, disputes
     misconceptions.jsonl          append-only: findings from detours
     units/<unit-id>/handoff.md    written at the end of each session in the unit
@@ -160,8 +160,18 @@ derived status.
   resumed. A draft whose intake was lost in a restart is reviewed in a new
   intake that starts from the stored draft as proposal 1, its earlier
   conversation gone; the tutor gets the draft in the first turn (task 1.6).
+- The unit chat (task 2.6, `src/server/engine/unit-chat.ts`) is one per
+  unit, kept in memory until the server stops. Opening a unit not in
+  progress plans it if it has no plan, writes its position (segment 1,
+  teach) and sends the teaching turn. Opening one in progress picks it up
+  where `state.json` has it, in a new tutor session until 2.14 resumes the
+  old one: the session's first header says it is new, so the tutor does not
+  pretend to remember. A unit reopened in teach, whose teaching a restart
+  cut off, is taught again. Opening a unit marks its course opened.
 - Every chat is built from the event log and turn queue in
-  `src/server/engine/conversation.ts`.
+  `src/server/engine/conversation.ts`. A turn's text can be composed when it
+  is sent rather than when it is queued, so its header says how things
+  stand then; and a turn can run work when it ends, before the next is sent.
 
 ### Phases
 
@@ -171,17 +181,46 @@ pops back.
 
 | Transition | Triggered by | Engine rule |
 | --- | --- | --- |
-| teach to discuss | the tutor's teaching turn ends | automatic |
+| teach to discuss | the tutor's teaching turn ends, or the learner stops it | automatic, also when the turn fails, so the learner can ask for what was missed |
 | discuss to check | the learner presses "ready" | `ask_question` is rejected before this |
-| check to closed | the tutor calls `close_segment` | rejected unless every objective in the segment has evidence from this check, or the learner overrode |
+| check to closed | the tutor calls `close_segment` | rejected unless every objective in the segment has an answer from this check |
+| discuss or check to closed | the learner moves on without the check | recorded as an override of the segment's objectives; an open question is withdrawn |
+| closed to the next segment's teach | the learner starts it | none after the plan's last segment (the unit's close is task 2.7) |
 | any to detour | confident wrong answer, or second miss on an objective | engine offers it; tutor or learner can start it |
+
+The rules of task 2.6, which 2.7 refines:
+
+- **The tutor's tools are refused out of phase** with a reason it can act
+  on: `ask_question` outside the check, while a question is open, or on an
+  objective not in the segment; `close_segment` outside the check, while a
+  question is open, or before each objective of the segment has an answer.
+  A refusal does not end the turn. Both tools end the turn when they
+  succeed.
+- **"This check"** is the evidence after the point where it began, which the
+  position keeps (`checkFrom`, the number of entries the log held then):
+  the check's answers are the entries after it that name the segment's
+  objectives. A question is numbered after the check's answers.
+- **The learner's "ready", move on and next segment wait for the tutor**:
+  while it is writing, they are refused, and Stop is always there. An
+  answer and a message are taken at any time.
+- **Moving on sends the tutor nothing.** The next turn's header says the
+  learner moved on, and which question was withdrawn.
+- **Every change is written to `state.json` before the page hears of it**;
+  an answer is appended to the evidence before its question is closed, so
+  a crash between the two leaves the question open with its answer kept,
+  never an answer lost.
 
 ### Turn protocol
 
 The engine composes every message the tutor receives: a short header (unit,
 segment, phase, what is allowed now, and in a source course the segment's
 sections) followed by either the learner's text or an event ("learner pressed
-ready", "answer submitted", "override").
+ready", "answer submitted", "override"). For a unit chat the wording is in
+`src/server/engine/unit-turns.ts`: the header also names what happened and
+what the tutor has not been told yet (an override, a new session); an
+answer's turn repeats the question with its choices, the learner's answer,
+confidence and reasoning, and the grade. The tutor's system prompt is
+assembled there too (section 9).
 
 ### Question flow
 
@@ -216,8 +255,8 @@ served to it over the standard tool protocol (MCP).
 | `propose_curriculum` | Stores a draft curriculum and shows it for review |
 | `amend_curriculum` | Proposes a change; applied only after the learner confirms |
 | `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
-| `start_segment`, `close_segment` | Move through segments, subject to the phase rules |
-| `ask_question` | Posts a question (section 4) |
+| `close_segment` | Closes the segment once its check is done (section 4); ends the turn. The learner starts the next segment, so there is no tool for it (task 2.6) |
+| `ask_question` | Posts a question on an objective of the segment, in the check (section 4) |
 | `start_detour`, `end_detour` | Open and close a detour; closing records the misconception found |
 | `quote_source` | Returns a verified quote block, or an error if the text is not in the source |
 | `show_artifact` | Displays an HTML file from `artifacts/` in the side pane |
@@ -438,7 +477,11 @@ gives the planning session the unit's sections.
 ## 9. Prompts
 
 Kept as editable files in `prompts/`. The tutor's system prompt is assembled
-from `tutor.md`, the course's `style.md`, and course context from the record.
+from `tutor.md`, the course's `style.md`, and course context from the record:
+as built in task 2.6, `tutor.md`, then the course's units with their goals,
+the unit taught and its plan, then `style.md` or a line saying to use the
+default style in `tutor.md`. The learner's profile, the last handoff note
+and open misconceptions join it in stage 5.
 `examiner.md` drives assessments, `grader.md` rubric grading, `planner.md`
 the intake's curriculum proposal, `unit-planner.md` the planning session that
 plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
@@ -470,7 +513,11 @@ the intake's event stream, messages, approval and stop are routes under
 progress, whose routes then answer 404; a course it proposed stays in the
 library as a draft. Opening a draft (`POST /api/courses/<id>/review`)
 returns the intake still running for it, or a new one that starts from the
-stored draft. An event stream replays its chat's log with ids
+stored draft. A unit chat is addressed by its course and unit, under
+`/api/courses/<id>/units/<unit>/` (task 2.6): `open` starts the unit or
+picks it up and must come first, then `events`, `messages`, `ready`,
+`answers`, `override`, `next-segment` and `interrupt`. A unit not opened
+since the server started answers 404 on all but `open`. An event stream replays its chat's log with ids
 `<log id>.<index>`, so a page that reconnects gets only what it missed.
 Only Gauss's own page may use the API (`decisions.md`, "Minimal page").
 
