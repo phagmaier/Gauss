@@ -539,3 +539,28 @@ tested"). Stage 1 is finished.
   `docs/decisions.md` under "Unit chat and phases"; `architecture.md`
   sections 3, 4, 5, 9 and 10 describe the unit chat, its rules, the tool
   list without `start_segment`, the system prompt and the routes.
+
+### 2.7 Check rules and unit close
+
+- Status: done
+- Depends on: 2.1, 2.3, 2.6
+- Do: the rules 2.6 leaves simple. The number of questions adapts within
+  limits (brief, "Teaching style"): after a miss on an objective another
+  question on it is required before the segment closes, up to a limit, and
+  fewer after confident correct answers. Answers record help as 2.3
+  settles. The unit closes when its last segment does, passed when every
+  objective passed and otherwise in the form 2.1 settles; stage 5 adds the
+  gate and notes before it. Page events carry each objective's and the
+  unit's derived status.
+- Done when: fake-backend tests cover a miss that requires another
+  question, the limit that lets the segment close anyway, a confident
+  correct answer that shortens the check, an assisted answer, and a unit
+  closing passed and not passed.
+- Note from 2.1: when some objectives did not pass, the closing card
+  (piece 10) offers "Go over the N again", one more segment on those
+  objectives after the plan's last, or "Move on without them", which
+  records the unit as overridden.
+- Note: done on 2026-11-15. The choices, the limit and the checks are in
+  `docs/decisions.md` under "Check rules and unit close";
+  `architecture.md` sections 3, 4 and 10 describe the rules, the extra
+  segment and the routes.

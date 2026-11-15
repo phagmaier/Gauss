@@ -34,6 +34,7 @@ findings are the record.
 | Markdown and math | The renderer, what happens to a model's HTML, links and images, math delimiters, the answer preview | Showing model or learner text on the page; writing a prompt's formatting rules (2.16) |
 | Unit planning | The planning session, `plan_unit`, retries, what the session is given | Starting a unit (2.6), revising `unit-planner.md`, stage 4's sections for planning |
 | Unit chat and phases | Opening a unit, phase rules, refusals, "this check", restart, headers, page events | Touching `engine/unit-chat.ts` or `unit-turns.ts`, the check's rules (2.7), the session view (2.11), resume (2.14), `tutor.md` (2.16) |
+| Check rules and unit close | How many questions and the limit, help, the unit's end, going over again, moving on without them, finished units | Touching `engine/check-rules.ts` or the unit's end, the closing card (2.11), course progress (2.12), `tutor.md` (2.16) |
 
 ## Page design (plan task 1.0)
 
@@ -1637,3 +1638,106 @@ the agent's and can be overturned.
   session joining a unit; the override's note dropped; and the end-of-turn
   work not awaited before the next turn. No real backend was run, as the
   task does not call for one.
+
+## Check rules and unit close (plan task 2.7)
+
+Built on 2026-11-15: `src/server/engine/check-rules.ts` (how many
+questions, and which segment a position is in) with its tests, and in
+`src/server/engine/unit-chat.ts` help, the unit's end and the closing
+card's two steps, with the routes `go-over-again` and `finish`. The
+choices are the agent's and can be overturned.
+
+- **How many questions.** Each objective of the segment gets at least one
+  question in the check, and is done once it has passed, by task 2.3's
+  rule over the whole evidence, or once three of its questions have been
+  answered in this check. That is the brief's "more after a miss, fewer
+  after confident correct answers": a miss, an unconfident correct answer
+  or one given with help asks for another question; a confident correct
+  answer ends the objective's check at one; two unconfident correct answers
+  to different questions end it at two. The tutor is not trusted to stop:
+  `ask_question` on an objective that is done is refused, with the
+  objectives still open, and `close_segment` is refused, with where each
+  open one stands, until all are done.
+- **The limit is three questions per objective per check.** Two misses
+  already mark a likely misconception (the brief's trigger for a detour,
+  stage 5); a third question is one more chance after the tutor's
+  feedback, and more would make a segment of two objectives drag past six
+  questions. An objective at the limit stays attempted, and the closing
+  card offers it again. No limit on the segment as a whole, since a
+  segment has at most two objectives. The extra segment that goes over
+  several objectives again has the same limit for each.
+- **At least one question per check even on an objective passed before
+  it.** The check is the segment's; an answer from before it does not
+  count for it (task 2.6), though it does count toward passing.
+- **The header tells the tutor where each objective stands** ("missed, so
+  another question is needed (1 of at most 3 asked)", "passed", "not passed
+  after 3 questions, the limit"), so it can choose the next question
+  without counting. `prompts/tutor.md` says to ask a different question
+  each time; the same question twice counts once (task 2.3).
+- **Help is noted when the tutor receives the message**, as task 2.3
+  settled: the message turn's text is composed when it is sent, and if a
+  question is open then, the question is marked `assisted` in `state.json`
+  before the text goes out, so the mark survives a restart. A message
+  written before a question was posted and received after counts; one
+  received after the answer does not. The turn's text may now be composed
+  asynchronously (`conversation.ts`), inside the chat's queue of changes.
+  The tutor is told, in the header, that the answer will be recorded as
+  given with help, and in the answer's turn that it does not count.
+- **The unit ends when its last segment closes**, by `close_segment` or by
+  moving on without the check. The closing card is `unit_end` with each
+  objective's status. When all passed, the unit is taken out of
+  `state.json` at once and `unit_closed` follows; "Back to the course" and
+  "Start unit N" need nothing from the server. When some did not, the unit
+  stays in progress with its last segment closed, and the learner picks:
+  - **Go over them again** starts a segment after the plan's last, on the
+    objectives not passed. It is kept in the position (`again`, with the
+    plan's segment count as its index), because an objective is taught in
+    one segment of the plan (task 2.2). It runs teach, discuss and check
+    as any segment, and its close ends the unit again, so the card can
+    offer another round. Its teaching turn asks the tutor to teach them
+    another way.
+  - **Move on without them** records an override of the objectives not
+    passed, only those, so the passed ones keep their record clean; the
+    unit is then overridden (task 2.3) and taken out of `state.json`. The
+    tutor is sent nothing.
+  "Start the next segment" at the unit's end is refused with the two
+  choices.
+- **A finished unit is not started again.** Opening a unit that has no
+  position and whose objectives make it passed or overridden shows it
+  finished (`unit_status`, then `unit_closed`), sends nothing, and refuses
+  every step but a message, which the tutor answers as a finished unit.
+  Starting it over is not designed. A unit reopened with its last segment
+  closed shows its closing card again; if a restart came between closing
+  the last segment and closing the unit, the unit closes then.
+- **Page events.** `unit_status` carries the unit's status and each
+  objective's, from `src/shared/status.ts`: sent when the chat opens,
+  after every answer and override, and when the unit closes. `graded`
+  carries `assisted`. `phase` carries `again` for the extra segment.
+  `unit_end` and `unit_closed` as above. At `unit_end`, an objective
+  "attempted" reached the check's limit and one "overridden" was moved on
+  from, which is the "why" the card's rows give (piece 10).
+- **For later tasks.** 2.11: the closing card from `unit_end`, shrunk once
+  `phase` (going over again) or `unit_closed` follows; "Move on without
+  them" is confirmed on the page, then `POST .../finish`; the top line for
+  the extra segment. 2.12: a finished unit is one with no position whose
+  `unitStatus` is passed or overridden. 2.16: `tutor.md`'s check section
+  says what this task's headers mean.
+- **Checks:** `mise run check` passed lint, type-checking, 325 TypeScript
+  tests and one Python test. New: 14 table cases of the question count
+  worked by hand, 10 fake-backend tests of the unit chat (a miss, the
+  limit, a confident answer, help in two orders, the closing card going
+  over again and passing, moving on without them, both steps refused
+  when not at the end, a finished unit and a waiting card after a
+  restart), and a route test of the two steps; eleven 2.6 tests were
+  updated for the new events and wording. Each of these faults made at
+  least one test fail: no limit; a confident answer not ending the check;
+  an unsure correct answer ending it; help not recorded; a message between
+  questions counted as help for the next; help judged when the learner
+  writes rather than when the tutor receives (the first versions of these
+  two faults were written wrongly and changed nothing; rewritten, both
+  failed tests); questions allowed on an objective that is done; a passed
+  unit left in `state.json`; moving on overriding every objective; going
+  over every objective again; a finished unit started again on opening;
+  the waiting card not shown after a restart; no statuses after an answer;
+  and the unit's end not reached through an override. No real backend was
+  run, as the task does not call for one.

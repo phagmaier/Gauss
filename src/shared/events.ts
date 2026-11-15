@@ -7,6 +7,7 @@ import { Unit } from "./curriculum.ts";
 import { Plan } from "./plan.ts";
 import { ChoiceLetter, Confidence, QuestionView, Verdict } from "./question.ts";
 import { Phase } from "./state.ts";
+import { ObjectiveStatus, UnitStatus } from "./status.ts";
 
 /** A segment by its index in the unit's plan, from 0, as in state.json. */
 const SegmentIndex = z.number().int().nonnegative();
@@ -32,6 +33,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     choice: ChoiceLetter.nullable(),
     confidence: Confidence.nullable(),
     correctChoice: ChoiceLetter,
+    /** Given with help, so a correct answer does not count toward passing. */
+    assisted: z.boolean(),
   }),
   /**
    * The intake starts from a stored draft, because the conversation that
@@ -68,7 +71,40 @@ export const PageEvent = z.discriminatedUnion("type", [
    * A phase of a segment began, or the chat opened in it. "teach" starts the
    * segment; "closed" ends it, until the learner starts the next.
    */
-  z.object({ type: z.literal("phase"), segment: SegmentIndex, phase: Phase }),
+  z.object({
+    type: z.literal("phase"),
+    segment: SegmentIndex,
+    phase: Phase,
+    /** For a segment after the plan's last: the objectives it goes over again. */
+    again: z.array(Slug).optional(),
+  }),
+  /**
+   * How each objective of the unit and the unit stand, derived from the
+   * evidence (task 2.3). Sent when the chat opens and after every change.
+   */
+  z.object({
+    type: z.literal("unit_status"),
+    unit: UnitStatus,
+    objectives: z.record(Slug, ObjectiveStatus),
+  }),
+  /**
+   * The unit's last segment has closed: the closing card (task 2.1, piece
+   * 10). When every objective passed, "unit_closed" follows at once. When
+   * some did not, the learner goes over them again, which starts a segment
+   * after the plan's last, or moves on without them. At this point an
+   * objective "attempted" reached the check's limit, and one "overridden"
+   * was moved on from without its check.
+   */
+  z.object({
+    type: z.literal("unit_end"),
+    passed: z.boolean(),
+    objectives: z.record(Slug, ObjectiveStatus),
+  }),
+  /** The unit is finished and no longer in progress. */
+  z.object({
+    type: z.literal("unit_closed"),
+    status: z.enum(["passed", "overridden"]),
+  }),
   /**
    * The learner moved on without the check, recorded as an override of the
    * segment's objectives. A question still open is withdrawn. The segment's

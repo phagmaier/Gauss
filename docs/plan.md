@@ -44,6 +44,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.4 | Markdown and math | `Prose`, `InlineProse` and `AnswerPreview` in `src/web/prose.tsx` (react-markdown, remark-math, rehype-katex): the tutor's text, prompts and choices. `AnswerPreview` is not mounted yet: put it under the written answer field (2.8 or 2.11). Prompts must ask for `$` math, `$$` on a line of its own for display, and `\$` for a dollar sign (2.16); images are never shown. |
 | 2.5 | Unit planning | `createUnitPlanner(...).plan(course, unit)` in `engine/unit-planning.ts` returns the stored plan or plans the unit in a session of its own (`prompts/unit-planner.md`, `tools/plan-unit.ts`); problems `not-found`, `not-approved`, `failed` with a message for the learner. Not wired yet: 2.6 reads the prompt in `main.ts` and calls it when a unit starts. The session is not given the learner's background, which the record does not keep. |
 | 2.6 | Unit chat and phases | `engine/unit-chat.ts` (phases, refusals, routes under `/api/courses/<id>/units/<unit>/`), headers and system prompt in `engine/unit-turns.ts`, `close_segment`; no `start_segment` (the learner starts segments). The check's answers are the evidence after `checkFrom` in the position. For 2.7: help is written `false`, the last segment stays closed in `state.json`, and opening a unit with no position starts it at segment 1. A reopened unit gets a new session (2.14 resumes); a turn's header is composed when it is sent. |
+| 2.7 | Check rules and unit close | `engine/check-rules.ts`: an objective is done in a check once passed or after 3 questions, at least one per check. Help is marked on the open question when the tutor receives a message. The unit ends with its last segment: `unit_end` (the closing card), then `unit_closed` when all passed; otherwise `go-over-again` (a segment after the plan's, in the position's `again`) or `finish` (override of the rest). Events carry statuses (`unit_status`, `graded.assisted`). A finished unit opens finished, never restarted. |
 
 ## Stage 2: session engine
 
@@ -57,27 +58,6 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
-
-### 2.7 Check rules and unit close
-
-- Status: todo
-- Depends on: 2.1, 2.3, 2.6
-- Do: the rules 2.6 leaves simple. The number of questions adapts within
-  limits (brief, "Teaching style"): after a miss on an objective another
-  question on it is required before the segment closes, up to a limit, and
-  fewer after confident correct answers. Answers record help as 2.3
-  settles. The unit closes when its last segment does, passed when every
-  objective passed and otherwise in the form 2.1 settles; stage 5 adds the
-  gate and notes before it. Page events carry each objective's and the
-  unit's derived status.
-- Done when: fake-backend tests cover a miss that requires another
-  question, the limit that lets the segment close anyway, a confident
-  correct answer that shortens the check, an assisted answer, and a unit
-  closing passed and not passed.
-- Note from 2.1: when some objectives did not pass, the closing card
-  (piece 10) offers "Go over the N again", one more segment on those
-  objectives after the plan's last, or "Move on without them", which
-  records the unit as overridden.
 
 ### 2.8 Rubric grading
 

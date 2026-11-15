@@ -23,13 +23,29 @@ export const OpenQuestion = z.object({
   postedAt: Timestamp,
   /** What the learner sees, with the grading material, which the page never gets. */
   question: Question,
+  /**
+   * Set once the tutor has received a message from the learner while the
+   * question was open, so its answer is recorded as given with help
+   * (docs/decisions.md, "Objective status"; task 2.7).
+   */
+  assisted: z.literal(true).optional(),
 });
 export type OpenQuestion = z.infer<typeof OpenQuestion>;
 
 export const UnitPosition = z
   .object({
-    /** The segment in progress, or the last one closed: its index in the plan, from 0. */
+    /**
+     * The segment in progress, or the last one closed: its index in the
+     * plan, from 0, or the plan's segment count for the segment that goes
+     * over objectives again.
+     */
     segment: z.number().int().nonnegative(),
+    /**
+     * Set for a segment after the plan's last, which goes over objectives
+     * that did not pass (task 2.7): their ids. An objective is taught in one
+     * segment of the plan, so this one is kept here and not in the plan.
+     */
+    again: z.array(Slug).min(1).optional(),
     /** "closed" once the segment has closed, until the learner starts the next. */
     phase: Phase,
     /**

@@ -30,6 +30,7 @@ const LOG: PageEvent[] = [
     choice: "A",
     confidence: "90",
     correctChoice: "A",
+    assisted: false,
   },
   { type: "turn_start" },
   { type: "tutor_text", text: "Right." },

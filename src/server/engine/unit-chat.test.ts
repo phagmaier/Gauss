@@ -5,8 +5,13 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
-import type { ChoiceQuestionInput } from "../../shared/question.ts";
-import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
+import type { ChoiceQuestionInput, Confidence } from "../../shared/question.ts";
+import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
+import {
+  createFakeBackend,
+  type FakeStep,
+  type FakeTurn,
+} from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner, type UnitPlanner } from "./unit-planning.ts";
@@ -92,8 +97,26 @@ const Q_LIMIT: ChoiceQuestionInput = {
   answer: "B",
 };
 
+/** A unit_status event: the unit's status, then each objective's in plan order. */
+function status(
+  unit: UnitStatus,
+  quotient: ObjectiveStatus = "not-started",
+  secant: ObjectiveStatus = "not-started",
+  limit: ObjectiveStatus = "not-started",
+): PageEvent {
+  return {
+    type: "unit_status",
+    unit,
+    objectives: {
+      "difference-quotient": quotient,
+      "secant-slope": secant,
+      "derivative-limit": limit,
+    },
+  };
+}
+
 const TEACH: FakeTurn = [{ text: "A secant joins two points." }];
-const ask = (question: ChoiceQuestionInput): FakeTurn => [
+const ask = (question: ChoiceQuestionInput): FakeStep[] => [
   { text: "Here is a question." },
   { call: "ask_question", input: question },
   { text: "Written after posting, which the learner must not see." },
@@ -114,12 +137,12 @@ function stored(question: ChoiceQuestionInput) {
  * An approved course, made the day before, with its first unit planned
  * unless `planned` is false.
  */
-async function makeCourse(planned = true): Promise<void> {
+async function makeCourse(planned = true, plan = PLAN): Promise<void> {
   const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
   await root.saveProposal(id, CURRICULUM);
   await root.approveCurriculum(id);
-  if (planned) await root.storePlan(id, "derivative", PLAN);
+  if (planned) await root.storePlan(id, "derivative", plan);
 }
 
 function setUp(script: FakeTurn[], planner?: UnitPlanner) {
@@ -184,12 +207,17 @@ function openQuestionId(chat: UnitChat): string {
   return posted.question.id;
 }
 
-async function answer(chat: UnitChat, choice: "A" | "B" | "C") {
+/** Answers the open question, at 100% unless told otherwise. */
+async function answer(
+  chat: UnitChat,
+  choice: "A" | "B" | "C",
+  confidence: Confidence = "100",
+) {
   const result = await chat.answer({
     kind: "choice",
     questionId: openQuestionId(chat),
     choice,
-    confidence: "75",
+    confidence,
   });
   expect(result).toEqual({ ok: true });
   await chat.settled();
@@ -215,6 +243,7 @@ test("starting a unit plans it, sends segment 1's teaching turn, and the end of 
   expect(chat.events()).toEqual([
     { type: "unit_planning" },
     { type: "unit_plan", plan: PLAN },
+    status("in-progress"),
     { type: "phase", segment: 0, phase: "teach" },
     { type: "turn_start" },
     { type: "tutor_text", text: "A difference quotient is a slope." },
@@ -305,6 +334,7 @@ test("stopping the teaching turn opens the discussion, and a message sent during
 
   expect(chat.events()).toEqual([
     { type: "unit_plan", plan: PLAN },
+    status("in-progress"),
     { type: "phase", segment: 0, phase: "teach" },
     { type: "turn_start" },
     { type: "tutor_text", text: "A long lecture" },
@@ -386,7 +416,7 @@ test('"ready" starts the check, and the tutor\'s question is stored in state.jso
     },
   });
   expect(setup.backend.received[1]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner pressed "ready". Without an answer in this check: "difference-quotient" and "secant-slope". Allowed now: post a question on one of them with ask_question. Posting ends your turn, so give any feedback first. close_segment is refused until each objective of the segment has an answer.]',
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner pressed "ready". In this check, "difference-quotient": not asked yet; "secant-slope": not asked yet. Allowed now: post a question on "difference-quotient" and "secant-slope" with ask_question, unlike the ones asked before. Posting ends your turn, so give any feedback first. close_segment is refused until each objective is done.]',
   );
 });
 
@@ -415,6 +445,7 @@ test("an answer is graded, appended to the evidence, and sent to the tutor with 
     choice: "B",
     confidence: "75",
     correctChoice: "A",
+    assisted: false,
   });
   expect(await reload().readEvidence(COURSE)).toEqual([
     {
@@ -437,7 +468,7 @@ test("an answer is graded, appended to the evidence, and sent to the tutor with 
     derivative: { segment: 0, phase: "check", checkFrom: 0 },
   });
   expect(setup.backend.received[2]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner answered question 1. Without an answer in this check: "secant-slope". Allowed now: post a question on one of them with ask_question. Posting ends your turn, so give any feedback first. close_segment is refused until each objective of the segment has an answer.]\n' +
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner answered question 1. In this check, "difference-quotient": missed, so another question is needed (1 of at most 3 asked); "secant-slope": not asked yet. Allowed now: post a question on "difference-quotient" and "secant-slope" with ask_question, unlike the ones asked before. Posting ends your turn, so give any feedback first. close_segment is refused until each objective is done.]\n' +
       'Question 1, on "difference-quotient":\n' +
       `${Q_QUOTIENT.prompt}\n` +
       "A. $\\frac{f(a+h)-f(a)}{h}$\n" +
@@ -473,7 +504,7 @@ test('"I don\'t know" is recorded as unknown and the tutor is told it is a miss'
   );
 });
 
-test("close_segment is refused, with the reason, until every objective has an answer from this check; then it closes the segment", async () => {
+test("close_segment is refused, with the reason, until every objective has an answer from this check, even one passed before it; then it closes the segment", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
@@ -510,7 +541,7 @@ test("close_segment is refused, with the reason, until every objective has an an
     name: "close_segment",
     result: {
       status: "refused",
-      text: 'No answer yet in this check on "secant-slope". Post a question on each with ask_question before closing the segment.',
+      text: 'Not done yet in this check: "secant-slope" is not asked yet. Post a question on each with ask_question before closing the segment.',
     },
   });
   // The refusal did not end the turn.
@@ -649,7 +680,7 @@ test("in the check, a second question while one is open and a question on anothe
   ]);
   expect(chat.events().filter((e) => e.type === "question")).toHaveLength(1);
   expect(setup.backend.received[2]?.text).toContain(
-    'Question 1, on "difference-quotient", is open. Allowed now: reply without giving its answer away.',
+    'Question 1, on "difference-quotient", is open. The learner has written to you while it is open, so their answer will be recorded as given with help. Allowed now: reply without giving its answer away.',
   );
 });
 
@@ -673,6 +704,7 @@ test("the learner's override closes the segment, is recorded as evidence, withdr
       objectives: ["difference-quotient", "secant-slope"],
       withdrawnQuestionId: id,
     },
+    status("in-progress", "overridden", "overridden"),
     { type: "phase", segment: 0, phase: "closed" },
   ]);
   expect(await reload().readEvidence(COURSE)).toEqual([
@@ -709,12 +741,13 @@ test("the learner can also move on from the discussion, without pressing ready",
       segment: 0,
       objectives: ["difference-quotient", "secant-slope"],
     },
+    status("in-progress", "overridden", "overridden"),
     { type: "phase", segment: 0, phase: "closed" },
   ]);
   expect(await reload().readEvidence(COURSE)).toHaveLength(1);
 });
 
-test("the learner starts the next segment once one closes, and the last segment has none after it", async () => {
+test("the learner starts each next segment, and the unit closes passed with its last segment when every objective passed", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
@@ -756,20 +789,40 @@ test("the learner starts the next segment once one closes, and the last segment 
     [1, "check"],
     [1, "closed"],
   ]);
-  expect(await position()).toEqual({
-    derivative: { segment: 1, phase: "closed" },
-  });
-  expect(await chat.nextSegment()).toEqual({
-    ok: false,
-    status: 409,
-    error: "This was the unit's last segment.",
-  });
+  expect(since(chat, "unit_end")).toEqual([
+    {
+      type: "unit_end",
+      passed: true,
+      objectives: {
+        "difference-quotient": "passed",
+        "secant-slope": "passed",
+        "derivative-limit": "passed",
+      },
+    },
+    status("passed", "passed", "passed", "passed"),
+    { type: "unit_closed", status: "passed" },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  // No longer in progress.
+  expect(await position()).toEqual({});
+  for (const step of [
+    chat.nextSegment(),
+    chat.ready(),
+    chat.goOverAgain(),
+    chat.finishUnit(),
+  ]) {
+    expect(await step).toEqual({
+      ok: false,
+      status: 409,
+      error: "The unit is finished.",
+    });
+  }
 
   expect(chat.say("Thanks!")).toEqual({ ok: true });
   await chat.settled();
 
   expect(setup.backend.received[7]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; segment 2 of 2, "The limit", on "derivative-limit". Phase: closed. Message from the learner. The segment is closed, and it was the unit\'s last. Allowed now: reply to the learner. No teaching tools.]\nThanks!',
+    '[Unit 1 of 2, "The derivative". The unit is finished: every objective passed. Message from the learner. Allowed now: reply to the learner. No teaching tools.]\nThanks!',
   );
 });
 
@@ -902,7 +955,8 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
   });
   const first = await open(before);
   await toCheck(first);
-  await answer(first, "A");
+  // Correct but unsure, so the objective needs another question.
+  await answer(first, "A", "75");
   const id = openQuestionId(first);
   await before.units.close();
 
@@ -918,6 +972,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
 
   expect(chat.events()).toEqual([
     { type: "unit_plan", plan: PLAN },
+    status("in-progress", "attempted", "passed"),
     { type: "phase", segment: 0, phase: "check" },
     {
       type: "question",
@@ -936,7 +991,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
 
   const turn = after.backend.received[0]?.text ?? "";
   expect(turn).toContain(
-    `The learner answered question 2. ${JOINED_NOTE} Without an answer in this check: "secant-slope".`,
+    `The learner answered question 2. ${JOINED_NOTE} In this check, "difference-quotient": passed; "secant-slope": not asked yet.`,
   );
   expect(turn).toContain(
     `Question 2, on "difference-quotient":\n${Q_QUOTIENT_AGAIN.prompt}`,
@@ -944,7 +999,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
   expect(after.backend.calls.map((c) => c.result)).toEqual([
     {
       status: "refused",
-      text: 'No answer yet in this check on "secant-slope". Post a question on each with ask_question before closing the segment.',
+      text: 'Not done yet in this check: "secant-slope" is not asked yet. Post a question on each with ask_question before closing the segment.',
     },
     // Numbered after both answers of this check, the one before the restart too.
     {
@@ -1084,4 +1139,422 @@ test("a unit of a draft curriculum cannot be opened, and the course is not marke
       .lastOpenedAt,
   ).toBe(CREATED);
   expect(setup.backend.sessions).toEqual([]);
+});
+
+// --- Task 2.7: how many questions, help, and the unit's end -----------------
+
+// One segment, so closing its check ends the unit.
+const SHORT: Plan = {
+  objectives: PLAN.objectives.slice(0, 2),
+  segments: [PLAN.segments[0] as Plan["segments"][number]],
+};
+const Q_QUOTIENT_2: ChoiceQuestionInput = {
+  ...Q_QUOTIENT,
+  prompt: "Which is the difference quotient of $g$ at $2$?",
+  choices: ["$\\frac{g(2+h)-g(2)}{h}$", "$\\frac{g(h)-g(2)}{h}$"],
+};
+const Q_SECANT_2: ChoiceQuestionInput = {
+  ...Q_SECANT,
+  prompt: "Between which points does that secant run?",
+  choices: ["$a$ and $0$", "$a$ and $a+h$", "$h$ and $a+h$"],
+};
+
+/** The SHORT unit's unit_status event. */
+function shortStatus(
+  unit: UnitStatus,
+  quotient: ObjectiveStatus,
+  secant: ObjectiveStatus,
+): PageEvent {
+  return {
+    type: "unit_status",
+    unit,
+    objectives: { "difference-quotient": quotient, "secant-slope": secant },
+  };
+}
+
+/** The reason each close_segment call was refused, or "closed". */
+function closings(setup: ReturnType<typeof setUp>): string[] {
+  return setup.backend.calls
+    .filter((c) => c.name === "close_segment")
+    .map((c) => (c.result.status === "done" ? "closed" : c.result.text));
+}
+
+test("a miss on an objective requires another question on it before the segment closes", async () => {
+  const setup = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    [{ call: "close_segment", input: {} }, ...ask(Q_SECANT)],
+    [{ call: "close_segment", input: {} }, ...ask(Q_QUOTIENT_2)],
+    CLOSE,
+  ]);
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  await answer(chat, "B"); // a confident miss
+  await answer(chat, "B");
+  await answer(chat, "A");
+
+  expect(closings(setup)).toEqual([
+    'Not done yet in this check: "difference-quotient" is missed, so another question is needed (1 of at most 3 asked); "secant-slope" is not asked yet. Post a question on each with ask_question before closing the segment.',
+    'Not done yet in this check: "difference-quotient" is missed, so another question is needed (1 of at most 3 asked). Post a question on each with ask_question before closing the segment.',
+    "closed",
+  ]);
+  expect(setup.backend.received[3]?.text).toContain(
+    'In this check, "difference-quotient": missed, so another question is needed (1 of at most 3 asked); "secant-slope": passed. Allowed now: post a question on "difference-quotient" with ask_question',
+  );
+});
+
+test("the limit lets the segment close with an objective not passed, after which no more questions are asked on it", async () => {
+  const setup = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    ask(Q_QUOTIENT_2),
+    ask(Q_QUOTIENT),
+    [
+      { call: "ask_question", input: Q_QUOTIENT_2 },
+      { call: "ask_question", input: Q_SECANT },
+    ],
+    CLOSE,
+  ]);
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  await answer(chat, "B");
+  await answer(chat, "A", "50"); // correct but unsure: not passed yet
+  await answer(chat, "C");
+
+  expect(setup.backend.calls[3]?.result).toEqual({
+    status: "refused",
+    text: '"difference-quotient" needs no more questions in this check: not passed after 3 questions, the limit. Ask about "secant-slope" instead.',
+  });
+
+  await answer(chat, "B");
+
+  expect(closings(setup)).toEqual(["closed"]);
+  expect(since(chat, "unit_end")[0]).toEqual({
+    type: "unit_end",
+    passed: false,
+    objectives: {
+      "difference-quotient": "attempted",
+      "secant-slope": "passed",
+    },
+  });
+  // The unit stays in progress while its closing card waits.
+  expect(await position()).toEqual({
+    derivative: { segment: 0, phase: "closed" },
+  });
+});
+
+test("a confident correct answer ends an objective's check at one question; an unsure one asks for another", async () => {
+  const setup = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    ask(Q_SECANT),
+    [{ call: "close_segment", input: {} }, ...ask(Q_SECANT_2)],
+    CLOSE,
+  ]);
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  await answer(chat, "A", "90");
+
+  expect(since(chat, "graded")[1]).toEqual(
+    shortStatus("in-progress", "passed", "not-started"),
+  );
+
+  await answer(chat, "B", "75");
+  await answer(chat, "B", "50");
+
+  expect(closings(setup)).toEqual([
+    'Not done yet in this check: "secant-slope" is answered correctly but not confidently, so another question is needed (1 of at most 3 asked). Post a question on each with ask_question before closing the segment.',
+    "closed",
+  ]);
+  // Three questions in all: one for the confident answer, two for the unsure ones.
+  expect(
+    (await reload().readEvidence(COURSE)).map((e) =>
+      e.kind === "answer" ? e.objective : e.kind,
+    ),
+  ).toEqual(["difference-quotient", "secant-slope", "secant-slope"]);
+});
+
+test("an answer is recorded as given with help when the tutor received a message while its question was open, and a correct one then does not count", async () => {
+  const setup = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    [{ text: "Think of rise over run." }],
+    [{ text: "Right, with a nudge." }],
+    // Between questions a message is not help.
+    [
+      { text: "Here is another." },
+      { call: "ask_question", input: Q_QUOTIENT_2 },
+    ],
+    [{ text: "Good." }],
+  ]);
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  chat.say("Is it the change in f over h?");
+  await chat.settled();
+
+  expect((await position()).derivative?.openQuestion?.assisted).toBe(true);
+
+  await answer(chat, "A");
+
+  expect(since(chat, "graded").slice(0, 2)).toEqual([
+    expect.objectContaining({
+      type: "graded",
+      verdict: "correct",
+      assisted: true,
+    }),
+    shortStatus("in-progress", "attempted", "not-started"),
+  ]);
+  expect(setup.backend.received[3]?.text).toContain(
+    '"difference-quotient": answered correctly with help, which does not count, so another question is needed (1 of at most 3 asked)',
+  );
+  expect(setup.backend.received[3]?.text).toContain(
+    "They had help: you received a message from them while the question was open, so this answer does not count toward passing.",
+  );
+
+  chat.say("Got it, thanks.");
+  await chat.settled();
+  await answer(chat, "A");
+
+  expect(
+    (await reload().readEvidence(COURSE)).map((e) =>
+      e.kind === "answer" ? e.assisted : e.kind,
+    ),
+  ).toEqual([true, false]);
+  expect(since(chat, "unit_status")[0]).toEqual(
+    shortStatus("in-progress", "passed", "not-started"),
+  );
+});
+
+test("a message written before a question was posted, and received by the tutor while it was open, counts as help", async () => {
+  let chat: UnitChat | undefined;
+  const setup = setUp([
+    TEACH,
+    // The learner writes while the tutor is still leading in to the question.
+    () => {
+      chat?.say("Is it the change in f over h?");
+      return ask(Q_QUOTIENT);
+    },
+    [{ text: "Think of rise over run." }],
+    [{ text: "Right." }],
+  ]);
+  await makeCourse(true, SHORT);
+  chat = await open(setup);
+  await toCheck(chat);
+
+  expect(setup.backend.received[2]?.text).toMatch(
+    /^\[.*Question 1, on "difference-quotient", is open\. The learner has written to you while it is open/,
+  );
+
+  await answer(chat, "A");
+
+  expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    assisted: true,
+  });
+});
+
+test("a unit not passed waits on its closing card; going over again teaches one more segment on what did not pass, and passing it closes the unit", async () => {
+  const setup = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    [{ text: "Right." }],
+    [{ text: "Let us go over it." }],
+    [{ call: "ask_question", input: Q_QUOTIENT_2 }, ...ask(Q_SECANT)],
+    CLOSE,
+  ]);
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "A");
+  // The learner moves on before the second objective is asked.
+  expect(await chat.override()).toEqual({ ok: true });
+
+  expect(since(chat, "unit_end")).toEqual([
+    {
+      type: "unit_end",
+      passed: false,
+      objectives: {
+        "difference-quotient": "passed",
+        "secant-slope": "overridden",
+      },
+    },
+  ]);
+  expect(await chat.nextSegment()).toEqual({
+    ok: false,
+    status: 409,
+    error:
+      "This was the unit's last segment: go over the objectives not passed again, or move on without them.",
+  });
+
+  expect(await chat.goOverAgain()).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(await position()).toEqual({
+    derivative: { segment: 1, phase: "discuss", again: ["secant-slope"] },
+  });
+  expect(chat.events()).toContainEqual({
+    type: "phase",
+    segment: 1,
+    phase: "teach",
+    again: ["secant-slope"],
+  });
+  expect(setup.backend.received[3]?.text).toBe(
+    '[Unit 1 of 2, "The derivative"; a segment after the plan\'s 1, going over "secant-slope" again. Phase: teach. Start of a segment that goes over objectives the learner has not passed. The learner moved on without finishing the check of the segment just closed, which is recorded as an override of "difference-quotient" and "secant-slope". Allowed now: teach the segment\'s objectives in this turn, within the length the style sets, then stop; the learner can ask anything next. No questions yet: ask_question and close_segment are refused until the learner presses "ready".]\n' +
+      "Teach these objectives again, another way, starting from what went wrong:\n" +
+      '- "secant-slope": Read a difference quotient as the slope of a secant line.',
+  );
+
+  await toCheck(chat);
+
+  // Only what did not pass is checked again.
+  expect(setup.backend.calls[1]?.result).toEqual({
+    status: "refused",
+    text: '"difference-quotient" is not an objective of this segment. Name one of "secant-slope".',
+  });
+
+  await answer(chat, "B");
+
+  expect(closings(setup)).toEqual(["closed"]);
+  expect(since(chat, "unit_end")).toEqual([
+    {
+      type: "unit_end",
+      passed: true,
+      objectives: { "difference-quotient": "passed", "secant-slope": "passed" },
+    },
+    shortStatus("passed", "passed", "passed"),
+    { type: "unit_closed", status: "passed" },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(await position()).toEqual({});
+});
+
+test("moving on without the objectives not passed records them as overridden and closes the unit", async () => {
+  const setup = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    ask(Q_QUOTIENT_2),
+    ask(Q_QUOTIENT),
+    ask(Q_SECANT),
+    CLOSE,
+  ]);
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "B");
+  await answer(chat, "B");
+  await answer(chat, "B");
+  await answer(chat, "B");
+  const turns = setup.backend.received.length;
+
+  expect(await chat.finishUnit()).toEqual({ ok: true });
+
+  expect((await reload().readEvidence(COURSE)).at(-1)).toEqual({
+    kind: "override",
+    recordedAt: NOW,
+    objectives: ["difference-quotient"],
+  });
+  expect(chat.events().slice(-2)).toEqual([
+    shortStatus("overridden", "overridden", "passed"),
+    { type: "unit_closed", status: "overridden" },
+  ]);
+  expect(await position()).toEqual({});
+  // Moving on costs no reply from the tutor.
+  expect(setup.backend.received).toHaveLength(turns);
+  expect(await chat.goOverAgain()).toEqual({
+    ok: false,
+    status: 409,
+    error: "The unit is finished.",
+  });
+});
+
+test.each([
+  {
+    name: "before the unit's last segment has closed",
+    plan: PLAN,
+    error: "The unit has not reached its end.",
+  },
+  {
+    name: "when every objective passed",
+    plan: SHORT,
+    error: "The unit is finished.",
+  },
+])(
+  "going over again and moving on without them are refused $name",
+  async ({ plan, error }) => {
+    const setup = setUp([TEACH, ask(Q_QUOTIENT), ask(Q_SECANT), CLOSE]);
+    await makeCourse(true, plan);
+    const chat = await open(setup);
+    await toCheck(chat);
+    await answer(chat, "A");
+    await answer(chat, "B");
+
+    for (const result of [await chat.goOverAgain(), await chat.finishUnit()]) {
+      expect(result).toEqual({ ok: false, status: 409, error });
+    }
+  },
+);
+
+test("a unit finished before a restart opens finished, and is not started again", async () => {
+  const before = setUp([TEACH, ask(Q_QUOTIENT), ask(Q_SECANT), CLOSE]);
+  await makeCourse(true, SHORT);
+  const first = await open(before);
+  await toCheck(first);
+  await answer(first, "A");
+  await answer(first, "B");
+  await before.units.close();
+
+  const after = setUp([]);
+  const chat = await open(after);
+
+  expect(chat.events()).toEqual([
+    { type: "unit_plan", plan: SHORT },
+    shortStatus("passed", "passed", "passed"),
+    { type: "unit_closed", status: "passed" },
+  ]);
+  expect(after.backend.received).toEqual([]);
+  expect(await position()).toEqual({});
+  expect(await chat.ready()).toEqual({
+    ok: false,
+    status: 409,
+    error: "The unit is finished.",
+  });
+});
+
+test("a closing card that was waiting before a restart is shown again, and going over again works after it", async () => {
+  const before = setUp([TEACH, ask(Q_QUOTIENT)]);
+  await makeCourse(true, SHORT);
+  const first = await open(before);
+  await toCheck(first);
+  await answer(first, "A");
+  await first.override();
+  await before.units.close();
+
+  const after = setUp([[{ text: "The secant again." }]]);
+  const chat = await open(after);
+
+  expect(chat.events()).toEqual([
+    { type: "unit_plan", plan: SHORT },
+    shortStatus("in-progress", "passed", "overridden"),
+    { type: "phase", segment: 0, phase: "closed" },
+    {
+      type: "unit_end",
+      passed: false,
+      objectives: {
+        "difference-quotient": "passed",
+        "secant-slope": "overridden",
+      },
+    },
+  ]);
+  expect(await chat.goOverAgain()).toEqual({ ok: true });
+  await chat.settled();
+  expect(await position()).toEqual({
+    derivative: { segment: 1, phase: "discuss", again: ["secant-slope"] },
+  });
 });

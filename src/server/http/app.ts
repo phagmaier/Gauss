@@ -187,6 +187,17 @@ export function createApp(options: {
     withUnit(async (c, chat) => reply(c, await chat.nextSegment(), 202)),
   );
 
+  // The closing card's two steps when some objectives did not pass.
+  app.post(
+    `${unitPath}/go-over-again`,
+    withUnit(async (c, chat) => reply(c, await chat.goOverAgain(), 202)),
+  );
+
+  app.post(
+    `${unitPath}/finish`,
+    withUnit(async (c, chat) => reply(c, await chat.finishUnit(), 200)),
+  );
+
   app.post(
     `${unitPath}/interrupt`,
     withUnit(async (c, chat) => {

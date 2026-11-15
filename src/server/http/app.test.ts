@@ -560,22 +560,33 @@ test("opening a unit marks its course opened, and the unit's event stream replay
   const chatId = setup.units.get(COURSE, "vectors")?.id;
   const response = await setup.app.request(`${UNIT}/events`);
   expect(response.headers.get("Content-Type")).toContain("text/event-stream");
-  const stream = await readFrames(response, 7);
+  const stream = await readFrames(response, 8);
   expect(stream.first).toEqual([
     { event: "hello", data: { chatId } },
     { id: `${chatId}.0`, data: { type: "unit_plan", plan: VECTORS_PLAN } },
     {
       id: `${chatId}.1`,
+      data: {
+        type: "unit_status",
+        unit: "in-progress",
+        objectives: {
+          "basis-image": "not-started",
+          "matrix-columns": "not-started",
+        },
+      },
+    },
+    {
+      id: `${chatId}.2`,
       data: { type: "phase", segment: 0, phase: "teach" },
     },
-    { id: `${chatId}.2`, data: { type: "turn_start" } },
+    { id: `${chatId}.3`, data: { type: "turn_start" } },
     {
-      id: `${chatId}.3`,
+      id: `${chatId}.4`,
       data: { type: "tutor_text", text: "A map is fixed by a basis." },
     },
-    { id: `${chatId}.4`, data: { type: "turn_end", outcome: "done" } },
+    { id: `${chatId}.5`, data: { type: "turn_end", outcome: "done" } },
     {
-      id: `${chatId}.5`,
+      id: `${chatId}.6`,
       data: { type: "phase", segment: 0, phase: "discuss" },
     },
   ]);
@@ -678,10 +689,12 @@ test("a unit that is not there, of a draft, or not open is refused on every unit
     post(setup.app, `${UNIT}/answers`, { kind: "unknown", questionId: "q" }),
     post(setup.app, `${UNIT}/override`),
     post(setup.app, `${UNIT}/next-segment`),
+    post(setup.app, `${UNIT}/go-over-again`),
+    post(setup.app, `${UNIT}/finish`),
     post(setup.app, `${UNIT}/interrupt`),
   ]);
   expect(notOpen.map((r) => r.status)).toEqual([
-    404, 404, 404, 404, 404, 404, 404,
+    404, 404, 404, 404, 404, 404, 404, 404, 404,
   ]);
   expect(await notOpen[0]?.json()).toEqual({
     error: "This unit is not open. Open it first.",
@@ -709,4 +722,38 @@ test("malformed bodies on the unit routes are refused with a reason, and nothing
   expect(setup.units.get(COURSE, "vectors")?.events()).toHaveLength(
     events ?? -1,
   );
+});
+
+test("at the unit's end, going over again and finishing without the rest go through their routes", async () => {
+  const setup = setUp([
+    [{ text: "A map is fixed by a basis." }],
+    [{ text: "Now matrices." }],
+    [{ text: "Matrices again." }],
+  ]);
+  await approvedCourse();
+  await openUnit(setup);
+
+  // Both segments are moved on from, so neither objective passes.
+  expect((await post(setup.app, `${UNIT}/finish`)).status).toBe(409);
+  expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
+  expect((await post(setup.app, `${UNIT}/next-segment`)).status).toBe(202);
+  await settle(setup);
+  expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
+
+  expect((await post(setup.app, `${UNIT}/go-over-again`)).status).toBe(202);
+  await settle(setup);
+  expect(await unitState()).toEqual({
+    segment: 2,
+    phase: "discuss",
+    again: ["basis-image", "matrix-columns"],
+  });
+
+  expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
+  const finished = await post(setup.app, `${UNIT}/finish`);
+  expect(finished.status).toBe(200);
+  expect(await finished.json()).toEqual({ ok: true });
+  expect(await unitState()).toBeUndefined();
+  const again = await post(setup.app, `${UNIT}/go-over-again`);
+  expect(again.status).toBe(409);
+  expect(await again.json()).toEqual({ error: "The unit is finished." });
 });

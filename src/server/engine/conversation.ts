@@ -61,9 +61,9 @@ export interface Turn {
   /**
    * What the tutor receives. A function is called when the turn is sent to
    * the tutor, after the turns before it, so its header says how things
-   * stand then.
+   * stand then, and the chat can note what the tutor received when.
    */
-  text: string | (() => string);
+  text: string | (() => string | Promise<string>);
   /** Runs once the turn has ended, before the next turn is sent. */
   ended?(outcome: TurnOutcome): Promise<void> | void;
 }
@@ -121,7 +121,8 @@ export function createConversation(options: {
     try {
       if (session === undefined) throw new Error("The chat has not started.");
       const tutor = await session;
-      const text = typeof turn.text === "string" ? turn.text : turn.text();
+      const text =
+        typeof turn.text === "string" ? turn.text : await turn.text();
       for await (const event of tutor.send({ text })) {
         if (event.type === "text") {
           log.emit({ type: "tutor_text", text: event.text });

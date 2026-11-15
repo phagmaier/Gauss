@@ -9,6 +9,12 @@ import type { AnswerEvidence } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, confidenceLabel } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
+import {
+  isLastSegment,
+  type ObjectiveCheck,
+  QUESTION_LIMIT,
+  segmentOf,
+} from "./check-rules.ts";
 
 /** The unit being taught, as the course record has it. */
 export interface UnitContext {
@@ -65,25 +71,34 @@ export function tutorSystemPrompt(
 export interface Where {
   context: UnitContext;
   position: UnitPosition;
-  /** The objectives with an answer in this check; empty outside the check. */
-  answered: ReadonlySet<string>;
+  /** In the check: where each objective of the segment stands. */
+  checks: ReadonlyMap<string, ObjectiveCheck>;
+  /** The unit's objectives that have not passed, in the plan's order. */
+  notPassed: readonly string[];
+  /** Set once the unit is finished and no longer in progress. */
+  finished?: "passed" | "overridden";
   /** Things the tutor has not been told yet, said once, in this header. */
   notes: readonly string[];
 }
 
-export function teachTurn(where: Where, again: boolean): string {
-  const segment = currentSegment(where);
+export function teachTurn(where: Where, cutOff: boolean): string {
+  const segment = segmentOf(where.context.plan, where.position);
   const statement = new Map(
     where.context.plan.objectives.map((o) => [o.id, o.statement]),
   );
-  const event = again
+  const event = cutOff
     ? "Your teaching of this segment was cut off before it ended. Teach it again, from the start."
-    : "Start of the segment.";
+    : segment.again
+      ? "Start of a segment that goes over objectives the learner has not passed."
+      : "Start of the segment.";
+  const lead = segment.again
+    ? "Teach these objectives again, another way, starting from what went wrong:"
+    : "Teach these objectives:";
   return turn(
     where,
     event,
     [
-      "Teach these objectives:",
+      lead,
       ...segment.objectives.map((id) => `- "${id}": ${statement.get(id)}`),
     ].join("\n"),
   );
@@ -124,6 +139,11 @@ export function answerTurn(
         : `Graded: incorrect. The correct choice is ${question.answer}.`,
     );
   }
+  if (entry.assisted) {
+    lines.push(
+      "They had help: you received a message from them while the question was open, so this answer does not count toward passing.",
+    );
+  }
   return turn(
     where,
     `The learner answered question ${number}.`,
@@ -160,18 +180,25 @@ function turn(where: Where, event: string, body?: string): string {
 function describe(where: Where): string {
   const { context, position } = where;
   const unitAt = context.units.findIndex((u) => u.id === context.unitId);
-  const unit = context.units[unitAt];
-  const segment = currentSegment(where);
-  return (
-    `Unit ${unitAt + 1} of ${context.units.length}, "${unit?.title}"; ` +
-    `segment ${position.segment + 1} of ${context.plan.segments.length}, ` +
-    `"${segment.title}", on ${quoted(segment.objectives)}. ` +
-    `Phase: ${position.phase}.`
-  );
+  const unit = `Unit ${unitAt + 1} of ${context.units.length}, "${context.units[unitAt]?.title}"`;
+  if (where.finished !== undefined) {
+    return where.finished === "passed"
+      ? `${unit}. The unit is finished: every objective passed.`
+      : `${unit}. The unit is finished: the learner moved on without passing ${quoted(where.notPassed)}.`;
+  }
+  const segment = segmentOf(context.plan, position);
+  const which = segment.again
+    ? `a segment after the plan's ${context.plan.segments.length}, going over ${quoted(segment.objectives)} again`
+    : `segment ${position.segment + 1} of ${context.plan.segments.length}, ` +
+      `"${segment.title}", on ${quoted(segment.objectives)}`;
+  return `${unit}; ${which}. Phase: ${position.phase}.`;
 }
 
 function allowed(where: Where): string {
   const { position, context } = where;
+  if (where.finished !== undefined) {
+    return "Allowed now: reply to the learner. No teaching tools.";
+  }
   switch (position.phase) {
     case "teach":
       return (
@@ -189,48 +216,66 @@ function allowed(where: Where): string {
     case "check": {
       const open = position.openQuestion;
       if (open !== undefined) {
+        const help =
+          open.assisted === true
+            ? " The learner has written to you while it is open, so their answer will be recorded as given with help."
+            : "";
         return (
-          `Question ${open.number}, on "${open.objective}", is open. Allowed ` +
-          "now: reply without giving its answer away. ask_question and " +
-          "close_segment are refused until the learner answers it."
+          `Question ${open.number}, on "${open.objective}", is open.${help} ` +
+          "Allowed now: reply without giving its answer away. ask_question " +
+          "and close_segment are refused until the learner answers it."
         );
       }
-      const missing = currentSegment(where).objectives.filter(
-        (id) => !where.answered.has(id),
+      const { objectives } = segmentOf(context.plan, position);
+      const standing = objectives
+        .map((id) => `"${id}": ${checkText(where.checks.get(id))}`)
+        .join("; ");
+      const toAsk = objectives.filter(
+        (id) => where.checks.get(id)?.state !== "done",
       );
-      if (missing.length > 0) {
+      if (toAsk.length > 0) {
         return (
-          `Without an answer in this check: ${quoted(missing)}. Allowed now: ` +
-          "post a question on one of them with ask_question. Posting ends " +
-          "your turn, so give any feedback first. close_segment is refused " +
-          "until each objective of the segment has an answer."
+          `In this check, ${standing}. Allowed now: post a question on ` +
+          `${quoted(toAsk)} with ask_question, unlike the ones asked before. ` +
+          "Posting ends your turn, so give any feedback first. " +
+          "close_segment is refused until each objective is done."
         );
       }
       return (
-        "Every objective of the segment has an answer in this check. " +
-        "Allowed now: give your feedback, then close the segment with " +
-        "close_segment, which ends your turn; or post another question with " +
-        "ask_question."
+        `In this check, ${standing}. Every objective is done. Allowed now: ` +
+        "give your feedback, then close the segment with close_segment, " +
+        "which ends your turn. No more questions."
       );
     }
     case "closed":
-      return position.segment + 1 >= context.plan.segments.length
-        ? "The segment is closed, and it was the unit's last. Allowed now: " +
-            "reply to the learner. No teaching tools."
+      return isLastSegment(context.plan, position)
+        ? "The segment is closed, and it was the unit's last. Not passed: " +
+            `${quoted(where.notPassed)}. The learner chooses whether to go ` +
+            "over them again or to move on without them. Allowed now: reply " +
+            "to the learner. No teaching tools."
         : "The segment is closed; the learner starts the next one when they " +
             "choose. Allowed now: reply to the learner. No teaching tools " +
             "until the next segment starts.";
   }
 }
 
-function currentSegment(where: Where) {
-  const segment = where.context.plan.segments[where.position.segment];
-  if (segment === undefined) {
-    throw new Error(
-      `The unit has no segment ${where.position.segment + 1} in its plan.`,
-    );
+/** Where one objective stands in the check, for the tutor. */
+export function checkText(check: ObjectiveCheck | undefined): string {
+  if (check === undefined || check.state === "unasked") return "not asked yet";
+  const count = `${check.asked} of at most ${QUESTION_LIMIT} asked`;
+  if (check.state === "done") {
+    return check.reason === "passed"
+      ? "passed"
+      : `not passed after ${QUESTION_LIMIT} questions, the limit`;
   }
-  return segment;
+  switch (check.reason) {
+    case "missed":
+      return `missed, so another question is needed (${count})`;
+    case "assisted":
+      return `answered correctly with help, which does not count, so another question is needed (${count})`;
+    case "unconfident":
+      return `answered correctly but not confidently, so another question is needed (${count})`;
+  }
 }
 
 /** "a", or "a" and "b", or "a", "b" and "c". */

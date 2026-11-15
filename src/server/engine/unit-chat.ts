@@ -1,17 +1,23 @@
-// The unit chat (architecture.md section 4; task 2.6): one tutor session
-// bound to one unit, which runs each segment's teach / discuss / check
-// rhythm. Opening a unit not in progress plans it (task 2.5) and sends
+// The unit chat (architecture.md section 4; tasks 2.6 and 2.7): one tutor
+// session bound to one unit, which runs each segment's teach / discuss /
+// check rhythm. Opening a unit not in progress plans it (task 2.5) and sends
 // segment 1's teaching turn. The engine enforces the phases:
 //
 // - teach to discuss: the teaching turn ends, or the learner stops it;
 // - discuss to check: the learner presses "ready";
 // - in the check, the tutor posts questions with ask_question, each on an
-//   objective of the segment; each answer is graded, appended to the
-//   evidence and sent to the tutor;
+//   objective of the segment that still needs one (check-rules.ts); each
+//   answer is graded, recorded with whether the learner had help, and sent
+//   to the tutor;
 // - check to closed: the tutor's close_segment, refused until every
-//   objective of the segment has an answer from this check, or the
-//   learner's override, recorded as evidence;
+//   objective of the segment is done in this check, or the learner's
+//   override, recorded as evidence;
 // - closed to the next segment's teach: the learner starts it.
+//
+// When the unit's last segment closes, the unit ends: passed and out of
+// state.json when every objective passed; otherwise the learner goes over
+// the rest again in one more segment, or moves on without them, which
+// records them as overridden and closes the unit.
 //
 // A tool called out of phase is refused with a reason the tutor can act on.
 // The engine composes every turn's header (unit-turns.ts) and writes the
@@ -22,6 +28,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
+import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -33,8 +40,16 @@ import {
 import type { OpenQuestion, Phase, UnitPosition } from "../../shared/state.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import type { DataRoot } from "../record/data-root.ts";
+import { objectiveStatus, unitStatus } from "../record/status.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import { closeSegmentTool } from "../tools/close-segment.ts";
+import {
+  isLastSegment,
+  notPassed,
+  type ObjectiveCheck,
+  objectiveCheck,
+  segmentOf,
+} from "./check-rules.ts";
 import {
   type ChatResult,
   type Conversation,
@@ -45,6 +60,7 @@ import { gradeChoice } from "./grading.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
   answerTurn,
+  checkText,
   JOINED_NOTE,
   messageTurn,
   overrideNote,
@@ -72,6 +88,16 @@ export interface UnitChat {
   override(): Promise<ChatResult>;
   /** The learner starts the next segment, once this one is closed. */
   nextSegment(): Promise<ChatResult>;
+  /**
+   * At the unit's end, with objectives not passed: one more segment, after
+   * the plan's last, on them.
+   */
+  goOverAgain(): Promise<ChatResult>;
+  /**
+   * At the unit's end, with objectives not passed: moves on without them,
+   * which records them as overridden and closes the unit.
+   */
+  finishUnit(): Promise<ChatResult>;
   /** Stops the tutor's turn in progress, if there is one. */
   interrupt(): Promise<void>;
   /** Resolves once the chat has opened and every turn sent so far has finished. */
@@ -160,9 +186,16 @@ interface OpenableChat extends UnitChat {
 /** The chat once its unit is planned and its position read. */
 interface Running {
   context: UnitContext;
+  /** The unit as the curriculum has it, with its plan. */
+  unit: StoredUnit;
+  /** Kept in memory once the unit is finished, but no longer in state.json. */
   position: UnitPosition;
+  /** The evidence on the unit's objectives, in log order. */
+  evidence: EvidenceEntry[];
   /** The answers to the segment's objectives in this check, in order. */
   checkAnswers: AnswerEvidence[];
+  /** Set once the unit is finished and taken out of state.json. */
+  finished?: "passed" | "overridden";
   /** Said once, in the next turn's header. */
   notes: string[];
   tutor: Conversation;
@@ -185,31 +218,37 @@ function createUnitChat(
     try {
       const stored = await dataRoot.readCourse(courseId);
       const units = stored?.curriculum?.units ?? [];
-      const unit = units.find((u) => u.id === unitId);
-      if (stored === undefined || unit === undefined) {
+      const storedUnit = units.find((u) => u.id === unitId);
+      if (stored === undefined || storedUnit === undefined) {
         throw new Error(`There is no unit "${unitId}" in "${courseId}".`);
       }
-      if (unit.plan === undefined) log.emit({ type: "unit_planning" });
+      if (storedUnit.plan === undefined) log.emit({ type: "unit_planning" });
       const planned = await planner.plan(courseId, unitId);
       if (!planned.ok) throw new Error(planned.error);
       const { plan } = planned;
+      const unit: StoredUnit = { ...storedUnit, plan };
       log.emit({ type: "unit_plan", plan });
 
       const storedPosition = (await dataRoot.readState(courseId)).units[unitId];
-      if (
-        storedPosition !== undefined &&
-        plan.segments[storedPosition.segment] === undefined
-      ) {
-        throw new Error(
-          `state.json puts the unit at segment ${storedPosition.segment + 1}, which its plan does not have.`,
-        );
-      }
-      const position = storedPosition ?? { segment: 0, phase: "teach" };
-      if (storedPosition === undefined) {
+      if (storedPosition !== undefined) checkPosition(plan, storedPosition);
+      const allEvidence = await dataRoot.readEvidence(courseId);
+      const evidence = concerning(allEvidence, plan);
+      // A unit without a position is finished if its objectives say so, and
+      // is not started again.
+      const before = unitStatus(unit, evidence, undefined);
+      const finished =
+        storedPosition === undefined &&
+        (before === "passed" || before === "overridden")
+          ? before
+          : undefined;
+      const position: UnitPosition =
+        storedPosition ??
+        (finished === undefined
+          ? { segment: 0, phase: "teach" }
+          : { segment: plan.segments.length - 1, phase: "closed" });
+      if (storedPosition === undefined && finished === undefined) {
         await dataRoot.writePosition(courseId, unitId, position);
       }
-      const evidence =
-        position.phase === "check" ? await dataRoot.readEvidence(courseId) : [];
       const context: UnitContext = {
         courseTitle: stored.course.title,
         units,
@@ -219,8 +258,11 @@ function createUnitChat(
       const style = await dataRoot.readStyle(courseId);
       const r: Running = {
         context,
+        unit,
         position,
-        checkAnswers: answersInCheck(evidence, position, plan),
+        evidence,
+        checkAnswers: answersInCheck(allEvidence, position, plan),
+        ...(finished === undefined ? {} : { finished }),
         // A unit under way gets a new session (until task 2.14), which must
         // not pretend to remember the conversation before it.
         notes: storedPosition === undefined ? [] : [JOINED_NOTE],
@@ -232,17 +274,22 @@ function createUnitChat(
         }),
       };
       running = r;
-      log.emit({
-        type: "phase",
-        segment: position.segment,
-        phase: position.phase,
-      });
+      log.emit(statusEvent(r));
+      if (finished !== undefined) {
+        log.emit({ type: "unit_closed", status: finished });
+        return;
+      }
+      log.emit(phaseEvent(position));
       if (position.openQuestion !== undefined) {
         log.emit({ type: "question", question: view(position.openQuestion) });
       }
-      // A teaching turn that a restart cut off is sent again.
       if (position.phase === "teach") {
+        // A teaching turn that a restart cut off is sent again.
         sendTeaching(r, storedPosition !== undefined);
+      } else if (position.phase === "closed" && isLastSegment(plan, position)) {
+        // The closing card was waiting on the learner, or a restart came
+        // between closing the last segment and closing the unit.
+        await exclusive(() => endUnit(r));
       }
     } catch (error) {
       failed = true;
@@ -262,26 +309,35 @@ function createUnitChat(
     return {
       context: r.context,
       position: r.position,
-      answered: new Set(
-        r.position.phase === "check"
-          ? r.checkAnswers.map((a) => a.objective)
-          : [],
-      ),
+      checks: checks(r),
+      notPassed: notPassed(r.context.plan, r.evidence),
+      ...(r.finished === undefined ? {} : { finished: r.finished }),
       notes,
     };
   }
 
-  function sendTeaching(r: Running, again: boolean): void {
+  /** Where each objective of the segment stands in the check; none outside it. */
+  function checks(r: Running): Map<string, ObjectiveCheck> {
+    if (r.position.phase !== "check") return new Map();
+    return new Map(
+      segmentOf(r.context.plan, r.position).objectives.map((id) => [
+        id,
+        objectiveCheck(id, r.evidence, r.checkAnswers),
+      ]),
+    );
+  }
+
+  function sendTeaching(r: Running, cutOff: boolean): void {
     const { segment } = r.position;
     r.tutor.send({
-      text: () => teachTurn(where(r), again),
+      text: () => teachTurn(where(r), cutOff),
       // The end of the teaching turn, or Stop during it, opens the
       // discussion, whatever the outcome: after an error the learner can
       // ask for what was missed.
       ended: () =>
         exclusive(async () => {
           if (r.position.segment === segment && r.position.phase === "teach") {
-            await move(r, { segment, phase: "discuss" });
+            await move(r, { ...r.position, phase: "discuss" });
           }
         }),
     });
@@ -296,16 +352,60 @@ function createUnitChat(
       before.segment !== position.segment ||
       before.phase !== position.phase
     ) {
-      log.emit({
-        type: "phase",
-        segment: position.segment,
-        phase: position.phase,
-      });
+      log.emit(phaseEvent(position));
     }
   }
 
+  /** Records the entry, keeps it for the unit's statuses, and tells the page. */
+  async function record(r: Running, entry: EvidenceEntry): Promise<void> {
+    await dataRoot.appendEvidence(courseId, entry);
+    r.evidence.push(entry);
+  }
+
+  function statusEvent(r: Running): PageEvent {
+    return {
+      type: "unit_status",
+      unit: unitStatus(
+        r.unit,
+        r.evidence,
+        r.finished === undefined ? r.position : undefined,
+      ),
+      objectives: objectiveStatuses(r),
+    };
+  }
+
+  function objectiveStatuses(r: Running) {
+    return Object.fromEntries(
+      r.context.plan.objectives.map((o) => [
+        o.id,
+        objectiveStatus(r.evidence, o.id),
+      ]),
+    );
+  }
+
+  /**
+   * The last segment has closed: shows the closing card, and closes the unit
+   * at once if every objective passed. Runs inside `exclusive`.
+   */
+  async function endUnit(r: Running): Promise<void> {
+    const passed = notPassed(r.context.plan, r.evidence).length === 0;
+    log.emit({ type: "unit_end", passed, objectives: objectiveStatuses(r) });
+    if (passed) await closeUnit(r, "passed");
+  }
+
+  /** Takes the unit out of state.json: it is no longer in progress. */
+  async function closeUnit(
+    r: Running,
+    status: "passed" | "overridden",
+  ): Promise<void> {
+    await dataRoot.writePosition(courseId, unitId, null);
+    r.finished = status;
+    log.emit(statusEvent(r));
+    log.emit({ type: "unit_closed", status });
+  }
+
   function segmentObjectives(r: Running): readonly string[] {
-    return r.context.plan.segments[r.position.segment]?.objectives ?? [];
+    return segmentOf(r.context.plan, r.position).objectives;
   }
 
   // --- The teaching tools ----------------------------------------------------
@@ -318,6 +418,7 @@ function createUnitChat(
         > => {
           const r = running;
           if (r === undefined) return { refused: "The unit is not open." };
+          if (r.finished !== undefined) return { refused: UNIT_FINISHED };
           const { position } = r;
           if (position.phase !== "check") {
             return { refused: outOfPhase(position.phase, "ask_question") };
@@ -331,6 +432,20 @@ function createUnitChat(
           if (!objectives.includes(question.objective)) {
             return {
               refused: `"${question.objective}" is not an objective of this segment. Name one of ${quoted(objectives)}.`,
+            };
+          }
+          const standing = checks(r);
+          const check = standing.get(question.objective);
+          if (check?.state === "done") {
+            const open = objectives.filter(
+              (id) => standing.get(id)?.state !== "done",
+            );
+            return {
+              refused:
+                `"${question.objective}" needs no more questions in this check: ${checkText(check)}. ` +
+                (open.length > 0
+                  ? `Ask about ${quoted(open)} instead.`
+                  : "Every objective is done: give your feedback and close the segment."),
             };
           }
           const open: OpenQuestion = {
@@ -357,6 +472,7 @@ function createUnitChat(
       exclusive(async (): Promise<{ closed: true } | { refused: string }> => {
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
+        if (r.finished !== undefined) return { refused: UNIT_FINISHED };
         const { position } = r;
         if (position.phase !== "check") {
           return { refused: outOfPhase(position.phase, "close_segment") };
@@ -366,14 +482,21 @@ function createUnitChat(
             refused: `Question ${position.openQuestion.number} is still open. Wait for the learner's answer before closing the segment.`,
           };
         }
-        const answered = new Set(r.checkAnswers.map((a) => a.objective));
-        const missing = segmentObjectives(r).filter((id) => !answered.has(id));
+        const standing = checks(r);
+        const missing = segmentObjectives(r).filter(
+          (id) => standing.get(id)?.state !== "done",
+        );
         if (missing.length > 0) {
+          const why = missing
+            .map((id) => `"${id}" is ${checkText(standing.get(id))}`)
+            .join("; ");
           return {
-            refused: `No answer yet in this check on ${quoted(missing)}. Post a question on each with ask_question before closing the segment.`,
+            refused: `Not done yet in this check: ${why}. Post a question on each with ask_question before closing the segment.`,
           };
         }
-        await move(r, { segment: position.segment, phase: "closed" });
+        const { checkFrom: _, ...rest } = position;
+        await move(r, { ...rest, phase: "closed" });
+        if (isLastSegment(r.context.plan, r.position)) await endUnit(r);
         return { closed: true };
       }),
   };
@@ -388,6 +511,7 @@ function createUnitChat(
     return exclusive(async () => {
       const r = running;
       if (r === undefined) return notOpen();
+      if (r.finished !== undefined) return refused(UNIT_FINISHED);
       if (!whileWriting && r.tutor.busy()) {
         return {
           ok: false,
@@ -409,6 +533,18 @@ function createUnitChat(
     };
   }
 
+  /** At the unit's end with objectives not passed: those objectives, or why not. */
+  function atUnitEnd(r: Running): string[] | string {
+    if (
+      r.position.phase !== "closed" ||
+      !isLastSegment(r.context.plan, r.position)
+    ) {
+      return "The unit has not reached its end.";
+    }
+    const rest = notPassed(r.context.plan, r.evidence);
+    return rest.length > 0 ? rest : "Every objective has passed.";
+  }
+
   const chat: OpenableChat = {
     id: log.id,
     events: log.events,
@@ -425,7 +561,22 @@ function createUnitChat(
       const r = running;
       if (r === undefined) return notOpen();
       log.emit({ type: "learner", text });
-      r.tutor.send({ text: () => messageTurn(where(r), text) });
+      r.tutor.send({
+        // Help is what the tutor received while a question was open
+        // (docs/decisions.md, "Objective status"), so it is noted when the
+        // message is sent to the tutor, not when the learner wrote it.
+        text: () =>
+          exclusive(async () => {
+            const open = r.position.openQuestion;
+            if (open !== undefined && open.assisted === undefined) {
+              await move(r, {
+                ...r.position,
+                openQuestion: { ...open, assisted: true },
+              });
+            }
+            return messageTurn(where(r), text);
+          }),
+      });
       return { ok: true };
     },
 
@@ -469,14 +620,13 @@ function createUnitChat(
             objective: open.objective,
             question: open.question,
             answer: submission,
-            // Help is recorded from task 2.7.
-            assisted: false,
+            assisted: open.assisted === true,
             verdict: gradeChoice(open.question.answer, submission),
           };
           // The evidence first: a crash before the position is written
           // leaves the question open with its answer kept, never an answer
           // lost.
-          await dataRoot.appendEvidence(courseId, entry);
+          await record(r, entry);
           r.checkAnswers.push(entry);
           const { openQuestion: _, ...rest } = r.position;
           await move(r, rest);
@@ -488,7 +638,9 @@ function createUnitChat(
             confidence:
               submission.kind === "choice" ? submission.confidence : null,
             correctChoice: open.question.answer,
+            assisted: entry.assisted,
           });
+          log.emit(statusEvent(r));
           r.tutor.send({
             text: () => answerTurn(where(r), entry, open.number),
           });
@@ -504,7 +656,7 @@ function createUnitChat(
           return refused(NOT_NOW.override[phase]);
         }
         const objectives = [...segmentObjectives(r)];
-        await dataRoot.appendEvidence(courseId, {
+        await record(r, {
           kind: "override",
           recordedAt: now().toISOString(),
           objectives,
@@ -518,10 +670,13 @@ function createUnitChat(
             ? {}
             : { withdrawnQuestionId: withdrawn.id }),
         });
-        await move(r, { segment, phase: "closed" });
+        log.emit(statusEvent(r));
+        const { checkFrom: _, openQuestion: __, ...rest } = r.position;
+        await move(r, { ...rest, phase: "closed" });
         r.checkAnswers = [];
         // Told with the next turn, so moving on costs no reply.
         r.notes.push(overrideNote(objectives, withdrawn?.number));
+        if (isLastSegment(r.context.plan, r.position)) await endUnit(r);
         return { ok: true };
       }),
 
@@ -529,11 +684,39 @@ function createUnitChat(
       act(async (r) => {
         const { phase, segment } = r.position;
         if (phase !== "closed") return refused(NOT_NOW.next[phase]);
-        if (segment + 1 >= r.context.plan.segments.length) {
-          return refused("This was the unit's last segment.");
+        if (isLastSegment(r.context.plan, r.position)) {
+          return refused(
+            "This was the unit's last segment: go over the objectives not passed again, or move on without them.",
+          );
         }
         await move(r, { segment: segment + 1, phase: "teach" });
         sendTeaching(r, false);
+        return { ok: true };
+      }),
+
+    goOverAgain: () =>
+      act(async (r) => {
+        const again = atUnitEnd(r);
+        if (typeof again === "string") return refused(again);
+        await move(r, {
+          segment: r.context.plan.segments.length,
+          phase: "teach",
+          again,
+        });
+        sendTeaching(r, false);
+        return { ok: true };
+      }),
+
+    finishUnit: () =>
+      act(async (r) => {
+        const objectives = atUnitEnd(r);
+        if (typeof objectives === "string") return refused(objectives);
+        await record(r, {
+          kind: "override",
+          recordedAt: now().toISOString(),
+          objectives,
+        });
+        await closeUnit(r, "overridden");
         return { ok: true };
       }),
 
@@ -551,6 +734,39 @@ function createUnitChat(
   return chat;
 }
 
+const UNIT_FINISHED = "The unit is finished.";
+
+/**
+ * A position read back from state.json fits the unit's plan: a segment of
+ * the plan, or the one after it that goes over objectives of the plan.
+ */
+function checkPosition(plan: Plan, position: UnitPosition): void {
+  const ids = new Set(plan.objectives.map((o) => o.id));
+  const fits =
+    position.again === undefined
+      ? plan.segments[position.segment] !== undefined
+      : position.segment === plan.segments.length &&
+        position.again.every((id) => ids.has(id));
+  if (!fits) {
+    throw new Error(
+      `state.json puts the unit at segment ${position.segment + 1}, which its plan does not have.`,
+    );
+  }
+}
+
+/** The entries about the plan's objectives: answers on them, overrides naming them. */
+function concerning(
+  evidence: readonly EvidenceEntry[],
+  plan: Plan,
+): EvidenceEntry[] {
+  const ids = new Set(plan.objectives.map((o) => o.id));
+  return evidence.filter((e) =>
+    e.kind === "answer"
+      ? ids.has(e.objective)
+      : e.objectives.some((id) => ids.has(id)),
+  );
+}
+
 /** The answers in the position's check to its segment's objectives. */
 function answersInCheck(
   evidence: readonly EvidenceEntry[],
@@ -560,13 +776,22 @@ function answersInCheck(
   if (position.phase !== "check" || position.checkFrom === undefined) {
     return [];
   }
-  const objectives = plan.segments[position.segment]?.objectives ?? [];
+  const { objectives } = segmentOf(plan, position);
   return evidence
     .slice(position.checkFrom)
     .filter(
       (e): e is AnswerEvidence =>
         e.kind === "answer" && objectives.includes(e.objective),
     );
+}
+
+function phaseEvent(position: UnitPosition): PageEvent {
+  return {
+    type: "phase",
+    segment: position.segment,
+    phase: position.phase,
+    ...(position.again === undefined ? {} : { again: position.again }),
+  };
 }
 
 function view(open: OpenQuestion) {

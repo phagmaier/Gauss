@@ -147,6 +147,9 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
     // the plan and the phases their own items; until then they show nothing.
     case "unit_planning":
     case "unit_plan":
+    case "unit_status":
+    case "unit_end":
+    case "unit_closed":
     case "phase":
       return next;
     case "unit_failed":

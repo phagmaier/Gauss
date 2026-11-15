@@ -77,7 +77,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
     course.json                   title, backend, settings (web search on/off), dates
     style.md                      per-course teaching style note
     curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
-    state.json                    each unit in progress: segment, phase, where its check began, open question, tutor session, open detour
+    state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question, tutor session, open detour
     evidence.jsonl                append-only: answers, grades, confidence, overrides, disputes
     misconceptions.jsonl          append-only: findings from detours
     units/<unit-id>/handoff.md    written at the end of each session in the unit
@@ -183,26 +183,43 @@ pops back.
 | --- | --- | --- |
 | teach to discuss | the tutor's teaching turn ends, or the learner stops it | automatic, also when the turn fails, so the learner can ask for what was missed |
 | discuss to check | the learner presses "ready" | `ask_question` is rejected before this |
-| check to closed | the tutor calls `close_segment` | rejected unless every objective in the segment has an answer from this check |
+| check to closed | the tutor calls `close_segment` | rejected until every objective in the segment is done in this check (below) |
 | discuss or check to closed | the learner moves on without the check | recorded as an override of the segment's objectives; an open question is withdrawn |
-| closed to the next segment's teach | the learner starts it | none after the plan's last segment (the unit's close is task 2.7) |
+| closed to the next segment's teach | the learner starts it | none after the unit's last segment |
+| last segment closed to the unit's end | automatic | the closing card; the unit is passed and leaves `state.json` when every objective passed |
+| unit's end to one more segment | the learner goes over the objectives not passed again | a segment after the plan's last, on those objectives, kept in the position |
+| unit's end to finished | the learner moves on without them | recorded as an override of the objectives not passed; the unit leaves `state.json`, overridden |
 | any to detour | confident wrong answer, or second miss on an objective | engine offers it; tutor or learner can start it |
 
-The rules of task 2.6, which 2.7 refines:
+The rules of tasks 2.6 and 2.7:
 
 - **The tutor's tools are refused out of phase** with a reason it can act
-  on: `ask_question` outside the check, while a question is open, or on an
-  objective not in the segment; `close_segment` outside the check, while a
-  question is open, or before each objective of the segment has an answer.
-  A refusal does not end the turn. Both tools end the turn when they
-  succeed.
+  on: `ask_question` outside the check, while a question is open, on an
+  objective not in the segment, or on one already done in this check;
+  `close_segment` outside the check, while a question is open, or before
+  each objective of the segment is done. A refusal does not end the turn.
+  Both tools end the turn when they succeed. Once the unit is finished,
+  both are refused.
+- **How many questions** (`src/server/engine/check-rules.ts`, task 2.7):
+  each objective of the segment gets at least one question in the check,
+  and is done once it has passed (section 3's derived status) or once
+  three of its questions have been answered in this check. So a miss, an
+  unconfident correct answer or one given with help asks for another, and
+  a confident correct answer ends it at one. An objective at the limit
+  stays attempted, and the closing card offers it again.
+- **Help** is noted when a learner message reaches the tutor while a
+  question is open: the open question is marked in `state.json`, and its
+  answer is recorded as assisted.
 - **"This check"** is the evidence after the point where it began, which the
   position keeps (`checkFrom`, the number of entries the log held then):
   the check's answers are the entries after it that name the segment's
   objectives. A question is numbered after the check's answers.
-- **The learner's "ready", move on and next segment wait for the tutor**:
-  while it is writing, they are refused, and Stop is always there. An
-  answer and a message are taken at any time.
+- **The learner's "ready", move on, next segment and the closing card's
+  steps wait for the tutor**: while it is writing, they are refused, and
+  Stop is always there. An answer and a message are taken at any time.
+- **A finished unit is not started again.** Opening a unit with no position
+  whose objectives make it passed or overridden shows it finished; one
+  reopened at its waiting closing card shows the card again.
 - **Moving on sends the tutor nothing.** The next turn's header says the
   learner moved on, and which question was withdrawn.
 - **Every change is written to `state.json` before the page hears of it**;
@@ -516,7 +533,8 @@ returns the intake still running for it, or a new one that starts from the
 stored draft. A unit chat is addressed by its course and unit, under
 `/api/courses/<id>/units/<unit>/` (task 2.6): `open` starts the unit or
 picks it up and must come first, then `events`, `messages`, `ready`,
-`answers`, `override`, `next-segment` and `interrupt`. A unit not opened
+`answers`, `override`, `next-segment`, `go-over-again` and `finish` (the
+closing card's two steps), and `interrupt`. A unit not opened
 since the server started answers 404 on all but `open`. An event stream replays its chat's log with ids
 `<log id>.<index>`, so a page that reconnects gets only what it missed.
 Only Gauss's own page may use the API (`decisions.md`, "Minimal page").
