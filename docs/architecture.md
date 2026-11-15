@@ -132,7 +132,9 @@ have time limits and a learner may take twenty minutes or close the tab.
    command, or rubric).
 2. The tool stores the open question in `state.json`, returns "posted; end your
    turn", and the page renders the widget. The grading material is never sent
-   to the page.
+   to the page. The engine then ends the tutor's turn itself, because the
+   model does not reliably stop on its own (task 0.3). While a question is
+   open, `ask_question` is rejected.
 3. The learner submits an answer, a confidence level, and optional reasoning.
 4. The engine grades it (section 6) and appends evidence.
 5. The engine sends the tutor the result as the next turn; the tutor gives
@@ -225,10 +227,19 @@ Observed in stage 0 (details in `decisions.md`):
 - The SDK uses the existing `claude` plan login when no API key is set. A set
   `ANTHROPIC_API_KEY` takes precedence over the plan login, so the backend
   leaves it out of the environment it gives the SDK (task 0.2).
-- Keeping the learner's personal Claude Code settings, instructions, memory
-  and skills out of the tutor takes `settingSources: []`, `skills: []` and
-  `settings: { autoMemoryEnabled: false }`. `settingSources: []` alone still
-  loads the auto-memory and lists Claude Code's bundled skills (task 0.2).
+- Keeping the learner's personal Claude Code settings, instructions, memory,
+  skills and connectors out of the tutor takes `settingSources: []`,
+  `skills: []`, `strictMcpConfig: true` and
+  `settings: { autoMemoryEnabled: false, disableClaudeAiConnectors: true }`.
+  `settingSources: []` alone still loads the auto-memory, lists Claude Code's
+  bundled skills, and connects the learner's claude.ai connectors (tasks 0.2
+  and 0.3).
+- Custom tools are deferred only when `ToolSearch` is among the session's
+  tools. The tutor's tool list leaves it out, and the teaching tool server
+  sets `alwaysLoad: true` as well (task 0.3).
+- A `PostToolUse` hook returning `continue: false` ends the turn right after
+  a tool call, and the session continues with the next message. This is how
+  the Claude backend ends the turn after `ask_question` (task 0.3).
 
 To verify in stage 0:
 

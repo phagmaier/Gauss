@@ -45,17 +45,26 @@ not.
   login), and pass `skills: []` and `settings: { autoMemoryEnabled: false }`
   as well as `settingSources: []` (the auto-memory loads without them). The
   default tool set is large and mostly unsuitable; tasks 0.3 and 0.4 narrow
-  it with `tools`.
+  it with `tools`. Task 0.3 adds two more isolation options; its entry in
+  `docs/decisions.md` has the full set.
 
 ### 0.3 Question round trip
 
-- Status: todo
+- Status: done
 - Depends on: 0.2
 - Do: an in-process `ask_question` tool that stores a question and returns
   "posted; end your turn". Feed the learner's answer back as the next turn.
 - Done when: `docs/decisions.md` records whether the model reliably stops after
   the tool call, whether `alwaysLoad` is needed for the tool to be called
   without a search step, and the working option set.
+- Note: done on 2026-11-14 with `spike/question-round-trip.ts`; findings and
+  the working option set are in `docs/decisions.md` under "Question round
+  trip". The model does not reliably stop after `ask_question`, so a
+  `PostToolUse` hook ends the turn: task 0.5 needs a way in the adapter for a
+  teaching tool to end the turn. `alwaysLoad` matters only if `ToolSearch` is
+  among the tools. The learner's claude.ai connectors join the session unless
+  `strictMcpConfig` and `disableClaudeAiConnectors` are set, which corrects
+  task 0.2.
 
 ### 0.4 Resume and confinement
 

@@ -163,6 +163,8 @@ when started from a plain terminal.
   the user's MCP servers and plugins, and the user settings' default
   permission mode (`bypassPermissions`; the session ran in `default`).
   Adding `settings: { autoMemoryEnabled: false }` kept the memory out too.
+  (Task 0.3 found that the user's claude.ai connectors do join the session a
+  few seconds in; see "Question round trip".)
 - **Claude Code's bundled skills and built-in plugins load regardless.**
   Init listed 19 bundled skills (`claude-api`, `loop`, `schedule`,
   `code-review` and others) and built-in plugins such as
@@ -199,3 +201,105 @@ when started from a plain terminal.
   `CLAUDE` (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID` and others); a server
   started from inside a Claude Code session would pass them on, with effects
   not tested.
+
+## Question round trip (plan task 0.3)
+
+Observed on 2026-11-14 with `spike/question-round-trip.ts`, Agent SDK
+0.3.325, model `claude-opus-5-5`. The spike keeps one session open by passing
+the prompt as a stream of user messages, defines `ask_question` in an
+in-process tool server (`createSdkMcpServer`), and plays a scripted learner
+who misses the first question and gets the second right. Each answer goes
+back as the next user message, under a header like the one the engine will
+compose. Four runs used the model, with two questions each. Tool deferral was
+read from `getContextUsage({ detail: "summary" })`, which makes no model
+request: a deferred tool is counted under `mcp_tools_deferred`, a loaded one
+under `mcp_tools`.
+
+- **The model does not reliably stop after posting a question.** With only
+  the system prompt and the tool result telling it to end its turn, all four
+  calls in two runs were followed by more output. Three times it was one more
+  sentence ("The question is posted above..."), and in one of those a hint:
+  "remember to subtract 1 from the exponent". Once it was a second
+  `ask_question` call, a separate model request, that posted the same
+  question again, followed by a note apologising for the duplicate.
+- **A `PostToolUse` hook ends the turn reliably.** A hook on
+  `mcp__gauss__ask_question` returning `{ continue: false, stopReason }`
+  ended the turn at the tool result in all four calls of two runs
+  (`terminal_reason: "hook_stopped"`, `stop_reason: "tool_use"`). The
+  session stayed open, and the answer sent as the next user message
+  continued it normally. The tutor can no longer write anything after
+  posting. In one of the two follow-up turns it posted the next question
+  without first giving feedback on the last answer, and the feedback came a
+  turn later. The tutor prompt must say that posting a question ends the
+  turn, so any lead-in and feedback come before the call.
+- **Decision:** the engine ends the turn itself once a question is posted,
+  instead of trusting the model to stop. The Claude backend does it with the
+  hook, so the adapter needs a way for a teaching tool to end the turn (task
+  0.5 confirms or revises the interface). `ask_question` also refuses a call
+  while a question is open, which covers two calls in one response; no run
+  triggered that refusal. The stop applies only to a question actually
+  posted: a call the tool refuses must return its reason to the model so it
+  can try again. Not tested: whether a refused call (an error result) fires
+  `PostToolUse` as well.
+- **`alwaysLoad` matters only when `ToolSearch` is among the session's
+  tools.** Read without a model request:
+
+  | Built-in tools in the session | `alwaysLoad` | `ask_question` |
+  | --- | --- | --- |
+  | none (`tools: []`) | off or on | loaded |
+  | `Read`, `Bash` | off | loaded |
+  | `Read`, `Bash`, `ToolSearch` | off | deferred |
+  | `Read`, `Bash`, `ToolSearch` | on | loaded |
+  | the default set (`tools` left out) | off | deferred |
+  | the default set | on | loaded |
+
+  In the model run whose tools included `ToolSearch` without `alwaysLoad`,
+  the tutor called `ToolSearch` before `ask_question`, one model request
+  more. **Decision:** name the built-in tools without `ToolSearch`, and set
+  `alwaysLoad: true` on the teaching tool server anyway, so the teaching
+  tools stay loaded if `ToolSearch` is ever added.
+- **Correction to task 0.2: the user's claude.ai connectors join the
+  session.** With `settingSources: []`, the user's claude.ai connector
+  ("Claude Docs") appeared in `mcpServerStatus()` and connected within a few
+  seconds. It added about 1,900 tokens of tool definitions and 631 tokens of
+  server instructions to the tutor's context. Task 0.2 missed it: the init
+  message listed no MCP servers, and each of its runs was one short reply. `strictMcpConfig: true` and
+  `settings: { disableClaudeAiConnectors: true }` each kept it out.
+  **Decision:** pass both. The first is documented to ignore every MCP
+  configuration except the servers passed in; the second is the documented
+  switch for claude.ai connectors.
+- **Working option set** for a tutor session on Claude, as used in the
+  enforced runs:
+
+  ```ts
+  query({
+    prompt: inbox, // AsyncIterable<SDKUserMessage>: one message per engine turn
+    options: {
+      systemPrompt,
+      settingSources: [],
+      skills: [],
+      settings: { autoMemoryEnabled: false, disableClaudeAiConnectors: true },
+      strictMcpConfig: true,
+      env, // process.env without ANTHROPIC_API_KEY
+      tools: [], // built-in tools by name, never ToolSearch
+      mcpServers: {
+        gauss: createSdkMcpServer({ name: "gauss", tools, alwaysLoad: true }),
+      },
+      allowedTools: ["mcp__gauss__ask_question"],
+      hooks: {
+        PostToolUse: [{ matcher: "mcp__gauss__ask_question", hooks: [endTurn] }],
+      },
+      includePartialMessages: true,
+    },
+  });
+  // endTurn returns { continue: false, stopReason: "Question posted; waiting for the learner." }
+  ```
+
+  The spike also passed `persistSession: false`; resume needs persistence
+  (task 0.4). Which built-in tools the tutor gets, and how they are confined,
+  is task 0.4's question.
+- **Runs**, for repeating them: prompt only,
+  `--always-load --strict-mcp --no-connectors` and
+  `--builtin=Read,Bash,ToolSearch --strict-mcp --no-connectors`; enforced,
+  `--always-load --strict-mcp --no-connectors --enforce-stop --one-open`,
+  twice; probes, `--probe-only` with the tool options in the table.
