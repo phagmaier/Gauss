@@ -341,6 +341,9 @@ Tasks may be revised by 0.7 (revised on 2026-11-15; see 0.7's note).
 approve the revision, see the diagram, restart the server, and find the course
 still there.
 
+Passed: the user tried it on 2026-11-15 ("it works great from what I
+tested"). Stage 1 is finished.
+
 ## Stage 2: session engine
 
 ### 2.0 Break down the stage
