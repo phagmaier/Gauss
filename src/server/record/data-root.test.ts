@@ -12,7 +12,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { Curriculum } from "../../shared/curriculum.ts";
-import { openDataRoot, resolveDataRoot } from "./data-root.ts";
+import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
+import type { Plan } from "../../shared/plan.ts";
+import type { UnitPosition } from "../../shared/state.ts";
+import { type DataRoot, openDataRoot, resolveDataRoot } from "./data-root.ts";
 
 // Every test gets its own data root in the system's temporary folder; none
 // touches ~/gauss (AGENTS.md).
@@ -367,3 +370,381 @@ test("a reload after a crash mid-write finds the old file whole, and the write t
   expect(whole).toEqual({ code: 0, stderr: "" });
   expect((await reloaded.readCourse(id))?.curriculum).toEqual(large);
 }, 20_000);
+
+// Task 2.2: a unit's plan in curriculum.json, the position of each unit in
+// progress in state.json, and the evidence log.
+
+const VECTORS_PLAN: Plan = {
+  objectives: [
+    {
+      id: "basis-image",
+      statement: "Describe a linear map by the images of a basis.",
+    },
+    { id: "map-matrix", statement: "Write the matrix of a linear map." },
+  ],
+  segments: [
+    { title: "Maps and bases", objectives: ["basis-image", "map-matrix"] },
+  ],
+};
+
+const EIGEN_PLAN: Plan = {
+  objectives: [
+    {
+      id: "eigenvector",
+      statement: "Check whether a vector is an eigenvector of a matrix.",
+    },
+    {
+      id: "eigenvalues",
+      statement: "Find the eigenvalues of a 2-by-2 matrix.",
+    },
+  ],
+  segments: [
+    { title: "Directions that only stretch", objectives: ["eigenvector"] },
+    { title: "The characteristic polynomial", objectives: ["eigenvalues"] },
+  ],
+};
+
+/** A course whose curriculum is PROPOSAL, approved unless asked otherwise. */
+async function courseWithCurriculum(root: DataRoot, approve = true) {
+  const { id } = await root.createCourse({ title: "Linear algebra" });
+  await root.saveProposal(id, PROPOSAL);
+  if (approve) await root.approveCurriculum(id);
+  return id;
+}
+
+describe("unit plans", () => {
+  test("a plan is stored on its unit in curriculum.json and reads back after a restart", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    const before = (await root.readCourse(id))?.curriculum;
+
+    const stored = await root.storePlan(id, "eigen", EIGEN_PLAN);
+
+    const expected = {
+      approval: before?.approval,
+      units: [PROPOSAL.units[0], { ...PROPOSAL.units[1], plan: EIGEN_PLAN }],
+    };
+    expect(stored.curriculum).toEqual(expected);
+    expect(
+      (await openDataRoot({ path: dir }).readCourse(id))?.curriculum,
+    ).toEqual(expected);
+  });
+
+  test.each([
+    {
+      name: "a curriculum not yet approved",
+      approve: false,
+      unit: "eigen",
+      plan: EIGEN_PLAN,
+      message: /not approved/,
+    },
+    {
+      name: "a unit not in the curriculum",
+      unit: "matrices",
+      plan: EIGEN_PLAN,
+      message: /"matrices" is not a unit of "linear-algebra"/,
+    },
+    {
+      name: "a unit that already has a plan",
+      earlier: { unit: "eigen", plan: EIGEN_PLAN },
+      unit: "eigen",
+      plan: VECTORS_PLAN,
+      message: /"eigen" already has a plan/,
+    },
+    {
+      name: "an objective id that another unit's plan uses",
+      earlier: { unit: "vectors", plan: VECTORS_PLAN },
+      unit: "eigen",
+      plan: {
+        objectives: [
+          { id: "eigenvector", statement: "Check an eigenvector." },
+          { id: "basis-image", statement: "Find the eigenvalues." },
+        ],
+        segments: [
+          { title: "Stretching", objectives: ["eigenvector", "basis-image"] },
+        ],
+      },
+      message:
+        /"basis-image" is the id of an objective in both "vectors" and "eigen"/,
+    },
+  ])(
+    "refused for $name, and nothing changes",
+    async ({ approve, earlier, unit, plan, message }) => {
+      const root = openDataRoot({ path: dir });
+      const id = await courseWithCurriculum(root, approve);
+      if (earlier) await root.storePlan(id, earlier.unit, earlier.plan);
+      const before = (await root.readCourse(id))?.curriculum;
+
+      await expect(root.storePlan(id, unit, plan)).rejects.toThrow(message);
+
+      expect((await root.readCourse(id))?.curriculum).toEqual(before);
+    },
+  );
+
+  test("plans for two units stored together both land", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    await Promise.all([
+      root.storePlan(id, "vectors", VECTORS_PLAN),
+      root.storePlan(id, "eigen", EIGEN_PLAN),
+    ]);
+
+    const units = (await root.readCourse(id))?.curriculum?.units;
+    expect(units?.map((u) => u.plan)).toEqual([VECTORS_PLAN, EIGEN_PLAN]);
+  });
+});
+
+/** A position mid-check, with a question open whose prompt has this length. */
+function inCheck(promptLength = 60): UnitPosition {
+  return {
+    segment: 0,
+    phase: "check",
+    openQuestion: {
+      id: "q1",
+      number: 1,
+      objective: "eigenvector",
+      postedAt: "2026-11-15T10:12:00.000Z",
+      question: {
+        kind: "choice",
+        prompt: "x".repeat(promptLength),
+        choices: ["Yes", "No"],
+        answer: "A",
+      },
+    },
+  };
+}
+
+const DISCUSSING: UnitPosition = {
+  segment: 1,
+  phase: "discuss",
+  tutorSessionId: "5d0c2c4e-8a51-4f7e-9a7e-2f1b6c1e0a93",
+};
+
+describe("state", () => {
+  test("a course with no unit in progress has an empty state", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    expect(await root.readState(id)).toEqual({ units: {} });
+  });
+
+  test("a position is written to state.json and reads back after a restart; null takes the unit out", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    await root.writePosition(id, "eigen", inCheck());
+    await root.writePosition(id, "vectors", DISCUSSING);
+
+    const after = openDataRoot({ path: dir });
+    expect(await after.readState(id)).toEqual({
+      units: { eigen: inCheck(), vectors: DISCUSSING },
+    });
+    expect(
+      JSON.parse(
+        await readFile(join(dir, "courses", id, "state.json"), "utf8"),
+      ),
+    ).toEqual({ units: { eigen: inCheck(), vectors: DISCUSSING } });
+
+    await after.writePosition(id, "eigen", null);
+
+    expect(await after.readState(id)).toEqual({
+      units: { vectors: DISCUSSING },
+    });
+  });
+
+  test("two writes for one unit issued together land in the order issued", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    // The first write is large and the second small, so without waiting
+    // for each other the second would finish first and be overwritten.
+    await Promise.all([
+      root.writePosition(id, "eigen", inCheck(4_000_000)),
+      root.writePosition(id, "eigen", DISCUSSING),
+    ]);
+
+    expect(await openDataRoot({ path: dir }).readState(id)).toEqual({
+      units: { eigen: DISCUSSING },
+    });
+  });
+
+  test("writes for two units issued together keep both", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    await Promise.all([
+      root.writePosition(id, "eigen", inCheck()),
+      root.writePosition(id, "vectors", DISCUSSING),
+    ]);
+
+    expect(await root.readState(id)).toEqual({
+      units: { eigen: inCheck(), vectors: DISCUSSING },
+    });
+  });
+
+  test("a position that fails its schema is refused and changes nothing", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    await root.writePosition(id, "vectors", DISCUSSING);
+
+    await expect(
+      root.writePosition(id, "eigen", { ...inCheck(), phase: "teach" }),
+    ).rejects.toThrow(/only in the check/);
+
+    expect(await root.readState(id)).toEqual({
+      units: { vectors: DISCUSSING },
+    });
+  });
+});
+
+/** An answer to question `q<n>`, recorded at minute n past ten. */
+function answer(n: number, promptLength = 40): AnswerEvidence {
+  return {
+    kind: "answer",
+    recordedAt: `2026-11-15T10:${String(n).padStart(2, "0")}:00.000Z`,
+    objective: "eigenvector",
+    question: {
+      kind: "choice",
+      prompt: "y".repeat(promptLength),
+      choices: ["Yes", "No"],
+      answer: "A",
+    },
+    answer: {
+      kind: "choice",
+      questionId: `q${n}`,
+      choice: "A",
+      confidence: "75",
+    },
+    assisted: false,
+    verdict: "correct",
+  };
+}
+
+const OVERRIDE: EvidenceEntry = {
+  kind: "override",
+  recordedAt: "2026-11-15T10:30:00.000Z",
+  objectives: ["eigenvalues"],
+};
+
+/** An entry as one line of evidence.jsonl. */
+const line = (entry: EvidenceEntry) => `${JSON.stringify(entry)}\n`;
+
+describe("evidence", () => {
+  test("a course with no evidence has an empty log", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    expect(await root.readEvidence(id)).toEqual([]);
+  });
+
+  // That appends wait for each other is file-lock.test.ts's to show: here
+  // the thread pool keeps them in order even without the lock.
+  test("entries appended together land one per line and read back after a restart", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    await Promise.all([
+      root.appendEvidence(id, answer(1)),
+      root.appendEvidence(id, answer(2)),
+      root.appendEvidence(id, OVERRIDE),
+    ]);
+
+    const expected = [answer(1), answer(2), OVERRIDE];
+    expect(await openDataRoot({ path: dir }).readEvidence(id)).toEqual(
+      expected,
+    );
+    expect(
+      await readFile(join(dir, "courses", id, "evidence.jsonl"), "utf8"),
+    ).toBe(expected.map(line).join(""));
+  });
+
+  // What a crash partway through an append leaves: the whole lines before
+  // it, then the start of the line it was writing. An entry counts once its
+  // line ends, so a cut line is skipped when reading and cleared before the
+  // next append, which would otherwise be glued onto it.
+  test.each([
+    {
+      name: "a cut line after whole entries",
+      whole: [answer(1), OVERRIDE],
+      cut: line(answer(3)).slice(0, 50),
+    },
+    {
+      name: "a cut line longer than one read",
+      whole: [answer(1)],
+      cut: line(answer(3, 20_000)).slice(0, 15_000),
+    },
+    {
+      name: "a log that is only a cut line",
+      whole: [],
+      cut: line(answer(3)).slice(0, 50),
+    },
+    {
+      name: "a whole entry that lacks only its newline",
+      whole: [answer(1)],
+      cut: line(answer(3)).slice(0, -1),
+    },
+  ])(
+    "$name: reading skips it, and the next entry is appended whole",
+    async ({ whole, cut }) => {
+      const root = openDataRoot({ path: dir });
+      const id = await courseWithCurriculum(root);
+      const log = join(dir, "courses", id, "evidence.jsonl");
+      await writeFile(log, whole.map(line).join("") + cut);
+
+      expect(await openDataRoot({ path: dir }).readEvidence(id)).toEqual(whole);
+
+      await root.appendEvidence(id, answer(4));
+
+      expect(await root.readEvidence(id)).toEqual([...whole, answer(4)]);
+      expect(await readFile(log, "utf8")).toBe(
+        [...whole, answer(4)].map(line).join(""),
+      );
+    },
+  );
+
+  test("a damaged line before the last is an error that names the file and line", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    await writeFile(
+      join(dir, "courses", id, "evidence.jsonl"),
+      `${line(answer(1))}{"kind": "answer"}\n${line(answer(2))}`,
+    );
+
+    await expect(root.readEvidence(id)).rejects.toThrow(
+      /linear-algebra\/evidence\.jsonl, line 2/,
+    );
+  });
+
+  test("an entry that fails its schema is refused and not appended", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    await expect(
+      root.appendEvidence(id, { ...answer(1), verdict: "unknown" }),
+    ).rejects.toThrow(/I don't know/);
+
+    expect(await root.readEvidence(id)).toEqual([]);
+  });
+});
+
+test.each(["no-such-course", "../linear-algebra"])(
+  "plans, state and evidence of the course %j are refused",
+  async (missing) => {
+    const root = openDataRoot({ path: dir });
+    await courseWithCurriculum(root);
+
+    await expect(root.storePlan(missing, "eigen", EIGEN_PLAN)).rejects.toThrow(
+      /no course/,
+    );
+    await expect(root.readState(missing)).rejects.toThrow(/no course/);
+    await expect(
+      root.writePosition(missing, "eigen", DISCUSSING),
+    ).rejects.toThrow(/no course/);
+    await expect(root.readEvidence(missing)).rejects.toThrow(/no course/);
+    await expect(root.appendEvidence(missing, OVERRIDE)).rejects.toThrow(
+      /no course/,
+    );
+    expect(await readdir(join(dir, "courses"))).toEqual(["linear-algebra"]);
+  },
+);

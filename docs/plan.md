@@ -39,6 +39,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 1.7 | Review fixes | One intake per course when review overlaps approval; bounded, distinct diagram ports. |
 | 2.0 | Break down stage 2 | The choices behind the breakdown: "Stage 2 breakdown". |
 | 2.1 | Designs for stage 2 | Mocks 9 to 12 (style note, unit end, start fresh, unit order); picks and the tasks that use each are in "Stage 2 designs". |
+| 2.2 | Plan, state and evidence records | Schemas in `src/shared/plan.ts`, `state.ts`, `evidence.ts`; record operations `storePlan`, `readState` and `writePosition` (one unit's position; `null` takes it out), `appendEvidence` and `readEvidence`. An objective is taught in one segment only, so 2.7's extra segment needs a place of its own. Each read-and-write-back and each append goes through `record/file-lock.ts`; `record/json-lines.ts` serves 2.13's transcripts. |
 
 ## Stage 2: session engine
 
@@ -52,34 +53,6 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
-
-### 2.2 Plan, state and evidence records
-
-- Status: todo
-- Depends on: stage 1
-- Do: zod schemas in `src/shared/` for a unit's plan (objectives with ids,
-  and segments of one or two objectives each, in order), `state.json` (the
-  unit in progress, its segment and phase, the open question with its
-  grading material, and the tutor's backend session id), and an evidence
-  entry (brief, "Evidence"), overrides included. Record operations: store a
-  unit's plan in `curriculum.json`, write `state.json`, append to
-  `evidence.jsonl` and read it back.
-- Done when: tests parse hand-written valid examples and reject a segment
-  that names an objective not in the plan, an objective in no segment, a
-  segment of three objectives and a repeated objective id; tests against a
-  temporary data root cover storing a plan, two `state.json` writes issued
-  together landing in the order issued, and an evidence log whose last line
-  a crash cut short.
-- Note: the plan cannot go on `Unit`, which is `propose_curriculum`'s input
-  (task 1.1). A stored unit extends it with an optional plan, so stage 1's
-  files still parse. `state.json` writes must wait for each other (task
-  1.2). Evidence is appended, not written whole, so a crash can cut the
-  last line; reading skips it. Evidence names objectives by id, so
-  objective ids must be unique across the course.
-- Note from 2.1: several units can be in progress at once, each keeping its
-  place (piece 12), so `state.json` holds a position per unit in progress
-  rather than one current unit. Revise `architecture.md` section 3, which
-  says "current unit".
 
 ### 2.3 Objective status
 

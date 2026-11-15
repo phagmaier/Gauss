@@ -1,0 +1,84 @@
+import { describe, expect, test } from "vitest";
+import { State } from "./state.ts";
+
+// A hand-written state.json with two units in progress at once, each keeping
+// its place: one mid-check with a question open and no tutor session id yet
+// (the backend reports it with the first turn), and one whose first segment
+// has closed, waiting for the learner to start the next.
+const STATE = {
+  units: {
+    derivative: {
+      segment: 1,
+      phase: "check",
+      openQuestion: {
+        id: "q4",
+        number: 2,
+        objective: "tangent-line",
+        postedAt: "2026-11-15T10:12:00.000Z",
+        question: {
+          kind: "choice",
+          prompt: "What is the slope of the tangent to $y = x^2$ at $x = 3$?",
+          choices: ["3", "6", "9"],
+          answer: "B",
+        },
+      },
+    },
+    integral: {
+      segment: 0,
+      phase: "closed",
+      tutorSessionId: "5d0c2c4e-8a51-4f7e-9a7e-2f1b6c1e0a93",
+    },
+  },
+};
+
+test("a hand-written state with two units in progress parses unchanged", () => {
+  expect(State.parse(STATE)).toEqual(STATE);
+});
+
+test("a course with no unit in progress has an empty state", () => {
+  expect(State.parse({ units: {} })).toEqual({ units: {} });
+});
+
+describe("rejects", () => {
+  const derivative = STATE.units.derivative;
+  test.each([
+    {
+      name: "an open question outside the check",
+      input: {
+        units: {
+          ...STATE.units,
+          derivative: { ...derivative, phase: "discuss" },
+        },
+      },
+      path: ["units", "derivative", "openQuestion"],
+      message: /only in the check/,
+    },
+    {
+      name: "a question whose answer is not one of its choices",
+      input: {
+        units: {
+          ...STATE.units,
+          derivative: {
+            ...derivative,
+            openQuestion: {
+              ...derivative.openQuestion,
+              question: { ...derivative.openQuestion.question, answer: "D" },
+            },
+          },
+        },
+      },
+      path: ["units", "derivative", "openQuestion", "question", "answer"],
+      message: /one of the choices/,
+    },
+  ])("$name", ({ input, path, message }) => {
+    const result = State.safeParse(input);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual([
+      expect.objectContaining({
+        path,
+        message: expect.stringMatching(message),
+      }),
+    ]);
+  });
+});

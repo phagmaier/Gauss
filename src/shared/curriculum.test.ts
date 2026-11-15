@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Curriculum } from "./curriculum.ts";
+import type { Plan } from "./plan.ts";
 
 // A hand-written curriculum.json for a short calculus course. "fundamental"
 // builds on two units that share a prerequisite, so two paths meet there
@@ -189,5 +190,75 @@ describe("rejects", () => {
         message: expect.stringMatching(message),
       }),
     );
+  });
+});
+
+// Units gain a plan once they start (task 2.2). APPROVED, with two of its
+// units planned.
+const PLANNED = withUnits((units) =>
+  units.map((u) => {
+    if (u.id === "limits") {
+      return {
+        ...u,
+        plan: {
+          objectives: [
+            { id: "limit-value", statement: "Evaluate a limit at a point." },
+            {
+              id: "continuity",
+              statement: "Decide where a function is continuous.",
+            },
+          ],
+          segments: [
+            { title: "Limits", objectives: ["limit-value"] },
+            { title: "Continuity", objectives: ["continuity"] },
+          ],
+        },
+      };
+    }
+    if (u.id === "derivative") {
+      return {
+        ...u,
+        plan: {
+          objectives: [
+            {
+              id: "derivative-definition",
+              statement: "Compute a derivative from its definition.",
+            },
+          ],
+          segments: [
+            { title: "The definition", objectives: ["derivative-definition"] },
+          ],
+        },
+      };
+    }
+    return u;
+  }),
+);
+
+describe("planned units", () => {
+  test("a curriculum with planned and unplanned units parses unchanged", () => {
+    expect(Curriculum.parse(PLANNED)).toEqual(PLANNED);
+  });
+
+  test("an objective id used in two units is rejected, naming both", () => {
+    // Evidence names objectives by id alone, so ids are unique in the course.
+    const clash = structuredClone(PLANNED);
+    const derivative = clash.units[2] as { plan: Plan };
+    derivative.plan = {
+      objectives: [{ id: "continuity", statement: "Something else." }],
+      segments: [{ title: "Again", objectives: ["continuity"] }],
+    };
+
+    const result = Curriculum.safeParse(clash);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual([
+      expect.objectContaining({
+        path: ["units", 2, "plan", "objectives", 0, "id"],
+        message: expect.stringMatching(
+          /"continuity" is the id of an objective in both "limits" and "derivative"/,
+        ),
+      }),
+    ]);
   });
 });

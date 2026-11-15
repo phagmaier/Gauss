@@ -76,7 +76,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
     course.json                   title, backend, settings (web search on/off), dates
     style.md                      per-course teaching style note
     curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
-    state.json                    current unit, segment, phase, open question, open detour
+    state.json                    each unit in progress: segment, phase, open question, tutor session, open detour
     evidence.jsonl                append-only: answers, grades, confidence, overrides, disputes
     misconceptions.jsonl          append-only: findings from detours
     units/<unit-id>/handoff.md    written at the end of each session in the unit
@@ -87,16 +87,33 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
     workspace/                    starter code and the learner's work
 ```
 
-The shapes of `course.json` and `curriculum.json` are the schemas in
-`src/shared/course.ts` and `src/shared/curriculum.ts`. A curriculum is a
-draft until the learner approves it. Where a course stands (curriculum
-awaiting review, a unit in progress, finished) and whether it is a one-off
-(a course with one unit) are derived from the record, not stored. A course
-exists from its first proposal (section 4, the intake chat).
+The shapes of the record files are the schemas in `src/shared/`:
+`course.ts`, `curriculum.ts` (a unit's plan in `plan.ts`), `state.ts` and
+`evidence.ts`. A curriculum is a draft until the learner approves it. A unit
+gets its plan, its objectives and the segments that teach them, when it
+starts (section 4); units not started have none. Objective ids are unique
+in the course, because the evidence names an objective by its id alone.
+Where a course stands (curriculum awaiting review, a unit in progress,
+finished) and whether it is a one-off (a course with one unit) are derived
+from the record, not stored. A course exists from its first proposal
+(section 4, the intake chat).
 
-Every record file is written whole: to a temporary file in its folder, then
-renamed over it, so a process that stops partway leaves the old version or
-the new one. A course's id is its folder's name, made from its title.
+`state.json` holds a position for each unit in progress, not one current
+unit: several units can be in progress at once, each keeping its place. A
+unit is taken out of it when it is no longer in progress. The engine writes
+a unit's position after every change, so an open question survives a
+restart.
+
+Every record file but the logs is written whole: to a temporary file in its
+folder, then renamed over it, so a process that stops partway leaves the old
+version or the new one. The logs (`evidence.jsonl`, `misconceptions.jsonl`
+and the transcripts) are appended to, one entry per line, so a crash can
+leave the start of a line at the end. An entry counts once its line ends:
+reading skips an unfinished last line, and the next append clears it first.
+Work that reads a record file and writes it back, and every append, waits
+for the work on that file before it (`record/file-lock.ts`), so writes land
+in the order they were made and none is lost. A course's id is its folder's
+name, made from its title.
 
 Objective status (not started, passed, retained, slipping, overridden) is
 **derived** from `evidence.jsonl` by a pure function and never stored, so it

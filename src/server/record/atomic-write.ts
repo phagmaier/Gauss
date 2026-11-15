@@ -33,7 +33,7 @@ export async function writeFileAtomic(
   await syncFolder(folder);
 }
 
-async function syncFolder(folder: string): Promise<void> {
+export async function syncFolder(folder: string): Promise<void> {
   const handle = await open(folder, "r");
   try {
     await handle.sync();

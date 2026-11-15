@@ -29,6 +29,7 @@ findings are the record.
 | Library review fixes | Intake ownership, diagram ports | Touching intakes or the diagram |
 | Stage 2 breakdown | Why stage 2's tasks are shaped as they are | Any stage 2 task, before starting |
 | Stage 2 designs | Picks from mocks 9 to 12, and which tasks use each | 2.6, 2.11, 2.12, and any stage 2 view |
+| Plan, state and evidence records | Plan rules, `state.json` positions, evidence entries, the file lock, cut log lines | Touching a unit's plan, `state.json` or the evidence (2.3, 2.5 to 2.8, 2.13) |
 
 ## Page design (plan task 1.0)
 
@@ -1158,3 +1159,96 @@ rejected; the chosen styles are in `docs/prototype/base.css`.
   top, Start on every unit, and the question before a unit whose
   prerequisites are not finished. 2.14: the "Fresh start" marker for both
   ways a conversation is replaced.
+
+## Plan, state and evidence records (plan task 2.2)
+
+Written on 2026-11-15: `src/shared/plan.ts`, `state.ts` and `evidence.ts`,
+the stored unit in `curriculum.ts` and the stored question in `question.ts`;
+in `src/server/record/`, the new operations of `data-root.ts`, with
+`file-lock.ts` and `json-lines.ts`. Tests sit beside each.
+
+- **The plan is on a stored unit.** `StoredUnit` extends `Unit` with an
+  optional `plan`, and `curriculum.json` holds stored units, so stage 1's
+  files parse unchanged. `propose_curriculum` still takes `Unit`, so the
+  intake cannot send a plan.
+- **Plan rules.** An objective has a slug id and a one-sentence statement.
+  A segment has a title, because mock 4's outline shows one per segment,
+  and one or two objective ids. Segments are in teaching order. Each
+  objective is taught in exactly one segment: a segment names only the
+  plan's objectives, none of them twice, and every objective is in one.
+  When two objectives share an id, only that is reported, since which one a
+  segment means is unclear. The messages are written for the planning
+  session (2.5), which gets them back with a refused plan.
+- **For 2.7:** because an objective is taught in one segment, "Go over the N
+  again" cannot be added to the plan as an ordinary segment. Keep it in the
+  unit's position, or relax the rule for it there.
+- **Objective ids are unique in the course.** The curriculum checks this,
+  since a plan does not see the other units. A clash is reported on the
+  later unit and names both. `storePlan` sends back the messages alone,
+  because the paths point into the whole curriculum, which the planning
+  session never sees.
+- **`storePlan`** refuses a curriculum that is not approved, a unit not in
+  it, and a unit that already has a plan. Planning a unit again is not
+  designed, and a second `plan_unit` call in one planning session should
+  fail.
+- **`state.json` holds `units`, a position per unit in progress, by unit
+  id** (piece 12). A position holds the segment's index in the plan (from
+  0), the phase, the open question and the tutor's session id. The phases
+  are `teach`, `discuss`, `check` and `closed`; `closed` means the segment
+  has closed and the learner has not started the next. The open question
+  is allowed only in `check`. The session id is optional, because the
+  backend reports it with the first turn. `writePosition(course, unit,
+  position)` changes one unit's position under the lock, so two unit chats
+  writing at once cannot lose each other's change; `null` takes the unit
+  out.
+- **The record does not check a position against the plan** (that the unit
+  exists, the segment is in range, the question's objective is in the
+  segment), nor an entry's objective against the curriculum. Those are the
+  engine's rules (2.6), which refuses the tutor's call before anything is
+  written.
+- **A stored question** (`Question` in `question.ts`) is what the learner saw
+  plus the grading material, with a `kind`, so written answers (2.8) join
+  the union without changing files written before them. The tool's input,
+  `ChoiceQuestionInput`, shares its fields. Its `objective` is still free
+  text; 2.6 turns it into an objective id.
+- **An evidence entry** is either an answer or an override. An answer holds
+  the objective id, the question as posted, the learner's submission as sent
+  (with confidence and reasoning), `assisted`, the verdict and
+  `recordedAt`. An override holds the objective ids it covers. Neither holds
+  a unit id, because objective ids are unique in the course. `assisted` is
+  required, so the engine writes `false` until 2.7 records help. An "I don't
+  know", and only that, is graded `unknown`.
+- **Writes wait for each other.** `withFileLock(path, work)` queues work per
+  file and runs it in the order called; a failure reaches its caller and
+  does not stop the work after it. The record takes the lock when the call
+  is made, before its first `await`, so checking that the course exists
+  cannot reorder two calls. It is taken for every read and write back of
+  `curriculum.json` (proposal, approval, plan) and `state.json`, and for
+  every append. The lock's queues live in the module, keyed by absolute
+  path, so two `openDataRoot` calls over one root share them. Another
+  process writing the same root is not covered; only Gauss writes it.
+- **The evidence log.** An entry counts once its line ends. Reading skips an
+  unfinished last line, and any other bad line is an error naming the file
+  and line, as with a damaged JSON file (task 1.2). Before an append, an
+  unfinished last line is truncated away; the last newline is found by
+  reading back from the end in 4 KB pieces. Without that, the next entry is
+  glued onto the cut line and lost with it. A whole entry missing only its
+  newline is dropped too, so reading and appending agree. The transcripts
+  (2.13) can use `json-lines.ts`.
+- **Checks:** `mise run check` passed lint, type-checking, 189 TypeScript
+  tests and one Python test. Each of these faults made the tests written
+  for it fail: a plan without each of its five rules; no course-wide
+  objective id check; an open question allowed outside the check; no
+  verdict check; the reader keeping the unfinished line; an append that
+  does not clear it; searching only the last 4 KB; and, in the lock,
+  running work at once, a failure stopping the queue, and one queue for
+  every file. With the lock taken out of the record, three tests failed:
+  two writes to one unit landing in the order issued (the first is 4 MB, so
+  it would finish last), two units' writes both kept, and two units' plans
+  both kept.
+- **Not covered:** with the lock taken out of `appendEvidence` alone, the
+  evidence test still passed, because Node's thread pool kept the three
+  appends in order. The lock's own tests cover the ordering; that the append
+  takes the lock was checked by reading the code. A crash is simulated by a
+  cut file written by hand, not by stopping a process mid-append, unlike
+  task 1.2's crash test.

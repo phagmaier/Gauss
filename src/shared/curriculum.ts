@@ -1,7 +1,7 @@
 // curriculum.json: a course's units, what each builds on, and one goal per
 // unit, plus whether the learner has approved it (architecture.md section 3).
-// A unit gains its objectives and segments when it is planned (stage 2), and
-// the source sections it teaches in stage 4.
+// A unit gains its plan, its objectives and segments, when it starts (task
+// 2.2), and the source sections it teaches in stage 4.
 //
 // The field descriptions are written for the tutor, which proposes units
 // through a teaching tool (task 1.4), and so are the error messages: a
@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 import { Course, Slug, Timestamp } from "./course.ts";
+import { Plan } from "./plan.ts";
 
 export const Unit = z.object({
   id: Slug.describe(
@@ -37,6 +38,14 @@ export const Unit = z.object({
 export type Unit = z.infer<typeof Unit>;
 
 /**
+ * A unit as curriculum.json keeps it: as proposed, plus its plan once it has
+ * started. The plan is optional so that units not yet started, and every file
+ * written before plans existed, still parse.
+ */
+export const StoredUnit = Unit.extend({ plan: Plan.optional() });
+export type StoredUnit = z.infer<typeof StoredUnit>;
+
+/**
  * The units in the order they are shown. Prerequisites must name units in
  * the list and must not form a cycle; they need not come earlier in it.
  */
@@ -44,53 +53,88 @@ export const Units = z
   .array(Unit)
   .min(1)
   .describe("The units, in the order the learner should see them")
+  .superRefine(checkUnits);
+
+/** Units as stored: as above, and no objective id is used in two units. */
+const StoredUnits = z
+  .array(StoredUnit)
+  .min(1)
   .superRefine((units, ctx) => {
-    const indexById = new Map<string, number>();
-    units.forEach((unit, i) => {
-      if (indexById.has(unit.id)) {
+    checkUnits(units, ctx);
+    checkObjectiveIds(units, ctx);
+  });
+
+type Context = z.RefinementCtx<Unit[]>;
+
+function checkUnits(units: Unit[], ctx: Context): void {
+  const indexById = new Map<string, number>();
+  units.forEach((unit, i) => {
+    if (indexById.has(unit.id)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [i, "id"],
+        message: `"${unit.id}" is the id of more than one unit. Give each unit its own.`,
+      });
+    } else {
+      indexById.set(unit.id, i);
+    }
+  });
+
+  units.forEach((unit, i) => {
+    unit.prerequisites.forEach((id, j) => {
+      if (unit.prerequisites.indexOf(id) < j) {
         ctx.addIssue({
           code: "custom",
-          path: [i, "id"],
-          message: `"${unit.id}" is the id of more than one unit. Give each unit its own.`,
+          path: [i, "prerequisites", j],
+          message: `"${unit.id}" lists "${id}" more than once as a prerequisite.`,
         });
-      } else {
-        indexById.set(unit.id, i);
+      } else if (!indexById.has(id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [i, "prerequisites", j],
+          message: `"${unit.id}" builds on "${id}", which is not a unit in this curriculum.`,
+        });
       }
     });
+  });
 
-    units.forEach((unit, i) => {
-      unit.prerequisites.forEach((id, j) => {
-        if (unit.prerequisites.indexOf(id) < j) {
-          ctx.addIssue({
-            code: "custom",
-            path: [i, "prerequisites", j],
-            message: `"${unit.id}" lists "${id}" more than once as a prerequisite.`,
-          });
-        } else if (!indexById.has(id)) {
-          ctx.addIssue({
-            code: "custom",
-            path: [i, "prerequisites", j],
-            message: `"${unit.id}" builds on "${id}", which is not a unit in this curriculum.`,
-          });
-        }
-      });
-    });
+  // With two units sharing an id, which one a prerequisite means is unclear.
+  if (indexById.size < units.length) return;
 
-    // With two units sharing an id, which one a prerequisite means is unclear.
-    if (indexById.size < units.length) return;
+  const cycle = findCycle(units);
+  const [first] = cycle ?? [];
+  if (cycle === undefined || first === undefined) return;
+  const steps = cycle.map(
+    (link) => `"${link.unit}" builds on "${link.prerequisite}"`,
+  );
+  ctx.addIssue({
+    code: "custom",
+    path: [first.at, "prerequisites", first.slot],
+    message: `The prerequisites form a cycle: ${steps.join(", ")}. A unit cannot build on itself, directly or through other units.`,
+  });
+}
 
-    const cycle = findCycle(units);
-    const [first] = cycle ?? [];
-    if (cycle === undefined || first === undefined) return;
-    const steps = cycle.map(
-      (link) => `"${link.unit}" builds on "${link.prerequisite}"`,
-    );
-    ctx.addIssue({
-      code: "custom",
-      path: [first.at, "prerequisites", first.slot],
-      message: `The prerequisites form a cycle: ${steps.join(", ")}. A unit cannot build on itself, directly or through other units.`,
+/**
+ * Evidence names an objective by its id alone, so an id may be used in only
+ * one unit's plan. A clash is reported on the later unit in the list.
+ */
+function checkObjectiveIds(units: StoredUnit[], ctx: Context): void {
+  const unitOf = new Map<string, string>();
+  units.forEach((unit, i) => {
+    unit.plan?.objectives.forEach((objective, k) => {
+      const other = unitOf.get(objective.id);
+      if (other !== undefined && other !== unit.id) {
+        ctx.addIssue({
+          code: "custom",
+          path: [i, "plan", "objectives", k, "id"],
+          message: `"${objective.id}" is the id of an objective in both "${other}" and "${unit.id}". Objective ids must be unique in the course; choose another.`,
+        });
+      } else {
+        unitOf.set(objective.id, unit.id);
+      }
     });
   });
+}
 
 export const CurriculumApproval = z.discriminatedUnion("status", [
   /** Proposed by the tutor and awaiting the learner's review. */
@@ -102,7 +146,7 @@ export type CurriculumApproval = z.infer<typeof CurriculumApproval>;
 
 export const Curriculum = z.object({
   approval: CurriculumApproval,
-  units: Units,
+  units: StoredUnits,
 });
 export type Curriculum = z.infer<typeof Curriculum>;
 

@@ -417,3 +417,34 @@ tested"). Stage 1 is finished.
   line. The later tasks that use each pick are listed at the end of the
   entry in `docs/decisions.md`.
 
+### 2.2 Plan, state and evidence records
+
+- Status: done
+- Depends on: stage 1
+- Do: zod schemas in `src/shared/` for a unit's plan (objectives with ids,
+  and segments of one or two objectives each, in order), `state.json` (the
+  unit in progress, its segment and phase, the open question with its
+  grading material, and the tutor's backend session id), and an evidence
+  entry (brief, "Evidence"), overrides included. Record operations: store a
+  unit's plan in `curriculum.json`, write `state.json`, append to
+  `evidence.jsonl` and read it back.
+- Done when: tests parse hand-written valid examples and reject a segment
+  that names an objective not in the plan, an objective in no segment, a
+  segment of three objectives and a repeated objective id; tests against a
+  temporary data root cover storing a plan, two `state.json` writes issued
+  together landing in the order issued, and an evidence log whose last line
+  a crash cut short.
+- Note: the plan cannot go on `Unit`, which is `propose_curriculum`'s input
+  (task 1.1). A stored unit extends it with an optional plan, so stage 1's
+  files still parse. `state.json` writes must wait for each other (task
+  1.2). Evidence is appended, not written whole, so a crash can cut the
+  last line; reading skips it. Evidence names objectives by id, so
+  objective ids must be unique across the course.
+- Note from 2.1: several units can be in progress at once, each keeping its
+  place (piece 12), so `state.json` holds a position per unit in progress
+  rather than one current unit. Revise `architecture.md` section 3, which
+  says "current unit".
+- Note: done on 2026-11-15. The choices and checks are in
+  `docs/decisions.md` under "Plan, state and evidence records";
+  `architecture.md` section 3 now says `state.json` holds a position per
+  unit in progress, and how the logs are appended and read.
