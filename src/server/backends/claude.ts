@@ -67,6 +67,7 @@ async function startSession(
 ): Promise<TutorSession> {
   const sessionId = randomUUID();
   const inbox = createInbox();
+  let interruptRequested = false;
 
   // A teaching tool asks for the end of the turn through its result; the
   // PostToolUse hook carries it out (task 0.3). A refused call leaves the
@@ -78,6 +79,12 @@ async function startSession(
       teachingTool.description,
       teachingTool.inputShape,
       async (args) => {
+        if (interruptRequested) {
+          return {
+            content: [{ type: "text", text: "The learner stopped this turn." }],
+            isError: true,
+          };
+        }
         const result = await teachingTool.run(args);
         if (result.status === "done" && result.endTurn === true) {
           endTurnRequested = true;
@@ -90,10 +97,19 @@ async function startSession(
     ),
   );
   const endTurn: HookCallback = async () => {
+    if (interruptRequested) {
+      return { continue: false, stopReason: "The learner stopped this turn." };
+    }
     if (!endTurnRequested) return {};
     endTurnRequested = false;
     return { continue: false, stopReason: "A teaching tool ended the turn." };
   };
+  // interrupt() alone leaves pending SDK input runnable. Stop it at pickup
+  // instead; continue:false still produces the result send() must drain.
+  const cancelPendingTurn: HookCallback = async () =>
+    interruptRequested
+      ? { continue: false, stopReason: "The learner stopped this turn." }
+      : {};
 
   const session = query({
     prompt: inbox.messages,
@@ -115,7 +131,10 @@ async function startSession(
         [SERVER]: createSdkMcpServer({ name: SERVER, tools, alwaysLoad: true }),
       },
       allowedTools: options.tools.map((t) => TOOL_PREFIX + t.name),
-      hooks: { PostToolUse: [{ hooks: [endTurn] }] },
+      hooks: {
+        UserPromptSubmit: [{ hooks: [cancelPendingTurn], onFailure: "block" }],
+        PostToolUse: [{ hooks: [endTurn] }],
+      },
       includePartialMessages: true,
       // Resume needs this on (task 0.4); the minimal page does not resume.
       persistSession: false,
@@ -124,7 +143,6 @@ async function startSession(
   // Read by hand, not with for-await: leaving a for-await loop would close
   // the whole query, and each turn reads only its own share of messages.
   const messages = session[Symbol.asyncIterator]();
-  let interruptRequested = false;
   let finished: string | undefined;
 
   async function* send(turn: EngineTurn): AsyncGenerator<BackendEvent> {
@@ -136,10 +154,25 @@ async function startSession(
     endTurnRequested = false;
     inbox.push(turn.text);
     const reader = createTurnReader();
+    let interruptedOnStart = false;
     while (true) {
       let next: IteratorResult<SDKMessage, void>;
       try {
         next = await messages.next();
+        // The prompt hook may already have passed when Stop arrives, while
+        // the CLI has not armed its abort controller yet. Once a response
+        // starts, interrupt again against that live controller.
+        if (
+          interruptRequested &&
+          !interruptedOnStart &&
+          !next.done &&
+          next.value.type === "stream_event" &&
+          next.value.parent_tool_use_id === null &&
+          next.value.event.type === "message_start"
+        ) {
+          interruptedOnStart = true;
+          await session.interrupt();
+        }
       } catch (error) {
         finished = error instanceof Error ? error.message : String(error);
         yield { type: "turn_end", outcome: "error", error: finished };
@@ -155,6 +188,8 @@ async function startSession(
         // So a development run shows which model it is spending.
         console.info(`Claude session ${sessionId} on ${message.model}`);
       }
+      // Drain to the result without publishing output buffered after Stop.
+      if (interruptRequested && message.type !== "result") continue;
       for (const event of reader.read(message, interruptRequested)) {
         yield event;
         if (event.type === "turn_end") return;
@@ -229,16 +264,19 @@ function turnEnd(
   result: SDKResultMessage,
   interruptRequested: boolean,
 ): BackendEvent {
+  if (interruptRequested) {
+    return { type: "turn_end", outcome: "interrupted" };
+  }
   if (result.subtype === "success" && !result.is_error) {
     if (result.terminal_reason === "hook_stopped") {
       return { type: "turn_end", outcome: "ended_by_tool" };
     }
     return {
       type: "turn_end",
-      outcome: interruptRequested ? "interrupted" : "done",
+      outcome: "done",
     };
   }
-  if (interruptRequested || result.terminal_reason?.startsWith("aborted")) {
+  if (result.terminal_reason?.startsWith("aborted")) {
     return { type: "turn_end", outcome: "interrupted" };
   }
   const error =

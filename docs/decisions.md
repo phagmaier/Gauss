@@ -661,3 +661,42 @@ row.
   `oneShot` in stage 2, the working directory and built-in tools in stage 3.
   Tasks 1.4 to 1.6 got notes on what they build on, and 1.4 deletes the
   demo's prompt and turn texts once the intake chat replaces it.
+
+## Review fixes (plan task 0.8)
+
+Fixed on 2026-11-15 after reviewing `src/` and `prompts/` from `d9251b6`.
+
+- **An SDK interrupt does not cancel pending input.** The original manual
+  checks did not establish that Stop works for later turns that have not
+  started. The installed Agent SDK 0.3.325 declarations and the
+  [official interrupt contract](https://code.claude.com/docs/en/agent-sdk/typescript#interrupt)
+  document that such input survives. `Query.interrupt()` exposes no
+  `cancel_queued` option or public pending-message cancellation method;
+  that option belongs to the CLI's lower-level control protocol.
+- **Keep the fix on public SDK APIs.** A `UserPromptSubmit` hook returns
+  `continue: false` for a cancelled turn, which still yields the result the
+  adapter must drain. Stop arriving after that hook is covered by another
+  interrupt at the response's `message_start`, when the abort controller is
+  live. Late teaching-tool callbacks are refused, and buffered output is
+  drained without being shown. This preserves the long-lived session and
+  avoids a private control-protocol adapter. A request can begin in the
+  post-hook gap; Stop does not promise zero token usage.
+- **Regression evidence, not a new live-backend observation.** Two new
+  SDK-boundary cases failed against the original adapter by emitting the
+  stopped reply. All three cases now pass: before prompt pickup, after its
+  hook but before generation, and during generation. They also check that
+  stopped turns cannot post a question and that the next turn replies
+  normally. The test replaces only the SDK query boundary; no model is called.
+- **A pending send owns only its submitted draft revision.** The composer
+  locks submission synchronously while awaiting its POST, but keeps the
+  textarea editable. Success clears only an unchanged draft; editing away
+  and back still counts as a new revision. Refusal or network failure keeps
+  the text and releases the lock.
+- **Browser evidence with the fake backend:** a delayed send plus repeated
+  Enter produced one POST; a newer draft survived success; an unchanged
+  draft cleared; edits away and back survived; refusal and network failure
+  kept the draft and enabled retry. These are browser checks, not permanent
+  component tests: the current test tooling has no DOM environment, and no
+  dependency was added just for this fix.
+- **Checks:** `mise run check` passed lint, type-checking, 31 TypeScript tests
+  and one Python test. No real model calls or real data-root access.

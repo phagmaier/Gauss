@@ -280,8 +280,17 @@ Observed in stage 0 (details in `decisions.md`):
   flag is set (task 0.5).
 - The backend picks the session id itself with the `sessionId` option, so
   the id is known before the first turn (task 0.5).
-- `interrupt()` stops a turn before or during its text, and the session
-  answers the next message normally (task 0.5).
+- `interrupt()` stopped a turn before or during its text, and the session
+  answered the next message normally in task 0.5's runs. Review fix 0.8
+  covers a gap those runs missed: the SDK leaves pending input runnable
+  after an interrupt. A `UserPromptSubmit` hook stops a cancelled prompt at
+  pickup; if it already passed that hook, the backend interrupts again at
+  the first response `message_start`, when the turn has an abort controller.
+  It refuses late teaching-tool callbacks and drains remaining output without
+  publishing it. A request may start in the post-hook gap before it can be
+  interrupted; stopping is not a guarantee of zero token usage. These race
+  cases are regression-tested against a simulated SDK boundary, not a live
+  backend; see `decisions.md` under "Review fixes".
 - A session resumes by id in a new process (`resume`); see section 4 for what
   carries over (task 0.4).
 - Writes are confined to one directory by two layers: the Bash sandbox

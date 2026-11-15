@@ -185,6 +185,9 @@ function Composer(props: {
   onStop(): void;
 }) {
   const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const sendPending = useRef(false);
+  const draftRevision = useRef(0);
   const box = useRef<HTMLTextAreaElement>(null);
 
   // The box grows with its text, up to the limit set in the style sheet.
@@ -198,8 +201,22 @@ function Composer(props: {
 
   async function submit() {
     const message = text.trim();
-    if (message === "" || props.busy || !props.enabled) return;
-    if ((await props.onSend(message)) === undefined) setText("");
+    if (message === "" || sendPending.current || props.busy || !props.enabled) {
+      return;
+    }
+    // Lock immediately; another submit can arrive before React or SSE updates.
+    sendPending.current = true;
+    setSending(true);
+    const revision = draftRevision.current;
+    try {
+      const refused = await props.onSend(message);
+      if (refused === undefined && draftRevision.current === revision) {
+        setText("");
+      }
+    } finally {
+      sendPending.current = false;
+      setSending(false);
+    }
   }
 
   return (
@@ -216,7 +233,10 @@ function Composer(props: {
         value={text}
         placeholder="Message the tutor"
         aria-label="Message"
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          draftRevision.current += 1;
+          setText(e.target.value);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
@@ -238,7 +258,7 @@ function Composer(props: {
           type="submit"
           className="send"
           aria-label="Send"
-          disabled={!props.enabled || text.trim() === ""}
+          disabled={!props.enabled || sending || text.trim() === ""}
         >
           {SEND_ICON}
         </button>

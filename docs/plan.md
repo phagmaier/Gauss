@@ -137,6 +137,21 @@ not.
   was revised: 1.3 was already met by task 0.5, and 1.4 to 1.6 note what
   they build on. Details in `docs/decisions.md` under "Stage 0 closed".
 
+### 0.8 Review fixes
+
+- Status: done
+- Depends on: 0.5
+- Do: stop a turn even when the SDK has not started it yet; preserve drafts
+  edited during a pending send and prevent duplicate submissions.
+- Done when: regression checks cover stopping before and after prompt pickup,
+  a subsequent turn still works, and a browser check with the fake backend
+  covers delayed successful and refused sends without losing edited drafts.
+- Note: done on 2026-11-15. `mise run check` passed (31 TypeScript tests,
+  one Python test). The SDK-boundary regressions cover both pending-turn
+  windows, active interruption, late tools/output and a subsequent turn;
+  browser checks with the fake backend cover pending-send edits, duplicate
+  submits, refusal, network failure and retry. No real model calls.
+
 **User check:** open the page, watch a reply stream in, answer the
 multiple-choice question, and see the tutor respond to the answer.
 
