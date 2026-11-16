@@ -235,6 +235,20 @@ test.each([
       ticks: [],
     },
   },
+  {
+    // The row opens the course view, which gives the reason.
+    name: "a course whose record could not be read",
+    course: {
+      ...stored(APPROVED),
+      problem: "evidence.jsonl, line 3 is not valid JSON.",
+    },
+    says: {
+      text: "The record could not be read",
+      ...NOT_FINISHED,
+      oneOff: false,
+      ticks: [],
+    },
+  },
 ])("$name", ({ course, says }) => {
   expect(standing(course)).toEqual(says);
 });

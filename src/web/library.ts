@@ -73,6 +73,17 @@ export function standing(stored: CourseWithProgress): Standing {
       ticks: [],
     };
   }
+  if (stored.problem !== undefined) {
+    // Where it stands is not known. The row opens the course view, which
+    // gives the reason.
+    return {
+      text: "The record could not be read",
+      review: false,
+      finished: false,
+      oneOff,
+      ticks: [],
+    };
+  }
   const statuses = units.map((u) => progressOf(progress, u.id).status);
   const ticks: Mark[] = oneOff
     ? []

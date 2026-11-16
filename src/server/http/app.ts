@@ -41,11 +41,20 @@ export function createApp(options: {
 
   // --- The library ---------------------------------------------------------
 
-  // Each course with where its units stand, derived from the record now.
+  // Each course with where its units stand, derived from the record now. A
+  // course whose state or evidence cannot be read is listed with the reason
+  // in place of its progress, so the rest of the library stays in reach.
   app.get("/api/courses", async (c) => {
     const courses = await Promise.all(
       (await dataRoot.listCourses()).map((stored) =>
-        withProgress(dataRoot, stored),
+        withProgress(dataRoot, stored).catch((error): CourseWithProgress => {
+          console.error(error);
+          return {
+            ...stored,
+            progress: {},
+            problem: error instanceof Error ? error.message : String(error),
+          };
+        }),
       ),
     );
     return c.json({ courses } satisfies Library);

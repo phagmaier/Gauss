@@ -875,3 +875,41 @@ test("at the unit's end, going over again and finishing without the rest go thro
   expect(again.status).toBe(409);
   expect(await again.json()).toEqual({ error: "The unit is finished." });
 });
+
+test("a course whose progress cannot be read is still listed, with the reason, beside the others", async () => {
+  await approvedCourse();
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  const calculus = { ...FIRST, title: "Calculus I" };
+  const { id } = await root.createCourse({ title: calculus.title });
+  await root.saveProposal(id, calculus);
+  await root.approveCurriculum(id, calculus);
+  // A line no append can leave: the log was edited, or the disk failed.
+  await writeFile(join(dir, "courses", id, "evidence.jsonl"), "not json\n");
+  const { app } = setUp([]);
+  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  const listed = await app.request("/api/courses");
+  const opened = await app.request(`/api/courses/${id}`);
+  quiet.mockRestore();
+
+  expect(listed.status).toBe(200);
+  const { courses } = (await listed.json()) as {
+    courses: { id: string; progress: unknown; problem?: string }[];
+  };
+  const unreadable = courses.find((c) => c.id === id);
+  expect(unreadable?.progress).toEqual({});
+  expect(unreadable?.problem).toContain(
+    "evidence.jsonl, line 1 is not valid JSON.",
+  );
+  const readable = courses.find((c) => c.id === COURSE);
+  expect(readable?.progress).toEqual({
+    vectors: { status: "not-started" },
+    eigen: { status: "not-started" },
+  });
+  expect(readable).not.toHaveProperty("problem");
+  // Opening the course says why.
+  expect(opened.status).toBe(500);
+  expect(((await opened.json()) as { error: string }).error).toContain(
+    "evidence.jsonl, line 1 is not valid JSON.",
+  );
+});

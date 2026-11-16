@@ -33,8 +33,18 @@ export type UnitProgress = z.infer<typeof UnitProgress>;
 
 /** A course with where each unit of its approved curriculum stands, by unit id. */
 export const CourseWithProgress = StoredCourse.extend({
-  /** Empty while the curriculum is a draft or not yet proposed. */
+  /**
+   * Empty while the curriculum is a draft or not yet proposed, and when
+   * `problem` is set.
+   */
   progress: z.record(Slug, UnitProgress),
+  /**
+   * Set only in the list of every course, when the course's state.json or
+   * evidence could not be read: the reason. The course is listed all the
+   * same, so one record that cannot be read does not hide the others. Asked
+   * for alone, such a course is an error with this reason.
+   */
+  problem: z.string().optional(),
 });
 export type CourseWithProgress = z.infer<typeof CourseWithProgress>;
 

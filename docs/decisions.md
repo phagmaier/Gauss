@@ -41,7 +41,7 @@ findings are the record.
 | Grader prompt | The hand-graded set, the runs and their results, the grader's model and why, what `grader.md` says and why | Changing `grader.md`, the grader's model or `WrittenGrade`, writing rubric guidance in `tutor.md` (2.16), disputes (stage 3) |
 | Style note at intake | The note in the proposal, `style.md` with the draft, courses without one, the card, `planner.md`'s section, approval checked against the card | Touching `propose_curriculum`, `planner.md` or the proposal card, writing `tutor.md`'s default style (2.16), style changes (stage 5) |
 | Session view | The session page: its address, markers, next-step control, written card, keys, top line and outline, closing card, the entry points, a lost chat, the course's details failing to load, the browser run | Touching `src/web/Session.tsx`, `session.ts`, `timeline.ts` or `QuestionCard.tsx`; course progress (2.12), transcripts (2.13), "Start fresh" (2.14), prompts that write objective statements |
-| Course and library progress | What the routes send, when units were opened, the card, Start, "Open" on finished units, the library's lines and groups, the closing card's next unit | Touching the course view, the library, `progress.ts` or `unitsOpenedAt`; notes (stage 5), the gate and retained status in the library (stage 5) |
+| Course and library progress | What the routes send, when units were opened, the card, Start, "Open" on finished units, the library's lines and groups, the closing card's next unit, a course whose progress cannot be read | Touching the course view, the library, `progress.ts` or `unitsOpenedAt`; notes (stage 5), the gate and retained status in the library (stage 5) |
 
 ## Page design (plan task 1.0)
 
@@ -2477,3 +2477,20 @@ the agent's and can be overturned.
   unit in progress rather than the last opened. Two of them, "Up next"
   beside a unit in progress and the library's choice of unit, first passed
   every test; the tests now cover both.
+- **Review fix: a course whose progress cannot be read** (the user's review
+  of `32b7478`, which reproduced it with a bad line in one course's
+  `evidence.jsonl`). The list of every course read each approved course's
+  `state.json` and evidence, so one file that could not be read made the
+  whole route answer 500 and the library show no course at all; before
+  this task that route read neither file. Now the list catches the failure
+  for that course alone and sends it with no progress and the reason
+  (`problem` in `CourseWithProgress`); its row says "The record could not
+  be read" and opens the course view, whose own route still answers 500
+  with the reason, the file and line included. A `course.json` or
+  `curriculum.json` that cannot be read still fails the whole list, as
+  before this task: such a course has no title to list it by. New tests:
+  one of the route, with a second course beside it that keeps its
+  progress, and one library line; the route test failed with 500 before
+  the fix. A browser look at a seeded scratch data root showed the library
+  with the course listed and the reason on opening it. `mise run check`
+  passed lint, type-checking, 467 TypeScript tests and one Python test.

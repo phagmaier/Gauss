@@ -99,7 +99,9 @@ Where a course stands (curriculum awaiting review, a unit in progress,
 finished) and whether it is a one-off (a course with one unit) are derived
 from the record, not stored. The library routes send each course with its
 units' status and the segment of each unit in progress
-(`record/progress.ts`, task 2.12), derived when asked. A course exists from its first proposal
+(`record/progress.ts`, task 2.12), derived when asked. In the list of every
+course, one whose state or evidence cannot be read is sent with the reason
+and no progress, so the others stay in reach. A course exists from its first proposal
 (section 4, the intake chat).
 
 `state.json` holds a position for each unit in progress, not one current
