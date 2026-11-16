@@ -2463,3 +2463,138 @@ test("something that happens after the unit has been quiet for an hour starts a 
   ]);
   expect(files["derivative.2.jsonl"]).toEqual(since(chat, "session"));
 });
+
+// --- Task 2.13, review fixes ------------------------------------------------
+
+test("an earlier session's reply, a line for each piece the backend streamed, is replayed as one event a reply", async () => {
+  const setup = setUp([]);
+  await makeCourse();
+  // As a real backend leaves it: its pieces come too far apart to be joined
+  // when they are written.
+  const lines: PageEvent[] = [
+    { type: "session", startedAt: "2026-11-15T13:00:00.000Z" },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "A difference " },
+    { type: "tutor_text", text: "quotient " },
+    { type: "tutor_text", text: "is a slope." },
+    { type: "turn_end", outcome: "done" },
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Of what?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Of a " },
+    { type: "tutor_text", text: "secant." },
+    { type: "turn_end", outcome: "done" },
+  ];
+  await mkdir(SESSIONS());
+  await writeFile(
+    join(SESSIONS(), "derivative.1.jsonl"),
+    lines.map((e) => `${JSON.stringify(e)}\n`).join(""),
+  );
+  await reload().writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "discuss",
+  });
+
+  const chat = await open(setup);
+
+  expect(earlier(chat)).toEqual([
+    { type: "session", startedAt: "2026-11-15T13:00:00.000Z" },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "A difference quotient is a slope." },
+    { type: "turn_end", outcome: "done" },
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Of what?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Of a secant." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+});
+
+test("a reply the machine slept through stays in its session, and the next thing that happens starts the new one", async () => {
+  let time = Date.parse(NOW);
+  const setup = setUp(
+    [
+      TEACH,
+      [{ text: "Because " }, { text: "of the step." }],
+      [{ text: "Hello." }],
+    ],
+    { now: () => new Date(time) },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  // The clock jumps two hours between the reply's two pieces.
+  const stop = chat.subscribe((event) => {
+    if (event.type === "tutor_text" && event.text === "Because ") {
+      time += 2 * SESSION_GAP_MS;
+    }
+  });
+
+  expect(chat.say("Why divide by h?")).toEqual({ ok: true });
+  await chat.settled();
+  stop();
+
+  expect(chat.events().filter((e) => e.type === "session")).toEqual([SESSION]);
+  expect(since(chat, "learner")).toEqual([
+    { type: "learner", text: "Why divide by h?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Because " },
+    { type: "tutor_text", text: "of the step." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+
+  expect(chat.say("I am back.")).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(since(chat, "session")).toEqual([
+    { type: "session", startedAt: new Date(time).toISOString() },
+    { type: "learner", text: "I am back." },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Hello." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(Object.keys(await transcriptFiles())).toEqual([
+    "derivative.1.jsonl",
+    "derivative.2.jsonl",
+  ]);
+});
+
+test("a question whose grade the transcript lost shows the grade the evidence has when the unit reopens, once", async () => {
+  const before = setUp([TEACH, ask(Q_QUOTIENT), [{ text: "Not quite." }]]);
+  await makeCourse();
+  const first = await open(before);
+  await toCheck(first);
+  await answer(first, "B");
+  const graded = first.events().filter((e) => e.type === "graded");
+  expect(graded).toHaveLength(1);
+  await before.units.close();
+  // The machine stopped after the answer was recorded and before the lines
+  // from its grade on reached the disk.
+  const path = join(SESSIONS(), "derivative.1.jsonl");
+  const kept = (await readFile(path, "utf8"))
+    .split("\n")
+    .slice(0, -1)
+    .filter((line) => line !== "");
+  const at = kept.findIndex((line) => JSON.parse(line).type === "graded");
+  expect(at).toBeGreaterThan(0);
+  await writeFile(
+    path,
+    kept
+      .slice(0, at)
+      .map((l) => `${l}\n`)
+      .join(""),
+  );
+
+  const second = await open(setUp([]));
+
+  expect(earlier(second).filter((e) => e.type === "graded")).toEqual([]);
+  expect(since(second, "session").filter((e) => e.type === "graded")).toEqual(
+    graded,
+  );
+  await second.settled();
+
+  // The grade is in the second session's transcript, so it is not restored again.
+  const third = await open(setUp([]));
+  expect(third.events().filter((e) => e.type === "graded")).toEqual(graded);
+});

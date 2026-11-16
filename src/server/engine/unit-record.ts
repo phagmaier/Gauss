@@ -176,17 +176,7 @@ export async function openUnitRecord(options: {
   ): Promise<Answered> {
     const { openQuestion: _, ...rest } = position;
     await move(rest);
-    emit({
-      type: "graded",
-      questionId: question.id,
-      verdict: entry.verdict,
-      answer: entry.answer,
-      ...(question.question.kind === "choice"
-        ? { correctChoice: question.question.answer }
-        : {}),
-      ...(entry.flaw === undefined ? {} : { flaw: entry.flaw }),
-      assisted: entry.assisted,
-    });
+    emit(gradedEvent(entry));
     emit(status());
     return { question, entry };
   }
@@ -288,6 +278,21 @@ export async function openUnitRecord(options: {
     },
 
     finish,
+  };
+}
+
+/** A `graded` event: the grade the evidence has for the answer to a question. */
+export function gradedEvent(entry: AnswerEvidence): PageEvent {
+  return {
+    type: "graded",
+    questionId: entry.answer.questionId,
+    verdict: entry.verdict,
+    answer: entry.answer,
+    ...(entry.question.kind === "choice"
+      ? { correctChoice: entry.question.answer }
+      : {}),
+    ...(entry.flaw === undefined ? {} : { flaw: entry.flaw }),
+    assisted: entry.assisted,
   };
 }
 

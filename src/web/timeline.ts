@@ -94,6 +94,8 @@ export interface Timeline {
   /** The intake started from a stored draft, its conversation lost. */
   reopened: boolean;
   // A unit chat's own (tasks 2.6 to 2.8):
+  /** A session has begun: the unit's thread was read, and what follows is in it. */
+  inSession: boolean;
   /** The unit's plan, once it is known. */
   plan: Plan | null;
   /** The unit has no plan yet and is being planned. */
@@ -115,6 +117,7 @@ export const emptyTimeline: Timeline = {
   latestRevision: 0,
   approved: null,
   reopened: false,
+  inSession: false,
   plan: null,
   planning: false,
   failed: null,
@@ -175,11 +178,16 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       // What was under way when the session before ended is over.
       const settled: Timeline = {
         ...next,
+        inSession: true,
         busy: false,
         tutorOpen: false,
         planning: false,
         failed: null,
       };
+      // Before the first session the thread could not be read, and the note
+      // that said so stood where the thread begins. Opening the unit again
+      // read it, so the note gives way to the thread.
+      if (!state.inSession) return { ...settled, items: [] };
       const last = state.items.at(-1);
       // The first session needs no marker.
       if (last === undefined) return settled;

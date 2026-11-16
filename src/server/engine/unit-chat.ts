@@ -68,6 +68,7 @@ import { createUnitAgents, type UnitAgents } from "./unit-agents.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
   type Answered,
+  gradedEvent,
   openUnitRecord,
   phaseEvent,
   type UnitRecord,
@@ -276,6 +277,7 @@ function createUnitChat(
         notes: record.reopened ? [JOINED_NOTE] : [],
       };
       running = r;
+      restoreGrades(record);
       log.emit(record.status());
       if (record.finished !== undefined) {
         log.emit({ type: "unit_closed", status: record.finished });
@@ -317,6 +319,27 @@ function createUnitChat(
         type: "unit_failed",
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * Shows the grade of each question that the earlier sessions' thread left
+   * open and the evidence has the answer to. Its `graded` line was lost
+   * after the answer was recorded: the machine stopped, or the line could
+   * not be written. The question still open is closed by `load`.
+   */
+  function restoreGrades(record: UnitRecord): void {
+    const posted = new Set<string>();
+    const graded = new Set<string>();
+    for (const event of log.events()) {
+      if (event.type === "question") posted.add(event.question.id);
+      else if (event.type === "graded") graded.add(event.questionId);
+    }
+    const open = record.position.openQuestion?.id;
+    for (const id of posted) {
+      if (id === open || graded.has(id)) continue;
+      const entry = record.recordedAnswer(id);
+      if (entry !== undefined) log.emit(gradedEvent(entry));
     }
   }
 

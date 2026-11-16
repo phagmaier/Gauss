@@ -627,3 +627,22 @@ test("a unit reopened past where its thread got to shows the phase it is in", ()
   ]);
   expect(state.position).toEqual({ segment: 0, phase: "check" });
 });
+
+test("a note from before the thread could be read gives way to the thread, whose first session has no marker", () => {
+  const state = play([
+    // The transcripts could not be read; opening the unit again read them.
+    { type: "unit_failed", error: "The transcripts could not be read." },
+    began(MONDAY),
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Why?" },
+    began(TUESDAY),
+    { type: "phase", segment: 0, phase: "discuss" },
+  ]);
+
+  expect(state.failed).toBeNull();
+  expect(state.items).toEqual([
+    { kind: "phase", key: 2, segment: 0, phase: "discuss" },
+    { kind: "learner", key: 3, text: "Why?" },
+    { kind: "session", key: 4, startedAt: TUESDAY, cutOff: false },
+  ]);
+});

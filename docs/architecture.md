@@ -117,8 +117,9 @@ and the transcripts) are appended to, one entry per line, so a crash can
 leave the start of a line at the end. An entry counts once its line ends:
 reading skips an unfinished last line, and the next append clears it first.
 A transcript only shows the conversation, so it is written without
-flushing to disk (a stopped server loses none of it, a stopped machine its
-last lines), and a line of it that cannot be read is left out rather than
+flushing to disk (a server that is stopped loses none of it, a server
+killed at most the events of its last moment, a stopped machine its last
+lines), and a line of it that cannot be read is left out rather than
 failing the unit (task 2.13).
 Work that reads a record file and writes it back, and every append, waits
 for the work on that file before it (`record/file-lock.ts`), so writes land
@@ -193,14 +194,18 @@ derived status.
 - **Sessions and transcripts** (task 2.13, `src/server/engine/transcript.ts`).
   A session is one sitting in a unit. One starts when the unit's chat
   opens, which is once per server run, and again when something happens
-  after the unit has been quiet for an hour. Each session's page events are
-  appended, as they happen, to its transcript, `sessions/<unit id>.<n>.jsonl`
-  (section 3), which starts with a `session` event. A unit chat's event log
-  starts with its earlier sessions' transcripts, in order, so a unit
+  after the unit has been quiet for an hour. None starts inside a turn of
+  the tutor's: a reply the machine slept through stays in its session, and
+  the next one starts with what comes after the turn. Each session's page
+  events are appended, as they happen, to its transcript,
+  `sessions/<unit id>.<n>.jsonl` (section 3), which starts with a `session`
+  event. A unit chat's event log starts with its earlier sessions'
+  transcripts, in order, each reply's text joined into one event, so a unit
   reopened after a restart shows its whole thread; the page marks each
   session after the first, and does not show twice the phase, open question
-  or closing card that the reopened chat repeats. Intakes have no
-  transcripts.
+  or closing card that the reopened chat repeats. A question the earlier
+  thread left open whose answer the evidence has is shown its grade again
+  when the unit opens. Intakes have no transcripts.
 - Every chat is built from the event log and turn queue in
   `src/server/engine/conversation.ts`. A turn's text can be composed when it
   is sent rather than when it is queued, so its header says how things

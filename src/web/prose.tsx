@@ -6,6 +6,7 @@
 // fetch an address. KaTeX runs untrusted, so `\href` and the like are refused.
 // A formula that fails to parse is shown as its source, in red.
 
+import { memo } from "react";
 import Markdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -121,8 +122,13 @@ const components: Components = {
   img: ({ alt }) => alt ?? null,
 };
 
+// Both are memoized: parsing the Markdown and setting the math is the page's
+// slow work, and a thread redraws on every event, with every reply of the
+// unit's earlier sessions in it (task 2.13). Text that has not changed is
+// not rendered again.
+
 /** Block text: paragraphs, lists, display math. */
-export function Prose(props: { text: string }) {
+export const Prose = memo(function Prose(props: { text: string }) {
   return (
     <Markdown
       remarkPlugins={remarkPlugins}
@@ -132,10 +138,10 @@ export function Prose(props: { text: string }) {
       {props.text}
     </Markdown>
   );
-}
+});
 
 /** Text inside a line, such as a choice on its button: no paragraphs. */
-export function InlineProse(props: { text: string }) {
+export const InlineProse = memo(function InlineProse(props: { text: string }) {
   return (
     <Markdown
       remarkPlugins={remarkPlugins}
@@ -147,7 +153,7 @@ export function InlineProse(props: { text: string }) {
       {props.text}
     </Markdown>
   );
-}
+});
 
 /**
  * The learner's typed answer as it will read, math rendered, shown under

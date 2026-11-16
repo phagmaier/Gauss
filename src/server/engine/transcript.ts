@@ -10,7 +10,11 @@
 // unit's chat opens, which is once per server run, and again when something
 // happens after the unit has been quiet for SESSION_GAP_MS: the learner went
 // away and came back. Each starts with a `session` event, which the page
-// shows between sittings.
+// shows between sittings. None starts inside a turn of the tutor's: a reply
+// that the machine slept through stays in the session it began in, and the
+// next session starts with what comes after the turn. So a `session` that
+// follows a turn left open means the server stopped, which is what the page
+// says there.
 //
 // The page hears of an event at once, and its line is written soon after, so
 // a crash can lose the last few lines. The transcript only shows the
@@ -19,7 +23,10 @@
 // Lines are written in batches: one write for all the events that came while
 // the write before ran, not flushed (data-root.ts says why). The backend
 // streams the tutor's text in small pieces, so each run of it in a batch is
-// joined into one line, which the page shows the same way.
+// joined into one line, which the page shows the same way. A real backend's
+// pieces mostly come further apart than a write takes and get a line each,
+// so the earlier sessions are joined again when they are replayed: a page
+// that connects is sent one event a reply, not one a piece.
 
 import type { PageEvent } from "../../shared/events.ts";
 import type { DataRoot } from "../record/data-root.ts";
@@ -52,6 +59,8 @@ export function createTranscribedLog(options: {
   const log = createEventLog();
   /** The session events are written to, once the log is open. */
   let session: { number: number; lastAt: number } | undefined;
+  /** A turn of the tutor's has started and not ended. */
+  let turnOpen = false;
   let opening: Promise<void> | undefined;
   let pending: { session: number; event: PageEvent }[] = [];
   let writing: Promise<void> = Promise.resolve();
@@ -106,8 +115,13 @@ export function createTranscribedLog(options: {
         return;
       }
       const at = now();
-      if (at.getTime() - session.lastAt >= gapMs) begin(session.number + 1, at);
-      else session.lastAt = at.getTime();
+      const quiet = at.getTime() - session.lastAt >= gapMs;
+      // Inside a turn, the quiet time is kept as it was, so the session
+      // starts with the first event after the turn.
+      if (quiet && !turnOpen) begin(session.number + 1, at);
+      else if (!quiet) session.lastAt = at.getTime();
+      if (event.type === "turn_start") turnOpen = true;
+      else if (event.type === "turn_end") turnOpen = false;
       record(event);
     },
 
@@ -118,7 +132,7 @@ export function createTranscribedLog(options: {
           for (const problem of unreadable) {
             console.error(`A transcript line was left out: ${problem}`);
           }
-          for (const event of events) log.emit(event);
+          for (const event of joinText(events)) log.emit(event);
         }
         begin((earlier.at(-1)?.session ?? 0) + 1, now());
       })().catch((error: unknown) => {

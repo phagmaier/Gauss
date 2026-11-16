@@ -2636,9 +2636,12 @@ event, and the thread's sessions in `src/web/timeline.ts` and
   flush, and reading the course to check it exists under 1 ms; flushing
   each batch made the scripted backend's whole-unit test take half as long
   again, and it timed out in the full run. A transcript only shows the
-  conversation: a stopped server loses none of it, since the system holds
-  the lines, and a stopped machine can lose its last lines, which the
-  record does not need. For the same reason, and because page events will
+  conversation: a server that is stopped loses none of it, since the system
+  holds the lines; a server killed loses at most the events that came while
+  its last write ran, about a millisecond's; and a stopped machine can lose
+  its last lines. The record needs none of them, but the thread can then
+  show a question as open that the record has closed (the review fixes
+  below). For the same reason, and because page events will
   change shape over time, **a line of a transcript that cannot be read is
   left out and logged**, not an error: it costs that line, not the unit.
   An unfinished last line is skipped silently, as in the evidence. A
@@ -2701,3 +2704,62 @@ event, and the thread's sessions in `src/web/timeline.ts` and
   `again` objectives in the phase dedupe passed every test: two positions
   with the same segment and phase and different `again` cannot follow one
   another, so it was dropped and the position taken as sent.
+- **Review fixes** (2026-11-16, the user's review of the commit).
+  - **A unit with long earlier sessions froze the page, and what froze it
+    was drawing, not the number of events.** `Prose` and `InlineProse`
+    (`src/web/prose.tsx`) parsed their Markdown and set their math again on
+    every event, for every reply in the thread, and since this task the
+    thread holds every earlier session. Measured in the browser on
+    `pnpm dev:fake`, with three earlier sessions of 40 replies each written
+    by hand as a real backend leaves them, 150 lines a reply: sending one
+    message froze the page for 17 seconds when each reply had 50 formulas.
+    Both are memoized now, so text that has not changed is not rendered
+    again: the same message showed in under a second, and in 0.2 seconds
+    in a thread of plainer replies (about 1,000 characters and 10 formulas
+    each). No automated test covers this; the tests have no browser to
+    count renders in.
+  - **Opening such a unit still draws its whole thread once**, which is the
+    wait that is left: about 3 seconds for the plainer thread (1,200
+    formulas) and about 19 for the heavy one (6,000). It grows with the
+    unit's history. Showing earlier sessions folded, or drawing them after
+    the current one, would end it; that changes the page's design and is
+    the user's choice.
+  - **Earlier sessions are replayed with each reply's text joined**
+    (`joinText` on reading, in `transcript.ts`): the scripted backend's
+    pieces are joined when written, but a real backend's come further
+    apart than a write takes, so its transcripts hold a line a piece. The
+    review took this for the cause of the wait and it is not: joined, the
+    plainer thread opened in about 3.4 seconds instead of 3.9. It is kept
+    because a page that connects is sent about 490 events instead of
+    18,400.
+  - **No session starts inside a turn of the tutor's.** The hour-quiet rule
+    looked at every event, so a reply the machine slept through got a
+    `session` event in its middle, and the page, which takes a `session`
+    while the tutor writes for a restart, said "The server stopped before
+    the tutor finished." and stopped showing the tutor as writing. Inside a
+    turn the quiet time is now left as it was, so the session starts with
+    the first event after the turn. Rejected: a field on the event saying
+    why the session began, which keeps the turn split over two transcripts.
+  - **A question whose `graded` line was lost shows its grade again.** When
+    a unit opens, each question the earlier thread left open that the
+    evidence has the answer to is sent its `graded` event, built from the
+    evidence (`restoreGrades` in `unit-chat.ts`, `gradedEvent` in
+    `unit-record.ts`); it goes into the new session's transcript, so it is
+    restored once. Not covered: a question withdrawn by an override whose
+    `overridden` line was lost stays shown as open, and answering it is
+    refused. Rebuilding that event needs the segment the question was
+    asked in, which the transcript's `question` event does not hold.
+  - **A failure before the thread could be read gives way to the thread.**
+    If the transcripts cannot be read, the unit fails to open and its note
+    is the log's first event; opening it again replays the earlier
+    sessions after the note. The page now drops what came before the first
+    `session` event (`inSession` in `timeline.ts`), so the note does not
+    stand above the thread, and the first session gets no marker.
+  - **Checks:** `mise run check` passed lint, type-checking, 491 TypeScript
+    tests and one Python test. Four tests are new, and each failed on the
+    code before its fix: a transcript with a line a piece replayed as one
+    event a reply; a clock that jumps two hours between a reply's pieces,
+    with the reply left in its session and the next message starting the
+    new one; a transcript cut before its `graded` line, with the grade
+    shown once over two reopenings; and a failure note before the first
+    session.
