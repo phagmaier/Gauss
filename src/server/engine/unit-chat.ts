@@ -24,8 +24,10 @@
 // A tool called out of phase is refused with a reason the tutor can act on.
 // The engine composes every turn's header (unit-turns.ts) and writes the
 // unit's position to state.json after every change, before the page is told,
-// so a restart reopens the unit where it was. The tutor's own conversation
-// does not survive a restart yet (task 2.14): a reopened unit gets a new
+// so a restart reopens the unit where it was. The chat's events are its
+// transcripts too (transcript.ts, task 2.13), so a reopened unit shows the
+// thread of its earlier sessions. The tutor's own conversation does not
+// survive a restart yet (task 2.14): a reopened unit gets a new tutor
 // session, told that it joins a unit under way.
 //
 // This file holds the phase rules and coordinates two parts (task 2.8b):
@@ -59,8 +61,9 @@ import {
   objectiveCheck,
   segmentOf,
 } from "./check-rules.ts";
-import { type ChatResult, createEventLog } from "./conversation.ts";
+import type { ChatResult } from "./conversation.ts";
 import { type Grader, gradeChoice } from "./grading.ts";
+import { createTranscribedLog } from "./transcript.ts";
 import { createUnitAgents, type UnitAgents } from "./unit-agents.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
@@ -149,7 +152,10 @@ interface ChatOptions {
   planner: UnitPlanner;
   /** Grades written answers. */
   grader: Grader;
-  /** The clock for the dates in the evidence and the open question. */
+  /**
+   * The clock for the dates in the evidence and the open question, and for
+   * when a session starts.
+   */
   now?: () => Date;
 }
 
@@ -215,7 +221,7 @@ function createUnitChat(
 ): OpenableChat {
   const { dataRoot, planner, courseId, unitId } = options;
   const now = options.now ?? (() => new Date());
-  const log = createEventLog();
+  const log = createTranscribedLog({ dataRoot, courseId, unitId, now });
   const exclusive = createSerial();
   let running: Running | undefined;
   let loading: Promise<void> | undefined;
@@ -225,6 +231,8 @@ function createUnitChat(
 
   async function load(): Promise<void> {
     try {
+      // The earlier sessions' thread first, then this session's.
+      await log.open();
       const stored = await dataRoot.readCourse(courseId);
       const units = stored?.curriculum?.units ?? [];
       const storedUnit = units.find((u) => u.id === unitId);
@@ -746,9 +754,11 @@ function createUnitChat(
     async settled() {
       await loading;
       await running?.agents.settled();
+      await log.flushed();
     },
     async close() {
       await running?.agents.close();
+      await log.flushed();
     },
   };
   return chat;

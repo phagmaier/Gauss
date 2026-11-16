@@ -43,6 +43,7 @@ findings are the record.
 | Session view | The session page: its address, markers, next-step control, written card, keys, top line and outline, closing card, the entry points, a lost chat, the course's details failing to load, the browser run | Touching `src/web/Session.tsx`, `session.ts`, `timeline.ts` or `QuestionCard.tsx`; course progress (2.12), transcripts (2.13), "Start fresh" (2.14), prompts that write objective statements |
 | Dev server on the fake backend | The scripted backend and what its tutor does, the seed, the scratch data root and port, `serve.ts`, closing the browser, the browser run | Running a browser check, touching `scripted.ts`, `dev-seed.ts`, `serve.ts` or the turn headers in `unit-turns.ts`, `intake.ts` and `unit-planning.ts`; a new one-shot request (stage 5 notes) |
 | Course and library progress | What the routes send, when units were opened, the card, Start, "Open" on finished units, the library's lines and groups, the closing card's next unit, a course whose progress cannot be read | Touching the course view, the library, `progress.ts` or `unitsOpenedAt`; notes (stage 5), the gate and retained status in the library (stage 5) |
+| Transcripts | What a session is, the transcript files, the thread rebuilt from them, the session marker, batching and joined text, no flushing and lines left out, the browser run | Touching `engine/transcript.ts`, the transcripts in `data-root.ts`, or the thread's sessions in `timeline.ts`; resume and "Start fresh" (2.14), idle sessions (2.15), reading transcripts (2.16), handoff notes and export (stage 5) |
 
 ## Page design (plan task 1.0)
 
@@ -2569,3 +2570,134 @@ the agent's and can be overturned.
   four commands ignored, the real data root allowed, folders inside it
   allowed, a data root with courses seeded, and the wrong objectives
   passed in an overridden unit.
+
+## Transcripts (plan task 2.13)
+
+Built on 2026-11-16: `src/server/engine/transcript.ts` (the unit chat's
+event log that is also its transcripts), `appendTranscript` and
+`readTranscripts` in `src/server/record/data-root.ts`, several lines in one
+write and lines left out on reading in `json-lines.ts`, the `session` page
+event, and the thread's sessions in `src/web/timeline.ts` and
+`Session.tsx`. The choices are the agent's and can be overturned.
+
+- **A session is one sitting in a unit.** One starts when the unit's chat
+  opens, which happens once per server run, and again when something
+  happens after the unit has been quiet for an hour (`SESSION_GAP_MS`):
+  the learner went away and came back. "Quiet" is measured from the last
+  event, not from the session's start, so a long sitting with breaks under
+  an hour stays one session. Rejected: one session per chat only, which
+  makes a server left running for days one sitting, and a session per
+  backend session, which 2.14's resume would stretch over many sittings.
+  Opening a unit to look at it is a short sitting too, and leaves a
+  transcript of its opening events (the plan, the status, the phase). The
+  gap is a guess; 2.15's idle time for closing a tutor session is a
+  separate choice, which may or may not match it.
+- **A transcript is the page events of one session**, in
+  `sessions/<unit id>.<n>.jsonl`, numbered from 1 for each unit, starting
+  with a `session` event that holds when it began. A slug has no dot, so
+  the name reads back unambiguously, and a unit's transcripts are found
+  without opening other units'. They are ordered by number, not by date,
+  so a clock set back cannot reorder them. Intakes write none; their chat
+  is not a unit's. The page events are what the task asked for, so the
+  tutor's turn headers and the rubrics are not in them: 2.16, which reads
+  transcripts to revise the prompt, finds the headers' wording in
+  `unit-turns.ts`, and the turns as sent in the backend's own session log
+  once 2.14 keeps sessions.
+- **A unit chat's log starts with its earlier sessions.** Opening the chat
+  reads the unit's transcripts and replays their events into its log, then
+  starts its own session; the page replays the log as before, so a reload
+  and a restart give the same thread. The chat's opening then repeats
+  where the unit stands, and the page does not show any of it twice: a
+  `phase` in the segment and phase the thread is already in adds no marker
+  (it still sets the position), a question already in the thread is not
+  posted again (as before), and a `unit_end` with no phase begun since the
+  last closing card is that card shown again. A phase the thread had not
+  reached, because a crash lost the transcript's last lines, is shown as
+  usual.
+- **A `session` after the first is a marker line**, "New session" and its
+  date and time in the learner's format, in the style of the phase
+  markers. The first session has none, so a new unit starts as before. It
+  ends what the session before left under way: the tutor writing, a
+  planning, a failure (its note stays). When the tutor was writing, a note
+  above the marker says "The server stopped before the tutor finished."
+  A session that showed nothing, such as a look at the unit before a
+  restart, gives way to the next one's marker. The tutor itself is still
+  new after a restart until 2.14; the thread does not say so yet, which is
+  2.14's "Fresh start" marker.
+- **Lines are written as the events happen, in batches**: the page hears
+  of an event at once, and one write takes every event that came while the
+  write before ran. The backend streams the tutor's text in small pieces,
+  so each run of it in a batch is joined into one line, which the page
+  shows the same way; a transcript's lines therefore depend on timing,
+  which the tests allow for. A write that fails is logged and its lines
+  are lost, and the chat goes on: the record does not depend on them.
+- **Transcripts are not flushed to disk**, unlike the evidence. Measured on
+  this machine, one flushed append took about 38 ms, nearly all of it the
+  flush, and reading the course to check it exists under 1 ms; flushing
+  each batch made the scripted backend's whole-unit test take half as long
+  again, and it timed out in the full run. A transcript only shows the
+  conversation: a stopped server loses none of it, since the system holds
+  the lines, and a stopped machine can lose its last lines, which the
+  record does not need. For the same reason, and because page events will
+  change shape over time, **a line of a transcript that cannot be read is
+  left out and logged**, not an error: it costs that line, not the unit.
+  An unfinished last line is skipped silently, as in the evidence. A
+  transcript cut short is never appended to again, since the next session
+  has a file of its own.
+- **Shutdown flushes what is pending**: a unit chat's `close` waits for its
+  writes, and `settled` does too, which the tests use before a restart.
+  An event after that (a stopped turn's end, an aborted grading) may be
+  lost or cut short as the process exits; reading copes with both.
+- **For later tasks.** 2.14: add the "Fresh start" marker (piece 11) after
+  the session's marker when the tutor could not be resumed or the learner
+  started fresh, and dim the thread before it; a resumed tutor needs no
+  marker beyond the session's. 2.15: a tutor session closed when idle does
+  not end the sitting; the next message after an hour starts a new
+  session either way. 2.16: the transcripts of a run are in the data
+  root's `courses/<id>/sessions/`. Stage 5: handoff notes are written "at
+  the end of each session"; a session ends when the server stops or after
+  an hour quiet, and sessions holding only a unit's opening have nothing
+  to summarise. Transcript export reads these files.
+- **Browser run** on `pnpm dev:fake` with a new data root: "Start unit 1"
+  of a course not started, a message, "ready", question 1 left open; the
+  browser closed and the server stopped with Ctrl-C. `vectors.1.jsonl`
+  held the session's 18 events. After a restart the unit's page showed the
+  whole earlier thread, question 1 still open, then "New session" and the
+  date, then "Move on without the check", with no marker or card twice;
+  question 1 was answered on its card, and the feedback and "Done" came
+  under the marker. In segment 2 a `/hold` message kept the tutor writing,
+  the browser was closed, and the server killed with `kill -9`: the
+  transcript ended with the reply's `turn_start` and text. After a
+  restart the thread showed the three sessions in order, "The server
+  stopped before the tutor finished." under the held reply, the third
+  session's marker, and "I'm ready for the check". After each restart the
+  page took a few seconds to show the thread, and Vite reloaded it once,
+  as 2.11 recorded; a reload on the running server showed it in about 1.5
+  seconds with no transcript read, so the wait is the page's, not the
+  transcripts'.
+- **Checks:** `mise run check` passed lint, type-checking, 487 TypeScript
+  tests and one Python test. New: 4 record tests (no transcripts; read
+  back in number order, 10 after 2, without another unit whose id starts
+  the same; a cut last line skipped and damaged lines left out and named;
+  a bad event refused) and a missing course refused by both; 4 unit chat
+  tests on the fake backend (a thread rebuilt after a restart, compared
+  with what the page was shown before it; a transcript cut short by a
+  crash mid-teaching; three sessions shown in order; a new session after
+  an hour quiet but not after two hours with breaks under one); 5 timeline
+  tests (the marker and a cut-off reply; a session that showed nothing;
+  planning and a failure ended; nothing shown twice on reopening, with
+  going over again after it; a phase past the thread's). Nine existing
+  tests changed (eight of the unit chat, one route): they expect the
+  `session` event, and the reopening ones read from the last session on.
+  Each of these faults made a test fail: transcripts
+  sorted as text; another unit's matched by prefix; a damaged line an
+  error; no course check; no replay; every chat writing session 1; a new
+  chat appending to the last session; no gap rule; the gap measured from
+  the session's start; the gap strictly greater; `settled` not waiting
+  for writes; a batch losing all but its first event; joined text losing
+  its second piece; the `session` event not written; and, in the page, no
+  phase or card dedupe, `busy` kept across a session, a marker for the
+  first session, empty sessions kept, and a failure kept. Comparing the
+  `again` objectives in the phase dedupe passed every test: two positions
+  with the same segment and phase and different `again` cannot follow one
+  another, so it was dropped and the position taken as sent.

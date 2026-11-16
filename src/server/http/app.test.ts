@@ -607,12 +607,13 @@ test("opening a unit marks its course opened, and the unit's event stream replay
   const chatId = setup.units.get(COURSE, "vectors")?.id;
   const response = await setup.app.request(`${UNIT}/events`);
   expect(response.headers.get("Content-Type")).toContain("text/event-stream");
-  const stream = await readFrames(response, 8);
+  const stream = await readFrames(response, 9);
   expect(stream.first).toEqual([
     { event: "hello", data: { chatId } },
-    { id: `${chatId}.0`, data: { type: "unit_plan", plan: VECTORS_PLAN } },
+    { id: `${chatId}.0`, data: { type: "session", startedAt: NOW } },
+    { id: `${chatId}.1`, data: { type: "unit_plan", plan: VECTORS_PLAN } },
     {
-      id: `${chatId}.1`,
+      id: `${chatId}.2`,
       data: {
         type: "unit_status",
         unit: "in-progress",
@@ -623,17 +624,17 @@ test("opening a unit marks its course opened, and the unit's event stream replay
       },
     },
     {
-      id: `${chatId}.2`,
+      id: `${chatId}.3`,
       data: { type: "phase", segment: 0, phase: "teach" },
     },
-    { id: `${chatId}.3`, data: { type: "turn_start" } },
+    { id: `${chatId}.4`, data: { type: "turn_start" } },
     {
-      id: `${chatId}.4`,
+      id: `${chatId}.5`,
       data: { type: "tutor_text", text: "A map is fixed by a basis." },
     },
-    { id: `${chatId}.5`, data: { type: "turn_end", outcome: "done" } },
+    { id: `${chatId}.6`, data: { type: "turn_end", outcome: "done" } },
     {
-      id: `${chatId}.6`,
+      id: `${chatId}.7`,
       data: { type: "phase", segment: 0, phase: "discuss" },
     },
   ]);

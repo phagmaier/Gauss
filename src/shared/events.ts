@@ -2,7 +2,7 @@
 // posts back.
 
 import { z } from "zod";
-import { Slug } from "./course.ts";
+import { Slug, Timestamp } from "./course.ts";
 import { Unit } from "./curriculum.ts";
 import { Plan } from "./plan.ts";
 import {
@@ -20,9 +20,18 @@ const SegmentIndex = z.number().int().nonnegative();
 
 /**
  * One entry in a chat's event log. The log is replayed to every page that
- * connects, so a reload rebuilds the thread.
+ * connects, so a reload rebuilds the thread. A unit chat's log is also its
+ * transcripts (task 2.13): it starts with the unit's earlier sessions, read
+ * back from them, and each event of its own session is appended to its own.
  */
 export const PageEvent = z.discriminatedUnion("type", [
+  /**
+   * A unit chat: a session, one sitting, began (task 2.13). Each transcript
+   * starts with one. A session starts when the unit's chat opens, as after a
+   * restart, and when something happens after the unit has been quiet for a
+   * while; what came before it belongs to an earlier sitting.
+   */
+  z.object({ type: z.literal("session"), startedAt: Timestamp }),
   /** The learner's own message, echoed so a replay shows it. */
   z.object({ type: z.literal("learner"), text: z.string() }),
   /** The tutor has been sent a turn and is writing. */

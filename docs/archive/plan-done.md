@@ -749,3 +749,24 @@ tested"). Stage 1 is finished.
   backend, to its closing card, with no model called. The choices and
   checks are in `docs/decisions.md` under "Dev server on the fake
   backend".
+
+### 2.13 Transcripts
+
+- Status: done
+- Depends on: 2.6, 2.11
+- Do: each unit chat appends its page events to
+  `sessions/<session-id>.jsonl` (`architecture.md` section 3) as they
+  happen, and a unit reopened after a restart shows its thread from them.
+  Settle what starts a new session (the brief's "one sitting") and record
+  it.
+- Done when: tests against a temporary data root cover a thread rebuilt
+  after a simulated restart, a transcript whose last line a crash cut
+  short, and two sessions of one unit shown in order; a browser check
+  after a restart.
+- Note: done on 2026-11-16. A session starts when a unit's chat opens and
+  after the unit has been quiet for an hour; its transcript is
+  `sessions/<unit id>.<n>.jsonl`. `mise run check` passed (487 TypeScript
+  tests, one Python test), with fake-backend tests of each case in "Done
+  when". A browser run on `pnpm dev:fake` showed the thread rebuilt after
+  a Ctrl-C restart and after a `kill -9` mid-reply. The choices and checks
+  are in `docs/decisions.md` under "Transcripts".

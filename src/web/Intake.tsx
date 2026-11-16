@@ -315,6 +315,7 @@ function ItemView(props: { item: Exclude<Item, Proposal> }) {
     case "question":
     case "phase":
     case "unit_end":
+    case "session":
       return null;
   }
 }

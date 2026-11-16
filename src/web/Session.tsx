@@ -229,7 +229,8 @@ export function Session(props: { courseId: string; unitId: string }) {
             <ThreadItem
               key={item.key}
               item={item}
-              first={i === 0}
+              // A session's marker sets it apart as the top of the thread does.
+              first={i === 0 || timeline.items[i - 1]?.kind === "session"}
               plan={plan}
               place={place}
               busy={busy}
@@ -466,6 +467,21 @@ function ThreadItem(props: {
         </div>
       );
     }
+    case "session":
+      return (
+        <>
+          {item.cutOff ? (
+            <p className="ph-note">
+              The server stopped before the tutor finished.
+            </p>
+          ) : null}
+          <div className="pf-mark">
+            <span>
+              <b>New session</b> {sessionDate(item.startedAt)}
+            </span>
+          </div>
+        </>
+      );
     case "unit_end":
       return props.plan === null ? null : (
         <ClosingCard
@@ -734,4 +750,15 @@ function NextStepControl(props: {
       );
     }
   }
+}
+
+/** When a session began, in the learner's own format: the day and the time. */
+function sessionDate(startedAt: string): string {
+  return new Date(startedAt).toLocaleString(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

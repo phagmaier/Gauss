@@ -1,9 +1,9 @@
-// Append-only logs of JSON values, one per line: evidence.jsonl now, the
-// transcripts in task 2.13. A line is appended, never rewritten, so a crash
-// partway through an append can leave the start of a line at the end of the
-// file. An entry counts once its line ends: reading skips an unfinished last
-// line, and the next append clears it first, rather than gluing its own line
-// onto it.
+// Append-only logs of JSON values, one per line: evidence.jsonl, and the
+// session transcripts (task 2.13). A line is appended, never rewritten, so a
+// crash partway through an append can leave the start of a line at the end
+// of the file. An entry counts once its line ends: reading skips an
+// unfinished last line, and the next append clears it first, rather than
+// gluing its own line onto it.
 
 import { open, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -18,11 +18,25 @@ const CHUNK = 4096;
  * file must not overlap, or the second could clear the first's line as
  * unfinished: run each through withFileLock (file-lock.ts) on the path.
  */
-export async function appendJsonLine(
+export function appendJsonLine(path: string, value: unknown): Promise<void> {
+  return appendJsonLines(path, [value]);
+}
+
+/**
+ * Appends the values, one line each, in one write, and flushes them to disk
+ * unless `flush` is false. Not flushed, the lines survive the server
+ * stopping, since the system holds them, but not the machine stopping. The
+ * same rule holds as for appendJsonLine.
+ */
+export async function appendJsonLines(
   path: string,
-  value: unknown,
+  values: readonly unknown[],
+  { flush = true }: { flush?: boolean } = {},
 ): Promise<void> {
-  const line = Buffer.from(`${JSON.stringify(value)}\n`);
+  if (values.length === 0) return;
+  const lines = Buffer.from(
+    values.map((value) => `${JSON.stringify(value)}\n`).join(""),
+  );
   // "a+": created if missing, readable, and every write goes to the end.
   const file = await open(path, "a+");
   let created: boolean;
@@ -31,31 +45,33 @@ export async function appendJsonLine(
     created = size === 0;
     const end = await lastLineEnd(file, size);
     if (end < size) await file.truncate(end);
-    // One write can store only part of what it is given, so the line is
-    // written until the whole of it is there.
-    for (let written = 0; written < line.byteLength; ) {
-      const { bytesWritten } = await file.write(line, written);
+    // One write can store only part of what it is given, so the lines are
+    // written until the whole of them is there.
+    for (let written = 0; written < lines.byteLength; ) {
+      const { bytesWritten } = await file.write(lines, written);
       if (bytesWritten === 0) {
         throw new Error(`Nothing could be written to ${path}.`);
       }
       written += bytesWritten;
     }
-    await file.sync();
+    if (flush) await file.sync();
   } finally {
     await file.close();
   }
-  if (created) await syncFolder(dirname(path));
+  if (created && flush) await syncFolder(dirname(path));
 }
 
 /**
  * The file's values, each checked against the schema; empty if there is no
  * file. An unfinished last line is skipped. Any other line that is not valid
  * JSON or does not match is an error naming the file and line, because an
- * append cannot leave one.
+ * append cannot leave one; given `skip`, it is reported there and left out
+ * instead.
  */
 export async function readJsonLines<T>(
   path: string,
   schema: z.ZodType<T>,
+  skip?: (problem: string) => void,
 ): Promise<T[]> {
   let text: string;
   try {
@@ -68,22 +84,34 @@ export async function readJsonLines<T>(
   }
   // The piece after the last line end is either empty or unfinished.
   const lines = text.split("\n").slice(0, -1);
-  return lines.map((line, i) => {
+  const values: T[] = [];
+  for (const [i, line] of lines.entries()) {
     const where = `${path}, line ${i + 1}`;
+    const bad = (problem: string, cause?: unknown): void => {
+      if (skip === undefined) {
+        throw cause === undefined
+          ? new Error(problem)
+          : new Error(problem, { cause });
+      }
+      skip(problem);
+    };
     let data: unknown;
     try {
       data = JSON.parse(line);
     } catch (error) {
-      throw new Error(`${where} is not valid JSON.`, { cause: error });
+      bad(`${where} is not valid JSON.`, error);
+      continue;
     }
     const parsed = schema.safeParse(data);
-    if (!parsed.success) {
-      throw new Error(
+    if (parsed.success) {
+      values.push(parsed.data);
+    } else {
+      bad(
         `${where} does not match its schema:\n${z.prettifyError(parsed.error)}`,
       );
     }
-    return parsed.data;
-  });
+  }
+  return values;
 }
 
 /** The length of the file up to and including its last newline; 0 if none. */

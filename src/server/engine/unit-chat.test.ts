@@ -1,5 +1,12 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -17,6 +24,7 @@ import {
 } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { createGrader } from "./grading.ts";
+import { SESSION_GAP_MS } from "./transcript.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner, type UnitPlanner } from "./unit-planning.ts";
 import { JOINED_NOTE } from "./unit-turns.ts";
@@ -141,6 +149,9 @@ function status(
   };
 }
 
+/** A session begun at the clock's time, as every chat's own opens. */
+const SESSION: PageEvent = { type: "session", startedAt: NOW };
+
 const TEACH: FakeTurn = [{ text: "A secant joins two points." }];
 const ask = (question: ChoiceInput | WrittenInput): FakeStep[] => [
   { text: "Here is a question." },
@@ -180,6 +191,8 @@ function setUp(
     gradingLimitMs?: number;
     /** Changes the record the chats are given, to make it fail. */
     record?: (root: DataRoot) => DataRoot;
+    /** The chats' clock; NOW unless given. */
+    now?: () => Date;
   } = {},
 ) {
   const backend = createFakeBackend(script, given.replies);
@@ -199,7 +212,7 @@ function setUp(
         ? {}
         : { timeLimitMs: given.gradingLimitMs }),
     }),
-    now: () => new Date(NOW),
+    now: given.now ?? (() => new Date(NOW)),
   });
   return { backend, dataRoot, units };
 }
@@ -289,6 +302,7 @@ test("starting a unit plans it, sends segment 1's teaching turn, and the end of 
   const chat = await open(setup);
 
   expect(chat.events()).toEqual([
+    SESSION,
     { type: "unit_planning" },
     { type: "unit_plan", plan: PLAN },
     status("in-progress"),
@@ -382,6 +396,7 @@ test("stopping the teaching turn opens the discussion, and a message sent during
   await chat.settled();
 
   expect(chat.events()).toEqual([
+    SESSION,
     { type: "unit_plan", plan: PLAN },
     status("in-progress"),
     { type: "phase", segment: 0, phase: "teach" },
@@ -1030,7 +1045,9 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
   ]);
   const chat = await open(after);
 
-  expect(chat.events()).toEqual([
+  // After the earlier session's thread, the new session's.
+  expect(since(chat, "session")).toEqual([
+    SESSION,
     { type: "unit_plan", plan: PLAN },
     status("in-progress", "attempted", "passed"),
     { type: "phase", segment: 0, phase: "check" },
@@ -1141,6 +1158,7 @@ test("a unit that cannot be planned says so in its thread, takes no action, and 
   const chat = await open(setup);
 
   expect(chat.events()).toEqual([
+    SESSION,
     { type: "unit_planning" },
     {
       type: "unit_failed",
@@ -1602,7 +1620,8 @@ test("a unit finished before a restart opens finished, and is not started again"
   const after = setUp([]);
   const chat = await open(after);
 
-  expect(chat.events()).toEqual([
+  expect(since(chat, "session")).toEqual([
+    SESSION,
     { type: "unit_plan", plan: SHORT },
     shortStatus("passed", "passed", "passed"),
     { type: "unit_closed", status: "passed" },
@@ -1628,7 +1647,8 @@ test("a closing card that was waiting before a restart is shown again, and going
   const after = setUp([[{ text: "The secant again." }]]);
   const chat = await open(after);
 
-  expect(chat.events()).toEqual([
+  expect(since(chat, "session")).toEqual([
+    SESSION,
     { type: "unit_plan", plan: SHORT },
     shortStatus("in-progress", "passed", "overridden"),
     { type: "phase", segment: 0, phase: "closed" },
@@ -2055,7 +2075,8 @@ test("a written answer kept before a restart is graded when the unit reopens", a
   const after = setUp([[{ text: "Well argued." }]], { replies: [CORRECT] });
   const chat = await open(after);
 
-  expect(chat.events().slice(0, 6)).toEqual([
+  expect(since(chat, "session").slice(0, 7)).toEqual([
+    SESSION,
     { type: "unit_plan", plan: PLAN },
     status("in-progress"),
     { type: "phase", segment: 0, phase: "check" },
@@ -2111,7 +2132,7 @@ test("a written answer graded before a restart that left its question open is no
   const chat = await open(after);
 
   expect(after.backend.oneShots).toEqual([]);
-  expect(chat.events().slice(3, 6)).toEqual([
+  expect(since(chat, "session").slice(4, 7)).toEqual([
     {
       type: "question",
       question: { kind: "written", id, number: 1, prompt: Q_PROOF.prompt },
@@ -2214,4 +2235,231 @@ test("an answer recorded when state.json then could not be written is the one ke
     answer: { choice: "A" },
   });
   expect((await position()).derivative?.openQuestion).toBeUndefined();
+});
+
+// --- Task 2.13: transcripts -------------------------------------------------
+
+const SESSIONS = () => join(dir, "courses", COURSE, "sessions");
+
+/** The course's transcript files by name, each as the events its whole lines hold. */
+async function transcriptFiles(): Promise<Record<string, PageEvent[]>> {
+  const names = (await readdir(SESSIONS())).sort();
+  const files = await Promise.all(
+    names.map(async (name) => {
+      const text = await readFile(join(SESSIONS(), name), "utf8");
+      const events = text
+        .split("\n")
+        .slice(0, -1)
+        .map((line) => JSON.parse(line) as PageEvent);
+      return [name, events] as const;
+    }),
+  );
+  return Object.fromEntries(files);
+}
+
+/**
+ * The events with each run of the tutor's text joined, which the page shows
+ * the same way: a transcript may join pieces the backend streamed apart.
+ */
+function asShown(events: readonly PageEvent[]): PageEvent[] {
+  const shown: PageEvent[] = [];
+  for (const event of events) {
+    const last = shown.at(-1);
+    if (event.type === "tutor_text" && last?.type === "tutor_text") {
+      shown[shown.length - 1] = { ...last, text: last.text + event.text };
+    } else {
+      shown.push(event);
+    }
+  }
+  return shown;
+}
+
+/** The events before the chat's own session began: the earlier sessions'. */
+function earlier(chat: UnitChat): PageEvent[] {
+  const events = chat.events();
+  return events.slice(
+    0,
+    events.findLastIndex((e) => e.type === "session"),
+  );
+}
+
+test("a unit reopened after a restart shows the thread of its earlier session from the transcript, then a session of its own", async () => {
+  const before = setUp([
+    // Streamed in two pieces, which the transcript may join.
+    [{ text: "A difference quotient " }, { text: "is a slope." }],
+    [{ text: "Because $h$ is the step." }],
+    ask(Q_QUOTIENT),
+  ]);
+  await makeCourse();
+  const first = await open(before);
+  expect(first.say("Why divide by h?")).toEqual({ ok: true });
+  await first.settled();
+  await toCheck(first);
+  // What the page was shown before the restart.
+  const shown = [...first.events()];
+  await before.units.close();
+
+  const after = setUp([]);
+  const chat = await open(after);
+
+  expect(asShown(earlier(chat))).toEqual(asShown(shown));
+  expect(earlier(chat)).toContainEqual({
+    type: "learner",
+    text: "Why divide by h?",
+  });
+  expect(since(chat, "session")).toEqual([
+    SESSION,
+    { type: "unit_plan", plan: PLAN },
+    status("in-progress"),
+    { type: "phase", segment: 0, phase: "check" },
+    {
+      type: "question",
+      question: {
+        kind: "choice",
+        id: openQuestionId(first),
+        number: 1,
+        prompt: Q_QUOTIENT.prompt,
+        choices: Q_QUOTIENT.choices,
+      },
+    },
+  ]);
+  // One transcript per session, each starting with its session.
+  const files = await transcriptFiles();
+  expect(Object.keys(files)).toEqual([
+    "derivative.1.jsonl",
+    "derivative.2.jsonl",
+  ]);
+  expect(asShown(files["derivative.1.jsonl"] ?? [])).toEqual(asShown(shown));
+  expect(files["derivative.2.jsonl"]).toEqual(since(chat, "session"));
+});
+
+test("a transcript whose last line a crash cut short shows its whole lines, and the next session is written to a transcript of its own", async () => {
+  const setup = setUp([TEACH]);
+  await makeCourse();
+  // The server stopped while it taught segment 1, partway through a line.
+  const cutOff: PageEvent[] = [
+    { type: "session", startedAt: "2026-11-15T13:00:00.000Z" },
+    { type: "unit_plan", plan: PLAN },
+    status("in-progress"),
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "A difference quotient is" },
+  ];
+  const cutText =
+    cutOff.map((e) => `${JSON.stringify(e)}\n`).join("") +
+    JSON.stringify({ type: "tutor_text", text: " the slope of" }).slice(0, 25);
+  await mkdir(SESSIONS());
+  await writeFile(join(SESSIONS(), "derivative.1.jsonl"), cutText);
+  await reload().writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "teach",
+  });
+
+  const chat = await open(setup);
+
+  expect(chat.events()).toEqual([
+    ...cutOff,
+    SESSION,
+    { type: "unit_plan", plan: PLAN },
+    status("in-progress"),
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "A secant joins two points." },
+    { type: "turn_end", outcome: "done" },
+    { type: "phase", segment: 0, phase: "discuss" },
+  ]);
+  // The cut transcript is left as it was; the new session has its own.
+  expect(await readFile(join(SESSIONS(), "derivative.1.jsonl"), "utf8")).toBe(
+    cutText,
+  );
+  expect((await transcriptFiles())["derivative.2.jsonl"]).toEqual(
+    since(chat, "session"),
+  );
+});
+
+test("two sessions of a unit are shown in order, each from its own transcript, before the third", async () => {
+  const at = (hour: number) => `2026-11-1${hour}T09:00:00.000Z`;
+  const one = setUp([TEACH], { now: () => new Date(at(5)) });
+  await makeCourse();
+  await open(one);
+  await one.units.close();
+  const two = setUp([[{ text: "Welcome back." }]], {
+    now: () => new Date(at(6)),
+  });
+  const second = await open(two);
+  expect(second.say("I am back.")).toEqual({ ok: true });
+  await second.settled();
+  await two.units.close();
+
+  const three = setUp([], { now: () => new Date(at(7)) });
+  const chat = await open(three);
+
+  expect(
+    asShown(
+      chat
+        .events()
+        .filter((e) => ["session", "learner", "tutor_text"].includes(e.type)),
+    ),
+  ).toEqual([
+    { type: "session", startedAt: at(5) },
+    { type: "tutor_text", text: "A secant joins two points." },
+    { type: "session", startedAt: at(6) },
+    { type: "learner", text: "I am back." },
+    { type: "tutor_text", text: "Welcome back." },
+    { type: "session", startedAt: at(7) },
+  ]);
+  expect(Object.keys(await transcriptFiles())).toEqual([
+    "derivative.1.jsonl",
+    "derivative.2.jsonl",
+    "derivative.3.jsonl",
+  ]);
+});
+
+test("something that happens after the unit has been quiet for an hour starts a new session, in a transcript of its own", async () => {
+  let time = Date.parse(NOW);
+  const setup = setUp(
+    [
+      TEACH,
+      [{ text: "Yes." }],
+      [{ text: "Still yes." }],
+      [{ text: "Welcome back." }],
+    ],
+    { now: () => new Date(time) },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  const minutes = (n: number) => n * 60_000;
+  const say = async (text: string) => {
+    expect(chat.say(text)).toEqual({ ok: true });
+    await chat.settled();
+  };
+
+  // Two hours after the session began, but never an hour quiet.
+  time += SESSION_GAP_MS - minutes(1);
+  await say("Are you there?");
+  time += SESSION_GAP_MS - minutes(1);
+  await say("Still there?");
+  expect(since(chat, "session")[0]).toEqual(SESSION);
+
+  time += SESSION_GAP_MS;
+  await say("I am back.");
+
+  const back = new Date(time).toISOString();
+  expect(chat.events().filter((e) => e.type === "session")).toEqual([
+    SESSION,
+    { type: "session", startedAt: back },
+  ]);
+  expect(since(chat, "session")).toEqual([
+    { type: "session", startedAt: back },
+    { type: "learner", text: "I am back." },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Welcome back." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  const files = await transcriptFiles();
+  expect(Object.keys(files)).toEqual([
+    "derivative.1.jsonl",
+    "derivative.2.jsonl",
+  ]);
+  expect(files["derivative.2.jsonl"]).toEqual(since(chat, "session"));
 });

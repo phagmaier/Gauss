@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Curriculum } from "../../shared/curriculum.ts";
+import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { UnitPosition } from "../../shared/state.ts";
@@ -890,8 +891,109 @@ describe("evidence", () => {
   });
 });
 
+describe("transcripts", () => {
+  const begun = (startedAt: string): PageEvent => ({
+    type: "session",
+    startedAt,
+  });
+  const said = (text: string): PageEvent => ({ type: "learner", text });
+  const sessions = (id: string) => join(dir, "courses", id, "sessions");
+
+  test("a unit with no sessions has no transcripts", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    expect(await root.readTranscripts(id, "eigen")).toEqual([]);
+  });
+
+  test("a unit's transcripts read back after a restart in the order of their numbers, and not another unit's", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    // Out of order, and 10 after 2, as a name sorted as text would not put it.
+    await root.appendTranscript(id, "eigen", 10, [
+      begun("2026-11-17T09:00:00.000Z"),
+      said("Third sitting."),
+    ]);
+    await root.appendTranscript(id, "eigen", 1, [
+      begun("2026-11-15T09:00:00.000Z"),
+    ]);
+    await root.appendTranscript(id, "eigen", 1, [said("First sitting.")]);
+    await root.appendTranscript(id, "eigen", 2, [
+      begun("2026-11-16T09:00:00.000Z"),
+    ]);
+    // Another unit whose id starts with this one's, and a file of no session.
+    await root.appendTranscript(id, "eigen-values", 1, [said("Elsewhere.")]);
+    await writeFile(join(sessions(id), "eigen.notes.jsonl"), "");
+
+    expect(
+      await openDataRoot({ path: dir }).readTranscripts(id, "eigen"),
+    ).toEqual([
+      {
+        session: 1,
+        events: [begun("2026-11-15T09:00:00.000Z"), said("First sitting.")],
+        unreadable: [],
+      },
+      {
+        session: 2,
+        events: [begun("2026-11-16T09:00:00.000Z")],
+        unreadable: [],
+      },
+      {
+        session: 10,
+        events: [begun("2026-11-17T09:00:00.000Z"), said("Third sitting.")],
+        unreadable: [],
+      },
+    ]);
+    expect(await readFile(join(sessions(id), "eigen.1.jsonl"), "utf8")).toBe(
+      `${JSON.stringify(begun("2026-11-15T09:00:00.000Z"))}\n${JSON.stringify(said("First sitting."))}\n`,
+    );
+  });
+
+  test("a last line a crash cut short is skipped, and a damaged line before it is left out and named, not an error", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    await mkdir(sessions(id));
+    await writeFile(
+      join(sessions(id), "eigen.1.jsonl"),
+      `${JSON.stringify(said("Kept."))}\n` +
+        '{"type": "learner"}\n' +
+        "not json\n" +
+        `${JSON.stringify(said("Kept too."))}\n` +
+        JSON.stringify(said("Cut short.")).slice(0, 20),
+    );
+
+    const [transcript] = await root.readTranscripts(id, "eigen");
+
+    expect(transcript?.events).toEqual([said("Kept."), said("Kept too.")]);
+    expect(transcript?.unreadable).toEqual([
+      expect.stringMatching(
+        /sessions\/eigen\.1\.jsonl, line 2 does not match its schema/,
+      ),
+      expect.stringMatching(
+        /sessions\/eigen\.1\.jsonl, line 3 is not valid JSON/,
+      ),
+    ]);
+  });
+
+  test("an event that fails its schema is refused and not appended", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+
+    await expect(
+      root.appendTranscript(id, "eigen", 1, [
+        { type: "session", startedAt: "yesterday" },
+      ]),
+    ).rejects.toThrow(/startedAt/);
+    await expect(
+      root.appendTranscript(id, "eigen", 0, [said("Hello.")]),
+    ).rejects.toThrow();
+
+    expect(await root.readTranscripts(id, "eigen")).toEqual([]);
+  });
+});
+
 test.each(["no-such-course", "../linear-algebra"])(
-  "plans, state, evidence, opening and style of the course %j are refused",
+  "plans, state, evidence, opening, style and transcripts of the course %j are refused",
   async (missing) => {
     const root = openDataRoot({ path: dir });
     await courseWithCurriculum(root);
@@ -909,6 +1011,14 @@ test.each(["no-such-course", "../linear-algebra"])(
     );
     await expect(root.markOpened(missing)).rejects.toThrow(/no course/);
     await expect(root.readStyle(missing)).rejects.toThrow(/no course/);
+    await expect(
+      root.appendTranscript(missing, "eigen", 1, [
+        { type: "learner", text: "Hello." },
+      ]),
+    ).rejects.toThrow(/no course/);
+    await expect(root.readTranscripts(missing, "eigen")).rejects.toThrow(
+      /no course/,
+    );
     expect(await readdir(join(dir, "courses"))).toEqual(["linear-algebra"]);
   },
 );

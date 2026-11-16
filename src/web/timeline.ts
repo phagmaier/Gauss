@@ -1,5 +1,8 @@
 // The thread as the page shows it, rebuilt from the chat's event log. Pure, so
-// a replay after a reload or a reconnect gives the same thread.
+// a replay after a reload or a reconnect gives the same thread. A unit chat's
+// log starts with the unit's earlier sessions (task 2.13), and its own
+// opening repeats where the unit stands: a phase, an open question or a
+// closing card the thread already shows is not shown twice.
 
 import type { Slug } from "../shared/course.ts";
 import type { Unit } from "../shared/curriculum.ts";
@@ -52,6 +55,14 @@ export type Item =
   /** A phase of a segment began, or the chat opened in it. */
   | ({ kind: "phase"; key: number } & Position)
   | UnitEndItem
+  /** A unit's session, a sitting, began after an earlier one (task 2.13). */
+  | {
+      kind: "session";
+      key: number;
+      startedAt: string;
+      /** The session before ended while the tutor was writing: a restart cut it off. */
+      cutOff: boolean;
+    }
   | {
       kind: "proposal";
       key: number;
@@ -122,6 +133,15 @@ function withQuestion(
   );
 }
 
+/**
+ * A closing card is in the thread with no phase begun since: a `unit_end`
+ * now is that card shown again, by a chat that opened at it.
+ */
+function cardStanding(items: Item[]): boolean {
+  const card = items.findLastIndex((i) => i.kind === "unit_end");
+  return card >= 0 && items.findLastIndex((i) => i.kind === "phase") < card;
+}
+
 /** Records the step taken from the last closing card, if none was taken yet. */
 function stepFromCard(items: Item[], stepTaken: "again" | "moved-on"): Item[] {
   const at = items.findLastIndex((i) => i.kind === "unit_end");
@@ -151,6 +171,33 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
   if (index <= state.last) return state;
   const next: Timeline = { ...state, last: index };
   switch (event.type) {
+    case "session": {
+      // What was under way when the session before ended is over.
+      const settled: Timeline = {
+        ...next,
+        busy: false,
+        tutorOpen: false,
+        planning: false,
+        failed: null,
+      };
+      const last = state.items.at(-1);
+      // The first session needs no marker.
+      if (last === undefined) return settled;
+      const item: Item = {
+        kind: "session",
+        key: index,
+        startedAt: event.startedAt,
+        cutOff: state.busy || (last.kind === "session" && last.cutOff),
+      };
+      return {
+        ...settled,
+        // A session that showed nothing gives way to this one.
+        items:
+          last.kind === "session"
+            ? state.items.with(-1, item)
+            : [...state.items, item],
+      };
+    }
     case "learner":
       return {
         ...next,
@@ -183,7 +230,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       };
     }
     case "question":
-      // A unit opened again after a failure posts its open question again.
+      // A unit opened again, after a failure or a restart, posts its open
+      // question again.
       if (
         state.items.some(
           (i) => i.kind === "question" && i.question.id === event.question.id,
@@ -275,6 +323,14 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         phase: event.phase,
         ...(event.again === undefined ? {} : { again: event.again }),
       };
+      // A chat that opens in the phase the thread is in, as a unit reopened
+      // after a restart does, begins nothing new.
+      if (
+        state.position?.segment === position.segment &&
+        state.position.phase === position.phase
+      ) {
+        return { ...next, position };
+      }
       // Going over again starts with the extra segment's teaching.
       const items =
         event.again !== undefined && event.phase === "teach"
@@ -288,6 +344,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       };
     }
     case "unit_end":
+      if (cardStanding(state.items)) return next;
       return {
         ...next,
         items: [

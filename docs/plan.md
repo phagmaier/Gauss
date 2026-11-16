@@ -53,6 +53,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.11 | Session view | `src/web/Session.tsx` at `/courses/<id>/units/<unit>`; logic in `session.ts` and `timeline.ts`. Every unit of an approved course has "Open" (2.12 makes it Start and Continue); the closing card's "Start unit N" is the next unit in the list. A thread after a restart starts at the record's position (2.13 rebuilds it); "Start fresh" goes in the outline (2.14). Objective statements render `$` math. Review fix: the course's details are asked again until the server answers (`getJsonUntilAnswered` in `api.ts`), and until they load the unit's place (`placement` in `session.ts`) is unknown, never the course's last unit. |
 | 2.12 | Course and library progress | The routes send each unit's status and segment (`record/progress.ts`); `course.json` keeps when each unit was last opened (`unitsOpenedAt`). The page's rules are in `src/web/progress.ts`: the card leads to the unit in progress most recently opened, else the next in order; the closing card's "Start unit N" is the next in order too. A library row of a course with a unit in progress opens that unit's session. Finished units keep "Open" until notes (stage 5). Review fix: a course whose `state.json` or evidence cannot be read is still listed, with the reason in `problem` and no progress; its own route answers 500. |
 | 2.12b | Dev server on the fake backend | `pnpm dev:fake` (port 4330): the server of `serve.ts` on the scripted backend (`backends/scripted.ts`), which follows the turn headers, on a scratch data root seeded with courses in each state (`record/dev-seed.ts`); a data root with courses is kept across restarts. Use it for browser checks, and close the browser before stopping it (`AGENTS.md`). A reworded header or a new one-shot request needs `scripted.ts` updated; its tests say so. |
+| 2.13 | Transcripts | A session is one sitting: it starts when a unit's chat opens (once per server run) and when something happens after an hour quiet (`SESSION_GAP_MS` in `engine/transcript.ts`). Each session's page events go to `sessions/<unit id>.<n>.jsonl`, starting with a `session` event; a unit chat's log starts with its earlier sessions, and the page marks each later one ("New session", its date) and does not repeat the phase, question or closing card a reopened chat repeats. Transcripts are not flushed to disk, and a line that cannot be read is left out. For 2.14: the tutor is still new after a restart and the thread does not say so; the "Fresh start" marker goes after the session's. |
 
 ## Stage 2: session engine
 
@@ -65,20 +66,6 @@ questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
-
-### 2.13 Transcripts
-
-- Status: todo
-- Depends on: 2.6, 2.11
-- Do: each unit chat appends its page events to
-  `sessions/<session-id>.jsonl` (`architecture.md` section 3) as they
-  happen, and a unit reopened after a restart shows its thread from them.
-  Settle what starts a new session (the brief's "one sitting") and record
-  it.
-- Done when: tests against a temporary data root cover a thread rebuilt
-  after a simulated restart, a transcript whose last line a crash cut
-  short, and two sessions of one unit shown in order; a browser check
-  after a restart.
 
 ### 2.14 Resume and start fresh
 

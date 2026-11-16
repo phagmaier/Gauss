@@ -2,12 +2,12 @@
 // section 3). This module creates, lists, reads and marks opened courses
 // and their units, stores and approves their curricula, each draft with its
 // style note, reads those notes, stores the plans of their units, keeps the
-// position of each unit in progress in state.json, and appends to and reads
-// the evidence log. Every write of a whole file goes through writeFileAtomic,
-// the log is appended to, and every file read or written is checked
-// against its schema in src/shared/. Work that reads a file and writes it
-// back, and every append, runs through withFileLock, so it lands in the
-// order called.
+// position of each unit in progress in state.json, appends to and reads the
+// evidence log, and appends to and reads the units' session transcripts.
+// Every write of a whole file goes through writeFileAtomic, the logs are
+// appended to, and every file read or written is checked against its schema
+// in src/shared/. Work that reads a file and writes it back, and every
+// append, runs through withFileLock, so it lands in the order called.
 
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -20,13 +20,18 @@ import {
   CurriculumProposal,
   type ShownProposal,
 } from "../../shared/curriculum.ts";
+import { PageEvent } from "../../shared/events.ts";
 import { EvidenceEntry } from "../../shared/evidence.ts";
 import type { StoredCourse } from "../../shared/library.ts";
 import { Plan } from "../../shared/plan.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { writeFileAtomic } from "./atomic-write.ts";
 import { withFileLock } from "./file-lock.ts";
-import { appendJsonLine, readJsonLines } from "./json-lines.ts";
+import {
+  appendJsonLine,
+  appendJsonLines,
+  readJsonLines,
+} from "./json-lines.ts";
 
 /** `GAUSS_DATA_ROOT` when it is set and not empty, otherwise `~/gauss`. */
 export function resolveDataRoot(
@@ -104,6 +109,40 @@ export interface DataRoot {
   appendEvidence(id: string, entry: EvidenceEntry): Promise<void>;
   /** The evidence, oldest first, without a last line a crash cut short. */
   readEvidence(id: string): Promise<EvidenceEntry[]>;
+  /**
+   * Appends the page events to the transcript of the unit's session with
+   * this number, made if it is new. Appends land in the order called. They
+   * are not flushed to disk, as the record's other files are: a transcript
+   * only shows the conversation, and is written often.
+   */
+  appendTranscript(
+    id: string,
+    unitId: string,
+    session: number,
+    events: readonly PageEvent[],
+  ): Promise<void>;
+  /**
+   * The unit's session transcripts, in the order of their numbers, each
+   * without a last line a crash cut short; none when the unit has none. A
+   * line that cannot be read is left out and named in `unreadable`, so a
+   * damaged transcript, or an event of a shape the page no longer has, costs
+   * that line and not the unit.
+   */
+  readTranscripts(id: string, unitId: string): Promise<Transcript[]>;
+}
+
+/**
+ * One session of a unit, one sitting (task 2.13): the page events of its
+ * chat in that sitting, in `sessions/<unit id>.<number>.jsonl`. A unit's
+ * sessions are numbered from 1 in the order they began. A slug has no dot,
+ * so the name can be read back.
+ */
+export interface Transcript {
+  session: number;
+  /** The session's page events; empty if a crash cut its only line short. */
+  events: PageEvent[];
+  /** The lines left out, each with where it is and why. */
+  unreadable: string[];
 }
 
 /**
@@ -360,7 +399,61 @@ export function openDataRoot(options: {
       await existingCourse(id);
       return readJsonLines(path, EvidenceEntry);
     },
+
+    async appendTranscript(id, unitId, session, events) {
+      const unit = Slug.parse(unitId);
+      const number = SessionNumber.parse(session);
+      const checked = events.map((event) => PageEvent.parse(event));
+      const folder = courseFile(id, "sessions");
+      const path = join(folder, transcriptName(unit, number));
+      await withFileLock(path, async () => {
+        await existingCourse(id);
+        await mkdir(folder, { recursive: true });
+        await appendJsonLines(path, checked, { flush: false });
+      });
+    },
+
+    async readTranscripts(id, unitId) {
+      const unit = Slug.parse(unitId);
+      const folder = courseFile(id, "sessions");
+      await existingCourse(id);
+      let names: string[];
+      try {
+        names = await readdir(folder);
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return [];
+        throw error;
+      }
+      const sessions = names
+        .map((name) => sessionOf(unit, name))
+        .filter((session) => session !== undefined)
+        .sort((a, b) => a - b);
+      return Promise.all(
+        sessions.map(async (session) => {
+          const unreadable: string[] = [];
+          const events = await readJsonLines(
+            join(folder, transcriptName(unit, session)),
+            PageEvent,
+            (problem) => unreadable.push(problem),
+          );
+          return { session, events, unreadable };
+        }),
+      );
+    },
   };
+}
+
+const SessionNumber = z.number().int().positive();
+
+/** The file name of a unit's session transcript. */
+function transcriptName(unitId: Slug, session: number): string {
+  return `${unitId}.${session}.jsonl`;
+}
+
+/** The session number in the name of one of the unit's transcripts; undefined for any other file. */
+function sessionOf(unitId: Slug, name: string): number | undefined {
+  const match = /^(.+)\.([1-9][0-9]*)\.jsonl$/.exec(name);
+  return match?.[1] === unitId ? Number(match[2]) : undefined;
 }
 
 function noCourse(id: string): string {

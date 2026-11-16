@@ -493,3 +493,137 @@ test("a finished unit opened again is finished, with no closing card", () => {
   expect(state.finished).toBe("passed");
   expect(state.position).toBeNull();
 });
+
+// --- Sessions: a unit's earlier sittings, from its transcripts (task 2.13) ---
+
+const began = (startedAt: string): PageEvent => ({
+  type: "session",
+  startedAt,
+});
+const MONDAY = "2026-11-16T09:00:00.000Z";
+const TUESDAY = "2026-11-17T09:00:00.000Z";
+const WEDNESDAY = "2026-11-18T09:00:00.000Z";
+
+test("each session after the first begins with a marker, and a reply the session before left unfinished is cut off there", () => {
+  const events: PageEvent[] = [
+    began(MONDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "The power rule" },
+    // The server stopped here. The unit opens again in teach, and is taught again.
+    began(TUESDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "The power rule, again." },
+    { type: "turn_end", outcome: "done" },
+    { type: "phase", segment: 0, phase: "discuss" },
+  ];
+
+  const atTuesday = play(events.slice(0, 6));
+  expect(atTuesday.busy).toBe(false);
+  expect(atTuesday.tutorOpen).toBe(false);
+  const state = play(events);
+  expect(state.items).toEqual([
+    { kind: "phase", key: 2, segment: 0, phase: "teach" },
+    { kind: "tutor", key: 4, text: "The power rule" },
+    { kind: "session", key: 5, startedAt: TUESDAY, cutOff: true },
+    { kind: "tutor", key: 9, text: "The power rule, again." },
+    { kind: "phase", key: 11, segment: 0, phase: "discuss" },
+  ]);
+  expect(state.position).toEqual({ segment: 0, phase: "discuss" });
+});
+
+test("a session that showed nothing gives way to the next one's marker", () => {
+  const state = play([
+    began(MONDAY),
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Why?" },
+    // Opened and left: nothing new was shown.
+    began(TUESDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "discuss" },
+    began(WEDNESDAY),
+    { type: "learner", text: "Back again." },
+  ]);
+
+  expect(state.items).toEqual([
+    { kind: "phase", key: 1, segment: 0, phase: "discuss" },
+    { kind: "learner", key: 2, text: "Why?" },
+    { kind: "session", key: 6, startedAt: WEDNESDAY, cutOff: false },
+    { kind: "learner", key: 7, text: "Back again." },
+  ]);
+});
+
+test("planning or a failure the session before left is over when the next begins; its note stays", () => {
+  const planning = play([
+    began(MONDAY),
+    { type: "unit_planning" },
+    began(TUESDAY),
+  ]);
+  expect(planning.planning).toBe(false);
+
+  const failed = play([
+    began(MONDAY),
+    { type: "unit_planning" },
+    { type: "unit_failed", error: "The unit could not be planned." },
+    began(TUESDAY),
+  ]);
+  expect(failed.failed).toBeNull();
+  expect(failed.items.map((i) => i.kind)).toEqual(["note", "session"]);
+});
+
+test("a unit reopened where its thread is shows nothing twice: not its phase, its open question or its closing card", () => {
+  const reopened = (events: PageEvent[]) => [
+    began(TUESDAY),
+    { type: "unit_plan", plan: PLAN } as const,
+    ...events,
+  ];
+  const check = play([
+    began(MONDAY),
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: QUESTION },
+    ...reopened([
+      { type: "phase", segment: 0, phase: "check" },
+      { type: "question", question: QUESTION },
+    ]),
+  ]);
+  expect(check.items.map((i) => i.kind)).toEqual([
+    "phase",
+    "question",
+    "session",
+  ]);
+
+  const card = play([
+    began(MONDAY),
+    { type: "phase", segment: 1, phase: "closed" },
+    NOT_ALL,
+    ...reopened([{ type: "phase", segment: 1, phase: "closed" }, NOT_ALL]),
+    // Going over again after the restart takes the one card's step.
+    { type: "phase", segment: 2, phase: "teach", again: ["chain-rule"] },
+  ]);
+  expect(
+    card.items.filter((i) => i.kind === "unit_end").map((i) => i.key),
+  ).toEqual([2]);
+  expect(card.items.find((i) => i.kind === "unit_end")).toMatchObject({
+    stepTaken: "again",
+  });
+});
+
+test("a unit reopened past where its thread got to shows the phase it is in", () => {
+  // A transcript can lose its last lines in a crash; the record has the phase.
+  const state = play([
+    began(MONDAY),
+    { type: "phase", segment: 0, phase: "discuss" },
+    began(TUESDAY),
+    { type: "phase", segment: 0, phase: "check" },
+  ]);
+
+  expect(state.items).toEqual([
+    { kind: "phase", key: 1, segment: 0, phase: "discuss" },
+    { kind: "session", key: 2, startedAt: TUESDAY, cutOff: false },
+    { kind: "phase", key: 3, segment: 0, phase: "check" },
+  ]);
+  expect(state.position).toEqual({ segment: 0, phase: "check" });
+});
