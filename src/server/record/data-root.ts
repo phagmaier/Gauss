@@ -58,6 +58,12 @@ export interface DataRoot {
    */
   courseFolder(id: string): string;
   /**
+   * The absolute path of the folder the intakes' tutor sessions run in, so
+   * that they are kept (task 2.15); made if it is missing. Gauss writes
+   * nothing in it.
+   */
+  intakeFolder(): Promise<string>;
+  /**
    * Sets the course's lastOpenedAt to the clock's time, and the unit's time
    * in unitsOpenedAt when a unit is named.
    */
@@ -246,6 +252,12 @@ export function openDataRoot(options: {
     readCourse,
 
     courseFolder: (id) => resolve(courseFile(id, ".")),
+
+    async intakeFolder() {
+      const folder = resolve(options.path, "intake");
+      await mkdir(folder, { recursive: true });
+      return folder;
+    },
 
     async markOpened(id, unitId) {
       const unit = unitId === undefined ? undefined : Slug.parse(unitId);

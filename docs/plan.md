@@ -55,6 +55,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.12b | Dev server on the fake backend | `pnpm dev:fake` (port 4330): the server of `serve.ts` on the scripted backend (`backends/scripted.ts`), which follows the turn headers, on a scratch data root seeded with courses in each state (`record/dev-seed.ts`); a data root with courses is kept across restarts. Use it for browser checks, and close the browser before stopping it (`AGENTS.md`). A reworded header or a new one-shot request needs `scripted.ts` updated; its tests say so. |
 | 2.13 | Transcripts | A session is one sitting: it starts when a unit's chat opens (once per server run) and when something happens after an hour quiet (`SESSION_GAP_MS` in `engine/transcript.ts`). Each session's page events go to `sessions/<unit id>.<n>.jsonl`, starting with a `session` event; a unit chat's log starts with its earlier sessions, and the page marks each later one ("New session", its date) and does not repeat the phase, question or closing card a reopened chat repeats. Transcripts are not flushed to disk, and a line that cannot be read is left out. For 2.14: the tutor is still new after a restart and the thread does not say so; the "Fresh start" marker goes after the session's. Review fix: `Prose` is memoized, since the thread now holds every session and was drawn whole on every event; earlier sessions are replayed with each reply's text joined; no session starts inside a tutor's turn; a question whose `graded` line was lost shows the evidence's grade when the unit opens. Left open: a unit with long earlier sessions still takes seconds to draw once when it opens. |
 | 2.14 | Resume and start fresh | The tutor's session id is in the unit's position (`keepSession` in `unit-record.ts`); a session given a `cwd` is kept, and `startSession` with `resumeId` rejects with `SessionNotFound` when it cannot be found, the only failure that starts fresh. A reopened unit resumes its tutor as it opens, so each unit in progress holds a Claude Code process until the server stops: 2.15 closes idle ones (`UnitAgents.resume` and `startFresh` in `unit-agents.ts`). Kept sessions are rebuilt with the current system prompt (`snapshot: false`), so a revised `tutor.md` (2.16) reaches units under way. Start fresh sends the tutor one turn (`freshTurn`); the fallback sends nothing until the learner acts. The slow reply after a stop was not exercised (no Stop in the real run). Review fix: a card that still waits (an open question, the closing card) is not dimmed with an earlier conversation; a resume that fails another way is `unit_failed` with `resumeFailed`, and `start-fresh` on that unit gives the conversation up and opens it as one whose session is lost; kept sessions get a `title`; `BROKEN_SESSION` in `scripted.ts` shows the failure on `pnpm dev:fake`; a session stopped mid-reply resumed on Haiku. |
+| 2.15 | Close idle tutor sessions | `createConversation` (`engine/conversation.ts`) closes a kept session after `IDLE_MS` (ten minutes) with no turn queued or running and nothing `waiting` (a grading), and the next turn resumes it; a failed start or resume fails only that turn. Intakes are kept too, in `<data root>/intake/`, for this only. Opening a unit asks `hasSession` and starts nothing; the first turn resumes, and a session lost at a turn falls back there, its marker after the learner's message. `resumeFailed` and "Start fresh instead" are gone; the outline's Start fresh leaves a resume that keeps failing. Tests use `createFakeTimer` (`engine/fake-timer.ts`). Idle closing was not run on Claude end to end. |
 
 ## Stage 2: session engine
 
@@ -67,29 +68,6 @@ questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
-
-### 2.15 Close idle tutor sessions
-
-- Status: todo
-- Depends on: 2.14
-- Do: close a chat's tutor session, an intake's or a unit's, once it has
-  been idle for a while, and resume it with the next message. Each one is
-  a Claude Code process until the server stops (notes from 1.5 and 1.6).
-  An intake's session must then be kept, as a unit's is.
-- Done when: fake-backend tests with a fake clock cover closing after the
-  idle time, resuming with the next message, and a session never closed
-  while a turn is queued or running.
-- Note from 2.14's review: settle on one way to resume. A unit resumes as
-  it opens today; after an idle close it must resume at the next message,
-  where the fallback then comes after the learner's message. The SDK's
-  `getSessionInfo(id, { dir })` says whether a session is there without a
-  process, so the opening could show the marker and leave resuming to the
-  first message (`docs/decisions.md`, "Resume and start fresh", the review
-  fixes).
-- Note from 2.14's review: a session that fails to start fails every later
-  turn of its conversation (`createConversation` keeps the rejected start).
-  A resume at the next message that fails once must be tried again by the
-  message after it, and one that is not found must fall back.
 
 ### 2.16 Tutor prompt
 

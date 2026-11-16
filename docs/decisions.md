@@ -45,6 +45,7 @@ findings are the record.
 | Course and library progress | What the routes send, when units were opened, the card, Start, "Open" on finished units, the library's lines and groups, the closing card's next unit, a course whose progress cannot be read | Touching the course view, the library, `progress.ts` or `unitsOpenedAt`; notes (stage 5), the gate and retained status in the library (stage 5) |
 | Transcripts | What a session is, the transcript files, the thread rebuilt from them, the session marker, batching and joined text, no flushing and lines left out, the browser run | Touching `engine/transcript.ts`, the transcripts in `data-root.ts`, or the thread's sessions in `timeline.ts`; resume and "Start fresh" (2.14), idle sessions (2.15), reading transcripts (2.16), handoff notes and export (stage 5) |
 | Resume and start fresh | What the SDK does on resume (unknown ids, `snapshot: false`, where kept sessions go, the 30-day sweep), the id in the position, resuming as a unit opens, which failures fall back, the learner's Start fresh and its turn, the marker and the dimmed thread, the fake's kept sessions, the real run, the review fixes (a card that still waits, starting fresh from a failed resume, the session's title, a restart mid-reply) | Touching `backends/` (sessions, resume), `unit-agents.ts`, the tutor's session id in `unit-record.ts`, the fallback or Start fresh in `unit-chat.ts`, the thread's conversations in `timeline.ts`; idle sessions (2.15), `tutor.md` (2.16), handoff notes (stage 5) |
+| Idle sessions | Closing a kept session when idle and resuming it at the next turn, what idle means and for how long, one way to resume (the opening only asks), a failed resume or start retried by the next turn, `resumeFailed` taken out, kept intakes and their lost-session headers, the fake timer, the fault and browser checks | Touching `engine/conversation.ts`, `unit-agents.ts`, sessions in `intake.ts`, `hasSession` in `backends/`, the thread's conversations in `timeline.ts`; `tutor.md` (2.16), handoff notes (stage 5), the Codex backend (stage 6) |
 
 ## Page design (plan task 1.0)
 
@@ -3034,3 +3035,142 @@ dimmed thread and "Start fresh" in the outline (`timeline.ts`,
     every later turn of its conversation (`createConversation` keeps the
     rejected start, since task 0.5): a resume at the next message that
     fails once must not do that.
+
+## Idle sessions (plan task 2.15)
+
+Built on 2026-11-16: idle closing and resuming in `engine/conversation.ts`
+(`Kept`, `IDLE_MS`, `Timer`), `hasSession` in the adapter (`getSessionInfo`
+in `backends/claude.ts`, the kept set in `fake.ts`), the opening and the
+fallback in `engine/unit-agents.ts` and `unit-chat.ts`, kept intakes
+(`engine/intake.ts`, `intakeFolder` in `record/data-root.ts`), and the
+page's part (`conversations` in `timeline.ts`, the note in `Intake.tsx`).
+The choices are the agent's and can be overturned.
+
+### Choices
+
+- **The conversation closes and resumes, for every chat.**
+  `createConversation` now gets its session when a turn is about to be
+  sent and none is running, not when the first turn is queued. Given
+  `kept` (how to resume, an id to resume first, what to do when the
+  session is lost, and what else will still send it a turn), it closes its
+  session once idle, and the next turn resumes it by its id. Intakes and
+  unit chats share the one implementation and give it their own start and
+  resume. A conversation closed with `close()` is closed for good: a later
+  turn fails ("The chat is closed.") and starts nothing.
+- **What idle means.** No turn queued or running, and nothing outside the
+  conversation that will send it a turn: for a unit, a written answer
+  being graded, whose grade goes to the tutor (`waiting`). The time counts
+  from the end of the last turn, and a turn sent cancels it. If something
+  still waits when the time is up, it waits another period. The page being
+  open does not count: reading costs no process.
+- **Ten minutes** (`IDLE_MS`). A process holds memory while it waits;
+  resuming it costs the next turn about half a second (task 2.14 measured
+  0.3 to 0.6 seconds for a resume to be ready). Ten minutes keeps a
+  conversation in steady use open, and frees one left alone within a
+  sitting. It is a constant, not a setting; nothing yet asks to change it.
+- **One way to resume**, as 2.14's review asked. The opening asks the
+  backend whether it has the session (`hasSession`, `getSessionInfo` for
+  Claude, with no process) and resumes nothing; the first turn resumes it.
+  So a unit opened only to look at it holds no process, the fallback for a
+  session swept while the unit sat unopened (the common case) still shows
+  its marker before the learner writes, and resuming after a restart and
+  after an idle close are the same code. A lookup that throws is logged and
+  taken as found, and the turn finds out. A session found at the opening
+  and gone at the turn (swept in between, or deleted by hand), or gone
+  after an idle close, falls back at that turn: the marker comes after the
+  learner's message, and the note is in that turn's header. The page puts
+  that message in the new conversation (`conversations` in `timeline.ts`),
+  since the new tutor received it; a learner's own Start fresh is never
+  just after a message it sent, so it moves nothing.
+- **A resume that fails another way fails its turn**, with "The
+  conversation with the tutor could not be resumed: <the reason>. Sending
+  again tries again, and "Start fresh" starts a new one.", and the next
+  turn tries again. A start that fails is tried again too: the conversation no longer
+  keeps a rejected start, which since task 0.5 failed every later turn
+  (2.14's second note). Since opening a unit no longer resumes, it no
+  longer fails for that reason, so 2.14's review fix for it is taken out:
+  `resumeFailed` on `unit_failed`, the opening that gave the conversation
+  up, and "Start fresh instead" beside "Try again". The outline's Start
+  fresh is now the way out of a fault that stays, and it works on a unit
+  whose resume keeps failing (tested). A transcript from 2.14 with
+  `resumeFailed` reads as before; zod drops the field.
+- **Intakes are kept** so they can be closed and resumed: their sessions
+  run in the data root's `intake/` folder, made when the first one starts,
+  so that the folder they are resumed in is always the one they ran in.
+  Not the data root itself, so that a built-in tool given to intakes later
+  is confined to an empty folder and not to every course's record. Gauss
+  writes nothing there, nor did Claude Code in the course folder without
+  built-in tools (task 2.14). Titled "Gauss: new course". The id is kept in
+  memory only: a restart still loses the intake, as before. A session lost
+  after an idle close (only a deleted file can do that within one server
+  run) gives way to a new one, whose first header is a reopened draft's,
+  with the latest proposal and its number (`reviewTurn` now takes the
+  number), or before any proposal says the conversation is new and the
+  learner's earlier words were not seen. The page shows a note for it.
+- **The timer is given, not faked globally.** `Timer` (`after(ms, work)`)
+  with `systemTimer` on an unref'd `setTimeout`, so a waiting close never
+  keeps the process up; tests give `createFakeTimer()`
+  (`engine/fake-timer.ts`) and move it on. Vitest's fake timers would also
+  fake the timers that the record's writes and the tests rely on.
+
+### Checks
+
+- **`mise run check`** passed lint, type-checking, 518 TypeScript tests and
+  one Python test. New, on the fake backend with a fake timer: 4
+  conversation tests (a kept session closed after `IDLE_MS` and not
+  before, resumed by the next turn by its id in its folder, closed for good
+  by `close()`; never closed while a turn is queued or running, the time
+  counting from the last turn's end; not closed while something outside
+  waits; a failed resume is the turn's error and retried, and a session not
+  found calls `lost` and starts a new one), 3 unit chat tests (closed when
+  idle and resumed by the next message, not told it is new; kept open
+  while a written answer is graded, then closed; found lost at the next
+  message: the marker after the message, the note, the new id kept), 3
+  intake tests (kept in `intake/`, closed, resumed, closed by approval;
+  lost after a proposal, given it and its number; lost before one) and a
+  timeline test (the message moves to the new conversation, and not for
+  the learner's own Start fresh). Changed: a failed start is now retried
+  (conversation); the restart test resumes at the first turn, with the
+  opening asking about the session in the course's folder and starting
+  nothing; the not-found test starts no session at the opening; a resume
+  failing another way now fails the turn and the next one resumes; Start
+  fresh is now the way out of a resume that keeps failing; the learner's
+  Start fresh test checks the resume after the restart with a message; the
+  scripted backend's broken session opens and fails each message; two
+  timeline tests lost `resumeFailed`.
+- **Faults put in by hand**, one at a time, each failing at least one test:
+  never closing; ignoring a grading; keeping a failed start; no fallback on
+  a lost session; starting new instead of resuming; not calling `lost`;
+  `close()` letting a later turn start; the opening resuming without
+  asking; the unit's fallback without its note; the intake not kept; the
+  intake's lost header unused; the page not moving the message; and
+  closing while a turn is queued or running. That last one was missed at
+  first, because a second guard (no timer armed while a turn is queued)
+  covered for it, and removing that one alone was missed too; the second
+  guard was taken out, and the one left at the point of closing is caught.
+- **`getSessionInfo` on a real session file**, with no model: one of this
+  repository's own Claude Code sessions was found with its folder as `dir`
+  (4 ms) and not with its parent folder; an unknown id and a folder that
+  does not exist gave undefined, and nothing threw.
+- **Browser run on `pnpm dev:fake`** with a new data root, BROKEN_SESSION
+  in "Differentiation rules": the unit opened in its discussion (it showed
+  "could not be resumed" and "Try again" before this task); a message
+  failed with "The conversation with the tutor could not be resumed: The
+  scripted backend cannot resume this session. Sending again tries again,
+  and "Start fresh" starts a new one."; Start fresh in the outline dimmed
+  it, showed the marker and the scripted pick-up, and a message was
+  answered. Browser closed, server stopped and started again: the unit
+  showed "New session" and no fresh start, the first message was answered,
+  and `state.json` kept the same id, so the new session was resumed.
+- **Not checked.** No real-backend run: idle closing is `close()`, which a
+  server stop calls in 2.14's real runs, and resuming at a turn is
+  `startSession` with `resumeId`, as those runs resumed at the opening; the
+  two were not run together on Claude. The intake's note for a lost
+  session was not seen in a browser (it takes a session file deleted
+  during a server run); the page's move of the message is tested in
+  `timeline.ts` only. The dev server cannot show idle closing without
+  waiting ten minutes, since `IDLE_MS` is not a setting.
+- **Left open.** The fake's `hasSession` ignores the folder (the unit chat
+  test checks the folder the opening asks about). Opening a finished unit
+  after a restart still starts a new session for any message, without the
+  "new" note, as before.

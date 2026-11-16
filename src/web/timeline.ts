@@ -109,11 +109,6 @@ export interface Timeline {
   planning: boolean;
   /** Why the unit could not be opened; opening it again tries again. */
   failed: string | null;
-  /**
-   * With `failed`: what failed was resuming the tutor's conversation, so the
-   * learner can start fresh without it (task 2.14).
-   */
-  resumeFailed: boolean;
   /** The phase that began last; null until the unit is open, and when it opens finished. */
   position: Position | null;
   /** The unit is finished, and how. */
@@ -133,7 +128,6 @@ export const emptyTimeline: Timeline = {
   plan: null,
   planning: false,
   failed: null,
-  resumeFailed: false,
   position: null,
   finished: null,
 };
@@ -406,7 +400,6 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ],
         planning: false,
         failed: event.error,
-        resumeFailed: event.resumeFailed === true,
       };
     case "overridden": {
       const { withdrawnQuestionId } = event;
@@ -454,8 +447,11 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
  * The thread in its conversations with the tutor, oldest first: a new one
  * begins at each fresh start, with its marker, and with the marker of the
  * session it begins, which comes just before, or before the notes on why
- * that session's unit did not open at first. Each is keyed by the item that
- * began it, so a fresh start leaves the items before it where they are.
+ * that session's unit did not open at first. A conversation found lost at a
+ * turn (task 2.15) begins with the learner's message that turn sent, which
+ * the new tutor received, and which comes just before its marker. Each is
+ * keyed by the item that began it, so a fresh start leaves the items before
+ * it where they are.
  */
 export function conversations(
   items: readonly Item[],
@@ -466,13 +462,20 @@ export function conversations(
     if (last === undefined) {
       parts.push({ key: item.key, items: [item] });
     } else if (item.kind === "fresh") {
-      let from = last.items.length;
+      let end = last.items.length;
+      if (
+        item.reason === "not-resumed" &&
+        last.items[end - 1]?.kind === "learner"
+      ) {
+        end -= 1;
+      }
+      let from = end;
       while (last.items[from - 1]?.kind === "note") from -= 1;
-      const session =
-        from > 1 && last.items[from - 1]?.kind === "session"
-          ? last.items.splice(from - 1)
-          : [];
-      parts.push({ key: item.key, items: [...session, item] });
+      const start =
+        from > 1 && last.items[from - 1]?.kind === "session" ? from - 1 : end;
+      // The first item stays, so the conversation keeps its key.
+      const moved = last.items.splice(Math.max(start, 1));
+      parts.push({ key: item.key, items: [...moved, item] });
     } else {
       last.items.push(item);
     }

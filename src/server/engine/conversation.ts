@@ -2,10 +2,17 @@
 // queue that sends the tutor one turn at a time and writes its reply into
 // the log. Built from the minimal page's chat (task 0.5); the intake chat and
 // the unit chats (task 2.6) are made from these two parts.
+//
+// The tutor's session starts when a turn is to be sent and none is running,
+// and a session that fails to start is tried again by the next turn. A
+// conversation whose sessions the backend keeps closes its session once it
+// has been idle for a while, and the next turn resumes it by its id (task
+// 2.15), so a chat left open holds no Claude Code process. A session to
+// resume that the backend cannot find gives way to a new one.
 
 import { randomUUID } from "node:crypto";
 import type { PageEvent } from "../../shared/events.ts";
-import type { TutorSession } from "../backends/backend.ts";
+import { SessionNotFound, type TutorSession } from "../backends/backend.ts";
 
 /** What a chat says to something the learner did: done, or why not. */
 export type ChatResult =
@@ -68,9 +75,12 @@ export interface Turn {
 }
 
 export interface Conversation {
-  /** Whether the tutor's session has started: at the first turn, unless it was given. */
+  /** Whether the conversation has begun: a turn was sent, or it resumes a kept session. */
   started(): boolean;
-  /** Queues a turn for the tutor. The first one starts the session. */
+  /**
+   * Queues a turn for the tutor. A turn sent while no session is running
+   * starts one, or resumes the kept one.
+   */
   send(turn: string | Turn): void;
   /** A turn is queued or running. */
   busy(): boolean;
@@ -78,7 +88,52 @@ export interface Conversation {
   interrupt(): Promise<void>;
   /** Resolves once every turn sent so far has finished. */
   settled(): Promise<void>;
+  /** Closes the session for good: no turn after this starts one. */
   close(): Promise<void>;
+}
+
+/** Runs work later: the server's on `setTimeout`, a test's when the test says. */
+export interface Timer {
+  /** Runs `work` once `ms` have passed, unless the function returned cancels it first. */
+  after(ms: number, work: () => void): () => void;
+}
+
+export const systemTimer: Timer = {
+  after(ms, work) {
+    const handle = setTimeout(work, ms);
+    // A session waiting to be closed does not keep the process running.
+    handle.unref();
+    return () => clearTimeout(handle);
+  },
+};
+
+/**
+ * How long a kept session may be idle before it is closed (task 2.15). The
+ * next turn then resumes it, which takes about half a second (task 2.14).
+ */
+export const IDLE_MS = 10 * 60_000;
+
+/**
+ * For a conversation whose sessions the backend keeps (task 2.15): how to
+ * resume one, and when one is idle.
+ */
+export interface Kept {
+  /** Resumes the kept session with this id; rejects with SessionNotFound if the backend has none. */
+  resume(id: string): Promise<TutorSession>;
+  /** A kept session to resume with the first turn, as a reopened unit's (task 2.14). */
+  resumeId?: string;
+  /**
+   * The session to resume could not be found, so a new one starts. Called
+   * before the turn's text is composed, so the text can tell the new session.
+   */
+  lost(): void;
+  /**
+   * Something outside the conversation will send it a turn, such as a
+   * grading whose grade goes to the tutor: the session is not idle.
+   */
+  waiting?(): boolean;
+  /** Closes idle sessions; the system's timer if not given. */
+  timer?: Timer;
 }
 
 /** The turn in progress: from when it starts, which is before it is sent. */
@@ -90,17 +145,23 @@ interface RunningTurn {
 }
 
 export function createConversation(options: {
-  /** Starts the tutor's session, when the first turn is sent. */
+  /** Starts a new session for the tutor. */
   start: () => Promise<TutorSession>;
-  /** A session already running, such as one resumed (task 2.14), in place of starting one. */
-  session?: TutorSession;
+  /** Given, sessions are kept: closed once idle for IDLE_MS, and resumed by the next turn. */
+  kept?: Kept;
   log: EventLog;
 }): Conversation {
-  const { log } = options;
-  let session: Promise<TutorSession> | undefined =
-    options.session === undefined
-      ? undefined
-      : Promise.resolve(options.session);
+  const { log, kept } = options;
+  const timer = kept?.timer ?? systemTimer;
+  /** The session running or starting: none before the first turn, or once closed for being idle. */
+  let session: Promise<TutorSession> | undefined;
+  /** The kept session to resume when none is running. */
+  let resumeId = kept?.resumeId;
+  let begun = resumeId !== undefined;
+  /** The closing of the session last closed for being idle, which a resume waits for. */
+  let closing: Promise<void> = Promise.resolve();
+  let cancelIdle: (() => void) | undefined;
+  let closed = false;
   let running: RunningTurn | undefined;
   let turnsWaiting = 0;
   let queue: Promise<void> = Promise.resolve();
@@ -121,7 +182,66 @@ export function createConversation(options: {
         console.error("A chat's end-of-turn work failed:", error);
       }
       turnsWaiting -= 1;
+      idleFromNow();
     }
+  }
+
+  /** The session for the turn about to be sent: the one running, or one started or resumed now. */
+  function tutorSession(): Promise<TutorSession> {
+    if (session !== undefined) return session;
+    const opening = open();
+    session = opening;
+    opening.then(
+      (started) => {
+        if (kept !== undefined) resumeId = started.backendSessionId;
+      },
+      () => {
+        // The next turn tries again.
+        if (session === opening) session = undefined;
+      },
+    );
+    return opening;
+  }
+
+  async function open(): Promise<TutorSession> {
+    if (closed) throw new Error("The chat is closed.");
+    // An idle session is closed before it is resumed.
+    await closing;
+    if (kept === undefined || resumeId === undefined) return options.start();
+    try {
+      return await kept.resume(resumeId);
+    } catch (error) {
+      if (!(error instanceof SessionNotFound)) throw error;
+      resumeId = undefined;
+      kept.lost();
+      return options.start();
+    }
+  }
+
+  /** Closes a kept session once it has been idle for IDLE_MS from now. */
+  function idleFromNow(): void {
+    cancelIdle?.();
+    cancelIdle = undefined;
+    if (kept === undefined || closed || session === undefined) return;
+    cancelIdle = timer.after(IDLE_MS, closeIdle);
+  }
+
+  function closeIdle(): void {
+    cancelIdle = undefined;
+    if (closed || session === undefined) return;
+    // Never while a turn is queued or running; its end counts again.
+    if (turnsWaiting > 0) return;
+    if (kept?.waiting?.() === true) {
+      idleFromNow();
+      return;
+    }
+    const idle = session;
+    session = undefined;
+    closing = idle
+      .then((tutor) => tutor.close())
+      .catch((error: unknown) => {
+        console.error("An idle tutor session could not be closed:", error);
+      });
   }
 
   /** Sends the turn and writes the reply into the log, to its turn_end. */
@@ -137,8 +257,7 @@ export function createConversation(options: {
       return "interrupted";
     };
     try {
-      if (session === undefined) throw new Error("The chat has not started.");
-      const tutor = await session;
+      const tutor = await tutorSession();
       // Checked before composing, which can have effects (help is noted
       // then), and again after, since composing can wait.
       if (current.stopped) return stoppedBeforeSending();
@@ -170,13 +289,11 @@ export function createConversation(options: {
   }
 
   return {
-    started: () => session !== undefined,
+    started: () => begun,
     send(turn) {
-      if (session === undefined) {
-        session = options.start();
-        // A failed start is reported by the first turn.
-        session.catch(() => {});
-      }
+      begun = true;
+      cancelIdle?.();
+      cancelIdle = undefined;
       turnsWaiting += 1;
       const queued = typeof turn === "string" ? { text: turn } : turn;
       queue = queue.then(() => runTurn(queued));
@@ -190,7 +307,15 @@ export function createConversation(options: {
     },
     settled: () => queue,
     async close() {
-      if (session !== undefined) await (await session).close();
+      closed = true;
+      cancelIdle?.();
+      cancelIdle = undefined;
+      const last = session;
+      session = undefined;
+      await closing;
+      // A session that failed to start has nothing to close.
+      const tutor = await last?.catch(() => undefined);
+      await tutor?.close();
     },
   };
 }

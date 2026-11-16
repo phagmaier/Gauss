@@ -141,7 +141,11 @@ export function Intake(props: { intakeId: string }) {
                 </div>
               )
             ) : (
-              <ItemView key={item.key} item={item} />
+              <ItemView
+                key={item.key}
+                item={item}
+                proposed={timeline.latestRevision > 0}
+              />
             ),
           )}
           {timeline.busy && !timeline.tutorOpen ? (
@@ -298,7 +302,11 @@ function ProposalCard(props: {
   );
 }
 
-function ItemView(props: { item: Exclude<Item, Proposal> }) {
+function ItemView(props: {
+  item: Exclude<Item, Proposal>;
+  /** A curriculum has been proposed. */
+  proposed: boolean;
+}) {
   const { item } = props;
   switch (item.kind) {
     case "learner":
@@ -311,6 +319,17 @@ function ItemView(props: { item: Exclude<Item, Proposal> }) {
       );
     case "note":
       return <p className="ph-note">{item.text}</p>;
+    // The intake's session could not be resumed after an idle close (task 2.15).
+    case "fresh":
+      return (
+        <p className="ph-note">
+          The earlier conversation could not be resumed, so the tutor started a
+          new one.{" "}
+          {props.proposed
+            ? "It has the latest proposal, but not the conversation above."
+            : "It has not seen the conversation above."}
+        </p>
+      );
     // A unit chat's items: the intake has none of them.
     case "question":
     case "phase":

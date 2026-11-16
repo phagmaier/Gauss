@@ -3,9 +3,10 @@
 // session: each engine turn is pushed onto its input stream, and the turn's
 // messages are read until its `result`.
 //
-// A session given a working directory, a unit's tutor, is kept by the SDK
-// and can be resumed by its id (task 2.14); its system prompt is sent afresh
-// with every request, so a resumed session gets the current one.
+// A session given a working directory, a unit's tutor or an intake, is kept
+// by the SDK and can be resumed by its id (tasks 2.14 and 2.15); its system
+// prompt is sent afresh with every request, so a resumed session gets the
+// current one.
 //
 // A one-shot request (the grader, task 2.8) is a `query()` of its own, with
 // the SDK's structured output: the model's reply comes back as JSON in the
@@ -17,6 +18,7 @@
 import { randomUUID } from "node:crypto";
 import {
   createSdkMcpServer,
+  getSessionInfo,
   type HookCallback,
   type Options,
   query,
@@ -63,6 +65,9 @@ export function createClaudeBackend(
 ): TutorBackend {
   return {
     startSession: (options) => startSession(options, backendOptions),
+    // Reads the one session file, with no process: 5 to 7 ms (task 2.14).
+    hasSession: async (id, cwd) =>
+      (await getSessionInfo(id, { dir: cwd })) !== undefined,
     oneShot: (request) => oneShot(request, backendOptions),
   };
 }

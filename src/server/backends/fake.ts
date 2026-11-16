@@ -9,7 +9,8 @@
 //
 // A session started with a working directory is kept, as the SDK keeps it
 // on disk, and can be resumed by its id; resuming an id that was not kept
-// fails with SessionNotFound (task 2.14). Backends given one set of kept ids
+// fails with SessionNotFound (task 2.14), and `hasSession` says whether an
+// id is kept, whatever the folder (task 2.15). Backends given one set of kept ids
 // resume each other's sessions, as a server does after a restart. The
 // script goes on across a resume: the fake has no conversation to carry.
 
@@ -209,6 +210,7 @@ export function createFakeBackend(
     closed: closedIds,
     oneShots,
     startSession,
+    hasSession: async (id) => kept.has(id),
     oneShot,
   };
 }

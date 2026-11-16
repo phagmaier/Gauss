@@ -305,15 +305,9 @@ test("planning shows while the unit is planned; a failure is a note, and opening
   ]);
   expect(failed.planning).toBe(false);
   expect(failed.failed).toBe("The unit could not be planned.");
-  expect(failed.resumeFailed).toBe(false);
   expect(failed.items).toEqual([
     { kind: "note", key: 1, text: "The unit could not be planned." },
   ]);
-  // A failure to resume the tutor's conversation can be started fresh from.
-  expect(
-    play([{ type: "unit_failed", error: "No answer.", resumeFailed: true }])
-      .resumeFailed,
-  ).toBe(true);
 
   const again = play([
     { type: "unit_planning" },
@@ -710,13 +704,11 @@ test("a fresh start after a unit failed to open takes that session's marker and 
     began(MONDAY),
     { type: "unit_plan", plan: PLAN },
     { type: "phase", segment: 0, phase: "discuss" },
-    // The server restarted, and resuming the tutor's session failed twice.
+    // The server restarted, and the unit's record could not be read twice;
+    // the third opening found the tutor's session gone.
     began(TUESDAY),
-    { type: "unit_plan", plan: PLAN },
-    { type: "unit_failed", error: "No answer.", resumeFailed: true },
-    { type: "unit_plan", plan: PLAN },
-    { type: "unit_failed", error: "No answer.", resumeFailed: true },
-    // The learner started fresh without it.
+    { type: "unit_failed", error: "state.json could not be read." },
+    { type: "unit_failed", error: "state.json could not be read." },
     { type: "unit_plan", plan: PLAN },
     { type: "fresh_start", reason: "not-resumed" },
     { type: "phase", segment: 0, phase: "discuss" },
@@ -726,4 +718,45 @@ test("a fresh start after a unit failed to open takes that session's marker and 
   expect(
     conversations(state.items).map((part) => part.items.map((i) => i.kind)),
   ).toEqual([["phase"], ["session", "note", "note", "fresh"]]);
+});
+
+test("a conversation found lost at a turn begins with the message that turn sent, which the new tutor received, and with the session that message began", () => {
+  const state = play([
+    began(MONDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Show it with gears." },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Gears turn gears." },
+    { type: "turn_end", outcome: "done" },
+    // The tutor's session was closed while idle, and could not be resumed.
+    { type: "learner", text: "And with pulleys?" },
+    { type: "turn_start" },
+    { type: "fresh_start", reason: "not-resumed" },
+    { type: "tutor_text", text: "Pulleys, from the start." },
+    { type: "turn_end", outcome: "done" },
+    // The same an hour later, when the message begins a sitting.
+    began(TUESDAY),
+    { type: "learner", text: "And with levers?" },
+    { type: "turn_start" },
+    { type: "fresh_start", reason: "not-resumed" },
+  ]);
+
+  expect(
+    conversations(state.items).map((part) => part.items.map((i) => i.kind)),
+  ).toEqual([
+    ["phase", "learner", "tutor"],
+    ["learner", "fresh", "tutor"],
+    ["session", "learner", "fresh"],
+  ]);
+  // The learner's own Start fresh leaves the message before it where it was.
+  const own = play([
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Hello?" },
+    { type: "fresh_start", reason: "learner" },
+  ]);
+  expect(
+    conversations(own.items).map((part) => part.items.map((i) => i.kind)),
+  ).toEqual([["phase", "learner"], ["fresh"]]);
 });

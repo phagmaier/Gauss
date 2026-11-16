@@ -1,11 +1,13 @@
 import { expect, test, vi } from "vitest";
-import type { TutorBackend } from "../backends/backend.ts";
+import { SessionNotFound, type TutorBackend } from "../backends/backend.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import {
   createConversation,
   createEventLog,
   type EventLog,
+  IDLE_MS,
 } from "./conversation.ts";
+import { createFakeTimer } from "./fake-timer.ts";
 
 function setUp(script: FakeTurn[]) {
   return setUpWith(createFakeBackend(script));
@@ -150,10 +152,15 @@ test("Stop while the session is starting stops the first turn before its text is
   ]);
 });
 
-test("a backend that fails to start is reported to the page as an error", async () => {
+test("a backend that fails to start is reported to the page as an error, and the next turn tries again", async () => {
+  const fake = createFakeBackend([[{ text: "Hello." }]]);
+  let failing = true;
   const { log, tutor } = setUpWith({
-    startSession: () => Promise.reject(new Error("Not logged in.")),
-    oneShot: () => Promise.reject(new Error("Not used here.")),
+    ...fake,
+    startSession: (options) =>
+      failing
+        ? Promise.reject(new Error("Not logged in."))
+        : fake.startSession(options),
   });
 
   tutor.send("first");
@@ -164,6 +171,13 @@ test("a backend that fails to start is reported to the page as an error", async 
     { type: "turn_end", outcome: "error", error: "Not logged in." },
   ]);
   expect(tutor.busy()).toBe(false);
+
+  failing = false;
+  tutor.send("second");
+  await tutor.settled();
+
+  expect(fake.received.map((t) => t.text)).toEqual(["second"]);
+  expect(log.events().at(-1)).toEqual({ type: "turn_end", outcome: "done" });
 });
 
 test("a failing listener does not stop the conversation", async () => {
@@ -239,4 +253,192 @@ test("end-of-turn work hears how the turn ended, and its failure does not stop t
   expect(outcomes).toEqual(["interrupted"]);
   expect(backend.received.map((t) => t.text)).toEqual(["first", "second"]);
   expect(tutor.busy()).toBe(false);
+});
+
+// --- Task 2.15: idle sessions closed, and resumed by the next turn ------------
+
+const FOLDER = "/courses/test";
+
+/** A conversation whose sessions the fake backend keeps, on a fake timer. */
+function setUpKept(
+  backend: TutorBackend,
+  given: { resumeId?: string; waiting?: () => boolean } = {},
+) {
+  const log = createEventLog();
+  const timer = createFakeTimer();
+  const options = { systemPrompt: "You are a test tutor.", tools: [] };
+  let lost = 0;
+  const tutor = createConversation({
+    start: () => backend.startSession({ ...options, cwd: FOLDER }),
+    kept: {
+      resume: (id) =>
+        backend.startSession({ ...options, cwd: FOLDER, resumeId: id }),
+      ...(given.resumeId === undefined ? {} : { resumeId: given.resumeId }),
+      lost: () => {
+        lost += 1;
+      },
+      ...(given.waiting === undefined ? {} : { waiting: given.waiting }),
+      timer,
+    },
+    log,
+  });
+  return { log, timer, tutor, lost: () => lost };
+}
+
+/** Lets the closing of a session, which the timer starts, run. */
+const closing = () => new Promise((resolve) => setImmediate(resolve));
+
+test("a kept session is closed once it has been idle for IDLE_MS, and the next turn resumes it by its id, in its folder", async () => {
+  const backend = createFakeBackend([[{ text: "One." }], [{ text: "Two." }]]);
+  const { log, timer, tutor } = setUpKept(backend);
+
+  tutor.send("first");
+  await tutor.settled();
+  const [id] = backend.ids;
+  timer.advance(IDLE_MS - 1);
+  await closing();
+  expect(backend.closed).toEqual([]);
+  timer.advance(1);
+  await closing();
+  expect(backend.closed).toEqual([id]);
+
+  tutor.send("second");
+  await tutor.settled();
+
+  expect(backend.sessions).toEqual([
+    { systemPrompt: "You are a test tutor.", tools: [], cwd: FOLDER },
+    {
+      systemPrompt: "You are a test tutor.",
+      tools: [],
+      cwd: FOLDER,
+      resumeId: id,
+    },
+  ]);
+  expect(backend.ids).toEqual([id, id]);
+  expect(backend.received.map((t) => t.text)).toEqual(["first", "second"]);
+  expect(log.events().slice(3)).toEqual([
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Two." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+
+  // Closed again once idle again, and for good by close(), after which no
+  // turn starts a session.
+  timer.advance(IDLE_MS);
+  await closing();
+  expect(backend.closed).toEqual([id, id]);
+  await tutor.close();
+  tutor.send("third");
+  await tutor.settled();
+  expect(backend.sessions).toHaveLength(2);
+  expect(log.events().at(-1)).toEqual({
+    type: "turn_end",
+    outcome: "error",
+    error: "The chat is closed.",
+  });
+});
+
+test("a session is never closed while a turn is queued or running: the idle time counts from the end of the last turn", async () => {
+  const backend = createFakeBackend([
+    [{ text: "One." }],
+    [{ text: "Two." }],
+    [{ text: "A long lecture" }, { hold: true }],
+  ]);
+  const { log, timer, tutor } = setUpKept(backend);
+
+  tutor.send("first");
+  await tutor.settled();
+  timer.advance(IDLE_MS - 1);
+  // Queued behind a turn that runs, then running, for longer than IDLE_MS.
+  const lecturing = new Promise<void>((resolve) => {
+    const stop = log.subscribe((event) => {
+      if (event.type === "tutor_text" && event.text === "A long lecture") {
+        stop();
+        resolve();
+      }
+    });
+  });
+  tutor.send("second");
+  tutor.send("third");
+  await lecturing;
+  timer.advance(3 * IDLE_MS);
+  await closing();
+  expect(backend.closed).toEqual([]);
+  expect(tutor.busy()).toBe(true);
+
+  await tutor.interrupt();
+  await tutor.settled();
+  timer.advance(IDLE_MS - 1);
+  await closing();
+  expect(backend.closed).toEqual([]);
+  timer.advance(1);
+  await closing();
+  expect(backend.closed).toEqual(backend.ids);
+  expect(backend.ids).toHaveLength(1);
+});
+
+test("a session is not closed while something outside the conversation will send it a turn", async () => {
+  const backend = createFakeBackend([[{ text: "One." }]]);
+  let grading = true;
+  const { timer, tutor } = setUpKept(backend, { waiting: () => grading });
+
+  tutor.send("first");
+  await tutor.settled();
+  timer.advance(5 * IDLE_MS);
+  await closing();
+  expect(backend.closed).toEqual([]);
+
+  grading = false;
+  timer.advance(IDLE_MS);
+  await closing();
+  expect(backend.closed).toEqual(backend.ids);
+});
+
+test("a resume that fails is an error and is tried again by the next turn; a session the backend cannot find gives way to a new one, after lost()", async () => {
+  const fake = createFakeBackend([[{ text: "New here." }]], [], {
+    kept: new Set(["kept-1"]),
+  });
+  let failures = 1;
+  const resumes: string[] = [];
+  const { log, tutor, lost } = setUpKept(
+    {
+      ...fake,
+      async startSession(options) {
+        if (options.resumeId !== undefined) {
+          resumes.push(options.resumeId);
+          if (failures > 0) {
+            failures -= 1;
+            throw new Error("Claude Code could not start.");
+          }
+          throw new SessionNotFound(options.resumeId);
+        }
+        return fake.startSession(options);
+      },
+    },
+    { resumeId: "kept-1" },
+  );
+  expect(tutor.started()).toBe(true);
+
+  tutor.send("first");
+  await tutor.settled();
+  expect(log.events()).toEqual([
+    { type: "turn_start" },
+    {
+      type: "turn_end",
+      outcome: "error",
+      error: "Claude Code could not start.",
+    },
+  ]);
+  expect(lost()).toBe(0);
+
+  tutor.send("second");
+  await tutor.settled();
+
+  expect(resumes).toEqual(["kept-1", "kept-1"]);
+  expect(lost()).toBe(1);
+  expect(fake.sessions).toEqual([
+    { systemPrompt: "You are a test tutor.", tools: [], cwd: FOLDER },
+  ]);
+  expect(fake.received.map((t) => t.text)).toEqual(["second"]);
+  expect(log.events().at(-1)).toEqual({ type: "turn_end", outcome: "done" });
 });

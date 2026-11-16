@@ -11,6 +11,11 @@
 // conversation are in memory, so a restart loses them; the stored draft can
 // then be reopened for review in a new intake, which starts from it as
 // proposal 1 (task 1.6).
+//
+// The tutor's session is kept, in the intakes' folder, so that it can be
+// closed while idle and resumed with the next message (task 2.15). One that
+// cannot be found then gives way to a new session, which is given the latest
+// proposal, as a reopened draft's is.
 
 import type { Slug } from "../../shared/course.ts";
 import type { ShownProposal } from "../../shared/curriculum.ts";
@@ -22,6 +27,7 @@ import {
   type ChatResult,
   createConversation,
   createEventLog,
+  type Timer,
 } from "./conversation.ts";
 
 export interface Intake {
@@ -61,14 +67,18 @@ export function createIntake(options: {
   dataRoot: DataRoot;
   /** Starts the intake from this draft, as its proposal 1. */
   draft?: StoredDraft;
+  /** Closes the idle tutor session; the system's timer if not given. */
+  timer?: Timer;
 }): Intake {
-  const { dataRoot, draft } = options;
+  const { backend, systemPrompt, dataRoot, draft } = options;
   const log = createEventLog();
   let courseId: Slug | undefined;
   let latest = 0;
   /** The latest proposal, as its card shows it; approval checks the record against it. */
   let shown: ShownProposal | undefined;
   let approved = false;
+  /** The session to resume was lost: the next turn tells the new one where the intake stands. */
+  let lost = false;
 
   const proposeCurriculum = proposeCurriculumTool({
     async propose(proposal) {
@@ -93,12 +103,29 @@ export function createIntake(options: {
     },
   });
 
+  const tools = [proposeCurriculum];
   const tutor = createConversation({
-    start: () =>
-      options.backend.startSession({
-        systemPrompt: options.systemPrompt,
-        tools: [proposeCurriculum],
+    start: async () =>
+      backend.startSession({
+        systemPrompt,
+        tools,
+        cwd: await dataRoot.intakeFolder(),
+        title: "Gauss: new course",
       }),
+    kept: {
+      resume: async (id) =>
+        backend.startSession({
+          systemPrompt,
+          tools,
+          cwd: await dataRoot.intakeFolder(),
+          resumeId: id,
+        }),
+      lost() {
+        lost = true;
+        log.emit({ type: "fresh_start", reason: "not-resumed" });
+      },
+      ...(options.timer === undefined ? {} : { timer: options.timer }),
+    },
     log,
   });
 
@@ -124,13 +151,24 @@ export function createIntake(options: {
       if (approved) {
         return { ok: false, status: 409, error: INTAKE_OVER };
       }
-      const turn = tutor.started()
-        ? messageTurn(text, latest)
-        : draft === undefined
-          ? openingTurn(text)
-          : reviewTurn(text, draft.proposal);
+      const first = !tutor.started();
+      const about = latest;
       log.emit({ type: "learner", text });
-      tutor.send(turn);
+      tutor.send({
+        // Composed when sent, since a lost session is found then.
+        text() {
+          if (lost) {
+            lost = false;
+            return shown === undefined
+              ? lostTurn(text)
+              : reviewTurn(text, shown, latest);
+          }
+          if (!first) return messageTurn(text, about);
+          return draft === undefined
+            ? openingTurn(text)
+            : reviewTurn(text, draft.proposal, 1);
+        },
+      });
       return { ok: true };
     },
     async approve(revision) {
@@ -207,6 +245,7 @@ export function createIntakes(options: {
   backend: TutorBackend;
   systemPrompt: string;
   dataRoot: DataRoot;
+  timer?: Timer;
 }): Intakes {
   const byId = new Map<string, Intake>();
   function keep(intake: Intake): Intake {
@@ -239,15 +278,30 @@ function openingTurn(text: string): string {
   );
 }
 
-function reviewTurn(text: string, draft: ShownProposal): string {
+/** The first turn of a session that takes over a proposal from a conversation lost. */
+function reviewTurn(
+  text: string,
+  draft: ShownProposal,
+  revision: number,
+): string {
   return (
-    "[The learner is reviewing proposal 1, a curriculum proposed in an " +
+    `[The learner is reviewing proposal ${revision}, a curriculum proposed in an ` +
     "earlier conversation that was not kept:\n" +
     `${JSON.stringify(draft)}\n` +
     "They have not approved it; their message follows. Allowed now: answer " +
     "them; if they ask for changes, call propose_curriculum with the whole " +
     "revised curriculum and its style note, keeping the ids of the units " +
     `you keep.]\n${text}`
+  );
+}
+
+/** The first turn of a session that takes over from a conversation lost before any proposal. */
+function lostTurn(text: string): string {
+  return (
+    "[This conversation is new: the one before it with the learner was " +
+    "lost, so you have not seen what they said before. Their message " +
+    "follows. Allowed now: reply, or propose a curriculum with " +
+    `propose_curriculum.]\n${text}`
   );
 }
 

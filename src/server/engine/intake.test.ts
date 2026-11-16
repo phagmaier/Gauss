@@ -1,10 +1,12 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { PageEvent } from "../../shared/events.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
+import { IDLE_MS } from "./conversation.ts";
+import { createFakeTimer } from "./fake-timer.ts";
 import { createIntake, createIntakes, type Intake } from "./intake.ts";
 
 // Lets a test make the disk refuse writes to one file, as a full disk would.
@@ -436,5 +438,134 @@ describe("a draft reopened for review, its first conversation lost in a restart"
     expect(intakes.get(first.id)).toBe(first);
     await first.approve(1);
     expect(intakes.review(DRAFT)).toBe(first);
+  });
+});
+
+describe("an intake left idle (task 2.15)", () => {
+  function setUpIdle(script: FakeTurn[], kept = new Set<string>()) {
+    const backend = createFakeBackend(script, [], { kept });
+    const timer = createFakeTimer();
+    const intake = createIntake({
+      backend,
+      systemPrompt: "You are a test planner.",
+      dataRoot: openDataRoot({ path: dir, now: () => new Date(APPROVED_AT) }),
+      timer,
+    });
+    return { backend, timer, intake };
+  }
+
+  /** Lets the closing of a session, which the timer starts, run. */
+  const closing = () => new Promise((resolve) => setImmediate(resolve));
+  const intakeFolder = () => join(dir, "intake");
+
+  test("has its session kept in the intakes' folder, closed once idle for IDLE_MS, resumed by the next message, and closed for good by approval", async () => {
+    const { backend, timer, intake } = setUpIdle([
+      [{ call: "propose_curriculum", input: FIRST }],
+      [{ call: "propose_curriculum", input: REVISED }],
+    ]);
+    intake.say(ASK);
+    await intake.settled();
+    const [id] = backend.ids;
+    expect(backend.sessions[0]).toMatchObject({
+      cwd: intakeFolder(),
+      title: "Gauss: new course",
+    });
+    expect((await stat(intakeFolder())).isDirectory()).toBe(true);
+
+    timer.advance(IDLE_MS - 1);
+    await closing();
+    expect(backend.closed).toEqual([]);
+    timer.advance(1);
+    await closing();
+    expect(backend.closed).toEqual([id]);
+
+    intake.say("Shorter, please.");
+    await intake.settled();
+
+    expect(backend.sessions).toHaveLength(2);
+    expect(backend.sessions[1]).toMatchObject({
+      cwd: intakeFolder(),
+      resumeId: id,
+    });
+    expect(backend.received[1]?.text).toMatch(
+      /^\[Message from the learner about proposal 1,/,
+    );
+    expect(proposals(intake).at(-1)).toMatchObject({ revision: 2 });
+
+    expect(await intake.approve(2)).toEqual({ ok: true });
+    expect(backend.closed).toEqual([id, id]);
+    timer.advance(IDLE_MS);
+    await closing();
+    expect(backend.closed).toEqual([id, id]);
+  });
+
+  test("whose session is then lost gives way to a new one, which is given the latest proposal, and the thread says so", async () => {
+    const kept = new Set<string>();
+    const { backend, timer, intake } = setUpIdle(
+      [
+        [{ call: "propose_curriculum", input: FIRST }],
+        [{ text: "The start is two units long." }],
+        [{ text: "Yes." }],
+      ],
+      kept,
+    );
+    intake.say(ASK);
+    await intake.settled();
+    const [lost] = backend.ids;
+    timer.advance(IDLE_MS);
+    await closing();
+    kept.delete(lost ?? "");
+
+    intake.say("Is the start too long?");
+    await intake.settled();
+
+    expect(intake.events().slice(-5)).toEqual([
+      { type: "learner", text: "Is the start too long?" },
+      { type: "turn_start" },
+      { type: "fresh_start", reason: "not-resumed" },
+      { type: "tutor_text", text: "The start is two units long." },
+      { type: "turn_end", outcome: "done" },
+    ]);
+    expect(backend.sessions.map((s) => s.resumeId)).toEqual([
+      undefined,
+      lost,
+      undefined,
+    ]);
+    const turn = backend.received[1]?.text ?? "";
+    expect(turn).toMatch(/^\[The learner is reviewing proposal 1,/);
+    expect(turn).toContain(FIRST.units[2]?.goal);
+    expect(turn).toContain(FIRST.style);
+    expect(turn.endsWith("]\nIs the start too long?")).toBe(true);
+
+    // Told once.
+    intake.say("Good.");
+    await intake.settled();
+    expect(backend.received[2]?.text).toMatch(
+      /^\[Message from the learner about proposal 1,/,
+    );
+  });
+
+  test("whose session is lost before any proposal has the new one told it has not seen the conversation", async () => {
+    const kept = new Set<string>();
+    const { backend, timer, intake } = setUpIdle(
+      [
+        [{ text: "What do you know already?" }],
+        [{ call: "propose_curriculum", input: FIRST }],
+      ],
+      kept,
+    );
+    intake.say(ASK);
+    await intake.settled();
+    timer.advance(IDLE_MS);
+    await closing();
+    kept.clear();
+
+    intake.say("Matrices, a little.");
+    await intake.settled();
+
+    expect(backend.received[1]?.text).toBe(
+      "[This conversation is new: the one before it with the learner was lost, so you have not seen what they said before. Their message follows. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nMatrices, a little.",
+    );
+    expect(proposals(intake)).toHaveLength(1);
   });
 });

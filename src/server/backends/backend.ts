@@ -9,8 +9,9 @@ export interface SessionOptions {
   /** The teaching tools this session may call. */
   tools: TeachingTool[];
   /**
-   * The folder the session works in: its course's. A session given one is
-   * kept, so it can be resumed by its id; one without is not kept.
+   * The folder the session works in: its course's, or for an intake the
+   * intakes' folder. A session given one is kept, so it can be resumed by
+   * its id; one without is not kept.
    */
   cwd?: string;
   /**
@@ -95,6 +96,11 @@ export interface TutorBackend {
    * resolves; one that cannot be found rejects with SessionNotFound.
    */
   startSession(options: SessionOptions): Promise<TutorSession>;
+  /**
+   * Whether the backend has the kept session with this id, kept in this
+   * folder, to resume. Found without starting it (task 2.15).
+   */
+  hasSession(id: string, cwd: string): Promise<boolean>;
   /** Never throws: a failed request, or a reply not in the schema's shape, is a failure. */
   oneShot<T>(request: OneShotRequest<T>): Promise<OneShotResult<T>>;
 }

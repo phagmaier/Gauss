@@ -278,7 +278,7 @@ test("a unit reopened after a restart resumes its scripted tutor; one whose sess
   await after.units.close();
 });
 
-test("a unit whose session is the script's broken one fails to open every time, until the learner starts fresh without it", async () => {
+test("a unit whose session is the script's broken one opens, and every message fails to resume it, until the learner starts fresh", async () => {
   const before = setUp();
   await approvedCourse(before.dataRoot);
   const first = await before.units.open(COURSE, "limits");
@@ -293,23 +293,32 @@ test("a unit whose session is the script's broken one fails to open every time, 
   });
 
   const after = setUp();
-  for (const _ of [1, 2]) {
-    const opened = await after.units.open(COURSE, "limits");
-    if (!opened.ok) throw new Error(opened.error);
-    await opened.chat.settled();
-    expect(opened.chat.events().at(-1)).toMatchObject({
-      type: "unit_failed",
-      resumeFailed: true,
-    });
-  }
-  const chat = after.units.get(COURSE, "limits");
-
-  expect(await chat?.startFresh()).toEqual({ ok: true });
-  await chat?.settled();
-  expect(chat?.events().at(-1)).toEqual({
+  const opened = await after.units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const { chat } = opened;
+  await chat.settled();
+  expect(chat.events().at(-1)).toEqual({
     type: "phase",
     segment: 0,
     phase: "discuss",
+  });
+  for (const text of ["Hello?", "Hello again?"]) {
+    chat.say(text);
+    await chat.settled();
+    expect(chat.events().at(-1)).toMatchObject({
+      type: "turn_end",
+      outcome: "error",
+      error: expect.stringMatching(
+        /^The conversation with the tutor could not be resumed: /,
+      ),
+    });
+  }
+
+  expect(await chat.startFresh()).toEqual({ ok: true });
+  await chat.settled();
+  expect(chat.events().at(-2)).toEqual({
+    type: "tutor_text",
+    text: '**Scripted fresh start.** Unit 1 of 2, "Limits"; segment 1 of 2, "The idea", on "limits-idea". Phase: discuss.',
   });
   await after.units.close();
 });

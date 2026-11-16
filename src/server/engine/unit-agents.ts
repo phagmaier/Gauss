@@ -7,8 +7,10 @@
 // The tutor's sessions run in the course's folder and are kept, so a unit
 // reopened after a restart resumes its tutor (task 2.14). A new session's id
 // is handed to the chat to keep before the session's first turn is sent.
-// Closing idle sessions (2.15) belongs here too: this is where it is known
-// whether a turn is queued or a grading still running.
+// A session is closed once it has been idle for a while, with no turn queued
+// or running and no grading whose grade it will be sent, and resumed with
+// the next turn (task 2.15). A reopened unit resumes its tutor the same way:
+// opening it only asks the backend whether the session is there.
 
 import type {
   Verdict,
@@ -25,6 +27,7 @@ import {
   type Conversation,
   createConversation,
   type EventLog,
+  type Timer,
   type Turn,
 } from "./conversation.ts";
 import type { Grader } from "./grading.ts";
@@ -42,9 +45,10 @@ export interface Grading {
 
 export interface UnitAgents {
   /**
-   * Resumes the tutor's kept session with this id, before any turn is sent.
-   * False if the backend cannot find it: the first turn then starts a new
-   * session. Throws if resuming fails another way.
+   * Has the first turn resume the tutor's kept session with this id, if the
+   * backend has it; asked before any turn is sent, and without starting the
+   * session. False if the backend cannot find it: the first turn then starts
+   * a new session.
    */
   resume(id: string): Promise<boolean>;
   /**
@@ -93,10 +97,17 @@ export function createUnitAgents(options: {
    * A failure is logged, and the session goes on.
    */
   keep: (id: string) => Promise<void>;
+  /**
+   * A turn found that the session to resume is gone, so a new one starts.
+   * Called before the turn's text is composed.
+   */
+  lost: () => void;
   grader: Grader;
   log: EventLog;
   /** The chat's queue. */
   exclusive: <T>(work: () => Promise<T>) => Promise<T>;
+  /** Closes idle sessions; the system's timer if not given. */
+  timer?: Timer;
 }): UnitAgents {
   const { backend, systemPrompt, tools, cwd, grader, log, exclusive } = options;
 
@@ -116,37 +127,65 @@ export function createUnitAgents(options: {
     return session;
   }
 
-  let tutor: Conversation = createConversation({ start: startNew, log });
+  /** The tutor's conversation, which resumes the kept session with this id if given. */
+  function conversation(resumeId?: string): Conversation {
+    return createConversation({
+      start: startNew,
+      kept: {
+        async resume(id) {
+          try {
+            return await backend.startSession({
+              systemPrompt,
+              tools,
+              cwd,
+              resumeId: id,
+            });
+          } catch (error) {
+            if (error instanceof SessionNotFound) throw error;
+            const message =
+              error instanceof Error ? error.message : String(error);
+            throw new Error(
+              `The conversation with the tutor could not be resumed: ${message.replace(/\.$/, "")}. Sending again tries again, and "Start fresh" starts a new one.`,
+            );
+          }
+        },
+        ...(resumeId === undefined ? {} : { resumeId }),
+        lost: options.lost,
+        // The grade is sent to the tutor.
+        waiting: () => running !== undefined,
+        ...(options.timer === undefined ? {} : { timer: options.timer }),
+      },
+      log,
+    });
+  }
+
+  /** The grading running. */
+  let running: { stop: AbortController; done: Promise<void> } | undefined;
+  let tutor = conversation();
   /** Sessions being closed after a fresh start. */
   const closing: Promise<void>[] = [];
   let closed = false;
-  let running: { stop: AbortController; done: Promise<void> } | undefined;
 
   return {
     async resume(id) {
-      let session: TutorSession;
+      let found: boolean;
       try {
-        session = await backend.startSession({
-          systemPrompt,
-          tools,
-          cwd,
-          resumeId: id,
-        });
+        found = await backend.hasSession(id, cwd);
       } catch (error) {
-        if (error instanceof SessionNotFound) return false;
-        throw error;
+        // The turn that resumes it finds out whether it is there.
+        console.error(
+          "The tutor's kept session could not be looked up:",
+          error,
+        );
+        found = true;
       }
-      if (closed) {
-        await session.close();
-        return true;
-      }
-      tutor = createConversation({ start: startNew, session, log });
-      return true;
+      if (found && !closed) tutor = conversation(id);
+      return found;
     },
 
     startFresh() {
       const old = tutor;
-      tutor = createConversation({ start: startNew, log });
+      tutor = conversation();
       closing.push(
         old.close().catch((error: unknown) => {
           console.error("The tutor's session could not be closed:", error);

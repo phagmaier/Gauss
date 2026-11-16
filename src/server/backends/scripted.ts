@@ -24,12 +24,14 @@
 // A written answer is graded correct unless it has the word "wrong" in it;
 // "/fail" in it fails the grading.
 //
-// Every tutor session it starts is kept, across restarts too, so a unit
-// reopened after a restart resumes its tutor (task 2.14). A session id it
+// Every session it starts in a folder (a unit's tutor, an intake) is kept,
+// across restarts too, so a unit reopened after a restart resumes its tutor
+// (task 2.14), and an idle session closed is resumed (task 2.15). A session id it
 // did not make cannot be found: put another in a unit's `tutorSessionId` in
 // state.json, with the server stopped, to see a unit start fresh because its
 // conversation could not be resumed. Put BROKEN_SESSION there to see resuming
-// fail another way, which fails the unit's opening every time it is tried.
+// fail another way: the unit opens, and every message fails to resume its
+// tutor, until the learner starts fresh.
 
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";

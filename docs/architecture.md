@@ -74,6 +74,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
 ```
 <data root>/
   profile.md                      learner profile; one-line index of finished courses
+  intake/                         where intakes' sessions run, so they are kept (task 2.15); Gauss writes nothing in it
   courses/<course-id>/
     course.json                   title, backend, settings (web search on/off), dates, when each unit was last opened
     style.md                      per-course teaching style note, proposed and approved with the curriculum
@@ -145,8 +146,10 @@ derived status.
   that backend session by its id, with the course folder as working directory
   (task 2.14): the id is kept in the unit's position in `state.json`, written
   when the session starts and before its first turn, and carried by every
-  position written after. The unit chat resumes it as soon as the unit opens,
-  before anything is sent, so whether it could be resumed is known at once.
+  position written after. Opening the unit asks the backend whether it has
+  the session, without starting it (`hasSession`), so whether it can be
+  resumed is known at once and a unit opened only to look at it holds no
+  process; the first turn then resumes it (task 2.15).
   The Claude backend sends the system prompt afresh with every request
   (`snapshot: false`), so a resumed session gets the current prompt, a
   revised `prompts/tutor.md` included; without that, a resumed session
@@ -173,13 +176,20 @@ derived status.
   writes. The fallback sends nothing until the learner acts. A session the
   backend cannot find is the only failure that falls back (an unknown id,
   or one Claude Code's sweep deleted after its 30 days, fails before any
-  model request); resuming that fails another way fails the unit's opening,
-  and opening it again tries again, so a passing fault never costs the
-  conversation. So that a fault which stays cannot keep the unit shut, that
-  failure says what it is (`unit_failed` with `resumeFailed`), and the
-  page then offers "Start fresh instead" beside "Try again": `start-fresh`
-  on such a unit takes the id out of the position and opens the unit as one
-  whose session is lost, with the fallback's marker and no turn sent.
+  model request); resuming that fails another way fails that turn, with the
+  reason, and the next turn tries again, so a passing fault never costs the
+  conversation, and the learner's Start fresh leaves a fault that stays
+  (task 2.15).
+- **Idle sessions** (task 2.15, `src/server/engine/conversation.ts`). Each
+  chat's session is a Claude Code process. A kept session, a unit's tutor's
+  or an intake's, is closed once it has been idle for ten minutes
+  (`IDLE_MS`): no turn queued or running, and no grading whose grade will be
+  sent to it. The next turn resumes it by its id, which costs about half a
+  second. A session that fails to start or to resume fails its turn, and the
+  next turn tries again. One the backend cannot find when a turn resumes it
+  gives way to a new one, as at the opening, but the marker then comes
+  after the learner's message, which the new session receives with the
+  note; the page puts that message in the new conversation.
 - `state.json` is written after every phase change and every answer, so closing
   the tab loses nothing.
 - The intake chat (task 1.4, `src/server/engine/intake.ts`) is the one chat
@@ -192,8 +202,12 @@ derived status.
   Approval passes the proposal the card shows, and the record refuses it
   unless the title, units and note on disk are that proposal, so a save
   that failed partway is never approved unseen.
-  Before the first proposal nothing is stored, and the conversation is not
-  resumed. A draft whose intake was lost in a restart is reviewed in a new
+  Before the first proposal nothing is stored. The intake's session is kept,
+  in the data root's `intake/` folder, only so that it can be closed while
+  idle and resumed (task 2.15): a restart still loses the intake. A session
+  lost then gives way to a new one, given the latest proposal as a reopened
+  draft's is, or told it has not seen the conversation if nothing was
+  proposed. A draft whose intake was lost in a restart is reviewed in a new
   intake that starts from the stored draft as proposal 1, its earlier
   conversation gone; the tutor gets the draft, with its style note, in the
   first turn (task 1.6). A draft proposed before task 2.10 has no note; a
@@ -414,6 +428,7 @@ reference: `src/server/backends/backend.ts` and `src/server/tools/tool.ts`.
 ```ts
 interface TutorBackend {
   startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools, cwd (kept there), resumeId, title; SessionNotFound
+  hasSession(id: string, cwd: string): Promise<boolean>;  // a kept session is there to resume, found without starting it (task 2.15)
   oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal; the grader (task 2.8), later notes
 }
 interface TutorSession {
@@ -446,13 +461,15 @@ type ToolResult =
   for as JSON in the schema's shape and checked against the zod schema
   (`checkReply` in `backend.ts`), so a reply not in shape is a failure. It
   never throws.
-- A session given a working directory (`cwd`, the course's folder) is kept
-  and can be resumed by its id (`resumeId`, in the same folder); one
-  without, such as a unit's planning or an intake, is not kept. A resumed
-  session is ready when `startSession` resolves; one the backend cannot
-  find rejects with `SessionNotFound`, its own failure, which the engine
-  answers by starting fresh (task 2.14). A new kept session is given a
-  `title` (the course and the unit), so the backend makes none up.
+- A session given a working directory (`cwd`: the course's folder, or the
+  intakes' folder) is kept and can be resumed by its id (`resumeId`, in the
+  same folder); one without, such as a unit's planning, is not kept. A
+  resumed session is ready when `startSession` resolves; one the backend
+  cannot find rejects with `SessionNotFound`, its own failure, which the
+  engine answers by starting fresh (task 2.14). `hasSession` says whether a
+  kept session is there without starting it, so a unit's opening needs no
+  process (task 2.15). A new kept session is given a `title` (the course and
+  the unit, or "Gauss: new course"), so the backend makes none up.
 - Still to add, in the stage that first needs it: built-in tools and their
   confinement to the course folder (stage 3, when the tutor first writes
   and runs files).
@@ -546,6 +563,11 @@ Observed in stage 0 (details in `decisions.md`):
   the first message; a resumed session keeps the title it has. A session
   whose process was stopped while it wrote a reply resumes: its file ends
   with the message it was answering, and the next turn goes on from there.
+  `getSessionInfo(id, { dir })` reads one kept session's file with no
+  process, in 4 to 7 ms; it is undefined for an unknown id, for a session
+  kept in another folder and for a folder that does not exist, and did not
+  throw for any of them (tasks 2.14 and 2.15). The Claude backend's
+  `hasSession` is that call.
 - Claude Code's sweep deletes a kept session once its file is older than
   `cleanupPeriodDays` (30 by default, from the learner's own settings). A
   session file backdated 31 days was deleted by a Claude Code process within
@@ -723,7 +745,8 @@ settled look.
 - **Automated (Vitest)**: status derivation from evidence, phase rules and
   rejected transitions, gate objective selection, quote verification, grading
   dispatch, record read/write, and engine flows driven by the fake backend.
-  Expected results come from worked examples written by hand.
+  Expected results come from worked examples written by hand. Idle closing
+  runs on a fake timer (`engine/fake-timer.ts`), which the test moves on.
 - **Python helpers (pytest via uv)**: known equivalent and non-equivalent
   expression pairs; conversion of small fixture files.
 - **Browser checks with no model**: `pnpm dev:fake` runs the server on the

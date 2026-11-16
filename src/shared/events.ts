@@ -33,11 +33,13 @@ export const PageEvent = z.discriminatedUnion("type", [
    */
   z.object({ type: z.literal("session"), startedAt: Timestamp }),
   /**
-   * A unit chat: the tutor's conversation was replaced by a new one, which
-   * has the learner's progress from the record and not the conversation
-   * before (task 2.14). "learner": the learner chose to start fresh.
-   * "not-resumed": the unit was reopened and its earlier conversation could
-   * not be resumed.
+   * The tutor's conversation was replaced by a new one, which has the
+   * learner's progress from the record and not the conversation before
+   * (task 2.14). "learner": the learner chose to start fresh, in a unit.
+   * "not-resumed": the earlier conversation could not be found to resume,
+   * when a unit was reopened, or at a turn after its session was closed for
+   * being idle (task 2.15); a turn's comes after the message it sends, and
+   * an intake's new conversation has the latest proposal.
    */
   z.object({
     type: z.literal("fresh_start"),
@@ -112,15 +114,10 @@ export const PageEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("unit_planning") }),
   /**
    * The unit could not be opened: it could not be planned, or its record
-   * could not be read. Opening it again tries again. `resumeFailed`: what
-   * failed was resuming the tutor's conversation, in a way that may pass
-   * (task 2.14), so the learner can also start fresh without it.
+   * could not be read. Opening it again tries again. Transcripts from task
+   * 2.14 can have `resumeFailed` on it, which is read and dropped.
    */
-  z.object({
-    type: z.literal("unit_failed"),
-    error: z.string(),
-    resumeFailed: z.literal(true).optional(),
-  }),
+  z.object({ type: z.literal("unit_failed"), error: z.string() }),
   /** The unit's plan, for the outline: its objectives and segments. */
   z.object({ type: z.literal("unit_plan"), plan: Plan }),
   /**

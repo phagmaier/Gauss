@@ -28,11 +28,13 @@
 // transcripts too (transcript.ts, task 2.13), so a reopened unit shows the
 // thread of its earlier sessions. The tutor's conversation survives a
 // restart too (task 2.14): its session's id is kept in the unit's position,
-// and a reopened unit resumes it. If it cannot be found, the unit starts
-// fresh: a new session, seeded from the record and told that it joins a
-// unit under way, and the thread says so. The learner can start fresh too.
-// Resuming that fails another way fails the unit's opening, since the fault
-// may pass; the learner then tries again, or starts fresh without it.
+// and a reopened unit resumes it with its first turn. The tutor's session is
+// closed while idle and resumed with the next turn (task 2.15). If it cannot
+// be found, as the opening asks the backend, or as a turn finds, the unit
+// starts fresh: a new session, seeded from the record and told that it joins
+// a unit under way, and the thread says so. The learner can start fresh too.
+// Resuming that fails another way fails the turn, since the fault may pass;
+// the next turn tries again, and the learner can start fresh instead.
 //
 // This file holds the phase rules and coordinates two parts (task 2.8b):
 // unit-record.ts keeps the unit's position and evidence and writes every
@@ -65,7 +67,7 @@ import {
   objectiveCheck,
   segmentOf,
 } from "./check-rules.ts";
-import type { ChatResult } from "./conversation.ts";
+import type { ChatResult, Timer } from "./conversation.ts";
 import { type Grader, gradeChoice } from "./grading.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import { createUnitAgents, type UnitAgents } from "./unit-agents.ts";
@@ -126,9 +128,7 @@ export interface UnitChat {
   /**
    * Replaces the tutor's conversation with a new one, which has the
    * learner's progress from the record and not the conversation, and which
-   * picks up where the unit stands. On a unit that could not be opened
-   * because its tutor's conversation could not be resumed, it opens the
-   * unit without that conversation, as one that cannot be found is opened.
+   * picks up where the unit stands.
    */
   startFresh(): Promise<ChatResult>;
   /** Stops the tutor's turn in progress, if there is one. */
@@ -144,7 +144,8 @@ export type OpenResult =
 
 /**
  * The unit chats opened since the server started, one per unit. A chat
- * stays open until the server stops; 2.15 closes idle ones.
+ * stays until the server stops; its tutor's session is closed while idle
+ * (task 2.15).
  */
 export interface UnitChats {
   /**
@@ -171,6 +172,8 @@ interface ChatOptions {
    * when a session starts.
    */
   now?: () => Date;
+  /** Closes idle tutor sessions; the system's timer if not given. */
+  timer?: Timer;
 }
 
 export function createUnitChats(options: ChatOptions): UnitChats {
@@ -242,16 +245,10 @@ function createUnitChat(
   let agents: UnitAgents | undefined;
   let loading: Promise<void> | undefined;
   let failed = false;
-  /** The last load failed while resuming the tutor's conversation. */
-  let resumeFailed = false;
-  /** The learner gave that conversation up: the next load does not resume it. */
-  let givenUp = false;
 
   // --- Opening ---------------------------------------------------------------
 
   async function load(): Promise<void> {
-    resumeFailed = false;
-    let resuming = false;
     try {
       // The earlier sessions' thread first, then this session's.
       await log.open();
@@ -289,29 +286,22 @@ function createUnitChat(
         cwd: dataRoot.courseFolder(courseId),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
         keep: (id) => exclusive(() => record.keepSession(id)),
+        // Only a turn calls it, once `r` is set.
+        lost: () => fallBack(r),
         grader: options.grader,
         log,
         exclusive,
+        ...(options.timer === undefined ? {} : { timer: options.timer }),
       });
       agents = loaded;
       const r: Running = { context, record, agents: loaded, notes: [] };
       if (record.reopened) {
-        // A unit under way resumes its tutor's conversation. One that cannot
-        // be found, or was never kept, gives way to a new session, which
-        // must not pretend to remember the conversation before it.
-        if (givenUp) {
-          // Taken out for good, so no later opening resumes it either.
-          await exclusive(() => record.keepSession(undefined));
-          givenUp = false;
-        }
+        // A unit under way resumes its tutor's conversation with its first
+        // turn. One that cannot be found, or was never kept, gives way to a
+        // new session at once, so the thread says so before anything else.
         const id = record.position.tutorSessionId;
-        resuming = true;
-        const resumed = id !== undefined && (await loaded.resume(id));
-        resuming = false;
-        if (!resumed) {
-          r.notes.push(JOINED_NOTE);
-          log.emit({ type: "fresh_start", reason: "not-resumed" });
-        }
+        const resumes = id !== undefined && (await loaded.resume(id));
+        if (!resumes) fallBack(r);
       }
       running = r;
       restoreGrades(record);
@@ -352,24 +342,24 @@ function createUnitChat(
       }
     } catch (error) {
       failed = true;
-      resumeFailed = resuming;
       const message = error instanceof Error ? error.message : String(error);
-      log.emit(
-        resuming
-          ? {
-              type: "unit_failed",
-              error: `The conversation with the tutor could not be resumed: ${message}`,
-              resumeFailed: true,
-            }
-          : { type: "unit_failed", error: message },
-      );
-      // Opening it again makes new agents; these may have resumed a session.
+      log.emit({ type: "unit_failed", error: message });
+      // Opening it again makes new agents.
       if (running === undefined && agents !== undefined) {
         const unused = agents;
         agents = undefined;
         await unused.close();
       }
     }
+  }
+
+  /**
+   * The tutor's conversation could not be resumed: a new session takes over,
+   * told in its first header that it is new, and the thread says so.
+   */
+  function fallBack(r: Running): void {
+    if (!r.notes.includes(JOINED_NOTE)) r.notes.push(JOINED_NOTE);
+    log.emit({ type: "fresh_start", reason: "not-resumed" });
   }
 
   /**
@@ -822,15 +812,6 @@ function createUnitChat(
       }),
 
     startFresh() {
-      if (running === undefined && failed && resumeFailed) {
-        // The unit could not open because the tutor's conversation could not
-        // be resumed. Trying again may resume it; this gives it up instead,
-        // so no fault that stays can keep the unit shut.
-        givenUp = true;
-        failed = false;
-        loading = load();
-        return Promise.resolve({ ok: true });
-      }
       return act(async (r) => {
         // Taken out first, so a restart before the new session starts does
         // not resume the old one.

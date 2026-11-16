@@ -92,6 +92,7 @@ function setUp(script: FakeTurn[]) {
         },
       };
     },
+    hasSession: fake.hasSession,
     oneShot: fake.oneShot,
   };
   const planner = createUnitPlanner({

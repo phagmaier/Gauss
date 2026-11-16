@@ -25,6 +25,8 @@ import {
   type FakeTurn,
 } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
+import { IDLE_MS } from "./conversation.ts";
+import { createFakeTimer, type FakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { SESSION_GAP_MS } from "./transcript.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
@@ -202,6 +204,8 @@ function setUp(
     kept?: Set<string>;
     /** Changes the backend the chats are given, to make it fail. */
     wrap?: (backend: FakeBackend) => TutorBackend;
+    /** Closes idle tutor sessions; one the test never moves on unless given. */
+    timer?: FakeTimer;
   } = {},
 ) {
   const backend = createFakeBackend(script, given.replies, {
@@ -224,6 +228,7 @@ function setUp(
         : { timeLimitMs: given.gradingLimitMs }),
     }),
     now: given.now ?? (() => new Date(NOW)),
+    timer: given.timer ?? createFakeTimer(),
   });
   return { backend, dataRoot, units };
 }
@@ -2636,7 +2641,7 @@ test("a question whose grade the transcript lost shows the grade the evidence ha
 /** The course's folder, where the tutor's sessions run and are kept. */
 const FOLDER = () => join(dir, "courses", COURSE);
 
-test("the tutor's session runs in the course's folder and its id is kept in the position; a restart resumes it by that id, and the tutor is not told it is new", async () => {
+test("the tutor's session runs in the course's folder and its id is kept in the position; after a restart the first turn resumes it by that id, opening the unit starts no session, and the tutor is not told it is new", async () => {
   const before = setUp([
     TEACH,
     [{ text: "A quotient of differences." }],
@@ -2664,8 +2669,26 @@ test("the tutor's session runs in the course's folder and its id is kept in the 
   expect(before.backend.closed).toEqual([id]);
 
   // The server restarts; the backend still has the session.
-  const after = setUp([[{ text: "As I said, the limit of the quotients." }]]);
+  const asked: [string, string][] = [];
+  const after = setUp([[{ text: "As I said, the limit of the quotients." }]], {
+    wrap: (backend) => ({
+      ...backend,
+      hasSession: (id, cwd) => {
+        asked.push([id, cwd]);
+        return backend.hasSession(id, cwd);
+      },
+    }),
+  });
   const chat = await open(after);
+
+  // Opening only asked the backend whether it has the session, in the course's folder.
+  expect(asked).toEqual([[id, FOLDER()]]);
+  expect(after.backend.sessions).toEqual([]);
+  expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([]);
+  expect(after.backend.received).toEqual([]);
+
+  chat.say("Remind me?");
+  await chat.settled();
 
   expect(after.backend.sessions).toEqual([
     expect.objectContaining({ cwd: FOLDER(), resumeId: id }),
@@ -2674,13 +2697,6 @@ test("the tutor's session runs in the course's folder and its id is kept in the 
   expect(after.backend.sessions[0]?.systemPrompt).toBe(
     before.backend.sessions[0]?.systemPrompt,
   );
-  expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([]);
-  expect(after.backend.received).toEqual([]);
-
-  chat.say("Remind me?");
-  await chat.settled();
-
-  expect(after.backend.sessions).toHaveLength(1);
   expect(after.backend.received.map((t) => t.text)).toEqual([
     expect.not.stringContaining(JOINED_NOTE),
   ]);
@@ -2706,9 +2722,6 @@ test("a session the backend cannot find, as after Claude Code's 30-day cleanup, 
   });
   const chat = await open(after);
 
-  expect(after.backend.sessions).toEqual([
-    expect.objectContaining({ resumeId: lost }),
-  ]);
   expect(since(chat, "session")).toEqual([
     SESSION,
     { type: "unit_plan", plan: PLAN },
@@ -2716,13 +2729,17 @@ test("a session the backend cannot find, as after Claude Code's 30-day cleanup, 
     status("in-progress"),
     { type: "phase", segment: 0, phase: "discuss" },
   ]);
-  // Nothing is sent until the learner acts, as for a unit reopened before.
+  // Nothing is sent until the learner acts, as for a unit reopened before,
+  // and nothing is started.
   expect(after.backend.received).toEqual([]);
+  expect(after.backend.sessions).toEqual([]);
 
   chat.say("Where were we?");
   await chat.settled();
 
-  const fresh = after.backend.sessions[1];
+  // No resume is tried: the backend said it does not have the session.
+  expect(after.backend.sessions).toHaveLength(1);
+  const fresh = after.backend.sessions[0];
   expect(fresh?.resumeId).toBeUndefined();
   expect(fresh?.cwd).toBe(FOLDER());
   // The seed: tutor.md, the course, the unit's plan and the style note.
@@ -2739,7 +2756,7 @@ test("a session the backend cannot find, as after Claude Code's 30-day cleanup, 
   expect(await sessionKept()).toBe(made);
 });
 
-test("resuming that fails another way is not taken for a lost session: the unit says why and does nothing, and opening it again resumes it", async () => {
+test("resuming that fails another way is not taken for a lost session: the unit opens, the message's turn says why, and the next message tries again and resumes it", async () => {
   const before = setUp([TEACH]);
   await makeCourse();
   await open(before);
@@ -2757,28 +2774,43 @@ test("resuming that fails another way is not taken for a lost session: the unit 
     }),
   });
   const chat = await open(after);
-
   expect(chat.events().at(-1)).toEqual({
-    type: "unit_failed",
-    error:
-      "The conversation with the tutor could not be resumed: Claude Code could not start.",
-    resumeFailed: true,
+    type: "phase",
+    segment: 0,
+    phase: "discuss",
   });
-  expect(chat.say("Hello?")).toMatchObject({ ok: false, status: 409 });
+
+  chat.say("Hello?");
+  await chat.settled();
+
+  expect(since(chat, "learner")).toEqual([
+    { type: "learner", text: "Hello?" },
+    { type: "turn_start" },
+    {
+      type: "turn_end",
+      outcome: "error",
+      error:
+        'The conversation with the tutor could not be resumed: Claude Code could not start. Sending again tries again, and "Start fresh" starts a new one.',
+    },
+  ]);
   expect(await sessionKept()).toBe(id);
 
   starting = true;
-  const again = await open(after);
+  chat.say("Hello again?");
+  await chat.settled();
 
-  expect(again).toBe(chat);
   expect(after.backend.sessions).toEqual([
     expect.objectContaining({ resumeId: id }),
   ]);
+  expect(after.backend.received.map((t) => t.text)).toEqual([
+    expect.stringMatching(/\]\nHello again\?$/),
+  ]);
+  expect(after.backend.received[0]?.text).not.toContain(JOINED_NOTE);
   expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([]);
-  expect(chat.say("Hello?")).toEqual({ ok: true });
+  expect(await sessionKept()).toBe(id);
 });
 
-test("Start fresh on a unit that could not open because resuming kept failing gives the conversation up: the unit opens without it, as one whose session is lost, and it is not resumed again", async () => {
+test("when resuming keeps failing, the learner's Start fresh gives the conversation up: a new session, told it is new, picks up, and a later opening resumes the new one", async () => {
   const before = setUp([TEACH]);
   await makeCourse();
   await open(before);
@@ -2797,38 +2829,36 @@ test("Start fresh on a unit that could not open because resuming kept failing gi
       return backend.startSession(options);
     },
   });
-  const after = setUp([[{ text: "Let us look at it together." }]], {
+  const after = setUp([[{ text: "We are in the discussion of segment 1." }]], {
     wrap: failing,
   });
   const chat = await open(after);
+  chat.say("Hello?");
+  await chat.settled();
   expect(chat.events().at(-1)).toMatchObject({
-    type: "unit_failed",
-    resumeFailed: true,
+    type: "turn_end",
+    outcome: "error",
   });
 
   expect(await chat.startFresh()).toEqual({ ok: true });
   await chat.settled();
 
   expect(resumes).toEqual([id]);
-  expect(await sessionKept()).toBeUndefined();
-  expect(since(chat, "unit_failed").slice(1)).toEqual([
-    { type: "unit_plan", plan: PLAN },
-    { type: "fresh_start", reason: "not-resumed" },
-    status("in-progress"),
-    { type: "phase", segment: 0, phase: "discuss" },
+  expect(since(chat, "fresh_start")).toEqual([
+    { type: "fresh_start", reason: "learner" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "We are in the discussion of segment 1." },
+    { type: "turn_end", outcome: "done" },
   ]);
-
-  chat.say("Where were we?");
-  await chat.settled();
-
   expect(after.backend.received[0]?.text).toContain(JOINED_NOTE);
   const [made] = after.backend.ids;
   expect(made).not.toBe(id);
   expect(await sessionKept()).toBe(made);
   await after.units.close();
 
-  // The conversation given up is not resumed by a later opening either.
-  await open(setUp([], { wrap: failing }));
+  const later = await open(setUp([], { wrap: failing }));
+  later.say("Hello?");
+  await later.settled();
   expect(resumes).toEqual([id, made]);
 });
 
@@ -2881,8 +2911,10 @@ test("the learner's Start fresh closes the tutor's session and starts one told i
   expect(setup.backend.sessions).toHaveLength(2);
   await setup.units.close();
 
-  const after = setUp([]);
-  await open(after);
+  const after = setUp([[{ text: "Hello again." }]]);
+  const reopened = await open(after);
+  reopened.say("Hello?");
+  await reopened.settled();
   expect(after.backend.sessions).toEqual([
     expect.objectContaining({ resumeId: made }),
   ]);
@@ -2907,4 +2939,104 @@ test("Start fresh takes the old session's id out of the position before the new 
   await chat.settled();
 
   expect(written).toEqual([{ segment: 0, phase: "discuss" }]);
+});
+
+// --- Task 2.15: idle tutor sessions ------------------------------------------
+
+/** Lets the closing of a session, which the timer starts, run. */
+const closing = () => new Promise((resolve) => setImmediate(resolve));
+
+test("a unit's tutor session is closed once it has been idle for IDLE_MS, and the next message resumes it, not told it is new", async () => {
+  const timer = createFakeTimer();
+  const setup = setUp([TEACH, [{ text: "A quotient of differences." }]], {
+    timer,
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  const [id] = setup.backend.ids;
+
+  timer.advance(IDLE_MS - 1);
+  await closing();
+  expect(setup.backend.closed).toEqual([]);
+  timer.advance(1);
+  await closing();
+  expect(setup.backend.closed).toEqual([id]);
+
+  chat.say("What is a difference quotient?");
+  await chat.settled();
+
+  expect(setup.backend.sessions).toEqual([
+    expect.objectContaining({ cwd: FOLDER() }),
+    expect.objectContaining({ cwd: FOLDER(), resumeId: id }),
+  ]);
+  expect(setup.backend.received.at(-1)?.text).not.toContain(JOINED_NOTE);
+  expect(since(chat, "learner")).toEqual([
+    { type: "learner", text: "What is a difference quotient?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "A quotient of differences." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(await sessionKept()).toBe(id);
+});
+
+test("a tutor session is not closed while a written answer is graded, since the grade is sent to it, and is closed once idle after that", async () => {
+  const timer = createFakeTimer();
+  const grade = Promise.withResolvers<FakeReply>();
+  const setup = setUp([TEACH, ask(Q_PROOF), [{ text: "Well argued." }]], {
+    replies: [{ later: grade.promise }],
+    timer,
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  expect(await chat.answer(written(chat))).toEqual({ ok: true });
+
+  timer.advance(3 * IDLE_MS);
+  await closing();
+  expect(setup.backend.closed).toEqual([]);
+
+  grade.resolve(CORRECT);
+  await chat.settled();
+  expect(setup.backend.sessions).toHaveLength(1);
+  expect(setup.backend.received.at(-1)?.text).toContain("graded it correct");
+
+  timer.advance(IDLE_MS);
+  await closing();
+  expect(setup.backend.closed).toEqual(setup.backend.ids);
+});
+
+test("a session found lost when the next message resumes it, after an idle close, gives way to a new one: the marker after the message, the note in the new session's header, and its id kept", async () => {
+  const timer = createFakeTimer();
+  const setup = setUp([TEACH, [{ text: "Let us look at it together." }]], {
+    timer,
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  const [lost] = setup.backend.ids;
+  timer.advance(IDLE_MS);
+  await closing();
+  // Gone meanwhile, as Claude Code's cleanup can make it.
+  keptSessions.delete(lost ?? "");
+
+  chat.say("Where were we?");
+  await chat.settled();
+
+  expect(since(chat, "learner")).toEqual([
+    { type: "learner", text: "Where were we?" },
+    { type: "turn_start" },
+    { type: "fresh_start", reason: "not-resumed" },
+    { type: "tutor_text", text: "Let us look at it together." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(setup.backend.sessions.map((s) => s.resumeId)).toEqual([
+    undefined,
+    lost,
+    undefined,
+  ]);
+  expect(setup.backend.received.at(-1)?.text).toMatch(
+    new RegExp(`Phase: discuss\\. Message from the learner\\. ${JOINED_NOTE}`),
+  );
+  const made = setup.backend.ids.at(-1);
+  expect(made).not.toBe(lost);
+  expect(await sessionKept()).toBe(made);
 });

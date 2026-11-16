@@ -799,3 +799,39 @@ tested"). Stage 1 is finished.
   mid-segment, and after the restart the tutor recalled what the learner
   had told it before. The choices and checks are in `docs/decisions.md`
   under "Resume and start fresh".
+
+### 2.15 Close idle tutor sessions
+
+- Status: done
+- Depends on: 2.14
+- Do: close a chat's tutor session, an intake's or a unit's, once it has
+  been idle for a while, and resume it with the next message. Each one is
+  a Claude Code process until the server stops (notes from 1.5 and 1.6).
+  An intake's session must then be kept, as a unit's is.
+- Done when: fake-backend tests with a fake clock cover closing after the
+  idle time, resuming with the next message, and a session never closed
+  while a turn is queued or running.
+- Note from 2.14's review: settle on one way to resume. A unit resumes as
+  it opens today; after an idle close it must resume at the next message,
+  where the fallback then comes after the learner's message. The SDK's
+  `getSessionInfo(id, { dir })` says whether a session is there without a
+  process, so the opening could show the marker and leave resuming to the
+  first message (`docs/decisions.md`, "Resume and start fresh", the review
+  fixes).
+- Note from 2.14's review: a session that fails to start fails every later
+  turn of its conversation (`createConversation` keeps the rejected start).
+  A resume at the next message that fails once must be tried again by the
+  message after it, and one that is not found must fall back.
+- Note: done on 2026-11-16. Every chat's conversation closes a kept
+  session (a unit's tutor, and now an intake, kept in the data root's
+  `intake/` folder) after ten minutes with no turn queued or running and
+  no grading waiting, and the next turn resumes it; a failed start or
+  resume fails that turn and the next tries again. One way to resume:
+  opening a unit only asks the backend (`hasSession`, `getSessionInfo`),
+  and the first turn resumes; a session lost at a turn falls back there.
+  `resumeFailed` and "Start fresh instead" are gone. `mise run check`
+  passed (518 TypeScript tests, one Python test), with fake-timer tests of
+  each case in "Done when"; 13 faults put in by hand each failed a test; a
+  browser run on `pnpm dev:fake` showed a broken resume, Start fresh and a
+  resume after a restart. No real-backend run. The choices and checks are
+  in `docs/decisions.md` under "Idle sessions".
