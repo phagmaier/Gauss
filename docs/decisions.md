@@ -41,6 +41,7 @@ findings are the record.
 | Grader prompt | The hand-graded set, the runs and their results, the grader's model and why, what `grader.md` says and why | Changing `grader.md`, the grader's model or `WrittenGrade`, writing rubric guidance in `tutor.md` (2.16), disputes (stage 3) |
 | Style note at intake | The note in the proposal, `style.md` with the draft, courses without one, the card, `planner.md`'s section, approval checked against the card | Touching `propose_curriculum`, `planner.md` or the proposal card, writing `tutor.md`'s default style (2.16), style changes (stage 5) |
 | Session view | The session page: its address, markers, next-step control, written card, keys, top line and outline, closing card, the entry points, a lost chat, the course's details failing to load, the browser run | Touching `src/web/Session.tsx`, `session.ts`, `timeline.ts` or `QuestionCard.tsx`; course progress (2.12), transcripts (2.13), "Start fresh" (2.14), prompts that write objective statements |
+| Dev server on the fake backend | The scripted backend and what its tutor does, the seed, the scratch data root and port, `serve.ts`, closing the browser, the browser run | Running a browser check, touching `scripted.ts`, `dev-seed.ts`, `serve.ts` or the turn headers in `unit-turns.ts`, `intake.ts` and `unit-planning.ts`; a new one-shot request (stage 5 notes) |
 | Course and library progress | What the routes send, when units were opened, the card, Start, "Open" on finished units, the library's lines and groups, the closing card's next unit, a course whose progress cannot be read | Touching the course view, the library, `progress.ts` or `unitsOpenedAt`; notes (stage 5), the gate and retained status in the library (stage 5) |
 
 ## Page design (plan task 1.0)
@@ -2494,3 +2495,77 @@ the agent's and can be overturned.
   the fix. A browser look at a seeded scratch data root showed the library
   with the course listed and the reason on opening it. `mise run check`
   passed lint, type-checking, 467 TypeScript tests and one Python test.
+
+## Dev server on the fake backend (plan task 2.12b)
+
+Built on 2026-11-15, from the user's review of `32b7478`: `pnpm dev:fake`
+(`scripts/dev-fake.ts`) runs the whole app with no model. The choices are
+the agent's and can be overturned.
+
+- **The scripted backend reads each turn's header** and does what the
+  header allows (`src/server/backends/scripted.ts`, whose header lists
+  it), with no state of its own: it plans a unit as two segments of one
+  objective each, teaches in the teach phase, posts a question when the
+  header allows one, closes the segment when the header says every
+  objective is done, and otherwise replies in text. The first objective is
+  checked by choice questions, whose answer is always A, the second by
+  written ones, graded correct unless the answer has the word "wrong". The
+  question's number comes from the header's count for its objective, so no
+  question is asked twice in a check. An intake proposes four units,
+  titled from the learner's first message. In a message, `/hold` keeps the
+  turn open until it is stopped, `/revise` proposes a revision, `/one-off`
+  proposes one unit, and `/fail` in a written answer fails its grading.
+  It follows the headers' wording, so a header reworded in
+  `unit-turns.ts`, `intake.ts` or `unit-planning.ts` can break it; its
+  tests then fail.
+- **It runs on the fake backend's machinery.** `createFakeBackend` now
+  takes, in place of its lists, a function that answers any turn and one
+  that answers any one-shot request, so tool calls run the real teaching
+  tools and Stop works as in the tests. A one-shot request other than the
+  grader's (the notes of stage 5) gets a grade and so fails its schema:
+  whoever adds one extends `scriptedReply`.
+- **The server is wired once**, in `src/server/serve.ts`, which `main.ts`
+  calls with the Claude backends and `dev-fake.ts` with the scripted one,
+  so the dev server cannot drift from the real one.
+- **The data root is never the real one.** `scratchDataRoot`
+  (`src/server/record/dev-seed.ts`) gives `GAUSS_DATA_ROOT`, or
+  `gauss-fake` in the temporary folder, and refuses `~/gauss` and folders
+  inside it. The port is 4330, not the real server's 4320, so a page left
+  open on one never reaches the other.
+- **An empty data root is seeded** with six courses (`seedCourses`; its
+  comment lists them): mock 12's course with units passed, overridden, in
+  progress and not started, a course not started, a finished one, a
+  draft, and two one-offs. They are written through the record's own
+  operations, so a schema change that the seed does not follow fails at
+  once. A data root with courses is used as it is, so a restart keeps the
+  record (2.13's browser check); `--empty` seeds nothing. Nothing is ever
+  deleted: a fresh seed takes a new folder. The seed and the data root's
+  check sit in `src/server/record/`, not in `scripts/`, so their tests run
+  with the rest.
+- **A browser run ends by closing the browser**, before the server stops
+  (`AGENTS.md`). In the review, the browser of the 2.12 run was still on a
+  session page of its scratch server, asking to open its unit every few
+  seconds; a real-backend scratch server started later on the same port,
+  with a course of the same id, had that unit planned and taught on
+  Haiku.
+- **Browser run:** `pnpm dev:fake` on a new folder printed the six seeded
+  courses and no Claude session. The library showed each state. "Start
+  unit 1" of the course not started planned and taught the unit, with its
+  math rendered; the check asked a choice question, closed the segment on
+  A at 90%, and in the second segment graded a written answer correct;
+  the closing card said "Unit 1 finished" and offered "Start unit 2". A
+  seeded unit in progress (Calculus I, unit 3) went from its discussion
+  into its check. No console errors. With `GAUSS_DATA_ROOT` set to
+  `~/gauss`, or to a folder inside it, the command refused and wrote
+  nothing. `pnpm dev` still started and answered after the move to
+  `serve.ts` (no message sent).
+- **Checks:** `mise run check` passed lint, type-checking, 474 TypeScript
+  tests and one Python test. New: 4 tests of the scripted backend through
+  the engine (a unit from not planned to passed, with a written answer
+  graded incorrect and then correct; an intake with a revision approved;
+  a one-off; `/hold` and `/fail`) and 3 of the seed and the data root.
+  Each of eleven faults made one fail: the same question every time, a
+  grader that never finds a flaw, a segment never closed, each of the
+  four commands ignored, the real data root allowed, folders inside it
+  allowed, a data root with courses seeded, and the wrong objectives
+  passed in an overridden unit.

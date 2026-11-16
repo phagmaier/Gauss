@@ -1,0 +1,229 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, expect, test } from "vitest";
+import type { CurriculumProposal } from "../../shared/curriculum.ts";
+import { createGrader } from "../engine/grading.ts";
+import { createIntakes } from "../engine/intake.ts";
+import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
+import { createUnitPlanner } from "../engine/unit-planning.ts";
+import { openDataRoot } from "../record/data-root.ts";
+import { withProgress } from "../record/progress.ts";
+import { createScriptedBackend } from "./scripted.ts";
+
+// The scripted backend runs the dev server with no model (scripts/dev-fake.ts).
+// These tests take it through the engine, as the server wires it, so a change
+// to the engine's headers or rules that the script cannot follow fails here.
+// What is expected comes from the engine's rules (docs/decisions.md,
+// "Objective status"), not from the script: a correct answer at 90% passes an
+// objective, a miss needs another question, and a unit whose objectives all
+// passed is finished.
+
+let dir: string;
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), "gauss-scripted-"));
+});
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+
+const COURSE = "calculus-i";
+const CURRICULUM: CurriculumProposal = {
+  title: "Calculus I",
+  units: [
+    {
+      id: "limits",
+      title: "Limits",
+      goal: "Compute limits.",
+      prerequisites: [],
+    },
+    {
+      id: "derivative",
+      title: "The derivative",
+      goal: "Differentiate.",
+      prerequisites: ["limits"],
+    },
+  ],
+  style: "Short.",
+};
+
+function setUp() {
+  const backend = createScriptedBackend();
+  const dataRoot = openDataRoot({ path: dir });
+  const units = createUnitChats({
+    backend,
+    systemPrompt: "Tutor.",
+    dataRoot,
+    planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+    grader: createGrader({ backend, systemPrompt: "Grade." }),
+  });
+  const intakes = createIntakes({ backend, systemPrompt: "Intake.", dataRoot });
+  return { backend, dataRoot, units, intakes };
+}
+
+async function approvedCourse(dataRoot: ReturnType<typeof openDataRoot>) {
+  const { id } = await dataRoot.createCourse({ title: CURRICULUM.title });
+  await dataRoot.saveProposal(id, CURRICULUM);
+  await dataRoot.approveCurriculum(id, CURRICULUM);
+}
+
+test("a unit not yet planned runs to its end: planned, each segment taught, checked and closed, a written answer graded", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  const position = async () => (await dataRoot.readState(COURSE)).units.limits;
+  const openQuestion = async () => {
+    const open = (await position())?.openQuestion;
+    if (open === undefined) throw new Error("No question is open.");
+    return open;
+  };
+
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const chat: UnitChat = opened.chat;
+  await chat.settled();
+
+  // Planned, and the first segment taught.
+  const stored = await dataRoot.readCourse(COURSE);
+  const plan = stored?.curriculum?.units[0]?.plan;
+  expect(plan?.segments.length).toBeGreaterThanOrEqual(2);
+  expect(await position()).toMatchObject({ segment: 0, phase: "discuss" });
+  expect(chat.events().some((e) => e.type === "tutor_text")).toBe(true);
+
+  // Each segment: ready, then answers until the tutor closes it. A written
+  // answer saying "wrong" is graded incorrect, so that objective needs a
+  // second question, which must not repeat the first.
+  const prompts: string[] = [];
+  const kinds = new Set<string>();
+  const segments = plan?.segments.length ?? 0;
+  for (let segment = 0; segment < segments; segment += 1) {
+    if (segment > 0) {
+      expect(await chat.nextSegment()).toEqual({ ok: true });
+      await chat.settled();
+    }
+    expect(await chat.ready()).toEqual({ ok: true });
+    await chat.settled();
+    let missed = false;
+    for (
+      let at = await position();
+      at !== undefined && at.phase === "check";
+      at = await position()
+    ) {
+      const open = await openQuestion();
+      prompts.push(open.question.prompt);
+      kinds.add(open.question.kind);
+      const answered =
+        open.question.kind === "choice"
+          ? await chat.answer({
+              kind: "choice",
+              questionId: open.id,
+              choice: open.question.answer,
+              confidence: "90",
+            })
+          : await chat.answer({
+              kind: "written",
+              questionId: open.id,
+              text: missed ? "Because it is so." : "This is wrong.",
+              confidence: "90",
+            });
+      expect(answered).toEqual({ ok: true });
+      if (open.question.kind === "written") missed = true;
+      await chat.settled();
+    }
+  }
+
+  // Both kinds of question were asked, and no question twice.
+  expect(kinds).toEqual(new Set(["choice", "written"]));
+  expect(new Set(prompts).size).toBe(prompts.length);
+  // One miss, on the written question; every other answer correct.
+  const verdicts = (await dataRoot.readEvidence(COURSE)).map((e) =>
+    e.kind === "answer" ? e.verdict : e.kind,
+  );
+  expect(verdicts.filter((v) => v === "incorrect")).toHaveLength(1);
+  expect(verdicts.filter((v) => v === "correct")).toHaveLength(
+    verdicts.length - 1,
+  );
+  // Every objective passed, so the unit is finished and out of state.json.
+  expect(await position()).toBeUndefined();
+  const course = await dataRoot.readCourse(COURSE);
+  if (course === undefined) throw new Error("The course is gone.");
+  expect((await withProgress(dataRoot, course)).progress).toEqual({
+    limits: { status: "passed" },
+    derivative: { status: "not-started" },
+  });
+  expect(chat.events().at(-1)).not.toMatchObject({ type: "unit_failed" });
+});
+
+test("an intake proposes a curriculum from the learner's first message, revises it when asked, and the revision can be approved", async () => {
+  const { dataRoot, intakes } = setUp();
+  const intake = intakes.start();
+
+  expect(intake.say("Topology for analysts")).toEqual({ ok: true });
+  await intake.settled();
+
+  const id = intake.courseId();
+  if (id === undefined) throw new Error("No course was proposed.");
+  const first = await dataRoot.readCourse(id);
+  expect(first?.course.title).toBe("Topology for analysts");
+  expect(first?.curriculum?.approval.status).toBe("draft");
+  const firstUnits = first?.curriculum?.units.map((u) => u.id) ?? [];
+  expect(firstUnits.length).toBeGreaterThan(1);
+
+  // An ordinary message is answered without a new proposal.
+  expect(intake.say("Why this order?")).toEqual({ ok: true });
+  await intake.settled();
+  expect(
+    intake.events().filter((e) => e.type === "curriculum_proposed"),
+  ).toHaveLength(1);
+
+  expect(intake.say("/revise")).toEqual({ ok: true });
+  await intake.settled();
+  const revised = await dataRoot.readCourse(id);
+  expect(revised?.curriculum?.units.map((u) => u.id)).not.toEqual(firstUnits);
+
+  expect(await intake.approve(2)).toEqual({ ok: true });
+  expect((await dataRoot.readCourse(id))?.curriculum?.approval.status).toBe(
+    "approved",
+  );
+});
+
+test("/one-off proposes a course of one unit", async () => {
+  const { dataRoot, intakes } = setUp();
+  const intake = intakes.start();
+
+  intake.say("What is a group? /one-off");
+  await intake.settled();
+
+  const stored = await dataRoot.readCourse(intake.courseId() ?? "");
+  expect(stored?.course.title).toBe("What is a group?");
+  expect(stored?.curriculum?.units).toHaveLength(1);
+});
+
+test("/hold keeps the tutor's turn open until it is stopped, and /fail in a written answer fails its grading", async () => {
+  const { dataRoot, units, backend } = setUp();
+  await approvedCourse(dataRoot);
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const { chat } = opened;
+  await chat.settled();
+
+  expect(chat.say("Wait. /hold")).toEqual({ ok: true });
+  // The turn has started and does not end by itself.
+  await expect
+    .poll(() => chat.events().at(-1)?.type, { timeout: 2000 })
+    .toBe("tutor_text");
+  await chat.interrupt();
+  await chat.settled();
+  expect(chat.events().at(-1)).toMatchObject({ type: "turn_end" });
+
+  const grader = createGrader({ backend, systemPrompt: "Grade." });
+  const question = {
+    kind: "written" as const,
+    prompt: "Why?",
+    rubric: "Says why.",
+  };
+  expect((await grader.grade(question, "Please /fail now")).ok).toBe(false);
+  expect(await grader.grade(question, "Because.")).toEqual({
+    ok: true,
+    verdict: "correct",
+  });
+});

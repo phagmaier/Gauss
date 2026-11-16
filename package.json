@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node src/server/main.ts",
+    "dev:fake": "node scripts/dev-fake.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check",

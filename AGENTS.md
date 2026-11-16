@@ -73,6 +73,11 @@ Do not start the next stage before that.
   judgment (the user's request, 2026-11-15).
 - **Tests never touch the real data root** (`~/gauss/` by default). Point the
   data root at a temporary directory.
+- **Browser checks that need no real tutor run on `pnpm dev:fake`**, which
+  calls no model. End every browser run by closing the browser, before the
+  server stops: a session page left open keeps opening its unit on whatever
+  server next comes up on its port, and on a real backend that plans and
+  teaches the unit.
 - **The engine never imports an agent SDK.** Only files under
   `src/server/backends/` do.
 - **Objective status is derived from the evidence log**, never stored.
@@ -107,6 +112,7 @@ mise activated, or `mise exec -- <command>`.
 | Test, TypeScript | `pnpm test` (`pnpm test:watch` while working) |
 | Test, Python helpers | `uv run --directory pytools pytest` |
 | Run the app (server and page, http://localhost:4320) | `pnpm dev` |
+| Run the app with no model, on seeded courses (http://localhost:4330) | `pnpm dev:fake` (`--empty` for no courses) |
 | Grade the grader's hand-graded set (real model, spends plan usage) | `node scripts/grade-set.ts --runs 2` (`--model`, `--prompt`, `--only`) |
 
 - `pnpm dev` talks to the real Claude backend and spends plan usage once a
@@ -116,8 +122,17 @@ mise activated, or `mise exec -- <command>`.
   grader), and `GAUSS_DATA_ROOT` the folder that holds the courses (left
   unset, `~/gauss`; point it at a scratch folder for trial runs). The server
   prints the data root when it starts, and the model each session runs on.
+- `pnpm dev:fake` runs the same server on the scripted backend
+  (`src/server/backends/scripted.ts`, whose header says what its tutor does:
+  choice A is always correct, a written answer is correct unless it says
+  "wrong", and `/hold`, `/revise`, `/one-off` and `/fail` in a message do
+  what the header says). Its data root is `GAUSS_DATA_ROOT`, or `gauss-fake`
+  in the temporary folder, never the real one; an empty one is seeded with
+  courses in each state (`src/server/record/dev-seed.ts`), and one with
+  courses is kept, so a restart keeps the record. For a fresh seed, point
+  `GAUSS_DATA_ROOT` at a new folder.
 - The page is in `src/web` (React, built by Vite); the server starts at
-  `src/server/main.ts`.
+  `src/server/main.ts`, and is wired in `src/server/serve.ts`.
 
 - TypeScript tests sit beside the code as `src/**/*.test.ts`. Python tests are
   in `pytools/tests/`.

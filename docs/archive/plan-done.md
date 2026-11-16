@@ -718,3 +718,34 @@ tested"). Stage 1 is finished.
   view's list, card and diagram, Start asking first and starting a unit,
   and a unit passed live. The choices and checks are in
   `docs/decisions.md` under "Course and library progress".
+
+### 2.12b Dev server on the fake backend
+
+- Status: done
+- Depends on: 2.12
+- Do: a kept way to run the whole app with no model, for browser checks.
+  Tasks 2.11 and 2.12 each built a scratch server for theirs (like
+  `main.ts`, on a scripted tutor that reads each turn's header, with a
+  seeded scratch data root) and threw it away, so neither check can be
+  run again (the user's review of `32b7478`). A script under `scripts/`
+  starts the server as `main.ts` does, on a scripted backend that
+  proposes a curriculum at intake, plans a unit, teaches, asks, closes
+  segments and grades written answers, and can seed its data root with
+  courses in each state (a draft, not started, units in progress, passed
+  and overridden, a finished course, a one-off). It refuses the real data
+  root. Add the command to `AGENTS.md`, with the rule that a browser run
+  ends by closing the browser before the server stops: a session page
+  left open keeps opening its unit on whatever server next comes up on
+  its port (found in the same review, where it started a unit on a
+  real-backend scratch server).
+- Done when: the command runs with no call to a real model; a test takes
+  the scripted tutor through one segment, from teaching to closed, by way
+  of the engine, so a change that breaks the script fails a test; a
+  browser run goes from the seeded library through one unit to its
+  closing card.
+- Note: done on 2026-11-15. `mise run check` passed (474 TypeScript
+  tests, one Python test). A browser run on `pnpm dev:fake` went from the
+  seeded library through one unit, planned and taught by the scripted
+  backend, to its closing card, with no model called. The choices and
+  checks are in `docs/decisions.md` under "Dev server on the fake
+  backend".

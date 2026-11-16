@@ -3,7 +3,9 @@
 // text, call a teaching tool, or hold until it is interrupted. Tool calls run
 // the real teaching tool, and a call that ends the turn ends it here too.
 // One-shot requests get the scripted replies in order, checked against the
-// request's schema as the real backends check theirs.
+// request's schema as the real backends check theirs. In place of a list, a
+// function can answer every turn or request it is given, without end
+// (scripted.ts, which runs the dev server of task 2.12b).
 
 import type { ToolResult } from "../tools/tool.ts";
 import {
@@ -25,6 +27,12 @@ export type FakeStep =
 
 /** A turn's steps, or a function that picks them from the turn received. */
 export type FakeTurn = FakeStep[] | ((turn: EngineTurn) => FakeStep[]);
+
+/** The steps of any turn, from the turn and the session it was sent in. */
+export type FakeScript = (
+  turn: EngineTurn,
+  session: SessionOptions,
+) => FakeStep[];
 
 /**
  * A one-shot reply: the model's output, before it is checked; a failed
@@ -55,8 +63,8 @@ export interface FakeBackend extends TutorBackend {
 }
 
 export function createFakeBackend(
-  script: FakeTurn[],
-  replies: FakeReply[] = [],
+  script: FakeTurn[] | FakeScript,
+  replies: FakeReply[] | ((request: OneShotRequest<unknown>) => FakeReply) = [],
 ): FakeBackend {
   const received: EngineTurn[] = [];
   const calls: FakeCall[] = [];
@@ -71,7 +79,8 @@ export function createFakeBackend(
   ): Promise<OneShotResult<T>> {
     oneShots.push(request);
     const { signal } = request;
-    let reply = replies[nextReply];
+    let reply =
+      typeof replies === "function" ? replies(request) : replies[nextReply];
     nextReply += 1;
     while (reply !== undefined && "later" in reply) {
       const next = await Promise.race([reply.later, whenStopped(signal)]);
@@ -102,7 +111,8 @@ export function createFakeBackend(
     async function* send(turn: EngineTurn): AsyncGenerator<BackendEvent> {
       received.push(turn);
       interrupted = false;
-      const entry = script[nextTurn];
+      const entry =
+        typeof script === "function" ? script(turn, options) : script[nextTurn];
       nextTurn += 1;
       if (entry === undefined) {
         yield {

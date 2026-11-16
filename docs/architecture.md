@@ -49,12 +49,12 @@ Gauss/
       record/           read/write course files; derive objective status
       engine/           segment state machine, assessment selection, grading dispatch
       tools/            teaching tool definitions (transport-free functions)
-      backends/         adapter interface, claude.ts, fake.ts (tests), codex.ts (later)
+      backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model), codex.ts (later)
       sources/          ingestion orchestration, quote verification
       http/             routes, event stream
     web/                React app: library, chat, question widgets, diagram, panes
   pytools/              uv project: convert.py, mathcheck.py
-  scripts/              checks run by hand on a real model: grade-set.ts (task 2.9)
+  scripts/              run by hand: grade-set.ts on a real model (task 2.9), dev-fake.ts with none (task 2.12b)
   mise.toml             pinned node, pnpm, python, uv
   package.json, pnpm-lock.yaml
 ```
@@ -651,6 +651,9 @@ settled look.
   Expected results come from worked examples written by hand.
 - **Python helpers (pytest via uv)**: known equivalent and non-equivalent
   expression pairs; conversion of small fixture files.
+- **Browser checks with no model**: `pnpm dev:fake` runs the server on the
+  scripted backend and a seeded scratch data root (task 2.12b). A test takes
+  that backend through the engine, so it keeps up with the engine's rules.
 - **Manual smoke tests**: real-backend sessions, since they spend plan usage
   and are not deterministic. Saved transcripts become material for prompt
   revision.

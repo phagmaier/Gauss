@@ -52,6 +52,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.10 | Style note at intake | `style` in `CurriculumProposal` (`StyleNote`, required, plain text up to 800 characters), stored as `style.md` with each draft and kept on approval. Drafts and courses from before have none: the card says the default style applies, and the tutor uses `tutor.md`'s default. 2.16's default style is what a note adjusts. `planner.md` promises only chat teaching; widen it in stage 3. Review fix: `approveCurriculum(id, shown)` refuses (`DraftMismatch`, 409) unless the record holds the proposal the card shows (`ShownProposal`). |
 | 2.11 | Session view | `src/web/Session.tsx` at `/courses/<id>/units/<unit>`; logic in `session.ts` and `timeline.ts`. Every unit of an approved course has "Open" (2.12 makes it Start and Continue); the closing card's "Start unit N" is the next unit in the list. A thread after a restart starts at the record's position (2.13 rebuilds it); "Start fresh" goes in the outline (2.14). Objective statements render `$` math. Review fix: the course's details are asked again until the server answers (`getJsonUntilAnswered` in `api.ts`), and until they load the unit's place (`placement` in `session.ts`) is unknown, never the course's last unit. |
 | 2.12 | Course and library progress | The routes send each unit's status and segment (`record/progress.ts`); `course.json` keeps when each unit was last opened (`unitsOpenedAt`). The page's rules are in `src/web/progress.ts`: the card leads to the unit in progress most recently opened, else the next in order; the closing card's "Start unit N" is the next in order too. A library row of a course with a unit in progress opens that unit's session. Finished units keep "Open" until notes (stage 5). Review fix: a course whose `state.json` or evidence cannot be read is still listed, with the reason in `problem` and no progress; its own route answers 500. |
+| 2.12b | Dev server on the fake backend | `pnpm dev:fake` (port 4330): the server of `serve.ts` on the scripted backend (`backends/scripted.ts`), which follows the turn headers, on a scratch data root seeded with courses in each state (`record/dev-seed.ts`); a data root with courses is kept across restarts. Use it for browser checks, and close the browser before stopping it (`AGENTS.md`). A reworded header or a new one-shot request needs `scripted.ts` updated; its tests say so. |
 
 ## Stage 2: session engine
 
@@ -64,31 +65,6 @@ questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
-
-### 2.12b Dev server on the fake backend
-
-- Status: todo
-- Depends on: 2.12
-- Do: a kept way to run the whole app with no model, for browser checks.
-  Tasks 2.11 and 2.12 each built a scratch server for theirs (like
-  `main.ts`, on a scripted tutor that reads each turn's header, with a
-  seeded scratch data root) and threw it away, so neither check can be
-  run again (the user's review of `32b7478`). A script under `scripts/`
-  starts the server as `main.ts` does, on a scripted backend that
-  proposes a curriculum at intake, plans a unit, teaches, asks, closes
-  segments and grades written answers, and can seed its data root with
-  courses in each state (a draft, not started, units in progress, passed
-  and overridden, a finished course, a one-off). It refuses the real data
-  root. Add the command to `AGENTS.md`, with the rule that a browser run
-  ends by closing the browser before the server stops: a session page
-  left open keeps opening its unit on whatever server next comes up on
-  its port (found in the same review, where it started a unit on a
-  real-backend scratch server).
-- Done when: the command runs with no call to a real model; a test takes
-  the scripted tutor through one segment, from teaching to closed, by way
-  of the engine, so a change that breaks the script fails a test; a
-  browser run goes from the seeded library through one unit to its
-  closing card.
 
 ### 2.13 Transcripts
 
