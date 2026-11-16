@@ -131,9 +131,9 @@ export type OpenResult =
  */
 export interface UnitChats {
   /**
-   * Opens the unit, marking the course opened: its chat if it is open, or a
-   * new one, which starts the unit or picks it up where state.json has it.
-   * Opening a unit whose planning failed tries again.
+   * Opens the unit, marking it and its course opened: its chat if it is
+   * open, or a new one, which starts the unit or picks it up where
+   * state.json has it. Opening a unit whose planning failed tries again.
    */
   open(courseId: string, unitId: string): Promise<OpenResult>;
   get(courseId: string, unitId: string): UnitChat | undefined;
@@ -178,7 +178,7 @@ export function createUnitChats(options: ChatOptions): UnitChats {
             "The curriculum is not approved yet, so its units cannot start.",
         };
       }
-      await dataRoot.markOpened(courseId);
+      await dataRoot.markOpened(courseId, unitId);
       // Looked up after the awaits and kept at once, so two opens of one
       // unit share one chat.
       let chat = chats.get(key(courseId, unitId));

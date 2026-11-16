@@ -1,7 +1,7 @@
 /*
   The settled look (docs/decisions.md, "Page design"): Catppuccin Frappé with
   the mauve accent, IBM Plex Sans, dark first. Taken from
-  docs/prototype/base.css, pieces 1 to 9, keeping only what the page uses. Colours are the Catppuccin palette (catppuccin.com, MIT).
+  docs/prototype/base.css, pieces 1 to 12, keeping only what the page uses. Colours are the Catppuccin palette (catppuccin.com, MIT).
 */
 :root {
   --base: #303446;
@@ -864,6 +864,10 @@ details.why summary:hover {
   grid-column: 1;
   margin-top: 0.65em;
 }
+.lc.done .lc-title {
+  font-weight: 500;
+  color: var(--soft);
+}
 
 /* ---- The course view, piece 7: the page is the unit list ---- */
 .cv-title {
@@ -935,10 +939,23 @@ details.why summary:hover {
   font-size: 0.86em;
   margin-top: 0.3em;
 }
+.cu-m .textbtn {
+  font-size: 1em;
+}
 .cu-s {
   color: var(--faint);
   font-size: 0.88em;
   white-space: nowrap;
+}
+.cu-s.pass {
+  color: var(--green);
+}
+.cu-row.now .cu-t {
+  font-weight: 600;
+}
+.cu-row.now .cu-n,
+.cu-row.now .cu-s {
+  color: var(--accent);
 }
 /* the curriculum diagram: units in rows, a line from each unit to the ones that build on it */
 .dg {
@@ -993,11 +1010,21 @@ button.dn:hover {
   font-size: 0.88em;
   color: var(--faint);
 }
+.dn.pass small {
+  color: var(--green);
+}
 .dn.todo {
   border-color: var(--surface0);
 }
 .dn.todo .t {
   font-weight: 400;
+  color: var(--soft);
+}
+.dn.now {
+  border-color: var(--accent);
+  background: var(--mine);
+}
+.dn.now small {
   color: var(--soft);
 }
 .dn.sel {
@@ -1103,4 +1130,69 @@ button.dn:hover {
 }
 .ue-rows .st.miss {
   color: var(--yellow);
+}
+
+/* ---- Which units can be started, piece 12: any unit, any time ---- */
+/* Start asks once before a unit whose prerequisites are not finished */
+.cu-row .confirm {
+  margin-top: 0.5em;
+  font-size: 0.9em;
+  color: var(--soft);
+}
+.cu-s.next {
+  color: var(--soft);
+}
+/* a card above the units: the unit in progress, or else the next one */
+.cn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.3em 24px;
+  margin: 2.2em 0 0;
+  padding: 20px 22px;
+  background: var(--mantle);
+  border: 1px solid var(--accent);
+  border-radius: calc(var(--r) + 6px);
+}
+.cn-k {
+  font-size: 0.84em;
+  color: var(--accent);
+  font-weight: 600;
+}
+.cn-t {
+  font-size: 1.2em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0.1em 0 0.25em;
+}
+.cn-t span {
+  color: var(--faint);
+  font-weight: 400;
+  margin-right: 0.55em;
+}
+.cn-at {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--soft);
+  font-size: 0.92em;
+}
+.cn-g {
+  color: var(--soft);
+  font-size: 0.94em;
+}
+.cn .btn {
+  padding: 0.6em 1.5em;
+}
+/* other units in progress, one line each */
+.cn-also {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 1em;
+  align-items: baseline;
+  border-top: 1px solid var(--surface0);
+  margin-top: 0.7em;
+  padding-top: 0.7em;
+  font-size: 0.9em;
+  color: var(--soft);
 }

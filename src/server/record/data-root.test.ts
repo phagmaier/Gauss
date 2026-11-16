@@ -191,6 +191,33 @@ test("opening a course moves it to the top of the list, and only its lastOpenedA
   expect(listed[0]?.course).toEqual(opened.course);
 });
 
+test("opening a unit marks its course opened and keeps the latest time each unit was opened", async () => {
+  const root = openDataRoot({
+    path: dir,
+    now: clock(
+      "2026-11-10T08:00:00.000Z",
+      "2026-11-12T08:00:00.000Z",
+      "2026-11-13T08:00:00.000Z",
+      "2026-11-15T09:30:00.000Z",
+    ),
+  });
+  const { id, course } = await root.createCourse({ title: "Calculus I" });
+
+  await root.markOpened(id, "limits");
+  await root.markOpened(id, "derivative");
+  await root.markOpened(id, "limits");
+
+  expect((await openDataRoot({ path: dir }).readCourse(id))?.course).toEqual({
+    ...course,
+    lastOpenedAt: "2026-11-15T09:30:00.000Z",
+    unitsOpenedAt: {
+      limits: "2026-11-15T09:30:00.000Z",
+      derivative: "2026-11-13T08:00:00.000Z",
+    },
+  });
+  await expect(root.markOpened(id, "../limits")).rejects.toThrow();
+});
+
 test("a course's style note is read from style.md, trimmed, and a course without one, or with a blank one, has none", async () => {
   const root = openDataRoot({ path: dir });
   const { id } = await root.createCourse({ title: "Calculus I" });

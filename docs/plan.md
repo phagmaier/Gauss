@@ -51,6 +51,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.9 | Grader prompt | The grader runs on Sonnet 5.5 (`GRADER_MODEL` in `backends/claude.ts`), or on `GAUSS_CLAUDE_MODEL` when that is set. `grader.md` accepts any valid method and reads what may be assumed from the rubric, so 2.16's rubric guidance should ask for both. Re-run `node scripts/grade-set.ts --runs 2` when the prompt, `WrittenGrade` or the model changes. Review corrected L1's hand-written flaw; its verdict is unchanged. |
 | 2.10 | Style note at intake | `style` in `CurriculumProposal` (`StyleNote`, required, plain text up to 800 characters), stored as `style.md` with each draft and kept on approval. Drafts and courses from before have none: the card says the default style applies, and the tutor uses `tutor.md`'s default. 2.16's default style is what a note adjusts. `planner.md` promises only chat teaching; widen it in stage 3. Review fix: `approveCurriculum(id, shown)` refuses (`DraftMismatch`, 409) unless the record holds the proposal the card shows (`ShownProposal`). |
 | 2.11 | Session view | `src/web/Session.tsx` at `/courses/<id>/units/<unit>`; logic in `session.ts` and `timeline.ts`. Every unit of an approved course has "Open" (2.12 makes it Start and Continue); the closing card's "Start unit N" is the next unit in the list. A thread after a restart starts at the record's position (2.13 rebuilds it); "Start fresh" goes in the outline (2.14). Objective statements render `$` math. Review fix: the course's details are asked again until the server answers (`getJsonUntilAnswered` in `api.ts`), and until they load the unit's place (`placement` in `session.ts`) is unknown, never the course's last unit. |
+| 2.12 | Course and library progress | The routes send each unit's status and segment (`record/progress.ts`); `course.json` keeps when each unit was last opened (`unitsOpenedAt`). The page's rules are in `src/web/progress.ts`: the card leads to the unit in progress most recently opened, else the next in order; the closing card's "Start unit N" is the next in order too. A library row of a course with a unit in progress opens that unit's session. Finished units keep "Open" until notes (stage 5). |
 
 ## Stage 2: session engine
 
@@ -63,21 +64,6 @@ questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
-
-### 2.12 Course and library progress
-
-- Status: todo
-- Depends on: 2.1, 2.7
-- Do: unit status in the course view's list and diagram, the card at the
-  top that leads to the unit in progress or the next one, Start on every
-  unit not started (asking first when its prerequisites are not
-  finished), and the library's ticks, "where" line and Finished group
-  (mocks 6, 7 and 12; the classes are in `docs/prototype/base.css`), all
-  derived from the record.
-- Done when: tests of the page's pure modules cover each status, the
-  library's line for each, and which unit the card leads to (in progress,
-  several in progress, none); a browser check with the fake backend shows
-  a unit in progress, a passed unit and an overridden one.
 
 ### 2.13 Transcripts
 

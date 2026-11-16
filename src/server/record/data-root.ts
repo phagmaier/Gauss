@@ -1,9 +1,9 @@
 // The data root: the folder that holds every course (architecture.md
-// section 3). This module creates, lists, reads and marks opened courses,
-// stores and approves their curricula, each draft with its style note,
-// reads those notes, stores the plans of their units, keeps the position
-// of each unit in progress in state.json, and appends to and reads the
-// evidence log. Every write of a whole file goes through writeFileAtomic,
+// section 3). This module creates, lists, reads and marks opened courses
+// and their units, stores and approves their curricula, each draft with its
+// style note, reads those notes, stores the plans of their units, keeps the
+// position of each unit in progress in state.json, and appends to and reads
+// the evidence log. Every write of a whole file goes through writeFileAtomic,
 // the log is appended to, and every file read or written is checked
 // against its schema in src/shared/. Work that reads a file and writes it
 // back, and every append, runs through withFileLock, so it lands in the
@@ -47,8 +47,11 @@ export interface DataRoot {
   listCourses(): Promise<StoredCourse[]>;
   /** One course, or undefined when no course has that id. */
   readCourse(id: string): Promise<StoredCourse | undefined>;
-  /** Sets the course's lastOpenedAt to the clock's time. */
-  markOpened(id: string): Promise<StoredCourse>;
+  /**
+   * Sets the course's lastOpenedAt to the clock's time, and the unit's time
+   * in unitsOpenedAt when a unit is named.
+   */
+  markOpened(id: string, unitId?: string): Promise<StoredCourse>;
   /**
    * The course's style note, style.md, trimmed, or undefined when it has
    * none (a course proposed before notes existed, task 2.10) or the file is
@@ -198,13 +201,26 @@ export function openDataRoot(options: {
 
     readCourse,
 
-    async markOpened(id) {
+    async markOpened(id, unitId) {
+      const unit = unitId === undefined ? undefined : Slug.parse(unitId);
       // saveProposal writes course.json too, under the curriculum's lock, but
       // only for a draft, and units are opened only once it is approved.
       const path = courseFile(id, "course.json");
       return withFileLock(path, async () => {
         const stored = await existingCourse(id);
-        const course = { ...stored.course, lastOpenedAt: now().toISOString() };
+        const stamp = now().toISOString();
+        const course: Course = {
+          ...stored.course,
+          lastOpenedAt: stamp,
+          ...(unit === undefined
+            ? {}
+            : {
+                unitsOpenedAt: {
+                  ...stored.course.unitsOpenedAt,
+                  [unit]: stamp,
+                },
+              }),
+        };
         await writeJson(path, Course, course);
         return { ...stored, course };
       });

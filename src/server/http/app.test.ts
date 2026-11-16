@@ -152,6 +152,7 @@ test("a new course starts as an intake, and its first proposal puts it in the li
     id: "linear-algebra-for-pca",
     course: { title: "Linear algebra for PCA", lastOpenedAt: NOW },
     curriculum: { approval: { status: "draft" }, units: FIRST.units },
+    progress: {},
   };
   expect(await (await app.request("/api/courses")).json()).toMatchObject({
     courses: [draft],
@@ -596,7 +597,13 @@ test("opening a unit marks its course opened, and the unit's event stream replay
   const course = await (
     await setup.app.request(`/api/courses/${COURSE}`)
   ).json();
-  expect(course).toMatchObject({ course: { lastOpenedAt: NOW } });
+  expect(course).toMatchObject({
+    course: { lastOpenedAt: NOW, unitsOpenedAt: { vectors: NOW } },
+    progress: {
+      vectors: { status: "in-progress", segment: 0 },
+      eigen: { status: "not-started" },
+    },
+  });
   const chatId = setup.units.get(COURSE, "vectors")?.id;
   const response = await setup.app.request(`${UNIT}/events`);
   expect(response.headers.get("Content-Type")).toContain("text/event-stream");
@@ -847,12 +854,23 @@ test("at the unit's end, going over again and finishing without the rest go thro
     phase: "discuss",
     again: ["basis-image", "matrix-columns"],
   });
+  const progress = async () =>
+    (await (await setup.app.request("/api/courses")).json()).courses[0]
+      .progress;
+  expect(await progress()).toEqual({
+    vectors: { status: "in-progress", segment: 2 },
+    eigen: { status: "not-started" },
+  });
 
   expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
   const finished = await post(setup.app, `${UNIT}/finish`);
   expect(finished.status).toBe(200);
   expect(await finished.json()).toEqual({ ok: true });
   expect(await unitState()).toBeUndefined();
+  expect(await progress()).toEqual({
+    vectors: { status: "overridden" },
+    eigen: { status: "not-started" },
+  });
   const again = await post(setup.app, `${UNIT}/go-over-again`);
   expect(again.status).toBe(409);
   expect(await again.json()).toEqual({ error: "The unit is finished." });

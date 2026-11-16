@@ -75,7 +75,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
 <data root>/
   profile.md                      learner profile; one-line index of finished courses
   courses/<course-id>/
-    course.json                   title, backend, settings (web search on/off), dates
+    course.json                   title, backend, settings (web search on/off), dates, when each unit was last opened
     style.md                      per-course teaching style note, proposed and approved with the curriculum
     curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
     state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question (with a written answer while it is graded), tutor session, open detour
@@ -97,7 +97,9 @@ starts (section 4); units not started have none. Objective ids are unique
 in the course, because the evidence names an objective by its id alone.
 Where a course stands (curriculum awaiting review, a unit in progress,
 finished) and whether it is a one-off (a course with one unit) are derived
-from the record, not stored. A course exists from its first proposal
+from the record, not stored. The library routes send each course with its
+units' status and the segment of each unit in progress
+(`record/progress.ts`, task 2.12), derived when asked. A course exists from its first proposal
 (section 4, the intake chat).
 
 `state.json` holds a position for each unit in progress, not one current
@@ -587,7 +589,11 @@ real transcripts.
 ## 10. Page
 
 - **Library**: all courses and one-offs with progress; create, open, resume.
-- **Course**: curriculum diagram with status, unit list, notes, sources.
+  A course with a unit in progress opens that unit's session (task 2.12).
+- **Course**: curriculum diagram with status, unit list, notes, sources; a
+  card at the top leads to the unit in progress most recently opened, or
+  else the next unit in order, and every unit not started has Start (task
+  2.12, `src/web/progress.ts`).
 - **Session**: chat with rendered Markdown and math; question widgets (choice,
   typed math with live preview, free text, "run my code") with confidence and
   reasoning fields; phase indicator and the "ready" and "override" controls;
@@ -621,8 +627,10 @@ Only Gauss's own page may use the API (`decisions.md`, "Minimal page").
 The page shows a unit's session at `/courses/<id>/units/<unit>` (task
 2.11): it posts `open`, then follows `events`, and when that stream
 answers 404 (the chat was lost) it opens the unit again and follows the
-new chat. A session is reached from the course view's units, from "Start
-unit 1" after approval, and from the closing card's "Start unit N".
+new chat. A session is reached from the course view's card and units, from a
+library row of a course with a unit in progress, from "Start unit 1" after
+approval, and from the closing card's "Start unit N", which is the next
+unit in order once this one is finished.
 
 The layout of these views was settled with static mocks: `docs/prototype/`
 (start at `index.html`; the shared look is `base.css`), with the choices

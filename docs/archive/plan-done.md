@@ -697,3 +697,24 @@ tested"). Stage 1 is finished.
   and "Grade again" included), an override, the outline, both ways out of
   the unit's end, and a reload mid-check. The choices and checks are in
   `docs/decisions.md` under "Session view".
+
+### 2.12 Course and library progress
+
+- Status: done
+- Depends on: 2.1, 2.7
+- Do: unit status in the course view's list and diagram, the card at the
+  top that leads to the unit in progress or the next one, Start on every
+  unit not started (asking first when its prerequisites are not
+  finished), and the library's ticks, "where" line and Finished group
+  (mocks 6, 7 and 12; the classes are in `docs/prototype/base.css`), all
+  derived from the record.
+- Done when: tests of the page's pure modules cover each status, the
+  library's line for each, and which unit the card leads to (in progress,
+  several in progress, none); a browser check with the fake backend shows
+  a unit in progress, a passed unit and an overridden one.
+- Note: done on 2026-11-15. `mise run check` passed (465 TypeScript
+  tests, one Python test). A browser run with the fake backend showed
+  units passed, overridden and in progress in the library, the course
+  view's list, card and diagram, Start asking first and starting a unit,
+  and a unit passed live. The choices and checks are in
+  `docs/decisions.md` under "Course and library progress".

@@ -37,5 +37,11 @@ export const Course = z.object({
   createdAt: Timestamp,
   /** The library lists courses by this, newest first. */
   lastOpenedAt: Timestamp,
+  /**
+   * When each unit was last opened, by unit id. The course view lists the
+   * units in progress by it, most recent first (task 2.12). Absent until a
+   * unit is opened, and in files written before then.
+   */
+  unitsOpenedAt: z.record(Slug, Timestamp).optional(),
 });
 export type Course = z.infer<typeof Course>;

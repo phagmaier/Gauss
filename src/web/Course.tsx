@@ -1,25 +1,38 @@
-// The course view (docs/prototype/07-course.html): the page is the unit
-// list, and "Show the diagram" opens the diagram in the side pane, where
-// clicking a unit marks it in the list. Each unit of an approved course opens
-// its session, which starts it or picks it up (task 2.11). Unit status, the
-// card that leads on and Start join in task 2.12; notes in stage 5 and
-// sources in stage 4.
+// The course view (docs/prototype/07-course.html, with 12-unit-order.html's
+// card and Start): the page is the unit list, each unit with where it
+// stands, and "Show the diagram" opens the diagram in the side pane, where
+// clicking a unit marks it in the list. The card at the top leads to the
+// unit in progress, or else to the next one. Any unit can be started; one
+// whose prerequisites are not finished asks once first (task 2.12). Notes
+// join in stage 5 and sources in stage 4.
 
 import { useCallback, useEffect, useState } from "react";
+import type { StoredUnit } from "../shared/curriculum.ts";
 import { IntakeStarted } from "../shared/events.ts";
-import { StoredCourse } from "../shared/library.ts";
+import { CourseWithProgress } from "../shared/library.ts";
 import { getJson, postFor } from "./api.ts";
 import { Diagram, UnitList } from "./Curriculum.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
+import {
+  courseSummary,
+  type Lead,
+  lead,
+  progressOf,
+  unfinishedPrerequisites,
+  unitMark,
+} from "./progress.ts";
 import { navigate, paths } from "./route.ts";
+import { unitNumbers } from "./units.ts";
 
 export function Course(props: { courseId: string }) {
   const { courseId } = props;
   // Undefined while loading, null when there is no such course.
-  const [stored, setStored] = useState<StoredCourse | null>();
+  const [stored, setStored] = useState<CourseWithProgress | null>();
   const [problem, setProblem] = useState<string>();
   const [diagramOpen, setDiagramOpen] = useState(false);
   const [selected, setSelected] = useState<string>();
+  /** The unit whose Start asks first, its prerequisites not finished. */
+  const [asking, setAsking] = useState<string>();
   const closeDiagram = useCallback(() => {
     setDiagramOpen(false);
     setSelected(undefined);
@@ -28,7 +41,7 @@ export function Course(props: { courseId: string }) {
   useEffect(() => {
     void getJson(
       `/api/courses/${encodeURIComponent(courseId)}`,
-      StoredCourse,
+      CourseWithProgress,
     ).then((answer) => {
       if (answer.ok) setStored(answer.data);
       else if (answer.status === 404) setStored(null);
@@ -48,6 +61,41 @@ export function Course(props: { courseId: string }) {
   const curriculum = stored?.curriculum ?? null;
   const draft = curriculum?.approval.status === "draft";
   const title = stored?.course.title ?? (stored === null ? "Not found" : "");
+  const toUnit = (unit: StoredUnit) => navigate(paths.unit(courseId, unit.id));
+  const leadsTo = stored == null ? null : lead(stored);
+
+  /** What the learner can do with a unit of an approved course, under its goal. */
+  function unitAction(course: CourseWithProgress, unit: StoredUnit) {
+    switch (progressOf(course.progress, unit.id).status) {
+      case "in-progress":
+        return (
+          <Link to={paths.unit(courseId, unit.id)} className="textbtn">
+            Continue
+          </Link>
+        );
+      case "not-started":
+        return asking === unit.id ? null : (
+          <button
+            type="button"
+            className="textbtn"
+            onClick={() =>
+              unfinishedPrerequisites(course, unit).length === 0
+                ? toUnit(unit)
+                : setAsking(unit.id)
+            }
+          >
+            Start
+          </button>
+        );
+      default:
+        // A finished unit opens to how it finished; its notes join in stage 5.
+        return (
+          <Link to={paths.unit(courseId, unit.id)} className="textbtn">
+            Open
+          </Link>
+        );
+    }
+  }
   return (
     <div className={diagramOpen ? "pg has-pane" : "pg"}>
       <TopLine
@@ -76,7 +124,14 @@ export function Course(props: { courseId: string }) {
           ) : stored === undefined ? null : (
             <>
               <h1 className="cv-title">{title}</h1>
-              <p className="cv-at">{whereItStands(curriculum)}</p>
+              <p className="cv-at">{whereItStands(stored)}</p>
+              {leadsTo === null ? null : (
+                <LeadCard
+                  lead={leadsTo}
+                  onGo={toUnit}
+                  unitPath={(unit) => paths.unit(courseId, unit.id)}
+                />
+              )}
               {curriculum === null ? null : (
                 <>
                   <div className="cv-hrow">
@@ -92,22 +147,44 @@ export function Course(props: { courseId: string }) {
                       {diagramOpen ? "Hide the diagram" : "Show the diagram"}
                     </button>
                   </div>
-                  <UnitList
-                    units={curriculum.units}
-                    selected={selected}
-                    action={
-                      draft
-                        ? undefined
-                        : (unit) => (
-                            <Link
-                              to={paths.unit(courseId, unit.id)}
+                  {draft ? (
+                    <UnitList units={curriculum.units} selected={selected} />
+                  ) : (
+                    <UnitList
+                      units={curriculum.units}
+                      selected={selected}
+                      state={(unit) => unitMark(stored, unit).state}
+                      mark={(unit) => unitMark(stored, unit)}
+                      action={(unit) => unitAction(stored, unit)}
+                      after={(unit) =>
+                        asking === unit.id ? (
+                          <span className="confirm">
+                            <span>
+                              This builds on{" "}
+                              {unitNumbers(
+                                unfinishedPrerequisites(stored, unit),
+                              )}
+                              , not finished yet.
+                            </span>
+                            <button
+                              type="button"
                               className="textbtn"
+                              onClick={() => toUnit(unit)}
                             >
-                              Open
-                            </Link>
-                          )
-                    }
-                  />
+                              Start anyway
+                            </button>
+                            <button
+                              type="button"
+                              className="textbtn"
+                              onClick={() => setAsking(undefined)}
+                            >
+                              Cancel
+                            </button>
+                          </span>
+                        ) : null
+                      }
+                    />
+                  )}
                 </>
               )}
             </>
@@ -122,7 +199,12 @@ export function Course(props: { courseId: string }) {
         >
           <Diagram
             units={curriculum.units}
-            nodeClass="todo"
+            standing={(id) => {
+              const unit = curriculum.units.find((u) => u.id === id);
+              return draft || stored == null || unit === undefined
+                ? { state: "todo", text: "" }
+                : unitMark(stored, unit);
+            }}
             selected={selected}
             onSelect={(id) => {
               setSelected(id);
@@ -137,15 +219,74 @@ export function Course(props: { courseId: string }) {
   );
 }
 
-function whereItStands(curriculum: StoredCourse["curriculum"]): string {
+function whereItStands(stored: CourseWithProgress): string {
+  const { curriculum } = stored;
   if (curriculum === null) return "No curriculum was proposed.";
   if (curriculum.approval.status === "draft") {
     return "The curriculum is waiting for your review.";
   }
-  const day = new Date(curriculum.approval.approvedAt).toLocaleDateString(
-    "en-GB",
-    { day: "numeric", month: "long", year: "numeric" },
+  return courseSummary(stored);
+}
+
+/**
+ * The card above the units (piece 12): the unit in progress and where in it
+ * the learner is, with the other units in progress one line each, or else
+ * the next unit in order and its goal.
+ */
+function LeadCard(props: {
+  lead: Lead;
+  onGo(unit: StoredUnit): void;
+  unitPath(unit: StoredUnit): string;
+}) {
+  const { lead } = props;
+  const now = lead.kind === "in-progress";
+  const where = now ? lead.where : null;
+  return (
+    <section className="cn" aria-label={now ? "In progress" : "Up next"}>
+      <div>
+        <div className="cn-k">{now ? "In progress" : "Up next"}</div>
+        <div className="cn-t">
+          <span>Unit {lead.number}</span>
+          {lead.unit.title}
+        </div>
+        {where === null ? (
+          <div className="cn-g">{lead.unit.goal}</div>
+        ) : (
+          <div className="cn-at">
+            <span className="ticks" aria-hidden="true">
+              {where.ticks.map((mark, i) => (
+                // One tick per segment of the plan, in order.
+                // biome-ignore lint/suspicious/noArrayIndexKey: see above
+                <i key={i} className={mark} />
+              ))}
+            </span>
+            <span>
+              {where.title === undefined
+                ? where.label
+                : `${where.label}: ${where.title}`}
+            </span>
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        className="btn"
+        onClick={() => props.onGo(lead.unit)}
+      >
+        {now ? "Continue" : `Start unit ${lead.number}`}
+      </button>
+      {now
+        ? lead.others.map((other) => (
+            <div key={other.unit.id} className="cn-also">
+              <span>
+                Also in progress: unit {other.number}, {other.unit.title}
+              </span>
+              <Link to={props.unitPath(other.unit)} className="textbtn">
+                Continue
+              </Link>
+            </div>
+          ))
+        : null}
+    </section>
   );
-  // Where the units stand joins in task 2.12.
-  return `Approved on ${day}.`;
 }

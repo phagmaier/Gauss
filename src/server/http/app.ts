@@ -13,12 +13,13 @@ import {
   LearnerMessage,
   type PageEvent,
 } from "../../shared/events.ts";
-import type { Library } from "../../shared/library.ts";
+import type { CourseWithProgress, Library } from "../../shared/library.ts";
 import { AnswerSubmission } from "../../shared/question.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { DataRoot } from "../record/data-root.ts";
+import { withProgress } from "../record/progress.ts";
 
 export function createApp(options: {
   dataRoot: DataRoot;
@@ -40,15 +41,23 @@ export function createApp(options: {
 
   // --- The library ---------------------------------------------------------
 
-  app.get("/api/courses", async (c) =>
-    c.json({ courses: await dataRoot.listCourses() } satisfies Library),
-  );
+  // Each course with where its units stand, derived from the record now.
+  app.get("/api/courses", async (c) => {
+    const courses = await Promise.all(
+      (await dataRoot.listCourses()).map((stored) =>
+        withProgress(dataRoot, stored),
+      ),
+    );
+    return c.json({ courses } satisfies Library);
+  });
 
   app.get("/api/courses/:id", async (c) => {
     const stored = await dataRoot.readCourse(c.req.param("id"));
     return stored === undefined
       ? c.json({ error: "No such course." }, 404)
-      : c.json(stored);
+      : c.json(
+          (await withProgress(dataRoot, stored)) satisfies CourseWithProgress,
+        );
   });
 
   // A draft is reviewed in an intake: the one that proposed it, if it is

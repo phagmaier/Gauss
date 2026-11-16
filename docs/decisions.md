@@ -41,6 +41,7 @@ findings are the record.
 | Grader prompt | The hand-graded set, the runs and their results, the grader's model and why, what `grader.md` says and why | Changing `grader.md`, the grader's model or `WrittenGrade`, writing rubric guidance in `tutor.md` (2.16), disputes (stage 3) |
 | Style note at intake | The note in the proposal, `style.md` with the draft, courses without one, the card, `planner.md`'s section, approval checked against the card | Touching `propose_curriculum`, `planner.md` or the proposal card, writing `tutor.md`'s default style (2.16), style changes (stage 5) |
 | Session view | The session page: its address, markers, next-step control, written card, keys, top line and outline, closing card, the entry points, a lost chat, the course's details failing to load, the browser run | Touching `src/web/Session.tsx`, `session.ts`, `timeline.ts` or `QuestionCard.tsx`; course progress (2.12), transcripts (2.13), "Start fresh" (2.14), prompts that write objective statements |
+| Course and library progress | What the routes send, when units were opened, the card, Start, "Open" on finished units, the library's lines and groups, the closing card's next unit | Touching the course view, the library, `progress.ts` or `unitsOpenedAt`; notes (stage 5), the gate and retained status in the library (stage 5) |
 
 ## Page design (plan task 1.0)
 
@@ -2379,3 +2380,100 @@ overturned.
   first. 2.14: "Start fresh" goes in the outline under the segments (piece
   11; `.uo-fresh` and `.stale` in `docs/prototype/base.css` are not ported
   yet). 2.16: statements may use `$` math (above).
+
+## Course and library progress (plan task 2.12)
+
+Built on 2026-11-15: the progress the library routes send
+(`src/server/record/progress.ts`, `UnitProgress` and `CourseWithProgress`
+in `src/shared/library.ts`), the page's reading of it (`src/web/progress.ts`,
+`standing` in `library.ts`, `placement` in `session.ts`), the course view's
+card, statuses and Start (`Course.tsx`), the library's groups and ticks
+(`Library.tsx`), and the styles of piece 12 in `styles.css`. The choices are
+the agent's and can be overturned.
+
+- **The server derives each unit's progress when asked.** `GET
+  /api/courses` and `GET /api/courses/<id>` send every course with
+  `progress`: for each unit of an approved curriculum, its status from
+  `unitStatus`, and for a unit with a position its segment. The position
+  itself stays on the server, since an open question carries its grading
+  material. A draft has no progress. The page names a unit's segment from
+  the plan stored on the unit.
+- **When each unit was last opened is kept in `course.json`**
+  (`unitsOpenedAt`, by unit id), written by `markOpened(id, unitId)`, which
+  opening a unit already called for the course's `lastOpenedAt`. The card
+  needs it to put the units in progress most recently opened first, and
+  nothing recorded it. Not in `state.json`: the engine writes positions
+  from inside each chat's queue, and a second writer there, outside it,
+  could lose an update. Not in the position either, since the engine builds
+  some positions afresh. Units in progress never marked opened (positions
+  from before this task) come after the others, in list order.
+- **The card leads to the unit in progress most recently opened**, with the
+  others one line each, most recent first; else to the next unit in order,
+  the first in the list not started whose prerequisites are finished
+  (passed or overridden), as piece 12 says. A unit in progress whose
+  position is gone (a record left half-written) counts as in progress, and
+  the card shows its goal, as it can say nothing of its segment. A finished
+  course has no card. "Up next" marks the unit in the list only when the
+  card says it too: when no unit is in progress.
+- **Start asks first** when a prerequisite is not finished, naming only the
+  unfinished ones ("This builds on unit 5, not finished yet."), with "Start
+  anyway" and Cancel. The card's "Start unit N" never asks, since its
+  prerequisites are finished.
+- **A finished unit keeps "Open"** in the list, where mock 7 has Notes
+  (stage 5). It is the only way back to a finished unit's session, which
+  2.13 will fill with its transcript. In progress it is Continue.
+- **The line under the title counts finished units** ("6 units, 2
+  finished.", "none finished yet", "all finished"; "One unit, finished." for
+  a one-off), as piece 12 has it. It replaces "Approved on <date>".
+- **The library follows mock 6.** In progress: "Unit 3 of 8: Differentiation
+  rules, segment 3 of 5" (or "going over again", or "in progress" when the
+  segment is unknown), naming the unit the card leads to; a one-off says
+  only "Segment 2 of 3". Up next: "Unit 2 of 8: title, not started".
+  Finished: "Passed" or "Overridden" for a one-off, "All 8 units passed" or
+  "All 8 units finished, 2 overridden" for a course, in the Finished group,
+  which is left out while empty, as is "In progress". A tick per unit:
+  past once finished, lit while in progress. A one-off has no ticks, as in
+  the mock; task 1.6 gave it one.
+- **A library row of a course with a unit in progress opens that unit's
+  session**, where the learner stopped, as mock 6 has it ("resume one");
+  this revises task 1.6's note that every approved course opens its course
+  view, which was written before units could be taught. A course not
+  started, or finished, opens its course view.
+- **The closing card's "Start unit N" is the next unit in order**, counting
+  the unit just finished (the note from 2.11). Before, it was the next unit
+  in the list, which could be one already started or finished. With no unit
+  left to start it says "That finishes the course." only when every other
+  unit is finished; otherwise it leads back to the course, whose card shows
+  the units in progress. The finished unit's note uses the same unit.
+- **`segmentStand`** ("Segment 2 of 5" or "Going over again", with its
+  ticks) moved to `progress.ts` so the card and the session's top line say
+  the same; `Mark` moved with it.
+- **Browser run with the fake backend**, on a scratch server built like
+  `main.ts` with a tutor scripted on each turn's header and a seeded
+  scratch data root (a draft, a one-off in progress, one passed, a course
+  not started, a finished course with an override, and mock 12's course
+  with unit 1 passed, unit 2 overridden and units 3 and 5 in progress). It
+  showed the library's lines, ticks and Finished group; the course view's
+  card with unit 5 (opened last) and unit 3 on its line, each unit's
+  status, and the diagram's nodes by status; Start on unit 6 asking about
+  unit 5 only (unit 2, overridden, counts as finished), Cancel, then Start
+  anyway, which planned and taught it; the card then leading to unit 6
+  with 5 and 3 below; unit 3 continued from its line and passed live,
+  with the closing card offering "Start unit 4"; the course view then
+  saying 3 finished; "Up next" on the course not started; and the library
+  row resuming unit 6's session. After a server restart the routes sent
+  the same progress. No console errors.
+- **Checks:** `mise run check` passed lint, type-checking, 465 TypeScript
+  tests and one Python test. New: 3 tests of the server's derivation, 1 of
+  `markOpened` with units, progress in 3 route tests, 10 of
+  `src/web/progress.ts`, 14 library lines (replacing 4), and 3 of
+  `placement` (replacing 2). Each of thirteen faults made a test fail: a
+  position looked up without `Object.hasOwn`, prerequisites ignored, the
+  oldest opened first, overridden not finished, "Up next" beside a unit in
+  progress, the finishing unit not counted finished, ticks on a one-off,
+  `markOpened` dropping the unit, routes without progress, going over
+  again read as a segment, unmarked units sorted first, "finishes the
+  course" with another unit in progress, and the library naming the first
+  unit in progress rather than the last opened. Two of them, "Up next"
+  beside a unit in progress and the library's choice of unit, first passed
+  every test; the tests now cover both.

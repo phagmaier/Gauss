@@ -13,13 +13,17 @@ export interface UnitMark {
   className: string;
 }
 
-export function UnitList(props: {
-  units: Unit[];
-  mark?: (unit: Unit) => UnitMark | undefined;
+export function UnitList<U extends Unit>(props: {
+  units: U[];
+  mark?: (unit: U) => UnitMark | undefined;
+  /** A class for the unit's row, for where it stands (task 2.12). */
+  state?: (unit: U) => string;
   /** The unit marked in the diagram, if any. */
   selected?: string | undefined;
   /** What the learner can do with a unit, under its goal. */
-  action?: ((unit: Unit) => ReactNode) | undefined;
+  action?: ((unit: U) => ReactNode) | undefined;
+  /** Anything under that line, such as a question before starting. */
+  after?: (unit: U) => ReactNode;
 }) {
   const { units } = props;
   return (
@@ -28,22 +32,26 @@ export function UnitList(props: {
         const needs = buildsOn(unit, units);
         const mark = props.mark?.(unit);
         const action = props.action?.(unit);
+        const className = [
+          "cu-row",
+          props.state?.(unit),
+          props.selected === unit.id ? "sel" : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
         return (
-          <li
-            key={unit.id}
-            id={`unit-${unit.id}`}
-            className={props.selected === unit.id ? "cu-row sel" : "cu-row"}
-          >
+          <li key={unit.id} id={`unit-${unit.id}`} className={className}>
             <span className="cu-n">{i + 1}</span>
             <div>
               <div className="cu-t">{unit.title}</div>
               <div className="cu-g">{unit.goal}</div>
-              {needs === null && action === undefined ? null : (
+              {needs === null && action == null ? null : (
                 <div className="cu-m">
                   {needs === null ? null : <span>{needs}</span>}
                   {action}
                 </div>
               )}
+              {props.after?.(unit)}
             </div>
             <span className={`cu-s ${mark?.className ?? ""}`}>
               {mark?.text}
@@ -82,8 +90,8 @@ export function Diagram(props: {
   units: Unit[];
   /** Units whose node says "Changed". */
   changed?: Set<string>;
-  /** A class for every node, for where the unit stands. */
-  nodeClass?: string;
+  /** Where each unit stands, by its id: its node's class, and the word under its title. */
+  standing?: (unitId: string) => { state: string; text: string };
   selected?: string | undefined;
   /** Makes the nodes buttons that mark their unit. */
   onSelect?: (id: string) => void;
@@ -107,9 +115,10 @@ export function Diagram(props: {
       </svg>
       {nodes.map((n) => {
         const changed = props.changed?.has(n.unit.id) === true;
+        const standing = props.standing?.(n.unit.id);
         const className = [
           "dn",
-          props.nodeClass,
+          standing?.state,
           changed ? "chg" : undefined,
           props.selected === n.unit.id ? "sel" : undefined,
         ]
@@ -119,11 +128,12 @@ export function Diagram(props: {
           left: `${n.x - 23}%`,
           top: n.row * PITCH,
         };
+        const text = changed ? "Changed" : standing?.text;
         const content = (
           <>
             <b>{n.index + 1}</b>
             <span className="t">{n.unit.title}</span>
-            {changed ? <small>Changed</small> : null}
+            {text ? <small>{text}</small> : null}
           </>
         );
         const { onSelect } = props;

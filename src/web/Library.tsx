@@ -1,13 +1,15 @@
 // The library (docs/prototype/06-library.html): one plain list of courses,
-// most recently opened first, and "New course" at the right of the top line.
-// A course whose curriculum awaits review opens in its intake, to push back
-// or approve; any other opens its course view.
+// most recently opened first, with the finished ones grouped at the bottom,
+// and "New course" at the right of the top line. A course whose curriculum
+// awaits review opens in its intake, to push back or approve; one with a
+// unit in progress opens that unit's session, where the learner stopped;
+// any other opens its course view.
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { IntakeStarted } from "../shared/events.ts";
 import {
+  type CourseWithProgress,
   Library as LibrarySchema,
-  type StoredCourse,
 } from "../shared/library.ts";
 import { getJson, postFor } from "./api.ts";
 import { TopLine } from "./Frame.tsx";
@@ -15,7 +17,7 @@ import { standing, whenOpened } from "./library.ts";
 import { navigate, paths } from "./route.ts";
 
 export function Library() {
-  const [courses, setCourses] = useState<StoredCourse[]>();
+  const [courses, setCourses] = useState<CourseWithProgress[]>();
   const [problem, setProblem] = useState<string>();
   const [opening, setOpening] = useState(false);
 
@@ -35,13 +37,30 @@ export function Library() {
     else setProblem(answer.error);
   }
 
-  function open(stored: StoredCourse) {
-    if (standing(stored).review) {
+  function open(stored: CourseWithProgress) {
+    const where = standing(stored);
+    if (where.review) {
       void toIntake(`/api/courses/${encodeURIComponent(stored.id)}/review`);
+    } else if (where.resume !== undefined) {
+      navigate(paths.unit(stored.id, where.resume));
     } else {
       navigate(paths.course(stored.id));
     }
   }
+
+  const groups =
+    courses === undefined
+      ? []
+      : [
+          {
+            name: "In progress",
+            courses: courses.filter((c) => !standing(c).finished),
+          },
+          {
+            name: "Finished",
+            courses: courses.filter((c) => standing(c).finished),
+          },
+        ].filter((group) => group.courses.length > 0);
 
   return (
     <div className="pg">
@@ -67,21 +86,21 @@ export function Library() {
               No courses yet. Start one with New course.
             </p>
           ) : (
-            // Nothing can be finished before units are taught (stage 2), so
-            // the "Finished" group of the mock has nothing to hold yet.
-            <>
-              <h2 className="pg-h">In progress</h2>
-              <div className="lib-list">
-                {courses.map((stored) => (
-                  <Row
-                    key={stored.id}
-                    stored={stored}
-                    disabled={opening}
-                    onOpen={() => open(stored)}
-                  />
-                ))}
-              </div>
-            </>
+            groups.map((group) => (
+              <Fragment key={group.name}>
+                <h2 className="pg-h">{group.name}</h2>
+                <div className="lib-list">
+                  {group.courses.map((stored) => (
+                    <Row
+                      key={stored.id}
+                      stored={stored}
+                      disabled={opening}
+                      onOpen={() => open(stored)}
+                    />
+                  ))}
+                </div>
+              </Fragment>
+            ))
           )}
         </div>
       </div>
@@ -90,7 +109,7 @@ export function Library() {
 }
 
 function Row(props: {
-  stored: StoredCourse;
+  stored: CourseWithProgress;
   disabled: boolean;
   onOpen(): void;
 }) {
@@ -99,7 +118,7 @@ function Row(props: {
   return (
     <button
       type="button"
-      className="lc"
+      className={where.finished ? "lc done" : "lc"}
       disabled={props.disabled}
       onClick={props.onOpen}
     >
@@ -111,12 +130,12 @@ function Row(props: {
       <span className={where.review ? "lc-where todo" : "lc-where"}>
         {where.text}
       </span>
-      {where.units === 0 ? null : (
+      {where.ticks.length === 0 ? null : (
         <span className="ticks" aria-hidden="true">
-          {Array.from({ length: where.units }, (_, i) => (
-            // One tick per unit, all alike until units are taught.
+          {where.ticks.map((mark, i) => (
+            // One tick per unit, in the list's order.
             // biome-ignore lint/suspicious/noArrayIndexKey: see above
-            <i key={i} />
+            <i key={i} className={mark} />
           ))}
         </span>
       )}

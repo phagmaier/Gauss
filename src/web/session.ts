@@ -3,19 +3,21 @@
 // (timeline.ts): the position in the top line and the outline, the one
 // next-step control, the closing card, and the unit's place in its course.
 
-import type { Unit } from "../shared/curriculum.ts";
-import type { StoredCourse } from "../shared/library.ts";
+import type { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
+import {
+  AGAIN,
+  isFinished,
+  type Mark,
+  type Numbered,
+  nextInOrder,
+  progressOf,
+  segmentStand,
+} from "./progress.ts";
 import type { Position, Timeline, UnitEndItem } from "./timeline.ts";
 
-/** How a segment's mark is drawn: done, in progress, or still to come. */
-export type Mark = "past" | "now" | "";
-
 type Finished = Timeline["finished"];
-
-/** The name of the segment after the plan's last, as the server gives it. */
-const AGAIN = "Going over again";
 
 /**
  * The position in the top line: "Segment 2 of 5", "Going over again" or
@@ -32,21 +34,7 @@ export function whereInUnit(
     return { label: "Finished", ticks: Array(count).fill("past") };
   }
   if (position === null) return null;
-  if (position.again !== undefined) {
-    // As mock 10 has it: the last tick stays lit while objectives are gone over.
-    return {
-      label: AGAIN,
-      ticks: Array.from({ length: count }, (_, i) =>
-        i < count - 1 ? "past" : "now",
-      ),
-    };
-  }
-  return {
-    label: `Segment ${position.segment + 1} of ${count}`,
-    ticks: Array.from({ length: count }, (_, i) =>
-      i < position.segment ? "past" : i === position.segment ? "now" : "",
-    ),
-  };
+  return segmentStand(count, position.segment, position.again !== undefined);
 }
 
 /** The unit's segments as its outline lists them. */
@@ -246,8 +234,14 @@ export interface Placement {
   number: number;
   /** How many units the course has. */
   count: number;
-  /** The unit after it in the list, with its number; null for the last. */
-  next: { number: number; unit: Unit } | null;
+  /**
+   * The unit to start once this one is finished, with its number: the next
+   * in order (progress.ts), counting this one finished. Null when every other
+   * unit is started or waits on one that is not finished.
+   */
+  next: Numbered | null;
+  /** Every other unit is finished, so finishing this one finishes the course. */
+  finishesCourse: boolean;
 }
 
 /**
@@ -256,7 +250,7 @@ export interface Placement {
  * for the course's last unit.
  */
 export function placement(
-  stored: StoredCourse | null | undefined,
+  stored: CourseWithProgress | null | undefined,
   unitId: string,
 ): Placement | undefined {
   const units = stored?.curriculum?.units;
@@ -264,12 +258,18 @@ export function placement(
   const at = units.findIndex((u) => u.id === unitId);
   const unit = units[at];
   if (unit === undefined) return undefined;
-  const next = units[at + 1];
+  const others = units.filter((u) => u.id !== unitId);
   return {
     courseTitle: stored.course.title,
     title: unit.title,
     number: at + 1,
     count: units.length,
-    next: next === undefined ? null : { number: at + 2, unit: next },
+    next: nextInOrder(units, {
+      ...stored.progress,
+      [unitId]: { status: "passed" },
+    }),
+    finishesCourse: others.every((u) =>
+      isFinished(progressOf(stored.progress, u.id).status),
+    ),
   };
 }

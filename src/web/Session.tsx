@@ -23,7 +23,7 @@ import {
   useState,
 } from "react";
 import { Hello, PageEvent } from "../shared/events.ts";
-import { StoredCourse } from "../shared/library.ts";
+import { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { AnswerSubmission } from "../shared/question.ts";
 import { getJsonUntilAnswered, post, postStatus } from "./api.ts";
@@ -59,7 +59,7 @@ export function Session(props: { courseId: string; unitId: string }) {
   const { courseId, unitId } = props;
   const [timeline, dispatch] = useReducer(reduce, emptyTimeline);
   // Undefined while loading, null when there is no such course.
-  const [stored, setStored] = useState<StoredCourse | null>();
+  const [stored, setStored] = useState<CourseWithProgress | null>();
   const [connected, setConnected] = useState(false);
   /** Why the server will not open the unit at all. */
   const [refused, setRefused] = useState<string>();
@@ -83,15 +83,19 @@ export function Session(props: { courseId: string; unitId: string }) {
     [courseId, unitId],
   );
 
-  // The course's details name the unit and the one after it. A failure to
+  // The course's details name the unit and the one to start next. A failure to
   // load them is asked again until the server answers, so it never leaves
   // the page thinking the course is empty.
   useEffect(() => {
     const stop = new AbortController();
-    void getJsonUntilAnswered(`/api/courses/${enc(courseId)}`, StoredCourse, {
-      signal: stop.signal,
-      onFailure: (error) => setCourseProblem({ error, retrying: true }),
-    }).then((answer) => {
+    void getJsonUntilAnswered(
+      `/api/courses/${enc(courseId)}`,
+      CourseWithProgress,
+      {
+        signal: stop.signal,
+        onFailure: (error) => setCourseProblem({ error, retrying: true }),
+      },
+    ).then((answer) => {
       if (answer === undefined) return;
       setCourseProblem(undefined);
       if (answer.ok) setStored(answer.data);
@@ -525,9 +529,11 @@ function ClosingCard(props: {
       <div className="qa-foot">
         {place === undefined || place.next === null ? (
           <>
-            {/* Said only once the course is known to have no unit after it. */}
+            {/* Said only once the course is known to have no other unit left. */}
             <span className="qa-aside">
-              {place === undefined ? "" : "That was the course's last unit."}
+              {place?.finishesCourse === true
+                ? "That finishes the course."
+                : ""}
             </span>
             <button type="button" className="btn" onClick={props.onCourse}>
               Back to the course

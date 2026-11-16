@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
-import type { StoredCourse } from "../shared/library.ts";
+import type { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import {
@@ -384,18 +384,21 @@ test("more objectives than there are number words are counted in digits", () => 
 
 // --- Where the unit sits in its course ---------------------------------------
 
-const unit = (id: string, title: string): Unit => ({
+const unit = (id: string, title: string, prerequisites: string[]): Unit => ({
   id,
   title,
   goal: `The goal of ${title}.`,
-  prerequisites: [],
+  prerequisites,
 });
+// Units 2 and 3 both build on unit 1 only.
 const UNITS = [
-  unit("limits", "Limits"),
-  unit("derivatives", "Derivatives"),
-  unit("integrals", "Integrals"),
+  unit("limits", "Limits", []),
+  unit("derivatives", "Derivatives", ["limits"]),
+  unit("integrals", "Integrals", ["limits"]),
 ];
-const COURSE: StoredCourse = {
+const course = (
+  progress: CourseWithProgress["progress"] = {},
+): CourseWithProgress => ({
   id: "calculus",
   course: {
     title: "Calculus I",
@@ -408,32 +411,58 @@ const COURSE: StoredCourse = {
     approval: { status: "approved", approvedAt: "2026-11-14T10:00:00.000Z" },
     units: UNITS,
   },
-};
+  progress,
+});
+const IN_PROGRESS = { status: "in-progress", segment: 0 } as const;
 
-test("a unit's place in its course: its number, the course's size, and the unit after it", () => {
-  expect(placement(COURSE, "limits")).toEqual({
+// The unit to start next is the one the course view's card would lead to
+// once this unit is finished: the first not started whose prerequisites are
+// finished, counting this one finished (progress.ts).
+test("a unit's place in its course: its number, the course's size, and the unit to start next", () => {
+  expect(placement(course({ limits: IN_PROGRESS }), "limits")).toEqual({
     courseTitle: "Calculus I",
     title: "Limits",
     number: 1,
     count: 3,
     next: { number: 2, unit: UNITS[1] },
+    finishesCourse: false,
   });
-  expect(placement(COURSE, "derivatives")?.next).toEqual({
-    number: 3,
-    unit: UNITS[2],
+  // Unit 2 is started already, so it is passed over.
+  expect(
+    placement(course({ derivatives: IN_PROGRESS }), "limits")?.next,
+  ).toEqual({ number: 3, unit: UNITS[2] });
+  // Unit 2 was started before the unit it builds on: unit 1 comes next.
+  expect(placement(course(), "derivatives")?.next).toEqual({
+    number: 1,
+    unit: UNITS[0],
   });
 });
 
-test("only a unit of a loaded course is the last: a course not loaded, or a unit not in it, has no place", () => {
-  expect(placement(COURSE, "integrals")).toMatchObject({
-    number: 3,
-    count: 3,
-    next: null,
-  });
-  // Not loaded yet, or its load failed: unknown, never "the last unit".
+test("with no unit left to start, a unit finishes the course only if every other one is finished", () => {
+  expect(
+    placement(
+      course({
+        limits: { status: "passed" },
+        integrals: { status: "overridden" },
+      }),
+      "derivatives",
+    ),
+  ).toMatchObject({ number: 2, next: null, finishesCourse: true });
+  expect(
+    placement(
+      course({ limits: { status: "passed" }, integrals: IN_PROGRESS }),
+      "derivatives",
+    ),
+  ).toMatchObject({ next: null, finishesCourse: false });
+});
+
+test("a course not loaded, or a unit not in it, has no place: never taken for the course's last unit", () => {
+  // Not loaded yet, or its load failed.
   expect(placement(undefined, "limits")).toBeUndefined();
   // No such course.
   expect(placement(null, "limits")).toBeUndefined();
-  expect(placement({ ...COURSE, curriculum: null }, "limits")).toBeUndefined();
-  expect(placement(COURSE, "elsewhere")).toBeUndefined();
+  expect(
+    placement({ ...course(), curriculum: null }, "limits"),
+  ).toBeUndefined();
+  expect(placement(course(), "elsewhere")).toBeUndefined();
 });
