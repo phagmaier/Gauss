@@ -58,6 +58,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.15 | Close idle tutor sessions | `createConversation` (`engine/conversation.ts`) closes a kept session after `IDLE_MS` (ten minutes) with no turn queued or running and nothing `waiting` (a grading), and the next turn resumes it; a failed start or resume fails only that turn. Intakes are kept too, in `<data root>/intake/`, for this only. Opening a unit asks `hasSession` and starts nothing; the first turn resumes, and a session lost at a turn falls back there, its marker after the learner's message. `resumeFailed` and "Start fresh instead" are gone; the outline's Start fresh leaves a resume that keeps failing. Tests use `createFakeTimer` (`engine/fake-timer.ts`). Idle closing was not run on Claude end to end. |
 | 2.15a | Idle-session review fixes | Claude lookup uses the same sanitized configuration root as startup; inherited `CLAUDE_CONFIG_DIR` adds a short Node lookup subprocess, never a model request. Intake initialization survives a failed or stopped startup. Lost-session markers identify their learner message, so queued messages and transcript replay partition correctly; non-message turns move none. |
 | 2.16a | Feedback turn after an answer | The turn after a graded answer is for feedback alone (`ask_question` refused); the engine then sends `nextQuestionTurn`, or closes the segment when the check is done: `close_segment` is gone, and a unit reopened in a done check closes it as it opens. A queued turn can `skip()`; `settled()` waits for turns sent from a turn's end. A restart between an answer and the next question still waits on a learner message. |
+| 2.16 | Tutor prompt | `prompts/tutor.md`: headers and refusals, the rhythm, teaching 250 to 400 words (never over 600), feedback under 100 words in its own turn, lead-ins that help with nothing, questions and rubrics for the grader, help, the default style that `style.md` adjusts, `$` math. Sonnet 5.5 met the check over two segments. Choice order is 2.17's; a wrong key cannot be undone until disputes (stage 3). |
 
 ## Stage 2: session engine
 
@@ -71,37 +72,23 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
-### 2.16 Tutor prompt
+### 2.17 Shuffle the choices
 
-- Status: todo. The prompt is rewritten and revised once in a run of
-  three segments; the rest of the check passed there (`docs/decisions.md`,
-  "Tutor prompt"). 2.16a then split the turn after an answer and revised
-  `tutor.md`'s feedback section, and was committed with the prompt and
-  that run's record. Run two segments again on the current prompt, check
-  the whole "done when", and commit. Seen in 2.16a's run, for this one:
-  feedback ran 110 to 137 words against the prompt's two to five
-  sentences.
-- Depends on: 2.9, 2.10, 2.12, 2.15, 2.15a, 2.16a
-- Do: draft `prompts/tutor.md`: the teaching rhythm and what each header
-  allows, the cap on teaching length, that posting a question ends the
-  turn so feedback and lead-in come first (task 0.3), Markdown with `$`
-  math, and the default style that a course's `style.md` adjusts. Teach
-  segments of a math course in the browser, read the transcripts, and
-  revise.
-- Done when: in a real run of at least two segments, the transcripts show
-  teaching within the cap, no hint in a question's lead-in, feedback
-  before the next question, `close_segment` only after the check, and
-  math that renders; what was revised, and why, is in `docs/decisions.md`.
-- Note: the result depends on how well the tutor teaches, so this run may
-  use Sonnet or Opus; checks of the flow alone stay on Haiku 5.5
-  (`AGENTS.md`).
-- Note from 2.4: say how math is written (`$...$`, `$$` on a line of its
-  own, `\$` for a dollar sign), as `prompts/planner.md` does, and that
-  images are not shown.
-- Note from 2.9: the grader accepts any valid method and reads what may be
-  assumed without proof from the rubric, so ask rubrics to say what may be
-  assumed and not to depend on one method (`docs/decisions.md`, "Grader
-  prompt").
+- Status: todo
+- Depends on: 2.16
+- Why: the tutor puts the correct choice at A in most questions, so a
+  learner could learn the letter; asked to place it at random, it wrote a
+  wrong answer key (`docs/decisions.md`, "Tutor prompt").
+- Do: when a choice question is posted, the engine shuffles its choices
+  and moves the answer letter with the correct one before the question is
+  stored, so the page, the evidence and the tutor's later turns all have
+  the stored order. Keep the tests' order fixed where they read posted
+  choices (an injected shuffle). Update `scripted.ts`, whose tutor says A
+  is always correct, and the note on it in `AGENTS.md`.
+- Done when: tests show a posted question's choices are a permutation of
+  the tutor's, with the answer letter on the same text, and the answer
+  turn listing the stored order; a browser check on `pnpm dev:fake` still
+  lets the right choice be picked.
 
 **User check:** complete one unit of a math course across two sittings,
 stopping in the middle of a segment.

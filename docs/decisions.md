@@ -48,7 +48,7 @@ findings are the record.
 | Idle sessions | Closing a kept session when idle and resuming it at the next turn, what idle means and for how long, one way to resume (the opening only asks), a failed resume or start retried by the next turn, `resumeFailed` taken out, kept intakes and their lost-session headers, the fake timer, the fault and browser checks | Touching `engine/conversation.ts`, `unit-agents.ts`, sessions in `intake.ts`, `hasSession` in `backends/`, the thread's conversations in `timeline.ts`; `tutor.md` (2.16), handoff notes (stage 5), the Codex backend (stage 6) |
 | Idle-session review fixes | Configuration-root lookup without changing login, intake context across failed or stopped startup, explicit fallback message identity, concurrent-message replay and browser evidence | Touching Claude session lookup, intake initialization, `fresh_start`, or conversation partitioning (task 2.15a) |
 | Feedback turn | Task 2.16a: the feedback-only turn after an answer, the next question asked for in its own turn, the engine closing the segment (`close_segment` removed), skipped turns and `settled()`, the tests, the fake and real runs | Touching the turn after an answer, `nextQuestionTurn`, closing a segment, `skip` in `conversation.ts`, `scripted.ts`'s answer turns, `tutor.md`'s feedback section |
-| Tutor prompt | Task 2.16's run: the transcripts against its check, feedback that went into the tutor's thinking and what did not fix it, the refusal rule, the proposed feedback turn (2.16a), what `tutor.md` says and why | Touching `tutor.md`, the turn after an answer (2.16a), thinking settings in `backends/claude.ts`, Start fresh in a check |
+| Tutor prompt | Task 2.16's two runs: the transcripts against its check, feedback that went into the tutor's thinking and what did not fix it, the refusal rule, the feedback turn (2.16a), the rerun, feedback length, the wrong answer key and the choice-letter rule, what `tutor.md` says and why | Touching `tutor.md`, the turn after an answer (2.16a), thinking settings in `backends/claude.ts`, Start fresh in a check |
 
 ## Page design (plan task 1.0)
 
@@ -3223,12 +3223,13 @@ reproduced all three failures without a model call.
   check used a stored transcript; the live delayed-resume sequence is
   covered by the fake-backend regression.
 
-## Tutor prompt (plan task 2.16, in progress)
+## Tutor prompt (plan task 2.16)
 
-Run on 2026-11-16. The task is not finished: the run showed that the
-prompt cannot get feedback written before the next question, which the
-plan assumed. Task 2.16a fixes the turn; 2.16 then runs its segments
-again. The choices are the agent's and can be overturned.
+Done on 2026-11-16, in two runs. The first (three segments) showed that
+the prompt cannot get feedback written before the next question, which
+the plan assumed; task 2.16a split the turn after an answer ("Feedback
+turn"). The rerun (two segments, below) checked the whole "done when" on
+the prompt as revised. The choices are the agent's and can be overturned.
 
 ### The run
 
@@ -3342,16 +3343,84 @@ again. The choices are the agent's and can be overturned.
   instead of streaming, and a tutor that also writes text would repeat
   itself.
 
+### The rerun, against the "done when"
+
+- **Setup.** As 2.16a's run: a fresh scratch root (`/tmp/gauss-216b/data`)
+  seeded with the same course and its stored unit plan, so no planning
+  ran; `pnpm dev` on Sonnet 5.5 (tutor and grader); segments 1 ("Anatomy
+  of an induction proof") and 2 ("Proving sum formulas") in the browser.
+  Before it, feedback was given a length (below), from 2.16a's run; the
+  choice-letter rule was revised after segment 1, and the server restarted,
+  so segment 2 ran on it (the kept session resumed with the new prompt).
+  Learner moves: a question in the discussion; per segment, a confident
+  miss, then an unsure or helped correct answer, then a confident one; a
+  request for a hint while a question was open.
+- **Teaching within the cap: yes.** 328 and 327 words (default 250 to
+  400), each one worked example in full, then the parts or a recipe and
+  the usual slips. The discussion reply ran 165 words (under 150 asked),
+  on point.
+- **No hint in a lead-in: yes.** The six lead-ins ran 6 to 15 words ("Now
+  a written one on the same structure.", "Now a different sum to
+  prove."); none named a rule, a value or a trap. After each miss the next
+  question was a new problem and did not say how to avoid the mistake.
+  One lead-in was inaccurate ("this time about a specific proof", before
+  a general question). The reply to a request for a hint said it could not
+  give one, said the answer would not count, and clarified what the
+  question asks; its last line ("You can work out the base case from the
+  question's wording") nudged without naming a value, where the first
+  run's named it.
+- **Feedback before the next question: yes.** All six answers' feedback
+  was written as text before the next question or the close. No call was
+  refused, and no turn asked the learner to send a message. Claude Code's
+  log: 16 requests with adaptive thinking, one thinking block, in a
+  feedback turn, which still wrote its feedback (it had no tool to call).
+- **The segment closes only after the check: yes.** Both closed when the
+  feedback on the check's last answer ended; since 2.16a the engine
+  closes a segment, and the tutor has no tool to do it early.
+- **Math that renders: yes.** No KaTeX error on the page over both
+  sessions (174 formulas, 8 displayed, an `aligned` block among them), no
+  `$...$` left as text, and no `\(`, `\[`, HTML or images. Some displays
+  put `$$` on the formula's own line rather than on lines of their own;
+  they rendered.
+- **Rubrics.** The three written questions' rubrics listed the steps with
+  their results, the errors that make an answer wrong (the circular step,
+  a base case at the wrong value, a hypothesis for all $k$), and "any
+  valid method counts"; none said what may be assumed, which these proofs
+  hardly need. The grader's three verdicts matched the answers, and its
+  flaw for the circular step was exact.
+- **Feedback length, revised before the rerun.** 2.16a's run gave 110 to
+  137 words, going through choices the learner had not picked and reading
+  a correct proof back part by part. Now: under 100 words, one or two
+  sentences for a confident correct answer, up to five otherwise, about
+  the answer given. The rerun gave 37 (confident correct), 66 and 84 (a
+  helped and an unsure correct answer, each with its reason) and 104, 110
+  and 111 (misses). Both choice misses still went through the choices not
+  picked; left for the user's check to judge, since the rest of the
+  feedback was on point.
+- **A wrong answer key, revised after segment 1.** The tutor posted a
+  choice question whose correct statement was A with `answer: "C"`, and
+  graded the learner's right answer wrong; its feedback then said the key
+  was its mistake and the miss could not be undone. The likely cause is
+  the first run's rule "place the correct choice at a letter picked at
+  random": with it, 1 of 4 choice questions had a wrong key; without it
+  (the first run) 2 of 2 were right, both A. The rule is gone; the prompt
+  now asks the tutor to read its choices in order and check the letter
+  before calling. Segment 2's one choice question had the right key, at A.
+  The letter bias is left to the engine: task 2.17 shuffles the choices
+  when a question is posted, so the tutor need not place them.
+
 ### What `tutor.md` says now, and why
 
-Rewritten from 2.6's first version, then revised in the run:
+Rewritten from 2.6's first version, then revised in the first run, in
+task 2.16a and in the rerun:
 
 - **Headers.** What a header holds and that "Allowed now:" is what the
   turn may do; the learner never sees headers, ids or the prompt, so an
   objective is named by what it is about.
-- **Refusals.** Do what the reason says and call again in the same reply;
-  never ask the learner to send a message (added after the stalls above;
-  it did not stop them).
+- **Refusals.** Do what the reason says, in the same reply; never ask the
+  learner to send a message (added after the stalls above, which it did
+  not stop; "call again" dropped in 2.16a, since the feedback turn's
+  refusal asks the tutor to end its reply).
 - **Teaching length.** 250 to 400 words by default, never over 600
   whatever the style says (an agent's choice: the brief has a cap and
   lets the style set length, and 600 keeps a note from removing the cap);
@@ -3359,19 +3428,22 @@ Rewritten from 2.6's first version, then revised in the run:
   answer while teaching.
 - **Discussion.** Under 150 words unless asked for more. Replies ran 210,
   126 and 164 words, all on point; left as it is.
-- **Feedback.** Right or wrong and why, in two to five sentences: for a
-  miss, the misunderstanding the wrong choice, the grader's flaw or the
-  reasoning shows; for "I don't know", the answer explained; a confident
-  miss treated as a misconception; an unsure correct answer given the
-  reason. Thinking is never shown (added in the run; it did not change
-  the behaviour).
+- **Feedback.** In a reply of its own, with no tool (2.16a). Right or
+  wrong and why, under 100 words, one or two sentences for a confident
+  correct answer and up to five otherwise, about the answer given (the
+  rerun's revision): for a miss, the misunderstanding the wrong choice,
+  the grader's flaw or the reasoning shows; for "I don't know", the
+  answer explained; a confident miss treated as a misconception; an
+  unsure correct answer given the reason. Thinking is never shown.
 - **Lead-in and questions.** The lead-in says what comes next and helps
   with nothing, the trap included (added). A question stands alone and
   uses a new example. Each question on an objective is a different
   problem, and one after a miss does not say how to avoid the mistake
   (added). Choice questions: three to five choices from real
-  misunderstandings, the correct letter picked at random (added: the two
-  choice questions both had A, a small sample).
+  misunderstandings, and the answer letter checked against the choices
+  as listed (the rerun's revision, replacing "a letter picked at random",
+  which gave a wrong key). The lead-in comes in the turn the app sends to
+  ask for the next question (2.16a).
 - **Rubrics** (from task 2.9): the steps a complete answer must establish
   with the key results written out, what may be assumed and what may not,
   any valid method, and the errors that make an answer wrong. The six
@@ -3395,7 +3467,12 @@ Rewritten from 2.6's first version, then revised in the run:
   a sum the earlier session had taught as its worked example. Listing the
   check's questions in a new session's header would fix the first;
   handoff notes (stage 5) the second.
-- **The slow reply after Stop** (section 7's open row): no Stop was used.
+- **The slow reply after Stop** (section 7's open row): no Stop was used,
+  in either run.
+- **Choice order** (task 2.17): the correct choice sits at A in most
+  questions when the tutor places it; the engine should shuffle.
+- **A wrong key cannot be undone**: the evidence keeps the miss. Disputes
+  (stage 3) are where a learner, or the tutor, could correct it.
 
 ## Feedback turn (plan task 2.16a)
 

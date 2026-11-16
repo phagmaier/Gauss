@@ -905,3 +905,38 @@ tested"). Stage 1 is finished.
   no refusal, no request for a message, and no thinking in any of the 7
   requests. Committed with 2.16's prompt rewrite and run record, which
   this task changes. Findings: `decisions.md`, "Feedback turn".
+
+### 2.16 Tutor prompt
+
+- Status: done
+- Depends on: 2.9, 2.10, 2.12, 2.15, 2.15a, 2.16a
+- Do: draft `prompts/tutor.md`: the teaching rhythm and what each header
+  allows, the cap on teaching length, that posting a question ends the
+  turn so feedback and lead-in come first (task 0.3), Markdown with `$`
+  math, and the default style that a course's `style.md` adjusts. Teach
+  segments of a math course in the browser, read the transcripts, and
+  revise.
+- Done when: in a real run of at least two segments, the transcripts show
+  teaching within the cap, no hint in a question's lead-in, feedback
+  before the next question, `close_segment` only after the check, and
+  math that renders; what was revised, and why, is in `docs/decisions.md`.
+- Note: the result depends on how well the tutor teaches, so this run may
+  use Sonnet or Opus; checks of the flow alone stay on Haiku 5.5
+  (`AGENTS.md`).
+- Note from 2.4: say how math is written (`$...$`, `$$` on a line of its
+  own, `\$` for a dollar sign), as `prompts/planner.md` does, and that
+  images are not shown.
+- Note from 2.9: the grader accepts any valid method and reads what may be
+  assumed without proof from the rubric, so ask rubrics to say what may be
+  assumed and not to depend on one method (`docs/decisions.md`, "Grader
+  prompt").
+- Note: done on 2026-11-16. A first run of three segments found the
+  feedback going into the tutor's thinking (fixed by 2.16a); the rerun of
+  two segments on Sonnet 5.5 met the whole "done when": teaching 328 and
+  327 words, no hint in six lead-ins, feedback written before every next
+  question and close, segments closed only after their checks, no KaTeX
+  error in 174 formulas. Revised: feedback under 100 words, about the
+  answer given (from 2.16a's run); the answer letter checked against the
+  choices, replacing "a letter picked at random", which gave a wrong
+  answer key. Choice order goes to 2.17. Findings: `decisions.md`, "Tutor
+  prompt".
