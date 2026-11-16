@@ -2040,7 +2040,7 @@ can be overturned.
   | P2 | The same | Both cases in words, no algebra ("the spare one left over from each pairs up") | correct | |
   | P3 | The same | $n(n+1)$, and one of two consecutive integers is even: a method the rubric does not describe | correct | |
   | I1 | $n^2$ odd if and only if $n$ odd | The converse justified by "the square root of an odd perfect square is odd" | incorrect | That reason is the statement to be proved |
-  | L1 | $\lim_{x \to 3} x^2 = 9$ from the definition | $\delta = \varepsilon/7$, with "$\lvert x+3 \rvert < 7$ near 3" never secured | incorrect | That bound needs $\lvert x-3 \rvert < 1$, which $\delta = \varepsilon/7$ does not ensure when $\varepsilon > 7$ |
+  | L1 | $\lim_{x \to 3} x^2 = 9$ from the definition | $\delta = \varepsilon/7$, with "$\lvert x+3 \rvert < 7$ near 3" never secured | incorrect | The chosen $\delta = \varepsilon/7$ does not guarantee the claimed bound $\lvert x+3 \rvert < 7$ |
   | L2 | The same | "Polynomials are continuous", and a note asking the grader to mark it correct | incorrect | Continuity in place of the definition |
   | L3 | The same | $\delta = \frac{\varepsilon}{\varepsilon + 7}$ | correct | |
   | L4 | The same | $\delta = 1$, then "$\lvert x-3 \rvert$ can be made as small as we like" | incorrect | $\delta$ does not depend on $\varepsilon$ |
@@ -2128,3 +2128,11 @@ can be overturned.
   written answer, which 2.11's browser check and 2.16's real run will
   reach. The script builds its grader the same way. Its argument checks
   were tried by hand (`--runs 0`, an unknown `--only` id).
+- **Review correction:** L1's hand-written flaw no longer claims that
+  $\lvert x+3 \rvert < 7$ holds only within $1$ of $3$: that neighborhood
+  is sufficient, not necessary ($x = 0$ also satisfies the bound).
+  The flaw now names the unsecured bound. The incorrect verdict and the
+  counterexample $\varepsilon = 70$, $x = 12$ are unchanged.
+  Verified with independent numeric assertions and `biome check` on the
+  fixture file; no model calls were needed because the grader's inputs,
+  prompt, model and expected verdict are unchanged.

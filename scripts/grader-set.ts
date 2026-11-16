@@ -156,7 +156,7 @@ So $n^2$ is odd if and only if $n$ is odd.`,
 $$|x^2 - 9| = |x - 3|\,|x + 3| < \frac{\varepsilon}{7} \cdot 7 = \varepsilon.$$
 So $\lim_{x \to 3} x^2 = 9$.`,
     grade: "incorrect",
-    flaw: tex`$|x + 3| < 7$ holds only for $x$ within $1$ of $3$, and $\delta = \varepsilon / 7$ does not keep $x$ there when $\varepsilon > 7$ (with $\varepsilon = 70$, $x = 12$ is allowed and $|x + 3| = 15$).`,
+    flaw: tex`$\delta = \varepsilon / 7$ does not guarantee the claimed bound $|x + 3| < 7$ (with $\varepsilon = 70$, $x = 12$ is allowed and $|x + 3| = 15$).`,
   },
   {
     id: "L2",
