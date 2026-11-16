@@ -858,3 +858,50 @@ tested"). Stage 1 is finished.
   messages in the new conversation and only earlier content dimmed.
   No model calls. Findings and limits: `decisions.md`, "Idle-session
   review fixes".
+
+### 2.16a Feedback turn after an answer
+
+- Status: done
+- Depends on: 2.15a
+- Why: 2.16's run found that the tutor, on Claude with adaptive thinking,
+  wrote its feedback in its thinking (never shown) and posted the next
+  question with no text in 7 of 8 answer turns, and neither the prompt,
+  turning thinking off (Claude Code ignores it for Sonnet 5.5) nor the
+  thinking display fixed it (`docs/decisions.md`, "Tutor prompt"). The
+  working tree holds 2.16's uncommitted changes: `prompts/tutor.md`, and a
+  rule in `engine/unit-chat.ts` (`feedbackMissing`, with its tests) that
+  refuses both tools after an answer until the tutor has written text. It
+  guarantees the order but the check stalls: refused, the tutor asked the
+  learner to send a message in 3 of 4 turns.
+- Do: make the turn after a graded answer a feedback turn: its header
+  allows feedback only, and `ask_question` and `close_segment` are refused
+  in it. When it ends, unless it was stopped, the engine sends the next
+  check turn, which asks for a question on the objectives still open, or
+  for `close_segment` when all are done (or the engine closes the segment
+  itself; decide, and record why). Skip that turn if a learner message
+  queued meanwhile has already led to a question or a close. Replace the
+  refuse-until-text rule, or keep it for the follow-up turn only if a run
+  shows it is needed. Update the headers (`unit-turns.ts`),
+  `backends/scripted.ts` (its answer turns post at once), the tests, and
+  `tutor.md`'s section "Posting a question ends your turn".
+- Done when: fake-backend tests show, after an answer, the feedback turn's
+  text before the next question or the close, both tools refused during
+  the feedback turn, no follow-up after Stop, and no follow-up after a
+  message turn that posted a question; and a real check on Sonnet 5.5
+  (where the failure was seen, so not Haiku) of at least three answers shows feedback text before each next question,
+  no refusal, and no request for the learner to send a message.
+- Note: done on 2026-11-16. The turn after an answer allows feedback
+  only and refuses `ask_question`; when it ends, the engine asks for the
+  next question in a turn of its own (`nextQuestionTurn`), skipped if a
+  reply to a message has posted one, and not sent after a Stop. The
+  engine closes the segment when the feedback on the check's last answer
+  ends, so `close_segment` is removed (decided here: the check rules
+  already say when a check is done, and the tool was a second way to
+  stall). The refuse-until-text rule is removed. `mise run check` passed
+  (534 TypeScript tests, one Python test); six faults put in by hand each
+  failed a test; `pnpm dev:fake` showed feedback, then the next question,
+  then the close. Real run on Sonnet 5.5, three answers in one segment:
+  feedback written before question 2, question 3 and the close each time,
+  no refusal, no request for a message, and no thinking in any of the 7
+  requests. Committed with 2.16's prompt rewrite and run record, which
+  this task changes. Findings: `decisions.md`, "Feedback turn".

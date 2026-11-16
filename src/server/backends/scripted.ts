@@ -13,11 +13,11 @@
 // - A unit's planning (plan_unit): two segments of one objective each. The
 //   first objective is checked by choice questions, the second by written
 //   ones.
-// - A unit's tutor (ask_question, close_segment): teaches in the teach
-//   phase, posts a question when the header allows one, closes the segment
-//   when the header says every objective is done, and otherwise replies in
-//   text, which after a fresh start says where the unit stands. The correct
-//   choice is always A.
+// - A unit's tutor (ask_question): teaches in the teach phase, gives
+//   feedback alone on a graded answer (the engine then asks for the next
+//   question, or closes the segment, task 2.16a), posts a question when the
+//   header allows one, and otherwise replies in text, which after a fresh
+//   start says where the unit stands. The correct choice is always A.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -195,20 +195,21 @@ function teaching(header: string, body: string): FakeStep[] {
       },
     ];
   }
-  const objective = /post a question on "([^"]+)"/.exec(header)?.[1];
+  const answered = /The learner answered question (\d+)\./.exec(header)?.[1];
+  if (answered !== undefined) {
+    return [{ text: `Scripted feedback on question ${answered}.` }];
+  }
+  // A question is allowed: after "ready", after feedback, or in a reply.
+  const objective = /a question on "([^"]+)" with ask_question/.exec(
+    header,
+  )?.[1];
   if (objective !== undefined) {
     return [
-      { text: "Scripted feedback, then a question." },
+      { text: "Scripted lead-in to a question." },
       {
         call: "ask_question",
         input: question(objective, asked(header, objective) + 1),
       },
-    ];
-  }
-  if (header.includes("Every objective is done.")) {
-    return [
-      { text: "Scripted feedback. That closes the segment." },
-      { call: "close_segment", input: {} },
     ];
   }
   if (header.includes("The learner started a fresh conversation")) {

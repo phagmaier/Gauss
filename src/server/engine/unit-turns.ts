@@ -176,6 +176,44 @@ export function answerTurn(
     where,
     `The learner answered question ${number}.`,
     lines.join("\n"),
+    where.finished === undefined && where.position.phase === "check"
+      ? feedbackAllowed(where)
+      : undefined,
+  );
+}
+
+/**
+ * What the turn after a graded answer allows: feedback, and no tool (task
+ * 2.16a). Given the next question to plan, the tutor wrote its feedback in
+ * its thinking, which is never shown, so the next question is asked for in
+ * a turn of its own.
+ */
+function feedbackAllowed(where: Where): string {
+  const { standing, toAsk } = checkStanding(where);
+  const next =
+    toAsk.length > 0
+      ? "once it ends, the app asks you for the next question in a message of its own"
+      : "every objective is done, so the check is over, and the segment closes once it ends";
+  return (
+    `In this check, ${standing}. Allowed now: your feedback on this ` +
+    "answer, written as text, and nothing else. No tool may be called in " +
+    `this reply: ${next}.`
+  );
+}
+
+/**
+ * The turn after the feedback on an answer, when the check needs another
+ * question (task 2.16a): the header alone.
+ */
+export function nextQuestionTurn(where: Where, number: number): string {
+  const { standing, toAsk } = checkStanding(where);
+  return turn(
+    where,
+    `The check goes on after your feedback on question ${number}.`,
+    undefined,
+    `In this check, ${standing}. Allowed now: a lead-in of one sentence, ` +
+      `then a question on ${quoted(toAsk)} with ask_question, unlike the ` +
+      "ones asked before. Do not repeat your feedback. Posting ends your turn.",
   );
 }
 
@@ -198,10 +236,13 @@ export const JOINED_NOTE =
 
 // --- The header ------------------------------------------------------------
 
-function turn(where: Where, event: string, body?: string): string {
-  const header = [describe(where), event, ...where.notes, allowed(where)].join(
-    " ",
-  );
+function turn(
+  where: Where,
+  event: string,
+  body?: string,
+  allowedNow = allowed(where),
+): string {
+  const header = [describe(where), event, ...where.notes, allowedNow].join(" ");
   return body === undefined ? `[${header}]` : `[${header}]\n${body}`;
 }
 
@@ -232,14 +273,14 @@ function allowed(where: Where): string {
       return (
         "Allowed now: teach the segment's objectives in this turn, within " +
         "the length the style sets, then stop; the learner can ask anything " +
-        "next. No questions yet: ask_question and close_segment are refused " +
-        'until the learner presses "ready".'
+        "next. No questions yet: ask_question is refused until the learner " +
+        'presses "ready".'
       );
     case "discuss":
       return (
         "Allowed now: answer the learner; nothing here is graded. You may " +
         'suggest they press "ready" for the check when they seem ready. ' +
-        "ask_question and close_segment are refused until they do."
+        "ask_question is refused until they do."
       );
     case "check": {
       const open = position.openQuestion;
@@ -252,8 +293,8 @@ function allowed(where: Where): string {
           return (
             `Question ${open.number}, on "${open.objective}", is answered, ` +
             `and the answer is being graded.${help} Allowed now: reply to ` +
-            "the learner. ask_question and close_segment are refused until " +
-            "the grade arrives, in a message of its own."
+            "the learner. ask_question is refused until the grade arrives, " +
+            "in a message of its own."
           );
         }
         const help =
@@ -263,28 +304,24 @@ function allowed(where: Where): string {
         return (
           `Question ${open.number}, on "${open.objective}", is open.${help} ` +
           "Allowed now: reply without giving its answer away. ask_question " +
-          "and close_segment are refused until the learner answers it."
+          "is refused until the learner answers it."
         );
       }
-      const { objectives } = segmentOf(context.plan, position);
-      const standing = objectives
-        .map((id) => `"${id}": ${checkText(where.checks.get(id))}`)
-        .join("; ");
-      const toAsk = objectives.filter(
-        (id) => where.checks.get(id)?.state !== "done",
-      );
+      const { standing, toAsk } = checkStanding(where);
       if (toAsk.length > 0) {
         return (
           `In this check, ${standing}. Allowed now: post a question on ` +
           `${quoted(toAsk)} with ask_question, unlike the ones asked before. ` +
-          "Posting ends your turn, so give any feedback first. " +
-          "close_segment is refused until each objective is done."
+          "Posting ends your turn, so write what you have to say first, " +
+          "then a one-sentence lead-in."
         );
       }
+      // The segment closes when the feedback on the check's last answer
+      // ends, or when a unit reopened at this point opens.
       return (
-        `In this check, ${standing}. Every objective is done. Allowed now: ` +
-        "give your feedback, then close the segment with close_segment, " +
-        "which ends your turn. No more questions."
+        `In this check, ${standing}. Every objective is done, and the ` +
+        "segment is closing. Allowed now: reply to the learner. No more " +
+        "questions."
       );
     }
     case "closed":
@@ -297,6 +334,17 @@ function allowed(where: Where): string {
             "choose. Allowed now: reply to the learner. No teaching tools " +
             "until the next segment starts.";
   }
+}
+
+/** Where each of the segment's objectives stands in the check, and those that need a question. */
+function checkStanding(where: Where): { standing: string; toAsk: string[] } {
+  const { objectives } = segmentOf(where.context.plan, where.position);
+  return {
+    standing: objectives
+      .map((id) => `"${id}": ${checkText(where.checks.get(id))}`)
+      .join("; "),
+    toAsk: objectives.filter((id) => where.checks.get(id)?.state !== "done"),
+  };
 }
 
 /** Where one objective stands in the check, for the tutor. */

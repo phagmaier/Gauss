@@ -57,6 +57,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.14 | Resume and start fresh | The tutor's session id is in the unit's position (`keepSession` in `unit-record.ts`); a session given a `cwd` is kept, and `startSession` with `resumeId` rejects with `SessionNotFound` when it cannot be found, the only failure that starts fresh. A reopened unit resumes its tutor as it opens, so each unit in progress holds a Claude Code process until the server stops: 2.15 closes idle ones (`UnitAgents.resume` and `startFresh` in `unit-agents.ts`). Kept sessions are rebuilt with the current system prompt (`snapshot: false`), so a revised `tutor.md` (2.16) reaches units under way. Start fresh sends the tutor one turn (`freshTurn`); the fallback sends nothing until the learner acts. The slow reply after a stop was not exercised (no Stop in the real run). Review fix: a card that still waits (an open question, the closing card) is not dimmed with an earlier conversation; a resume that fails another way is `unit_failed` with `resumeFailed`, and `start-fresh` on that unit gives the conversation up and opens it as one whose session is lost; kept sessions get a `title`; `BROKEN_SESSION` in `scripted.ts` shows the failure on `pnpm dev:fake`; a session stopped mid-reply resumed on Haiku. |
 | 2.15 | Close idle tutor sessions | `createConversation` (`engine/conversation.ts`) closes a kept session after `IDLE_MS` (ten minutes) with no turn queued or running and nothing `waiting` (a grading), and the next turn resumes it; a failed start or resume fails only that turn. Intakes are kept too, in `<data root>/intake/`, for this only. Opening a unit asks `hasSession` and starts nothing; the first turn resumes, and a session lost at a turn falls back there, its marker after the learner's message. `resumeFailed` and "Start fresh instead" are gone; the outline's Start fresh leaves a resume that keeps failing. Tests use `createFakeTimer` (`engine/fake-timer.ts`). Idle closing was not run on Claude end to end. |
 | 2.15a | Idle-session review fixes | Claude lookup uses the same sanitized configuration root as startup; inherited `CLAUDE_CONFIG_DIR` adds a short Node lookup subprocess, never a model request. Intake initialization survives a failed or stopped startup. Lost-session markers identify their learner message, so queued messages and transcript replay partition correctly; non-message turns move none. |
+| 2.16a | Feedback turn after an answer | The turn after a graded answer is for feedback alone (`ask_question` refused); the engine then sends `nextQuestionTurn`, or closes the segment when the check is done: `close_segment` is gone, and a unit reopened in a done check closes it as it opens. A queued turn can `skip()`; `settled()` waits for turns sent from a turn's end. A restart between an answer and the next question still waits on a learner message. |
 
 ## Stage 2: session engine
 
@@ -72,8 +73,15 @@ gate or notes.
 
 ### 2.16 Tutor prompt
 
-- Status: todo
-- Depends on: 2.9, 2.10, 2.12, 2.15, 2.15a
+- Status: todo. The prompt is rewritten and revised once in a run of
+  three segments; the rest of the check passed there (`docs/decisions.md`,
+  "Tutor prompt"). 2.16a then split the turn after an answer and revised
+  `tutor.md`'s feedback section, and was committed with the prompt and
+  that run's record. Run two segments again on the current prompt, check
+  the whole "done when", and commit. Seen in 2.16a's run, for this one:
+  feedback ran 110 to 137 words against the prompt's two to five
+  sentences.
+- Depends on: 2.9, 2.10, 2.12, 2.15, 2.15a, 2.16a
 - Do: draft `prompts/tutor.md`: the teaching rhythm and what each header
   allows, the cap on teaching length, that posting a question ends the
   turn so feedback and lead-in come first (task 0.3), Markdown with `$`

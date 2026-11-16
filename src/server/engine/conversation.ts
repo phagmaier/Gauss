@@ -72,6 +72,12 @@ export interface Turn {
    * stand then, and the chat can note what the tutor received when.
    */
   text: string | (() => string | Promise<string>);
+  /**
+   * Asked when the turn's time comes, after the turns before it: true if it
+   * is no longer wanted. A skipped turn is not started: nothing is sent, the
+   * page hears nothing of it, and `ended` does not run.
+   */
+  skip?(): boolean;
   /** Runs once the turn has ended, before the next turn is sent. */
   ended?(outcome: TurnOutcome): Promise<void> | void;
 }
@@ -88,7 +94,10 @@ export interface Conversation {
   busy(): boolean;
   /** Stops the tutor's turn in progress, if there is one. */
   interrupt(): Promise<void>;
-  /** Resolves once every turn sent so far has finished. */
+  /**
+   * Resolves once every turn sent so far has finished, with the turns sent
+   * when they ended.
+   */
   settled(): Promise<void>;
   /** Closes the session for good: no turn after this starts one. */
   close(): Promise<void>;
@@ -169,6 +178,18 @@ export function createConversation(options: {
   let queue: Promise<void> = Promise.resolve();
 
   async function runTurn(turn: Turn): Promise<void> {
+    let skipped = false;
+    try {
+      skipped = turn.skip?.() === true;
+    } catch (error) {
+      // The turn is sent; the turns after it must still run.
+      console.error("A chat could not tell whether to skip a turn:", error);
+    }
+    if (skipped) {
+      turnsWaiting -= 1;
+      idleFromNow();
+      return;
+    }
     const current: RunningTurn = { stopped: false };
     running = current;
     log.emit({ type: "turn_start" });
@@ -307,7 +328,14 @@ export function createConversation(options: {
       turn.stopped = true;
       await turn.sentTo?.interrupt();
     },
-    settled: () => queue,
+    async settled() {
+      // A turn's end can send another turn, which is waited for too.
+      let last: Promise<void>;
+      do {
+        last = queue;
+        await last;
+      } while (last !== queue);
+    },
     async close() {
       closed = true;
       cancelIdle?.();

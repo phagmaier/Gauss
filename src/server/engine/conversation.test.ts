@@ -255,6 +255,44 @@ test("end-of-turn work hears how the turn ended, and its failure does not stop t
   expect(tutor.busy()).toBe(false);
 });
 
+test("a turn sent when a turn ends is waited for by settled(); one skipped when its time comes sends nothing, the page hears nothing of it, and its end-of-turn work does not run", async () => {
+  const { backend, log, tutor } = setUp([
+    [{ text: "One." }],
+    [{ text: "Three." }],
+  ]);
+  let wanted = true;
+  const ended: string[] = [];
+
+  tutor.send({
+    text: "first",
+    ended() {
+      tutor.send({
+        text: "second",
+        skip: () => !wanted,
+        ended: () => {
+          ended.push("second");
+        },
+      });
+      tutor.send("third");
+      // No longer wanted by the time its turn comes.
+      wanted = false;
+    },
+  });
+  await tutor.settled();
+
+  expect(backend.received.map((t) => t.text)).toEqual(["first", "third"]);
+  expect(ended).toEqual([]);
+  expect(log.events()).toEqual([
+    { type: "turn_start" },
+    { type: "tutor_text", text: "One." },
+    { type: "turn_end", outcome: "done" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Three." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(tutor.busy()).toBe(false);
+});
+
 // --- Task 2.15: idle sessions closed, and resumed by the next turn ------------
 
 const FOLDER = "/courses/test";

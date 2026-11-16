@@ -8,12 +8,15 @@
 // - in the check, the tutor posts questions with ask_question, each on an
 //   objective of the segment that still needs one (check-rules.ts); each
 //   answer is graded, recorded with whether the learner had help, and sent
-//   to the tutor. A choice is graded at once; a written answer is kept in
-//   state.json and graded by the grader (grading.ts), outside the chat's
-//   queue, and if the grading fails it can be graded again;
-// - check to closed: the tutor's close_segment, refused until every
-//   objective of the segment is done in this check, or the learner's
-//   override, recorded as evidence;
+//   to the tutor in a turn for feedback only, where no tool may be called.
+//   When it ends, the engine asks for the next question in a turn of its
+//   own (task 2.16a). A choice is graded at once; a written answer is kept
+//   in state.json and graded by the grader (grading.ts), outside the
+//   chat's queue, and if the grading fails it can be graded again;
+// - check to closed: the engine closes the segment when the feedback on the
+//   answer that leaves every objective done in this check ends (task
+//   2.16a), or the learner moves on without the check, recorded as
+//   evidence;
 // - closed to the next segment's teach: the learner starts it.
 //
 // When the unit's last segment closes, the unit ends: passed and out of
@@ -59,7 +62,6 @@ import type { OpenQuestion, Phase } from "../../shared/state.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
-import { closeSegmentTool } from "../tools/close-segment.ts";
 import {
   isLastSegment,
   notPassed,
@@ -85,6 +87,7 @@ import {
   freshTurn,
   JOINED_NOTE,
   messageTurn,
+  nextQuestionTurn,
   overrideNote,
   quoted,
   readyTurn,
@@ -231,6 +234,8 @@ interface Running {
   agents: UnitAgents;
   /** Said once, in the next turn's header. */
   notes: string[];
+  /** While the tutor's feedback on an answer is sent: the question's number. */
+  feedback?: number | undefined;
 }
 
 function createUnitChat(
@@ -282,7 +287,7 @@ function createUnitChat(
       const loaded = createUnitAgents({
         backend: options.backend,
         systemPrompt: tutorSystemPrompt(options.systemPrompt, context, style),
-        tools: [askQuestionTool(questionBoard), closeSegmentTool(closer)],
+        tools: [askQuestionTool(questionBoard)],
         cwd: dataRoot.courseFolder(courseId),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
         keep: (id) => exclusive(() => record.keepSession(id)),
@@ -335,6 +340,14 @@ function createUnitChat(
       if (position.phase === "teach") {
         // A teaching turn that a restart cut off is sent again.
         sendTeaching(r, record.reopened);
+      } else if (
+        position.phase === "check" &&
+        open === undefined &&
+        checkDone(r)
+      ) {
+        // A restart came between the check's last answer and the end of the
+        // feedback on it, which closes the segment.
+        await exclusive(() => closeSegment(r));
       } else if (position.phase === "closed" && isLastSegment(plan, position)) {
         // The closing card was waiting on the learner, or a restart came
         // between closing the last segment and closing the unit.
@@ -433,11 +446,73 @@ function createUnitChat(
     });
   }
 
-  /** Sends the tutor the grade of the answer its question was closed with. */
+  /**
+   * Sends the tutor the grade of the answer its question was closed with,
+   * in a turn for feedback only: no tool may be called in it (task 2.16a).
+   * Given the next question to plan in the same reply, the tutor wrote its
+   * feedback in its thinking, which the learner never sees (task 2.16).
+   * When the turn ends, the segment closes if the check is done; otherwise,
+   * unless the learner stopped it, the next question is asked for.
+   */
   function tellGrade(r: Running, { question, entry }: Answered): void {
+    const { number } = question;
     r.agents.send({
-      text: () => answerTurn(where(r), entry, question.number),
+      text: () => {
+        r.feedback = number;
+        return answerTurn(where(r), entry, number);
+      },
+      ended: (outcome) =>
+        exclusive(async () => {
+          r.feedback = undefined;
+          if (!nextAfter(r, number)) return;
+          if (checkDone(r)) await closeSegment(r);
+          else if (outcome !== "interrupted") askNext(r, number);
+        }),
     });
+  }
+
+  /**
+   * Whether the check still waits for what follows question `number`: no
+   * question has been posted since it was answered.
+   */
+  function nextAfter(r: Running, number: number): boolean {
+    const { position, checkAnswers, finished } = r.record;
+    return (
+      finished === undefined &&
+      position.phase === "check" &&
+      position.openQuestion === undefined &&
+      checkAnswers.length === number
+    );
+  }
+
+  /**
+   * Asks the tutor for the check's next question, after its feedback on
+   * question `number`. Skipped if a turn sent meanwhile, the reply to a
+   * learner's message, has posted one.
+   */
+  function askNext(r: Running, number: number): void {
+    r.agents.send({
+      skip: () => !nextAfter(r, number),
+      text: () => nextQuestionTurn(where(r), number),
+    });
+  }
+
+  /** Every objective of the segment is done in this check. */
+  function checkDone(r: Running): boolean {
+    const standing = checks(r);
+    return segmentObjectives(r).every(
+      (id) => standing.get(id)?.state === "done",
+    );
+  }
+
+  /**
+   * Closes the segment, its check done, and ends the unit after its last
+   * segment. Runs inside `exclusive`.
+   */
+  async function closeSegment(r: Running): Promise<void> {
+    const { checkFrom: _, ...rest } = r.record.position;
+    await r.record.move({ ...rest, phase: "closed" });
+    if (isLastSegment(r.context.plan, r.record.position)) await endUnit(r);
   }
 
   /**
@@ -506,8 +581,11 @@ function createUnitChat(
             return { refused: UNIT_FINISHED };
           }
           const { position } = r.record;
+          if (r.feedback !== undefined) {
+            return { refused: feedbackOnly(r.feedback) };
+          }
           if (position.phase !== "check") {
-            return { refused: outOfPhase(position.phase, "ask_question") };
+            return { refused: outOfPhase(position.phase) };
           }
           if (position.openQuestion !== undefined) {
             const { number, answer } = position.openQuestion;
@@ -535,7 +613,7 @@ function createUnitChat(
                 `"${question.objective}" needs no more questions in this check: ${checkText(check)}. ` +
                 (open.length > 0
                   ? `Ask about ${quoted(open)} instead.`
-                  : "Every objective is done: give your feedback and close the segment."),
+                  : "Every objective is done, and the segment is closing: no more questions."),
             };
           }
           const open: OpenQuestion = {
@@ -550,40 +628,6 @@ function createUnitChat(
           return { id: open.id, number: open.number };
         },
       ),
-  };
-
-  const closer = {
-    close: () =>
-      exclusive(async (): Promise<{ closed: true } | { refused: string }> => {
-        const r = running;
-        if (r === undefined) return { refused: "The unit is not open." };
-        if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
-        const { position } = r.record;
-        if (position.phase !== "check") {
-          return { refused: outOfPhase(position.phase, "close_segment") };
-        }
-        if (position.openQuestion !== undefined) {
-          return {
-            refused: `Question ${position.openQuestion.number} is still open. Wait for the learner's answer before closing the segment.`,
-          };
-        }
-        const standing = checks(r);
-        const missing = segmentObjectives(r).filter(
-          (id) => standing.get(id)?.state !== "done",
-        );
-        if (missing.length > 0) {
-          const why = missing
-            .map((id) => `"${id}" is ${checkText(standing.get(id))}`)
-            .join("; ");
-          return {
-            refused: `Not done yet in this check: ${why}. Post a question on each with ask_question before closing the segment.`,
-          };
-        }
-        const { checkFrom: _, ...rest } = position;
-        await r.record.move({ ...rest, phase: "closed" });
-        if (isLastSegment(r.context.plan, r.record.position)) await endUnit(r);
-        return { closed: true };
-      }),
   };
 
   // --- What the learner does -------------------------------------------------
@@ -865,11 +909,22 @@ function refused(error: string): ChatResult {
   return { ok: false, status: 409, error };
 }
 
-/** Why the tutor's tool is refused outside the check, said so it can act on it. */
-function outOfPhase(
-  phase: Exclude<Phase, "check">,
-  tool: "ask_question" | "close_segment",
-): string {
+/**
+ * Why ask_question is refused in the tutor's feedback on an answer (task
+ * 2.16a), said so it can act on it.
+ */
+function feedbackOnly(number: number): string {
+  return (
+    `This reply is for your feedback on question ${number} only, and no ` +
+    "tool may be called in it. The learner sees only the text you write, " +
+    "never your thinking: write your feedback as text if you have not, " +
+    "then end your reply. The app then asks you for the next question in " +
+    "a message of its own, or closes the segment if the check is done."
+  );
+}
+
+/** Why ask_question is refused outside the check, said so it can act on it. */
+function outOfPhase(phase: Exclude<Phase, "check">): string {
   switch (phase) {
     case "teach":
       return (
@@ -884,9 +939,7 @@ function outOfPhase(
         "they seem ready."
       );
     case "closed":
-      return tool === "close_segment"
-        ? "The segment is closed already."
-        : "The segment is closed, so its check is over. The learner starts the next segment.";
+      return "The segment is closed, so its check is over. The learner starts the next segment.";
   }
 }
 

@@ -653,6 +653,8 @@ test("a segment runs through the unit routes: a message, ready, an answer, movin
     [{ text: "Because every vector is a combination of the basis." }],
     [{ call: "ask_question", input: QUESTION }],
     [{ text: "Right." }],
+    // Asked for the next question, which an unsure answer needs.
+    [{ text: "Any questions before the next one?" }],
     [{ text: "Now matrices." }],
   ]);
   await approvedCourse();
@@ -679,7 +681,7 @@ test("a segment runs through the unit routes: a message, ready, an answer, movin
     kind: "choice",
     questionId,
     choice: "A",
-    confidence: "90",
+    confidence: "50",
   });
   expect(answered.status).toBe(202);
   await settle(setup);
@@ -702,7 +704,7 @@ test("a segment runs through the unit routes: a message, ready, an answer, movin
   expect(
     (await openDataRoot({ path: dir }).readEvidence(COURSE)).map((e) => e.kind),
   ).toEqual(["answer", "override"]);
-  expect(setup.backend.received).toHaveLength(5);
+  expect(setup.backend.received).toHaveLength(6);
 });
 
 test("a written answer is taken by its route, and one whose grading failed is graded again through its own", async () => {

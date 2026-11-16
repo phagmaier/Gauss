@@ -266,7 +266,7 @@ pops back.
 | --- | --- | --- |
 | teach to discuss | the tutor's teaching turn ends, or the learner stops it | automatic, also when the turn fails, so the learner can ask for what was missed |
 | discuss to check | the learner presses "ready" | `ask_question` is rejected before this |
-| check to closed | the tutor calls `close_segment` | rejected until every objective in the segment is done in this check (below) |
+| check to closed | the tutor's feedback on the answer that leaves every objective done in this check ends (task 2.16a) | automatic, also when the feedback is stopped or fails; a unit reopened at that point closes the segment as it opens |
 | discuss or check to closed | the learner moves on without the check | recorded as an override of the segment's objectives; an open question is withdrawn |
 | closed to the next segment's teach | the learner starts it | none after the unit's last segment |
 | last segment closed to the unit's end | automatic | the closing card; the unit is passed and leaves `state.json` when every objective passed |
@@ -277,12 +277,22 @@ pops back.
 The rules of tasks 2.6 and 2.7:
 
 - **The tutor's tools are refused out of phase** with a reason it can act
-  on: `ask_question` outside the check, while a question is open, on an
-  objective not in the segment, or on one already done in this check;
-  `close_segment` outside the check, while a question is open, or before
-  each objective of the segment is done. A refusal does not end the turn.
-  Both tools end the turn when they succeed. Once the unit is finished,
-  both are refused.
+  on: `ask_question` outside the check, in the feedback on an answer
+  (below), while a question is open, on an objective not in the segment,
+  or on one already done in this check, and once the unit is finished. A
+  refusal does not end the turn; a posted question does.
+- **The turn after an answer is for feedback alone** (task 2.16a). Its
+  header allows feedback and nothing else, and `ask_question` is refused
+  in it. When it ends, the segment closes if every objective is done in
+  this check; otherwise, unless the learner stopped it, the engine sends
+  the next check turn (`nextQuestionTurn` in `unit-turns.ts`), which asks
+  for a lead-in and a question on the objectives still open. That turn is
+  queued behind any learner message sent during the feedback, and is
+  skipped if the reply to that message posted a question (`skip` on a
+  queued turn, `conversation.ts`). After a Stop, the learner's next
+  message can post one. The tutor closes no segment: the check rules say
+  when it is done, so a tool for it only added a way to stall
+  (`decisions.md`, "Feedback turn").
 - **How many questions** (`src/server/engine/check-rules.ts`, task 2.7):
   each objective of the segment gets at least one question in the check,
   and is done once it has passed (section 3's derived status) or once
@@ -321,7 +331,7 @@ The rules of task 2.8, for written answers (section 6):
   in `state.json`, then graded outside the chat's queue, so messages and
   the tutor's turns go on meanwhile. Until its grade is recorded, another
   answer and moving on are refused, also after a failed grading, and so
-  are the tutor's `ask_question` and `close_segment`; grading again is
+  is the tutor's `ask_question`; grading again is
   refused while a grading runs. A message then is not help: help
   ends when the answer is sent.
 - **A failed grading is shown, and the answer graded again as sent**: the
@@ -362,8 +372,13 @@ have time limits and a learner may take twenty minutes or close the tab.
 4. The engine grades it (section 6) and appends evidence. A written answer
    is kept in `state.json` while the grader works, and the page hears
    `grading`, then `graded` or `grading_failed` (task 2.8).
-5. The engine sends the tutor the result as the next turn; the tutor gives
-   feedback and continues.
+5. The engine sends the tutor the result as the next turn, which is for
+   feedback alone: no tool may be called in it. Then the engine asks for
+   the next question in a turn of its own, or closes the segment when the
+   check is done (section 4, "Phases"; task 2.16a). Asked for feedback and
+   the next question in one turn, the tutor on Claude with adaptive
+   thinking wrote its feedback in its thinking, which the page never
+   shows, in 7 of 8 answer turns (`decisions.md`, "Tutor prompt").
 
 Assessments (baseline, unit gate, later review and finals) reuse this flow with
 the examiner prompt in place of the tutor prompt, over objectives the engine
@@ -380,7 +395,6 @@ served to it over the standard tool protocol (MCP).
 | `propose_curriculum` | Stores a draft curriculum with its style note (`style.md`) and shows them for review; approval covers both (task 2.10) |
 | `amend_curriculum` | Proposes a change; applied only after the learner confirms |
 | `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
-| `close_segment` | Closes the segment once its check is done (section 4); ends the turn. The learner starts the next segment, so there is no tool for it (task 2.6) |
 | `ask_question` | Posts a question on an objective of the segment, in the check (section 4): a `choice` question with its answer letter, or a `written` one with its rubric (task 2.8; `QuestionInput` in `src/shared/question.ts`) |
 | `start_detour`, `end_detour` | Open and close a detour; closing records the misconception found |
 | `quote_source` | Returns a verified quote block, or an error if the text is not in the source |

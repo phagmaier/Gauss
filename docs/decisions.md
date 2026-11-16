@@ -47,6 +47,8 @@ findings are the record.
 | Resume and start fresh | What the SDK does on resume (unknown ids, `snapshot: false`, where kept sessions go, the 30-day sweep), the id in the position, resuming as a unit opens, which failures fall back, the learner's Start fresh and its turn, the marker and the dimmed thread, the fake's kept sessions, the real run, the review fixes (a card that still waits, starting fresh from a failed resume, the session's title, a restart mid-reply) | Touching `backends/` (sessions, resume), `unit-agents.ts`, the tutor's session id in `unit-record.ts`, the fallback or Start fresh in `unit-chat.ts`, the thread's conversations in `timeline.ts`; idle sessions (2.15), `tutor.md` (2.16), handoff notes (stage 5) |
 | Idle sessions | Closing a kept session when idle and resuming it at the next turn, what idle means and for how long, one way to resume (the opening only asks), a failed resume or start retried by the next turn, `resumeFailed` taken out, kept intakes and their lost-session headers, the fake timer, the fault and browser checks | Touching `engine/conversation.ts`, `unit-agents.ts`, sessions in `intake.ts`, `hasSession` in `backends/`, the thread's conversations in `timeline.ts`; `tutor.md` (2.16), handoff notes (stage 5), the Codex backend (stage 6) |
 | Idle-session review fixes | Configuration-root lookup without changing login, intake context across failed or stopped startup, explicit fallback message identity, concurrent-message replay and browser evidence | Touching Claude session lookup, intake initialization, `fresh_start`, or conversation partitioning (task 2.15a) |
+| Feedback turn | Task 2.16a: the feedback-only turn after an answer, the next question asked for in its own turn, the engine closing the segment (`close_segment` removed), skipped turns and `settled()`, the tests, the fake and real runs | Touching the turn after an answer, `nextQuestionTurn`, closing a segment, `skip` in `conversation.ts`, `scripted.ts`'s answer turns, `tutor.md`'s feedback section |
+| Tutor prompt | Task 2.16's run: the transcripts against its check, feedback that went into the tutor's thinking and what did not fix it, the refusal rule, the proposed feedback turn (2.16a), what `tutor.md` says and why | Touching `tutor.md`, the turn after an answer (2.16a), thinking settings in `backends/claude.ts`, Start fresh in a check |
 
 ## Page design (plan task 1.0)
 
@@ -3220,3 +3222,299 @@ reproduced all three failures without a model call.
 - **Limits.** No model call or real Claude idle-close/resume run. The browser
   check used a stored transcript; the live delayed-resume sequence is
   covered by the fake-backend regression.
+
+## Tutor prompt (plan task 2.16, in progress)
+
+Run on 2026-11-16. The task is not finished: the run showed that the
+prompt cannot get feedback written before the next question, which the
+plan assumed. Task 2.16a fixes the turn; 2.16 then runs its segments
+again. The choices are the agent's and can be overturned.
+
+### The run
+
+- **Setup.** A scratch data root (`/tmp/gauss-216/data`, never `~/gauss`),
+  with a course "Proof by induction" written straight into the record
+  through `openDataRoot` (two units, approved, with a style note: short
+  explanations on one worked example, checks mixing choice questions with
+  short written proofs). `pnpm dev` with
+  `GAUSS_CLAUDE_MODEL=claude-sonnet-5-5`, so the tutor, the unit planner
+  and the grader ran on Sonnet 5.5: the result depends on how well the
+  tutor teaches (`AGENTS.md`). The unit planner planned unit 1 as six
+  segments of one objective each. Three segments were taught in the
+  browser, with eight check answers: choice and written, a confident
+  miss, an unsure correct answer, a request for a hint while a question
+  was open, and correct answers. The server was restarted after each
+  change; the kept session resumed with the revised `tutor.md`, seen in
+  the system prompt of the logged API request (`snapshot: false`, task
+  2.14). Segment 3's check finished in a new session, through Start
+  fresh.
+- **Where to read a run.** The page events are in the course's
+  `sessions/<unit>.<n>.jsonl`; the turns as sent, with the headers, the
+  tool inputs (rubrics included), thinking blocks and refusals, are in
+  Claude Code's session log under `~/.claude/projects/<course folder with
+  every character other than letters and digits made "-">/`; that file
+  also logs each API request's parameters (`api-request`), which is how the
+  thinking settings below were read.
+
+### Against the "done when"
+
+- **Teaching within the cap: yes.** The three teaching turns ran 367, 358
+  and 362 words (default 250 to 400). Each taught one worked example in
+  full, then the recipe and the usual slips, and ended inviting questions.
+  The algebra in all three was checked by hand and is right.
+- **Math that renders: yes.** No `\(` or `\[`, no images or HTML, and an
+  even count of unescaped `$` in all 18 replies. The page showed no KaTeX
+  error: 3 display and 39 inline formulas after segment 1, 7 and 119 after
+  segment 2, a table with math included.
+- **`close_segment` only after the check: yes.** It was never called
+  before every objective was done.
+- **No hint in a lead-in: not quite.** One lead-in pointed at the trap the
+  question set ("It uses a different starting value", before a question
+  whose rubric made the base case at $n = 0$ the key step), two question
+  prompts after a miss on a circular step told the learner which side to
+  start from, and a reply to "Can you give me a hint?" said it could not,
+  then said "the range starts at $n = 0$", the very point missed before.
+  The prompt is revised (below); the revision has not been run.
+- **Feedback before the next question: no.** The finding below.
+
+### Finding: feedback went into the tutor's thinking
+
+- **What happened.** In 7 of the 8 turns after a graded answer, the tutor
+  called `ask_question` or `close_segment` with no text before it. Its
+  thinking held the feedback, written to the learner ("Your base case is
+  the real mistake: since the claim starts at n=3, ..."). The page shows
+  only text, so the learner saw the next question with no feedback.
+- **When.** Every one of the 7 turns had thinking; the one answer turn
+  without thinking wrote its feedback first. None of the 13 other turns
+  (teaching, replies to messages, "ready", the fresh start) had thinking,
+  and all 13 wrote text, including the 3 "ready" turns that posted a
+  question after a lead-in. So the failure goes with thinking before a
+  tool call.
+- **What did not help.**
+  - The prompt: "your thinking is never shown ... your reply must open
+    with written feedback, before any tool call". The next answer turn
+    failed the same way.
+  - Turning thinking off. The SDK's `thinking: { type: "disabled" }`
+    started Claude Code with `--thinking=disabled`, but its requests still
+    sent `thinking: { type: "adaptive" }`: Claude Code 2.1.325 does not
+    send `disabled` to a model that rejects it, which Sonnet 5.5 appears
+    to do (read in the CLI bundle; the requests confirm the result).
+  - The thinking display. Left unset, Claude Code sends
+    `display: "updates"`, a mode in which the model writes updates for
+    its user in its thinking; that matches what the tutor wrote there.
+    With `display: "summarized"` sent instead (seen in the logged
+    requests), the tutor still failed 2 of 3 answer turns, and 1 of the 2
+    in a new session with no earlier failures in its context. Its
+    thinking said "the feedback seems to have been written as text before
+    the call". Reverted: no measurable effect, and it would have forced a
+    thinking setting on every session.
+- **The rule built (in the working tree, not committed).** In the turn
+  after a graded answer, `ask_question` and `close_segment` are refused
+  until the tutor has written text that is not blank since the turn was
+  sent, with the reason: "The learner has had no feedback on question N:
+  nothing in this reply has reached them yet, and your thinking is never
+  shown. Write your feedback as text in your reply, as if for the first
+  time, then call ask_question again." (`feedbackMissing` in
+  `engine/unit-chat.ts`.) The check waits one turn of the event loop
+  first: the SDK reads Claude Code's output in order and runs a tool call
+  as soon as it reads it, while the text before it waits in a queue that
+  promise callbacks alone drain (read in `sdk.mjs`), so after the wait
+  that text is in the chat's log. Tests: the refusals, blank text not
+  counting, and the first question needing no feedback; and, with a
+  backend that hands its events over late while its tools run, feedback
+  received before the call counting. Without the rule the first test
+  fails, and without the wait the second.
+- **What the rule did in the run.** The four refused turns were refused
+  4, 2, 3 and 4 times, and then all four wrote their feedback, which was
+  good: what was wrong, why, and the forward version of the step. But
+  three of them then stopped and asked the learner to "send any short
+  message, such as 'continue'", even after the prompt said never to. The
+  order is now guaranteed; the check stalls. Task 2.16a removed the rule
+  and `close_segment` with it ("Feedback turn").
+- **Proposed fix (task 2.16a): a turn for feedback, then a turn for the
+  question.** The answer's turn allows feedback only, and both tools are
+  refused in it; when it ends, the engine sends the turn that asks for
+  the next question. The tutor then never plans a tool call while it
+  gives feedback, which is when the text went missing, and the 13 turns
+  without a tool to call all wrote text. The cost is one more turn per
+  answer. Rejected: a `feedback` field on both tools, shown before the
+  card. It is deterministic too, but the feedback would come all at once
+  instead of streaming, and a tutor that also writes text would repeat
+  itself.
+
+### What `tutor.md` says now, and why
+
+Rewritten from 2.6's first version, then revised in the run:
+
+- **Headers.** What a header holds and that "Allowed now:" is what the
+  turn may do; the learner never sees headers, ids or the prompt, so an
+  objective is named by what it is about.
+- **Refusals.** Do what the reason says and call again in the same reply;
+  never ask the learner to send a message (added after the stalls above;
+  it did not stop them).
+- **Teaching length.** 250 to 400 words by default, never over 600
+  whatever the style says (an agent's choice: the brief has a cap and
+  lets the style set length, and 600 keeps a note from removing the cap);
+  teach the core and leave the rest to the discussion; no questions to
+  answer while teaching.
+- **Discussion.** Under 150 words unless asked for more. Replies ran 210,
+  126 and 164 words, all on point; left as it is.
+- **Feedback.** Right or wrong and why, in two to five sentences: for a
+  miss, the misunderstanding the wrong choice, the grader's flaw or the
+  reasoning shows; for "I don't know", the answer explained; a confident
+  miss treated as a misconception; an unsure correct answer given the
+  reason. Thinking is never shown (added in the run; it did not change
+  the behaviour).
+- **Lead-in and questions.** The lead-in says what comes next and helps
+  with nothing, the trap included (added). A question stands alone and
+  uses a new example. Each question on an objective is a different
+  problem, and one after a miss does not say how to avoid the mistake
+  (added). Choice questions: three to five choices from real
+  misunderstandings, the correct letter picked at random (added: the two
+  choice questions both had A, a small sample).
+- **Rubrics** (from task 2.9): the steps a complete answer must establish
+  with the key results written out, what may be assumed and what may not,
+  any valid method, and the errors that make an answer wrong. The six
+  rubrics of the written questions posted listed the steps with their
+  results and the errors, and named the starting value where it
+  mattered; all six said any valid method (or wording) counts; none said
+  what may be assumed, which these proofs barely needed. The grader's six
+  verdicts matched the answers as written (three misses: a base case at
+  $Q(1)$ for $n \ge 3$, a step that assumed $P(k+1)$, a base case at
+  $n = 1$ for $n \ge 0$).
+- **Help.** Clarify what the question asks, never a step, a value or the
+  mistake to avoid (added), and tell the learner the answer will count as
+  given with help, which the tutor did.
+- **Default style, writing.** As before, plus no `\(`, `\[` or HTML.
+
+### Other findings, for later tasks
+
+- **Start fresh in a check** (task 2.14): the new session posted the same
+  problem the check had asked before, since the header does not list the
+  check's questions and the conversation is gone, and asked as question 3
+  a sum the earlier session had taught as its worked example. Listing the
+  check's questions in a new session's header would fix the first;
+  handoff notes (stage 5) the second.
+- **The slow reply after Stop** (section 7's open row): no Stop was used.
+
+## Feedback turn (plan task 2.16a)
+
+Done on 2026-11-16. Task 2.16's run found the tutor writing its feedback
+in its thinking, never shown, when one reply had to give feedback and post
+the next question ("Tutor prompt", above). This task splits that reply in
+two. The choices are the agent's and can be overturned.
+
+### What changed
+
+- **The turn after a graded answer is for feedback alone.** Its header
+  ends "Allowed now: your feedback on this answer, written as text, and
+  nothing else. No tool may be called in this reply", and says what comes
+  after: the next question, asked for in a message of its own, or, when
+  every objective is done, the segment's close. `ask_question` called in
+  it is refused (`feedbackOnly` in `engine/unit-chat.ts`), with a reason
+  that says the learner sees only text and that the app asks for the next
+  question itself, so the tutor has no cause to ask the learner for a
+  message.
+- **The engine then asks for the next question** (`nextQuestionTurn` in
+  `engine/unit-turns.ts`): the header alone, with where each objective
+  stands, "a lead-in of one sentence, then a question on ... Do not repeat
+  your feedback". It is sent when the feedback turn ends, unless the
+  learner stopped it. After an error it is sent too, as the plan asked:
+  the teaching turn's end opens the discussion after an error for the same
+  reason, so the check goes on without the learner having to write.
+- **The engine closes the segment, and `close_segment` is gone.** When the
+  feedback on the answer that leaves every objective done ends, however it
+  ended (a Stop too), the segment closes and, after the unit's last, the
+  closing card follows. Why: the check rules (`check-rules.ts`) already
+  decide when a check is done, so the tutor's call made no decision; it
+  cost a turn, and a tutor that wrote text and did not call it left the
+  check stuck, a second way to stall like the one this task removes. The
+  same reasoning left out `start_segment` in task 2.6. The tutor's
+  feedback turn is told the check is over, so it can end the check with a
+  sentence. `tools/close-segment.ts` is deleted; the tutor's tools are
+  `ask_question` alone. The plan's "both tools refused during the feedback
+  turn" therefore holds as: `ask_question` is refused, and no tool closes
+  a segment.
+- **A unit reopened in a check with every objective done and no question
+  open closes the segment as it opens**: a restart came between the last
+  answer and the end of the feedback on it. Nothing is sent to the tutor.
+- **A message sent during the feedback** is queued before the follow-up,
+  so the tutor answers it first; its header still allows a question. The
+  follow-up is skipped if, when its time comes, a question has been posted
+  since the answer (open, or answered already). For that, a queued turn
+  can carry `skip()` (`engine/conversation.ts`): asked when the turn comes
+  up, and a skipped turn is not started, sends nothing, emits no events
+  and runs no end-of-turn work.
+- **`settled()` waits for turns that a turn's end sends.** It returned the
+  queue as it stood, so the follow-up, queued from the feedback turn's
+  end, ran after `settled()` had resolved. It now waits until the queue
+  stops growing.
+- **The refuse-until-text rule of task 2.16 is removed** (`feedbackMissing`
+  and its two tests, the slow-reading backend among them). The real run
+  below needed nothing like it on the follow-up turn.
+- **Headers** no longer name `close_segment`; the ready and message turns
+  in a check say "write what you have to say first, then a one-sentence
+  lead-in". `ask_question`'s description says the reply to a graded
+  answer is feedback only.
+- **`tutor.md`**: the check step says the app asks for each next question
+  and closes the segment; the section "Posting a question ends your turn"
+  became "Feedback, then the next question" (feedback alone, then a
+  lead-in and the call, posting ends the turn); a refusal is followed "in
+  the same reply", no longer "call again".
+- **`scripted.ts`** gives feedback alone on an answer ("Scripted feedback
+  on question N.") and posts a question whenever a header allows one.
+
+### Checks
+
+- **Tests** (fake backend). After an answer, the feedback turn's text
+  comes before the follow-up's question, and before the segment's close
+  after the last answer; `ask_question` is refused in both feedback turns
+  and the refusal does not end the turn; the follow-up's header, written
+  out. Stop during the feedback sends no follow-up, and the learner's next
+  message can post the question; Stop during the last answer's feedback
+  still closes the segment. A message sent during the feedback is answered
+  first; the follow-up is skipped when that reply posted a question and
+  sent when it did not. A reopened unit closes a done check. In
+  `conversation.test.ts`, a skipped turn sends nothing, emits nothing and
+  runs no end-of-turn work, and `settled()` waits for a turn sent from a
+  turn's end. Each was checked against a fault put in by hand: without
+  the skip, without the Stop check, without the refusal, without the close
+  at opening, without the close after the feedback, and without the loop
+  in `settled()`, a test fails. 26 existing tests changed with the flow:
+  scripts gained a feedback turn per answer, and the tests of
+  `close_segment` became tests of the engine's close. `mise run check`
+  passed: lint, types, 534 TypeScript tests, one Python test.
+- **Browser, `pnpm dev:fake`**: on the seed's "The integral", a wrong
+  answer showed the scripted feedback, then the follow-up's lead-in and
+  question 2; a correct one showed the feedback, then the segment's "Done"
+  marker and "Start the next segment".
+- **Real run, Sonnet 5.5** (`GAUSS_CLAUDE_MODEL=claude-sonnet-5-5`, so the
+  grader too), on a scratch data root (`/tmp/gauss-216a/data`): 2.16's
+  course and unit plan, seeded with the plan stored so no planning ran.
+  Segment 1, "Anatomy of an induction proof", one objective: question 1
+  (choice) answered wrong at 100% with reasoning, question 2 (choice)
+  right at 50%, question 3 (a written proof) right at 90%, which passed
+  the objective. Each answer's feedback was written as text, 137, 119 and
+  110 words, and was right about the answer (for the miss, both errors in
+  the choice and why each other choice fails). Each follow-up wrote a
+  lead-in of 6 to 12 words and posted the question, with no feedback
+  repeated; after the third answer's feedback the segment closed. Claude
+  Code's session log: 7 requests, all with `thinking: { type: "adaptive",
+  display: "updates" }`, as in 2.16's run, and no thinking block in any
+  of them (2.16's two logs held 48 in 34 requests); three `ask_question`
+  calls, none refused; no turn asked the learner to send a message.
+
+### Limits and findings for later tasks
+
+- **One segment, three answers.** No message was sent during a feedback
+  turn and no Stop was used in the real run; those paths have the fake
+  tests only.
+- **Feedback runs long.** 110 to 137 words against `tutor.md`'s "two to
+  five sentences"; for task 2.16's rerun to judge.
+- **A restart between an answer and the next question** leaves the check
+  waiting on a learner message, with the feedback lost if it was cut off;
+  the reopened unit sends nothing (before this task the same held for the
+  answer's turn). The learner's message gets a header that allows the
+  question.
+- **The follow-up after a failed feedback turn** does not say the
+  feedback failed, so the tutor may not repeat it.

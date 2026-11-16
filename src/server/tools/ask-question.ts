@@ -28,8 +28,9 @@ export function askQuestionTool(board: QuestionBoard): TeachingTool {
       "grade the answer without seeing this conversation. Posting ends your " +
       "turn, so say anything you want to say before calling this. The " +
       "learner's answer, already graded, arrives in the next message, not " +
-      "as this tool's result. Only one question can be open at a time, and " +
-      "only in the check.",
+      "as this tool's result, and that reply is for your feedback only; " +
+      "the app asks for the next question after it. Only one question can " +
+      "be open at a time, and only in the check.",
     input: QuestionInput,
     async run(question) {
       const result = await board.post(question);
