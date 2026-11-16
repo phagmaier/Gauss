@@ -968,3 +968,24 @@ tested"). Stage 1 is finished.
   tests; on `pnpm dev:fake` a shuffled question's right choice, at B, was
   graded correct. No real-model run. Findings: `decisions.md`, "Choice
   order".
+
+### 2.17a Feedback queue review fixes
+
+- Status: done
+- Depends on: 2.16a, 2.17
+- Do: keep questions blocked while feedback is queued as well as while it
+  runs, and cancel a queued automatic next-question turn when the learner
+  presses Stop during an intervening reply.
+- Done when: fake-backend regression tests fail on the reviewed commits
+  and pass with the fixes, showing feedback before the next question even
+  with earlier messages queued, no automatic question after Stop during
+  an intervening reply, and recovery through a later learner message;
+  `mise run check` passes.
+- Note: done on 2026-11-16. Feedback blocks questions as soon as it is
+  queued; messages ahead of it get a header and refusal that say to wait
+  for its separate turn. A Stop count cancels the automatic next-question
+  turn after Stop in any intervening reply. Three new regression cases
+  failed before their respective fixes and pass now, including recovery
+  through a later message. `mise run check` passed: lint, types, 543
+  TypeScript tests and one Python test. No real-model run. Findings:
+  `decisions.md`, "Feedback queue review fixes".

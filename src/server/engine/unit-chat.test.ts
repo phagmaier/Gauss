@@ -3209,6 +3209,94 @@ test("after an answer, the tutor's turn is for feedback alone, with ask_question
   expect(setup.backend.received).toHaveLength(5);
 });
 
+test("feedback queued behind learner messages blocks their questions until that feedback ends", async () => {
+  const paused = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_QUOTIENT),
+      [
+        { text: "Clarifying the question." },
+        { call: "ask_question", input: Q_SECANT },
+        { text: "Waiting for the feedback." },
+      ],
+      [
+        { call: "ask_question", input: Q_SECANT },
+        { text: "That reply comes before the feedback too." },
+      ],
+      [{ text: "Feedback on the answer." }],
+      ask(Q_SECANT),
+    ],
+    {
+      wrap: (backend) => ({
+        ...backend,
+        async startSession(options) {
+          const session = await backend.startSession(options);
+          return {
+            ...session,
+            async *send(turn) {
+              for await (const event of session.send(turn)) {
+                yield event;
+                if (
+                  event.type === "text" &&
+                  event.text === "Clarifying the question."
+                ) {
+                  paused.resolve();
+                  await release.promise;
+                }
+              }
+            },
+          };
+        },
+      }),
+    },
+  );
+  try {
+    await makeCourse();
+    const chat = await open(setup);
+    await toCheck(chat);
+    chat.say("What does the question mean?");
+    await paused.promise;
+    chat.say("Next question, please.");
+    expect(
+      await chat.answer({
+        kind: "choice",
+        questionId: openQuestionId(chat),
+        choice: "A",
+        confidence: "100",
+      }),
+    ).toEqual({ ok: true });
+    release.resolve();
+    await chat.settled();
+
+    // Both the running reply and the earlier queued message must wait.
+    expect(setup.backend.calls.slice(1, 3).map((c) => c.result.status)).toEqual(
+      ["refused", "refused"],
+    );
+    expect(setup.backend.received[3]?.text).toContain(
+      "ask_question is refused until that feedback ends",
+    );
+    expect(
+      since(chat, "graded")
+        .filter((e) => e.type === "tutor_text" || e.type === "question")
+        .map((e) => (e.type === "tutor_text" ? e.text : "?")),
+    ).toEqual([
+      "Waiting for the feedback.",
+      "That reply comes before the feedback too.",
+      "Feedback on the answer.",
+      "Here is a question.",
+      "?",
+    ]);
+    expect(await position()).toMatchObject({
+      derivative: { openQuestion: { number: 2, objective: "secant-slope" } },
+    });
+  } finally {
+    release.resolve();
+    await setup.units.close();
+  }
+});
+
 test("Stop during the feedback sends no next question; the learner's next message can post one", async () => {
   const setup = setUp([
     TEACH,
@@ -3252,6 +3340,70 @@ test("Stop during the feedback sends no next question; the learner's next messag
     derivative: { openQuestion: { number: 2, objective: "secant-slope" } },
   });
 });
+
+test.each(["before", "after"] as const)(
+  "Stop in a learner reply %s feedback cancels the automatic next question, and a later message can post one",
+  async (when) => {
+    const replying = Promise.withResolvers<void>();
+    const reply: FakeTurn = () => {
+      replying.resolve();
+      return [{ text: "An interrupted learner reply." }, { hold: true }];
+    };
+    let chat: UnitChat | undefined;
+    const setup = setUp([
+      TEACH,
+      ask(Q_QUOTIENT),
+      ...(when === "before"
+        ? [reply, FEEDBACK]
+        : [
+            () => {
+              chat?.say("Why is that right?");
+              return [{ text: "Feedback on the answer." }];
+            },
+            reply,
+          ]),
+      ask(Q_SECANT),
+    ]);
+    try {
+      await makeCourse();
+      chat = await open(setup);
+      await toCheck(chat);
+      if (when === "before") {
+        chat.say("What does the question mean?");
+        await replying.promise;
+      }
+      expect(
+        await chat.answer({
+          kind: "choice",
+          questionId: openQuestionId(chat),
+          choice: "A",
+          confidence: "100",
+        }),
+      ).toEqual({ ok: true });
+      await replying.promise;
+
+      await chat.interrupt();
+      await chat.settled();
+
+      expect(chat.events().filter((e) => e.type === "question")).toHaveLength(
+        1,
+      );
+      expect(setup.backend.received).toHaveLength(4);
+      expect(await position()).toEqual({
+        derivative: { segment: 0, phase: "check", checkFrom: 0 },
+      });
+
+      chat.say("Next question, please.");
+      await chat.settled();
+
+      expect(await position()).toMatchObject({
+        derivative: { openQuestion: { number: 2, objective: "secant-slope" } },
+      });
+    } finally {
+      await setup.units.close();
+    }
+  },
+);
 
 test("Stop during the feedback on the check's last answer still closes the segment", async () => {
   const setup = setUp([

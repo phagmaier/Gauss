@@ -77,6 +77,8 @@ export interface Where {
   notPassed: readonly string[];
   /** Set once the unit is finished and no longer in progress. */
   finished?: "passed" | "overridden";
+  /** A graded answer's feedback is queued behind earlier learner messages. */
+  feedbackPending?: number;
   /** Things the tutor has not been told yet, said once, in this header. */
   notes: readonly string[];
 }
@@ -305,6 +307,14 @@ function allowed(where: Where): string {
           `Question ${open.number}, on "${open.objective}", is open.${help} ` +
           "Allowed now: reply without giving its answer away. ask_question " +
           "is refused until the learner answers it."
+        );
+      }
+      if (where.feedbackPending !== undefined) {
+        return (
+          `Question ${where.feedbackPending} is graded, and your feedback on ` +
+          "it is queued in a message of its own. Allowed now: reply to the " +
+          "learner without posting a question; ask_question is refused " +
+          "until that feedback ends."
         );
       }
       const { standing, toAsk } = checkStanding(where);

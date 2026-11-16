@@ -282,17 +282,21 @@ The rules of tasks 2.6 and 2.7:
   or on one already done in this check, and once the unit is finished. A
   refusal does not end the turn; a posted question does.
 - **The turn after an answer is for feedback alone** (task 2.16a). Its
-  header allows feedback and nothing else, and `ask_question` is refused
-  in it. When it ends, the segment closes if every objective is done in
-  this check; otherwise, unless the learner stopped it, the engine sends
-  the next check turn (`nextQuestionTurn` in `unit-turns.ts`), which asks
-  for a lead-in and a question on the objectives still open. That turn is
-  queued behind any learner message sent during the feedback, and is
-  skipped if the reply to that message posted a question (`skip` on a
-  queued turn, `conversation.ts`). After a Stop, the learner's next
-  message can post one. The tutor closes no segment: the check rules say
-  when it is done, so a tool for it only added a way to stall
-  (`decisions.md`, "Feedback turn").
+  header allows feedback and nothing else. `ask_question` is refused
+  from when that feedback is queued until it ends, including in replies
+  to earlier learner messages; their headers say feedback is still
+  pending (task 2.17a). When it ends, the segment closes if every objective
+  is done in this check; otherwise, unless the learner stopped it, the
+  engine sends the next check turn (`nextQuestionTurn` in `unit-turns.ts`),
+  which asks for a lead-in and a question on the objectives still open.
+  That turn is queued behind any learner message sent during the
+  feedback, and is skipped if the reply to that message posted a question or the learner
+  pressed Stop since the feedback was queued (`skip` on a queued turn,
+  `conversation.ts`). Stop during an intervening reply cancels the
+  automatic question too; feedback still queued is delivered, and the
+  learner's next message can post a question. The tutor closes no segment:
+  the check rules say when it is done, so a tool for it only added a way
+  to stall (`decisions.md`, "Feedback turn").
 - **How many questions** (`src/server/engine/check-rules.ts`, task 2.7):
   each objective of the segment gets at least one question in the check,
   and is done once it has passed (section 3's derived status) or once

@@ -50,6 +50,7 @@ findings are the record.
 | Feedback turn | Task 2.16a: the feedback-only turn after an answer, the next question asked for in its own turn, the engine closing the segment (`close_segment` removed), skipped turns and `settled()`, the tests, the fake and real runs | Touching the turn after an answer, `nextQuestionTurn`, closing a segment, `skip` in `conversation.ts`, `scripted.ts`'s answer turns, `tutor.md`'s feedback section |
 | Choice order | Task 2.17: the engine shuffles a choice question's choices when it is posted, the answer letter moved with them, the tool's reply listing the order, the injected order in tests, the scripted tutor's sums | Touching `engine/choice-order.ts`, posting questions in `unit-chat.ts`, `ask_question`'s reply, `scripted.ts`'s choice questions |
 | Tutor prompt | Task 2.16's two runs: the transcripts against its check, feedback that went into the tutor's thinking and what did not fix it, the refusal rule, the feedback turn (2.16a), the rerun, feedback length, the wrong answer key and the choice-letter rule, what `tutor.md` says and why | Touching `tutor.md`, the turn after an answer (2.16a), thinking settings in `backends/claude.ts`, Start fresh in a check |
+| Feedback queue review fixes | Pending feedback blocks questions from earlier messages; Stop cancels the automatic next question across intervening replies | Touching queued feedback, question posting, or Stop in `unit-chat.ts` (task 2.17a) |
 
 ## Page design (plan task 1.0)
 
@@ -3650,3 +3651,42 @@ The choices are the agent's and can be overturned.
   check then passed.
 - **Not run on a real model.** Whether the tutor uses the shown letters
   after the reply lists them is left to the stage's user check.
+
+## Feedback queue review fixes (plan task 2.17a)
+
+Done on 2026-11-16.
+
+Review of `47adf59..6d2f47c` reproduced two gaps in the feedback turn's
+queueing, both with the fake backend:
+
+- An answer recorded while a learner's reply was running removed the
+  open question, but feedback blocked new questions only once its turn
+  started. The running reply or a message queued before the answer could
+  post the next question first. Feedback now blocks questions as soon as
+  it is queued. Earlier messages' headers and tool refusals say to reply
+  without posting a question and wait for the separate feedback turn;
+  the feedback turn itself keeps its existing feedback-only header and
+  refusal. The block ends however feedback ends, including a failed
+  session startup before its text is composed.
+- A learner message sent during feedback ran before the automatic next
+  question. Stopping that reply left the automatic turn queued, so a new
+  question appeared immediately after Stop. Each feedback captures the
+  unit chat's Stop count; its automatic turn is skipped if the count has
+  changed before it runs. This also covers Stop during a reply ahead of
+  still-pending feedback. Feedback is delivered, a done check still
+  closes, and a later learner message may post a question normally.
+
+The regression tests use the existing fake backend and temporary data
+roots. One pauses a running reply, queues another message, records an
+answer, and checks both messages' tool refusals, the pending-feedback
+header, and feedback before the next question. A parameterized test stops
+an intervening reply before and after feedback, checks that no automatic
+turn reaches the backend, and requests the next question through a later
+message. All three cases failed before their respective fixes: the first
+posted a question instead of refusing it, and each Stop case posted a
+second question. The focused feedback checks pass (10 cases).
+`mise run check` passed: lint, types, all 543 TypeScript tests and one
+Python test. Final review found no further in-scope defects.
+
+No real-model run: the changes enforce queue ordering and cancellation in
+the engine; the tutor prompt and backend calls are unchanged.

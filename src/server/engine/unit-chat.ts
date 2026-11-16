@@ -241,8 +241,8 @@ interface Running {
   agents: UnitAgents;
   /** Said once, in the next turn's header. */
   notes: string[];
-  /** While the tutor's feedback on an answer is sent: the question's number. */
-  feedback?: number | undefined;
+  /** Blocks new questions from when feedback is queued until it ends. */
+  feedback?: { number: number; started: boolean } | undefined;
 }
 
 function createUnitChat(
@@ -258,6 +258,8 @@ function createUnitChat(
   let agents: UnitAgents | undefined;
   let loading: Promise<void> | undefined;
   let failed = false;
+  /** A Stop cancels automatic next-question turns, including ones still queued. */
+  let stopCount = 0;
 
   // --- Opening ---------------------------------------------------------------
 
@@ -421,6 +423,9 @@ function createUnitChat(
       checks: checks(r),
       notPassed: notPassed(r.context.plan, record.evidence),
       ...(record.finished === undefined ? {} : { finished: record.finished }),
+      ...(r.feedback !== undefined && !r.feedback.started
+        ? { feedbackPending: r.feedback.number }
+        : {}),
       notes,
     };
   }
@@ -464,9 +469,12 @@ function createUnitChat(
    */
   function tellGrade(r: Running, { question, entry }: Answered): void {
     const { number } = question;
+    const stops = stopCount;
+    const feedback = { number, started: false };
+    r.feedback = feedback;
     r.agents.send({
       text: () => {
-        r.feedback = number;
+        feedback.started = true;
         return answerTurn(where(r), entry, number);
       },
       ended: (outcome) =>
@@ -474,7 +482,7 @@ function createUnitChat(
           r.feedback = undefined;
           if (!nextAfter(r, number)) return;
           if (checkDone(r)) await closeSegment(r);
-          else if (outcome !== "interrupted") askNext(r, number);
+          else if (outcome !== "interrupted") askNext(r, number, stops);
         }),
     });
   }
@@ -496,11 +504,12 @@ function createUnitChat(
   /**
    * Asks the tutor for the check's next question, after its feedback on
    * question `number`. Skipped if a turn sent meanwhile, the reply to a
-   * learner's message, has posted one.
+   * learner's message, has posted one, or the learner pressed Stop since
+   * the feedback was queued.
    */
-  function askNext(r: Running, number: number): void {
+  function askNext(r: Running, number: number, stops: number): void {
     r.agents.send({
-      skip: () => !nextAfter(r, number),
+      skip: () => stopCount !== stops || !nextAfter(r, number),
       text: () => nextQuestionTurn(where(r), number),
     });
   }
@@ -591,7 +600,10 @@ function createUnitChat(
           }
           const { position } = r.record;
           if (r.feedback !== undefined) {
-            return { refused: feedbackOnly(r.feedback) };
+            const { number, started } = r.feedback;
+            return {
+              refused: started ? feedbackOnly(number) : feedbackPending(number),
+            };
           }
           if (position.phase !== "check") {
             return { refused: outOfPhase(position.phase) };
@@ -889,6 +901,7 @@ function createUnitChat(
     },
 
     async interrupt() {
+      stopCount += 1;
       await running?.agents.interrupt();
     },
     async settled() {
@@ -923,10 +936,16 @@ function refused(error: string): ChatResult {
   return { ok: false, status: 409, error };
 }
 
-/**
- * Why ask_question is refused in the tutor's feedback on an answer (task
- * 2.16a), said so it can act on it.
- */
+/** A learner's earlier message must not post a question before feedback. */
+function feedbackPending(number: number): string {
+  return (
+    `The feedback on question ${number} is queued in a message of its own. ` +
+    "Reply to the learner without posting a question, then end your reply " +
+    "so that feedback can be sent."
+  );
+}
+
+/** Why ask_question is refused during the feedback turn itself (task 2.16a). */
 function feedbackOnly(number: number): string {
   return (
     `This reply is for your feedback on question ${number} only, and no ` +
