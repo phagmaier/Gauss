@@ -39,6 +39,7 @@ findings are the record.
 | Review fixes (2.8a) | One answer per question, moving on with a kept answer, Stop before a turn is sent, whole evidence lines, inherited property names, the fake's stopped one-shot | Recording answers or reopening a unit (2.8b, 2.13, 2.14), turn stop, `json-lines.ts` (2.13's transcripts), the fake backend |
 | Unit chat split | What `unit-record.ts` and `unit-agents.ts` hold, the one queue, what the tests do not cover | Touching the unit chat, and before 2.13 (transcripts), 2.14 (resume) and 2.15 (idle sessions) |
 | Grader prompt | The hand-graded set, the runs and their results, the grader's model and why, what `grader.md` says and why | Changing `grader.md`, the grader's model or `WrittenGrade`, writing rubric guidance in `tutor.md` (2.16), disputes (stage 3) |
+| Style note at intake | The note in the proposal, `style.md` with the draft, courses without one, the card, `planner.md`'s section | Touching `propose_curriculum`, `planner.md` or the proposal card, writing `tutor.md`'s default style (2.16), style changes (stage 5) |
 
 ## Page design (plan task 1.0)
 
@@ -2136,3 +2137,67 @@ can be overturned.
   Verified with independent numeric assertions and `biome check` on the
   fixture file; no model calls were needed because the grader's inputs,
   prompt, model and expected verdict are unchanged.
+
+## Style note at intake (plan task 2.10)
+
+Done on 2026-11-15. The choices are the agent's and can be overturned.
+
+- **The note is part of the proposal.** `CurriculumProposal` has a
+  required `style` (`StyleNote` in `src/shared/curriculum.ts`): plain
+  text, trimmed, 1 to 800 characters, its description asking for two to
+  four sentences on explanation length, the kind of check questions and
+  the pace. Required, so every new course has one and the card always has
+  its section; a proposal without one is refused with the schema's reason
+  and the tutor sends it again. The limit is generous for four sentences
+  (mock 9's notes are under 300 characters) and stops a lecture
+  disguised as a note.
+- **Stored as `style.md` with each draft**, in `saveProposal`, under the
+  curriculum's lock: `curriculum.json`, then `style.md`, then
+  `course.json` if the title changed. A crash between the first two
+  leaves the new units with the note before (or none, on the first
+  proposal); the course is still a draft, so the learner sees it on the
+  card before approving. Approval stamps `curriculum.json` only and leaves
+  `style.md` as it is; a proposal after approval is refused before
+  anything is written, so the approved note is the one approval found.
+- **Courses without a note.** Drafts and courses from before this task
+  have no `style.md`. The page event carries the note as optional, and
+  only as `z.string()`, so a hand-edited note longer than the tool's limit
+  still shows. A reopened draft without one shows "No note was proposed,
+  so the tutor's default style applies." in the card's section, and the
+  planner prompt asks for a note with the next revision. A course
+  approved without one is taught in `prompts/tutor.md`'s default style,
+  as task 2.6 built.
+- **A reopened draft** reads `style.md` in the review route (trimmed; an
+  empty file counts as none) and gives it to the new intake with the
+  units; the tutor's first header carries the whole draft, note included.
+- **The card** (mock 9): a section under the units, "How I would teach
+  it", always shown, the note as plain text (line breaks kept), and
+  "Changed" when the note differs from the revision before, as units are
+  marked. The paragraph has its own class, `cs-t`, where the mock has
+  `.cs p`: Biome's descending-specificity rule flags `.cs p` after
+  `.prose li > p`.
+- **The prompt.** `planner.md` has a section "How you would teach it",
+  with an example from mock 9, asks for revisions of the note as of the
+  units, and says not to repeat the note in the reply. It tells the
+  planner to promise only what a tutor can do in a chat (explaining,
+  discussing, choice and written questions); stage 3 should widen that
+  line when code questions and the symbolic check arrive. Its section on
+  formatting is renamed "Writing", so "style" means the note alone. The
+  change-request headers now ask for the whole revised curriculum "and its
+  style note". Not tried on a real model: the first real intake will show
+  whether notes come out short and concrete.
+- **Not in this task:** showing the approved note in the course view, and
+  changing it after approval (`propose_style`, stage 5).
+- **Checks:** `mise run check` passed lint, type-checking, 387 TypeScript
+  tests and one Python test. Fake-backend tests cover a proposal's note
+  shown and stored, a revision replacing it, approval keeping it (and a
+  refused proposal after approval leaving it), a reopened draft showing it
+  through the review route, a draft without one, the note reaching the
+  tutor's system prompt, and the schema's refusals; the page's timeline
+  marks a changed note. Before the code, the 17 new or changed tests
+  failed; writing `style.md` before the approval check made the record's
+  approval test fail. Browser run with the fake backend on a scratch
+  server built like `main.ts`: the first proposal showed the note under
+  the units, a push-back brought a revision with the note marked
+  "Changed" and no unit marked, and after a restart the reopened draft
+  showed the stored note; approving it left `style.md` as it was.

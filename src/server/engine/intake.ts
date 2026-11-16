@@ -1,14 +1,16 @@
 // The intake chat (brief.md, "How a course runs", steps 1 and 3). The learner
 // says what they want to learn; the page asks that question itself, so the
 // tutor's session starts with the learner's answer. The tutor proposes a
-// curriculum with propose_curriculum, the learner pushes back by replying,
-// and approves the latest revision on its card, which ends the intake.
+// curriculum and a style note with propose_curriculum, the learner pushes
+// back by replying, and approves the latest revision on its card, which
+// ends the intake.
 //
 // The first proposal creates the course, named by the proposal's title, and
-// every proposal is stored as its draft curriculum. Before the first one,
-// nothing is stored. Revision numbers and the conversation are in memory, so
-// a restart loses them; the stored draft can then be reopened for review in
-// a new intake, which starts from it as proposal 1 (task 1.6).
+// every proposal is stored as its draft curriculum and style note (task
+// 2.10). Before the first one, nothing is stored. Revision numbers and the
+// conversation are in memory, so a restart loses them; the stored draft can
+// then be reopened for review in a new intake, which starts from it as
+// proposal 1 (task 1.6).
 
 import type { Slug } from "../../shared/course.ts";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
@@ -44,10 +46,13 @@ export interface Intake {
   close(): Promise<void>;
 }
 
-/** A stored draft whose intake is gone, to be reviewed again. */
+/**
+ * A stored draft whose intake is gone, to be reviewed again. A draft stored
+ * before style notes existed (task 2.10) has none.
+ */
 export interface StoredDraft {
   id: Slug;
-  proposal: CurriculumProposal;
+  proposal: Omit<CurriculumProposal, "style"> & { style?: string };
 }
 
 export function createIntake(options: {
@@ -79,6 +84,7 @@ export function createIntake(options: {
         revision: latest,
         title: proposal.title,
         units: proposal.units,
+        style: proposal.style,
       });
       return { revision: latest };
     },
@@ -219,14 +225,15 @@ function openingTurn(text: string): string {
   );
 }
 
-function reviewTurn(text: string, draft: CurriculumProposal): string {
+function reviewTurn(text: string, draft: StoredDraft["proposal"]): string {
   return (
     "[The learner is reviewing proposal 1, a curriculum proposed in an " +
     "earlier conversation that was not kept:\n" +
     `${JSON.stringify(draft)}\n` +
     "They have not approved it; their message follows. Allowed now: answer " +
     "them; if they ask for changes, call propose_curriculum with the whole " +
-    `revised curriculum, keeping the ids of the units you keep.]\n${text}`
+    "revised curriculum and its style note, keeping the ids of the units " +
+    `you keep.]\n${text}`
   );
 }
 
@@ -237,6 +244,7 @@ function messageTurn(text: string, proposal: number): string {
         "curriculum with propose_curriculum.]"
       : `[Message from the learner about proposal ${proposal}, which they ` +
         "have not approved. Allowed now: answer them; if they ask for " +
-        "changes, call propose_curriculum with the whole revised curriculum.]";
+        "changes, call propose_curriculum with the whole revised curriculum " +
+        "and its style note.]";
   return `${header}\n${text}`;
 }

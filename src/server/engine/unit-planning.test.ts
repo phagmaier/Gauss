@@ -42,6 +42,7 @@ const PROPOSAL = {
       prerequisites: ["derivative"],
     },
   ],
+  style: "Short explanations, many small exercises.",
 };
 
 const DERIVATIVE_PLAN: Plan = {

@@ -76,7 +76,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
   profile.md                      learner profile; one-line index of finished courses
   courses/<course-id>/
     course.json                   title, backend, settings (web search on/off), dates
-    style.md                      per-course teaching style note
+    style.md                      per-course teaching style note, proposed and approved with the curriculum
     curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
     state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question (with a written answer while it is graded), tutor session, open detour
     evidence.jsonl                append-only: answers, grades (with a written answer's flaw), confidence, overrides, disputes
@@ -155,12 +155,16 @@ derived status.
   with no unit. The page asks the opening question, so its session starts
   with the learner's answer. The first `propose_curriculum` creates the
   course, named by the proposal's title; each proposal replaces the draft
-  in `curriculum.json`, and a reply to one is a change request. Approving
+  in `curriculum.json` and the style note in `style.md` (task 2.10), and a
+  reply to one is a change request. Approving
   the latest revision, while the tutor is not writing, ends the intake.
   Before the first proposal nothing is stored, and the conversation is not
   resumed. A draft whose intake was lost in a restart is reviewed in a new
   intake that starts from the stored draft as proposal 1, its earlier
-  conversation gone; the tutor gets the draft in the first turn (task 1.6).
+  conversation gone; the tutor gets the draft, with its style note, in the
+  first turn (task 1.6). A draft proposed before task 2.10 has no note; a
+  course approved without one is taught in the default style of
+  `prompts/tutor.md`.
 - The unit chat (task 2.6, `src/server/engine/unit-chat.ts`) is one per
   unit, kept in memory until the server stops. Opening a unit not in
   progress plans it if it has no plan, writes its position (segment 1,
@@ -303,7 +307,7 @@ served to it over the standard tool protocol (MCP).
 
 | Tool | Effect |
 | --- | --- |
-| `propose_curriculum` | Stores a draft curriculum and shows it for review |
+| `propose_curriculum` | Stores a draft curriculum with its style note (`style.md`) and shows them for review; approval covers both (task 2.10) |
 | `amend_curriculum` | Proposes a change; applied only after the learner confirms |
 | `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
 | `close_segment` | Closes the segment once its check is done (section 4); ends the turn. The learner starts the next segment, so there is no tool for it (task 2.6) |
@@ -572,7 +576,7 @@ and open misconceptions join it in stage 5.
 `examiner.md` drives assessments, `grader.md` rubric grading (revised in
 task 2.9 against `scripts/grader-set.ts`, which `scripts/grade-set.ts`
 grades on a real model: re-run it when the prompt changes), `planner.md`
-the intake's curriculum proposal, `unit-planner.md` the planning session that
+the intake's curriculum proposal and its style note, `unit-planner.md` the planning session that
 plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
 sheets. Each is drafted in the stage that first needs it and revised against
 real transcripts.

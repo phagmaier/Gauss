@@ -243,6 +243,17 @@ function ProposalCard(props: {
             : undefined
         }
       />
+      <section className="cs" aria-label="How I would teach it">
+        <div className="cs-h">
+          <span>How I would teach it</span>
+          {proposal.styleChanged ? <span className="chg">Changed</span> : null}
+        </div>
+        {/* Plain text, as the brief has it, like the units' titles and goals. */}
+        <p className="cs-t">
+          {proposal.style ??
+            "No note was proposed, so the tutor's default style applies."}
+        </p>
+      </section>
       {error === undefined ? null : <p className="qa-error">{error}</p>}
       <div className="qa-foot">
         <button

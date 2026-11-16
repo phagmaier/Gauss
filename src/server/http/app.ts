@@ -66,9 +66,15 @@ export function createApp(options: {
         409,
       );
     }
+    // A draft proposed before style notes existed (task 2.10) has none.
+    const style = (await dataRoot.readStyle(stored.id))?.trim() || undefined;
     const intake = intakes.review({
       id: stored.id,
-      proposal: { title: stored.course.title, units: curriculum.units },
+      proposal: {
+        title: stored.course.title,
+        units: curriculum.units,
+        ...(style === undefined ? {} : { style }),
+      },
     });
     return c.json({ intakeId: intake.id } satisfies IntakeStarted);
   });

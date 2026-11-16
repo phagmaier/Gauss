@@ -96,16 +96,19 @@ const EIGEN: Unit = {
   goal: "Find the directions a map only stretches.",
   prerequisites: ["vectors"],
 };
-const proposed = (revision: number, units: Unit[]) =>
+const SHORT = "Short explanations, a picture first.";
+const PREDICT = "Short explanations. Checks ask you to predict, not compute.";
+const proposed = (revision: number, units: Unit[], style?: string) =>
   ({
     type: "curriculum_proposed",
     courseId: "linear-algebra",
     revision,
     title: "Linear algebra",
     units,
+    ...(style === undefined ? {} : { style }),
   }) as const;
 
-test("each proposal is a card, a revision marks what changed since the one before, and approval is recorded", () => {
+test("each proposal is a card, a revision marks what changed since the one before, the style note included, and approval is recorded", () => {
   const revised = { ...VECTORS, title: "Vectors, maps and matrices" };
   const gentler = {
     ...EIGEN,
@@ -114,16 +117,16 @@ test("each proposal is a card, a revision marks what changed since the one befor
   const state = play([
     { type: "learner", text: "Linear algebra." },
     { type: "turn_start" },
-    proposed(1, [VECTORS, EIGEN]),
+    proposed(1, [VECTORS, EIGEN], SHORT),
     { type: "turn_end", outcome: "done" },
     { type: "learner", text: "Shorter, please." },
     { type: "turn_start" },
     { type: "tutor_text", text: "I renamed the first unit." },
-    proposed(2, [revised, EIGEN]),
+    proposed(2, [revised, EIGEN], SHORT),
     { type: "turn_end", outcome: "done" },
     { type: "learner", text: "And eigenvectors more gently." },
     { type: "turn_start" },
-    proposed(3, [revised, gentler]),
+    proposed(3, [revised, gentler], PREDICT),
     { type: "turn_end", outcome: "done" },
     {
       type: "curriculum_approved",
@@ -141,6 +144,8 @@ test("each proposal is a card, a revision marks what changed since the one befor
       title: "Linear algebra",
       units: [VECTORS, EIGEN],
       changed: new Set(),
+      style: SHORT,
+      styleChanged: false,
     },
     {
       kind: "proposal",
@@ -150,6 +155,8 @@ test("each proposal is a card, a revision marks what changed since the one befor
       title: "Linear algebra",
       units: [revised, EIGEN],
       changed: new Set(["vectors"]),
+      style: SHORT,
+      styleChanged: false,
     },
     {
       kind: "proposal",
@@ -160,6 +167,8 @@ test("each proposal is a card, a revision marks what changed since the one befor
       units: [revised, gentler],
       // Against revision 2, not the first: the renamed unit is not new here.
       changed: new Set(["eigen"]),
+      style: PREDICT,
+      styleChanged: true,
     },
   ]);
   expect(state.latestRevision).toBe(3);
@@ -168,10 +177,29 @@ test("each proposal is a card, a revision marks what changed since the one befor
 });
 
 test("a draft reopened after a restart is marked, and its proposal is the first card", () => {
-  const state = play([{ type: "draft_reopened" }, proposed(1, [VECTORS])]);
+  const state = play([
+    { type: "draft_reopened" },
+    proposed(1, [VECTORS], SHORT),
+  ]);
 
   expect(state.reopened).toBe(true);
-  expect(state.items).toMatchObject([{ kind: "proposal", revision: 1 }]);
+  expect(state.items).toMatchObject([
+    { kind: "proposal", revision: 1, style: SHORT, styleChanged: false },
+  ]);
   expect(state.latestRevision).toBe(1);
   expect(state.approved).toBeNull();
+});
+
+test("a draft stored before style notes existed has none, and a revision that adds one marks it changed", () => {
+  const state = play([
+    { type: "draft_reopened" },
+    proposed(1, [VECTORS]),
+    { type: "learner", text: "Fewer computations." },
+    proposed(2, [VECTORS], PREDICT),
+  ]);
+
+  expect(state.items.filter((i) => i.kind === "proposal")).toMatchObject([
+    { revision: 1, style: undefined, styleChanged: false },
+    { revision: 2, style: PREDICT, styleChanged: true },
+  ]);
 });

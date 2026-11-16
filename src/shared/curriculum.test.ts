@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Curriculum } from "./curriculum.ts";
+import { Curriculum, CurriculumProposal } from "./curriculum.ts";
 import type { Plan } from "./plan.ts";
 
 // A hand-written curriculum.json for a short calculus course. "fundamental"
@@ -258,6 +258,32 @@ describe("planned units", () => {
         message: expect.stringMatching(
           /"continuity" is the id of an objective in both "limits" and "derivative"/,
         ),
+      }),
+    ]);
+  });
+});
+
+describe("a proposal's style note", () => {
+  const proposal = { title: "Calculus I", units: APPROVED.units };
+
+  test("is kept trimmed", () => {
+    const style = "Short explanations. Many small exercises.";
+    expect(
+      CurriculumProposal.parse({ ...proposal, style: `  ${style}\n` }).style,
+    ).toBe(style);
+  });
+
+  // The tutor gets these reasons back when propose_curriculum refuses.
+  test.each([
+    { name: "missing", style: undefined, message: /expected string/i },
+    { name: "only spaces", style: "  \n ", message: /too small/i },
+    { name: "too long", style: "x".repeat(801), message: /too big/i },
+  ])("is required and short: $name is refused", ({ style, message }) => {
+    const result = CurriculumProposal.safeParse({ ...proposal, style });
+    expect(result.error?.issues).toEqual([
+      expect.objectContaining({
+        path: ["style"],
+        message: expect.stringMatching(message),
       }),
     ]);
   });

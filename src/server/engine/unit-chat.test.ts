@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -52,6 +52,7 @@ const CURRICULUM: CurriculumProposal = {
       prerequisites: ["derivative"],
     },
   ],
+  style: "Very short explanations. Many small exercises.",
 };
 
 // Segment 1 teaches two objectives, so its check needs an answer on each.
@@ -316,9 +317,10 @@ test("starting a unit plans it, sends segment 1's teaching turn, and the end of 
   expect(course?.course.lastOpenedAt).toBe(NOW);
 });
 
-test("the tutor's system prompt holds tutor.md, the course, the unit's plan and the default style", async () => {
+test("the tutor's system prompt holds tutor.md, the course, the unit's plan and, for a course approved before style notes existed, the default style", async () => {
   const setup = setUp([TEACH]);
   await makeCourse();
+  await rm(join(dir, "courses", COURSE, "style.md"));
 
   await open(setup);
 
@@ -351,16 +353,16 @@ test("the tutor's system prompt holds tutor.md, the course, the unit's plan and 
   );
 });
 
-test("a course's style note takes the default's place in the system prompt", async () => {
+test("the style note approved with the curriculum takes the default's place in the system prompt", async () => {
   const setup = setUp([TEACH]);
   await makeCourse();
-  const note = "Very short explanations. Many small exercises.";
-  await writeFile(join(dir, "courses", COURSE, "style.md"), `${note}\n`);
 
   await open(setup);
 
   const prompt = setup.backend.sessions[0]?.systemPrompt ?? "";
-  expect(prompt.endsWith(`# This course's style\n\n${note}\n`)).toBe(true);
+  expect(
+    prompt.endsWith(`# This course's style\n\n${CURRICULUM.style}\n`),
+  ).toBe(true);
   expect(prompt).not.toContain("default style above");
 });
 
@@ -1214,6 +1216,7 @@ test('a unit whose id every object has as a property, "constructor", opens like 
         prerequisites: [],
       },
     ],
+    style: CURRICULUM.style,
   });
   await root.approveCurriculum(id);
   await root.storePlan(id, "constructor", PLAN);

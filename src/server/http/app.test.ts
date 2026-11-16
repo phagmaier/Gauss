@@ -43,6 +43,7 @@ const FIRST = {
       prerequisites: ["vectors"],
     },
   ],
+  style: "Short explanations, a picture before the algebra.",
 };
 const REVISED = { ...FIRST, units: FIRST.units.slice(0, 1) };
 
@@ -365,7 +366,7 @@ test("a course outlives the server, and an intake in progress does not", async (
   expect(gone.status).toBe(404);
 });
 
-test("a draft opens for review in its running intake, or after a restart in a new one that starts from it", async () => {
+test("a draft opens for review in its running intake, or after a restart in a new one that starts from it with its style note", async () => {
   const before = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
   const intakeId = await startIntake(before.app);
   await say(before, intakeId, ASK);
@@ -408,6 +409,32 @@ test("a draft opens for review in its running intake, or after a restart in a ne
   expect((await post(after.app, "/api/courses/no-course/review")).status).toBe(
     404,
   );
+});
+
+test("a draft stored before style notes existed reopens without one", async () => {
+  const before = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
+  await say(before, await startIntake(before.app), ASK);
+  await before.intakes.close();
+  await rm(join(dir, "courses", "linear-algebra-for-pca", "style.md"));
+
+  const after = setUp([]);
+  const reopened = await post(
+    after.app,
+    "/api/courses/linear-algebra-for-pca/review",
+  );
+  const { intakeId } = (await reopened.json()) as { intakeId: string };
+  const stream = await readFrames(
+    await after.app.request(`/api/intakes/${intakeId}/events`),
+    3,
+  );
+  const { style: _, ...withoutNote } = FIRST;
+  expect(stream.first[2]?.data).toEqual({
+    type: "curriculum_proposed",
+    courseId: "linear-algebra-for-pca",
+    revision: 1,
+    ...withoutNote,
+  });
+  await stream.close();
 });
 
 test("review keeps the same intake during approval and when its record read is stale", async () => {

@@ -1,12 +1,13 @@
 // The data root: the folder that holds every course (architecture.md
 // section 3). This module creates, lists, reads and marks opened courses,
-// reads their style notes, stores and approves their curricula and the plans
-// of their units, keeps the position of each unit in progress in state.json,
-// and appends to and reads the evidence log. Every write of a whole file
-// goes through writeFileAtomic, the log is appended to, and every file read
-// or written is checked against its schema in src/shared/. Work that reads a
-// file and writes it back, and every append, runs through withFileLock, so
-// it lands in the order called.
+// stores and approves their curricula, each draft with its style note,
+// reads those notes, stores the plans of their units, keeps the position
+// of each unit in progress in state.json, and appends to and reads the
+// evidence log. Every write of a whole file goes through writeFileAtomic,
+// the log is appended to, and every file read or written is checked
+// against its schema in src/shared/. Work that reads a file and writes it
+// back, and every append, runs through withFileLock, so it lands in the
+// order called.
 
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -43,12 +44,16 @@ export interface DataRoot {
   readCourse(id: string): Promise<StoredCourse | undefined>;
   /** Sets the course's lastOpenedAt to the clock's time. */
   markOpened(id: string): Promise<StoredCourse>;
-  /** The course's style note, style.md, or undefined when it has none. */
+  /**
+   * The course's style note, style.md, as written, or undefined when it has
+   * none (a course proposed before notes existed, task 2.10).
+   */
   readStyle(id: string): Promise<string | undefined>;
   /**
    * Stores the tutor's proposal as the course's draft curriculum, replacing
-   * any earlier draft, and its title as the course's title. Refused once the
-   * curriculum is approved.
+   * any earlier draft, its style note as style.md, and its title as the
+   * course's title. Refused, changing nothing, once the curriculum is
+   * approved, so the approved note is the one approval found.
    */
   saveProposal(
     id: string,
@@ -180,7 +185,7 @@ export function openDataRoot(options: {
     },
 
     async saveProposal(id, proposal) {
-      const { title, units } = CurriculumProposal.parse(proposal);
+      const { title, units, style } = CurriculumProposal.parse(proposal);
       const path = courseFile(id, "curriculum.json");
       return withFileLock(path, async () => {
         const stored = await existingCourse(id);
@@ -194,6 +199,7 @@ export function openDataRoot(options: {
           units,
         };
         await writeJson(path, Curriculum, curriculum);
+        await writeFileAtomic(courseFile(id, "style.md"), `${style}\n`);
         const course = { ...stored.course, title };
         if (title !== stored.course.title) {
           await writeJson(courseFile(id, "course.json"), Course, course);

@@ -265,10 +265,11 @@ const PROPOSAL = {
       prerequisites: ["vectors"],
     },
   ],
+  style: "Short explanations, a picture before the algebra.",
 };
 
 describe("proposals and approval", () => {
-  test("a proposal is stored as the draft curriculum, and its title as the course's", async () => {
+  test("a proposal is stored as the draft curriculum, its title as the course's, and its style note as style.md", async () => {
     const root = openDataRoot({ path: dir });
     const { id } = await root.createCourse({ title: "Linear algebra" });
 
@@ -281,6 +282,9 @@ describe("proposals and approval", () => {
     };
     expect(saved).toEqual(expected);
     expect(await openDataRoot({ path: dir }).readCourse(id)).toEqual(expected);
+    expect(await readFile(join(dir, "courses", id, "style.md"), "utf8")).toBe(
+      "Short explanations, a picture before the algebra.\n",
+    );
   });
 
   test("an invalid proposal is refused and changes nothing", async () => {
@@ -298,9 +302,10 @@ describe("proposals and approval", () => {
       course: { title: "Linear algebra" },
       curriculum: null,
     });
+    expect(await root.readStyle(id)).toBeUndefined();
   });
 
-  test("approval stamps the draft with the clock's time, and then no draft can replace it", async () => {
+  test("approval stamps the draft with the clock's time, and then no draft can replace it or its style note", async () => {
     const root = openDataRoot({
       path: dir,
       now: clock("2026-11-15T09:00:00.000Z", "2026-11-15T10:30:00.000Z"),
@@ -315,7 +320,10 @@ describe("proposals and approval", () => {
       units: PROPOSAL.units,
     };
     expect(approved.curriculum).toEqual(curriculum);
-    await expect(root.saveProposal(id, PROPOSAL)).rejects.toThrow(/approved/);
+    await expect(
+      root.saveProposal(id, { ...PROPOSAL, style: "Long lectures." }),
+    ).rejects.toThrow(/approved/);
+    expect(await root.readStyle(id)).toBe(`${PROPOSAL.style}\n`);
     await expect(root.approveCurriculum(id)).rejects.toThrow(
       /already approved/,
     );

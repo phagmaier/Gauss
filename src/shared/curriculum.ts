@@ -151,14 +151,33 @@ export const Curriculum = z.object({
 export type Curriculum = z.infer<typeof Curriculum>;
 
 /**
- * What the tutor sends with propose_curriculum (task 1.4): the course's title
- * and its units. Stored as a draft until the learner approves it.
+ * A course's style note (brief.md, "Teaching style"): how the tutor will
+ * teach it, in plain text. Proposed with the curriculum and approved with it
+ * (task 2.10), and kept as the course's style.md.
+ */
+export const StyleNote = z
+  .string()
+  .trim()
+  .min(1)
+  .max(800)
+  .describe(
+    "How you would teach this course, in two to four plain sentences " +
+      "addressed to the learner: how long explanations run, what the check " +
+      "questions are like, and the pace. No Markdown or LaTeX.",
+  );
+export type StyleNote = z.infer<typeof StyleNote>;
+
+/**
+ * What the tutor sends with propose_curriculum (task 1.4): the course's
+ * title, its units and its style note (task 2.10). Stored as a draft until
+ * the learner approves it.
  */
 export const CurriculumProposal = z.object({
   title: Course.shape.title.describe(
     'The course\'s title, in a few words, such as "Linear algebra for PCA"',
   ),
   units: Units,
+  style: StyleNote,
 });
 export type CurriculumProposal = z.infer<typeof CurriculumProposal>;
 

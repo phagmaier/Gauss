@@ -651,3 +651,21 @@ tested"). Stage 1 is finished.
   the set, the runs, the prompt's rules and the model choice are in
   `docs/decisions.md` under "Grader prompt". `mise run check` passed (381
   TypeScript tests, one Python test).
+
+### 2.10 Style note at intake
+
+- Status: done
+- Depends on: 2.1
+- Do: `propose_curriculum` carries a short style note (brief, "Teaching
+  style"), and `prompts/planner.md` asks for one. The proposal card shows
+  it where 2.1 settles. It is stored as `style.md` with the draft and
+  approved with it, and a reopened draft carries it. A course without one
+  uses the default style in `prompts/tutor.md`.
+- Done when: fake-backend tests cover a proposal's note stored, a revision
+  replacing it, approval keeping it, and a reopened draft showing it; a
+  browser check shows it on the card.
+- Note: done on 2026-11-15. `mise run check` passed (387 TypeScript
+  tests, one Python test); a browser run with the fake backend showed the
+  note on the first card, marked "Changed" on a revision, and on a draft
+  reopened after a restart. The choices and checks are in
+  `docs/decisions.md` under "Style note at intake".

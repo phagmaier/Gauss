@@ -22,6 +22,10 @@ export type Item =
       units: Unit[];
       /** The ids of the units this revision changed; none in the first. */
       changed: Set<string>;
+      /** How the tutor would teach the course; a draft from before task 2.10 has none. */
+      style: string | undefined;
+      /** The style note differs from the revision before's. */
+      styleChanged: boolean;
     }
   | { kind: "note"; key: number; text: string };
 
@@ -132,6 +136,9 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             title: event.title,
             units: event.units,
             changed: changedUnits(event.units, previous?.units),
+            style: event.style,
+            styleChanged:
+              previous !== undefined && previous.style !== event.style,
           },
         ],
         tutorOpen: false,

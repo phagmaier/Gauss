@@ -56,6 +56,8 @@ const FIRST = {
       prerequisites: ["matrices"],
     },
   ],
+  style:
+    "Short explanations, each starting from a picture in two dimensions. Checks are mostly small computations by hand. One new idea per segment.",
 };
 
 // The learner asked for a shorter start: the first two units are merged into
@@ -71,6 +73,8 @@ const REVISED = {
     },
     { ...FIRST.units[2], prerequisites: ["vectors"] },
   ],
+  style:
+    "Short explanations, each starting from a picture in two dimensions. Checks ask you to predict and explain more than to compute.",
 };
 
 function proposals(intake: Intake) {
@@ -104,6 +108,7 @@ test("a valid proposal creates the course with a draft curriculum, shows it, and
       revision: 1,
       title: "Linear algebra for PCA",
       units: FIRST.units,
+      style: FIRST.style,
     },
     { type: "turn_end", outcome: "done" },
   ]);
@@ -112,6 +117,9 @@ test("a valid proposal creates the course with a draft curriculum, shows it, and
     course: { title: "Linear algebra for PCA" },
     curriculum: { approval: { status: "draft" }, units: FIRST.units },
   });
+  expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
+    `${FIRST.style}\n`,
+  );
   expect(backend.sessions[0]?.systemPrompt).toBe("You are a test planner.");
   expect(backend.sessions[0]?.tools.map((t) => t.name)).toEqual([
     "propose_curriculum",
@@ -165,7 +173,7 @@ test("an invalid proposal is refused with the reason, stores nothing, and the tu
   ]);
 });
 
-test("a reply to a proposal is a change request, and the revision replaces the draft in the same course", async () => {
+test("a reply to a proposal is a change request, and the revision replaces the draft and its style note in the same course", async () => {
   const { backend, intake } = setUp([
     [{ call: "propose_curriculum", input: FIRST }],
     [
@@ -193,6 +201,7 @@ test("a reply to a proposal is a change request, and the revision replaces the d
     revision: 2,
     title: "Linear algebra, then PCA",
     units: REVISED.units,
+    style: REVISED.style,
   });
   const courses = await reload().listCourses();
   expect(courses).toHaveLength(1);
@@ -201,9 +210,12 @@ test("a reply to a proposal is a change request, and the revision replaces the d
     course: { title: "Linear algebra, then PCA" },
     curriculum: { approval: { status: "draft" }, units: REVISED.units },
   });
+  expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
+    `${REVISED.style}\n`,
+  );
 });
 
-test("approving the latest revision approves the stored curriculum and ends the intake", async () => {
+test("approving the latest revision approves the stored curriculum, keeps its style note, and ends the intake", async () => {
   const { intake } = setUp([
     [{ call: "propose_curriculum", input: FIRST }],
     [{ call: "propose_curriculum", input: REVISED }],
@@ -228,6 +240,9 @@ test("approving the latest revision approves the stored curriculum and ends the 
     approval: { status: "approved", approvedAt: APPROVED_AT },
     units: REVISED.units,
   });
+  expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
+    `${REVISED.style}\n`,
+  );
   expect(intake.say("One more thing.")).toMatchObject({
     ok: false,
     status: 409,
