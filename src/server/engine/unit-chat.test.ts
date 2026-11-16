@@ -26,6 +26,7 @@ import {
   type FakeTurn,
 } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
+import { type ChoiceOrder, givenOrder } from "./choice-order.ts";
 import { IDLE_MS } from "./conversation.ts";
 import { createFakeTimer, type FakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
@@ -204,6 +205,8 @@ function setUp(
     wrap?: (backend: FakeBackend) => TutorBackend;
     /** Closes idle tutor sessions; one the test never moves on unless given. */
     timer?: FakeTimer;
+    /** The order choices are shown in; the tutor's unless given. */
+    order?: ChoiceOrder;
   } = {},
 ) {
   const backend = createFakeBackend(script, given.replies, {
@@ -227,6 +230,7 @@ function setUp(
     }),
     now: given.now ?? (() => new Date(NOW)),
     timer: given.timer ?? createFakeTimer(),
+    order: given.order ?? givenOrder,
   });
   return { backend, dataRoot, units };
 }
@@ -753,7 +757,7 @@ test("in the check, a second question while one is open and a question on anothe
     },
     {
       status: "done",
-      text: "Posted as question 1. Your turn is over; the learner's answer will arrive in the next message.",
+      text: expect.stringMatching(/^Posted as question 1\. The app shuffled/),
       endTurn: true,
     },
     {
@@ -1096,7 +1100,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
     // Numbered after both answers of this check, the one before the restart too.
     {
       status: "done",
-      text: "Posted as question 3. Your turn is over; the learner's answer will arrive in the next message.",
+      text: expect.stringMatching(/^Posted as question 3\. The app shuffled/),
       endTurn: true,
     },
   ]);
@@ -3370,4 +3374,64 @@ test("a unit reopened after its check's last answer was recorded, before the fee
     derivative: { segment: 0, phase: "closed" },
   });
   expect(setup.backend.received).toEqual([]);
+});
+
+// --- Task 2.17: the choices in the engine's order ----------------------------
+
+test("a choice question is shown, stored, graded and sent back to the tutor in the engine's order, its answer letter moved with the correct choice", async () => {
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_QUOTIENT),
+      FEEDBACK,
+      [{ text: "Any questions before the next one?" }],
+    ],
+    { order: (count) => givenOrder(count).reverse() },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  // The tutor's A, the difference quotient, is shown last, as C.
+  const shown = [
+    "$\\frac{f(a)}{h}$",
+    "$f(a+h)-f(a)$",
+    "$\\frac{f(a+h)-f(a)}{h}$",
+  ];
+  expect(since(chat, "question")[0]).toMatchObject({
+    question: { kind: "choice", choices: shown },
+  });
+  expect((await position()).derivative?.openQuestion?.question).toEqual({
+    kind: "choice",
+    prompt: Q_QUOTIENT.prompt,
+    choices: shown,
+    answer: "C",
+  });
+  const posted = setup.backend.calls[0]?.result;
+  expect(posted?.status === "done" && posted.text).toContain(
+    "A. $\\frac{f(a)}{h}$\n" +
+      "B. $f(a+h)-f(a)$\n" +
+      "C. $\\frac{f(a+h)-f(a)}{h}$\n" +
+      "The correct one is C.",
+  );
+
+  await answer(chat, "C");
+
+  expect(since(chat, "graded")[0]).toMatchObject({
+    verdict: "correct",
+    correctChoice: "C",
+  });
+  expect(setup.backend.received[2]?.text).toContain(
+    "A. $\\frac{f(a)}{h}$\n" +
+      "B. $f(a+h)-f(a)$\n" +
+      "C. $\\frac{f(a+h)-f(a)}{h}$\n" +
+      "\n" +
+      "The learner chose C, at 100% confidence.\n" +
+      "They gave no reasoning.\n" +
+      "Graded: correct.",
+  );
+  expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    question: { choices: shown, answer: "C" },
+    verdict: "correct",
+  });
 });

@@ -93,7 +93,9 @@ you have to say first, then the lead-in, then the call.
   the above" or "none of the above". Use them for results, recognising a
   correct step, or choosing a method. Before you call, read the choices in
   the order you listed them and check that `answer` is the letter of the
-  correct one: a wrong letter marks a right answer wrong.
+  correct one: a wrong letter marks a right answer wrong. The app shuffles
+  the choices before the learner sees them, and its reply lists them as
+  shown; name them by those letters from then on.
 - **Written questions.** For a proof, a derivation or an explanation; use
   one at least once in a segment whose objective is about arguing or
   explaining. Say exactly what to write and how much ("Prove ...",

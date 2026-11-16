@@ -38,10 +38,10 @@ const choices = z
   .min(2)
   .max(CHOICE_LETTERS.length)
   .describe(
-    "Choice questions only: the choices in display order, each one line of Markdown with LaTeX math between $ signs. The learner sees them labelled A, B, C and so on.",
+    "Choice questions only: the choices, each one line of Markdown with LaTeX math between $ signs. The app shuffles them before the learner sees them, labelled A, B, C and so on, and its reply gives the order shown.",
   );
 const answer = ChoiceLetter.describe(
-  "Choice questions only: the letter of the correct choice. Never shown to the learner.",
+  "Choice questions only: the letter of the correct choice, in the order given here; the app moves it with the choice when it shuffles them. Never shown to the learner.",
 );
 const rubric = z
   .string()

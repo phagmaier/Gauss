@@ -48,6 +48,7 @@ findings are the record.
 | Idle sessions | Closing a kept session when idle and resuming it at the next turn, what idle means and for how long, one way to resume (the opening only asks), a failed resume or start retried by the next turn, `resumeFailed` taken out, kept intakes and their lost-session headers, the fake timer, the fault and browser checks | Touching `engine/conversation.ts`, `unit-agents.ts`, sessions in `intake.ts`, `hasSession` in `backends/`, the thread's conversations in `timeline.ts`; `tutor.md` (2.16), handoff notes (stage 5), the Codex backend (stage 6) |
 | Idle-session review fixes | Configuration-root lookup without changing login, intake context across failed or stopped startup, explicit fallback message identity, concurrent-message replay and browser evidence | Touching Claude session lookup, intake initialization, `fresh_start`, or conversation partitioning (task 2.15a) |
 | Feedback turn | Task 2.16a: the feedback-only turn after an answer, the next question asked for in its own turn, the engine closing the segment (`close_segment` removed), skipped turns and `settled()`, the tests, the fake and real runs | Touching the turn after an answer, `nextQuestionTurn`, closing a segment, `skip` in `conversation.ts`, `scripted.ts`'s answer turns, `tutor.md`'s feedback section |
+| Choice order | Task 2.17: the engine shuffles a choice question's choices when it is posted, the answer letter moved with them, the tool's reply listing the order, the injected order in tests, the scripted tutor's sums | Touching `engine/choice-order.ts`, posting questions in `unit-chat.ts`, `ask_question`'s reply, `scripted.ts`'s choice questions |
 | Tutor prompt | Task 2.16's two runs: the transcripts against its check, feedback that went into the tutor's thinking and what did not fix it, the refusal rule, the feedback turn (2.16a), the rerun, feedback length, the wrong answer key and the choice-letter rule, what `tutor.md` says and why | Touching `tutor.md`, the turn after an answer (2.16a), thinking settings in `backends/claude.ts`, Start fresh in a check |
 
 ## Page design (plan task 1.0)
@@ -3595,3 +3596,57 @@ two. The choices are the agent's and can be overturned.
   question.
 - **The follow-up after a failed feedback turn** does not say the
   feedback failed, so the tutor may not repeat it.
+
+## Choice order (plan task 2.17)
+
+Done on 2026-11-16. The tutor put the correct choice at A in most choice
+questions, and asked by `tutor.md` to place it at a random letter it once
+wrote a wrong answer key ("Tutor prompt"). The order is now the engine's.
+The choices are the agent's and can be overturned.
+
+- **The engine shuffles once, when a question is posted**
+  (`engine/choice-order.ts`, called from the question board in
+  `unit-chat.ts`). `reorder` puts the choices in a uniformly random order
+  (`randomOrder`, Fisher and Yates over `node:crypto`'s `randomInt`) and
+  moves the answer letter with the correct choice. The question is stored
+  in that order, so `state.json`, the page's card, the evidence, the
+  tutor's answer turns and the transcripts all agree; nothing keeps the
+  tutor's own order. An order that is not a permutation leaves the
+  question as the tutor wrote it.
+- **The tutor is told the order.** `ask_question`'s reply lists the
+  choices as shown and the correct letter ("The app shuffled the choices
+  ... use these letters from now on"), since the tutor may talk about the
+  question before the answer turn lists it again, while a learner asks
+  about it. The tool's fields and `tutor.md` say the app shuffles; the
+  instruction to check the answer letter against the choices as listed
+  stays, because the key is still the tutor's.
+- **Tests fix the order.** `createUnitChats` takes `order`; the unit-chat
+  and route tests give `givenOrder`, the tutor's own, so their letters
+  stay as written. The scripted backend's tests and `pnpm dev:fake` use
+  the random order, as the real server does.
+- **The scripted tutor** asks for a sum, and its prompt says the right
+  choice is the sum, no longer "A is always correct"; `AGENTS.md` says the
+  same.
+
+### Checks
+
+- `mise run check`: lint, types, 540 TypeScript tests, one Python test.
+  New tests: `reorder` on a worked example (choices 3, 4, 5 with B correct,
+  order [2, 0, 1], gives 5, 3, 4 with C correct), orders that are not
+  permutations, and `randomOrder` giving permutations that put the first
+  choice at each of four positions over 400 draws; the tool's reply,
+  written out for a shuffled question and for a written one; and, in a
+  unit chat with a reversing order, the tutor's A shown as C on the page,
+  in `state.json`, in the tool's reply, graded correct as C, listed in
+  that order in the answer turn, and stored so in the evidence. With the
+  answer letter left unmoved, the `reorder` test and the unit-chat test
+  each fail.
+- Browser, `pnpm dev:fake` on a fresh seed: question 1 came out in the
+  tutor's order (one chance in six), question 2 as 2, 4, 5 where the tutor
+  listed 4, 5, 2; choosing 4, at B, was graded correct, and the evidence
+  holds that order with answer B.
+- The test run was slow: a system `nix-store --optimise` loaded the disk,
+  and two tests passed alone after timing out in a file run; the full
+  check then passed.
+- **Not run on a real model.** Whether the tutor uses the shown letters
+  after the reply lists them is left to the stage's user check.

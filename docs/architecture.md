@@ -363,10 +363,15 @@ have time limits and a learner may take twenty minutes or close the tab.
    kind, and the grading material (answer key, expected expression, test
    command, or rubric).
 2. The tool stores the open question in `state.json`, returns "posted; end your
-   turn", and the page renders the widget. The grading material is never sent
-   to the page. The engine then ends the tutor's turn itself, because the
-   model does not reliably stop on its own (task 0.3). While a question is
-   open, `ask_question` is rejected.
+   turn", and the page renders the widget. A choice question's choices are
+   shuffled first, the answer letter moved with the correct one, and stored
+   in that order; the tool's reply lists them as shown, so the tutor's later
+   letters match the learner's (task 2.17, `engine/choice-order.ts`). The
+   tutor put the correct choice first in most questions, and asked to place
+   it at random it wrote a wrong key (task 2.16). The grading material is
+   never sent to the page. The engine then ends the tutor's turn itself,
+   because the model does not reliably stop on its own (task 0.3). While a
+   question is open, `ask_question` is rejected.
 3. The learner submits an answer, a confidence level, and optional reasoning
    (a written answer is its own reasoning).
 4. The engine grades it (section 6) and appends evidence. A written answer
@@ -395,7 +400,7 @@ served to it over the standard tool protocol (MCP).
 | `propose_curriculum` | Stores a draft curriculum with its style note (`style.md`) and shows them for review; approval covers both (task 2.10) |
 | `amend_curriculum` | Proposes a change; applied only after the learner confirms |
 | `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
-| `ask_question` | Posts a question on an objective of the segment, in the check (section 4): a `choice` question with its answer letter, or a `written` one with its rubric (task 2.8; `QuestionInput` in `src/shared/question.ts`) |
+| `ask_question` | Posts a question on an objective of the segment, in the check (section 4): a `choice` question with its answer letter, its choices shuffled by the engine (task 2.17), or a `written` one with its rubric (task 2.8; `QuestionInput` in `src/shared/question.ts`) |
 | `start_detour`, `end_detour` | Open and close a detour; closing records the misconception found |
 | `quote_source` | Returns a verified quote block, or an error if the text is not in the source |
 | `show_artifact` | Displays an HTML file from `artifacts/` in the side pane |

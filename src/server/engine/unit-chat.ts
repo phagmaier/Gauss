@@ -52,6 +52,7 @@ import {
   type AnswerSubmission,
   CHOICE_LETTERS,
   postedQuestion,
+  type Question,
   type QuestionInput,
   type QuestionView,
   type Verdict,
@@ -69,6 +70,7 @@ import {
   objectiveCheck,
   segmentOf,
 } from "./check-rules.ts";
+import { type ChoiceOrder, randomOrder, reorder } from "./choice-order.ts";
 import type { ChatResult, Timer } from "./conversation.ts";
 import { type Grader, gradeChoice } from "./grading.ts";
 import { createTranscribedLog } from "./transcript.ts";
@@ -177,6 +179,11 @@ interface ChatOptions {
   now?: () => Date;
   /** Closes idle tutor sessions; the system's timer if not given. */
   timer?: Timer;
+  /**
+   * The order a choice question's choices are shown in (task 2.17); random
+   * if not given.
+   */
+  order?: ChoiceOrder;
 }
 
 export function createUnitChats(options: ChatOptions): UnitChats {
@@ -243,6 +250,7 @@ function createUnitChat(
 ): OpenableChat {
   const { dataRoot, planner, courseId, unitId } = options;
   const now = options.now ?? (() => new Date());
+  const order = options.order ?? randomOrder;
   const log = createTranscribedLog({ dataRoot, courseId, unitId, now });
   const exclusive = createSerial();
   let running: Running | undefined;
@@ -573,7 +581,8 @@ function createUnitChat(
     post: (question: QuestionInput) =>
       exclusive(
         async (): Promise<
-          { id: string; number: number } | { refused: string }
+          | { id: string; number: number; question: Question }
+          | { refused: string }
         > => {
           const r = running;
           if (r === undefined) return { refused: "The unit is not open." };
@@ -616,16 +625,21 @@ function createUnitChat(
                   : "Every objective is done, and the segment is closing: no more questions."),
             };
           }
+          const posted = postedQuestion(question);
           const open: OpenQuestion = {
             id: randomUUID(),
             number: r.record.checkAnswers.length + 1,
             objective: question.objective,
             postedAt: now().toISOString(),
-            question: postedQuestion(question),
+            // Shown and stored in the engine's order (task 2.17).
+            question:
+              posted.kind === "choice"
+                ? reorder(posted, order(posted.choices.length))
+                : posted,
           };
           await r.record.move({ ...position, openQuestion: open });
           log.emit({ type: "question", question: view(open) });
-          return { id: open.id, number: open.number };
+          return { id: open.id, number: open.number, question: open.question };
         },
       ),
   };

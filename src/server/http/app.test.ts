@@ -7,6 +7,7 @@ import {
   type FakeReply,
   type FakeTurn,
 } from "../backends/fake.ts";
+import { givenOrder } from "../engine/choice-order.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createIntakes } from "../engine/intake.ts";
 import { createUnitChats } from "../engine/unit-chat.ts";
@@ -62,6 +63,7 @@ function setUp(script: FakeTurn[], replies: FakeReply[] = []) {
     planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
     now: () => new Date(NOW),
+    order: givenOrder,
   });
   const app = createApp({ dataRoot, intakes, units });
   return { backend, dataRoot, intakes, units, app };

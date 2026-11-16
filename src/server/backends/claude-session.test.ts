@@ -136,7 +136,11 @@ test.each(["before_prompt", "before_model", "during_model"] as const)(
   "stopping %s prevents the pending reply and leaves the next turn usable",
   async (pause) => {
     const boundary = sdkBoundary(pause);
-    const postQuestion = vi.fn(async () => ({ id: "q1", number: 1 }));
+    const postQuestion = vi.fn(async () => ({
+      id: "q1",
+      number: 1,
+      question: { kind: "written" as const, prompt: "Why?", rubric: "Any." },
+    }));
     const session = await createClaudeBackend().startSession({
       systemPrompt: "Test tutor.",
       tools: [askQuestionTool({ post: postQuestion })],

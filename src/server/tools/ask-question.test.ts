@@ -1,5 +1,9 @@
 import { expect, test } from "vitest";
-import type { QuestionInput } from "../../shared/question.ts";
+import {
+  type ChoiceQuestion,
+  postedQuestion,
+  type QuestionInput,
+} from "../../shared/question.ts";
 import { askQuestionTool } from "./ask-question.ts";
 
 const QUESTION = {
@@ -10,25 +14,43 @@ const QUESTION = {
   answer: "A",
 };
 
-/** A board that posts everything, or refuses everything with this reason. */
-function setUp(refusal?: string) {
+/**
+ * A board that posts everything, as the tutor gave it unless `shown` is
+ * given, or refuses everything with this reason.
+ */
+function setUp(refusal?: string, shown?: ChoiceQuestion) {
   const posted: QuestionInput[] = [];
   const tool = askQuestionTool({
     async post(question) {
       if (refusal !== undefined) return { refused: refusal };
       posted.push(question);
-      return { id: `q${posted.length}`, number: posted.length };
+      return {
+        id: `q${posted.length}`,
+        number: posted.length,
+        question: shown ?? postedQuestion(question),
+      };
     },
   });
   return { posted, tool };
 }
 
-test("a question is posted and ends the tutor's turn", async () => {
-  const { posted, tool } = setUp();
+test("a choice question is posted and ends the tutor's turn, which is told the order the learner sees the choices in", async () => {
+  // Shuffled by the board: the correct choice, 3x², is now C.
+  const { posted, tool } = setUp(undefined, {
+    kind: "choice",
+    prompt: QUESTION.prompt,
+    choices: ["x²", "3x³", "3x²"],
+    answer: "C",
+  });
 
   expect(await tool.run(QUESTION)).toEqual({
     status: "done",
-    text: "Posted as question 1. Your turn is over; the learner's answer will arrive in the next message.",
+    text:
+      "Posted as question 1. The app shuffled the choices. The learner sees them in this order, so use these letters from now on:\n" +
+      "A. x²\n" +
+      "B. 3x³\n" +
+      "C. 3x²\n" +
+      "The correct one is C. Your turn is over; the learner's answer will arrive in the next message.",
     endTurn: true,
   });
   expect(posted).toEqual([QUESTION]);
@@ -54,7 +76,11 @@ const WRITTEN = {
 test("a written question is posted with its rubric", async () => {
   const { posted, tool } = setUp();
 
-  expect((await tool.run(WRITTEN)).status).toBe("done");
+  expect(await tool.run(WRITTEN)).toEqual({
+    status: "done",
+    text: "Posted as question 1. Your turn is over; the learner's answer will arrive in the next message.",
+    endTurn: true,
+  });
   expect(posted).toEqual([WRITTEN]);
 });
 

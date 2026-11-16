@@ -3,17 +3,28 @@
 // tutor's next turn. Posting ends the tutor's turn, because the model does not
 // reliably stop on its own (task 0.3). Whether a question may be posted now
 // (the phase, a question already open, the objective it names) is the
-// engine's rule, so a refusal comes from the board with its reason.
+// engine's rule, so a refusal comes from the board with its reason. The
+// engine shuffles a choice question's choices (task 2.17), so the reply tells
+// the tutor the order the learner sees.
 
-import { QuestionInput } from "../../shared/question.ts";
+import {
+  CHOICE_LETTERS,
+  type Question,
+  QuestionInput,
+} from "../../shared/question.ts";
 import { defineTool, type TeachingTool } from "./tool.ts";
 
 /** Where questions are kept and shown. The engine provides it. */
 export interface QuestionBoard {
-  /** Stores the question and shows it to the learner, or says why not. */
+  /**
+   * Stores the question and shows it to the learner, or says why not. A
+   * posted question comes back as it is stored and shown.
+   */
   post(
     question: QuestionInput,
-  ): Promise<{ id: string; number: number } | { refused: string }>;
+  ): Promise<
+    { id: string; number: number; question: Question } | { refused: string }
+  >;
 }
 
 export function askQuestionTool(board: QuestionBoard): TeachingTool {
@@ -37,11 +48,21 @@ export function askQuestionTool(board: QuestionBoard): TeachingTool {
       if ("refused" in result) {
         return { status: "refused", text: result.refused };
       }
+      const shown = result.question;
+      const order =
+        shown.kind === "choice"
+          ? "The app shuffled the choices. The learner sees them in this " +
+            "order, so use these letters from now on:\n" +
+            shown.choices
+              .map((choice, i) => `${CHOICE_LETTERS[i]}. ${choice}\n`)
+              .join("") +
+            `The correct one is ${shown.answer}. `
+          : "";
       return {
         status: "done",
         text:
-          `Posted as question ${result.number}. Your turn is over; the ` +
-          "learner's answer will arrive in the next message.",
+          `Posted as question ${result.number}. ${order}Your turn is over; ` +
+          "the learner's answer will arrive in the next message.",
         endTurn: true,
       };
     },

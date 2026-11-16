@@ -17,7 +17,9 @@
 //   feedback alone on a graded answer (the engine then asks for the next
 //   question, or closes the segment, task 2.16a), posts a question when the
 //   header allows one, and otherwise replies in text, which after a fresh
-//   start says where the unit stands. The correct choice is always A.
+//   start says where the unit stands. A choice question asks for a sum,
+//   and the right choice is that sum; the engine shuffles the choices (task
+//   2.17), so its letter varies.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -251,7 +253,7 @@ function question(objective: string, number: number): unknown {
         kind: "choice",
         prompt:
           `Choice question ${number} on "${objective}": what is ` +
-          `$${number} + ${number}$? (Scripted: A is always correct.)`,
+          `$${number} + ${number}$? (Scripted: the right choice is the sum.)`,
         choices: [`$${2 * number}$`, `$${2 * number + 1}$`, `$${number}$`],
         answer: "A",
       };

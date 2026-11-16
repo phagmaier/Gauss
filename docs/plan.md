@@ -17,7 +17,8 @@ from `architecture.md` section 12.
 ## Finished
 
 Stage 0 (spike and skeleton) and stage 1 (record and library): both passed
-the user's check on 2026-11-15. Stage 2 is under way.
+the user's check on 2026-11-15. Stage 2's tasks are done (2026-11-16);
+its user check, below, is next.
 
 | Task | What | Still matters to later tasks |
 | --- | --- | --- |
@@ -59,6 +60,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.15a | Idle-session review fixes | Claude lookup uses the same sanitized configuration root as startup; inherited `CLAUDE_CONFIG_DIR` adds a short Node lookup subprocess, never a model request. Intake initialization survives a failed or stopped startup. Lost-session markers identify their learner message, so queued messages and transcript replay partition correctly; non-message turns move none. |
 | 2.16a | Feedback turn after an answer | The turn after a graded answer is for feedback alone (`ask_question` refused); the engine then sends `nextQuestionTurn`, or closes the segment when the check is done: `close_segment` is gone, and a unit reopened in a done check closes it as it opens. A queued turn can `skip()`; `settled()` waits for turns sent from a turn's end. A restart between an answer and the next question still waits on a learner message. |
 | 2.16 | Tutor prompt | `prompts/tutor.md`: headers and refusals, the rhythm, teaching 250 to 400 words (never over 600), feedback under 100 words in its own turn, lead-ins that help with nothing, questions and rubrics for the grader, help, the default style that `style.md` adjusts, `$` math. Sonnet 5.5 met the check over two segments. Choice order is 2.17's; a wrong key cannot be undone until disputes (stage 3). |
+| 2.17 | Shuffle the choices | The engine shuffles a choice question's choices when it is posted and moves the answer letter with them (`engine/choice-order.ts`); everything after sees the stored order, and `ask_question`'s reply lists it for the tutor. Tests pass `order: givenOrder` to `createUnitChats`. The scripted tutor's right choice is the sum it asks for, at any letter. |
 
 ## Stage 2: session engine
 
@@ -71,24 +73,6 @@ questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
-
-### 2.17 Shuffle the choices
-
-- Status: todo
-- Depends on: 2.16
-- Why: the tutor puts the correct choice at A in most questions, so a
-  learner could learn the letter; asked to place it at random, it wrote a
-  wrong answer key (`docs/decisions.md`, "Tutor prompt").
-- Do: when a choice question is posted, the engine shuffles its choices
-  and moves the answer letter with the correct one before the question is
-  stored, so the page, the evidence and the tutor's later turns all have
-  the stored order. Keep the tests' order fixed where they read posted
-  choices (an injected shuffle). Update `scripted.ts`, whose tutor says A
-  is always correct, and the note on it in `AGENTS.md`.
-- Done when: tests show a posted question's choices are a permutation of
-  the tutor's, with the answer letter on the same text, and the answer
-  turn listing the stored order; a browser check on `pnpm dev:fake` still
-  lets the right choice be picked.
 
 **User check:** complete one unit of a math course across two sittings,
 stopping in the middle of a segment.

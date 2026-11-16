@@ -124,8 +124,9 @@ mise activated, or `mise exec -- <command>`.
   prints the data root when it starts, and the model each session runs on.
 - `pnpm dev:fake` runs the same server on the scripted backend
   (`src/server/backends/scripted.ts`, whose header says what its tutor does:
-  choice A is always correct, a written answer is correct unless it says
-  "wrong", and `/hold`, `/revise`, `/one-off` and `/fail` in a message do
+  a choice question asks for a sum and the right choice is that sum, at a
+  letter the engine's shuffle picks; a written answer is correct unless it
+  says "wrong"; and `/hold`, `/revise`, `/one-off` and `/fail` in a message do
   what the header says). Its data root is `GAUSS_DATA_ROOT`, or `gauss-fake`
   in the temporary folder, never the real one; an empty one is seeded with
   courses in each state (`src/server/record/dev-seed.ts`), and one with

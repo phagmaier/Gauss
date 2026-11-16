@@ -940,3 +940,31 @@ tested"). Stage 1 is finished.
   choices, replacing "a letter picked at random", which gave a wrong
   answer key. Choice order goes to 2.17. Findings: `decisions.md`, "Tutor
   prompt".
+
+### 2.17 Shuffle the choices
+
+- Status: done
+- Depends on: 2.16
+- Why: the tutor puts the correct choice at A in most questions, so a
+  learner could learn the letter; asked to place it at random, it wrote a
+  wrong answer key (`docs/decisions.md`, "Tutor prompt").
+- Do: when a choice question is posted, the engine shuffles its choices
+  and moves the answer letter with the correct one before the question is
+  stored, so the page, the evidence and the tutor's later turns all have
+  the stored order. Keep the tests' order fixed where they read posted
+  choices (an injected shuffle). Update `scripted.ts`, whose tutor says A
+  is always correct, and the note on it in `AGENTS.md`.
+- Done when: tests show a posted question's choices are a permutation of
+  the tutor's, with the answer letter on the same text, and the answer
+  turn listing the stored order; a browser check on `pnpm dev:fake` still
+  lets the right choice be picked.
+- Note: done on 2026-11-16. `engine/choice-order.ts` shuffles a choice
+  question's choices when it is posted (uniformly, from `node:crypto`) and
+  moves the answer letter with the correct one; the question is stored in
+  that order, and `ask_question`'s reply lists it for the tutor. Tests
+  inject the tutor's own order (`givenOrder`). The scripted tutor's right
+  choice is the sum it asks for. `mise run check` passed (540 TypeScript
+  tests, one Python test); leaving the answer letter unmoved failed two
+  tests; on `pnpm dev:fake` a shuffled question's right choice, at B, was
+  graded correct. No real-model run. Findings: `decisions.md`, "Choice
+  order".
