@@ -17,7 +17,12 @@ import type { Curriculum } from "../../shared/curriculum.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { UnitPosition } from "../../shared/state.ts";
-import { type DataRoot, openDataRoot, resolveDataRoot } from "./data-root.ts";
+import {
+  type DataRoot,
+  DraftMismatch,
+  openDataRoot,
+  resolveDataRoot,
+} from "./data-root.ts";
 
 // Every test gets its own data root in the system's temporary folder; none
 // touches ~/gauss (AGENTS.md).
@@ -186,15 +191,20 @@ test("opening a course moves it to the top of the list, and only its lastOpenedA
   expect(listed[0]?.course).toEqual(opened.course);
 });
 
-test("a course's style note is read from style.md, and a course without one has none", async () => {
+test("a course's style note is read from style.md, trimmed, and a course without one, or with a blank one, has none", async () => {
   const root = openDataRoot({ path: dir });
   const { id } = await root.createCourse({ title: "Calculus I" });
+  const file = join(dir, "courses", id, "style.md");
 
   expect(await root.readStyle(id)).toBeUndefined();
 
-  const note = "Short explanations, many small exercises.\n";
-  await writeFile(join(dir, "courses", id, "style.md"), note);
-  expect(await root.readStyle(id)).toBe(note);
+  await writeFile(file, "\nShort explanations, many small exercises.\n");
+  expect(await root.readStyle(id)).toBe(
+    "Short explanations, many small exercises.",
+  );
+
+  await writeFile(file, " \n");
+  expect(await root.readStyle(id)).toBeUndefined();
 });
 
 test("a course reads back with its curriculum once there is one", async () => {
@@ -269,6 +279,36 @@ const PROPOSAL = {
 };
 
 describe("proposals and approval", () => {
+  // Approval names what the learner saw, so a draft that differs from it,
+  // such as one whose save failed partway, is never approved unseen.
+  test.each([
+    { part: "title", shown: { ...PROPOSAL, title: "Linear algebra" } },
+    {
+      part: "units",
+      shown: { ...PROPOSAL, units: PROPOSAL.units.slice(0, 1) },
+    },
+    { part: "style note", shown: { ...PROPOSAL, style: "Long lectures." } },
+    {
+      part: "style note, none shown",
+      shown: { ...PROPOSAL, style: undefined },
+    },
+  ])(
+    "approval is refused, changing nothing, when the stored draft differs from the one shown in its $part",
+    async ({ shown }) => {
+      const root = openDataRoot({ path: dir });
+      const { id } = await root.createCourse({ title: "Linear algebra" });
+      await root.saveProposal(id, PROPOSAL);
+      const { style, ...rest } = shown;
+
+      await expect(
+        root.approveCurriculum(id, style === undefined ? rest : shown),
+      ).rejects.toThrow(DraftMismatch);
+      expect((await root.readCourse(id))?.curriculum?.approval).toEqual({
+        status: "draft",
+      });
+    },
+  );
+
   test("a proposal is stored as the draft curriculum, its title as the course's, and its style note as style.md", async () => {
     const root = openDataRoot({ path: dir });
     const { id } = await root.createCourse({ title: "Linear algebra" });
@@ -313,7 +353,7 @@ describe("proposals and approval", () => {
     const { id } = await root.createCourse({ title: "Linear algebra" });
     await root.saveProposal(id, PROPOSAL);
 
-    const approved = await root.approveCurriculum(id);
+    const approved = await root.approveCurriculum(id, PROPOSAL);
 
     const curriculum = {
       approval: { status: "approved", approvedAt: "2026-11-15T10:30:00.000Z" },
@@ -323,8 +363,8 @@ describe("proposals and approval", () => {
     await expect(
       root.saveProposal(id, { ...PROPOSAL, style: "Long lectures." }),
     ).rejects.toThrow(/approved/);
-    expect(await root.readStyle(id)).toBe(`${PROPOSAL.style}\n`);
-    await expect(root.approveCurriculum(id)).rejects.toThrow(
+    expect(await root.readStyle(id)).toBe(PROPOSAL.style);
+    await expect(root.approveCurriculum(id, PROPOSAL)).rejects.toThrow(
       /already approved/,
     );
     expect((await root.readCourse(id))?.curriculum).toEqual(curriculum);
@@ -334,10 +374,12 @@ describe("proposals and approval", () => {
     const root = openDataRoot({ path: dir });
     const { id } = await root.createCourse({ title: "Linear algebra" });
 
-    await expect(root.approveCurriculum(id)).rejects.toThrow(/no curriculum/);
-    await expect(root.approveCurriculum("no-such-course")).rejects.toThrow(
-      /no course/,
+    await expect(root.approveCurriculum(id, PROPOSAL)).rejects.toThrow(
+      /no curriculum/,
     );
+    await expect(
+      root.approveCurriculum("no-such-course", PROPOSAL),
+    ).rejects.toThrow(/no course/);
     await expect(root.saveProposal("no-such-course", PROPOSAL)).rejects.toThrow(
       /no course/,
     );
@@ -455,7 +497,7 @@ const EIGEN_PLAN: Plan = {
 async function courseWithCurriculum(root: DataRoot, approve = true) {
   const { id } = await root.createCourse({ title: "Linear algebra" });
   await root.saveProposal(id, PROPOSAL);
-  if (approve) await root.approveCurriculum(id);
+  if (approve) await root.approveCurriculum(id, PROPOSAL);
   return id;
 }
 

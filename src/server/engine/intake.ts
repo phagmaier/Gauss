@@ -13,10 +13,10 @@
 // proposal 1 (task 1.6).
 
 import type { Slug } from "../../shared/course.ts";
-import type { CurriculumProposal } from "../../shared/curriculum.ts";
+import type { ShownProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { TutorBackend } from "../backends/backend.ts";
-import type { DataRoot } from "../record/data-root.ts";
+import { type DataRoot, DraftMismatch } from "../record/data-root.ts";
 import { proposeCurriculumTool } from "../tools/propose-curriculum.ts";
 import {
   type ChatResult,
@@ -52,7 +52,7 @@ export interface Intake {
  */
 export interface StoredDraft {
   id: Slug;
-  proposal: Omit<CurriculumProposal, "style"> & { style?: string };
+  proposal: ShownProposal;
 }
 
 export function createIntake(options: {
@@ -66,6 +66,8 @@ export function createIntake(options: {
   const log = createEventLog();
   let courseId: Slug | undefined;
   let latest = 0;
+  /** The latest proposal, as its card shows it; approval checks the record against it. */
+  let shown: ShownProposal | undefined;
   let approved = false;
 
   const proposeCurriculum = proposeCurriculumTool({
@@ -78,6 +80,7 @@ export function createIntake(options: {
       }
       await dataRoot.saveProposal(courseId, proposal);
       latest += 1;
+      shown = proposal;
       log.emit({
         type: "curriculum_proposed",
         courseId,
@@ -100,6 +103,7 @@ export function createIntake(options: {
   if (draft !== undefined) {
     courseId = draft.id;
     latest = 1;
+    shown = draft.proposal;
     log.emit({ type: "draft_reopened" });
     log.emit({
       type: "curriculum_proposed",
@@ -131,7 +135,7 @@ export function createIntake(options: {
       if (approved) {
         return { ok: false, status: 409, error: INTAKE_OVER };
       }
-      if (courseId === undefined || latest === 0) {
+      if (courseId === undefined || shown === undefined) {
         return { ok: false, status: 409, error: "Nothing has been proposed." };
       }
       if (!Number.isInteger(revision) || revision < 1 || revision > latest) {
@@ -154,9 +158,12 @@ export function createIntake(options: {
       // Set before writing, so nothing else can start meanwhile.
       approved = true;
       try {
-        await dataRoot.approveCurriculum(courseId);
+        await dataRoot.approveCurriculum(courseId, shown);
       } catch (error) {
         approved = false;
+        if (error instanceof DraftMismatch) {
+          return { ok: false, status: 409, error: DRAFT_MISMATCH };
+        }
         throw error;
       }
       log.emit({ type: "curriculum_approved", courseId, revision });
@@ -170,6 +177,11 @@ export function createIntake(options: {
 }
 
 const INTAKE_OVER = "The curriculum is approved; this intake is over.";
+
+/** The record holds a draft other than the card's, from a save that failed partway. */
+const DRAFT_MISMATCH =
+  "The curriculum on record is not the one on this card: saving the " +
+  "tutor's last change did not finish. Ask the tutor to propose it again.";
 
 /**
  * The intakes started since the server did, by id. An intake stays after it
@@ -225,7 +237,7 @@ function openingTurn(text: string): string {
   );
 }
 
-function reviewTurn(text: string, draft: StoredDraft["proposal"]): string {
+function reviewTurn(text: string, draft: ShownProposal): string {
   return (
     "[The learner is reviewing proposal 1, a curriculum proposed in an " +
     "earlier conversation that was not kept:\n" +

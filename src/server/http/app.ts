@@ -67,7 +67,7 @@ export function createApp(options: {
       );
     }
     // A draft proposed before style notes existed (task 2.10) has none.
-    const style = (await dataRoot.readStyle(stored.id))?.trim() || undefined;
+    const style = await dataRoot.readStyle(stored.id);
     const intake = intakes.review({
       id: stored.id,
       proposal: {

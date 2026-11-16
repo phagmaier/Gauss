@@ -12,9 +12,14 @@
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { Course, Slug } from "../../shared/course.ts";
-import { Curriculum, CurriculumProposal } from "../../shared/curriculum.ts";
+import {
+  Curriculum,
+  CurriculumProposal,
+  type ShownProposal,
+} from "../../shared/curriculum.ts";
 import { EvidenceEntry } from "../../shared/evidence.ts";
 import type { StoredCourse } from "../../shared/library.ts";
 import { Plan } from "../../shared/plan.ts";
@@ -45,8 +50,9 @@ export interface DataRoot {
   /** Sets the course's lastOpenedAt to the clock's time. */
   markOpened(id: string): Promise<StoredCourse>;
   /**
-   * The course's style note, style.md, as written, or undefined when it has
-   * none (a course proposed before notes existed, task 2.10).
+   * The course's style note, style.md, trimmed, or undefined when it has
+   * none (a course proposed before notes existed, task 2.10) or the file is
+   * blank.
    */
   readStyle(id: string): Promise<string | undefined>;
   /**
@@ -59,9 +65,15 @@ export interface DataRoot {
     id: string,
     proposal: CurriculumProposal,
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
-  /** Approves the draft curriculum, at the clock's time. */
+  /**
+   * Approves the draft curriculum, at the clock's time, if the record holds
+   * exactly the proposal shown: its title, units and style note. Otherwise
+   * it throws DraftMismatch and changes nothing, so a draft whose save
+   * stopped partway is never approved unseen.
+   */
   approveCurriculum(
     id: string,
+    shown: ShownProposal,
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
   /**
    * Stores the plan on the unit, once the curriculum is approved and while
@@ -91,6 +103,19 @@ export interface DataRoot {
   readEvidence(id: string): Promise<EvidenceEntry[]>;
 }
 
+/**
+ * Approval was refused because the stored draft is not the proposal the
+ * learner saw: saving a later one stopped partway, or the files were edited.
+ */
+export class DraftMismatch extends Error {
+  constructor(id: string, parts: readonly string[]) {
+    super(
+      `The stored draft of "${id}" is not the proposal shown; they differ in ${parts.join(" and ")}.`,
+    );
+    this.name = "DraftMismatch";
+  }
+}
+
 export function openDataRoot(options: {
   path: string;
   /** The clock for the dates in the record; tests set it. */
@@ -115,6 +140,18 @@ export function openDataRoot(options: {
     const stored = await readCourse(id);
     if (stored === undefined) throw new Error(noCourse(id));
     return stored;
+  }
+
+  /** The course's style.md, trimmed; undefined if there is none or it is blank. */
+  async function readNote(id: string): Promise<string | undefined> {
+    try {
+      return (
+        (await readFile(courseFile(id, "style.md"), "utf8")).trim() || undefined
+      );
+    } catch (error) {
+      if (hasCode(error, "ENOENT")) return undefined;
+      throw error;
+    }
   }
 
   /** A file in the course's folder, which need not exist yet. */
@@ -174,14 +211,8 @@ export function openDataRoot(options: {
     },
 
     async readStyle(id) {
-      const path = courseFile(id, "style.md");
       await existingCourse(id);
-      try {
-        return await readFile(path, "utf8");
-      } catch (error) {
-        if (hasCode(error, "ENOENT")) return undefined;
-        throw error;
-      }
+      return readNote(id);
     },
 
     async saveProposal(id, proposal) {
@@ -208,7 +239,7 @@ export function openDataRoot(options: {
       });
     },
 
-    async approveCurriculum(id) {
+    async approveCurriculum(id, shown) {
       const path = courseFile(id, "curriculum.json");
       return withFileLock(path, async () => {
         const stored = await existingCourse(id);
@@ -218,6 +249,15 @@ export function openDataRoot(options: {
         if (stored.curriculum.approval.status === "approved") {
           throw new Error(`The curriculum of "${id}" is already approved.`);
         }
+        // saveProposal writes three files in turn, so one that failed or
+        // stopped partway can leave a draft no card has shown.
+        const differ: string[] = [];
+        if (stored.course.title !== shown.title) differ.push("title");
+        if (!isDeepStrictEqual(stored.curriculum.units, shown.units)) {
+          differ.push("units");
+        }
+        if ((await readNote(id)) !== shown.style) differ.push("style note");
+        if (differ.length > 0) throw new DraftMismatch(id, differ);
         const curriculum: Curriculum = {
           ...stored.curriculum,
           approval: { status: "approved", approvedAt: now().toISOString() },

@@ -39,7 +39,7 @@ findings are the record.
 | Review fixes (2.8a) | One answer per question, moving on with a kept answer, Stop before a turn is sent, whole evidence lines, inherited property names, the fake's stopped one-shot | Recording answers or reopening a unit (2.8b, 2.13, 2.14), turn stop, `json-lines.ts` (2.13's transcripts), the fake backend |
 | Unit chat split | What `unit-record.ts` and `unit-agents.ts` hold, the one queue, what the tests do not cover | Touching the unit chat, and before 2.13 (transcripts), 2.14 (resume) and 2.15 (idle sessions) |
 | Grader prompt | The hand-graded set, the runs and their results, the grader's model and why, what `grader.md` says and why | Changing `grader.md`, the grader's model or `WrittenGrade`, writing rubric guidance in `tutor.md` (2.16), disputes (stage 3) |
-| Style note at intake | The note in the proposal, `style.md` with the draft, courses without one, the card, `planner.md`'s section | Touching `propose_curriculum`, `planner.md` or the proposal card, writing `tutor.md`'s default style (2.16), style changes (stage 5) |
+| Style note at intake | The note in the proposal, `style.md` with the draft, courses without one, the card, `planner.md`'s section, approval checked against the card | Touching `propose_curriculum`, `planner.md` or the proposal card, writing `tutor.md`'s default style (2.16), style changes (stage 5) |
 
 ## Page design (plan task 1.0)
 
@@ -2153,12 +2153,12 @@ Done on 2026-11-15. The choices are the agent's and can be overturned.
   disguised as a note.
 - **Stored as `style.md` with each draft**, in `saveProposal`, under the
   curriculum's lock: `curriculum.json`, then `style.md`, then
-  `course.json` if the title changed. A crash between the first two
-  leaves the new units with the note before (or none, on the first
-  proposal); the course is still a draft, so the learner sees it on the
-  card before approving. Approval stamps `curriculum.json` only and leaves
-  `style.md` as it is; a proposal after approval is refused before
-  anything is written, so the approved note is the one approval found.
+  `course.json` if the title changed. A save that fails or stops between
+  them leaves a draft no card has shown, so approval checks the record
+  against the card (the review fix below). Approval stamps
+  `curriculum.json` only and leaves `style.md` as it is; a proposal after
+  approval is refused before anything is written, so the approved note is
+  the one approval found.
 - **Courses without a note.** Drafts and courses from before this task
   have no `style.md`. The page event carries the note as optional, and
   only as `z.string()`, so a hand-edited note longer than the tool's limit
@@ -2167,9 +2167,11 @@ Done on 2026-11-15. The choices are the agent's and can be overturned.
   planner prompt asks for a note with the next revision. A course
   approved without one is taught in `prompts/tutor.md`'s default style,
   as task 2.6 built.
-- **A reopened draft** reads `style.md` in the review route (trimmed; an
-  empty file counts as none) and gives it to the new intake with the
-  units; the tutor's first header carries the whole draft, note included.
+- **A reopened draft** reads `style.md` in the review route and gives it
+  to the new intake with the units; the tutor's first header carries the
+  whole draft, note included. `readStyle` returns the note trimmed, and
+  none for a blank file, so the route, the approval check and the tutor's
+  prompt agree on what a note is.
 - **The card** (mock 9): a section under the units, "How I would teach
   it", always shown, the note as plain text (line breaks kept), and
   "Changed" when the note differs from the revision before, as units are
@@ -2201,3 +2203,32 @@ Done on 2026-11-15. The choices are the agent's and can be overturned.
   the units, a push-back brought a revision with the note marked
   "Changed" and no unit marked, and after a restart the reopened draft
   showed the stored note; approving it left `style.md` as it was.
+- **Review fix: approval checks the record against the card.** The user's
+  review of 3b88bf8 found that a revision whose `style.md` write failed
+  (an injected ENOSPC) had already replaced `curriculum.json`; the tool
+  call failed and no card appeared, but approving the card before it
+  approved the unseen units with the old note. The same gap was open
+  since task 1.4 for a failed `course.json` write, and reversing the
+  writes would only swap which part goes unseen. Now the intake keeps the
+  proposal its latest card shows (`ShownProposal` in
+  `src/shared/curriculum.ts`: the tutor's proposal, or the reopened
+  draft) and passes it to `approveCurriculum`, which, under the
+  curriculum's lock, refuses with `DraftMismatch` unless the title in
+  `course.json`, the units in `curriculum.json` and the note in
+  `style.md` are the ones shown. The intake answers 409: "The curriculum
+  on record is not the one on this card: saving the tutor's last change
+  did not finish. Ask the tutor to propose it again." A successful
+  proposal writes all three files, so the next card can be approved. A
+  draft reopened after a restart is read from the files, so it always
+  matches; a hand edit made while a card is open also refuses approval,
+  which is the safe side. Not done: putting back the previous proposal
+  after a failed save, since that write can fail as well; the check is
+  what keeps the record right. Checks: a test that fails `style.md`'s
+  write during a revision (mocking `writeFileAtomic` for that file) failed
+  before the fix by approving, and now gets the 409, the record still a
+  draft, and approves the tutor's next proposal; record tests refuse
+  approval for a different title, units, note, or a missing note; a draft
+  without a note still reopens and approves through the routes. Approval
+  ignoring the units made both the regression test and the units case
+  fail. `mise run check` passed lint, type-checking, 392 TypeScript tests
+  and one Python test.

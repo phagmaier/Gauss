@@ -167,7 +167,7 @@ async function makeCourse(planned = true, plan = PLAN): Promise<void> {
   const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
   await root.saveProposal(id, CURRICULUM);
-  await root.approveCurriculum(id);
+  await root.approveCurriculum(id, CURRICULUM);
   if (planned) await root.storePlan(id, "derivative", plan);
 }
 
@@ -1206,7 +1206,7 @@ test('a unit whose id every object has as a property, "constructor", opens like 
   const setup = setUp([TEACH]);
   const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
-  await root.saveProposal(id, {
+  const proposal = {
     title: CURRICULUM.title,
     units: [
       {
@@ -1217,8 +1217,9 @@ test('a unit whose id every object has as a property, "constructor", opens like 
       },
     ],
     style: CURRICULUM.style,
-  });
-  await root.approveCurriculum(id);
+  };
+  await root.saveProposal(id, proposal);
+  await root.approveCurriculum(id, proposal);
   await root.storePlan(id, "constructor", PLAN);
 
   const chat = await open(setup, "constructor");

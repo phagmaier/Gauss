@@ -411,7 +411,7 @@ test("a draft opens for review in its running intake, or after a restart in a ne
   );
 });
 
-test("a draft stored before style notes existed reopens without one", async () => {
+test("a draft stored before style notes existed reopens without one, and can be approved", async () => {
   const before = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
   await say(before, await startIntake(before.app), ASK);
   await before.intakes.close();
@@ -435,6 +435,10 @@ test("a draft stored before style notes existed reopens without one", async () =
     ...withoutNote,
   });
   await stream.close();
+  const approval = await post(after.app, `/api/intakes/${intakeId}/approval`, {
+    revision: 1,
+  });
+  expect(approval.status).toBe(200);
 });
 
 test("review keeps the same intake during approval and when its record read is stale", async () => {
@@ -447,11 +451,13 @@ test("review keeps the same intake during approval and when its record read is s
   const writing = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const approve = dataRoot.approveCurriculum;
-  vi.spyOn(dataRoot, "approveCurriculum").mockImplementationOnce(async (id) => {
-    writing.resolve();
-    await release.promise;
-    return approve(id);
-  });
+  vi.spyOn(dataRoot, "approveCurriculum").mockImplementationOnce(
+    async (id, shown) => {
+      writing.resolve();
+      await release.promise;
+      return approve(id, shown);
+    },
+  );
   const approval = post(app, `/api/intakes/${intakeId}/approval`, {
     revision: 1,
   });
@@ -563,7 +569,7 @@ async function approvedCourse(draft = false) {
   const { id } = await root.createCourse({ title: FIRST.title });
   await root.saveProposal(id, FIRST);
   if (draft) return;
-  await root.approveCurriculum(id);
+  await root.approveCurriculum(id, FIRST);
   await root.storePlan(id, "vectors", VECTORS_PLAN);
 }
 

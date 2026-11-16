@@ -181,6 +181,15 @@ export const CurriculumProposal = z.object({
 });
 export type CurriculumProposal = z.infer<typeof CurriculumProposal>;
 
+/**
+ * A proposal as its card shows it: as the tutor sent it, or as a reopened
+ * draft was read back. A draft stored before style notes existed (task
+ * 2.10) has none.
+ */
+export type ShownProposal = Omit<CurriculumProposal, "style"> & {
+  style?: string;
+};
+
 /** One prerequisite entry: `units[at].prerequisites[slot]`. */
 interface Link {
   at: number;

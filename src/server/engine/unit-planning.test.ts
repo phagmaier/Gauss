@@ -73,7 +73,7 @@ const RULES_PLAN: Plan = {
 async function course(approved = true): Promise<string> {
   const { id } = await root.createCourse({ title: PROPOSAL.title });
   await root.saveProposal(id, PROPOSAL);
-  if (approved) await root.approveCurriculum(id);
+  if (approved) await root.approveCurriculum(id, PROPOSAL);
   return id;
 }
 

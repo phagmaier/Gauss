@@ -158,6 +158,9 @@ derived status.
   in `curriculum.json` and the style note in `style.md` (task 2.10), and a
   reply to one is a change request. Approving
   the latest revision, while the tutor is not writing, ends the intake.
+  Approval passes the proposal the card shows, and the record refuses it
+  unless the title, units and note on disk are that proposal, so a save
+  that failed partway is never approved unseen.
   Before the first proposal nothing is stored, and the conversation is not
   resumed. A draft whose intake was lost in a restart is reviewed in a new
   intake that starts from the stored draft as proposal 1, its earlier

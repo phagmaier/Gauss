@@ -1,11 +1,29 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { PageEvent } from "../../shared/events.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { createIntake, createIntakes, type Intake } from "./intake.ts";
+
+// Lets a test make the disk refuse writes to one file, as a full disk would.
+const disk = vi.hoisted(() => ({ refuses: undefined as string | undefined }));
+vi.mock("../record/atomic-write.ts", async (importOriginal) => {
+  const real =
+    await importOriginal<typeof import("../record/atomic-write.ts")>();
+  return {
+    ...real,
+    async writeFileAtomic(path: string, contents: string) {
+      if (disk.refuses !== undefined && path.endsWith(disk.refuses)) {
+        throw Object.assign(new Error("ENOSPC: no space left on device"), {
+          code: "ENOSPC",
+        });
+      }
+      return real.writeFileAtomic(path, contents);
+    },
+  };
+});
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
@@ -13,6 +31,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gauss-intake-"));
 });
 afterEach(async () => {
+  disk.refuses = undefined;
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -117,9 +136,7 @@ test("a valid proposal creates the course with a draft curriculum, shows it, and
     course: { title: "Linear algebra for PCA" },
     curriculum: { approval: { status: "draft" }, units: FIRST.units },
   });
-  expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
-    `${FIRST.style}\n`,
-  );
+  expect(await reload().readStyle("linear-algebra-for-pca")).toBe(FIRST.style);
   expect(backend.sessions[0]?.systemPrompt).toBe("You are a test planner.");
   expect(backend.sessions[0]?.tools.map((t) => t.name)).toEqual([
     "propose_curriculum",
@@ -211,7 +228,7 @@ test("a reply to a proposal is a change request, and the revision replaces the d
     curriculum: { approval: { status: "draft" }, units: REVISED.units },
   });
   expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
-    `${REVISED.style}\n`,
+    REVISED.style,
   );
 });
 
@@ -241,7 +258,7 @@ test("approving the latest revision approves the stored curriculum, keeps its st
     units: REVISED.units,
   });
   expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
-    `${REVISED.style}\n`,
+    REVISED.style,
   );
   expect(intake.say("One more thing.")).toMatchObject({
     ok: false,
@@ -277,6 +294,54 @@ test("approval is refused before any proposal, and while the tutor is writing", 
   await intake.interrupt();
   await intake.settled();
   expect(await intake.approve(1)).toEqual({ ok: true });
+});
+
+// Review of 2.10: a revision whose style note failed to save had already
+// replaced the units on disk, and approving the card before it approved
+// those unseen units.
+test("a revision saved only in part cannot be approved through the card before it; a full proposal then can", async () => {
+  const { backend, intake } = setUp([
+    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: REVISED }],
+    [{ call: "propose_curriculum", input: REVISED }],
+  ]);
+  intake.say(ASK);
+  await intake.settled();
+
+  disk.refuses = "style.md";
+  intake.say("Shorter, please.");
+  await intake.settled();
+  disk.refuses = undefined;
+
+  expect(backend.calls[1]?.result).toEqual({
+    status: "refused",
+    text: "The tool failed: ENOSPC: no space left on device",
+  });
+  expect(proposals(intake).map((p) => p.revision)).toEqual([1]);
+  // Saving stopped between the files: the new units, the old note.
+  expect(await reload().readCourse("linear-algebra-for-pca")).toMatchObject({
+    curriculum: { units: REVISED.units },
+  });
+
+  expect(await intake.approve(1)).toEqual({
+    ok: false,
+    status: 409,
+    error: expect.stringMatching(/not the one on this card/),
+  });
+  expect(
+    (await reload().readCourse("linear-algebra-for-pca"))?.curriculum?.approval,
+  ).toEqual({ status: "draft" });
+
+  intake.say("Please try that again.");
+  await intake.settled();
+  expect(await intake.approve(2)).toEqual({ ok: true });
+  expect(await reload().readCourse("linear-algebra-for-pca")).toMatchObject({
+    course: { title: REVISED.title },
+    curriculum: { approval: { status: "approved" }, units: REVISED.units },
+  });
+  expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
+    REVISED.style,
+  );
 });
 
 describe("a draft reopened for review, its first conversation lost in a restart", () => {
