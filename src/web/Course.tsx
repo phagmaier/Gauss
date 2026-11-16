@@ -1,7 +1,9 @@
 // The course view (docs/prototype/07-course.html): the page is the unit
 // list, and "Show the diagram" opens the diagram in the side pane, where
-// clicking a unit marks it in the list. Continue, notes and sources join
-// when units are taught (stage 2) and sources ingested (stage 4).
+// clicking a unit marks it in the list. Each unit of an approved course opens
+// its session, which starts it or picks it up (task 2.11). Unit status, the
+// card that leads on and Start join in task 2.12; notes in stage 5 and
+// sources in stage 4.
 
 import { useCallback, useEffect, useState } from "react";
 import { IntakeStarted } from "../shared/events.ts";
@@ -90,7 +92,22 @@ export function Course(props: { courseId: string }) {
                       {diagramOpen ? "Hide the diagram" : "Show the diagram"}
                     </button>
                   </div>
-                  <UnitList units={curriculum.units} selected={selected} />
+                  <UnitList
+                    units={curriculum.units}
+                    selected={selected}
+                    action={
+                      draft
+                        ? undefined
+                        : (unit) => (
+                            <Link
+                              to={paths.unit(courseId, unit.id)}
+                              className="textbtn"
+                            >
+                              Open
+                            </Link>
+                          )
+                    }
+                  />
                 </>
               )}
             </>
@@ -129,5 +146,6 @@ function whereItStands(curriculum: StoredCourse["curriculum"]): string {
     "en-GB",
     { day: "numeric", month: "long", year: "numeric" },
   );
-  return `Approved on ${day}. No unit has started yet.`;
+  // Where the units stand joins in task 2.12.
+  return `Approved on ${day}.`;
 }

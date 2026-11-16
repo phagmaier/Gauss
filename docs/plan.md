@@ -50,6 +50,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.8b | Split the unit chat | `unit-chat.ts` is the coordinator (phase rules, tools, learner actions) and owns the one queue; `unit-record.ts` writes the unit's position and evidence before the page hears of them; `unit-agents.ts` runs the tutor and the grader, where 2.14's resume and 2.15's idle closing go. |
 | 2.9 | Grader prompt | The grader runs on Sonnet 5.5 (`GRADER_MODEL` in `backends/claude.ts`), or on `GAUSS_CLAUDE_MODEL` when that is set. `grader.md` accepts any valid method and reads what may be assumed from the rubric, so 2.16's rubric guidance should ask for both. Re-run `node scripts/grade-set.ts --runs 2` when the prompt, `WrittenGrade` or the model changes. Review corrected L1's hand-written flaw; its verdict is unchanged. |
 | 2.10 | Style note at intake | `style` in `CurriculumProposal` (`StyleNote`, required, plain text up to 800 characters), stored as `style.md` with each draft and kept on approval. Drafts and courses from before have none: the card says the default style applies, and the tutor uses `tutor.md`'s default. 2.16's default style is what a note adjusts. `planner.md` promises only chat teaching; widen it in stage 3. Review fix: `approveCurriculum(id, shown)` refuses (`DraftMismatch`, 409) unless the record holds the proposal the card shows (`ShownProposal`). |
+| 2.11 | Session view | `src/web/Session.tsx` at `/courses/<id>/units/<unit>`; logic in `session.ts` and `timeline.ts`. Every unit of an approved course has "Open" (2.12 makes it Start and Continue); the closing card's "Start unit N" is the next unit in the list. A thread after a restart starts at the record's position (2.13 rebuilds it); "Start fresh" goes in the outline (2.14). Objective statements render `$` math. |
 
 ## Stage 2: session engine
 
@@ -62,27 +63,6 @@ questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
-
-### 2.11 Session view
-
-- Status: todo
-- Depends on: 2.4, 2.7, 2.8
-- Do: the session page from mocks 1 to 4: the thread with its phase
-  markers and next-step control ("ready", the override confirmed once, the
-  next segment), the question card for multiple-choice and written
-  answers, the top line with the path and "Segment n of m", which opens the
-  unit's outline, and the unit's end as 2.1 settles. "Start unit 1" after
-  approval (mock 8), and starting or continuing a unit from the course
-  view.
-- Done when: a browser check with the fake backend covers starting a unit,
-  a whole segment with a multiple-choice and a written answer, an
-  override, the outline, the unit's end, and a reload mid-check.
-- Note from 2.4 and 2.8: the written card is this task's. Mount
-  `AnswerPreview` (`src/web/prose.tsx`) under its text field; show
-  "Grading" on `grading`, the reason and "Grade again"
-  (`POST .../grade-again`) on `grading_failed`, and on the graded card the
-  answer with `Prose` and the `flaw`. `QuestionCard` takes choice
-  questions only so far, and the timeline ignores the grading events.
 
 ### 2.12 Course and library progress
 

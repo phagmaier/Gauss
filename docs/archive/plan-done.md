@@ -669,3 +669,31 @@ tested"). Stage 1 is finished.
   note on the first card, marked "Changed" on a revision, and on a draft
   reopened after a restart. The choices and checks are in
   `docs/decisions.md` under "Style note at intake".
+
+### 2.11 Session view
+
+- Status: done
+- Depends on: 2.4, 2.7, 2.8
+- Do: the session page from mocks 1 to 4: the thread with its phase
+  markers and next-step control ("ready", the override confirmed once, the
+  next segment), the question card for multiple-choice and written
+  answers, the top line with the path and "Segment n of m", which opens the
+  unit's outline, and the unit's end as 2.1 settles. "Start unit 1" after
+  approval (mock 8), and starting or continuing a unit from the course
+  view.
+- Done when: a browser check with the fake backend covers starting a unit,
+  a whole segment with a multiple-choice and a written answer, an
+  override, the outline, the unit's end, and a reload mid-check.
+- Note from 2.4 and 2.8: the written card is this task's. Mount
+  `AnswerPreview` (`src/web/prose.tsx`) under its text field; show
+  "Grading" on `grading`, the reason and "Grade again"
+  (`POST .../grade-again`) on `grading_failed`, and on the graded card the
+  answer with `Prose` and the `flaw`. `QuestionCard` takes choice
+  questions only so far, and the timeline ignores the grading events.
+- Note: done on 2026-11-15. `mise run check` passed (435 TypeScript
+  tests, one Python test). A browser run with the fake backend covered
+  starting a unit after approval and from the course view, a whole
+  segment with a multiple-choice and a written answer (a failed grading
+  and "Grade again" included), an override, the outline, both ways out of
+  the unit's end, and a reload mid-check. The choices and checks are in
+  `docs/decisions.md` under "Session view".

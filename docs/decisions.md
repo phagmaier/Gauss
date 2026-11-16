@@ -40,6 +40,7 @@ findings are the record.
 | Unit chat split | What `unit-record.ts` and `unit-agents.ts` hold, the one queue, what the tests do not cover | Touching the unit chat, and before 2.13 (transcripts), 2.14 (resume) and 2.15 (idle sessions) |
 | Grader prompt | The hand-graded set, the runs and their results, the grader's model and why, what `grader.md` says and why | Changing `grader.md`, the grader's model or `WrittenGrade`, writing rubric guidance in `tutor.md` (2.16), disputes (stage 3) |
 | Style note at intake | The note in the proposal, `style.md` with the draft, courses without one, the card, `planner.md`'s section, approval checked against the card | Touching `propose_curriculum`, `planner.md` or the proposal card, writing `tutor.md`'s default style (2.16), style changes (stage 5) |
+| Session view | The session page: its address, markers, next-step control, written card, keys, top line and outline, closing card, the entry points, a lost chat, the browser run | Touching `src/web/Session.tsx`, `session.ts`, `timeline.ts` or `QuestionCard.tsx`; course progress (2.12), transcripts (2.13), "Start fresh" (2.14), prompts that write objective statements |
 
 ## Page design (plan task 1.0)
 
@@ -2232,3 +2233,127 @@ Done on 2026-11-15. The choices are the agent's and can be overturned.
   ignoring the units made both the regression test and the units case
   fail. `mise run check` passed lint, type-checking, 392 TypeScript tests
   and one Python test.
+
+## Session view (plan task 2.11)
+
+Built on 2026-11-15: `src/web/Session.tsx` (the view), `src/web/session.ts`
+(what the view says about where the unit stands: the top line, the outline,
+the next-step control, the markers, the closing card, the unit after this
+one), the unit chat's events in `src/web/timeline.ts`, the written card in
+`QuestionCard.tsx`, the address in `route.ts`, and the styles of mocks 3,
+4 and 10 in `styles.css`. The choices are the agent's and can be
+overturned.
+
+- **The address is `/courses/<id>/units/<unit>`.** The view posts `open`,
+  then follows `events`. A unit chat lives in the server's memory, so when
+  its stream answers 404 the view opens the unit again and follows the new
+  chat. Observed in the browser run: in development a server restart
+  reloads the whole page anyway (Vite's client polls for the server and
+  reloads), which opens the unit the same way, so a note saying the server
+  restarted could never show and was dropped. Either way the thread then
+  starts where the record has the unit, without the conversation before,
+  until 2.13 rebuilds it from the transcript.
+- **The markers are mock 3's.** Discuss, Check and Done begin with a marker
+  line. A segment's teaching has none: it starts well clear of the segment
+  before (mock 4's spacing), or at the top. The segment that goes over
+  objectives again has a Teach marker ("Going over two objectives again.",
+  mock 10).
+- **One next-step control, where the thread has reached** (mock 3): "I'm
+  ready for the check" in the discussion; "Move on without the check" in
+  the check, asked once; "Start the next segment" when a segment before
+  the last closes; none in teach. The server lets the learner move on from
+  the discussion too (2.6); the page offers it only in the check, as the
+  mock does. Moving on is not offered while a written answer waits for its
+  grade, since the server refuses it then. Every control is disabled while
+  the tutor writes, which the server refuses too.
+- **A withdrawn question shrinks to a record** ("Question 1 Withdrawn" and
+  its prompt), where mock 3 replaced the card with the note. The tutor's
+  text before it may refer to the question, so its prompt stays.
+- **The written card** (the note from 2.4 and 2.8): the answer field with
+  `AnswerPreview` under it, how sure, and "I don't know"; no reasoning
+  field, since the answer is its own. Once sent, the card keeps the answer
+  as sent, rendered with `Prose`, and says "Grading"; after a failed
+  grading it says "Not graded", the reason, that the answer is kept, and
+  "Grade again". Graded, it shows the answer, how sure, and "The first
+  flaw" beside its label. A correct answer given with help says that it
+  does not count toward passing.
+- **Keys**, as mock 2 has them and the brief asks ("one keystroke"): when
+  the learner is not typing, A to F pick a choice, 1 to 5 how sure, and
+  Enter submits; Enter on a button presses the button instead.
+- **The top line and the outline are mock 4's.** "Segment 2 of 5" with a
+  tick per segment of the plan; "Going over again" with the last tick lit
+  during the extra segment (mock 10); "Finished" once the unit is. Mock 10
+  says "Review" there; this says "Going over again", the server's name for
+  the segment, because review mode (stage 6) is something else. The
+  outline gives the path out, "Unit N of M", the segments, and the extra
+  segment when there is one. Not there yet: the unit gate (stage 5) and
+  "Start fresh" (2.14). Esc or a click elsewhere closes it.
+- **The closing card is mock 10's.** A row per objective, passed or not
+  passed, and why: "The check reached its limit of questions" for one
+  attempted, "You moved on without the check" for one overridden. The page
+  does not repeat the server's limit of three. It shrinks to one line once
+  the learner goes over again or moves on. "Start unit N" is the next unit
+  in the course's list; after the last unit the card says so and leads
+  back to the course. A finished unit opened again has no card: a note
+  says how it finished, with "Start unit N: title" and "Back to the
+  course".
+- **Objective statements render as Markdown with math** (`InlineProse`),
+  since a math course's statements carry formulas; segment titles stay
+  plain, as unit titles do. `prompts/unit-planner.md` says nothing about
+  either, so a prompt task (2.16 or a planner revision) may say that
+  statements can use `$` math.
+- **Where a session starts.** After approval, "Start unit 1" (mock 8),
+  with "Open the course" beside it. In the course view, every unit of an
+  approved course has "Open", which starts it or picks it up: the course
+  view cannot tell the units' status until 2.12, which replaces it with
+  Start and Continue. For the same reason its line no longer says "No unit
+  has started yet."
+- **`unit_status` is not shown.** The closing card carries its own
+  statuses, and the session view has nowhere else that needs them yet.
+- **The React components have no automated tests**, as before (no DOM in
+  the test setup); their logic is in `session.ts` and `timeline.ts`,
+  tested with expected results worked by hand.
+- **Browser run with the fake backend**, on a scratch server built like
+  `main.ts` with a scripted tutor that acts on each turn's header, and a
+  temporary data root. It covered: a new course approved and "Start unit
+  1"; the unit planned and taught, with display math; the outline, closed
+  with Esc and by a click elsewhere; a message in the discussion;
+  "ready"; a choice answered by keys (A, 4, Enter); a reload mid-check,
+  which rebuilt the thread with question 1 graded and question 2 open; a
+  written answer with its preview, a failed grading, "Grade again", the
+  flaw, and a second written answer passing; "Start the next segment";
+  moving on without the check, asked once, with the question withdrawn;
+  the closing card with one objective not passed; going over it again,
+  with the card shrunk and the top line and outline saying so; the unit
+  passing, with "Back to the course" and "Start unit 2"; unit 2 moved on
+  from at its closing card, asked once, ending overridden; "Open" from
+  the course view; and a server restart, after which the page showed the
+  finished unit. A chat lost without a page reload (the scratch server
+  replaced its unit chats and dropped connections) was opened again on the
+  same page, and an answer then went to the new chat. The run found three
+  things, fixed: statements showed their `$`, the flaw wrapped under its
+  label, and the course view's line was now false.
+- **Checks:** `mise run check` passed lint, type-checking, 435 TypeScript
+  tests and one Python test. New: 9 timeline tests (markers and the
+  position, the writing mark after a marker, planning and a failure, a
+  written answer's grading, a withdrawn question, a question not shown
+  twice, going over again, moving on without them, a finished unit), 30
+  tests in `session.test.ts`, and 4 route cases. Each of twelve faults
+  made a test fail: a grade keeping the kept answer, an override not
+  withdrawing, a marker not ending the tutor's text, the closing card left
+  full after moving on and after going over again, a question shown
+  twice, moving on offered while an answer is graded, the next segment
+  offered at the last, the extra segment's ticks, one objective spoken of
+  in the plural, a spacer before the first teaching, and a unit address
+  with more after it. The marker fault first passed every test, because
+  text joins only after tutor text anyway; the test now checks the
+  writing mark, which is what the reset changes. The review found and
+  fixed a style that would have greyed the intake card's "Approved",
+  refused messages whose reason was not shown, and unused state.
+- **For later tasks.** 2.12: replace "Open" with Start and Continue, and
+  consider its "next unit in order" for the closing card's "Start unit N".
+  2.13: the thread after a restart, or after a page reload that a restart
+  causes, starts at the record's position; the transcript should come
+  first. 2.14: "Start fresh" goes in the outline under the segments (piece
+  11; `.uo-fresh` and `.stale` in `docs/prototype/base.css` are not ported
+  yet). 2.16: statements may use `$` math (above).

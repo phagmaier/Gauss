@@ -6,10 +6,15 @@ import { Fragment, type ReactNode, useEffect } from "react";
 import { navigate } from "./route.ts";
 
 /** An address the page shows itself, so Back and new tabs work. */
-export function Link(props: { to: string; children: ReactNode }) {
+export function Link(props: {
+  to: string;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <a
       href={props.to}
+      className={props.className}
       onClick={(e) => {
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
         e.preventDefault();
@@ -24,7 +29,7 @@ export function Link(props: { to: string; children: ReactNode }) {
 export function TopLine(props: {
   trail: { label: string; to: string }[];
   here: string;
-  /** The page's main action, at the right. */
+  /** The page's main action at the right, or in a session the position. */
   action?: ReactNode;
 }) {
   return (

@@ -74,3 +74,11 @@ export async function post(
   const answer = await request(path, undefined, postInit(body));
   return answer.ok ? undefined : answer.error;
 }
+
+/** Posts; the server's reason and the status when it refuses (0: not reached). */
+export function postStatus(
+  path: string,
+  body?: unknown,
+): Promise<Answer<undefined>> {
+  return request(path, undefined, postInit(body));
+}

@@ -13,13 +13,11 @@ import {
   useState,
 } from "react";
 import { Hello, PageEvent } from "../shared/events.ts";
-import type { AnswerSubmission } from "../shared/question.ts";
 import { post } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Diagram, UnitList } from "./Curriculum.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { Prose } from "./prose.tsx";
-import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
 import { emptyTimeline, type Item, reduce } from "./timeline.ts";
 
@@ -87,6 +85,14 @@ export function Intake(props: { intakeId: string }) {
   const latest = timeline.items.findLast((i) => i.kind === "proposal");
   const { approved } = timeline;
   const open = !lost && approved === null;
+  // Mock 8: once approved, the course starts with its first unit.
+  const approvedProposal = timeline.items.find(
+    (i) => i.kind === "proposal" && i.revision === approved?.revision,
+  );
+  const firstUnit =
+    approvedProposal?.kind === "proposal"
+      ? approvedProposal.units[0]
+      : undefined;
   return (
     <div className={diagramOpen ? "th has-top has-pane" : "th has-top"}>
       <TopLine
@@ -153,9 +159,20 @@ export function Intake(props: { intakeId: string }) {
                 Approved. The course is in your library.
               </p>
               <div className="pf-act">
+                {firstUnit === undefined ? null : (
+                  <button
+                    type="button"
+                    className="btn sm"
+                    onClick={() =>
+                      navigate(paths.unit(approved.courseId, firstUnit.id))
+                    }
+                  >
+                    Start unit 1
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="btn sm"
+                  className="textbtn"
                   onClick={() => navigate(paths.course(approved.courseId))}
                 >
                   Open the course
@@ -292,19 +309,12 @@ function ItemView(props: { item: Exclude<Item, Proposal> }) {
           <Prose text={item.text} />
         </div>
       );
-    case "question":
-      // The intake posts no questions; the unit chats do, in the session
-      // view (task 2.11).
-      return item.question.kind === "choice" ? (
-        <QuestionCard
-          question={item.question}
-          graded={item.graded}
-          onAnswer={async (_: AnswerSubmission) =>
-            "This conversation takes no answers."
-          }
-        />
-      ) : null;
     case "note":
       return <p className="ph-note">{item.text}</p>;
+    // A unit chat's items: the intake has none of them.
+    case "question":
+    case "phase":
+    case "unit_end":
+      return null;
   }
 }

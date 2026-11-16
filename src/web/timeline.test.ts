@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
+import type { Plan } from "../shared/plan.ts";
 import { emptyTimeline, reduce, type Timeline } from "./timeline.ts";
 
 const QUESTION = {
@@ -202,4 +203,293 @@ test("a draft stored before style notes existed has none, and a revision that ad
     { revision: 1, style: undefined, styleChanged: false },
     { revision: 2, style: PREDICT, styleChanged: true },
   ]);
+});
+
+// --- A unit chat (tasks 2.6 to 2.8, shown by the session view, 2.11) --------
+
+const PLAN: Plan = {
+  objectives: [
+    { id: "power-rule", statement: "Differentiate a power of x." },
+    { id: "product-rule", statement: "Apply the product rule." },
+    { id: "chain-rule", statement: "Apply the chain rule." },
+  ],
+  segments: [
+    {
+      title: "Powers and products",
+      objectives: ["power-rule", "product-rule"],
+    },
+    { title: "The chain rule", objectives: ["chain-rule"] },
+  ],
+};
+const WRITTEN = {
+  kind: "written" as const,
+  id: "q2",
+  number: 2,
+  prompt: "Prove the product rule from the definition.",
+};
+const PROOF = {
+  kind: "written" as const,
+  questionId: "q2",
+  text: "Add and subtract $f(x+h)g(x)$ in the difference quotient.",
+  confidence: "75" as const,
+};
+const STATUSES = {
+  "power-rule": "passed",
+  "product-rule": "attempted",
+  "chain-rule": "not-started",
+} as const;
+
+test("a unit's plan and phases: each phase begun is a marker in the thread, and the position follows the last", () => {
+  const state = play([
+    { type: "unit_planning" },
+    { type: "unit_plan", plan: PLAN },
+    { type: "unit_status", unit: "in-progress", objectives: STATUSES },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "The power rule." },
+    { type: "turn_end", outcome: "done" },
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Why?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Because." },
+  ]);
+
+  expect(state.items).toEqual([
+    { kind: "phase", key: 3, segment: 0, phase: "teach" },
+    { kind: "tutor", key: 5, text: "The power rule." },
+    { kind: "phase", key: 7, segment: 0, phase: "discuss" },
+    { kind: "learner", key: 8, text: "Why?" },
+    { kind: "tutor", key: 10, text: "Because." },
+  ]);
+  expect(state.plan).toEqual(PLAN);
+  expect(state.planning).toBe(false);
+  expect(state.position).toEqual({ segment: 0, phase: "discuss" });
+  expect(state.finished).toBeNull();
+});
+
+test("a marker ends the tutor's text: the writing mark shows under it, and what the tutor writes next starts a new item", () => {
+  const closed = play([
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Right." },
+    { type: "phase", segment: 0, phase: "closed" },
+  ]);
+  expect(closed.busy).toBe(true);
+  expect(closed.tutorOpen).toBe(false);
+
+  const after = reduce(closed, {
+    type: "event",
+    index: 4,
+    event: { type: "tutor_text", text: " Next segment soon." },
+  });
+  expect(after.items.map((i) => i.kind)).toEqual([
+    "phase",
+    "tutor",
+    "phase",
+    "tutor",
+  ]);
+});
+
+test("planning shows while the unit is planned; a failure is a note, and opening again clears it", () => {
+  const planning = play([{ type: "unit_planning" }]);
+  expect(planning.planning).toBe(true);
+
+  const failed = play([
+    { type: "unit_planning" },
+    { type: "unit_failed", error: "The unit could not be planned." },
+  ]);
+  expect(failed.planning).toBe(false);
+  expect(failed.failed).toBe("The unit could not be planned.");
+  expect(failed.items).toEqual([
+    { kind: "note", key: 1, text: "The unit could not be planned." },
+  ]);
+
+  const again = play([
+    { type: "unit_planning" },
+    { type: "unit_failed", error: "The unit could not be planned." },
+    { type: "unit_planning" },
+    { type: "unit_plan", plan: PLAN },
+  ]);
+  expect(again.failed).toBeNull();
+  expect(again.plan).toEqual(PLAN);
+});
+
+test("a written answer is kept on its card while graded, a failed grading says why, and the grade replaces both", () => {
+  const base: PageEvent[] = [
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: WRITTEN },
+    { type: "grading", questionId: "q2", answer: PROOF },
+  ];
+  const card = (events: PageEvent[]) =>
+    play([...base, ...events]).items.find((i) => i.kind === "question");
+
+  expect(card([])).toEqual({
+    kind: "question",
+    key: 1,
+    question: WRITTEN,
+    grading: PROOF,
+  });
+  expect(
+    card([{ type: "grading_failed", questionId: "q2", error: "Timed out." }]),
+  ).toEqual({
+    kind: "question",
+    key: 1,
+    question: WRITTEN,
+    grading: PROOF,
+    gradingFailed: "Timed out.",
+  });
+  // Graded again: the failure goes, the kept answer stays.
+  expect(
+    card([
+      { type: "grading_failed", questionId: "q2", error: "Timed out." },
+      { type: "grading", questionId: "q2", answer: PROOF },
+    ]),
+  ).toEqual({ kind: "question", key: 1, question: WRITTEN, grading: PROOF });
+
+  const graded: PageEvent = {
+    type: "graded",
+    questionId: "q2",
+    verdict: "incorrect",
+    answer: PROOF,
+    flaw: "The limit of $g(x+h)$ is taken without saying $g$ is continuous.",
+    assisted: false,
+  };
+  expect(card([graded])).toEqual({
+    kind: "question",
+    key: 1,
+    question: WRITTEN,
+    graded,
+  });
+});
+
+test("moving on withdraws the open question, and a note says it was recorded", () => {
+  const state = play([
+    { type: "phase", segment: 1, phase: "check" },
+    { type: "question", question: { ...QUESTION, id: "q4", number: 1 } },
+    {
+      type: "overridden",
+      segment: 1,
+      objectives: ["chain-rule"],
+      withdrawnQuestionId: "q4",
+    },
+    { type: "phase", segment: 1, phase: "closed" },
+  ]);
+
+  expect(state.items).toEqual([
+    { kind: "phase", key: 0, segment: 1, phase: "check" },
+    {
+      kind: "question",
+      key: 1,
+      question: { ...QUESTION, id: "q4", number: 1 },
+      withdrawn: true,
+    },
+    {
+      kind: "note",
+      key: 2,
+      text: "You moved on without the check. Recorded as an override.",
+    },
+    { kind: "phase", key: 3, segment: 1, phase: "closed" },
+  ]);
+  expect(state.position).toEqual({ segment: 1, phase: "closed" });
+});
+
+test("a question the thread holds already is not shown twice", () => {
+  const state = play([
+    { type: "question", question: QUESTION },
+    { type: "question", question: QUESTION },
+  ]);
+
+  expect(state.items).toEqual([
+    { kind: "question", key: 0, question: QUESTION },
+  ]);
+});
+
+const NOT_ALL_OBJECTIVES = {
+  "power-rule": "passed",
+  "product-rule": "passed",
+  "chain-rule": "overridden",
+} as const;
+const ALL_PASSED = {
+  "power-rule": "passed",
+  "product-rule": "passed",
+  "chain-rule": "passed",
+} as const;
+const NOT_ALL: PageEvent = {
+  type: "unit_end",
+  passed: false,
+  objectives: NOT_ALL_OBJECTIVES,
+};
+
+test("going over again shrinks the closing card and starts the extra segment; when it passes, the second card stays as it is", () => {
+  const passed: PageEvent = {
+    type: "unit_end",
+    passed: true,
+    objectives: ALL_PASSED,
+  };
+  const state = play([
+    { type: "phase", segment: 1, phase: "closed" },
+    NOT_ALL,
+    { type: "phase", segment: 2, phase: "teach", again: ["chain-rule"] },
+    { type: "phase", segment: 2, phase: "closed", again: ["chain-rule"] },
+    passed,
+    { type: "unit_status", unit: "passed", objectives: ALL_PASSED },
+    { type: "unit_closed", status: "passed" },
+  ]);
+
+  expect(state.items.filter((i) => i.kind === "unit_end")).toEqual([
+    {
+      kind: "unit_end",
+      key: 1,
+      passed: false,
+      objectives: NOT_ALL_OBJECTIVES,
+      stepTaken: "again",
+    },
+    {
+      kind: "unit_end",
+      key: 4,
+      passed: true,
+      objectives: ALL_PASSED,
+    },
+  ]);
+  expect(state.position).toEqual({
+    segment: 2,
+    phase: "closed",
+    again: ["chain-rule"],
+  });
+  expect(state.finished).toBe("passed");
+});
+
+test("moving on without them shrinks the closing card, and the unit is finished, overridden", () => {
+  const state = play([
+    NOT_ALL,
+    {
+      type: "unit_status",
+      unit: "overridden",
+      objectives: NOT_ALL_OBJECTIVES,
+    },
+    { type: "unit_closed", status: "overridden" },
+  ]);
+
+  expect(state.items).toEqual([
+    {
+      kind: "unit_end",
+      key: 0,
+      passed: false,
+      objectives: NOT_ALL_OBJECTIVES,
+      stepTaken: "moved-on",
+    },
+  ]);
+  expect(state.finished).toBe("overridden");
+});
+
+test("a finished unit opened again is finished, with no closing card", () => {
+  const state = play([
+    { type: "unit_plan", plan: PLAN },
+    { type: "unit_status", unit: "passed", objectives: STATUSES },
+    { type: "unit_closed", status: "passed" },
+  ]);
+
+  expect(state.items).toEqual([]);
+  expect(state.finished).toBe("passed");
+  expect(state.position).toBeNull();
 });

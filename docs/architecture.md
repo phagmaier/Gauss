@@ -618,11 +618,18 @@ closing card's two steps), and `interrupt`. A unit not opened
 since the server started answers 404 on all but `open`. An event stream replays its chat's log with ids
 `<log id>.<index>`, so a page that reconnects gets only what it missed.
 Only Gauss's own page may use the API (`decisions.md`, "Minimal page").
+The page shows a unit's session at `/courses/<id>/units/<unit>` (task
+2.11): it posts `open`, then follows `events`, and when that stream
+answers 404 (the chat was lost) it opens the unit again and follows the
+new chat. A session is reached from the course view's units, from "Start
+unit 1" after approval, and from the closing card's "Start unit N".
 
 The layout of these views was settled with static mocks: `docs/prototype/`
 (start at `index.html`; the shared look is `base.css`), with the choices
 recorded in `docs/decisions.md`. Task 1.6 built the library, the intake and
-the course view from them (`src/web/`). The curriculum diagram is laid out
+the course view from them (`src/web/`), and task 2.11 the session view
+(`Session.tsx`, with its logic in `session.ts` and `timeline.ts`). The
+curriculum diagram is laid out
 by the page itself (`src/web/diagram.ts`), not by Mermaid, to keep the
 settled look.
 

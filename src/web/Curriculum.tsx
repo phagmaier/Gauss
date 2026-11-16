@@ -2,7 +2,7 @@
 // and 08-intake.html: the unit list, and the diagram in the side pane. Both
 // are drawn from the units as stored, so they cannot disagree with the record.
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Unit } from "../shared/curriculum.ts";
 import { type DiagramEdge, layOut } from "./diagram.ts";
 import { buildsOn } from "./units.ts";
@@ -18,6 +18,8 @@ export function UnitList(props: {
   mark?: (unit: Unit) => UnitMark | undefined;
   /** The unit marked in the diagram, if any. */
   selected?: string | undefined;
+  /** What the learner can do with a unit, under its goal. */
+  action?: ((unit: Unit) => ReactNode) | undefined;
 }) {
   const { units } = props;
   return (
@@ -25,6 +27,7 @@ export function UnitList(props: {
       {units.map((unit, i) => {
         const needs = buildsOn(unit, units);
         const mark = props.mark?.(unit);
+        const action = props.action?.(unit);
         return (
           <li
             key={unit.id}
@@ -35,9 +38,10 @@ export function UnitList(props: {
             <div>
               <div className="cu-t">{unit.title}</div>
               <div className="cu-g">{unit.goal}</div>
-              {needs === null ? null : (
+              {needs === null && action === undefined ? null : (
                 <div className="cu-m">
-                  <span>{needs}</span>
+                  {needs === null ? null : <span>{needs}</span>}
+                  {action}
                 </div>
               )}
             </div>

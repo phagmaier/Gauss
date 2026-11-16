@@ -1,17 +1,21 @@
-// Which view the address shows: the library, an intake, or a course. The
-// page moves between them without reloading, and the browser's Back works.
+// Which view the address shows: the library, an intake, a course, or a unit's
+// session. The page moves between them without reloading, and the browser's
+// Back works.
 
 import { useEffect, useState } from "react";
 
 export type Route =
   | { view: "library" }
   | { view: "intake"; intakeId: string }
-  | { view: "course"; courseId: string };
+  | { view: "course"; courseId: string }
+  | { view: "unit"; courseId: string; unitId: string };
 
 export const paths = {
   library: "/",
   intake: (id: string) => `/intakes/${encodeURIComponent(id)}`,
   course: (id: string) => `/courses/${encodeURIComponent(id)}`,
+  unit: (courseId: string, unitId: string) =>
+    `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}`,
 };
 
 /** Any address that names no view shows the library. */
@@ -21,6 +25,17 @@ export function parseRoute(pathname: string): Route {
   if (name !== undefined && rest.length === 0) {
     if (kind === "intakes") return { view: "intake", intakeId: name };
     if (kind === "courses") return { view: "course", courseId: name };
+  }
+  const [units, unit, ...beyond] = rest;
+  const unitName = unit === undefined ? undefined : decoded(unit);
+  if (
+    kind === "courses" &&
+    name !== undefined &&
+    units === "units" &&
+    unitName !== undefined &&
+    beyond.length === 0
+  ) {
+    return { view: "unit", courseId: name, unitId: unitName };
   }
   return { view: "library" };
 }
