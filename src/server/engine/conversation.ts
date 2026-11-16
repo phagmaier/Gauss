@@ -82,6 +82,14 @@ export interface Conversation {
   close(): Promise<void>;
 }
 
+/** The turn in progress: from when it starts, which is before it is sent. */
+interface RunningTurn {
+  /** The learner pressed Stop during this turn. */
+  stopped: boolean;
+  /** The session the turn was sent to, once it is sent. */
+  sentTo?: TutorSession;
+}
+
 export function createConversation(options: {
   backend: TutorBackend;
   systemPrompt: string;
@@ -90,18 +98,19 @@ export function createConversation(options: {
 }): Conversation {
   const { log } = options;
   let session: Promise<TutorSession> | undefined;
-  let turnRunning = false;
+  let running: RunningTurn | undefined;
   let turnsWaiting = 0;
   let queue: Promise<void> = Promise.resolve();
 
   async function runTurn(turn: Turn): Promise<void> {
-    turnRunning = true;
+    const current: RunningTurn = { stopped: false };
+    running = current;
     log.emit({ type: "turn_start" });
     let outcome: TurnOutcome = "error";
     try {
-      outcome = await relay(turn);
+      outcome = await relay(turn, current);
     } finally {
-      turnRunning = false;
+      running = undefined;
       try {
         await turn.ended?.(outcome);
       } catch (error) {
@@ -113,16 +122,30 @@ export function createConversation(options: {
   }
 
   /** Sends the turn and writes the reply into the log, to its turn_end. */
-  async function relay(turn: Turn): Promise<TurnOutcome> {
+  async function relay(turn: Turn, current: RunningTurn): Promise<TurnOutcome> {
     const fail = (error: string): TurnOutcome => {
       log.emit({ type: "turn_end", outcome: "error", error });
       return "error";
     };
+    // A Stop before the turn reaches the backend is kept here: the backend
+    // clears its own stop flag when it is sent a turn.
+    const stoppedBeforeSending = (): TurnOutcome => {
+      log.emit({ type: "turn_end", outcome: "interrupted" });
+      return "interrupted";
+    };
     try {
       if (session === undefined) throw new Error("The chat has not started.");
       const tutor = await session;
+      // Checked before composing, which can have effects (help is noted
+      // then), and again after, since composing can wait.
+      if (current.stopped) return stoppedBeforeSending();
       const text =
         typeof turn.text === "string" ? turn.text : await turn.text();
+      if (current.stopped) return stoppedBeforeSending();
+      // From here a Stop goes to the backend. Setting this, sending, and the
+      // backend clearing its flag happen without a pause between them, so a
+      // Stop lands either before (seen above) or after (seen by the backend).
+      current.sentTo = tutor;
       for await (const event of tutor.send({ text })) {
         if (event.type === "text") {
           log.emit({ type: "tutor_text", text: event.text });
@@ -160,9 +183,10 @@ export function createConversation(options: {
     },
     busy: () => turnsWaiting > 0,
     async interrupt() {
-      if (turnRunning && session !== undefined) {
-        await (await session).interrupt();
-      }
+      const turn = running;
+      if (turn === undefined) return;
+      turn.stopped = true;
+      await turn.sentTo?.interrupt();
     },
     settled: () => queue,
     async close() {

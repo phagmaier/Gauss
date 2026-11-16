@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { ChoiceLetter, Confidence } from "../../shared/question.ts";
+import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
 import {
   createFakeBackend,
@@ -13,7 +15,7 @@ import {
   type FakeStep,
   type FakeTurn,
 } from "../backends/fake.ts";
-import { openDataRoot } from "../record/data-root.ts";
+import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { createGrader } from "./grading.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner, type UnitPlanner } from "./unit-planning.ts";
@@ -175,10 +177,13 @@ function setUp(
     /** The grader's replies, in order. */
     replies?: FakeReply[];
     gradingLimitMs?: number;
+    /** Changes the record the chats are given, to make it fail. */
+    record?: (root: DataRoot) => DataRoot;
   } = {},
 ) {
   const backend = createFakeBackend(script, given.replies);
-  const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const dataRoot = given.record?.(root) ?? root;
   const units = createUnitChats({
     backend,
     systemPrompt: TUTOR,
@@ -212,6 +217,10 @@ async function open(
 /** The record as a restarted server would read it. */
 const reload = () => openDataRoot({ path: dir });
 const position = async () => (await reload().readState(COURSE)).units;
+/** The unit's position on disk now, for a listener, which cannot wait. */
+const positionNow = (): unknown =>
+  JSON.parse(readFileSync(join(dir, "courses", COURSE, "state.json"), "utf8"))
+    .units.derivative;
 
 /** The events from the last one of this type on, or every event if none. */
 function since(chat: UnitChat, type: PageEvent["type"]): PageEvent[] {
@@ -736,10 +745,16 @@ test("the learner's override closes the segment, is recorded as evidence, withdr
   await toCheck(chat);
   const id = openQuestionId(chat);
   const turnsBefore = setup.backend.received.length;
+  let whenTold: unknown;
+  chat.subscribe((event) => {
+    if (event.type === "overridden") whenTold = positionNow();
+  });
 
   expect(await chat.override()).toEqual({ ok: true });
   await chat.settled();
 
+  // The segment was closed on disk before the page heard of it.
+  expect(whenTold).toEqual({ segment: 0, phase: "closed" });
   expect(since(chat, "overridden")).toEqual([
     {
       type: "overridden",
@@ -1183,6 +1198,32 @@ test("a unit of a draft curriculum cannot be opened, and the course is not marke
       .lastOpenedAt,
   ).toBe(CREATED);
   expect(setup.backend.sessions).toEqual([]);
+});
+
+test('a unit whose id every object has as a property, "constructor", opens like any other', async () => {
+  const setup = setUp([TEACH]);
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  const { id } = await root.createCourse({ title: CURRICULUM.title });
+  await root.saveProposal(id, {
+    title: CURRICULUM.title,
+    units: [
+      {
+        id: "constructor",
+        title: "Constructions",
+        goal: "Construct the tangent to a curve at a point.",
+        prerequisites: [],
+      },
+    ],
+  });
+  await root.approveCurriculum(id);
+  await root.storePlan(id, "constructor", PLAN);
+
+  const chat = await open(setup, "constructor");
+
+  expect(chat.events().filter((e) => e.type === "unit_failed")).toEqual([]);
+  expect(await position()).toEqual({
+    constructor: { segment: 0, phase: "discuss" },
+  });
 });
 
 // --- Task 2.7: how many questions, help, and the unit's end -----------------
@@ -1765,6 +1806,13 @@ test("a grader reply not in the grade's shape is shown as a failed grading; the 
         "Your answer to this question is kept and waits to be graded again.",
     },
   );
+  // Moving on would withdraw the question, and with it the answer sent.
+  expect(await chat.override()).toEqual({
+    ok: false,
+    status: 409,
+    error:
+      "An answer is kept and waits to be graded again. Grade it again, then move on.",
+  });
 
   expect(await chat.gradeAgain()).toEqual({ ok: true });
   await chat.settled();
@@ -2018,4 +2066,148 @@ test("a written answer kept before a restart is graded when the unit reopens", a
     expect.objectContaining({ answer: written(chat), verdict: "correct" }),
   ]);
   expect(after.backend.received[0]?.text).toContain(JOINED_NOTE);
+});
+
+// --- Task 2.8a: a question has one answer -----------------------------------
+
+/**
+ * Stops the server and puts the unit back at the position it had before its
+ * answer was recorded, as a stop between appending an answer to the evidence
+ * and closing its question leaves state.json.
+ */
+async function stopBeforeClosing(
+  setup: ReturnType<typeof setUp>,
+  kept: UnitPosition | undefined,
+) {
+  if (kept === undefined) throw new Error("no position kept");
+  await setup.units.close();
+  await reload().writePosition(COURSE, "derivative", kept);
+}
+
+test("a written answer graded before a restart that left its question open is not graded again: reopening closes the question with the grade recorded, and tells the tutor", async () => {
+  const grade = Promise.withResolvers<FakeReply>();
+  const before = setUp([TEACH, ask(Q_PROOF), [{ text: "Well argued." }]], {
+    replies: [{ later: grade.promise }],
+  });
+  await makeCourse();
+  const first = await open(before);
+  await toCheck(first);
+  expect(await first.answer(written(first))).toEqual({ ok: true });
+  await waitFor(first, "grading");
+  const kept = (await position()).derivative;
+  grade.resolve(CORRECT);
+  await first.settled();
+  const id = openQuestionId(first);
+  await stopBeforeClosing(before, kept);
+
+  // Asked again, this grader would contradict the grade recorded.
+  const after = setUp([[{ text: "Well argued." }]], {
+    replies: [{ output: { verdict: "incorrect", flaw: FLAW } }],
+  });
+  const chat = await open(after);
+
+  expect(after.backend.oneShots).toEqual([]);
+  expect(chat.events().slice(3, 6)).toEqual([
+    {
+      type: "question",
+      question: { kind: "written", id, number: 1, prompt: Q_PROOF.prompt },
+    },
+    {
+      type: "graded",
+      questionId: id,
+      verdict: "correct",
+      answer: written(chat),
+      assisted: false,
+    },
+    status("in-progress", "passed"),
+  ]);
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    expect.objectContaining({ answer: written(chat), verdict: "correct" }),
+  ]);
+  expect(await position()).toEqual({
+    derivative: { segment: 0, phase: "check", checkFrom: 0 },
+  });
+  expect(after.backend.received[0]?.text).toContain(
+    `The learner answered question 1. ${JOINED_NOTE}`,
+  );
+});
+
+test("a choice answer recorded before a restart that left its question open closes the question on reopening, so it cannot be answered twice", async () => {
+  const before = setUp([TEACH, ask(Q_QUOTIENT), [{ text: "Right." }]]);
+  await makeCourse();
+  const first = await open(before);
+  await toCheck(first);
+  const kept = (await position()).derivative;
+  const id = openQuestionId(first);
+  await answer(first, "A");
+  await stopBeforeClosing(before, kept);
+
+  const after = setUp([[{ text: "Right." }]]);
+  const chat = await open(after);
+
+  expect(since(chat, "graded").slice(0, 2)).toEqual([
+    {
+      type: "graded",
+      questionId: id,
+      verdict: "correct",
+      answer: {
+        kind: "choice",
+        questionId: id,
+        choice: "A",
+        confidence: "100",
+      },
+      correctChoice: "A",
+      assisted: false,
+    },
+    status("in-progress", "passed"),
+  ]);
+  expect(
+    await chat.answer({
+      kind: "choice",
+      questionId: id,
+      choice: "B",
+      confidence: "100",
+    }),
+  ).toEqual({ ok: false, status: 409, error: "No question is open." });
+  expect(await reload().readEvidence(COURSE)).toHaveLength(1);
+  expect(after.backend.received[0]?.text).toContain(
+    `The learner answered question 1. ${JOINED_NOTE}`,
+  );
+});
+
+test("an answer recorded when state.json then could not be written is the one kept: the answer sent again closes the question with it, and nothing more is recorded", async () => {
+  let failNextWrite = false;
+  const setup = setUp([TEACH, ask(Q_QUOTIENT), [{ text: "Right." }]], {
+    record: (root) => ({
+      ...root,
+      writePosition(...args) {
+        if (!failNextWrite) return root.writePosition(...args);
+        failNextWrite = false;
+        return Promise.reject(new Error("The disk is full."));
+      },
+    }),
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  const id = openQuestionId(chat);
+  const choose = (choice: ChoiceLetter) =>
+    chat.answer({ kind: "choice", questionId: id, choice, confidence: "100" });
+
+  failNextWrite = true;
+  await expect(choose("A")).rejects.toThrow("The disk is full.");
+  expect(await choose("B")).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    expect.objectContaining({
+      answer: expect.objectContaining({ choice: "A" }),
+      verdict: "correct",
+    }),
+  ]);
+  expect(since(chat, "graded")[0]).toMatchObject({
+    verdict: "correct",
+    answer: { choice: "A" },
+  });
+  expect((await position()).derivative?.openQuestion).toBeUndefined();
 });

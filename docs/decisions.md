@@ -36,6 +36,7 @@ findings are the record.
 | Unit chat and phases | Opening a unit, phase rules, refusals, "this check", restart, headers, page events | Touching `engine/unit-chat.ts` or `unit-turns.ts`, the check's rules (2.7), the session view (2.11), resume (2.14), `tutor.md` (2.16) |
 | Check rules and unit close | How many questions and the limit, help, the unit's end, going over again, moving on without them, finished units | Touching `engine/check-rules.ts` or the unit's end, the closing card (2.11), course progress (2.12), `tutor.md` (2.16) |
 | Rubric grading | `oneShot` and structured output, the variables that redirect the SDK, written questions, what the grader sees and returns, a failed grading, help once an answer is sent | Touching `backends/` or `engine/grading.ts`, `grader.md` (2.9), the written card (2.11), disputes (stage 3) |
+| Review fixes (2.8a) | One answer per question, moving on with a kept answer, Stop before a turn is sent, whole evidence lines, inherited property names, the fake's stopped one-shot | Recording answers or reopening a unit (2.8b, 2.13, 2.14), turn stop, `json-lines.ts` (2.13's transcripts), the fake backend |
 
 ## Page design (plan task 1.0)
 
@@ -1594,7 +1595,8 @@ the agent's and can be overturned.
   An answer is appended to the evidence first, then its question is closed,
   so a crash between the two leaves the question open with its answer kept,
   never an answer lost. A second answer to it would be recorded twice; not
-  guarded against, as the window is one file write.
+  guarded against, as the window is one file write. (Closed by task 2.8a,
+  "Review fixes (2.8a)": the question is closed with the answer recorded.)
 - **A unit reopened after a restart** shows its plan, its phase and any open
   question, and sends nothing until the learner acts. Its tutor session is
   new (resume is 2.14), and the first header says so ("This conversation is
@@ -1889,3 +1891,79 @@ be overturned.
   second answer replacing the kept one; and two schema rules removed. One
   real run on Haiku 5.5, above; no browser check, as the written card is
   2.11's.
+
+## Review fixes (plan task 2.8a)
+
+Done on 2026-11-15, from the user's review of tasks 2.6 to 2.8, which
+reproduced each finding with a scratch test. The code was wrong in each
+case; the documented rules stand, and `architecture.md` section 4 now says
+the two it left implicit. The choices are the agent's and can be
+overturned.
+
+- **A question has one answer.** The evidence is appended before the
+  question is closed (2.6), so a stop between the two left the question
+  open; reopening then graded a kept written answer again, which could
+  append a contradicting grade and turn a passed objective back to
+  attempted, and a choice question could be answered twice. Now the open
+  question is matched to the evidence by the answer's `questionId`: an
+  answer found there closes the question, with the `graded` event and the
+  tutor's turn that recording would have sent, and nothing is graded or
+  appended. The same check sits in recording itself, for an answer sent
+  again after a failed `state.json` write. In that case the recorded
+  answer is the one kept, and the second answer is dropped. For a written
+  answer, "grade again" then calls the grader, whose verdict is dropped
+  for the one recorded. That costs one grading on a path that needs a
+  failed disk write, and saves a third code path.
+- **Moving on is refused while a written answer waits for its grade**,
+  also after a failed grading, as section 4 says. The check was on the
+  grading running, so an override after a failure withdrew the question
+  and the proof with it. The refusal says to grade it again. A consequence
+  left as it is: while grading keeps failing, the learner cannot leave the
+  segment. The tutor runs on the same backend, so it is likely down too.
+- **An override is written to `state.json` before the page hears of it.**
+  `overridden` and `unit_status` came before the write of the closed
+  position. `move` takes the events to emit once the position is written,
+  ahead of the phase marker, so their order on the page is unchanged.
+- **Stop reaches a turn before it is sent.** Both backends clear their stop
+  flag when a turn is sent, so a Stop while the turn's session was starting
+  or its text was being composed was lost, and the tutor answered the
+  stopped turn. The turn queue now keeps the Stop on the turn in progress.
+  It checks it before composing and again before sending, and the turn
+  then ends interrupted without reaching the backend. Composing can mark
+  help (2.7), so a message stopped while it was being composed can still
+  count as help. This errs toward assisted and is left.
+- **An evidence line is written whole.** One write can store fewer bytes
+  than it was given; `appendJsonLine` ignored the count, so a short write
+  returned as recorded a line that reads back as cut, and the next append
+  cleared it. It now writes until the whole line is stored, then syncs.
+  The test makes each write store half of what it is given, through a spy
+  on `FileHandle.prototype.write`. A file that takes no bytes at all is an
+  error rather than a loop. Transcripts (2.13) use the same function.
+- **A unit id can be an inherited property name.** `constructor` is a valid
+  slug, and `units[unitId]` on a state with no such entry found
+  `Object.prototype.constructor`, so the unit failed to open. Positions are
+  now read only from the unit's own entry (`Object.hasOwn`). No other
+  record is looked up by an id that way; `writePosition` copies entries
+  and so was already safe.
+- **The fake backend's one-shot fails once stopped**, as Claude's does
+  (`readOneShot` reports a stop whatever result came). A reply still to
+  come now races the signal, and any reply to a stopped request is a
+  failure. Without this, tests of a stop could pass on behaviour the real
+  backend never has.
+- **The review's structure recommendation** (split `unit-chat.ts` before
+  2.13 to 2.15, with one queue owner) is task 2.8b, so the refactor is
+  reviewed apart from these fixes.
+- **Checks:** `mise run check` passed lint, type-checking, 381 TypeScript
+  tests and one Python test. The nine new tests are four of the unit chat
+  (the `constructor` unit, a written and a choice answer recorded before a
+  restart that kept the question open, and an answer sent again after a
+  failed `state.json` write), two of the turn queue (Stop while the text is
+  composed, and while the session starts), two cases added to the
+  grader's stop test (a reply still to come, and a stop before the
+  request), and one of the record (short writes). Two existing tests were
+  extended: the override test checks `state.json` as the page hears of the
+  override, and the failed-grading test checks that moving on is refused.
+  Each new check failed before its fix, as the review describes. Removing
+  the reuse in recording fails only the failed-write test, and removing
+  the check on reopening fails only the two restart tests. No real backend
+  was run, as no finding needs one.

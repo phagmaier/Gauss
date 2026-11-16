@@ -65,13 +65,19 @@ export function createFakeBackend(
   let nextTurn = 0;
   let nextReply = 0;
 
+  // A stopped request fails whatever its reply, as Claude's does (claude.ts).
   async function oneShot<T>(
     request: OneShotRequest<T>,
   ): Promise<OneShotResult<T>> {
     oneShots.push(request);
+    const { signal } = request;
     let reply = replies[nextReply];
     nextReply += 1;
-    while (reply !== undefined && "later" in reply) reply = await reply.later;
+    while (reply !== undefined && "later" in reply) {
+      const next = await Promise.race([reply.later, whenStopped(signal)]);
+      if (next === STOP) return stopped();
+      reply = next;
+    }
     if (reply === undefined) {
       return {
         ok: false,
@@ -79,14 +85,10 @@ export function createFakeBackend(
       };
     }
     if ("hold" in reply) {
-      const { signal } = request;
-      if (signal !== undefined && !signal.aborted) {
-        await new Promise((resolve) =>
-          signal.addEventListener("abort", resolve, { once: true }),
-        );
-      }
-      return { ok: false, error: "The request was stopped." };
+      if (signal !== undefined) await whenStopped(signal);
+      return stopped();
     }
+    if (signal?.aborted === true) return stopped();
     if ("fail" in reply) return { ok: false, error: reply.fail };
     return checkReply(request.schema, reply.output);
   }
@@ -153,4 +155,19 @@ export function createFakeBackend(
   }
 
   return { received, calls, sessions, oneShots, startSession, oneShot };
+}
+
+const STOP = Symbol("stopped");
+
+/** Resolves once the signal is aborted, at once if it is; never without one. */
+function whenStopped(signal: AbortSignal | undefined): Promise<typeof STOP> {
+  return new Promise((resolve) => {
+    if (signal === undefined) return;
+    if (signal.aborted) resolve(STOP);
+    else signal.addEventListener("abort", () => resolve(STOP), { once: true });
+  });
+}
+
+function stopped(): OneShotResult<never> {
+  return { ok: false, error: "The request was stopped." };
 }

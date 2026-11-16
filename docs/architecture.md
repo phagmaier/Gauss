@@ -172,6 +172,9 @@ derived status.
   `src/server/engine/conversation.ts`. A turn's text can be composed when it
   is sent rather than when it is queued, so its header says how things
   stand then; and a turn can run work when it ends, before the next is sent.
+  Stop applies to the turn in progress from the moment it starts: one
+  stopped before it reaches the backend, while its session starts or its
+  text is composed, is not sent, and ends interrupted (task 2.8a).
 
 ### Phases
 
@@ -226,19 +229,26 @@ The rules of tasks 2.6 and 2.7:
   an answer is appended to the evidence before its question is closed, so
   a crash between the two leaves the question open with its answer kept,
   never an answer lost.
+- **A question has one answer** (task 2.8a). An open question whose answer
+  the evidence already holds, found by the question's id, is closed with
+  that answer, and the tutor told, with no grading and nothing recorded:
+  when a unit is reopened after such a crash, and when an answer is sent
+  again after writing `state.json` failed.
 
 The rules of task 2.8, for written answers (section 6):
 
 - **A written answer is final once sent.** It is kept on the open question
   in `state.json`, then graded outside the chat's queue, so messages and
   the tutor's turns go on meanwhile. Until its grade is recorded, another
-  answer, moving on and grading again are refused, and so are the tutor's
-  `ask_question` and `close_segment`. A message then is not help: help
+  answer and moving on are refused, also after a failed grading, and so
+  are the tutor's `ask_question` and `close_segment`; grading again is
+  refused while a grading runs. A message then is not help: help
   ends when the answer is sent.
 - **A failed grading is shown, and the answer graded again as sent**: the
   question stays open with its answer, and nothing reaches the tutor until
   there is a grade. A unit reopened with a kept answer grades it again at
-  once, as a teaching turn a restart cut off is taught again.
+  once, as a teaching turn a restart cut off is taught again, unless its
+  grade is recorded already (above).
 - **"I don't know" on a written question** is recorded at once, with no
   grader call.
 

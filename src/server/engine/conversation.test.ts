@@ -85,6 +85,69 @@ test("turns go to the tutor one at a time, and stopping one lets the next start"
   expect(backend.received[1]?.text).toBe("Stop, please.");
 });
 
+// Both backends clear their stop flag when a turn is sent, so the queue has to
+// hold a Stop that comes before then.
+test("Stop while a turn's text is being composed stops that turn: the tutor never receives it, and the next turn is sent as usual", async () => {
+  const { backend, log, tutor } = setUp([[{ text: "Hello." }]]);
+  const composing = Promise.withResolvers<void>();
+  const composed = Promise.withResolvers<string>();
+
+  tutor.send({
+    text: () => {
+      composing.resolve();
+      return composed.promise;
+    },
+  });
+  await composing.promise;
+  await tutor.interrupt();
+  composed.resolve("first");
+  await tutor.settled();
+  tutor.send("second");
+  await tutor.settled();
+
+  expect(backend.received.map((t) => t.text)).toEqual(["second"]);
+  expect(log.events()).toEqual([
+    { type: "turn_start" },
+    { type: "turn_end", outcome: "interrupted" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Hello." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+});
+
+test("Stop while the session is starting stops the first turn before its text is composed", async () => {
+  const fake = createFakeBackend([[{ text: "Hello." }]]);
+  const starting = Promise.withResolvers<void>();
+  const { log, tutor } = setUpWith({
+    ...fake,
+    startSession: async (options) => {
+      await starting.promise;
+      return fake.startSession(options);
+    },
+  });
+  let composed = false;
+  const started = nextEvent(log, "turn_start");
+
+  tutor.send({
+    text: () => {
+      composed = true;
+      return "first";
+    },
+  });
+  await started;
+  await tutor.interrupt();
+  starting.resolve();
+  await tutor.settled();
+
+  // Composing can have effects, such as noting help (unit-chat.ts).
+  expect(composed).toBe(false);
+  expect(fake.received).toEqual([]);
+  expect(log.events()).toEqual([
+    { type: "turn_start" },
+    { type: "turn_end", outcome: "interrupted" },
+  ]);
+});
+
 test("a backend that fails to start is reported to the page as an error", async () => {
   const { log, tutor } = setUpWith({
     startSession: () => Promise.reject(new Error("Not logged in.")),

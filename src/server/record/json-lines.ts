@@ -22,7 +22,7 @@ export async function appendJsonLine(
   path: string,
   value: unknown,
 ): Promise<void> {
-  const line = `${JSON.stringify(value)}\n`;
+  const line = Buffer.from(`${JSON.stringify(value)}\n`);
   // "a+": created if missing, readable, and every write goes to the end.
   const file = await open(path, "a+");
   let created: boolean;
@@ -31,7 +31,15 @@ export async function appendJsonLine(
     created = size === 0;
     const end = await lastLineEnd(file, size);
     if (end < size) await file.truncate(end);
-    await file.write(line);
+    // One write can store only part of what it is given, so the line is
+    // written until the whole of it is there.
+    for (let written = 0; written < line.byteLength; ) {
+      const { bytesWritten } = await file.write(line, written);
+      if (bytesWritten === 0) {
+        throw new Error(`Nothing could be written to ${path}.`);
+      }
+      written += bytesWritten;
+    }
     await file.sync();
   } finally {
     await file.close();

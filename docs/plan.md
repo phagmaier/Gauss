@@ -46,6 +46,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.6 | Unit chat and phases | `engine/unit-chat.ts` (phases, refusals, routes under `/api/courses/<id>/units/<unit>/`), headers and system prompt in `engine/unit-turns.ts`, `close_segment`; no `start_segment` (the learner starts segments). The check's answers are the evidence after `checkFrom` in the position. For 2.7: help is written `false`, the last segment stays closed in `state.json`, and opening a unit with no position starts it at segment 1. A reopened unit gets a new session (2.14 resumes); a turn's header is composed when it is sent. |
 | 2.7 | Check rules and unit close | `engine/check-rules.ts`: an objective is done in a check once passed or after 3 questions, at least one per check. Help is marked on the open question when the tutor receives a message. The unit ends with its last segment: `unit_end` (the closing card), then `unit_closed` when all passed; otherwise `go-over-again` (a segment after the plan's, in the position's `again`) or `finish` (override of the rest). Events carry statuses (`unit_status`, `graded.assisted`). A finished unit opens finished, never restarted. |
 | 2.8 | Rubric grading | `oneShot` in the adapter (SDK structured output, checked against a zod schema); `ask_question` takes `kind: "written"` with a rubric; `createGrader` in `engine/grading.ts` grades from the question, rubric and answer only, and returns `WrittenGrade` (verdict, and the flaw when incorrect). A written answer is final once sent, kept in `state.json` until graded, and graded outside the chat's queue; a failure is `grading_failed`, and `grade-again` retries. Page events `grading`, `grading_failed`, and `graded` with the answer and `flaw`; no written card yet (2.11). The grader uses the tutor's model until 2.9 picks one. The backend drops every `ANTHROPIC_` and `CLAUDE` variable. |
+| 2.8a | Review fixes | A question has one answer: an open question whose answer the evidence holds (by `questionId`) is closed with it on reopening, never graded or recorded again. Moving on is refused while a written answer waits for its grade. Stop holds on a turn not yet sent. `appendJsonLine` writes whole lines. Look positions up with `Object.hasOwn`. |
 
 ## Stage 2: session engine
 
@@ -59,6 +60,19 @@ baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
 
+### 2.8b Split the unit chat
+
+- Status: todo
+- Depends on: 2.8a
+- Do: split `engine/unit-chat.ts` before 2.13 to 2.15 add transcript
+  writes, resume and idle closing to it (the review's recommendation,
+  2026-11-15). Recording an answer and reconciling it with the evidence go
+  in one module, starting, stopping and closing the tutor's and the
+  grader's work in another, and `UnitChat` stays the coordinator. It keeps
+  the one serial queue (`exclusive`), which the extracted modules are
+  given rather than keeping queues of their own. No change in behaviour.
+- Done when: `mise run check` passes with `unit-chat.test.ts` unchanged
+  apart from its imports.
 
 ### 2.9 Grader prompt
 

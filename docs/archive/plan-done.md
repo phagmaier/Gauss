@@ -588,3 +588,26 @@ tested"). Stage 1 is finished.
   in `docs/decisions.md` under "Rubric grading"; `architecture.md`
   sections 3 to 7, 9 and 10 describe `oneShot`, the written kind, the
   grading rules, the environment and the route.
+
+### 2.8a Review fixes
+
+- Status: done
+- Depends on: 2.8
+- Do: fix the seven findings of the user's review of 2.6 to 2.8
+  (2026-11-15). Moving on is refused while a written answer waits for its
+  grade, also after a failed grading. A question has one answer: one
+  already recorded for it is kept, and a unit reopened with it closes the
+  question rather than grading or recording another. An evidence line is
+  written whole before the append returns. A unit whose id is an inherited
+  property name (`constructor`) opens. Stop while a turn's text is being
+  composed stops that turn. An override is written to `state.json` before
+  the page hears of it. The fake backend's one-shot request fails once it
+  is stopped, as Claude's does.
+- Done when: a regression test for each finding fails before its fix and
+  passes after it, and `mise run check` passes.
+- Note: done on 2026-11-15. `mise run check` passed (381 TypeScript tests,
+  one Python test); each new regression check failed before its fix. The
+  choices and checks are in `docs/decisions.md` under "Review fixes
+  (plan task 2.8a)"; `architecture.md` section 4 has the rules on one
+  answer per question and Stop before a turn is sent. The review's split
+  of `unit-chat.ts` is task 2.8b.

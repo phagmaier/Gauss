@@ -147,9 +147,24 @@ test("a request that takes longer than the time limit is stopped and fails", asy
   });
 });
 
-test("the caller can stop a request", async () => {
-  const { grader } = setUp([{ hold: true }]);
+// The fake backend has to fail a stopped request whatever its scripted reply,
+// as Claude's does (readOneShot in claude.ts), or a test of a stop could pass
+// on behaviour the real backend never has.
+test.each<{ name: string; reply: FakeReply; stopFirst?: true }>([
+  { name: "while it holds", reply: { hold: true } },
+  {
+    name: "while its reply is still to come",
+    reply: { later: new Promise<FakeReply>(() => {}) },
+  },
+  {
+    name: "before it is made, with a reply in shape",
+    reply: { output: { verdict: "correct" } },
+    stopFirst: true,
+  },
+])("the caller can stop a request $name", async ({ reply, stopFirst }) => {
+  const { grader } = setUp([reply]);
   const stop = new AbortController();
+  if (stopFirst) stop.abort();
 
   const outcome = grader.grade(QUESTION, ANSWER, stop.signal);
   stop.abort();

@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
+  type FileHandle,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rm,
@@ -10,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Curriculum } from "../../shared/curriculum.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -744,6 +746,47 @@ describe("evidence", () => {
       );
     },
   );
+
+  // A write may store fewer bytes than it was given, and says how many. The
+  // rest must be written before the append returns, or an entry the engine
+  // takes as recorded would read back as a cut line, and the next append
+  // would clear it.
+  test("an entry the file system takes only part of at a time is still appended whole", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    const any = await open(join(dir, "courses", id, "course.json"), "r");
+    const prototype: FileHandle = Object.getPrototypeOf(any);
+    await any.close();
+    const write = prototype.write;
+    // Every write stores the first half of what it is given.
+    const halves = vi.spyOn(prototype, "write").mockImplementation(function (
+      this: FileHandle,
+      data: string | Uint8Array,
+      offset?: number | null,
+      length?: number | null,
+    ) {
+      const bytes = typeof data === "string" ? Buffer.from(data) : data;
+      const start = typeof data === "string" ? 0 : (offset ?? 0);
+      const asked = length ?? bytes.byteLength - start;
+      return Reflect.apply(write, this, [bytes, start, Math.ceil(asked / 2)]);
+    } as typeof write);
+
+    try {
+      await root.appendEvidence(id, answer(1));
+      await root.appendEvidence(id, answer(2));
+      expect(halves.mock.calls.length).toBeGreaterThan(2);
+    } finally {
+      halves.mockRestore();
+    }
+
+    const expected = [answer(1), answer(2)];
+    expect(await openDataRoot({ path: dir }).readEvidence(id)).toEqual(
+      expected,
+    );
+    expect(
+      await readFile(join(dir, "courses", id, "evidence.jsonl"), "utf8"),
+    ).toBe(expected.map(line).join(""));
+  });
 
   test("a damaged line before the last is an error that names the file and line", async () => {
     const root = openDataRoot({ path: dir });

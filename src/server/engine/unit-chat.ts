@@ -245,7 +245,12 @@ function createUnitChat(
       const unit: StoredUnit = { ...storedUnit, plan };
       log.emit({ type: "unit_plan", plan });
 
-      const storedPosition = (await dataRoot.readState(courseId)).units[unitId];
+      // The unit's own entry only: an id such as "constructor" is also the
+      // name of a property every object inherits.
+      const positions = (await dataRoot.readState(courseId)).units;
+      const storedPosition = Object.hasOwn(positions, unitId)
+        ? positions[unitId]
+        : undefined;
       if (storedPosition !== undefined) checkPosition(plan, storedPosition);
       const allEvidence = await dataRoot.readEvidence(courseId);
       const evidence = concerning(allEvidence, plan);
@@ -299,9 +304,18 @@ function createUnitChat(
       const open = position.openQuestion;
       if (open !== undefined) {
         log.emit({ type: "question", question: view(open) });
-        // A written answer that a restart kept from its grade is graded now,
-        // as a teaching turn a restart cut off is taught again.
-        if (open.answer !== undefined && open.question.kind === "written") {
+        const recorded = recordedAnswer(r, open.id);
+        if (recorded !== undefined) {
+          // A restart came between recording the answer and closing its
+          // question: the question is closed with the answer recorded, as
+          // recording it would have gone on to do.
+          await exclusive(() => closeAnswered(r, open, recorded));
+        } else if (
+          open.answer !== undefined &&
+          open.question.kind === "written"
+        ) {
+          // A written answer that a restart kept from its grade is graded
+          // now, as a teaching turn a restart cut off is taught again.
           startGrading(r, open, open.question, open.answer);
         }
       }
@@ -365,11 +379,19 @@ function createUnitChat(
     });
   }
 
-  /** Writes the position to state.json, then keeps it and tells the page. */
-  async function move(r: Running, position: UnitPosition): Promise<void> {
+  /**
+   * Writes the position to state.json, then keeps it and tells the page:
+   * first what `tell` emits, if anything, then the phase if it changed.
+   */
+  async function move(
+    r: Running,
+    position: UnitPosition,
+    tell?: () => void,
+  ): Promise<void> {
     await dataRoot.writePosition(courseId, unitId, position);
     const before = r.position;
     r.position = position;
+    tell?.();
     if (
       before.segment !== position.segment ||
       before.phase !== position.phase
@@ -430,9 +452,22 @@ function createUnitChat(
     return segmentOf(r.context.plan, r.position).objectives;
   }
 
+  /** The answer the evidence has to the question, if it has one. */
+  function recordedAnswer(
+    r: Running,
+    questionId: string,
+  ): AnswerEvidence | undefined {
+    return r.evidence.find(
+      (e): e is AnswerEvidence =>
+        e.kind === "answer" && e.answer.questionId === questionId,
+    );
+  }
+
   /**
    * Records a graded answer, closes its question, and sends the grade to the
-   * tutor. Runs inside `exclusive`.
+   * tutor. Runs inside `exclusive`. A question has one answer: if one is
+   * recorded already, because writing state.json failed after it, that one
+   * is kept, and this answer and grade are dropped.
    */
   async function recordAnswer(
     r: Running,
@@ -440,32 +475,47 @@ function createUnitChat(
     submission: AnswerSubmission,
     grade: { verdict: Verdict; flaw?: string },
   ): Promise<void> {
-    const flaw = grade.verdict === "incorrect" ? grade.flaw : undefined;
-    const entry: AnswerEvidence = {
-      kind: "answer",
-      recordedAt: now().toISOString(),
-      objective: open.objective,
-      question: open.question,
-      answer: submission,
-      assisted: open.assisted === true,
-      verdict: grade.verdict,
-      ...(flaw === undefined ? {} : { flaw }),
-    };
-    // The evidence first: a crash before the position is written leaves the
-    // question open with its answer kept, never an answer lost.
-    await record(r, entry);
-    r.checkAnswers.push(entry);
+    let entry = recordedAnswer(r, open.id);
+    if (entry === undefined) {
+      const flaw = grade.verdict === "incorrect" ? grade.flaw : undefined;
+      entry = {
+        kind: "answer",
+        recordedAt: now().toISOString(),
+        objective: open.objective,
+        question: open.question,
+        answer: submission,
+        assisted: open.assisted === true,
+        verdict: grade.verdict,
+        ...(flaw === undefined ? {} : { flaw }),
+      };
+      // The evidence first: a crash before the position is written leaves
+      // the question open, and reopening the unit closes it with this entry.
+      await record(r, entry);
+      r.checkAnswers.push(entry);
+    }
+    await closeAnswered(r, open, entry);
+  }
+
+  /**
+   * Closes the question its recorded answer answers, tells the page, and
+   * sends the grade to the tutor. Runs inside `exclusive`.
+   */
+  async function closeAnswered(
+    r: Running,
+    open: OpenQuestion,
+    entry: AnswerEvidence,
+  ): Promise<void> {
     const { openQuestion: _, ...rest } = r.position;
     await move(r, rest);
     log.emit({
       type: "graded",
       questionId: open.id,
       verdict: entry.verdict,
-      answer: submission,
+      answer: entry.answer,
       ...(open.question.kind === "choice"
         ? { correctChoice: open.question.answer }
         : {}),
-      ...(flaw === undefined ? {} : { flaw }),
+      ...(entry.flaw === undefined ? {} : { flaw: entry.flaw }),
       assisted: entry.assisted,
     });
     log.emit(statusEvent(r));
@@ -781,9 +831,13 @@ function createUnitChat(
         if (phase !== "discuss" && phase !== "check") {
           return refused(NOT_NOW.override[phase]);
         }
-        if (r.grading !== undefined) {
+        // A written answer is final once sent: moving on would withdraw its
+        // question, and the answer with it, also after a failed grading.
+        if (r.position.openQuestion?.answer !== undefined) {
           return refused(
-            "An answer is being graded. Wait for its grade, then move on.",
+            r.grading === undefined
+              ? "An answer is kept and waits to be graded again. Grade it again, then move on."
+              : "An answer is being graded. Wait for its grade, then move on.",
           );
         }
         const objectives = [...segmentObjectives(r)];
@@ -793,17 +847,18 @@ function createUnitChat(
           objectives,
         });
         const withdrawn = r.position.openQuestion;
-        log.emit({
-          type: "overridden",
-          segment,
-          objectives,
-          ...(withdrawn === undefined
-            ? {}
-            : { withdrawnQuestionId: withdrawn.id }),
-        });
-        log.emit(statusEvent(r));
         const { checkFrom: _, openQuestion: __, ...rest } = r.position;
-        await move(r, { ...rest, phase: "closed" });
+        await move(r, { ...rest, phase: "closed" }, () => {
+          log.emit({
+            type: "overridden",
+            segment,
+            objectives,
+            ...(withdrawn === undefined
+              ? {}
+              : { withdrawnQuestionId: withdrawn.id }),
+          });
+          log.emit(statusEvent(r));
+        });
         r.checkAnswers = [];
         // Told with the next turn, so moving on costs no reply.
         r.notes.push(overrideNote(objectives, withdrawn?.number));
