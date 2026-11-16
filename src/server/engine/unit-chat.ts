@@ -31,6 +31,8 @@
 // and a reopened unit resumes it. If it cannot be found, the unit starts
 // fresh: a new session, seeded from the record and told that it joins a
 // unit under way, and the thread says so. The learner can start fresh too.
+// Resuming that fails another way fails the unit's opening, since the fault
+// may pass; the learner then tries again, or starts fresh without it.
 //
 // This file holds the phase rules and coordinates two parts (task 2.8b):
 // unit-record.ts keeps the unit's position and evidence and writes every
@@ -124,7 +126,9 @@ export interface UnitChat {
   /**
    * Replaces the tutor's conversation with a new one, which has the
    * learner's progress from the record and not the conversation, and which
-   * picks up where the unit stands.
+   * picks up where the unit stands. On a unit that could not be opened
+   * because its tutor's conversation could not be resumed, it opens the
+   * unit without that conversation, as one that cannot be found is opened.
    */
   startFresh(): Promise<ChatResult>;
   /** Stops the tutor's turn in progress, if there is one. */
@@ -238,10 +242,16 @@ function createUnitChat(
   let agents: UnitAgents | undefined;
   let loading: Promise<void> | undefined;
   let failed = false;
+  /** The last load failed while resuming the tutor's conversation. */
+  let resumeFailed = false;
+  /** The learner gave that conversation up: the next load does not resume it. */
+  let givenUp = false;
 
   // --- Opening ---------------------------------------------------------------
 
   async function load(): Promise<void> {
+    resumeFailed = false;
+    let resuming = false;
     try {
       // The earlier sessions' thread first, then this session's.
       await log.open();
@@ -277,6 +287,7 @@ function createUnitChat(
         systemPrompt: tutorSystemPrompt(options.systemPrompt, context, style),
         tools: [askQuestionTool(questionBoard), closeSegmentTool(closer)],
         cwd: dataRoot.courseFolder(courseId),
+        title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
         keep: (id) => exclusive(() => record.keepSession(id)),
         grader: options.grader,
         log,
@@ -288,8 +299,16 @@ function createUnitChat(
         // A unit under way resumes its tutor's conversation. One that cannot
         // be found, or was never kept, gives way to a new session, which
         // must not pretend to remember the conversation before it.
+        if (givenUp) {
+          // Taken out for good, so no later opening resumes it either.
+          await exclusive(() => record.keepSession(undefined));
+          givenUp = false;
+        }
         const id = record.position.tutorSessionId;
-        if (id === undefined || !(await loaded.resume(id))) {
+        resuming = true;
+        const resumed = id !== undefined && (await loaded.resume(id));
+        resuming = false;
+        if (!resumed) {
           r.notes.push(JOINED_NOTE);
           log.emit({ type: "fresh_start", reason: "not-resumed" });
         }
@@ -333,10 +352,17 @@ function createUnitChat(
       }
     } catch (error) {
       failed = true;
-      log.emit({
-        type: "unit_failed",
-        error: error instanceof Error ? error.message : String(error),
-      });
+      resumeFailed = resuming;
+      const message = error instanceof Error ? error.message : String(error);
+      log.emit(
+        resuming
+          ? {
+              type: "unit_failed",
+              error: `The conversation with the tutor could not be resumed: ${message}`,
+              resumeFailed: true,
+            }
+          : { type: "unit_failed", error: message },
+      );
       // Opening it again makes new agents; these may have resumed a session.
       if (running === undefined && agents !== undefined) {
         const unused = agents;
@@ -795,8 +821,17 @@ function createUnitChat(
         return { ok: true };
       }),
 
-    startFresh: () =>
-      act(async (r) => {
+    startFresh() {
+      if (running === undefined && failed && resumeFailed) {
+        // The unit could not open because the tutor's conversation could not
+        // be resumed. Trying again may resume it; this gives it up instead,
+        // so no fault that stays can keep the unit shut.
+        givenUp = true;
+        failed = false;
+        loading = load();
+        return Promise.resolve({ ok: true });
+      }
+      return act(async (r) => {
         // Taken out first, so a restart before the new session starts does
         // not resume the old one.
         await r.record.keepSession(undefined);
@@ -805,7 +840,8 @@ function createUnitChat(
         log.emit({ type: "fresh_start", reason: "learner" });
         r.agents.send({ text: () => freshTurn(where(r)) });
         return { ok: true };
-      }),
+      });
+    },
 
     async interrupt() {
       await running?.agents.interrupt();

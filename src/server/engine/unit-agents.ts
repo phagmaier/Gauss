@@ -86,6 +86,8 @@ export function createUnitAgents(options: {
   tools: TeachingTool[];
   /** The course's folder, where the tutor's sessions run and are kept. */
   cwd: string;
+  /** What the tutor's sessions are called among the backend's kept sessions. */
+  title: string;
   /**
    * Keeps the id of a session just started, before its first turn is sent.
    * A failure is logged, and the session goes on.
@@ -99,7 +101,12 @@ export function createUnitAgents(options: {
   const { backend, systemPrompt, tools, cwd, grader, log, exclusive } = options;
 
   async function startNew(): Promise<TutorSession> {
-    const session = await backend.startSession({ systemPrompt, tools, cwd });
+    const session = await backend.startSession({
+      systemPrompt,
+      tools,
+      cwd,
+      title: options.title,
+    });
     try {
       await options.keep(session.backendSessionId);
     } catch (error) {

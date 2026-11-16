@@ -28,7 +28,8 @@
 // reopened after a restart resumes its tutor (task 2.14). A session id it
 // did not make cannot be found: put another in a unit's `tutorSessionId` in
 // state.json, with the server stopped, to see a unit start fresh because its
-// conversation could not be resumed.
+// conversation could not be resumed. Put BROKEN_SESSION there to see resuming
+// fail another way, which fails the unit's opening every time it is tried.
 
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -41,10 +42,22 @@ import {
   type FakeStep,
 } from "./fake.ts";
 
+/** A session id that is found and cannot be resumed, however often it is tried. */
+export const BROKEN_SESSION = `${FAKE_SESSION}broken`;
+
 export function createScriptedBackend(): FakeBackend {
-  return createFakeBackend(scriptedTurn, scriptedReply, {
+  const backend = createFakeBackend(scriptedTurn, scriptedReply, {
     kept: { has: (id) => id.startsWith(FAKE_SESSION), add: () => {} },
   });
+  return {
+    ...backend,
+    async startSession(options) {
+      if (options.resumeId === BROKEN_SESSION) {
+        throw new Error("The scripted backend cannot resume this session.");
+      }
+      return backend.startSession(options);
+    },
+  };
 }
 
 /** The id of the objective a unit's plan checks with written questions ends so. */

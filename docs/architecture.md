@@ -165,7 +165,9 @@ derived status.
   resumed (task 2.14). Either way the tutor gets a new session, seeded from
   the record (its system prompt) and told in its first header that it is
   new, and the thread shows a "Fresh start" marker (`fresh_start`), with the
-  conversation before it dimmed. The learner's takes the old id out of the
+  conversation before it dimmed, except a card that still waits on the
+  learner or on its grade (an open question, the closing card), which
+  stands for the unit and not for that conversation. The learner's takes the old id out of the
   position, closes the old session, and sends the new one a turn to pick up
   where the unit stands; it waits, as other steps do, while the tutor
   writes. The fallback sends nothing until the learner acts. A session the
@@ -173,7 +175,11 @@ derived status.
   or one Claude Code's sweep deleted after its 30 days, fails before any
   model request); resuming that fails another way fails the unit's opening,
   and opening it again tries again, so a passing fault never costs the
-  conversation.
+  conversation. So that a fault which stays cannot keep the unit shut, that
+  failure says what it is (`unit_failed` with `resumeFailed`), and the
+  page then offers "Start fresh instead" beside "Try again": `start-fresh`
+  on such a unit takes the id out of the position and opens the unit as one
+  whose session is lost, with the fallback's marker and no turn sent.
 - `state.json` is written after every phase change and every answer, so closing
   the tab loses nothing.
 - The intake chat (task 1.4, `src/server/engine/intake.ts`) is the one chat
@@ -407,7 +413,7 @@ reference: `src/server/backends/backend.ts` and `src/server/tools/tool.ts`.
 
 ```ts
 interface TutorBackend {
-  startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools, cwd (kept there), resumeId; SessionNotFound
+  startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools, cwd (kept there), resumeId, title; SessionNotFound
   oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal; the grader (task 2.8), later notes
 }
 interface TutorSession {
@@ -445,7 +451,8 @@ type ToolResult =
   without, such as a unit's planning or an intake, is not kept. A resumed
   session is ready when `startSession` resolves; one the backend cannot
   find rejects with `SessionNotFound`, its own failure, which the engine
-  answers by starting fresh (task 2.14).
+  answers by starting fresh (task 2.14). A new kept session is given a
+  `title` (the course and the unit), so the backend makes none up.
 - Still to add, in the stage that first needs it: built-in tools and their
   confinement to the course folder (stage 3, when the tutor first writes
   and runs files).
@@ -533,7 +540,12 @@ Observed in stage 0 (details in `decisions.md`):
   `~/.claude/projects/<course folder, encoded>/<id>.jsonl`, and nothing is
   written in the course folder while the tutor has no built-in tools.
   `systemPrompt: { type: "custom", prompt, snapshot: false }` makes a
-  resumed session use the prompt it is resumed with (task 2.14).
+  resumed session use the prompt it is resumed with (task 2.14). A new
+  session given `title` records it (a `custom-title` line in its file) and
+  Claude Code generates no title of its own, which it otherwise does from
+  the first message; a resumed session keeps the title it has. A session
+  whose process was stopped while it wrote a reply resumes: its file ends
+  with the message it was answering, and the next turn goes on from there.
 - Claude Code's sweep deletes a kept session once its file is older than
   `cleanupPeriodDays` (30 by default, from the learner's own settings). A
   session file backdated 31 days was deleted by a Claude Code process within
@@ -691,7 +703,8 @@ answers 404 (the chat was lost) it opens the unit again and follows the
 new chat, whose thread starts with the unit's earlier sessions, each after
 the first under a "New session" marker with its date (task 2.13). A "Fresh
 start" marker follows the session's when the tutor's conversation was
-replaced, and the thread before it is dimmed (task 2.14). A session is reached from the course view's card and units, from a
+replaced, and the thread before it is dimmed, but for a card that still
+waits (task 2.14). A session is reached from the course view's card and units, from a
 library row of a course with a unit in progress, from "Start unit 1" after
 approval, and from the closing card's "Start unit N", which is the next
 unit in order once this one is finished.

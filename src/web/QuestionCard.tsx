@@ -150,7 +150,8 @@ function OpenCard(props: {
   });
 
   return (
-    <div className="qa-card">
+    // "live": not dimmed with an earlier conversation (styles.css, ".stale").
+    <div className="qa-card live">
       <div className="q-count">Question {question.number}</div>
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
@@ -275,7 +276,8 @@ function KeptCard(props: {
   }
 
   return (
-    <div className="qa-card done">
+    // "live": it waits on its grade, or to be graded again.
+    <div className="qa-card done live">
       <div className="q-count">
         Question {question.number}{" "}
         {failed === undefined ? (

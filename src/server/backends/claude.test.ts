@@ -168,9 +168,20 @@ test("a session given a folder is kept there under the id chosen, with its syste
     systemPrompt: afresh,
     sessionId: "new-id",
   });
-  // The SDK refuses a chosen id together with resume (sdk.d.ts, `sessionId`).
+  // A new session is given its title, so Claude Code generates none.
   expect(
-    sessionPlace({ systemPrompt: prompt, cwd: "/c", resumeId: "old" }, "old"),
+    sessionPlace(
+      { systemPrompt: prompt, cwd: "/c", title: "Limits" },
+      "new-id",
+    ),
+  ).toMatchObject({ sessionId: "new-id", title: "Limits" });
+  // The SDK refuses a chosen id together with resume (sdk.d.ts, `sessionId`),
+  // and a resumed session keeps the title it has (`title`).
+  expect(
+    sessionPlace(
+      { systemPrompt: prompt, cwd: "/c", resumeId: "old", title: "Limits" },
+      "old",
+    ),
   ).toEqual({
     cwd: "/c",
     persistSession: true,

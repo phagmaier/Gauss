@@ -727,11 +727,13 @@ details.why summary:hover {
 .uo-fresh .confirm {
   margin-top: 0.5em;
 }
-/* the conversations before a fresh start stay in the thread, dimmed */
-.stale {
+/* the conversations before a fresh start stay in the thread, dimmed; a card
+   that still waits on the learner or on its grade is the unit as it stands,
+   whichever conversation posted it, and is not */
+.stale > :not(.live) {
   opacity: 0.5;
 }
-.stale .qa-card {
+.stale > .qa-card:not(.live) {
   border-color: var(--surface0);
 }
 

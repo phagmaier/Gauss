@@ -19,6 +19,12 @@ export interface SessionOptions {
    * it had. A session the backend cannot find rejects with SessionNotFound.
    */
   resumeId?: string;
+  /**
+   * What a kept session is called where the backend lists its sessions.
+   * Given one, the backend does not make a title up, which can cost a
+   * request of its own. A resumed session keeps the title it has.
+   */
+  title?: string;
 }
 
 /**

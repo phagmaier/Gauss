@@ -191,14 +191,15 @@ export function readOneShot<T>(
  * folder it resumes in becomes its working directory (task 0.4). Its system
  * prompt is not recorded with it (`snapshot: false`): it is sent as given
  * with every request, so a resumed session gets the prompt it is resumed
- * with, not the one it started with. A session that is not kept runs in the
+ * with, not the one it started with. A new one is given its title, so Claude
+ * Code does not generate one. A session that is not kept runs in the
  * server's folder, as before.
  */
 export function sessionPlace(
-  options: Pick<SessionOptions, "systemPrompt" | "cwd" | "resumeId">,
+  options: Pick<SessionOptions, "systemPrompt" | "cwd" | "resumeId" | "title">,
   sessionId: string,
 ): Options {
-  const { systemPrompt, cwd, resumeId } = options;
+  const { systemPrompt, cwd, resumeId, title } = options;
   if (cwd === undefined) {
     if (resumeId !== undefined) {
       throw new Error("A session is resumed in the folder it was kept in.");
@@ -209,8 +210,11 @@ export function sessionPlace(
     cwd,
     persistSession: true,
     systemPrompt: { type: "custom", prompt: systemPrompt, snapshot: false },
-    // The SDK takes a session id of our choosing only for a new session.
-    ...(resumeId === undefined ? { sessionId } : { resume: resumeId }),
+    // The SDK takes a session id of our choosing only for a new session, and
+    // a title too: given one, Claude Code does not generate its own.
+    ...(resumeId === undefined
+      ? { sessionId, ...(title === undefined ? {} : { title }) }
+      : { resume: resumeId }),
   };
 }
 

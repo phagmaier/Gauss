@@ -700,7 +700,8 @@ function ClosingCard(props: {
     );
   }
   return (
-    <div className="qa-card ue">
+    // "live": its steps can still be taken (styles.css, ".stale").
+    <div className="qa-card ue live">
       {head}
       <div className="qa-prompt">{title}</div>
       <ol className="ue-rows">
@@ -718,6 +719,34 @@ function ClosingCard(props: {
       </ol>
       {foot}
     </div>
+  );
+}
+
+/**
+ * Beside "Try again" when the unit could not open because the tutor's
+ * conversation could not be resumed: opens the unit without it. Asks once,
+ * as "Start fresh" in the outline does.
+ */
+function StartFreshInstead(props: { onStartFresh(): void }) {
+  const [asking, setAsking] = useState(false);
+  return asking ? (
+    <span className="confirm">
+      <span>The tutor will not remember the earlier conversation.</span>
+      <button type="button" className="textbtn" onClick={props.onStartFresh}>
+        Start fresh
+      </button>
+      <button
+        type="button"
+        className="textbtn"
+        onClick={() => setAsking(false)}
+      >
+        Cancel
+      </button>
+    </span>
+  ) : (
+    <button type="button" className="textbtn" onClick={() => setAsking(true)}>
+      Start fresh instead
+    </button>
   );
 }
 
@@ -809,6 +838,11 @@ function NextStepControl(props: {
           >
             Try again
           </button>
+          {props.timeline.resumeFailed ? (
+            <StartFreshInstead
+              onStartFresh={() => props.onAct("start-fresh")}
+            />
+          ) : null}
         </div>
       );
     case "leave": {

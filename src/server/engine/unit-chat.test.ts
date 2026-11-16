@@ -1201,6 +1201,8 @@ test("a unit that cannot be planned says so in its thread, takes no action, and 
   };
   expect(chat.say("Hello?")).toEqual(notOpen);
   expect(await chat.ready()).toEqual(notOpen);
+  // No conversation with the tutor failed to resume, so there is none to give up.
+  expect(await chat.startFresh()).toEqual(notOpen);
   expect(await position()).toEqual({});
 
   expect(await open(setup)).toBe(chat);
@@ -2651,7 +2653,10 @@ test("the tutor's session runs in the course's folder and its id is kept in the 
 
   const [id] = before.backend.ids;
   expect(before.backend.sessions).toEqual([
-    expect.objectContaining({ cwd: FOLDER() }),
+    expect.objectContaining({
+      cwd: FOLDER(),
+      title: "Gauss: Derivatives from scratch, The derivative",
+    }),
   ]);
   expect(before.backend.sessions[0]?.resumeId).toBeUndefined();
   expect(await sessionKept()).toBe(id);
@@ -2755,7 +2760,9 @@ test("resuming that fails another way is not taken for a lost session: the unit 
 
   expect(chat.events().at(-1)).toEqual({
     type: "unit_failed",
-    error: "Claude Code could not start.",
+    error:
+      "The conversation with the tutor could not be resumed: Claude Code could not start.",
+    resumeFailed: true,
   });
   expect(chat.say("Hello?")).toMatchObject({ ok: false, status: 409 });
   expect(await sessionKept()).toBe(id);
@@ -2769,6 +2776,60 @@ test("resuming that fails another way is not taken for a lost session: the unit 
   ]);
   expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([]);
   expect(chat.say("Hello?")).toEqual({ ok: true });
+});
+
+test("Start fresh on a unit that could not open because resuming kept failing gives the conversation up: the unit opens without it, as one whose session is lost, and it is not resumed again", async () => {
+  const before = setUp([TEACH]);
+  await makeCourse();
+  await open(before);
+  const [id] = before.backend.ids;
+  await before.units.close();
+
+  // Resuming fails however often it is tried; a new session starts.
+  const resumes: string[] = [];
+  const failing = (backend: FakeBackend): TutorBackend => ({
+    ...backend,
+    startSession: async (options) => {
+      if (options.resumeId !== undefined) {
+        resumes.push(options.resumeId);
+        throw new Error("Claude Code could not start.");
+      }
+      return backend.startSession(options);
+    },
+  });
+  const after = setUp([[{ text: "Let us look at it together." }]], {
+    wrap: failing,
+  });
+  const chat = await open(after);
+  expect(chat.events().at(-1)).toMatchObject({
+    type: "unit_failed",
+    resumeFailed: true,
+  });
+
+  expect(await chat.startFresh()).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(resumes).toEqual([id]);
+  expect(await sessionKept()).toBeUndefined();
+  expect(since(chat, "unit_failed").slice(1)).toEqual([
+    { type: "unit_plan", plan: PLAN },
+    { type: "fresh_start", reason: "not-resumed" },
+    status("in-progress"),
+    { type: "phase", segment: 0, phase: "discuss" },
+  ]);
+
+  chat.say("Where were we?");
+  await chat.settled();
+
+  expect(after.backend.received[0]?.text).toContain(JOINED_NOTE);
+  const [made] = after.backend.ids;
+  expect(made).not.toBe(id);
+  expect(await sessionKept()).toBe(made);
+  await after.units.close();
+
+  // The conversation given up is not resumed by a later opening either.
+  await open(setUp([], { wrap: failing }));
+  expect(resumes).toEqual([id, made]);
 });
 
 test("the learner's Start fresh closes the tutor's session and starts one told it is new, which picks up where the unit stands; a restart then resumes the new one", async () => {

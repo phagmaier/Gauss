@@ -305,9 +305,15 @@ test("planning shows while the unit is planned; a failure is a note, and opening
   ]);
   expect(failed.planning).toBe(false);
   expect(failed.failed).toBe("The unit could not be planned.");
+  expect(failed.resumeFailed).toBe(false);
   expect(failed.items).toEqual([
     { kind: "note", key: 1, text: "The unit could not be planned." },
   ]);
+  // A failure to resume the tutor's conversation can be started fresh from.
+  expect(
+    play([{ type: "unit_failed", error: "No answer.", resumeFailed: true }])
+      .resumeFailed,
+  ).toBe(true);
 
   const again = play([
     { type: "unit_planning" },
@@ -697,4 +703,27 @@ test("a fresh start is a marker after the session's, and each begins a conversat
     },
   ]);
   expect(conversations([])).toEqual([]);
+});
+
+test("a fresh start after a unit failed to open takes that session's marker and its failures into the new conversation", () => {
+  const state = play([
+    began(MONDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "discuss" },
+    // The server restarted, and resuming the tutor's session failed twice.
+    began(TUESDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "unit_failed", error: "No answer.", resumeFailed: true },
+    { type: "unit_plan", plan: PLAN },
+    { type: "unit_failed", error: "No answer.", resumeFailed: true },
+    // The learner started fresh without it.
+    { type: "unit_plan", plan: PLAN },
+    { type: "fresh_start", reason: "not-resumed" },
+    { type: "phase", segment: 0, phase: "discuss" },
+  ]);
+
+  expect(state.failed).toBeNull();
+  expect(
+    conversations(state.items).map((part) => part.items.map((i) => i.kind)),
+  ).toEqual([["phase"], ["session", "note", "note", "fresh"]]);
 });

@@ -44,7 +44,7 @@ findings are the record.
 | Dev server on the fake backend | The scripted backend and what its tutor does, the seed, the scratch data root and port, `serve.ts`, closing the browser, the browser run | Running a browser check, touching `scripted.ts`, `dev-seed.ts`, `serve.ts` or the turn headers in `unit-turns.ts`, `intake.ts` and `unit-planning.ts`; a new one-shot request (stage 5 notes) |
 | Course and library progress | What the routes send, when units were opened, the card, Start, "Open" on finished units, the library's lines and groups, the closing card's next unit, a course whose progress cannot be read | Touching the course view, the library, `progress.ts` or `unitsOpenedAt`; notes (stage 5), the gate and retained status in the library (stage 5) |
 | Transcripts | What a session is, the transcript files, the thread rebuilt from them, the session marker, batching and joined text, no flushing and lines left out, the browser run | Touching `engine/transcript.ts`, the transcripts in `data-root.ts`, or the thread's sessions in `timeline.ts`; resume and "Start fresh" (2.14), idle sessions (2.15), reading transcripts (2.16), handoff notes and export (stage 5) |
-| Resume and start fresh | What the SDK does on resume (unknown ids, `snapshot: false`, where kept sessions go, the 30-day sweep), the id in the position, resuming as a unit opens, which failures fall back, the learner's Start fresh and its turn, the marker and the dimmed thread, the fake's kept sessions, the real run | Touching `backends/` (sessions, resume), `unit-agents.ts`, the tutor's session id in `unit-record.ts`, the fallback or Start fresh in `unit-chat.ts`, the thread's conversations in `timeline.ts`; idle sessions (2.15), `tutor.md` (2.16), handoff notes (stage 5) |
+| Resume and start fresh | What the SDK does on resume (unknown ids, `snapshot: false`, where kept sessions go, the 30-day sweep), the id in the position, resuming as a unit opens, which failures fall back, the learner's Start fresh and its turn, the marker and the dimmed thread, the fake's kept sessions, the real run, the review fixes (a card that still waits, starting fresh from a failed resume, the session's title, a restart mid-reply) | Touching `backends/` (sessions, resume), `unit-agents.ts`, the tutor's session id in `unit-record.ts`, the fallback or Start fresh in `unit-chat.ts`, the thread's conversations in `timeline.ts`; idle sessions (2.15), `tutor.md` (2.16), handoff notes (stage 5) |
 
 ## Page design (plan task 1.0)
 
@@ -2945,3 +2945,92 @@ dimmed thread and "Start fresh" in the outline (`timeline.ts`,
   when they open until the server stops (2.15). A finished unit opened
   after a restart starts a new tutor session for any message, without the
   "new" note, as before this task.
+- **Review fixes** (2026-11-16, a review of the commit that the user asked
+  for; the choices are the agent's and can be overturned).
+  - **A card that still waits was dimmed with the conversation before a
+    fresh start.** An open question, an answer kept for its grade and the
+    closing card with its steps stay where they were posted, so after
+    "Start fresh", and after the fallback too (the reopened chat's question
+    is not shown twice), the question to answer stood at half strength
+    above the marker, though its buttons worked. Such a card stands for the
+    unit, not for the conversation that posted it, so it is not dimmed: the
+    three cards that can still be acted on carry the class `live`, and
+    `.stale` dims each item under it but those (`styles.css`). The dimming
+    moved from the conversation's wrapper to its items because an item
+    cannot be brighter than a dimmed parent. The card was not moved under
+    the marker: that would mount it anew and lose a half-written answer,
+    and a question above later messages is how a check with questions
+    asked of the tutor already looks.
+  - **Resuming that failed another way had no way out from the page.** The
+    lost session is told from other failures by Claude Code's wording ("No
+    conversation found with session ID"), and the test of it uses the same
+    words, so an SDK that words it differently would turn every session
+    lost to the 30-day sweep into a unit that fails to open each time, with
+    "Try again" as its only step and `state.json` to edit by hand. The rule
+    stays (only a session not found falls back by itself), and the learner
+    gets the other step: the failure is told apart (`resumeFailed` on
+    `unit_failed`, its text beginning "The conversation with the tutor
+    could not be resumed"), and the page shows "Start fresh instead" beside
+    "Try again", which asks once. `start-fresh` on such a unit takes the id
+    out of the position and loads the unit again, which then opens as one
+    whose session is lost: the fallback's marker, the "new" note, nothing
+    sent. It is the fallback and not the learner's turn-sending Start
+    fresh because the unit was not open to pick up from. A unit that
+    failed to open for another reason refuses it. The marker of the session
+    that failed, and its failure notes, belong to the new conversation
+    (`conversations` in `timeline.ts`).
+  - **Kept sessions are given a title** ("Gauss: <course>, <unit>", `title`
+    in `SessionOptions`). The first version left Claude Code to generate
+    one, which the spike saw and which may cost a small request per new
+    session. With `title`, the session file has a `custom-title` line and
+    no generated one (seen in the run below); the request saved was not
+    measured.
+  - **The scripted backend has a session that cannot be resumed**
+    (`BROKEN_SESSION` in `scripted.ts`, "fake-session-broken"): put in a
+    unit's `tutorSessionId` with the server stopped, it fails the unit's
+    opening every time, so the step above can be seen on `pnpm dev:fake`.
+  - **Checks.** `mise run check` passed (507 TypeScript tests, one Python
+    test). New or changed: a unit chat test of starting fresh from a failed
+    resume (the id taken out, the fallback's events, the session not
+    resumed by that opening or a later one), the planning-failure test
+    (start fresh refused), the resume test (the title), a scripted backend
+    test of the broken session, a `sessionPlace` test of the title, and
+    timeline tests of `resumeFailed` and of the failed session's marker and
+    notes. Each of these faults made a test fail: start fresh on a failed
+    unit not handled; the id left in the position; start fresh allowed
+    after any failed opening; every failure marked as a failed resume. The
+    dimming is CSS and has no automated test. Browser run on `pnpm
+    dev:fake`: with a question open and a choice picked, or half a written
+    answer typed, "Start fresh" left the card at full strength, the same
+    element with what was entered, and the rest of that conversation at
+    half; answered, it dimmed with the rest. The closing card kept its two
+    steps at full strength. With the broken session in `state.json`: the
+    failure note, "Try again" failing again, "Start fresh instead" asking
+    once, then the unit open under the fallback's marker with its open
+    question live, and a message answered.
+  - **A restart while the tutor writes, on Haiku 5.5** (the first run
+    stopped the server between turns). A scratch data root with the dev
+    seed's courses, one planned unit put in its teach phase: the unit
+    taught, the learner said "My favourite number is 7919", then asked for
+    six paragraphs, and the server was stopped with SIGINT eight pieces
+    into that reply. The session's file ended with the learner's message
+    and no reply; no Claude Code process was left. After the restart the
+    unit resumed the same session with no fresh start, and asked for the
+    number and for what was asked last, the tutor gave both and said it
+    had not answered the second. Four Haiku turns. Not exercised: a stop
+    during a teaching turn (the end of that turn moves the unit to its
+    discussion, as since task 2.6), a stop between a tool call and its
+    result, a kill that leaves no time to close the session, and the slow
+    reply after a Stop.
+  - **Left as it was.** A unit whose session is lost, reopened over
+    several server runs with nothing sent, gets a "Fresh start" marker each
+    time. For 2.15: after an idle session is closed, the next message must
+    resume it, so there will be two places that resume (the opening and
+    the message) and a fallback that can come after the learner's message;
+    `getSessionInfo(id, { dir })` from the SDK reads one session file
+    without a process (5 to 7 ms here, undefined for an unknown id), which
+    would let the opening say whether the conversation is there and leave
+    resuming to the first message. And a session that fails to start fails
+    every later turn of its conversation (`createConversation` keeps the
+    rejected start, since task 0.5): a resume at the next message that
+    fails once must not do that.

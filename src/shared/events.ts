@@ -112,9 +112,15 @@ export const PageEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("unit_planning") }),
   /**
    * The unit could not be opened: it could not be planned, or its record
-   * could not be read. Opening it again tries again.
+   * could not be read. Opening it again tries again. `resumeFailed`: what
+   * failed was resuming the tutor's conversation, in a way that may pass
+   * (task 2.14), so the learner can also start fresh without it.
    */
-  z.object({ type: z.literal("unit_failed"), error: z.string() }),
+  z.object({
+    type: z.literal("unit_failed"),
+    error: z.string(),
+    resumeFailed: z.literal(true).optional(),
+  }),
   /** The unit's plan, for the outline: its objectives and segments. */
   z.object({ type: z.literal("unit_plan"), plan: Plan }),
   /**

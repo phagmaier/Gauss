@@ -9,7 +9,7 @@ import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { withProgress } from "../record/progress.ts";
-import { createScriptedBackend } from "./scripted.ts";
+import { BROKEN_SESSION, createScriptedBackend } from "./scripted.ts";
 
 // The scripted backend runs the dev server with no model (scripts/dev-fake.ts).
 // These tests take it through the engine, as the server wires it, so a change
@@ -274,6 +274,42 @@ test("a unit reopened after a restart resumes its scripted tutor; one whose sess
   expect(lost.chat.events().at(-2)).toEqual({
     type: "tutor_text",
     text: '**Scripted fresh start.** Unit 1 of 2, "Limits"; segment 1 of 2, "The idea", on "limits-idea". Phase: discuss.',
+  });
+  await after.units.close();
+});
+
+test("a unit whose session is the script's broken one fails to open every time, until the learner starts fresh without it", async () => {
+  const before = setUp();
+  await approvedCourse(before.dataRoot);
+  const first = await before.units.open(COURSE, "limits");
+  if (!first.ok) throw new Error(first.error);
+  await first.chat.settled();
+  await before.units.close();
+  const position = (await before.dataRoot.readState(COURSE)).units.limits;
+  if (position === undefined) throw new Error("No position.");
+  await before.dataRoot.writePosition(COURSE, "limits", {
+    ...position,
+    tutorSessionId: BROKEN_SESSION,
+  });
+
+  const after = setUp();
+  for (const _ of [1, 2]) {
+    const opened = await after.units.open(COURSE, "limits");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.chat.settled();
+    expect(opened.chat.events().at(-1)).toMatchObject({
+      type: "unit_failed",
+      resumeFailed: true,
+    });
+  }
+  const chat = after.units.get(COURSE, "limits");
+
+  expect(await chat?.startFresh()).toEqual({ ok: true });
+  await chat?.settled();
+  expect(chat?.events().at(-1)).toEqual({
+    type: "phase",
+    segment: 0,
+    phase: "discuss",
   });
   await after.units.close();
 });
