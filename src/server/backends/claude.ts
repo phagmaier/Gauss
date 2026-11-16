@@ -15,7 +15,9 @@
 // Not yet here: built-in tools and their confinement to the course folder
 // (stage 3).
 
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 import {
   createSdkMcpServer,
   getSessionInfo,
@@ -42,6 +44,12 @@ import {
 
 const SERVER = "gauss";
 const TOOL_PREFIX = `mcp__${SERVER}__`;
+const execute = promisify(execFile);
+const SESSION_LOOKUP = `
+  import { getSessionInfo } from ${JSON.stringify(import.meta.resolve("@anthropic-ai/claude-agent-sdk"))};
+  const found = await getSessionInfo(process.argv[1], { dir: process.argv[2] });
+  process.stdout.write(String(found !== undefined));
+`;
 
 export interface ClaudeBackendOptions {
   /**
@@ -65,11 +73,24 @@ export function createClaudeBackend(
 ): TutorBackend {
   return {
     startSession: (options) => startSession(options, backendOptions),
-    // Reads the one session file, with no process: 5 to 7 ms (task 2.14).
-    hasSession: async (id, cwd) =>
-      (await getSessionInfo(id, { dir: cwd })) !== undefined,
+    hasSession,
     oneShot: (request) => oneShot(request, backendOptions),
   };
+}
+
+async function hasSession(id: string, cwd: string): Promise<boolean> {
+  if (process.env.CLAUDE_CONFIG_DIR === undefined) {
+    return (await getSessionInfo(id, { dir: cwd })) !== undefined;
+  }
+  // The SDK's file lookup has no env/root option. A custom inherited root
+  // must not hide sessions kept by isolated(), which strips that override.
+  // Only this case pays for a short Node process; it never starts Claude.
+  const { stdout } = await execute(
+    process.execPath,
+    ["--input-type=module", "--eval", SESSION_LOOKUP, "--", id, cwd],
+    { env: sdkEnvironment(process.env), encoding: "utf8" },
+  );
+  return stdout === "true";
 }
 
 /**

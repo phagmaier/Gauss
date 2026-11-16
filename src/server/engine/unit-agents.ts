@@ -101,7 +101,7 @@ export function createUnitAgents(options: {
    * A turn found that the session to resume is gone, so a new one starts.
    * Called before the turn's text is composed.
    */
-  lost: () => void;
+  lost: (learnerId?: string) => void;
   grader: Grader;
   log: EventLog;
   /** The chat's queue. */

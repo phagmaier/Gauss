@@ -146,6 +146,7 @@ test("the SDK's environment has no API key, nothing that could send its requests
     ANTHROPIC_AUTH_TOKEN: "bogus",
     CLAUDECODE: "1",
     CLAUDE_CODE_SESSION_ID: "abc",
+    CLAUDE_CONFIG_DIR: "/home/learner/other-claude",
     CLAUDE_CODE_USE_VERTEX: "1",
     // A provider's credentials do nothing without its switch, so they stay.
     AWS_REGION: "eu-west-1",

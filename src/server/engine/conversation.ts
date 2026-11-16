@@ -64,6 +64,8 @@ export type TurnOutcome = "done" | "interrupted" | "error";
 
 /** A turn for the tutor, when its text or its end matters to the chat. */
 export interface Turn {
+  /** The learner event this turn delivers, if any, kept across transcript replay. */
+  learnerId?: string;
   /**
    * What the tutor receives. A function is called when the turn is sent to
    * the tutor, after the turns before it, so its header says how things
@@ -126,7 +128,7 @@ export interface Kept {
    * The session to resume could not be found, so a new one starts. Called
    * before the turn's text is composed, so the text can tell the new session.
    */
-  lost(): void;
+  lost(learnerId?: string): void;
   /**
    * Something outside the conversation will send it a turn, such as a
    * grading whose grade goes to the tutor: the session is not idle.
@@ -187,9 +189,9 @@ export function createConversation(options: {
   }
 
   /** The session for the turn about to be sent: the one running, or one started or resumed now. */
-  function tutorSession(): Promise<TutorSession> {
+  function tutorSession(learnerId?: string): Promise<TutorSession> {
     if (session !== undefined) return session;
-    const opening = open();
+    const opening = open(learnerId);
     session = opening;
     opening.then(
       (started) => {
@@ -203,7 +205,7 @@ export function createConversation(options: {
     return opening;
   }
 
-  async function open(): Promise<TutorSession> {
+  async function open(learnerId?: string): Promise<TutorSession> {
     if (closed) throw new Error("The chat is closed.");
     // An idle session is closed before it is resumed.
     await closing;
@@ -213,7 +215,7 @@ export function createConversation(options: {
     } catch (error) {
       if (!(error instanceof SessionNotFound)) throw error;
       resumeId = undefined;
-      kept.lost();
+      kept.lost(learnerId);
       return options.start();
     }
   }
@@ -257,7 +259,7 @@ export function createConversation(options: {
       return "interrupted";
     };
     try {
-      const tutor = await tutorSession();
+      const tutor = await tutorSession(turn.learnerId);
       // Checked before composing, which can have effects (help is noted
       // then), and again after, since composing can wait.
       if (current.stopped) return stoppedBeforeSending();
@@ -268,6 +270,7 @@ export function createConversation(options: {
       // backend clearing its flag happen without a pause between them, so a
       // Stop lands either before (seen above) or after (seen by the backend).
       current.sentTo = tutor;
+      begun = true;
       for await (const event of tutor.send({ text })) {
         if (event.type === "text") {
           log.emit({ type: "tutor_text", text: event.text });
@@ -291,7 +294,6 @@ export function createConversation(options: {
   return {
     started: () => begun,
     send(turn) {
-      begun = true;
       cancelIdle?.();
       cancelIdle = undefined;
       turnsWaiting += 1;

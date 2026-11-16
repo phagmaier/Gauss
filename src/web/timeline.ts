@@ -51,7 +51,7 @@ export interface UnitEndItem {
 }
 
 export type Item =
-  | { kind: "learner"; key: number; text: string }
+  | { kind: "learner"; key: number; id?: string; text: string }
   | { kind: "tutor"; key: number; text: string }
   | QuestionItem
   /** A phase of a segment began, or the chat opened in it. */
@@ -69,7 +69,12 @@ export type Item =
    * The tutor's conversation was replaced by a new one (task 2.14), which
    * has the learner's progress and not the conversation above.
    */
-  | { kind: "fresh"; key: number; reason: "learner" | "not-resumed" }
+  | {
+      kind: "fresh";
+      key: number;
+      reason: "learner" | "not-resumed";
+      learnerId?: string;
+    }
   | {
       kind: "proposal";
       key: number;
@@ -218,7 +223,14 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...next,
         items: [
           ...state.items,
-          { kind: "fresh", key: index, reason: event.reason },
+          {
+            kind: "fresh",
+            key: index,
+            reason: event.reason,
+            ...(event.learnerId === undefined
+              ? {}
+              : { learnerId: event.learnerId }),
+          },
         ],
         tutorOpen: false,
       };
@@ -227,7 +239,12 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...next,
         items: [
           ...state.items,
-          { kind: "learner", key: index, text: event.text },
+          {
+            kind: "learner",
+            key: index,
+            text: event.text,
+            ...(event.id === undefined ? {} : { id: event.id }),
+          },
         ],
         tutorOpen: false,
       };
@@ -448,10 +465,9 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
  * begins at each fresh start, with its marker, and with the marker of the
  * session it begins, which comes just before, or before the notes on why
  * that session's unit did not open at first. A conversation found lost at a
- * turn (task 2.15) begins with the learner's message that turn sent, which
- * the new tutor received, and which comes just before its marker. Each is
- * keyed by the item that began it, so a fresh start leaves the items before
- * it where they are.
+ * learner turn begins with the explicitly identified message that turn sent
+ * and every queued item after it. Without an id (including old transcripts),
+ * no learner message is guessed. Each conversation is keyed by its marker.
  */
 export function conversations(
   items: readonly Item[],
@@ -462,19 +478,20 @@ export function conversations(
     if (last === undefined) {
       parts.push({ key: item.key, items: [item] });
     } else if (item.kind === "fresh") {
-      let end = last.items.length;
-      if (
-        item.reason === "not-resumed" &&
-        last.items[end - 1]?.kind === "learner"
-      ) {
-        end -= 1;
-      }
+      const learner =
+        item.reason === "not-resumed" && item.learnerId !== undefined
+          ? last.items.findIndex(
+              (i) => i.kind === "learner" && i.id === item.learnerId,
+            )
+          : -1;
+      const end = learner === -1 ? last.items.length : learner;
       let from = end;
       while (last.items[from - 1]?.kind === "note") from -= 1;
       const start =
         from > 1 && last.items[from - 1]?.kind === "session" ? from - 1 : end;
-      // The first item stays, so the conversation keeps its key.
-      const moved = last.items.splice(Math.max(start, 1));
+      const moved = last.items.splice(start);
+      // A matched message may be the first item in an intake conversation.
+      if (last.items.length === 0) parts.pop();
       parts.push({ key: item.key, items: [...moved, item] });
     } else {
       last.items.push(item);

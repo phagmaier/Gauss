@@ -46,6 +46,7 @@ findings are the record.
 | Transcripts | What a session is, the transcript files, the thread rebuilt from them, the session marker, batching and joined text, no flushing and lines left out, the browser run | Touching `engine/transcript.ts`, the transcripts in `data-root.ts`, or the thread's sessions in `timeline.ts`; resume and "Start fresh" (2.14), idle sessions (2.15), reading transcripts (2.16), handoff notes and export (stage 5) |
 | Resume and start fresh | What the SDK does on resume (unknown ids, `snapshot: false`, where kept sessions go, the 30-day sweep), the id in the position, resuming as a unit opens, which failures fall back, the learner's Start fresh and its turn, the marker and the dimmed thread, the fake's kept sessions, the real run, the review fixes (a card that still waits, starting fresh from a failed resume, the session's title, a restart mid-reply) | Touching `backends/` (sessions, resume), `unit-agents.ts`, the tutor's session id in `unit-record.ts`, the fallback or Start fresh in `unit-chat.ts`, the thread's conversations in `timeline.ts`; idle sessions (2.15), `tutor.md` (2.16), handoff notes (stage 5) |
 | Idle sessions | Closing a kept session when idle and resuming it at the next turn, what idle means and for how long, one way to resume (the opening only asks), a failed resume or start retried by the next turn, `resumeFailed` taken out, kept intakes and their lost-session headers, the fake timer, the fault and browser checks | Touching `engine/conversation.ts`, `unit-agents.ts`, sessions in `intake.ts`, `hasSession` in `backends/`, the thread's conversations in `timeline.ts`; `tutor.md` (2.16), handoff notes (stage 5), the Codex backend (stage 6) |
+| Idle-session review fixes | Configuration-root lookup without changing login, intake context across failed or stopped startup, explicit fallback message identity, concurrent-message replay and browser evidence | Touching Claude session lookup, intake initialization, `fresh_start`, or conversation partitioning (task 2.15a) |
 
 ## Page design (plan task 1.0)
 
@@ -3174,3 +3175,48 @@ The choices are the agent's and can be overturned.
   test checks the folder the opening asks about). Opening a finished unit
   after a restart still starts a new session for any message, without the
   "new" note, as before.
+
+## Idle-session review fixes (plan task 2.15a)
+
+Fixed on 2026-11-16 after the user's review of task 2.15. The review
+reproduced all three failures without a model call.
+
+- **Claude lookup and startup must agree on the configuration root.**
+  The SDK's `getSessionInfo` uses the parent process's
+  `CLAUDE_CONFIG_DIR`, but Gauss strips that override from tutor subprocesses.
+  A valid default-root session could therefore look missing at opening.
+  `hasSession` now uses a short Node subprocess with `sdkEnvironment` only
+  when that variable is inherited; normal lookup remains in-process. The
+  SDK offers no explicit filesystem-root option. No global environment
+  mutation, new login location, Claude process, or model request. The cost
+  is one short Node process per lookup under an inherited override; its
+  latency was not measured.
+- **Intake initialization follows delivery, not queueing.**
+  `Conversation.started()` becomes true when a turn reaches the backend,
+  and intake headers check it when composed. A first startup that fails,
+  or a Stop before sending, no longer consumes a reopened draft's context.
+  The first turn actually sent includes the whole proposal and style note.
+- **Fallbacks identify their learner message.** New learner events have a
+  stable identity, which their turn carries into a lost-session marker.
+  `timeline.ts` partitions from the matched message, taking queued later
+  items with it. It no longer guesses from the last visible item: a grading
+  or other non-message turn cannot move an unrelated learner message.
+  Identities survive transcript batching and replay, unlike event indices.
+  Older transcripts without them still load, with no guessed movement.
+- **Regression coverage.** Synthetic SDK session files under a scratch
+  home cover default, custom and empty configuration overrides, including
+  a session found only in the ignored override. Intake regressions cover
+  failed and stopped startup before a draft's first delivery. A gated
+  fake-backend resume queues two messages before finding the session lost;
+  both appear in the new conversation, including after transcript replay
+  joins streamed text. Timeline cases cover explicit boundaries and
+  fallbacks without a matching learner identity.
+- **Verification.** `mise run check` passed lint, types, 527 TypeScript
+  tests and one Python test. On `pnpm dev:fake`, the actual session page
+  replayed a scratch transcript containing the queued-message fallback:
+  both messages were outside `.stale`, and the earlier explanation was
+  inside it. The screenshot showed that boundary, and there were no browser
+  errors. The browser was closed before stopping the server.
+- **Limits.** No model call or real Claude idle-close/resume run. The browser
+  check used a stored transcript; the live delayed-resume sequence is
+  covered by the fake-backend regression.

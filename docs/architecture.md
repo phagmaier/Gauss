@@ -150,6 +150,10 @@ derived status.
   the session, without starting it (`hasSession`), so whether it can be
   resumed is known at once and a unit opened only to look at it holds no
   process; the first turn then resumes it (task 2.15).
+  Lookup uses the same sanitized environment as the tutor. If Gauss inherits
+  `CLAUDE_CONFIG_DIR`, lookup runs in a short Node subprocess without that
+  override, since the SDK has no explicit local-storage-root option. It
+  starts neither Claude Code nor a model request (task 2.15a).
   The Claude backend sends the system prompt afresh with every request
   (`snapshot: false`), so a resumed session gets the current prompt, a
   revised `prompts/tutor.md` included; without that, a resumed session
@@ -188,8 +192,10 @@ derived status.
   second. A session that fails to start or to resume fails its turn, and the
   next turn tries again. One the backend cannot find when a turn resumes it
   gives way to a new one, as at the opening, but the marker then comes
-  after the learner's message, which the new session receives with the
-  note; the page puts that message in the new conversation.
+  after the learner's message and explicitly identifies it (`PageEvent` in
+  `src/shared/events.ts`). The page puts that message and any queued later
+  messages in the new conversation. Fallbacks on non-message turns move no
+  learner message; old transcripts without identities still load.
 - `state.json` is written after every phase change and every answer, so closing
   the tab loses nothing.
 - The intake chat (task 1.4, `src/server/engine/intake.ts`) is the one chat
@@ -210,9 +216,10 @@ derived status.
   proposed. A draft whose intake was lost in a restart is reviewed in a new
   intake that starts from the stored draft as proposal 1, its earlier
   conversation gone; the tutor gets the draft, with its style note, in the
-  first turn (task 1.6). A draft proposed before task 2.10 has no note; a
-  course approved without one is taught in the default style of
-  `prompts/tutor.md`.
+  first delivered turn (task 1.6). A failed startup or a Stop before sending
+  leaves that context for the next attempt (task 2.15a). A draft proposed
+  before task 2.10 has no note; a course approved without one is taught in
+  the default style of `prompts/tutor.md`.
 - The unit chat (task 2.6, `src/server/engine/unit-chat.ts`) is one per
   unit, kept in memory until the server stops. Opening a unit not in
   progress plans it if it has no plan, writes its position (segment 1,

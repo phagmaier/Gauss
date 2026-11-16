@@ -46,8 +46,8 @@ test("the session starts with the first turn and serves every turn after it", as
 
   tutor.send("first");
   tutor.send("second");
-  expect(tutor.started()).toBe(true);
   await tutor.settled();
+  expect(tutor.started()).toBe(true);
 
   expect(backend.sessions).toHaveLength(1);
   expect(backend.sessions[0]?.systemPrompt).toBe("You are a test tutor.");

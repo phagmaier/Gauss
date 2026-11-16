@@ -178,7 +178,7 @@ test("an intake's event stream says hello, replays its log with ids, then sends 
   expect(response.headers.get("Content-Type")).toContain("text/event-stream");
   const stream = await readFrames(response, 5);
 
-  expect(stream.first).toEqual([
+  expect(stream.first).toMatchObject([
     { event: "hello", data: { chatId: intakeId } },
     { id: `${intakeId}.0`, data: { type: "learner", text: ASK } },
     { id: `${intakeId}.1`, data: { type: "turn_start" } },
@@ -192,7 +192,7 @@ test("an intake's event stream says hello, replays its log with ids, then sends 
   await post(setup.app, `/api/intakes/${intakeId}/messages`, {
     text: "Matrices.",
   });
-  expect(await stream.more(4)).toEqual([
+  expect(await stream.more(4)).toMatchObject([
     { id: `${intakeId}.4`, data: { type: "learner", text: "Matrices." } },
     { id: `${intakeId}.5`, data: { type: "turn_start" } },
     {

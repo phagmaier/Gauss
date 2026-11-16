@@ -44,9 +44,15 @@ export const PageEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("fresh_start"),
     reason: z.enum(["learner", "not-resumed"]),
+    /** The learner message delivered by this turn; absent for non-message turns and old transcripts. */
+    learnerId: z.string().optional(),
   }),
-  /** The learner's own message, echoed so a replay shows it. */
-  z.object({ type: z.literal("learner"), text: z.string() }),
+  /** The learner's own message, echoed so a replay shows it. Old transcripts have no id. */
+  z.object({
+    type: z.literal("learner"),
+    text: z.string(),
+    id: z.string().optional(),
+  }),
   /** The tutor has been sent a turn and is writing. */
   z.object({ type: z.literal("turn_start") }),
   /** A piece of the tutor's reply. */

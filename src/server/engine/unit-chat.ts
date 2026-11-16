@@ -287,7 +287,7 @@ function createUnitChat(
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
         keep: (id) => exclusive(() => record.keepSession(id)),
         // Only a turn calls it, once `r` is set.
-        lost: () => fallBack(r),
+        lost: (learnerId) => fallBack(r, learnerId),
         grader: options.grader,
         log,
         exclusive,
@@ -357,9 +357,13 @@ function createUnitChat(
    * The tutor's conversation could not be resumed: a new session takes over,
    * told in its first header that it is new, and the thread says so.
    */
-  function fallBack(r: Running): void {
+  function fallBack(r: Running, learnerId?: string): void {
     if (!r.notes.includes(JOINED_NOTE)) r.notes.push(JOINED_NOTE);
-    log.emit({ type: "fresh_start", reason: "not-resumed" });
+    log.emit({
+      type: "fresh_start",
+      reason: "not-resumed",
+      ...(learnerId === undefined ? {} : { learnerId }),
+    });
   }
 
   /**
@@ -642,8 +646,10 @@ function createUnitChat(
     say(text) {
       const r = running;
       if (r === undefined) return notOpen();
-      log.emit({ type: "learner", text });
+      const id = randomUUID();
+      log.emit({ type: "learner", id, text });
       r.agents.send({
+        learnerId: id,
         // Help is what the tutor received while a question was open
         // (docs/decisions.md, "Objective status"), so it is noted when the
         // message is sent to the tutor, not when the learner wrote it. Once

@@ -730,16 +730,16 @@ test("a conversation found lost at a turn begins with the message that turn sent
     { type: "tutor_text", text: "Gears turn gears." },
     { type: "turn_end", outcome: "done" },
     // The tutor's session was closed while idle, and could not be resumed.
-    { type: "learner", text: "And with pulleys?" },
+    { type: "learner", id: "pulleys", text: "And with pulleys?" },
     { type: "turn_start" },
-    { type: "fresh_start", reason: "not-resumed" },
+    { type: "fresh_start", reason: "not-resumed", learnerId: "pulleys" },
     { type: "tutor_text", text: "Pulleys, from the start." },
     { type: "turn_end", outcome: "done" },
     // The same an hour later, when the message begins a sitting.
     began(TUESDAY),
-    { type: "learner", text: "And with levers?" },
+    { type: "learner", id: "levers", text: "And with levers?" },
     { type: "turn_start" },
-    { type: "fresh_start", reason: "not-resumed" },
+    { type: "fresh_start", reason: "not-resumed", learnerId: "levers" },
   ]);
 
   expect(
@@ -759,4 +759,77 @@ test("a conversation found lost at a turn begins with the message that turn sent
   expect(
     conversations(own.items).map((part) => part.items.map((i) => i.kind)),
   ).toEqual([["phase", "learner"], ["fresh"]]);
+});
+
+test("a lost turn moves its explicitly matched learner and every queued item after it, including the session marker before it", () => {
+  const state = play([
+    began(MONDAY),
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "tutor_text", text: "Earlier conversation." },
+    began(TUESDAY),
+    { type: "learner", id: "first", text: "First queued message." },
+    { type: "learner", id: "second", text: "Second queued message." },
+    { type: "turn_end", outcome: "interrupted" },
+    { type: "turn_start" },
+    { type: "fresh_start", reason: "not-resumed", learnerId: "first" },
+    { type: "tutor_text", text: "Reply in the new conversation." },
+  ]);
+
+  expect(conversations(state.items)).toEqual([
+    {
+      key: 1,
+      items: [
+        { kind: "phase", key: 1, segment: 0, phase: "discuss" },
+        { kind: "tutor", key: 2, text: "Earlier conversation." },
+      ],
+    },
+    {
+      key: 8,
+      items: [
+        { kind: "session", key: 3, startedAt: TUESDAY, cutOff: false },
+        { kind: "learner", key: 4, id: "first", text: "First queued message." },
+        {
+          kind: "learner",
+          key: 5,
+          id: "second",
+          text: "Second queued message.",
+        },
+        { kind: "note", key: 6, text: "Stopped." },
+        { kind: "fresh", key: 8, reason: "not-resumed", learnerId: "first" },
+        { kind: "tutor", key: 9, text: "Reply in the new conversation." },
+      ],
+    },
+  ]);
+});
+
+test("fallbacks without a matching learner id never guess which learner message to move", () => {
+  for (const learnerId of [undefined, "missing"]) {
+    const state = play([
+      { type: "phase", segment: 0, phase: "discuss" },
+      { type: "learner", id: "earlier", text: "Already sent." },
+      { type: "fresh_start", reason: "not-resumed", learnerId },
+    ]);
+    expect(
+      conversations(state.items).map((part) => part.items.map((i) => i.kind)),
+    ).toEqual([["phase", "learner"], ["fresh"]]);
+  }
+
+  // Transcripts written before learner ids existed are still replayable.
+  const legacy = play([
+    { type: "learner", text: "An old message." },
+    { type: "fresh_start", reason: "not-resumed" },
+  ]);
+  expect(
+    conversations(legacy.items).map((part) => part.items.map((i) => i.kind)),
+  ).toEqual([["learner"], ["fresh"]]);
+});
+
+test("the first learner message can move without leaving an empty earlier conversation", () => {
+  const state = play([
+    { type: "learner", id: "first", text: "Begin here." },
+    { type: "learner", id: "second", text: "And here." },
+    { type: "fresh_start", reason: "not-resumed", learnerId: "first" },
+  ]);
+  const parts = conversations(state.items);
+  expect(parts).toEqual([{ key: 2, items: state.items }]);
 });

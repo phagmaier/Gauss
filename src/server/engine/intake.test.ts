@@ -119,7 +119,7 @@ test("a valid proposal creates the course with a draft curriculum, shows it, and
   expect(intake.say(ASK)).toEqual({ ok: true });
   await intake.settled();
 
-  expect(intake.events()).toEqual([
+  expect(intake.events()).toMatchObject([
     { type: "learner", text: ASK },
     { type: "turn_start" },
     { type: "tutor_text", text: "Here is a course built backwards from PCA." },
@@ -413,6 +413,62 @@ describe("a draft reopened for review, its first conversation lost in a restart"
     ]);
   });
 
+  test.each(["failed", "stopped"] as const)(
+    "the first delivered turn includes the draft after a %s startup attempt",
+    async (attempt) => {
+      await storeDraft();
+      const fake = createFakeBackend([
+        [{ call: "propose_curriculum", input: REVISED }],
+      ]);
+      const starting = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let first = true;
+      const intake = createIntake({
+        backend: {
+          ...fake,
+          async startSession(options) {
+            if (first) {
+              first = false;
+              starting.resolve();
+              await release.promise;
+              if (attempt === "failed")
+                throw new Error("Temporary startup failure.");
+            }
+            return fake.startSession(options);
+          },
+        },
+        dataRoot: openDataRoot({ path: dir }),
+        systemPrompt: "You are a test planner.",
+        draft: DRAFT,
+      });
+      try {
+        intake.say("Can the start be shorter?");
+        await starting.promise;
+        if (attempt === "stopped") await intake.interrupt();
+        release.resolve();
+        await intake.settled();
+        expect(fake.received).toEqual([]);
+
+        intake.say("Please shorten the start.");
+        await intake.settled();
+
+        expect(fake.received.map((turn) => turn.text)).toEqual([
+          expect.stringContaining(JSON.stringify(FIRST)),
+        ]);
+        expect(fake.received[0]?.text).toMatch(
+          /\]\nPlease shorten the start\.$/,
+        );
+        expect(proposals(intake).at(-1)).toMatchObject({
+          revision: 2,
+          units: REVISED.units,
+        });
+      } finally {
+        release.resolve();
+        await intake.close();
+      }
+    },
+  );
+
   test("can be approved without a word to the tutor", async () => {
     await storeDraft();
     const { backend, intakes } = reopen([]);
@@ -519,7 +575,7 @@ describe("an intake left idle (task 2.15)", () => {
     intake.say("Is the start too long?");
     await intake.settled();
 
-    expect(intake.events().slice(-5)).toEqual([
+    expect(intake.events().slice(-5)).toMatchObject([
       { type: "learner", text: "Is the start too long?" },
       { type: "turn_start" },
       { type: "fresh_start", reason: "not-resumed" },

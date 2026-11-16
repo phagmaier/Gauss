@@ -16,6 +16,7 @@ import type { Plan } from "../../shared/plan.ts";
 import type { ChoiceLetter, Confidence } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
+import { conversations, emptyTimeline, reduce } from "../../web/timeline.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import {
   createFakeBackend,
@@ -429,7 +430,7 @@ test("stopping the teaching turn opens the discussion, and a message sent during
   await chat.interrupt();
   await chat.settled();
 
-  expect(chat.events()).toEqual([
+  expect(chat.events()).toMatchObject([
     SESSION,
     { type: "unit_plan", plan: PLAN },
     status("in-progress"),
@@ -2338,10 +2339,9 @@ test("a unit reopened after a restart shows the thread of its earlier session fr
   const chat = await open(after);
 
   expect(asShown(earlier(chat))).toEqual(asShown(shown));
-  expect(earlier(chat)).toContainEqual({
-    type: "learner",
-    text: "Why divide by h?",
-  });
+  expect(earlier(chat)).toContainEqual(
+    expect.objectContaining({ type: "learner", text: "Why divide by h?" }),
+  );
   expect(since(chat, "session")).toEqual([
     SESSION,
     { type: "unit_plan", plan: PLAN },
@@ -2437,7 +2437,7 @@ test("two sessions of a unit are shown in order, each from its own transcript, b
         .events()
         .filter((e) => ["session", "learner", "tutor_text"].includes(e.type)),
     ),
-  ).toEqual([
+  ).toMatchObject([
     { type: "session", startedAt: at(5) },
     { type: "tutor_text", text: "A secant joins two points." },
     { type: "session", startedAt: at(6) },
@@ -2486,7 +2486,7 @@ test("something that happens after the unit has been quiet for an hour starts a 
     SESSION,
     { type: "session", startedAt: back },
   ]);
-  expect(since(chat, "session")).toEqual([
+  expect(since(chat, "session")).toMatchObject([
     { type: "session", startedAt: back },
     { type: "learner", text: "I am back." },
     { type: "turn_start" },
@@ -2573,7 +2573,7 @@ test("a reply the machine slept through stays in its session, and the next thing
   stop();
 
   expect(chat.events().filter((e) => e.type === "session")).toEqual([SESSION]);
-  expect(since(chat, "learner")).toEqual([
+  expect(since(chat, "learner")).toMatchObject([
     { type: "learner", text: "Why divide by h?" },
     { type: "turn_start" },
     { type: "tutor_text", text: "Because " },
@@ -2584,7 +2584,7 @@ test("a reply the machine slept through stays in its session, and the next thing
   expect(chat.say("I am back.")).toEqual({ ok: true });
   await chat.settled();
 
-  expect(since(chat, "session")).toEqual([
+  expect(since(chat, "session")).toMatchObject([
     { type: "session", startedAt: new Date(time).toISOString() },
     { type: "learner", text: "I am back." },
     { type: "turn_start" },
@@ -2700,7 +2700,7 @@ test("the tutor's session runs in the course's folder and its id is kept in the 
   expect(after.backend.received.map((t) => t.text)).toEqual([
     expect.not.stringContaining(JOINED_NOTE),
   ]);
-  expect(since(chat, "learner")).toEqual([
+  expect(since(chat, "learner")).toMatchObject([
     { type: "learner", text: "Remind me?" },
     { type: "turn_start" },
     { type: "tutor_text", text: "As I said, the limit of the quotients." },
@@ -2783,7 +2783,7 @@ test("resuming that fails another way is not taken for a lost session: the unit 
   chat.say("Hello?");
   await chat.settled();
 
-  expect(since(chat, "learner")).toEqual([
+  expect(since(chat, "learner")).toMatchObject([
     { type: "learner", text: "Hello?" },
     { type: "turn_start" },
     {
@@ -2970,7 +2970,7 @@ test("a unit's tutor session is closed once it has been idle for IDLE_MS, and th
     expect.objectContaining({ cwd: FOLDER(), resumeId: id }),
   ]);
   expect(setup.backend.received.at(-1)?.text).not.toContain(JOINED_NOTE);
-  expect(since(chat, "learner")).toEqual([
+  expect(since(chat, "learner")).toMatchObject([
     { type: "learner", text: "What is a difference quotient?" },
     { type: "turn_start" },
     { type: "tutor_text", text: "A quotient of differences." },
@@ -3021,7 +3021,7 @@ test("a session found lost when the next message resumes it, after an idle close
   chat.say("Where were we?");
   await chat.settled();
 
-  expect(since(chat, "learner")).toEqual([
+  expect(since(chat, "learner")).toMatchObject([
     { type: "learner", text: "Where were we?" },
     { type: "turn_start" },
     { type: "fresh_start", reason: "not-resumed" },
@@ -3039,4 +3039,75 @@ test("a session found lost when the next message resumes it, after an idle close
   const made = setup.backend.ids.at(-1);
   expect(made).not.toBe(lost);
   expect(await sessionKept()).toBe(made);
+});
+
+test("a lost resume associates the first queued message with the new conversation, including after transcript replay", async () => {
+  const timer = createFakeTimer();
+  const resuming = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const setup = setUp(
+    [
+      TEACH,
+      [{ text: "Reply A, " }, { text: "continued." }],
+      [{ text: "Reply B." }],
+    ],
+    {
+      timer,
+      wrap: (backend) => ({
+        ...backend,
+        async startSession(options) {
+          if (options.resumeId !== undefined) {
+            resuming.resolve();
+            await release.promise;
+          }
+          return backend.startSession(options);
+        },
+      }),
+    },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  const messages = ["Explain it with gears.", "And with pulleys."] as const;
+  const learnersByConversation = (events: readonly PageEvent[]) => {
+    const timeline = events.reduce(
+      (state, event, index) => reduce(state, { type: "event", event, index }),
+      emptyTimeline,
+    );
+    return conversations(timeline.items).map((part) =>
+      part.items.flatMap((item) =>
+        item.kind === "learner" ? [item.text] : [],
+      ),
+    );
+  };
+  try {
+    timer.advance(IDLE_MS);
+    await closing();
+    keptSessions.clear();
+    chat.say(messages[0]);
+    await resuming.promise;
+    chat.say(messages[1]);
+    release.resolve();
+    await chat.settled();
+
+    expect(
+      setup.backend.received
+        .slice(1)
+        .map((turn) => turn.text.split("\n").at(-1)),
+    ).toEqual(messages);
+    expect(learnersByConversation(chat.events())).toEqual([[], messages]);
+    const shown = asShown(chat.events());
+    await setup.units.close();
+
+    const restarted = setUp([]);
+    try {
+      const reopened = await open(restarted);
+      expect(asShown(earlier(reopened))).toEqual(shown);
+      expect(learnersByConversation(earlier(reopened))).toEqual([[], messages]);
+    } finally {
+      await restarted.units.close();
+    }
+  } finally {
+    release.resolve();
+    await setup.units.close();
+  }
 });

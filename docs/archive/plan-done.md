@@ -835,3 +835,26 @@ tested"). Stage 1 is finished.
   browser run on `pnpm dev:fake` showed a broken resume, Start fresh and a
   resume after a restart. No real-backend run. The choices and checks are
   in `docs/decisions.md` under "Idle sessions".
+
+### 2.15a Idle-session review fixes
+
+- Status: done
+- Depends on: 2.15
+- Do: keep Claude session lookup on the same configuration root as its
+  sanitized subprocesses; preserve a reopened intake's draft when its first
+  startup fails; associate a lost-session fallback with its actual learner
+  message, including queued messages and transcript replay.
+- Done when: focused regressions cover all three failures, `mise run check`
+  passes, and the fallback conversation boundary is checked in the browser
+  on the fake backend.
+- Note: done on 2026-11-16. Lookup preserves the existing sanitized login
+  and storage root; only an inherited configuration override needs a short
+  Node lookup subprocess. Intake initialization waits for delivery, and
+  fallback markers explicitly identify their learner message. Regressions
+  cover SDK lookup on scratch files, failed/stopped intake startup,
+  concurrent messages during resume and transcript replay. `mise run check`
+  passed lint, types, 527 TypeScript tests and one Python test. The session
+  page on `pnpm dev:fake` replayed the queued-message transcript with both
+  messages in the new conversation and only earlier content dimmed.
+  No model calls. Findings and limits: `decisions.md`, "Idle-session
+  review fixes".

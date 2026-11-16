@@ -17,6 +17,7 @@
 // cannot be found then gives way to a new session, which is given the latest
 // proposal, as a reopened draft's is.
 
+import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
 import type { ShownProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
@@ -120,9 +121,13 @@ export function createIntake(options: {
           cwd: await dataRoot.intakeFolder(),
           resumeId: id,
         }),
-      lost() {
+      lost(learnerId) {
         lost = true;
-        log.emit({ type: "fresh_start", reason: "not-resumed" });
+        log.emit({
+          type: "fresh_start",
+          reason: "not-resumed",
+          ...(learnerId === undefined ? {} : { learnerId }),
+        });
       },
       ...(options.timer === undefined ? {} : { timer: options.timer }),
     },
@@ -151,10 +156,11 @@ export function createIntake(options: {
       if (approved) {
         return { ok: false, status: 409, error: INTAKE_OVER };
       }
-      const first = !tutor.started();
       const about = latest;
-      log.emit({ type: "learner", text });
+      const id = randomUUID();
+      log.emit({ type: "learner", id, text });
       tutor.send({
+        learnerId: id,
         // Composed when sent, since a lost session is found then.
         text() {
           if (lost) {
@@ -163,7 +169,7 @@ export function createIntake(options: {
               ? lostTurn(text)
               : reviewTurn(text, shown, latest);
           }
-          if (!first) return messageTurn(text, about);
+          if (tutor.started()) return messageTurn(text, about);
           return draft === undefined
             ? openingTurn(text)
             : reviewTurn(text, draft.proposal, 1);
