@@ -82,3 +82,42 @@ export function postStatus(
 ): Promise<Answer<undefined>> {
   return request(path, undefined, postInit(body));
 }
+
+/**
+ * Gets until the server answers. A server not reached, or one that failed
+ * (5xx), is asked again after a wait that doubles from a second up to 15
+ * seconds, and each failure is reported as it happens. A refusal (4xx) is
+ * final. Undefined once the signal stops it, as when the learner leaves.
+ */
+export async function getJsonUntilAnswered<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  options: { signal: AbortSignal; onFailure(error: string): void },
+): Promise<Answer<T> | undefined> {
+  const { signal } = options;
+  for (let wait = 1000; ; wait = Math.min(wait * 2, 15_000)) {
+    if (signal.aborted) return undefined;
+    const answer = await getJson(path, schema);
+    if (signal.aborted) return undefined;
+    if (answer.ok || (answer.status !== 0 && answer.status < 500)) {
+      return answer;
+    }
+    options.onFailure(answer.error);
+    if (!(await waited(wait, signal))) return undefined;
+  }
+}
+
+/** True once the time has passed; false if the signal stops it first. */
+function waited(ms: number, signal: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    const stop = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", stop);
+      resolve(true);
+    }, ms);
+    signal.addEventListener("abort", stop, { once: true });
+  });
+}

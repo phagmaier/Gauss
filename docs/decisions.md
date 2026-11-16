@@ -40,7 +40,7 @@ findings are the record.
 | Unit chat split | What `unit-record.ts` and `unit-agents.ts` hold, the one queue, what the tests do not cover | Touching the unit chat, and before 2.13 (transcripts), 2.14 (resume) and 2.15 (idle sessions) |
 | Grader prompt | The hand-graded set, the runs and their results, the grader's model and why, what `grader.md` says and why | Changing `grader.md`, the grader's model or `WrittenGrade`, writing rubric guidance in `tutor.md` (2.16), disputes (stage 3) |
 | Style note at intake | The note in the proposal, `style.md` with the draft, courses without one, the card, `planner.md`'s section, approval checked against the card | Touching `propose_curriculum`, `planner.md` or the proposal card, writing `tutor.md`'s default style (2.16), style changes (stage 5) |
-| Session view | The session page: its address, markers, next-step control, written card, keys, top line and outline, closing card, the entry points, a lost chat, the browser run | Touching `src/web/Session.tsx`, `session.ts`, `timeline.ts` or `QuestionCard.tsx`; course progress (2.12), transcripts (2.13), "Start fresh" (2.14), prompts that write objective statements |
+| Session view | The session page: its address, markers, next-step control, written card, keys, top line and outline, closing card, the entry points, a lost chat, the course's details failing to load, the browser run | Touching `src/web/Session.tsx`, `session.ts`, `timeline.ts` or `QuestionCard.tsx`; course progress (2.12), transcripts (2.13), "Start fresh" (2.14), prompts that write objective statements |
 
 ## Page design (plan task 1.0)
 
@@ -2350,6 +2350,28 @@ overturned.
   writing mark, which is what the reset changes. The review found and
   fixed a style that would have greyed the intake card's "Approved",
   refused messages whose reason was not shown, and unused state.
+- **Review fix: the course's details failing to load** (the user's review
+  of `581ee97`, which reproduced it with the fake backend). The view loaded
+  the course once; after a failed load it took the course for empty: a
+  blank path, "Unit 0 of 0" in the outline, and on passing unit 1 "That was
+  the course's last unit" with no "Start unit 2". Now the load is asked
+  again until the server answers (`getJsonUntilAnswered` in `api.ts`): a
+  server not reached or failing (5xx) after a wait that doubles from one
+  second to at most 15, a refusal (4xx) never. Meanwhile the thread says
+  the details could not be loaded and are tried again. Until they load,
+  the unit's place in the course (`placement` in `session.ts`, which
+  replaces `unitAfter`) is unknown, never the course's last unit: the path
+  says "Course", the outline leaves out the unit's line, and the closing
+  card says "Unit finished" and leads back to the course only. New tests:
+  four of the retry, through the real `getJson` with `fetch` stubbed and
+  fake timers, and two of `placement`; each of six faults made one fail,
+  the original bug among them (a course not loaded taken as empty). A
+  browser run with the fake backend, the course route answering 500 at
+  first, showed that state through to a passed unit 1, then, once the
+  route answered (after six refused tries), "Unit 1 of 2" and "Start unit
+  2" on the same page with no reload; the last unit still said it was the
+  last. `mise run check` passed lint, type-checking, 440 TypeScript tests
+  and one Python test.
 - **For later tasks.** 2.12: replace "Open" with Start and Continue, and
   consider its "next unit in order" for the closing card's "Start unit N".
   2.13: the thread after a restart, or after a page reload that a restart

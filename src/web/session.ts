@@ -1,9 +1,10 @@
 // What the session view (docs/prototype/03-phases.html, 04-session-nav.html,
 // 10-unit-end.html) says about where a unit stands, derived from its thread
 // (timeline.ts): the position in the top line and the outline, the one
-// next-step control, the closing card, and the unit after this one.
+// next-step control, the closing card, and the unit's place in its course.
 
 import type { Unit } from "../shared/curriculum.ts";
+import type { StoredCourse } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import type { Position, Timeline, UnitEndItem } from "./timeline.ts";
@@ -237,12 +238,38 @@ export function closingCard(
   };
 }
 
-/** The unit after this one in the course's list, with its number, or null for the last. */
-export function unitAfter(
-  units: readonly Unit[],
+/** Where a unit sits in its course: what the top line, outline and closing card name. */
+export interface Placement {
+  courseTitle: string;
+  title: string;
+  /** Its number in the course's list, from 1. */
+  number: number;
+  /** How many units the course has. */
+  count: number;
+  /** The unit after it in the list, with its number; null for the last. */
+  next: { number: number; unit: Unit } | null;
+}
+
+/**
+ * The unit's place, once its course is loaded. Undefined while it is not,
+ * after a failed load, and for a unit the course does not have: never taken
+ * for the course's last unit.
+ */
+export function placement(
+  stored: StoredCourse | null | undefined,
   unitId: string,
-): { number: number; unit: Unit } | null {
+): Placement | undefined {
+  const units = stored?.curriculum?.units;
+  if (stored == null || units === undefined) return undefined;
   const at = units.findIndex((u) => u.id === unitId);
-  const next = at < 0 ? undefined : units[at + 1];
-  return next === undefined ? null : { number: at + 2, unit: next };
+  const unit = units[at];
+  if (unit === undefined) return undefined;
+  const next = units[at + 1];
+  return {
+    courseTitle: stored.course.title,
+    title: unit.title,
+    number: at + 1,
+    count: units.length,
+    next: next === undefined ? null : { number: at + 2, unit: next },
+  };
 }

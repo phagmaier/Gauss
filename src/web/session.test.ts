@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
+import type { StoredCourse } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import {
@@ -8,7 +9,7 @@ import {
   nextStep,
   outline,
   phaseMarker,
-  unitAfter,
+  placement,
   whereInUnit,
 } from "./session.ts";
 import {
@@ -381,7 +382,7 @@ test("more objectives than there are number words are counted in digits", () => 
   });
 });
 
-// --- The unit after this one ------------------------------------------------
+// --- Where the unit sits in its course ---------------------------------------
 
 const unit = (id: string, title: string): Unit => ({
   id,
@@ -394,16 +395,45 @@ const UNITS = [
   unit("derivatives", "Derivatives"),
   unit("integrals", "Integrals"),
 ];
+const COURSE: StoredCourse = {
+  id: "calculus",
+  course: {
+    title: "Calculus I",
+    backend: "claude",
+    settings: { webSearch: false },
+    createdAt: "2026-11-14T09:00:00.000Z",
+    lastOpenedAt: "2026-11-15T09:00:00.000Z",
+  },
+  curriculum: {
+    approval: { status: "approved", approvedAt: "2026-11-14T10:00:00.000Z" },
+    units: UNITS,
+  },
+};
 
-test("the unit after this one is the next in the list, and the last unit has none", () => {
-  expect(unitAfter(UNITS, "limits")).toEqual({
-    number: 2,
-    unit: UNITS[1],
+test("a unit's place in its course: its number, the course's size, and the unit after it", () => {
+  expect(placement(COURSE, "limits")).toEqual({
+    courseTitle: "Calculus I",
+    title: "Limits",
+    number: 1,
+    count: 3,
+    next: { number: 2, unit: UNITS[1] },
   });
-  expect(unitAfter(UNITS, "derivatives")).toEqual({
+  expect(placement(COURSE, "derivatives")?.next).toEqual({
     number: 3,
     unit: UNITS[2],
   });
-  expect(unitAfter(UNITS, "integrals")).toBeNull();
-  expect(unitAfter(UNITS, "elsewhere")).toBeNull();
+});
+
+test("only a unit of a loaded course is the last: a course not loaded, or a unit not in it, has no place", () => {
+  expect(placement(COURSE, "integrals")).toMatchObject({
+    number: 3,
+    count: 3,
+    next: null,
+  });
+  // Not loaded yet, or its load failed: unknown, never "the last unit".
+  expect(placement(undefined, "limits")).toBeUndefined();
+  // No such course.
+  expect(placement(null, "limits")).toBeUndefined();
+  expect(placement({ ...COURSE, curriculum: null }, "limits")).toBeUndefined();
+  expect(placement(COURSE, "elsewhere")).toBeUndefined();
 });

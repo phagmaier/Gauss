@@ -22,12 +22,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Unit } from "../shared/curriculum.ts";
 import { Hello, PageEvent } from "../shared/events.ts";
 import { StoredCourse } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { AnswerSubmission } from "../shared/question.ts";
-import { getJson, post, postStatus } from "./api.ts";
+import { getJsonUntilAnswered, post, postStatus } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Link, TopLine } from "./Frame.tsx";
 import { InlineProse, Prose } from "./prose.tsx";
@@ -38,8 +37,9 @@ import {
   lastCard,
   nextStep,
   outline,
+  type Placement,
   phaseMarker,
-  unitAfter,
+  placement,
   whereInUnit,
 } from "./session.ts";
 import {
@@ -65,6 +65,11 @@ export function Session(props: { courseId: string; unitId: string }) {
   const [refused, setRefused] = useState<string>();
   /** Why the learner's last step was refused. */
   const [problem, setProblem] = useState<string>();
+  /** Why the course's details are not loaded, and whether they are asked for again. */
+  const [courseProblem, setCourseProblem] = useState<{
+    error: string;
+    retrying: boolean;
+  }>();
   /** Each new value opens the unit again and follows its new chat. */
   const [attempt, setAttempt] = useState(0);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -78,14 +83,22 @@ export function Session(props: { courseId: string; unitId: string }) {
     [courseId, unitId],
   );
 
+  // The course's details name the unit and the one after it. A failure to
+  // load them is asked again until the server answers, so it never leaves
+  // the page thinking the course is empty.
   useEffect(() => {
-    void getJson(`/api/courses/${enc(courseId)}`, StoredCourse).then(
-      (answer) => {
-        if (answer.ok) setStored(answer.data);
-        else if (answer.status === 404) setStored(null);
-        else setProblem(answer.error);
-      },
-    );
+    const stop = new AbortController();
+    void getJsonUntilAnswered(`/api/courses/${enc(courseId)}`, StoredCourse, {
+      signal: stop.signal,
+      onFailure: (error) => setCourseProblem({ error, retrying: true }),
+    }).then((answer) => {
+      if (answer === undefined) return;
+      setCourseProblem(undefined);
+      if (answer.ok) setStored(answer.data);
+      else if (answer.status === 404) setStored(null);
+      else setCourseProblem({ error: answer.error, retrying: false });
+    });
+    return () => stop.abort();
   }, [courseId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new attempt opens the unit again
@@ -152,11 +165,10 @@ export function Session(props: { courseId: string; unitId: string }) {
     setConfirming(undefined);
   }
 
-  const units = stored?.curriculum?.units ?? [];
-  const at = units.findIndex((u) => u.id === unitId);
-  const unit: Unit | undefined = units[at];
-  const next = unitAfter(units, unitId);
-  const courseTitle = stored?.course.title ?? "";
+  // Unknown until the course's details are loaded.
+  const place = placement(stored, unitId);
+  const courseTitle = place?.courseTitle ?? "Course";
+  const next = place?.next ?? null;
   const toNext =
     next === null
       ? undefined
@@ -178,7 +190,7 @@ export function Session(props: { courseId: string; unitId: string }) {
           { label: "Library", to: paths.library },
           { label: courseTitle, to: paths.course(courseId) },
         ]}
-        here={unit?.title ?? ""}
+        here={place?.title ?? ""}
         action={
           where === null ? undefined : (
             <PositionButton
@@ -191,9 +203,7 @@ export function Session(props: { courseId: string; unitId: string }) {
                 <Outline
                   courseId={courseId}
                   courseTitle={courseTitle}
-                  unitNumber={at + 1}
-                  unitCount={units.length}
-                  unitTitle={unit?.title ?? ""}
+                  place={place}
                   segments={outline(plan, timeline.position, timeline.finished)}
                 />
               )}
@@ -217,9 +227,7 @@ export function Session(props: { courseId: string; unitId: string }) {
               item={item}
               first={i === 0}
               plan={plan}
-              unitNumber={at + 1}
-              unitTitle={unit?.title ?? ""}
-              next={next}
+              place={place}
               busy={busy}
               current={item === lastCard(timeline)}
               confirming={confirming === "finish"}
@@ -254,7 +262,7 @@ export function Session(props: { courseId: string; unitId: string }) {
             timeline={timeline}
             busy={busy}
             confirming={confirming === "move-on"}
-            next={next}
+            place={place}
             onConfirm={(asking) =>
               setConfirming(asking ? "move-on" : undefined)
             }
@@ -263,6 +271,12 @@ export function Session(props: { courseId: string; unitId: string }) {
             onNext={toNext}
           />
           {problem === undefined ? null : <p className="ph-note">{problem}</p>}
+          {courseProblem === undefined ? null : (
+            <p className="ph-note">
+              The course's details could not be loaded: {courseProblem.error}
+              {courseProblem.retrying ? " Trying again…" : ""}
+            </p>
+          )}
           {refused !== undefined ? (
             <p className="ph-note">
               {refused} Back to the{" "}
@@ -360,11 +374,11 @@ function PositionButton(props: {
 function Outline(props: {
   courseId: string;
   courseTitle: string;
-  unitNumber: number;
-  unitCount: number;
-  unitTitle: string;
+  /** Unknown until the course's details are loaded. */
+  place: Placement | undefined;
   segments: { title: string; state: string }[];
 }) {
+  const { place } = props;
   return (
     <div className="uo">
       <nav className="crumbs" aria-label="Where this session sits">
@@ -372,12 +386,14 @@ function Outline(props: {
         <span>/</span>
         <Link to={paths.course(props.courseId)}>{props.courseTitle}</Link>
       </nav>
-      <div className="uo-unit">
-        <span>
-          Unit {props.unitNumber} of {props.unitCount}
-        </span>
-        <b>{props.unitTitle}</b>
-      </div>
+      {place === undefined ? null : (
+        <div className="uo-unit">
+          <span>
+            Unit {place.number} of {place.count}
+          </span>
+          <b>{place.title}</b>
+        </div>
+      )}
       <ol className="uo-list">
         {props.segments.map((segment, i) => (
           <li
@@ -396,15 +412,11 @@ function Outline(props: {
   );
 }
 
-type Next = ReturnType<typeof unitAfter>;
-
 function ThreadItem(props: {
   item: Item;
   first: boolean;
   plan: Plan | null;
-  unitNumber: number;
-  unitTitle: string;
-  next: Next;
+  place: Placement | undefined;
   busy: boolean;
   /** The last closing card, the only one whose steps can be taken. */
   current: boolean;
@@ -455,9 +467,7 @@ function ThreadItem(props: {
         <ClosingCard
           card={item}
           plan={props.plan}
-          unitNumber={props.unitNumber}
-          unitTitle={props.unitTitle}
-          next={props.next}
+          place={props.place}
           busy={props.busy}
           current={props.current}
           confirming={props.confirming}
@@ -478,9 +488,8 @@ function ThreadItem(props: {
 function ClosingCard(props: {
   card: UnitEndItem;
   plan: Plan;
-  unitNumber: number;
-  unitTitle: string;
-  next: Next;
+  /** Unknown until the course's details are loaded. */
+  place: Placement | undefined;
   busy: boolean;
   current: boolean;
   confirming: boolean;
@@ -490,11 +499,12 @@ function ClosingCard(props: {
   onCourse(): void;
   onNext: (() => void) | undefined;
 }) {
-  const { card, next } = props;
+  const { card, place } = props;
   const view = closingCard(props.plan, card);
+  const title = place?.title ?? "";
   const head = (
     <div className="q-count">
-      <b>Unit {props.unitNumber} finished</b>
+      <b>{place === undefined ? "Unit" : `Unit ${place.number}`} finished</b>
       <span className={view.verdict.className}>{view.verdict.text}</span>
     </div>
   );
@@ -503,7 +513,7 @@ function ClosingCard(props: {
       <div className="qa-card done ue">
         {head}
         <div className="qa-line">
-          <span>{props.unitTitle}</span>
+          <span>{title}</span>
           <span className="c">{view.summary}</span>
         </div>
       </div>
@@ -513,9 +523,12 @@ function ClosingCard(props: {
   if (card.passed) {
     foot = (
       <div className="qa-foot">
-        {next === null ? (
+        {place === undefined || place.next === null ? (
           <>
-            <span className="qa-aside">That was the course's last unit.</span>
+            {/* Said only once the course is known to have no unit after it. */}
+            <span className="qa-aside">
+              {place === undefined ? "" : "That was the course's last unit."}
+            </span>
             <button type="button" className="btn" onClick={props.onCourse}>
               Back to the course
             </button>
@@ -526,7 +539,7 @@ function ClosingCard(props: {
               Back to the course
             </button>
             <button type="button" className="btn" onClick={props.onNext}>
-              Start unit {next.number}
+              Start unit {place.next.number}
             </button>
           </>
         )}
@@ -580,7 +593,7 @@ function ClosingCard(props: {
   return (
     <div className="qa-card ue">
       {head}
-      <div className="qa-prompt">{props.unitTitle}</div>
+      <div className="qa-prompt">{title}</div>
       <ol className="ue-rows">
         {view.rows.map((row) => (
           <li key={row.id}>
@@ -605,13 +618,15 @@ function NextStepControl(props: {
   timeline: Timeline;
   busy: boolean;
   confirming: boolean;
-  next: Next;
+  /** Unknown until the course's details are loaded. */
+  place: Placement | undefined;
   onConfirm(asking: boolean): void;
   onAct(route: string): void;
   onCourse(): void;
   onNext: (() => void) | undefined;
 }) {
-  const { step, busy, next } = props;
+  const { step, busy } = props;
+  const next = props.place?.next ?? null;
   switch (step) {
     case null:
       return null;
