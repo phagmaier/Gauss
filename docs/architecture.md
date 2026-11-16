@@ -168,6 +168,11 @@ derived status.
   old one: the session's first header says it is new, so the tutor does not
   pretend to remember. A unit reopened in teach, whose teaching a restart
   cut off, is taught again. Opening a unit marks its course opened.
+  The chat holds the phase rules and coordinates two parts (task 2.8b):
+  `unit-record.ts` keeps the unit's position and evidence and writes each
+  change before the page hears of it, and `unit-agents.ts` runs the tutor
+  and the grader. Every change to the unit goes through the chat's one
+  queue, which the agents are given for recording a grade.
 - Every chat is built from the event log and turn queue in
   `src/server/engine/conversation.ts`. A turn's text can be composed when it
   is sent rather than when it is queued, so its header says how things

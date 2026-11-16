@@ -37,6 +37,7 @@ findings are the record.
 | Check rules and unit close | How many questions and the limit, help, the unit's end, going over again, moving on without them, finished units | Touching `engine/check-rules.ts` or the unit's end, the closing card (2.11), course progress (2.12), `tutor.md` (2.16) |
 | Rubric grading | `oneShot` and structured output, the variables that redirect the SDK, written questions, what the grader sees and returns, a failed grading, help once an answer is sent | Touching `backends/` or `engine/grading.ts`, `grader.md` (2.9), the written card (2.11), disputes (stage 3) |
 | Review fixes (2.8a) | One answer per question, moving on with a kept answer, Stop before a turn is sent, whole evidence lines, inherited property names, the fake's stopped one-shot | Recording answers or reopening a unit (2.8b, 2.13, 2.14), turn stop, `json-lines.ts` (2.13's transcripts), the fake backend |
+| Unit chat split | What `unit-record.ts` and `unit-agents.ts` hold, the one queue, what the tests do not cover | Touching the unit chat, and before 2.13 (transcripts), 2.14 (resume) and 2.15 (idle sessions) |
 
 ## Page design (plan task 1.0)
 
@@ -1967,3 +1968,52 @@ overturned.
   the reuse in recording fails only the failed-write test, and removing
   the check on reopening fails only the two restart tests. No real backend
   was run, as no finding needs one.
+
+## Unit chat split (plan task 2.8b)
+
+Done on 2026-11-15, from the review's recommendation: `unit-chat.ts` had
+grown to about 1,060 lines, mixing persistence, cancellation and what the
+page is told, and 2.13 to 2.15 would each add more to it. The split moves
+code without changing behaviour; `unit-chat.test.ts` is unchanged and
+still tests through `createUnitChats`. The choices are the agent's and can
+be overturned.
+
+- **`engine/unit-record.ts`**: the unit's part of the course record, in
+  memory (`openUnitRecord`, `UnitRecord`). It reads the position (own
+  entries only) and the evidence, decides where a unit with no position
+  starts or that it is finished, and keeps "this check". Each change writes
+  first, then keeps it, then tells the page: `move`, `startCheck`,
+  `answer` (one answer per question, evidence before the question closes),
+  `closeAnswered` (the reopening case), `overrideSegment`, and `finish`.
+  It emits the events that announce its own changes (`phase`, `graded`,
+  `overridden`, `unit_status`, `unit_closed`), so the rule that the page
+  hears of a change only once it is written sits in one file.
+- **`engine/unit-agents.ts`**: the tutor's conversation and the grading
+  in flight (`createUnitAgents`, `UnitAgents`): sending turns, Stop,
+  `grade` (the grader runs outside the queue; its grade is recorded
+  inside, and the grading counts as running until then), `settled` across
+  both, and `close`. Resume (2.14) and closing idle sessions (2.15) belong
+  here, since this is where it is known whether a turn is queued or a
+  grading still running.
+- **`unit-chat.ts` stays the coordinator**: the registry, opening, the
+  phase rules and their refusals, the teaching tools, the learner's
+  actions, and what each turn tells the tutor. It owns the one serial
+  queue (`exclusive`). The record's changes run only inside it, and the
+  agents are given it for recording a grade, so there is one order for
+  every change to a unit. Reads of the record are safe outside the queue.
+  Reopening uses one of them to decide at once whether to close the open
+  question or grade its kept answer, as before.
+- **Not split further.** The teaching tools and the learner's actions stay
+  together in the coordinator, because both are the phase rules: moving
+  them apart would make each file need the other's checks. The refusal
+  texts stay beside the rules that give them.
+- **Checks:** `mise run check` passed lint, type-checking, 381 TypeScript
+  tests and one Python test, with no test changed. Faults put into the
+  moved code were caught: telling the page before writing the position
+  fails the override test, and clearing a grading's mark before its grade
+  is recorded fails five written-answer tests. One gap was there before the
+  split and is still there: clearing the mark just after the queue section,
+  rather than inside it, passes every test. The window is a few
+  microtasks, and an action queued in it would be refused as "being
+  graded". It is left untested, as no fixed ordering in a test would show
+  it reliably.

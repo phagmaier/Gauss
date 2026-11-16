@@ -611,3 +611,21 @@ tested"). Stage 1 is finished.
   (plan task 2.8a)"; `architecture.md` section 4 has the rules on one
   answer per question and Stop before a turn is sent. The review's split
   of `unit-chat.ts` is task 2.8b.
+
+### 2.8b Split the unit chat
+
+- Status: done
+- Depends on: 2.8a
+- Do: split `engine/unit-chat.ts` before 2.13 to 2.15 add transcript
+  writes, resume and idle closing to it (the review's recommendation,
+  2026-11-15). Recording an answer and reconciling it with the evidence go
+  in one module, starting, stopping and closing the tutor's and the
+  grader's work in another, and `UnitChat` stays the coordinator. It keeps
+  the one serial queue (`exclusive`), which the extracted modules are
+  given rather than keeping queues of their own. No change in behaviour.
+- Done when: `mise run check` passes with `unit-chat.test.ts` unchanged
+  apart from its imports.
+- Note: done on 2026-11-15. `mise run check` passed (381 TypeScript tests,
+  one Python test) with no test changed. The parts and the one queue are
+  in `docs/decisions.md` under "Unit chat split"; `architecture.md`
+  section 4 names the files.

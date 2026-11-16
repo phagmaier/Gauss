@@ -1,0 +1,351 @@
+// One unit's part of the course record, kept in memory by its unit chat
+// (unit-chat.ts; split out in task 2.8b): the unit's position, as state.json
+// has it, and the evidence on its objectives. Every change is written before
+// it is kept and the page hears of it (architecture.md section 4). An answer
+// is appended to the evidence before its question is closed, and a question
+// has one answer: one the evidence already holds is the one kept (task 2.8a).
+//
+// The chat decides which changes the phase rules allow; this module carries
+// them out. Its changes are not safe to run concurrently: the chat makes them
+// only from inside its queue. Reading is safe at any time.
+
+import type { Slug } from "../../shared/course.ts";
+import type { StoredUnit } from "../../shared/curriculum.ts";
+import type { PageEvent } from "../../shared/events.ts";
+import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
+import type { Plan } from "../../shared/plan.ts";
+import type { AnswerSubmission, Verdict } from "../../shared/question.ts";
+import type { OpenQuestion, UnitPosition } from "../../shared/state.ts";
+import type { ObjectiveStatus } from "../../shared/status.ts";
+import type { DataRoot } from "../record/data-root.ts";
+import { objectiveStatus, unitStatus } from "../record/status.ts";
+import { segmentOf } from "./check-rules.ts";
+
+/** A question closed with its answer, as the tutor is to be told it. */
+export interface Answered {
+  question: OpenQuestion;
+  entry: AnswerEvidence;
+}
+
+export interface UnitRecord {
+  /** Where the unit stands; kept once the unit is finished and out of state.json. */
+  readonly position: UnitPosition;
+  /** The evidence on the unit's objectives, in log order. */
+  readonly evidence: readonly EvidenceEntry[];
+  /** The answers to the segment's objectives in this check, in order. */
+  readonly checkAnswers: readonly AnswerEvidence[];
+  /** Set once the unit is finished and taken out of state.json. */
+  readonly finished: "passed" | "overridden" | undefined;
+  /** The unit had a position in state.json when it was opened: it was under way. */
+  readonly reopened: boolean;
+  /** The unit's status and each objective's, as `unit_status` tells the page. */
+  status(): PageEvent;
+  /** The answer the evidence has to the question, if it has one. */
+  recordedAnswer(questionId: string): AnswerEvidence | undefined;
+  objectiveStatuses(): Record<string, ObjectiveStatus>;
+  /**
+   * Writes the position to state.json, then keeps it and tells the page:
+   * first what `tell` emits, if anything, then the phase if it changed.
+   */
+  move(position: UnitPosition, tell?: () => void): Promise<void>;
+  /** Starts the segment's check: this check is the evidence from here on. */
+  startCheck(): Promise<void>;
+  /**
+   * Records the graded answer to the open question, closes the question,
+   * and tells the page. If the evidence has an answer to it already,
+   * because writing state.json failed after it, that one is kept and this
+   * answer and grade are dropped.
+   */
+  answer(
+    submission: AnswerSubmission,
+    grade: { verdict: Verdict; flaw?: string },
+  ): Promise<Answered>;
+  /**
+   * Closes the open question, and tells the page, if the evidence has its
+   * answer already: a stop came between recording it and closing it.
+   */
+  closeAnswered(): Promise<Answered | undefined>;
+  /**
+   * The learner moves on without the check: records an override of the
+   * segment's objectives and closes the segment, withdrawing any open
+   * question.
+   */
+  overrideSegment(): Promise<{
+    objectives: string[];
+    withdrawn: OpenQuestion | undefined;
+  }>;
+  /**
+   * Ends the unit and takes it out of state.json: passed, or overridden,
+   * after recording an override of the objectives not passed.
+   */
+  finish(status: "passed"): Promise<void>;
+  finish(status: "overridden", objectives: readonly string[]): Promise<void>;
+}
+
+/**
+ * Reads the unit's position and evidence. A unit with no position starts at
+ * segment 1 in teach, which is written at once, unless its objectives make
+ * it passed or overridden: then it is finished, and not started again.
+ */
+export async function openUnitRecord(options: {
+  dataRoot: DataRoot;
+  courseId: Slug;
+  /** The unit with its plan. */
+  unit: StoredUnit;
+  plan: Plan;
+  emit: (event: PageEvent) => void;
+  /** The clock for the evidence's dates. */
+  now: () => Date;
+}): Promise<UnitRecord> {
+  const { dataRoot, courseId, unit, plan, emit, now } = options;
+  const unitId = unit.id;
+  // The unit's own entry only: an id such as "constructor" is also the name
+  // of a property every object inherits.
+  const positions = (await dataRoot.readState(courseId)).units;
+  const stored = Object.hasOwn(positions, unitId)
+    ? positions[unitId]
+    : undefined;
+  if (stored !== undefined) checkPosition(plan, stored);
+  const allEvidence = await dataRoot.readEvidence(courseId);
+  const evidence = concerning(allEvidence, plan);
+  const before = unitStatus(unit, evidence, undefined);
+  let finished: "passed" | "overridden" | undefined =
+    stored === undefined && (before === "passed" || before === "overridden")
+      ? before
+      : undefined;
+  let position: UnitPosition =
+    stored ??
+    (finished === undefined
+      ? { segment: 0, phase: "teach" }
+      : { segment: plan.segments.length - 1, phase: "closed" });
+  if (stored === undefined && finished === undefined) {
+    await dataRoot.writePosition(courseId, unitId, position);
+  }
+  let checkAnswers = answersInCheck(allEvidence, position, plan);
+
+  async function move(next: UnitPosition, tell?: () => void): Promise<void> {
+    await dataRoot.writePosition(courseId, unitId, next);
+    const was = position;
+    position = next;
+    tell?.();
+    if (was.segment !== next.segment || was.phase !== next.phase) {
+      emit(phaseEvent(next));
+    }
+  }
+
+  async function append(entry: EvidenceEntry): Promise<void> {
+    await dataRoot.appendEvidence(courseId, entry);
+    evidence.push(entry);
+  }
+
+  function objectiveStatuses(): Record<string, ObjectiveStatus> {
+    return Object.fromEntries(
+      plan.objectives.map((o) => [o.id, objectiveStatus(evidence, o.id)]),
+    );
+  }
+
+  function status(): PageEvent {
+    return {
+      type: "unit_status",
+      unit: unitStatus(
+        unit,
+        evidence,
+        finished === undefined ? position : undefined,
+      ),
+      objectives: objectiveStatuses(),
+    };
+  }
+
+  function openQuestion(): OpenQuestion {
+    const open = position.openQuestion;
+    if (open === undefined) throw new Error("No question is open.");
+    return open;
+  }
+
+  function recordedAnswer(questionId: string): AnswerEvidence | undefined {
+    return evidence.find(
+      (e): e is AnswerEvidence =>
+        e.kind === "answer" && e.answer.questionId === questionId,
+    );
+  }
+
+  /** Closes the question its recorded answer answers, and tells the page. */
+  async function close(
+    question: OpenQuestion,
+    entry: AnswerEvidence,
+  ): Promise<Answered> {
+    const { openQuestion: _, ...rest } = position;
+    await move(rest);
+    emit({
+      type: "graded",
+      questionId: question.id,
+      verdict: entry.verdict,
+      answer: entry.answer,
+      ...(question.question.kind === "choice"
+        ? { correctChoice: question.question.answer }
+        : {}),
+      ...(entry.flaw === undefined ? {} : { flaw: entry.flaw }),
+      assisted: entry.assisted,
+    });
+    emit(status());
+    return { question, entry };
+  }
+
+  async function finish(
+    how: "passed" | "overridden",
+    objectives: readonly string[] = [],
+  ): Promise<void> {
+    if (how === "overridden") {
+      await append({
+        kind: "override",
+        recordedAt: now().toISOString(),
+        objectives: [...objectives],
+      });
+    }
+    await dataRoot.writePosition(courseId, unitId, null);
+    finished = how;
+    emit(status());
+    emit({ type: "unit_closed", status: how });
+  }
+
+  return {
+    get position() {
+      return position;
+    },
+    evidence,
+    get checkAnswers() {
+      return checkAnswers;
+    },
+    get finished() {
+      return finished;
+    },
+    reopened: stored !== undefined,
+    status,
+    recordedAnswer,
+    objectiveStatuses,
+    move,
+
+    async startCheck() {
+      const checkFrom = (await dataRoot.readEvidence(courseId)).length;
+      await move({ ...position, phase: "check", checkFrom });
+      checkAnswers = [];
+    },
+
+    async answer(submission, grade) {
+      const question = openQuestion();
+      let entry = recordedAnswer(question.id);
+      if (entry === undefined) {
+        const flaw = grade.verdict === "incorrect" ? grade.flaw : undefined;
+        entry = {
+          kind: "answer",
+          recordedAt: now().toISOString(),
+          objective: question.objective,
+          question: question.question,
+          answer: submission,
+          assisted: question.assisted === true,
+          verdict: grade.verdict,
+          ...(flaw === undefined ? {} : { flaw }),
+        };
+        // The evidence first: a stop before the position is written leaves
+        // the question open, and reopening closes it with this entry.
+        await append(entry);
+        checkAnswers.push(entry);
+      }
+      return close(question, entry);
+    },
+
+    async closeAnswered() {
+      const question = position.openQuestion;
+      const entry =
+        question === undefined ? undefined : recordedAnswer(question.id);
+      if (question === undefined || entry === undefined) return undefined;
+      return close(question, entry);
+    },
+
+    async overrideSegment() {
+      const { segment } = position;
+      const objectives = [...segmentOf(plan, position).objectives];
+      await append({
+        kind: "override",
+        recordedAt: now().toISOString(),
+        objectives,
+      });
+      const withdrawn = position.openQuestion;
+      const { checkFrom: _, openQuestion: __, ...rest } = position;
+      await move({ ...rest, phase: "closed" }, () => {
+        emit({
+          type: "overridden",
+          segment,
+          objectives,
+          ...(withdrawn === undefined
+            ? {}
+            : { withdrawnQuestionId: withdrawn.id }),
+        });
+        emit(status());
+      });
+      checkAnswers = [];
+      return { objectives, withdrawn };
+    },
+
+    finish,
+  };
+}
+
+/** A `phase` event: the segment's phase began, or the chat opened in it. */
+export function phaseEvent(position: UnitPosition): PageEvent {
+  return {
+    type: "phase",
+    segment: position.segment,
+    phase: position.phase,
+    ...(position.again === undefined ? {} : { again: position.again }),
+  };
+}
+
+/**
+ * A position read back from state.json fits the unit's plan: a segment of
+ * the plan, or the one after it that goes over objectives of the plan.
+ */
+function checkPosition(plan: Plan, position: UnitPosition): void {
+  const ids = new Set(plan.objectives.map((o) => o.id));
+  const fits =
+    position.again === undefined
+      ? plan.segments[position.segment] !== undefined
+      : position.segment === plan.segments.length &&
+        position.again.every((id) => ids.has(id));
+  if (!fits) {
+    throw new Error(
+      `state.json puts the unit at segment ${position.segment + 1}, which its plan does not have.`,
+    );
+  }
+}
+
+/** The entries about the plan's objectives: answers on them, overrides naming them. */
+function concerning(
+  evidence: readonly EvidenceEntry[],
+  plan: Plan,
+): EvidenceEntry[] {
+  const ids = new Set(plan.objectives.map((o) => o.id));
+  return evidence.filter((e) =>
+    e.kind === "answer"
+      ? ids.has(e.objective)
+      : e.objectives.some((id) => ids.has(id)),
+  );
+}
+
+/** The answers in the position's check to its segment's objectives. */
+function answersInCheck(
+  evidence: readonly EvidenceEntry[],
+  position: UnitPosition,
+  plan: Plan,
+): AnswerEvidence[] {
+  if (position.phase !== "check" || position.checkFrom === undefined) {
+    return [];
+  }
+  const { objectives } = segmentOf(plan, position);
+  return evidence
+    .slice(position.checkFrom)
+    .filter(
+      (e): e is AnswerEvidence =>
+        e.kind === "answer" && objectives.includes(e.objective),
+    );
+}
