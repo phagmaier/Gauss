@@ -712,6 +712,29 @@ details.why summary:hover {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* ---- Starting fresh, piece 11: in the unit's outline ---- */
+.uo-fresh {
+  margin-top: 1.4em;
+  padding-top: 1em;
+  border-top: 1px solid var(--surface0);
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside .prose */
+.uo-fresh p {
+  margin: 0.3em 0 0;
+  color: var(--faint);
+  font-size: 0.92em;
+}
+.uo-fresh .confirm {
+  margin-top: 0.5em;
+}
+/* the conversations before a fresh start stay in the thread, dimmed */
+.stale {
+  opacity: 0.5;
+}
+.stale .qa-card {
+  border-color: var(--surface0);
+}
+
 /* ---- The side pane, piece 5: beside the content, which narrows to make room ---- */
 .sv-head {
   display: flex;

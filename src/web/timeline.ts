@@ -2,7 +2,9 @@
 // a replay after a reload or a reconnect gives the same thread. A unit chat's
 // log starts with the unit's earlier sessions (task 2.13), and its own
 // opening repeats where the unit stands: a phase, an open question or a
-// closing card the thread already shows is not shown twice.
+// closing card the thread already shows is not shown twice. When the tutor's
+// conversation is replaced by a new one (task 2.14), a marker says so, and
+// the thread before it is shown as earlier conversations.
 
 import type { Slug } from "../shared/course.ts";
 import type { Unit } from "../shared/curriculum.ts";
@@ -63,6 +65,11 @@ export type Item =
       /** The session before ended while the tutor was writing: a restart cut it off. */
       cutOff: boolean;
     }
+  /**
+   * The tutor's conversation was replaced by a new one (task 2.14), which
+   * has the learner's progress and not the conversation above.
+   */
+  | { kind: "fresh"; key: number; reason: "learner" | "not-resumed" }
   | {
       kind: "proposal";
       key: number;
@@ -206,6 +213,15 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             : [...state.items, item],
       };
     }
+    case "fresh_start":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          { kind: "fresh", key: index, reason: event.reason },
+        ],
+        tutorOpen: false,
+      };
     case "learner":
       return {
         ...next,
@@ -425,4 +441,31 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       };
     }
   }
+}
+
+/**
+ * The thread in its conversations with the tutor, oldest first: a new one
+ * begins at each fresh start, with its marker, and with the marker of the
+ * session it begins, which comes just before. Each is keyed by the item that
+ * began it, so a fresh start leaves the items before it where they are.
+ */
+export function conversations(
+  items: readonly Item[],
+): { key: number; items: Item[] }[] {
+  const parts: { key: number; items: Item[] }[] = [];
+  for (const item of items) {
+    const last = parts.at(-1);
+    if (last === undefined) {
+      parts.push({ key: item.key, items: [item] });
+    } else if (item.kind === "fresh") {
+      const session =
+        last.items.length > 1 && last.items.at(-1)?.kind === "session"
+          ? last.items.splice(-1)
+          : [];
+      parts.push({ key: item.key, items: [...session, item] });
+    } else {
+      last.items.push(item);
+    }
+  }
+  return parts;
 }

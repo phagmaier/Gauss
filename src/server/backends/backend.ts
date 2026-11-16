@@ -8,6 +8,29 @@ export interface SessionOptions {
   systemPrompt: string;
   /** The teaching tools this session may call. */
   tools: TeachingTool[];
+  /**
+   * The folder the session works in: its course's. A session given one is
+   * kept, so it can be resumed by its id; one without is not kept.
+   */
+  cwd?: string;
+  /**
+   * The id of a kept session to resume, in the folder it ran in. Its
+   * conversation goes on, and the system prompt given here replaces the one
+   * it had. A session the backend cannot find rejects with SessionNotFound.
+   */
+  resumeId?: string;
+}
+
+/**
+ * The session to resume cannot be found: it was never kept, or it has been
+ * deleted, as Claude Code deletes sessions after 30 days (task 0.4). The
+ * engine then starts a new session.
+ */
+export class SessionNotFound extends Error {
+  constructor(id: string) {
+    super(`The tutor's session ${id} cannot be found.`);
+    this.name = "SessionNotFound";
+  }
 }
 
 /** One message from the engine: a header and the learner's text or an event. */
@@ -61,6 +84,10 @@ export type OneShotResult<T> =
   | { ok: false; error: string };
 
 export interface TutorBackend {
+  /**
+   * Starts a session, or resumes one. A resumed session is ready when this
+   * resolves; one that cannot be found rejects with SessionNotFound.
+   */
   startSession(options: SessionOptions): Promise<TutorSession>;
   /** Never throws: a failed request, or a reply not in the schema's shape, is a failure. */
   oneShot<T>(request: OneShotRequest<T>): Promise<OneShotResult<T>>;

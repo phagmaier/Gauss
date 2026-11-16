@@ -5,6 +5,10 @@
 // is appended to the evidence before its question is closed, and a question
 // has one answer: one the evidence already holds is the one kept (task 2.8a).
 //
+// The position also keeps the id of the unit's tutor session, so a unit
+// reopened after a restart resumes it (task 2.14): every position written
+// carries the id kept last, whatever position the chat gives.
+//
 // The chat decides which changes the phase rules allow; this module carries
 // them out. Its changes are not safe to run concurrently: the chat makes them
 // only from inside its queue. Reading is safe at any time.
@@ -28,7 +32,10 @@ export interface Answered {
 }
 
 export interface UnitRecord {
-  /** Where the unit stands; kept once the unit is finished and out of state.json. */
+  /**
+   * Where the unit stands, with its tutor session's id once one is kept;
+   * kept once the unit is finished and out of state.json.
+   */
   readonly position: UnitPosition;
   /** The evidence on the unit's objectives, in log order. */
   readonly evidence: readonly EvidenceEntry[];
@@ -44,10 +51,17 @@ export interface UnitRecord {
   recordedAnswer(questionId: string): AnswerEvidence | undefined;
   objectiveStatuses(): Record<string, ObjectiveStatus>;
   /**
-   * Writes the position to state.json, then keeps it and tells the page:
-   * first what `tell` emits, if anything, then the phase if it changed.
+   * Writes the position to state.json, with the tutor session's id kept, then
+   * keeps it and tells the page: first what `tell` emits, if anything, then
+   * the phase if it changed.
    */
   move(position: UnitPosition, tell?: () => void): Promise<void>;
+  /**
+   * Writes the id of the unit's tutor session into its position, or takes
+   * it out, so the next start of the unit makes a new session. Nothing is
+   * written once the unit is finished: it has no position.
+   */
+  keepSession(id: string | undefined): Promise<void>;
   /** Starts the segment's check: this check is the evidence from here on. */
   startCheck(): Promise<void>;
   /**
@@ -122,8 +136,12 @@ export async function openUnitRecord(options: {
     await dataRoot.writePosition(courseId, unitId, position);
   }
   let checkAnswers = answersInCheck(allEvidence, position, plan);
+  let sessionId = position.tutorSessionId;
 
-  async function move(next: UnitPosition, tell?: () => void): Promise<void> {
+  async function move(given: UnitPosition, tell?: () => void): Promise<void> {
+    const { tutorSessionId: _, ...rest } = given;
+    const next: UnitPosition =
+      sessionId === undefined ? rest : { ...rest, tutorSessionId: sessionId };
     await dataRoot.writePosition(courseId, unitId, next);
     const was = position;
     position = next;
@@ -214,6 +232,18 @@ export async function openUnitRecord(options: {
     recordedAnswer,
     objectiveStatuses,
     move,
+
+    async keepSession(id) {
+      if (finished !== undefined || id === sessionId) return;
+      const was = sessionId;
+      sessionId = id;
+      try {
+        await move(position);
+      } catch (error) {
+        sessionId = was;
+        throw error;
+      }
+    },
 
     async startCheck() {
       const checkFrom = (await dataRoot.readEvidence(courseId)).length;

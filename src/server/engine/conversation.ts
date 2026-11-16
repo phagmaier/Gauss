@@ -5,8 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { PageEvent } from "../../shared/events.ts";
-import type { TutorBackend, TutorSession } from "../backends/backend.ts";
-import type { TeachingTool } from "../tools/tool.ts";
+import type { TutorSession } from "../backends/backend.ts";
 
 /** What a chat says to something the learner did: done, or why not. */
 export type ChatResult =
@@ -69,7 +68,7 @@ export interface Turn {
 }
 
 export interface Conversation {
-  /** Whether the first turn has been sent, which starts the tutor session. */
+  /** Whether the tutor's session has started: at the first turn, unless it was given. */
   started(): boolean;
   /** Queues a turn for the tutor. The first one starts the session. */
   send(turn: string | Turn): void;
@@ -91,13 +90,17 @@ interface RunningTurn {
 }
 
 export function createConversation(options: {
-  backend: TutorBackend;
-  systemPrompt: string;
-  tools: TeachingTool[];
+  /** Starts the tutor's session, when the first turn is sent. */
+  start: () => Promise<TutorSession>;
+  /** A session already running, such as one resumed (task 2.14), in place of starting one. */
+  session?: TutorSession;
   log: EventLog;
 }): Conversation {
   const { log } = options;
-  let session: Promise<TutorSession> | undefined;
+  let session: Promise<TutorSession> | undefined =
+    options.session === undefined
+      ? undefined
+      : Promise.resolve(options.session);
   let running: RunningTurn | undefined;
   let turnsWaiting = 0;
   let queue: Promise<void> = Promise.resolve();
@@ -170,10 +173,7 @@ export function createConversation(options: {
     started: () => session !== undefined,
     send(turn) {
       if (session === undefined) {
-        session = options.backend.startSession({
-          systemPrompt: options.systemPrompt,
-          tools: options.tools,
-        });
+        session = options.start();
         // A failed start is reported by the first turn.
         session.catch(() => {});
       }

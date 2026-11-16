@@ -54,6 +54,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.12 | Course and library progress | The routes send each unit's status and segment (`record/progress.ts`); `course.json` keeps when each unit was last opened (`unitsOpenedAt`). The page's rules are in `src/web/progress.ts`: the card leads to the unit in progress most recently opened, else the next in order; the closing card's "Start unit N" is the next in order too. A library row of a course with a unit in progress opens that unit's session. Finished units keep "Open" until notes (stage 5). Review fix: a course whose `state.json` or evidence cannot be read is still listed, with the reason in `problem` and no progress; its own route answers 500. |
 | 2.12b | Dev server on the fake backend | `pnpm dev:fake` (port 4330): the server of `serve.ts` on the scripted backend (`backends/scripted.ts`), which follows the turn headers, on a scratch data root seeded with courses in each state (`record/dev-seed.ts`); a data root with courses is kept across restarts. Use it for browser checks, and close the browser before stopping it (`AGENTS.md`). A reworded header or a new one-shot request needs `scripted.ts` updated; its tests say so. |
 | 2.13 | Transcripts | A session is one sitting: it starts when a unit's chat opens (once per server run) and when something happens after an hour quiet (`SESSION_GAP_MS` in `engine/transcript.ts`). Each session's page events go to `sessions/<unit id>.<n>.jsonl`, starting with a `session` event; a unit chat's log starts with its earlier sessions, and the page marks each later one ("New session", its date) and does not repeat the phase, question or closing card a reopened chat repeats. Transcripts are not flushed to disk, and a line that cannot be read is left out. For 2.14: the tutor is still new after a restart and the thread does not say so; the "Fresh start" marker goes after the session's. Review fix: `Prose` is memoized, since the thread now holds every session and was drawn whole on every event; earlier sessions are replayed with each reply's text joined; no session starts inside a tutor's turn; a question whose `graded` line was lost shows the evidence's grade when the unit opens. Left open: a unit with long earlier sessions still takes seconds to draw once when it opens. |
+| 2.14 | Resume and start fresh | The tutor's session id is in the unit's position (`keepSession` in `unit-record.ts`); a session given a `cwd` is kept, and `startSession` with `resumeId` rejects with `SessionNotFound` when it cannot be found, the only failure that starts fresh. A reopened unit resumes its tutor as it opens, so each unit in progress holds a Claude Code process until the server stops: 2.15 closes idle ones (`UnitAgents.resume` and `startFresh` in `unit-agents.ts`). Kept sessions are rebuilt with the current system prompt (`snapshot: false`), so a revised `tutor.md` (2.16) reaches units under way. Start fresh sends the tutor one turn (`freshTurn`); the fallback sends nothing until the learner acts. The slow reply after a stop was not exercised (no Stop in the real run). |
 
 ## Stage 2: session engine
 
@@ -66,24 +67,6 @@ questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
-
-### 2.14 Resume and start fresh
-
-- Status: todo
-- Depends on: 2.13
-- Do: `resumeId` in the adapter. The Claude backend keeps its sessions
-  (`persistSession`), runs them in the course folder, resumes by id, and
-  reports a session it cannot find as a failure of its own. Reopening a
-  unit after a restart resumes its tutor session; if that fails, the unit
-  starts fresh, seeded from the record (section 4), and the thread says
-  so. "Start fresh" for the learner, where 2.1 put it. Settle section 7's
-  open row on resume: try `snapshot: false`, and check that the 30-day
-  cleanup ends in the fallback.
-- Done when: fake-backend tests cover resuming by the stored id, a session
-  not found that starts fresh with the seed, and the learner's "Start
-  fresh"; one run on Haiku 5.5 stops the server mid-segment, restarts it,
-  and the tutor carries on from where it was.
-- Note: watch for the slow reply after a stop (section 7, open since 0.5).
 
 ### 2.15 Close idle tutor sessions
 

@@ -142,9 +142,15 @@ derived status.
 ### Chats and resume
 
 - A chat is one backend session bound to one unit. Reopening the unit resumes
-  that backend session by its id, with the course folder as working directory.
-  A resumed session keeps the system prompt it started with, so prompt
-  revisions reach new sessions only (task 0.4).
+  that backend session by its id, with the course folder as working directory
+  (task 2.14): the id is kept in the unit's position in `state.json`, written
+  when the session starts and before its first turn, and carried by every
+  position written after. The unit chat resumes it as soon as the unit opens,
+  before anything is sent, so whether it could be resumed is known at once.
+  The Claude backend sends the system prompt afresh with every request
+  (`snapshot: false`), so a resumed session gets the current prompt, a
+  revised `prompts/tutor.md` included; without that, a resumed session
+  keeps the prompt it started with (task 0.4).
 - A new unit always starts a new backend session, seeded from the record:
   profile, style note, curriculum summary, the unit's plan, the last handoff
   note, open misconceptions.
@@ -154,10 +160,20 @@ derived status.
   objective planned so far, the `plan_unit` tool, and then it closes. A
   session that ends without a plan is tried once more; then the unit
   reports that it could not be planned.
-- "Start fresh" is always available for the current unit and is the automatic
-  fallback if a backend session cannot be resumed. An unknown session id fails
-  at once with "No conversation found", and Claude Code deletes stored
-  sessions after 30 days by default (task 0.4).
+- "Start fresh" is in the unit's outline while the unit is open and not
+  finished, and is the automatic fallback when a backend session cannot be
+  resumed (task 2.14). Either way the tutor gets a new session, seeded from
+  the record (its system prompt) and told in its first header that it is
+  new, and the thread shows a "Fresh start" marker (`fresh_start`), with the
+  conversation before it dimmed. The learner's takes the old id out of the
+  position, closes the old session, and sends the new one a turn to pick up
+  where the unit stands; it waits, as other steps do, while the tutor
+  writes. The fallback sends nothing until the learner acts. A session the
+  backend cannot find is the only failure that falls back (an unknown id,
+  or one Claude Code's sweep deleted after its 30 days, fails before any
+  model request); resuming that fails another way fails the unit's opening,
+  and opening it again tries again, so a passing fault never costs the
+  conversation.
 - `state.json` is written after every phase change and every answer, so closing
   the tab loses nothing.
 - The intake chat (task 1.4, `src/server/engine/intake.ts`) is the one chat
@@ -181,10 +197,9 @@ derived status.
   unit, kept in memory until the server stops. Opening a unit not in
   progress plans it if it has no plan, writes its position (segment 1,
   teach) and sends the teaching turn. Opening one in progress picks it up
-  where `state.json` has it, in a new tutor session until 2.14 resumes the
-  old one: the session's first header says it is new, so the tutor does not
-  pretend to remember. A unit reopened in teach, whose teaching a restart
-  cut off, is taught again. Opening a unit marks its course opened.
+  where `state.json` has it, resuming its tutor (above). A unit reopened in
+  teach, whose teaching a restart cut off, is taught again. Opening a unit
+  marks its course opened.
   Its thread is rebuilt from its transcripts (below).
   The chat holds the phase rules and coordinates two parts (task 2.8b):
   `unit-record.ts` keeps the unit's position and evidence and writes each
@@ -392,7 +407,7 @@ reference: `src/server/backends/backend.ts` and `src/server/tools/tool.ts`.
 
 ```ts
 interface TutorBackend {
-  startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools; later cwd, resumeId
+  startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools, cwd (kept there), resumeId; SessionNotFound
   oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal; the grader (task 2.8), later notes
 }
 interface TutorSession {
@@ -425,16 +440,22 @@ type ToolResult =
   for as JSON in the schema's shape and checked against the zod schema
   (`checkReply` in `backend.ts`), so a reply not in shape is a failure. It
   never throws.
-- Still to add, in the stage that first needs each: `resumeId` with a
-  distinct "session not found" failure for the "start fresh" fallback
-  (task 0.4, built in 2.14); the course folder as working directory,
-  built-in tools and their confinement (stage 3, when the tutor first
-  writes and runs files).
+- A session given a working directory (`cwd`, the course's folder) is kept
+  and can be resumed by its id (`resumeId`, in the same folder); one
+  without, such as a unit's planning or an intake, is not kept. A resumed
+  session is ready when `startSession` resolves; one the backend cannot
+  find rejects with `SessionNotFound`, its own failure, which the engine
+  answers by starting fresh (task 2.14).
+- Still to add, in the stage that first needs it: built-in tools and their
+  confinement to the course folder (stage 3, when the tutor first writes
+  and runs files).
 
 A scripted fake implementation (`src/server/backends/fake.ts`) backs the
 automated tests. It runs the real teaching tools, so a test sees what the
 tool returned and whether it ended the turn, and gives one-shot requests
-scripted replies, checked as the real backend checks its own.
+scripted replies, checked as the real backend checks its own. It keeps the
+sessions started with a working directory, in a set that backends can
+share, so a test's restart resumes them.
 
 ### Claude (first)
 
@@ -502,7 +523,23 @@ Observed in stage 0 (details in `decisions.md`):
   cases are regression-tested against a simulated SDK boundary, not a live
   backend; see `decisions.md` under "Review fixes".
 - A session resumes by id in a new process (`resume`); see section 4 for what
-  carries over (task 0.4).
+  carries over (task 0.4). With a streamed prompt, an id Claude Code cannot
+  find fails while the process starts, before any input and any model
+  request: `initializationResult()` rejects with "No conversation found with
+  session ID", which the backend reports as `SessionNotFound`; a session it
+  finds resolves it in about half a second (task 2.14). The SDK takes a
+  chosen `sessionId` only for a new session, so a resume passes `resume`
+  alone. Kept sessions are stored under
+  `~/.claude/projects/<course folder, encoded>/<id>.jsonl`, and nothing is
+  written in the course folder while the tutor has no built-in tools.
+  `systemPrompt: { type: "custom", prompt, snapshot: false }` makes a
+  resumed session use the prompt it is resumed with (task 2.14).
+- Claude Code's sweep deletes a kept session once its file is older than
+  `cleanupPeriodDays` (30 by default, from the learner's own settings). A
+  session file backdated 31 days was deleted by a Claude Code process within
+  a quarter of an hour, and resuming it then failed as an unknown id does
+  (task 2.14). Which process sweeps, and when, was not pinned down: neither
+  an SDK session nor a `claude -p` run swept at once.
 - Writes are confined to one directory by two layers: the Bash sandbox
   (bubblewrap on Linux) for shell commands, with unsandboxed retries off and
   Claude Code's temp directory moved inside it (`CLAUDE_CODE_TMPDIR`); and
@@ -539,14 +576,14 @@ Observed in the stage 0 spike (task 0.6; details in `decisions.md`):
 
 Each item names the stage that settles it; details are in `decisions.md`.
 Settled since: the other variables that may redirect the SDK (task 2.8,
-above).
+above), and resume, with `snapshot: false` and the 30-day sweep ending in
+the fallback (task 2.14, above and section 4).
 
 | Open question | Settled in |
 | --- | --- |
 | Which course folders the tutor may write, how the record files are closed to it (an `Edit` deny rule and a sandbox `denyWrite` entry both work), and whether `CLAUDE_CODE_TMPDIR` on the real course path is short enough for the sandbox (task 0.4) | Stage 3, when the tutor first writes and runs files |
 | Reads are not confined: sandboxed commands can read most of the machine (task 0.4) | Stage 4, before the tutor gets web access |
-| Resume: rebuilding the system prompt on every request (`snapshot: false`) is untried, and the 30-day session cleanup is documented but not observed (task 0.4) | Stage 2, task 2.14, which builds resume |
-| A reply after a mid-sentence stop was slow once (10 to 30 seconds), cause unknown (task 0.5) | Stage 2, if it recurs in the real runs of tasks 2.14 and 2.16 |
+| A reply after a mid-sentence stop was slow once (10 to 30 seconds), cause unknown (task 0.5); 2.14's real run used no Stop | Stage 2, if it recurs in the real run of task 2.16 |
 | Codex: streaming through the app server, the thread id arriving with the first turn, and keeping the learner's own Codex setup out (task 0.6) | Stage 6, with the Codex backend |
 
 ## 8. Sources
@@ -643,7 +680,8 @@ stored draft. A unit chat is addressed by its course and unit, under
 picks it up and must come first, then `events`, `messages`, `ready`,
 `answers`, `grade-again` (a written answer whose grading failed, task
 2.8), `override`, `next-segment`, `go-over-again` and `finish` (the
-closing card's two steps), and `interrupt`. A unit not opened
+closing card's two steps), `start-fresh` (task 2.14) and `interrupt`. A
+unit not opened
 since the server started answers 404 on all but `open`. An event stream replays its chat's log with ids
 `<log id>.<index>`, so a page that reconnects gets only what it missed.
 Only Gauss's own page may use the API (`decisions.md`, "Minimal page").
@@ -651,7 +689,9 @@ The page shows a unit's session at `/courses/<id>/units/<unit>` (task
 2.11): it posts `open`, then follows `events`, and when that stream
 answers 404 (the chat was lost) it opens the unit again and follows the
 new chat, whose thread starts with the unit's earlier sessions, each after
-the first under a "New session" marker with its date (task 2.13). A session is reached from the course view's card and units, from a
+the first under a "New session" marker with its date (task 2.13). A "Fresh
+start" marker follows the session's when the tutor's conversation was
+replaced, and the thread before it is dimmed (task 2.14). A session is reached from the course view's card and units, from a
 library row of a course with a unit in progress, from "Start unit 1" after
 approval, and from the closing card's "Start unit N", which is the next
 unit in order once this one is finished.

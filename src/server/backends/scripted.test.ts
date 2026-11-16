@@ -67,91 +67,103 @@ async function approvedCourse(dataRoot: ReturnType<typeof openDataRoot>) {
   await dataRoot.approveCurriculum(id, CURRICULUM);
 }
 
-test("a unit not yet planned runs to its end: planned, each segment taught, checked and closed, a written answer graded", async () => {
-  const { dataRoot, units } = setUp();
-  await approvedCourse(dataRoot);
-  const position = async () => (await dataRoot.readState(COURSE)).units.limits;
-  const openQuestion = async () => {
-    const open = (await position())?.openQuestion;
-    if (open === undefined) throw new Error("No question is open.");
-    return open;
-  };
+/**
+ * The time this test may take. It writes and flushes the record after every
+ * step of a whole unit, and under a full parallel run it took 3.4 to 5 seconds,
+ * past Vitest's 5-second default now and then, before task 2.14 as after.
+ */
+const WHOLE_UNIT_MS = 15_000;
 
-  const opened = await units.open(COURSE, "limits");
-  if (!opened.ok) throw new Error(opened.error);
-  const chat: UnitChat = opened.chat;
-  await chat.settled();
+test(
+  "a unit not yet planned runs to its end: planned, each segment taught, checked and closed, a written answer graded",
+  async () => {
+    const { dataRoot, units } = setUp();
+    await approvedCourse(dataRoot);
+    const position = async () =>
+      (await dataRoot.readState(COURSE)).units.limits;
+    const openQuestion = async () => {
+      const open = (await position())?.openQuestion;
+      if (open === undefined) throw new Error("No question is open.");
+      return open;
+    };
 
-  // Planned, and the first segment taught.
-  const stored = await dataRoot.readCourse(COURSE);
-  const plan = stored?.curriculum?.units[0]?.plan;
-  expect(plan?.segments.length).toBeGreaterThanOrEqual(2);
-  expect(await position()).toMatchObject({ segment: 0, phase: "discuss" });
-  expect(chat.events().some((e) => e.type === "tutor_text")).toBe(true);
-
-  // Each segment: ready, then answers until the tutor closes it. A written
-  // answer saying "wrong" is graded incorrect, so that objective needs a
-  // second question, which must not repeat the first.
-  const prompts: string[] = [];
-  const kinds = new Set<string>();
-  const segments = plan?.segments.length ?? 0;
-  for (let segment = 0; segment < segments; segment += 1) {
-    if (segment > 0) {
-      expect(await chat.nextSegment()).toEqual({ ok: true });
-      await chat.settled();
-    }
-    expect(await chat.ready()).toEqual({ ok: true });
+    const opened = await units.open(COURSE, "limits");
+    if (!opened.ok) throw new Error(opened.error);
+    const chat: UnitChat = opened.chat;
     await chat.settled();
-    let missed = false;
-    for (
-      let at = await position();
-      at !== undefined && at.phase === "check";
-      at = await position()
-    ) {
-      const open = await openQuestion();
-      prompts.push(open.question.prompt);
-      kinds.add(open.question.kind);
-      const answered =
-        open.question.kind === "choice"
-          ? await chat.answer({
-              kind: "choice",
-              questionId: open.id,
-              choice: open.question.answer,
-              confidence: "90",
-            })
-          : await chat.answer({
-              kind: "written",
-              questionId: open.id,
-              text: missed ? "Because it is so." : "This is wrong.",
-              confidence: "90",
-            });
-      expect(answered).toEqual({ ok: true });
-      if (open.question.kind === "written") missed = true;
-      await chat.settled();
-    }
-  }
 
-  // Both kinds of question were asked, and no question twice.
-  expect(kinds).toEqual(new Set(["choice", "written"]));
-  expect(new Set(prompts).size).toBe(prompts.length);
-  // One miss, on the written question; every other answer correct.
-  const verdicts = (await dataRoot.readEvidence(COURSE)).map((e) =>
-    e.kind === "answer" ? e.verdict : e.kind,
-  );
-  expect(verdicts.filter((v) => v === "incorrect")).toHaveLength(1);
-  expect(verdicts.filter((v) => v === "correct")).toHaveLength(
-    verdicts.length - 1,
-  );
-  // Every objective passed, so the unit is finished and out of state.json.
-  expect(await position()).toBeUndefined();
-  const course = await dataRoot.readCourse(COURSE);
-  if (course === undefined) throw new Error("The course is gone.");
-  expect((await withProgress(dataRoot, course)).progress).toEqual({
-    limits: { status: "passed" },
-    derivative: { status: "not-started" },
-  });
-  expect(chat.events().at(-1)).not.toMatchObject({ type: "unit_failed" });
-});
+    // Planned, and the first segment taught.
+    const stored = await dataRoot.readCourse(COURSE);
+    const plan = stored?.curriculum?.units[0]?.plan;
+    expect(plan?.segments.length).toBeGreaterThanOrEqual(2);
+    expect(await position()).toMatchObject({ segment: 0, phase: "discuss" });
+    expect(chat.events().some((e) => e.type === "tutor_text")).toBe(true);
+
+    // Each segment: ready, then answers until the tutor closes it. A written
+    // answer saying "wrong" is graded incorrect, so that objective needs a
+    // second question, which must not repeat the first.
+    const prompts: string[] = [];
+    const kinds = new Set<string>();
+    const segments = plan?.segments.length ?? 0;
+    for (let segment = 0; segment < segments; segment += 1) {
+      if (segment > 0) {
+        expect(await chat.nextSegment()).toEqual({ ok: true });
+        await chat.settled();
+      }
+      expect(await chat.ready()).toEqual({ ok: true });
+      await chat.settled();
+      let missed = false;
+      for (
+        let at = await position();
+        at !== undefined && at.phase === "check";
+        at = await position()
+      ) {
+        const open = await openQuestion();
+        prompts.push(open.question.prompt);
+        kinds.add(open.question.kind);
+        const answered =
+          open.question.kind === "choice"
+            ? await chat.answer({
+                kind: "choice",
+                questionId: open.id,
+                choice: open.question.answer,
+                confidence: "90",
+              })
+            : await chat.answer({
+                kind: "written",
+                questionId: open.id,
+                text: missed ? "Because it is so." : "This is wrong.",
+                confidence: "90",
+              });
+        expect(answered).toEqual({ ok: true });
+        if (open.question.kind === "written") missed = true;
+        await chat.settled();
+      }
+    }
+
+    // Both kinds of question were asked, and no question twice.
+    expect(kinds).toEqual(new Set(["choice", "written"]));
+    expect(new Set(prompts).size).toBe(prompts.length);
+    // One miss, on the written question; every other answer correct.
+    const verdicts = (await dataRoot.readEvidence(COURSE)).map((e) =>
+      e.kind === "answer" ? e.verdict : e.kind,
+    );
+    expect(verdicts.filter((v) => v === "incorrect")).toHaveLength(1);
+    expect(verdicts.filter((v) => v === "correct")).toHaveLength(
+      verdicts.length - 1,
+    );
+    // Every objective passed, so the unit is finished and out of state.json.
+    expect(await position()).toBeUndefined();
+    const course = await dataRoot.readCourse(COURSE);
+    if (course === undefined) throw new Error("The course is gone.");
+    expect((await withProgress(dataRoot, course)).progress).toEqual({
+      limits: { status: "passed" },
+      derivative: { status: "not-started" },
+    });
+    expect(chat.events().at(-1)).not.toMatchObject({ type: "unit_failed" });
+  },
+  WHOLE_UNIT_MS,
+);
 
 test("an intake proposes a curriculum from the learner's first message, revises it when asked, and the revision can be approved", async () => {
   const { dataRoot, intakes } = setUp();
@@ -226,4 +238,42 @@ test("/hold keeps the tutor's turn open until it is stopped, and /fail in a writ
     ok: true,
     verdict: "correct",
   });
+});
+
+test("a unit reopened after a restart resumes its scripted tutor; one whose session is not the script's starts fresh, and so does the learner's Start fresh", async () => {
+  const before = setUp();
+  await approvedCourse(before.dataRoot);
+  const first = await before.units.open(COURSE, "limits");
+  if (!first.ok) throw new Error(first.error);
+  await first.chat.settled();
+  await before.units.close();
+  const fresh = (chat: UnitChat) =>
+    chat.events().filter((e) => e.type === "fresh_start");
+
+  const resumed = await setUp().units.open(COURSE, "limits");
+  if (!resumed.ok) throw new Error(resumed.error);
+  await resumed.chat.settled();
+  expect(fresh(resumed.chat)).toEqual([]);
+
+  const position = (await before.dataRoot.readState(COURSE)).units.limits;
+  if (position === undefined) throw new Error("No position.");
+  await before.dataRoot.writePosition(COURSE, "limits", {
+    ...position,
+    tutorSessionId: "lost",
+  });
+  const after = setUp();
+  const lost = await after.units.open(COURSE, "limits");
+  if (!lost.ok) throw new Error(lost.error);
+  await lost.chat.settled();
+  expect(fresh(lost.chat)).toEqual([
+    { type: "fresh_start", reason: "not-resumed" },
+  ]);
+
+  expect(await lost.chat.startFresh()).toEqual({ ok: true });
+  await lost.chat.settled();
+  expect(lost.chat.events().at(-2)).toEqual({
+    type: "tutor_text",
+    text: '**Scripted fresh start.** Unit 1 of 2, "Limits"; segment 1 of 2, "The idea", on "limits-idea". Phase: discuss.',
+  });
+  await after.units.close();
 });

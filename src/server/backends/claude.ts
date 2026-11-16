@@ -3,12 +3,16 @@
 // session: each engine turn is pushed onto its input stream, and the turn's
 // messages are read until its `result`.
 //
+// A session given a working directory, a unit's tutor, is kept by the SDK
+// and can be resumed by its id (task 2.14); its system prompt is sent afresh
+// with every request, so a resumed session gets the current one.
+//
 // A one-shot request (the grader, task 2.8) is a `query()` of its own, with
 // the SDK's structured output: the model's reply comes back as JSON in the
 // schema's shape.
 //
-// Not yet here (task 1.3): resume, the course folder as working directory,
-// and built-in tools and their confinement.
+// Not yet here: built-in tools and their confinement to the course folder
+// (stage 3).
 
 import { randomUUID } from "node:crypto";
 import {
@@ -28,6 +32,7 @@ import {
   type EngineTurn,
   type OneShotRequest,
   type OneShotResult,
+  SessionNotFound,
   type SessionOptions,
   type TutorBackend,
   type TutorSession,
@@ -180,11 +185,44 @@ export function readOneShot<T>(
   return checkReply(request.schema, result.structured_output);
 }
 
+/**
+ * Where a session runs and whether it is kept (task 2.14). A kept session
+ * runs in its course's folder, where it must be resumed too, since the
+ * folder it resumes in becomes its working directory (task 0.4). Its system
+ * prompt is not recorded with it (`snapshot: false`): it is sent as given
+ * with every request, so a resumed session gets the prompt it is resumed
+ * with, not the one it started with. A session that is not kept runs in the
+ * server's folder, as before.
+ */
+export function sessionPlace(
+  options: Pick<SessionOptions, "systemPrompt" | "cwd" | "resumeId">,
+  sessionId: string,
+): Options {
+  const { systemPrompt, cwd, resumeId } = options;
+  if (cwd === undefined) {
+    if (resumeId !== undefined) {
+      throw new Error("A session is resumed in the folder it was kept in.");
+    }
+    return { systemPrompt, sessionId, persistSession: false };
+  }
+  return {
+    cwd,
+    persistSession: true,
+    systemPrompt: { type: "custom", prompt: systemPrompt, snapshot: false },
+    // The SDK takes a session id of our choosing only for a new session.
+    ...(resumeId === undefined ? { sessionId } : { resume: resumeId }),
+  };
+}
+
+/** The start of the error Claude Code gives for a session id it cannot find (task 0.4). */
+const NOT_FOUND = "No conversation found with session ID";
+
 async function startSession(
   options: SessionOptions,
   backendOptions: ClaudeBackendOptions,
 ): Promise<TutorSession> {
-  const sessionId = randomUUID();
+  const sessionId = options.resumeId ?? randomUUID();
+  const place = sessionPlace(options, sessionId);
   const inbox = createInbox();
   let interruptRequested = false;
 
@@ -234,8 +272,7 @@ async function startSession(
     prompt: inbox.messages,
     options: {
       ...isolated(backendOptions),
-      systemPrompt: options.systemPrompt,
-      sessionId,
+      ...place,
       mcpServers: {
         [SERVER]: createSdkMcpServer({ name: SERVER, tools, alwaysLoad: true }),
       },
@@ -245,10 +282,24 @@ async function startSession(
         PostToolUse: [{ hooks: [endTurn] }],
       },
       includePartialMessages: true,
-      // Resume needs this on (task 0.4); the minimal page does not resume.
-      persistSession: false,
     },
   });
+  if (options.resumeId !== undefined) {
+    // An id Claude Code cannot find fails while it starts, before any input
+    // and any model request; a session it finds is ready once it has started
+    // (task 2.14).
+    try {
+      await session.initializationResult();
+    } catch (error) {
+      inbox.close();
+      session.close();
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes(NOT_FOUND)) {
+        throw new SessionNotFound(options.resumeId);
+      }
+      throw error;
+    }
+  }
   // Read by hand, not with for-await: leaving a for-await loop would close
   // the whole query, and each turn reads only its own share of messages.
   const messages = session[Symbol.asyncIterator]();

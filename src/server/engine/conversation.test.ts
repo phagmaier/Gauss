@@ -14,9 +14,11 @@ function setUp(script: FakeTurn[]) {
 function setUpWith<Backend extends TutorBackend>(backend: Backend) {
   const log = createEventLog();
   const tutor = createConversation({
-    backend,
-    systemPrompt: "You are a test tutor.",
-    tools: [],
+    start: () =>
+      backend.startSession({
+        systemPrompt: "You are a test tutor.",
+        tools: [],
+      }),
     log,
   });
   return { backend, log, tutor };

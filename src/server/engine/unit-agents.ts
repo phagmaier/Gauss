@@ -4,17 +4,25 @@
 // work; a grade is recorded inside it. The queue is the chat's, given here,
 // so there is one order for every change to the unit.
 //
-// Resume (task 2.14) and closing idle sessions (2.15) belong here: this is
-// where it is known whether a turn is queued or a grading still running.
+// The tutor's sessions run in the course's folder and are kept, so a unit
+// reopened after a restart resumes its tutor (task 2.14). A new session's id
+// is handed to the chat to keep before the session's first turn is sent.
+// Closing idle sessions (2.15) belongs here too: this is where it is known
+// whether a turn is queued or a grading still running.
 
 import type {
   Verdict,
   WrittenAnswer,
   WrittenQuestion,
 } from "../../shared/question.ts";
-import type { TutorBackend } from "../backends/backend.ts";
+import {
+  SessionNotFound,
+  type TutorBackend,
+  type TutorSession,
+} from "../backends/backend.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 import {
+  type Conversation,
   createConversation,
   type EventLog,
   type Turn,
@@ -33,7 +41,21 @@ export interface Grading {
 }
 
 export interface UnitAgents {
-  /** Queues a turn for the tutor. The first one starts the session. */
+  /**
+   * Resumes the tutor's kept session with this id, before any turn is sent.
+   * False if the backend cannot find it: the first turn then starts a new
+   * session. Throws if resuming fails another way.
+   */
+  resume(id: string): Promise<boolean>;
+  /**
+   * Ends the tutor's session; the next turn starts a new one. Only while no
+   * turn is queued or running.
+   */
+  startFresh(): void;
+  /**
+   * Queues a turn for the tutor. The first one starts a session, unless one
+   * was resumed. Nothing is sent once the agents are closed.
+   */
   send(turn: Turn): void;
   /** A tutor turn is queued or running. */
   busy(): boolean;
@@ -62,22 +84,72 @@ export function createUnitAgents(options: {
   /** The tutor's whole system prompt. */
   systemPrompt: string;
   tools: TeachingTool[];
+  /** The course's folder, where the tutor's sessions run and are kept. */
+  cwd: string;
+  /**
+   * Keeps the id of a session just started, before its first turn is sent.
+   * A failure is logged, and the session goes on.
+   */
+  keep: (id: string) => Promise<void>;
   grader: Grader;
   log: EventLog;
   /** The chat's queue. */
   exclusive: <T>(work: () => Promise<T>) => Promise<T>;
 }): UnitAgents {
-  const { grader, log, exclusive } = options;
-  const tutor = createConversation({
-    backend: options.backend,
-    systemPrompt: options.systemPrompt,
-    tools: options.tools,
-    log,
-  });
+  const { backend, systemPrompt, tools, cwd, grader, log, exclusive } = options;
+
+  async function startNew(): Promise<TutorSession> {
+    const session = await backend.startSession({ systemPrompt, tools, cwd });
+    try {
+      await options.keep(session.backendSessionId);
+    } catch (error) {
+      // Only a restart needs the id, and it then starts the unit fresh.
+      console.error("The tutor's session id could not be kept:", error);
+    }
+    return session;
+  }
+
+  let tutor: Conversation = createConversation({ start: startNew, log });
+  /** Sessions being closed after a fresh start. */
+  const closing: Promise<void>[] = [];
+  let closed = false;
   let running: { stop: AbortController; done: Promise<void> } | undefined;
 
   return {
-    send: (turn) => tutor.send(turn),
+    async resume(id) {
+      let session: TutorSession;
+      try {
+        session = await backend.startSession({
+          systemPrompt,
+          tools,
+          cwd,
+          resumeId: id,
+        });
+      } catch (error) {
+        if (error instanceof SessionNotFound) return false;
+        throw error;
+      }
+      if (closed) {
+        await session.close();
+        return true;
+      }
+      tutor = createConversation({ start: startNew, session, log });
+      return true;
+    },
+
+    startFresh() {
+      const old = tutor;
+      tutor = createConversation({ start: startNew, log });
+      closing.push(
+        old.close().catch((error: unknown) => {
+          console.error("The tutor's session could not be closed:", error);
+        }),
+      );
+    },
+
+    send(turn) {
+      if (!closed) tutor.send(turn);
+    },
     busy: () => tutor.busy(),
     interrupt: () => tutor.interrupt(),
 
@@ -121,8 +193,9 @@ export function createUnitAgents(options: {
     },
 
     async close() {
+      closed = true;
       running?.stop.abort();
-      await tutor.close();
+      await Promise.all([tutor.close(), ...closing]);
     },
   };
 }

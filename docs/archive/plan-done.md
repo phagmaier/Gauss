@@ -770,3 +770,32 @@ tested"). Stage 1 is finished.
   when". A browser run on `pnpm dev:fake` showed the thread rebuilt after
   a Ctrl-C restart and after a `kill -9` mid-reply. The choices and checks
   are in `docs/decisions.md` under "Transcripts".
+
+### 2.14 Resume and start fresh
+
+- Status: done
+- Depends on: 2.13
+- Do: `resumeId` in the adapter. The Claude backend keeps its sessions
+  (`persistSession`), runs them in the course folder, resumes by id, and
+  reports a session it cannot find as a failure of its own. Reopening a
+  unit after a restart resumes its tutor session; if that fails, the unit
+  starts fresh, seeded from the record (section 4), and the thread says
+  so. "Start fresh" for the learner, where 2.1 put it. Settle section 7's
+  open row on resume: try `snapshot: false`, and check that the 30-day
+  cleanup ends in the fallback.
+- Done when: fake-backend tests cover resuming by the stored id, a session
+  not found that starts fresh with the seed, and the learner's "Start
+  fresh"; one run on Haiku 5.5 stops the server mid-segment, restarts it,
+  and the tutor carries on from where it was.
+- Note: watch for the slow reply after a stop (section 7, open since 0.5).
+- Note: done on 2026-11-16. The tutor's session runs in the course folder,
+  is kept, and its id is in the unit's position; a reopened unit resumes
+  it as it opens, and a session not found starts fresh with a marker.
+  `snapshot: false` gives a resumed session the current system prompt; the
+  30-day sweep ends in the fallback. `mise run check` passed (504
+  TypeScript tests, one Python test), with fake-backend tests of each case
+  in "Done when". A browser run on `pnpm dev:fake` showed Start fresh, a
+  resume and the fallback; a Haiku 5.5 run stopped the server
+  mid-segment, and after the restart the tutor recalled what the learner
+  had told it before. The choices and checks are in `docs/decisions.md`
+  under "Resume and start fresh".

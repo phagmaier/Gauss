@@ -585,8 +585,14 @@ async function settle(setup: ReturnType<typeof setUp>) {
   await setup.units.get(COURSE, "vectors")?.settled();
 }
 
-const unitState = async () =>
-  (await openDataRoot({ path: dir }).readState(COURSE)).units.vectors;
+/** The unit's position on disk, without the tutor's session id (unit-chat.test.ts checks it). */
+async function unitState() {
+  const position = (await openDataRoot({ path: dir }).readState(COURSE)).units
+    .vectors;
+  if (position === undefined) return undefined;
+  const { tutorSessionId: _, ...rest } = position;
+  return rest;
+}
 
 test("opening a unit marks its course opened, and the unit's event stream replays its thread with ids", async () => {
   const setup = setUp([[{ text: "A map is fixed by a basis." }]]);
@@ -774,6 +780,27 @@ test("stopping the tutor through its route ends the teaching turn and opens the 
   expect(await unitState()).toEqual({ segment: 0, phase: "discuss" });
 });
 
+test("starting fresh through its route gives the tutor a new session, which picks up the unit", async () => {
+  const setup = setUp([
+    [{ text: "A map is fixed by a basis." }],
+    [{ text: "We are in the discussion of bases." }],
+  ]);
+  await approvedCourse();
+  await openUnit(setup);
+
+  const response = await post(setup.app, `${UNIT}/start-fresh`);
+  expect(response.status).toBe(202);
+  await settle(setup);
+
+  expect(setup.backend.sessions).toHaveLength(2);
+  expect(setup.units.get(COURSE, "vectors")?.events().slice(-4)).toEqual([
+    { type: "fresh_start", reason: "learner" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "We are in the discussion of bases." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+});
+
 test("a unit that is not there, of a draft, or not open is refused on every unit route", async () => {
   const setup = setUp([]);
   await approvedCourse(true);
@@ -799,10 +826,11 @@ test("a unit that is not there, of a draft, or not open is refused on every unit
     post(setup.app, `${UNIT}/next-segment`),
     post(setup.app, `${UNIT}/go-over-again`),
     post(setup.app, `${UNIT}/finish`),
+    post(setup.app, `${UNIT}/start-fresh`),
     post(setup.app, `${UNIT}/interrupt`),
   ]);
   expect(notOpen.map((r) => r.status)).toEqual([
-    404, 404, 404, 404, 404, 404, 404, 404, 404, 404,
+    404, 404, 404, 404, 404, 404, 404, 404, 404, 404, 404,
   ]);
   expect(await notOpen[0]?.json()).toEqual({
     error: "This unit is not open. Open it first.",

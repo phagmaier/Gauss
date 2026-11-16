@@ -53,6 +53,11 @@ export interface DataRoot {
   /** One course, or undefined when no course has that id. */
   readCourse(id: string): Promise<StoredCourse | undefined>;
   /**
+   * The absolute path of the course's folder, where its tutor sessions run
+   * (task 2.14). Throws for an id that cannot be a course's.
+   */
+  courseFolder(id: string): string;
+  /**
    * Sets the course's lastOpenedAt to the clock's time, and the unit's time
    * in unitsOpenedAt when a unit is named.
    */
@@ -239,6 +244,8 @@ export function openDataRoot(options: {
     },
 
     readCourse,
+
+    courseFolder: (id) => resolve(courseFile(id, ".")),
 
     async markOpened(id, unitId) {
       const unit = unitId === undefined ? undefined : Slug.parse(unitId);

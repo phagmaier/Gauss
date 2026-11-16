@@ -4,7 +4,8 @@
 // phase begun is a marker in the thread, and the one next-step control sits
 // where the thread has reached (03-phases.html). A question is a card in the
 // thread (02-check-question.html), and the unit ends with a closing card
-// (10-unit-end.html).
+// (10-unit-end.html). "Start fresh" is in the outline, and the conversations
+// before a fresh start stay in the thread, dimmed (11-start-fresh.html).
 //
 // Opening the view opens the unit on the server, which starts it or picks it
 // up, then follows its event stream. A unit chat lives in the server's
@@ -43,6 +44,7 @@ import {
   whereInUnit,
 } from "./session.ts";
 import {
+  conversations,
   emptyTimeline,
   type Item,
   reduce,
@@ -186,6 +188,7 @@ export function Session(props: { courseId: string; unitId: string }) {
       : whereInUnit(plan, timeline.position, timeline.finished);
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
+  const parts = conversations(timeline.items);
 
   return (
     <div className="th has-top">
@@ -209,6 +212,17 @@ export function Session(props: { courseId: string; unitId: string }) {
                   courseTitle={courseTitle}
                   place={place}
                   segments={outline(plan, timeline.position, timeline.finished)}
+                  // A unit that is open and not finished has a tutor to replace.
+                  canStartFresh={
+                    timeline.position !== null &&
+                    timeline.finished === null &&
+                    timeline.failed === null
+                  }
+                  busy={busy}
+                  onStartFresh={async () => {
+                    await act("start-fresh");
+                    setOutlineOpen(false);
+                  }}
                 />
               )}
             </PositionButton>
@@ -225,27 +239,39 @@ export function Session(props: { courseId: string; unitId: string }) {
         }}
       >
         <div className="th-col">
-          {timeline.items.map((item, i) => (
-            <ThreadItem
-              key={item.key}
-              item={item}
-              // A session's marker sets it apart as the top of the thread does.
-              first={i === 0 || timeline.items[i - 1]?.kind === "session"}
-              plan={plan}
-              place={place}
-              busy={busy}
-              current={item === lastCard(timeline)}
-              confirming={confirming === "finish"}
-              onConfirm={(asking) =>
-                setConfirming(asking ? "finish" : undefined)
-              }
-              onAnswer={(submission) => post(path("answers"), submission)}
-              onGradeAgain={() => post(path("grade-again"))}
-              onAgain={() => act("go-over-again")}
-              onFinish={() => act("finish")}
-              onCourse={toCourse}
-              onNext={toNext}
-            />
+          {parts.map((part, p) => (
+            // The conversations before the last fresh start are dimmed.
+            <div
+              key={part.key}
+              className={p < parts.length - 1 ? "stale" : undefined}
+            >
+              {part.items.map((item, i) => {
+                const before =
+                  i > 0 ? part.items[i - 1] : parts[p - 1]?.items.at(-1);
+                return (
+                  <ThreadItem
+                    key={item.key}
+                    item={item}
+                    // A session's marker sets it apart as the top of the thread does.
+                    first={before === undefined || before.kind === "session"}
+                    plan={plan}
+                    place={place}
+                    busy={busy}
+                    current={item === lastCard(timeline)}
+                    confirming={confirming === "finish"}
+                    onConfirm={(asking) =>
+                      setConfirming(asking ? "finish" : undefined)
+                    }
+                    onAnswer={(submission) => post(path("answers"), submission)}
+                    onGradeAgain={() => post(path("grade-again"))}
+                    onAgain={() => act("go-over-again")}
+                    onFinish={() => act("finish")}
+                    onCourse={toCourse}
+                    onNext={toNext}
+                  />
+                );
+              })}
+            </div>
           ))}
           {timeline.planning ? (
             <p className="ph-note">
@@ -375,15 +401,23 @@ function PositionButton(props: {
   );
 }
 
-/** The unit's outline (mock 4): the path out, the unit, and its segments. */
+/**
+ * The unit's outline (mock 4): the path out, the unit, and its segments,
+ * then "Start fresh" (mock 11), which asks once.
+ */
 function Outline(props: {
   courseId: string;
   courseTitle: string;
   /** Unknown until the course's details are loaded. */
   place: Placement | undefined;
   segments: { title: string; state: string }[];
+  canStartFresh: boolean;
+  /** The tutor is writing, so starting fresh waits. */
+  busy: boolean;
+  onStartFresh(): Promise<void>;
 }) {
   const { place } = props;
+  const [asking, setAsking] = useState(false);
   return (
     <div className="uo">
       <nav className="crumbs" aria-label="Where this session sits">
@@ -413,6 +447,48 @@ function Outline(props: {
           </li>
         ))}
       </ol>
+      {props.canStartFresh ? (
+        <div className="uo-fresh">
+          {asking ? (
+            <span className="confirm">
+              <span>The tutor will not remember this conversation.</span>
+              <button
+                type="button"
+                className="textbtn"
+                disabled={props.busy}
+                onClick={() => {
+                  setAsking(false);
+                  void props.onStartFresh();
+                }}
+              >
+                Start fresh
+              </button>
+              <button
+                type="button"
+                className="textbtn"
+                onClick={() => setAsking(false)}
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="textbtn"
+                disabled={props.busy}
+                onClick={() => setAsking(true)}
+              >
+                Start fresh
+              </button>
+              <p>
+                A new conversation with the tutor, from your progress. This one
+                stays above.
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -481,6 +557,17 @@ function ThreadItem(props: {
             </span>
           </div>
         </>
+      );
+    case "fresh":
+      return (
+        <div className="pf-mark">
+          <span>
+            <b>Fresh start</b>{" "}
+            {item.reason === "learner"
+              ? "The tutor has your progress, not the conversation above."
+              : "The earlier conversation could not be resumed, so the tutor started a new one from your progress."}
+          </span>
+        </div>
       );
     case "unit_end":
       return props.plan === null ? null : (

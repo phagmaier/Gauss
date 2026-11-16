@@ -228,6 +228,12 @@ export function createApp(options: {
     withUnit(async (c, chat) => reply(c, await chat.finishUnit(), 200)),
   );
 
+  // A new conversation with the tutor, which picks up where the unit stands.
+  app.post(
+    `${unitPath}/start-fresh`,
+    withUnit(async (c, chat) => reply(c, await chat.startFresh(), 202)),
+  );
+
   app.post(
     `${unitPath}/interrupt`,
     withUnit(async (c, chat) => {

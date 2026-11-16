@@ -44,6 +44,7 @@ findings are the record.
 | Dev server on the fake backend | The scripted backend and what its tutor does, the seed, the scratch data root and port, `serve.ts`, closing the browser, the browser run | Running a browser check, touching `scripted.ts`, `dev-seed.ts`, `serve.ts` or the turn headers in `unit-turns.ts`, `intake.ts` and `unit-planning.ts`; a new one-shot request (stage 5 notes) |
 | Course and library progress | What the routes send, when units were opened, the card, Start, "Open" on finished units, the library's lines and groups, the closing card's next unit, a course whose progress cannot be read | Touching the course view, the library, `progress.ts` or `unitsOpenedAt`; notes (stage 5), the gate and retained status in the library (stage 5) |
 | Transcripts | What a session is, the transcript files, the thread rebuilt from them, the session marker, batching and joined text, no flushing and lines left out, the browser run | Touching `engine/transcript.ts`, the transcripts in `data-root.ts`, or the thread's sessions in `timeline.ts`; resume and "Start fresh" (2.14), idle sessions (2.15), reading transcripts (2.16), handoff notes and export (stage 5) |
+| Resume and start fresh | What the SDK does on resume (unknown ids, `snapshot: false`, where kept sessions go, the 30-day sweep), the id in the position, resuming as a unit opens, which failures fall back, the learner's Start fresh and its turn, the marker and the dimmed thread, the fake's kept sessions, the real run | Touching `backends/` (sessions, resume), `unit-agents.ts`, the tutor's session id in `unit-record.ts`, the fallback or Start fresh in `unit-chat.ts`, the thread's conversations in `timeline.ts`; idle sessions (2.15), `tutor.md` (2.16), handoff notes (stage 5) |
 
 ## Page design (plan task 1.0)
 
@@ -2763,3 +2764,184 @@ event, and the thread's sessions in `src/web/timeline.ts` and
     new one; a transcript cut before its `graded` line, with the grade
     shown once over two reopenings; and a failure note before the first
     session.
+
+## Resume and start fresh (plan task 2.14)
+
+Built on 2026-11-16: `resumeId`, `cwd` and `SessionNotFound` in the adapter
+(`backends/backend.ts`), kept and resumed sessions in the Claude backend
+(`sessionPlace` in `backends/claude.ts`) and the fake (`kept`), the tutor's
+session id kept in the unit's position (`keepSession` in
+`engine/unit-record.ts`), `resume` and `startFresh` in `engine/unit-agents.ts`,
+the fallback and the learner's step in `engine/unit-chat.ts`, the
+`start-fresh` route, the `fresh_start` page event, and the marker, the
+dimmed thread and "Start fresh" in the outline (`timeline.ts`,
+`Session.tsx`). The choices are the agent's and can be overturned.
+
+### What the SDK does (observed with a throwaway script, SDK 0.3.325, Haiku 5.5)
+
+- **An unknown id fails before any input or model request**, with a
+  streamed prompt too: the first message is a result,
+  `error_during_execution`, "No conversation found with session ID: …",
+  and `initializationResult()` rejects with "Claude Code returned an error
+  result: No conversation found with session ID: …". A session that exists
+  resolves `initializationResult()` in 0.3 to 0.6 seconds and sends nothing
+  until the first input. So the backend waits for `initializationResult()`
+  when it resumes, and `startSession` either gives a ready session or
+  rejects; "No conversation found" in the error is `SessionNotFound`, and
+  anything else is passed on as it is.
+- **`snapshot: false` works.** A session started with a system prompt
+  holding one passphrase, resumed with a prompt holding another: resumed
+  as before, it answered the first (task 0.4's finding); resumed with
+  `systemPrompt: { type: "custom", prompt, snapshot: false }`, it answered
+  the second. Kept sessions use it, so a revised `tutor.md` (2.16), or a
+  changed style note (stage 5), reaches a unit already under way. The SDK
+  recommends recording the prompt, because a prompt that changes mid
+  conversation spoils the prompt cache once; that is the price of a
+  revision, and an unchanged prompt costs nothing.
+- **`sessionId` cannot be given with `resume`** (sdk.d.ts) unless the
+  session is forked, so a resume passes `resume` alone, and the id stays
+  the same.
+- **Where kept sessions go**: `~/.claude/projects/<course folder with every
+  character other than letters and digits made "-">/<id>.jsonl`. Nothing was
+  written in the course folder itself (task 0.4's `.claude/` and `.tmp/`
+  came from the built-in tools and `CLAUDE_CODE_TMPDIR`, which the tutor
+  does not have yet). Claude Code gave the spike's kept session a title of
+  its own ("Passphrase question"), which suggests a small request per new
+  kept session; its cost was not measured.
+- **The 30-day sweep.** The sweep deletes a session file older than
+  `cleanupPeriodDays`, which is the learner's own setting (30 by default;
+  the tutor's process reads no settings). A session file backdated 31 days
+  was not deleted by an SDK session started after it, nor by a `claude -p`
+  run, but was gone about a quarter of an hour later, deleted by some
+  Claude Code process (the session that ran this task is the likely one);
+  a recent file beside it was kept. Resuming it then failed as an unknown
+  id does. So a unit left for longer than the learner's retention starts
+  fresh, and says so. The end state was also produced by hand in the real
+  run below (the session file removed), which fell back as expected.
+
+### Choices
+
+- **The id lives in the unit's position**, as `state.json` already allowed
+  (`tutorSessionId`, task 2.2). The record writes it into every position it
+  writes, whatever position the chat builds, since some steps build a
+  position anew (the next segment, going over again). A unit that is
+  finished has no position and keeps no id. A new session's id is written
+  when the session has started and before its first turn is sent (`keep`,
+  inside the chat's queue); a failure to write it is logged and the turn
+  goes on, since only a restart needs it.
+- **Only sessions given a folder are kept.** The tutor's are; a unit's
+  planning session and an intake are not (2.15 keeps intakes). The folder
+  is the course's (`courseFolder` in the record), which task 0.4 found must
+  be the folder a session is resumed in.
+- **A reopened unit resumes its tutor as it opens**, not at the first turn.
+  So the thread can say at once, after the session's marker, that the
+  conversation could not be resumed, before the learner writes anything
+  the new tutor will see; at the first turn, the marker would land after
+  the learner's message and dim it. The cost is a Claude Code process
+  started for a unit opened only to look at it, which stays until the
+  server stops; 2.15 closes idle sessions. Opening such a unit takes about
+  half a second longer.
+- **Only a session that cannot be found falls back.** Resuming that fails
+  another way (the CLI does not start, say) fails the unit's opening with
+  the error, and opening it again tries again. Falling back on any failure
+  would throw the conversation away for a passing fault, as the new
+  session's id replaces the old one.
+- **The fallback is "Start fresh" without the pick-up turn.** The new
+  session's first header carries the note a reopened unit always had ("This
+  conversation is new: …", `JOINED_NOTE`), and its system prompt is the
+  seed from the record (tutor.md, the course, the plan, the style note;
+  stage 5 adds the profile, the last handoff note and open misconceptions).
+  Nothing is sent until the learner acts, as task 2.6 decided for a
+  reopened unit, so opening a unit costs no reply. A unit in progress from
+  before this task has no id and starts fresh the same way.
+- **The learner's "Start fresh" sends one turn**, as mock 11 shows the
+  tutor picking up: "The learner started a fresh conversation with you,
+  from their progress", the same note, and "Greet them in a sentence or
+  two, say where the unit stands, then go on as this header allows." In a
+  check with nothing open, that can be the next question. It is refused
+  while the tutor writes, like the other steps, and once the unit is
+  finished. It takes the old id out of the position first, so a restart
+  before the new session starts makes a new one rather than resuming the
+  old; then it closes the old session.
+- **The page.** "Start fresh" sits under the outline's segments with mock
+  11's line, asks once ("The tutor will not remember this conversation."),
+  and is disabled while the tutor writes. A `fresh_start` event is a
+  marker line: "Fresh start" and either "The tutor has your progress, not
+  the conversation above." (the learner's) or "The earlier conversation
+  could not be resumed, so the tutor started a new one from your
+  progress." (the fallback). The thread is drawn in conversations
+  (`conversations` in `timeline.ts`), each begun by a fresh start, and every
+  one before the last is dimmed. A conversation is keyed by the item that
+  began it, so a fresh start does not draw the thread before it again; the
+  session marker just before a fresh start is moved into the new
+  conversation, which the browser run showed was needed (dimmed, it read
+  as part of the old one).
+- **The fake backend keeps sessions** started with a folder, in a set that
+  backends can share, so a test's restart resumes; an id not in it is
+  `SessionNotFound`. Session ids are unique across backends. The scripted
+  backend (dev server) counts every id of the fake's making as kept, so a
+  restart of `pnpm dev:fake` resumes, and any other id in `state.json`
+  (put there by hand, with the server stopped) shows the fallback. It
+  answers the learner's fresh-start turn with where the unit stands.
+
+### Checks
+
+- **`mise run check`** passed lint, type-checking, 504 TypeScript tests and
+  one Python test. New: 5 unit chat tests on the fake backend (resuming by
+  the stored id across a restart, in the course folder, the id surviving
+  positions built anew, no note to the resumed tutor; a session not found
+  starting fresh with the seed, the note and the marker, and its new id
+  kept; another failure failing the opening, then resuming when opened
+  again; the learner's Start fresh, refused while the tutor writes, closing
+  the old session, picking up, and resumed after a restart; the old id
+  taken out before the new session starts), 3 Claude backend tests against
+  a simulated SDK boundary (resume options; not found; another failure), 2
+  of `sessionPlace`, a timeline test, a route test and a scripted backend
+  test. Changed: the unit chat and route tests' position helpers leave the
+  session id out, the tests' restarts share kept sessions (so they resume,
+  and four headers lost the "new" note), and one test whose position is
+  written by hand expects the fallback's marker. Each of these faults made
+  at least one test fail: never resuming; every resume failure taken for a
+  lost session; no marker on the fallback; no note on the fallback; the old
+  id not taken out on Start fresh; the old session not closed; a position
+  written without the id; a new session's id not kept; and no folder given
+  to the session. The scripted backend's whole-unit test timed out now
+  and then in a full run: it took 3.4 to 5 seconds there, against Vitest's
+  5-second default, and the code from before this task timed out the same
+  way (5,030 ms in one of three runs; alone it takes about 2.2 seconds, and
+  2.3 now, with one more `state.json` write). It writes and flushes the
+  record after every step of a whole unit, as task 2.13 noted, so it now
+  has a 15-second limit of its own; no assertion changed.
+- **Browser run on `pnpm dev:fake`** with a new data root: "Vectors" of the
+  linear algebra course started, a message, then "Start fresh" in the
+  outline, asked once: the thread above dimmed, the marker, the scripted
+  pick-up, "I'm ready for the check". Browser closed, server stopped and
+  started again: the unit resumed (a "New session" marker and no fresh
+  start) and answered. Browser closed, server stopped, the id in
+  `state.json` changed to one the fake did not make, server started: the
+  fallback's marker after the session's, the thread before it dimmed, and
+  a reply from the new session, whose id was then kept. The first version
+  dimmed that session's marker with the old conversation; fixed as above.
+- **Real run on Haiku 5.5** (`GAUSS_CLAUDE_MODEL=claude-haiku-5-5 pnpm dev`,
+  a scratch data root seeded with an approved course and a planned unit,
+  so no intake or planning was spent): the unit taught segment 1, and its
+  session id was in `state.json`. In the discussion the learner said
+  "my favourite function is $f(x) = x^3 - 2x$; use it in the next example",
+  and the tutor worked its difference quotient at 1 ($1 + 3h + h^2$, 1.31 at
+  $h = 0.1$). Browser closed, server stopped with Ctrl-C mid-segment and
+  started again; the unit reopened with no fresh start, resumed the same
+  session, and asked which function was the favourite and what its
+  quotient came to, answered "$f(x) = x^3 - 2x$ … $1 + 3h + h^2$ … 1.31", in
+  about 2 seconds. Then the server was stopped, the session's file moved
+  out of `~/.claude/projects/`, and the server started: the fallback's
+  marker, and the new tutor, asked the same question, said it had no
+  record of a favourite function, as the note tells it. Last, "Start
+  fresh" in the outline: a new session, kept, which greeted the learner
+  and said where the unit stood. Five Haiku turns, and five more in the
+  SDK script above; no Stop was used, so the slow reply after a stop (task
+  0.5) was not exercised. The
+  server log had no errors, and no Claude Code process outlived the server.
+- **Left open.** Units in progress keep a Claude Code process each, from
+  when they open until the server stops (2.15). A finished unit opened
+  after a restart starts a new tutor session for any message, without the
+  "new" note, as before this task.

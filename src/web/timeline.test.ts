@@ -2,7 +2,12 @@ import { expect, test } from "vitest";
 import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
 import type { Plan } from "../shared/plan.ts";
-import { emptyTimeline, reduce, type Timeline } from "./timeline.ts";
+import {
+  conversations,
+  emptyTimeline,
+  reduce,
+  type Timeline,
+} from "./timeline.ts";
 
 const QUESTION = {
   kind: "choice" as const,
@@ -645,4 +650,51 @@ test("a note from before the thread could be read gives way to the thread, whose
     { kind: "learner", key: 3, text: "Why?" },
     { kind: "session", key: 4, startedAt: TUESDAY, cutOff: false },
   ]);
+});
+
+test("a fresh start is a marker after the session's, and each begins a conversation with that session's marker, so the thread before it can be shown as earlier; the phase a reopened chat repeats adds nothing", () => {
+  const state = play([
+    began(MONDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Show it with gears." },
+    // The server restarted, and the tutor's session could not be resumed.
+    began(TUESDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "fresh_start", reason: "not-resumed" },
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "learner", text: "Again?" },
+    { type: "fresh_start", reason: "learner" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "We are in the discussion." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+
+  const learner = { kind: "learner" as const };
+  expect(conversations(state.items)).toEqual([
+    {
+      key: 2,
+      items: [
+        { kind: "phase", key: 2, segment: 0, phase: "discuss" },
+        { ...learner, key: 3, text: "Show it with gears." },
+      ],
+    },
+    {
+      // The sitting the fresh start begins is part of the new conversation.
+      key: 6,
+      items: [
+        { kind: "session", key: 4, startedAt: TUESDAY, cutOff: false },
+        { kind: "fresh", key: 6, reason: "not-resumed" },
+        { ...learner, key: 8, text: "Again?" },
+      ],
+    },
+    {
+      key: 9,
+      items: [
+        { kind: "fresh", key: 9, reason: "learner" },
+        { kind: "tutor", key: 11, text: "We are in the discussion." },
+      ],
+    },
+  ]);
+  expect(conversations([])).toEqual([]);
 });

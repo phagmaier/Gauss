@@ -7,7 +7,7 @@
 
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { expect, test } from "vitest";
-import { createTurnReader, sdkEnvironment } from "./claude.ts";
+import { createTurnReader, sdkEnvironment, sessionPlace } from "./claude.ts";
 
 // Only the fields the reader looks at.
 const sdk = (message: object) => message as unknown as SDKMessage;
@@ -156,4 +156,36 @@ test("the SDK's environment has no API key, nothing that could send its requests
     HOME: "/home/learner",
     AWS_REGION: "eu-west-1",
   });
+});
+
+test("a session given a folder is kept there under the id chosen, with its system prompt sent afresh on every request; one resumed is named by its id alone", () => {
+  const prompt = "You are a test tutor.";
+  const afresh = { type: "custom", prompt, snapshot: false };
+
+  expect(sessionPlace({ systemPrompt: prompt, cwd: "/c" }, "new-id")).toEqual({
+    cwd: "/c",
+    persistSession: true,
+    systemPrompt: afresh,
+    sessionId: "new-id",
+  });
+  // The SDK refuses a chosen id together with resume (sdk.d.ts, `sessionId`).
+  expect(
+    sessionPlace({ systemPrompt: prompt, cwd: "/c", resumeId: "old" }, "old"),
+  ).toEqual({
+    cwd: "/c",
+    persistSession: true,
+    systemPrompt: afresh,
+    resume: "old",
+  });
+});
+
+test("a session given no folder is not kept, and cannot be resumed", () => {
+  expect(sessionPlace({ systemPrompt: "Plan." }, "id")).toEqual({
+    systemPrompt: "Plan.",
+    sessionId: "id",
+    persistSession: false,
+  });
+  expect(() =>
+    sessionPlace({ systemPrompt: "Plan.", resumeId: "old" }, "old"),
+  ).toThrow("A session is resumed in the folder it was kept in.");
 });

@@ -16,25 +16,35 @@
 // - A unit's tutor (ask_question, close_segment): teaches in the teach
 //   phase, posts a question when the header allows one, closes the segment
 //   when the header says every objective is done, and otherwise replies in
-//   text. The correct choice is always A.
+//   text, which after a fresh start says where the unit stands. The correct
+//   choice is always A.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
 // A written answer is graded correct unless it has the word "wrong" in it;
 // "/fail" in it fails the grading.
+//
+// Every tutor session it starts is kept, across restarts too, so a unit
+// reopened after a restart resumes its tutor (task 2.14). A session id it
+// did not make cannot be found: put another in a unit's `tutorSessionId` in
+// state.json, with the server stopped, to see a unit start fresh because its
+// conversation could not be resumed.
 
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { EngineTurn, OneShotRequest, SessionOptions } from "./backend.ts";
 import {
   createFakeBackend,
+  FAKE_SESSION,
   type FakeBackend,
   type FakeReply,
   type FakeStep,
 } from "./fake.ts";
 
 export function createScriptedBackend(): FakeBackend {
-  return createFakeBackend(scriptedTurn, scriptedReply);
+  return createFakeBackend(scriptedTurn, scriptedReply, {
+    kept: { has: (id) => id.startsWith(FAKE_SESSION), add: () => {} },
+  });
 }
 
 /** The id of the objective a unit's plan checks with written questions ends so. */
@@ -185,6 +195,10 @@ function teaching(header: string, body: string): FakeStep[] {
       { text: "Scripted feedback. That closes the segment." },
       { call: "close_segment", input: {} },
     ];
+  }
+  if (header.includes("The learner started a fresh conversation")) {
+    const where = header.slice(1, header.indexOf(" The learner started"));
+    return [{ text: `**Scripted fresh start.** ${where}` }];
   }
   return [
     {

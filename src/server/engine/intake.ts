@@ -94,9 +94,11 @@ export function createIntake(options: {
   });
 
   const tutor = createConversation({
-    backend: options.backend,
-    systemPrompt: options.systemPrompt,
-    tools: [proposeCurriculum],
+    start: () =>
+      options.backend.startSession({
+        systemPrompt: options.systemPrompt,
+        tools: [proposeCurriculum],
+      }),
     log,
   });
 

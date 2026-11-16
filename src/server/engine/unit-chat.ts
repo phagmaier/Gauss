@@ -26,9 +26,11 @@
 // unit's position to state.json after every change, before the page is told,
 // so a restart reopens the unit where it was. The chat's events are its
 // transcripts too (transcript.ts, task 2.13), so a reopened unit shows the
-// thread of its earlier sessions. The tutor's own conversation does not
-// survive a restart yet (task 2.14): a reopened unit gets a new tutor
-// session, told that it joins a unit under way.
+// thread of its earlier sessions. The tutor's conversation survives a
+// restart too (task 2.14): its session's id is kept in the unit's position,
+// and a reopened unit resumes it. If it cannot be found, the unit starts
+// fresh: a new session, seeded from the record and told that it joins a
+// unit under way, and the thread says so. The learner can start fresh too.
 //
 // This file holds the phase rules and coordinates two parts (task 2.8b):
 // unit-record.ts keeps the unit's position and evidence and writes every
@@ -76,6 +78,7 @@ import {
 import {
   answerTurn,
   checkText,
+  freshTurn,
   JOINED_NOTE,
   messageTurn,
   overrideNote,
@@ -118,6 +121,12 @@ export interface UnitChat {
    * which records them as overridden and closes the unit.
    */
   finishUnit(): Promise<ChatResult>;
+  /**
+   * Replaces the tutor's conversation with a new one, which has the
+   * learner's progress from the record and not the conversation, and which
+   * picks up where the unit stands.
+   */
+  startFresh(): Promise<ChatResult>;
   /** Stops the tutor's turn in progress, if there is one. */
   interrupt(): Promise<void>;
   /** Resolves once the chat has opened and every turn sent so far has finished. */
@@ -225,6 +234,8 @@ function createUnitChat(
   const log = createTranscribedLog({ dataRoot, courseId, unitId, now });
   const exclusive = createSerial();
   let running: Running | undefined;
+  /** The agents of the last load, so closing the chat closes them while it loads too. */
+  let agents: UnitAgents | undefined;
   let loading: Promise<void> | undefined;
   let failed = false;
 
@@ -261,21 +272,28 @@ function createUnitChat(
         plan,
       };
       const style = await dataRoot.readStyle(courseId);
-      const r: Running = {
-        context,
-        record,
-        agents: createUnitAgents({
-          backend: options.backend,
-          systemPrompt: tutorSystemPrompt(options.systemPrompt, context, style),
-          tools: [askQuestionTool(questionBoard), closeSegmentTool(closer)],
-          grader: options.grader,
-          log,
-          exclusive,
-        }),
-        // A unit under way gets a new session (until task 2.14), which must
-        // not pretend to remember the conversation before it.
-        notes: record.reopened ? [JOINED_NOTE] : [],
-      };
+      const loaded = createUnitAgents({
+        backend: options.backend,
+        systemPrompt: tutorSystemPrompt(options.systemPrompt, context, style),
+        tools: [askQuestionTool(questionBoard), closeSegmentTool(closer)],
+        cwd: dataRoot.courseFolder(courseId),
+        keep: (id) => exclusive(() => record.keepSession(id)),
+        grader: options.grader,
+        log,
+        exclusive,
+      });
+      agents = loaded;
+      const r: Running = { context, record, agents: loaded, notes: [] };
+      if (record.reopened) {
+        // A unit under way resumes its tutor's conversation. One that cannot
+        // be found, or was never kept, gives way to a new session, which
+        // must not pretend to remember the conversation before it.
+        const id = record.position.tutorSessionId;
+        if (id === undefined || !(await loaded.resume(id))) {
+          r.notes.push(JOINED_NOTE);
+          log.emit({ type: "fresh_start", reason: "not-resumed" });
+        }
+      }
       running = r;
       restoreGrades(record);
       log.emit(record.status());
@@ -319,6 +337,12 @@ function createUnitChat(
         type: "unit_failed",
         error: error instanceof Error ? error.message : String(error),
       });
+      // Opening it again makes new agents; these may have resumed a session.
+      if (running === undefined && agents !== undefined) {
+        const unused = agents;
+        agents = undefined;
+        await unused.close();
+      }
     }
   }
 
@@ -771,6 +795,18 @@ function createUnitChat(
         return { ok: true };
       }),
 
+    startFresh: () =>
+      act(async (r) => {
+        // Taken out first, so a restart before the new session starts does
+        // not resume the old one.
+        await r.record.keepSession(undefined);
+        r.agents.startFresh();
+        if (!r.notes.includes(JOINED_NOTE)) r.notes.push(JOINED_NOTE);
+        log.emit({ type: "fresh_start", reason: "learner" });
+        r.agents.send({ text: () => freshTurn(where(r)) });
+        return { ok: true };
+      }),
+
     async interrupt() {
       await running?.agents.interrupt();
     },
@@ -780,7 +816,7 @@ function createUnitChat(
       await log.flushed();
     },
     async close() {
-      await running?.agents.close();
+      await agents?.close();
       await log.flushed();
     },
   };

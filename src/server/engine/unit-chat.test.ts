@@ -16,8 +16,10 @@ import type { Plan } from "../../shared/plan.ts";
 import type { ChoiceLetter, Confidence } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
+import type { TutorBackend } from "../backends/backend.ts";
 import {
   createFakeBackend,
+  type FakeBackend,
   type FakeReply,
   type FakeStep,
   type FakeTurn,
@@ -31,8 +33,11 @@ import { JOINED_NOTE } from "./unit-turns.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
+/** The tutor sessions kept, as the SDK keeps them on disk, so a restart resumes them. */
+let keptSessions: Set<string>;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gauss-unit-chat-"));
+  keptSessions = new Set();
 });
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
@@ -193,13 +198,19 @@ function setUp(
     record?: (root: DataRoot) => DataRoot;
     /** The chats' clock; NOW unless given. */
     now?: () => Date;
+    /** The sessions the backend can resume; the test's own unless given. */
+    kept?: Set<string>;
+    /** Changes the backend the chats are given, to make it fail. */
+    wrap?: (backend: FakeBackend) => TutorBackend;
   } = {},
 ) {
-  const backend = createFakeBackend(script, given.replies);
+  const backend = createFakeBackend(script, given.replies, {
+    kept: given.kept ?? keptSessions,
+  });
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const dataRoot = given.record?.(root) ?? root;
   const units = createUnitChats({
-    backend,
+    backend: given.wrap?.(backend) ?? backend,
     systemPrompt: TUTOR,
     dataRoot,
     planner:
@@ -230,11 +241,29 @@ async function open(
 
 /** The record as a restarted server would read it. */
 const reload = () => openDataRoot({ path: dir });
-const position = async () => (await reload().readState(COURSE)).units;
+/**
+ * The positions on disk, without the tutor's session id, which the tests
+ * of resuming check on their own.
+ */
+const position = async () =>
+  Object.fromEntries(
+    Object.entries((await reload().readState(COURSE)).units).map(
+      ([unit, { tutorSessionId: _, ...rest }]) => [unit, rest],
+    ),
+  );
+/** The unit's position on disk as it is, the tutor's session id with it. */
+const positionWritten = async (unit = "derivative") =>
+  (await reload().readState(COURSE)).units[unit];
+/** The tutor session id kept in the unit's position on disk. */
+const sessionKept = async (unit = "derivative") =>
+  (await reload().readState(COURSE)).units[unit]?.tutorSessionId;
 /** The unit's position on disk now, for a listener, which cannot wait. */
-const positionNow = (): unknown =>
-  JSON.parse(readFileSync(join(dir, "courses", COURSE, "state.json"), "utf8"))
-    .units.derivative;
+const positionNow = (): unknown => {
+  const { tutorSessionId: _, ...rest } = JSON.parse(
+    readFileSync(join(dir, "courses", COURSE, "state.json"), "utf8"),
+  ).units.derivative;
+  return rest;
+};
 
 /** The events from the last one of this type on, or every event if none. */
 function since(chat: UnitChat, type: PageEvent["type"]): PageEvent[] {
@@ -1069,7 +1098,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
 
   const turn = after.backend.received[0]?.text ?? "";
   expect(turn).toContain(
-    `The learner answered question 2. ${JOINED_NOTE} In this check, "difference-quotient": passed; "secant-slope": not asked yet.`,
+    `The learner answered question 2. In this check, "difference-quotient": passed; "secant-slope": not asked yet.`,
   );
   expect(turn).toContain(
     `Question 2, on "difference-quotient":\n${Q_QUOTIENT_AGAIN.prompt}`,
@@ -2090,7 +2119,6 @@ test("a written answer kept before a restart is graded when the unit reopens", a
   expect(await reload().readEvidence(COURSE)).toEqual([
     expect.objectContaining({ answer: written(chat), verdict: "correct" }),
   ]);
-  expect(after.backend.received[0]?.text).toContain(JOINED_NOTE);
 });
 
 // --- Task 2.8a: a question has one answer -----------------------------------
@@ -2119,7 +2147,7 @@ test("a written answer graded before a restart that left its question open is no
   await toCheck(first);
   expect(await first.answer(written(first))).toEqual({ ok: true });
   await waitFor(first, "grading");
-  const kept = (await position()).derivative;
+  const kept = await positionWritten();
   grade.resolve(CORRECT);
   await first.settled();
   const id = openQuestionId(first);
@@ -2153,7 +2181,7 @@ test("a written answer graded before a restart that left its question open is no
     derivative: { segment: 0, phase: "check", checkFrom: 0 },
   });
   expect(after.backend.received[0]?.text).toContain(
-    `The learner answered question 1. ${JOINED_NOTE}`,
+    "Phase: check. The learner answered question 1. In this check,",
   );
 });
 
@@ -2162,7 +2190,7 @@ test("a choice answer recorded before a restart that left its question open clos
   await makeCourse();
   const first = await open(before);
   await toCheck(first);
-  const kept = (await position()).derivative;
+  const kept = await positionWritten();
   const id = openQuestionId(first);
   await answer(first, "A");
   await stopBeforeClosing(before, kept);
@@ -2196,7 +2224,7 @@ test("a choice answer recorded before a restart that left its question open clos
   ).toEqual({ ok: false, status: 409, error: "No question is open." });
   expect(await reload().readEvidence(COURSE)).toHaveLength(1);
   expect(after.backend.received[0]?.text).toContain(
-    `The learner answered question 1. ${JOINED_NOTE}`,
+    "Phase: check. The learner answered question 1. In this check,",
   );
 });
 
@@ -2361,6 +2389,8 @@ test("a transcript whose last line a crash cut short shows its whole lines, and 
     ...cutOff,
     SESSION,
     { type: "unit_plan", plan: PLAN },
+    // The position on disk keeps no session of the tutor's to resume.
+    { type: "fresh_start", reason: "not-resumed" },
     status("in-progress"),
     { type: "phase", segment: 0, phase: "teach" },
     { type: "turn_start" },
@@ -2597,4 +2627,223 @@ test("a question whose grade the transcript lost shows the grade the evidence ha
   // The grade is in the second session's transcript, so it is not restored again.
   const third = await open(setUp([]));
   expect(third.events().filter((e) => e.type === "graded")).toEqual(graded);
+});
+
+// --- Task 2.14: resume and start fresh ----------------------------------------
+
+/** The course's folder, where the tutor's sessions run and are kept. */
+const FOLDER = () => join(dir, "courses", COURSE);
+
+test("the tutor's session runs in the course's folder and its id is kept in the position; a restart resumes it by that id, and the tutor is not told it is new", async () => {
+  const before = setUp([
+    TEACH,
+    [{ text: "A quotient of differences." }],
+    [{ text: "Now the limit." }],
+  ]);
+  await makeCourse();
+  const first = await open(before);
+  first.say("What is a difference quotient?");
+  await first.settled();
+  // Moving on and starting segment 2 write positions made anew.
+  expect(await first.override()).toEqual({ ok: true });
+  expect(await first.nextSegment()).toEqual({ ok: true });
+  await first.settled();
+
+  const [id] = before.backend.ids;
+  expect(before.backend.sessions).toEqual([
+    expect.objectContaining({ cwd: FOLDER() }),
+  ]);
+  expect(before.backend.sessions[0]?.resumeId).toBeUndefined();
+  expect(await sessionKept()).toBe(id);
+  await before.units.close();
+  expect(before.backend.closed).toEqual([id]);
+
+  // The server restarts; the backend still has the session.
+  const after = setUp([[{ text: "As I said, the limit of the quotients." }]]);
+  const chat = await open(after);
+
+  expect(after.backend.sessions).toEqual([
+    expect.objectContaining({ cwd: FOLDER(), resumeId: id }),
+  ]);
+  // Resumed with the system prompt a new session would get.
+  expect(after.backend.sessions[0]?.systemPrompt).toBe(
+    before.backend.sessions[0]?.systemPrompt,
+  );
+  expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([]);
+  expect(after.backend.received).toEqual([]);
+
+  chat.say("Remind me?");
+  await chat.settled();
+
+  expect(after.backend.sessions).toHaveLength(1);
+  expect(after.backend.received.map((t) => t.text)).toEqual([
+    expect.not.stringContaining(JOINED_NOTE),
+  ]);
+  expect(since(chat, "learner")).toEqual([
+    { type: "learner", text: "Remind me?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "As I said, the limit of the quotients." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(await sessionKept()).toBe(id);
+});
+
+test("a session the backend cannot find, as after Claude Code's 30-day cleanup, gives way to a new one, seeded from the record and told it is new, and the thread says so", async () => {
+  const before = setUp([TEACH]);
+  await makeCourse();
+  await open(before);
+  const [lost] = before.backend.ids;
+  await before.units.close();
+
+  // The backend no longer has the session.
+  const after = setUp([[{ text: "Let us look at it together." }]], {
+    kept: new Set(),
+  });
+  const chat = await open(after);
+
+  expect(after.backend.sessions).toEqual([
+    expect.objectContaining({ resumeId: lost }),
+  ]);
+  expect(since(chat, "session")).toEqual([
+    SESSION,
+    { type: "unit_plan", plan: PLAN },
+    { type: "fresh_start", reason: "not-resumed" },
+    status("in-progress"),
+    { type: "phase", segment: 0, phase: "discuss" },
+  ]);
+  // Nothing is sent until the learner acts, as for a unit reopened before.
+  expect(after.backend.received).toEqual([]);
+
+  chat.say("Where were we?");
+  await chat.settled();
+
+  const fresh = after.backend.sessions[1];
+  expect(fresh?.resumeId).toBeUndefined();
+  expect(fresh?.cwd).toBe(FOLDER());
+  // The seed: tutor.md, the course, the unit's plan and the style note.
+  expect(fresh?.systemPrompt).toContain(TUTOR);
+  expect(fresh?.systemPrompt).toContain(
+    '- "secant-slope": Read a difference quotient as the slope of a secant line.',
+  );
+  expect(fresh?.systemPrompt).toContain(CURRICULUM.style);
+  expect(after.backend.received[0]?.text).toMatch(
+    new RegExp(`Phase: discuss\\. Message from the learner\\. ${JOINED_NOTE}`),
+  );
+  const [made] = after.backend.ids;
+  expect(made).not.toBe(lost);
+  expect(await sessionKept()).toBe(made);
+});
+
+test("resuming that fails another way is not taken for a lost session: the unit says why and does nothing, and opening it again resumes it", async () => {
+  const before = setUp([TEACH]);
+  await makeCourse();
+  await open(before);
+  const [id] = before.backend.ids;
+  await before.units.close();
+
+  let starting = false;
+  const after = setUp([[{ text: "Still here." }]], {
+    wrap: (backend) => ({
+      ...backend,
+      startSession: async (options) => {
+        if (!starting) throw new Error("Claude Code could not start.");
+        return backend.startSession(options);
+      },
+    }),
+  });
+  const chat = await open(after);
+
+  expect(chat.events().at(-1)).toEqual({
+    type: "unit_failed",
+    error: "Claude Code could not start.",
+  });
+  expect(chat.say("Hello?")).toMatchObject({ ok: false, status: 409 });
+  expect(await sessionKept()).toBe(id);
+
+  starting = true;
+  const again = await open(after);
+
+  expect(again).toBe(chat);
+  expect(after.backend.sessions).toEqual([
+    expect.objectContaining({ resumeId: id }),
+  ]);
+  expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([]);
+  expect(chat.say("Hello?")).toEqual({ ok: true });
+});
+
+test("the learner's Start fresh closes the tutor's session and starts one told it is new, which picks up where the unit stands; a restart then resumes the new one", async () => {
+  const setup = setUp([
+    TEACH,
+    [{ text: "The gears turn the gears." }, { hold: true }],
+    [{ text: "We are in the discussion of segment 1." }],
+    [{ text: "A quotient of differences." }],
+  ]);
+  await makeCourse();
+  const chat = await open(setup);
+  const [old] = setup.backend.ids;
+
+  // Not while the tutor is writing.
+  chat.say("Explain it with gears.");
+  await waitFor(chat, "tutor_text", chat.events().length);
+  expect(await chat.startFresh()).toEqual({
+    ok: false,
+    status: 409,
+    error: "Wait until the tutor has finished, or stop it.",
+  });
+  await chat.interrupt();
+  await chat.settled();
+
+  expect(await chat.startFresh()).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(setup.backend.closed).toEqual([old]);
+  expect(since(chat, "fresh_start")).toEqual([
+    { type: "fresh_start", reason: "learner" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "We are in the discussion of segment 1." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  const [, made] = setup.backend.ids;
+  expect(setup.backend.sessions[1]).toMatchObject({ cwd: FOLDER() });
+  expect(setup.backend.sessions[1]?.resumeId).toBeUndefined();
+  expect(setup.backend.received.at(-1)?.text).toMatch(
+    new RegExp(
+      `Phase: discuss\\. The learner started a fresh conversation with you, from their progress\\. ${JOINED_NOTE} Allowed now: answer the learner`,
+    ),
+  );
+  expect(await sessionKept()).toBe(made);
+
+  // The note is said once.
+  chat.say("What is a difference quotient?");
+  await chat.settled();
+  expect(setup.backend.received.at(-1)?.text).not.toContain(JOINED_NOTE);
+  expect(setup.backend.sessions).toHaveLength(2);
+  await setup.units.close();
+
+  const after = setUp([]);
+  await open(after);
+  expect(after.backend.sessions).toEqual([
+    expect.objectContaining({ resumeId: made }),
+  ]);
+});
+
+test("Start fresh takes the old session's id out of the position before the new session starts, so a restart in between does not resume the old one", async () => {
+  const setup = setUp([TEACH]);
+  await makeCourse();
+  const chat = await open(setup);
+  expect(await sessionKept()).toBeDefined();
+  const written: unknown[] = [];
+  chat.subscribe((event) => {
+    if (event.type === "fresh_start") {
+      written.push(
+        JSON.parse(readFileSync(join(FOLDER(), "state.json"), "utf8")).units
+          .derivative,
+      );
+    }
+  });
+
+  expect(await chat.startFresh()).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(written).toEqual([{ segment: 0, phase: "discuss" }]);
 });

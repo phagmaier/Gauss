@@ -11,7 +11,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { expect, test, vi } from "vitest";
 import { askQuestionTool } from "../tools/ask-question.ts";
-import type { BackendEvent } from "./backend.ts";
+import { type BackendEvent, SessionNotFound } from "./backend.ts";
 import { createClaudeBackend } from "./claude.ts";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => {
@@ -167,3 +167,83 @@ test.each(["before_prompt", "before_model", "during_model"] as const)(
     }
   },
 );
+
+/**
+ * A query that starts, or fails to, as Claude Code did when task 2.14 resumed
+ * sessions: an unknown id fails `initializationResult()` with the error below
+ * before any input, and a known one resolves it.
+ */
+function startingQuery(start: Promise<unknown>) {
+  const closed = vi.fn();
+  vi.mocked(query).mockImplementation(
+    () =>
+      ({
+        initializationResult: () => start,
+        close: closed,
+        async *[Symbol.asyncIterator]() {},
+      }) as unknown as Query,
+  );
+  return { closed };
+}
+
+const RESUMED = "46a23d60-3723-4703-b5ff-f62ad2721ea0";
+
+test("a session resumed by its id runs in the folder given, under that id, and is ready once Claude Code has started", async () => {
+  startingQuery(Promise.resolve({}));
+
+  const session = await createClaudeBackend().startSession({
+    systemPrompt: "Test tutor.",
+    tools: [],
+    cwd: "/data/courses/vectors",
+    resumeId: RESUMED,
+  });
+
+  expect(session.backendSessionId).toBe(RESUMED);
+  const options = vi.mocked(query).mock.lastCall?.[0].options;
+  expect(options).toMatchObject({
+    resume: RESUMED,
+    cwd: "/data/courses/vectors",
+    persistSession: true,
+  });
+  expect(options).not.toHaveProperty("sessionId");
+  await session.close();
+});
+
+test("a session Claude Code cannot find is a failure of its own, and its query is closed", async () => {
+  const { closed } = startingQuery(
+    Promise.reject(
+      new Error(
+        `Claude Code returned an error result: No conversation found with session ID: ${RESUMED}`,
+      ),
+    ),
+  );
+
+  const starting = createClaudeBackend().startSession({
+    systemPrompt: "Test tutor.",
+    tools: [],
+    cwd: "/data/courses/vectors",
+    resumeId: RESUMED,
+  });
+
+  await expect(starting).rejects.toBeInstanceOf(SessionNotFound);
+  expect(closed).toHaveBeenCalled();
+});
+
+test("resuming that fails another way keeps its own error", async () => {
+  const { closed } = startingQuery(
+    Promise.reject(new Error("Claude Code process exited with code 1")),
+  );
+
+  const starting = createClaudeBackend().startSession({
+    systemPrompt: "Test tutor.",
+    tools: [],
+    cwd: "/data/courses/vectors",
+    resumeId: RESUMED,
+  });
+
+  await expect(starting).rejects.toThrow(
+    "Claude Code process exited with code 1",
+  );
+  await expect(starting).rejects.not.toBeInstanceOf(SessionNotFound);
+  expect(closed).toHaveBeenCalled();
+});

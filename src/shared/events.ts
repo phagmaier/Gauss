@@ -32,6 +32,17 @@ export const PageEvent = z.discriminatedUnion("type", [
    * while; what came before it belongs to an earlier sitting.
    */
   z.object({ type: z.literal("session"), startedAt: Timestamp }),
+  /**
+   * A unit chat: the tutor's conversation was replaced by a new one, which
+   * has the learner's progress from the record and not the conversation
+   * before (task 2.14). "learner": the learner chose to start fresh.
+   * "not-resumed": the unit was reopened and its earlier conversation could
+   * not be resumed.
+   */
+  z.object({
+    type: z.literal("fresh_start"),
+    reason: z.enum(["learner", "not-resumed"]),
+  }),
   /** The learner's own message, echoed so a replay shows it. */
   z.object({ type: z.literal("learner"), text: z.string() }),
   /** The tutor has been sent a turn and is writing. */

@@ -112,6 +112,18 @@ export function readyTurn(where: Where): string {
   return turn(where, 'The learner pressed "ready".');
 }
 
+/**
+ * The first turn of the session the learner's "Start fresh" begins (task
+ * 2.14). Its notes say the conversation is new.
+ */
+export function freshTurn(where: Where): string {
+  return turn(
+    where,
+    "The learner started a fresh conversation with you, from their progress.",
+    "Greet them in a sentence or two, say where the unit stands, then go on as this header allows.",
+  );
+}
+
 export function answerTurn(
   where: Where,
   entry: AnswerEvidence,

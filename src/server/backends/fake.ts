@@ -6,7 +6,14 @@
 // request's schema as the real backends check theirs. In place of a list, a
 // function can answer every turn or request it is given, without end
 // (scripted.ts, which runs the dev server of task 2.12b).
+//
+// A session started with a working directory is kept, as the SDK keeps it
+// on disk, and can be resumed by its id; resuming an id that was not kept
+// fails with SessionNotFound (task 2.14). Backends given one set of kept ids
+// resume each other's sessions, as a server does after a restart. The
+// script goes on across a resume: the fake has no conversation to carry.
 
+import { randomUUID } from "node:crypto";
 import type { ToolResult } from "../tools/tool.ts";
 import {
   type BackendEvent,
@@ -14,6 +21,7 @@ import {
   type EngineTurn,
   type OneShotRequest,
   type OneShotResult,
+  SessionNotFound,
   type SessionOptions,
   type TutorBackend,
   type TutorSession,
@@ -56,20 +64,40 @@ export interface FakeBackend extends TutorBackend {
   readonly received: EngineTurn[];
   /** Every tool call the script made, with what the tool returned. */
   readonly calls: FakeCall[];
-  /** The options of every session started. */
+  /** The options of every session started or resumed, a resume that failed too. */
   readonly sessions: SessionOptions[];
+  /** The id of every session started or resumed, in the same order, once it is. */
+  readonly ids: string[];
+  /** The ids of the sessions closed, in order. */
+  readonly closed: string[];
   /** Every one-shot request, in order. */
   readonly oneShots: OneShotRequest<unknown>[];
+}
+
+/** How the id of every session the fake starts begins. */
+export const FAKE_SESSION = "fake-session-";
+
+/** The ids of the sessions kept, which a session can be resumed by. A Set will do. */
+export interface KeptSessions {
+  has(id: string): boolean;
+  add(id: string): void;
 }
 
 export function createFakeBackend(
   script: FakeTurn[] | FakeScript,
   replies: FakeReply[] | ((request: OneShotRequest<unknown>) => FakeReply) = [],
+  options: {
+    /** Shared between backends to resume across a restart; its own if not given. */
+    kept?: KeptSessions;
+  } = {},
 ): FakeBackend {
   const received: EngineTurn[] = [];
   const calls: FakeCall[] = [];
   const sessions: SessionOptions[] = [];
+  const ids: string[] = [];
+  const closedIds: string[] = [];
   const oneShots: OneShotRequest<unknown>[] = [];
+  const kept = options.kept ?? new Set<string>();
   let nextTurn = 0;
   let nextReply = 0;
 
@@ -104,8 +132,16 @@ export function createFakeBackend(
 
   async function startSession(options: SessionOptions): Promise<TutorSession> {
     sessions.push(options);
+    const { resumeId } = options;
+    if (resumeId !== undefined && !kept.has(resumeId)) {
+      throw new SessionNotFound(resumeId);
+    }
+    // Unique across backends that share their kept sessions.
+    const id = resumeId ?? `${FAKE_SESSION}${randomUUID()}`;
+    if (options.cwd !== undefined) kept.add(id);
+    ids.push(id);
     let interrupted = false;
-    let closed = false;
+    let ended = false;
     let release: (() => void) | undefined;
 
     async function* send(turn: EngineTurn): AsyncGenerator<BackendEvent> {
@@ -124,7 +160,7 @@ export function createFakeBackend(
       }
       const steps = typeof entry === "function" ? entry(turn) : entry;
       for (const step of steps) {
-        if (interrupted || closed) break;
+        if (interrupted || ended) break;
         if ("text" in step) {
           yield { type: "text", text: step.text };
         } else if ("call" in step) {
@@ -149,7 +185,7 @@ export function createFakeBackend(
     }
 
     return {
-      backendSessionId: `fake-session-${sessions.length}`,
+      backendSessionId: id,
       send,
       async interrupt() {
         interrupted = true;
@@ -157,14 +193,24 @@ export function createFakeBackend(
         release = undefined;
       },
       async close() {
-        closed = true;
+        if (!ended) closedIds.push(id);
+        ended = true;
         release?.();
         release = undefined;
       },
     };
   }
 
-  return { received, calls, sessions, oneShots, startSession, oneShot };
+  return {
+    received,
+    calls,
+    sessions,
+    ids,
+    closed: closedIds,
+    oneShots,
+    startSession,
+    oneShot,
+  };
 }
 
 const STOP = Symbol("stopped");
