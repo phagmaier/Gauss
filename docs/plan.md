@@ -48,6 +48,7 @@ the user's check on 2026-11-15. Stage 2 is under way.
 | 2.8 | Rubric grading | `oneShot` in the adapter (SDK structured output, checked against a zod schema); `ask_question` takes `kind: "written"` with a rubric; `createGrader` in `engine/grading.ts` grades from the question, rubric and answer only, and returns `WrittenGrade` (verdict, and the flaw when incorrect). A written answer is final once sent, kept in `state.json` until graded, and graded outside the chat's queue; a failure is `grading_failed`, and `grade-again` retries. Page events `grading`, `grading_failed`, and `graded` with the answer and `flaw`; no written card yet (2.11). The grader uses the tutor's model until 2.9 picks one. The backend drops every `ANTHROPIC_` and `CLAUDE` variable. |
 | 2.8a | Review fixes | A question has one answer: an open question whose answer the evidence holds (by `questionId`) is closed with it on reopening, never graded or recorded again. Moving on is refused while a written answer waits for its grade. Stop holds on a turn not yet sent. `appendJsonLine` writes whole lines. Look positions up with `Object.hasOwn`. |
 | 2.8b | Split the unit chat | `unit-chat.ts` is the coordinator (phase rules, tools, learner actions) and owns the one queue; `unit-record.ts` writes the unit's position and evidence before the page hears of them; `unit-agents.ts` runs the tutor and the grader, where 2.14's resume and 2.15's idle closing go. |
+| 2.9 | Grader prompt | The grader runs on Sonnet 5.5 (`GRADER_MODEL` in `backends/claude.ts`), or on `GAUSS_CLAUDE_MODEL` when that is set. `grader.md` accepts any valid method and reads what may be assumed from the rubric, so 2.16's rubric guidance should ask for both. Re-run `node scripts/grade-set.ts --runs 2` when the prompt, `WrittenGrade` or the model changes. |
 
 ## Stage 2: session engine
 
@@ -60,21 +61,6 @@ questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, detours, the unit gate, handoff notes, unit notes, transcript
 export and style changes (stage 5). A unit in this stage closes without a
 gate or notes.
-
-### 2.9 Grader prompt
-
-- Status: todo
-- Depends on: 2.8
-- Do: draft `prompts/grader.md`. Write a small set of math answers with
-  grades worked by hand: a correct proof, a proof with a flawed middle
-  step, one that misses a case, a correct answer in unusual words, and a
-  near miss. Grade the set through `oneShot` on the model the grader will
-  use, and revise until the grades agree. Choose that model and record why.
-- Done when: in two runs the grader agrees with the hand grades on the set
-  and names the flawed step or missing element where there is one; the
-  set, the results and the model choice are in `docs/decisions.md`.
-- Note: this check depends on the grader's judgment, so it may use Sonnet
-  or Opus (`AGENTS.md`).
 
 ### 2.10 Style note at intake
 
@@ -189,6 +175,10 @@ gate or notes.
 - Note from 2.4: say how math is written (`$...$`, `$$` on a line of its
   own, `\$` for a dollar sign), as `prompts/planner.md` does, and that
   images are not shown.
+- Note from 2.9: the grader accepts any valid method and reads what may be
+  assumed without proof from the rubric, so ask rubrics to say what may be
+  assumed and not to depend on one method (`docs/decisions.md`, "Grader
+  prompt").
 
 **User check:** complete one unit of a math course across two sittings,
 stopping in the middle of a segment.

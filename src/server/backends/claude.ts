@@ -45,6 +45,14 @@ export interface ClaudeBackendOptions {
   model?: string;
 }
 
+/**
+ * The grader's model (task 2.9; docs/decisions.md, "Grader prompt"). On the
+ * hand-graded set, Sonnet 5.5 agreed with every hand grade and kept to the
+ * prompt's rules for the flaw; Haiku 5.5 marked a correct answer in plain
+ * words incorrect.
+ */
+export const GRADER_MODEL = "claude-sonnet-5-5";
+
 export function createClaudeBackend(
   backendOptions: ClaudeBackendOptions = {},
 ): TutorBackend {

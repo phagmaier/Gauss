@@ -629,3 +629,25 @@ tested"). Stage 1 is finished.
   one Python test) with no test changed. The parts and the one queue are
   in `docs/decisions.md` under "Unit chat split"; `architecture.md`
   section 4 names the files.
+
+### 2.9 Grader prompt
+
+- Status: done
+- Depends on: 2.8
+- Do: draft `prompts/grader.md`. Write a small set of math answers with
+  grades worked by hand: a correct proof, a proof with a flawed middle
+  step, one that misses a case, a correct answer in unusual words, and a
+  near miss. Grade the set through `oneShot` on the model the grader will
+  use, and revise until the grades agree. Choose that model and record why.
+- Done when: in two runs the grader agrees with the hand grades on the set
+  and names the flawed step or missing element where there is one; the
+  set, the results and the model choice are in `docs/decisions.md`.
+- Note: this check depends on the grader's judgment, so it may use Sonnet
+  or Opus (`AGENTS.md`).
+- Note: done on 2026-11-15. Sonnet 5.5 agreed with every hand grade in
+  two runs of the final prompt (and in all eight of its runs), naming the
+  first flaw each time; Haiku 5.5 failed a correct answer in plain words.
+  The set is `scripts/grader-set.ts`, its runner `scripts/grade-set.ts`;
+  the set, the runs, the prompt's rules and the model choice are in
+  `docs/decisions.md` under "Grader prompt". `mise run check` passed (381
+  TypeScript tests, one Python test).

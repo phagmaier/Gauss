@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { getRequestListener } from "@hono/node-server";
 import { createServer as createViteServer } from "vite";
-import { createClaudeBackend } from "./backends/claude.ts";
+import { createClaudeBackend, GRADER_MODEL } from "./backends/claude.ts";
 import { createGrader } from "./engine/grading.ts";
 import { createIntakes } from "./engine/intake.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
@@ -29,9 +29,12 @@ const [plannerPrompt, unitPlannerPrompt, tutorPrompt, graderPrompt] =
 // GAUSS_DATA_ROOT moves the course record away from ~/gauss (AGENTS.md).
 const dataRootPath = resolveDataRoot();
 const dataRoot = openDataRoot({ path: dataRootPath });
-// GAUSS_CLAUDE_MODEL picks a cheap model for development runs (AGENTS.md).
+// GAUSS_CLAUDE_MODEL picks a cheap model for development runs (AGENTS.md),
+// for every session, the grader's included. Left unset, the sessions use the
+// learner's Claude Code default, and the grader its own model (task 2.9).
 const model = process.env.GAUSS_CLAUDE_MODEL;
 const backend = createClaudeBackend(model === undefined ? {} : { model });
+const graderBackend = createClaudeBackend({ model: model ?? GRADER_MODEL });
 const intakes = createIntakes({
   backend,
   systemPrompt: plannerPrompt,
@@ -47,8 +50,7 @@ const units = createUnitChats({
   systemPrompt: tutorPrompt,
   dataRoot,
   planner,
-  // The tutor's backend and model for now; task 2.9 chooses the grader's.
-  grader: createGrader({ backend, systemPrompt: graderPrompt }),
+  grader: createGrader({ backend: graderBackend, systemPrompt: graderPrompt }),
 });
 const api = getRequestListener(createApp({ dataRoot, intakes, units }).fetch);
 

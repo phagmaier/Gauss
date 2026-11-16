@@ -107,11 +107,13 @@ mise activated, or `mise exec -- <command>`.
 | Test, TypeScript | `pnpm test` (`pnpm test:watch` while working) |
 | Test, Python helpers | `uv run --directory pytools pytest` |
 | Run the app (server and page, http://localhost:4320) | `pnpm dev` |
+| Grade the grader's hand-graded set (real model, spends plan usage) | `node scripts/grade-set.ts --runs 2` (`--model`, `--prompt`, `--only`) |
 
 - `pnpm dev` talks to the real Claude backend and spends plan usage once a
   message is sent. Stop it with Ctrl-C. `GAUSS_PORT` changes the port,
-  `GAUSS_CLAUDE_MODEL` the model (left unset, the learner's Claude Code
-  default), and `GAUSS_DATA_ROOT` the folder that holds the courses (left
+  `GAUSS_CLAUDE_MODEL` the model of every session, the grader's included
+  (left unset, the learner's Claude Code default, and Sonnet 5.5 for the
+  grader), and `GAUSS_DATA_ROOT` the folder that holds the courses (left
   unset, `~/gauss`; point it at a scratch folder for trial runs). The server
   prints the data root when it starts, and the model each session runs on.
 - The page is in `src/web` (React, built by Vite); the server starts at

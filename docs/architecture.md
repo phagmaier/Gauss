@@ -54,6 +54,7 @@ Gauss/
       http/             routes, event stream
     web/                React app: library, chat, question widgets, diagram, panes
   pytools/              uv project: convert.py, mathcheck.py
+  scripts/              checks run by hand on a real model: grade-set.ts (task 2.9)
   mise.toml             pinned node, pnpm, python, uv
   package.json, pnpm-lock.yaml
 ```
@@ -338,7 +339,14 @@ reply is `WrittenGrade` in `src/shared/question.ts`: `correct` or
 which the evidence and the `graded` event keep. A reply not in that shape,
 a failed request, or one past the time limit (three minutes) is a failed
 grading, which the learner can retry. The grader runs on the tutor's
-backend and model until task 2.9 chooses its model.
+backend with a model of its own, Claude Sonnet 5.5 (`GRADER_MODEL` in
+`backends/claude.ts`), chosen in task 2.9 on a set of answers graded by
+hand (`scripts/grader-set.ts`; the results are in `decisions.md`, "Grader
+prompt"); `GAUSS_CLAUDE_MODEL`, when set for a development run, replaces it
+as it does every session's model. `grader.md` has the grader check every
+step and computation, accept any valid method, and name only the first
+flaw, pointed at, without the repair and without the rubric, which the
+learner never sees.
 
 Every grade can be disputed. A dispute is appended to the evidence log and
 passed to the tutor; the original grade is kept alongside the outcome.
@@ -561,8 +569,9 @@ as built in task 2.6, `tutor.md`, then the course's units with their goals,
 the unit taught and its plan, then `style.md` or a line saying to use the
 default style in `tutor.md`. The learner's profile, the last handoff note
 and open misconceptions join it in stage 5.
-`examiner.md` drives assessments, `grader.md` rubric grading (a short
-first version from task 2.8, revised in 2.9), `planner.md`
+`examiner.md` drives assessments, `grader.md` rubric grading (revised in
+task 2.9 against `scripts/grader-set.ts`, which `scripts/grade-set.ts`
+grades on a real model: re-run it when the prompt changes), `planner.md`
 the intake's curriculum proposal, `unit-planner.md` the planning session that
 plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
 sheets. Each is drafted in the stage that first needs it and revised against

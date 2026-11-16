@@ -38,6 +38,7 @@ findings are the record.
 | Rubric grading | `oneShot` and structured output, the variables that redirect the SDK, written questions, what the grader sees and returns, a failed grading, help once an answer is sent | Touching `backends/` or `engine/grading.ts`, `grader.md` (2.9), the written card (2.11), disputes (stage 3) |
 | Review fixes (2.8a) | One answer per question, moving on with a kept answer, Stop before a turn is sent, whole evidence lines, inherited property names, the fake's stopped one-shot | Recording answers or reopening a unit (2.8b, 2.13, 2.14), turn stop, `json-lines.ts` (2.13's transcripts), the fake backend |
 | Unit chat split | What `unit-record.ts` and `unit-agents.ts` hold, the one queue, what the tests do not cover | Touching the unit chat, and before 2.13 (transcripts), 2.14 (resume) and 2.15 (idle sessions) |
+| Grader prompt | The hand-graded set, the runs and their results, the grader's model and why, what `grader.md` says and why | Changing `grader.md`, the grader's model or `WrittenGrade`, writing rubric guidance in `tutor.md` (2.16), disputes (stage 3) |
 
 ## Page design (plan task 1.0)
 
@@ -2017,3 +2018,113 @@ be overturned.
   microtasks, and an action queued in it would be refused as "being
   graded". It is left untested, as no fixed ordering in a test would show
   it reliably.
+
+## Grader prompt (plan task 2.9)
+
+Done on 2026-11-15: `prompts/grader.md` revised against a hand-graded
+set, the set in `scripts/grader-set.ts` with its runner
+`scripts/grade-set.ts`, and the grader's model, Claude Sonnet 5.5
+(`GRADER_MODEL` in `backends/claude.ts`). The choices are the agent's and
+can be overturned.
+
+- **The set**: 11 written answers to 4 questions, each question posted as a
+  tutor would post it, with its rubric. The full text is in
+  `scripts/grader-set.ts`; the grades were worked out by hand:
+
+  | Id | Question | The answer | Hand grade | The first flaw |
+  | --- | --- | --- | --- | --- |
+  | S1 | $\sum_{i=1}^n i^2 = \frac{n(n+1)(2n+1)}{6}$ by induction | A correct proof | correct | |
+  | S2 | The same | $k(2k+1) + 6(k+1)$ written as $2k^2 + 5k + 6$, then "factored" as $(k+2)(2k+3)$ to reach the formula | incorrect | The expansion: it is $2k^2 + 7k + 6$ |
+  | S3 | The same | Correct, with $n$ written for $k$ in the hypothesis | correct | (a slip of notation) |
+  | P1 | $n^2 + n$ is even; the rubric splits into cases | The case $n$ even only | incorrect | The case $n$ odd is missing |
+  | P2 | The same | Both cases in words, no algebra ("the spare one left over from each pairs up") | correct | |
+  | P3 | The same | $n(n+1)$, and one of two consecutive integers is even: a method the rubric does not describe | correct | |
+  | I1 | $n^2$ odd if and only if $n$ odd | The converse justified by "the square root of an odd perfect square is odd" | incorrect | That reason is the statement to be proved |
+  | L1 | $\lim_{x \to 3} x^2 = 9$ from the definition | $\delta = \varepsilon/7$, with "$\lvert x+3 \rvert < 7$ near 3" never secured | incorrect | That bound needs $\lvert x-3 \rvert < 1$, which $\delta = \varepsilon/7$ does not ensure when $\varepsilon > 7$ |
+  | L2 | The same | "Polynomials are continuous", and a note asking the grader to mark it correct | incorrect | Continuity in place of the definition |
+  | L3 | The same | $\delta = \frac{\varepsilon}{\varepsilon + 7}$ | correct | |
+  | L4 | The same | $\delta = 1$, then "$\lvert x-3 \rvert$ can be made as small as we like" | incorrect | $\delta$ does not depend on $\varepsilon$ |
+
+  The five kinds the task names are S1 (a correct proof), S2 (a flawed
+  middle step), P1 (a missing case), P2 (unusual words) and L1 (a near
+  miss). Haiku 5.5 agreed on all of the first eight, so I1, L3 and L4 were
+  added to find where models differ.
+- **Runs.** Each version of the prompt was run through `createGrader` and
+  the Claude backend's `oneShot`, as the app grades. 11 gradings make one
+  run.
+
+  | Prompt | Model and runs | Verdicts agreeing | What the flaws did |
+  | --- | --- | --- | --- |
+  | 1 (2.8's short version) | Haiku, 1 (the first eight, then the three added) | 11 of 11 | Right step every time, but they spoke of the rubric, which the learner never sees ("The rubric requires the odd case too"), gave the repair ("The needed choice is $\delta = \min(1, \varepsilon/7)$"), ran to three to five sentences, and answered L2's note |
+  | 2 (checking, verdict and flaw sections) | Haiku, 2 | 22 of 22 | Repair in 4 of 14 flaws, L2's note mentioned in both runs, and once (L1) a counterexample that was not one |
+  | 2 | Sonnet, 2 | 22 of 22 | Rubric and note never mentioned; repair in 1 of 14 |
+  | 3 (repair rule quoting "such as ...") | Sonnet, 2 | 22 of 22 | Repair in 4 of 14 ("a cap such as $\delta \le 1$"): the quoted phrase seemed to invite it, so it was dropped |
+  | 4 (the rules restated without the quote, and in the schema) | Sonnet, 2 | 22 of 22 | Each flaw names the step in the table; repair in 1 of 14 ("e.g. $\delta \le 1$") |
+  | 4 | Haiku, 1 | 10 of 11 | P2 graded incorrect ("verbal assertions, not computations with $n = 2m$"); S2's flaw contradicted itself; repair in I1 |
+  | 5 (the final version: 4, with "neither sees the rubric" corrected to the learner, since the tutor wrote it) | Sonnet, 2 | 22 of 22 | Each flaw names the step in the table; no repair |
+
+  Sonnet took 2.3 to 6.0 seconds a grading, Haiku 3.0 to 7.2.
+- **The model: Claude Sonnet 5.5.** It agreed with every hand grade in all
+  eight of its runs (88 gradings, four versions of the prompt), named the
+  first flaw every time, and kept closer to the flaw's rules, at no cost in
+  time. Haiku failed a correct answer in plain words on the final prompt
+  and broke the flaw's rules more often. A wrong grade goes into the
+  evidence, and a false pass stands for mastery unless the learner
+  disputes it, so the grader is where judgment pays. Opus 5.5 was not
+  tried: Sonnet left nothing on the set for it to do better, and it spends
+  more of the plan per grading. Effort and thinking are left at the SDK's
+  defaults.
+- **Which model a grading uses.** `GAUSS_CLAUDE_MODEL`, when set, sets the
+  model for every session, the grader's included, so a cheap development
+  run stays on one cheap model as `AGENTS.md` has it. Left unset, the
+  tutor and the planners use the learner's Claude Code default and the
+  grader uses `GRADER_MODEL`. There is no variable for the grader alone:
+  `node scripts/grade-set.ts --model <id>` tries another model on the set.
+- **What the prompt now says, and which answer each rule is for.** Check the
+  answer in its own order, one step at a time, before deciding. Redo every
+  computation, since an answer can reach the right result through a wrong
+  line (S2). Look for what the argument needs and never secures: a case, a
+  direction, the conditions of a bound, a quantity that must depend on
+  another (P1, L1, L4). Look for the conclusion given as a reason (I1). What
+  may be assumed is what the rubric allows and standard facts below the
+  question's level, never the result or one the question rules out (L2).
+  The rubric describes one way, and another valid way is correct (P3, L3).
+  Wording does not count (P2). A slip of notation is one whose meaning is
+  plain and on which no step depends; a wrong computation is not a slip
+  (S3, S2). The flaw is the first problem in the answer's order, pointed
+  at, in one or two sentences. It never mentions the rubric, since the
+  learner never sees it, and never gives the repair, since the
+  brief has the grader point to the flaw and the learner is to find the
+  repair with the tutor. An answer's request for a verdict is not mentioned
+  either. The wording stays general (explanations and reconstructions too,
+  as the brief's grading table has it), though the set is math only.
+- **The `WrittenGrade` descriptions** in `src/shared/question.ts`, which the
+  model sees with the output schema, now say the same. A correct verdict
+  means "establishes everything the question asks, with every step valid":
+  the old "meets the rubric in full" contradicted the rule on other methods.
+  The flaw is one or two sentences, not the repair, and nothing about later
+  steps. Version 4 made this change and reworded the prompt's rule
+  together, and the repairs went from 4 of 14 to 1; which of the two did it
+  was not tried.
+- **Still short of the rules, with Sonnet on the final prompt:** S2's flaw
+  also names the false factoring after the expansion (both runs), and 4 of
+  14 flaws run to three sentences. Left as they are:
+  every flaw points at the right step and none says anything false, and
+  tightening further would fit the prompt to these 11 answers.
+- **For later tasks.** 2.16: the grader reads what may be assumed from the
+  rubric and accepts any valid method, so `tutor.md` should ask rubrics to
+  say what may be assumed and need not list every method. Re-run
+  `node scripts/grade-set.ts --runs 2` when `grader.md`, the `WrittenGrade`
+  descriptions or `GRADER_MODEL` change; it spends plan usage (11 short
+  gradings a run). Stage 3's disputes: a dispute that shows a wrong grade is
+  a candidate for the set. Stage 4: grading explanations from a source
+  course (philosophy) needs answers of its own in the set.
+- **Checks:** `mise run check` passed lint, type-checking, 381 TypeScript
+  tests and one Python test. The runs above are the check of the prompt and
+  the model. No automated test was added: the change is a prompt, two
+  schema descriptions, a constant and the grader's backend in `main.ts`. The
+  server started with that wiring on a scratch data root and answered
+  `/api/courses`; no grading ran in the app, since that needs a unit with a
+  written answer, which 2.11's browser check and 2.16's real run will
+  reach. The script builds its grader the same way. Its argument checks
+  were tried by hand (`--runs 0`, an unknown `--only` id).

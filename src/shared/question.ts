@@ -218,7 +218,7 @@ export const WrittenGrade = z
     verdict: z
       .enum(["correct", "incorrect"])
       .describe(
-        '"correct" only if the answer meets the rubric in full; otherwise "incorrect".',
+        '"correct" only if the answer establishes everything the question asks, with every step valid; otherwise "incorrect".',
       ),
     flaw: z
       .string()
@@ -226,7 +226,7 @@ export const WrittenGrade = z
       .min(1)
       .optional()
       .describe(
-        "Required when the verdict is incorrect: the first flawed step or the first missing element, pointed at so the learner can find it, and what is wrong with it. Leave it out when the answer is correct.",
+        "Required when the verdict is incorrect: the first flawed step or the first missing element, pointed at so the learner can find it, and what is wrong with it, in one or two sentences. Not how to repair it, and nothing about later steps. Leave it out when the answer is correct.",
       ),
   })
   .refine((g) => g.verdict === "correct" || g.flaw !== undefined, {
