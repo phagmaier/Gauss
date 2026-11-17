@@ -47,8 +47,6 @@ export interface Standing {
    * now while it is in progress. None for a one-off, as mock 6 has it.
    */
   ticks: Mark[];
-  /** The unit the row opens, where the learner stopped: the one the line names. */
-  resume?: string;
 }
 
 export function standing(stored: CourseWithProgress): Standing {
@@ -74,8 +72,7 @@ export function standing(stored: CourseWithProgress): Standing {
     };
   }
   if (stored.problem !== undefined) {
-    // Where it stands is not known. The row opens the course view, which
-    // gives the reason.
+    // Where it stands is not known. The course view gives the reason.
     return {
       text: "The record could not be read",
       review: false,
@@ -117,6 +114,5 @@ export function standing(stored: CourseWithProgress): Standing {
       : `Unit ${next.number} of ${units.length}: ${next.unit.title}, ${where}`,
     ...base,
     finished: false,
-    ...(next.kind === "in-progress" ? { resume: next.unit.id } : {}),
   };
 }

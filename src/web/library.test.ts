@@ -122,7 +122,6 @@ test.each([
       ...NOT_FINISHED,
       oneOff: false,
       ticks: ["past", "now"],
-      resume: "eigen",
     },
   },
   {
@@ -133,7 +132,6 @@ test.each([
       ...NOT_FINISHED,
       oneOff: false,
       ticks: ["now", ""],
-      resume: "vectors",
     },
   },
   {
@@ -144,7 +142,6 @@ test.each([
       ...NOT_FINISHED,
       oneOff: false,
       ticks: ["now", ""],
-      resume: "vectors",
     },
   },
   {
@@ -162,7 +159,6 @@ test.each([
       ...NOT_FINISHED,
       oneOff: false,
       ticks: ["now", "now"],
-      resume: "eigen",
     },
   },
   {
@@ -210,7 +206,6 @@ test.each([
       ...NOT_FINISHED,
       oneOff: true,
       ticks: [],
-      resume: "vectors",
     },
   },
   {

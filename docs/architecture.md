@@ -823,7 +823,8 @@ teaching with an ungraded exercise for the discussion.
 ## 10. Page
 
 - **Library**: all courses and one-offs with progress; create, open, resume.
-  A course with a unit in progress opens that unit's session (task 2.12).
+  Every row opens its course view (task 2.28; before it, a course with a
+  unit in progress opened that unit's session).
   Below the courses, calibration: for each confidence level, how many of
   the answers given without help were correct, across all courses, with
   "I don't know" apart (task 2.27, `src/web/calibration.ts`).
@@ -892,10 +893,9 @@ new chat, whose thread starts with the unit's earlier sessions, each after
 the first under a "New session" marker with its date (task 2.13). A "Fresh
 start" marker follows the session's when the tutor's conversation was
 replaced, and the thread before it is dimmed, but for a card that still
-waits (task 2.14). A session is reached from the course view's card and units, from a
-library row of a course with a unit in progress, from "Start unit 1" after
-approval, and from the closing card's "Start unit N", which is the next
-unit in order once this one is finished.
+waits (task 2.14). A session is reached from the course view's card and units, from "Start
+unit 1" after approval, and from the closing card's "Start unit N", which
+is the next unit in order once this one is finished.
 
 The layout of these views was settled with static mocks: `docs/prototype/`
 (start at `index.html`; the shared look is `base.css`), with the choices

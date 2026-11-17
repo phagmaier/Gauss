@@ -1,9 +1,8 @@
 // The library (docs/prototype/06-library.html): one plain list of courses,
 // most recently opened first, with the finished ones grouped at the bottom,
-// and "New course" at the right of the top line. A course whose curriculum
-// awaits review opens in its intake, to push back or approve; one with a
-// unit in progress opens that unit's session, where the learner stopped;
-// any other opens its course view. Below the courses, once anything has
+// and "New course" at the right of the top line. Every row opens its course
+// view (task 2.28), whose card continues a unit in progress and whose
+// "Review the curriculum" reviews a draft. Below the courses, once anything has
 // been answered, calibration: how often the answers at each level of
 // confidence were right, across all courses (task 2.27).
 
@@ -38,24 +37,13 @@ export function Library() {
     });
   }, []);
 
-  /** Starts an intake, or reopens a draft's, then shows it. */
-  async function toIntake(path: string) {
+  /** Starts an intake, then shows it. */
+  async function newCourse() {
     setOpening(true);
-    const answer = await postFor(path, IntakeStarted);
+    const answer = await postFor("/api/intakes", IntakeStarted);
     setOpening(false);
     if (answer.ok) navigate(paths.intake(answer.data.intakeId));
     else setProblem(answer.error);
-  }
-
-  function open(stored: CourseWithProgress) {
-    const where = standing(stored);
-    if (where.review) {
-      void toIntake(`/api/courses/${encodeURIComponent(stored.id)}/review`);
-    } else if (where.resume !== undefined) {
-      navigate(paths.unit(stored.id, where.resume));
-    } else {
-      navigate(paths.course(stored.id));
-    }
   }
 
   const groups =
@@ -82,7 +70,7 @@ export function Library() {
             type="button"
             className="btn sm"
             disabled={opening}
-            onClick={() => void toIntake("/api/intakes")}
+            onClick={() => void newCourse()}
           >
             New course
           </button>
@@ -105,7 +93,7 @@ export function Library() {
                       key={stored.id}
                       stored={stored}
                       disabled={opening}
-                      onOpen={() => open(stored)}
+                      onOpen={() => navigate(paths.course(stored.id))}
                     />
                   ))}
                 </div>

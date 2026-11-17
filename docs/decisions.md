@@ -66,6 +66,7 @@ findings are the record.
 | Backup of the data root | Task 2.25: the data root as a git repository, what it keeps and leaves out, the three commit points and where they are, commits in the background by "Gauss", failures logged, what is not done (hooks, an existing repository's rules), the switches, the tests, faults and the fake-backend run | Touching `record/backup.ts`, `move` or `finish` in `unit-record.ts`, approval in `intake.ts`, the server's start and shutdown; stage 5's `profile.md` and stage 4's page images (leave them out) |
 | What I know | Task 2.26: the route and what it sends (units in order, objectives in teaching order, evidence in log order, overrides as lines, the rubric left out), the page and its link, the words beside an answer, the date, what is not done, tests, faults and the browser run | Touching `record/what-i-know.ts`, `shared/what-i-know.ts`, `WhatIKnow.tsx` or the course view's links; disputes raised from a past answer (stage 3); retained and slipping in the view (stage 5); 2.27's calibration |
 | Calibration | Task 2.27: what counts (help left out, "I don't know" apart), why answers from before 2.23 count, the route apart from the library's, the levels' order and zod's enum, the library's counts, what is not done, tests, faults and the browser run | Touching `record/calibration.ts`, `shared/calibration.ts`, `CONFIDENCE_LEVELS`, the library's calibration section; anything that changes what confidence means or when help is recorded |
+| User check of 2.23 to 2.27 | The user's try: calibration per course and library rows to the course page (tasks 2.28 and 2.29), and what the new unit's record showed (the try, paraphrase, two compound objectives of eight) | Tasks 2.28 and 2.29; touching the library's rows or calibration; revising `unit-planner.md` |
 
 ## Page design (plan task 1.0)
 
@@ -4889,3 +4890,36 @@ can be overturned.
   stopped. On the user's record the library should show 50% 1 of 1, 75% 2
   of 2, 90% 2 of 2 and "I don't know" 5 questions (one answer at 90% had
   help).
+
+## User check of 2.23 to 2.27 (2026-11-17)
+
+The user opened "What I know" and the library's calibration counts, and
+started a new unit on the theology course, "Essence and energies".
+
+Decided by the user:
+
+- **Calibration per course**, not across all courses: "it's meaningless in
+  the aggregate". It reverses the choice of "Stage 2 review", which was
+  made because one course's answers are few; the counts now show how few.
+  Task 2.29.
+- **A library row opens the course page**, not the session of the unit
+  last in progress, as task 2.12 had it. Task 2.28. The agent applies it
+  to a draft too, whose row opened its review: the user's reason (not
+  being put back into the last conversation) holds for it, and its course
+  page has "Review the curriculum".
+
+Read by the agent from the record, read-only, at the user's request:
+
+- **The try**: the teaching ends "Try this if you like; it isn't graded:
+  in two or three sentences, say why Barlaam thought he was defending
+  Dionysius, and not attacking mystical prayer as such."
+- **No quotes from memory**: authors are paraphrased and named ("Barlaam
+  cited Dionysius the Areopagite for this"); the only quoted text is the
+  translation of Greek words and Barlaam's nickname for the monks.
+- **Objectives**: six of eight hold one idea. Two join two:
+  `thomist-simplicity` (the doctrine, "and why Western critics hold that
+  Palamas's distinction breaks it") and `energies-uncreated-participable`
+  (uncreated, and participated in). Task 2.24 recorded that this still
+  slips through on Sonnet 5.5; nothing was changed.
+- **Passing on two unsure answers** could not be seen: no question had
+  been answered in the unit.
