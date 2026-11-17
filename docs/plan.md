@@ -17,10 +17,9 @@ from `architecture.md` section 12.
 ## Finished
 
 Stage 0 (spike and skeleton) and stage 1 (record and library): both passed
-the user's check on 2026-11-15. Stage 2's first tasks are done
-(2026-11-16). The user's first try of its check added tasks 2.18 to 2.22
-(`decisions.md`, "Stage 2 user check"); the check is taken again after
-them.
+the user's check on 2026-11-15. Stage 2 (session engine) passed it on
+2026-11-17, at the second try: the first (2026-11-16) added tasks 2.18 to
+2.22 (`decisions.md`, "Stage 2 user check").
 
 | Task | What | Still matters to later tasks |
 | --- | --- | --- |
@@ -86,11 +85,12 @@ notes, unit notes, transcript export and style changes (stage 5); detours
 themselves came in task 2.20. A unit in this stage closes without a gate
 or notes.
 
-Every task of this stage is done (2026-11-16); its user check is next.
-
 **User check:** complete one unit of a math course across two sittings,
 stopping in the middle of a segment. Start a new course, so that the
 intake (2.22) is tried too.
+
+Passed: the user tried it again on 2026-11-17, after tasks 2.18 to 2.22
+("everything went smoothly"), with nothing to change. Stage 2 is finished.
 
 ## Stage 3: checked grading and aids
 
