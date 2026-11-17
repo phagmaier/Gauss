@@ -254,6 +254,7 @@ export function createUnitAgents(options: {
     grading: () => running !== undefined,
 
     judge(judging) {
+      if (closed) return;
       const { learnerId, number, question, message, reply } = judging;
       const stop = new AbortController();
       log.emit({ type: "judging", learnerId, number });
@@ -271,6 +272,8 @@ export function createUnitAgents(options: {
         }
         await exclusive(async () => {
           try {
+            // Shutdown may have begun while this result waited for the queue.
+            if (stop.signal.aborted) return;
             await judging.record(outcome);
           } catch (error) {
             console.error("The judge's call could not be recorded:", error);

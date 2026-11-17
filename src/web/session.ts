@@ -164,7 +164,7 @@ export function judgmentSays(item: JudgmentItem): {
   }
   if (item.verdict === "clarification") {
     return {
-      text: `Judged clarification: your answer to question ${n} still counts.`,
+      text: `Judged clarification: this reply does not count as help with question ${n}.`,
       tone: "free",
     };
   }

@@ -281,6 +281,8 @@ function createUnitChat(
   let agents: UnitAgents | undefined;
   let loading: Promise<void> | undefined;
   let failed = false;
+  /** Shutdown leaves unjudged replies and their waiting answer for reopening. */
+  let closing = false;
   /** A Stop cancels automatic next-question turns, including ones still queued. */
   let stopCount = 0;
 
@@ -647,6 +649,7 @@ function createUnitChat(
     exchange: { learnerId: string; questionId: string; message: string },
     reply: string,
   ): Promise<void> {
+    if (closing) return;
     const { learnerId, questionId, message } = exchange;
     const open = r.record.position.openQuestion;
     if (open?.id !== questionId || !open.judging?.includes(learnerId)) return;
@@ -1136,6 +1139,7 @@ function createUnitChat(
       await log.flushed();
     },
     async close() {
+      closing = true;
       await agents?.close();
       await log.flushed();
     },

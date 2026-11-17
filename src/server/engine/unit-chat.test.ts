@@ -2181,6 +2181,46 @@ test("an answer sent while the tutor is still replying to a message sent during 
   });
 });
 
+test.each(["Use rise over run.", ""])(
+  "closing during a reply (%j) keeps its waiting answer for reopening without judging or grading it",
+  async (reply) => {
+    const setup = setUp(
+      [TEACH, ask(Q_QUOTIENT), [{ text: reply }, { hold: true }]],
+      { judgments: [CLARIFICATION] },
+    );
+    try {
+      await makeCourse(true, SHORT);
+      const chat = await open(setup);
+      await toCheck(chat);
+      const from = chat.events().length;
+      chat.say("What does this question mean?");
+      await waitFor(chat, "tutor_text", from);
+      const sent = rightQuotient(chat);
+      expect(await chat.answer(sent)).toEqual({ ok: true });
+      const kept = await positionWritten();
+
+      await setup.units.close();
+      await chat.settled();
+
+      expect(setup.judgeBackend.oneShots).toEqual([]);
+      expect(await reload().readEvidence(COURSE)).toEqual([]);
+      expect(await positionWritten()).toEqual(kept);
+      expect(kept?.openQuestion).toMatchObject({
+        answer: sent,
+        judging: [lastLearnerId(chat)],
+      });
+      expect(
+        chat
+          .events()
+          .slice(from)
+          .some((e) => e.type === "graded"),
+      ).toBe(false);
+    } finally {
+      await setup.units.close();
+    }
+  },
+);
+
 test("replies a restart kept from the judge count as help when the unit reopens, and an answer kept for them is graded then", async () => {
   const before = setUp(
     [TEACH, ask(Q_QUOTIENT), [{ text: "$h$ is the step away from $a$." }]],

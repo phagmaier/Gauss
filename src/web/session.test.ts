@@ -490,12 +490,6 @@ test.each<
     "judging",
   ],
   [
-    "clarification",
-    { verdict: "clarification" },
-    "Judged clarification: your answer to question 3 still counts.",
-    "free",
-  ],
-  [
     "help",
     { verdict: "help" },
     "Judged help: your answer to question 3 will not count toward passing.",
@@ -523,6 +517,30 @@ test.each<
       ...call,
     }),
   ).toEqual({ text, tone });
+});
+
+test("a clarification after help describes only that reply, without promising the answer still counts", () => {
+  const timeline = play([
+    planned,
+    phase(0, "check"),
+    ...asked(CHOICE),
+    { type: "learner", id: "m1", text: "How do I start?" },
+    ...said("Bring the exponent down."),
+    { type: "judged", learnerId: "m1", number: 1, verdict: "help" },
+    { type: "learner", id: "m2", text: "Thanks." },
+    ...said("You're welcome."),
+    { type: "judged", learnerId: "m2", number: 1, verdict: "clarification" },
+  ]);
+  const judgments = timeline.items
+    .filter((item) => item.kind === "judgment")
+    .map(judgmentSays);
+
+  expect(judgments.map((item) => item.tone)).toEqual(["help", "free"]);
+  expect(judgments[1]?.text).toMatch(/clarification/i);
+  expect(judgments[1]?.text).toMatch(/reply/i);
+  expect(judgments[1]?.text).not.toMatch(
+    /your answer|still counts|toward passing/i,
+  );
 });
 
 test("a question answered below where it was posted begins an exchange there, and the line where it was posted goes with its lead-in", () => {

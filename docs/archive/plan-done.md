@@ -1141,3 +1141,24 @@ tested"). Stage 1 is finished.
   exchanges twice, then 19 twice). `mise run check` passed; five injected
   faults each failed tests. Browser run on `pnpm dev:fake`. Findings:
   `decisions.md`, "Help judge".
+
+### 2.21a Help-judge review fixes
+
+- Status: done
+- Depends on: 2.21
+- Why: closing a tutor reply can start an uncancelled judging call during
+  shutdown, and a later clarification promises that an already assisted
+  answer still counts.
+- Do: prevent judging or finalizing an exchange once its chat is closing,
+  including a judge's result already queued for recording. Describe a
+  clarification as a verdict on that reply, not on the answer's eligibility.
+- Done when: deterministic regressions cover closing during a reply and
+  before a queued judgment records; mixed help and clarification keep the
+  answer assisted without promising it counts; the fake-backend page shows
+  the corrected wording; `mise run check` passes.
+- Note: all five regression cases failed before the fix and passed after.
+  The fake-backend browser flow showed the corrected clarification label
+  after help, then a correct answer still counted as assisted; reload kept
+  both labels and the grade. `mise run check` passed: 617 TypeScript tests
+  and one Python test; the existing CSS specificity warning remains.
+  Findings: `decisions.md`, "Help-judge review fixes".

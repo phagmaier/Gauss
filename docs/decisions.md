@@ -57,6 +57,7 @@ findings are the record.
 | Detour after a miss | Task 2.20: the detour in the position and its events, its first turn and the teaching again from the second miss, refusals and help in it, ending it and what a Stop then leaves, a restart, the "I don't know" line and its field, the marker and control, the checks and the real run on Sonnet 5.5 | Touching detours (`detour` in `state.ts`, `endDetour`, `anotherQuestion`, `detourOpening` in `unit-turns.ts`), `missed` in `check-rules.ts`, "I don't know" (`stuck`), the detour marker or control; 2.21's help judging, stage 5's misconception record |
 | Detour queue review fix | Task 2.20a: the next-question request after ending a detour shares the feedback queue's stale-question and Stop guards; deterministic interleaving regressions | Touching `anotherQuestion`, `askNext`, or the unit chat's queues |
 | Help judge | Task 2.21: clarification or help judged after each reply during an open question, what the judge sees, failures and restarts counting as help, the answer that waits, Stop kept as 2.17a has it, the tutor's headers and `tutor.md`, the page's lines and notice, the hand-judged set and the model (Haiku 5.5) | Touching help (`judging`, `assisted`, `help-judge.ts`, `help-judge.md`, `JUDGE_MODEL`), answers kept on the open question, `ended`'s reply in `conversation.ts`, the message box's notice; stage 3's disputes |
+| Help-judge review fixes | Task 2.21a: no new judging or late queued results during shutdown; clarification labels describe a reply, not cumulative answer eligibility; regression and browser checks | Touching help-judge shutdown, `replyEnded`, or `judgmentSays` |
 
 ## Page design (plan task 1.0)
 
@@ -4162,7 +4163,7 @@ agent's and can be overturned.
   the call. The judge is the check in code that the tutor kept to that.
 - **The page.** The call is a line under the reply: "Checking whether this
   reply helped with question N" while it runs, then "Judged clarification:
-  your answer to question N still counts." (soft), or "Judged help: ...
+  this reply does not count as help with question N." (soft), or "Judged help: ...
   will not count toward passing." (yellow), with the failed and restart
   cases saying why. It belongs to the reply: no dividing line above it, one
   below. While a question waits for its answer and none is sent, a line
@@ -4252,3 +4253,35 @@ agent's and can be overturned.
   over two replies, each harmless alone, would pass. The set is math only;
   a source course's explanation questions (stage 4) need exchanges of
   their own. Disputing a call is stage 3's, with disputes.
+
+## Help-judge review fixes (plan task 2.21a)
+
+- **Shutdown race.** Closing a tutor session ends its running reply, whose
+  end handler could start a judging after the agents' cancellation sweep.
+  An empty reply could settle the exchange and grade its waiting answer
+  without a judging at all. The chat now marks itself closing before
+  closing its agents, and its reply-end work then leaves the exchange and
+  waiting answer in the record for reopening. The agents also refuse new
+  judging calls after close.
+- **Already queued results.** A judge can finish before shutdown but have
+  its record callback waiting in the chat's queue. The callback now checks
+  cancellation inside the queue too, before recording or grading anything.
+  Work already recording when shutdown starts is not rolled back.
+- **Clarification is per reply.** A later clarification does not undo an
+  earlier help verdict. Its label now says that this reply does not count
+  as help, not that the answer still counts toward passing.
+- **Regression proof.** All five new regression cases failed against the
+  reviewed code: shutdown during text and empty replies, a judging requested
+  after close, a finished judging queued for recording at close, and help
+  followed by clarification. The focused run then passed all eight selected
+  cases, including the existing restart recovery, empty-reply and
+  cumulative-help checks.
+- **Browser proof.** On `pnpm dev:fake`, with a fresh temporary data root:
+  help followed by clarification showed the per-reply wording; submitting
+  the correct choice at 100% was still "With help, so it does not count
+  toward passing", and the next question followed. Reload preserved both
+  labels and the grade; the evidence had `assisted: true`. The browser was
+  closed before stopping the server. No real model was called.
+- **Full check.** `mise run check` passed: Biome (110 files, with the existing
+  descending-specificity warning in `styles.css`), TypeScript, 617
+  TypeScript tests and one Python test.
