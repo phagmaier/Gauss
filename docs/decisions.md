@@ -65,6 +65,7 @@ findings are the record.
 | One idea per objective, no quotes from memory | Task 2.24: the wording added to `unit-planner.md`, `planner.md` and `tutor.md` and why, the real runs on Sonnet 5.5 (a new course's plan, teaching and first question; the unit planner run three more times as its wording tightened), what still slips through | Touching `unit-planner.md`, `planner.md`'s unit size, `tutor.md`'s teaching end, questions or quotations, the objective statement's description in `plan.ts`; stage 4's quotes |
 | Backup of the data root | Task 2.25: the data root as a git repository, what it keeps and leaves out, the three commit points and where they are, commits in the background by "Gauss", failures logged, what is not done (hooks, an existing repository's rules), the switches, the tests, faults and the fake-backend run | Touching `record/backup.ts`, `move` or `finish` in `unit-record.ts`, approval in `intake.ts`, the server's start and shutdown; stage 5's `profile.md` and stage 4's page images (leave them out) |
 | What I know | Task 2.26: the route and what it sends (units in order, objectives in teaching order, evidence in log order, overrides as lines, the rubric left out), the page and its link, the words beside an answer, the date, what is not done, tests, faults and the browser run | Touching `record/what-i-know.ts`, `shared/what-i-know.ts`, `WhatIKnow.tsx` or the course view's links; disputes raised from a past answer (stage 3); retained and slipping in the view (stage 5); 2.27's calibration |
+| Calibration | Task 2.27: what counts (help left out, "I don't know" apart), why answers from before 2.23 count, the route apart from the library's, the levels' order and zod's enum, the library's counts, what is not done, tests, faults and the browser run | Touching `record/calibration.ts`, `shared/calibration.ts`, `CONFIDENCE_LEVELS`, the library's calibration section; anything that changes what confidence means or when help is recorded |
 
 ## Page design (plan task 1.0)
 
@@ -4817,3 +4818,74 @@ review". The choices are the agent's and can be overturned.
   reasoning" and "Correct answer". The draft Topology showed the 409's
   reason. No console errors but the 409 itself. The browser was closed
   before the server stopped.
+
+## Calibration (plan task 2.27)
+
+Built on 2026-11-17, from the user's acceptance of calibration in "Stage 2
+review": across all courses and as counts. The choices are the agent's and
+can be overturned.
+
+- **What counts.** For each confidence level, the answers given without
+  help and how many were graded correct (`countCalibration` in
+  `src/server/record/calibration.ts`; the schema `Calibration` in
+  `src/shared/calibration.ts`). "I don't know" asks no confidence, so it is
+  counted apart, as a number of questions. Every answer given with help is
+  left out, "I don't know" included: help says nothing of how sure the
+  learner was alone. Overrides are not answers. An answer on an objective
+  no plan holds still counts: it is an answer the learner gave.
+- **Answers given before task 2.23 count.** The evidence holds no rule
+  version, and a cut by date would be loose, since a running server takes
+  a new rule only when restarted. The incentive the cut would remove, to
+  say 90% or more so one answer passes, was there before 2.23 and is still
+  there after it for an objective never missed, so the cut would not
+  separate honest answers from strategic ones. In the user's record the
+  learner reported against that incentive: on the theology course, correct
+  answers at 75% and 50% were given under task 2.19's rule, when only an
+  answer at 90% or more could pass. And answers are few: the user's whole
+  record holds ten, all from before 2.23 (its commit was 09:40 UTC on
+  2026-11-17, the last answer 08:49), so a cut would leave the counts
+  empty, and sparse data is why the user chose counts across courses.
+  Read from `~/gauss` once, read-only, to decide this; nothing was written.
+- **The route** is `GET /api/calibration`, apart from the library's
+  `GET /api/courses`, so a failure in one leaves the other. It reads every
+  course's evidence, a draft's empty log included; a course whose evidence
+  cannot be read is left out and named in `skipped` by title, as the
+  library lists such a course with the reason. A `course.json` that cannot
+  be read fails the route, as it fails the library's.
+- **The levels' order is named** in `CONFIDENCE_LEVELS`
+  (`src/shared/question.ts`), which `Confidence` is made from. Zod 4 keeps
+  an enum's values as an object's keys, so `Confidence.options` lists
+  integer-like keys first and "under-50" last; the counting test caught it.
+- **The library** shows the counts below the courses (`CalibrationCounts`
+  in `Library.tsx`, the words in `src/web/calibration.ts`), under the
+  heading "Calibration" and a line saying what is counted and that answers
+  with help are left out: one row per level, lowest first ("8 of 10
+  correct", "None yet"), then "I don't know" ("3 questions") below a rule,
+  and a note naming any course left out. The section is left out until
+  anything has been answered. Counts only, no percentages, as the brief
+  asks; with so few answers a percentage reads as more than it is.
+- **Not done:** no per-course counts, no mark when a level is right less
+  often than it says, no counts over time.
+- **Tests.** Counting worked by hand on two courses' logs: every level
+  (50% with none), right and wrong, choice and written, help left out at a
+  level and on "I don't know", "I don't know" with and without a stuck
+  line, an override; a log with nothing to count; a data root with a draft
+  and a course whose log cannot be read, which is skipped by title (its
+  answer would have shown at 50%). One route test on 2.26's hand-made
+  record. Page logic: the rows, singular and plural, when the counts show,
+  and the note for one and for three courses left out. Six injected faults
+  each failed a test: help counted, help counted on "I don't know", the
+  verdict ignored, one unreadable log failing the route, the section
+  hidden when only "I don't know" was answered, the counts reversed.
+- **Checks.** `mise run check` passed (673 TypeScript tests, one Python
+  test; the CSS warning was there before). On `pnpm dev:fake` with a fresh
+  scratch root, the library showed the seed's answers as worked by hand ("90%: 10 of 10 correct",
+  the rest "None yet"). After a wrong choice at 50%, an "I don't know" and
+  a right choice at 75% given with help on Calculus I's unit 5, and a line
+  that cannot be read appended to Probability's log, it showed 50% "0 of 1
+  correct", 75% "None yet", 90% "7 of 7 correct", "I don't know" "1
+  question", and "Leaves out Probability, whose answers could not be
+  read." No console errors. The browser was closed before the server
+  stopped. On the user's record the library should show 50% 1 of 1, 75% 2
+  of 2, 90% 2 of 2 and "I don't know" 5 questions (one answer at 90% had
+  help).

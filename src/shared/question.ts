@@ -12,8 +12,13 @@ export const CHOICE_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
 export const ChoiceLetter = z.enum(CHOICE_LETTERS);
 export type ChoiceLetter = z.infer<typeof ChoiceLetter>;
 
-/** How sure the learner is, in the five levels of brief.md. */
-export const Confidence = z.enum(["under-50", "50", "75", "90", "100"]);
+/**
+ * How sure the learner is, in the five levels of brief.md, lowest first.
+ * Use this list for their order: the enum's `options` puts "under-50" last,
+ * since an object lists keys such as "50" before the others.
+ */
+export const CONFIDENCE_LEVELS = ["under-50", "50", "75", "90", "100"] as const;
+export const Confidence = z.enum(CONFIDENCE_LEVELS);
 export type Confidence = z.infer<typeof Confidence>;
 
 export function confidenceLabel(confidence: Confidence): string {

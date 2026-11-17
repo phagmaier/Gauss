@@ -3,15 +3,19 @@
 // and "New course" at the right of the top line. A course whose curriculum
 // awaits review opens in its intake, to push back or approve; one with a
 // unit in progress opens that unit's session, where the learner stopped;
-// any other opens its course view.
+// any other opens its course view. Below the courses, once anything has
+// been answered, calibration: how often the answers at each level of
+// confidence were right, across all courses (task 2.27).
 
 import { Fragment, useEffect, useState } from "react";
+import { Calibration } from "../shared/calibration.ts";
 import { IntakeStarted } from "../shared/events.ts";
 import {
   type CourseWithProgress,
   Library as LibrarySchema,
 } from "../shared/library.ts";
 import { getJson, postFor } from "./api.ts";
+import { calibrationRows, hasCalibration, skippedNote } from "./calibration.ts";
 import { TopLine } from "./Frame.tsx";
 import { standing, whenOpened } from "./library.ts";
 import { navigate, paths } from "./route.ts";
@@ -20,11 +24,17 @@ export function Library() {
   const [courses, setCourses] = useState<CourseWithProgress[]>();
   const [problem, setProblem] = useState<string>();
   const [opening, setOpening] = useState(false);
+  const [calibration, setCalibration] = useState<Calibration>();
+  const [calibrationProblem, setCalibrationProblem] = useState<string>();
 
   useEffect(() => {
     void getJson("/api/courses", LibrarySchema).then((answer) => {
       if (answer.ok) setCourses(answer.data.courses);
       else setProblem(answer.error);
+    });
+    void getJson("/api/calibration", Calibration).then((answer) => {
+      if (answer.ok) setCalibration(answer.data);
+      else setCalibrationProblem(answer.error);
     });
   }, []);
 
@@ -102,6 +112,14 @@ export function Library() {
               </Fragment>
             ))
           )}
+          {calibrationProblem === undefined ? null : (
+            <p className="ph-note">
+              Calibration could not be counted: {calibrationProblem}
+            </p>
+          )}
+          {calibration === undefined || !hasCalibration(calibration) ? null : (
+            <CalibrationCounts calibration={calibration} />
+          )}
         </div>
       </div>
     </div>
@@ -140,5 +158,33 @@ function Row(props: {
         </span>
       )}
     </button>
+  );
+}
+
+/** How often the answers at each level of confidence were right. */
+function CalibrationCounts(props: { calibration: Calibration }) {
+  const rows = calibrationRows(props.calibration);
+  const note = skippedNote(props.calibration);
+  return (
+    <section aria-labelledby="calibration">
+      <h2 className="pg-h" id="calibration">
+        Calibration
+      </h2>
+      <p className="cal-lead">
+        How often your answers were right at each level of confidence, across
+        all courses. Answers given with help are left out.
+      </p>
+      <table className="cal">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <th scope="row">{row.label}</th>
+              <td>{row.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {note === null ? null : <p className="ph-note">{note}</p>}
+    </section>
   );
 }

@@ -77,6 +77,7 @@ stage 4 (`decisions.md`, "Stage 2 review").
 | 2.24 | One idea per objective, no quotes from memory | `unit-planner.md`: one idea per objective (the "could know one part and not another" test), up to eight objectives, and a last read for one verb and one claim; `planner.md`: three to six single-idea skills per unit; `tutor.md`: teaching ends with an ungraded exercise, one thing per question, no verbatim quotes from memory (stage 4 revises this). A compound objective still slips through now and then on Sonnet 5.5. |
 | 2.25 | Backup of the data root | The data root is a git repository (`record/backup.ts`), keeping `courses/` and `profile.md`; commits after a segment's close (`move`), a unit's end (`finish`) and an approval, in the background, by "Gauss", failures logged. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for `pnpm dev:fake` unless `=on`. Stage 4 must ignore page images. |
 | 2.26 | What I know | `GET /api/courses/<id>/what-i-know` sends `WhatIKnow` (`src/shared/what-i-know.ts`, derived by `record/what-i-know.ts`): every unit in order, a planned one's objectives in teaching order with status and evidence in log order, overrides as lines, never a rubric; a draft is 409. The page is `/courses/<id>/what-i-know` (`WhatIKnow.tsx`, words in `what-i-know.ts`), linked beside "Show the diagram". Stage 3's disputes can name an answer by its `questionId`, which the view sends, and must decide whether a dispute shows the rubric. The dev seed holds only correct choices and overrides. |
+| 2.27 | Calibration | `GET /api/calibration` (`record/calibration.ts`, schema `src/shared/calibration.ts`): for each confidence level, the unassisted answers and how many were correct, across all courses, "I don't know" apart, every answer with help left out; a course whose evidence cannot be read is skipped by title. Answers from before 2.23 count (`decisions.md`, "Calibration"). Shown below the library's courses once anything is answered. Level order is `CONFIDENCE_LEVELS`, not `Confidence.options`, which puts "under-50" last. |
 
 ## Stage 2: session engine
 
@@ -100,23 +101,8 @@ Passed: the user tried it again on 2026-11-17, after tasks 2.18 to 2.22
 
 **Added after the user check**, from a review of the stage 2 record, which
 the user brought on 2026-11-17 (`decisions.md`, "Stage 2 review"). These
-tasks come before stage 3.
-
-### 2.27 Calibration
-
-- Status: todo
-- Depends on: 2.23, 2.26
-- Why: confidence was kept as percentages to allow calibration feedback
-  (brief, "Decision status"), and nothing builds it. With 2.23 confidence
-  no longer gates passing, so it says how sure the learner really was.
-- Do: across all courses, for each confidence level, how many unassisted
-  graded answers were correct, as counts ("90%: 8 of 10"), with "I don't
-  know" counted apart and answers with help left out; shown on the
-  library. Decide whether answers given before 2.23 count, and record why.
-- Done when: hand-worked counting tests pass (each level, help left out,
-  "I don't know" apart, a course whose evidence cannot be read skipped);
-  `mise run check` passes; on `pnpm dev:fake` the library shows the seeded
-  courses' counts, and the browser is closed before the server stops.
+tasks come before stage 3. All five are done (see the table); their user
+check below is next.
 
 **User check for 2.23 to 2.27:** open "What I know" on the theology course
 and the calibration counts on the library; then start a new unit and see

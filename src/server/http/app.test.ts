@@ -1356,3 +1356,29 @@ test("what I know names a unit with a position in progress, and refuses an unkno
     "evidence.jsonl, line 1",
   );
 });
+
+// --- Calibration -----------------------------------------------------------------
+
+test("calibration counts every course's answers by confidence", async () => {
+  // The course's answers: at 50%, one wrong and one right; at 75%, one
+  // wrong and one right; at 90%, one right with help, left out; at 100%, one
+  // right, on an objective of no plan, which counts all the same; two "I
+  // don't know"; and an override, which counts for nothing.
+  await courseWithEvidence();
+  const { app } = setUp([]);
+
+  const response = await app.request("/api/calibration");
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    levels: [
+      { confidence: "under-50", correct: 0, answered: 0 },
+      { confidence: "50", correct: 1, answered: 2 },
+      { confidence: "75", correct: 1, answered: 2 },
+      { confidence: "90", correct: 0, answered: 0 },
+      { confidence: "100", correct: 1, answered: 1 },
+    ],
+    unknown: 2,
+    skipped: [],
+  });
+});

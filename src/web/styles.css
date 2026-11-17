@@ -1380,3 +1380,30 @@ button.dn:hover {
 .wk-help {
   color: var(--yellow);
 }
+
+/* ---- Calibration on the library (task 2.27): counts per level of confidence ---- */
+.cal-lead {
+  margin: 0 0 0.8em;
+  color: var(--soft);
+  font-size: 0.94em;
+}
+.cal {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.cal th,
+.cal td {
+  padding: 0.3em 0;
+  text-align: left;
+  font-weight: 400;
+}
+.cal th {
+  color: var(--soft);
+  padding-right: 2.4em;
+  white-space: nowrap;
+}
+/* "I don't know" has no level, so it stands apart from the rest */
+.cal tr:last-child > * {
+  border-top: 1px solid var(--surface0);
+  padding-top: 0.5em;
+}

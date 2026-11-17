@@ -824,6 +824,9 @@ teaching with an ungraded exercise for the discussion.
 
 - **Library**: all courses and one-offs with progress; create, open, resume.
   A course with a unit in progress opens that unit's session (task 2.12).
+  Below the courses, calibration: for each confidence level, how many of
+  the answers given without help were correct, across all courses, with
+  "I don't know" apart (task 2.27, `src/web/calibration.ts`).
 - **Course**: curriculum diagram with status, unit list, notes, sources; a
   card at the top leads to the unit in progress most recently opened, or
   else the next unit in order, and every unit not started has Start (task
@@ -858,10 +861,13 @@ Artifacts render in a sandboxed frame so generated HTML cannot touch the app.
 
 The page talks to the server through the routes in `src/server/http/app.ts`
 (task 1.5); the bodies they take and send are schemas in `src/shared/`
-(`events.ts`, `library.ts`, `what-i-know.ts`). The library reads courses
-from the record. `GET /api/courses/<id>/what-i-know` sends a course's
-objectives with their status and evidence, derived when asked
-(`record/what-i-know.ts`); a draft is refused (task 2.26).
+(`events.ts`, `library.ts`, `what-i-know.ts`, `calibration.ts`). The
+library reads courses from the record. `GET /api/courses/<id>/what-i-know`
+sends a course's objectives with their status and evidence, derived when
+asked (`record/what-i-know.ts`); a draft is refused (task 2.26). `GET
+/api/calibration` sends the counts by confidence level, derived from every
+course's evidence when asked, a course whose evidence cannot be read left
+out and named (`record/calibration.ts`, task 2.27).
 "New course" starts an intake, which the page addresses by an id of its
 own until it ends, because the course exists only from the first proposal;
 the intake's event stream, messages, approval and stop are routes under

@@ -1349,3 +1349,29 @@ tested"). Stage 1 is finished.
   with its flaw, "I don't know" with its stuck line, an answer with help
   and a missed choice with reasoning; the browser was closed before the
   server stopped. Findings: `decisions.md`, "What I know".
+
+### 2.27 Calibration
+
+- Status: done
+- Depends on: 2.23, 2.26
+- Why: confidence was kept as percentages to allow calibration feedback
+  (brief, "Decision status"), and nothing builds it. With 2.23 confidence
+  no longer gates passing, so it says how sure the learner really was.
+- Do: across all courses, for each confidence level, how many unassisted
+  graded answers were correct, as counts ("90%: 8 of 10"), with "I don't
+  know" counted apart and answers with help left out; shown on the
+  library. Decide whether answers given before 2.23 count, and record why.
+- Done when: hand-worked counting tests pass (each level, help left out,
+  "I don't know" apart, a course whose evidence cannot be read skipped);
+  `mise run check` passes; on `pnpm dev:fake` the library shows the seeded
+  courses' counts, and the browser is closed before the server stops.
+- Note: done on 2026-11-17. Answers from before 2.23 count: the record
+  holds no rule version, the incentive a cut would remove still exists
+  after 2.23, the learner's own answers went against it, and all ten of
+  the user's answers predate 2.23. The counts sit below the library's
+  courses. `mise run check` passed; six injected faults each failed tests,
+  and the counting test caught zod's enum order; on `pnpm dev:fake` the
+  library showed the seed's "90%: 10 of 10 correct", then the counts after
+  a miss, an "I don't know" and an answer with help, with a course whose
+  log could not be read named; the browser was closed before the server
+  stopped. Findings: `decisions.md`, "Calibration".

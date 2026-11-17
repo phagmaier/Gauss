@@ -1,11 +1,13 @@
 // HTTP routes: the library and the intake chat that starts a course (plan
-// task 1.5), the unit chats (task 2.6), and "What I know" (task 2.26). Each
-// chat has an event stream from the server to the page, and a POST for each
-// thing the learner does in it. Only Gauss's own page may use any of them.
+// task 1.5), the unit chats (task 2.6), "What I know" (task 2.26) and
+// calibration (task 2.27). Each chat has an event stream from the server to
+// the page, and a POST for each thing the learner does in it. Only Gauss's
+// own page may use any of them.
 
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { z } from "zod";
+import type { Calibration } from "../../shared/calibration.ts";
 import {
   Approval,
   type Hello,
@@ -19,6 +21,7 @@ import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
+import { readCalibration } from "../record/calibration.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { withProgress } from "../record/progress.ts";
 import { whatIKnow } from "../record/what-i-know.ts";
@@ -70,6 +73,13 @@ export function createApp(options: {
           (await withProgress(dataRoot, stored)) satisfies CourseWithProgress,
         );
   });
+
+  // Calibration (task 2.27): across every course, how often the answers at
+  // each confidence level were right. A course whose evidence cannot be read
+  // is left out and named.
+  app.get("/api/calibration", async (c) =>
+    c.json((await readCalibration(dataRoot)) satisfies Calibration),
+  );
 
   // "What I know" (task 2.26): every objective of the course's planned units
   // with its status and the evidence behind it. A draft has none to show.
