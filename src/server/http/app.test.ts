@@ -1316,6 +1316,7 @@ test("what I know sends each planned unit's objectives with their status and evi
         objectives: null,
       },
     ],
+    calibration: COURSE_CALIBRATION,
   });
 });
 
@@ -1357,28 +1358,60 @@ test("what I know names a unit with a position in progress, and refuses an unkno
   );
 });
 
-// --- Calibration -----------------------------------------------------------------
+/**
+ * The calibration of courseWithEvidence's answers, counted by hand: at 50%,
+ * one wrong and one right; at 75%, one wrong and one right; at 90%, one
+ * right with help, left out; at 100%, one right, on an objective of no plan,
+ * which counts all the same; two "I don't know"; an override, which counts
+ * for nothing.
+ */
+const COURSE_CALIBRATION = {
+  levels: [
+    { confidence: "under-50", correct: 0, answered: 0 },
+    { confidence: "50", correct: 1, answered: 2 },
+    { confidence: "75", correct: 1, answered: 2 },
+    { confidence: "90", correct: 0, answered: 0 },
+    { confidence: "100", correct: 1, answered: 1 },
+  ],
+  unknown: 2,
+};
 
-test("calibration counts every course's answers by confidence", async () => {
-  // The course's answers: at 50%, one wrong and one right; at 75%, one
-  // wrong and one right; at 90%, one right with help, left out; at 100%, one
-  // right, on an objective of no plan, which counts all the same; two "I
-  // don't know"; and an override, which counts for nothing.
+test("what I know counts calibration on its own course's answers only", async () => {
   await courseWithEvidence();
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  const other = { ...FIRST, title: "Calculus I" };
+  const { id } = await root.createCourse({ title: other.title });
+  await root.saveProposal(id, other);
+  await root.approveCurriculum(id, other);
+  await root.appendEvidence(id, {
+    kind: "answer",
+    recordedAt: CREATED,
+    objective: "limits",
+    question: ZERO,
+    answer: { kind: "choice", questionId: "c1", choice: "A", confidence: "90" },
+    assisted: false,
+    verdict: "correct",
+  });
   const { app } = setUp([]);
 
-  const response = await app.request("/api/calibration");
+  const calibrationOf = async (course: string) =>
+    (
+      (await (
+        await app.request(`/api/courses/${course}/what-i-know`)
+      ).json()) as { calibration: unknown }
+    ).calibration;
 
-  expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({
+  expect(await calibrationOf(COURSE)).toEqual(COURSE_CALIBRATION);
+  expect(await calibrationOf(id)).toEqual({
     levels: [
       { confidence: "under-50", correct: 0, answered: 0 },
-      { confidence: "50", correct: 1, answered: 2 },
-      { confidence: "75", correct: 1, answered: 2 },
-      { confidence: "90", correct: 0, answered: 0 },
-      { confidence: "100", correct: 1, answered: 1 },
+      { confidence: "50", correct: 0, answered: 0 },
+      { confidence: "75", correct: 0, answered: 0 },
+      { confidence: "90", correct: 1, answered: 1 },
+      { confidence: "100", correct: 0, answered: 0 },
     ],
-    unknown: 2,
-    skipped: [],
+    unknown: 0,
   });
+  // The counts across all courses are gone (task 2.29).
+  expect((await app.request("/api/calibration")).status).toBe(404);
 });

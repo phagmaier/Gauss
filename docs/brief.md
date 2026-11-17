@@ -195,7 +195,8 @@ it in any sitting.
 - **What I know**: per course, every objective with its status and the
   answers behind it (question, answer, confidence, help, grade, date).
 - **Calibration**: how often the learner's answers at each confidence level
-  were right, across all courses, as counts ("8 of 10").
+  were right, per course, as counts ("8 of 10"), on the course's "What I
+  know".
 - **Backup**: the data folder keeps a history of the record, so a wrong
   write can be undone.
 - **Curriculum diagram**: generated from the stored curriculum and progress, so

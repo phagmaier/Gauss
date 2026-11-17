@@ -67,6 +67,7 @@ findings are the record.
 | What I know | Task 2.26: the route and what it sends (units in order, objectives in teaching order, evidence in log order, overrides as lines, the rubric left out), the page and its link, the words beside an answer, the date, what is not done, tests, faults and the browser run | Touching `record/what-i-know.ts`, `shared/what-i-know.ts`, `WhatIKnow.tsx` or the course view's links; disputes raised from a past answer (stage 3); retained and slipping in the view (stage 5); 2.27's calibration |
 | Calibration | Task 2.27: what counts (help left out, "I don't know" apart), why answers from before 2.23 count, the route apart from the library's, the levels' order and zod's enum, the library's counts, what is not done, tests, faults and the browser run | Touching `record/calibration.ts`, `shared/calibration.ts`, `CONFIDENCE_LEVELS`, the library's calibration section; anything that changes what confidence means or when help is recorded |
 | User check of 2.23 to 2.27 | The user's try: calibration per course and library rows to the course page (tasks 2.28 and 2.29), and what the new unit's record showed (the try, paraphrase, two compound objectives of eight) | Tasks 2.28 and 2.29; touching the library's rows or calibration; revising `unit-planner.md` |
+| Calibration per course | Task 2.29: the counts on each course's "What I know", the library's and `GET /api/calibration` gone, spacing, tests and the browser run | Touching calibration, `WhatIKnow`'s body, or the "What I know" page's top |
 
 ## Page design (plan task 1.0)
 
@@ -4923,3 +4924,35 @@ Read by the agent from the record, read-only, at the user's request:
   slips through on Sonnet 5.5; nothing was changed.
 - **Passing on two unsure answers** could not be seen: no question had
   been answered in the unit.
+
+## Calibration per course (plan task 2.29)
+
+Built on 2026-11-17, from the user's decision in "User check of 2.23 to
+2.27". It replaces where task 2.27 put the counts; what counts, and why
+answers from before 2.23 count, stand as "Calibration" has them.
+
+- **The counts are one course's**, sent with its "What I know"
+  (`calibration` in `WhatIKnow`, from `countCalibration` on the course's
+  evidence) and shown under the page's summary line, with a heading and a
+  line saying what is counted. The section is left out until the course
+  has an answer. `GET /api/calibration`, `readCalibration`, `skipped` and
+  the library's section are gone: a course whose evidence cannot be read
+  already answers 500 on its "What I know", with the reason. `brief.md`'s
+  "Calibration" says per course, as the user decided.
+- **Spacing**: the section's heading is its first child, which takes away
+  a heading's space above (`.pg-h:first-child`), so the section has it
+  (`.cal-sec`); the first browser run showed the heading against the
+  summary line.
+- **Tests.** The counting test now counts one log; the data-root test of
+  2.27 went with `readCalibration`, and the page test of the note naming
+  skipped courses with the note. Route tests: the hand-made record's
+  "What I know" carries its counts, worked by hand; another course with a
+  right answer at 90% gets only its own count, and the first none of it;
+  `GET /api/calibration` answers 404. Both route tests failed before the
+  change and pass after it.
+- **Checks.** `mise run check` passed (671 TypeScript tests, one Python
+  test; the CSS warning was there before). On `pnpm dev:fake`: no counts
+  on the library; Calculus I's "What I know" showed "90%: 4 of 4 correct"
+  (two answers in unit 1, one each in units 2 and 3, by the seed), the rest
+  "None yet"; "Linear algebra for PCA", with no answers, showed none. No
+  console errors; the browser was closed before the server stopped.

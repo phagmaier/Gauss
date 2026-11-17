@@ -77,8 +77,9 @@ stage 4 (`decisions.md`, "Stage 2 review").
 | 2.24 | One idea per objective, no quotes from memory | `unit-planner.md`: one idea per objective (the "could know one part and not another" test), up to eight objectives, and a last read for one verb and one claim; `planner.md`: three to six single-idea skills per unit; `tutor.md`: teaching ends with an ungraded exercise, one thing per question, no verbatim quotes from memory (stage 4 revises this). A compound objective still slips through now and then on Sonnet 5.5. |
 | 2.25 | Backup of the data root | The data root is a git repository (`record/backup.ts`), keeping `courses/` and `profile.md`; commits after a segment's close (`move`), a unit's end (`finish`) and an approval, in the background, by "Gauss", failures logged. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for `pnpm dev:fake` unless `=on`. Stage 4 must ignore page images. |
 | 2.26 | What I know | `GET /api/courses/<id>/what-i-know` sends `WhatIKnow` (`src/shared/what-i-know.ts`, derived by `record/what-i-know.ts`): every unit in order, a planned one's objectives in teaching order with status and evidence in log order, overrides as lines, never a rubric; a draft is 409. The page is `/courses/<id>/what-i-know` (`WhatIKnow.tsx`, words in `what-i-know.ts`), linked beside "Show the diagram". Stage 3's disputes can name an answer by its `questionId`, which the view sends, and must decide whether a dispute shows the rubric. The dev seed holds only correct choices and overrides. |
-| 2.27 | Calibration | `GET /api/calibration` (`record/calibration.ts`, schema `src/shared/calibration.ts`): for each confidence level, the unassisted answers and how many were correct, across all courses, "I don't know" apart, every answer with help left out; a course whose evidence cannot be read is skipped by title. Answers from before 2.23 count (`decisions.md`, "Calibration"). Shown below the library's courses once anything is answered. Level order is `CONFIDENCE_LEVELS`, not `Confidence.options`, which puts "under-50" last. |
+| 2.27 | Calibration | `GET /api/calibration` (`record/calibration.ts`, schema `src/shared/calibration.ts`): for each confidence level, the unassisted answers and how many were correct, across all courses, "I don't know" apart, every answer with help left out; a course whose evidence cannot be read is skipped by title. Answers from before 2.23 count (`decisions.md`, "Calibration"). Shown on each course's "What I know" since 2.29. Level order is `CONFIDENCE_LEVELS`, not `Confidence.options`, which puts "under-50" last. |
 | 2.28 | Library rows open the course page | Every library row opens its course view (`Library.tsx`), a draft's too, whose "Review the curriculum" opens the review; `Standing.resume` is gone. Sessions are reached from the course view's card and units, "Start unit 1" after approval and the closing card's "Start unit N". |
+| 2.29 | Calibration per course | The counts of 2.27 are one course's, in `WhatIKnow.calibration`, shown under the summary of the course's "What I know" once it has an answer; the library's counts, `GET /api/calibration` and `readCalibration` are gone. |
 
 ## Stage 2: session engine
 
@@ -103,7 +104,8 @@ Passed: the user tried it again on 2026-11-17, after tasks 2.18 to 2.22
 **Added after the user check**, from a review of the stage 2 record, which
 the user brought on 2026-11-17 (`decisions.md`, "Stage 2 review"). These
 tasks come before stage 3, with 2.28 and 2.29, which the user check of
-2.23 to 2.27 added.
+2.23 to 2.27 added. All are done; what is left is the user's look at 2.28
+and 2.29, and an objective passed on two unsure answers.
 
 **User check for 2.23 to 2.27:** open "What I know" on the theology course
 and the calibration counts on the library; then start a new unit and see
@@ -116,22 +118,6 @@ I know" and the counts were there; the new unit offered a try and
 paraphrased its authors, and two of its eight objectives still join two
 ideas; no answer had been given in it yet, so passing on two unsure
 answers is still to see. The user asked for tasks 2.28 and 2.29.
-
-### 2.29 Calibration per course
-
-- Status: todo
-- Depends on: 2.26, 2.27
-- Why: the user finds counts across all courses meaningless: how sure one
-  is in theology and in math are different things. It reverses the
-  "across all courses" of "Stage 2 review".
-- Do: the counts of 2.27, of one course's answers only, on that course's
-  "What I know" page, near the top; the library's counts and
-  `GET /api/calibration` removed. What counts is 2.27's.
-- Done when: a route test on a hand-made record shows one course's counts
-  and none of another course's; page logic tests pass; `mise run check`
-  passes; on `pnpm dev:fake` a seeded course's "What I know" shows its
-  counts and the library shows none, and the browser is closed before the
-  server stops.
 
 ## Stage 3: checked grading and aids
 

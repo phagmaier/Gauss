@@ -1,15 +1,15 @@
 import { expect, test } from "vitest";
 import type { Calibration } from "../shared/calibration.ts";
-import { calibrationRows, hasCalibration, skippedNote } from "./calibration.ts";
+import { calibrationRows, hasCalibration } from "./calibration.ts";
 
-// Expected lines written by hand from the task (plan 2.27): counts, as "8 of
-// 10", for each level lowest first, then "I don't know" apart.
+// Expected lines written by hand from the task (plans 2.27 and 2.29):
+// counts, as "8 of 10", for each level lowest first, then "I don't know"
+// apart.
 
 const counted = (
   answered: [number, number, number, number, number],
   correct: [number, number, number, number, number],
   unknown: number,
-  skipped: string[] = [],
 ): Calibration => ({
   levels: (["under-50", "50", "75", "90", "100"] as const).map(
     (confidence, i) => ({
@@ -19,7 +19,6 @@ const counted = (
     }),
   ),
   unknown,
-  skipped,
 });
 
 test("each level says how many of its answers were correct, and I don't know how many questions it was", () => {
@@ -50,18 +49,5 @@ test("the counts are shown once there is an answer, or an I don't know", () => {
   );
   expect(hasCalibration(counted([0, 1, 0, 0, 0], [0, 0, 0, 0, 0], 0))).toBe(
     true,
-  );
-});
-
-test("courses whose answers could not be read are named", () => {
-  const none = [0, 0, 0, 0, 0] as [0, 0, 0, 0, 0];
-  expect(skippedNote(counted(none, none, 0))).toBeNull();
-  expect(skippedNote(counted(none, none, 0, ["Group theory"]))).toBe(
-    "Leaves out Group theory, whose answers could not be read.",
-  );
-  expect(
-    skippedNote(counted(none, none, 0, ["Topology", "Calculus I", "Logic"])),
-  ).toBe(
-    "Leaves out Topology, Calculus I and Logic, whose answers could not be read.",
   );
 });

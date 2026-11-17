@@ -34,6 +34,7 @@ const view = (...units: (Status[] | null)[]): WhatIKnow => ({
         evidence: [],
       })) ?? null,
   })),
+  calibration: { levels: [], unknown: 0 },
 });
 
 test.each([

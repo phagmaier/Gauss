@@ -825,9 +825,6 @@ teaching with an ungraded exercise for the discussion.
 - **Library**: all courses and one-offs with progress; create, open, resume.
   Every row opens its course view (task 2.28; before it, a course with a
   unit in progress opened that unit's session).
-  Below the courses, calibration: for each confidence level, how many of
-  the answers given without help were correct, across all courses, with
-  "I don't know" apart (task 2.27, `src/web/calibration.ts`).
 - **Course**: curriculum diagram with status, unit list, notes, sources; a
   card at the top leads to the unit in progress most recently opened, or
   else the next unit in order, and every unit not started has Start (task
@@ -836,7 +833,10 @@ teaching with an ungraded exercise for the discussion.
   the course view: each started unit's objectives with their status, and
   under each its evidence in log order (question, answer, confidence,
   help, grade with a written answer's flaw, date), overrides as lines of
-  their own; never a rubric (`WhatIKnow.tsx`, `what-i-know.ts`).
+  their own; never a rubric (`WhatIKnow.tsx`, `what-i-know.ts`). Under its
+  summary, the course's calibration: for each confidence level, how many of
+  the answers given without help were correct, with "I don't know" apart
+  (tasks 2.27 and 2.29, `src/web/calibration.ts`).
 - **Session**: chat with rendered Markdown and math; question widgets (choice,
   typed math with live preview, free text, "run my code") with confidence and
   reasoning fields; phase indicator and the "ready" and "override" controls;
@@ -864,11 +864,9 @@ The page talks to the server through the routes in `src/server/http/app.ts`
 (task 1.5); the bodies they take and send are schemas in `src/shared/`
 (`events.ts`, `library.ts`, `what-i-know.ts`, `calibration.ts`). The
 library reads courses from the record. `GET /api/courses/<id>/what-i-know`
-sends a course's objectives with their status and evidence, derived when
-asked (`record/what-i-know.ts`); a draft is refused (task 2.26). `GET
-/api/calibration` sends the counts by confidence level, derived from every
-course's evidence when asked, a course whose evidence cannot be read left
-out and named (`record/calibration.ts`, task 2.27).
+sends a course's objectives with their status and evidence, and its
+calibration counts (`record/calibration.ts`), derived when asked
+(`record/what-i-know.ts`); a draft is refused (tasks 2.26 and 2.29).
 "New course" starts an intake, which the page addresses by an id of its
 own until it ends, because the course exists only from the first proposal;
 the intake's event stream, messages, approval and stop are routes under

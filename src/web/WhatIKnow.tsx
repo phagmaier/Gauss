@@ -3,10 +3,12 @@
 // each the evidence behind it in the order it was recorded: the question,
 // the answer (or "I don't know" and where the learner got stuck), how sure,
 // help, the grade with a written answer's flaw, and the date; an override is
-// a line of its own. Its words are in what-i-know.ts. Stage 3's disputes
-// will be raised from the answers here.
+// a line of its own. Its words are in what-i-know.ts. Under the summary, the
+// course's calibration (task 2.29), its words in calibration.ts. Stage 3's
+// disputes will be raised from the answers here.
 
 import { useEffect, useState } from "react";
+import type { Calibration } from "../shared/calibration.ts";
 import {
   WhatIKnow as Known,
   type KnownObjective,
@@ -14,6 +16,7 @@ import {
   type ShownEvidence,
 } from "../shared/what-i-know.ts";
 import { getJson } from "./api.ts";
+import { calibrationRows, hasCalibration } from "./calibration.ts";
 import { Link, TopLine } from "./Frame.tsx";
 import { InlineProse, Prose } from "./prose.tsx";
 import { ChoiceLabel } from "./QuestionCard.tsx";
@@ -67,6 +70,9 @@ export function WhatIKnow(props: { courseId: string }) {
             <>
               <h1 className="cv-title">What I know</h1>
               <p className="cv-at">{knownSummary(view)}</p>
+              {hasCalibration(view.calibration) ? (
+                <CalibrationCounts calibration={view.calibration} />
+              ) : null}
               {view.units.map((unit) =>
                 unit.objectives === null ? null : (
                   <UnitSection
@@ -206,5 +212,30 @@ function AnswerEntry(props: {
         </div>
       )}
     </>
+  );
+}
+
+/** How often the course's answers at each level of confidence were right. */
+function CalibrationCounts(props: { calibration: Calibration }) {
+  return (
+    <section className="cal-sec" aria-labelledby="calibration">
+      <h2 className="pg-h" id="calibration">
+        Calibration
+      </h2>
+      <p className="cal-lead">
+        How often your answers in this course were right at each level of
+        confidence. Answers given with help are left out.
+      </p>
+      <table className="cal">
+        <tbody>
+          {calibrationRows(props.calibration).map((row) => (
+            <tr key={row.label}>
+              <th scope="row">{row.label}</th>
+              <td>{row.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }

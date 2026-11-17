@@ -2,7 +2,8 @@
 // planned one each objective with its status and the evidence behind it, as
 // `GET /api/courses/<id>/what-i-know` sends it. Derived from the record when
 // asked, never stored (architecture.md section 3): statuses by
-// objectiveStatus and unitStatus, as the course view's progress has them.
+// objectiveStatus and unitStatus, as the course view's progress has them;
+// with the course's calibration (task 2.29).
 
 import type { Curriculum } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -15,6 +16,7 @@ import type {
   ShownQuestion,
   WhatIKnow,
 } from "../../shared/what-i-know.ts";
+import { countCalibration } from "./calibration.ts";
 import { objectiveStatus, unitStatus } from "./status.ts";
 
 /**
@@ -56,7 +58,7 @@ export function whatIKnow(
       objectives,
     };
   });
-  return { title, units };
+  return { title, units, calibration: countCalibration(evidence) };
 }
 
 function evidenceOn(

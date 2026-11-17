@@ -1381,7 +1381,11 @@ button.dn:hover {
   color: var(--yellow);
 }
 
-/* ---- Calibration on the library (task 2.27): counts per level of confidence ---- */
+/* ---- Calibration on a course's What I know (tasks 2.27, 2.29): counts per level of confidence ---- */
+/* its heading is the section's first child, which would lose the heading's space above */
+.cal-sec {
+  margin-top: 2.8em;
+}
 .cal-lead {
   margin: 0 0 0.8em;
   color: var(--soft);

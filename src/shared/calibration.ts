@@ -1,8 +1,8 @@
-// Calibration (brief.md, "Other features"; task 2.27): across all courses,
-// how often the learner's answers at each confidence level were right, as
-// counts, so "90%: 8 of 10" says how sure they really were. As
-// `GET /api/calibration` sends it to the library, derived from the evidence
-// when asked (src/server/record/calibration.ts), never stored.
+// Calibration (brief.md, "Other features"; tasks 2.27 and 2.29): in one
+// course, how often the learner's answers at each confidence level were
+// right, as counts, so "90%: 8 of 10" says how sure they really were. Sent
+// with the course's "What I know" (what-i-know.ts), derived from its
+// evidence when asked (src/server/record/calibration.ts), never stored.
 //
 // Only answers given without help count, "I don't know" included; "I don't
 // know" asks no confidence, so it is counted apart. Answers given before
@@ -25,7 +25,5 @@ export const Calibration = z.object({
   levels: z.array(LevelCount),
   /** Questions answered "I don't know". */
   unknown: z.number().int().nonnegative(),
-  /** The titles of courses whose evidence could not be read, left out. */
-  skipped: z.array(z.string()),
 });
 export type Calibration = z.infer<typeof Calibration>;

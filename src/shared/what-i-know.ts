@@ -9,6 +9,7 @@
 // (`rubric` in question.ts).
 
 import { z } from "zod";
+import { Calibration } from "./calibration.ts";
 import { Slug, Timestamp } from "./course.ts";
 import { Objective } from "./plan.ts";
 import {
@@ -66,9 +67,11 @@ export const KnownUnit = z.object({
 });
 export type KnownUnit = z.infer<typeof KnownUnit>;
 
-/** Every unit of the approved curriculum, in order. */
 export const WhatIKnow = z.object({
   title: z.string(),
+  /** Every unit of the approved curriculum, in order. */
   units: z.array(KnownUnit),
+  /** The course's answers counted by confidence level (task 2.29). */
+  calibration: Calibration,
 });
 export type WhatIKnow = z.infer<typeof WhatIKnow>;
