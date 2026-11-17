@@ -64,6 +64,7 @@ findings are the record.
 | Passing without a confident answer | Task 2.23: two correct answers to different questions pass at any confidence, one confident answer only if never missed; the `second` reason replacing `unconfident` and `confirm`; what needed no change; the user's courses re-derived with no status changed; tests, injected faults and the browser run | Touching `record/status.ts`, `engine/check-rules.ts`'s reasons or `checkText` in `unit-turns.ts`; stage 5's retained and slipping; 2.27's calibration |
 | One idea per objective, no quotes from memory | Task 2.24: the wording added to `unit-planner.md`, `planner.md` and `tutor.md` and why, the real runs on Sonnet 5.5 (a new course's plan, teaching and first question; the unit planner run three more times as its wording tightened), what still slips through | Touching `unit-planner.md`, `planner.md`'s unit size, `tutor.md`'s teaching end, questions or quotations, the objective statement's description in `plan.ts`; stage 4's quotes |
 | Backup of the data root | Task 2.25: the data root as a git repository, what it keeps and leaves out, the three commit points and where they are, commits in the background by "Gauss", failures logged, what is not done (hooks, an existing repository's rules), the switches, the tests, faults and the fake-backend run | Touching `record/backup.ts`, `move` or `finish` in `unit-record.ts`, approval in `intake.ts`, the server's start and shutdown; stage 5's `profile.md` and stage 4's page images (leave them out) |
+| What I know | Task 2.26: the route and what it sends (units in order, objectives in teaching order, evidence in log order, overrides as lines, the rubric left out), the page and its link, the words beside an answer, the date, what is not done, tests, faults and the browser run | Touching `record/what-i-know.ts`, `shared/what-i-know.ts`, `WhatIKnow.tsx` or the course view's links; disputes raised from a past answer (stage 3); retained and slipping in the view (stage 5); 2.27's calibration |
 
 ## Page design (plan task 1.0)
 
@@ -4736,3 +4737,83 @@ one Python test). On `pnpm dev:fake` with `GAUSS_BACKUP=on` and a scratch
 root, closing "What is a group?"'s segment 2 gave "what-is-a-group:
 segment 2 of group closed" and "what-is-a-group: unit group finished,
 passed", by Gauss, with the evidence, state and transcript files.
+
+## What I know (plan task 2.26)
+
+Built on 2026-11-17, from the user's acceptance of the view in "Stage 2
+review". The choices are the agent's and can be overturned.
+
+- **The route.** `GET /api/courses/<id>/what-i-know` sends `WhatIKnow`
+  (`src/shared/what-i-know.ts`), derived when asked by `whatIKnow` in
+  `src/server/record/what-i-know.ts` from the curriculum, `state.json` and
+  the evidence: the course's title and every unit of the curriculum in
+  order, each with its number, its status (`unitStatus`, so a unit with a
+  position is in progress) and its objectives, `null` until it is planned.
+  Objectives come in the order the plan's segments teach them, each with
+  `objectiveStatus` and its evidence in log order: the answers that checked
+  it, and a line for each override that named it. Evidence on an objective
+  of no plan is left out. An unknown course is 404, a draft (or no
+  curriculum) 409 with the reason, a record that cannot be read 500 with
+  the reason, as `GET /api/courses/<id>` does.
+- **What an answer shows.** The evidence's fields less the objective: the
+  question as the learner saw it, the answer as submitted (with its
+  `questionId`, which stage 3's disputes can name), help, the verdict, a
+  written answer's flaw and the date. A choice question keeps its right
+  letter, as the graded card shows it once missed. A written question's
+  rubric is left out: it is written for the grader and the tutor is told it
+  is never shown to the learner (`rubric` in `question.ts`). Stage 3 may
+  need it for disputes; that is its call.
+- **The page** is at `/courses/<id>/what-i-know` (`WhatIKnow.tsx`, its words
+  in `what-i-know.ts`), linked as "What I know" beside "Show the diagram" on
+  the course view of an approved course. A line under the title counts the
+  objectives of started units by status ("2 units started, with 9
+  objectives: 3 passed, 1 overridden, 3 not passed yet and 2 not
+  started."); each started unit is a section with its status, each
+  objective a row with its status word (the closing card's colours), and
+  under it its entries, each set off by a rule at the left. Units not
+  started are one line at the end, since a unit's objectives are set when
+  it starts. Status words: "Passed", "Overridden", "Not passed yet" for
+  attempted (the learner's word for it) and "Not started".
+- **An entry's words are the graded card's** (`QuestionCard.tsx`): "Correct",
+  "Not quite", "Did not know", "N% sure", "Your answer", "Stuck on",
+  "Correct answer" (a missed choice only), "The first flaw". Added: "Your
+  reasoning" for a choice's reasoning, which the card does not show; "With
+  help, so it did not count" on a correct answer with help, and only "With
+  help" on a miss, which counts as a miss either way; and an override's
+  line, "Moved on without passing it" (the engine's overrides name only
+  objectives not passed). `ChoiceLabel` is shared with the card.
+- **The date** is the day and the time in local time ("14 November 2026,
+  10:05"), formatted in two parts: how a locale joins them differs between
+  ICU versions ("," in some, "at" in Node's).
+- **Not done:** no reason beside a status (which answers count toward
+  passing), since the page would restate the passing rule of
+  `record/status.ts`; long histories are not folded; the session links to
+  the view nowhere. The dev seed is unchanged: its answers are correct
+  choices at 90% and overrides, and the browser run made the other kinds by
+  playing the scripted units.
+- **Tests.** Two route tests on a hand-made record: one with each kind of
+  entry (a missed choice with reasoning, a written miss with its flaw, a
+  correct answer with help, "I don't know" with and without where the
+  learner got stuck, an override naming an objective of no plan, an answer
+  on that objective, an entry whose timestamp is earlier than the one
+  before it), objectives listed in another order than their segments, every
+  status worked by hand, and a unit not planned; one for a unit with a
+  position, an unknown course, a draft and an unreadable log. Page logic:
+  the summary (five cases), the units not started, the status words, five
+  answer lines, the date; route parsing. Nine injected faults each failed a
+  test: the rubric sent, objectives in the plan's list order, evidence
+  sorted by timestamp, overrides dropped, the position ignored, help on a
+  miss said not to count, the right choice shown on a correct answer, a
+  confidence on "I don't know", and units not started counted.
+- **Checks.** `mise run check` passed (666 TypeScript tests, one Python
+  test; the CSS warning was there before). On `pnpm dev:fake` with a fresh
+  scratch root: the course view's link; Calculus I's view with its seeded
+  answers, the overridden objective's override line, "Nothing answered
+  yet" and "Units 4 and 6 have not started"; after playing "What is a
+  group?" (a written answer with "wrong", "I don't know" with a stuck line,
+  a hint asked during a question, then a correct answer) its view showed
+  the flaw, the stuck line and "With help, so it did not count"; after a
+  wrong choice at 100% with reasoning in Calculus I's unit 5, "Your
+  reasoning" and "Correct answer". The draft Topology showed the 409's
+  reason. No console errors but the 409 itself. The browser was closed
+  before the server stopped.

@@ -828,6 +828,11 @@ teaching with an ungraded exercise for the discussion.
   card at the top leads to the unit in progress most recently opened, or
   else the next unit in order, and every unit not started has Start (task
   2.12, `src/web/progress.ts`).
+- **What I know** (task 2.26), at `/courses/<id>/what-i-know`, linked from
+  the course view: each started unit's objectives with their status, and
+  under each its evidence in log order (question, answer, confidence,
+  help, grade with a written answer's flaw, date), overrides as lines of
+  their own; never a rubric (`WhatIKnow.tsx`, `what-i-know.ts`).
 - **Session**: chat with rendered Markdown and math; question widgets (choice,
   typed math with live preview, free text, "run my code") with confidence and
   reasoning fields; phase indicator and the "ready" and "override" controls;
@@ -853,7 +858,10 @@ Artifacts render in a sandboxed frame so generated HTML cannot touch the app.
 
 The page talks to the server through the routes in `src/server/http/app.ts`
 (task 1.5); the bodies they take and send are schemas in `src/shared/`
-(`events.ts`, `library.ts`). The library reads courses from the record.
+(`events.ts`, `library.ts`, `what-i-know.ts`). The library reads courses
+from the record. `GET /api/courses/<id>/what-i-know` sends a course's
+objectives with their status and evidence, derived when asked
+(`record/what-i-know.ts`); a draft is refused (task 2.26).
 "New course" starts an intake, which the page addresses by an id of its
 own until it ends, because the course exists only from the first proposal;
 the intake's event stream, messages, approval and stop are routes under

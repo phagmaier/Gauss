@@ -76,6 +76,7 @@ stage 4 (`decisions.md`, "Stage 2 review").
 | 2.23 | Passing without a confident answer | Since the last miss, unassisted correct answers to two different questions pass at any confidence, or one at 90% or 100% if never missed (`record/status.ts`); help neither counts nor breaks the row. Reasons for another question are `missed`, `assisted` and `second` (`engine/check-rules.ts`). Status is derived, so old records take the rule when read. |
 | 2.24 | One idea per objective, no quotes from memory | `unit-planner.md`: one idea per objective (the "could know one part and not another" test), up to eight objectives, and a last read for one verb and one claim; `planner.md`: three to six single-idea skills per unit; `tutor.md`: teaching ends with an ungraded exercise, one thing per question, no verbatim quotes from memory (stage 4 revises this). A compound objective still slips through now and then on Sonnet 5.5. |
 | 2.25 | Backup of the data root | The data root is a git repository (`record/backup.ts`), keeping `courses/` and `profile.md`; commits after a segment's close (`move`), a unit's end (`finish`) and an approval, in the background, by "Gauss", failures logged. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for `pnpm dev:fake` unless `=on`. Stage 4 must ignore page images. |
+| 2.26 | What I know | `GET /api/courses/<id>/what-i-know` sends `WhatIKnow` (`src/shared/what-i-know.ts`, derived by `record/what-i-know.ts`): every unit in order, a planned one's objectives in teaching order with status and evidence in log order, overrides as lines, never a rubric; a draft is 409. The page is `/courses/<id>/what-i-know` (`WhatIKnow.tsx`, words in `what-i-know.ts`), linked beside "Show the diagram". Stage 3's disputes can name an answer by its `questionId`, which the view sends, and must decide whether a dispute shows the rubric. The dev seed holds only correct choices and overrides. |
 
 ## Stage 2: session engine
 
@@ -100,25 +101,6 @@ Passed: the user tried it again on 2026-11-17, after tasks 2.18 to 2.22
 **Added after the user check**, from a review of the stage 2 record, which
 the user brought on 2026-11-17 (`decisions.md`, "Stage 2 review"). These
 tasks come before stage 3.
-
-### 2.26 What I know
-
-- Status: todo
-- Depends on: 2.23
-- Why: the record of what the learner has mastered is never shown. The
-  course view lists units and the session shows segment ticks; an
-  override after three correct answers looks the same as one after none.
-- Do: a view per course, reached from the course view: each planned unit's
-  objectives with their status, and under each its evidence in log order:
-  the question, the answer (or "I don't know" and where the learner got
-  stuck), confidence, help, the grade with a written answer's flaw, and
-  the date; overrides as lines of their own. A route under
-  `/api/courses/<id>/` sends it, its body a schema in `src/shared/`.
-  Stage 3's disputes will be raised from past answers here.
-- Done when: route tests on a hand-made record covering each kind of entry,
-  and page logic tests, pass; `mise run check` passes; on `pnpm dev:fake`
-  the view shows a seeded course's objectives and answers, and the browser
-  is closed before the server stops.
 
 ### 2.27 Calibration
 

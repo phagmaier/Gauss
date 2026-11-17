@@ -1321,3 +1321,31 @@ tested"). Stage 1 is finished.
   injected faults each failed tests; `git log` on a `pnpm dev:fake`
   scratch root showed the segment's and the unit's commits. Findings:
   `decisions.md`, "Backup of the data root".
+
+### 2.26 What I know
+
+- Status: done
+- Depends on: 2.23
+- Why: the record of what the learner has mastered is never shown. The
+  course view lists units and the session shows segment ticks; an
+  override after three correct answers looks the same as one after none.
+- Do: a view per course, reached from the course view: each planned unit's
+  objectives with their status, and under each its evidence in log order:
+  the question, the answer (or "I don't know" and where the learner got
+  stuck), confidence, help, the grade with a written answer's flaw, and
+  the date; overrides as lines of their own. A route under
+  `/api/courses/<id>/` sends it, its body a schema in `src/shared/`.
+  Stage 3's disputes will be raised from past answers here.
+- Done when: route tests on a hand-made record covering each kind of entry,
+  and page logic tests, pass; `mise run check` passes; on `pnpm dev:fake`
+  the view shows a seeded course's objectives and answers, and the browser
+  is closed before the server stops.
+- Note: done on 2026-11-17. The route and the page as in "Done when";
+  units not planned are sent with no objectives and named on one line;
+  the rubric is left out; the page's link sits beside "Show the diagram".
+  `mise run check` passed (666 TypeScript tests); nine injected faults each
+  failed tests; on `pnpm dev:fake` the view showed Calculus I's seeded
+  answers and override, and, after playing scripted units, a written miss
+  with its flaw, "I don't know" with its stuck line, an answer with help
+  and a missed choice with reasoning; the browser was closed before the
+  server stopped. Findings: `decisions.md`, "What I know".

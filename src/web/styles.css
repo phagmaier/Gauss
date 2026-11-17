@@ -1308,3 +1308,75 @@ button.dn:hover {
   font-size: 0.9em;
   color: var(--soft);
 }
+
+/* ---- What I know (task 2.26): each objective with the answers behind it ---- */
+/* the course view's links beside its Units heading */
+.cv-acts {
+  display: flex;
+  gap: 1.3em;
+  align-items: baseline;
+}
+/* a unit's or an objective's status, at the right of its line */
+.wk-s {
+  color: var(--faint);
+  font-size: 0.88em;
+  white-space: nowrap;
+}
+.wk-s.pass {
+  color: var(--green);
+}
+.wk-s.miss {
+  color: var(--yellow);
+}
+.wk-s.now {
+  color: var(--accent);
+}
+.wk-s.over {
+  color: var(--soft);
+}
+.wk-objs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wk-obj {
+  padding: 0.9em 0 1.1em;
+  border-top: 1px solid var(--surface0);
+}
+.wk-obj:first-child {
+  border-top: 0;
+}
+.wk-ohead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 1.2em;
+  align-items: baseline;
+}
+.wk-stmt {
+  font-weight: 500;
+}
+.wk-none {
+  margin: 0.3em 0 0;
+  color: var(--faint);
+  font-size: 0.9em;
+}
+/* the evidence, one entry after another as recorded, set off by a rule at the left */
+.wk-ev {
+  list-style: none;
+  margin: 0.7em 0 0;
+  padding: 0;
+  display: grid;
+  gap: 1em;
+}
+.wk-entry {
+  border-left: 2px solid var(--surface1);
+  padding: 0.1em 0 0.1em 1em;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: an entry of What I know is never inside a question card */
+.wk-entry .qa-prompt {
+  font-size: 1em;
+  margin: 0.25em 0 0.45em;
+}
+.wk-help {
+  color: var(--yellow);
+}

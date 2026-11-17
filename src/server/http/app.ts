@@ -1,7 +1,7 @@
 // HTTP routes: the library and the intake chat that starts a course (plan
-// task 1.5), and the unit chats (task 2.6). Each chat has an event stream
-// from the server to the page, and a POST for each thing the learner does in
-// it. Only Gauss's own page may use any of them.
+// task 1.5), the unit chats (task 2.6), and "What I know" (task 2.26). Each
+// chat has an event stream from the server to the page, and a POST for each
+// thing the learner does in it. Only Gauss's own page may use any of them.
 
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -15,11 +15,13 @@ import {
 } from "../../shared/events.ts";
 import type { CourseWithProgress, Library } from "../../shared/library.ts";
 import { AnswerSubmission } from "../../shared/question.ts";
+import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { withProgress } from "../record/progress.ts";
+import { whatIKnow } from "../record/what-i-know.ts";
 
 export function createApp(options: {
   dataRoot: DataRoot;
@@ -67,6 +69,32 @@ export function createApp(options: {
       : c.json(
           (await withProgress(dataRoot, stored)) satisfies CourseWithProgress,
         );
+  });
+
+  // "What I know" (task 2.26): every objective of the course's planned units
+  // with its status and the evidence behind it. A draft has none to show.
+  app.get("/api/courses/:id/what-i-know", async (c) => {
+    const stored = await dataRoot.readCourse(c.req.param("id"));
+    if (stored === undefined) return c.json({ error: "No such course." }, 404);
+    const { curriculum } = stored;
+    if (curriculum?.approval.status !== "approved") {
+      return c.json(
+        { error: "The curriculum is not approved yet: nothing is taught." },
+        409,
+      );
+    }
+    const [state, evidence] = await Promise.all([
+      dataRoot.readState(stored.id),
+      dataRoot.readEvidence(stored.id),
+    ]);
+    return c.json(
+      whatIKnow(
+        stored.course.title,
+        curriculum,
+        state,
+        evidence,
+      ) satisfies WhatIKnow,
+    );
   });
 
   // A draft is reviewed in an intake: the one that proposed it, if it is

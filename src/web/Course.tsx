@@ -1,10 +1,11 @@
 // The course view (docs/prototype/07-course.html, with 12-unit-order.html's
 // card and Start): the page is the unit list, each unit with where it
 // stands, and "Show the diagram" opens the diagram in the side pane, where
-// clicking a unit marks it in the list. The card at the top leads to the
-// unit in progress, or else to the next one. Any unit can be started; one
-// whose prerequisites are not finished asks once first (task 2.12). Notes
-// join in stage 5 and sources in stage 4.
+// clicking a unit marks it in the list; "What I know" beside it opens every
+// objective with the answers behind it (task 2.26). The card at the top
+// leads to the unit in progress, or else to the next one. Any unit can be
+// started; one whose prerequisites are not finished asks once first (task
+// 2.12). Notes join in stage 5 and sources in stage 4.
 
 import { useCallback, useEffect, useState } from "react";
 import type { StoredUnit } from "../shared/curriculum.ts";
@@ -136,16 +137,23 @@ export function Course(props: { courseId: string }) {
                 <>
                   <div className="cv-hrow">
                     <h2 className="pg-h">Units</h2>
-                    <button
-                      type="button"
-                      className="textbtn"
-                      aria-expanded={diagramOpen}
-                      onClick={() =>
-                        diagramOpen ? closeDiagram() : setDiagramOpen(true)
-                      }
-                    >
-                      {diagramOpen ? "Hide the diagram" : "Show the diagram"}
-                    </button>
+                    <span className="cv-acts">
+                      {draft ? null : (
+                        <Link to={paths.known(courseId)} className="textbtn">
+                          What I know
+                        </Link>
+                      )}
+                      <button
+                        type="button"
+                        className="textbtn"
+                        aria-expanded={diagramOpen}
+                        onClick={() =>
+                          diagramOpen ? closeDiagram() : setDiagramOpen(true)
+                        }
+                      >
+                        {diagramOpen ? "Hide the diagram" : "Show the diagram"}
+                      </button>
+                    </span>
                   </div>
                   {draft ? (
                     <UnitList units={curriculum.units} selected={selected} />

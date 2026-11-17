@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import type { EvidenceEntry } from "../../shared/evidence.ts";
+import type { ChoiceQuestion, WrittenQuestion } from "../../shared/question.ts";
 import {
   createFakeBackend,
   type FakeReply,
@@ -990,5 +992,367 @@ test("a course whose progress cannot be read is still listed, with the reason, b
   expect(opened.status).toBe(500);
   expect(((await opened.json()) as { error: string }).error).toContain(
     "evidence.jsonl, line 1 is not valid JSON.",
+  );
+});
+
+// --- What I know ---------------------------------------------------------------
+
+/** Unit 1's plan: its segments teach the objectives in another order than the list. */
+const KNOWN_PLAN = {
+  objectives: [
+    { id: "basis-image", statement: "Describe a linear map by a basis." },
+    { id: "span", statement: "Say what the span of two vectors is." },
+    { id: "matrix-columns", statement: "Read a matrix's columns." },
+    { id: "rank", statement: "Find the rank of a matrix." },
+  ],
+  segments: [
+    { title: "Maps", objectives: ["basis-image", "matrix-columns"] },
+    { title: "Span", objectives: ["span"] },
+    { title: "Rank", objectives: ["rank"] },
+  ],
+};
+const LINE: ChoiceQuestion = {
+  kind: "choice",
+  prompt: "Which vectors fix a linear map on $\\mathbb{R}^2$?",
+  choices: ["The image of one vector", "The images of a basis"],
+  answer: "B",
+};
+const ZERO: ChoiceQuestion = {
+  kind: "choice",
+  prompt: "Where does a linear map send $0$?",
+  choices: ["To $0$", "Anywhere"],
+  answer: "A",
+};
+const BASIS_WRITTEN: WrittenQuestion = {
+  kind: "written",
+  prompt: "Why do the images of a basis fix a linear map?",
+  rubric:
+    "Every vector is a combination of the basis; linearity does the rest.",
+};
+const COLUMNS_WRITTEN: WrittenQuestion = {
+  kind: "written",
+  prompt: "What is the second column of the matrix of $T$?",
+  rubric: "The image of the second basis vector.",
+};
+const SPAN_CHOICE: ChoiceQuestion = {
+  kind: "choice",
+  prompt: "What is the span of $(1,0)$ and $(2,0)$?",
+  choices: ["A line", "The plane"],
+  answer: "A",
+};
+
+/**
+ * An approved course, unit 1 planned and unit 2 not, with each kind of
+ * evidence entry, written to the log in this order.
+ */
+async function courseWithEvidence() {
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  const { id } = await root.createCourse({ title: FIRST.title });
+  await root.saveProposal(id, FIRST);
+  await root.approveCurriculum(id, FIRST);
+  await root.storePlan(id, "vectors", KNOWN_PLAN);
+  const at = (time: string) => `2026-11-14T${time}:00.000Z`;
+  const entries: EvidenceEntry[] = [
+    {
+      kind: "answer",
+      recordedAt: at("10:00"),
+      objective: "basis-image",
+      question: LINE,
+      answer: {
+        kind: "choice",
+        questionId: "q1",
+        choice: "A",
+        confidence: "50",
+        reasoning: "One vector is enough on a line.",
+      },
+      assisted: false,
+      verdict: "incorrect",
+    },
+    {
+      kind: "answer",
+      recordedAt: at("10:05"),
+      objective: "matrix-columns",
+      question: COLUMNS_WRITTEN,
+      answer: {
+        kind: "written",
+        questionId: "q2",
+        text: "The second row.",
+        confidence: "75",
+      },
+      assisted: false,
+      verdict: "incorrect",
+      flaw: "It reads the second row, not the second column.",
+    },
+    {
+      kind: "answer",
+      recordedAt: at("10:10"),
+      objective: "basis-image",
+      question: BASIS_WRITTEN,
+      answer: {
+        kind: "written",
+        questionId: "q3",
+        text: "By linearity.",
+        confidence: "90",
+      },
+      assisted: true,
+      verdict: "correct",
+    },
+    {
+      kind: "answer",
+      recordedAt: at("10:15"),
+      objective: "span",
+      question: SPAN_CHOICE,
+      answer: { kind: "unknown", questionId: "q4", stuck: "What a span is." },
+      assisted: false,
+      verdict: "unknown",
+    },
+    {
+      kind: "answer",
+      recordedAt: at("10:20"),
+      objective: "basis-image",
+      question: BASIS_WRITTEN,
+      answer: {
+        kind: "written",
+        questionId: "q5",
+        text: "Each vector is a combination of the basis, and $T$ is linear.",
+        confidence: "75",
+      },
+      assisted: false,
+      verdict: "correct",
+    },
+    // Names an objective of no plan as well, which is not shown.
+    {
+      kind: "override",
+      recordedAt: at("10:30"),
+      objectives: ["matrix-columns", "dropped"],
+    },
+    {
+      kind: "answer",
+      recordedAt: at("10:35"),
+      objective: "dropped",
+      question: ZERO,
+      answer: {
+        kind: "choice",
+        questionId: "q6",
+        choice: "A",
+        confidence: "100",
+      },
+      assisted: false,
+      verdict: "correct",
+    },
+    // Recorded last, though its timestamp is the earliest.
+    {
+      kind: "answer",
+      recordedAt: at("09:00"),
+      objective: "basis-image",
+      question: ZERO,
+      answer: {
+        kind: "choice",
+        questionId: "q7",
+        choice: "A",
+        confidence: "50",
+      },
+      assisted: false,
+      verdict: "correct",
+    },
+    {
+      kind: "answer",
+      recordedAt: at("10:40"),
+      objective: "span",
+      question: SPAN_CHOICE,
+      answer: { kind: "unknown", questionId: "q8" },
+      assisted: false,
+      verdict: "unknown",
+    },
+  ];
+  for (const entry of entries) await root.appendEvidence(id, entry);
+  return id;
+}
+
+test("what I know sends each planned unit's objectives with their status and evidence, in log order, without rubrics", async () => {
+  const id = await courseWithEvidence();
+  const { app } = setUp([]);
+
+  const response = await app.request(`/api/courses/${id}/what-i-know`);
+
+  expect(response.status).toBe(200);
+  const at = (time: string) => `2026-11-14T${time}:00.000Z`;
+  const { rubric: _, ...basisWritten } = BASIS_WRITTEN;
+  const { rubric: __, ...columnsWritten } = COLUMNS_WRITTEN;
+  expect(await response.json()).toEqual({
+    title: FIRST.title,
+    units: [
+      {
+        id: "vectors",
+        number: 1,
+        title: "Vectors and linear maps",
+        // Not finished: one objective attempted and one not started.
+        status: "in-progress",
+        objectives: [
+          {
+            id: "basis-image",
+            statement: "Describe a linear map by a basis.",
+            // Since the miss, two different questions answered correctly
+            // without help; the answer with help counts for nothing.
+            status: "passed",
+            evidence: [
+              {
+                kind: "answer",
+                recordedAt: at("10:00"),
+                question: LINE,
+                answer: {
+                  kind: "choice",
+                  questionId: "q1",
+                  choice: "A",
+                  confidence: "50",
+                  reasoning: "One vector is enough on a line.",
+                },
+                assisted: false,
+                verdict: "incorrect",
+              },
+              {
+                kind: "answer",
+                recordedAt: at("10:10"),
+                question: basisWritten,
+                answer: {
+                  kind: "written",
+                  questionId: "q3",
+                  text: "By linearity.",
+                  confidence: "90",
+                },
+                assisted: true,
+                verdict: "correct",
+              },
+              {
+                kind: "answer",
+                recordedAt: at("10:20"),
+                question: basisWritten,
+                answer: {
+                  kind: "written",
+                  questionId: "q5",
+                  text: "Each vector is a combination of the basis, and $T$ is linear.",
+                  confidence: "75",
+                },
+                assisted: false,
+                verdict: "correct",
+              },
+              {
+                kind: "answer",
+                recordedAt: at("09:00"),
+                question: ZERO,
+                answer: {
+                  kind: "choice",
+                  questionId: "q7",
+                  choice: "A",
+                  confidence: "50",
+                },
+                assisted: false,
+                verdict: "correct",
+              },
+            ],
+          },
+          {
+            id: "matrix-columns",
+            statement: "Read a matrix's columns.",
+            status: "overridden",
+            evidence: [
+              {
+                kind: "answer",
+                recordedAt: at("10:05"),
+                question: columnsWritten,
+                answer: {
+                  kind: "written",
+                  questionId: "q2",
+                  text: "The second row.",
+                  confidence: "75",
+                },
+                assisted: false,
+                verdict: "incorrect",
+                flaw: "It reads the second row, not the second column.",
+              },
+              { kind: "override", recordedAt: at("10:30") },
+            ],
+          },
+          {
+            id: "span",
+            statement: "Say what the span of two vectors is.",
+            status: "attempted",
+            evidence: [
+              {
+                kind: "answer",
+                recordedAt: at("10:15"),
+                question: SPAN_CHOICE,
+                answer: {
+                  kind: "unknown",
+                  questionId: "q4",
+                  stuck: "What a span is.",
+                },
+                assisted: false,
+                verdict: "unknown",
+              },
+              {
+                kind: "answer",
+                recordedAt: at("10:40"),
+                question: SPAN_CHOICE,
+                answer: { kind: "unknown", questionId: "q8" },
+                assisted: false,
+                verdict: "unknown",
+              },
+            ],
+          },
+          {
+            id: "rank",
+            statement: "Find the rank of a matrix.",
+            status: "not-started",
+            evidence: [],
+          },
+        ],
+      },
+      {
+        id: "eigen",
+        number: 2,
+        title: "Eigenvalues and eigenvectors",
+        status: "not-started",
+        objectives: null,
+      },
+    ],
+  });
+});
+
+test("what I know names a unit with a position in progress, and refuses an unknown course, a draft, and a record that cannot be read", async () => {
+  await approvedCourse();
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  await root.writePosition(COURSE, "vectors", { segment: 0, phase: "teach" });
+  const draft = await root.createCourse({ title: "Topology" });
+  await root.saveProposal(draft.id, { ...FIRST, title: "Topology" });
+  const broken = await root.createCourse({ title: "Calculus I" });
+  await root.saveProposal(broken.id, { ...FIRST, title: "Calculus I" });
+  await root.approveCurriculum(broken.id, { ...FIRST, title: "Calculus I" });
+  await writeFile(join(dir, "courses", broken.id, "evidence.jsonl"), "{\n");
+  const { app } = setUp([]);
+  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  const started = await app.request(`/api/courses/${COURSE}/what-i-know`);
+  const unknown = await app.request("/api/courses/nowhere/what-i-know");
+  const drafted = await app.request(`/api/courses/${draft.id}/what-i-know`);
+  const unreadable = await app.request(`/api/courses/${broken.id}/what-i-know`);
+  quiet.mockRestore();
+
+  expect(started.status).toBe(200);
+  const { units } = (await started.json()) as {
+    units: { id: string; status: string; objectives: unknown[] | null }[];
+  };
+  expect(units.map((u) => [u.id, u.status, u.objectives?.length])).toEqual([
+    ["vectors", "in-progress", 2],
+    ["eigen", "not-started", undefined],
+  ]);
+  expect(unknown.status).toBe(404);
+  expect(drafted.status).toBe(409);
+  expect(((await drafted.json()) as { error: string }).error).toContain(
+    "not approved",
+  );
+  expect(unreadable.status).toBe(500);
+  expect(((await unreadable.json()) as { error: string }).error).toContain(
+    "evidence.jsonl, line 1",
   );
 });

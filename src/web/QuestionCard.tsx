@@ -449,13 +449,22 @@ function AnswerRecord(props: {
 function ChoiceText(props: { question: QuestionView; letter: ChoiceLetter }) {
   const { question, letter } = props;
   return question.kind === "choice" ? (
+    <ChoiceLabel choices={question.choices} letter={letter} />
+  ) : null;
+}
+
+/** A choice by its letter and its text, as the learner saw it ("What I know" too). */
+export function ChoiceLabel(props: {
+  choices: readonly string[];
+  letter: ChoiceLetter;
+}) {
+  const { choices, letter } = props;
+  return (
     <span>
       {letter}.{" "}
-      <InlineProse
-        text={question.choices[CHOICE_LETTERS.indexOf(letter)] ?? ""}
-      />
+      <InlineProse text={choices[CHOICE_LETTERS.indexOf(letter)] ?? ""} />
     </span>
-  ) : null;
+  );
 }
 
 function WrittenRecord(props: { answer: WrittenAnswer }) {
