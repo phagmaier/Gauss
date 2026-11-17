@@ -43,7 +43,7 @@ Gauss/
     server/
       main.ts, serve.ts the real server's start, and the wiring it shares with the dev server
       record/           read/write course files; derive status, progress, "what I know"; the backup
-      engine/           the chats, phase and check rules, turn texts, grading and help-judge dispatch
+      engine/           the chats, phase and check rules, turn texts, grading and help-judge dispatch, the sandbox for commands
       tools/            teaching tool definitions (transport-free functions)
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
@@ -57,8 +57,9 @@ Gauss/
 Dependencies, kept few: `@anthropic-ai/claude-agent-sdk`, `zod` (the SDK's
 tool helper requires it), Hono with `@hono/node-server`, React with Vite,
 KaTeX, react-markdown with remark-gfm, remark-math and rehype-katex, Vitest,
-Biome; from stage 3 `@anthropic-ai/sandbox-runtime`, the runtime
-developed for Claude Code's sandbox, which runs the engine's commands. Python side:
+Biome; `@anthropic-ai/sandbox-runtime`, the runtime developed for Claude
+Code's sandbox, which runs the engine's commands and on Linux needs `bwrap`,
+`socat` and `rg` on the machine. Python side:
 SymPy and the package its LaTeX parser needs (stage 3), and a PDF and an
 EPUB converter chosen in stage 4. The curriculum diagram is laid out by the
 page itself (`src/web/diagram.ts`), not by a diagram library.
@@ -383,11 +384,17 @@ phase. Web search, where a course allows it, comes with sources (stage 4).
   `grader.md`, `WrittenGrade` or `GRADER_MODEL` changes, and
   `node scripts/judge-set.ts --runs 2` when `help-judge.md`,
   `HelpJudgment` or `JUDGE_MODEL` changes.
-- (stage 3) **The engine's commands**, the tests and the symbolic check,
-  run text a model or the learner wrote, so they run in a sandbox
-  (`@anthropic-ai/sandbox-runtime`): no network, writes only where the run
-  needs, a time limit, output cut to a limit. Installing packages
-  (section 5) runs there too, with the network open to the package index.
+- **The engine's commands** (stage 3: the tests and the symbolic check)
+  run text a model or the learner wrote, so each runs through
+  `engine/sandbox.ts`, on `@anthropic-ai/sandbox-runtime`: no network,
+  writes only to the folders the caller names and to the command's own
+  `$TMPDIR`, removed when it ends, a time limit that stops the command with
+  everything it started, and the last bytes of each output stream kept.
+  Reads and the server's environment are not confined (`decisions.md`,
+  "Confinement"). The server starts the sandbox once (`serve.ts`); when it
+  cannot run, it says once what is missing, and nothing that needs it
+  runs. (stage 3) Installing packages (section 5) runs there too, with the
+  network open to the package index.
 - (stage 3) **Disputes.** Every graded answer can be disputed once. The
   dispute names the answer by its `questionId` and is appended to the
   evidence with the learner's reason and the outcome; an overturned answer
@@ -618,7 +625,9 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
 - **Automated (Vitest)**: tests sit beside the code. Expected results come
   from worked examples written by hand. Engine flows run on the fake
   backend; idle closing runs on a fake timer (`engine/fake-timer.ts`) that
-  the test moves on; choice order is fixed with `order: givenOrder`.
+  the test moves on; choice order is fixed with `order: givenOrder`. The
+  sandbox's tests run real commands in it, so they need what it needs and
+  fail where it cannot run.
 - **Python helpers (pytest via uv)**: known equivalent and non-equivalent
   expression pairs; conversion of small fixture files (stages 3 and 4).
 - **Browser checks with no model**: `pnpm dev:fake`, the real server on the

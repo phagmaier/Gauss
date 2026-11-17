@@ -11,6 +11,7 @@ import type { TutorBackend } from "./backends/backend.ts";
 import { createGrader } from "./engine/grading.ts";
 import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
+import { startSandbox } from "./engine/sandbox.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
 import { createApp } from "./http/app.ts";
@@ -53,6 +54,10 @@ export async function serve(options: {
     prompt("help-judge.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
+  // The engine's commands run in it (task 3.2); it says once if it cannot.
+  const sandbox = await startSandbox({
+    log: (line) => process.stdout.write(`${line}\n`),
+  });
   const backup = options.backup
     ? await startBackup({
         path: dataRootPath,
@@ -108,7 +113,7 @@ export async function serve(options: {
   async function shutDown(): Promise<void> {
     server.closeAllConnections();
     await Promise.allSettled([intakes.close(), units.close(), vite.close()]);
-    await backup.settled();
+    await Promise.allSettled([backup.settled(), sandbox.close()]);
     server.close();
     process.exit(0);
   }

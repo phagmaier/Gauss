@@ -166,6 +166,9 @@ mise activated, or `mise exec -- <command>`.
 
 - The server prints the data root when it starts, and the model each
   session runs on. Stop it with Ctrl-C.
+- The engine's sandbox needs, on Linux, `bwrap`, `socat` and `rg` on the
+  path, which mise does not install. Without them the server says what is
+  missing when it starts, and the sandbox's tests fail.
 - `pnpm dev:fake` runs the same server (`src/server/serve.ts`) on the
   scripted backend; the header of `src/server/backends/scripted.ts` says
   what its tutor does and what `/hold`, `/revise`, `/one-off` and `/fail`

@@ -35,29 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.2 Sandboxed commands for the engine
-
-- Status: todo
-- Depends on: stage 2
-- Why: grading will run text a model wrote: a code question's tests, and
-  the expected expression the symbolic check parses (SymPy's parser
-  evaluates its input). Run by the server as it is, either could do
-  anything the learner can.
-- Do: one module through which the engine runs every command whose input
-  a model or the learner wrote, on `@anthropic-ai/sandbox-runtime` (look
-  its API up with context7; it is pre-1.0; add it, and check pnpm's build
-  script and release-age rules): no network, writes only to the folders
-  the caller names, a time limit after which the command and everything
-  it started are stopped, output cut to a limit, and the exit status
-  returned. A check the server runs at start, that the sandbox can run
-  (on Linux it needs `bwrap`, `socat` and `rg`), which says once what is
-  missing; without the sandbox, nothing that needs it runs.
-- Done when: tests that run real commands in the sandbox, no model: a
-  command's output and exit status; a write outside the named folders
-  refused and one inside them allowed; a network connection refused; a
-  command over its time limit stopped, with a child it started; output
-  over the limit cut. `mise run check` passes.
-
 ### 3.3 The tutor's file and shell tools
 
 - Status: todo
@@ -72,7 +49,8 @@ its outcome.
   directory, the confinement options with an `Edit` allow rule for the
   workspace only, and `CLAUDE_CODE_TMPDIR` a private folder per course
   under `/tmp` that fits Claude Code's 44-byte limit ("Confinement"). Only
-  when 3.2's start check passes; otherwise tutors get no built-in tools.
+  when 3.2's start check passes (the `available` of the sandbox
+  `serve.ts` starts); otherwise tutors get no built-in tools.
   The engine refuses built-in calls by phase, as it refuses teaching
   tools: `Write`, `Edit` and `Bash` while a question is open, with a
   reason the tutor can act on (asked through a hook in the backend; the
@@ -196,7 +174,9 @@ its outcome.
   network open: wheels only, so that no build script runs (look up uv's
   option with context7); which Python the workspace uses without
   downloading one; where uv's cache lies, since the sandbox writes only
-  where it is told; how the sandbox runtime allows named hosts. `tutor.md`
+  where it is told; how the sandbox runtime allows named hosts
+  (`registerCommandNetworkLists`, `decisions.md`, "Confinement";
+  `engine/sandbox.ts` has no option for it yet). `tutor.md`
   gets the lines the tutor needs; the scripted backend asks for a package.
 - Done when: tests with the command's run faked cover the tool (a name
   refused, refused while a question is open, the request kept across a
@@ -246,7 +226,9 @@ its outcome.
   the solution, as the folder the command runs in, with the workspace's
   environment (for Python, `python -m pytest` puts the folder it runs in
   on the import path, and `uv run --project <workspace>` uses the
-  workspace's environment). Settle the command's placeholders with it.
+  workspace's environment, though in the sandbox only with `UV_CACHE_DIR`
+  somewhere writable: "Confinement"). Settle the command's placeholders
+  with it.
 
 ### 3.8 Disputes
 

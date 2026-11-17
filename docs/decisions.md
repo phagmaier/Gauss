@@ -344,6 +344,24 @@ isolation options, kept every write inside `dir`:
   protection the runtime adds would be ours to get right), and running
   tests through a tutor session, which puts a model between the test and
   the grade.
+- **The engine's sandbox as built** (`engine/sandbox.ts`, runtime 0.0.83,
+  seen in task 3.2). A command gets a network namespace of its own whose
+  one way out is the runtime's proxy: a server on the machine was refused
+  both directly and by the proxy (403). Without a network section the
+  runtime does not start, so the network cannot be left open by omission.
+  One run's hosts open through `registerCommandNetworkLists`, under an id
+  of 128 random bits (not tried). A child moved to a session of its own
+  stopped at the time limit (bubblewrap's PID namespace), and a server
+  killed with SIGKILL took its commands with it (`--die-with-parent`). The
+  paths the runtime leaves writable unasked are closed in `configFor`.
+- **Each engine command has its own `$TMPDIR`**, removed when it ends (the
+  agent's choice). The runtime points `TMPDIR` at `/tmp/claude`, shared by
+  every sandboxed command, which the module closes; with no writable
+  temporary folder, Python's `tempfile` falls back to the working folder,
+  and pytest's folders would land in the workspace.
+- **`uv run` fails in the engine's sandbox**: its cache, `~/.cache/uv`, is
+  read-only there. A venv's own Python runs, and so does `uv run` with
+  `UV_CACHE_DIR` in `$TMPDIR` (seen in task 3.2, with no packages).
 - **Installing packages is the one command with network access** (the
   user's pick, piece 14; the rest of this entry is the agent's). The tutor
   names the packages and the engine builds the command, so no text of the
@@ -358,7 +376,8 @@ isolation options, kept every write inside `dir`:
   judge sees only the reply's text. Reads stay allowed, so the tutor can
   look at the code to clarify the question.
 - **Reads are not confined**: sandboxed commands can read most of the
-  machine, credential files included. The sandbox's network is closed
+  machine, credential files included, and the engine's commands get the
+  server's environment. The sandbox's network is closed
   until domains are allowed (documented, not tried), and the tutor has no
   web tool, so in stage 3 what it reads can reach only Anthropic. SDK
   0.3.325 documents `blockReadsOutsideWorkingDirectories`, which refuses
