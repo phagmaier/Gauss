@@ -76,6 +76,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
   .git/, .gitignore               the record's history: commits after each segment close, unit end and approval
   profile.md                      (stage 5) learner profile; one-line index of finished courses
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
+  cache/uv/                       uv's cache for installing courses' packages; outside the record and its history
   courses/<course-id>/
     course.json                   title, backend, settings, dates, when each unit was last opened
     style.md                      the course's style note, proposed and approved with the curriculum
@@ -89,7 +90,8 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
     notes/                        (stage 5) HTML notes per unit, cheat sheets
-    workspace/                    the tutor's working folder, where its sessions are kept: starter code and the learner's work
+    workspace/                    the tutor's working folder, where its sessions are kept: starter code and the learner's work;
+                                  once packages are installed, a uv project (pyproject.toml, uv.lock) and its .venv/
 ```
 
 The shapes are the schemas in `src/shared/`: `course.ts`, `curriculum.ts`
@@ -115,8 +117,9 @@ version: a field added later must be optional.
   holds the segment, the phase, where the check began (`checkFrom`), the
   open question (with its kept answer and the exchanges awaiting the help
   judge), an open detour, the extra segment that goes over objectives
-  again, and the tutor's session id. The engine writes it after every
-  change, before the page hears of the change.
+  again, the tutor's session id, and the tutor's request to install
+  packages while it waits for the learner. The engine writes it after
+  every change, before the page hears of the change.
 - **Writes.** Every file but the logs is written whole: to a temporary file
   in its folder, flushed, then renamed over it. The logs (evidence,
   misconceptions, transcripts) are appended a line at a time; an entry
@@ -128,7 +131,8 @@ version: a field added later must be optional.
   read is left out. Transcripts are not flushed to disk.
 - **Backup.** The data root is a git repository (`record/backup.ts`), made
   on the first start if it is not one, with a `.gitignore` that keeps
-  `courses/` and `profile.md`. The engine asks for a commit once a
+  `courses/` and `profile.md`, the learner's files in workspaces with
+  them, and leaves out `.venv/` and Python's caches. The engine asks for a commit once a
   segment's close, a unit's end or an approval is written; commits run in
   the background, one at a time, by "Gauss", and a failure is logged and
   never fails the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off
@@ -243,7 +247,9 @@ The rules:
   pending, while a question is open, on an objective not in the segment
   or already done in this check, and once the unit is finished. Its file
   writes and commands (section 5) are refused while a question is open,
-  and `show_artifact` while a question of its unit is. A refusal does not
+  and `show_artifact` while a question of its unit is;
+  `install_packages` while a question of the course is open or another
+  request of the course waits. A refusal does not
   end the turn; a posted question does.
 - **Feedback, then the next question.** The turn after a graded correct
   answer is for feedback alone; no tool may be called in it, and
@@ -346,7 +352,7 @@ tool server, for Codex an MCP server.
 | `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, `math` with an expected expression, or `written` with a rubric (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
-| `install_packages` | (stage 3) Asks the learner, through a card, to install named packages into the workspace; on Install the engine runs a command it builds itself, the one command with network access, open to the package index only. Refused while a question is open |
+| `install_packages` | Asks the learner, through a card, to install Python packages, named with optional version ranges (`PackagesInput` in `src/shared/packages.ts`), into the workspace. The request waits in the unit's position until the learner presses Install or "Not now". Install runs the commands `engine/packages.ts` builds, in the engine's sandbox with the workspace writable and the network open to PyPI alone, the one command of a course with network access; the workspace is closed to the tutors' changes and to questions while it runs. The outcome, with the end of the output, goes to the tutor in a turn of its own. Refused while a question of the course is open and while another request waits. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/`, numbered, and the thread keeps a reference to it. Refused while a question of the unit is open, over 100 KB, and for a document that names an address on the web. Does not end the turn |
 | `propose_style` | (stage 5) Proposes a change to `style.md`; applied only after the learner confirms |
 | `write_handoff` | (stage 5) Saves the handoff note |
@@ -627,7 +633,9 @@ no automated tests.
   graded or withdrawn, then moved to where it was answered; the help
   notice above the message box and the judge's call under each reply; a
   line for each file the tutor writes with its file tools, once a reply,
-  with its path in the workspace (piece 14); the detour marker and "Ready
+  with its path in the workspace (piece 14); a package request's card
+  (piece 14) with its packages, commands and folder, Install and "Not
+  now", then the outcome with the output's end; the detour marker and "Ready
   for another question"; the closing card; a top
   line with the unit's position, whose outline holds Start fresh. A math
   question is answered in a one-line field whose expression is shown as
@@ -665,6 +673,7 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   its own, since the course exists only from the first proposal.
 - Under `/api/courses/<id>/units/<unit>/`: `open` first, then `events`,
   `messages`, `ready`, `answers`, `grade-again`, `another-question`,
+  `packages/install` and `packages/not-now` (with the request's id),
   `override`, `next-segment`, `go-over-again`, `finish`, `start-fresh`,
   `interrupt`. A unit not opened since the server started answers 404 on
   all but `open`.

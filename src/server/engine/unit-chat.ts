@@ -40,7 +40,12 @@
 // so are the tutor's file writes and commands while a question is open
 // (task 3.3), when it has them, and an artifact while a question of the
 // unit is open (task 3.6): show_artifact stores the aid in the course's
-// artifacts/ folder, and the thread keeps a reference to it.
+// artifacts/ folder, and the thread keeps a reference to it. With
+// install_packages (task 3.11) the tutor asks for packages, which the
+// learner installs or declines on a card; the request is kept in the unit's
+// position, the install runs outside the chat's queue with the course's
+// workspace closed to every other change, and the answer goes to the tutor
+// in a turn of its own.
 // The engine composes every turn's header (unit-turns.ts) and writes the
 // unit's position to state.json after every change, before the page is told,
 // so a restart reopens the unit where it was. The chat's events are its
@@ -64,6 +69,11 @@
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";
+import type {
+  PackageRequest,
+  PackageSpec,
+  PackagesOutcome,
+} from "../../shared/packages.ts";
 import {
   type AnswerSubmission,
   CHOICE_LETTERS,
@@ -73,11 +83,15 @@ import {
   type QuestionInput,
   type QuestionView,
 } from "../../shared/question.ts";
-import type { OpenQuestion, Phase } from "../../shared/state.ts";
+import type { OpenQuestion, Phase, State } from "../../shared/state.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
+import {
+  installPackagesTool,
+  type PackageDesk,
+} from "../tools/install-packages.ts";
 import {
   type ArtifactShelf,
   showArtifactTool,
@@ -94,6 +108,7 @@ import type { ChatResult, Timer } from "./conversation.ts";
 import { type Grader, gradeChoice, gradeMath } from "./grading.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 import { type MathCheck, noMathCheck } from "./math-check.ts";
+import type { PackageInstaller } from "./packages.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import {
   createUnitAgents,
@@ -118,6 +133,8 @@ import {
   messageTurn,
   nextQuestionTurn,
   overrideNote,
+  packagesNote,
+  packagesTurn,
   quoted,
   readyTurn,
   teachTurn,
@@ -149,6 +166,13 @@ export interface UnitChat {
   answer(submission: AnswerSubmission): Promise<ChatResult>;
   /** Grades again the written or math answer whose grading failed. */
   gradeAgain(): Promise<ChatResult>;
+  /**
+   * Installs the packages of the tutor's request that waits. The page hears
+   * that they are installing, then the outcome.
+   */
+  installPackages(requestId: string): Promise<ChatResult>;
+  /** "Not now" to the tutor's request that waits. */
+  declinePackages(requestId: string): Promise<ChatResult>;
   /** The learner moves on without the check, which is recorded. */
   override(): Promise<ChatResult>;
   /** The learner starts the next segment, once this one is closed. */
@@ -232,6 +256,11 @@ interface ChatOptions {
    * 3.3); only when the sandbox can run. None if not given.
    */
   workspaceTools?: boolean;
+  /**
+   * Installs the packages a tutor asks for (task 3.11); only when the
+   * sandbox can run. Without it, tutors get no install_packages.
+   */
+  installer?: PackageInstaller;
 }
 
 export function createUnitChats(options: ChatOptions): UnitChats {
@@ -295,22 +324,46 @@ export function createUnitChats(options: ChatOptions): UnitChats {
 interface CourseWorkspace {
   tools: WorkspaceTools;
   post<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
+  /**
+   * Runs `work`, which makes a package request, unless a question is open
+   * or a request waits in a unit of the course.
+   */
+  request<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
+  /**
+   * Closes the workspace to the tutors' changes and to questions while an
+   * install runs, unless a question is open or a change is under way; the
+   * caller calls `done` once it ends.
+   */
+  beginInstall(): Promise<{ done(): void } | { refused: string }>;
 }
 
+/** The question open in a unit of the course, if there is one. */
+function openInCourse(state: State): OpenQuestion | undefined {
+  for (const position of Object.values(state.units)) {
+    if (position.openQuestion !== undefined) return position.openQuestion;
+  }
+  return undefined;
+}
+
+const INSTALLING =
+  "Packages are being installed in the workspace: no file may be written " +
+  "and no command run until that ends. You may still read files.";
+
 /**
- * The course's mutation reservations and question commits share one queue.
- * Never enter a chat's queue from here: teaching tools already hold it.
+ * The course's mutation reservations, question commits, package requests
+ * and installs share one queue. Never enter a chat's queue from here:
+ * teaching tools already hold it.
  */
 function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
   const exclusive = createSerial();
   let active = 0;
+  let installing = false;
   const tools: WorkspaceTools = {
     acquire: () =>
       exclusive(async () => {
-        const state = await dataRoot.readState(courseId);
-        for (const position of Object.values(state.units)) {
-          const open = position.openQuestion;
-          if (open === undefined) continue;
+        if (installing) return { refused: INSTALLING };
+        const open = openInCourse(await dataRoot.readState(courseId));
+        if (open !== undefined) {
           return {
             refused:
               `Question ${open.number} is open: no file may be written and no ` +
@@ -333,6 +386,13 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
     tools,
     post<T>(work: () => Promise<T>): Promise<T | { refused: string }> {
       return exclusive(async () => {
+        if (installing) {
+          return {
+            refused:
+              "Packages are being installed in the workspace. End your turn; " +
+              "you are told when the install ends, and can post the question then.",
+          };
+        }
         if (active > 0) {
           return {
             refused:
@@ -342,6 +402,58 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
           };
         }
         return work();
+      });
+    },
+    request<T>(work: () => Promise<T>): Promise<T | { refused: string }> {
+      return exclusive(async () => {
+        const state = await dataRoot.readState(courseId);
+        const open = openInCourse(state);
+        if (open !== undefined) {
+          return {
+            refused:
+              `Question ${open.number} is open: packages can be asked for ` +
+              "once its answer is graded.",
+          };
+        }
+        const waiting = Object.values(state.units).some(
+          (p) => p.packageRequest !== undefined,
+        );
+        if (waiting) {
+          return {
+            refused:
+              "A request to install packages already waits for the learner's " +
+              "answer. Wait for it: you are told when they answer.",
+          };
+        }
+        return work();
+      });
+    },
+    beginInstall() {
+      return exclusive(async () => {
+        if (installing) {
+          return { refused: "Packages are being installed in this course." };
+        }
+        const open = openInCourse(await dataRoot.readState(courseId));
+        if (open !== undefined) {
+          return {
+            refused: `Answer question ${open.number} first: nothing is installed while a question is open.`,
+          };
+        }
+        if (active > 0) {
+          return {
+            refused:
+              "The tutor is changing the workspace. Try again once it has finished.",
+          };
+        }
+        installing = true;
+        let ended = false;
+        return {
+          done() {
+            if (ended) return;
+            ended = true;
+            installing = false;
+          },
+        };
       });
     },
   };
@@ -390,6 +502,10 @@ function createUnitChat(
   let closing = false;
   /** A Stop cancels automatic next-question turns, including ones still queued. */
   let stopCount = 0;
+  /** The course's workspace, where the tutor works and packages go. */
+  let folder: string | undefined;
+  /** The install that runs, by its request's id; `settled` waits for it. */
+  let install: { requestId: string; done: Promise<void> } | undefined;
 
   // --- Opening ---------------------------------------------------------------
 
@@ -428,14 +544,18 @@ function createUnitChat(
         style: await dataRoot.readStyle(courseId),
         background: await dataRoot.readBackground(courseId),
       };
+      folder = await dataRoot.workspaceFolder(courseId);
       const loaded = createUnitAgents({
         backend: options.backend,
         systemPrompt: tutorSystemPrompt(options.systemPrompt, context, notes),
         tools: [
           askQuestionTool(questionBoard),
           showArtifactTool(artifactShelf),
+          ...(options.installer === undefined
+            ? []
+            : [installPackagesTool(packageDesk)]),
         ],
-        cwd: await dataRoot.workspaceFolder(courseId),
+        cwd: folder,
         ...(options.workspaceTools === true
           ? { workspace: options.workspace.tools }
           : {}),
@@ -467,6 +587,10 @@ function createUnitChat(
       }
       const { position } = record;
       log.emit(phaseEvent(position));
+      // A request waits on the learner, as an open question does.
+      if (position.packageRequest !== undefined) {
+        log.emit(requestedEvent(position.packageRequest));
+      }
       // A detour waits on the learner, as an open question does.
       if (position.detour !== undefined) log.emit(detourEvent(position.detour));
       const open = position.openQuestion;
@@ -1013,6 +1137,124 @@ function createUnitChat(
       }),
   };
 
+  // Not while a question of the course is open: the install closes the
+  // workspace, which an open question has closed already.
+  const packageDesk: PackageDesk = {
+    request: (packages) =>
+      exclusive(async () => {
+        const r = running;
+        if (r === undefined) return { refused: "The unit is not open." };
+        if (r.record.finished !== undefined) {
+          return { refused: UNIT_FINISHED };
+        }
+        return options.workspace.request(async () => {
+          const request: PackageRequest = {
+            id: randomUUID(),
+            packages: [...packages],
+            requestedAt: now().toISOString(),
+          };
+          await r.record.keepPackageRequest(request, () =>
+            log.emit(requestedEvent(request)),
+          );
+          return { requested: true as const };
+        });
+      }),
+  };
+
+  /** The card's event for a request that waits. */
+  function requestedEvent(request: PackageRequest): PageEvent {
+    return {
+      type: "packages_requested",
+      requestId: request.id,
+      packages: request.packages,
+      commands:
+        options.installer?.commands(folder ?? "", request.packages) ?? [],
+      folder: folder ?? "",
+    };
+  }
+
+  /** The request that waits, if it is this one, or why not. */
+  function waitingRequest(
+    r: Running,
+    requestId: string,
+  ): PackageRequest | string {
+    const request = r.record.position.packageRequest;
+    if (request === undefined || request.id !== requestId) {
+      return "That request to install packages is not waiting.";
+    }
+    if (install?.requestId === requestId) {
+      return "The packages are being installed.";
+    }
+    return request;
+  }
+
+  /**
+   * Takes the answered request out of the position, tells the page, and
+   * sends the tutor the outcome in a turn of its own, unless a turn sent
+   * before it has told it already. An install that ends after its unit
+   * did, which withdrew the request, is shown on the card and told to no
+   * one. Runs inside `exclusive`.
+   */
+  async function answerRequest(
+    r: Running,
+    request: PackageRequest,
+    outcome: PackagesOutcome,
+    output?: string,
+  ): Promise<void> {
+    const tell = () =>
+      log.emit({
+        type: "packages_answered",
+        requestId: request.id,
+        outcome,
+        ...(output === undefined ? {} : { output }),
+      });
+    if (r.record.finished !== undefined) {
+      tell();
+      return;
+    }
+    if (r.record.position.packageRequest?.id !== request.id) return;
+    await r.record.keepPackageRequest(undefined, tell);
+    const note = packagesNote(outcome, request.packages, output);
+    r.notes.push(note);
+    r.agents.send({
+      skip: () => !r.notes.includes(note),
+      text: () => packagesTurn(where(r)),
+    });
+  }
+
+  /** Installs the request's packages outside the chat's queue. */
+  function runInstall(
+    r: Running,
+    request: PackageRequest,
+    installer: PackageInstaller,
+    workspace: string,
+    claim: { done(): void },
+  ): Promise<void> {
+    const packages: readonly PackageSpec[] = request.packages;
+    return (async () => {
+      let result: { ok: boolean; output: string };
+      try {
+        result = await installer.install(workspace, packages);
+      } finally {
+        claim.done();
+      }
+      await exclusive(() =>
+        answerRequest(
+          r,
+          request,
+          result.ok ? "installed" : "failed",
+          result.output,
+        ),
+      );
+    })()
+      .catch((error: unknown) => {
+        console.error("An install could not be recorded:", error);
+      })
+      .finally(() => {
+        install = undefined;
+      });
+  }
+
   // --- What the learner does -------------------------------------------------
 
   /** Runs the action once the unit is open and the tutor is not writing. */
@@ -1225,6 +1467,34 @@ function createUnitChat(
         { whileWriting: true },
       ),
 
+    installPackages: (requestId) =>
+      act(async (r) => {
+        const request = waitingRequest(r, requestId);
+        if (typeof request === "string") return refused(request);
+        const { installer } = options;
+        if (installer === undefined || folder === undefined) {
+          return refused(
+            "Packages cannot be installed: the sandbox does not run.",
+          );
+        }
+        const claim = await options.workspace.beginInstall();
+        if ("refused" in claim) return refused(claim.refused);
+        log.emit({ type: "packages_installing", requestId });
+        install = {
+          requestId,
+          done: runInstall(r, request, installer, folder, claim),
+        };
+        return { ok: true };
+      }),
+
+    declinePackages: (requestId) =>
+      act(async (r) => {
+        const request = waitingRequest(r, requestId);
+        if (typeof request === "string") return refused(request);
+        await answerRequest(r, request, "declined");
+        return { ok: true };
+      }),
+
     override: () =>
       act(async (r) => {
         const { phase, openQuestion } = r.record.position;
@@ -1301,12 +1571,15 @@ function createUnitChat(
     },
     async settled() {
       await loading;
+      await install?.done;
       await running?.agents.settled();
       await log.flushed();
     },
     async close() {
       closing = true;
       await agents?.close();
+      // An install under way is not waited for: it stops with the server,
+      // and its request still waits when the unit opens again.
       await log.flushed();
     },
   };

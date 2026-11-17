@@ -574,7 +574,7 @@ test("a failed safety hook blocks execution, and closing during an asynchronous 
 });
 
 test.skipIf(process.platform !== "linux")(
-  "an approved Bash input runs through the workload filter and cannot create Unix socketpairs",
+  "an approved Bash input runs through the workload filter: no datagram Unix socketpair, a stream one allowed",
   async () => {
     const cwd = await mkdtemp(join(tmpdir(), "gauss-sdk-command-"));
     const release = vi.fn();
@@ -585,10 +585,12 @@ test.skipIf(process.platform !== "linux")(
     const program = [
       "import socket",
       "try:",
-      "    socket.socketpair()",
+      "    socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)",
       '    print("escaped")',
       "except OSError as error:",
       "    print(error.errno)",
+      "socket.socketpair()",
+      'print("stream")',
     ].join("\n");
     const command = `'${sandboxPython.replaceAll("'", `'\\''`)}' -I -c '${program.replaceAll("'", `'\\''`)}'`;
     const input = {
@@ -614,7 +616,7 @@ test.skipIf(process.platform !== "linux")(
       if (typeof guarded !== "string") throw new Error("No guarded command.");
       expect(
         execFileSync("bash", ["-c", guarded], { cwd, encoding: "utf8" }),
-      ).toBe("1\n");
+      ).toBe("1\nstream\n");
       expect(input.command).toBe(command);
       expect(release).not.toHaveBeenCalled();
       await postToolUse(options, "PostToolUse", "guarded");

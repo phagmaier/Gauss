@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
+import { PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question } from "./question.ts";
 
 /** A segment's phases, in order (architecture.md section 4, "Phases"). */
@@ -105,6 +106,12 @@ export const UnitPosition = z
     detour: Detour.optional(),
     /** The tutor's session on the backend, once the backend has reported it. */
     tutorSessionId: z.string().min(1).optional(),
+    /**
+     * The tutor's request to install packages in the course's workspace,
+     * from when it asks until the learner answers it (task 3.11). Kept
+     * across the unit's moves, as the session's id is.
+     */
+    packageRequest: PackageRequest.optional(),
   })
   .refine((p) => (p.phase === "check") === (p.checkFrom !== undefined), {
     message:

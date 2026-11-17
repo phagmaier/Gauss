@@ -5,6 +5,7 @@
 
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { resolve } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import { createServer as createViteServer } from "vite";
 import type { TutorBackend } from "./backends/backend.ts";
@@ -12,6 +13,7 @@ import { createGrader } from "./engine/grading.ts";
 import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
 import { createMathCheck } from "./engine/math-check.ts";
+import { createPackageInstaller, projectPython } from "./engine/packages.ts";
 import { startSandbox } from "./engine/sandbox.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
@@ -93,8 +95,19 @@ export async function serve(options: {
       systemPrompt: judgePrompt,
     }),
     mathCheck: createMathCheck({ sandbox }),
-    // Tutors run commands only where the sandbox runs (task 3.3).
+    // Tutors run commands only where the sandbox runs (task 3.3), and ask
+    // for packages only where they can be installed (task 3.11). uv's cache
+    // is in the data root, outside the record and its backup.
     workspaceTools: sandbox.available,
+    ...(sandbox.available
+      ? {
+          installer: createPackageInstaller({
+            run: sandbox.run,
+            cacheFolder: resolve(dataRootPath, "cache", "uv"),
+            python: await projectPython(),
+          }),
+        }
+      : {}),
   });
   const api = getRequestListener(createApp({ dataRoot, intakes, units }).fetch);
 

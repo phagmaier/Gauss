@@ -6,6 +6,11 @@
 
 import type { Unit } from "../../shared/curriculum.ts";
 import type { AnswerEvidence } from "../../shared/evidence.ts";
+import {
+  type PackageSpec,
+  type PackagesOutcome,
+  requirement,
+} from "../../shared/packages.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, confidenceLabel } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
@@ -342,6 +347,49 @@ export function overrideNote(
   );
 }
 
+/**
+ * The note that tells the tutor how its request to install packages ended
+ * (task 3.11): installed, failed with the end of the output, or declined.
+ */
+export function packagesNote(
+  outcome: PackagesOutcome,
+  packages: readonly PackageSpec[],
+  output?: string,
+): string {
+  const named = packages.map((p) => requirement(p)).join(", ");
+  switch (outcome) {
+    case "installed":
+      return (
+        `The learner installed the packages you asked for: ${named}. They ` +
+        "are in the workspace's environment: run its Python as " +
+        "`.venv/bin/python` (as `.venv/bin/python -m pytest`)."
+      );
+    case "failed":
+      return (
+        `Installing the packages you asked for, ${named}, failed. The end ` +
+        `of its output:\n\n${output ?? ""}\n\nThey are not installed. ` +
+        "Tell the learner in a sentence; you may ask again with other names " +
+        "or versions."
+      );
+    case "declined":
+      return (
+        `The learner answered "Not now" to installing ${named}. They are not ` +
+        "installed: go on without them, and ask again only when the learner " +
+        "says they are ready."
+      );
+    case "withdrawn":
+      return (
+        `The unit ended before the learner answered your request to install ${named}. ` +
+        "They are not installed."
+      );
+  }
+}
+
+/** The turn that brings a note on packages the tutor asked for (task 3.11). */
+export function packagesTurn(where: Where): string {
+  return turn(where, "The learner answered your request to install packages.");
+}
+
 /** The note for the first turn of a session that joins a unit under way. */
 export const JOINED_NOTE =
   "This conversation is new: the earlier conversation in this unit is not available to you, so do not refer to it.";
@@ -354,7 +402,21 @@ function turn(
   body?: string,
   allowedNow = allowed(where),
 ): string {
-  const header = [describe(where), event, ...where.notes, allowedNow].join(" ");
+  const waiting = where.position.packageRequest;
+  const request =
+    waiting === undefined || where.finished !== undefined
+      ? []
+      : [
+          `Your request to install ${waiting.packages.map((p) => requirement(p)).join(", ")} ` +
+            "waits for the learner's answer: the packages are not installed yet.",
+        ];
+  const header = [
+    describe(where),
+    event,
+    ...where.notes,
+    ...request,
+    allowedNow,
+  ].join(" ");
   return body === undefined ? `[${header}]` : `[${header}]\n${body}`;
 }
 

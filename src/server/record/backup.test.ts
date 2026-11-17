@@ -40,6 +40,12 @@ describe("starting", () => {
     await put("courses/limits/.state.json.0c1d.tmp");
     await put("profile.md", "A learner.\n");
     await put("intake/session.txt", "kept by the intake\n");
+    await put("courses/limits/workspace/count.py", "print(1)\n");
+    await put("courses/limits/workspace/.venv/bin/python", "");
+    await put("courses/limits/workspace/.venv/lib/site.py", "");
+    await put("courses/limits/workspace/__pycache__/count.pyc", "");
+    await put("courses/limits/workspace/tests/__pycache__/t.pyc", "");
+    await put("courses/limits/workspace/.pytest_cache/v/x", "");
 
     const backup = await startBackup({ path: dir, log });
     await backup.settled();
@@ -48,6 +54,7 @@ describe("starting", () => {
     expect(tracked()).toEqual([
       ".gitignore",
       "courses/limits/course.json",
+      "courses/limits/workspace/count.py",
       "profile.md",
     ]);
     expect(said).toEqual([`The record is backed up with git in ${dir}.`]);
@@ -95,6 +102,39 @@ describe("starting", () => {
 
     expect(subjects()).toEqual(["Gauss started", "Their own commit"]);
     expect(existsSync(join(dir, ".gitignore"))).toBe(false);
+  });
+
+  test("a .gitignore Gauss wrote before workspaces had packages is brought up to today's, and the venv stays out", async () => {
+    git("init", "-q");
+    const before = `# Written by Gauss (task 2.25). The backup keeps the course record only.
+/*
+!/.gitignore
+!/courses/
+!/profile.md
+.*.tmp
+`;
+    await put(".gitignore", before);
+    await put("courses/limits/workspace/.venv/bin/python", "");
+    await put("courses/limits/workspace/count.py", "print(1)\n");
+
+    const backup = await startBackup({ path: dir, log });
+    await backup.settled();
+
+    expect(tracked()).toEqual([
+      ".gitignore",
+      "courses/limits/workspace/count.py",
+    ]);
+  });
+
+  test("a .gitignore of the learner's own is left as it is", async () => {
+    git("init", "-q");
+    await put(".gitignore", "/intake/\n");
+    await put("courses/limits/workspace/.venv/bin/python", "");
+
+    const backup = await startBackup({ path: dir, log });
+    await backup.settled();
+
+    expect(git("show", "HEAD:.gitignore")).toBe("/intake/");
   });
 
   test("with nothing changed since the last run, starting commits nothing", async () => {

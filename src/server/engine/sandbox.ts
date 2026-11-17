@@ -2,7 +2,8 @@
 // wrote (decisions.md, "Confinement"): a code question's tests, the symbolic
 // check, installing a course's packages. It runs on
 // `@anthropic-ai/sandbox-runtime`, the runtime of Claude Code's sandbox,
-// which on Linux is bubblewrap. A command has no network; writes only to the
+// which on Linux is bubblewrap. A command has no network, unless its caller
+// names the hosts it may reach through the runtime's proxy; writes only to the
 // folders its caller names and to a temporary folder of its own, its
 // `$TMPDIR`, removed when it ends; is stopped at its time limit with
 // everything it started; and has its output cut to a limit. Reads are not
@@ -14,6 +15,7 @@
 // cannot run has no `run`, so nothing that needs it runs.
 
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { constants, homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -33,6 +35,13 @@ export interface SandboxCommand {
    * to its `$TMPDIR`.
    */
   writable: readonly string[];
+  /**
+   * The hosts it may reach, through the runtime's proxy, which refuses every
+   * other. Absent or empty: none.
+   */
+  hosts?: readonly string[];
+  /** Variables set for it, over the server's environment. */
+  env?: Readonly<Record<string, string>>;
   /** Written to its standard input, which is then closed. Absent: none. */
   input?: string;
   /** How long it may run; then it and everything it started are stopped. */
@@ -69,22 +78,25 @@ export type Sandbox =
     };
 
 const DEFAULT_OUTPUT_LIMIT = 64 * 1024;
-// Both syscall routes must fail. A missing runtime seccomp helper may only
-// warn, and a successful `true` says nothing about Unix-socket confinement.
+// No Unix socket may be made that could connect to one on the host. A
+// missing runtime seccomp helper may only warn, and a successful `true` says
+// nothing about Unix-socket confinement. A stream pair must be allowed: it is
+// connected for good, and uv and asyncio need one.
 const socketProbe = `
 import errno, socket
-for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
-    for create in (
-        lambda: socket.socket(socket.AF_UNIX, kind),
-        lambda: socket.socketpair(socket.AF_UNIX, kind),
-    ):
-        try:
-            create()
-        except OSError as error:
-            if error.errno == errno.EPERM:
-                continue
-            raise
-        raise RuntimeError("the sandbox allowed a Unix socket")
+creations = [lambda kind=kind: socket.socket(socket.AF_UNIX, kind)
+             for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM)]
+creations += [lambda kind=kind: socket.socketpair(socket.AF_UNIX, kind)
+              for kind in (socket.SOCK_DGRAM, socket.SOCK_SEQPACKET)]
+for create in creations:
+    try:
+        create()
+    except OSError as error:
+        if error.errno == errno.EPERM:
+            continue
+        raise
+    raise RuntimeError("the sandbox allowed a Unix socket")
+socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
 `;
 
 /**
@@ -167,17 +179,40 @@ async function run(command: SandboxCommand): Promise<SandboxResult> {
   }
   // The runtime sets TMPDIR inside the sandbox, so the command's own is
   // set by the script it runs, after the runtime's.
+  const variables = Object.entries(command.env ?? {});
+  for (const [name] of variables) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`Not a variable's name: ${name}`);
+    }
+  }
   const temporary = await mkdtemp(join(tmpdir(), "gauss-run-"));
+  // The proxy knows a command's hosts by the id its client presents, so the
+  // id is random, as the runtime requires, and lives only while it runs.
+  const hosts = command.hosts ?? [];
+  const commandId = randomBytes(16).toString("base64url");
   try {
-    const script = `export TMPDIR=${quote(temporary)}; exec ${sandboxCommand(command.argv)}`;
+    const exports = [["TMPDIR", temporary], ...variables]
+      .map(([name, value]) => `export ${name}=${quote(value ?? "")}; `)
+      .join("");
+    const script = `${exports}exec ${sandboxCommand(command.argv)}`;
     const wrapped = await SandboxManager.wrapWithSandbox(
       script,
       undefined,
       configFor([...command.writable, temporary]),
+      undefined,
+      { commandId },
     );
+    if (hosts.length > 0) {
+      SandboxManager.registerCommandNetworkLists(commandId, {
+        allowedDomains: [...hosts],
+      });
+    }
     try {
       return await runWrapped(wrapped, command);
     } finally {
+      if (hosts.length > 0) {
+        SandboxManager.unregisterCommandNetworkLists(commandId);
+      }
       SandboxManager.cleanupAfterCommand();
     }
   } finally {

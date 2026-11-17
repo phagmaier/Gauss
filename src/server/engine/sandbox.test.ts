@@ -5,6 +5,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -175,14 +176,20 @@ describe("the network", () => {
     expect(requests).toBe(1);
   });
 
-  test("refuses Unix socket pairs inherited through exec, including reconnectable datagram endpoints", async () => {
-    const result = await sandbox.run({
-      argv: [
-        "python",
-        "-I",
-        "-c",
-        `import errno, socket
-for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+  test("refuses reconnectable Unix socket pairs inherited through exec; a stream pair is allowed and cannot reach a host socket", async () => {
+    const path = join(dir, "host.sock");
+    const host = createNetServer((socket) => {
+      socket.end("reached\n");
+    });
+    await new Promise<void>((resolve) => host.listen(path, resolve));
+    try {
+      const result = await sandbox.run({
+        argv: [
+          "python",
+          "-I",
+          "-c",
+          `import errno, socket, sys
+for kind in (socket.SOCK_DGRAM, socket.SOCK_SEQPACKET):
     try:
         socket.socketpair(socket.AF_UNIX, kind)
     except OSError as error:
@@ -190,15 +197,102 @@ for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
         print("blocked")
     else:
         raise AssertionError("Unix socket pair allowed")
+pair, _ = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_CLOEXEC)
+try:
+    pair.connect(sys.argv[1])
+except OSError as error:
+    assert error.errno == errno.EISCONN, error
+    print("stream pair stays connected")
+else:
+    raise AssertionError("a stream pair reconnected")
 `,
-      ],
+          path,
+        ],
+        cwd: work,
+        writable: [],
+        timeLimitMs: 10_000,
+      });
+
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toBe(
+        "blocked\nblocked\nstream pair stays connected\n",
+      );
+    } finally {
+      await new Promise((resolve) => host.close(resolve));
+    }
+  });
+
+  test("reaches the hosts its caller names through the proxy, and no other", async () => {
+    // A request through the proxy the runtime names in HTTP_PROXY, with the
+    // credentials it gives there, to the server by two names.
+    const client = `
+      const http = require("node:http");
+      const port = Number(process.argv[1]);
+      const proxy = new URL(process.env.HTTP_PROXY);
+      const credentials = decodeURIComponent(proxy.username) + ":" + proxy.password;
+      for (const name of ["localhost", "127.0.0.1"]) {
+        http.get({
+          host: proxy.hostname,
+          port: proxy.port,
+          path: "http://" + name + ":" + port + "/",
+          headers: { "proxy-authorization": "Basic " + Buffer.from(credentials).toString("base64") },
+          agent: false,
+        }, (response) => { console.log(name + ": " + response.statusCode); response.resume(); })
+          .on("error", (error) => console.log(name + ": " + error.code));
+      }
+    `;
+    const run = (hosts: string[]) =>
+      sandbox.run({
+        argv: [process.execPath, "-e", client, String(port)],
+        cwd: work,
+        writable: [],
+        hosts,
+        timeLimitMs: 10_000,
+      });
+
+    const allowed = await run(["localhost"]);
+    expect(allowed.stdout.split("\n").sort()).toEqual([
+      "",
+      "127.0.0.1: 403",
+      "localhost: 200",
+    ]);
+    expect(requests).toBe(1);
+
+    // The next command, given none, reaches neither.
+    const after = await run([]);
+    expect(after.stdout.split("\n").sort()).toEqual([
+      "",
+      "127.0.0.1: 403",
+      "localhost: 403",
+    ]);
+    expect(requests).toBe(1);
+  });
+});
+
+describe("variables", () => {
+  test("are set for the command as given, quotes and all", async () => {
+    const odd = `it's $HOME; "quoted"`;
+    const result = await sandbox.run({
+      argv: ["sh", "-c", 'printf %s "$GAUSS_ODD"'],
       cwd: work,
       writable: [],
+      env: { GAUSS_ODD: odd },
       timeLimitMs: 10_000,
     });
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("blocked\nblocked\n");
+    expect(result.stdout).toBe(odd);
+  });
+
+  test("whose name is not a variable's are refused", async () => {
+    await expect(
+      sandbox.run({
+        argv: ["true"],
+        cwd: work,
+        writable: [],
+        env: { "A=B; rm": "x" },
+        timeLimitMs: 10_000,
+      }),
+    ).rejects.toThrow("Not a variable's name");
   });
 });
 

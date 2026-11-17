@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ArtifactFile } from "./artifact.ts";
 import { Slug, Timestamp } from "./course.ts";
 import { Unit } from "./curriculum.ts";
+import { PackageSpec, PackagesOutcome } from "./packages.ts";
 import { Plan } from "./plan.ts";
 import {
   AnswerSubmission,
@@ -74,6 +75,32 @@ export const PageEvent = z.discriminatedUnion("type", [
     type: z.literal("artifact"),
     file: ArtifactFile,
     title: z.string(),
+  }),
+  /**
+   * The tutor asked to install packages in the course's workspace (task
+   * 3.11): the card with the packages, the commands Install runs and where.
+   * Sent again when the chat opens with the request still waiting.
+   */
+  z.object({
+    type: z.literal("packages_requested"),
+    requestId: z.string(),
+    packages: z.array(PackageSpec),
+    /** Each command, its words as they are passed. */
+    commands: z.array(z.array(z.string())),
+    /** The workspace, an absolute path, where the commands run. */
+    folder: z.string(),
+  }),
+  /** The learner pressed Install, and the commands run. */
+  z.object({ type: z.literal("packages_installing"), requestId: z.string() }),
+  /**
+   * The request is answered: installed, failed, or "Not now". An install
+   * keeps the end of its output.
+   */
+  z.object({
+    type: z.literal("packages_answered"),
+    requestId: z.string(),
+    outcome: PackagesOutcome,
+    output: z.string().optional(),
   }),
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),

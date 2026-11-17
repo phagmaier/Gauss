@@ -35,46 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.11 Installing a course's packages
-
-- Status: todo
-- Depends on: 3.2, 3.3
-- Why: the user's pick in piece 14: Gauss installs what a coding course
-  needs once the learner approves, where the agent had recommended that
-  the learner run the command. A code question's tests cannot run without
-  their packages, so this comes before 3.7.
-- Do: an `install_packages` tool for the tutor that takes package names,
-  each with an optional version range. The engine refuses whatever is not
-  a package name (a URL, a path, an option), a call while a question is
-  open, and a second request while one waits. The page shows piece 14's
-  card (the packages, the command, Install, "Not now"); on Install the
-  engine runs the command it built itself through 3.2's module, with the
-  workspace writable and the network open to the package index only, and
-  the card keeps the end of the output. The tutor is told the outcome,
-  "Not now" included, in its next turn's header. Python through uv
-  (`uv add`, making the workspace's project when it has none); another
-  language's packages when a course needs them. Settle, under the rule in
-  `decisions.md`, "Confinement", that no text of the tutor's runs with the
-  network open: wheels only, so that no build script runs (look up uv's
-  option with context7); which Python the workspace uses without
-  downloading one; where uv's cache lies, since the sandbox writes only
-  where it is told; how the sandbox runtime allows named hosts
-  (`registerCommandNetworkLists`, `decisions.md`, "Confinement";
-  `engine/sandbox.ts` has no option for it yet). `tutor.md`
-  gets the lines the tutor needs; the scripted backend asks for a package.
-  The backup commits `courses/`, and so the workspace (`record/backup.ts`):
-  keep the venv out of it, and decide whether the learner's files belong
-  in the record's history.
-- Done when: tests with the command's run faked cover the tool (a name
-  refused, refused while a question is open, the request kept across a
-  restart, each answer in the tutor's next header) and the command built
-  from the names; a throwaway script on a scratch data root installs
-  `pytest` for real through the sandbox, imports it in the workspace's
-  Python, and shows a host other than the index refused; `mise run check`
-  passes; on `pnpm dev:fake` and a scratch data root one request is
-  installed and one answered "Not now", and the browser is closed before
-  the server stops.
-
 ### 3.7 Code questions
 
 - Status: todo
@@ -111,11 +71,12 @@ its outcome.
 - Note: the solution has to sit where the tests look for the learner's
   files without touching the workspace. One way: a scratch folder holding
   the solution, as the folder the command runs in, with the workspace's
-  environment (for Python, `python -m pytest` puts the folder it runs in
-  on the import path, and `uv run --project <workspace>` uses the
-  workspace's environment, though in the sandbox only with `UV_CACHE_DIR`
-  somewhere writable: "Confinement"). Settle the command's placeholders
-  with it.
+  environment (for Python, `<workspace>/.venv/bin/python -m pytest` puts
+  the folder it runs in on the import path and has the packages 3.11
+  installed; `uv run` in the sandbox needs `UV_CACHE_DIR` somewhere
+  writable: "Confinement"). Settle the command's placeholders with it.
+  Install is refused while a question of the course is open, so the tutor
+  asks for packages before it posts a code question.
 
 ### 3.8 Disputes
 

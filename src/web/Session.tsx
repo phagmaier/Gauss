@@ -33,6 +33,7 @@ import type { AnswerSubmission } from "../shared/question.ts";
 import { getJsonUntilAnswered, post, postStatus } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
+import { PackagesCard } from "./PackagesCard.tsx";
 import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
@@ -318,6 +319,12 @@ export function Session(props: { courseId: string; unitId: string }) {
                         post(path("answers"), submission)
                       }
                       onGradeAgain={() => post(path("grade-again"))}
+                      onInstall={(requestId) =>
+                        post(path("packages/install"), { requestId })
+                      }
+                      onNotNow={(requestId) =>
+                        post(path("packages/not-now"), { requestId })
+                      }
                       onAgain={() => act("go-over-again")}
                       onFinish={() => act("finish")}
                       onCourse={toCourse}
@@ -593,6 +600,8 @@ function ThreadItem(props: {
   onConfirm(asking: boolean): void;
   onAnswer(submission: AnswerSubmission): Promise<string | undefined>;
   onGradeAgain(): Promise<string | undefined>;
+  onInstall(requestId: string): Promise<string | undefined>;
+  onNotNow(requestId: string): Promise<string | undefined>;
   onAgain(): void;
   onFinish(): void;
   onCourse(): void;
@@ -631,6 +640,15 @@ function ThreadItem(props: {
           <b>{item.title}</b>
           <span className="go">{props.showing ? "Showing" : "Open"}</span>
         </button>
+      );
+    case "packages":
+      return (
+        <PackagesCard
+          item={item}
+          busy={props.busy}
+          onInstall={() => props.onInstall(item.requestId)}
+          onNotNow={() => props.onNotNow(item.requestId)}
+        />
       );
     case "judgment": {
       const { text, tone } = judgmentSays(item);

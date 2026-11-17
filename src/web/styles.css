@@ -625,6 +625,41 @@ details.why summary:hover {
   color: var(--soft);
   font-size: 0.9em;
 }
+/* a command's output, its end */
+.qa-out {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  line-height: 1.55;
+  background: var(--crust);
+  border-radius: var(--r);
+  padding: 0.8em 1em;
+  margin: 0.6em 0 0.2em;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ---- A card that asks for something other than an answer, piece 14 ---- */
+.pk-title {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 1.14em;
+}
+.pk .qa-line + .qa-line {
+  margin-top: 0.2em;
+}
+.pk-btns {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  flex: none;
+}
+.pk-cmd {
+  display: block;
+}
+/* a long command breaks anywhere rather than run off the card */
+.pk-words {
+  overflow-wrap: anywhere;
+}
 
 /* ---- Phases, piece 3: a marker line where each phase begins ---- */
 .pf-mark {

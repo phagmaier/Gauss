@@ -16,6 +16,7 @@ import {
   type PageEvent,
 } from "../../shared/events.ts";
 import type { CourseWithProgress, Library } from "../../shared/library.ts";
+import { PackagesAnswer } from "../../shared/packages.ts";
 import { AnswerSubmission } from "../../shared/question.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
@@ -257,6 +258,25 @@ export function createApp(options: {
   app.post(
     `${unitPath}/grade-again`,
     withUnit(async (c, chat) => reply(c, await chat.gradeAgain(), 202)),
+  );
+
+  // The card of the tutor's request to install packages (task 3.11).
+  app.post(
+    `${unitPath}/packages/install`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, PackagesAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.installPackages(body.data.requestId), 202);
+    }),
+  );
+
+  app.post(
+    `${unitPath}/packages/not-now`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, PackagesAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.declinePackages(body.data.requestId), 202);
+    }),
   );
 
   // Moving on sends the tutor nothing until the learner's next step.

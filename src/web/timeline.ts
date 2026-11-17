@@ -9,6 +9,7 @@
 import type { Slug } from "../shared/course.ts";
 import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
+import type { PackageSpec, PackagesOutcome } from "../shared/packages.ts";
 import type { Plan } from "../shared/plan.ts";
 import type {
   AnswerSubmission,
@@ -88,12 +89,30 @@ export interface ArtifactItem {
   title: string;
 }
 
+/** The tutor's request to install packages (task 3.11, piece 14), and its answer. */
+export interface PackagesItem {
+  kind: "packages";
+  key: number;
+  requestId: string;
+  packages: PackageSpec[];
+  /** The commands Install runs, each its words. */
+  commands: string[][];
+  /** The workspace the commands run in. */
+  folder: string;
+  /** The learner pressed Install, and no answer has come yet. */
+  installing?: boolean;
+  outcome?: PackagesOutcome;
+  /** The end of the install's output. */
+  output?: string;
+}
+
 export type Item =
   | { kind: "learner"; key: number; id?: string; text: string }
   | { kind: "tutor"; key: number; text: string }
   /** A file the tutor wrote, by its path in the workspace (task 3.3, piece 14). */
   | { kind: "file"; key: number; path: string }
   | ArtifactItem
+  | PackagesItem
   | QuestionItem
   | JudgmentItem
   /** A phase of a segment began, or the chat opened in it. */
@@ -198,6 +217,17 @@ export const emptyTimeline: Timeline = {
   detour: null,
   finished: null,
 };
+
+/** Changes the package request with this id, and leaves every other item as it is. */
+function withRequest(
+  items: Item[],
+  id: string,
+  change: (item: PackagesItem) => PackagesItem,
+): Item[] {
+  return items.map((item) =>
+    item.kind === "packages" && item.requestId === id ? change(item) : item,
+  );
+}
 
 /** Changes the question with this id, and leaves every other item as it is. */
 function withQuestion(
@@ -361,6 +391,59 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         shown: index > state.replayed ? item : state.shown,
       };
     }
+    case "packages_requested":
+      // A unit opened again shows a request that waits again; a restart
+      // ended an install under way, so the card asks again.
+      if (
+        state.items.some(
+          (i) => i.kind === "packages" && i.requestId === event.requestId,
+        )
+      ) {
+        return {
+          ...next,
+          items: withRequest(
+            state.items,
+            event.requestId,
+            ({ installing: _, ...item }) => item,
+          ),
+        };
+      }
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "packages",
+            key: index,
+            requestId: event.requestId,
+            packages: event.packages,
+            commands: event.commands,
+            folder: event.folder,
+          },
+        ],
+        tutorOpen: false,
+      };
+    case "packages_installing":
+      return {
+        ...next,
+        items: withRequest(state.items, event.requestId, (item) => ({
+          ...item,
+          installing: true,
+        })),
+      };
+    case "packages_answered":
+      return {
+        ...next,
+        items: withRequest(
+          state.items,
+          event.requestId,
+          ({ installing: _, ...item }) => ({
+            ...item,
+            outcome: event.outcome,
+            ...(event.output === undefined ? {} : { output: event.output }),
+          }),
+        ),
+      };
     case "question":
       // A unit opened again, after a failure or a restart, posts its open
       // question again.

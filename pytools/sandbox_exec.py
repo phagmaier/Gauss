@@ -1,10 +1,12 @@
-"""Exec a Linux sandbox workload with socketpair creation disabled.
+"""Exec a Linux sandbox workload with reconnectable socketpairs disabled.
 
 The sandbox runtime blocks socket(AF_UNIX), but its filter permits socketpair.
 A datagram endpoint from a pair can be reconnected to a host Unix socket. This
 additional, inherited seccomp filter closes that route AFTER the runtime has
-started its own relays and namespace helper. No compiler or extra package is
-needed; sandbox.ts runs this with the project's Python and -I.
+started its own relays and namespace helper. A stream pair stays allowed: it
+is connected for good (connect fails with EISCONN), and uv's runtime (tokio's
+signal handling) and Python's asyncio need one. No compiler or extra package
+is needed; sandbox.ts runs this with the project's Python and -I.
 """
 
 import ctypes
@@ -27,20 +29,26 @@ class SockFprog(ctypes.Structure):
     _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.POINTER(SockFilter))]
 
 
-def block_socketpairs():
+def block_reconnectable_socketpairs():
     # Linux audit architecture values and native syscall numbers. A foreign
     # ABI is killed, not allowed to bypass the native syscall check.
     architecture, socketpair = {
         "x86_64": (0xC000003E, 53),
         "aarch64": (0xC00000B7, 199),
     }[platform.machine()]
-    instructions = (SockFilter * 8)(
+    # The type argument carries SOCK_NONBLOCK and SOCK_CLOEXEC above its low
+    # four bits. Both architectures are little-endian, so the low half of
+    # args[1] is at offset 24.
+    instructions = (SockFilter * 11)(
         SockFilter(0x20, 0, 0, 4),              # LD seccomp_data.arch
         SockFilter(0x15, 1, 0, architecture),  # JEQ native architecture
         SockFilter(0x06, 0, 0, 0x80000000),    # RET KILL_PROCESS
         SockFilter(0x20, 0, 0, 0),            # LD seccomp_data.nr
         SockFilter(0x54, 0, 0, 0xBFFFFFFF),    # AND ~__X32_SYSCALL_BIT
-        SockFilter(0x15, 0, 1, socketpair),    # JEQ socketpair
+        SockFilter(0x15, 0, 4, socketpair),    # JEQ socketpair, else ALLOW
+        SockFilter(0x20, 0, 0, 24),           # LD seccomp_data.args[1], low
+        SockFilter(0x54, 0, 0, 0xF),           # AND the socket type's bits
+        SockFilter(0x15, 1, 0, 1),             # JEQ SOCK_STREAM, to ALLOW
         SockFilter(0x06, 0, 0, 0x00050000 | errno.EPERM),  # RET ERRNO
         SockFilter(0x06, 0, 0, 0x7FFF0000),    # RET ALLOW
     )
@@ -60,5 +68,5 @@ def block_socketpairs():
 
 
 if __name__ == "__main__":
-    block_socketpairs()
+    block_reconnectable_socketpairs()
     os.execvpe(sys.argv[1], sys.argv[1:], os.environ)

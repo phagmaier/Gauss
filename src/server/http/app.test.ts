@@ -13,6 +13,10 @@ import { givenOrder } from "../engine/choice-order.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
+import {
+  createPackageInstaller,
+  type PackageInstaller,
+} from "../engine/packages.ts";
 import { createUnitChats } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import { openDataRoot } from "../record/data-root.ts";
@@ -57,7 +61,11 @@ const OPENING: FakeTurn = [
   { text: "What do you know already? Shall I propose?" },
 ];
 
-function setUp(script: FakeTurn[], replies: FakeReply[] = []) {
+function setUp(
+  script: FakeTurn[],
+  replies: FakeReply[] = [],
+  installer?: PackageInstaller,
+) {
   const backend = createFakeBackend(script, replies);
   const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const intakes = createIntakes({
@@ -77,6 +85,7 @@ function setUp(script: FakeTurn[], replies: FakeReply[] = []) {
     }),
     now: () => new Date(NOW),
     order: givenOrder,
+    ...(installer === undefined ? {} : { installer }),
   });
   const app = createApp({ dataRoot, intakes, units });
   return { backend, dataRoot, intakes, units, app };
@@ -1458,4 +1467,89 @@ test("what I know counts calibration on its own course's answers only", async ()
   });
   // The counts across all courses are gone (task 2.29).
   expect((await app.request("/api/calibration")).status).toBe(404);
+});
+
+test("the package card's routes: Install and Not now name the request, which is answered once", async () => {
+  await approvedCourse();
+  const ran: string[][] = [];
+  const installer = createPackageInstaller({
+    run: async (command) => {
+      ran.push([...command.argv]);
+      return {
+        exitCode: 0,
+        timedOut: false,
+        stdout: "",
+        stderr: "",
+        cut: false,
+      };
+    },
+    cacheFolder: join(dir, "cache", "uv"),
+    python: "/opt/python/bin/python3",
+  });
+  const ask = (name: string) => ({
+    call: "install_packages",
+    input: { packages: [{ name }] },
+  });
+  const setup = setUp(
+    [
+      [{ text: "Teaching." }, ask("pytest")],
+      [{ text: "Installed." }],
+      [{ text: "Another." }, ask("numpy")],
+      [{ text: "Fine." }],
+    ],
+    [],
+    installer,
+  );
+  await openUnit(setup);
+  const chat = setup.units.get(COURSE, "vectors");
+  const requested = () => {
+    const card = chat
+      ?.events()
+      .findLast((e) => e.type === "packages_requested");
+    return card?.type === "packages_requested" ? card.requestId : "";
+  };
+  const first = requested();
+
+  expect((await post(setup.app, `${UNIT}/packages/install`, {})).status).toBe(
+    400,
+  );
+  expect(
+    (
+      await post(setup.app, `${UNIT}/packages/install`, {
+        requestId: "another",
+      })
+    ).status,
+  ).toBe(409);
+  const installed = await post(setup.app, `${UNIT}/packages/install`, {
+    requestId: first,
+  });
+  expect(installed.status).toBe(202);
+  await settle(setup);
+  expect(ran.map((argv) => argv[1])).toEqual(["init", "add"]);
+  const again = await post(setup.app, `${UNIT}/packages/not-now`, {
+    requestId: first,
+  });
+  expect(again.status).toBe(409);
+  expect(await again.json()).toEqual({
+    error: "That request to install packages is not waiting.",
+  });
+
+  expect(
+    (await post(setup.app, `${UNIT}/messages`, { text: "More?" })).status,
+  ).toBe(202);
+  await settle(setup);
+  const second = requested();
+  expect(second).not.toBe(first);
+  const declined = await post(setup.app, `${UNIT}/packages/not-now`, {
+    requestId: second,
+  });
+  expect(declined.status).toBe(202);
+  await settle(setup);
+  expect(chat?.events().at(-1)).toEqual({ type: "turn_end", outcome: "done" });
+  expect(chat?.events()).toContainEqual({
+    type: "packages_answered",
+    requestId: second,
+    outcome: "declined",
+  });
+  expect(ran).toHaveLength(2);
 });

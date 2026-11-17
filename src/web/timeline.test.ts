@@ -1156,3 +1156,62 @@ test("the first learner message can move without leaving an empty earlier conver
   const parts = conversations(state.items);
   expect(parts).toEqual([{ key: 2, items: state.items }]);
 });
+
+test("a package request is one card in the tutor's reply, which installs and is answered; one said again as the unit reopens stays one card, asking again", () => {
+  const requested: PageEvent = {
+    type: "packages_requested",
+    requestId: "r1",
+    packages: [{ name: "pytest", version: ">=8" }],
+    commands: [["uv", "add", "pytest>=8"]],
+    folder: "/data/courses/c/workspace",
+  };
+  const card = {
+    kind: "packages",
+    key: 2,
+    requestId: "r1",
+    packages: [{ name: "pytest", version: ">=8" }],
+    commands: [["uv", "add", "pytest>=8"]],
+    folder: "/data/courses/c/workspace",
+  };
+  const asked = play([
+    { type: "turn_start" },
+    { type: "tutor_text", text: "We need pytest." },
+    requested,
+    { type: "tutor_text", text: "Press Install." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(asked.items).toEqual([
+    { kind: "tutor", key: 1, text: "We need pytest." },
+    card,
+    { kind: "tutor", key: 3, text: "Press Install." },
+  ]);
+
+  const installing = play([{ type: "packages_installing", requestId: "r1" }], {
+    ...asked,
+    last: -1,
+  });
+  expect(installing.items[1]).toEqual({ ...card, installing: true });
+
+  // A restart ended the install; the reopened unit says the request again.
+  const reopened = play([requested], { ...installing, last: -1 });
+  expect(reopened.items).toHaveLength(3);
+  expect(reopened.items[1]).toEqual(card);
+
+  const answered = play(
+    [
+      { type: "packages_installing", requestId: "r1" },
+      {
+        type: "packages_answered",
+        requestId: "r1",
+        outcome: "installed",
+        output: " + pytest==9.2.0",
+      },
+    ],
+    { ...reopened, last: -1 },
+  );
+  expect(answered.items[1]).toEqual({
+    ...card,
+    outcome: "installed",
+    output: " + pytest==9.2.0",
+  });
+});

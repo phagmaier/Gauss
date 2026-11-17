@@ -23,6 +23,7 @@ import type { Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
+import type { PackageRequest } from "../../shared/packages.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type {
   AnswerSubmission,
@@ -73,6 +74,15 @@ export interface UnitRecord {
    * written once the unit is finished: it has no position.
    */
   keepSession(id: string | undefined): Promise<void>;
+  /**
+   * Writes the tutor's request to install packages into the position, or
+   * takes it out once answered (task 3.11). It is kept across moves, as the
+   * session's id is. Nothing is written once the unit is finished.
+   */
+  keepPackageRequest(
+    request: PackageRequest | undefined,
+    tell?: () => void,
+  ): Promise<void>;
   /** Starts the segment's check: this check is the evidence from here on. */
   startCheck(): Promise<void>;
   /**
@@ -155,11 +165,15 @@ export async function openUnitRecord(options: {
   }
   let checkAnswers = answersInCheck(allEvidence, position, plan);
   let sessionId = position.tutorSessionId;
+  let packageRequest = position.packageRequest;
 
   async function move(given: UnitPosition, tell?: () => void): Promise<void> {
-    const { tutorSessionId: _, ...rest } = given;
-    const next: UnitPosition =
-      sessionId === undefined ? rest : { ...rest, tutorSessionId: sessionId };
+    const { tutorSessionId: _, packageRequest: __, ...rest } = given;
+    const next: UnitPosition = {
+      ...rest,
+      ...(sessionId === undefined ? {} : { tutorSessionId: sessionId }),
+      ...(packageRequest === undefined ? {} : { packageRequest }),
+    };
     await dataRoot.writePosition(courseId, unitId, next);
     const was = position;
     position = next;
@@ -249,6 +263,15 @@ export async function openUnitRecord(options: {
     }
     await dataRoot.writePosition(courseId, unitId, null);
     finished = how;
+    // A request that waits leaves state.json with the position.
+    if (packageRequest !== undefined) {
+      emit({
+        type: "packages_answered",
+        requestId: packageRequest.id,
+        outcome: "withdrawn",
+      });
+      packageRequest = undefined;
+    }
     emit(status());
     emit({ type: "unit_closed", status: how });
     backup.commit(`${courseId}: unit ${unitId} finished, ${how}`);
@@ -279,6 +302,18 @@ export async function openUnitRecord(options: {
         await move(position);
       } catch (error) {
         sessionId = was;
+        throw error;
+      }
+    },
+
+    async keepPackageRequest(request, tell) {
+      if (finished !== undefined) return;
+      const was = packageRequest;
+      packageRequest = request;
+      try {
+        await move(position, tell);
+      } catch (error) {
+        packageRequest = was;
         throw error;
       }
     },

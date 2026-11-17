@@ -379,8 +379,13 @@ isolation options, kept every write inside `dir`:
   datagram endpoint was reconnected to a scratch host socket. Engine and
   tutor commands therefore use `pytools/sandbox_exec.py` inside the runtime,
   stacking an inherited seccomp filter before exec. The existing venv Python
-  avoids a compiler or vendored native binary. Startup probes both routes
-  and refuses tools if either remains open; unsupported Linux ABIs fail closed.
+  avoids a compiler or vendored native binary. Startup probes the routes
+  and refuses tools if one remains open; unsupported Linux ABIs fail closed.
+  Since task 3.11 the filter refuses datagram and seqpacket pairs only: uv
+  panicked at start under the first filter (tokio's signal handling makes a
+  stream pair), and asyncio needs one too. A stream pair is connected for
+  good: connecting one end to a host socket fails with `EISCONN` (a test
+  in `sandbox.test.ts`).
 - **Each engine command has its own `$TMPDIR`**, removed when it ends (the
   agent's choice). The runtime points `TMPDIR` at `/tmp/claude`, shared by
   every sandboxed command, which the module closes; with no writable
@@ -389,16 +394,51 @@ isolation options, kept every write inside `dir`:
 - **`uv run` fails in the engine's sandbox**: its cache, `~/.cache/uv`, is
   read-only there. A venv's own Python runs, and so does `uv run` with
   `UV_CACHE_DIR` in `$TMPDIR` (seen in task 3.2, with no packages). The
-  same in the tutor's sandbox (task 3.3).
+  same in the tutor's sandbox (task 3.3). So the tutor is told to run
+  `.venv/bin/python` (`tutor.md`, "Packages").
 - **Installing packages is the one command with network access** (the
-  user's pick, piece 14; the rest of this entry is the agent's). The tutor
-  names the packages and the engine builds the command, so no text of the
-  tutor's runs with the network open: reads are not confined, and a
-  command that can read the machine and reach the network can send
-  anything out. Planned for the task that builds it, none of it tried:
-  Python packages through uv only; names checked to be package names (no
-  URL, path or option); wheels only, so that no package's build script
-  runs; the network open to the package index alone.
+  user's pick, piece 14; the rest of this entry is the agent's, task
+  3.11). The tutor names the packages and the engine builds the commands
+  (`engine/packages.ts`), so no text of the tutor's runs with the network
+  open: reads are not confined, and a command that can read the machine
+  and reach the network can send anything out. Python through uv only;
+  another language's packages when a course needs them.
+  - Names and version ranges are checked by regular expressions
+    (`src/shared/packages.ts`): no URL, path, option, extra or marker.
+  - The network: `registerCommandNetworkLists` under a random command id,
+    `pypi.org` and `files.pythonhosted.org` exactly (the runtime matches a
+    host whole). Seen: `pypi.org` tunnelled, `example.com` and
+    `github.com` refused with 403, a command given no hosts refused all.
+  - The workspace is the tutor's, so the commands trust nothing in it
+    that runs. Seen with uv 0.13.7: `--no-build` alone still built the
+    workspace's own project, running a `setup.py` the tutor could write
+    (stopped then only by the read-only file system); with
+    `--no-install-project` too it is never built, nor for its metadata,
+    and a package with no wheel is refused. A `python` planted in `.venv`
+    ran when uv looked at the environment, so `.venv` is removed first
+    (a link only loses the link) and made again, its packages copied from
+    the cache. `--no-config` ignored an index in the tutor's
+    `pyproject.toml` and `uv.toml`; `--no-sources` ignores
+    `tool.uv.sources`; `--python` names the interpreter `pytools/.venv`
+    was made from, and none is downloaded.
+  - uv's cache is `<data root>/cache/uv`, outside the record, writable
+    only by the install, and copied from (`UV_LINK_MODE=copy`), so a file
+    the tutor changes in `.venv` does not change the cache.
+  - A request is kept in the unit's position, so it survives a restart;
+    one per course at a time, since installs share the workspace. An
+    install under way is not waited for when the server stops, and its
+    request waits again. While it runs, the course's workspace is closed
+    to the tutors' writes and commands and to questions; Install is
+    refused while a question of the course is open.
+  - The outcome reaches the tutor as a note in the next header, in a
+    turn sent for it, skipped if a learner's message took the note
+    first; it is kept in memory, so a restart between the answer and
+    that turn loses it (the card still shows it).
+- **The backup keeps the learner's workspace files** (the agent's choice,
+  task 3.11): they are the learner's work, small, and the history undoes
+  a tutor's overwrite. `.venv/`, `__pycache__/` and `.pytest_cache/` are
+  left out; a `.gitignore` Gauss wrote before is brought up to date, one
+  of the learner's own is left alone.
 - **An open question locks the course's whole workspace**: another unit
   shares those files, and the help judge sees only the reply's text. The guard reads all persisted positions, not just
   opened chats. Mutations reserve the workspace until confirmed completion

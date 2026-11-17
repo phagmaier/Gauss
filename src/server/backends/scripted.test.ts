@@ -7,6 +7,10 @@ import { createGrader } from "../engine/grading.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
 import { createMathCheck, type MathCheck } from "../engine/math-check.ts";
+import {
+  createPackageInstaller,
+  type PackageInstaller,
+} from "../engine/packages.ts";
 import { startSandbox } from "../engine/sandbox.ts";
 import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
@@ -51,7 +55,9 @@ const CURRICULUM: CurriculumProposal = {
   background: "The learner knows algebra.",
 };
 
-function setUp(given: { mathCheck?: MathCheck } = {}) {
+function setUp(
+  given: { mathCheck?: MathCheck; installer?: PackageInstaller } = {},
+) {
   const backend = createScriptedBackend();
   const dataRoot = openDataRoot({ path: dir });
   const units = createUnitChats({
@@ -65,6 +71,7 @@ function setUp(given: { mathCheck?: MathCheck } = {}) {
     ...(given.mathCheck === undefined
       ? {}
       : { mathCheck: given.mathCheck, workspaceTools: true }),
+    ...(given.installer === undefined ? {} : { installer: given.installer }),
   });
   const intakes = createIntakes({ backend, systemPrompt: "Intake.", dataRoot });
   return { backend, dataRoot, units, intakes };
@@ -511,4 +518,58 @@ test("a unit whose session is the script's broken one opens, and every message f
     text: '**Scripted fresh start.** Unit 1 of 2, "Limits"; segment 1 of 2, "The idea", on "limits-idea". Phase: discuss.',
   });
   await after.units.close();
+});
+
+test("/packages asks to install the names after it, pytest if none; the turn with the answer says how it ended", async () => {
+  const installed: string[][] = [];
+  const { dataRoot, units } = setUp({
+    installer: createPackageInstaller({
+      run: async (command) => {
+        installed.push(
+          command.argv.slice(command.argv.indexOf("--no-progress") + 1),
+        );
+        return {
+          exitCode: 0,
+          timedOut: false,
+          stdout: "",
+          stderr: "",
+          cut: false,
+        };
+      },
+      cacheFolder: join(dir, "cache"),
+      python: "/opt/python/bin/python3",
+    }),
+  });
+  await approvedCourse(dataRoot);
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const { chat } = opened;
+  await chat.settled();
+  const request = () => {
+    const card = chat.events().findLast((e) => e.type === "packages_requested");
+    if (card?.type !== "packages_requested") throw new Error("no request");
+    return card;
+  };
+  const lastText = () => chat.events().findLast((e) => e.type === "tutor_text");
+
+  expect(chat.say("Set up the tests. /packages")).toEqual({ ok: true });
+  await chat.settled();
+  expect(request().packages).toEqual([{ name: "pytest" }]);
+  expect(await chat.installPackages(request().requestId)).toEqual({ ok: true });
+  await chat.settled();
+  expect(installed.at(-1)).toEqual(["pytest"]);
+  expect(lastText()).toEqual({
+    type: "tutor_text",
+    text: "**Scripted:** the packages: they are installed.",
+  });
+
+  expect(chat.say("/packages numpy sympy")).toEqual({ ok: true });
+  await chat.settled();
+  expect(request().packages).toEqual([{ name: "numpy" }, { name: "sympy" }]);
+  expect(await chat.declinePackages(request().requestId)).toEqual({ ok: true });
+  await chat.settled();
+  expect(lastText()).toEqual({
+    type: "tutor_text",
+    text: '**Scripted:** the packages: you said "Not now", so they are not installed.',
+  });
 });

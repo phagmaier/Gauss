@@ -32,6 +32,10 @@
 //   to reach the app and the web and says what was refused; so does a reply
 //   to a message with "/artifact" in it, which the engine refuses while a
 //   question is open.
+// - Packages (task 3.11): a message with "/packages" in it asks to install
+//   the names that follow it on its line, `pytest` if none, which the
+//   engine refuses while a question is open; Install really installs them,
+//   from PyPI. The turn with the learner's answer says how it ended.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -285,6 +289,31 @@ function teaching(header: string, body: string, math: boolean): FakeStep[] {
   }
   if (/(^|\s)\/artifact\b/.test(body)) {
     return [...showArtifact(), { text: "Scripted: that was the aid." }];
+  }
+  const packages = /(?:^|\s)\/packages\b(.*)$/m.exec(body);
+  if (packages !== null) {
+    const names = (packages[1] ?? "").trim().split(/\s+/).filter(Boolean);
+    return [
+      { text: "Scripted: this unit's code needs packages." },
+      {
+        call: "install_packages",
+        input: {
+          packages: (names.length > 0 ? names : ["pytest"]).map((name) => ({
+            name,
+          })),
+        },
+      },
+    ];
+  }
+  if (
+    header.includes("The learner answered your request to install packages")
+  ) {
+    const said = header.includes("The learner installed")
+      ? "they are installed"
+      : header.includes('"Not now"')
+        ? 'you said "Not now", so they are not installed'
+        : "the install failed, so they are not installed";
+    return [{ text: `**Scripted:** the packages: ${said}.` }];
   }
   if (header.includes("The learner started a fresh conversation")) {
     const where = header.slice(1, header.indexOf(" The learner started"));
