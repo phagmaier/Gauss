@@ -258,6 +258,12 @@ derived status.
 
 ### Phases
 
+**Being changed by tasks 2.19 to 2.21** (`decisions.md`, "Stage 2 user
+check"): a stricter passing rule and no question limit (2.19), a detour
+inside the check after every miss, which replaces the detour design below
+(2.20), and help judged by a separate call (2.21). Each task rewrites the
+rules here that it changes.
+
 Per segment: `teach -> discuss -> check -> closed`. A detour pushes the current
 position, runs its own small teach/discuss/check on the weak objective, and
 pops back.

@@ -44,13 +44,19 @@ acceptance cases because together they exercise every grading and content path:
   evidence, misconceptions found, and handoff notes.
 - **Handoff note**: a short summary written at the end of a session so the next
   session can start cold.
+- **Background note**: what the learner told the planner at intake about what
+  they already know and what they want, kept with the course and given to the
+  tutor.
 - **Workspace**: a folder per course where the tutor writes starter code and
   the learner edits it in their own editor.
 
 ## How a course runs
 
 1. **Intake.** The learner states what they want to learn, their background,
-   and attaches any sources.
+   and attaches any sources. The planner asks what it needs to know (their
+   background, what they already understand, how far to go), says what it
+   means to propose, and proposes only after the learner has replied. What
+   it learns is kept as the course's background note.
 2. **Baseline (optional).** The learner self-reports, then answers a short
    adaptive set of probe questions over prerequisites and a sample of the
    course. The learner can skip it.
@@ -78,11 +84,13 @@ model's discretion:
    is graded.
 3. **Check.** One or more questions. The learner commits an answer and a
    confidence level before seeing any feedback, and can add their reasoning.
-   The learner can always answer "I don't know" instead.
+   The learner can always answer "I don't know" instead. A correct answer
+   leads straight to the next question; a miss starts a detour, and the
+   check goes on when the learner says they are ready.
 
 The learner moves from discuss to check with a "ready" control; the tutor may
-suggest it. A segment cannot close without its check unless the learner
-overrides.
+suggest it. A segment closes only when every one of its objectives has
+passed, or when the learner moves on, which is recorded as an override.
 
 Units are sized by content (a handful of objectives), not by time. Progress is
 saved after every segment and every answer, so a session can stop anywhere and
@@ -103,8 +111,10 @@ resume at the same segment and phase.
 
 ## Mastery and evidence
 
-- **Passed**: unassisted correct answers on varied problems for each objective.
-  Passing lets the learner move on.
+- **Passed**: unassisted correct answers on varied problems for each objective,
+  at least one of them given confidently. Passing lets the learner move on.
+  The default is strict: an objective not passed holds its segment open
+  until it passes or the learner overrides.
 - **Retained**: confirmed by a correct answer after time has passed. Evidence
   for this comes from two places: the unit gate and opt-in review (below).
 - **Unit gate**: the check that closes a unit. It covers the unit's own
@@ -115,11 +125,22 @@ resume at the same segment and phase.
   not as mastery.
 - **Confidence**: five levels given as percentages (under 50%, 50%, 75%, 90%,
   100%), one keystroke. A confident wrong answer is treated as a likely
-  misconception and can trigger a detour, as can two misses on the same
-  objective. "Confident" means 90% or 100%.
+  misconception. "Confident" means 90% or 100%.
+- **Detour after a miss**: every miss in a check starts one. The tutor gives
+  the right answer, finds where the confusion is (from the choice picked, the
+  grader's flaw, the learner's reasoning, or by asking), and works through it
+  with the learner; after a second miss on the same objective it teaches the
+  objective again another way. Nothing said in a detour is graded or counts
+  as help. The learner asks for the next question when they are ready.
 - **"I don't know"**: always available on a question in place of an answer. No
-  confidence is asked, and the tutor explains. It is recorded as a miss on the
+  confidence is asked; the learner can add a line saying where they got stuck.
+  It starts a detour like any miss, and is recorded as a miss on the
   objective and never as a confident wrong answer.
+- **Help**: a message to the tutor while a question is open. A reply that only
+  clarifies what the question asks (its wording, its notation, the form of
+  answer wanted) is not help; one that points toward the answer is. A
+  separate judging call decides, and the page shows its call. An answer
+  given with help counts toward nothing.
 - **Disputes**: the learner can contest a grade; the dispute is recorded.
 
 Grading method depends on the question, not the subject:
@@ -230,6 +251,17 @@ Settled on 2026-11-13 from the page prototype (`docs/decisions.md`):
 - "Confident" means 90% or 100%. The learner offered to drop the percentages
   and delegated the choice; the agent kept them because they make this rule
   concrete and allow calibration feedback later.
+
+Settled on 2026-11-16 from the user's first try of stage 2's check
+(`docs/decisions.md`, "Stage 2 user check"). The user decided: passing is
+strict by default, with override always open; every miss starts a detour,
+which the learner ends when ready; the check pauses after misses only;
+"I don't know" takes an optional line on where the learner got stuck;
+writing during an open question stays allowed, and clarification is not
+help; the planner asks what it needs before proposing. The agent chose,
+and the user can overturn: one confident answer as part of passing; no
+limit on questions; teaching again after a second miss; a separate call
+judging help; no proposal in the planner's first turn; the background note.
 
 Open questions: none at the product level. Technical choices are in
 `architecture.md`.

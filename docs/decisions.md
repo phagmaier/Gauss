@@ -51,6 +51,7 @@ findings are the record.
 | Choice order | Task 2.17: the engine shuffles a choice question's choices when it is posted, the answer letter moved with them, the tool's reply listing the order, the injected order in tests, the scripted tutor's sums | Touching `engine/choice-order.ts`, posting questions in `unit-chat.ts`, `ask_question`'s reply, `scripted.ts`'s choice questions |
 | Tutor prompt | Task 2.16's two runs: the transcripts against its check, feedback that went into the tutor's thinking and what did not fix it, the refusal rule, the feedback turn (2.16a), the rerun, feedback length, the wrong answer key and the choice-letter rule, what `tutor.md` says and why | Touching `tutor.md`, the turn after an answer (2.16a), thinking settings in `backends/claude.ts`, Start fresh in a check |
 | Feedback queue review fixes | Pending feedback blocks questions from earlier messages; Stop cancels the automatic next question across intervening replies | Touching queued feedback, question posting, or Stop in `unit-chat.ts` (task 2.17a) |
+| Stage 2 user check | The user's first try of the stage 2 check: what the record showed, the user's decisions (strict passing, a detour after every miss, clarification is not help, the planner asks first, separators), the details the agent chose, and tasks 2.18 to 2.22 | Any of tasks 2.18 to 2.22; touching the passing rule, the check's question count, help, detours, `planner.md` or `tutor.md` |
 
 ## Page design (plan task 1.0)
 
@@ -3690,3 +3691,101 @@ Python test. Final review found no further in-scope defects.
 
 No real-model run: the changes enforce queue ordering and cancellation in
 the engine; the tutor prompt and backend calls are unchanged.
+
+## Stage 2 user check (2026-11-16)
+
+The user ran `pnpm dev` and asked for a short unit on the chain rule. They
+judged the teaching excellent and the questions good, and left six notes
+(`notes.md` at the repository root, not committed). The record of that
+sitting is `~/gauss/courses/the-chain-rule/`: two sessions, stopped and
+resumed in the middle of segment 2's check, which resumed at the same open
+question.
+
+What the record showed:
+
+- **The planner proposed on its first reply**, a course of four units
+  (chain rule basics, chain rule in practice, basic antiderivatives,
+  u-substitution) for what the user called a short unit. It asked nothing
+  about background. Whatever the learner says at intake is lost when the
+  intake ends: neither the unit planner nor the tutor gets it (task 2.5).
+- **Segments closed with objectives not passed.** Segment 1's
+  decompose-outer-inner had "I don't know", then correct at 75%, then
+  correct with help: three questions, the limit of task 2.7, so the
+  segment closed with it attempted. Segment 2's chain-rule-why-multiply
+  had three "I don't know"s and closed the same way, and segment 3 began
+  teaching what builds on both. No override was recorded. The tutor told
+  the learner "We'll come back to that skill later in the unit", which
+  nothing in the engine keeps unless the learner chooses it at the unit's
+  closing card. The brief's purpose is to require demonstrated
+  understanding before moving on, and to record moving on without it as an
+  override; the limit broke both.
+- **"I don't know" was explained, then the next question came at once**
+  (task 2.16a's automatic next question), leaving no room to ask about it.
+- **Help worked as designed**: a message during an open question marked
+  the answer assisted, and the tutor said it would not count. But the open
+  card scrolled out of view, the page never said writing counts as help,
+  and a learner asking only what a question means is charged the same.
+- **The thread has no visible break between turns.**
+
+Decided by the user, from the agent's proposals and their own answers:
+
+- **Strict by default.** An objective is not moved past until the record
+  shows the learner knows it, "until the answers seem obvious and easy".
+  The learner can always override (a slip they are sure of should not hold
+  them hostage), and an override is recorded as one.
+- **Every miss starts a detour**: the tutor finds where the confusion is,
+  they work through it, and the learner asks for another question when
+  comfortable. The check pauses after misses only; correct answers go on
+  to the next question by themselves. "I don't know" takes an optional
+  line saying where the learner got stuck.
+- **Writing during an open question stays allowed**, with the card pinned
+  where it can be answered and a notice on the message box. A message that
+  only asks what the question means is clarification, not help; the model
+  judges which.
+- **The planner asks the clarifying questions it needs**, about the
+  learner's background, what they already understand and how far to go,
+  before proposing.
+- **A dividing line and space between messages.**
+
+Chosen by the agent, and open to change:
+
+- **The passing rule** (replacing task 2.3's): since its last miss, an
+  objective needs an unassisted correct answer given at 90% or 100%; one
+  that was ever missed needs, as well, a second unassisted correct answer
+  to a different question in that stretch. Unconfident correct answers
+  alone never pass. Confidence is the learner's own "obvious and easy". A
+  learner who habitually answers 75% will be asked more; they can
+  override.
+- **No question limit.** An objective is done in a check only once it
+  passes; the segment closes when all have passed or the learner moves on.
+  The learner sets the pace through the detours, so the loop cannot run
+  away by itself. At the second miss on an objective in one check, the
+  detour teaches the objective again another way, rather than fixing one
+  mistake.
+- **The detour is the pause after a miss**, inside the check: the next
+  question of the check is its re-check, so it needs no teach / discuss /
+  check of its own and no `start_detour` tool (architecture section 4's
+  earlier design). The engine starts it on a miss and the learner ends it
+  with "Ready for another question", so the tutor cannot skip it.
+  Recording the misconception found (`misconceptions.jsonl`) stays in
+  stage 5.
+- **A separate judging call decides clarification or help**, after the
+  tutor's reply to a message during an open question: it sees the question
+  (with its answer key or rubric), the message and the reply, and returns
+  clarification only when the reply said nothing toward the answer. A
+  failed call counts as help. The page shows the call under the reply.
+  This replaces task 2.3's rule that any message is help; that rule
+  rejected the tutor declaring help itself, which still holds: the judge
+  is not the tutor.
+- **The planner's first turn cannot propose**: `propose_curriculum` is
+  refused in it, so the learner always answers once before a card
+  appears. Before proposing, it says in a few lines what it means to
+  propose and asks to go ahead. It keeps to the size the learner asks for.
+- **A background note** (what the learner knows and wants, a few
+  sentences) comes with the proposal, is stored with the draft as the
+  style note is, and is given to the unit planner and the tutor.
+- **The tutor promises nothing the app does not do** ("we'll come back to
+  it").
+
+These are tasks 2.18 to 2.22 in `docs/plan.md`. The stage 2 user check is
+taken again after them, on a new course.

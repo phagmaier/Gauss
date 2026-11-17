@@ -17,8 +17,10 @@ from `architecture.md` section 12.
 ## Finished
 
 Stage 0 (spike and skeleton) and stage 1 (record and library): both passed
-the user's check on 2026-11-15. Stage 2's tasks are done (2026-11-16);
-its user check, below, is next.
+the user's check on 2026-11-15. Stage 2's first tasks are done
+(2026-11-16). The user's first try of its check added tasks 2.18 to 2.22
+(`decisions.md`, "Stage 2 user check"); the check is taken again after
+them.
 
 | Task | What | Still matters to later tasks |
 | --- | --- | --- |
@@ -71,12 +73,136 @@ confidence, evidence, derived status, override, resume, transcripts and
 math rendering. The choices behind the breakdown are in `docs/decisions.md`
 under "Stage 2 breakdown". Not in this stage: the symbolic math check, code
 questions, artifacts and disputes (stage 3); sources (stage 4); the
-baseline, detours, the unit gate, handoff notes, unit notes, transcript
-export and style changes (stage 5). A unit in this stage closes without a
-gate or notes.
+baseline, the misconception record of detours, the unit gate, handoff
+notes, unit notes, transcript export and style changes (stage 5); detours
+themselves are task 2.20. A unit in this stage closes without a gate or
+notes.
+
+### 2.18 Thread separators and the pinned question
+
+- Status: todo
+- Depends on: stage 2's tasks above
+- Why: the thread has no visible break between turns, and an open
+  question scrolls out of view once the learner and tutor write below it
+  (the user's notes 3 and 4).
+- Do: a thin dividing line and more space between turns in the session
+  thread: each tutor reply, learner message, question card and marker.
+  While a question is open, it sits above the message box, where it can
+  be answered, until it is answered; its graded record then sits in the
+  thread where it was posted. Match the look of `docs/prototype/base.css`.
+- Done when: a browser check on `pnpm dev:fake` shows turns separated, and
+  a question that stays visible and answerable above the message box while
+  several messages are exchanged; screenshots go in the report for the
+  user to judge the look.
+
+### 2.19 Strict passing and no question limit
+
+- Status: todo
+- Depends on: stage 2's tasks above
+- Why: segments closed at the three-question limit with objectives not
+  passed and no override recorded; the user wants passing strict by
+  default (`decisions.md`, "Stage 2 user check").
+- Do: the passing rule in `record/status.ts` becomes: since its last miss,
+  an unassisted correct answer at 90% or 100%, and for an objective ever
+  missed, a second unassisted correct answer to a different question.
+  Remove the limit in `engine/check-rules.ts`: an objective is done in a
+  check only once it passes, and the segment closes when all have passed
+  or the learner moves on (an override, as now). The closing card's rows
+  lose "the limit". Update the check headers, `tutor.md` (the check, and
+  a rule against promising what the app does not do, such as "we'll come
+  back to it"), `scripted.ts` if its answers no longer close a check, and
+  architecture section 4.
+- Done when: hand-worked status tests pass, including the user's real
+  sequences (an "I don't know", then correct at 75%, then correct with
+  help: not passed; three "I don't know"s: not passed), one confident
+  first answer passing, two unconfident ones not, and a miss then a
+  confident and another correct answer passing; check-rule tests show no
+  limit; `mise run check` passes; on `pnpm dev:fake` a check with misses
+  keeps asking until the objective passes or the learner moves on.
+
+### 2.20 Detour after a miss
+
+- Status: todo
+- Depends on: 2.19
+- Why: after a miss the next question came at once, with no room to find
+  or fix the confusion (notes 2, 5 and 6).
+- Do: a miss (wrong or "I don't know") in a check starts a detour. Its
+  first turn replaces the feedback turn: the header asks the tutor to give
+  the right answer and why, then find where the confusion is (from the
+  choice picked, the grader's flaw, the learner's reasoning or stuck line,
+  or by asking one question) and work through it; at the second miss on
+  the objective in this check, to teach the objective again another way.
+  The engine posts no next question during a detour; the learner presses
+  "Ready for another question" (the tutor may suggest it), which sends
+  `nextQuestionTurn`. A correct answer keeps the automatic next question.
+  Messages in a detour are not help. Moving on stays open in a detour.
+  The position holds the open detour, so a restart reopens it. "I don't
+  know" takes an optional line on where the learner got stuck, kept with
+  the answer and given to the tutor. Update `tutor.md`'s feedback
+  section, `scripted.ts`, the page (the button, the detour's marker) and
+  architecture section 4 (the detour replaces its `start_detour` design;
+  the misconception record stays in stage 5).
+- Done when: fake-backend tests show a miss opens a detour with no
+  question until "ready", a correct answer still leads to the next
+  question, "ready" asks for one on an open objective, a message in a
+  detour is not help, a restart reopens a detour, moving on from one
+  records the override, and the stuck line reaches the tutor's turn; a
+  browser check on `pnpm dev:fake`; one real segment on Sonnet 5.5 with a
+  wrong answer and an "I don't know", its transcript read against what
+  the headers ask (the confusion found, no question until ready, teaching
+  again after a second miss).
+
+### 2.21 Clarification or help
+
+- Status: todo
+- Depends on: 2.18
+- Why: asking what a question means is charged as help, the same as
+  asking for the method (note 4).
+- Do: after the tutor replies to a message sent while a question is open,
+  a separate judging call (`oneShot`, a prompt in `prompts/`) reads the
+  question with its answer key or rubric, the message and the reply, and
+  returns clarification (only what the question asks: its wording, its
+  notation, the form of answer wanted) or help (anything toward the
+  answer: a method, a step, a value, a similar worked example, a mistake
+  to avoid). The answer is assisted if any such exchange was judged help;
+  a failed call counts as help; an answer sent before the call returns
+  waits for it. The page shows the call under the reply, and the message
+  box, while a question is open, says that asking what it means is free
+  and anything else counts as help. Pick the judge's model from a small
+  hand-judged set of exchanges, as task 2.9 did for the grader. Update
+  section 4's help rule and `tutor.md`'s.
+- Done when: fake-backend tests cover clarification (the answer still
+  counts), help, a failed call and an answer waiting on the call; the
+  hand-judged set run twice on the real model, with each disagreement
+  reported; a browser check on `pnpm dev:fake` shows the call and the
+  notice.
+
+### 2.22 Planning conversation and background note
+
+- Status: todo
+- Depends on: stage 2's tasks above
+- Why: the planner proposed four units on its first reply to a request
+  for a short unit, and what the learner says at intake never reaches the
+  tutor (note 1).
+- Do: `planner.md`: find out the learner's background, what they already
+  understand (by asking, not quizzing) and how far to go, in as many
+  short rounds as it needs, two questions at most at a time; keep to the
+  size the learner asks for; before proposing, say in a few lines what it
+  means to propose and ask to go ahead. `propose_curriculum` is refused
+  in the intake's first turn, with a reason. The proposal carries a
+  background note (a few plain sentences, a zod schema in `src/shared/`),
+  stored with the draft as `style.md` is and kept on approval; the unit
+  planner's session and the tutor's system prompt get it. A course
+  without one says none was recorded. Update `scripted.ts` and
+  architecture sections 3, 5 and 9.
+- Done when: tests cover the first-turn refusal and the note stored,
+  kept on approval and given to both prompts; one real intake on Sonnet
+  5.5 asking for a short unit on the chain rule asks before proposing and
+  proposes one unit.
 
 **User check:** complete one unit of a math course across two sittings,
-stopping in the middle of a segment.
+stopping in the middle of a segment. Start a new course, so that the
+intake (2.22) is tried too.
 
 ## Stage 3: checked grading and aids
 
@@ -114,6 +240,8 @@ quotes, and one unit taught from a paper.
 
 - Status: todo
 - Depends on: stage 4
+- Note: detours start in task 2.20; this stage adds the misconception
+  record (`misconceptions.jsonl`) and what reads it.
 
 **User check:** one course runs from intake through a baseline to a closed
 second unit, including a detour, a unit gate, generated notes and an exported
