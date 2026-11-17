@@ -60,9 +60,9 @@ KaTeX, react-markdown with remark-gfm, remark-math and rehype-katex, Vitest,
 Biome; `@anthropic-ai/sandbox-runtime`, the runtime developed for Claude
 Code's sandbox, which runs the engine's commands and on Linux needs `bwrap`,
 `socat` and `rg` on the machine. Python side:
-SymPy and the package its LaTeX parser needs (stage 3), and a PDF and an
-EPUB converter chosen in stage 4. The curriculum diagram is laid out by the
-page itself (`src/web/diagram.ts`), not by a diagram library.
+SymPy, with `antlr4-python3-runtime` 4.11 for its LaTeX parser, and a PDF
+and an EPUB converter chosen in stage 4. The curriculum diagram is laid out
+by the page itself (`src/web/diagram.ts`), not by a diagram library.
 
 ## 3. Data on disk
 
@@ -389,6 +389,16 @@ with sources (stage 4).
   `grader.md`, `WrittenGrade` or `GRADER_MODEL` changes, and
   `node scripts/judge-set.ts --runs 2` when `help-judge.md`,
   `HelpJudgment` or `JUDGE_MODEL` changes.
+- **The symbolic check** (`pytools/mathcheck.py`; its header says what it
+  reads, writes and counts as equal, and `decisions.md`, "Symbolic check",
+  why) takes the expected expression and the answer as JSON, LaTeX or
+  plain, and writes equivalent, different, unparsable (which side, and
+  why), or undecided (read, but not settled in its time). It reads plain
+  input by rewriting it to LaTeX for SymPy's parser, so no input is
+  evaluated as Python. Without an answer it only reads the expected side.
+  It runs with the venv's own Python (`pytools/.venv/bin/python
+  -I`), so a sandboxed run needs no uv cache, and stops itself after 8
+  seconds. (stage 3) The engine does not run it yet.
 - **The engine's commands** (stage 3: the tests and the symbolic check)
   run text a model or the learner wrote, so each runs through
   `engine/sandbox.ts`, on `@anthropic-ai/sandbox-runtime`: no network,
@@ -641,8 +651,9 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   the test moves on; choice order is fixed with `order: givenOrder`. The
   sandbox's tests run real commands in it, so they need what it needs and
   fail where it cannot run.
-- **Python helpers (pytest via uv)**: known equivalent and non-equivalent
-  expression pairs; conversion of small fixture files (stages 3 and 4).
+- **Python helpers (pytest via uv)**: equivalent and non-equivalent
+  expression pairs worked by hand, and `mathcheck.py` run on the venv's
+  own Python; (stage 4) conversion of small fixture files.
 - **Browser checks with no model**: `pnpm dev:fake`, the real server on the
   scripted backend and a seeded scratch data root.
 - **Real-model runs**: by hand, short, on Haiku 5.5 unless the result

@@ -35,32 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.4 The symbolic check
-
-- Status: todo
-- Depends on: none
-- Why: a computation's answer is graded by a model today, which is slow
-  and can be wrong; whether two expressions are equal is a computation.
-- Do: `pytools/mathcheck.py`, which reads the expected expression and the
-  learner's answer as JSON, as typed in the page's math field (LaTeX or
-  plain: `3x^2`, `\frac{1}{2}`, `sqrt(x)`), and writes whether they are
-  equivalent, different, or which side could not be parsed. Settle on
-  worked pairs: expressions; equations, equal up to a non-zero factor;
-  lists of values as sets; numbers within a tolerance; how equivalence is
-  decided (simplification, then evaluation at sample points when that
-  does not settle it); the time limit. SymPy and the package its LaTeX
-  parser needs (look both up with context7; `uv add --directory
-  pytools`). Plain input never reaches an evaluator with names or
-  attributes it was not given. It runs with the venv's own Python, so a
-  sandboxed run needs no uv cache.
-- Done when: pytest pairs worked by hand pass: equivalent forms (expanded
-  and factored, `\frac{a}{b}` and `a/b`, implicit multiplication, `e^x`
-  and `\exp(x)`, a trigonometric identity), near misses (a sign, the
-  chain rule's missing factor, `x^2` against `2x`), equations, lists, an
-  unparsable answer and an unparsable expected expression, and an input
-  meant to run code (`__import__('os').getcwd()`), which is reported
-  unparsable and not run. `mise run check` passes.
-
 ### 3.5 Math questions
 
 - Status: todo
@@ -84,6 +58,14 @@ its outcome.
   check` passes; on `pnpm dev:fake` a math question is answered with the
   preview and graded, and the browser closed before the server stops; one
   short run on Haiku 5.5 posts a math question that the check grades.
+- Note: run `pytools/.venv/bin/python -I pytools/mathcheck.py` with the
+  request on standard input (its header), under a time limit above its own
+  8 seconds, say 12. `undecided` goes to the grader as an unparsable answer
+  does. A request with no answer only reads the expected side, for posting;
+  its `reason` is the refusal's. `tutor.md` needs what the check accepts
+  (`decisions.md`, "Symbolic check"): `+ C` on an antiderivative, no
+  derivative notation or inequalities, decimals to three significant
+  figures.
 
 ### 3.6 Artifacts
 

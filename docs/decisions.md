@@ -25,6 +25,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Session engine | The chats' design choices: phases, the feedback turn, queues, detours, choice order, planning, intake, resume, idle sessions, transcripts | Touching `src/server/engine/` |
 | Grader prompt | The hand-graded set, the grader's model and rules | Changing `grader.md`, `WrittenGrade` or the grader's model; disputes |
 | Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
+| Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits | Changing `mathcheck.py`, or what a math question accepts |
 | Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides | Building or changing disputes |
 | Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
@@ -836,6 +837,61 @@ designed.
   reply that helps makes the answer count as given with help. "Anything
   else counts as help" was not used: the tutor declines what it may not
   give, so asking for more is free when the reply gives nothing.
+
+## Symbolic check
+
+All the agent's choices (task 3.4), open to change. `pytools/mathcheck.py`'s
+header states the rules; the pairs that settled them are its tests.
+
+- **SymPy's LaTeX parser on its ANTLR backend** (SymPy 1.14, with
+  `antlr4-python3-runtime` 4.11, the version SymPy checks for). Plain input
+  is rewritten to LaTeX first, so one parser reads both, and it builds
+  SymPy objects without evaluating text. Rejected: the Lark backend, which
+  in 1.14 returns ambiguity trees in place of expressions for ordinary input
+  (`\sin x + 1`, `2\sin x\cos x`, `\sinh x`) and refuses `\pi`;
+  `parse_expr` or `sympify` for plain input, which evaluate it as Python:
+  `__import__('os').mkdir(...)` made its folder when a fault put `sympify`
+  in the reading.
+- **The parser's traps**, each rewritten before or after parsing: with
+  `strict=True` it still reads an unknown command as a variable (`\foo x`
+  as foo·x, `\mathrm{e}` as e·mathrm), so commands are whitelisted; it
+  reads `x(x+1)` as a function call, `d` before a letter as one
+  differential symbol (`dn`), and `\pi` and `e` as variables; it refuses
+  `\left(`, `\sqrt(x)`, `x^(2n)`, `x^-1` and a number with a leading zero.
+- **Reading**: `e` is Euler's number, `i` a variable, `\log` the natural
+  logarithm (the parser's reading); decimals are exact; a comma always
+  separates values (`1,000` is two). Refused, with the reason: `a/bc`
+  (most people typing `1/2x` mean x/2, the parser reads 1/(2x)),
+  derivative notation (`dy/dx` would read as y/x), inequalities, points and
+  intervals, sums, integrals and limits.
+- **Equality**: `simplify(a - b) == 0`, else values at real points in
+  [-3, 3], computed to 30 digits as complex numbers: any point that differs
+  by more than 1e-9 relative makes them different, six that agree make them
+  equivalent, points where a side is undefined are skipped. So `\ln(x^2)`
+  and `2\ln|x|` match and `\ln|x|` and `\ln x` do not; identities that hold
+  only for integers (`(-1)^n` and `\cos(\pi n)`) are not seen.
+- **Numbers**: a decimal of at least three significant figures matches a
+  value within half a unit of its last digit, that is, correctly rounded:
+  0.333 for 1/3, not 0.33 or 0.334. Rejected: a fixed relative tolerance
+  (WeBWorK's 0.1%), under which 3.14 passes for π but 1.41 fails for √2.
+  An exact rational difference settles "different" where floating point
+  cannot (2^2000 and 2^2000 + 1).
+- **`+ C`** as a term on both sides is a constant of integration, so the
+  sides may differ by a constant: antiderivatives found by different routes
+  differ so. A `C` that multiplies (`Ce^x`) is an ordinary variable.
+- **Equations** match up to a non-zero constant factor. `x = 2` against `2`
+  compares the value; any other equation against an expression is
+  undecided, for the grader to read.
+- **"Undecided"** is a result beside equivalent, different and unparsable:
+  the sides read, but the check could not settle them in time or could not
+  evaluate them. The grader decides it, as it does an unparsable answer.
+- **Time**: 8 seconds for the comparison, each simplification cut off at 2
+  by an alarm, after which sample points decide (a simplification of about
+  3 seconds ended at 2 in the engine's sandbox). The alarm raises a
+  `BaseException`, which SymPy's `except Exception` does not catch. A
+  number above 10^100000 is refused when read: Python's exact power runs in
+  C, where no alarm stops it. In the engine's sandbox with nothing writable
+  a run takes about 0.6 seconds, most of it importing SymPy.
 
 ## Disputes
 

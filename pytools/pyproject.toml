@@ -3,7 +3,10 @@ name = "gauss-pytools"
 version = "0.1.0"
 description = "Python helpers for Gauss: document conversion and symbolic math checks"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "antlr4-python3-runtime==4.11.*",
+    "sympy>=1.14.0",
+]
 
 [dependency-groups]
 dev = [
@@ -16,3 +19,4 @@ python-preference = "only-system"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
