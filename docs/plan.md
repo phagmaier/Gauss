@@ -19,7 +19,9 @@ from `architecture.md` section 12.
 Stage 0 (spike and skeleton) and stage 1 (record and library): both passed
 the user's check on 2026-11-15. Stage 2 (session engine) passed it on
 2026-11-17, at the second try: the first (2026-11-16) added tasks 2.18 to
-2.22 (`decisions.md`, "Stage 2 user check").
+2.22 (`decisions.md`, "Stage 2 user check"). A review of its record then
+added tasks 2.23 to 2.27, which come before stage 3, and put stage 5 before
+stage 4 (`decisions.md`, "Stage 2 review").
 
 | Task | What | Still matters to later tasks |
 | --- | --- | --- |
@@ -80,10 +82,10 @@ confidence, evidence, derived status, override, resume, transcripts and
 math rendering. The choices behind the breakdown are in `docs/decisions.md`
 under "Stage 2 breakdown". Not in this stage: the symbolic math check, code
 questions, artifacts and disputes (stage 3); sources (stage 4); the
-baseline, the misconception record of detours, the unit gate, handoff
-notes, unit notes, transcript export and style changes (stage 5); detours
-themselves came in task 2.20. A unit in this stage closes without a gate
-or notes.
+misconception record of detours, the unit gate, testing out of a unit,
+review questions, handoff notes, unit notes, transcript export and style
+changes (stage 5); detours themselves came in task 2.20. A unit in this
+stage closes without a gate or notes.
 
 **User check:** complete one unit of a math course across two sittings,
 stopping in the middle of a segment. Start a new course, so that the
@@ -92,22 +94,175 @@ intake (2.22) is tried too.
 Passed: the user tried it again on 2026-11-17, after tasks 2.18 to 2.22
 ("everything went smoothly"), with nothing to change. Stage 2 is finished.
 
+**Added after the user check**, from a review of the stage 2 record, which
+the user brought on 2026-11-17 (`decisions.md`, "Stage 2 review"). These
+tasks come before stage 3.
+
+### 2.23 Passing without a confident answer
+
+- Status: todo
+- Depends on: stage 2
+- Why: honest answers under 90% never counted, which pushes the learner to
+  click 90% and spoils the numbers 2.27 shows. In the theology course one
+  objective was answered correctly at 75%, correctly at 50%, "I don't
+  know", then correctly at 90%, and ended overridden.
+- Do: the passing rule in `record/status.ts` becomes: since the last miss,
+  two unassisted correct answers to different questions, at any
+  confidence; or one at 90% or 100% if the objective was never missed. A
+  miss (wrong or "I don't know") resets the count; an answer with help
+  counts for nothing and does not break "in a row"; no limit; moving on is
+  an override, as now. In `engine/check-rules.ts`, `unconfident` and
+  `confirm` both come to mean "one more correct answer, to a different
+  question"; reword their header lines in `unit-turns.ts` and the closing
+  card's rows (`Course.tsx`, `Session.tsx`), merging the two reasons if
+  that reads better. Update the rule where it is stated: the comments,
+  `tutor.md` if it names 90%, and architecture sections 3 and 4. Status
+  is derived, so existing courses take the new rule when read.
+- Done when: hand-worked status tests pass, including the theology
+  sequence (correct at 75%, correct at 50%: passed; then "I don't know"
+  and correct at 90%: not passed; then another correct answer to a new
+  question: passed) and 2.19's chain-rule one ("I don't know", correct at
+  75%, correct with help: not passed); also two correct answers to the
+  same question: not passed; one confident answer, never missed: passed;
+  one unsure answer, never missed: not passed; correct, correct with
+  help, correct: passed. Check-rule tests show the reasons; `mise run
+  check` passes; on `pnpm dev:fake` two unsure correct answers close an
+  objective.
+
+### 2.24 One idea per objective, no quotes from memory
+
+- Status: todo
+- Depends on: stage 2
+- Why: each theology objective joined three ideas ("explain …, and
+  contrast with … and with …"), so every written question was a
+  three-part essay graded all or nothing. The teaching quoted Basil,
+  Lossky, _Dei Verbum_ and _Lumen Gentium_ from the model's memory, and
+  questions built on the quotes. The learner sent no message in either
+  sitting, so their first attempt after the teaching was graded.
+- Do: `unit-planner.md`: each objective states one idea, and a contrast is
+  an objective of its own. `planner.md`: unit goals narrow enough for three
+  to six such objectives. `tutor.md`: a question asks for one thing; in a
+  course with no source, paraphrase and attribute ("Basil argues that …"),
+  quoting nothing verbatim unless it can be checked, and build no question
+  on a quote's exact wording; teaching ends by offering one ungraded "try
+  this" for the discussion, which the check does not repeat.
+- Done when: a real run on Sonnet 5.5 (the result depends on the model's
+  judgment), on a scratch data root, kept short: a new course on a topic
+  with contrasts, its first unit's plan, the first segment's teaching and
+  one check question. Each objective states one idea; the teaching
+  attributes without verbatim quotes and ends with an ungraded try; the
+  question asks one thing. `mise run check` passes.
+
+### 2.25 Backup of the data root
+
+- Status: todo
+- Depends on: stage 2
+- Why: everything durable is in the data root, which keeps no history, so
+  an engine bug that writes valid but wrong data could not be undone.
+- Do: the server makes the data root a git repository if it is not one,
+  tracking `courses/` and `profile.md` and ignoring the record's temporary
+  files and `intake/`, and commits after each segment close, unit close and
+  curriculum approval, once that step's writes have landed, with a message
+  naming the course and the step. A failed commit is logged and never fails
+  the engine; with no `git` on the path, the server says so once at start.
+  On for `pnpm dev`; off in tests and `pnpm dev:fake` unless asked. It runs
+  the `git` already installed; no package is added.
+- Done when: tests on a temporary data root show a commit after each of
+  the three steps, holding the record's files and none of the temporary
+  ones, and an engine that keeps working when the commit fails; `mise run
+  check` passes; on `pnpm dev:fake` with the backup on and a scratch root,
+  `git log` there shows a segment's commit.
+
+### 2.26 What I know
+
+- Status: todo
+- Depends on: 2.23
+- Why: the record of what the learner has mastered is never shown. The
+  course view lists units and the session shows segment ticks; an
+  override after three correct answers looks the same as one after none.
+- Do: a view per course, reached from the course view: each planned unit's
+  objectives with their status, and under each its evidence in log order:
+  the question, the answer (or "I don't know" and where the learner got
+  stuck), confidence, help, the grade with a written answer's flaw, and
+  the date; overrides as lines of their own. A route under
+  `/api/courses/<id>/` sends it, its body a schema in `src/shared/`.
+  Stage 3's disputes will be raised from past answers here.
+- Done when: route tests on a hand-made record covering each kind of entry,
+  and page logic tests, pass; `mise run check` passes; on `pnpm dev:fake`
+  the view shows a seeded course's objectives and answers, and the browser
+  is closed before the server stops.
+
+### 2.27 Calibration
+
+- Status: todo
+- Depends on: 2.23, 2.26
+- Why: confidence was kept as percentages to allow calibration feedback
+  (brief, "Decision status"), and nothing builds it. With 2.23 confidence
+  no longer gates passing, so it says how sure the learner really was.
+- Do: across all courses, for each confidence level, how many unassisted
+  graded answers were correct, as counts ("90%: 8 of 10"), with "I don't
+  know" counted apart and answers with help left out; shown on the
+  library. Decide whether answers given before 2.23 count, and record why.
+- Done when: hand-worked counting tests pass (each level, help left out,
+  "I don't know" apart, a course whose evidence cannot be read skipped);
+  `mise run check` passes; on `pnpm dev:fake` the library shows the seeded
+  courses' counts, and the browser is closed before the server stops.
+
+**User check for 2.23 to 2.27:** open "What I know" on the theology course
+and the calibration counts on the library; then start a new unit and see
+single-idea objectives, attributed paraphrase instead of quotes, a try
+offered in the discussion, and an objective passed by two unsure correct
+answers.
+
 ## Stage 3: checked grading and aids
 
 ### 3.0 Break down the stage
 
 - Status: todo
-- Depends on: stage 2
+- Depends on: stage 2, and tasks 2.23 to 2.27 with their user check
+- Note: a dispute can be raised on a past answer in "What I know" (2.26) as
+  well as in the session.
 
 **User check:** a coding unit and a computational math unit are graded by
 tests and the symbolic check, and an artifact appears in the side pane.
 
-## Stage 4: sources
+## Stage 5: mastery loop (built before stage 4)
+
+### 5.0 Break down the stage
+
+- Status: todo
+- Depends on: stage 3
+- Note: built before sources, by the user's choice (`decisions.md`,
+  "Stage 2 review"). The breakdown must settle:
+  - review questions at the start of each sitting: two or three on
+    objectives passed in earlier sittings, those passed with the least
+    confidence first, fresh questions each time, on by default and
+    skippable in any sitting. They and the unit gate share one mechanism,
+    questions without teaching over objectives the engine picks
+    (architecture section 4's examiner prompt);
+  - retained and slipping status, from review and the gate;
+  - testing out of a unit, which replaces the baseline: the unit's gate
+    taken before it is taught, once the unit is planned (objectives exist
+    only then), and how a partial result shortens the unit;
+  - the misconception record (`misconceptions.jsonl`) from detours (task
+    2.20) and what reads it;
+  - the learner profile (`profile.md`, architecture section 3), which no
+    stage had listed: what it holds beside the background note (task
+    2.22), and who writes it when.
+
+**User check:** one course runs from intake to a closed second unit: a unit
+tested out of or started, review questions at the start of a later sitting,
+a detour, a unit gate, generated notes and an exported transcript.
+
+## Stage 4: sources (built after stage 5)
 
 ### 4.0 Break down the stage
 
 - Status: todo
-- Depends on: stage 3
+- Depends on: stage 5
+- Note: source page images stay out of the backup (task 2.25). Until this
+  stage a course quotes nothing verbatim from memory (task 2.24); with a
+  source, `quote_source` verifies quotes.
 - Note: the breakdown must settle these (`docs/decisions.md`, "Source
   sections"):
   - the section size limit, by trying candidates on real files: a long
@@ -122,20 +277,10 @@ tests and the symbolic check, and an artifact appears in the side pane.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-## Stage 5: mastery loop
-
-### 5.0 Break down the stage
-
-- Status: todo
-- Depends on: stage 4
-- Note: detours start in task 2.20; this stage adds the misconception
-  record (`misconceptions.jsonl`) and what reads it.
-
-**User check:** one course runs from intake through a baseline to a closed
-second unit, including a detour, a unit gate, generated notes and an exported
-transcript.
-
 ## Stage 6: later
 
-Codex backend, review mode, finals, self-test, cheat sheets, photo input. Each
-is planned when chosen.
+Codex backend, self-test, cheat sheets, photo input; starred messages for
+the notes, if the generated notes miss what the learner wants kept. Each is
+planned when chosen. Review mode and finals are gone: review opens each
+sitting (stage 5), and finals were dropped (`decisions.md`, "Stage 2
+review").

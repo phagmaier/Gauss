@@ -464,9 +464,9 @@ have time limits and a learner may take twenty minutes or close the tab.
    thinking wrote its feedback in its thinking, which the page never
    shows, in 7 of 8 answer turns (`decisions.md`, "Tutor prompt").
 
-Assessments (baseline, unit gate, later review and finals) reuse this flow with
-the examiner prompt in place of the tutor prompt, over objectives the engine
-selects.
+Assessments (the unit gate, testing out of a unit, and the review questions
+that open a sitting; stage 5) reuse this flow with the examiner prompt in
+place of the tutor prompt, over objectives the engine selects.
 
 ## 5. Teaching tools
 
@@ -899,15 +899,20 @@ settled look.
 Each stage ends with something the learner can use and a stated check. The
 task-level breakdown and status live in `plan.md`.
 
+Stage 5 is built before stage 4 (the user's choice, 2026-11-17,
+`decisions.md`, "Stage 2 review"): the gate and review make "passed"
+trustworthy in every course, while sources add one kind of course. The
+numbers are kept, because documents and code name the stages by them.
+
 | Stage | Builds | Done when |
 | --- | --- | --- |
 | 0. Spike and skeleton | Git, `mise.toml`, pnpm, lint and test setup. A page that streams one Claude reply on the plan login and round-trips one `ask_question` call. A one-hour Codex spike. | The "to verify" items in section 7 are answered in writing and the adapter interface is confirmed or revised |
 | 1. Record and library | Data root, course creation by intake chat, `propose_curriculum`, review and approval, diagram, library | A course can be created and approved, and survives a restart |
-| 2. Session engine | `plan_unit`, segment phases, `ask_question` for multiple choice and rubric-graded answers, confidence, evidence, derived status, override, resume, transcripts, math rendering | A unit of a math course is completed across two sittings, stopping mid-segment |
+| 2. Session engine | `plan_unit`, segment phases, `ask_question` for multiple choice and rubric-graded answers, confidence, evidence, derived status, override, resume, transcripts, math rendering; then (tasks 2.23 to 2.27) the passing rule without a confident answer, single-idea objectives, the backup, the "what I know" view and calibration | A unit of a math course is completed across two sittings, stopping mid-segment |
 | 3. Checked grading and aids | SymPy check, workspace and code tests, artifacts pane, disputes | A coding unit and a computational unit are graded without a model judging the answer |
-| 4. Sources | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting | A lecture on one chapter of the *Phenomenology* with verified quotes, and one unit taught from a paper |
-| 5. Mastery loop | Baseline, detours and misconceptions, unit gate with earlier objectives, handoff notes, HTML notes, transcript export, style changes | One course runs from intake to a closed second unit with every feature in the brief's first version |
-| 6. Later | Codex backend, review mode, finals, self-test, cheat sheets, photo input | Per feature |
+| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting (skippable), retained and slipping status, the misconception record from detours, handoff notes, the learner profile, HTML notes, transcript export, style changes | One course runs from intake to a closed second unit, with a unit tested out of or started, review questions in a later sitting, a detour, a unit gate, generated notes and an exported transcript |
+| 4. Sources (after 5) | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting | A lecture on one chapter of the *Phenomenology* with verified quotes, and one unit taught from a paper |
+| 6. Later | Codex backend, self-test, cheat sheets, photo input; starred messages for the notes, if the generated notes miss what the learner wants kept | Per feature |
 
 ## 13. Risks
 

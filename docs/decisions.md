@@ -60,6 +60,7 @@ findings are the record.
 | Help-judge review fixes | Task 2.21a: no new judging or late queued results during shutdown; clarification labels describe a reply, not cumulative answer eligibility; regression and browser checks | Touching help-judge shutdown, `replyEnded`, or `judgmentSays` |
 | Planning conversation and background note | Task 2.22: the intake's first turn and its refusal, asking to go ahead left to the prompt, the background note (schema, `background.md`, approval, courses without one), the note on the card, where the unit planner and tutor get it, `planner.md`, the scripted intake, the two real runs on Sonnet 5.5 | Touching `planner.md`, `propose_curriculum`, the intake's turns, `background.md` or `readBackground`, the proposal card, the unit planner's turn or the tutor's system prompt; stage 5's learner profile |
 | Intake review fixes | Task 2.22a: both notes in the revision headers; a session lost before any proposal given the conversation so far; why the account's email stays in every Claude session (probe of `CLAUDE_CODE_DISABLE_ATTACHMENTS` and bare mode) | Touching the intake's turns or a lost intake session; trying again to keep the account email out of a session |
+| Stage 2 review | After the stage 2 check passed: a review of the theology course's record the user brought, what was checked against the record, the user's decisions (passing without a confident answer, review questions opening each sitting, testing out instead of the baseline, no finals, no quotes from memory, stage 5 before stage 4), the agent's readings, and tasks 2.23 to 2.27 | Any of tasks 2.23 to 2.27; touching the passing rule, `unit-planner.md` or `tutor.md`'s questions and quotes; breaking down stage 5 (review, test-out, the profile) |
 
 ## Page design (plan task 1.0)
 
@@ -4454,3 +4455,85 @@ agent's and can be overturned.
   when stage 3 gives the tutor built-in tools, and if a later SDK adds a
   switch.
 
+
+## Stage 2 review (2026-11-17)
+
+The user took the stage 2 check again after tasks 2.18 to 2.22 and it
+passed ("everything went smoothly"). Asked what to add before stage 3, the
+agent suggested a view of the record, calibration, spaced review sooner,
+starred messages and a backup. The user then brought a review of the
+record (pasted, its author not stated) that judged those suggestions and
+proposed changes of its own, mostly from the course
+`~/gauss/courses/orthodox-theology-for-a-former-catholic/`.
+
+Checked by the agent against that record before acting on it:
+
+- **The answers**: objective `tradition-scripture-within` was answered
+  correctly at 75% (written), correctly at 50% (choice), "I don't know",
+  correctly at 90% (written), then overridden, in `evidence.jsonl`. Under
+  task 2.19's rule the first two never counted, and after the miss the 90%
+  answer needed a second; the status is overridden, the same as an
+  objective skipped with no answer.
+- **The objectives**: each of the unit's five joins ideas ("explain …, and
+  contrast this with the Catholic 'two sources' framing and with sola
+  scriptura"), and the written questions asked for all of them at once.
+- **No learner message** in either sitting (`sessions/sources-method.1` and
+  `.2`): the first attempt after the teaching was a graded question.
+- **Quotes from the model's memory**: the teaching quotes Basil, Lossky,
+  _Dei Verbum_ and _Lumen Gentium_, and questions build on them. Nothing
+  checks them in a course with no source.
+
+Decided by the user:
+
+- **The passing rule** (overturning the agent's choice of 2026-11-16):
+  since the last miss, two unassisted correct answers in a row, to
+  different questions, at any confidence; or one at 90% or 100% if the
+  objective was never missed. A miss resets the count, help counts for
+  nothing, no limit, moving on is an override. It is task 2.3's rule with
+  one tightening kept from 2.19: after a miss, one confident answer is not
+  enough. The first stage 2 check's problem (segments closing with
+  objectives not passed) came from the three-question limit, which stays
+  gone.
+- **Review questions open each sitting**, on by default and skippable,
+  replacing the opt-in review mode: a mode one has to open tends not to
+  be opened. Built in stage 5 with the unit gate, which needs the same
+  mechanism.
+- **Testing out of a unit replaces the baseline**: the unit's gate before
+  it is taught. The baseline's probe of prerequisites is covered by the
+  intake asking about background (2.22).
+- **Course finals are dropped.**
+- **A course with no source quotes nothing verbatim from memory**: the
+  tutor paraphrases and attributes unless it can check the quote. In
+  `brief.md`, "Sources".
+- **Stage 5 before stage 4**: the gate and review make "passed"
+  trustworthy in every course, and are cheaper to settle before
+  source-based questions; nothing in stage 5 needs sources.
+- **Single-idea objectives and the ungraded try** are prompt changes and
+  need nothing in the brief.
+- From the review's table, accepted with the user's answers: the "what I
+  know" view before stage 3; calibration after the new rule, across all
+  courses and as counts, since one course's few answers per objective
+  leave a per-course view empty for long; the backup soon, with source
+  page images left out; starred messages deferred until the generated
+  notes have been used.
+
+Chosen by the agent, and open to change:
+
+- **"In a row" means no miss between**: an answer given with help sits
+  between two correct answers without counting or breaking the row, as
+  help already neither counts nor clears. A correct answer at 50% on a
+  choice question counts; two lucky guesses in a row on four choices are
+  1 in 16, which is accepted.
+- **Stage numbers are kept** and the order is written beside them (plan
+  and architecture section 12), because about sixty places in documents
+  and code name sources "stage 4" and the mastery loop "stage 5".
+- **The backup commits at segment close, unit close and approval**, runs
+  the installed `git` rather than a package, and is on only for
+  `pnpm dev`.
+- **The learner profile** (`profile.md`, architecture section 3) was named
+  for stage 5 in one decision ("Resume and start fresh") but in
+  no stage's scope; it is now in 5.0's note.
+- **Tasks 2.23 to 2.27** get a short user check of their own before
+  stage 3, since 2.23 and 2.24 change what a check feels like.
+
+These are tasks 2.23 to 2.27 in `docs/plan.md`, and the reordered stages.

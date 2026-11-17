@@ -57,16 +57,16 @@ acceptance cases because together they exercise every grading and content path:
    background, what they already understand, how far to go), says what it
    means to propose, and proposes only after the learner has replied. What
    it learns is kept as the course's background note.
-2. **Baseline (optional).** The learner self-reports, then answers a short
-   adaptive set of probe questions over prerequisites and a sample of the
-   course. The learner can skip it.
-3. **Curriculum.** The tutor proposes units, the prerequisite relationships
+2. **Curriculum.** The tutor proposes units, the prerequisite relationships
    between them, and one goal per unit. This is shown as a diagram. The learner
    reviews, pushes back, and approves. For a source-based course the source's
    table of contents is the skeleton.
-4. **Unit sessions.** Detailed objectives and segments for a unit are planned
-   when the unit starts, using the record as it stands then.
-5. **Unit close.** The unit is marked passed or overridden, HTML notes are
+3. **Unit sessions.** Detailed objectives and segments for a unit are planned
+   when the unit starts, using the record as it stands then. Before a unit
+   is taught, the learner can test out of it by taking its gate, and skip
+   what they pass. Each sitting opens with a few review questions on
+   objectives passed in earlier sittings, which the learner can skip.
+4. **Unit close.** The unit is marked passed or overridden, HTML notes are
    generated, and a handoff note is written.
 
 The tutor can propose curriculum changes mid-course (for example a remedial
@@ -111,12 +111,15 @@ resume at the same segment and phase.
 
 ## Mastery and evidence
 
-- **Passed**: unassisted correct answers on varied problems for each objective,
-  at least one of them given confidently. Passing lets the learner move on.
-  The default is strict: an objective not passed holds its segment open
-  until it passes or the learner overrides.
+- **Passed**: since the objective's last miss, two unassisted correct answers
+  in a row, to different questions, at any confidence; or one unassisted
+  correct answer given confidently, if the objective was never missed.
+  Passing lets the learner move on. The default is strict: an objective not
+  passed holds its segment open until it passes or the learner overrides.
+  Passing is short-term evidence, given minutes after the teaching.
 - **Retained**: confirmed by a correct answer after time has passed. Evidence
-  for this comes from two places: the unit gate and opt-in review (below).
+  for this comes from two places: the unit gate and the review questions
+  that open each sitting (below).
 - **Unit gate**: the check that closes a unit. It covers the unit's own
   objectives plus a few objectives from earlier units, which are cold by then.
   A missed earlier objective gets a short refresher and a re-ask. The learner
@@ -156,9 +159,12 @@ Formal proof checking (Lean or similar) is out of scope.
 
 ## Assessment modes
 
-One mechanism, different selections of objectives: baseline, segment check,
-unit check, course final, on-demand self-test, and spaced review. Spaced review
-schedules objectives and generates fresh questions each time.
+One mechanism, different selections of objectives: segment check, unit gate,
+testing out of a unit (its gate, taken before it is taught), review questions
+at the start of each sitting, and on-demand self-test. Review picks objectives
+passed in earlier sittings, those passed with the least confidence first, and
+asks fresh questions each time. It is on by default, and the learner can skip
+it in any sitting.
 
 ## Sources
 
@@ -172,6 +178,8 @@ schedules objectives and generates fresh questions each time.
 - Scanned PDFs need text recognition first and will contain errors.
 - Web search is allowed per course, used only when the tutor needs material it
   lacks, and cited when used.
+- In a course with no source, the tutor paraphrases and attributes, and does
+  not quote verbatim unless it can check the quote.
 
 ## Other features
 
@@ -184,6 +192,12 @@ schedules objectives and generates fresh questions each time.
 - **Notes**: HTML notes per completed unit, kept in a course notes folder;
   cheat sheets on request.
 - **Library**: a home view of all courses and one-offs, to stop and resume any.
+- **What I know**: per course, every objective with its status and the
+  answers behind it (question, answer, confidence, help, grade, date).
+- **Calibration**: how often the learner's answers at each confidence level
+  were right, across all courses, as counts ("8 of 10").
+- **Backup**: the data folder keeps a history of the record, so a wrong
+  write can be undone.
 - **Curriculum diagram**: generated from the stored curriculum and progress, so
   it cannot drift from the record.
 
@@ -210,14 +224,15 @@ address SDK use on a ChatGPT plan login; verify before the technical spec.
 
 ## Scope
 
-First version: one course end to end on the Claude backend. Intake, baseline,
+First version: one course end to end on the Claude backend. Intake,
 curriculum approval and diagram, unit sessions with the three-phase rhythm,
-structured questions with confidence, evidence record, unit gates, detours, source
-ingestion with verified quotes, artifacts, workspace, transcripts, unit notes,
-library view.
+structured questions with confidence, evidence record, the "what I know" view
+and calibration, unit gates, testing out of a unit, review questions at the
+start of each sitting, detours, source ingestion with verified quotes,
+artifacts, workspace, transcripts, unit notes, library view, backup.
 
-Later: Codex backend, spaced review, course finals, on-demand self-test, cheat
-sheets, handwritten-work photos.
+Later: Codex backend, on-demand self-test, cheat sheets, handwritten-work
+photos.
 
 ## Decision status
 
@@ -262,6 +277,25 @@ help; the planner asks what it needs before proposing. The agent chose,
 and the user can overturn: one confident answer as part of passing; no
 limit on questions; teaching again after a second miss; a separate call
 judging help; no proposal in the planner's first turn; the background note.
+
+Settled on 2026-11-17 from a review of the stage 2 record, which the user
+brought after the check passed (`docs/decisions.md`, "Stage 2 review"). The
+user decided:
+
+- Passing no longer needs a confident answer: two unassisted correct answers
+  in a row to different questions pass, or one confident answer if the
+  objective was never missed. This overturns the agent's choice of
+  2026-11-16; after a miss, one confident answer is still not enough.
+- Review questions open each sitting, on by default and skippable, in place
+  of the opt-in review mode of 2026-11-13.
+- Testing out of a unit replaces the optional baseline, which the learner
+  had asked for: the intake now asks about background, and a probe quiz
+  pays off only if it lets the learner skip something.
+- Course finals are dropped: gates and review cover the same ground.
+- A course with no source quotes nothing from the model's memory verbatim.
+- The "what I know" view, calibration and a backup of the data folder join
+  the first version. Starred messages for the notes wait until the
+  generated notes have been used.
 
 Open questions: none at the product level. Technical choices are in
 `architecture.md`.
