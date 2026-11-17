@@ -55,6 +55,7 @@ findings are the record.
 | Thread separators and the pinned question | Task 2.18: where lines go between messages, the open question above the message box, an answered question moved to where it was answered, the browser run | Touching the session thread (`divided`, `openQuestion` in `session.ts`, the `graded` case in `timeline.ts`), the question card's place, or the foot of the session view |
 | Strict passing | Task 2.19: the passing rule with a confident answer and a second after a miss, no question limit, the `confirm` reason, the header wording and the scripted tutor, the closing card's reasons, records closed at the old limit | Touching `record/status.ts`, `engine/check-rules.ts`, the check headers in `unit-turns.ts`, the closing card's rows, or `scripted.ts`'s question numbering |
 | Detour after a miss | Task 2.20: the detour in the position and its events, its first turn and the teaching again from the second miss, refusals and help in it, ending it and what a Stop then leaves, a restart, the "I don't know" line and its field, the marker and control, the checks and the real run on Sonnet 5.5 | Touching detours (`detour` in `state.ts`, `endDetour`, `anotherQuestion`, `detourOpening` in `unit-turns.ts`), `missed` in `check-rules.ts`, "I don't know" (`stuck`), the detour marker or control; 2.21's help judging, stage 5's misconception record |
+| Detour queue review fix | Task 2.20a: the next-question request after ending a detour shares the feedback queue's stale-question and Stop guards; deterministic interleaving regressions | Touching `anotherQuestion`, `askNext`, or the unit chat's queues |
 
 ## Page design (plan task 1.0)
 
@@ -4060,3 +4061,27 @@ choices below are the agent's and can be overturned.
   (`misconceptions.jsonl`) is stage 5's. The real run had a cooperative
   learner; a learner who keeps asking in a detour, or presses the button
   at once, was not tried on a model.
+
+## Detour queue review fix (plan task 2.20a)
+
+- **The race:** while "Ready for another question" wrote the position, a
+  learner message could queue its reply before that action queued
+  `nextQuestionTurn`. The reply could post the next question, and the
+  learner could miss it before its turn ended. The stale request then
+  reached the tutor ahead of the new detour's first turn, saying a
+  question was allowed; the tool refused it, but the extra turn was wrong.
+- **One guarded queue:** `anotherQuestion` now uses `askNext`, as feedback
+  does, passing which header it needs. It captures the Stop counter before
+  writing the position. The request is skipped if a reply has posted a
+  newer question (still open or already answered), or Stop cancels it.
+  The normal detour-ending header is unchanged.
+- **Regression coverage:** three deterministic fake-backend cases queue a
+  learner message during the position write, then leave its question open,
+  miss it before the posting turn ends, or stop the intervening reply.
+  The stopped case also checks a later message can still get a question.
+  All three failed on the original code because an extra turn reached the
+  tutor. Every case uses a temporary data root and no real model.
+- **Verification:** `mise run check` passed: Biome (105 files), TypeScript
+  checking, all 581 TypeScript tests and one Python test. Reviewed the
+  queue guards and deterministic gates; no page or prompt wording changed,
+  and no real-backend check was needed.

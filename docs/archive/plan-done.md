@@ -1089,3 +1089,19 @@ tested"). Stage 1 is finished.
   faults each failed tests. Browser run on `pnpm dev:fake`; one real
   segment on Sonnet 5.5, whose turns matched the headers. Findings:
   `decisions.md`, "Detour after a miss".
+
+### 2.20a Detour queue review fix
+
+- Status: done
+- Depends on: 2.20
+- Why: a learner message received while "Ready for another question"
+  writes the position can post a question before that action's queued
+  next-question turn, which then runs even after a new miss.
+- Do: use the guarded next-question queue for ending a detour too. Skip
+  the request if an intervening reply posts a question or Stop cancels it.
+- Done when: deterministic fake-backend regression tests cover a newer
+  open question, a newer miss and Stop; `mise run check` passes.
+- Note: all three regressions failed against the original code, then
+  passed with the shared queue guard. `mise run check` passed: lint,
+  type-checking, 581 TypeScript tests and one Python test. No real model
+  calls. Findings: `decisions.md`, "Detour queue review fix".

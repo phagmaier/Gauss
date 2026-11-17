@@ -520,15 +520,20 @@ function createUnitChat(
   }
 
   /**
-   * Asks the tutor for the check's next question, after its feedback on
-   * question `number`. Skipped if a turn sent meanwhile, the reply to a
-   * learner's message, has posted one, or the learner pressed Stop since
-   * the feedback was queued.
+   * Asks the tutor for the check's next question, after feedback on question
+   * `number` or the learner ending its detour. Skipped if an intervening
+   * reply has posted one, even if already answered, or the learner pressed
+   * Stop since the feedback or detour-ending action began.
    */
-  function askNext(r: Running, number: number, stops: number): void {
+  function askNext(
+    r: Running,
+    number: number,
+    stops: number,
+    after: "feedback" | "detour" = "feedback",
+  ): void {
     r.agents.send({
       skip: () => stopCount !== stops || !nextAfter(r, number),
-      text: () => nextQuestionTurn(where(r), number),
+      text: () => nextQuestionTurn(where(r), number, after),
     });
   }
 
@@ -780,10 +785,9 @@ function createUnitChat(
         if (detour === undefined) {
           return refused("No detour is open, so there is nothing to end.");
         }
+        const stops = stopCount;
         await r.record.endDetour();
-        r.agents.send({
-          text: () => nextQuestionTurn(where(r), detour.number, "detour"),
-        });
+        askNext(r, detour.number, stops, "detour");
         return { ok: true };
       }),
 

@@ -746,6 +746,130 @@ test('in a detour no question can be posted and a message is not help; "Ready fo
   expect(setup.backend.received[5]?.text).not.toContain("They had help");
 });
 
+test.each(["open", "missed", "stopped"] as const)(
+  "ending a detour skips its queued question request after an intervening reply is %s",
+  async (outcome) => {
+    const writing = Promise.withResolvers<void>();
+    const finishWrite = Promise.withResolvers<void>();
+    const posted = Promise.withResolvers<void>();
+    const finishReply = Promise.withResolvers<void>();
+    let ending = false;
+    const message = "Continue from the detour.";
+    const setup = setUp(
+      [
+        TEACH,
+        ask(Q_QUOTIENT),
+        FEEDBACK,
+        outcome === "stopped"
+          ? [{ text: "Working through the detour." }, { hold: true }]
+          : ask(Q_QUOTIENT_2),
+        outcome === "stopped" ? ask(Q_QUOTIENT_2) : FEEDBACK,
+        FEEDBACK,
+      ],
+      {
+        record: (root) => ({
+          ...root,
+          async writePosition(course, unit, position) {
+            if (
+              ending &&
+              position?.phase === "check" &&
+              position.detour === undefined &&
+              position.openQuestion === undefined
+            ) {
+              ending = false;
+              writing.resolve();
+              await finishWrite.promise;
+            }
+            return root.writePosition(course, unit, position);
+          },
+        }),
+        wrap: (backend) => ({
+          ...backend,
+          async startSession(options) {
+            const session = await backend.startSession(options);
+            return {
+              ...session,
+              async *send(turn) {
+                for await (const event of session.send(turn)) {
+                  if (
+                    turn.text.endsWith(`\n${message}`) &&
+                    event.type === "turn_end" &&
+                    event.outcome === "ended_by_tool"
+                  ) {
+                    // The learner can answer a posted question before the
+                    // tutor's posting turn has finished.
+                    posted.resolve();
+                    await finishReply.promise;
+                  }
+                  yield event;
+                }
+              },
+            };
+          },
+        }),
+      },
+    );
+    try {
+      await makeCourse();
+      const chat = await open(setup);
+      await toCheck(chat);
+      await answer(chat, "B");
+      const from = chat.events().length;
+
+      ending = true;
+      const ready = chat.anotherQuestion();
+      await writing.promise;
+      expect(chat.say(message)).toEqual({ ok: true });
+      finishWrite.resolve();
+      expect(await ready).toEqual({ ok: true });
+
+      if (outcome === "stopped") {
+        await waitFor(chat, "tutor_text", from);
+        await chat.interrupt();
+      } else {
+        await posted.promise;
+        if (outcome === "missed") {
+          expect(
+            await chat.answer({
+              kind: "unknown",
+              questionId: openQuestionId(chat),
+            }),
+          ).toEqual({ ok: true });
+        }
+        finishReply.resolve();
+      }
+      await chat.settled();
+
+      // No stale request reaches the tutor, even if the newer question
+      // has already been missed and its own detour is waiting to open.
+      expect(setup.backend.received).toHaveLength(outcome === "missed" ? 5 : 4);
+      if (outcome === "missed") {
+        expect(setup.backend.received.at(-1)?.text).toContain(
+          "The learner answered question 2.",
+        );
+        expect((await position()).derivative).toMatchObject({
+          detour: { questionId: openQuestionId(chat), number: 2 },
+        });
+      } else if (outcome === "open") {
+        expect((await position()).derivative?.openQuestion?.number).toBe(2);
+      } else {
+        expect((await position()).derivative).toEqual({
+          segment: 0,
+          phase: "check",
+          checkFrom: 0,
+        });
+        chat.say("Ask the next question now.");
+        await chat.settled();
+        expect((await position()).derivative?.openQuestion?.number).toBe(2);
+      }
+    } finally {
+      finishWrite.resolve();
+      finishReply.resolve();
+      await setup.units.close();
+    }
+  },
+);
+
 test("from the second miss on an objective in this check, the detour's first turn asks the tutor to teach it again another way", async () => {
   const setup = setUp([
     TEACH,

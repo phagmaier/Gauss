@@ -336,6 +336,9 @@ The rules of tasks 2.6 and 2.7:
   messages are not help, since no question is open. The learner ends it
   with "Ready for another question" (`another-question`), which sends
   `nextQuestionTurn`; it waits, as other steps do, while the tutor writes.
+  Its queued turn is skipped if an intervening learner reply has posted
+  a question, including one already missed, or Stop cancels the request
+  (task 2.20a).
   A correct answer opens none: the next question follows by itself. A
   unit reopened in a detour sends nothing until the learner acts, also
   when a restart cut its first turn off. Recording the misconception a
