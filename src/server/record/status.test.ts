@@ -7,7 +7,8 @@ import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
 import { objectiveStatus, unitStatus } from "./status.ts";
 
 // Every expected status below was worked out by hand from the rules in
-// docs/decisions.md, "Objective status", not by running the code.
+// docs/decisions.md, "Objective status", with the passing rule of task 2.23
+// ("Passing without a confident answer"), not by running the code.
 
 const CHAIN = "chain-rule";
 const PRODUCT = "product-rule";
@@ -111,6 +112,21 @@ describe("objective status", () => {
 
     { name: "one correct answer at 90%", log: [right("90")], is: "passed" },
     {
+      name: "correct answers to two questions at 75% and under 50%",
+      log: [right("75"), right("under-50")],
+      is: "passed",
+    },
+    {
+      name: "after a miss, two correct answers at 75%",
+      log: [wrong("90"), right("75"), right("75")],
+      is: "passed",
+    },
+    {
+      name: "correct at 75%, correct with help, then correct at 50%",
+      log: [right("75"), right("90", { assisted: true }), right("50")],
+      is: "passed",
+    },
+    {
       name: "after a miss, a confident correct answer and an unsure one to another question",
       log: [wrong("50"), right("100"), right("50")],
       is: "passed",
@@ -156,11 +172,6 @@ describe("objective status", () => {
       is: "attempted",
     },
     {
-      name: "correct answers to two questions at 75% and under 50%",
-      log: [right("75"), right("under-50")],
-      is: "attempted",
-    },
-    {
       name: `a correct answer at 100% after a miss and an "I don't know"`,
       log: [wrong("100"), dontKnow(), right("100")],
       is: "attempted",
@@ -168,11 +179,6 @@ describe("objective status", () => {
     {
       name: "after a miss, a confident correct answer, then one with help",
       log: [wrong("75"), right("90"), right("100", { assisted: true })],
-      is: "attempted",
-    },
-    {
-      name: "after a miss, two correct answers at 75%",
-      log: [wrong("90"), right("75"), right("75")],
       is: "attempted",
     },
     {
@@ -195,6 +201,11 @@ describe("objective status", () => {
     {
       name: "two correct answers at 75%, the second with help",
       log: [right("75"), right("75", { assisted: true })],
+      is: "attempted",
+    },
+    {
+      name: "one question answered correctly twice at 75%, never missed",
+      log: [right("75", { prompt: SPACED }), right("75", { prompt: SPACED })],
       is: "attempted",
     },
     {
@@ -221,7 +232,7 @@ describe("objective status", () => {
         written("correct", "Explain why $(\\sin x^2)' = 2x\\cos x^2$."),
         written("correct", "Differentiate $e^{3x}$ and explain each step."),
       ],
-      is: "attempted",
+      is: "passed",
     },
     {
       name: "after a miss, one written question answered correctly twice",
@@ -292,6 +303,50 @@ describe("objective status", () => {
   });
 });
 
+// The theology course's first objective as the user answered it on
+// 2026-11-17. Under task 2.19's rule the first two answers never counted,
+// and it ended overridden.
+const THEOLOGY = [
+  written(
+    "correct",
+    "Answer a Protestant friend who calls Tradition a human addition.",
+  ),
+  right("50", { prompt: "Why do the Orthodox insist on triple immersion?" }),
+  dontKnow(),
+  written(
+    "correct",
+    "Criticise 'partly in Scripture, partly in Tradition'.",
+    "90",
+  ),
+  written(
+    "correct",
+    "Say what Dei Verbum changed, and what difference remains.",
+  ),
+];
+
+describe("the theology sitting", () => {
+  test.each([
+    { after: "a correct answer at 75%", answers: 1, is: "attempted" },
+    {
+      after: "a second, at 50%, to another question",
+      answers: 2,
+      is: "passed",
+    },
+    {
+      after: `then "I don't know" and a correct answer at 90%`,
+      answers: 4,
+      is: "attempted",
+    },
+    {
+      after: "then a correct answer to a new question",
+      answers: 5,
+      is: "passed",
+    },
+  ])("after $after: $is", ({ answers, is }) => {
+    expect(objectiveStatus(THEOLOGY.slice(0, answers), CHAIN)).toBe(is);
+  });
+});
+
 // A unit of three objectives in two segments, and one sitting in it worked
 // by hand, its objectives' answers interleaved as a check interleaves them.
 const UNIT = StoredUnit.parse({
@@ -316,7 +371,7 @@ const UNIT = StoredUnit.parse({
 });
 const SITTING = [
   // Segment 1's check: a miss clears the first correct answer, and two
-  // more, one of them confident, pass the product rule.
+  // more pass the product rule.
   right("75", { objective: PRODUCT }),
   wrong("90", { objective: PRODUCT }),
   right("50", { objective: PRODUCT }),

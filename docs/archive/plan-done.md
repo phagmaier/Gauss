@@ -1221,3 +1221,41 @@ tested"). Stage 1 is finished.
   `CLAUDE_CODE_DISABLE_ATTACHMENTS=1`; bare mode removed it but was not
   logged in. Both were reverted. `mise run check` passed. Findings:
   `decisions.md`, "Intake review fixes".
+
+### 2.23 Passing without a confident answer
+
+- Status: done
+- Depends on: stage 2
+- Why: honest answers under 90% never counted, which pushes the learner to
+  click 90% and spoils the numbers 2.27 shows. In the theology course one
+  objective was answered correctly at 75%, correctly at 50%, "I don't
+  know", then correctly at 90%, and ended overridden.
+- Do: the passing rule in `record/status.ts` becomes: since the last miss,
+  two unassisted correct answers to different questions, at any
+  confidence; or one at 90% or 100% if the objective was never missed. A
+  miss (wrong or "I don't know") resets the count; an answer with help
+  counts for nothing and does not break "in a row"; no limit; moving on is
+  an override, as now. In `engine/check-rules.ts`, `unconfident` and
+  `confirm` both come to mean "one more correct answer, to a different
+  question"; reword their header lines in `unit-turns.ts` and the closing
+  card's rows (`Course.tsx`, `Session.tsx`), merging the two reasons if
+  that reads better. Update the rule where it is stated: the comments,
+  `tutor.md` if it names 90%, and architecture sections 3 and 4. Status
+  is derived, so existing courses take the new rule when read.
+- Done when: hand-worked status tests pass, including the theology
+  sequence (correct at 75%, correct at 50%: passed; then "I don't know"
+  and correct at 90%: not passed; then another correct answer to a new
+  question: passed) and 2.19's chain-rule one ("I don't know", correct at
+  75%, correct with help: not passed); also two correct answers to the
+  same question: not passed; one confident answer, never missed: passed;
+  one unsure answer, never missed: not passed; correct, correct with
+  help, correct: passed. Check-rule tests show the reasons; `mise run
+  check` passes; on `pnpm dev:fake` two unsure correct answers close an
+  objective.
+- Note: done on 2026-11-17. The rule as asked; `unconfident` and `confirm`
+  merged into one reason, `second`, with one header line; the closing card,
+  `tutor.md`, the scripted tutor and the dev seed needed no change. The
+  user's three courses, re-derived read-only, changed no status. `mise run
+  check` passed (635 TypeScript tests, one Python test); four injected
+  faults each failed tests. Browser run on `pnpm dev:fake`. Findings:
+  `decisions.md`, "Passing without a confident answer".

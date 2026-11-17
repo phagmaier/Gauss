@@ -1,7 +1,8 @@
 // Objective and unit status, derived from the evidence log and never stored
 // (architecture.md section 3). Pure: the caller reads the record. The rules,
 // with the reasons for them, are in docs/decisions.md, "Objective status",
-// and the passing rule as task 2.19 changed it in "Strict passing".
+// and the passing rule as task 2.23 changed it in "Passing without a
+// confident answer".
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -15,10 +16,10 @@ import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
  *
  * - A miss (a wrong answer or "I don't know", with help or without) clears
  *   the correct answers before it.
- * - The objective passes once, since its last miss, it has an unassisted
- *   correct answer given at 90% or 100%; and, if it was ever missed, a
- *   second unassisted correct answer, to a different question (task 2.19).
- *   Unsure correct answers alone never pass it.
+ * - The objective passes once, since its last miss, it has unassisted
+ *   correct answers to two different questions, at any confidence; or, if
+ *   it was never missed, one unassisted correct answer given at 90% or
+ *   100% (task 2.23).
  * - A correct answer given with help counts for nothing either way.
  * - An override marks it overridden, but never takes away a pass. A later
  *   answer takes the override's place.
@@ -32,6 +33,7 @@ export function objectiveStatus(
   let overridden = false;
   /** The questions answered correctly without help since the last miss. */
   let problems = new Set<string>();
+  /** Whether one of those answers was given at 90% or 100%. */
   let confident = false;
 
   for (const entry of evidence) {
@@ -56,7 +58,7 @@ export function objectiveStatus(
     }
   }
 
-  if (confident && (!missed || problems.size >= 2)) return "passed";
+  if (problems.size >= 2 || (confident && !missed)) return "passed";
   if (overridden) return "overridden";
   return answered ? "attempted" : "not-started";
 }

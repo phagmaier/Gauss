@@ -73,6 +73,7 @@ stage 4 (`decisions.md`, "Stage 2 review").
 | 2.21a | Help-judge review fixes | Shutdown leaves unjudged exchanges and waiting answers for reopening; new judging calls and queued results are ignored after close. Clarification labels describe only that reply, never promise the answer still counts after earlier help. Five regression cases failed before the fix and passed after; the fake-backend browser flow and `mise run check` passed. |
 | 2.22 | Planning conversation and background note | `propose_curriculum` is refused in the intake's opening turn; asking to go ahead is `planner.md`'s. `BackgroundNote` (`src/shared/curriculum.ts`) is required in the proposal, stored as `background.md` (`readBackground`), checked at approval, shown on the card, and given to the unit planner's turn and the tutor's system prompt ("# The learner"); courses from before have none and both are told so. The scripted intake asks first, so a browser check takes two messages to reach a card. Sonnet 5.5 asked before proposing and proposed one unit in two real runs. Not run on a model: the planner and tutor using the note. |
 | 2.22a | Intake review fixes | The review and message headers name both notes. A session lost before any proposal gets the conversation so far (`conversationBefore` in `engine/intake.ts`: the learner's earlier messages and the planner's replies, as JSON). The account's email still reaches every Claude session: `CLAUDE_CODE_DISABLE_ATTACHMENTS` leaves it, and bare mode drops it but is off the plan login; nothing changed in the backend. Look again with stage 3's built-in tools or a newer SDK. |
+| 2.23 | Passing without a confident answer | Since the last miss, unassisted correct answers to two different questions pass at any confidence, or one at 90% or 100% if never missed (`record/status.ts`); help neither counts nor breaks the row. Reasons for another question are `missed`, `assisted` and `second` (`engine/check-rules.ts`). Status is derived, so old records take the rule when read. |
 
 ## Stage 2: session engine
 
@@ -97,37 +98,6 @@ Passed: the user tried it again on 2026-11-17, after tasks 2.18 to 2.22
 **Added after the user check**, from a review of the stage 2 record, which
 the user brought on 2026-11-17 (`decisions.md`, "Stage 2 review"). These
 tasks come before stage 3.
-
-### 2.23 Passing without a confident answer
-
-- Status: todo
-- Depends on: stage 2
-- Why: honest answers under 90% never counted, which pushes the learner to
-  click 90% and spoils the numbers 2.27 shows. In the theology course one
-  objective was answered correctly at 75%, correctly at 50%, "I don't
-  know", then correctly at 90%, and ended overridden.
-- Do: the passing rule in `record/status.ts` becomes: since the last miss,
-  two unassisted correct answers to different questions, at any
-  confidence; or one at 90% or 100% if the objective was never missed. A
-  miss (wrong or "I don't know") resets the count; an answer with help
-  counts for nothing and does not break "in a row"; no limit; moving on is
-  an override, as now. In `engine/check-rules.ts`, `unconfident` and
-  `confirm` both come to mean "one more correct answer, to a different
-  question"; reword their header lines in `unit-turns.ts` and the closing
-  card's rows (`Course.tsx`, `Session.tsx`), merging the two reasons if
-  that reads better. Update the rule where it is stated: the comments,
-  `tutor.md` if it names 90%, and architecture sections 3 and 4. Status
-  is derived, so existing courses take the new rule when read.
-- Done when: hand-worked status tests pass, including the theology
-  sequence (correct at 75%, correct at 50%: passed; then "I don't know"
-  and correct at 90%: not passed; then another correct answer to a new
-  question: passed) and 2.19's chain-rule one ("I don't know", correct at
-  75%, correct with help: not passed); also two correct answers to the
-  same question: not passed; one confident answer, never missed: passed;
-  one unsure answer, never missed: not passed; correct, correct with
-  help, correct: passed. Check-rule tests show the reasons; `mise run
-  check` passes; on `pnpm dev:fake` two unsure correct answers close an
-  objective.
 
 ### 2.24 One idea per objective, no quotes from memory
 

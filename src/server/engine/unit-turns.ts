@@ -457,10 +457,8 @@ export function checkText(check: ObjectiveCheck | undefined): string {
       return `missed, so another question is needed (${count})`;
     case "assisted":
       return `answered correctly with help, which does not count, so another question is needed (${count})`;
-    case "unconfident":
-      return `answered correctly but under 90% sure, which does not pass, so another question is needed (${count})`;
-    case "confirm":
-      return `answered correctly and confidently, but missed earlier, so a second correct answer, to a different question, is needed (${count})`;
+    case "second":
+      return `answered correctly, which does not pass alone, so a second correct answer, to a different question, is needed (${count})`;
   }
 }
 

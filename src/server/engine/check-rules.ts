@@ -1,19 +1,18 @@
 // How many questions a check asks (brief.md, "Teaching style" and "Mastery
-// and evidence"; tasks 2.7 and 2.19), and which segment a unit's position is
-// in. Pure: the chat keeps the evidence and passes it in.
+// and evidence"; tasks 2.7, 2.19 and 2.23), and which segment a unit's
+// position is in. Pure: the chat keeps the evidence and passes it in.
 //
 // Each objective of the segment gets at least one question in the check, and
 // is done only once it has passed (src/server/record/status.ts: since its
-// last miss, an unassisted correct answer at 90% or 100%, and a second one
-// to a different question if it was ever missed). There is no limit: until
-// it passes, or the learner moves on, the objective is asked again. So a
-// miss, an unsure correct answer, an answer given with help, or a first
-// confident one after a miss asks for another question, and a confident
-// correct answer to an objective never missed ends its check at one.
+// last miss, unassisted correct answers to two different questions, or one
+// at 90% or 100% if it was never missed). There is no limit: until it
+// passes, or the learner moves on, the objective is asked again. So a miss,
+// an answer given with help, or a first correct answer that does not pass
+// alone asks for another question, and a confident correct answer to an
+// objective never missed ends its check at one.
 
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
-import { isConfident } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import { objectiveStatus } from "../record/status.ts";
 
@@ -24,10 +23,11 @@ export type ObjectiveCheck =
       state: "more";
       /**
        * Why another question is needed, from its last answer: a miss, a
-       * correct answer with help, one under 90%, or a confident one to an
-       * objective missed before, which needs a second (`confirm`).
+       * correct answer with help, or a correct answer that does not pass
+       * alone (under 90%, or after a miss, or to the question answered
+       * before), which needs a second, to a different question (`second`).
        */
-      reason: "missed" | "assisted" | "unconfident" | "confirm";
+      reason: "missed" | "assisted" | "second";
       asked: number;
       /**
        * How many of its answers in this check were misses. From the second,
@@ -59,9 +59,7 @@ export function objectiveCheck(
       ? "missed"
       : last.assisted
         ? "assisted"
-        : last.answer.kind === "unknown" || !isConfident(last.answer.confidence)
-          ? "unconfident"
-          : "confirm";
+        : "second";
   const missed = answers.filter((a) => a.verdict !== "correct").length;
   return { state: "more", reason, asked, missed };
 }

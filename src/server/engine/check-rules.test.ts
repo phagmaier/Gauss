@@ -38,7 +38,7 @@ function answer(
 
 // Each case: the evidence before the check, the check's answers, and where
 // the objective stands, worked out by hand from the rules in check-rules.ts
-// and status.ts (task 2.19).
+// and status.ts (tasks 2.19 and 2.23).
 test.each<{
   name: string;
   before?: EvidenceEntry[];
@@ -65,7 +65,7 @@ test.each<{
   {
     name: "one correct answer at 75%",
     check: [answer(1, "correct", "75")],
-    expected: { state: "more", reason: "unconfident", asked: 1, missed: 0 },
+    expected: { state: "more", reason: "second", asked: 1, missed: 0 },
   },
   {
     name: "one correct answer at 90%, never missed",
@@ -80,7 +80,12 @@ test.each<{
   {
     name: "two unsure correct answers to different questions",
     check: [answer(1, "correct", "50"), answer(2, "correct", "75")],
-    expected: { state: "more", reason: "unconfident", asked: 2, missed: 0 },
+    expected: { state: "done", asked: 2 },
+  },
+  {
+    name: "one question answered correctly twice at 75%",
+    check: [answer(1, "correct", "75"), answer(1, "correct", "75")],
+    expected: { state: "more", reason: "second", asked: 2, missed: 0 },
   },
   {
     name: "a pass before the check, and an unsure correct answer in it",
@@ -91,7 +96,16 @@ test.each<{
   {
     name: "a miss, then a confident correct answer",
     check: [answer(1, "incorrect"), answer(2, "correct", "100")],
-    expected: { state: "more", reason: "confirm", asked: 2, missed: 1 },
+    expected: { state: "more", reason: "second", asked: 2, missed: 1 },
+  },
+  {
+    name: "a miss, then two unsure correct answers",
+    check: [
+      answer(1, "unknown"),
+      answer(2, "correct", "under-50"),
+      answer(3, "correct", "50"),
+    ],
+    expected: { state: "done", asked: 3 },
   },
   {
     name: "a miss, then a confident and an unsure correct answer",
@@ -109,7 +123,7 @@ test.each<{
       answer(2, "correct", "90"),
       answer(2, "correct", "90"),
     ],
-    expected: { state: "more", reason: "confirm", asked: 3, missed: 1 },
+    expected: { state: "more", reason: "second", asked: 3, missed: 1 },
   },
   {
     name: "the user's sitting: \"I don't know\", correct at 75%, correct at 90% with help",

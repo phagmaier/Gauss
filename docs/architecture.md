@@ -136,8 +136,8 @@ overridden) is derived from its objectives', and a unit with a position in
 `state.json` is in progress. The functions are in
 `src/server/record/status.ts`, the statuses in `src/shared/status.ts`, and
 the rules (what passes, what counts as help) in `decisions.md`, "Objective
-status", with the passing rule as task 2.19 changed it ("Strict passing")
-and help as task 2.21 changed it ("Help judge").
+status", with the passing rule as task 2.23 changed it ("Passing without
+a confident answer") and help as task 2.21 changed it ("Help judge").
 The curriculum diagram is generated from `curriculum.json` plus
 derived status.
 
@@ -268,9 +268,9 @@ derived status.
 
 ### Phases
 
-Task 2.19's stricter passing rule, the check with no limit, task 2.20's
-detours and task 2.21's help judge (`decisions.md`, "Stage 2 user check")
-are written in.
+Task 2.19's check with no limit, task 2.20's detours and task 2.21's help
+judge (`decisions.md`, "Stage 2 user check"), and task 2.23's passing rule
+(`decisions.md`, "Stage 2 review"), are written in.
 
 Per segment: `teach -> discuss -> check -> closed`. Inside the check, every
 miss opens a detour (task 2.20): a pause after the missed answer in which
@@ -319,17 +319,17 @@ The rules of tasks 2.6 and 2.7:
   learner's next message can post a question. The tutor closes no segment:
   the check rules say when it is done, so a tool for it only added a way
   to stall (`decisions.md`, "Feedback turn").
-- **How many questions** (`src/server/engine/check-rules.ts`, tasks 2.7
-  and 2.19): each objective of the segment gets at least one question in
-  the check, and is done only once it has passed (section 3's derived
-  status: since its last miss, an unassisted correct answer at 90% or
-  100%, and a second one to a different question if it was ever missed).
-  There is no limit: an objective is asked again until it passes or the
-  learner moves on, which is recorded as an override. So a miss, an unsure
-  correct answer, one given with help, or a first confident one after a
-  miss asks for another question, and a confident correct answer to an
-  objective never missed ends it at one. The header says which, so the
-  tutor knows what the next question must show.
+- **How many questions** (`src/server/engine/check-rules.ts`, tasks 2.7,
+  2.19 and 2.23): each objective of the segment gets at least one question
+  in the check, and is done only once it has passed (section 3's derived
+  status: since its last miss, unassisted correct answers to two different
+  questions, at any confidence, or one at 90% or 100% if it was never
+  missed). There is no limit: an objective is asked again until it passes
+  or the learner moves on, which is recorded as an override. So a miss, a
+  correct answer given with help, or a first correct answer that does not
+  pass alone (`second`) asks for another question, and a confident correct
+  answer to an objective never missed ends it at one. The header says
+  which, so the tutor knows what the next question must show.
 - **Detours** (task 2.20). A miss in the check, a wrong answer or "I
   don't know", closes its question into a detour, kept in the position
   (`detour` in `src/shared/state.ts`), so a restart reopens it; the page

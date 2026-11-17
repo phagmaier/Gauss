@@ -53,7 +53,7 @@ findings are the record.
 | Feedback queue review fixes | Pending feedback blocks questions from earlier messages; Stop cancels the automatic next question across intervening replies | Touching queued feedback, question posting, or Stop in `unit-chat.ts` (task 2.17a) |
 | Stage 2 user check | The user's first try of the stage 2 check: what the record showed, the user's decisions (strict passing, a detour after every miss, clarification is not help, the planner asks first, separators), the details the agent chose, and tasks 2.18 to 2.22 | Any of tasks 2.18 to 2.22; touching the passing rule, the check's question count, help, detours, `planner.md` or `tutor.md` |
 | Thread separators and the pinned question | Task 2.18: where lines go between messages, the open question above the message box, an answered question moved to where it was answered, the browser run | Touching the session thread (`divided`, `openQuestion` in `session.ts`, the `graded` case in `timeline.ts`), the question card's place, or the foot of the session view |
-| Strict passing | Task 2.19: the passing rule with a confident answer and a second after a miss, no question limit, the `confirm` reason, the header wording and the scripted tutor, the closing card's reasons, records closed at the old limit | Touching `record/status.ts`, `engine/check-rules.ts`, the check headers in `unit-turns.ts`, the closing card's rows, or `scripted.ts`'s question numbering |
+| Strict passing | Task 2.19 (its passing rule replaced by 2.23): the passing rule with a confident answer and a second after a miss, no question limit, the `confirm` reason, the header wording and the scripted tutor, the closing card's reasons, records closed at the old limit | Touching `record/status.ts`, `engine/check-rules.ts`, the check headers in `unit-turns.ts`, the closing card's rows, or `scripted.ts`'s question numbering |
 | Detour after a miss | Task 2.20: the detour in the position and its events, its first turn and the teaching again from the second miss, refusals and help in it, ending it and what a Stop then leaves, a restart, the "I don't know" line and its field, the marker and control, the checks and the real run on Sonnet 5.5 | Touching detours (`detour` in `state.ts`, `endDetour`, `anotherQuestion`, `detourOpening` in `unit-turns.ts`), `missed` in `check-rules.ts`, "I don't know" (`stuck`), the detour marker or control; 2.21's help judging, stage 5's misconception record |
 | Detour queue review fix | Task 2.20a: the next-question request after ending a detour shares the feedback queue's stale-question and Stop guards; deterministic interleaving regressions | Touching `anotherQuestion`, `askNext`, or the unit chat's queues |
 | Help judge | Task 2.21: clarification or help judged after each reply during an open question, what the judge sees, failures and restarts counting as help, the answer that waits, Stop kept as 2.17a has it, the tutor's headers and `tutor.md`, the page's lines and notice, the hand-judged set and the model (Haiku 5.5) | Touching help (`judging`, `assisted`, `help-judge.ts`, `help-judge.md`, `JUDGE_MODEL`), answers kept on the open question, `ended`'s reply in `conversation.ts`, the message box's notice; stage 3's disputes |
@@ -61,6 +61,7 @@ findings are the record.
 | Planning conversation and background note | Task 2.22: the intake's first turn and its refusal, asking to go ahead left to the prompt, the background note (schema, `background.md`, approval, courses without one), the note on the card, where the unit planner and tutor get it, `planner.md`, the scripted intake, the two real runs on Sonnet 5.5 | Touching `planner.md`, `propose_curriculum`, the intake's turns, `background.md` or `readBackground`, the proposal card, the unit planner's turn or the tutor's system prompt; stage 5's learner profile |
 | Intake review fixes | Task 2.22a: both notes in the revision headers; a session lost before any proposal given the conversation so far; why the account's email stays in every Claude session (probe of `CLAUDE_CODE_DISABLE_ATTACHMENTS` and bare mode) | Touching the intake's turns or a lost intake session; trying again to keep the account email out of a session |
 | Stage 2 review | After the stage 2 check passed: a review of the theology course's record the user brought, what was checked against the record, the user's decisions (passing without a confident answer, review questions opening each sitting, testing out instead of the baseline, no finals, no quotes from memory, stage 5 before stage 4), the agent's readings, and tasks 2.23 to 2.27 | Any of tasks 2.23 to 2.27; touching the passing rule, `unit-planner.md` or `tutor.md`'s questions and quotes; breaking down stage 5 (review, test-out, the profile) |
+| Passing without a confident answer | Task 2.23: two correct answers to different questions pass at any confidence, one confident answer only if never missed; the `second` reason replacing `unconfident` and `confirm`; what needed no change; the user's courses re-derived with no status changed; tests, injected faults and the browser run | Touching `record/status.ts`, `engine/check-rules.ts`'s reasons or `checkText` in `unit-turns.ts`; stage 5's retained and slipping; 2.27's calibration |
 
 ## Page design (plan task 1.0)
 
@@ -4537,3 +4538,48 @@ Chosen by the agent, and open to change:
   stage 3, since 2.23 and 2.24 change what a check feels like.
 
 These are tasks 2.23 to 2.27 in `docs/plan.md`, and the reordered stages.
+
+## Passing without a confident answer (plan task 2.23)
+
+Built on 2026-11-17, from the user's decision in "Stage 2 review". It
+replaces task 2.19's passing rule; 2.19's check with no limit stands.
+
+- **The rule** (`objectiveStatus` in `record/status.ts`): since its last
+  miss, an objective passes with unassisted correct answers to two
+  different questions, at any confidence, or with one at 90% or 100% if it
+  was never missed. In the code, `problems.size >= 2 || (confident &&
+  !missed)`. Everything else of tasks 2.3 and 2.19 stands: a miss clears
+  the answers before it, "different" is what the learner saw, an answer
+  with help counts for nothing and, as before, does not clear the count
+  either, so it never breaks "in a row"; an override never takes a pass
+  away.
+- **One reason, `second`, replaces `unconfident` and `confirm`**
+  (`engine/check-rules.ts`). A correct, unassisted answer that leaves its
+  objective not passed now always asks the same of the next question: a
+  second correct answer, to a different question. That covers an unsure
+  first answer, a first answer after a miss, and the question answered
+  before. The header (`checkText` in `unit-turns.ts`) says: "answered
+  correctly, which does not pass alone, so a second correct answer, to a
+  different question, is needed (N asked)".
+- **No change needed** to the closing card (its reasons name no
+  confidence), `tutor.md` (it says only "until it passes"), the scripted
+  tutor (it reads "(N asked)") or the dev seed (its answers are at 90%).
+- **The user's courses**, re-derived with the old and the new function by
+  a throwaway script, read-only: no status changed. The theology
+  objective stays overridden, since its "I don't know" came after the two
+  correct answers that now pass; the chain-rule course's three objectives
+  are as they were.
+- **Tests.** Status cases worked by hand: three move to passed (two
+  correct answers at 75% and under 50%; two at 75% after a miss; two
+  written answers at 75%); new ones for correct, correct with help,
+  correct (passed) and one question answered twice at 75% (not passed);
+  the theology sitting step by step. Check-rule cases for `second`,
+  including a repeated question, and two unsure answers that finish a
+  check. Two engine tests in `unit-chat.test.ts` take the new header and
+  the shorter check. Four injected faults each failed tests: one
+  confident answer passing after a miss (10), a repeated question counting
+  twice (5), help breaking the row (2), help counting (6).
+- **Checks.** `mise run check` passed (635 TypeScript tests, one Python
+  test; the CSS warning was there before). On `pnpm dev:fake`, segment 2
+  of "What is a group?": written answers at 75% and then 50% passed its
+  objective, and the unit closed as passed.

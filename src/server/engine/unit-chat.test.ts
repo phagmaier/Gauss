@@ -1704,12 +1704,6 @@ const Q_QUOTIENT_3: ChoiceInput = {
   prompt: "Which is the difference quotient of $k$ at $-1$?",
   choices: ["$\\frac{k(-1+h)-k(-1)}{h}$", "$\\frac{k(h)-k(-1)}{h}$"],
 };
-const Q_SECANT_3: ChoiceInput = {
-  ...Q_SECANT,
-  prompt: "As $h$ shrinks, what does the secant's slope approach?",
-  choices: ["Zero", "The slope of the tangent at $a$", "The value $f(a)$"],
-};
-
 /** The SHORT unit's unit_status event. */
 function shortStatus(
   unit: UnitStatus,
@@ -1761,7 +1755,7 @@ test("after a miss an objective needs two more correct answers, to different que
 
   expect(closedSegments(chat)).toEqual([]);
   expect(setup.backend.received[7]?.text).toContain(
-    '"difference-quotient": answered correctly and confidently, but missed earlier, so a second correct answer, to a different question, is needed (2 asked)',
+    '"difference-quotient": answered correctly, which does not pass alone, so a second correct answer, to a different question, is needed (2 asked)',
   );
 
   await answer(chat, "A");
@@ -1819,7 +1813,7 @@ test("there is no limit: an objective not passed is asked again until it passes 
   });
 });
 
-test("a confident correct answer ends an objective's check at one question; unsure ones ask for more until one is confident", async () => {
+test("a confident correct answer ends an objective's check at one question; an unsure one asks for a second, and two pass", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
@@ -1827,8 +1821,6 @@ test("a confident correct answer ends an objective's check at one question; unsu
     ask(Q_SECANT),
     FEEDBACK,
     ask(Q_SECANT_2),
-    FEEDBACK,
-    ask(Q_SECANT_3),
     FEEDBACK,
   ]);
   await makeCourse(true, SHORT);
@@ -1844,29 +1836,24 @@ test("a confident correct answer ends an objective's check at one question; unsu
   await answer(chat, "B", "75");
 
   expect(setup.backend.received[5]?.text).toContain(
-    '"secant-slope": answered correctly but under 90% sure, which does not pass, so another question is needed (1 asked). Allowed now: a lead-in of one sentence, then a question on "secant-slope"',
+    '"secant-slope": answered correctly, which does not pass alone, so a second correct answer, to a different question, is needed (1 asked). Allowed now: a lead-in of one sentence, then a question on "secant-slope"',
   );
+  expect(closedSegments(chat)).toEqual([]);
 
   await answer(chat, "B", "50");
 
-  // Two unsure correct answers do not pass it.
-  expect(closedSegments(chat)).toEqual([]);
-
-  await answer(chat, "B", "90");
-
+  // Two unsure correct answers, to different questions, pass it.
   expect(closedSegments(chat)).toEqual([0]);
-  // Four questions in all: one for the confident answer, three for the
-  // secant: two unsure, then one confident.
+  expect(since(chat, "graded")[1]).toEqual(
+    shortStatus("in-progress", "passed", "passed"),
+  );
+  // Three questions in all: one for the confident answer, two for the
+  // secant.
   expect(
     (await reload().readEvidence(COURSE)).map((e) =>
       e.kind === "answer" ? e.objective : e.kind,
     ),
-  ).toEqual([
-    "difference-quotient",
-    "secant-slope",
-    "secant-slope",
-    "secant-slope",
-  ]);
+  ).toEqual(["difference-quotient", "secant-slope", "secant-slope"]);
 });
 
 // --- Task 2.21: clarification or help, judged after the reply ----------------
