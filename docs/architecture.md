@@ -148,9 +148,10 @@ also before it reaches the backend.
   first message, so the learner answers the planner once before a card
   appears. The first proposal creates the course; each proposal replaces the
   draft with its style note and background note, and a reply to one is a
-  change request. Approval names the proposal the card shows, and the
-  record refuses it (`DraftMismatch`) unless the files on disk are that
-  proposal. Approval ends the intake. Intakes are kept in memory: a restart
+  change request. Approval is refused while a turn is queued or running,
+  and names the proposal the card shows; the record refuses it
+  (`DraftMismatch`) unless the files on disk are that proposal. Approval
+  ends the intake and closes its session; the planner is not told. Intakes are kept in memory: a restart
   loses one in progress, and its draft is reviewed in a new intake that
   starts from the stored draft (`POST /api/courses/<id>/review`).
 - **Unit planning** (`engine/unit-planning.ts`). A unit without a plan is

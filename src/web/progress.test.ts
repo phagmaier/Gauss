@@ -10,7 +10,7 @@ import {
 } from "./progress.ts";
 
 // Every expected result was worked out by hand from the picks in
-// docs/decisions.md, "Stage 2 designs" (piece 12): the card leads to the
+// docs/decisions.md, "Page design" (piece 12): the card leads to the
 // unit in progress most recently opened, or else to the first unit in the
 // list not started whose prerequisites are finished (passed or overridden).
 

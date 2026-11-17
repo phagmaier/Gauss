@@ -1,5 +1,5 @@
 // The Claude backend, built on the Agent SDK with the options found in stage 0
-// (docs/decisions.md, tasks 0.2 to 0.4). One long-lived `query()` per
+// (docs/decisions.md, "Claude backend"). One long-lived `query()` per
 // session: each engine turn is pushed onto its input stream, and the turn's
 // messages are read until its `result`.
 //
