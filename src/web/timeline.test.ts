@@ -367,6 +367,124 @@ test("a written answer is kept on its card while graded, a failed grading says w
   });
 });
 
+// Task 2.21: a reply during an open question is judged, and an answer sent
+// before the call is in waits for it.
+const ASKING: PageEvent[] = [
+  { type: "phase", segment: 0, phase: "check" },
+  { type: "question", question: QUESTION },
+  { type: "turn_end", outcome: "done" },
+  { type: "learner", id: "m1", text: "What does the cube mean?" },
+  { type: "turn_start" },
+  { type: "tutor_text", text: "It is the third power." },
+  { type: "turn_end", outcome: "done" },
+  { type: "judging", learnerId: "m1", number: 1 },
+];
+
+test("the judge's call on a reply sits under it, judging until the call is in, and what the tutor writes next starts a new item", () => {
+  const judging = play(ASKING);
+  expect(judging.items.slice(-2)).toEqual([
+    { kind: "tutor", key: 5, text: "It is the third power." },
+    { kind: "judgment", key: 7, learnerId: "m1", number: 1 },
+  ]);
+
+  const judged = play([
+    ...ASKING,
+    { type: "learner", id: "m2", text: "And the 3 in front?" },
+    {
+      type: "judged",
+      learnerId: "m1",
+      number: 1,
+      verdict: "clarification",
+    },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "That comes from the rule." },
+  ]);
+  expect(judged.items.slice(-4)).toEqual([
+    { kind: "tutor", key: 5, text: "It is the third power." },
+    {
+      kind: "judgment",
+      key: 7,
+      learnerId: "m1",
+      number: 1,
+      verdict: "clarification",
+    },
+    { kind: "learner", key: 8, id: "m2", text: "And the 3 in front?" },
+    { kind: "tutor", key: 11, text: "That comes from the rule." },
+  ]);
+});
+
+test("a call with no judging line of its own, as after a restart, goes where the thread has reached, and says why it counts as help", () => {
+  const timeline = play([
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: QUESTION },
+    {
+      type: "judged",
+      learnerId: "m1",
+      number: 1,
+      verdict: "help",
+      unjudged: "restart",
+    },
+  ]);
+
+  expect(timeline.items.at(-1)).toEqual({
+    kind: "judgment",
+    key: 2,
+    learnerId: "m1",
+    number: 1,
+    verdict: "help",
+    unjudged: "restart",
+  });
+});
+
+test("an answer sent while a reply is judged is kept on its card as waiting, until the grade, or the grading of a written answer, takes its place", () => {
+  const chosen = {
+    kind: "choice" as const,
+    questionId: "q1",
+    choice: "A" as const,
+    confidence: "90" as const,
+  };
+  const waiting: PageEvent = {
+    type: "answer_waiting",
+    questionId: "q1",
+    answer: chosen,
+  };
+  const card = (events: PageEvent[]) =>
+    play(events).items.find((i) => i.kind === "question");
+
+  expect(card([...ASKING, waiting])).toEqual({
+    kind: "question",
+    key: 1,
+    question: QUESTION,
+    waiting: chosen,
+  });
+  const graded: PageEvent = {
+    type: "graded",
+    questionId: "q1",
+    verdict: "correct",
+    answer: chosen,
+    correctChoice: "A",
+    assisted: false,
+  };
+  expect(card([...ASKING, waiting, graded])).toMatchObject({
+    graded,
+  });
+  expect(card([...ASKING, waiting, graded])).not.toHaveProperty("waiting");
+
+  // A written answer that waited is graded next.
+  const written: PageEvent[] = [
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: WRITTEN },
+    { type: "answer_waiting", questionId: "q2", answer: PROOF },
+    { type: "grading", questionId: "q2", answer: PROOF },
+  ];
+  expect(card(written)).toEqual({
+    kind: "question",
+    key: 1,
+    question: WRITTEN,
+    grading: PROOF,
+  });
+});
+
 test("a question the thread went on below is shown where it was answered, and a line stands where it was posted", () => {
   const graded = LOG[5] as PageEvent;
   const events: PageEvent[] = [

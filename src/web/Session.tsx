@@ -38,6 +38,8 @@ import {
   closingCard,
   detourSays,
   divided,
+  helpNotice,
+  judgmentSays,
   lastCard,
   nextStep,
   openQuestion,
@@ -194,6 +196,7 @@ export function Session(props: { courseId: string; unitId: string }) {
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
   const asked = openQuestion(timeline);
+  const notice = helpNotice(timeline);
   // Where the open question was posted, a line says where it went, once
   // something has followed it there.
   const askedAt =
@@ -353,6 +356,11 @@ export function Session(props: { courseId: string; unitId: string }) {
         )}
         {asked === undefined ? null : (
           <div className="th-pin-act">{control}</div>
+        )}
+        {notice === undefined ? null : (
+          <div className="box-note">
+            <p>{notice}</p>
+          </div>
         )}
         <Composer
           enabled={open && timeline.failed === null}
@@ -560,6 +568,20 @@ function ThreadItem(props: {
       );
     case "note":
       return <p className="ph-note">{item.text}</p>;
+    case "judgment": {
+      const { text, tone } = judgmentSays(item);
+      return (
+        <p className={`th-judged ${tone}`} role="status">
+          {text}
+          {tone === "judging" ? (
+            <>
+              {" "}
+              <span className="wait" aria-hidden="true" />
+            </>
+          ) : null}
+        </p>
+      );
+    }
     case "answered-below":
       return (
         <p className="q-count th-asked">

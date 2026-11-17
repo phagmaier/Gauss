@@ -173,7 +173,7 @@ export function answerTurn(
   }
   if (entry.assisted) {
     lines.push(
-      "They had help: you received a message from them while the question was open, so this answer does not count toward passing.",
+      "They had help: a reply of yours to a message of theirs while the question was open was judged help, or could not be judged, so this answer does not count toward passing.",
     );
   }
   const { detour } = where.position;
@@ -342,26 +342,32 @@ function allowed(where: Where): string {
     case "check": {
       const open = position.openQuestion;
       if (open !== undefined) {
+        const helped =
+          open.assisted === true
+            ? " A reply of yours to the learner while it was open was judged help, so the answer will be recorded as given with help."
+            : "";
         if (open.answer !== undefined) {
-          const help =
-            open.assisted === true
-              ? " The learner wrote to you before answering, so the answer will be recorded as given with help."
-              : "";
+          const state =
+            open.judging === undefined
+              ? "the answer is being graded"
+              : "the answer is graded once your replies to the learner while it was open are judged";
           return (
             `Question ${open.number}, on "${open.objective}", is answered, ` +
-            `and the answer is being graded.${help} Allowed now: reply to ` +
-            "the learner. ask_question is refused until the grade arrives, " +
-            "in a message of its own."
+            `and ${state}.${helped} Allowed now: reply to the learner. ` +
+            "ask_question is refused until the grade arrives, in a message " +
+            "of its own."
           );
         }
-        const help =
-          open.assisted === true
-            ? " The learner has written to you while it is open, so their answer will be recorded as given with help."
-            : "";
         return (
-          `Question ${open.number}, on "${open.objective}", is open.${help} ` +
-          "Allowed now: reply without giving its answer away. ask_question " +
-          "is refused until the learner answers it."
+          `Question ${open.number}, on "${open.objective}", is open.${helped} ` +
+          "Allowed now: reply without giving its answer away. You may " +
+          "clarify what the question asks: its wording, its notation, the " +
+          "form of answer wanted. A separate judge reads each reply you " +
+          "write while it is open, and one that gives anything toward the " +
+          "answer (a method, a step, a value, a similar worked example, a " +
+          "mistake to avoid, whether a guess is right) makes the answer " +
+          "count as given with help. ask_question is refused until the " +
+          "learner answers it."
         );
       }
       if (where.feedbackPending !== undefined) {

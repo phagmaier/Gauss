@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
-import { Question, WrittenAnswer } from "./question.ts";
+import { AnswerSubmission, Question } from "./question.ts";
 
 /** A segment's phases, in order (architecture.md section 4, "Phases"). */
 export const Phase = z.enum(["teach", "discuss", "check", "closed"]);
@@ -26,22 +26,36 @@ export const OpenQuestion = z
     /** What the learner sees, with the grading material, which the page never gets. */
     question: Question,
     /**
-     * Set once the tutor has received a message from the learner while the
-     * question waited for its answer, so the answer is recorded as given with
-     * help (docs/decisions.md, "Objective status"; task 2.7).
+     * Set once a reply of the tutor's to a message the learner sent while
+     * the question waited for its answer was judged help, or could not be
+     * judged, so the answer is recorded as given with help (task 2.21).
      */
     assisted: z.literal(true).optional(),
     /**
-     * A written answer, kept from when it is sent until its grade is recorded:
-     * while it is graded, and after a grading that failed, until it is graded
-     * again (task 2.8). The answer is final once sent.
+     * The learner's messages, by id, that the tutor received while the
+     * question waited for its answer and whose replies are not judged yet
+     * (task 2.21): from when the tutor receives one until the judge's call
+     * on its reply. An answer sent meanwhile waits for them.
      */
-    answer: WrittenAnswer.optional(),
+    judging: z.array(z.string().min(1)).min(1).optional(),
+    /**
+     * The answer, kept from when it is sent until it is recorded: a written
+     * one while it is graded, and after a grading that failed, until it is
+     * graded again (task 2.8); any answer while replies are still to be
+     * judged (task 2.21). The answer is final once sent.
+     */
+    answer: AnswerSubmission.optional(),
   })
-  .refine((q) => q.answer === undefined || q.question.kind === "written", {
-    message: "Only a written question keeps its answer while it is graded.",
-    path: ["answer"],
-  })
+  .refine(
+    (q) =>
+      q.answer === undefined ||
+      q.answer.kind === "unknown" ||
+      q.answer.kind === q.question.kind,
+    {
+      message: "The answer kept is not of its question's kind.",
+      path: ["answer", "kind"],
+    },
+  )
   .refine((q) => q.answer === undefined || q.answer.questionId === q.id, {
     message: "The answer kept is to another question.",
     path: ["answer", "questionId"],

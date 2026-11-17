@@ -240,3 +240,27 @@ export const WrittenGrade = z
     path: ["flaw"],
   });
 export type WrittenGrade = z.infer<typeof WrittenGrade>;
+
+// --- What the help judge returns ---------------------------------------------
+
+/**
+ * Whether the tutor's reply to a message the learner sent while a question
+ * was open helped toward its answer (task 2.21; architecture.md section 4).
+ * The judge sees the question with its answer key or rubric, the message
+ * and the reply, and nothing else.
+ */
+export const HelpJudgment = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "One or two sentences: what the reply gave the learner that bears on the answer, if anything. Written before the verdict, and never shown to the learner.",
+    ),
+  verdict: z
+    .enum(["clarification", "help"])
+    .describe(
+      '"help" if the reply gave anything toward the answer: a method, a step, a value, a similar worked example, a mistake to avoid, or a hint that an answer the learner proposed is right or wrong. "clarification" if it only explained what the question asks (its wording, its notation, the form of answer wanted), or gave nothing that bears on the answer.',
+    ),
+});
+export type HelpJudgment = z.infer<typeof HelpJudgment>;

@@ -42,7 +42,7 @@ reason for using one language.
 ```
 Gauss/
   docs/                 brief.md, architecture.md, decisions as they arise
-  prompts/              tutor.md, examiner.md, grader.md, planner.md, notes.md
+  prompts/              tutor.md, examiner.md, grader.md, help-judge.md, planner.md, notes.md
   src/
     shared/             zod schemas: record files, questions, events
     server/
@@ -54,7 +54,7 @@ Gauss/
       http/             routes, event stream
     web/                React app: library, chat, question widgets, diagram, panes
   pytools/              uv project: convert.py, mathcheck.py
-  scripts/              run by hand: grade-set.ts on a real model (task 2.9), dev-fake.ts with none (task 2.12b)
+  scripts/              run by hand: grade-set.ts (task 2.9) and judge-set.ts (task 2.21) on a real model, dev-fake.ts with none (task 2.12b)
   mise.toml             pinned node, pnpm, python, uv
   package.json, pnpm-lock.yaml
 ```
@@ -79,7 +79,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
     course.json                   title, backend, settings (web search on/off), dates, when each unit was last opened
     style.md                      per-course teaching style note, proposed and approved with the curriculum
     curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
-    state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question (with a written answer while it is graded), tutor session, open detour
+    state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question (with the learner messages whose replies wait for the help judge, and an answer kept while it is graded or waits for them), tutor session, open detour
     evidence.jsonl                append-only: answers, grades (with a written answer's flaw), confidence, overrides, disputes
     misconceptions.jsonl          append-only: findings from detours
     units/<unit-id>/handoff.md    written at the end of each session in the unit
@@ -135,7 +135,8 @@ overridden) is derived from its objectives', and a unit with a position in
 `state.json` is in progress. The functions are in
 `src/server/record/status.ts`, the statuses in `src/shared/status.ts`, and
 the rules (what passes, what counts as help) in `decisions.md`, "Objective
-status", with the passing rule as task 2.19 changed it ("Strict passing").
+status", with the passing rule as task 2.19 changed it ("Strict passing")
+and help as task 2.21 changed it ("Help judge").
 The curriculum diagram is generated from `curriculum.json` plus
 derived status.
 
@@ -259,10 +260,9 @@ derived status.
 
 ### Phases
 
-**Being changed by task 2.21** (`decisions.md`, "Stage 2 user check"):
-help judged by a separate call, which rewrites the help rule below. Task
-2.19's stricter passing rule, the check with no limit, and task 2.20's
-detours are written in.
+Task 2.19's stricter passing rule, the check with no limit, task 2.20's
+detours and task 2.21's help judge (`decisions.md`, "Stage 2 user check")
+are written in.
 
 Per segment: `teach -> discuss -> check -> closed`. Inside the check, every
 miss opens a detour (task 2.20): a pause after the missed answer in which
@@ -346,9 +346,31 @@ The rules of tasks 2.6 and 2.7:
 - **"I don't know"** can carry a line on where the learner got stuck
   (`stuck` in `AnswerSubmission`), kept with the answer in the evidence and
   given to the tutor in the detour's first turn.
-- **Help** is noted when a learner message reaches the tutor while a
-  question is open: the open question is marked in `state.json`, and its
-  answer is recorded as assisted.
+- **Help** is judged (task 2.21, `engine/help-judge.ts`). A learner
+  message that reaches the tutor while a question waits for its answer
+  begins an exchange: its id joins the open question's `judging` in
+  `state.json`. When the tutor's reply ends, a separate one-shot call, the
+  help judge (section 6), reads the question with its correct choice or
+  rubric, the message and the reply, and returns clarification (only what
+  the question asks: its wording, its notation, the form of answer wanted,
+  or nothing that bears on the answer) or help (anything toward the
+  answer). Help, or a call that fails, marks the open question `assisted`,
+  and its answer is recorded as given with help; clarification changes
+  nothing. A reply with no text is not judged and is no help. The page
+  hears `judging` after the reply and `judged` with the call; the tutor's
+  header says what it may clarify and that a judge reads its replies, and
+  once one is judged help, that the answer will not count. The judge runs
+  outside the chat's queue, like the grader.
+- **An answer waits for the judge.** An answer sent while any exchange on
+  its question is unjudged, its reply still being written included, is
+  kept on the open question (`answer_waiting` to the page) and graded once
+  the last call is in; another answer and moving on are refused
+  meanwhile. A Stop after it was sent cancels the automatic next question
+  as for an answer recorded at once (task 2.17a). A message sent after an
+  answer is not an exchange. A restart loses the calls under way: a unit
+  reopened with replies still waiting counts them as help (`judged` with
+  `unjudged: "restart"`) and grades an answer kept for them; a judging
+  stopped because the chat is closing is not recorded.
 - **"This check"** is the evidence after the point where it began, which the
   position keeps (`checkFrom`, the number of entries the log held then):
   the check's answers are the entries after it that name the segment's
@@ -379,7 +401,8 @@ The rules of task 2.8, for written answers (section 6):
   answer and moving on are refused, also after a failed grading, and so
   is the tutor's `ask_question`; grading again is
   refused while a grading runs. A message then is not help: help
-  ends when the answer is sent.
+  ends when the answer is sent. A written answer that waited for the
+  judge is graded once the last call is in.
 - **A failed grading is shown, and the answer graded again as sent**: the
   question stays open with its answer, and nothing reaches the tutor until
   there is a grade. A unit reopened with a kept answer grades it again at
@@ -489,6 +512,18 @@ step and computation, accept any valid method, and name only the first
 flaw, pointed at, without the repair and without the rubric, which the
 learner never sees.
 
+The help judge (task 2.21, section 4's "Help") is a one-shot request of the
+same kind: `prompts/help-judge.md`, a message holding the question with its
+choices and correct choice, or its rubric, the learner's message and the
+tutor's reply, each between tags, and the reply `HelpJudgment` in
+`src/shared/question.ts` (a reason, which is never shown, then
+`clarification` or `help`). A reply not in that shape, a failed request or
+one past two minutes counts as help. It runs on Claude Haiku 5.5
+(`JUDGE_MODEL` in `backends/claude.ts`), chosen on a hand-judged set
+(`scripts/help-set.ts`, run by `scripts/judge-set.ts`; the results are in
+`decisions.md`, "Help judge"), and `GAUSS_CLAUDE_MODEL` replaces it as it
+does the grader's.
+
 Every grade can be disputed. A dispute is appended to the evidence log and
 passed to the tutor; the original grade is kept alongside the outcome.
 
@@ -503,7 +538,7 @@ reference: `src/server/backends/backend.ts` and `src/server/tools/tool.ts`.
 interface TutorBackend {
   startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools, cwd (kept there), resumeId, title; SessionNotFound
   hasSession(id: string, cwd: string): Promise<boolean>;  // a kept session is there to resume, found without starting it (task 2.15)
-  oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal; the grader (task 2.8), later notes
+  oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal; the grader (task 2.8), the help judge (task 2.21), later notes
 }
 interface TutorSession {
   readonly backendSessionId: string;  // known from the start, before the first turn
@@ -748,7 +783,10 @@ default style in `tutor.md`. The learner's profile, the last handoff note
 and open misconceptions join it in stage 5.
 `examiner.md` drives assessments, `grader.md` rubric grading (revised in
 task 2.9 against `scripts/grader-set.ts`, which `scripts/grade-set.ts`
-grades on a real model: re-run it when the prompt changes), `planner.md`
+grades on a real model: re-run it when the prompt changes), `help-judge.md`
+the call on whether a reply during an open question was help (task 2.21,
+checked against `scripts/help-set.ts` by `scripts/judge-set.ts`: re-run
+it when the prompt changes), `planner.md`
 the intake's curriculum proposal and its style note, `unit-planner.md` the planning session that
 plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
 sheets. Each is drafted in the stage that first needs it and revised against
@@ -772,7 +810,12 @@ real transcripts.
   marker after the missed question's card, and the next-step control then
   offers "Ready for another question" beside moving on; "I don't know"
   asks, before it is sent, where the learner got stuck, which they may
-  leave blank (task 2.20).
+  leave blank (task 2.20). While a question waits for its answer, a line
+  above the message box says that asking what it means is free and that a
+  reply helping toward the answer makes it given with help; the judge's
+  call on each reply during it is a line under the reply, and an answer
+  that waits for a call is shown on the card as kept (task 2.21,
+  `helpNotice` and `judgmentSays` in `session.ts`).
 
 Text from a model, and the learner's typed answers, are rendered as
 Markdown with `$` math by `src/web/prose.tsx`, as React elements and never

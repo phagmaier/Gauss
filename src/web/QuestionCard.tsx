@@ -12,6 +12,9 @@
 // "I don't know" asks, before it is sent, where the learner got stuck, which
 // they may leave blank (task 2.20); the tutor is given it in the detour the
 // miss opens.
+//
+// An answer sent while the tutor's replies during the question are still
+// being judged for help is kept as sent until they are (task 2.21).
 
 import { useEffect, useState } from "react";
 import {
@@ -56,6 +59,9 @@ export function QuestionCard(props: {
         </div>
       </div>
     );
+  }
+  if (item.waiting !== undefined) {
+    return <WaitingCard question={item.question} answer={item.waiting} />;
   }
   if (item.grading !== undefined) {
     return (
@@ -381,6 +387,77 @@ function KeptCard(props: {
   );
 }
 
+/** An answer kept until the tutor's replies during its question are judged. */
+function WaitingCard(props: {
+  question: QuestionView;
+  answer: AnswerSubmission;
+}) {
+  const { question, answer } = props;
+  return (
+    // "live": it waits on its grade.
+    <div className="qa-card done live">
+      <div className="q-count">
+        Question {question.number}{" "}
+        <span className="dk" role="status">
+          Waiting <span className="wait" aria-hidden="true" />
+        </span>
+      </div>
+      <div className="qa-prompt prose">
+        <Prose text={question.prompt} />
+      </div>
+      <AnswerRecord question={question} answer={answer} />
+      <div className="qa-foot">
+        <span className="qa-aside">
+          Your answer is kept as you sent it, and graded once the tutor's reply
+          to your message is judged.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** The answer as sent: the written text, the choice, or "I don't know". */
+function AnswerRecord(props: {
+  question: QuestionView;
+  answer: AnswerSubmission;
+}) {
+  const { question, answer } = props;
+  if (answer.kind === "written") return <WrittenRecord answer={answer} />;
+  return (
+    <>
+      <div className="qa-line">
+        <span className="k">Your answer</span>
+        {answer.kind === "choice" ? (
+          <>
+            <ChoiceText question={question} letter={answer.choice} />
+            <span className="c">{confidenceLabel(answer.confidence)} sure</span>
+          </>
+        ) : (
+          <span>I don't know</span>
+        )}
+      </div>
+      {answer.kind === "unknown" && answer.stuck !== undefined ? (
+        <div className="qa-line">
+          <span className="k">Stuck on</span>
+          <span className="qa-stuck-said">{answer.stuck}</span>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function ChoiceText(props: { question: QuestionView; letter: ChoiceLetter }) {
+  const { question, letter } = props;
+  return question.kind === "choice" ? (
+    <span>
+      {letter}.{" "}
+      <InlineProse
+        text={question.choices[CHOICE_LETTERS.indexOf(letter)] ?? ""}
+      />
+    </span>
+  ) : null;
+}
+
 function WrittenRecord(props: { answer: WrittenAnswer }) {
   return (
     <>
@@ -399,15 +476,6 @@ function WrittenRecord(props: { answer: WrittenAnswer }) {
 function GradedCard(props: { question: QuestionView; graded: Graded }) {
   const { question, graded } = props;
   const { answer } = graded;
-  const choiceText = (letter: ChoiceLetter) =>
-    question.kind === "choice" ? (
-      <span>
-        {letter}.{" "}
-        <InlineProse
-          text={question.choices[CHOICE_LETTERS.indexOf(letter)] ?? ""}
-        />
-      </span>
-    ) : null;
   const verdict =
     graded.verdict === "correct" ? (
       <span className="ok">Correct</span>
@@ -427,34 +495,12 @@ function GradedCard(props: { question: QuestionView; graded: Graded }) {
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
-      {answer.kind === "written" ? (
-        <WrittenRecord answer={answer} />
-      ) : (
-        <div className="qa-line">
-          <span className="k">Your answer</span>
-          {answer.kind === "choice" ? (
-            <>
-              {choiceText(answer.choice)}
-              <span className="c">
-                {confidenceLabel(answer.confidence)} sure
-              </span>
-            </>
-          ) : (
-            <span>I don't know</span>
-          )}
-        </div>
-      )}
-      {answer.kind === "unknown" && answer.stuck !== undefined ? (
-        <div className="qa-line">
-          <span className="k">Stuck on</span>
-          <span className="qa-stuck-said">{answer.stuck}</span>
-        </div>
-      ) : null}
+      <AnswerRecord question={question} answer={answer} />
       {graded.verdict === "correct" ||
       graded.correctChoice === undefined ? null : (
         <div className="qa-line">
           <span className="k">Correct answer</span>
-          {choiceText(graded.correctChoice)}
+          <ChoiceText question={question} letter={graded.correctChoice} />
         </div>
       )}
       {graded.flaw === undefined ? null : (

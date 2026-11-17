@@ -10,7 +10,11 @@ import type { Slug } from "../shared/course.ts";
 import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
 import type { Plan } from "../shared/plan.ts";
-import type { QuestionView, WrittenAnswer } from "../shared/question.ts";
+import type {
+  AnswerSubmission,
+  QuestionView,
+  WrittenAnswer,
+} from "../shared/question.ts";
 import type { Phase } from "../shared/state.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import { changedUnits } from "./units.ts";
@@ -22,6 +26,11 @@ export interface QuestionItem {
   kind: "question";
   key: number;
   question: QuestionView;
+  /**
+   * An answer sent while the tutor's replies during the question were still
+   * to be judged, kept until they are (task 2.21).
+   */
+  waiting?: AnswerSubmission;
   /** A written answer sent and kept until it is graded (task 2.8). */
   grading?: WrittenAnswer;
   /** Why the last grading of the kept answer failed. */
@@ -55,10 +64,27 @@ export interface UnitEndItem {
   stepTaken?: "again" | "moved-on";
 }
 
+/**
+ * The judge's call on the tutor's reply to a message sent while a question
+ * was open (task 2.21), under the reply: being judged until `verdict` is set.
+ */
+export interface JudgmentItem {
+  kind: "judgment";
+  key: number;
+  /** The learner's message, by its id. */
+  learnerId: string;
+  /** The question that was open. */
+  number: number;
+  verdict?: "clarification" | "help";
+  /** Counted as help without a call: it failed, or the server stopped first. */
+  unjudged?: "failed" | "restart";
+}
+
 export type Item =
   | { kind: "learner"; key: number; id?: string; text: string }
   | { kind: "tutor"; key: number; text: string }
   | QuestionItem
+  | JudgmentItem
   /** A phase of a segment began, or the chat opened in it. */
   | ({ kind: "phase"; key: number } & Position)
   | UnitEndItem
@@ -300,13 +326,21 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ],
         tutorOpen: false,
       };
+    case "answer_waiting":
+      return {
+        ...next,
+        items: withQuestion(state.items, event.questionId, (item) => ({
+          ...item,
+          waiting: event.answer,
+        })),
+      };
     case "grading":
       return {
         ...next,
         items: withQuestion(
           state.items,
           event.questionId,
-          ({ gradingFailed: _, ...item }) => ({
+          ({ gradingFailed: _, waiting: __, ...item }) => ({
             ...item,
             grading: event.answer,
           }),
@@ -326,7 +360,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       );
       const asked = state.items[at];
       if (asked?.kind !== "question") return next;
-      const { grading: _, gradingFailed: __, ...rest } = asked;
+      const { grading: _, gradingFailed: __, waiting: ___, ...rest } = asked;
       const answered: QuestionItem = { ...rest, graded: event };
       // A question the thread went on below before it was answered is shown
       // at the bottom, where it was answered and where the tutor's feedback
@@ -353,6 +387,52 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
           ...state.items.slice(at + 1),
           { ...answered, key: index, moved: true },
         ],
+      };
+    }
+    case "judging":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "judgment",
+            key: index,
+            learnerId: event.learnerId,
+            number: event.number,
+          },
+        ],
+        tutorOpen: false,
+      };
+    case "judged": {
+      const call: Pick<JudgmentItem, "verdict" | "unjudged"> = {
+        verdict: event.verdict,
+        ...(event.unjudged === undefined ? {} : { unjudged: event.unjudged }),
+      };
+      const at = state.items.findIndex(
+        (i) => i.kind === "judgment" && i.learnerId === event.learnerId,
+      );
+      const judging = state.items[at];
+      if (judging?.kind === "judgment") {
+        return {
+          ...next,
+          items: state.items.with(at, { ...judging, ...call }),
+        };
+      }
+      // A reply a restart kept from the judge has no line of its own yet:
+      // its call goes where the thread has reached.
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "judgment",
+            key: index,
+            learnerId: event.learnerId,
+            number: event.number,
+            ...call,
+          },
+        ],
+        tutorOpen: false,
       };
     }
     case "draft_reopened":

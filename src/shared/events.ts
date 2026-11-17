@@ -70,6 +70,40 @@ export const PageEvent = z.discriminatedUnion("type", [
     answer: WrittenAnswer,
   }),
   /**
+   * An answer was sent while replies of the tutor's to the learner's
+   * messages during the question were still to be judged (task 2.21). It
+   * is kept, and graded once they are; a written one is then `grading`.
+   */
+  z.object({
+    type: z.literal("answer_waiting"),
+    questionId: z.string(),
+    answer: AnswerSubmission,
+  }),
+  /**
+   * The tutor's reply to a message the learner sent while question `number`
+   * was open is being judged: clarification, or help (task 2.21). It
+   * follows the reply.
+   */
+  z.object({
+    type: z.literal("judging"),
+    /** The learner's message, by its id. */
+    learnerId: z.string(),
+    number: z.number().int().positive(),
+  }),
+  /**
+   * The judge's call on the reply to that message. Help makes the answer to
+   * the question given with help. A reply that could not be judged counts
+   * as help: the call failed, or the server stopped before it was made,
+   * and then no `judging` came before it in this session.
+   */
+  z.object({
+    type: z.literal("judged"),
+    learnerId: z.string(),
+    number: z.number().int().positive(),
+    verdict: z.enum(["clarification", "help"]),
+    unjudged: z.enum(["failed", "restart"]).optional(),
+  }),
+  /**
    * The grading of a written answer failed. The answer is kept, the
    * question stays open, and the learner can have it graded again.
    */

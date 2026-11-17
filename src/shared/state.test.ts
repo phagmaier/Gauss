@@ -66,6 +66,30 @@ test("a written answer kept while it is graded parses unchanged", () => {
   expect(State.parse(state)).toEqual(state);
 });
 
+// A choice answer kept while the tutor's replies to two messages sent during
+// its question wait for the help judge (task 2.21).
+test("a choice answer kept while replies during its question are judged parses unchanged", () => {
+  const state = {
+    units: {
+      derivative: {
+        ...STATE.units.derivative,
+        openQuestion: {
+          ...STATE.units.derivative.openQuestion,
+          judging: ["m1", "m2"],
+          answer: {
+            kind: "choice",
+            questionId: "q4",
+            choice: "B",
+            confidence: "75",
+          },
+        },
+      },
+    },
+  };
+
+  expect(State.parse(state)).toEqual(state);
+});
+
 // A detour open after question 2 was missed (task 2.20): no question is open.
 const DETOUR = { questionId: "q4", number: 2, objective: "tangent-line" };
 
@@ -146,8 +170,21 @@ describe("rejects", () => {
           },
         },
       },
-      path: ["units", "derivative", "openQuestion", "answer"],
-      message: /Only a written question/,
+      path: ["units", "derivative", "openQuestion", "answer", "kind"],
+      message: /not of its question's kind/,
+    },
+    {
+      name: "a list of replies waiting for the judge with none in it",
+      input: {
+        units: {
+          derivative: {
+            ...derivative,
+            openQuestion: { ...derivative.openQuestion, judging: [] },
+          },
+        },
+      },
+      path: ["units", "derivative", "openQuestion", "judging"],
+      message: /at least 1|>=1/,
     },
     {
       name: "a kept answer to another question",

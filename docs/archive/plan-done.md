@@ -1105,3 +1105,39 @@ tested"). Stage 1 is finished.
   passed with the shared queue guard. `mise run check` passed: lint,
   type-checking, 581 TypeScript tests and one Python test. No real model
   calls. Findings: `decisions.md`, "Detour queue review fix".
+
+### 2.21 Clarification or help
+
+- Status: done
+- Depends on: 2.18
+- Why: asking what a question means is charged as help, the same as
+  asking for the method (note 4).
+- Do: after the tutor replies to a message sent while a question is open,
+  a separate judging call (`oneShot`, a prompt in `prompts/`) reads the
+  question with its answer key or rubric, the message and the reply, and
+  returns clarification (only what the question asks: its wording, its
+  notation, the form of answer wanted) or help (anything toward the
+  answer: a method, a step, a value, a similar worked example, a mistake
+  to avoid). The answer is assisted if any such exchange was judged help;
+  a failed call counts as help; an answer sent before the call returns
+  waits for it. The page shows the call under the reply, and the message
+  box, while a question is open, says that asking what it means is free
+  and anything else counts as help. Pick the judge's model from a small
+  hand-judged set of exchanges, as task 2.9 did for the grader. Update
+  section 4's help rule and `tutor.md`'s.
+- Done when: fake-backend tests cover clarification (the answer still
+  counts), help, a failed call and an answer waiting on the call; the
+  hand-judged set run twice on the real model, with each disagreement
+  reported; a browser check on `pnpm dev:fake` shows the call and the
+  notice.
+- Note: done on 2026-11-16. As asked, except the notice's wording: it says
+  a reply that helps toward the answer makes the answer given with help,
+  since the tutor declines what it may not give and asking for more is
+  then free. The agent's choices: the exchange begins when the tutor
+  receives the message; a reply with no text is not judged; a written
+  answer that waits is graded after the judging; a restart counts cut-off
+  calls as help; the Stop count is taken when an answer is sent, keeping
+  2.17a's rule. Haiku 5.5 agreed with every hand verdict in four runs (16
+  exchanges twice, then 19 twice). `mise run check` passed; five injected
+  faults each failed tests. Browser run on `pnpm dev:fake`. Findings:
+  `decisions.md`, "Help judge".

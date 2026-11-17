@@ -48,6 +48,7 @@ process.stdout.write("Scripted backend: no model is called.\n");
 await serve({
   backend,
   graderBackend: backend,
+  judgeBackend: backend,
   dataRootPath,
   port: Number(process.env.GAUSS_PORT ?? 4330),
 });

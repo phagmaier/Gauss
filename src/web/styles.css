@@ -320,6 +320,30 @@ button:focus-visible {
   color: var(--ink);
 }
 
+/* what the message box says while a question is open (task 2.21) */
+.box-note {
+  max-width: calc(var(--measure) + 36px);
+  margin: 0 auto 8px;
+}
+.box-note p {
+  margin: 0;
+  padding: 0 18px;
+  font-size: 0.86em;
+  color: var(--soft);
+}
+/* the help judge's call, under the reply it judged (task 2.21) */
+.th-judged {
+  font-size: 0.86em;
+  color: var(--faint);
+  margin: -0.3em 0 1.2em;
+}
+.th-judged.free {
+  color: var(--soft);
+}
+.th-judged.help {
+  color: var(--yellow);
+}
+
 /* a line from the page itself, not from the tutor */
 .ph-note {
   color: var(--soft);

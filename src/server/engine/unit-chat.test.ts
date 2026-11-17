@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -36,6 +36,7 @@ import { type ChoiceOrder, givenOrder } from "./choice-order.ts";
 import { IDLE_MS } from "./conversation.ts";
 import { createFakeTimer, type FakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
+import { createHelpJudge } from "./help-judge.ts";
 import { SESSION_GAP_MS } from "./transcript.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner, type UnitPlanner } from "./unit-planning.ts";
@@ -57,6 +58,7 @@ const CREATED = "2026-11-14T09:00:00.000Z";
 const NOW = "2026-11-15T14:00:00.000Z";
 const TUTOR = "You are a test tutor.";
 const GRADER = "You are a test grader.";
+const JUDGE = "You are a test help judge.";
 const COURSE = "derivatives-from-scratch";
 
 const CURRICULUM: CurriculumProposal = {
@@ -201,6 +203,8 @@ function setUp(
     /** The grader's replies, in order. */
     replies?: FakeReply[];
     gradingLimitMs?: number;
+    /** The help judge's replies, in order, on a backend of its own. */
+    judgments?: FakeReply[];
     /** Changes the record the chats are given, to make it fail. */
     record?: (root: DataRoot) => DataRoot;
     /** The chats' clock; NOW unless given. */
@@ -218,6 +222,7 @@ function setUp(
   const backend = createFakeBackend(script, given.replies, {
     kept: given.kept ?? keptSessions,
   });
+  const judgeBackend = createFakeBackend([], given.judgments);
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const dataRoot = given.record?.(root) ?? root;
   const units = createUnitChats({
@@ -234,11 +239,12 @@ function setUp(
         ? {}
         : { timeLimitMs: given.gradingLimitMs }),
     }),
+    judge: createHelpJudge({ backend: judgeBackend, systemPrompt: JUDGE }),
     now: given.now ?? (() => new Date(NOW)),
     timer: given.timer ?? createFakeTimer(),
     order: given.order ?? givenOrder,
   });
-  return { backend, dataRoot, units };
+  return { backend, judgeBackend, dataRoot, units };
 }
 
 /** Opens the unit and waits until it is open and the tutor is done. */
@@ -1118,17 +1124,20 @@ test.each([
 );
 
 test("in the check, a second question while one is open and a question on another segment's objective are refused", async () => {
-  const setup = setUp([
-    TEACH,
+  const setup = setUp(
     [
-      { call: "ask_question", input: Q_LIMIT },
-      { call: "ask_question", input: Q_QUOTIENT },
+      TEACH,
+      [
+        { call: "ask_question", input: Q_LIMIT },
+        { call: "ask_question", input: Q_QUOTIENT },
+      ],
+      [
+        { text: "Think about the slope." },
+        { call: "ask_question", input: Q_SECANT },
+      ],
     ],
-    [
-      { text: "Think about the slope." },
-      { call: "ask_question", input: Q_SECANT },
-    ],
-  ]);
+    { judgments: [HELP] },
+  );
   await makeCourse();
   const chat = await open(setup);
   await toCheck(chat);
@@ -1152,7 +1161,7 @@ test("in the check, a second question while one is open and a question on anothe
   ]);
   expect(chat.events().filter((e) => e.type === "question")).toHaveLength(1);
   expect(setup.backend.received[2]?.text).toContain(
-    'Question 1, on "difference-quotient", is open. The learner has written to you while it is open, so their answer will be recorded as given with help. Allowed now: reply without giving its answer away.',
+    'Question 1, on "difference-quotient", is open. Allowed now: reply without giving its answer away.',
   );
 });
 
@@ -1841,52 +1850,155 @@ test("a confident correct answer ends an objective's check at one question; unsu
   ]);
 });
 
-test("an answer is recorded as given with help when the tutor received a message while its question was open, and a correct one then does not count", async () => {
-  const setup = setUp([
-    TEACH,
-    ask(Q_QUOTIENT),
-    [{ text: "Think of rise over run." }],
-    [{ text: "Right, with a nudge." }],
-    // Asked for the next question, the tutor posts none.
-    [{ text: "Any questions before the next one?" }],
-    // Between questions a message is not help.
+// --- Task 2.21: clarification or help, judged after the reply ----------------
+
+/** The help judge's calls. */
+const CLARIFICATION: FakeReply = {
+  output: { reason: "It said what $h$ stands for.", verdict: "clarification" },
+};
+const HELP: FakeReply = {
+  output: { reason: "It pointed at the method.", verdict: "help" },
+};
+
+/** The id of the learner's last message, as the page has it. */
+function lastLearnerId(chat: UnitChat): string {
+  const said = chat.events().findLast((e) => e.type === "learner");
+  if (said?.type !== "learner" || said.id === undefined) {
+    throw new Error("no message");
+  }
+  return said.id;
+}
+
+/** A confident, correct answer to Q_QUOTIENT, as the learner sends it. */
+function rightQuotient(chat: UnitChat) {
+  return {
+    kind: "choice" as const,
+    questionId: openQuestionId(chat),
+    choice: "A" as const,
+    confidence: "100" as const,
+  };
+}
+
+test("the tutor's reply to a message sent while a question is open is judged once it ends, from the question with its correct choice, the message and the whole reply; judged clarification, the answer still counts", async () => {
+  const setup = setUp(
     [
-      { text: "Here is another." },
-      { call: "ask_question", input: Q_QUOTIENT_2 },
+      TEACH,
+      ask(Q_QUOTIENT),
+      [{ text: "$h$ is the step " }, { text: "away from $a$." }],
+      [{ text: "Right." }],
+      [{ text: "Now the secant." }],
     ],
-    [{ text: "Good." }],
-    [{ text: "Now the secant." }],
-  ]);
+    { judgments: [CLARIFICATION] },
+  );
   await makeCourse(true, SHORT);
   const chat = await open(setup);
   await toCheck(chat);
 
-  chat.say("Is it the change in f over h?");
+  chat.say("What does $h$ stand for?");
   await chat.settled();
+  const learnerId = lastLearnerId(chat);
 
-  expect((await position()).derivative?.openQuestion?.assisted).toBe(true);
+  // The tutor is told what it may clarify, and that its reply is judged.
+  expect(setup.backend.received[2]?.text).toContain(
+    'Message from the learner. Question 1, on "difference-quotient", is open. Allowed now: reply without giving its answer away. You may clarify what the question asks: its wording, its notation, the form of answer wanted. A separate judge reads each reply you write while it is open',
+  );
+  expect(setup.judgeBackend.oneShots).toHaveLength(1);
+  const request = setup.judgeBackend.oneShots[0];
+  expect(request?.systemPrompt).toBe(JUDGE);
+  expect(request?.prompt).toContain(
+    "<question>\nWhich is the difference quotient of $f$ at $a$?\n</question>",
+  );
+  expect(request?.prompt).toContain(
+    "<correct_choice>\nA. $\\frac{f(a+h)-f(a)}{h}$\n</correct_choice>",
+  );
+  expect(request?.prompt).toContain(
+    "<message>\nWhat does $h$ stand for?\n</message>",
+  );
+  expect(request?.prompt).toContain(
+    "<reply>\n$h$ is the step away from $a$.\n</reply>",
+  );
+  // The call follows the reply on the page.
+  expect(since(chat, "turn_end")).toEqual([
+    { type: "turn_end", outcome: "done" },
+    { type: "judging", learnerId, number: 1 },
+    { type: "judged", learnerId, number: 1, verdict: "clarification" },
+  ]);
+  const open1 = (await position()).derivative?.openQuestion;
+  expect(open1).not.toHaveProperty("judging");
+  expect(open1).not.toHaveProperty("assisted");
 
   await answer(chat, "A");
 
   expect(since(chat, "graded").slice(0, 2)).toEqual([
-    expect.objectContaining({
-      type: "graded",
-      verdict: "correct",
-      assisted: true,
-    }),
+    expect.objectContaining({ verdict: "correct", assisted: false }),
+    shortStatus("in-progress", "passed", "not-started"),
+  ]);
+  expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    assisted: false,
+  });
+});
+
+test("one reply judged help, among replies judged clarification, makes the answer given with help, which the tutor is told and which does not count; a message between questions is not judged", async () => {
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_QUOTIENT),
+      [{ text: "$h$ is the step away from $a$." }],
+      [{ text: "Think of rise over run." }],
+      [{ text: "You are welcome." }],
+      [{ text: "Right, with a nudge." }],
+      // Asked for the next question, the tutor posts none.
+      [{ text: "Any questions before the next one?" }],
+      // Between questions a message is not judged: no question is open.
+      [
+        { text: "Here is another." },
+        { call: "ask_question", input: Q_QUOTIENT_2 },
+      ],
+      [{ text: "Good." }],
+      [{ text: "Now the secant." }],
+    ],
+    { judgments: [CLARIFICATION, HELP, CLARIFICATION] },
+  );
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  chat.say("What does $h$ stand for?");
+  chat.say("Is it the change in f over h?");
+  await chat.settled();
+
+  expect(
+    chat.events().flatMap((e) => (e.type === "judged" ? [e.verdict] : [])),
+  ).toEqual(["clarification", "help"]);
+  expect((await position()).derivative?.openQuestion).toMatchObject({
+    assisted: true,
+  });
+  // The tutor is told, in later headers, that the answer will not count.
+  chat.say("Thanks.");
+  await chat.settled();
+  expect(setup.backend.received[4]?.text).toContain(
+    "A reply of yours to the learner while it was open was judged help, so the answer will be recorded as given with help.",
+  );
+
+  await answer(chat, "A");
+
+  expect(since(chat, "graded").slice(0, 2)).toEqual([
+    expect.objectContaining({ verdict: "correct", assisted: true }),
     shortStatus("in-progress", "attempted", "not-started"),
   ]);
-  expect(setup.backend.received[3]?.text).toContain(
+  expect(setup.backend.received[5]?.text).toContain(
     '"difference-quotient": answered correctly with help, which does not count, so another question is needed (1 asked)',
   );
-  expect(setup.backend.received[3]?.text).toContain(
-    "They had help: you received a message from them while the question was open, so this answer does not count toward passing.",
+  expect(setup.backend.received[5]?.text).toContain(
+    "They had help: a reply of yours to a message of theirs while the question was open was judged help, or could not be judged, so this answer does not count toward passing.",
   );
 
   chat.say("Got it, thanks.");
   await chat.settled();
   await answer(chat, "A");
 
+  // Three replies during question 1 were judged; none after it.
+  expect(setup.judgeBackend.oneShots).toHaveLength(3);
   expect(
     (await reload().readEvidence(COURSE)).map((e) =>
       e.kind === "answer" ? e.assisted : e.kind,
@@ -1897,31 +2009,219 @@ test("an answer is recorded as given with help when the tutor received a message
   );
 });
 
-test("a message written before a question was posted, and received by the tutor while it was open, counts as help", async () => {
-  let chat: UnitChat | undefined;
-  const setup = setUp([
-    TEACH,
-    // The learner writes while the tutor is still leading in to the question.
-    () => {
-      chat?.say("Is it the change in f over h?");
-      return ask(Q_QUOTIENT);
-    },
-    [{ text: "Think of rise over run." }],
-    [{ text: "Right." }],
-  ]);
+test("a judging call that fails counts as help, and the page hears that the reply could not be judged", async () => {
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_QUOTIENT),
+      [{ text: "$h$ is the step away from $a$." }],
+      [{ text: "Right." }],
+      [{ text: "Now the secant." }],
+    ],
+    { judgments: [{ fail: "Usage limit reached." }] },
+  );
   await makeCourse(true, SHORT);
-  chat = await open(setup);
+  const chat = await open(setup);
+  await toCheck(chat);
+  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  chat.say("What does $h$ stand for?");
+  await chat.settled();
+  quiet.mockRestore();
+
+  expect(chat.events().at(-1)).toEqual({
+    type: "judged",
+    learnerId: lastLearnerId(chat),
+    number: 1,
+    verdict: "help",
+    unjudged: "failed",
+  });
+
+  await answer(chat, "A");
+
+  expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    verdict: "correct",
+    assisted: true,
+  });
+});
+
+test("a reply with no text gave the learner nothing: it is not judged, and the answer still counts", async () => {
+  const setup = setUp(
+    [TEACH, ask(Q_QUOTIENT), [], [{ text: "Right." }], [{ text: "Next." }]],
+    { judgments: [HELP] },
+  );
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
   await toCheck(chat);
 
-  expect(setup.backend.received[2]?.text).toMatch(
-    /^\[.*Question 1, on "difference-quotient", is open\. The learner has written to you while it is open/,
+  chat.say("Is it the change in f over h?");
+  await chat.settled();
+
+  expect(setup.judgeBackend.oneShots).toEqual([]);
+  expect(chat.events().some((e) => e.type === "judging")).toBe(false);
+  expect((await position()).derivative?.openQuestion).not.toHaveProperty(
+    "judging",
   );
 
   await answer(chat, "A");
 
   expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    assisted: false,
+  });
+});
+
+test("an answer sent before the judge's call returns waits for it, kept in state.json, and is graded once the call is in", async () => {
+  const call = Promise.withResolvers<FakeReply>();
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_QUOTIENT),
+      [{ text: "$h$ is the step away from $a$." }],
+      [{ text: "Right." }],
+      [{ text: "Now the secant." }],
+    ],
+    { judgments: [{ later: call.promise }] },
+  );
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+  chat.say("What does $h$ stand for?");
+  await waitFor(chat, "judging");
+  const learnerId = lastLearnerId(chat);
+  const sent = rightQuotient(chat);
+
+  expect(await chat.answer(sent)).toEqual({ ok: true });
+
+  // Kept, not graded: nothing is recorded, and the tutor is sent nothing.
+  expect(chat.events().at(-1)).toEqual({
+    type: "answer_waiting",
+    questionId: sent.questionId,
+    answer: sent,
+  });
+  expect(await reload().readEvidence(COURSE)).toEqual([]);
+  expect((await position()).derivative?.openQuestion).toMatchObject({
+    judging: [learnerId],
+    answer: sent,
+  });
+  expect(setup.backend.received).toHaveLength(3);
+  // Another answer, and moving on, wait for it too.
+  expect(await chat.answer({ ...sent, choice: "B" })).toEqual({
+    ok: false,
+    status: 409,
+    error:
+      "Your answer to this question is kept, and is graded once the tutor's replies while it was open have been judged.",
+  });
+  expect(await chat.override()).toEqual({
+    ok: false,
+    status: 409,
+    error: "An answer is being graded. Wait for its grade, then move on.",
+  });
+
+  call.resolve(CLARIFICATION);
+  await chat.settled();
+
+  expect(since(chat, "judged").slice(0, 3)).toEqual([
+    { type: "judged", learnerId, number: 1, verdict: "clarification" },
+    expect.objectContaining({
+      type: "graded",
+      verdict: "correct",
+      answer: sent,
+      assisted: false,
+    }),
+    shortStatus("in-progress", "passed", "not-started"),
+  ]);
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    expect.objectContaining({ answer: sent, assisted: false }),
+  ]);
+  expect(setup.backend.received[3]?.text).toContain(
+    "The learner answered question 1.",
+  );
+});
+
+test("an answer sent while the tutor is still replying to a message sent during the question waits for that reply and its judging; judged help, it is given with help", async () => {
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_QUOTIENT),
+      [{ text: "Use the formula for the slope." }, { hold: true }],
+      [{ text: "Right." }],
+    ],
+    { judgments: [HELP] },
+  );
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+  const from = chat.events().length;
+
+  chat.say("How do I start?");
+  await waitFor(chat, "tutor_text", from);
+  expect(await chat.answer(rightQuotient(chat))).toEqual({ ok: true });
+
+  expect(chat.events().at(-1)).toMatchObject({ type: "answer_waiting" });
+  expect(await reload().readEvidence(COURSE)).toEqual([]);
+
+  // The learner stops the reply; what it wrote is judged.
+  await chat.interrupt();
+  await chat.settled();
+
+  expect(
+    since(chat, "answer_waiting")
+      .filter((e) =>
+        ["answer_waiting", "turn_end", "judged", "graded"].includes(e.type),
+      )
+      .map((e) => e.type)
+      .slice(0, 4),
+  ).toEqual(["answer_waiting", "turn_end", "judged", "graded"]);
+  expect(setup.judgeBackend.oneShots[0]?.prompt).toContain(
+    "<reply>\nUse the formula for the slope.\n</reply>",
+  );
+  expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    verdict: "correct",
     assisted: true,
   });
+});
+
+test("replies a restart kept from the judge count as help when the unit reopens, and an answer kept for them is graded then", async () => {
+  const before = setUp(
+    [TEACH, ask(Q_QUOTIENT), [{ text: "$h$ is the step away from $a$." }]],
+    { judgments: [{ hold: true }] },
+  );
+  await makeCourse(true, SHORT);
+  const first = await open(before);
+  await toCheck(first);
+  first.say("What does $h$ stand for?");
+  await waitFor(first, "judging");
+  const learnerId = lastLearnerId(first);
+  const sent = rightQuotient(first);
+  expect(await first.answer(sent)).toEqual({ ok: true });
+  // The server stops while the judge is working.
+  await before.units.close();
+  expect(await reload().readEvidence(COURSE)).toEqual([]);
+
+  const after = setUp([[{ text: "Right." }], [{ text: "Now the secant." }]]);
+  const chat = await open(after);
+
+  expect(since(chat, "session").slice(3, 8)).toEqual([
+    { type: "phase", segment: 0, phase: "check" },
+    expect.objectContaining({ type: "question" }),
+    {
+      type: "judged",
+      learnerId,
+      number: 1,
+      verdict: "help",
+      unjudged: "restart",
+    },
+    expect.objectContaining({
+      type: "graded",
+      answer: sent,
+      assisted: true,
+    }),
+    shortStatus("in-progress", "attempted", "not-started"),
+  ]);
+  expect(after.judgeBackend.oneShots).toEqual([]);
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    expect.objectContaining({ answer: sent, assisted: true }),
+  ]);
 });
 
 test("a unit not passed waits on its closing card; going over again teaches one more segment on what did not pass, and passing it closes the unit", async () => {
@@ -2429,7 +2729,7 @@ test("a message while a written answer is graded is not help; the tutor is told 
   });
 });
 
-test("a message the tutor received before a written answer was sent makes it given with help", async () => {
+test("a reply judged help before a written answer was sent makes it given with help", async () => {
   const setup = setUp(
     [
       TEACH,
@@ -2437,7 +2737,7 @@ test("a message the tutor received before a written answer was sent makes it giv
       [{ text: "Think of the square." }],
       [{ text: "Right." }],
     ],
-    { replies: [CORRECT] },
+    { replies: [CORRECT], judgments: [HELP] },
   );
   await makeCourse();
   const chat = await open(setup);
@@ -3651,6 +3951,7 @@ test("feedback queued behind learner messages blocks their questions until that 
       ask(Q_SECANT),
     ],
     {
+      judgments: [CLARIFICATION],
       wrap: (backend) => ({
         ...backend,
         async startSession(options) {
@@ -3692,7 +3993,8 @@ test("feedback queued behind learner messages blocks their questions until that 
     release.resolve();
     await chat.settled();
 
-    // Both the running reply and the earlier queued message must wait.
+    // The running reply cannot post, as the answer waits for its judging
+    // (task 2.21); the earlier queued message must wait for the feedback.
     expect(setup.backend.calls.slice(1, 3).map((c) => c.result.status)).toEqual(
       ["refused", "refused"],
     );
@@ -3700,15 +4002,21 @@ test("feedback queued behind learner messages blocks their questions until that 
       "ask_question is refused until that feedback ends",
     );
     expect(
-      since(chat, "graded")
-        .filter((e) => e.type === "tutor_text" || e.type === "question")
-        .map((e) => (e.type === "tutor_text" ? e.text : "?")),
+      since(chat, "answer_waiting")
+        .filter(
+          (e) =>
+            e.type === "tutor_text" ||
+            e.type === "question" ||
+            e.type === "graded",
+        )
+        .map((e) => (e.type === "tutor_text" ? e.text : e.type)),
     ).toEqual([
       "Waiting for the feedback.",
+      "graded",
       "That reply comes before the feedback too.",
       "Feedback on the answer.",
       "Here is a question.",
-      "?",
+      "question",
     ]);
     expect(await position()).toMatchObject({
       derivative: { openQuestion: { number: 2, objective: "secant-slope" } },
@@ -3729,6 +4037,7 @@ test("Stop during the feedback sends no next question; the learner's next messag
   await makeCourse();
   const chat = await open(setup);
   await toCheck(chat);
+  const from = chat.events().length;
   expect(
     await chat.answer({
       kind: "choice",
@@ -3737,7 +4046,8 @@ test("Stop during the feedback sends no next question; the learner's next messag
       confidence: "100",
     }),
   ).toEqual({ ok: true });
-  await waitFor(chat, "tutor_text", chat.events().length);
+  // The feedback can start before the answer's call returns.
+  await waitFor(chat, "tutor_text", from);
 
   await chat.interrupt();
   await chat.settled();
@@ -3772,20 +4082,23 @@ test.each(["before", "after"] as const)(
       return [{ text: "An interrupted learner reply." }, { hold: true }];
     };
     let chat: UnitChat | undefined;
-    const setup = setUp([
-      TEACH,
-      ask(Q_QUOTIENT),
-      ...(when === "before"
-        ? [reply, FEEDBACK]
-        : [
-            () => {
-              chat?.say("Why is that right?");
-              return [{ text: "Feedback on the answer." }];
-            },
-            reply,
-          ]),
-      ask(Q_SECANT),
-    ]);
+    const setup = setUp(
+      [
+        TEACH,
+        ask(Q_QUOTIENT),
+        ...(when === "before"
+          ? [reply, FEEDBACK]
+          : [
+              () => {
+                chat?.say("Why is that right?");
+                return [{ text: "Feedback on the answer." }];
+              },
+              reply,
+            ]),
+        ask(Q_SECANT),
+      ],
+      { judgments: [CLARIFICATION] },
+    );
     try {
       await makeCourse();
       chat = await open(setup);
@@ -3839,6 +4152,7 @@ test("Stop during the feedback on the check's last answer still closes the segme
   const chat = await open(setup);
   await toCheck(chat);
   await answer(chat, "A");
+  const from = chat.events().length;
   expect(
     await chat.answer({
       kind: "choice",
@@ -3847,7 +4161,8 @@ test("Stop during the feedback on the check's last answer still closes the segme
       confidence: "100",
     }),
   ).toEqual({ ok: true });
-  await waitFor(chat, "tutor_text", chat.events().length);
+  // The feedback can start before the answer's call returns.
+  await waitFor(chat, "tutor_text", from);
 
   await chat.interrupt();
   await chat.settled();

@@ -78,8 +78,11 @@ export interface Turn {
    * page hears nothing of it, and `ended` does not run.
    */
   skip?(): boolean;
-  /** Runs once the turn has ended, before the next turn is sent. */
-  ended?(outcome: TurnOutcome): Promise<void> | void;
+  /**
+   * Runs once the turn has ended, before the next turn is sent, with the
+   * text the tutor wrote in it, which is empty if it wrote none.
+   */
+  ended?(outcome: TurnOutcome, reply: string): Promise<void> | void;
 }
 
 export interface Conversation {
@@ -153,6 +156,8 @@ interface RunningTurn {
   stopped: boolean;
   /** The session the turn was sent to, once it is sent. */
   sentTo?: TutorSession;
+  /** The text the tutor has written in this turn. */
+  reply: string;
 }
 
 export function createConversation(options: {
@@ -190,7 +195,7 @@ export function createConversation(options: {
       idleFromNow();
       return;
     }
-    const current: RunningTurn = { stopped: false };
+    const current: RunningTurn = { stopped: false, reply: "" };
     running = current;
     log.emit({ type: "turn_start" });
     let outcome: TurnOutcome = "error";
@@ -199,7 +204,7 @@ export function createConversation(options: {
     } finally {
       running = undefined;
       try {
-        await turn.ended?.(outcome);
+        await turn.ended?.(outcome, current.reply);
       } catch (error) {
         // The next turn must still run.
         console.error("A chat's end-of-turn work failed:", error);
@@ -294,6 +299,7 @@ export function createConversation(options: {
       begun = true;
       for await (const event of tutor.send({ text })) {
         if (event.type === "text") {
+          current.reply += event.text;
           log.emit({ type: "tutor_text", text: event.text });
         } else if (event.type === "turn_end") {
           const outcome =

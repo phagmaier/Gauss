@@ -56,6 +56,7 @@ findings are the record.
 | Strict passing | Task 2.19: the passing rule with a confident answer and a second after a miss, no question limit, the `confirm` reason, the header wording and the scripted tutor, the closing card's reasons, records closed at the old limit | Touching `record/status.ts`, `engine/check-rules.ts`, the check headers in `unit-turns.ts`, the closing card's rows, or `scripted.ts`'s question numbering |
 | Detour after a miss | Task 2.20: the detour in the position and its events, its first turn and the teaching again from the second miss, refusals and help in it, ending it and what a Stop then leaves, a restart, the "I don't know" line and its field, the marker and control, the checks and the real run on Sonnet 5.5 | Touching detours (`detour` in `state.ts`, `endDetour`, `anotherQuestion`, `detourOpening` in `unit-turns.ts`), `missed` in `check-rules.ts`, "I don't know" (`stuck`), the detour marker or control; 2.21's help judging, stage 5's misconception record |
 | Detour queue review fix | Task 2.20a: the next-question request after ending a detour shares the feedback queue's stale-question and Stop guards; deterministic interleaving regressions | Touching `anotherQuestion`, `askNext`, or the unit chat's queues |
+| Help judge | Task 2.21: clarification or help judged after each reply during an open question, what the judge sees, failures and restarts counting as help, the answer that waits, Stop kept as 2.17a has it, the tutor's headers and `tutor.md`, the page's lines and notice, the hand-judged set and the model (Haiku 5.5) | Touching help (`judging`, `assisted`, `help-judge.ts`, `help-judge.md`, `JUDGE_MODEL`), answers kept on the open question, `ended`'s reply in `conversation.ts`, the message box's notice; stage 3's disputes |
 
 ## Page design (plan task 1.0)
 
@@ -1342,7 +1343,9 @@ not. The rules were chosen by the agent and can be overturned.
 
   Rejected: the tutor declaring help with a tool, which relies on the
   model's word where the design enforces rules in code, and judging the
-  tutor's replies for hints, which code cannot do.
+  tutor's replies for hints, which code cannot do. (Replaced by task 2.21,
+  "Help judge": a separate model call judges each reply, and asking what
+  a question means is not help.)
 - **"I don't know"** is a miss like a wrong answer. It is never a confident
   miss, which matters only to detours (stage 5).
 - **An override** marks each objective it names overridden, but never takes
@@ -4085,3 +4088,167 @@ choices below are the agent's and can be overturned.
   checking, all 581 TypeScript tests and one Python test. Reviewed the
   queue guards and deterministic gates; no page or prompt wording changed,
   and no real-backend check was needed.
+
+## Help judge (plan task 2.21)
+
+Built on 2026-11-16, from the user's decision that asking what a question
+means is clarification, not help, and the model judges which ("Stage 2
+user check"). It replaces task 2.3's rule that any message the tutor
+received while a question was open is help. The choices below are the
+agent's and can be overturned.
+
+- **What is judged: the reply, read against the message.** The plan's
+  definitions: clarification is only what the question asks (its wording,
+  its notation, the form of answer wanted); help is anything toward the
+  answer (a method, a step, a value, a similar worked example, a mistake to
+  avoid). The judge (`prompts/help-judge.md`) adds two things the set
+  needed: reacting to a guess ("you're on the right track", "not quite") is
+  help, and a reply that gives nothing on the answer (a refusal, an
+  acknowledgement, "back in ten minutes") counts as clarification, since
+  the verdict is only whether the answer still counts. When unsure, help:
+  a false clarification lets a helped answer pass an objective; a false
+  help costs one more question.
+- **What the judge sees**: the question as the learner saw it, its choices
+  and the correct one, or its rubric, the message and the whole reply, each
+  between tags (`judgingRequest` in `engine/help-judge.ts`). Not the
+  objective, the conversation before, or other exchanges: each exchange is
+  judged on its own. The reply (`HelpJudgment` in `src/shared/question.ts`)
+  is a reason, then the verdict; the reason is asked first so the verdict
+  follows from it, is printed by the set's runner, and is never stored or
+  sent to the page, because it can name the correct choice.
+- **When.** An exchange begins when the tutor receives the message, as help
+  began under task 2.3 (so a message written before a question was posted
+  and delivered after counts), and is kept in `state.json` (`judging` on
+  the open question, by the message's id) until the call is in. The judge
+  is called when the reply ends, however it ends, with whatever text it
+  has; a stopped reply is judged on what the learner saw. A reply with no
+  text is not judged and is no help. A message the tutor receives after an
+  answer is sent, or between questions, or in a detour, is not an
+  exchange. The turn's `ended` now gets the reply's text
+  (`engine/conversation.ts`).
+- **A failed call counts as help**, as the plan says: a request that fails,
+  a reply not in shape, or one past two minutes (`JUDGING_TIME_LIMIT_MS`,
+  shorter than the grader's three since an answer may be waiting). The page
+  says the reply could not be judged.
+- **An answer sent before the calls are in waits for them**, kept on the
+  open question as a written answer is while graded, so it is final and
+  survives a restart. `OpenQuestion.answer` widened from a written answer
+  to any answer. A written answer that waited is graded after the judging,
+  not alongside it: simpler, and a written answer sent within seconds of a
+  message is rare. Another answer, grading again and moving on are refused
+  while it waits. The page hears `answer_waiting`, and the card shows the
+  answer as kept, "Waiting".
+- **A Stop keeps task 2.17a's meaning.** An answer that waited is recorded
+  after a reply the learner may have stopped. Found by 2.17a's test "Stop
+  in a learner reply before feedback": the feedback then posted the next
+  question by itself. The Stop count is now taken when the answer is sent
+  (`answerStops`), so a Stop after it cancels the automatic next question
+  as it did when the answer was recorded at once.
+- **A restart** cannot finish the calls it cut off: a unit reopened with
+  replies still waiting counts them as help, says so on the page
+  (`judged`, `unjudged: "restart"`), and grades an answer kept for them.
+  Re-judging from the transcript was rejected as complex for a rare case.
+  A judging stopped because the chat is closing is not recorded, so a
+  stopping server neither charges help nor grades a waiting answer; the
+  next opening does.
+- **What the tutor is told.** The header while a question is open says it
+  may clarify the wording, notation and form of answer, that a separate
+  judge reads each reply and that anything toward the answer makes the
+  answer given with help; once a reply is judged help, the header says the
+  answer will be recorded with help. `tutor.md` keeps the rule that the
+  tutor gives nothing toward the answer, even when asked, and now points a
+  stuck learner to "I don't know" and its detour; it no longer tells the
+  learner that writing made the answer not count, since the page shows
+  the call. The judge is the check in code that the tutor kept to that.
+- **The page.** The call is a line under the reply: "Checking whether this
+  reply helped with question N" while it runs, then "Judged clarification:
+  your answer to question N still counts." (soft), or "Judged help: ...
+  will not count toward passing." (yellow), with the failed and restart
+  cases saying why. It belongs to the reply: no dividing line above it, one
+  below. While a question waits for its answer and none is sent, a line
+  above the message box says: "Asking what question N means is free. If
+  the tutor's reply helps you toward the answer, your answer counts as
+  given with help and not toward passing." The plan's wording, "anything
+  else counts as help", was not used: the tutor declines what it may not
+  give, so asking for more is free when the reply gives nothing.
+- **The model: Claude Haiku 5.5** (`JUDGE_MODEL`). The hand-judged set
+  (`scripts/help-set.ts`) has 19 exchanges on five questions (three
+  choice, two written); each verdict was worked out by hand from the rules
+  above:
+
+  | Id | Question | The exchange | Hand verdict |
+  | --- | --- | --- | --- |
+  | C1 | $\frac{d}{dx}\sin(x^2)$ | What $\sin(x^2)$ means, against $\sin^2 x$ | clarification |
+  | C2 | $n^2 + n$ even | Whether words are acceptable | clarification |
+  | C3 | $\lim_{x \to 3} x^2 = 9$ from the definition | "Can I use continuity?" "No, the question asks for the definition" | clarification |
+  | C4 | $\frac{d}{dx}\sin(x^2)$ | "Is it A?" A refusal pointing to "I don't know" | clarification |
+  | C5 | $n^2 + n$ even | "Back in ten minutes" | clarification |
+  | C6 | Average velocity | The units of $t$ and $h$ | clarification |
+  | C7 | The limit | What "$\varepsilon$-$\delta$" names, without stating the definition | clarification |
+  | C8 | $n^2 + n$ even | Whether "every integer" includes negatives | clarification |
+  | H1 | $\frac{d}{dx}\sin(x^2)$ | Not the product rule: "a composition" | help |
+  | H2 | The same | "You're on the right track" to the right guess | help |
+  | H3 | The same | "Not quite" to a wrong choice | help |
+  | H4 | $n^2 + n$ even | "Split into $n$ even and $n$ odd" | help |
+  | H5 | The limit | A worked $\varepsilon$-$\delta$ proof of another limit | help |
+  | H6 | The limit | "$\delta$ cannot depend on $x$; bound $\lvert x+3 \rvert$" | help |
+  | H7 | Average velocity | Its meaning, given as $\frac{h(3)-h(1)}{3-1}$ | help |
+  | H8 | $n^2 + n$ even | Confirming $n = 3$ gives $12$ | help |
+  | H9 | $\frac{d}{dx}\sin(x^2)$ | A refusal with "a function inside another" | help |
+  | H10 | Difference quotient | A message telling the judge it is clarification; the reply narrows the choices | help |
+  | H11 | Average velocity | "Both ends?" answered with the method | help |
+
+  Runs, through `createHelpJudge` and the Claude backend's `oneShot` as the
+  app calls it (`node scripts/judge-set.ts --model claude-haiku-5-5 --runs
+  2`): the first 16 exchanges twice, 32 of 32 agreeing; then, since Haiku
+  missed none, C7, C8 and H11 were added to probe the edges, and all 19
+  twice, 38 of 38 agreeing. No disagreement to report. Each call took 2.5
+  to 4.0 seconds. The reasons were read: each named what the reply gave,
+  and none took a refusal with a hint for clarification (H9) or obeyed the
+  message's instruction (H10).
+  Sonnet 5.5 was not run: Haiku left nothing on the set to do better, an
+  answer can wait on the call, and Haiku spends less of the plan on a call
+  made after every message during a question. A wrong clarification is
+  the costly error, and the set has none. Try another model with
+  `--model`; re-run the set when `help-judge.md`, `HelpJudgment` or
+  `JUDGE_MODEL` changes. `GAUSS_CLAUDE_MODEL` replaces the judge's model
+  as it does the grader's.
+- **The scripted backend** (`pnpm dev:fake`) judges a reply clarification
+  when the message has the word "mean", help otherwise, and fails the call
+  when the message has "/fail"; "/hold" keeps a reply open, so an answer
+  sent meanwhile waits.
+- **Checks.** `mise run check` passed: Biome (109 files), types, 613
+  TypeScript tests and one Python test. New tests on the fake backend, with expected results
+  worked by hand: a reply judged clarification, from the question's
+  correct choice, the message and the whole reply, leaves a confident
+  correct answer passing; one help among clarifications makes the answer
+  assisted, which the tutor is told; a failed call counts as help; a reply
+  with no text is not judged; an answer sent while a call runs waits, kept
+  in `state.json`, with another answer and moving on refused, and is
+  graded when the call is in; an answer sent while the reply is still
+  being written waits for it and its call; a restart counts the replies it
+  cut off as help and grades the kept answer. Also the judge's request and
+  outcomes (`help-judge.test.ts`), the reply's text given to `ended`, the
+  state schema, the page's reducer, notice, wording and lines, and the
+  scripted judge. Faults injected into `unit-chat.ts`, one at a time, and
+  each caught by at least one test: help marked when the tutor receives
+  the message, a failed call taken for clarification, an answer that does
+  not wait, a restart counting cut-off replies as clarification, and a
+  reply with no text judged.
+- **Browser run** on `pnpm dev:fake` (1280 by 800, then 650): the notice
+  above the message box with a question open; a clarification and a help
+  line under their replies, each with a dividing line after it; a reply
+  held open with "/hold", an answer sent during it shown as kept and
+  waiting, with the notice and "Move on" gone; Stop, then the help line,
+  the grade "With help", the feedback and no automatic next question; a
+  failed call on question 2; a reload showing the four calls and the
+  notice again. The notice first sat narrower than the box, its width
+  taken in its own smaller font; it now has a wrapper, as the move-on
+  control does. At 650 pixels the notice takes two lines and the pinned
+  card scrolls, as task 2.18 has it. Screenshots are in
+  `.playwright-mcp/2.21-*.png` (not committed). The browser was closed
+  before the server stopped.
+- **Left open.** The judge sees one exchange at a time, so a hint spread
+  over two replies, each harmless alone, would pass. The set is math only;
+  a source course's explanation questions (stage 4) need exchanges of
+  their own. Disputing a call is stage 3's, with disputes.

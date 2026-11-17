@@ -68,6 +68,12 @@ export interface ClaudeBackendOptions {
  */
 export const GRADER_MODEL = "claude-sonnet-5-5";
 
+/**
+ * The help judge's model (task 2.21; docs/decisions.md, "Help judge"),
+ * picked on the hand-judged set in `scripts/help-set.ts`.
+ */
+export const JUDGE_MODEL = "claude-haiku-5-5";
+
 export function createClaudeBackend(
   backendOptions: ClaudeBackendOptions = {},
 ): TutorBackend {

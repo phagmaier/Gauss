@@ -105,7 +105,8 @@ export function gradingRequest(
   ].join("\n");
 }
 
-function duration(ms: number): string {
+/** A time limit as a message says it: "20 ms", "3 minutes", "90 seconds". */
+export function duration(ms: number): string {
   if (ms < 1000) return `${ms} ms`;
   const s = Math.round(ms / 1000);
   return s >= 60 && s % 60 === 0

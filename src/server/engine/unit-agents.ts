@@ -1,8 +1,10 @@
-// The tutor and the grader of one unit chat (unit-chat.ts; split out in task
-// 2.8b): the tutor's conversation, and the grading of a written answer while
-// it runs. Both run outside the chat's queue, so the chat goes on while they
-// work; a grade is recorded inside it. The queue is the chat's, given here,
-// so there is one order for every change to the unit.
+// The tutor, the grader and the help judge of one unit chat (unit-chat.ts;
+// split out in task 2.8b): the tutor's conversation, the grading of a written
+// answer, and the judging of a reply to a message sent while a question was
+// open (task 2.21). They run outside the chat's queue, so the chat goes on
+// while they work; a grade and a judge's call are recorded inside it. The
+// queue is the chat's, given here, so there is one order for every change to
+// the unit.
 //
 // The tutor's sessions run in the course's folder and are kept, so a unit
 // reopened after a restart resumes its tutor (task 2.14). A new session's id
@@ -13,6 +15,7 @@
 // opening it only asks the backend whether the session is there.
 
 import type {
+  Question,
   Verdict,
   WrittenAnswer,
   WrittenQuestion,
@@ -31,6 +34,7 @@ import {
   type Turn,
 } from "./conversation.ts";
 import type { Grader } from "./grading.ts";
+import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 
 /** The grading of an open question's kept written answer. */
 export interface Grading {
@@ -41,6 +45,19 @@ export interface Grading {
   applies(): boolean;
   /** Records the grade. Runs inside the chat's queue. */
   record(grade: { verdict: Verdict; flaw?: string }): Promise<void>;
+}
+
+/** The judging of the tutor's reply to a message sent while a question was open. */
+export interface Judging {
+  /** The learner's message, by its id. */
+  learnerId: string;
+  /** The open question's number, as the page shows it. */
+  number: number;
+  question: Question;
+  message: string;
+  reply: string;
+  /** Records the judge's call, or its failure. Runs inside the chat's queue. */
+  record(outcome: HelpOutcome): Promise<void>;
 }
 
 export interface UnitAgents {
@@ -75,11 +92,17 @@ export interface UnitAgents {
   /** A grading is running. */
   grading(): boolean;
   /**
-   * Resolves once every turn sent and every grading started so far has
-   * finished, with the turns a grade sends.
+   * Judges a reply and tells the page it is being judged. The call, or its
+   * failure, is recorded inside the queue; a record that throws is logged.
+   * A call stopped by `close` is not recorded.
+   */
+  judge(judging: Judging): void;
+  /**
+   * Resolves once every turn sent and every grading and judging started so
+   * far has finished, with the turns they send.
    */
   settled(): Promise<void>;
-  /** Stops a grading in progress and closes the tutor's session. */
+  /** Stops the gradings and judgings in progress and closes the tutor's session. */
   close(): Promise<void>;
 }
 
@@ -103,13 +126,15 @@ export function createUnitAgents(options: {
    */
   lost: (learnerId?: string) => void;
   grader: Grader;
+  judge: HelpJudge;
   log: EventLog;
   /** The chat's queue. */
   exclusive: <T>(work: () => Promise<T>) => Promise<T>;
   /** Closes idle sessions; the system's timer if not given. */
   timer?: Timer;
 }): UnitAgents {
-  const { backend, systemPrompt, tools, cwd, grader, log, exclusive } = options;
+  const { backend, systemPrompt, tools, cwd, grader, judge, log, exclusive } =
+    options;
 
   async function startNew(): Promise<TutorSession> {
     const session = await backend.startSession({
@@ -151,8 +176,9 @@ export function createUnitAgents(options: {
         },
         ...(resumeId === undefined ? {} : { resumeId }),
         lost: options.lost,
-        // The grade is sent to the tutor.
-        waiting: () => running !== undefined,
+        // The grade is sent to the tutor, as is the grade of an answer that
+        // waits for a judging.
+        waiting: () => running !== undefined || judgings.size > 0,
         ...(options.timer === undefined ? {} : { timer: options.timer }),
       },
       log,
@@ -161,6 +187,8 @@ export function createUnitAgents(options: {
 
   /** The grading running. */
   let running: { stop: AbortController; done: Promise<void> } | undefined;
+  /** The judgings running: one per reply, and replies can end while one runs. */
+  const judgings = new Set<{ stop: AbortController; done: Promise<void> }>();
   let tutor = conversation();
   /** Sessions being closed after a fresh start. */
   const closing: Promise<void>[] = [];
@@ -225,22 +253,59 @@ export function createUnitAgents(options: {
 
     grading: () => running !== undefined,
 
+    judge(judging) {
+      const { learnerId, number, question, message, reply } = judging;
+      const stop = new AbortController();
+      log.emit({ type: "judging", learnerId, number });
+      const work = { stop, done: Promise.resolve() };
+      work.done = (async () => {
+        const outcome = await judge.judge(
+          { question, message, reply },
+          stop.signal,
+        );
+        // Stopped because the chat is closing: the reply is still waiting
+        // in state.json, and the unit reopened next decides it.
+        if (stop.signal.aborted) {
+          judgings.delete(work);
+          return;
+        }
+        await exclusive(async () => {
+          try {
+            await judging.record(outcome);
+          } catch (error) {
+            console.error("The judge's call could not be recorded:", error);
+          } finally {
+            // Inside the queue, so an action queued after this sees it done.
+            judgings.delete(work);
+          }
+        });
+      })();
+      judgings.add(work);
+    },
+
     async settled() {
-      // A grade sends the tutor a turn, and a turn can be followed by
-      // nothing else that grades, so this ends.
+      // A grade sends the tutor a turn; the end of a reply can start a
+      // judging, and a judging can let a kept answer be graded. Each comes
+      // from one before it, and none goes on by itself, so this ends.
       while (true) {
         if (running !== undefined) {
           await running.done;
           continue;
         }
+        const judging = judgings.values().next();
+        if (!judging.done) {
+          await judging.value.done;
+          continue;
+        }
         await tutor.settled();
-        if (running === undefined) return;
+        if (running === undefined && judgings.size === 0) return;
       }
     },
 
     async close() {
       closed = true;
       running?.stop.abort();
+      for (const judging of judgings) judging.stop.abort();
       await Promise.all([tutor.close(), ...closing]);
     },
   };

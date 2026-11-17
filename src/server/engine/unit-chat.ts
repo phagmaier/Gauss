@@ -15,7 +15,12 @@
 //   with the learner, and no question is posted until the learner asks for
 //   another one. A choice is graded at once; a written answer is kept
 //   in state.json and graded by the grader (grading.ts), outside the
-//   chat's queue, and if the grading fails it can be graded again;
+//   chat's queue, and if the grading fails it can be graded again.
+//   A message the tutor receives while a question waits for its answer
+//   has the tutor's reply judged, once it ends, by the help judge
+//   (help-judge.ts, task 2.21): clarification leaves the answer counting,
+//   help, or a call that fails, makes it given with help. An answer sent
+//   before the judge's calls are in is kept and waits for them;
 // - check to closed: the engine closes the segment when the feedback on the
 //   answer that leaves every objective done in this check ends (task
 //   2.16a), or the learner moves on without the check, recorded as
@@ -76,6 +81,7 @@ import {
 import { type ChoiceOrder, randomOrder, reorder } from "./choice-order.ts";
 import type { ChatResult, Timer } from "./conversation.ts";
 import { type Grader, gradeChoice } from "./grading.ts";
+import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import { createUnitAgents, type UnitAgents } from "./unit-agents.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
@@ -181,6 +187,8 @@ interface ChatOptions {
   planner: UnitPlanner;
   /** Grades written answers. */
   grader: Grader;
+  /** Judges the tutor's replies to messages sent while a question is open. */
+  judge: HelpJudge;
   /**
    * The clock for the dates in the evidence and the open question, and for
    * when a session starts.
@@ -252,6 +260,12 @@ interface Running {
   notes: string[];
   /** Blocks new questions from when feedback is queued until it ends. */
   feedback?: { number: number; started: boolean } | undefined;
+  /**
+   * How many Stops there had been when the answer kept for the judging was
+   * sent, so a Stop after it cancels the automatic next question as it does
+   * for an answer recorded at once (task 2.17a).
+   */
+  answerStops?: number | undefined;
 }
 
 function createUnitChat(
@@ -313,6 +327,7 @@ function createUnitChat(
         // Only a turn calls it, once `r` is set.
         lost: (learnerId) => fallBack(r, learnerId),
         grader: options.grader,
+        judge: options.judge,
         log,
         exclusive,
         ...(options.timer === undefined ? {} : { timer: options.timer }),
@@ -341,22 +356,35 @@ function createUnitChat(
       const open = position.openQuestion;
       if (open !== undefined) {
         log.emit({ type: "question", question: view(open) });
-        if (record.recordedAnswer(open.id) !== undefined) {
-          // A restart came between recording the answer and closing its
-          // question: the question is closed with the answer recorded, as
-          // recording it would have gone on to do.
-          await exclusive(async () => {
+        await exclusive(async () => {
+          if (record.recordedAnswer(open.id) !== undefined) {
+            // A restart came between recording the answer and closing its
+            // question: the question is closed with the answer recorded, as
+            // recording it would have gone on to do.
             const answered = await record.closeAnswered();
             if (answered !== undefined) tellGrade(r, answered);
-          });
-        } else if (
-          open.answer !== undefined &&
-          open.question.kind === "written"
-        ) {
-          // A written answer that a restart kept from its grade is graded
-          // now, as a teaching turn a restart cut off is taught again.
-          startGrading(r, open, open.question, open.answer);
-        }
+          } else if (open.judging !== undefined) {
+            // The replies a restart kept from the judge cannot be judged
+            // now, so they count as help (task 2.21), and an answer kept
+            // for them is graded.
+            const { judging, number } = open;
+            await settleJudging(r, open, judging, "help", () => {
+              for (const learnerId of judging) {
+                log.emit({
+                  type: "judged",
+                  learnerId,
+                  number,
+                  verdict: "help",
+                  unjudged: "restart",
+                });
+              }
+            });
+          } else if (open.answer !== undefined) {
+            // An answer that a restart kept from its grade is graded now,
+            // as a teaching turn a restart cut off is taught again.
+            await grade(r, open, open.answer);
+          }
+        });
       }
       if (position.phase === "teach") {
         // A teaching turn that a restart cut off is sent again.
@@ -478,11 +506,15 @@ function createUnitChat(
    * When the turn ends, the segment closes if the check is done; otherwise,
    * unless the learner stopped it, the next question is asked for. After a
    * miss the turn opens the detour the miss opened (task 2.20), and nothing
-   * follows it: the learner asks for the next question.
+   * follows it: the learner asks for the next question. A Stop after
+   * `stops` cancels that next question.
    */
-  function tellGrade(r: Running, { question, entry }: Answered): void {
+  function tellGrade(
+    r: Running,
+    { question, entry }: Answered,
+    stops = stopCount,
+  ): void {
     const { number } = question;
-    const stops = stopCount;
     const feedback = { number, started: false };
     r.feedback = feedback;
     r.agents.send({
@@ -563,8 +595,138 @@ function createUnitChat(
     r: Running,
     submission: AnswerSubmission,
     grade: { verdict: Verdict; flaw?: string },
+    stops?: number,
   ): Promise<void> {
-    tellGrade(r, await r.record.answer(submission, grade));
+    tellGrade(r, await r.record.answer(submission, grade), stops);
+  }
+
+  /**
+   * Grades an answer to the open question once no reply during it waits
+   * for the judge: a written one by the grader, kept in state.json first,
+   * and any other at once. Runs inside `exclusive`.
+   */
+  async function grade(
+    r: Running,
+    open: OpenQuestion,
+    answer: AnswerSubmission,
+    stops?: number,
+  ): Promise<void> {
+    const { question } = open;
+    if (answer.kind === "written" && question.kind === "written") {
+      // Kept before it is graded, so a restart does not lose it.
+      const kept: OpenQuestion = { ...open, answer };
+      if (open.answer === undefined) {
+        await r.record.move({ ...r.record.position, openQuestion: kept });
+      }
+      startGrading(r, kept, question, answer, stops);
+      return;
+    }
+    await recordAnswer(
+      r,
+      answer,
+      {
+        verdict:
+          question.kind === "choice"
+            ? gradeChoice(question.answer, answer)
+            : "unknown",
+      },
+      stops,
+    );
+  }
+
+  // --- Help (task 2.21) ------------------------------------------------------
+
+  /**
+   * The tutor's reply to the learner's message `learnerId`, received while
+   * the question `questionId` was open, has ended: it is judged, unless the
+   * question has been withdrawn since. A reply with no text gave the learner
+   * nothing, so it is not judged and is no help. Runs inside `exclusive`.
+   */
+  async function replyEnded(
+    r: Running,
+    exchange: { learnerId: string; questionId: string; message: string },
+    reply: string,
+  ): Promise<void> {
+    const { learnerId, questionId, message } = exchange;
+    const open = r.record.position.openQuestion;
+    if (open?.id !== questionId || !open.judging?.includes(learnerId)) return;
+    if (reply.trim() === "") {
+      await settleJudging(r, open, [learnerId], "clarification");
+      return;
+    }
+    const { number, question } = open;
+    r.agents.judge({
+      learnerId,
+      number,
+      question,
+      message,
+      reply,
+      record: (outcome) => judged(r, questionId, learnerId, number, outcome),
+    });
+  }
+
+  /**
+   * Records the judge's call on a reply, and tells the page. A failed call
+   * counts as help. A question withdrawn since keeps nothing of it. Runs
+   * inside `exclusive`.
+   */
+  async function judged(
+    r: Running,
+    questionId: string,
+    learnerId: string,
+    number: number,
+    outcome: HelpOutcome,
+  ): Promise<void> {
+    if (!outcome.ok) {
+      console.error(
+        "A reply could not be judged, so it counts as help:",
+        outcome.error,
+      );
+    }
+    const verdict = outcome.ok ? outcome.verdict : "help";
+    const tell = () =>
+      log.emit({
+        type: "judged",
+        learnerId,
+        number,
+        verdict,
+        ...(outcome.ok ? {} : { unjudged: "failed" as const }),
+      });
+    const open = r.record.position.openQuestion;
+    if (open?.id !== questionId || !open.judging?.includes(learnerId)) {
+      tell();
+      return;
+    }
+    await settleJudging(r, open, [learnerId], verdict, tell);
+  }
+
+  /**
+   * Takes these replies out of those the open question waits on, with
+   * their verdict, and once none is left grades the answer kept for them.
+   * Runs inside `exclusive`.
+   */
+  async function settleJudging(
+    r: Running,
+    open: OpenQuestion,
+    learnerIds: readonly string[],
+    verdict: "clarification" | "help",
+    tell?: () => void,
+  ): Promise<void> {
+    const judging = (open.judging ?? []).filter(
+      (id) => !learnerIds.includes(id),
+    );
+    const { judging: _, ...rest } = open;
+    const next: OpenQuestion = {
+      ...rest,
+      ...(verdict === "help" ? { assisted: true } : {}),
+      ...(judging.length > 0 ? { judging } : {}),
+    };
+    await r.record.move({ ...r.record.position, openQuestion: next }, tell);
+    if (judging.length === 0 && next.answer !== undefined) {
+      const stops = r.answerStops;
+      r.answerStops = undefined;
+      await grade(r, next, next.answer, stops);
+    }
   }
 
   /**
@@ -577,6 +739,7 @@ function createUnitChat(
     open: OpenQuestion,
     question: WrittenQuestion,
     answer: WrittenAnswer,
+    stops?: number,
   ): void {
     r.agents.grade({
       questionId: open.id,
@@ -585,7 +748,7 @@ function createUnitChat(
       applies: () =>
         r.record.position.openQuestion?.id === open.id &&
         r.record.finished === undefined,
-      record: (grade) => recordAnswer(r, answer, grade),
+      record: (grade) => recordAnswer(r, answer, grade, stops),
     });
   }
 
@@ -744,28 +907,38 @@ function createUnitChat(
       if (r === undefined) return notOpen();
       const id = randomUUID();
       log.emit({ type: "learner", id, text });
+      /** Set if the tutor received the message while a question waited for its answer. */
+      let exchange:
+        | { learnerId: string; questionId: string; message: string }
+        | undefined;
       r.agents.send({
         learnerId: id,
-        // Help is what the tutor received while a question was open
-        // (docs/decisions.md, "Objective status"), so it is noted when the
-        // message is sent to the tutor, not when the learner wrote it. Once
-        // a written answer is sent, it is final, and help no longer applies.
+        // Help is judged on what the tutor received while a question was
+        // open (task 2.21), so the exchange begins when the message is sent
+        // to the tutor, not when the learner wrote it, and is kept in
+        // state.json until the judge's call on the reply. Once an answer is
+        // sent, it is final, and help no longer applies.
         text: () =>
           exclusive(async () => {
             const { position } = r.record;
             const open = position.openQuestion;
-            if (
-              open !== undefined &&
-              open.answer === undefined &&
-              open.assisted === undefined
-            ) {
+            if (open !== undefined && open.answer === undefined) {
               await r.record.move({
                 ...position,
-                openQuestion: { ...open, assisted: true },
+                openQuestion: {
+                  ...open,
+                  judging: [...(open.judging ?? []), id],
+                },
               });
+              exchange = { learnerId: id, questionId: open.id, message: text };
             }
             return messageTurn(where(r), text);
           }),
+        ended: (_, reply) => {
+          const asked = exchange;
+          if (asked === undefined) return;
+          return exclusive(() => replyEnded(r, asked, reply));
+        },
       });
       return { ok: true };
     },
@@ -804,9 +977,11 @@ function createUnitChat(
           }
           if (open.answer !== undefined) {
             return refused(
-              r.agents.grading()
-                ? "Your answer to this question is being graded."
-                : "Your answer to this question is kept and waits to be graded again.",
+              open.judging !== undefined
+                ? WAITS_FOR_JUDGE
+                : r.agents.grading()
+                  ? "Your answer to this question is being graded."
+                  : "Your answer to this question is kept and waits to be graded again.",
             );
           }
           const { question } = open;
@@ -823,19 +998,9 @@ function createUnitChat(
                   : `Question ${open.number} is answered in writing.`,
             };
           }
-          if (submission.kind === "written" && question.kind === "written") {
-            // Kept before it is graded, so a restart does not lose it.
-            const kept: OpenQuestion = { ...open, answer: submission };
-            await r.record.move({ ...r.record.position, openQuestion: kept });
-            startGrading(r, kept, question, submission);
-            return { ok: true };
-          }
-          if (question.kind === "written") {
-            await recordAnswer(r, submission, { verdict: "unknown" });
-            return { ok: true };
-          }
           if (
             submission.kind === "choice" &&
+            question.kind === "choice" &&
             CHOICE_LETTERS.indexOf(submission.choice) >= question.choices.length
           ) {
             return {
@@ -844,9 +1009,26 @@ function createUnitChat(
               error: `Question ${open.number} has no choice ${submission.choice}.`,
             };
           }
-          await recordAnswer(r, submission, {
-            verdict: gradeChoice(question.answer, submission),
-          });
+          if (open.judging !== undefined) {
+            // Replies during the question still wait for the judge, whose
+            // calls say whether the answer had help (task 2.21): the answer
+            // waits for them, kept so a restart does not lose it.
+            r.answerStops = stopCount;
+            await r.record.move(
+              {
+                ...r.record.position,
+                openQuestion: { ...open, answer: submission },
+              },
+              () =>
+                log.emit({
+                  type: "answer_waiting",
+                  questionId: open.id,
+                  answer: submission,
+                }),
+            );
+            return { ok: true };
+          }
+          await grade(r, open, submission);
           return { ok: true };
         },
         { whileWriting: true },
@@ -856,13 +1038,19 @@ function createUnitChat(
       act(
         async (r) => {
           const open = r.record.position.openQuestion;
-          if (open?.answer === undefined || open.question.kind !== "written") {
+          const kept = open?.answer;
+          if (
+            open === undefined ||
+            kept?.kind !== "written" ||
+            open.question.kind !== "written"
+          ) {
             return refused("No answer is waiting to be graded again.");
           }
+          if (open.judging !== undefined) return refused(WAITS_FOR_JUDGE);
           if (r.agents.grading()) {
             return refused("The answer is being graded.");
           }
-          startGrading(r, open, open.question, open.answer);
+          startGrading(r, open, open.question, kept);
           return { ok: true };
         },
         { whileWriting: true },
@@ -878,7 +1066,7 @@ function createUnitChat(
         // question, and the answer with it, also after a failed grading.
         if (openQuestion?.answer !== undefined) {
           return refused(
-            r.agents.grading()
+            openQuestion.judging !== undefined || r.agents.grading()
               ? "An answer is being graded. Wait for its grade, then move on."
               : "An answer is kept and waits to be graded again. Grade it again, then move on.",
           );
@@ -956,6 +1144,10 @@ function createUnitChat(
 }
 
 const UNIT_FINISHED = "The unit is finished.";
+
+/** An answer kept while the tutor's replies during its question are judged (task 2.21). */
+const WAITS_FOR_JUDGE =
+  "Your answer to this question is kept, and is graded once the tutor's replies while it was open have been judged.";
 
 function view(open: OpenQuestion): QuestionView {
   const { id, number, question } = open;

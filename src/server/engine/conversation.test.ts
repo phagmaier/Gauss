@@ -228,30 +228,47 @@ test("a turn's text is composed when it is sent, after the end-of-turn work of t
   ]);
 });
 
-test("end-of-turn work hears how the turn ended, and its failure does not stop the next turn", async () => {
+test("end-of-turn work hears how the turn ended and the text the tutor wrote in it, and its failure does not stop the next turn", async () => {
   const { backend, log, tutor } = setUp([
-    [{ text: "A long lecture" }, { hold: true }],
+    [{ text: "A long " }, { text: "lecture" }, { hold: true }],
     [{ text: "Two." }],
+    [],
   ]);
-  const outcomes: string[] = [];
+  const ended: string[] = [];
   const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
   const writing = nextEvent(log, "tutor_text");
 
   tutor.send({
     text: "first",
-    ended(outcome) {
-      outcomes.push(outcome);
+    ended(outcome, reply) {
+      ended.push(`${outcome}: ${reply}`);
       throw new Error("the record could not be written");
     },
   });
-  tutor.send("second");
+  tutor.send({
+    text: "second",
+    ended: (outcome, reply) => void ended.push(`${outcome}: ${reply}`),
+  });
+  tutor.send({
+    text: "third",
+    ended: (outcome, reply) => void ended.push(`${outcome}: ${reply}`),
+  });
   await writing;
   await tutor.interrupt();
   await tutor.settled();
   quiet.mockRestore();
 
-  expect(outcomes).toEqual(["interrupted"]);
-  expect(backend.received.map((t) => t.text)).toEqual(["first", "second"]);
+  // Each turn's own text, joined; none for a turn that wrote nothing.
+  expect(ended).toEqual([
+    "interrupted: A long lecture",
+    "done: Two.",
+    "done: ",
+  ]);
+  expect(backend.received.map((t) => t.text)).toEqual([
+    "first",
+    "second",
+    "third",
+  ]);
   expect(tutor.busy()).toBe(false);
 });
 

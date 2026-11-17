@@ -9,6 +9,7 @@ import {
 } from "../backends/fake.ts";
 import { givenOrder } from "../engine/choice-order.ts";
 import { createGrader } from "../engine/grading.ts";
+import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
 import { createUnitChats } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
@@ -62,6 +63,10 @@ function setUp(script: FakeTurn[], replies: FakeReply[] = []) {
     dataRoot,
     planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
+    judge: createHelpJudge({
+      backend: createFakeBackend([]),
+      systemPrompt: "Judge.",
+    }),
     now: () => new Date(NOW),
     order: givenOrder,
   });
@@ -758,9 +763,9 @@ test("a written answer is taken by its route, and one whose grading failed is gr
     error: "Usage limit reached.",
   });
   // The answer is kept trimmed, as the schema reads it.
-  expect((await unitState())?.openQuestion?.answer?.text).toBe(
-    "Every vector is a combination of the basis, and the map is linear.",
-  );
+  expect((await unitState())?.openQuestion?.answer).toMatchObject({
+    text: "Every vector is a combination of the basis, and the map is linear.",
+  });
 
   const again = await post(setup.app, `${UNIT}/grade-again`);
   expect(again.status).toBe(202);

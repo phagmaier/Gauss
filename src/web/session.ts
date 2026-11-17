@@ -18,6 +18,7 @@ import {
 } from "./progress.ts";
 import type {
   Item,
+  JudgmentItem,
   Position,
   QuestionItem,
   Timeline,
@@ -64,8 +65,8 @@ export function outline(
  * reached (mock 3): "ready" in the discussion, moving on in the check, and
  * in a detour asking for another question or moving on (task 2.20), the
  * next segment once one closes, and the way out of a finished unit. None in
- * teach, while a written answer waits for its grade (moving on is refused
- * then), or at the closing card, whose foot holds the steps.
+ * teach, while an answer waits for its grade (moving on is refused then),
+ * or at the closing card, whose foot holds the steps.
  */
 export type NextStep =
   | "ready"
@@ -89,9 +90,13 @@ export function nextStep(timeline: Timeline): NextStep {
       return null;
     case "discuss":
       return "ready";
-    case "check":
+    case "check": {
       if (timeline.detour !== null) return "detour";
-      return openQuestion(timeline)?.grading === undefined ? "move-on" : null;
+      const open = openQuestion(timeline);
+      return open?.grading === undefined && open?.waiting === undefined
+        ? "move-on"
+        : null;
+    }
     case "closed":
       return position.segment >= plan.segments.length - 1
         ? null
@@ -109,8 +114,8 @@ export function lastCard(timeline: Timeline): UnitEndItem | undefined {
 
 /**
  * The question that still waits on the learner, in a check: one being
- * answered, or a written answer sent and not yet graded. The page keeps it
- * above the message box until it is graded or withdrawn (task 2.18).
+ * answered, or an answer sent and not yet graded. The page keeps it above
+ * the message box until it is graded or withdrawn (task 2.18).
  */
 export function openQuestion(timeline: Timeline): QuestionItem | undefined {
   if (timeline.position?.phase !== "check") return undefined;
@@ -120,6 +125,59 @@ export function openQuestion(timeline: Timeline): QuestionItem | undefined {
     open.withdrawn !== true
     ? open
     : undefined;
+}
+
+/**
+ * What the message box says while a question waits for its answer (task
+ * 2.21): asking what it means is free, and a reply that helps toward the
+ * answer is help. Nothing once an answer is sent, since a message then is
+ * not help.
+ */
+export function helpNotice(timeline: Timeline): string | undefined {
+  const open = openQuestion(timeline);
+  if (
+    open === undefined ||
+    open.grading !== undefined ||
+    open.waiting !== undefined
+  ) {
+    return undefined;
+  }
+  return (
+    `Asking what question ${open.question.number} means is free. If the ` +
+    "tutor's reply helps you toward the answer, your answer counts as " +
+    "given with help and not toward passing."
+  );
+}
+
+/** What the line under a reply says of the judge's call on it (task 2.21). */
+export function judgmentSays(item: JudgmentItem): {
+  text: string;
+  /** "help" for a call that makes the answer given with help. */
+  tone: "judging" | "free" | "help";
+} {
+  const n = item.number;
+  if (item.verdict === undefined) {
+    return {
+      text: `Checking whether this reply helped with question ${n}`,
+      tone: "judging",
+    };
+  }
+  if (item.verdict === "clarification") {
+    return {
+      text: `Judged clarification: your answer to question ${n} still counts.`,
+      tone: "free",
+    };
+  }
+  const why =
+    item.unjudged === "failed"
+      ? "This reply could not be judged, so it counts as help"
+      : item.unjudged === "restart"
+        ? "The server stopped before this reply was judged, so it counts as help"
+        : "Judged help";
+  return {
+    text: `${why}: your answer to question ${n} will not count toward passing.`,
+    tone: "help",
+  };
 }
 
 /** The items that are messages, between which a dividing line can go. */
@@ -148,7 +206,14 @@ const asPosted = (item: Item) =>
  */
 export function divided(before: Item | undefined, item: Item): boolean {
   if (before === undefined || !MESSAGES.has(item.kind)) return false;
-  if (!MESSAGES.has(before.kind) && before.kind !== "note") return false;
+  // A note or the judge's call belongs to the message before it.
+  if (
+    !MESSAGES.has(before.kind) &&
+    before.kind !== "note" &&
+    before.kind !== "judgment"
+  ) {
+    return false;
+  }
   // A question answered further down than it was posted begins an exchange
   // there: its answer and the tutor's feedback.
   if (item.kind === "question" && item.moved === true) return true;

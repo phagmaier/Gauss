@@ -68,6 +68,7 @@ them.
 | 2.19 | Strict passing and no question limit | Passing needs, since the last miss, an unassisted answer at 90% or 100%, and a second correct one to a different question if ever missed (`record/status.ts`). No limit: an objective is done in a check only once passed (`engine/check-rules.ts`); reasons for another question are `missed`, `assisted`, `unconfident` and `confirm`, and the header counts "(N asked)", which `scripted.ts` reads. Records are not migrated. |
 | 2.20 | Detour after a miss | A miss closes its question into a detour kept in the position (`detour` in `state.ts`); its first turn replaces the feedback (`detourOpening` in `unit-turns.ts`), teaching again from the objective's second miss in the check (`missed` in `check-rules.ts`); no question until the learner's "Ready for another question" (`anotherQuestion`, route `another-question`), which sends `nextQuestionTurn`. Page events `detour` and `detour_end`. "I don't know" carries an optional `stuck` line. Messages in a detour are not help, since no question is open: 2.21 judges only messages during an open question. |
 | 2.20a | Detour queue review fix | Ending a detour uses `askNext` too: a newer question (open or already answered) or Stop skips its stale queued request. Three deterministic regressions failed before the fix and pass after it. |
+| 2.21 | Help judge | After each reply to a message the tutor received while a question waited for its answer, a one-shot call on Haiku 5.5 (`engine/help-judge.ts`, `prompts/help-judge.md`, `JUDGE_MODEL`) returns clarification or help; help or a failed call marks the question `assisted`. Pending calls are `judging` on the open question; an answer sent meanwhile is kept (`OpenQuestion.answer` now takes any answer) and graded once they are in; a restart counts cut-off calls as help. The page shows the call under the reply and a notice above the message box (`helpNotice`, `judgmentSays`). Re-run `node scripts/judge-set.ts --runs 2` when the prompt, `HelpJudgment` or the model changes. |
 
 ## Stage 2: session engine
 
@@ -81,31 +82,6 @@ baseline, the misconception record of detours, the unit gate, handoff
 notes, unit notes, transcript export and style changes (stage 5); detours
 themselves came in task 2.20. A unit in this stage closes without a gate
 or notes.
-
-### 2.21 Clarification or help
-
-- Status: todo
-- Depends on: 2.18
-- Why: asking what a question means is charged as help, the same as
-  asking for the method (note 4).
-- Do: after the tutor replies to a message sent while a question is open,
-  a separate judging call (`oneShot`, a prompt in `prompts/`) reads the
-  question with its answer key or rubric, the message and the reply, and
-  returns clarification (only what the question asks: its wording, its
-  notation, the form of answer wanted) or help (anything toward the
-  answer: a method, a step, a value, a similar worked example, a mistake
-  to avoid). The answer is assisted if any such exchange was judged help;
-  a failed call counts as help; an answer sent before the call returns
-  waits for it. The page shows the call under the reply, and the message
-  box, while a question is open, says that asking what it means is free
-  and anything else counts as help. Pick the judge's model from a small
-  hand-judged set of exchanges, as task 2.9 did for the grader. Update
-  section 4's help rule and `tutor.md`'s.
-- Done when: fake-backend tests cover clarification (the answer still
-  counts), help, a failed call and an answer waiting on the call; the
-  hand-judged set run twice on the real model, with each disagreement
-  reported; a browser check on `pnpm dev:fake` shows the call and the
-  notice.
 
 ### 2.22 Planning conversation and background note
 

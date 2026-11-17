@@ -7,6 +7,8 @@ import type { ObjectiveStatus } from "../shared/status.ts";
 import {
   closingCard,
   divided,
+  helpNotice,
+  judgmentSays,
   nextStep,
   openQuestion,
   outline,
@@ -17,6 +19,7 @@ import {
 import {
   emptyTimeline,
   type Item,
+  type JudgmentItem,
   type Position,
   reduce,
   type Timeline,
@@ -202,6 +205,25 @@ test.each<[string, PageEvent[], ReturnType<typeof nextStep>]>([
       phase(0, "check"),
       { type: "question", question: WRITTEN },
       { type: "grading", questionId: "q2", answer: PROOF },
+    ],
+    null,
+  ],
+  [
+    "while an answer waits for a reply to be judged",
+    [
+      planned,
+      phase(0, "check"),
+      { type: "question", question: CHOICE },
+      {
+        type: "answer_waiting",
+        questionId: "q1",
+        answer: {
+          kind: "choice",
+          questionId: "q1",
+          choice: "A",
+          confidence: "90",
+        },
+      },
     ],
     null,
   ],
@@ -402,6 +424,105 @@ test("lines divide the messages of a thread, but not the parts of one exchange",
     "note", // "Stopped." belongs to the reply it stopped
     "-- learner",
   ]);
+});
+
+test("the judge's call belongs to the reply it judged: no line above it, and one between it and the next message", () => {
+  const timeline = play([
+    planned,
+    phase(0, "check"),
+    ...asked(CHOICE),
+    { type: "learner", id: "m1", text: "What does the cube mean?" },
+    ...said("The third power."),
+    { type: "judging", learnerId: "m1", number: 1 },
+    { type: "learner", id: "m2", text: "Thanks." },
+  ]);
+  const lines = timeline.items.map((item, i) => {
+    const line = divided(timeline.items[i - 1], item) ? "-- " : "";
+    return `${line}${item.kind}`;
+  });
+
+  expect(lines.slice(-4)).toEqual([
+    "-- learner",
+    "-- tutor",
+    "judgment",
+    "-- learner",
+  ]);
+});
+
+test.each<[string, PageEvent[], string | undefined]>([
+  [
+    "while a question is being answered",
+    [...asked(CHOICE)],
+    "Asking what question 1 means is free. If the tutor's reply helps you toward the answer, your answer counts as given with help and not toward passing.",
+  ],
+  [
+    "not while a written answer is graded, since a message then is not help",
+    [...asked(WRITTEN), { type: "grading", questionId: "q2", answer: PROOF }],
+    undefined,
+  ],
+  [
+    "not while an answer waits for the judge",
+    [
+      ...asked(WRITTEN),
+      { type: "answer_waiting", questionId: "q2", answer: PROOF },
+    ],
+    undefined,
+  ],
+  ["not once the question is graded", [...asked(CHOICE), right], undefined],
+  [
+    "not in a detour",
+    [...asked(CHOICE), MISS, { type: "detour", questionId: "q1", number: 1 }],
+    undefined,
+  ],
+])("the message box's notice: %s", (_, events, notice) => {
+  expect(helpNotice(play([planned, phase(0, "check"), ...events]))).toBe(
+    notice,
+  );
+});
+
+test.each<
+  [string, Partial<Pick<JudgmentItem, "verdict" | "unjudged">>, string, string]
+>([
+  [
+    "being judged",
+    {},
+    "Checking whether this reply helped with question 3",
+    "judging",
+  ],
+  [
+    "clarification",
+    { verdict: "clarification" },
+    "Judged clarification: your answer to question 3 still counts.",
+    "free",
+  ],
+  [
+    "help",
+    { verdict: "help" },
+    "Judged help: your answer to question 3 will not count toward passing.",
+    "help",
+  ],
+  [
+    "a failed call",
+    { verdict: "help", unjudged: "failed" },
+    "This reply could not be judged, so it counts as help: your answer to question 3 will not count toward passing.",
+    "help",
+  ],
+  [
+    "a call a restart cut off",
+    { verdict: "help", unjudged: "restart" },
+    "The server stopped before this reply was judged, so it counts as help: your answer to question 3 will not count toward passing.",
+    "help",
+  ],
+])("the line under a reply %s", (_, call, text, tone) => {
+  expect(
+    judgmentSays({
+      kind: "judgment",
+      key: 1,
+      learnerId: "m1",
+      number: 3,
+      ...call,
+    }),
+  ).toEqual({ text, tone });
 });
 
 test("a question answered below where it was posted begins an exchange there, and the line where it was posted goes with its lead-in", () => {

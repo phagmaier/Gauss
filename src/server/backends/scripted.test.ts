@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import { createGrader } from "../engine/grading.ts";
+import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
 import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
@@ -56,6 +57,7 @@ function setUp() {
     dataRoot,
     planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
+    judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
   });
   const intakes = createIntakes({ backend, systemPrompt: "Intake.", dataRoot });
   return { backend, dataRoot, units, intakes };
@@ -255,6 +257,63 @@ test("/hold keeps the tutor's turn open until it is stopped, and /fail in a writ
     ok: true,
     verdict: "correct",
   });
+});
+
+test('a reply to a message during an open question is judged clarification when the message has "mean" in it, help otherwise, and help when "/fail" fails the judging', async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const { chat } = opened;
+  await chat.settled();
+  expect(await chat.ready()).toEqual({ ok: true });
+  await chat.settled();
+  const judged = () =>
+    chat
+      .events()
+      .filter((e) => e.type === "judged")
+      .map((e) => (e.type === "judged" ? [e.verdict, e.unjudged] : []));
+  const answerOpen = async () => {
+    const open = (await dataRoot.readState(COURSE)).units.limits?.openQuestion;
+    if (open?.question.kind !== "choice") throw new Error("No choice open.");
+    expect(
+      await chat.answer({
+        kind: "choice",
+        questionId: open.id,
+        choice: open.question.answer,
+        confidence: "100",
+      }),
+    ).toEqual({ ok: true });
+    await chat.settled();
+  };
+
+  chat.say("What does the plus sign mean here?");
+  await chat.settled();
+  expect(judged()).toEqual([["clarification", undefined]]);
+  await answerOpen();
+  // Clarification is free: the confident correct answer passes the objective.
+  expect((await dataRoot.readEvidence(COURSE)).at(-1)).toMatchObject({
+    verdict: "correct",
+    assisted: false,
+  });
+
+  // The first segment passed; the second checks with written questions.
+  expect(await chat.nextSegment()).toEqual({ ok: true });
+  await chat.settled();
+  expect(await chat.ready()).toEqual({ ok: true });
+  await chat.settled();
+  for (const message of ["Is the answer four?", "Please /fail this"]) {
+    chat.say(message);
+    await chat.settled();
+  }
+  expect(judged()).toEqual([
+    ["clarification", undefined],
+    ["help", undefined],
+    ["help", "failed"],
+  ]);
+  expect(
+    (await dataRoot.readState(COURSE)).units.limits?.openQuestion?.assisted,
+  ).toBe(true);
 });
 
 test("a unit reopened after a restart resumes its scripted tutor; one whose session is not the script's starts fresh, and so does the learner's Start fresh", async () => {

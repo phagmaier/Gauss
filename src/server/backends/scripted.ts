@@ -26,7 +26,12 @@
 //   stopped.
 //
 // A written answer is graded correct unless it has the word "wrong" in it;
-// "/fail" in it fails the grading.
+// "/fail" in it fails the grading. The tutor's reply to a message sent while
+// a question is open (task 2.21) is judged clarification if the message has
+// the word "mean" in it ("What does $h$ mean?"), and help otherwise; "/fail"
+// in the message fails the judging, which counts as help. A message with
+// "/hold" keeps its reply open, so an answer sent meanwhile waits for the
+// judging, which comes once the reply is stopped.
 //
 // Every session it starts in a folder (a unit's tutor, an intake) is kept,
 // across restarts too, so a unit reopened after a restart resumes its tutor
@@ -39,6 +44,7 @@
 
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";
+import { HelpJudgment } from "../../shared/question.ts";
 import type { EngineTurn, OneShotRequest, SessionOptions } from "./backend.ts";
 import {
   createFakeBackend,
@@ -275,9 +281,10 @@ function question(objective: string, number: number): unknown {
       };
 }
 
-// --- Grading ---------------------------------------------------------------
+// --- Grading and judging help ---------------------------------------------
 
 function scriptedReply(request: OneShotRequest<unknown>): FakeReply {
+  if (request.schema === HelpJudgment) return scriptedJudgment(request);
   const answer =
     /<answer>\n([\s\S]*)\n<\/answer>/.exec(request.prompt)?.[1] ?? "";
   if (answer.includes("/fail")) {
@@ -291,4 +298,26 @@ function scriptedReply(request: OneShotRequest<unknown>): FakeReply {
         },
       }
     : { output: { verdict: "correct" } };
+}
+
+/** The help judge's call: clarification if the message asks what something means. */
+function scriptedJudgment(request: OneShotRequest<unknown>): FakeReply {
+  const message =
+    /<message>\n([\s\S]*)\n<\/message>/.exec(request.prompt)?.[1] ?? "";
+  if (message.includes("/fail")) {
+    return { fail: "The scripted judge was told to fail." };
+  }
+  return /\bmean\b/i.test(message)
+    ? {
+        output: {
+          reason: 'Scripted: the message asks what something means ("mean").',
+          verdict: "clarification",
+        },
+      }
+    : {
+        output: {
+          reason: 'Scripted: the message does not have the word "mean".',
+          verdict: "help",
+        },
+      };
 }

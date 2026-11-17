@@ -9,6 +9,7 @@ import { getRequestListener } from "@hono/node-server";
 import { createServer as createViteServer } from "vite";
 import type { TutorBackend } from "./backends/backend.ts";
 import { createGrader } from "./engine/grading.ts";
+import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
@@ -27,19 +28,27 @@ export async function serve(options: {
   backend: TutorBackend;
   /** Grades written answers. */
   graderBackend: TutorBackend;
+  /** Judges whether a reply during an open question was help (task 2.21). */
+  judgeBackend: TutorBackend;
   dataRootPath: string;
   port: number;
 }): Promise<void> {
   const { backend, dataRootPath, port } = options;
   const prompt = (name: string) =>
     readFile(new URL(`prompts/${name}`, root), "utf8");
-  const [plannerPrompt, unitPlannerPrompt, tutorPrompt, graderPrompt] =
-    await Promise.all([
-      prompt("planner.md"),
-      prompt("unit-planner.md"),
-      prompt("tutor.md"),
-      prompt("grader.md"),
-    ]);
+  const [
+    plannerPrompt,
+    unitPlannerPrompt,
+    tutorPrompt,
+    graderPrompt,
+    judgePrompt,
+  ] = await Promise.all([
+    prompt("planner.md"),
+    prompt("unit-planner.md"),
+    prompt("tutor.md"),
+    prompt("grader.md"),
+    prompt("help-judge.md"),
+  ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
   const intakes = createIntakes({
     backend,
@@ -59,6 +68,10 @@ export async function serve(options: {
     grader: createGrader({
       backend: options.graderBackend,
       systemPrompt: graderPrompt,
+    }),
+    judge: createHelpJudge({
+      backend: options.judgeBackend,
+      systemPrompt: judgePrompt,
     }),
   });
   const api = getRequestListener(createApp({ dataRoot, intakes, units }).fetch);
