@@ -73,6 +73,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
 
 ```
 <data root>/
+  .git/, .gitignore               the record's history (task 2.25): commits after each segment close, unit end and approval
   profile.md                      learner profile; one-line index of finished courses
   intake/                         where intakes' sessions run, so they are kept (task 2.15); Gauss writes nothing in it
   courses/<course-id>/
@@ -111,6 +112,16 @@ unit: several units can be in progress at once, each keeping its place. A
 unit is taken out of it when it is no longer in progress. The engine writes
 a unit's position after every change, so an open question survives a
 restart.
+
+The data root is a git repository (`src/server/record/backup.ts`, task
+2.25), made on the server's first start if it is not one, with a
+`.gitignore` that keeps `courses/` and `profile.md` and leaves out
+`intake/` and the temporary files below. The engine asks for a commit once
+a segment's close, a unit's end or an approval is written; commits run in
+the background, one at a time, by "Gauss", and one that fails is logged and
+never fails the engine. The server commits what changed since its last run
+when it starts. `pnpm dev` keeps it unless `GAUSS_BACKUP=off`; `pnpm
+dev:fake` only with `GAUSS_BACKUP=on`; tests pass it in.
 
 Every record file but the logs is written whole: to a temporary file in its
 folder, then renamed over it, so a process that stops partway leaves the old

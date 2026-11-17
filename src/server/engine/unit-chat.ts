@@ -69,6 +69,7 @@ import {
 } from "../../shared/question.ts";
 import type { OpenQuestion, Phase } from "../../shared/state.ts";
 import type { TutorBackend } from "../backends/backend.ts";
+import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import {
@@ -201,6 +202,8 @@ interface ChatOptions {
    * if not given.
    */
   order?: ChoiceOrder;
+  /** Commits the record once a segment closes or a unit ends (task 2.25); none if not given. */
+  backup?: Backup;
 }
 
 export function createUnitChats(options: ChatOptions): UnitChats {
@@ -311,6 +314,7 @@ function createUnitChat(
         plan,
         emit: log.emit,
         now,
+        ...(options.backup === undefined ? {} : { backup: options.backup }),
       });
       const context: UnitContext = {
         courseTitle: stored.course.title,

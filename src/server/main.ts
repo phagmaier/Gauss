@@ -22,4 +22,6 @@ await serve({
   // GAUSS_DATA_ROOT moves the course record away from ~/gauss (AGENTS.md).
   dataRootPath: resolveDataRoot(),
   port: Number(process.env.GAUSS_PORT ?? 4320),
+  // The record's git history (task 2.25); GAUSS_BACKUP=off turns it off.
+  backup: process.env.GAUSS_BACKUP !== "off",
 });

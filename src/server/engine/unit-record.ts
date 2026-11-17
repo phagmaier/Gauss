@@ -12,6 +12,9 @@
 // reopened after a restart resumes it (task 2.14): every position written
 // carries the id kept last, whatever position the chat gives.
 //
+// Once a segment's close or the unit's end is written, the backup is asked
+// for a commit (task 2.25).
+//
 // The chat decides which changes the phase rules allow; this module carries
 // them out. Its changes are not safe to run concurrently: the chat makes them
 // only from inside its queue. Reading is safe at any time.
@@ -24,6 +27,7 @@ import type { Plan } from "../../shared/plan.ts";
 import type { AnswerSubmission, Verdict } from "../../shared/question.ts";
 import type { Detour, OpenQuestion, UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
+import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
 import { segmentOf } from "./check-rules.ts";
@@ -117,8 +121,11 @@ export async function openUnitRecord(options: {
   emit: (event: PageEvent) => void;
   /** The clock for the evidence's dates. */
   now: () => Date;
+  /** Commits the record once a segment closes or the unit ends; none if not given. */
+  backup?: Backup;
 }): Promise<UnitRecord> {
   const { dataRoot, courseId, unit, plan, emit, now } = options;
+  const backup = options.backup ?? noBackup;
   const unitId = unit.id;
   // The unit's own entry only: an id such as "constructor" is also the name
   // of a property every object inherits.
@@ -155,6 +162,13 @@ export async function openUnitRecord(options: {
     tell?.();
     if (was.segment !== next.segment || was.phase !== next.phase) {
       emit(phaseEvent(next));
+      if (next.phase === "closed") {
+        const segment =
+          next.again === undefined
+            ? `segment ${next.segment + 1} of ${unitId}`
+            : `the segment going over ${unitId}'s objectives again`;
+        backup.commit(`${courseId}: ${segment} closed`);
+      }
     }
   }
 
@@ -233,6 +247,7 @@ export async function openUnitRecord(options: {
     finished = how;
     emit(status());
     emit({ type: "unit_closed", status: how });
+    backup.commit(`${courseId}: unit ${unitId} finished, ${how}`);
   }
 
   return {

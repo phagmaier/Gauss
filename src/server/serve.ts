@@ -14,6 +14,7 @@ import { createIntakes } from "./engine/intake.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
 import { createApp } from "./http/app.ts";
+import { noBackup, startBackup } from "./record/backup.ts";
 import { openDataRoot } from "./record/data-root.ts";
 
 const root = new URL("../../", import.meta.url);
@@ -32,6 +33,8 @@ export async function serve(options: {
   judgeBackend: TutorBackend;
   dataRootPath: string;
   port: number;
+  /** Keeps the record's history in git (task 2.25). */
+  backup: boolean;
 }): Promise<void> {
   const { backend, dataRootPath, port } = options;
   const prompt = (name: string) =>
@@ -50,10 +53,17 @@ export async function serve(options: {
     prompt("help-judge.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
+  const backup = options.backup
+    ? await startBackup({
+        path: dataRootPath,
+        log: (line) => process.stdout.write(`${line}\n`),
+      })
+    : noBackup;
   const intakes = createIntakes({
     backend,
     systemPrompt: plannerPrompt,
     dataRoot,
+    backup,
   });
   const planner = createUnitPlanner({
     backend,
@@ -64,6 +74,7 @@ export async function serve(options: {
     backend,
     systemPrompt: tutorPrompt,
     dataRoot,
+    backup,
     planner,
     grader: createGrader({
       backend: options.graderBackend,
@@ -97,6 +108,7 @@ export async function serve(options: {
   async function shutDown(): Promise<void> {
     server.closeAllConnections();
     await Promise.allSettled([intakes.close(), units.close(), vite.close()]);
+    await backup.settled();
     server.close();
     process.exit(0);
   }

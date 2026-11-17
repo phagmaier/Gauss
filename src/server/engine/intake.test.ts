@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { PageEvent } from "../../shared/events.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
+import type { Backup } from "../record/backup.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { IDLE_MS } from "./conversation.ts";
 import { createFakeTimer } from "./fake-timer.ts";
@@ -39,12 +41,13 @@ afterEach(async () => {
 
 const APPROVED_AT = "2026-11-15T10:30:00.000Z";
 
-function setUp(script: FakeTurn[]) {
+function setUp(script: FakeTurn[], backup?: Backup) {
   const backend = createFakeBackend(script);
   const intake = createIntake({
     backend,
     systemPrompt: "You are a test planner.",
     dataRoot: openDataRoot({ path: dir, now: () => new Date(APPROVED_AT) }),
+    ...(backup === undefined ? {} : { backup }),
   });
   return { backend, intake };
 }
@@ -371,6 +374,36 @@ test("approving the latest revision approves the stored curriculum, keeps its no
     status: 409,
   });
   expect(await intake.approve(2)).toMatchObject({ ok: false, status: 409 });
+});
+
+test("an approval asks the backup for a commit once the approved curriculum is written; a refused one does not", async () => {
+  // What the curriculum on disk says when each commit is asked for.
+  const commits: { message: string; approval: string }[] = [];
+  const { intake } = setUp(
+    [OPENING, [{ call: "propose_curriculum", input: FIRST }]],
+    {
+      commit(message) {
+        const path = join(dir, "courses", "linear-algebra-for-pca");
+        const stored = JSON.parse(
+          readFileSync(join(path, "curriculum.json"), "utf8"),
+        );
+        commits.push({ message, approval: stored.approval.status });
+      },
+      settled: () => Promise.resolve(),
+    },
+  );
+  await opened(intake);
+
+  expect(await intake.approve(2)).toMatchObject({ ok: false, status: 404 });
+  expect(commits).toEqual([]);
+
+  expect(await intake.approve(1)).toEqual({ ok: true });
+  expect(commits).toEqual([
+    {
+      message: "linear-algebra-for-pca: curriculum approved",
+      approval: "approved",
+    },
+  ]);
 });
 
 test("approval is refused before any proposal, and while the tutor is writing", async () => {

@@ -51,4 +51,6 @@ await serve({
   judgeBackend: backend,
   dataRootPath,
   port: Number(process.env.GAUSS_PORT ?? 4330),
+  // Off unless asked for with GAUSS_BACKUP=on (task 2.25).
+  backup: process.env.GAUSS_BACKUP === "on",
 });

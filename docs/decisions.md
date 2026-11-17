@@ -63,6 +63,7 @@ findings are the record.
 | Stage 2 review | After the stage 2 check passed: a review of the theology course's record the user brought, what was checked against the record, the user's decisions (passing without a confident answer, review questions opening each sitting, testing out instead of the baseline, no finals, no quotes from memory, stage 5 before stage 4), the agent's readings, and tasks 2.23 to 2.27 | Any of tasks 2.23 to 2.27; touching the passing rule, `unit-planner.md` or `tutor.md`'s questions and quotes; breaking down stage 5 (review, test-out, the profile) |
 | Passing without a confident answer | Task 2.23: two correct answers to different questions pass at any confidence, one confident answer only if never missed; the `second` reason replacing `unconfident` and `confirm`; what needed no change; the user's courses re-derived with no status changed; tests, injected faults and the browser run | Touching `record/status.ts`, `engine/check-rules.ts`'s reasons or `checkText` in `unit-turns.ts`; stage 5's retained and slipping; 2.27's calibration |
 | One idea per objective, no quotes from memory | Task 2.24: the wording added to `unit-planner.md`, `planner.md` and `tutor.md` and why, the real runs on Sonnet 5.5 (a new course's plan, teaching and first question; the unit planner run three more times as its wording tightened), what still slips through | Touching `unit-planner.md`, `planner.md`'s unit size, `tutor.md`'s teaching end, questions or quotations, the objective statement's description in `plan.ts`; stage 4's quotes |
+| Backup of the data root | Task 2.25: the data root as a git repository, what it keeps and leaves out, the three commit points and where they are, commits in the background by "Gauss", failures logged, what is not done (hooks, an existing repository's rules), the switches, the tests, faults and the fake-backend run | Touching `record/backup.ts`, `move` or `finish` in `unit-record.ts`, approval in `intake.ts`, the server's start and shutdown; stage 5's `profile.md` and stage 4's page images (leave them out) |
 
 ## Page design (plan task 1.0)
 
@@ -4663,3 +4664,75 @@ mathematics).
 
 Checks: `mise run check` passed (635 TypeScript tests, one Python test);
 no test reads the prompts' wording.
+
+## Backup of the data root (plan task 2.25)
+
+Built on 2026-11-17, from "Stage 2 review": a valid but wrong write by an
+engine bug could not be undone.
+
+- **A git repository**, with the `git` on the path (2.56 here); no package
+  is added. `startBackup` (`src/server/record/backup.ts`) makes the data
+  root (and its folder) a repository if it has no `.git` of its own, so a
+  data root inside another repository gets its own. The `.gitignore` it
+  writes keeps `/.gitignore`, `/courses/` and `/profile.md` and ignores
+  the rest of the top level (so `intake/`) and `.*.tmp`, the temporary
+  files of `atomic-write.ts`. A data root that is already a repository is
+  kept with its own rules and no `.gitignore` is written into it.
+- **Three commit points, asked for once the step's writes have landed**:
+  `move` in `engine/unit-record.ts` when the phase becomes `closed` (every
+  way a segment closes passes there: a check done, moving on, the segment
+  going over objectives again), `finish` after the position is taken out
+  of `state.json`, and `approve` in `engine/intake.ts` after
+  `approveCurriculum`. Messages name the course and the step:
+  "<course>: segment 2 of <unit> closed", "<course>: the segment going over
+  <unit>'s objectives again closed", "<course>: unit <unit> finished,
+  passed", "<course>: curriculum approved". Answers in a check are not
+  committed one by one; the segment's close takes them.
+- **In the background, one at a time.** `commit` returns at once; a queue
+  runs `git add --all`, then commits if `git status --porcelain` shows
+  anything. Each commit takes the record as it stands when it runs, so a
+  write made after it was asked for can go into it. The engine never waits
+  for git. `settled()` waits for the queue: the tests use it, and the
+  server's shutdown waits on it after closing the chats. `startBackup`
+  commits what changed since the last run ("Backup started" in a new
+  repository, "Gauss started" otherwise) and waits for that before it
+  returns.
+- **By "Gauss"**, with `-c user.name=Gauss -c user.email=gauss@localhost
+  -c commit.gpgsign=false`, so the learner's own identity is never written
+  and a signing setup never asks for a key. Hooks are left as git finds
+  them. `GIT_*` variables are dropped from git's environment, so a server
+  started from inside a git command (where `GIT_DIR` is set) does not
+  commit into another repository.
+- **Failures are logged, never thrown**: a failed commit says "The backup
+  could not commit "<message>": <git's reason>", and the next one runs.
+  With no `git`, the server says "No git on the path, so the record is not
+  backed up." once at start, and the backup does nothing; one that cannot
+  make the repository says why the same way. A running backup says "The
+  record is backed up with git in <path>."
+- **Switches**: `serve()` takes `backup`; `pnpm dev` turns it on unless
+  `GAUSS_BACKUP=off`, `pnpm dev:fake` only with `GAUSS_BACKUP=on`. The
+  engine takes an optional `Backup` (`createUnitChats`, `createIntakes`),
+  none when not given, so tests that do not pass one commit nothing.
+- **The learner's `~/gauss`** becomes a repository on the first
+  `pnpm dev` after this task, with the courses as they are then.
+- **Later**: stage 4 must ignore source page images; stage 5's
+  `profile.md` is kept already.
+
+Tests: `record/backup.test.ts` on real git in temporary folders (the first
+commit's files without `intake/` or temporary ones; a missing folder; an
+existing repository kept; nothing to commit; no git; `GIT_DIR` ignored;
+the message and author; a failed commit, here a held `index.lock`, logged
+and the next one run). Engine tests with a backup that records the
+position on disk at each commit (the segment's close written before its
+commit, then the unit's end; moving on, going over again, moving on from
+the closing card) and with real git (the segment commit holds
+`evidence.jsonl` and `state.json`; with every commit failing, the unit
+still closes). The intake's approval commits after the approved
+curriculum is written, and a refused approval commits nothing. Five
+injected faults each failed tests: a commit before the segment's write,
+the approval's commit before its write, `GIT_*` kept, temporary files not
+ignored, a failure thrown. `mise run check` passed (648 TypeScript tests,
+one Python test). On `pnpm dev:fake` with `GAUSS_BACKUP=on` and a scratch
+root, closing "What is a group?"'s segment 2 gave "what-is-a-group:
+segment 2 of group closed" and "what-is-a-group: unit group finished,
+passed", by Gauss, with the evidence, state and transcript files.

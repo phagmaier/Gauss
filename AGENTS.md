@@ -123,6 +123,9 @@ mise activated, or `mise exec -- <command>`.
   Sonnet 5.5 for the grader and Haiku 5.5 for the judge), and `GAUSS_DATA_ROOT` the folder that holds the courses (left
   unset, `~/gauss`; point it at a scratch folder for trial runs). The server
   prints the data root when it starts, and the model each session runs on.
+  It keeps the record's history in git in the data root, committing after
+  each segment close, unit end and approval (task 2.25); `GAUSS_BACKUP=off`
+  turns that off.
 - `pnpm dev:fake` runs the same server on the scripted backend
   (`src/server/backends/scripted.ts`, whose header says what its tutor does:
   a choice question asks for a sum and the right choice is that sum, at a
@@ -132,7 +135,8 @@ mise activated, or `mise exec -- <command>`.
   in the temporary folder, never the real one; an empty one is seeded with
   courses in each state (`src/server/record/dev-seed.ts`), and one with
   courses is kept, so a restart keeps the record. For a fresh seed, point
-  `GAUSS_DATA_ROOT` at a new folder.
+  `GAUSS_DATA_ROOT` at a new folder. Its backup is off unless
+  `GAUSS_BACKUP=on`.
 - The page is in `src/web` (React, built by Vite); the server starts at
   `src/server/main.ts`, and is wired in `src/server/serve.ts`.
 

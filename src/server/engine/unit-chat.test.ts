@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import {
   mkdir,
@@ -31,6 +32,7 @@ import {
   type FakeStep,
   type FakeTurn,
 } from "../backends/fake.ts";
+import { type Backup, startBackup } from "../record/backup.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { type ChoiceOrder, givenOrder } from "./choice-order.ts";
 import { IDLE_MS } from "./conversation.ts";
@@ -219,6 +221,8 @@ function setUp(
     timer?: FakeTimer;
     /** The order choices are shown in; the tutor's unless given. */
     order?: ChoiceOrder;
+    /** Commits the record after the steps that matter (task 2.25). */
+    backup?: Backup;
   } = {},
 ) {
   const backend = createFakeBackend(script, given.replies, {
@@ -245,6 +249,7 @@ function setUp(
     now: given.now ?? (() => new Date(NOW)),
     timer: given.timer ?? createFakeTimer(),
     order: given.order ?? givenOrder,
+    ...(given.backup === undefined ? {} : { backup: given.backup }),
   });
   return { backend, judgeBackend, dataRoot, units };
 }
@@ -4370,4 +4375,152 @@ test("a choice question is shown, stored, graded and sent back to the tutor in t
     question: { choices: shown, answer: "C" },
     verdict: "correct",
   });
+});
+
+// --- Task 2.25: the backup -----------------------------------------------------
+
+/** A backup that keeps each commit's message and the unit's position on disk then. */
+function recordingBackup() {
+  const commits: { message: string; position: UnitPosition | undefined }[] = [];
+  const backup: Backup = {
+    commit(message) {
+      const path = join(dir, "courses", COURSE, "state.json");
+      const state = JSON.parse(readFileSync(path, "utf8"));
+      commits.push({ message, position: state.units.derivative });
+    },
+    settled: () => Promise.resolve(),
+  };
+  return { commits, backup };
+}
+
+/** Runs git in the test's data root. */
+function gitLog(...args: string[]): string {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
+  );
+  return execFileSync("git", args, { cwd: dir, env, encoding: "utf8" }).trim();
+}
+
+test("the backup commits once a segment's close is written, and once the unit's end is", async () => {
+  const { commits, backup } = recordingBackup();
+  const setup = setUp(
+    [TEACH, ask(Q_QUOTIENT), FEEDBACK, ask(Q_SECANT), FEEDBACK],
+    { backup },
+  );
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "A");
+
+  expect(commits).toEqual([]);
+
+  await answer(chat, "B");
+
+  expect(closedSegments(chat)).toEqual([0]);
+  expect(commits).toEqual([
+    {
+      message: `${COURSE}: segment 1 of derivative closed`,
+      position: expect.objectContaining({ segment: 0, phase: "closed" }),
+    },
+    {
+      message: `${COURSE}: unit derivative finished, passed`,
+      position: undefined,
+    },
+  ]);
+});
+
+test("moving on commits the segment's close, and moving on from the closing card the unit's end; going over again names its segment", async () => {
+  const { commits, backup } = recordingBackup();
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_QUOTIENT),
+      [{ text: "Right." }],
+      [{ text: "Any questions before the next one?" }],
+      [{ text: "Let us go over it." }],
+    ],
+    { backup },
+  );
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "A");
+  expect(await chat.override()).toEqual({ ok: true });
+  expect(await chat.goOverAgain()).toEqual({ ok: true });
+  await chat.settled();
+  expect(await chat.override()).toEqual({ ok: true });
+  await chat.settled();
+  expect(await chat.finishUnit()).toEqual({ ok: true });
+
+  expect(commits.map((c) => c.message)).toEqual([
+    `${COURSE}: segment 1 of derivative closed`,
+    `${COURSE}: the segment going over derivative's objectives again closed`,
+    `${COURSE}: unit derivative finished, overridden`,
+  ]);
+});
+
+test("with the backup on a real repository, the commits hold the record's files and no temporary ones", async () => {
+  await makeCourse(true, SHORT);
+  const said: string[] = [];
+  const backup = await startBackup({ path: dir, log: (l) => said.push(l) });
+  const setup = setUp(
+    [TEACH, ask(Q_QUOTIENT), FEEDBACK, ask(Q_SECANT), FEEDBACK],
+    { backup },
+  );
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "A");
+  await answer(chat, "B");
+  await backup.settled();
+
+  expect(gitLog("log", "--format=%s").split("\n")).toEqual([
+    `${COURSE}: unit derivative finished, passed`,
+    `${COURSE}: segment 1 of derivative closed`,
+    "Backup started",
+  ]);
+  expect(
+    gitLog("show", "--name-only", "--format=", "HEAD~1").split("\n"),
+  ).toEqual(
+    expect.arrayContaining([
+      `courses/${COURSE}/evidence.jsonl`,
+      `courses/${COURSE}/state.json`,
+    ]),
+  );
+  expect(
+    gitLog("ls-files")
+      .split("\n")
+      .filter((f) => f.endsWith(".tmp")),
+  ).toEqual([]);
+  expect(said).toEqual([`The record is backed up with git in ${dir}.`]);
+});
+
+test("when the backup's commits fail, the unit goes on and closes as it would without them", async () => {
+  await makeCourse(true, SHORT);
+  const said: string[] = [];
+  const backup = await startBackup({ path: dir, log: (l) => said.push(l) });
+  // Another git process holds the index, so every commit fails.
+  await writeFile(join(dir, ".git", "index.lock"), "");
+  const setup = setUp(
+    [TEACH, ask(Q_QUOTIENT), FEEDBACK, ask(Q_SECANT), FEEDBACK],
+    { backup },
+  );
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "A");
+  await answer(chat, "B");
+  await backup.settled();
+
+  expect(chat.events().at(-1)).toEqual({
+    type: "unit_closed",
+    status: "passed",
+  });
+  expect(await position()).toEqual({});
+  expect(said.slice(1)).toEqual([
+    expect.stringMatching(
+      /^The backup could not commit "derivatives-from-scratch: segment 1 of derivative closed"/,
+    ),
+    expect.stringMatching(
+      /^The backup could not commit "derivatives-from-scratch: unit derivative finished, passed"/,
+    ),
+  ]);
 });

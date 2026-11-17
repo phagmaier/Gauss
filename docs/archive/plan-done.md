@@ -1293,3 +1293,31 @@ tested"). Stage 1 is finished.
   through (one of six in the last run), which the tutor's one-point
   questions cover. `mise run check` passed. Findings: `decisions.md`, "One
   idea per objective, no quotes from memory".
+
+### 2.25 Backup of the data root
+
+- Status: done
+- Depends on: stage 2
+- Why: everything durable is in the data root, which keeps no history, so
+  an engine bug that writes valid but wrong data could not be undone.
+- Do: the server makes the data root a git repository if it is not one,
+  tracking `courses/` and `profile.md` and ignoring the record's temporary
+  files and `intake/`, and commits after each segment close, unit close and
+  curriculum approval, once that step's writes have landed, with a message
+  naming the course and the step. A failed commit is logged and never fails
+  the engine; with no `git` on the path, the server says so once at start.
+  On for `pnpm dev`; off in tests and `pnpm dev:fake` unless asked. It runs
+  the `git` already installed; no package is added.
+- Done when: tests on a temporary data root show a commit after each of
+  the three steps, holding the record's files and none of the temporary
+  ones, and an engine that keeps working when the commit fails; `mise run
+  check` passes; on `pnpm dev:fake` with the backup on and a scratch root,
+  `git log` there shows a segment's commit.
+- Note: done on 2026-11-17. `src/server/record/backup.ts`; the engine
+  asks for commits in `move` and `finish` (`unit-record.ts`) and in the
+  intake's `approve`. Commits run in the background by "Gauss"; failures
+  are logged. `GAUSS_BACKUP=off` for `pnpm dev`, `=on` for `pnpm
+  dev:fake`. `mise run check` passed (648 TypeScript tests); five
+  injected faults each failed tests; `git log` on a `pnpm dev:fake`
+  scratch root showed the segment's and the unit's commits. Findings:
+  `decisions.md`, "Backup of the data root".

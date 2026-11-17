@@ -75,6 +75,7 @@ stage 4 (`decisions.md`, "Stage 2 review").
 | 2.22a | Intake review fixes | The review and message headers name both notes. A session lost before any proposal gets the conversation so far (`conversationBefore` in `engine/intake.ts`: the learner's earlier messages and the planner's replies, as JSON). The account's email still reaches every Claude session: `CLAUDE_CODE_DISABLE_ATTACHMENTS` leaves it, and bare mode drops it but is off the plan login; nothing changed in the backend. Look again with stage 3's built-in tools or a newer SDK. |
 | 2.23 | Passing without a confident answer | Since the last miss, unassisted correct answers to two different questions pass at any confidence, or one at 90% or 100% if never missed (`record/status.ts`); help neither counts nor breaks the row. Reasons for another question are `missed`, `assisted` and `second` (`engine/check-rules.ts`). Status is derived, so old records take the rule when read. |
 | 2.24 | One idea per objective, no quotes from memory | `unit-planner.md`: one idea per objective (the "could know one part and not another" test), up to eight objectives, and a last read for one verb and one claim; `planner.md`: three to six single-idea skills per unit; `tutor.md`: teaching ends with an ungraded exercise, one thing per question, no verbatim quotes from memory (stage 4 revises this). A compound objective still slips through now and then on Sonnet 5.5. |
+| 2.25 | Backup of the data root | The data root is a git repository (`record/backup.ts`), keeping `courses/` and `profile.md`; commits after a segment's close (`move`), a unit's end (`finish`) and an approval, in the background, by "Gauss", failures logged. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for `pnpm dev:fake` unless `=on`. Stage 4 must ignore page images. |
 
 ## Stage 2: session engine
 
@@ -99,26 +100,6 @@ Passed: the user tried it again on 2026-11-17, after tasks 2.18 to 2.22
 **Added after the user check**, from a review of the stage 2 record, which
 the user brought on 2026-11-17 (`decisions.md`, "Stage 2 review"). These
 tasks come before stage 3.
-
-### 2.25 Backup of the data root
-
-- Status: todo
-- Depends on: stage 2
-- Why: everything durable is in the data root, which keeps no history, so
-  an engine bug that writes valid but wrong data could not be undone.
-- Do: the server makes the data root a git repository if it is not one,
-  tracking `courses/` and `profile.md` and ignoring the record's temporary
-  files and `intake/`, and commits after each segment close, unit close and
-  curriculum approval, once that step's writes have landed, with a message
-  naming the course and the step. A failed commit is logged and never fails
-  the engine; with no `git` on the path, the server says so once at start.
-  On for `pnpm dev`; off in tests and `pnpm dev:fake` unless asked. It runs
-  the `git` already installed; no package is added.
-- Done when: tests on a temporary data root show a commit after each of
-  the three steps, holding the record's files and none of the temporary
-  ones, and an engine that keeps working when the commit fails; `mise run
-  check` passes; on `pnpm dev:fake` with the backup on and a scratch root,
-  `git log` there shows a segment's commit.
 
 ### 2.26 What I know
 

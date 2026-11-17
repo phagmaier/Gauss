@@ -24,6 +24,7 @@ import type { Slug } from "../../shared/course.ts";
 import type { ShownProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { TutorBackend } from "../backends/backend.ts";
+import type { Backup } from "../record/backup.ts";
 import { type DataRoot, DraftMismatch } from "../record/data-root.ts";
 import { proposeCurriculumTool } from "../tools/propose-curriculum.ts";
 import {
@@ -72,6 +73,8 @@ export function createIntake(options: {
   draft?: StoredDraft;
   /** Closes the idle tutor session; the system's timer if not given. */
   timer?: Timer;
+  /** Commits the record once a curriculum is approved (task 2.25); none if not given. */
+  backup?: Backup;
 }): Intake {
   const { backend, systemPrompt, dataRoot, draft } = options;
   const log = createEventLog();
@@ -224,6 +227,7 @@ export function createIntake(options: {
         throw error;
       }
       log.emit({ type: "curriculum_approved", courseId, revision });
+      options.backup?.commit(`${courseId}: curriculum approved`);
       await tutor.close();
       return { ok: true };
     },
@@ -271,6 +275,7 @@ export function createIntakes(options: {
   systemPrompt: string;
   dataRoot: DataRoot;
   timer?: Timer;
+  backup?: Backup;
 }): Intakes {
   const byId = new Map<string, Intake>();
   function keep(intake: Intake): Intake {
