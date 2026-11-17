@@ -1,9 +1,12 @@
 """The symbolic check on pairs worked by hand (decisions.md, "Symbolic check")."""
 
 import json
+import math
 import subprocess
 import sys
 import time
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -46,13 +49,32 @@ def verdict(expected, answer, **limits):
         (r"\frac{x^2}{2}", "0.5x^2"),
         # equal wherever both are defined
         (r"\frac{x^2-1}{x-1}", "x+1"),
-        (r"\ln(x^2)", r"2\ln|x|"),
         # a constant of integration
         (r"\sin^2 x + C", r"-\frac{1}{2}\cos(2x) + C"),
     ],
 )
 def test_equivalent_forms(expected, answer):
     assert check(expected, answer) == {"result": "equivalent"}
+
+
+def test_an_unproven_real_domain_identity_is_left_to_the_grader():
+    # This real-domain identity used to pass only because its sample values agreed.
+    assert verdict(r"\ln(x^2)", r"2\ln|x|") == "undecided"
+
+
+@pytest.mark.parametrize("constant", ["", " + C"])
+def test_sample_agreement_does_not_hide_a_counterexample_outside_the_sample_range(constant):
+    point = -5
+    assert point + 4 == -1
+    assert abs(point + 4) == 1
+    assert verdict("x+4" + constant, "|x+4|" + constant) == "undecided"
+
+
+@pytest.mark.parametrize("constant", ["", " + C"])
+def test_sample_agreement_does_not_prove_an_aliased_trigonometric_identity(constant):
+    point = Fraction(1, 1994)
+    assert math.sin(997 * math.pi * point) == pytest.approx(1)
+    assert verdict("0" + constant, r"\sin(997\pi x)" + constant) == "undecided"
 
 
 @pytest.mark.parametrize(
@@ -89,6 +111,39 @@ def test_equations(expected, answer, result):
     assert verdict(expected, answer) == result
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_equations_compare_residuals_without_large_sides_hiding_a_counterexample(reverse):
+    point = 1
+    assert 1000000000000 + point != 1000000000000
+    pair = ("1000000000000+x=1000000000000", "0=0")
+    assert verdict(*(pair[::-1] if reverse else pair)) == "different"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("equation", ["x=x+1", "x+1=x"])
+def test_a_self_referential_equation_does_not_unwrap_to_its_other_side(reverse, equation):
+    point = 0
+    assert point + 1 == 1
+    assert point != point + 1
+    pair = ("x+1", equation)
+    assert verdict(*(pair[::-1] if reverse else pair)) == "undecided"
+
+
+@pytest.mark.parametrize(
+    ("expected", "answer", "result"),
+    [
+        ("x=x", "0=0", "equivalent"),
+        (r"\sin^2 x + \cos^2 x=1", "0=0", "equivalent"),
+        ("0=0", "1=0", "different"),
+        ("1=0", "0=0", "different"),
+        ("1=0", "2=0", "equivalent"),
+        (r"\sin(997\pi x)=0", "0=0", "undecided"),
+    ],
+)
+def test_equation_zero_residuals_and_unproven_ratios(expected, answer, result):
+    assert verdict(expected, answer) == result
+
+
 @pytest.mark.parametrize(
     ("expected", "answer", "result"),
     [
@@ -120,10 +175,31 @@ def test_lists_compare_as_sets(expected, answer, result):
         ("2^{2000}", "2^{2000} + 1", "different"),  # exact; floating point cannot even hold them
         (r"\infty", r"\infty", "equivalent"),
         (r"\infty", r"-\infty", "different"),
+        # The half-unit boundary is exact, with no floating-point padding.
+        ("1 + 1/2000", "1.000", "equivalent"),
+        ("1 - 1/2000", "1.000", "equivalent"),
+        ("1 + 1/2000 + 1/10^{30}", "1.000", "different"),
+        ("1 - 1/2000 - 1/10^{30}", "1.000", "different"),
     ],
 )
 def test_numbers(expected, answer, result):
     assert verdict(expected, answer) == result
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_large_exact_irrational_values_do_not_gain_a_relative_tolerance(reverse):
+    assert (10000000000001 - 10000000000000) * math.pi > 3
+    pair = ("10000000000000*pi", "10000000000001*pi")
+    assert verdict(*(pair[::-1] if reverse else pair)) == "different"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_large_decimals_keep_the_exact_difference_and_last_digit_tolerance(reverse):
+    pair = ("10000000000000000", "10000000000000001.000")
+    difference = abs(Decimal(pair[0]) - Decimal(pair[1]))
+    assert difference == 1
+    assert difference > Decimal("0.0005")
+    assert verdict(*(pair[::-1] if reverse else pair)) == "different"
 
 
 @pytest.mark.parametrize(
@@ -158,13 +234,15 @@ def test_input_meant_to_run_code_is_unparsable_and_not_run(tmp_path):
 @pytest.mark.parametrize(
     ("expected", "answer", "result"),
     [
-        (r"\sin^2 x + \cos^2 x", "1", "equivalent"),
-        (r"\sin(2x)", r"2\sin x\cos x", "equivalent"),
+        (r"\sin^2 x + \cos^2 x", "1", "undecided"),
+        (r"\sin(2x)", r"2\sin x\cos x", "undecided"),
         (r"\sin^2 x - \cos^2 x", "1", "different"),
         ("10(2x+1)^4", "5(2x+1)^4", "different"),
+        (r"\sin^2 x + C", r"-\frac{1}{2}\cos(2x) + C", "undecided"),
+        ("x+2=0", "2x+4=0", "undecided"),
     ],
 )
-def test_sample_points_decide_without_simplification(expected, answer, result):
+def test_samples_can_disprove_but_cannot_certify_without_simplification(expected, answer, result):
     assert verdict(expected, answer, simplify_seconds=0) == result
 
 

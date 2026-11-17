@@ -21,6 +21,7 @@ import {
   SandboxManager,
   type SandboxRuntimeConfig,
 } from "@anthropic-ai/sandbox-runtime";
+import { sandboxCommand, sandboxPython } from "../sandbox-command.ts";
 
 export interface SandboxCommand {
   /** The program and its arguments, passed as they are: no shell reads them. */
@@ -68,6 +69,23 @@ export type Sandbox =
     };
 
 const DEFAULT_OUTPUT_LIMIT = 64 * 1024;
+// Both syscall routes must fail. A missing runtime seccomp helper may only
+// warn, and a successful `true` says nothing about Unix-socket confinement.
+const socketProbe = `
+import errno, socket
+for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+    for create in (
+        lambda: socket.socket(socket.AF_UNIX, kind),
+        lambda: socket.socketpair(socket.AF_UNIX, kind),
+    ):
+        try:
+            create()
+        except OSError as error:
+            if error.errno == errno.EPERM:
+                continue
+            raise
+        raise RuntimeError("the sandbox allowed a Unix socket")
+`;
 
 /**
  * Checks that the sandbox can run and starts it. `log` gets one line when it
@@ -96,10 +114,13 @@ export async function startSandbox(options: {
     await SandboxManager.reset();
     return unavailable(messageOf(error));
   }
-  // bubblewrap can be installed and still be refused what it needs, such as
-  // user namespaces, which only running a command shows.
+  // Run the workload guard too: installed dependencies do not establish
+  // that namespaces, seccomp and the project's Python actually work.
   const trial = await run({
-    argv: ["true"],
+    argv:
+      process.platform === "linux"
+        ? [sandboxPython, "-I", "-c", socketProbe]
+        : ["true"],
     cwd: "/",
     writable: [],
     timeLimitMs: 10_000,
@@ -148,7 +169,7 @@ async function run(command: SandboxCommand): Promise<SandboxResult> {
   // set by the script it runs, after the runtime's.
   const temporary = await mkdtemp(join(tmpdir(), "gauss-run-"));
   try {
-    const script = `export TMPDIR=${quote(temporary)}; exec ${command.argv.map(quote).join(" ")}`;
+    const script = `export TMPDIR=${quote(temporary)}; exec ${sandboxCommand(command.argv)}`;
     const wrapped = await SandboxManager.wrapWithSandbox(
       script,
       undefined,
@@ -261,7 +282,17 @@ function lastBytes(limit: number) {
         }
         bytes = bytes.subarray(start);
       }
-      return { text: bytes.toString("utf8"), cut };
+      let text = bytes.toString("utf8");
+      // Replacement characters for invalid UTF-8 can occupy more bytes than
+      // their input. Bound the returned text too, keeping a complete suffix.
+      if (Buffer.byteLength(text) > limit) {
+        const encoded = Buffer.from(text);
+        let start = encoded.length - limit;
+        while (((encoded[start] ?? 0) & 0xc0) === 0x80) start += 1;
+        text = encoded.subarray(start).toString("utf8");
+        cut = true;
+      }
+      return { text, cut };
     },
   };
 }

@@ -3603,6 +3603,198 @@ test("the tutor's writes and commands are refused while a question is open, with
   ]);
 });
 
+async function planRules(root: DataRoot) {
+  await root.storePlan(COURSE, "rules", {
+    objectives: [{ id: "sum-rule", statement: "Differentiate a sum." }],
+    segments: [{ title: "Sums", objectives: ["sum-rule"] }],
+  });
+}
+
+test("an unopened persisted question locks every tutor in the course after restart, including fresh sessions", async () => {
+  await makeCourse();
+  const before = setUp([TEACH, ask(Q_QUOTIENT)], { workspaceTools: true });
+  await planRules(before.dataRoot);
+  const first = await open(before);
+  await toCheck(first);
+  await before.units.close();
+
+  const changes: FakeStep[] = [
+    { builtIn: "Write", path: "hint.py" },
+    { builtIn: "Edit", path: "starter.py" },
+    { builtIn: "Bash" },
+    { builtIn: "Read" },
+  ];
+  const after = setUp([changes, changes], { workspaceTools: true });
+  try {
+    const other = await open(after, "rules");
+    expect(after.units.get(COURSE, "derivative")).toBeUndefined();
+    expect(await other.startFresh()).toEqual({ ok: true });
+    await other.settled();
+    expect(after.backend.calls.map(({ result }) => result.status)).toEqual([
+      "refused",
+      "refused",
+      "refused",
+      "done",
+      "refused",
+      "refused",
+      "refused",
+      "done",
+    ]);
+    expect(other.events().some((event) => event.type === "file_written")).toBe(
+      false,
+    );
+    expect((await positionWritten())?.openQuestion).toBeDefined();
+  } finally {
+    await after.units.close();
+  }
+});
+
+test("a running command in another unit prevents posting a question until it finishes; the question then blocks late mutations", async () => {
+  const command = Promise.withResolvers<void>();
+  const setup = setUp(
+    [
+      TEACH,
+      TEACH,
+      [{ builtIn: "Bash", until: command.promise }],
+      ask(Q_QUOTIENT),
+      ask(Q_QUOTIENT),
+      [{ builtIn: "Write", path: "late.py" }],
+    ],
+    { workspaceTools: true },
+  );
+  await makeCourse();
+  await planRules(setup.dataRoot);
+  try {
+    const first = await open(setup);
+    const other = await open(setup, "rules");
+    other.say("Run the calculation.");
+    await vi.waitFor(() =>
+      expect(setup.backend.calls.at(-1)?.name).toBe("Bash"),
+    );
+    await toCheck(first);
+    expect(setup.backend.calls.at(-1)?.result).toMatchObject({
+      status: "refused",
+      text: expect.stringContaining("not been confirmed finished"),
+    });
+    expect((await positionWritten())?.openQuestion).toBeUndefined();
+    command.resolve();
+    await other.settled();
+    first.say("Ask now.");
+    await first.settled();
+    expect((await positionWritten())?.openQuestion).toBeDefined();
+    other.say("Write the result.");
+    await other.settled();
+    expect(setup.backend.calls.at(-1)?.result).toMatchObject({
+      status: "refused",
+      text: expect.stringContaining("Question 1 is open"),
+    });
+  } finally {
+    command.resolve();
+    await setup.units.close();
+  }
+});
+
+test.each([false, true])(
+  "question persistence serializes concurrent command starts and releases its reservation after failure=%s",
+  async (fails) => {
+    const saving = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const starting = Promise.withResolvers<void>();
+    const setup = setUp(
+      [TEACH, TEACH, ask(Q_QUOTIENT), [{ builtIn: "Bash" }]],
+      {
+        workspaceTools: true,
+        wrap: (backend) => ({
+          ...backend,
+          async startSession(options) {
+            const workspace = options.workspace;
+            return backend.startSession({
+              ...options,
+              ...(workspace === undefined
+                ? {}
+                : {
+                    workspace: {
+                      acquire() {
+                        const reservation = workspace.acquire();
+                        starting.resolve();
+                        return reservation;
+                      },
+                    },
+                  }),
+            });
+          },
+        }),
+        record: (root) => ({
+          ...root,
+          async writePosition(id, unit, position) {
+            if (position?.openQuestion !== undefined) {
+              saving.resolve();
+              await release.promise;
+              if (fails) throw new Error("Question could not be stored.");
+            }
+            return root.writePosition(id, unit, position);
+          },
+        }),
+      },
+    );
+    await makeCourse();
+    await planRules(setup.dataRoot);
+    try {
+      const first = await open(setup);
+      const other = await open(setup, "rules");
+      expect(await first.ready()).toEqual({ ok: true });
+      await saving.promise;
+      other.say("Run a concurrent command.");
+      await starting.promise;
+      release.resolve();
+      await Promise.all([first.settled(), other.settled()]);
+      expect(
+        setup.backend.calls.find(({ name }) => name === "Bash")?.result.status,
+      ).toBe(fails ? "done" : "refused");
+      expect((await positionWritten())?.openQuestion !== undefined).toBe(
+        !fails,
+      );
+    } finally {
+      release.resolve();
+      await setup.units.close();
+    }
+  },
+);
+
+test("without workspace tools even fake built-ins are refused, while feedback may mutate once the question closes", async () => {
+  await makeCourse();
+  const without = setUp([
+    [{ builtIn: "Write", path: "forbidden.py" }, { builtIn: "Bash" }],
+  ]);
+  await open(without);
+  expect(without.backend.calls.map(({ result }) => result.status)).toEqual([
+    "refused",
+    "refused",
+  ]);
+  await without.units.close();
+
+  const setup = setUp(
+    [
+      ask(Q_QUOTIENT),
+      [{ builtIn: "Write", path: "feedback.py" }, { builtIn: "Bash" }],
+      [{ text: "Next question later." }],
+    ],
+    { workspaceTools: true },
+  );
+  try {
+    const chat = await open(setup);
+    await toCheck(chat);
+    await answer(chat, "A");
+    expect(
+      setup.backend.calls
+        .filter(({ name }) => name !== "ask_question")
+        .map(({ result }) => result.status),
+    ).toEqual(["done", "done"]);
+  } finally {
+    await setup.units.close();
+  }
+});
+
 test("a session the backend cannot find, as after Claude Code's 30-day cleanup, gives way to a new one, seeded from the record and told it is new, and the thread says so", async () => {
   const before = setUp([TEACH]);
   await makeCourse();

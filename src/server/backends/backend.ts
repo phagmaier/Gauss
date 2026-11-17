@@ -41,11 +41,12 @@ export interface SessionOptions {
  */
 export interface WorkspaceTools {
   /**
-   * Asked before each write and each command. A reason refuses the call and
-   * is given to the model, as a refused teaching tool's is; undefined lets
-   * it run. Reads are never asked about.
+   * Atomically checks the course's open questions and reserves a mutation
+   * until release is called after confirmed success or failure. Closing a
+   * real session alone does not confirm its commands have stopped.
+   * Reads never acquire a reservation.
    */
-  refusal(): string | undefined;
+  acquire(): Promise<{ refused: string } | { release(): void }>;
 }
 
 /**

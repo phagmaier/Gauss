@@ -8,7 +8,7 @@ each side as typed in the page's math field, LaTeX or plain (`3x^2`,
 - "equivalent" or "different";
 - "unparsable", with "side" ("expected" or "answer") and a "reason";
 - "undecided", with a "reason": the sides read, but the check could not
-  settle it (it ran out of time, or could not evaluate them);
+  prove equivalence or find a difference within its limits;
 - "parsed", when the request has no "answer": the expected side reads.
 
 Input it cannot read is an error, on standard error, with exit status 2.
@@ -21,8 +21,8 @@ natural logarithm, `i` a variable; a letter before a parenthesis multiplies
 (`x(x+1)`); `a/bc` is refused as ambiguous; decimals are exact (`0.5` is 1/2).
 
 Comparing (decisions.md, "Symbolic check"):
-- expressions: equal if their difference simplifies to zero, else compared at
-  sample points, the variables real, the values complex;
+- expressions: equal if their difference simplifies to zero; sample points
+  (real variables, complex values) may disprove equality, never prove it;
 - a `+ C` on both sides: a constant of integration, so they may differ by a
   constant;
 - numbers: a decimal of at least three significant figures matches a value
@@ -46,9 +46,9 @@ from sympy.core.function import AppliedUndef
 from sympy.parsing.latex import parse_latex
 
 TIME_LIMIT = 8.0  # seconds for the comparison, start-up and reading aside
-SIMPLIFY_LIMIT = 2.0  # seconds for one simplification before sampling decides
+SIMPLIFY_LIMIT = 2.0  # seconds for one simplification before trying counterexamples
 MAX_LENGTH = 1000  # characters on one side
-SAMPLES_NEEDED = 6  # points at which the sides must agree
+SAMPLES_NEEDED = 6  # agreeing points tried before returning undecided
 SAMPLE_TRIES = 40  # points tried, since some leave a side undefined
 LARGEST = sympy.Float("1e100000")  # a larger number is refused: exact arithmetic on it can hang
 
@@ -483,7 +483,7 @@ def _samples(exprs, clock):
 
 
 def _undecided_sampling():
-    return Verdict("undecided", "the sides could not be evaluated at enough points")
+    return Verdict("undecided", "the sample points did not establish a difference")
 
 
 def _compare_lists(expected, answer, clock):
@@ -508,9 +508,9 @@ def _compare_items(expected, answer, clock):
         return _compare_equations(expected, answer, clock)
     equation = expected if isinstance(expected, Equation) else answer
     # `x = 2` against `2`: the side that is not the lone variable.
-    if isinstance(equation.lhs.expr, Symbol):
+    if isinstance(equation.lhs.expr, Symbol) and equation.lhs.expr not in equation.rhs.expr.free_symbols:
         value = equation.rhs
-    elif isinstance(equation.rhs.expr, Symbol):
+    elif isinstance(equation.rhs.expr, Symbol) and equation.rhs.expr not in equation.lhs.expr.free_symbols:
         value = equation.lhs
     else:
         return Verdict("undecided", "one side is an equation and the other an expression")
@@ -541,7 +541,7 @@ def _compare_expressions(expected, answer, clock):
             return DIFFERENT
         agreeing += 1
         if agreeing >= SAMPLES_NEEDED:
-            return EQUIVALENT
+            return _undecided_sampling()
     return _undecided_sampling()
 
 
@@ -552,22 +552,23 @@ def _infinite(expr):
 def _compare_numbers(expected, answer, clock):
     x, y = expected.expr, answer.expr
     difference = _simplified(x - y, clock)
+    if difference is None:
+        difference = x - y
     if difference == 0:
         return EQUIVALENT
-    vx, vy = _value(x, {}), _value(y, {})
-    if vx is not None and vy is not None:
-        for side in (answer, expected):
-            if (
-                side.decimal is not None
-                and _significant_figures(side.decimal) >= 3
-                and abs(vx - vy) <= _half_unit(side.decimal) * (1 + 1e-9)
-            ):
+    for side in (answer, expected):
+        if side.decimal is not None and _significant_figures(side.decimal) >= 3:
+            # Subtract exactly before comparing: converting either side to a
+            # machine float can erase an error larger than the last-digit unit.
+            error = abs(difference) - _half_unit(side.decimal)
+            if error.is_nonpositive is True:
                 return EQUIVALENT
-    if difference is not None and difference.is_Rational:
-        return DIFFERENT  # an exact, non-zero difference
-    if vx is None or vy is None:
-        return Verdict("undecided", "a side could not be evaluated")
-    return EQUIVALENT if _close(vx, vy, 1e-12) else DIFFERENT
+    if difference.is_zero is False:
+        return DIFFERENT
+    value = _value(difference, {})
+    if value is not None and not _close(value, 0, 1e-12):
+        return DIFFERENT
+    return Verdict("undecided", "the numeric difference could not be established")
 
 
 def _significant_figures(decimal):
@@ -575,7 +576,7 @@ def _significant_figures(decimal):
 
 
 def _half_unit(decimal):
-    return 0.5 * 10.0 ** -len(decimal.split(".")[1])
+    return Rational(1, 2 * 10 ** len(decimal.split(".")[1]))
 
 
 _C = Symbol("C")
@@ -612,7 +613,7 @@ def _differ_by_a_constant(fx, fy, clock):
             return DIFFERENT
         agreeing += 1
         if agreeing >= SAMPLES_NEEDED:
-            return EQUIVALENT
+            return _undecided_sampling()
     return _undecided_sampling()
 
 
@@ -620,24 +621,34 @@ def _compare_equations(expected, answer, clock):
     """Equal when one's `lhs - rhs` is a non-zero constant times the other's."""
     d1 = expected.lhs.expr - expected.rhs.expr
     d2 = answer.lhs.expr - answer.rhs.expr
-    ratio = _simplified(d1 / d2, clock)
-    if ratio is not None and ratio.is_number and ratio != 0 and ratio.is_finite:
+    s1, s2 = _simplified(d1, clock), _simplified(d2, clock)
+    if s1 is not None:
+        d1 = s1
+    if s2 is not None:
+        d2 = s2
+    if d1 == 0 and d2 == 0:
         return EQUIVALENT
-    sides = [expected.lhs.expr, expected.rhs.expr, answer.lhs.expr, answer.rhs.expr]
+    if d1 == 0 or d2 == 0:
+        if d1.is_zero is False or d2.is_zero is False:
+            return DIFFERENT
+    else:
+        ratio = _simplified(d1 / d2, clock)
+        if ratio is not None and ratio.is_number and ratio.is_zero is False and ratio.is_finite is True:
+            return EQUIVALENT
     first, agreeing = None, 0
-    for l1, r1, l2, r2 in _samples(sides, clock):
-        holds1, holds2 = _close(l1, r1), _close(l2, r2)
+    for v1, v2 in _samples([d1, d2], clock):
+        holds1, holds2 = _close(v1, 0), _close(v2, 0)
         if holds1 != holds2:
             return DIFFERENT
         if not holds1:
-            value = (l1 - r1) / (l2 - r2)
+            value = v1 / v2
             if first is None:
                 first = value
             elif not _close(value, first):
                 return DIFFERENT
         agreeing += 1
         if agreeing >= SAMPLES_NEEDED:
-            return EQUIVALENT
+            return _undecided_sampling()
     return _undecided_sampling()
 
 

@@ -34,7 +34,13 @@ export type FakeStep =
   | { text: string }
   | { call: string; input: unknown }
   /** A file or shell tool; Write and Edit name the file, relative to the working folder. */
-  | { builtIn: "Read" | "Write" | "Edit" | "Bash"; path?: string }
+  | {
+      builtIn: "Read" | "Write" | "Edit" | "Bash";
+      path?: string;
+      run_in_background?: boolean;
+      /** Holds a successful mutation open, to exercise concurrent tools. */
+      until?: Promise<void>;
+    }
   /** Waits until the turn is interrupted or the session closed. */
   | { hold: true };
 
@@ -148,6 +154,7 @@ export function createFakeBackend(
     let interrupted = false;
     let ended = false;
     let release: (() => void) | undefined;
+    const mutations = new Set<() => void>();
 
     async function* send(turn: EngineTurn): AsyncGenerator<BackendEvent> {
       received.push(turn);
@@ -170,14 +177,37 @@ export function createFakeBackend(
           yield { type: "text", text: step.text };
         } else if ("builtIn" in step) {
           yield { type: "tool_call", name: step.builtIn };
-          const result = builtIn(options, step.builtIn);
-          calls.push({ name: step.builtIn, input: step, result });
-          if (
-            result.status === "done" &&
-            step.path !== undefined &&
-            (step.builtIn === "Write" || step.builtIn === "Edit")
-          ) {
-            yield { type: "file_written", path: step.path };
+          const reservation = await builtIn(options, step);
+          if (interrupted || ended) {
+            reservation.release?.();
+            break;
+          }
+          if (reservation.release !== undefined) {
+            mutations.add(reservation.release);
+          }
+          const { result } = reservation;
+          try {
+            calls.push({ name: step.builtIn, input: step, result });
+            if (result.status === "done" && step.until !== undefined) {
+              const stopped = Promise.withResolvers<void>();
+              release = stopped.resolve;
+              await Promise.race([step.until, stopped.promise]);
+              release = undefined;
+            }
+            if (
+              result.status === "done" &&
+              !interrupted &&
+              !ended &&
+              step.path !== undefined &&
+              (step.builtIn === "Write" || step.builtIn === "Edit")
+            ) {
+              yield { type: "file_written", path: step.path };
+            }
+          } finally {
+            if (reservation.release !== undefined) {
+              reservation.release();
+              mutations.delete(reservation.release);
+            }
           }
         } else if ("call" in step) {
           yield { type: "tool_call", name: step.call };
@@ -213,6 +243,8 @@ export function createFakeBackend(
         ended = true;
         release?.();
         release = undefined;
+        for (const release of mutations) release();
+        mutations.clear();
       },
     };
   }
@@ -230,15 +262,32 @@ export function createFakeBackend(
   };
 }
 
-/** What a file or shell tool's call comes to: refused without the tools, or by the engine. */
-function builtIn(options: SessionOptions, name: string): ToolResult {
+/** Mirrors the real adapter's reservation, with no real file or command. */
+async function builtIn(
+  options: SessionOptions,
+  step: Extract<FakeStep, { builtIn: string }>,
+): Promise<{ result: ToolResult; release?: () => void }> {
   if (options.workspace === undefined) {
-    return { status: "refused", text: `No such tool: ${name}` };
+    return {
+      result: { status: "refused", text: `No such tool: ${step.builtIn}` },
+    };
   }
-  const reason = name === "Read" ? undefined : options.workspace.refusal();
-  return reason === undefined
-    ? { status: "done", text: `${name} ran.` }
-    : { status: "refused", text: reason };
+  if (step.builtIn === "Bash" && step.run_in_background === true) {
+    return {
+      result: {
+        status: "refused",
+        text: "Background commands are not allowed. Run the command in the foreground.",
+      },
+    };
+  }
+  const reservation =
+    step.builtIn === "Read" ? undefined : await options.workspace.acquire();
+  return reservation !== undefined && "refused" in reservation
+    ? { result: { status: "refused", text: reservation.refused } }
+    : {
+        result: { status: "done", text: `${step.builtIn} ran.` },
+        ...(reservation === undefined ? {} : { release: reservation.release }),
+      };
 }
 
 const STOP = Symbol("stopped");

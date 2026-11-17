@@ -1,7 +1,10 @@
 // Exercise the real adapter against an SDK boundary that keeps pending input
 // runnable after interrupt(), as SDKControlInterruptResponse documents. No model.
 
-import { chmod, mkdir, rm, stat } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type * as AgentSdk from "@anthropic-ai/claude-agent-sdk";
 import {
   createSdkMcpServer,
@@ -12,6 +15,7 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { expect, test, vi } from "vitest";
+import { sandboxPython } from "../sandbox-command.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import {
   type BackendEvent,
@@ -263,21 +267,31 @@ test("resuming that fails another way keeps its own error", async () => {
 const WORKSPACE = "/data/courses/vectors/workspace";
 
 /** Starts a new session on the stand-in query and returns the options it got. */
-async function optionsOf(given: Partial<SessionOptions>): Promise<Options> {
+async function sessionOptions(given: Partial<SessionOptions>) {
   startingQuery(Promise.resolve({}));
   const session = await createClaudeBackend().startSession({
     systemPrompt: "Test tutor.",
     tools: [askQuestionTool({ post: vi.fn() })],
     ...given,
   });
-  await session.close();
   const options = vi.mocked(query).mock.lastCall?.[0].options;
   if (options === undefined) throw new Error("query() was not called");
+  return { options, session };
+}
+
+async function optionsOf(given: Partial<SessionOptions>): Promise<Options> {
+  const { options, session } = await sessionOptions(given);
+  await session.close();
   return options;
 }
 
 /** A PreToolUse call of the hook the session was given, as Claude Code makes it. */
-async function preToolUse(options: Options, tool: string) {
+async function preToolUse(
+  options: Options,
+  tool: string,
+  id = "t1",
+  input: object = {},
+) {
   const [matcher] = options.hooks?.PreToolUse ?? [];
   const hook = matcher?.hooks[0];
   if (hook === undefined) throw new Error("no PreToolUse hook");
@@ -285,13 +299,13 @@ async function preToolUse(options: Options, tool: string) {
     {
       hook_event_name: "PreToolUse",
       tool_name: tool,
-      tool_input: {},
-      tool_use_id: "t1",
+      tool_input: input,
+      tool_use_id: id,
       session_id: "test",
       transcript_path: "",
       cwd: WORKSPACE,
     },
-    "t1",
+    id,
     { signal: new AbortController().signal },
   );
 }
@@ -303,7 +317,7 @@ test("a tutor's session gets the file and shell tools confined to its workspace:
   try {
     const options = await optionsOf({
       cwd: WORKSPACE,
-      workspace: { refusal: () => undefined },
+      workspace: { acquire: async () => ({ release() {} }) },
     });
 
     expect(options).toMatchObject({
@@ -334,6 +348,7 @@ test("a tutor's session gets the file and shell tools confined to its workspace:
     expect(options.disallowedTools).toBeUndefined();
     expect(options.env).not.toHaveProperty("ANTHROPIC_API_KEY");
     expect(options.env?.CLAUDE_CODE_TMPDIR).toBe(tmpDir);
+    expect(options.env?.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS).toBe("1");
     // One per course, under /tmp, made for this user alone.
     expect(tmpDir).toMatch(/^\/tmp\/gauss-[0-9a-f]{8}$/);
     expect(workspaceTmpDir("/data/courses/other/workspace")).not.toBe(tmpDir);
@@ -363,25 +378,30 @@ test("sessions without the file and shell tools, an intake's and a unit's planni
     createClaudeBackend().startSession({
       systemPrompt: "Test tutor.",
       tools: [],
-      workspace: { refusal: () => undefined },
+      workspace: { acquire: async () => ({ release() {} }) },
     }),
   ).rejects.toThrow("The file and shell tools need a working folder.");
 });
 
 test("before each write and command the engine is asked, and its reason refuses the call; reads are not asked about", async () => {
   let reason: string | undefined;
-  const refusal = vi.fn(() => reason);
+  const acquire = vi.fn(async () =>
+    reason === undefined ? { release() {} } : { refused: reason },
+  );
   const tmpDir = workspaceTmpDir(WORKSPACE);
   try {
-    const options = await optionsOf({ cwd: WORKSPACE, workspace: { refusal } });
+    const { options, session } = await sessionOptions({
+      cwd: WORKSPACE,
+      workspace: { acquire },
+    });
     expect(options.hooks?.PreToolUse?.[0]?.matcher).toBe("Write|Edit|Bash");
 
     for (const tool of ["Write", "Edit", "Bash"]) {
-      expect(await preToolUse(options, tool)).toEqual({});
+      expect(await preToolUse(options, tool, tool)).toEqual({});
     }
     reason = "Question 1 is open.";
     for (const tool of ["Write", "Edit", "Bash"]) {
-      expect(await preToolUse(options, tool)).toEqual({
+      expect(await preToolUse(options, tool, `denied-${tool}`)).toEqual({
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "deny",
@@ -390,11 +410,222 @@ test("before each write and command the engine is asked, and its reason refuses 
       });
     }
     expect(await preToolUse(options, "Read")).toEqual({});
-    expect(refusal).toHaveBeenCalledTimes(6);
+    expect(acquire).toHaveBeenCalledTimes(6);
+    await session.close();
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
 });
+
+async function postToolUse(
+  options: Options,
+  event: "PostToolUse" | "PostToolUseFailure",
+  id: string,
+) {
+  const hook = options.hooks?.[event]?.[0]?.hooks[0];
+  if (hook === undefined) throw new Error(`no ${event} hook`);
+  const common = {
+    tool_name: "Bash",
+    tool_input: {},
+    tool_use_id: id,
+    session_id: "test",
+    transcript_path: "",
+    cwd: WORKSPACE,
+  };
+  return hook(
+    event === "PostToolUse"
+      ? { ...common, hook_event_name: event, tool_response: {} }
+      : { ...common, hook_event_name: event, error: "Command failed." },
+    id,
+    { signal: new AbortController().signal },
+  );
+}
+
+test("concurrent mutations remain reserved until their own success or failure, even after close, and background Bash never starts", async () => {
+  const releases = [vi.fn(), vi.fn(), vi.fn()];
+  let next = 0;
+  const acquire = vi.fn(async () => {
+    const release = releases[next++];
+    if (release === undefined) throw new Error("Unexpected mutation.");
+    return { release };
+  });
+  const { options, session } = await sessionOptions({
+    cwd: WORKSPACE,
+    workspace: { acquire },
+  });
+  try {
+    expect(options.hooks?.PreToolUse?.[0]?.onFailure).toBe("block");
+    expect(options.hooks?.PostToolUse?.[0]?.onFailure).toBe("block");
+    expect(options.hooks?.PostToolUseFailure?.[0]?.onFailure).toBe("block");
+    expect(
+      await preToolUse(options, "Bash", "background", {
+        command: "sleep 1; echo late > hint.py",
+        run_in_background: true,
+      }),
+    ).toMatchObject({
+      hookSpecificOutput: {
+        permissionDecision: "deny",
+        permissionDecisionReason: expect.stringContaining(
+          "Background commands are not allowed",
+        ),
+      },
+    });
+    expect(acquire).not.toHaveBeenCalled();
+    await Promise.all([
+      preToolUse(options, "Bash", "command"),
+      preToolUse(options, "Write", "write"),
+      preToolUse(options, "Edit", "edit"),
+    ]);
+    expect(acquire).toHaveBeenCalledTimes(3);
+    for (const release of releases) expect(release).not.toHaveBeenCalled();
+    await postToolUse(options, "PostToolUse", "write");
+    expect(releases[1]).toHaveBeenCalledTimes(1);
+    expect(releases[0]).not.toHaveBeenCalled();
+    expect(releases[2]).not.toHaveBeenCalled();
+    await postToolUse(options, "PostToolUseFailure", "command");
+    expect(releases[0]).toHaveBeenCalledTimes(1);
+    expect(releases[2]).not.toHaveBeenCalled();
+    await session.close();
+    expect(releases[2]).not.toHaveBeenCalled();
+    await postToolUse(options, "PostToolUseFailure", "edit");
+    expect(releases[2]).toHaveBeenCalledTimes(1);
+  } finally {
+    await session.close();
+    await rm(workspaceTmpDir(WORKSPACE), { recursive: true, force: true });
+  }
+  for (const release of releases) expect(release).toHaveBeenCalledTimes(1);
+});
+
+test("a permission-denied write releases only its unstarted mutation without retaining the course lock", async () => {
+  const denied = vi.fn();
+  const running = vi.fn();
+  const acquire = vi
+    .fn()
+    .mockResolvedValueOnce({ release: denied })
+    .mockResolvedValueOnce({ release: running });
+  const { options, session } = await sessionOptions({
+    cwd: WORKSPACE,
+    workspace: { acquire },
+  });
+  try {
+    await preToolUse(options, "Write", "outside", {
+      file_path: "/outside/hint.py",
+    });
+    await preToolUse(options, "Bash", "running");
+    const matcher = options.hooks?.PermissionDenied?.[0];
+    expect(matcher?.onFailure).toBe("block");
+    const hook = matcher?.hooks[0];
+    if (hook === undefined) throw new Error("no PermissionDenied hook");
+    const input = {
+      hook_event_name: "PermissionDenied" as const,
+      tool_name: "Write",
+      tool_input: { file_path: "/outside/hint.py" },
+      tool_use_id: "outside",
+      reason: "Writing outside the working directory is denied.",
+      session_id: "test",
+      transcript_path: "",
+      cwd: WORKSPACE,
+    };
+    expect(
+      await hook(input, "outside", {
+        signal: new AbortController().signal,
+      }),
+    ).toEqual({});
+    expect(denied).toHaveBeenCalledTimes(1);
+    expect(running).not.toHaveBeenCalled();
+    await postToolUse(options, "PostToolUseFailure", "outside");
+    expect(denied).toHaveBeenCalledTimes(1);
+    await postToolUse(options, "PostToolUse", "running");
+    expect(running).toHaveBeenCalledTimes(1);
+  } finally {
+    await session.close();
+    await rm(workspaceTmpDir(WORKSPACE), { recursive: true, force: true });
+  }
+});
+
+test("a failed safety hook blocks execution, and closing during an asynchronous reservation releases it without allowing the tool", async () => {
+  const pending = Promise.withResolvers<{ release(): void }>();
+  const release = vi.fn();
+  const acquire = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("State could not be read."))
+    .mockReturnValueOnce(pending.promise);
+  const { options, session } = await sessionOptions({
+    cwd: WORKSPACE,
+    workspace: { acquire },
+  });
+  try {
+    expect(options.hooks?.PreToolUse?.[0]?.onFailure).toBe("block");
+    await expect(preToolUse(options, "Bash", "failure")).rejects.toThrow(
+      "State could not be read.",
+    );
+    const starting = preToolUse(options, "Write", "pending");
+    await session.close();
+    pending.resolve({ release });
+    expect(await starting).toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny" },
+    });
+    expect(release).toHaveBeenCalledTimes(1);
+  } finally {
+    pending.resolve({ release });
+    await session.close();
+    await rm(workspaceTmpDir(WORKSPACE), { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform !== "linux")(
+  "an approved Bash input runs through the workload filter and cannot create Unix socketpairs",
+  async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "gauss-sdk-command-"));
+    const release = vi.fn();
+    const { options, session } = await sessionOptions({
+      cwd,
+      workspace: { acquire: async () => ({ release }) },
+    });
+    const program = [
+      "import socket",
+      "try:",
+      "    socket.socketpair()",
+      '    print("escaped")',
+      "except OSError as error:",
+      "    print(error.errno)",
+    ].join("\n");
+    const command = `'${sandboxPython.replaceAll("'", `'\\''`)}' -I -c '${program.replaceAll("'", `'\\''`)}'`;
+    const input = {
+      command,
+      timeout: 1000,
+      description: "Check Unix socketpair confinement.",
+    };
+    try {
+      const output = await preToolUse(options, "Bash", "guarded", input);
+      expect(output).toMatchObject({
+        hookSpecificOutput: {
+          permissionDecision: "allow",
+          updatedInput: { timeout: 1000, description: input.description },
+        },
+      });
+      if (
+        !("hookSpecificOutput" in output) ||
+        output.hookSpecificOutput?.hookEventName !== "PreToolUse"
+      ) {
+        throw new Error("The Bash input was not guarded.");
+      }
+      const guarded = output.hookSpecificOutput.updatedInput?.command;
+      if (typeof guarded !== "string") throw new Error("No guarded command.");
+      expect(
+        execFileSync("bash", ["-c", guarded], { cwd, encoding: "utf8" }),
+      ).toBe("1\n");
+      expect(input.command).toBe(command);
+      expect(release).not.toHaveBeenCalled();
+      await postToolUse(options, "PostToolUse", "guarded");
+      expect(release).toHaveBeenCalledTimes(1);
+    } finally {
+      await session.close();
+      await rm(workspaceTmpDir(cwd), { recursive: true, force: true });
+      await rm(cwd, { recursive: true, force: true });
+    }
+  },
+);
 
 test("a temporary folder another user could reach refuses the session", async () => {
   const cwd = "/data/courses/shared/workspace";
@@ -408,7 +639,7 @@ test("a temporary folder another user could reach refuses the session", async ()
         systemPrompt: "Test tutor.",
         tools: [],
         cwd,
-        workspace: { refusal: () => undefined },
+        workspace: { acquire: async () => ({ release() {} }) },
       }),
     ).rejects.toThrow(
       `The tutor's temporary folder ${tmpDir} is not closed to other users.`,

@@ -35,6 +35,7 @@ import {
   tool,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { sandboxCommand } from "../sandbox-command.ts";
 import {
   type BackendEvent,
   checkReply,
@@ -199,7 +200,11 @@ function workspaceOptions(cwd: string, tmpDir: string): Options {
       ...ISOLATED_SETTINGS,
       permissions: { blockWritesOutsideWorkingDirectories: true },
     },
-    env: { ...sdkEnvironment(process.env), CLAUDE_CODE_TMPDIR: tmpDir },
+    env: {
+      ...sdkEnvironment(process.env),
+      CLAUDE_CODE_TMPDIR: tmpDir,
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+    },
   };
 }
 
@@ -362,6 +367,8 @@ async function startSession(
   }
   const inbox = createInbox();
   let interruptRequested = false;
+  let closed = false;
+  const mutations = new Map<string, () => void>();
 
   // A teaching tool asks for the end of the turn through its result; the
   // PostToolUse hook carries it out (task 0.3). A refused call leaves the
@@ -390,7 +397,16 @@ async function startSession(
       },
     ),
   );
-  const endTurn: HookCallback = async () => {
+  const endTurn: HookCallback = async (input) => {
+    if (
+      input.hook_event_name === "PostToolUse" ||
+      input.hook_event_name === "PostToolUseFailure" ||
+      input.hook_event_name === "PermissionDenied"
+    ) {
+      mutations.get(input.tool_use_id)?.();
+      mutations.delete(input.tool_use_id);
+    }
+    if (input.hook_event_name === "PermissionDenied") return {};
     if (interruptRequested) {
       return { continue: false, stopReason: "The learner stopped this turn." };
     }
@@ -406,20 +422,61 @@ async function startSession(
       : {};
   // The engine refuses writes and commands by phase, as it refuses teaching
   // tools; the reason goes to the model as the call's result.
-  const askEngine: HookCallback = async (input) => {
+  const askEngine: HookCallback = async (input, _id, { signal }) => {
     if (input.hook_event_name !== "PreToolUse") return {};
     if (!CHANGES.has(input.tool_name)) return {};
-    const reason = interruptRequested
-      ? "The learner stopped this turn."
-      : workspace?.refusal();
-    if (reason === undefined) return {};
-    return {
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: reason,
-      },
-    };
+    let reason: string | undefined;
+    if (interruptRequested || closed) {
+      reason = "The learner stopped this turn.";
+    } else if (
+      input.tool_name === "Bash" &&
+      typeof input.tool_input === "object" &&
+      input.tool_input !== null &&
+      "run_in_background" in input.tool_input &&
+      input.tool_input.run_in_background === true
+    ) {
+      reason =
+        "Background commands are not allowed. Run the command in the foreground.";
+    } else if (workspace !== undefined) {
+      const reservation = await workspace.acquire();
+      if ("refused" in reservation) {
+        reason = reservation.refused;
+      } else if (closed || interruptRequested || signal.aborted) {
+        reservation.release();
+        reason = "The learner stopped this turn.";
+      } else {
+        mutations.set(input.tool_use_id, reservation.release);
+      }
+    }
+    if (reason !== undefined) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: reason,
+        },
+      };
+    }
+    if (
+      process.platform === "linux" &&
+      input.tool_name === "Bash" &&
+      typeof input.tool_input === "object" &&
+      input.tool_input !== null &&
+      "command" in input.tool_input &&
+      typeof input.tool_input.command === "string"
+    ) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+          updatedInput: {
+            ...input.tool_input,
+            command: `exec ${sandboxCommand(["bash", "-c", input.tool_input.command])}`,
+          },
+        },
+      };
+    }
+    return {};
   };
 
   const session = query({
@@ -440,9 +497,17 @@ async function startSession(
         ...(workspace === undefined
           ? {}
           : {
-              PreToolUse: [{ matcher: "Write|Edit|Bash", hooks: [askEngine] }],
+              PreToolUse: [
+                {
+                  matcher: "Write|Edit|Bash",
+                  hooks: [askEngine],
+                  onFailure: "block",
+                },
+              ],
+              PostToolUseFailure: [{ hooks: [endTurn], onFailure: "block" }],
+              PermissionDenied: [{ hooks: [endTurn], onFailure: "block" }],
             }),
-        PostToolUse: [{ hooks: [endTurn] }],
+        PostToolUse: [{ hooks: [endTurn], onFailure: "block" }],
       },
       includePartialMessages: true,
     },
@@ -456,6 +521,7 @@ async function startSession(
     } catch (error) {
       inbox.close();
       session.close();
+      closed = true;
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes(NOT_FOUND)) {
         throw new SessionNotFound(options.resumeId);
@@ -497,11 +563,14 @@ async function startSession(
           await session.interrupt();
         }
       } catch (error) {
+        closed = true;
+        session.close();
         finished = error instanceof Error ? error.message : String(error);
         yield { type: "turn_end", outcome: "error", error: finished };
         return;
       }
       if (next.done === true) {
+        closed = true;
         finished = "The Claude session ended.";
         yield { type: "turn_end", outcome: "error", error: finished };
         return;
@@ -528,8 +597,12 @@ async function startSession(
       await session.interrupt();
     },
     async close() {
+      closed = true;
       inbox.close();
       session.close();
+      // close() only starts the SDK's asynchronous shutdown. A missing
+      // completion hook must leave its lease held, not permit a question
+      // while command descendants may still be alive.
     },
   };
 }

@@ -49,7 +49,7 @@ Gauss/
       http/             routes, event stream
       sources/          (stage 4) ingestion, quote verification
     web/                React app: library, intake, course, session, "what I know"
-  pytools/              uv project; (stage 3) mathcheck.py, (stage 4) convert.py
+  pytools/              sandbox_exec.py (Linux workload filter), mathcheck.py; (stage 4) convert.py
   scripts/              dev-fake.ts (no model); grade-set.ts and judge-set.ts with their sets (real model)
   mise.toml             pinned node, pnpm, python, uv
 ```
@@ -356,9 +356,11 @@ check `serve.ts` makes at start; otherwise it has no built-in tools), with
 the course's `workspace/` as its working folder. Its file tools write only
 there, its commands run in a sandbox with no network that writes only there
 and in a temporary folder of the course's, and the record, outside the
-workspace, is closed to its writes (`decisions.md`, "Confinement"). The engine refuses its writes and commands while a
-question is open, with the reason, as it refuses teaching tools out of
-phase; reads stay allowed. Web search, where a course allows it, comes
+workspace, is closed to its writes (`decisions.md`, "Confinement"). An open
+question in any unit of a course blocks every tutor's workspace changes,
+including after restart. Commands run in the foreground, and posting a
+question is refused while a write or command still runs. Reads stay allowed.
+Web search, where a course allows it, comes
 with sources (stage 4).
 
 ## 6. Grading
@@ -393,7 +395,8 @@ with sources (stage 4).
   reads, writes and counts as equal, and `decisions.md`, "Symbolic check",
   why) takes the expected expression and the answer as JSON, LaTeX or
   plain, and writes equivalent, different, unparsable (which side, and
-  why), or undecided (read, but not settled in its time). It reads plain
+  why), or undecided (read, but not proved within its limits). Sampling can
+  find a counterexample but never certify equivalence. It reads plain
   input by rewriting it to LaTeX for SymPy's parser, so no input is
   evaluated as Python. Without an answer it only reads the expected side.
   It runs with the venv's own Python (`pytools/.venv/bin/python
@@ -404,10 +407,14 @@ with sources (stage 4).
   `engine/sandbox.ts`, on `@anthropic-ai/sandbox-runtime`: no network,
   writes only to the folders the caller names and to the command's own
   `$TMPDIR`, removed when it ends, a time limit that stops the command with
-  everything it started, and the last bytes of each output stream kept.
-  Reads and the server's environment are not confined (`decisions.md`,
-  "Confinement"). The server starts the sandbox once (`serve.ts`); when it
-  cannot run, it says once what is missing, and nothing that needs it
+  everything it started, and each decoded output stream kept within its byte
+  limit. On Linux, `pytools/sandbox_exec.py` adds an inherited seccomp filter
+  to commands (engine and tutor), using the project's venv Python, closing
+  the runtime's Unix-socket-pair route to host services. Reads and the server's
+  environment are not confined (`decisions.md`, "Confinement"). The server
+  starts the sandbox once (`serve.ts`) and probes both Unix-socket creation
+  routes; when it cannot run safely, it says once what is missing, and
+  nothing that needs it
   runs. (stage 3) Installing packages (section 5) runs there too, with the
   network open to the package index.
 - (stage 3) **Disputes.** Every graded answer can be disputed once. The

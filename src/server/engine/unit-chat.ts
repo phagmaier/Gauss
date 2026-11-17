@@ -70,7 +70,7 @@ import {
   type WrittenQuestion,
 } from "../../shared/question.ts";
 import type { OpenQuestion, Phase } from "../../shared/state.ts";
-import type { TutorBackend } from "../backends/backend.ts";
+import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
@@ -218,6 +218,16 @@ export function createUnitChats(options: ChatOptions): UnitChats {
   const chats = new Map<string, OpenableChat>();
   const key = (courseId: string, unitId: string) =>
     JSON.stringify([courseId, unitId]);
+  const courses = new Map<string, CourseWorkspace>();
+
+  function workspace(courseId: Slug) {
+    let guard = courses.get(courseId);
+    if (guard === undefined) {
+      guard = courseWorkspace(dataRoot, courseId);
+      courses.set(courseId, guard);
+    }
+    return guard;
+  }
 
   return {
     async open(courseId, unitId) {
@@ -243,7 +253,12 @@ export function createUnitChats(options: ChatOptions): UnitChats {
       // unit share one chat.
       let chat = chats.get(key(courseId, unitId));
       if (chat === undefined) {
-        chat = createUnitChat({ ...options, courseId, unitId });
+        chat = createUnitChat({
+          ...options,
+          courseId,
+          unitId,
+          workspace: workspace(courseId),
+        });
         chats.set(key(courseId, unitId), chat);
       }
       chat.open();
@@ -252,6 +267,61 @@ export function createUnitChats(options: ChatOptions): UnitChats {
     get: (courseId, unitId) => chats.get(key(courseId, unitId)),
     async close() {
       await Promise.allSettled([...chats.values()].map((c) => c.close()));
+    },
+  };
+}
+
+interface CourseWorkspace {
+  tools: WorkspaceTools;
+  post<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
+}
+
+/**
+ * The course's mutation reservations and question commits share one queue.
+ * Never enter a chat's queue from here: teaching tools already hold it.
+ */
+function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
+  const exclusive = createSerial();
+  let active = 0;
+  const tools: WorkspaceTools = {
+    acquire: () =>
+      exclusive(async () => {
+        const state = await dataRoot.readState(courseId);
+        for (const position of Object.values(state.units)) {
+          const open = position.openQuestion;
+          if (open === undefined) continue;
+          return {
+            refused:
+              `Question ${open.number} is open: no file may be written and no ` +
+              "command run until its answer is graded, since a change could help " +
+              "with the answer. You may still read files.",
+          };
+        }
+        active += 1;
+        let released = false;
+        return {
+          release() {
+            if (released) return;
+            released = true;
+            active -= 1;
+          },
+        };
+      }),
+  };
+  return {
+    tools,
+    post<T>(work: () => Promise<T>): Promise<T | { refused: string }> {
+      return exclusive(async () => {
+        if (active > 0) {
+          return {
+            refused:
+              "A file write or command has not been confirmed finished in this course. " +
+              "Wait for completion before posting a question. If its session closed " +
+              "without a completion report, restart the server.",
+          };
+        }
+        return work();
+      });
     },
   };
 }
@@ -279,7 +349,11 @@ interface Running {
 }
 
 function createUnitChat(
-  options: ChatOptions & { courseId: Slug; unitId: Slug },
+  options: ChatOptions & {
+    courseId: Slug;
+    unitId: Slug;
+    workspace: CourseWorkspace;
+  },
 ): OpenableChat {
   const { dataRoot, planner, courseId, unitId } = options;
   const now = options.now ?? (() => new Date());
@@ -339,7 +413,7 @@ function createUnitChat(
         tools: [askQuestionTool(questionBoard)],
         cwd: await dataRoot.workspaceFolder(courseId),
         ...(options.workspaceTools === true
-          ? { workspace: { refusal: changeRefusal } }
+          ? { workspace: options.workspace.tools }
           : {}),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
         keep: (id) => exclusive(() => record.keepSession(id)),
@@ -858,27 +932,18 @@ function createUnitChat(
                 ? reorder(posted, order(posted.choices.length))
                 : posted,
           };
-          await r.record.move({ ...position, openQuestion: open });
-          log.emit({ type: "question", question: view(open) });
-          return { id: open.id, number: open.number, question: open.question };
+          return options.workspace.post(async () => {
+            await r.record.move({ ...position, openQuestion: open });
+            log.emit({ type: "question", question: view(open) });
+            return {
+              id: open.id,
+              number: open.number,
+              question: open.question,
+            };
+          });
         },
       ),
   };
-
-  /**
-   * Why the tutor may not write a file or run a command now, if it may not:
-   * a question is open, and a change could help with its answer (the help
-   * judge sees only the reply's text). Reads stay allowed.
-   */
-  function changeRefusal(): string | undefined {
-    const open = running?.record.position.openQuestion;
-    if (open === undefined) return undefined;
-    return (
-      `Question ${open.number} is open: no file may be written and no ` +
-      "command run until its answer is graded, since a change could help " +
-      "with the answer. You may still read files."
-    );
-  }
 
   // --- What the learner does -------------------------------------------------
 

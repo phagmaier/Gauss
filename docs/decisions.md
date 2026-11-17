@@ -368,16 +368,19 @@ isolation options, kept every write inside `dir`:
   protection the runtime adds would be ours to get right), and running
   tests through a tutor session, which puts a model between the test and
   the grade.
-- **The engine's sandbox as built** (`engine/sandbox.ts`, runtime 0.0.83,
-  seen in task 3.2). A command gets a network namespace of its own whose
-  one way out is the runtime's proxy: a server on the machine was refused
-  both directly and by the proxy (403). Without a network section the
-  runtime does not start, so the network cannot be left open by omission.
-  One run's hosts open through `registerCommandNetworkLists`, under an id
-  of 128 random bits (not tried). A child moved to a session of its own
-  stopped at the time limit (bubblewrap's PID namespace), and a server
-  killed with SIGKILL took its commands with it (`--die-with-parent`). The
-  paths the runtime leaves writable unasked are closed in `configFor`.
+- **The engine's sandbox** (`engine/sandbox.ts`, runtime 0.0.83). The network
+  namespace and proxy refuse direct TCP connections and proxy requests.
+  Without a network section the runtime does not start. A child moved to a
+  session of its own stops at the time limit (the PID namespace), and a
+  server killed with SIGKILL takes its commands with it (`--die-with-parent`).
+  The runtime's unasked writable paths are closed in `configFor`.
+- **Linux commands need an extra workload filter** (the agent's choice).
+  Runtime 0.0.83 blocks `socket(AF_UNIX)` but permits `socketpair`; a
+  datagram endpoint was reconnected to a scratch host socket. Engine and
+  tutor commands therefore use `pytools/sandbox_exec.py` inside the runtime,
+  stacking an inherited seccomp filter before exec. The existing venv Python
+  avoids a compiler or vendored native binary. Startup probes both routes
+  and refuses tools if either remains open; unsupported Linux ABIs fail closed.
 - **Each engine command has its own `$TMPDIR`**, removed when it ends (the
   agent's choice). The runtime points `TMPDIR` at `/tmp/claude`, shared by
   every sandboxed command, which the module closes; with no writable
@@ -396,13 +399,16 @@ isolation options, kept every write inside `dir`:
   Python packages through uv only; names checked to be package names (no
   URL, path or option); wheels only, so that no package's build script
   runs; the network open to the package index alone.
-- **Writes and commands are refused while a question is open**, as
-  `show_artifact` is: the tutor could fix the learner's code, and the help
-  judge sees only the reply's text. Reads stay allowed, so the tutor can
-  look at the code to clarify the question. Only then (task 3.3, the
-  agent's choice): the feedback turn, in which no teaching tool may be
-  called, leaves them allowed, since writing the next exercise's starter
-  code there does no harm that has been seen.
+- **An open question locks the course's whole workspace**, as it does
+  `show_artifact`: another unit shares those files, and the help judge sees
+  only the reply's text. The guard reads all persisted positions, not just
+  opened chats. Mutations reserve the workspace until confirmed completion
+  or permission denial, and question posting shares that reservation queue.
+  Missing completion reports keep the course locked even when a session
+  closes: SDK shutdown is asynchronous; restart is the recovery path.
+  Background Bash is refused and SDK backgrounding disabled, so a running
+  command cannot cross question posting (the agent's choice). Reads stay
+  allowed. The feedback turn may write when no question is open in the course.
 - **Reads are not confined**: sandboxed commands can read most of the
   machine, credential files included, and the engine's commands get the
   server's environment. The sandbox's network is closed (a `curl` refused,
@@ -864,30 +870,34 @@ header states the rules; the pairs that settled them are its tests.
   (most people typing `1/2x` mean x/2, the parser reads 1/(2x)),
   derivative notation (`dy/dx` would read as y/x), inequalities, points and
   intervals, sums, integrals and limits.
-- **Equality**: `simplify(a - b) == 0`, else values at real points in
-  [-3, 3], computed to 30 digits as complex numbers: any point that differs
-  by more than 1e-9 relative makes them different, six that agree make them
-  equivalent, points where a side is undefined are skipped. So `\ln(x^2)`
-  and `2\ln|x|` match and `\ln|x|` and `\ln x` do not; identities that hold
-  only for integers (`(-1)^n` and `\cos(\pi n)`) are not seen.
+- **Equality requires a symbolic proof** (the agent's choice). A zero
+  simplified difference proves equality; sampling can only disprove it.
+  Agreement leaves the result undecided for the grader. Six values in
+  [-3, 3] cannot distinguish `x+4` from `|x+4|`, and the fixed rational
+  sample lattice aliases periodic expressions. Sampling is retained only as
+  a bounded counterexample search, never as a certificate, including for
+  equations and constants of integration.
 - **Numbers**: a decimal of at least three significant figures matches a
-  value within half a unit of its last digit, that is, correctly rounded:
-  0.333 for 1/3, not 0.33 or 0.334. Rejected: a fixed relative tolerance
-  (WeBWorK's 0.1%), under which 3.14 passes for π but 1.41 fails for √2.
-  An exact rational difference settles "different" where floating point
-  cannot (2^2000 and 2^2000 + 1).
+  value within exactly half a unit of its last digit, that is, correctly
+  rounded: 0.333 for 1/3, not 0.33 or 0.334. Compare the exact difference to
+  that exact bound: converting the sides to machine floats can erase the
+  difference. Proven nonzero differences, irrational ones included, are
+  different unless the decimal allowance applies. No fixed relative
+  tolerance may certify equality.
 - **`+ C`** as a term on both sides is a constant of integration, so the
   sides may differ by a constant: antiderivatives found by different routes
   differ so. A `C` that multiplies (`Ce^x`) is an ordinary variable.
-- **Equations** match up to a non-zero constant factor. `x = 2` against `2`
-  compares the value; any other equation against an expression is
+- **Equations** match through a proven non-zero constant ratio of their
+  residuals; tautologies are distinguished explicitly. An equation with a
+  lone variable on one side compares as a value only if that variable does
+  not occur on its other side. Other equation/expression pairs are
   undecided, for the grader to read.
 - **"Undecided"** is a result beside equivalent, different and unparsable:
   the sides read, but the check could not settle them in time or could not
   evaluate them. The grader decides it, as it does an unparsable answer.
 - **Time**: 8 seconds for the comparison, each simplification cut off at 2
-  by an alarm, after which sample points decide (a simplification of about
-  3 seconds ended at 2 in the engine's sandbox). The alarm raises a
+  by an alarm, after which sample points may find a counterexample, otherwise
+  leaving it undecided. The alarm raises a
   `BaseException`, which SymPy's `except Exception` does not catch. A
   number above 10^100000 is refused when read: Python's exact power runs in
   C, where no alarm stops it. In the engine's sandbox with nothing writable

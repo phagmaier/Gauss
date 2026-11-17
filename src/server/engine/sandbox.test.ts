@@ -174,6 +174,32 @@ describe("the network", () => {
     expect(result.stdout).toMatch(/^proxy: 403$/m);
     expect(requests).toBe(1);
   });
+
+  test("refuses Unix socket pairs inherited through exec, including reconnectable datagram endpoints", async () => {
+    const result = await sandbox.run({
+      argv: [
+        "python",
+        "-I",
+        "-c",
+        `import errno, socket
+for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+    try:
+        socket.socketpair(socket.AF_UNIX, kind)
+    except OSError as error:
+        assert error.errno == errno.EPERM, error
+        print("blocked")
+    else:
+        raise AssertionError("Unix socket pair allowed")
+`,
+      ],
+      cwd: work,
+      writable: [],
+      timeLimitMs: 10_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("blocked\nblocked\n");
+  });
 });
 
 describe("the time limit", () => {
@@ -236,6 +262,30 @@ describe("output over the limit", () => {
     });
 
     expect(result.stdout).toBe("é".repeat(50));
+  });
+
+  test.each([
+    [4, "�"],
+    [2, ""],
+    [0, ""],
+  ])("keeps decoded invalid UTF-8 within %i bytes", async (limit, expected) => {
+    const result = await sandbox.run({
+      argv: [
+        process.execPath,
+        "-e",
+        "process.stdout.write(Buffer.alloc(4, 255)); process.stderr.write(Buffer.alloc(4, 255))",
+      ],
+      cwd: work,
+      writable: [],
+      timeLimitMs: 10_000,
+      outputLimit: limit,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe(expected);
+    expect(result.stderr).toBe(expected);
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(limit);
+    expect(result.cut).toBe(true);
   });
 });
 
