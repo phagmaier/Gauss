@@ -9,11 +9,16 @@ export interface SessionOptions {
   /** The teaching tools this session may call. */
   tools: TeachingTool[];
   /**
-   * The folder the session works in: its course's, or for an intake the
-   * intakes' folder. A session given one is kept, so it can be resumed by
-   * its id; one without is not kept.
+   * The folder the session works in: its course's workspace, or for an
+   * intake the intakes' folder. A session given one is kept, so it can be
+   * resumed by its id; one without is not kept.
    */
   cwd?: string;
+  /**
+   * Gives the session the file and shell tools, confined to `cwd`, which it
+   * must have: a tutor's (task 3.3). Absent: no built-in tools.
+   */
+  workspace?: WorkspaceTools;
   /**
    * The id of a kept session to resume, in the folder it ran in. Its
    * conversation goes on, and the system prompt given here replaces the one
@@ -26,6 +31,21 @@ export interface SessionOptions {
    * request of its own. A resumed session keeps the title it has.
    */
   title?: string;
+}
+
+/**
+ * The file and shell tools (Read, Glob, Grep, Write, Edit, Bash). The
+ * session reads files anywhere, writes files only in its working folder, and
+ * runs commands in a sandbox with no network that writes only there and in a
+ * temporary folder of the course's (decisions.md, "Confinement").
+ */
+export interface WorkspaceTools {
+  /**
+   * Asked before each write and each command. A reason refuses the call and
+   * is given to the model, as a refused teaching tool's is; undefined lets
+   * it run. Reads are never asked about.
+   */
+  refusal(): string | undefined;
 }
 
 /**
@@ -50,6 +70,11 @@ export type BackendEvent =
   | { type: "text"; text: string }
   /** The tutor called a tool: a teaching tool by its own name, or a built-in one. */
   | { type: "tool_call"; name: string }
+  /**
+   * A file tool wrote a file: its path relative to the working folder, or
+   * absolute outside it. Only after the write succeeded.
+   */
+  | { type: "file_written"; path: string }
   /** The last event of every turn. */
   | {
       type: "turn_end";

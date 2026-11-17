@@ -35,47 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.3 The tutor's file and shell tools
-
-- Status: todo
-- Depends on: 3.2
-- Why: the tutor must write starter code and read the learner's work, and
-  its shell runs on the learner's machine. The option set in
-  `decisions.md`, "Confinement", confined writes in throwaway runs but has
-  never run in Gauss.
-- Do: every tutor session gets `Read`, `Glob`, `Grep`, `Write`, `Edit` and
-  `Bash` (the planner, the unit planner and one-shot calls get none), with
-  the course's `workspace/` (made when first needed) as its working
-  directory, the confinement options with an `Edit` allow rule for the
-  workspace only, and `CLAUDE_CODE_TMPDIR` a private folder per course
-  under `/tmp` that fits Claude Code's 44-byte limit ("Confinement"). Only
-  when 3.2's start check passes (the `available` of the sandbox
-  `serve.ts` starts); otherwise tutors get no built-in tools.
-  The engine refuses built-in calls by phase, as it refuses teaching
-  tools: `Write`, `Edit` and `Bash` while a question is open, with a
-  reason the tutor can act on (asked through a hook in the backend; the
-  engine stays free of the SDK). The thread shows a line for each file
-  the tutor writes, with its path in the workspace (piece 14). Try
-  `blockReadsOutsideWorkingDirectories`: keep it if `python` and `uv run`
-  still work in the workspace, otherwise record why and leave reads to
-  4.0; either way update 4.0's item on reads.
-- Done when: unit tests cover the options a tutor session gets (working
-  folder, allow rule, temporary folder within the limit) and those the
-  other sessions get, the refusal while a question is open, and the
-  thread's line. A throwaway script on Haiku 5.5 and a scratch data root
-  starts a tutor session through the backend with a probe prompt, and
-  shows: a file written in the workspace; `state.json` and
-  `evidence.jsonl` left unchanged by `Write` and by a shell command;
-  writes to the home folder and `/tmp` refused; `$TMPDIR` in a command is
-  the private folder; `python -c 'print(1)'` runs in the workspace.
-  `mise run check` passes.
-- Note: a unit in progress has its kept session in the course folder, and
-  a session resumes only in the folder it ran in, so each such unit
-  starts fresh once (the fallback in `architecture.md` section 4); say so
-  in the report. Update section 11's path to the session logs. See what
-  Claude Code leaves in the workspace (a `.claude/` folder was seen in
-  stage 0) and decide whether the learner should see it.
-
 ### 3.4 The symbolic check
 
 - Status: todo
@@ -178,6 +137,9 @@ its outcome.
   (`registerCommandNetworkLists`, `decisions.md`, "Confinement";
   `engine/sandbox.ts` has no option for it yet). `tutor.md`
   gets the lines the tutor needs; the scripted backend asks for a package.
+  The backup commits `courses/`, and so the workspace (`record/backup.ts`):
+  keep the venv out of it, and decide whether the learner's files belong
+  in the record's history.
 - Done when: tests with the command's run faked cover the tool (a name
   refused, refused while a question is open, the request kept across a
   restart, each answer in the tutor's next header) and the command built
@@ -349,8 +311,12 @@ a detour, a unit gate, generated notes and an exported transcript.
   - quotes: until this stage a course quotes nothing verbatim from memory
     (`tutor.md`, "Quotations"); with a source, `quote_source` verifies
     them, and the rule changes;
-  - reads are not confined, so sandboxed commands can read most of the
-    machine: settle it before the tutor gets web access;
+  - reads are not confined: sandboxed commands, the tutor's and the
+    engine's, can read most of the machine. `blockReadsOutsideWorkingDirectories`
+    hides the home folder, where mise keeps `python` and `uv`, and let a
+    command read beside the workspace (`decisions.md`, "Confinement");
+    the sandbox's own read rules are untried. Settle it before the tutor
+    gets web access;
   - the account's email address reaches every Claude session
     (`decisions.md`, "Claude backend"): with web access, a request could
     carry it, as it could anything else in the context;

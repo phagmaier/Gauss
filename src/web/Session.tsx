@@ -568,6 +568,15 @@ function ThreadItem(props: {
       );
     case "note":
       return <p className="ph-note">{item.text}</p>;
+    case "file":
+      return (
+        <p className="fw">
+          {FILE_ICON}
+          <span>
+            The tutor wrote <code>{item.path}</code>
+          </span>
+        </p>
+      );
     case "judgment": {
       const { text, tone } = judgmentSays(item);
       return (
@@ -669,6 +678,23 @@ function ThreadItem(props: {
       return null;
   }
 }
+
+/** A file's outline, for the line of each file the tutor writes (piece 14). */
+const FILE_ICON = (
+  <svg
+    width="15"
+    height="15"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M4 1.8h5.2L12.5 5v9.2H4z" />
+    <path d="M9 1.8V5.2h3.5" />
+  </svg>
+);
 
 /** The closing card (mock 10), shrunk to one line once a step is taken. */
 function ClosingCard(props: {

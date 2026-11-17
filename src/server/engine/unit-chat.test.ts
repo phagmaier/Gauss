@@ -6,6 +6,7 @@ import {
   readdir,
   readFile,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -223,6 +224,8 @@ function setUp(
     order?: ChoiceOrder;
     /** Commits the record after the steps that matter (task 2.25). */
     backup?: Backup;
+    /** Gives tutors the file and shell tools (task 3.3). */
+    workspaceTools?: boolean;
   } = {},
 ) {
   const backend = createFakeBackend(script, given.replies, {
@@ -250,6 +253,9 @@ function setUp(
     timer: given.timer ?? createFakeTimer(),
     order: given.order ?? givenOrder,
     ...(given.backup === undefined ? {} : { backup: given.backup }),
+    ...(given.workspaceTools === undefined
+      ? {}
+      : { workspaceTools: given.workspaceTools }),
   });
   return { backend, judgeBackend, dataRoot, units };
 }
@@ -3430,9 +3436,9 @@ test("a question whose grade the transcript lost shows the grade the evidence ha
 // --- Task 2.14: resume and start fresh ----------------------------------------
 
 /** The course's folder, where the tutor's sessions run and are kept. */
-const FOLDER = () => join(dir, "courses", COURSE);
+const FOLDER = () => join(dir, "courses", COURSE, "workspace");
 
-test("the tutor's session runs in the course's folder and its id is kept in the position; after a restart the first turn resumes it by that id, opening the unit starts no session, and the tutor is not told it is new", async () => {
+test("the tutor's session runs in the course's workspace and its id is kept in the position; after a restart the first turn resumes it by that id, opening the unit starts no session, and the tutor is not told it is new", async () => {
   const before = setUp([
     TEACH,
     [{ text: "A quotient of differences." }],
@@ -3472,7 +3478,7 @@ test("the tutor's session runs in the course's folder and its id is kept in the 
   });
   const chat = await open(after);
 
-  // Opening only asked the backend whether it has the session, in the course's folder.
+  // Opening only asked the backend whether it has the session, in the workspace.
   expect(asked).toEqual([[id, FOLDER()]]);
   expect(after.backend.sessions).toEqual([]);
   expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([]);
@@ -3498,6 +3504,103 @@ test("the tutor's session runs in the course's folder and its id is kept in the 
     { type: "turn_end", outcome: "done" },
   ]);
   expect(await sessionKept()).toBe(id);
+});
+
+test("with the sandbox, the tutor's sessions, new and resumed, get the file and shell tools in the course's workspace, which opening the unit makes; the unit's planning gets none, nor does a tutor without the sandbox", async () => {
+  const before = setUp([[{ call: "plan_unit", input: PLAN }], TEACH], {
+    workspaceTools: true,
+  });
+  await makeCourse(false);
+  await expect(stat(FOLDER())).rejects.toThrow();
+  await open(before);
+
+  const [planning, tutor] = before.backend.sessions;
+  expect(planning?.cwd).toBeUndefined();
+  expect(planning?.workspace).toBeUndefined();
+  expect(tutor?.cwd).toBe(FOLDER());
+  expect(tutor?.workspace).toBeDefined();
+  expect((await stat(FOLDER())).isDirectory()).toBe(true);
+  await before.units.close();
+
+  const resumed = setUp([[{ text: "As I said." }]], { workspaceTools: true });
+  const chat = await open(resumed);
+  chat.say("Remind me?");
+  await chat.settled();
+  expect(resumed.backend.sessions).toEqual([
+    expect.objectContaining({ cwd: FOLDER(), resumeId: before.backend.ids[1] }),
+  ]);
+  expect(resumed.backend.sessions[0]?.workspace).toBeDefined();
+  await resumed.units.close();
+
+  const without = setUp([[{ text: "Without tools." }]]);
+  const other = await open(without);
+  other.say("And now?");
+  await other.settled();
+  expect(without.backend.sessions[0]?.cwd).toBe(FOLDER());
+  expect(without.backend.sessions[0]?.workspace).toBeUndefined();
+});
+
+test("the tutor's writes and commands are refused while a question is open, with the reason, and allowed before and after; reads always; the thread has a line for each file written, once a reply", async () => {
+  const setup = setUp(
+    [
+      [
+        { text: "Here is a starter file." },
+        { builtIn: "Write", path: "starter.py" },
+        { builtIn: "Edit", path: "starter.py" },
+        { builtIn: "Bash" },
+      ],
+      ask(Q_QUOTIENT),
+      // A reply with no text is not judged.
+      [
+        { builtIn: "Write", path: "hint.py" },
+        { builtIn: "Edit", path: "starter.py" },
+        { builtIn: "Bash" },
+        { builtIn: "Read" },
+      ],
+      FEEDBACK,
+      [{ builtIn: "Write", path: "secant.py" }, ...ask(Q_SECANT)],
+    ],
+    { workspaceTools: true },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  chat.say("Can you show me in the file?");
+  await chat.settled();
+  await answer(chat, "A");
+
+  const refused =
+    "Question 1 is open: no file may be written and no command run until " +
+    "its answer is graded, since a change could help with the answer. You " +
+    "may still read files.";
+  expect(
+    setup.backend.calls
+      .filter((call) => call.name !== "ask_question")
+      .map(({ name, result }) => [
+        name,
+        result.status === "refused" ? result.text : result.status,
+      ]),
+  ).toEqual([
+    ["Write", "done"],
+    ["Edit", "done"],
+    ["Bash", "done"],
+    ["Write", refused],
+    ["Edit", refused],
+    ["Bash", refused],
+    ["Read", "done"],
+    ["Write", "done"],
+  ]);
+  expect(chat.events().filter((e) => e.type === "file_written")).toEqual([
+    { type: "file_written", path: "starter.py" },
+    { type: "file_written", path: "secant.py" },
+  ]);
+  expect(chat.events().slice(-5)).toEqual([
+    { type: "turn_start" },
+    { type: "file_written", path: "secant.py" },
+    { type: "tutor_text", text: "Here is a question." },
+    { type: "question", question: expect.anything() },
+    { type: "turn_end", outcome: "done" },
+  ]);
 });
 
 test("a session the backend cannot find, as after Claude Code's 30-day cleanup, gives way to a new one, seeded from the record and told it is new, and the thread says so", async () => {
@@ -3721,8 +3824,9 @@ test("Start fresh takes the old session's id out of the position before the new 
   chat.subscribe((event) => {
     if (event.type === "fresh_start") {
       written.push(
-        JSON.parse(readFileSync(join(FOLDER(), "state.json"), "utf8")).units
-          .derivative,
+        JSON.parse(
+          readFileSync(join(dir, "courses", COURSE, "state.json"), "utf8"),
+        ).units.derivative,
       );
     }
   });

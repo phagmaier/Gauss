@@ -189,9 +189,16 @@ const MESSAGES = new Set<Item["kind"]>([
   "unit_end",
 ]);
 
-/** The line left where a question was posted stands for the question there. */
+/**
+ * The line left where a question was posted stands for the question there,
+ * and the line for a file the tutor wrote belongs to the tutor's reply.
+ */
 const asPosted = (item: Item) =>
-  item.kind === "answered-below" ? "question" : item.kind;
+  item.kind === "answered-below"
+    ? "question"
+    : item.kind === "file"
+      ? "tutor"
+      : item.kind;
 
 /**
  * Whether a dividing line goes above an item, the one before it in the
@@ -202,7 +209,8 @@ const asPosted = (item: Item) =>
  * exchange: between the tutor's lead-in and the question it posted, between
  * a question and the tutor's feedback on its answer, or between two of the
  * learner's messages in a row. A question answered below where it was
- * posted begins its exchange where it was answered (`moved`).
+ * posted begins its exchange where it was answered (`moved`). The line for
+ * a file the tutor wrote is part of its reply, which can go on below it.
  */
 export function divided(before: Item | undefined, item: Item): boolean {
   if (before === undefined || !MESSAGES.has(item.kind)) return false;
@@ -210,13 +218,15 @@ export function divided(before: Item | undefined, item: Item): boolean {
   if (
     !MESSAGES.has(before.kind) &&
     before.kind !== "note" &&
-    before.kind !== "judgment"
+    before.kind !== "judgment" &&
+    before.kind !== "file"
   ) {
     return false;
   }
   // A question answered further down than it was posted begins an exchange
   // there: its answer and the tutor's feedback.
   if (item.kind === "question" && item.moved === true) return true;
+  if (before.kind === "file" && item.kind === "tutor") return false;
   const pair = `${asPosted(before)} ${asPosted(item)}`;
   return (
     pair !== "tutor question" &&

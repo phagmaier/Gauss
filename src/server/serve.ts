@@ -54,7 +54,8 @@ export async function serve(options: {
     prompt("help-judge.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
-  // The engine's commands run in it (task 3.2); it says once if it cannot.
+  // The engine's commands run in it (task 3.2); it says once if it cannot,
+  // and tutors then get no file and shell tools.
   const sandbox = await startSandbox({
     log: (line) => process.stdout.write(`${line}\n`),
   });
@@ -89,6 +90,8 @@ export async function serve(options: {
       backend: options.judgeBackend,
       systemPrompt: judgePrompt,
     }),
+    // Tutors run commands only where the sandbox runs (task 3.3).
+    workspaceTools: sandbox.available,
   });
   const api = getRequestListener(createApp({ dataRoot, intakes, units }).fetch);
 

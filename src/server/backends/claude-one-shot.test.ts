@@ -84,6 +84,8 @@ test("a one-shot request is one query with its own system prompt, no tools, noth
   });
   expect(options?.mcpServers).toBeUndefined();
   expect(options?.allowedTools).toBeUndefined();
+  expect(options?.sandbox).toBeUndefined();
+  expect(options?.permissionMode).toBeUndefined();
   const names = Object.keys(options?.env ?? {});
   expect(names.filter((n) => /^(ANTHROPIC|CLAUDE)/.test(n))).toEqual([]);
   expect(names).toContain("PATH");

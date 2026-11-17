@@ -6,8 +6,8 @@
 // queue is the chat's, given here, so there is one order for every change to
 // the unit.
 //
-// The tutor's sessions run in the course's folder and are kept, so a unit
-// reopened after a restart resumes its tutor (task 2.14). A new session's id
+// The tutor's sessions run in the course's workspace and are kept, so a
+// unit reopened after a restart resumes its tutor (task 2.14). A new session's id
 // is handed to the chat to keep before the session's first turn is sent.
 // A session is closed once it has been idle for a while, with no turn queued
 // or running and no grading whose grade it will be sent, and resumed with
@@ -24,6 +24,7 @@ import {
   SessionNotFound,
   type TutorBackend,
   type TutorSession,
+  type WorkspaceTools,
 } from "../backends/backend.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 import {
@@ -111,8 +112,10 @@ export function createUnitAgents(options: {
   /** The tutor's whole system prompt. */
   systemPrompt: string;
   tools: TeachingTool[];
-  /** The course's folder, where the tutor's sessions run and are kept. */
+  /** The course's workspace, where the tutor's sessions run and are kept. */
   cwd: string;
+  /** The file and shell tools in the workspace; none if not given. */
+  workspace?: WorkspaceTools;
   /** What the tutor's sessions are called among the backend's kept sessions. */
   title: string;
   /**
@@ -135,12 +138,15 @@ export function createUnitAgents(options: {
 }): UnitAgents {
   const { backend, systemPrompt, tools, cwd, grader, judge, log, exclusive } =
     options;
+  const workspace =
+    options.workspace === undefined ? {} : { workspace: options.workspace };
 
   async function startNew(): Promise<TutorSession> {
     const session = await backend.startSession({
       systemPrompt,
       tools,
       cwd,
+      ...workspace,
       title: options.title,
     });
     try {
@@ -163,6 +169,7 @@ export function createUnitAgents(options: {
               systemPrompt,
               tools,
               cwd,
+              ...workspace,
               resumeId: id,
             });
           } catch (error) {

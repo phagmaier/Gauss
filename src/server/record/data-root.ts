@@ -54,10 +54,12 @@ export interface DataRoot {
   /** One course, or undefined when no course has that id. */
   readCourse(id: string): Promise<StoredCourse | undefined>;
   /**
-   * The absolute path of the course's folder, where its tutor sessions run
-   * (task 2.14). Throws for an id that cannot be a course's.
+   * The absolute path of the course's workspace (task 3.3): the tutor's
+   * working folder, where its sessions run and are kept, and the only one
+   * it writes in; made if it is missing. Gauss writes nothing in it. Throws
+   * for an id that cannot be a course's.
    */
-  courseFolder(id: string): string;
+  workspaceFolder(id: string): Promise<string>;
   /**
    * The absolute path of the folder the intakes' tutor sessions run in, so
    * that they are kept (task 2.15); made if it is missing. Gauss writes
@@ -260,7 +262,11 @@ export function openDataRoot(options: {
 
     readCourse,
 
-    courseFolder: (id) => resolve(courseFile(id, ".")),
+    async workspaceFolder(id) {
+      const folder = resolve(courseFile(id, "workspace"));
+      await mkdir(folder, { recursive: true });
+      return folder;
+    },
 
     async intakeFolder() {
       const folder = resolve(options.path, "intake");

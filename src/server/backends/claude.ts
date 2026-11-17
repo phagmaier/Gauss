@@ -12,11 +12,16 @@
 // the SDK's structured output: the model's reply comes back as JSON in the
 // schema's shape.
 //
-// Not yet here: built-in tools and their confinement to the course folder
-// (stage 3).
+// A tutor's session gets the file and shell tools, confined to its course's
+// workspace (task 3.3; decisions.md, "Confinement"): writes by the file tools
+// only there, commands only in Claude Code's sandbox, and a temporary folder
+// of its own. The engine can refuse a write or a command, which a PreToolUse
+// hook asks it about.
 
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { lstat, mkdir } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import {
   createSdkMcpServer,
@@ -120,6 +125,12 @@ export function sdkEnvironment(
   return env;
 }
 
+/** The settings that keep the learner's own Claude Code setup out (task 0.2). */
+const ISOLATED_SETTINGS = {
+  autoMemoryEnabled: false,
+  disableClaudeAiConnectors: true,
+} as const;
+
 /**
  * The options that keep the learner's own Claude Code setup out of a
  * session (tasks 0.2 and 0.3), with no built-in tools, and never
@@ -132,11 +143,91 @@ function isolated(backendOptions: ClaudeBackendOptions): Options {
       : { model: backendOptions.model }),
     settingSources: [],
     skills: [],
-    settings: { autoMemoryEnabled: false, disableClaudeAiConnectors: true },
+    settings: ISOLATED_SETTINGS,
     strictMcpConfig: true,
     env: sdkEnvironment(process.env),
     tools: [],
   };
+}
+
+/** The file and shell tools a tutor gets (task 3.3). */
+const WORKSPACE_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit", "Bash"];
+
+/** The calls the engine is asked about: the writes and the commands. */
+const CHANGES = new Set(["Write", "Edit", "Bash"]);
+
+/** The file tools that write a file, whose path the thread shows. */
+const WRITES = new Set(["Write", "Edit"]);
+
+/**
+ * The private temporary folder of the tutor working in `cwd`, one per
+ * course (decisions.md, "Confinement"). Claude Code gives sandboxed
+ * commands `<it>/claude-<uid>` as $TMPDIR only if that path is at most 44
+ * bytes, and otherwise a folder shared by every Claude Code session of the
+ * user; one in the course's folder would be longer. So it lies under /tmp,
+ * named from the workspace's path.
+ */
+export function workspaceTmpDir(cwd: string): string {
+  const name = createHash("sha256").update(cwd).digest("hex").slice(0, 8);
+  return `/tmp/gauss-${name}`;
+}
+
+/**
+ * The options that give a session the file and shell tools in `cwd`, which
+ * replace the isolation options' tools, settings and environment and keep
+ * their isolation. Anything not allowed is refused, never asked about.
+ * Writes: the file tools only where the one Edit rule allows (it covers
+ * Write), which blockWritesOutsideWorkingDirectories backs; commands only
+ * in the sandbox, which must run and cannot be left, writing only in `cwd`
+ * and the temporary folder, with no network. Reads are not confined.
+ */
+function workspaceOptions(cwd: string, tmpDir: string): Options {
+  return {
+    tools: WORKSPACE_TOOLS,
+    permissionMode: "dontAsk",
+    // "//" makes a rule absolute; the absolute cwd gives the second slash.
+    // Without the rule for Bash, dontAsk refuses some sandboxed commands.
+    allowedTools: [`Edit(/${cwd}/**)`, "Bash"],
+    sandbox: {
+      enabled: true,
+      failIfUnavailable: true,
+      autoAllowBashIfSandboxed: true,
+      allowUnsandboxedCommands: false,
+      network: { allowedDomains: [] },
+    },
+    settings: {
+      ...ISOLATED_SETTINGS,
+      permissions: { blockWritesOutsideWorkingDirectories: true },
+    },
+    env: { ...sdkEnvironment(process.env), CLAUDE_CODE_TMPDIR: tmpDir },
+  };
+}
+
+/**
+ * Makes the folder, closed to other users, or checks that the one there is:
+ * a folder and not a link, this user's, closed to others. /tmp is shared,
+ * so another user could have made it first.
+ */
+async function makePrivateFolder(path: string): Promise<void> {
+  try {
+    await mkdir(path, { mode: 0o700 });
+  } catch (error) {
+    if (
+      !(error instanceof Error && "code" in error && error.code === "EEXIST")
+    ) {
+      throw error;
+    }
+  }
+  const found = await lstat(path);
+  if (
+    !found.isDirectory() ||
+    found.uid !== process.getuid?.() ||
+    (found.mode & 0o077) !== 0
+  ) {
+    throw new Error(
+      `The tutor's temporary folder ${path} is not closed to other users.`,
+    );
+  }
 }
 
 async function oneShot<T>(
@@ -219,7 +310,7 @@ export function readOneShot<T>(
 
 /**
  * Where a session runs and whether it is kept (task 2.14). A kept session
- * runs in its course's folder, where it must be resumed too, since the
+ * runs in the folder given, where it must be resumed too, since the
  * folder it resumes in becomes its working directory (task 0.4). Its system
  * prompt is not recorded with it (`snapshot: false`): it is sent as given
  * with every request, so a resumed session gets the prompt it is resumed
@@ -259,6 +350,16 @@ async function startSession(
 ): Promise<TutorSession> {
   const sessionId = options.resumeId ?? randomUUID();
   const place = sessionPlace(options, sessionId);
+  const { workspace, cwd } = options;
+  let builtIn: Options = {};
+  if (workspace !== undefined) {
+    if (cwd === undefined) {
+      throw new Error("The file and shell tools need a working folder.");
+    }
+    const tmpDir = workspaceTmpDir(cwd);
+    await makePrivateFolder(tmpDir);
+    builtIn = workspaceOptions(cwd, tmpDir);
+  }
   const inbox = createInbox();
   let interruptRequested = false;
 
@@ -303,18 +404,44 @@ async function startSession(
     interruptRequested
       ? { continue: false, stopReason: "The learner stopped this turn." }
       : {};
+  // The engine refuses writes and commands by phase, as it refuses teaching
+  // tools; the reason goes to the model as the call's result.
+  const askEngine: HookCallback = async (input) => {
+    if (input.hook_event_name !== "PreToolUse") return {};
+    if (!CHANGES.has(input.tool_name)) return {};
+    const reason = interruptRequested
+      ? "The learner stopped this turn."
+      : workspace?.refusal();
+    if (reason === undefined) return {};
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: reason,
+      },
+    };
+  };
 
   const session = query({
     prompt: inbox.messages,
     options: {
       ...isolated(backendOptions),
       ...place,
+      ...builtIn,
       mcpServers: {
         [SERVER]: createSdkMcpServer({ name: SERVER, tools, alwaysLoad: true }),
       },
-      allowedTools: options.tools.map((t) => TOOL_PREFIX + t.name),
+      allowedTools: [
+        ...options.tools.map((t) => TOOL_PREFIX + t.name),
+        ...(builtIn.allowedTools ?? []),
+      ],
       hooks: {
         UserPromptSubmit: [{ hooks: [cancelPendingTurn], onFailure: "block" }],
+        ...(workspace === undefined
+          ? {}
+          : {
+              PreToolUse: [{ matcher: "Write|Edit|Bash", hooks: [askEngine] }],
+            }),
         PostToolUse: [{ hooks: [endTurn] }],
       },
       includePartialMessages: true,
@@ -349,7 +476,7 @@ async function startSession(
     interruptRequested = false;
     endTurnRequested = false;
     inbox.push(turn.text);
-    const reader = createTurnReader();
+    const reader = createTurnReader(cwd);
     let interruptedOnStart = false;
     while (true) {
       let next: IteratorResult<SDKMessage, void>;
@@ -410,9 +537,13 @@ async function startSession(
 /**
  * Turns one turn's SDK messages into backend events. Separate text blocks in
  * a turn are joined with a blank line. Messages from subagents are skipped.
+ * A file tool's write is reported once its result says it succeeded, with
+ * the file's path in `cwd`.
  */
-export function createTurnReader() {
+export function createTurnReader(cwd?: string) {
   let textBlocks = 0;
+  /** The files that the file tools' calls not yet answered write, by call id. */
+  const writing = new Map<string, string>();
   return {
     read(message: SDKMessage, interruptRequested: boolean): BackendEvent[] {
       switch (message.type) {
@@ -443,6 +574,26 @@ export function createTurnReader() {
                 ? block.name.slice(TOOL_PREFIX.length)
                 : block.name;
               events.push({ type: "tool_call", name });
+              const path = filePath(block.input);
+              if (WRITES.has(block.name) && path !== undefined) {
+                writing.set(block.id, path);
+              }
+            }
+          }
+          return events;
+        }
+        case "user": {
+          // Only the calls read above are looked for: a subagent's are not.
+          const { content } = message.message;
+          if (typeof content === "string") return [];
+          const events: BackendEvent[] = [];
+          for (const block of content) {
+            if (block.type !== "tool_result") continue;
+            const path = writing.get(block.tool_use_id);
+            if (path === undefined) continue;
+            writing.delete(block.tool_use_id);
+            if (block.is_error !== true) {
+              events.push({ type: "file_written", path: inFolder(cwd, path) });
             }
           }
           return events;
@@ -454,6 +605,26 @@ export function createTurnReader() {
       }
     },
   };
+}
+
+/** The file a file tool's input names, if it names one. */
+function filePath(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const path = (input as { file_path?: unknown }).file_path;
+  return typeof path === "string" ? path : undefined;
+}
+
+/** A path relative to `cwd` if it lies inside it, and absolute otherwise. */
+function inFolder(cwd: string | undefined, path: string): string {
+  if (cwd === undefined) return path;
+  const full = resolve(cwd, path);
+  const inside = relative(cwd, full);
+  return inside === "" ||
+    inside === ".." ||
+    inside.startsWith(`..${sep}`) ||
+    isAbsolute(inside)
+    ? full
+    : inside;
 }
 
 function turnEnd(

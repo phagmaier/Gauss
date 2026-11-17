@@ -32,7 +32,9 @@
 // the rest again in one more segment, or moves on without them, which
 // records them as overridden and closes the unit.
 //
-// A tool called out of phase is refused with a reason the tutor can act on.
+// A tool called out of phase is refused with a reason the tutor can act on;
+// so are the tutor's file writes and commands while a question is open
+// (task 3.3), when it has them.
 // The engine composes every turn's header (unit-turns.ts) and writes the
 // unit's position to state.json after every change, before the page is told,
 // so a restart reopens the unit where it was. The chat's events are its
@@ -204,6 +206,11 @@ interface ChatOptions {
   order?: ChoiceOrder;
   /** Commits the record once a segment closes or a unit ends (task 2.25); none if not given. */
   backup?: Backup;
+  /**
+   * Gives tutors the file and shell tools in the course's workspace (task
+   * 3.3); only when the sandbox can run. None if not given.
+   */
+  workspaceTools?: boolean;
 }
 
 export function createUnitChats(options: ChatOptions): UnitChats {
@@ -330,7 +337,10 @@ function createUnitChat(
         backend: options.backend,
         systemPrompt: tutorSystemPrompt(options.systemPrompt, context, notes),
         tools: [askQuestionTool(questionBoard)],
-        cwd: dataRoot.courseFolder(courseId),
+        cwd: await dataRoot.workspaceFolder(courseId),
+        ...(options.workspaceTools === true
+          ? { workspace: { refusal: changeRefusal } }
+          : {}),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
         keep: (id) => exclusive(() => record.keepSession(id)),
         // Only a turn calls it, once `r` is set.
@@ -854,6 +864,21 @@ function createUnitChat(
         },
       ),
   };
+
+  /**
+   * Why the tutor may not write a file or run a command now, if it may not:
+   * a question is open, and a change could help with its answer (the help
+   * judge sees only the reply's text). Reads stay allowed.
+   */
+  function changeRefusal(): string | undefined {
+    const open = running?.record.position.openQuestion;
+    if (open === undefined) return undefined;
+    return (
+      `Question ${open.number} is open: no file may be written and no ` +
+      "command run until its answer is graded, since a change could help " +
+      "with the answer. You may still read files."
+    );
+  }
 
   // --- What the learner does -------------------------------------------------
 

@@ -1,7 +1,9 @@
 // A scripted backend for automated tests, which never call a real model
 // (AGENTS.md). Each scripted turn lists what the "tutor" does in order: write
-// text, call a teaching tool, or hold until it is interrupted. Tool calls run
-// the real teaching tool, and a call that ends the turn ends it here too.
+// text, call a teaching tool, call a file or shell tool, or hold until it is
+// interrupted. Tool calls run the real teaching tool, and a call that ends
+// the turn ends it here too. A write or a command asks the engine first, as
+// Claude's hook does, and a file written is reported; nothing is written.
 // One-shot requests get the scripted replies in order, checked against the
 // request's schema as the real backends check theirs. In place of a list, a
 // function can answer every turn or request it is given, without end
@@ -31,6 +33,8 @@ import {
 export type FakeStep =
   | { text: string }
   | { call: string; input: unknown }
+  /** A file or shell tool; Write and Edit name the file, relative to the working folder. */
+  | { builtIn: "Read" | "Write" | "Edit" | "Bash"; path?: string }
   /** Waits until the turn is interrupted or the session closed. */
   | { hold: true };
 
@@ -164,6 +168,17 @@ export function createFakeBackend(
         if (interrupted || ended) break;
         if ("text" in step) {
           yield { type: "text", text: step.text };
+        } else if ("builtIn" in step) {
+          yield { type: "tool_call", name: step.builtIn };
+          const result = builtIn(options, step.builtIn);
+          calls.push({ name: step.builtIn, input: step, result });
+          if (
+            result.status === "done" &&
+            step.path !== undefined &&
+            (step.builtIn === "Write" || step.builtIn === "Edit")
+          ) {
+            yield { type: "file_written", path: step.path };
+          }
         } else if ("call" in step) {
           yield { type: "tool_call", name: step.call };
           const tool = options.tools.find((t) => t.name === step.call);
@@ -213,6 +228,17 @@ export function createFakeBackend(
     hasSession: async (id) => kept.has(id),
     oneShot,
   };
+}
+
+/** What a file or shell tool's call comes to: refused without the tools, or by the engine. */
+function builtIn(options: SessionOptions, name: string): ToolResult {
+  if (options.workspace === undefined) {
+    return { status: "refused", text: `No such tool: ${name}` };
+  }
+  const reason = name === "Read" ? undefined : options.workspace.refusal();
+  return reason === undefined
+    ? { status: "done", text: `${name} ran.` }
+    : { status: "refused", text: reason };
 }
 
 const STOP = Symbol("stopped");

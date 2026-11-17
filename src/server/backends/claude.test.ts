@@ -78,6 +78,69 @@ test("a teaching tool call is reported by the tool's own name; subagent messages
   ]);
 });
 
+/** A tool call's result, as Claude Code sends it back to the model. */
+const toolResult = (id: string, isError: boolean, parent: string | null) =>
+  sdk({
+    type: "user",
+    parent_tool_use_id: parent,
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: id,
+          content: "result",
+          ...(isError ? { is_error: true } : {}),
+        },
+      ],
+    },
+  });
+
+test("a file the file tools wrote is reported once its call succeeded, by its path in the working folder, or whole outside it; a refused write, a command and a subagent's write are not", () => {
+  const reader = createTurnReader("/data/courses/bpe/workspace");
+  const call = (
+    id: string,
+    name: string,
+    input: object,
+    parent: string | null = null,
+  ) =>
+    sdk({
+      type: "assistant",
+      parent_tool_use_id: parent,
+      message: { content: [{ type: "tool_use", id, name, input }] },
+    });
+  const read = (messages: SDKMessage[]) =>
+    messages
+      .flatMap((m) => reader.read(m, false))
+      .filter((e) => e.type !== "tool_call");
+
+  expect(
+    read([
+      call("w1", "Write", {
+        file_path: "/data/courses/bpe/workspace/src/bpe.py",
+        content: "",
+      }),
+      call("w2", "Write", { file_path: "/data/courses/bpe/state.json" }),
+      call("e1", "Edit", { file_path: "/tmp/notes.md", old_string: "a" }),
+      call("b1", "Bash", { command: "touch made.py" }),
+      call(
+        "e2",
+        "Edit",
+        { file_path: "/data/courses/bpe/workspace/x.py" },
+        "agent-1",
+      ),
+      toolResult("w1", false, null),
+      toolResult("w2", true, null),
+      toolResult("e1", false, null),
+      toolResult("b1", false, null),
+      toolResult("e2", false, "agent-1"),
+    ]),
+  ).toEqual([
+    { type: "file_written", path: "src/bpe.py" },
+    { type: "file_written", path: "/tmp/notes.md" },
+  ]);
+});
+
 test.each([
   {
     name: "the hook stopped it after a teaching tool",

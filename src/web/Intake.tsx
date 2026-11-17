@@ -343,6 +343,7 @@ function ItemView(props: {
         </p>
       );
     // A unit chat's items: the intake has none of them.
+    case "file":
     case "question":
     case "phase":
     case "unit_end":

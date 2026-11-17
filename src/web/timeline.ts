@@ -83,6 +83,8 @@ export interface JudgmentItem {
 export type Item =
   | { kind: "learner"; key: number; id?: string; text: string }
   | { kind: "tutor"; key: number; text: string }
+  /** A file the tutor wrote, by its path in the workspace (task 3.3, piece 14). */
+  | { kind: "file"; key: number; path: string }
   | QuestionItem
   | JudgmentItem
   /** A phase of a segment began, or the chat opened in it. */
@@ -312,6 +314,13 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         tutorOpen: true,
       };
     }
+    case "file_written":
+      // The tutor's text after it goes below it.
+      return {
+        ...next,
+        items: [...state.items, { kind: "file", key: index, path: event.path }],
+        tutorOpen: false,
+      };
     case "question":
       // A unit opened again, after a failure or a restart, posts its open
       // question again.

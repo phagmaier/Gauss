@@ -449,6 +449,48 @@ test("the judge's call belongs to the reply it judged: no line above it, and one
   ]);
 });
 
+test("the line for each file the tutor wrote stands where it wrote it, in its reply: no line around it inside the reply, one before the learner's next message", () => {
+  const timeline = play([
+    planned,
+    phase(0, "check"),
+    { type: "turn_start" },
+    { type: "tutor_text", text: "A starter file for you." },
+    { type: "file_written", path: "bpe.py" },
+    { type: "tutor_text", text: "Fill in `merge`." },
+    { type: "file_written", path: "data/words.txt" },
+    { type: "question", question: CHOICE },
+    { type: "turn_end", outcome: "done" },
+    { type: "learner", text: "Which file?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "This one, with a comment." },
+    { type: "file_written", path: "bpe.py" },
+    { type: "turn_end", outcome: "done" },
+    { type: "learner", text: "Thanks." },
+  ]);
+  const lines = timeline.items.map((item, i) => {
+    const line = divided(timeline.items[i - 1], item) ? "-- " : "";
+    const said =
+      item.kind === "file"
+        ? item.path
+        : item.kind === "tutor" || item.kind === "learner"
+          ? item.text
+          : item.kind;
+    return `${line}${said}`;
+  });
+
+  expect(lines.slice(1)).toEqual([
+    "A starter file for you.",
+    "bpe.py",
+    "Fill in `merge`.",
+    "data/words.txt",
+    "question",
+    "-- Which file?",
+    "-- This one, with a comment.",
+    "bpe.py",
+    "-- Thanks.",
+  ]);
+});
+
 test.each<[string, PageEvent[], string | undefined]>([
   [
     "while a question is being answered",

@@ -1,5 +1,7 @@
 // Exercise the real adapter against an SDK boundary that keeps pending input
 // runnable after interrupt(), as SDKControlInterruptResponse documents. No model.
+
+import { chmod, mkdir, rm, stat } from "node:fs/promises";
 import type * as AgentSdk from "@anthropic-ai/claude-agent-sdk";
 import {
   createSdkMcpServer,
@@ -11,8 +13,12 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { expect, test, vi } from "vitest";
 import { askQuestionTool } from "../tools/ask-question.ts";
-import { type BackendEvent, SessionNotFound } from "./backend.ts";
-import { createClaudeBackend } from "./claude.ts";
+import {
+  type BackendEvent,
+  SessionNotFound,
+  type SessionOptions,
+} from "./backend.ts";
+import { createClaudeBackend, workspaceTmpDir } from "./claude.ts";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof AgentSdk>();
@@ -250,4 +256,164 @@ test("resuming that fails another way keeps its own error", async () => {
   );
   await expect(starting).rejects.not.toBeInstanceOf(SessionNotFound);
   expect(closed).toHaveBeenCalled();
+});
+
+// --- The tutor's file and shell tools (task 3.3) ------------------------------
+
+const WORKSPACE = "/data/courses/vectors/workspace";
+
+/** Starts a new session on the stand-in query and returns the options it got. */
+async function optionsOf(given: Partial<SessionOptions>): Promise<Options> {
+  startingQuery(Promise.resolve({}));
+  const session = await createClaudeBackend().startSession({
+    systemPrompt: "Test tutor.",
+    tools: [askQuestionTool({ post: vi.fn() })],
+    ...given,
+  });
+  await session.close();
+  const options = vi.mocked(query).mock.lastCall?.[0].options;
+  if (options === undefined) throw new Error("query() was not called");
+  return options;
+}
+
+/** A PreToolUse call of the hook the session was given, as Claude Code makes it. */
+async function preToolUse(options: Options, tool: string) {
+  const [matcher] = options.hooks?.PreToolUse ?? [];
+  const hook = matcher?.hooks[0];
+  if (hook === undefined) throw new Error("no PreToolUse hook");
+  return hook(
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: tool,
+      tool_input: {},
+      tool_use_id: "t1",
+      session_id: "test",
+      transcript_path: "",
+      cwd: WORKSPACE,
+    },
+    "t1",
+    { signal: new AbortController().signal },
+  );
+}
+
+test("a tutor's session gets the file and shell tools confined to its workspace: one Edit rule for it, Bash only in the sandbox, which must run, no network, nothing asked, writes outside refused, and a private temporary folder within Claude Code's limit", async () => {
+  vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+  const tmpDir = workspaceTmpDir(WORKSPACE);
+  await rm(tmpDir, { recursive: true, force: true });
+  try {
+    const options = await optionsOf({
+      cwd: WORKSPACE,
+      workspace: { refusal: () => undefined },
+    });
+
+    expect(options).toMatchObject({
+      cwd: WORKSPACE,
+      tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash"],
+      permissionMode: "dontAsk",
+      allowedTools: [
+        "mcp__gauss__ask_question",
+        `Edit(//data/courses/vectors/workspace/**)`,
+        "Bash",
+      ],
+      sandbox: {
+        enabled: true,
+        failIfUnavailable: true,
+        autoAllowBashIfSandboxed: true,
+        allowUnsandboxedCommands: false,
+        network: { allowedDomains: [] },
+      },
+      // The isolation settings stay.
+      settings: {
+        autoMemoryEnabled: false,
+        disableClaudeAiConnectors: true,
+        permissions: { blockWritesOutsideWorkingDirectories: true },
+      },
+      settingSources: [],
+      strictMcpConfig: true,
+    });
+    expect(options.disallowedTools).toBeUndefined();
+    expect(options.env).not.toHaveProperty("ANTHROPIC_API_KEY");
+    expect(options.env?.CLAUDE_CODE_TMPDIR).toBe(tmpDir);
+    // One per course, under /tmp, made for this user alone.
+    expect(tmpDir).toMatch(/^\/tmp\/gauss-[0-9a-f]{8}$/);
+    expect(workspaceTmpDir("/data/courses/other/workspace")).not.toBe(tmpDir);
+    expect((await stat(tmpDir)).mode & 0o777).toBe(0o700);
+    // Sandboxed commands get <it>/claude-<uid> as $TMPDIR only if that path
+    // is at most 44 bytes (decisions.md, "Confinement"); the largest uid.
+    expect(
+      Buffer.byteLength(`${tmpDir}/claude-4294967295`),
+    ).toBeLessThanOrEqual(44);
+  } finally {
+    vi.unstubAllEnvs();
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("sessions without the file and shell tools, an intake's and a unit's planning, get no built-in tools, no sandbox and no hook before tools", async () => {
+  for (const given of [{ cwd: "/data/intake" }, {}]) {
+    const options = await optionsOf(given);
+    expect(options.tools).toEqual([]);
+    expect(options.allowedTools).toEqual(["mcp__gauss__ask_question"]);
+    expect(options.sandbox).toBeUndefined();
+    expect(options.permissionMode).toBeUndefined();
+    expect(options.hooks?.PreToolUse).toBeUndefined();
+    expect(options.env).not.toHaveProperty("CLAUDE_CODE_TMPDIR");
+  }
+  await expect(
+    createClaudeBackend().startSession({
+      systemPrompt: "Test tutor.",
+      tools: [],
+      workspace: { refusal: () => undefined },
+    }),
+  ).rejects.toThrow("The file and shell tools need a working folder.");
+});
+
+test("before each write and command the engine is asked, and its reason refuses the call; reads are not asked about", async () => {
+  let reason: string | undefined;
+  const refusal = vi.fn(() => reason);
+  const tmpDir = workspaceTmpDir(WORKSPACE);
+  try {
+    const options = await optionsOf({ cwd: WORKSPACE, workspace: { refusal } });
+    expect(options.hooks?.PreToolUse?.[0]?.matcher).toBe("Write|Edit|Bash");
+
+    for (const tool of ["Write", "Edit", "Bash"]) {
+      expect(await preToolUse(options, tool)).toEqual({});
+    }
+    reason = "Question 1 is open.";
+    for (const tool of ["Write", "Edit", "Bash"]) {
+      expect(await preToolUse(options, tool)).toEqual({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: "Question 1 is open.",
+        },
+      });
+    }
+    expect(await preToolUse(options, "Read")).toEqual({});
+    expect(refusal).toHaveBeenCalledTimes(6);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("a temporary folder another user could reach refuses the session", async () => {
+  const cwd = "/data/courses/shared/workspace";
+  const tmpDir = workspaceTmpDir(cwd);
+  await rm(tmpDir, { recursive: true, force: true });
+  await mkdir(tmpDir);
+  await chmod(tmpDir, 0o755);
+  try {
+    await expect(
+      createClaudeBackend().startSession({
+        systemPrompt: "Test tutor.",
+        tools: [],
+        cwd,
+        workspace: { refusal: () => undefined },
+      }),
+    ).rejects.toThrow(
+      `The tutor's temporary folder ${tmpDir} is not closed to other users.`,
+    );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 });

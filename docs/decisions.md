@@ -272,7 +272,10 @@ in its platform package (2.1.325), not the `claude` on the path.
 
 ## Confinement
 
-Observed with throwaway scripts in stage 0. This option set, added to the
+The tutor's option set as built is `workspaceOptions` in
+`backends/claude.ts` (task 3.3): the stage 0 set below, with the course's
+workspace as `dir` and no protected file, since the record lies outside it.
+Observed with throwaway scripts in stage 0, this set, added to the
 isolation options, kept every write inside `dir`:
 
 ```ts
@@ -304,8 +307,21 @@ isolation options, kept every write inside `dir`:
   it absolute, which `/${dir}` does for an absolute `dir`.
 - **`dontAsk` needs an allow rule for `Bash`**, or some sandboxed commands
   are refused as a permission matter with no reason given.
-- A session leaves `.claude/` and the `.tmp/` above in its working
-  directory.
+- **Seen in task 3.3** (Haiku 5.5, the backend as built, a scratch data
+  root): a file written in the workspace; a `Write` of a new file beside
+  the record refused by `blockWritesOutsideWorkingDirectories`, and of
+  `state.json` refused first because Claude Code wants a file read before
+  it is overwritten, while `dontAsk` refuses `Read` outside the working
+  folder (`Glob` and `Grep` not tried); shell writes to `../state.json`,
+  `../evidence.jsonl`, the home folder and `/tmp` failing on a read-only
+  file system; `curl` refused by the proxy (403); `$TMPDIR` the private
+  folder; `python` running in the workspace. The engine's refusal reaches
+  the model as `PreToolUse:Write hook error: <reason>`.
+- **A session leaves `.claude/.cc-writes/` in its working directory**, an
+  empty folder closed to others (task 3.3; stage 0 also saw a `.tmp/`,
+  from its `CLAUDE_CODE_TMPDIR`). Left there, so the learner sees an empty
+  hidden folder in the workspace (the agent's choice): Claude Code makes it
+  again, it holds nothing, and git keeps no empty folder.
 - **The tutor's working directory is the course's `workspace/`** (task 3.0,
   the agent's choice), the other way round from closing the record inside
   the course folder. The folder holds only what the tutor may write, so
@@ -322,7 +338,11 @@ isolation options, kept every write inside `dir`:
   later is confined to nothing of value.
 - **Every tutor gets the tools**, in every course: one way of running, and
   a math tutor can check its own expressions with Python. The planner, the
-  unit planner and one-shot calls get none.
+  unit planner and one-shot calls get none. Only when the engine's sandbox
+  passes its start check (task 3.3, the agent's choice): Claude Code's
+  sandbox needs the same `bwrap`, `socat` and `rg`, and with
+  `failIfUnavailable` a session whose sandbox cannot run would fail at
+  start, so the tutor rather runs without the tools.
 - **`CLAUDE_CODE_TMPDIR` in the course folder is too long.** The sandbox
   leaves Claude Code's per-user temporary folder,
   `<CLAUDE_CODE_TMPDIR or the system's>/claude-<uid>`, writable, and the
@@ -333,7 +353,10 @@ isolation options, kept every write inside `dir`:
   shared one, with a warning. Here
   `/home/phagmaier/gauss/courses/<id>/.tmp/claude-1000` is at least 48
   bytes. So the tutor's is a private folder per course under `/tmp`:
-  `/tmp/gauss-<8 hex digits>/claude-1000` is 31 bytes.
+  `/tmp/gauss-<8 hex digits>/claude-1000` is 31 bytes, the digits from the
+  workspace's path. `/tmp` is shared, so the folder is made `0700`, and a
+  session is refused if the one there is a link, another user's, or open
+  to others.
 - **The engine runs model-written text in a sandbox too** (task 3.0, the
   agent's choice): a code question's tests and the symbolic check, whose
   SymPy parser evaluates its input. It uses
@@ -361,7 +384,8 @@ isolation options, kept every write inside `dir`:
   and pytest's folders would land in the workspace.
 - **`uv run` fails in the engine's sandbox**: its cache, `~/.cache/uv`, is
   read-only there. A venv's own Python runs, and so does `uv run` with
-  `UV_CACHE_DIR` in `$TMPDIR` (seen in task 3.2, with no packages).
+  `UV_CACHE_DIR` in `$TMPDIR` (seen in task 3.2, with no packages). The
+  same in the tutor's sandbox (task 3.3).
 - **Installing packages is the one command with network access** (the
   user's pick, piece 14; the rest of this entry is the agent's). The tutor
   names the packages and the engine builds the command, so no text of the
@@ -374,16 +398,19 @@ isolation options, kept every write inside `dir`:
 - **Writes and commands are refused while a question is open**, as
   `show_artifact` is: the tutor could fix the learner's code, and the help
   judge sees only the reply's text. Reads stay allowed, so the tutor can
-  look at the code to clarify the question.
+  look at the code to clarify the question. Only then (task 3.3, the
+  agent's choice): the feedback turn, in which no teaching tool may be
+  called, leaves them allowed, since writing the next exercise's starter
+  code there does no harm that has been seen.
 - **Reads are not confined**: sandboxed commands can read most of the
   machine, credential files included, and the engine's commands get the
-  server's environment. The sandbox's network is closed
-  until domains are allowed (documented, not tried), and the tutor has no
-  web tool, so in stage 3 what it reads can reach only Anthropic. SDK
-  0.3.325 documents `blockReadsOutsideWorkingDirectories`, which refuses
-  file-tool reads outside the working directories and, it says, makes the
-  sandbox deny commands such reads too; not tried. Settle reads before the
-  tutor gets web access.
+  server's environment. The sandbox's network is closed (a `curl` refused,
+  task 3.3), and the tutor has no web tool, so in stage 3 what it reads
+  can reach only Anthropic. `blockReadsOutsideWorkingDirectories`, tried
+  in task 3.3, is off: it hid the home folder from sandboxed commands
+  (`ls ~` empty), where mise installs `python` and `uv`, which were then
+  not found, and it still let a command read `../state.json` with the
+  data root in `/tmp`. Settle reads before the tutor gets web access.
 
 ## Codex
 

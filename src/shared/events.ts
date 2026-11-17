@@ -57,6 +57,12 @@ export const PageEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("turn_start") }),
   /** A piece of the tutor's reply. */
   z.object({ type: z.literal("tutor_text"), text: z.string() }),
+  /**
+   * The tutor wrote a file with its file tools (task 3.3), once per file in
+   * a reply: its path in the course's workspace, or absolute outside it.
+   * Files its commands write are not seen.
+   */
+  z.object({ type: z.literal("file_written"), path: z.string() }),
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),
   /**

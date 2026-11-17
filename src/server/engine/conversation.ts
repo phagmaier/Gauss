@@ -297,10 +297,17 @@ export function createConversation(options: {
       // Stop lands either before (seen above) or after (seen by the backend).
       current.sentTo = tutor;
       begun = true;
+      // The thread shows each file once a reply, however often it is written.
+      const written = new Set<string>();
       for await (const event of tutor.send({ text })) {
         if (event.type === "text") {
           current.reply += event.text;
           log.emit({ type: "tutor_text", text: event.text });
+        } else if (event.type === "file_written") {
+          if (!written.has(event.path)) {
+            written.add(event.path);
+            log.emit({ type: "file_written", path: event.path });
+          }
         } else if (event.type === "turn_end") {
           const outcome =
             event.outcome === "ended_by_tool" ? "done" : event.outcome;

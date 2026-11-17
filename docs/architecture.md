@@ -89,7 +89,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
     artifacts/                    (stage 3) HTML aids the tutor shows, written by the engine
     notes/                        (stage 5) HTML notes per unit, cheat sheets
-    workspace/                    (stage 3) the tutor's working folder: starter code and the learner's work
+    workspace/                    the tutor's working folder, where its sessions are kept: starter code and the learner's work
 ```
 
 The shapes are the schemas in `src/shared/`: `course.ts`, `curriculum.ts`
@@ -175,8 +175,9 @@ also before it reaches the backend.
   unit marks it opened in `course.json`. A unit reopened in teach is taught
   again.
 - **Kept sessions and resume.** A tutor's session and an intake's are kept
-  by the backend and resumed by id, in the folder they ran in (the course's,
-  or the data root's `intake/`); the tutor's id is in the unit's position.
+  by the backend and resumed by id, in the folder they ran in (the course's
+  `workspace/`, made when a unit first opens, or the data root's
+  `intake/`); the tutor's id is in the unit's position.
   Opening a unit only asks the backend whether the session is still there
   (`hasSession`); the first turn resumes it. The system prompt is sent
   afresh on every request, so a resumed session gets the current prompt.
@@ -240,8 +241,9 @@ The rules:
 - **The tutor's tools are refused out of phase**, with a reason it can act
   on: `ask_question` outside the check, in a detour, while feedback is
   pending, while a question is open, on an objective not in the segment
-  or already done in this check, and once the unit is finished. A refusal
-  does not end the turn; a posted question does.
+  or already done in this check, and once the unit is finished. Its file
+  writes and commands (section 5) are refused while a question is open. A
+  refusal does not end the turn; a posted question does.
 - **Feedback, then the next question.** The turn after a graded correct
   answer is for feedback alone; no tool may be called in it, and
   questions are refused from when it is queued until it ends. When it
@@ -348,13 +350,16 @@ tool server, for Codex an MCP server.
 The learner starts segments and the engine closes them, so there is no tool
 for either; detours are opened by the engine and ended by the learner.
 
-From stage 3 the tutor also has Claude Code's file and shell tools
-(`Read`, `Glob`, `Grep`, `Write`, `Edit`, `Bash`), with the course's
-`workspace/` as its working folder. It writes only there, its commands run
-in a sandbox with no network, and the record, outside the workspace, is
-closed to it (`decisions.md`, "Confinement"). The engine refuses its writes
-and commands while a question is open, as it refuses teaching tools out of
-phase. Web search, where a course allows it, comes with sources (stage 4).
+The tutor also has Claude Code's file and shell tools (`Read`, `Glob`,
+`Grep`, `Write`, `Edit`, `Bash`) when the engine's sandbox can run (the
+check `serve.ts` makes at start; otherwise it has no built-in tools), with
+the course's `workspace/` as its working folder. Its file tools write only
+there, its commands run in a sandbox with no network that writes only there
+and in a temporary folder of the course's, and the record, outside the
+workspace, is closed to its writes (`decisions.md`, "Confinement"). The engine refuses its writes and commands while a
+question is open, with the reason, as it refuses teaching tools out of
+phase; reads stay allowed. Web search, where a course allows it, comes
+with sources (stage 4).
 
 ## 6. Grading
 
@@ -414,7 +419,7 @@ The code is the reference: `src/server/backends/backend.ts` and
 
 ```ts
 interface TutorBackend {
-  startSession(opts: SessionOptions): Promise<TutorSession>;  // system prompt, tools, cwd, resumeId, title; rejects with SessionNotFound
+  startSession(opts: SessionOptions): Promise<TutorSession>;  // system prompt, tools, cwd, workspace tools, resumeId, title; rejects with SessionNotFound
   hasSession(id: string, cwd: string): Promise<boolean>;      // a kept session is there, found without starting it
   oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal
 }
@@ -467,11 +472,17 @@ backend".
   `settings: { autoMemoryEnabled: false, disableClaudeAiConnectors: true }`.
   The account's email address still reaches every session; no option
   removes it.
-- **Tools**: built-in tools named with `tools`, never `ToolSearch`: none
-  yet; from stage 3 the tutor's file and shell tools, with the options in
-  `decisions.md`, "Confinement" (`dontAsk`, one `Edit` allow rule for the
-  workspace, the sandbox required, a short private `CLAUDE_CODE_TMPDIR`).
-  The teaching tools are an in-process MCP server with `alwaysLoad: true`.
+- **Tools**: built-in tools named with `tools`, never `ToolSearch`: none,
+  except for a session given workspace tools (a tutor's), which gets the
+  file and shell tools with the options of `workspaceOptions` (`dontAsk`,
+  one `Edit` allow rule for the working folder,
+  `blockWritesOutsideWorkingDirectories`, the sandbox required with no
+  network, and `CLAUDE_CODE_TMPDIR` a private folder per course under
+  `/tmp`, made `0700` and checked; `decisions.md`, "Confinement"). A
+  `PreToolUse` hook asks the engine before each `Write`, `Edit` and
+  `Bash`, and its reason denies the call. A write is reported
+  (`file_written`) once its tool result says it succeeded. The teaching
+  tools are an in-process MCP server with `alwaysLoad: true`.
 - **Ending the turn**: a `PostToolUse` hook stops the turn when a teaching
   tool returned `endTurn`, since the model does not reliably stop by
   itself.
@@ -582,8 +593,10 @@ no automated tests.
   Markdown and math; phase markers; one next-step control where the thread
   has reached; the open question pinned above the message box until it is
   graded or withdrawn, then moved to where it was answered; the help
-  notice above the message box and the judge's call under each reply; the
-  detour marker and "Ready for another question"; the closing card; a top
+  notice above the message box and the judge's call under each reply; a
+  line for each file the tutor writes with its file tools, once a reply,
+  with its path in the workspace (piece 14); the detour marker and "Ready
+  for another question"; the closing card; a top
   line with the unit's position, whose outline holds Start fresh. Keys: A
   to F pick a choice, 1 to 5 how sure, Enter submits. The view posts
   `open`, follows `events`, and opens the unit again if the stream answers
@@ -634,9 +647,10 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   scripted backend and a seeded scratch data root.
 - **Real-model runs**: by hand, short, on Haiku 5.5 unless the result
   depends on the model's judgment. A run's turns as sent, with headers,
-  tool inputs and thinking, are in Claude Code's session log under
-  `~/.claude/projects/<course folder, every character but letters and
-  digits made "-">/`; the page events are in the course's `sessions/`.
+  tool inputs, tool results and thinking, are in Claude Code's session log
+  under `~/.claude/projects/<the course's workspace folder, every character
+  but letters and digits made "-">/`; the page events are in the course's
+  `sessions/`.
 
 ## 12. Build stages
 
