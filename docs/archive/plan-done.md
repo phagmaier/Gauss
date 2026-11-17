@@ -1259,3 +1259,37 @@ tested"). Stage 1 is finished.
   check` passed (635 TypeScript tests, one Python test); four injected
   faults each failed tests. Browser run on `pnpm dev:fake`. Findings:
   `decisions.md`, "Passing without a confident answer".
+
+### 2.24 One idea per objective, no quotes from memory
+
+- Status: done
+- Depends on: stage 2
+- Why: each theology objective joined three ideas ("explain …, and
+  contrast with … and with …"), so every written question was a
+  three-part essay graded all or nothing. The teaching quoted Basil,
+  Lossky, _Dei Verbum_ and _Lumen Gentium_ from the model's memory, and
+  questions built on the quotes. The learner sent no message in either
+  sitting, so their first attempt after the teaching was graded.
+- Do: `unit-planner.md`: each objective states one idea, and a contrast is
+  an objective of its own. `planner.md`: unit goals narrow enough for three
+  to six such objectives. `tutor.md`: a question asks for one thing; in a
+  course with no source, paraphrase and attribute ("Basil argues that …"),
+  quoting nothing verbatim unless it can be checked, and build no question
+  on a quote's exact wording; teaching ends by offering one ungraded "try
+  this" for the discussion, which the check does not repeat.
+- Done when: a real run on Sonnet 5.5 (the result depends on the model's
+  judgment), on a scratch data root, kept short: a new course on a topic
+  with contrasts, its first unit's plan, the first segment's teaching and
+  one check question. Each objective states one idea; the teaching
+  attributes without verbatim quotes and ends with an ungraded try; the
+  question asks one thing. `mise run check` passes.
+- Note: done on 2026-11-17. The wording as asked, plus a one-verb last
+  read in `unit-planner.md` and the objective's description in `plan.ts`.
+  Real run on Sonnet 5.5: the planner proposed one unit; the teaching
+  quoted nothing verbatim and ended with an ungraded try; the first
+  question asked one thing. The unit planner, run four times in all as its
+  wording tightened, never again put an explanation and its contrasts in
+  one objective, but one or two compound objectives per plan still slipped
+  through (one of six in the last run), which the tutor's one-point
+  questions cover. `mise run check` passed. Findings: `decisions.md`, "One
+  idea per objective, no quotes from memory".

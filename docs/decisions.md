@@ -62,6 +62,7 @@ findings are the record.
 | Intake review fixes | Task 2.22a: both notes in the revision headers; a session lost before any proposal given the conversation so far; why the account's email stays in every Claude session (probe of `CLAUDE_CODE_DISABLE_ATTACHMENTS` and bare mode) | Touching the intake's turns or a lost intake session; trying again to keep the account email out of a session |
 | Stage 2 review | After the stage 2 check passed: a review of the theology course's record the user brought, what was checked against the record, the user's decisions (passing without a confident answer, review questions opening each sitting, testing out instead of the baseline, no finals, no quotes from memory, stage 5 before stage 4), the agent's readings, and tasks 2.23 to 2.27 | Any of tasks 2.23 to 2.27; touching the passing rule, `unit-planner.md` or `tutor.md`'s questions and quotes; breaking down stage 5 (review, test-out, the profile) |
 | Passing without a confident answer | Task 2.23: two correct answers to different questions pass at any confidence, one confident answer only if never missed; the `second` reason replacing `unconfident` and `confirm`; what needed no change; the user's courses re-derived with no status changed; tests, injected faults and the browser run | Touching `record/status.ts`, `engine/check-rules.ts`'s reasons or `checkText` in `unit-turns.ts`; stage 5's retained and slipping; 2.27's calibration |
+| One idea per objective, no quotes from memory | Task 2.24: the wording added to `unit-planner.md`, `planner.md` and `tutor.md` and why, the real runs on Sonnet 5.5 (a new course's plan, teaching and first question; the unit planner run three more times as its wording tightened), what still slips through | Touching `unit-planner.md`, `planner.md`'s unit size, `tutor.md`'s teaching end, questions or quotations, the objective statement's description in `plan.ts`; stage 4's quotes |
 
 ## Page design (plan task 1.0)
 
@@ -4583,3 +4584,82 @@ replaces task 2.19's passing rule; 2.19's check with no limit stands.
   test; the CSS warning was there before). On `pnpm dev:fake`, segment 2
   of "What is a group?": written answers at 75% and then 50% passed its
   objective, and the unit closed as passed.
+
+## One idea per objective, no quotes from memory (plan task 2.24)
+
+Built on 2026-11-17, from the theology course's record ("Stage 2 review").
+
+What changed:
+
+- **`unit-planner.md`**: a bullet "One idea each", with a test (if a
+  learner could know one part and not another, the parts are separate
+  objectives) and two examples (a list of claims; an explanation with
+  contrasts added); up to eight objectives when the goal holds more single
+  ideas than six can, never joining two to fit. Under "Storing", a last
+  read: one verb for what the learner does and one claim or skill after
+  it, split otherwise. The schema's description of an objective statement
+  (`src/shared/plan.ts`) says the same in a sentence, since the model sees
+  it in the tool.
+- **`planner.md`**: a unit is three to six such skills, and a contrast
+  counts as one, so a goal like "explain X, and contrast it with Y and
+  with Z" already holds three.
+- **`tutor.md`**: teaching ends with one short exercise said plainly to be
+  ungraded, then the line inviting questions; in the discussion, the tutor
+  says whether a try is right and why; the check uses neither the
+  teaching's examples nor the exercise. "One thing per question": one
+  result, step, explanation or contrast, and one point per question when
+  an objective covers more than one. "Quotations": nothing verbatim from
+  memory; paraphrase and attribute, a section or page only when sure;
+  terms and set phrases are not quotations; no question on a passage's
+  exact wording. Stage 4 revises this when quotes can be checked.
+
+The real run, on Sonnet 5.5 (`GAUSS_CLAUDE_MODEL=claude-sonnet-5-5 pnpm
+dev`, scratch data root, deleted after): a new course asking for one short
+unit on how Orthodox and Catholic Christians differ on Scripture and
+Tradition, a topic of contrasts and tempting quotations.
+
+- **The planner** asked two questions, then, told to go ahead, proposed
+  one unit whose goal holds about three ideas.
+- **The unit plan** (the wording of `unit-planner.md` before its last two
+  changes): six objectives, with the Orthodox view, the Catholic view and
+  the differences each in objectives of their own, where the theology
+  course had put an explanation and two contrasts in every one. Two still
+  joined points: one stated three claims of _Dei Verbum_ at once, one
+  named the witnesses of Tradition and said how they rank.
+- **The teaching** of segment 1 quoted nothing verbatim: it paraphrased
+  ("Orthodox writers often say that Scripture is _within_ Tradition") and
+  named Fathers and councils without quoting them. It ended with "Try
+  this if you like; it isn't graded", a two-or-three-sentence exercise,
+  and the line inviting questions.
+- **The first question** asked one thing (a choice question on the
+  Orthodox view). Its right choice reused the teaching's phrase ("single
+  living life in the Holy Spirit"), which `tutor.md` already forbids
+  ("not recall of your wording"); not this task's, and left for the
+  user's check of 2.23 to 2.27.
+
+The unit planner alone was then run three more times on a copy of that
+course with its plan removed (a throwaway script calling
+`createUnitPlanner` on Sonnet 5.5), as its wording tightened:
+
+1. With the test and the examples: six objectives, one still joining two
+   points ("Name the witnesses … and say that the Church as a whole … is
+   its guardian"); the three claims of _Dei Verbum_ split into two
+   objectives.
+2. With a last read naming "Name A and say B": no better; the same
+   "Name … and say …", the three claims back in one, and "Identify … and
+   distinguish …". A rule given as an idea did not hold.
+3. With the last read as one verb and one claim: every objective had one
+   verb, and five of six held one idea; one added a second point with
+   "including" ("Explain how _Dei Verbum_ moves away from … the 'two
+   sources' presentation, including its statement that the Magisterium
+   serves the word of God").
+
+So the theology failure, every objective an explanation with contrasts,
+did not recur in any run; a compound objective still slips through now and
+then, which "One thing per question" in `tutor.md` covers when questions
+are written. Not tried: refusing long statements in `plan_unit` (a length
+limit is a poor proxy for one idea and could refuse a long single one in
+mathematics).
+
+Checks: `mise run check` passed (635 TypeScript tests, one Python test);
+no test reads the prompts' wording.

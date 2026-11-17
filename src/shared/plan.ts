@@ -18,7 +18,7 @@ export const Objective = z.object({
     .min(1)
     .max(300)
     .describe(
-      'One specific, testable skill or understanding, in one sentence, such as "Apply the chain rule to a composite function."',
+      'One specific, testable skill or understanding, a single idea in one sentence, such as "Apply the chain rule to a composite function." A contrast with another idea is an objective of its own.',
     ),
 });
 export type Objective = z.infer<typeof Objective>;

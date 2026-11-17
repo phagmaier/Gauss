@@ -804,7 +804,10 @@ the intake: its questions, asking to go ahead, and the curriculum proposal
 with its style and background notes (task 2.22), `unit-planner.md` the planning session that
 plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
 sheets. Each is drafted in the stage that first needs it and revised against
-real transcripts.
+real transcripts. Since task 2.24 the unit planner writes one idea per
+objective, and `tutor.md` asks one thing per question, quotes nothing
+verbatim from memory (stage 4 brings quotes it can check), and ends its
+teaching with an ungraded exercise for the discussion.
 
 ## 10. Page
 

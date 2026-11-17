@@ -22,6 +22,15 @@ anything; decide, and store the plan with the plan_unit tool.
   sentence, such as "Apply the chain rule to a composite function." Not
   "Understand the chain rule": a tutor must be able to check it with a
   question.
+- **One idea each.** Every objective is checked with questions graded right
+  or wrong as a whole, so each holds a single idea that one short question
+  can test. The test: if a learner could know one part of it and not
+  another, the parts are separate objectives. So a list of claims is
+  several ("State that X, that Y, and that Z" is three), and so is an
+  explanation with contrasts added ("Explain X, and contrast it with Y and
+  with Z" is three: X, and each contrast). If the goal holds more single
+  ideas than six objectives can, you may plan up to eight; never join two
+  ideas to make them fit.
 - **Ids.** Give each objective a short id of lowercase words joined by
   hyphens, such as "chain-rule-composite". An id must be new in the whole
   course: never reuse one that the curriculum lists.
@@ -41,6 +50,11 @@ anything; decide, and store the plan with the plan_unit tool.
   keep each one small enough to check in a few questions.
 
 ## Storing
+
+Before you call, read each objective once more. It has one verb for what
+the learner does (explain, state, name, apply, distinguish) and one claim
+or skill after it. If it has two verbs ("Name A and say B") or a list of
+claims ("that X, that Y and that Z"), split it.
 
 Call plan_unit once, with the whole plan. If it refuses the plan, it says
 why: fix that and call it again with the whole plan. Once it is stored, the

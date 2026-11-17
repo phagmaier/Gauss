@@ -44,8 +44,11 @@ If they have already asked you to propose, that is their agreement.
 - A unit has one goal: one sentence saying what the learner can do after
   it, specific enough to check. "Differentiate any combination of
   elementary functions", not "Understand derivatives".
-- Size each unit for one to three sittings: a handful of specific skills.
-  Do not list those skills; they are planned when the unit starts.
+- Size each unit for one to three sittings: three to six specific skills,
+  each a single idea that one short question can check. A contrast with
+  another view counts as a skill of its own, so a goal like "explain X, and
+  contrast it with Y and with Z" already holds three. Do not list those
+  skills; they are planned when the unit starts.
 - List as prerequisites only the units a unit builds on directly. They must
   not form a cycle.
 - Put the units in the order the learner should meet them.

@@ -74,6 +74,7 @@ stage 4 (`decisions.md`, "Stage 2 review").
 | 2.22 | Planning conversation and background note | `propose_curriculum` is refused in the intake's opening turn; asking to go ahead is `planner.md`'s. `BackgroundNote` (`src/shared/curriculum.ts`) is required in the proposal, stored as `background.md` (`readBackground`), checked at approval, shown on the card, and given to the unit planner's turn and the tutor's system prompt ("# The learner"); courses from before have none and both are told so. The scripted intake asks first, so a browser check takes two messages to reach a card. Sonnet 5.5 asked before proposing and proposed one unit in two real runs. Not run on a model: the planner and tutor using the note. |
 | 2.22a | Intake review fixes | The review and message headers name both notes. A session lost before any proposal gets the conversation so far (`conversationBefore` in `engine/intake.ts`: the learner's earlier messages and the planner's replies, as JSON). The account's email still reaches every Claude session: `CLAUDE_CODE_DISABLE_ATTACHMENTS` leaves it, and bare mode drops it but is off the plan login; nothing changed in the backend. Look again with stage 3's built-in tools or a newer SDK. |
 | 2.23 | Passing without a confident answer | Since the last miss, unassisted correct answers to two different questions pass at any confidence, or one at 90% or 100% if never missed (`record/status.ts`); help neither counts nor breaks the row. Reasons for another question are `missed`, `assisted` and `second` (`engine/check-rules.ts`). Status is derived, so old records take the rule when read. |
+| 2.24 | One idea per objective, no quotes from memory | `unit-planner.md`: one idea per objective (the "could know one part and not another" test), up to eight objectives, and a last read for one verb and one claim; `planner.md`: three to six single-idea skills per unit; `tutor.md`: teaching ends with an ungraded exercise, one thing per question, no verbatim quotes from memory (stage 4 revises this). A compound objective still slips through now and then on Sonnet 5.5. |
 
 ## Stage 2: session engine
 
@@ -98,30 +99,6 @@ Passed: the user tried it again on 2026-11-17, after tasks 2.18 to 2.22
 **Added after the user check**, from a review of the stage 2 record, which
 the user brought on 2026-11-17 (`decisions.md`, "Stage 2 review"). These
 tasks come before stage 3.
-
-### 2.24 One idea per objective, no quotes from memory
-
-- Status: todo
-- Depends on: stage 2
-- Why: each theology objective joined three ideas ("explain …, and
-  contrast with … and with …"), so every written question was a
-  three-part essay graded all or nothing. The teaching quoted Basil,
-  Lossky, _Dei Verbum_ and _Lumen Gentium_ from the model's memory, and
-  questions built on the quotes. The learner sent no message in either
-  sitting, so their first attempt after the teaching was graded.
-- Do: `unit-planner.md`: each objective states one idea, and a contrast is
-  an objective of its own. `planner.md`: unit goals narrow enough for three
-  to six such objectives. `tutor.md`: a question asks for one thing; in a
-  course with no source, paraphrase and attribute ("Basil argues that …"),
-  quoting nothing verbatim unless it can be checked, and build no question
-  on a quote's exact wording; teaching ends by offering one ungraded "try
-  this" for the discussion, which the check does not repeat.
-- Done when: a real run on Sonnet 5.5 (the result depends on the model's
-  judgment), on a scratch data root, kept short: a new course on a topic
-  with contrasts, its first unit's plan, the first segment's teaching and
-  one check question. Each objective states one idea; the teaching
-  attributes without verbatim quotes and ends with an ungraded try; the
-  question asks one thing. `mise run check` passes.
 
 ### 2.25 Backup of the data root
 
