@@ -219,8 +219,9 @@ derived status.
   in the data root's `intake/` folder, only so that it can be closed while
   idle and resumed (task 2.15): a restart still loses the intake. A session
   lost then gives way to a new one, given the latest proposal as a reopened
-  draft's is, or told it has not seen the conversation if nothing was
-  proposed. A draft whose intake was lost in a restart is reviewed in a new
+  draft's is, or, if nothing was proposed, what was said so far: the
+  learner's earlier messages and the planner's replies, from the intake's
+  events (task 2.22a). A draft whose intake was lost in a restart is reviewed in a new
   intake that starts from the stored draft as proposal 1, its earlier
   conversation gone; the tutor gets the draft, with its style note, in the
   first delivered turn (task 1.6). A failed startup or a Stop before sending
@@ -641,6 +642,9 @@ Observed in stage 0 (details in `decisions.md`):
   `settingSources: []` alone still loads the auto-memory, lists Claude Code's
   bundled skills, and connects the learner's claude.ai connectors (tasks 0.2
   and 0.3).
+  The account's email address still reaches every session, in a system
+  reminder on the first message: Claude Code reads it from the login's
+  account record, and no option or variable turns it off (task 2.22a).
 - Custom tools are deferred only when `ToolSearch` is among the session's
   tools. The tutor's tool list leaves it out, and the teaching tool server
   sets `alwaysLoad: true` as well (task 0.3).

@@ -306,7 +306,7 @@ test("a reply to a proposal is a change request, and the revision replaces the d
   const turn = backend.received[2]?.text ?? "";
   expect(turn).toMatch(/^\[Message from the learner about proposal 1,/);
   expect(turn).toContain(
-    "call propose_curriculum with the whole revised curriculum",
+    "call propose_curriculum with the whole revised curriculum, its style note and its background note.]",
   );
   expect(turn).toMatch(
     /\nI can already multiply matrices\. Can the start be shorter\?$/,
@@ -503,7 +503,7 @@ describe("a draft reopened for review, its first conversation lost in a restart"
     expect(turn).toMatch(/^\[The learner is reviewing proposal 1,/);
     expect(turn).toContain(JSON.stringify(FIRST));
     expect(turn).toContain(
-      "call propose_curriculum with the whole revised curriculum",
+      "call propose_curriculum with the whole revised curriculum, its style note and its background note (writing any note it lacks),",
     );
     expect(turn.endsWith("]\nCan the start be shorter?")).toBe(true);
     expect(proposals(intake).at(-1)).toMatchObject({
@@ -708,12 +708,13 @@ describe("an intake left idle (task 2.15)", () => {
     );
   });
 
-  test("whose session is lost before any proposal has the new one told it has not seen the conversation", async () => {
+  test("whose session is lost before any proposal has the new one given the conversation so far, and not the messages after", async () => {
     const kept = new Set<string>();
     const { backend, timer, intake } = setUpIdle(
       [
-        [{ text: "What do you know already?" }],
+        [{ text: "What do you know " }, { text: "already?" }],
         [{ call: "propose_curriculum", input: FIRST }],
+        [{ text: "Noted." }],
       ],
       kept,
     );
@@ -723,11 +724,20 @@ describe("an intake left idle (task 2.15)", () => {
     await closing();
     kept.clear();
 
+    // The second is sent before the first's turn: it is not part of what
+    // came before it, and arrives as a turn of its own.
     intake.say("Matrices, a little.");
+    intake.say("And I want to read PCA papers.");
     await intake.settled();
 
     expect(backend.received[1]?.text).toBe(
-      "[This conversation is new: the one before it with the learner was lost, so you have not seen what they said before. Their message follows. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nMatrices, a little.",
+      "[This conversation is new: the one before it with the learner was lost, so you have not seen it. " +
+        'What was said in it, oldest first, as JSON (the "planner" messages are your replies):\n' +
+        `[{"from":"learner","text":${JSON.stringify(ASK)}},{"from":"planner","text":"What do you know already?"}] ` +
+        "Their new message follows. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nMatrices, a little.",
+    );
+    expect(backend.received[2]?.text).toBe(
+      "[Message from the learner. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nAnd I want to read PCA papers.",
     );
     expect(proposals(intake)).toHaveLength(1);
   });

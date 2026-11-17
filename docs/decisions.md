@@ -59,6 +59,7 @@ findings are the record.
 | Help judge | Task 2.21: clarification or help judged after each reply during an open question, what the judge sees, failures and restarts counting as help, the answer that waits, Stop kept as 2.17a has it, the tutor's headers and `tutor.md`, the page's lines and notice, the hand-judged set and the model (Haiku 5.5) | Touching help (`judging`, `assisted`, `help-judge.ts`, `help-judge.md`, `JUDGE_MODEL`), answers kept on the open question, `ended`'s reply in `conversation.ts`, the message box's notice; stage 3's disputes |
 | Help-judge review fixes | Task 2.21a: no new judging or late queued results during shutdown; clarification labels describe a reply, not cumulative answer eligibility; regression and browser checks | Touching help-judge shutdown, `replyEnded`, or `judgmentSays` |
 | Planning conversation and background note | Task 2.22: the intake's first turn and its refusal, asking to go ahead left to the prompt, the background note (schema, `background.md`, approval, courses without one), the note on the card, where the unit planner and tutor get it, `planner.md`, the scripted intake, the two real runs on Sonnet 5.5 | Touching `planner.md`, `propose_curriculum`, the intake's turns, `background.md` or `readBackground`, the proposal card, the unit planner's turn or the tutor's system prompt; stage 5's learner profile |
+| Intake review fixes | Task 2.22a: both notes in the revision headers; a session lost before any proposal given the conversation so far; why the account's email stays in every Claude session (probe of `CLAUDE_CODE_DISABLE_ATTACHMENTS` and bare mode) | Touching the intake's turns or a lost intake session; trying again to keep the account email out of a session |
 
 ## Page design (plan task 1.0)
 
@@ -227,6 +228,12 @@ when started from a plain terminal.
   `code-review` and others) and built-in plugins such as
   `cc-plugin-telemetry`. With `skills: []` the model said it saw no skills,
   although init still lists them as discovered.
+- **The account's email address gets in regardless (task 2.22a).** Claude
+  Code adds it to the first message of every session as a `session_context`
+  system reminder ("# userEmail"), from the account record of the plan
+  login. Neither `CLAUDE_CODE_DISABLE_ATTACHMENTS` nor anything above keeps
+  it out, and bare mode, which does, is not on the plan login. See "Intake
+  review fixes" for the probe.
 - **Decision:** the Claude backend passes `settingSources: []`, `skills: []`
   and `settings: { autoMemoryEnabled: false }`. This corrects
   `architecture.md` section 7, which said `settingSources: []` alone was
@@ -4393,3 +4400,57 @@ Done on 2026-11-16. The choices are the agent's and can be overturned.
   message got the scripted question, the reply a card with the new section
   under the style note, approval kept `background.md`; the browser was
   closed before the server stopped.
+
+## Intake review fixes (plan task 2.22a)
+
+Done on 2026-11-16, from the review of task 2.22. The choices are the
+agent's and can be overturned.
+
+- **Both notes in the revision headers.** The headers of a reviewed draft
+  and of a message about a proposal asked for "the whole revised
+  curriculum and its style note", though the proposal now needs the
+  background note as well; a model following them would have been refused
+  once. They now name both notes, and a reviewed draft's says to write any
+  note it lacks (a draft from before 2.10 or 2.22).
+- **A session lost before any proposal is given the conversation.** Since
+  2.22 the planner always asks first, so the message that finds the
+  session lost is usually an answer ("Go ahead") to a question the new
+  session never saw. Its header now carries what was said, oldest first,
+  as JSON: each earlier message of the learner and each reply of the
+  planner, joined from the intake's `learner` and `tutor_text` events, a
+  reply ending at its `turn_end`. Messages sent after the one being
+  delivered are left out; they arrive as turns of their own. The JSON is
+  followed by a space, not a newline, since "]\n" is where a header ends
+  (the scripted backend splits there). A session lost after a proposal is
+  still given only the proposal, which holds the notes.
+- **The account's email cannot be kept out from Gauss's side.** In the
+  intake logs of 2.22, and in every probe below, Claude Code's own session
+  log has a `session_context` attachment on the first message: a system
+  reminder "As you answer the user's questions, you can use the following
+  context: # userEmail The user's email address is ...". The binary bundled
+  with Agent SDK 0.3.325 builds it from the account record
+  (`oauthAccount.emailAddress` in Claude Code's global config), whenever
+  the login is a claude.ai one; the only checks on the way are for a Unix
+  socket transport and bare mode. Probe (`node probe.ts`, outside the
+  repository, through `createClaudeBackend` on Haiku 5.5: a turn ended by a
+  teaching tool, a resume, and a one-shot asked whether its context held an
+  email address):
+  - As committed: the email in the log; the tool, the end of the turn and
+    the resume worked; the one-shot said it saw an email.
+  - With `CLAUDE_CODE_DISABLE_ATTACHMENTS=1`: only the `total_tokens_reminder`
+    attachments went; the email stayed, and the one-shot still saw one.
+  - With `CLAUDE_CODE_SIMPLE=1` (bare mode): no email, but every request
+    failed with "Not logged in · Please run /login": bare mode does not
+    use the plan login.
+  - Not tried: a separate `CLAUDE_CONFIG_DIR` without the account record,
+    which would need a copy of the login's credentials (refreshing one copy
+    can invalidate the other and log the learner out of Claude Code), and
+    editing `~/.claude.json`, which is the learner's own Claude Code
+    configuration, outside Gauss, and may be written back.
+  Both switches were reverted; the backend is unchanged. The address goes
+  only to Anthropic, the account's own provider, in the first request of
+  each session, with Claude Code's instruction to treat it as private.
+  Gauss's sessions have no tool that sends anything elsewhere; look again
+  when stage 3 gives the tutor built-in tools, and if a later SDK adds a
+  switch.
+

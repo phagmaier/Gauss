@@ -16,7 +16,8 @@
 // The tutor's session is kept, in the intakes' folder, so that it can be
 // closed while idle and resumed with the next message (task 2.15). One that
 // cannot be found then gives way to a new session, which is given the latest
-// proposal, as a reopened draft's is.
+// proposal, as a reopened draft's is, or before any proposal what was said
+// so far (task 2.22a).
 
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
@@ -176,7 +177,7 @@ export function createIntake(options: {
           if (lost) {
             lost = false;
             return shown === undefined
-              ? lostTurn(text)
+              ? lostTurn(text, conversationBefore(log.events(), id))
               : reviewTurn(text, shown, latest);
           }
           if (tutor.started()) return messageTurn(text, about);
@@ -315,18 +316,67 @@ function reviewTurn(
     `${JSON.stringify(draft)}\n` +
     "They have not approved it; their message follows. Allowed now: answer " +
     "them; if they ask for changes, call propose_curriculum with the whole " +
-    "revised curriculum and its style note, keeping the ids of the units " +
-    `you keep.]\n${text}`
+    "revised curriculum, its style note and its background note (writing " +
+    "any note it lacks), keeping the ids of the units you keep.]\n" +
+    text
   );
 }
 
-/** The first turn of a session that takes over from a conversation lost before any proposal. */
-function lostTurn(text: string): string {
+/** One message of the intake's conversation: the learner's, or the planner's reply. */
+interface Said {
+  from: "learner" | "planner";
+  text: string;
+}
+
+/**
+ * What was said before the learner's message with this id, oldest first, as
+ * the page shows it: their earlier messages and every reply the planner
+ * wrote. Composed when that message's turn is sent, so every turn before it
+ * has ended; messages the learner sent after it come as turns of their own.
+ */
+function conversationBefore(
+  events: readonly PageEvent[],
+  learnerId: string,
+): Said[] {
+  const said: Said[] = [];
+  let reply = "";
+  let reached = false;
+  const endReply = () => {
+    if (reply.trim() !== "") said.push({ from: "planner", text: reply.trim() });
+    reply = "";
+  };
+  for (const event of events) {
+    if (event.type === "learner") {
+      if (event.id === learnerId) reached = true;
+      if (reached) continue;
+      endReply();
+      said.push({ from: "learner", text: event.text });
+    } else if (event.type === "tutor_text") {
+      reply += event.text;
+    } else if (event.type === "turn_end") {
+      endReply();
+    }
+  }
+  endReply();
+  return said;
+}
+
+/**
+ * The first turn of a session that takes over from a conversation lost
+ * before any proposal (task 2.15), with what was said in it (task 2.22a):
+ * since 2.22 the learner's message is usually an answer to a question the
+ * new session never saw. A session is lost only after one was started for
+ * an earlier message, so there is always something said before.
+ */
+function lostTurn(text: string, said: readonly Said[]): string {
   return (
     "[This conversation is new: the one before it with the learner was " +
-    "lost, so you have not seen what they said before. Their message " +
-    "follows. Allowed now: reply, or propose a curriculum with " +
-    `propose_curriculum.]\n${text}`
+    "lost, so you have not seen it. What was said in it, oldest first, as " +
+    'JSON (the "planner" messages are your replies):\n' +
+    // Followed by a space: "]\n" is where the header ends.
+    `${JSON.stringify(said)} ` +
+    "Their new message follows. Allowed now: reply, or propose a " +
+    `curriculum with propose_curriculum.]\n${text}`
   );
 }
 
@@ -337,7 +387,7 @@ function messageTurn(text: string, proposal: number): string {
         "curriculum with propose_curriculum.]"
       : `[Message from the learner about proposal ${proposal}, which they ` +
         "have not approved. Allowed now: answer them; if they ask for " +
-        "changes, call propose_curriculum with the whole revised curriculum " +
-        "and its style note.]";
+        "changes, call propose_curriculum with the whole revised curriculum, " +
+        "its style note and its background note.]";
   return `${header}\n${text}`;
 }

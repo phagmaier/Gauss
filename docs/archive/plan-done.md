@@ -1195,3 +1195,29 @@ tested"). Stage 1 is finished.
   passed; eight injected faults each failed tests; browser run on `pnpm
   dev:fake`. Findings: `decisions.md`, "Planning conversation and background
   note".
+
+### 2.22a Intake review fixes
+
+- Status: done
+- Depends on: 2.22
+- Why: the review of 2.22 found two headers that still asked for the
+  style note alone, and that a session lost before any proposal gets only
+  the learner's latest message, which since 2.22 is usually an answer to a
+  question it never saw. The user also asked to keep their account email
+  out of the model's context.
+- Do: the review and message headers ask for both notes; a new session
+  that takes over from one lost before any proposal is given the
+  conversation so far. Try to keep Claude Code's account email out of
+  Gauss's sessions; if no switch does it, record why.
+- Done when: tests cover both headers and the conversation given to the
+  new session; a real Haiku 5.5 probe through the Claude backend shows
+  whether the email is still in a session.
+- Note: done on 2026-11-16. The new session's header lists the earlier
+  messages and replies from the intake's events, oldest first, and leaves
+  out messages sent after the one it delivers. Four injected faults (later
+  messages included, replies dropped, either header without the background
+  note) each failed a test. Probe on Haiku 5.5 through the Claude backend:
+  the email was in the session log as committed and with
+  `CLAUDE_CODE_DISABLE_ATTACHMENTS=1`; bare mode removed it but was not
+  logged in. Both were reverted. `mise run check` passed. Findings:
+  `decisions.md`, "Intake review fixes".
