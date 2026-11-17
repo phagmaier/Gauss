@@ -338,6 +338,7 @@ tool server, for Codex an MCP server.
 | `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, or `written` with a rubric (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
+| `install_packages` | (stage 3) Asks the learner, through a card, to install named packages into the workspace; on Install the engine runs a command it builds itself, the one command with network access, open to the package index only. Refused while a question is open |
 | `show_artifact` | (stage 3) Shows an HTML aid, given whole in the call, in the side pane; the engine writes it to `artifacts/`. Refused while a question is open |
 | `propose_style` | (stage 5) Proposes a change to `style.md`; applied only after the learner confirms |
 | `write_handoff` | (stage 5) Saves the handoff note |
@@ -360,7 +361,7 @@ phase. Web search, where a course allows it, comes with sources (stage 4).
 | --- | --- | --- |
 | Multiple choice | Exact match in the engine | Reasoning is passed to the tutor for feedback |
 | Computational math | (stage 3) `pytools/mathcheck.py` compares the answer with the expected expression using SymPy | The expression must parse for the question to be posted. An answer that does not parse, or a check that errors or runs out of time, goes to the grader with a rubric made from the expression |
-| Code | (stage 3) Runs the question's tests with their command, in `workspace/` | Checked when the question is posted, so tests that cannot tell right code from wrong are refused |
+| Code | (stage 3) Runs the question's tests, which the learner does not see until the answer is graded, with their command on the files in `workspace/` | Checked when the question is posted, so tests that cannot tell right code from wrong are refused |
 | Proof, explanation, reconstruction | A separate one-shot model call, `prompts/grader.md` with the question's rubric | Names the first flawed step or missing element; never sees the tutor's conversation |
 
 - **The grader** (`engine/grading.ts`) is one `oneShot` request (section 7):
@@ -385,15 +386,17 @@ phase. Web search, where a course allows it, comes with sources (stage 4).
 - (stage 3) **The engine's commands**, the tests and the symbolic check,
   run text a model or the learner wrote, so they run in a sandbox
   (`@anthropic-ai/sandbox-runtime`): no network, writes only where the run
-  needs, a time limit, output cut to a limit.
+  needs, a time limit, output cut to a limit. Installing packages
+  (section 5) runs there too, with the network open to the package index.
 - (stage 3) **Disputes.** Every graded answer can be disputed once. The
   dispute names the answer by its `questionId` and is appended to the
   evidence with the learner's reason and the outcome; an overturned answer
   counts with its new verdict where it stands in the log, and its line
   keeps the original grade. A dispute is the only way to correct a wrong
   choice key. The tutor of a unit in progress is told in its next header.
-  Who decides is settled with the stage's designs (`decisions.md`,
-  "Disputes").
+  A one-shot call decides, seeing the question, what the answer was
+  graded by, the answer, the grade and the reason, and nothing of the
+  conversation (`decisions.md`, "Disputes").
 
 ## 7. Backends
 
@@ -638,7 +641,7 @@ in every course, while sources add one kind of course.
 | 0. Spike and skeleton (done) | Toolchain; a page that streams a Claude reply on the plan login and round-trips a question; a Codex spike | The SDK questions are answered in writing and the adapter is confirmed |
 | 1. Record and library (done) | Data root, course creation by intake, review and approval, diagram, library | A course can be created and approved, and survives a restart |
 | 2. Session engine (done) | Unit planning, phases, choice and rubric-graded questions, confidence, evidence, derived status, override, detours, help judging, resume, transcripts, math rendering, backup, "what I know", calibration | A unit of a math course is completed across two sittings, stopping mid-segment |
-| 3. Checked grading and aids | SymPy check, workspace and code tests, artifacts pane, disputes, the tutor's built-in tools | A coding unit and a computational unit are graded without a model judging the answer |
+| 3. Checked grading and aids | SymPy check, workspace and code tests, installing a course's packages, artifacts pane, disputes, the tutor's built-in tools | A coding unit and a computational unit are graded without a model judging the answer |
 | 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style changes | One course runs from intake to a closed second unit, with a unit tested out of or started, review questions in a later sitting, a detour, a unit gate, generated notes and an exported transcript |
 | 4. Sources (after 5) | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting | A lecture on one chapter of the *Phenomenology* with verified quotes, and one unit taught from a paper |
 | 6. Later | Codex backend, self-test, cheat sheets, photo input; starred messages for the notes, if the generated notes miss what the learner wants kept | Per feature |
@@ -659,8 +662,8 @@ in every course, while sources add one kind of course.
   only at paragraph boundaries, and the tutor can read the neighbouring
   sections.
 - **The tutor's shell, and the tests and expressions it writes, run on
-  the learner's machine.** Mitigation: the sandbox, with no network, and
-  the permission settings confine the tutor's writes to the course's
-  workspace; the engine runs tests and the symbolic check in a sandbox
-  too. Reads are not confined, which matters once the tutor has web
-  access.
+  the learner's machine.** Mitigation: the sandbox, with no network but
+  for installing packages the learner approved, and the permission
+  settings confine the tutor's writes to the course's workspace; the
+  engine runs tests and the symbolic check in a sandbox too. Reads are
+  not confined, which matters once the tutor has web access.

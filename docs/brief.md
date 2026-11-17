@@ -149,13 +149,15 @@ phase.
   answer wanted) is not help; one that points toward the answer is. A
   separate judging call decides, and the page shows its call. An answer
   given with help counts toward nothing.
-- **Disputes**: the learner can contest a grade; the dispute is recorded.
+- **Disputes**: the learner can contest any grade once, giving a reason. A
+  separate judging call decides, seeing what the answer was graded by and
+  nothing of the conversation; the outcome is recorded with the answer.
 
 Grading method depends on the question, not the subject:
 
 | Answer type | Graded by |
 | --- | --- |
-| Code | Running tests in the workspace |
+| Code | Running tests, hidden until the answer is graded, on the learner's files in the workspace |
 | Computational math | A symbolic math check |
 | Proofs, explanations, philosophical reconstruction | A separate grading call with a rubric, which must point to the first flawed step or missing element |
 | Multiple choice | Exact match, plus the learner's stated reasoning if given |
@@ -192,6 +194,7 @@ it in any sitting.
   in a pane beside the chat.
 - **Workspace**: the tutor scaffolds starter code, reads the learner's files
   and runs tests. The learner uses their own editor; the app has no code editor.
+  Gauss installs the packages a course needs once the learner approves them.
 - **Math input**: typed plain text or LaTeX with live preview.
 - **Transcripts**: every session can be exported as a document.
 - **Notes**: HTML notes per completed unit, kept in a course notes folder;

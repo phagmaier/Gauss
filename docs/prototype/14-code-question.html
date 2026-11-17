@@ -1,0 +1,209 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 3.1, piece 14: code questions.
+  SETTLED 2026-11-17. Three questions.
+
+  Where are the tests? Picked: hidden. The prompt and the starter file say
+  what the code must do, and the first run from the card is the answer, as
+  an answer is for every other kind of question. The failing test shows in
+  the output once the question is graded, and every test while disputing
+  (piece 13). Rejected: the test file in the workspace, to run as often as
+  the learner likes before the run that counts.
+
+  What follows a failing run? Picked: a detour, then a new exercise, as for
+  every other kind. In the detour the learner can fix the file and the
+  tutor can run the tests on it, which is not recorded; the next question
+  is a different exercise on the same objective. Rejected: the card opening
+  for a second try at the same exercise (piece 2's design, from before
+  detours), which the passing rule could not count.
+
+  Who installs a course's packages? Picked: Gauss, against the agent's
+  recommendation. The tutor names the packages, a card shows them, and on
+  Install Gauss runs the command, the one time a command of the course gets
+  network access. Rejected: the learner running the command in their own
+  terminal from the tutor's instructions.
+
+  The rest was shown as the agent would build it, and stands: the card
+  names the file to edit by its full path, with "Copy path"; "Run the
+  tests" needs a confidence level; the graded card says which file was run
+  and shows the end of the test output; the thread has a line for each file
+  the tutor writes or changes. The styles are in base.css.
+
+  The controls work: the first run always fails one test, and every later
+  run passes. The bar at the left jumps between stages
+  (?stage=packages|question|failed). Keys: 1 to 5 pick how sure, H hides
+  the bar.
+
+  Everything is simulated; nothing is run. Not shown: a run past its time
+  limit (a failed grading the learner can retry, as a written answer's is),
+  "I don't know" (as on every card), and a dispute (piece 13).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 14: code questions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+@media (max-width:1100px){#bar{position:static;margin:8px;max-width:none}.th{height:auto;min-height:100dvh}}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-stage"><span class="lbl">Jump to</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Language models from scratch';
+const UNIT = 'Tokenization';
+const WS = '/home/you/gauss/courses/language-models-from-scratch/workspace';
+const CONF = ['Under 50%', '50%', '75%', '90%', '100%'];
+const Q1 = {
+  file:'bpe.py',
+  prompt:`Finish <code>most_common_pair(ids)</code> in <code>bpe.py</code>: return the pair of neighbouring ids that occurs most often in the list. When several pairs tie, return the one that appears first. For <code>[1, 2, 3, 1, 2]</code> it returns <code>(1, 2)</code>.`,
+  failed:[['','test_bpe.py ..F.'],['f','FAILED test_bpe.py::test_tie_takes_the_first'],['f','    assert most_common_pair([5, 6, 7, 8, 5, 6, 7, 8]) == (5, 6)'],['f','    AssertionError: assert (7, 8) == (5, 6)'],['','3 passed, 1 failed in 0.04s']]
+};
+const Q2 = {
+  file:'bpe_words.py',
+  prompt:`Finish <code>top_pair(words)</code> in <code>bpe_words.py</code>. <code>words</code> is a list of id lists, one per word, and a pair never runs from one word into the next. Return the most frequent pair over all the words, and the first one on a tie.`,
+  passed:[['','test_bpe_words.py .....'],['p','5 passed in 0.03s']]
+};
+const T = {
+  pkgLead:`<p>Before the first exercise: this unit's code needs two packages, <code>pytest</code> to run the tests and <code>numpy</code> for the counting later on.</p>`,
+  pkgThere:`<p>Both are there: pytest 9.0.1 and numpy 2.3.4. On to byte-pair encoding.</p>`,
+  pkgNot:`<p>The exercises of this unit are graded by tests that need <code>pytest</code>, so I cannot set one until it is installed. Say when, and I will ask again.</p>`,
+  detour1:`<p>Three tests pass and one fails. When pairs tie, the exercise asks for the one that appears first, and for <code>[5, 6, 7, 8, 5, 6, 7, 8]</code> yours returns <code>(7, 8)</code> where <code>(5, 6)</code> comes first. I read your file: the loop keeps a pair when its count is <code>&gt;=</code> the best so far. What does that do when a later pair ties the best?</p>`,
+  detourYou:`It replaces it, so I end up with the last one. I changed it to <code>&gt;</code>, can you check?`,
+  detour2:`<p>I ran the tests on your file, and all four pass now. That run is not recorded. The next exercise is.</p>`,
+  q2Passed:`<p>All five pass, the tie and the word boundary included.</p>`
+};
+
+/* ---------------- state ---------------- */
+const STAGE = {packages:'Packages', question:'The question', failed:'After a failing run'};
+const url = new URLSearchParams(location.search);
+let stage = STAGE[url.get('stage')] ? url.get('stage') : 'question';
+/* step: how far the stage has got. conf: the draft. sent: how sure each run was. */
+let step, conf, sent, running, pending;
+function reset(){ clearTimeout(pending); step = 0; conf = null; sent = stage === 'failed' ? [2] : []; running = false; }
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const FILE_ICON = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z"/><path d="M9 1.8V5.2h3.5"/></svg>';
+const tutor = html => `<div class="th-tutor prose">${html}</div>`;
+const you = html => `<div class="th-you">${html}</div>`;
+const sep = '<hr class="th-sep">';
+const wrote = (...files) => files.map(f => `<p class="fw">${FILE_ICON}<span>The tutor wrote <code>${f}</code></span></p>`).join('');
+const out = lines => `<div class="qa-out">${lines.map(([c, l]) => `<span class="${c}">${esc(l)}</span>`).join('\n')}</div>`;
+
+function openCard(q, label){
+  return `<div class="qa-card"><div class="q-count">${label}</div><div class="qa-prompt">${q.prompt}</div>
+    <div class="qa-file"><p>Edit this file in your own editor:</p>
+      <div class="qa-path"><code>${WS}/${q.file}</code><button type="button" class="textbtn" data-act="copy" data-path="${WS}/${q.file}">Copy path</button></div>
+      <p>The tests are not shown. Your first run from here is your answer.</p></div>
+    <div class="qa-conf"><span>How sure are you?</span><div class="chips" role="group" aria-label="How sure are you?">${CONF.map((c, i) => `<button type="button" class="chip" data-conf="${i}" aria-pressed="${conf === i}">${c}</button>`).join('')}</div></div>
+    <div class="qa-foot"><button type="button" class="textbtn">I don't know</button>
+      ${running ? '<span class="dk" role="status">Running the tests <span class="wait" aria-hidden="true"></span></span>'
+        : `<button type="button" class="btn" data-act="run"${conf === null ? ' disabled' : ''}>Run the tests</button>`}</div></div>`;
+}
+function doneCard(q, label, ok, sure, lines){
+  return `<div class="qa-card done"><div class="q-count">${label} ${ok ? '<span class="ok">Correct</span>' : '<span class="no">Not quite</span>'}</div>
+    <div class="qa-prompt">${q.prompt}</div>
+    <div class="qa-line"><span class="k">Your answer</span><span><code>${q.file}</code>, as you ran it</span><span class="c">${CONF[sure].toLowerCase()} sure</span></div>
+    ${out(lines)}<button type="button" class="textbtn">Dispute this grade</button></div>`;
+}
+const READY = `<div class="pf-act"><button type="button" class="btn sm" data-act="next">Ready for another question</button><button type="button" class="textbtn">Move on without the check</button></div>`;
+const CHECK = `<div class="pf-mark"><span><b>Check</b> Questions on this segment. Each answer is recorded.</span></div>`;
+
+/* ---------------- the three stages ---------------- */
+function packages(){        // step: 0 asked, 1 installing, 2 installed, 3 not now
+  const lines = `<div class="qa-line"><span class="k">Packages</span><span><code>pytest</code> <code>numpy</code></span></div>
+    <div class="qa-line"><span class="k">Command</span><span class="qa-flaw"><code>uv add pytest numpy</code>, in <code>${WS}</code></span></div>`;
+  const card = step < 2 ? `<div class="qa-card pk"><div class="q-count"><b>Install packages</b></div>
+      <div class="qa-prompt">The tutor asks to install two packages into this course's workspace.</div>${lines}
+      <div class="qa-foot"><span class="qa-aside">They are downloaded from pypi.org. No other command of this course gets network access.</span>
+      ${step === 1 ? '<span class="dk" role="status">Installing <span class="wait" aria-hidden="true"></span></span>'
+        : `<span class="pk-btns"><button type="button" class="textbtn" data-act="skip">Not now</button><button type="button" class="btn sm" data-act="install">Install</button></span>`}</div></div>`
+    : step === 2 ? `<div class="qa-card done pk"><div class="q-count"><b>Install packages</b> <span class="ok">Installed</span></div>${lines}
+      ${out([['','Resolved 7 packages in 310ms'],['','Installed 7 packages in 42ms'],['p',' + numpy==2.3.4'],['p',' + pytest==9.0.1'],['',' + 5 more']])}</div>`
+    : `<div class="qa-card done pk"><div class="q-count"><b>Install packages</b> <span class="dk">Not installed</span></div>${lines}</div>`;
+  return tutor(T.pkgLead) + card + (step === 2 ? tutor(T.pkgThere) : step === 3 ? tutor(T.pkgNot) : '');
+}
+function question(){
+  return CHECK + wrote(Q1.file) + openCard(Q1, 'Question 1');
+}
+function failed(){          // step: 0 in the detour, 1 the next question open, 2 it is graded
+  const detour = CHECK + wrote(Q1.file) + doneCard(Q1, 'Question 1', false, sent[0], Q1.failed)
+    + `<div class="pf-mark"><span><b>Detour</b> Working through question 1. Nothing here is graded or counts as help.</span></div>`
+    + tutor(T.detour1) + sep + you(T.detourYou) + sep + tutor(T.detour2);
+  if (step === 0) return detour + READY;
+  return detour + wrote(Q2.file) + (step === 1 ? openCard(Q2, 'Question 2')
+    : doneCard(Q2, 'Question 2', true, sent[1], Q2.passed) + tutor(T.q2Passed));
+}
+
+/* ---------------- render and input ---------------- */
+function render(keep){
+  const top = $('.th-scroll')?.scrollTop;
+  const body = {packages, question, failed}[stage]();
+  app.innerHTML = `<div class="th has-top"><header class="nl"><nav class="crumbs"><button type="button">Library</button><span>/</span><button type="button">${COURSE}</button><span>/</span><b>${UNIT}</b></nav>
+    <button type="button" class="nl-pos"><span class="ticks" aria-hidden="true"><i class="past"></i><i class="now"></i><i></i><i></i></span>Segment 2 of 4</button></header>
+    <div class="th-scroll"><div class="th-col">${body}</div></div>
+    <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+  const s = $('.th-scroll'); s.scrollTop = keep ? top : s.scrollHeight;
+  for (const b of document.querySelectorAll('#g-stage button')) b.setAttribute('aria-pressed', b.dataset.v === stage);
+  history.replaceState(null, '', `?stage=${stage}`);
+}
+function run(){            // the first run fails one test; every later one passes
+  if (conf === null || running) return;
+  running = true; render(true);
+  pending = setTimeout(() => {
+    running = false; sent.push(conf); conf = null;
+    if (stage === 'question') stage = 'failed'; else step++;
+    render();
+  }, 1300);
+}
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (b.dataset.conf !== undefined) { conf = +b.dataset.conf; render(true); }
+  else if (act === 'run') run();
+  else if (act === 'next') { step = 1; render(); }
+  else if (act === 'copy') { navigator.clipboard?.writeText(b.dataset.path); b.textContent = 'Copied'; }
+  else if (act === 'install') { step = 1; render(true); pending = setTimeout(() => { step = 2; render(); }, 1500); }
+  else if (act === 'skip') { step = 3; render(true); }
+});
+app.addEventListener('submit', e => e.preventDefault());    // sending messages is piece 1; not wired here
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  const k = e.key.toLowerCase();
+  if ('12345'.includes(k) && app.querySelector('[data-conf]')) { conf = +k - 1; render(true); }
+  else if (e.key === 'Enter' && app.querySelector('[data-act=run]') && !e.target.closest?.('button')) run();
+  else if (k === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [v, name] of Object.entries(STAGE)) {
+  const b = document.createElement('button');
+  b.textContent = name; b.dataset.v = v;
+  b.addEventListener('click', () => { stage = v; reset(); render(); });
+  $('#g-stage').appendChild(b);
+}
+reset(); render();
+</script>
+</body>
+</html>

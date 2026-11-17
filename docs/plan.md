@@ -23,51 +23,17 @@ two unsure correct answers.
 ## Stage 3: checked grading and aids
 
 The scope is `architecture.md` section 12's: the symbolic check, code
-questions graded by tests in the course's workspace, artifacts, disputes,
-and the tutor's file and shell tools. The choices behind this breakdown are
-in `decisions.md`, "Confinement" and "Disputes". Not in this stage: web
-access and confining what sandboxed commands read (4.0), notes (5.0).
+questions graded by tests in the course's workspace, installing a course's
+packages, artifacts, disputes, and the tutor's file and shell tools. The
+choices behind this breakdown are in `decisions.md`, "Confinement" and
+"Disputes"; the designs are pieces 13 and 14 in `docs/prototype/`
+(`decisions.md`, "Page design"). Not in this stage: web access and
+confining what sandboxed commands read (4.0), notes (5.0).
 
 **User check:** a coding unit and a computational math unit are graded by
 tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
-
-### 3.1 Designs the stage needs
-
-- Status: todo
-- Depends on: stage 2
-- Why: disputes have no design, and piece 2's code card (2026-11-13) came
-  before detours: after a failing run it has the learner fix the same
-  exercise and run the tests again.
-- Do: mocks in `docs/prototype/`, built as the earlier pieces were, each
-  with the agent's recommendation marked and the rest shown as the agent
-  would build it.
-  - Piece 13, disputes. Ask who decides a dispute: a separate model call
-    that weighs the learner's reason against the question and what it was
-    graded by, seeing nothing of the conversation (recommended), the
-    learner's own word, or the tutor. Show: "Dispute" on the graded card in
-    the session and on each answer in "What I know"; a required reason;
-    the rubric (or the choice key, expression or tests) beside the answer
-    while disputing; the outcome with its reason on the card and in "What
-    I know".
-  - Piece 14, code questions. Ask: whether the tests are hidden, the
-    prompt and starter file saying what the code must do and the first run
-    being the answer, as for every other kind (recommended), or in the
-    workspace, where the learner can run them before submitting; whether
-    a failing run is followed by a detour and then a new exercise
-    (recommended, as for every kind) or by the same exercise again; and
-    who installs a course's packages: the learner, in their own terminal,
-    from the tutor's instructions (recommended: nothing to build, and
-    nothing installed that the learner has not seen), or Gauss, once the
-    learner approves a card. Show: the card naming the file to edit by its
-    full path; the test output on the graded card; a line in the thread
-    for each file the tutor writes.
-- Done when: the user has picked an answer to each question; the picks are
-  in `decisions.md` ("Page design", and "Product decisions" for who
-  decides a dispute); `docs/prototype/index.html` lists the new pieces;
-  the tasks below are revised where a pick differs from the
-  recommendation.
 
 ### 3.2 Sandboxed commands for the engine
 
@@ -111,7 +77,7 @@ its outcome.
   tools: `Write`, `Edit` and `Bash` while a question is open, with a
   reason the tutor can act on (asked through a hook in the backend; the
   engine stays free of the SDK). The thread shows a line for each file
-  the tutor writes, with its path in the workspace. Try
+  the tutor writes, with its path in the workspace (piece 14). Try
   `blockReadsOutsideWorkingDirectories`: keep it if `python` and `uv run`
   still work in the workspace, otherwise record why and leave reads to
   4.0; either way update 4.0's item on reads.
@@ -207,36 +173,74 @@ its outcome.
   after a reload, and the browser is closed before the server stops; one
   short run on Haiku 5.5 shows an artifact the tutor made.
 
+### 3.11 Installing a course's packages
+
+- Status: todo
+- Depends on: 3.2, 3.3
+- Why: the user's pick in piece 14: Gauss installs what a coding course
+  needs once the learner approves, where the agent had recommended that
+  the learner run the command. A code question's tests cannot run without
+  their packages, so this comes before 3.7.
+- Do: an `install_packages` tool for the tutor that takes package names,
+  each with an optional version range. The engine refuses whatever is not
+  a package name (a URL, a path, an option), a call while a question is
+  open, and a second request while one waits. The page shows piece 14's
+  card (the packages, the command, Install, "Not now"); on Install the
+  engine runs the command it built itself through 3.2's module, with the
+  workspace writable and the network open to the package index only, and
+  the card keeps the end of the output. The tutor is told the outcome,
+  "Not now" included, in its next turn's header. Python through uv
+  (`uv add`, making the workspace's project when it has none); another
+  language's packages when a course needs them. Settle, under the rule in
+  `decisions.md`, "Confinement", that no text of the tutor's runs with the
+  network open: wheels only, so that no build script runs (look up uv's
+  option with context7); which Python the workspace uses without
+  downloading one; where uv's cache lies, since the sandbox writes only
+  where it is told; how the sandbox runtime allows named hosts. `tutor.md`
+  gets the lines the tutor needs; the scripted backend asks for a package.
+- Done when: tests with the command's run faked cover the tool (a name
+  refused, refused while a question is open, the request kept across a
+  restart, each answer in the tutor's next header) and the command built
+  from the names; a throwaway script on a scratch data root installs
+  `pytest` for real through the sandbox, imports it in the workspace's
+  Python, and shows a host other than the index refused; `mise run check`
+  passes; on `pnpm dev:fake` and a scratch data root one request is
+  installed and one answered "Not now", and the browser is closed before
+  the server stops.
+
 ### 3.7 Code questions
 
 - Status: todo
-- Depends on: 3.1, 3.2, 3.3
+- Depends on: 3.2, 3.3, 3.11
 - Why: a coding course's exercises are graded by running tests (brief,
   "Mastery and evidence").
-- Do: as 3.1 settles; with its recommendations, a `code` kind for
-  `ask_question` naming the files the learner edits (the tutor writes
-  their starter versions first), the tests, kept as grading material, the
-  tutor's solution, and the command. When the question is posted, the
-  engine runs the tests against the starter files, refusing the question
-  if they pass, and against the solution, refusing it if they fail: a
-  test that cannot tell right from wrong is the code question's wrong
-  key. "Run the tests", with a confidence level, submits: the command runs
-  in the sandbox with the workspace writable; exit status 0 is correct; a
-  run past its time limit is a failed grading the learner can retry; any
-  other failure is a miss, the output's end saying why. The evidence keeps
-  the learner's files as run and the output's end. The graded card, "What
-  I know", the answer turn and the help judge's message as for the other
-  kinds. `tutor.md` gets the lines the tutor needs; the scripted backend
-  posts one, writing its starter file itself.
+- Do: piece 14: a `code` kind for `ask_question` naming the files the
+  learner edits (the tutor writes their starter versions first), the tests,
+  kept as grading material outside the workspace and shown only in the
+  graded card's output and in a dispute, the tutor's solution, and the
+  command. The card names each file by its full path, with "Copy path", and
+  says that the tests are not shown. When the question is posted, the
+  engine runs the tests against the starter files, refusing the question if
+  they pass, and against the solution, refusing it if they fail: a test
+  that cannot tell right from wrong is the code question's wrong key. "Run
+  the tests", with a confidence level, submits: the command runs in the
+  sandbox with the workspace writable; exit status 0 is correct; a run past
+  its time limit is a failed grading the learner can retry; any other
+  failure is a miss, the output's end saying why, and starts a detour as
+  every miss does, after which the tutor posts a different exercise. The
+  evidence keeps the learner's files as run and the output's end. The
+  graded card, "What I know", the answer turn and the help judge's message
+  as for the other kinds. `tutor.md` gets the lines the tutor needs; the
+  scripted backend posts one, writing its starter file itself.
 - Done when: tests that run real commands in the sandbox, no model: a
-  passing and a failing submission recorded; a question refused because
-  its tests pass on the starter, and one because they fail on the
-  solution; a run past its limit; a file changed after it was submitted
-  leaving the record as it was. `mise run check` passes; on `pnpm
-  dev:fake` a code question is answered both ways, and the browser closed
-  before the server stops; one short run on Haiku 5.5 where the tutor
-  writes starter code and posts a question that passes the checks, and a
-  submission is graded.
+  passing and a failing submission recorded; a question refused because its
+  tests pass on the starter, and one because they fail on the solution; a
+  run past its limit; a file changed after it was submitted leaving the
+  record as it was. `mise run check` passes; on `pnpm dev:fake` a code
+  question is answered both ways, and the browser closed before the server
+  stops; one short run on Haiku 5.5 where the tutor asks for `pytest`
+  through 3.11's card, writes starter code and posts a question that passes
+  the checks, and a submission is graded.
 - Note: the solution has to sit where the tests look for the learner's
   files without touching the workspace. One way: a scratch folder holding
   the solution, as the folder the command runs in, with the workspace's
@@ -247,21 +251,22 @@ its outcome.
 ### 3.8 Disputes
 
 - Status: todo
-- Depends on: 3.1, 3.5, 3.7
+- Depends on: 3.5, 3.7
 - Why: a grade can be wrong (a wrong choice key, a grader too harsh or too
   lenient, a wrong test), and a dispute is the only way to correct one.
-- Do: as 3.1 settles, under the rules in `decisions.md`, "Disputes": a
-  dispute names an answer by its `questionId` (on the evidence and in
-  "What I know" already) and carries the learner's reason; it is appended
-  to the evidence with its outcome. It is raised from the graded card in
-  the session and from each answer in "What I know" (a route under
-  `/api/courses/<id>/`). Status, the check rules, calibration and "What I
-  know" read the corrected verdict; a corrected choice key shows wherever
-  the key did; the tutor of a unit in progress is told in its next turn's
-  header. If a model decides: a one-shot call that fails as the grader's
-  does (shown, and tried again on request), its prompt
-  `prompts/dispute-judge.md` drafted here and finished in 3.9. The
-  scripted backend decides disputes both ways.
+- Do: piece 13, under the rules in `decisions.md`, "Disputes": a dispute
+  names an answer by its `questionId` (on the evidence and in "What I know"
+  already) and carries the learner's reason; it is appended to the evidence
+  with its outcome. It is raised from the graded card in the session and
+  from each answer in "What I know" (a route under `/api/courses/<id>/`):
+  the card opens in place with what the answer was graded by and a field
+  for the reason, and keeps the first grade, the reason and the outcome.
+  Status, the check rules, calibration and "What I know" read the corrected
+  verdict; a corrected choice key shows wherever the key did; the tutor of
+  a unit in progress is told in its next turn's header. A one-shot call
+  decides, failing as the grader's does (shown, and tried again on
+  request), its prompt `prompts/dispute-judge.md` drafted here and finished
+  in 3.9. The scripted backend decides disputes both ways.
 - Done when: tests on hand-worked records cover an overturned miss that
   passes an objective, an overturned pass that takes one away, a
   corrected key, calibration counting the corrected verdict, a second
@@ -273,7 +278,7 @@ its outcome.
 ### 3.9 The dispute judge
 
 - Status: todo
-- Depends on: 3.8; dropped if 3.1 does not pick a model to decide
+- Depends on: 3.8
 - Why: a judge that gives way to a confident argument would make a dispute
   a way to pass, and one that never does would make disputes pointless.
 - Do: a hand-judged set of disputes, run as the grader's and the help
@@ -290,18 +295,18 @@ its outcome.
 ### 3.10 Prompts for the stage
 
 - Status: todo
-- Depends on: 3.5, 3.6, 3.7, 3.8
+- Depends on: 3.5, 3.6, 3.7, 3.8, 3.11
 - Why: the tutor must pick the kind of question that fits an objective and
   use its tools well; `planner.md` still promises only teaching in a chat
   (explanations, choice and written questions).
 - Do: revise `tutor.md` as a whole for the stage: the kind of question for
   an objective (an expression for a computation, code for a coding skill,
-  written for an argument); the workspace (starter code there, scratch
-  work in its temporary folder, the learner's files left alone); when to
-  show an artifact; a dispute's outcome reported in a header. Widen
-  `planner.md`'s promise to what is built: computations checked
-  symbolically, coding exercises in a workspace graded by tests, visual
-  aids beside the chat, and packages as 3.1 settled. `unit-planner.md`
+  written for an argument); the workspace (starter code there, scratch work
+  in its temporary folder, the learner's files left alone); when to show an
+  artifact; a dispute's outcome reported in a header. Widen `planner.md`'s
+  promise to what is built: computations checked symbolically, coding
+  exercises in a workspace graded by tests, visual aids beside the chat,
+  and packages installed once the learner approves them. `unit-planner.md`
   only if objectives need to say how they are checked.
 - Done when: one run on Sonnet 5.5 (the result depends on the model's
   judgment), kept short, on a scratch data root: an intake for a short

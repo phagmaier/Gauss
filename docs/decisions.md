@@ -105,6 +105,15 @@ The brief states the result; this is who decided and why.
   theology and in math differ), and that a library row opens the course
   page rather than the last session. The agent applied the second to
   drafts too.
+- **2026-11-17, the stage 3 designs** (pieces 13 and 14 of the mocks). The
+  user picked: a dispute is decided by a separate model call, not by the
+  learner's word or the tutor ("Disputes"); a code question's tests are
+  hidden until it is graded, and a failing run starts a detour followed by
+  a different exercise, as a miss does for every other kind ("Page
+  design"); and Gauss installs a course's packages once the learner
+  approves a card. The agent had recommended that the learner run the
+  install command themselves; what it chose under the user's pick is in
+  "Confinement".
 
 ## Toolchain
 
@@ -335,6 +344,15 @@ isolation options, kept every write inside `dir`:
   protection the runtime adds would be ours to get right), and running
   tests through a tutor session, which puts a model between the test and
   the grade.
+- **Installing packages is the one command with network access** (the
+  user's pick, piece 14; the rest of this entry is the agent's). The tutor
+  names the packages and the engine builds the command, so no text of the
+  tutor's runs with the network open: reads are not confined, and a
+  command that can read the machine and reach the network can send
+  anything out. Planned for the task that builds it, none of it tried:
+  Python packages through uv only; names checked to be package names (no
+  URL, path or option); wheels only, so that no package's build script
+  runs; the network open to the package index alone.
 - **Writes and commands are refused while a question is open**, as
   `show_artifact` is: the tutor could fix the learner's code, and the help
   judge sees only the reply's text. Reads stay allowed, so the tutor can
@@ -775,8 +793,8 @@ designed.
 
 ## Disputes
 
-Settled in task 3.0 as the agent's choices; who decides a dispute, and the
-look, are the user's in task 3.1, from the agent's recommendation below.
+The agent's choices (task 3.0), except who decides, which the user picked
+from piece 13 of the mocks (2026-11-17). The look is in "Page design".
 
 - **What can be disputed**: any graded answer, of any kind, at any time,
   in a finished unit too. Not "I don't know", which nothing graded. Not the
@@ -803,11 +821,12 @@ look, are the user's in task 3.1, from the agent's recommendation below.
   question is over, the detour has already given the right answer, and an
   argument about a grade needs what it was graded against. Everywhere else
   the rubric stays hidden.
-- **Who decides** (recommended to the user for task 3.1): a one-shot call
-  that sees the question, what it was graded by, the answer, the grade and
-  the learner's reason, and nothing of the conversation, as the grader
-  does. The learner's own word would make "passed" mean what they say;
-  the tutor wrote the key it would judge.
+- **Who decides** (the user's pick): a one-shot call that sees the
+  question, what it was graded by, the answer, the grade and the learner's
+  reason, and nothing of the conversation, as the grader does. Rejected:
+  the learner's own word, which would make "passed" mean what they say,
+  and the tutor, which wrote the key it would judge and which a finished
+  unit does not have.
 - **An overturned dispute on a written answer is a candidate for the
   grader's set** (`scripts/grader-set.ts`): added by hand, with its grade
   checked, when `grader.md` is next revised. Nothing is added
@@ -877,9 +896,9 @@ render math.
 
 ## Page design
 
-Picked by the user from the mocks in `docs/prototype/` (pieces 1 to 12),
-2026-11-13 and 2026-11-15. Each mock's header comment says what was asked
-and rejected.
+Picked by the user from the mocks in `docs/prototype/` (pieces 1 to 14),
+2026-11-13, 2026-11-15 and 2026-11-17. Each mock's header comment says what
+was asked and rejected.
 
 - **Thread layout**: one centred column, the tutor's text unframed, the
   learner's messages on the right, one message box at the bottom. Rejected:
@@ -924,6 +943,28 @@ and rejected.
   finished asks once. Several can be in progress. The course view's card
   leads to the unit in progress most recently opened, or the next in order.
   Rejected: locking units behind prerequisites, and one unit at a time.
+- **A dispute opens the graded card in place**, in the session and on each
+  answer of "What I know": what the answer was graded by, a reason, which
+  is required, and Send. The first grade, the reason and the outcome with
+  the judge's reason then stay with the answer, whose verdict reads the
+  corrected grade, marked "after your dispute". The user was asked only
+  who decides; the layout is the agent's, as shown.
+- **A code question's card names the file to edit by its full path**, with
+  "Copy path", and says that the tests are not shown; "Run the tests"
+  takes a confidence level and is the answer. The graded card names the
+  file as run and shows the end of the test output. In the detour after a
+  failing run the tutor may run the tests on the learner's fixed file,
+  which records nothing; the next question is a different exercise.
+  Rejected: the tests in the workspace, to run before the run that counts
+  (a pass would show that known tests can be made to pass, and the
+  confidence level would mean little), and a second try at the same
+  exercise (piece 2's design, from before detours; the passing rule
+  counts answers to different questions).
+- **Packages are installed from a card** the tutor asks for: the packages,
+  the command, Install and "Not now". Rejected: the learner running the
+  command in their own terminal from the tutor's instructions.
+- **The thread has a line for each file the tutor writes** ("The tutor
+  wrote `bpe.py`"); the agent's, as shown in piece 14.
 - **Words**: learner-facing copy says "segment", the brief's term; the extra
   segment is "Going over again", not "Review", which names stage 5's review
   questions.

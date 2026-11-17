@@ -321,6 +321,55 @@ button.dn:hover{border-color:var(--overlay0)}
 /* other units in progress, one line each */
 .cn-also{grid-column:1/-1;display:flex;gap:1em;align-items:baseline;border-top:1px solid var(--surface0);margin-top:.7em;padding-top:.7em;font-size:.9em;color:var(--soft)}
 
+/* ---- From the app (src/web/styles.css), which has grown since piece 12: the parts pieces 13 and 14 show ---- */
+.th-sep{border:0;height:1px;background:var(--line);margin:2.2em 0}                 /* a line between messages */
+.qa-flaw{flex:1 1 20em;min-width:0}                                               /* a long value beside its label */
+.qa-aside{color:var(--soft);font-size:.9em}                                       /* a short note at the left of a card's foot */
+/* "What I know": each objective with the answers behind it */
+.wk-s{color:var(--faint);font-size:.88em;white-space:nowrap}
+.wk-s.pass{color:var(--green)}
+.wk-s.miss{color:var(--yellow)}
+.wk-s.now{color:var(--accent)}
+.wk-objs{list-style:none;margin:0;padding:0}
+.wk-obj{padding:.9em 0 1.1em;border-top:1px solid var(--surface0)}
+.wk-obj:first-child{border-top:0}
+.wk-ohead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 1.2em;align-items:baseline}
+.wk-stmt{font-weight:500}
+.wk-ev{list-style:none;margin:.7em 0 0;padding:0;display:grid;gap:1em}
+.wk-entry{border-left:2px solid var(--surface1);padding:.1em 0 .1em 1em}
+.wk-entry .qa-prompt{font-size:1em;margin:.25em 0 .45em}
+
+/* ---- Disputes, settled in piece 13: the graded card opens in place, and a separate check decides ---- */
+.dp{border-top:1px solid var(--surface0);margin-top:.9em;padding-top:.8em}
+.dp-k{display:block;font-size:.86em;color:var(--soft);margin:0 0 .3em}
+/* what the answer was graded by: shown only here */
+.dp-by{background:var(--base);border:1px solid var(--surface0);border-radius:var(--r);padding:.6em .9em;margin:0 0 1em;font-size:.94em}
+.wk-entry .dp-by{background:var(--mantle)}
+.dp-by pre{margin:0;font-family:var(--mono);font-size:.86em;line-height:1.55;overflow-x:auto}
+.dp .reason{margin-top:0}
+.dp .reason:focus{border-color:var(--accent)}
+.dp-btns{display:flex;gap:16px;align-items:baseline;flex:none}
+.qa-card.done .dp .textbtn{margin-top:0;font-size:.9em}
+/* the dispute's record: the first grade, the reason, the outcome */
+.dp-rec{border-top:1px solid var(--surface0);margin-top:.8em;padding-top:.7em;display:grid;gap:.25em}
+.q-count .chg{color:var(--yellow)}
+.wk-entry>.textbtn{display:inline-block;margin-top:.5em;font-size:.84em}
+
+/* ---- Code questions, settled in piece 14: hidden tests, and a card to install packages ---- */
+/* a line in the thread for each file the tutor writes or changes */
+.fw{display:flex;align-items:center;gap:.55em;margin:.5em 0;font-size:.86em;color:var(--soft)}
+.fw svg{flex:none;color:var(--faint)}
+.fw+.qa-card{margin-top:1em}
+/* the file to edit, by its full path */
+.qa-file p{margin:0}
+.qa-path{display:flex;gap:.2em 1em;align-items:baseline;flex-wrap:wrap;margin:.3em 0 .45em}
+.qa-path code{overflow-wrap:anywhere}
+.qa-prompt code,.prose code{white-space:nowrap}
+/* a card that asks for something other than an answer */
+.pk .q-count b{color:var(--ink);font-weight:600;font-size:1.14em}
+.pk .qa-line+.qa-line{margin-top:.2em}
+.pk-btns{display:flex;gap:16px;align-items:baseline;flex:none}
+
 /* Prototype only: where a link leads until that view is designed. */
 .away{height:100dvh;display:grid;place-content:center;justify-items:start;gap:.5em;padding:24px}
 .away h1{font-size:1.7em;font-weight:600;margin:0}

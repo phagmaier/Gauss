@@ -1,0 +1,302 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 3.1, piece 13: disputes.
+  SETTLED 2026-11-17.
+  Question: who decides a dispute?
+
+  Picked: a separate check, one model call that sees the question, what the
+  answer was graded by, the answer, the grade and the learner's reason, and
+  nothing of the conversation, as the grader does.
+  Rejected: the learner's own word (the grade changing as soon as they say
+  it is wrong, so that "passed" means what the learner says), and the tutor
+  (it wrote the key or the tests it would be judging, and a finished unit
+  has no tutor until one is started for the dispute).
+
+  The rest was shown as the agent would build it, and stands (decisions.md,
+  "Disputes"): "Dispute this grade" on every graded card in the session and
+  on every answer in "What I know", but not on "I don't know"; the card
+  opens in place to show what the answer was graded by (the rubric, the
+  key, the expected expression or the tests) and to take a reason, which is
+  required; one dispute per answer; the outcome and its reason stay on the
+  card and in "What I know", with the first grade kept beside them. An
+  objective's status follows the corrected grade. A dispute changes no
+  phase: the detour stays open. The styles are in base.css.
+
+  The controls work. Outcomes are scripted per answer, whatever reason is
+  typed: in the session, question 1 (a rubric) stands and question 2 (a
+  wrong key) is changed; in "What I know", the code answer (a wrong test)
+  is changed and the math answer stands. A dispute raised in one view shows
+  in the other. The bar at the left switches views (?view=session|known).
+  Keys: H hides the bar.
+
+  Everything is simulated. Not shown: a deciding call that fails (shown and
+  retried on request, as the grader's is), calibration, which counts the
+  corrected grade, and a key corrected to a letter the learner did not pick.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 13: disputes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+@media (max-width:1100px){#bar{position:static;margin:8px;max-width:none}.th,.pg{height:auto;min-height:100dvh}}
+
+/* as KaTeX does from 0.16.10, which the app uses: its hidden MathML then scrolls with the page it is in */
+.katex{position:relative}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-view"><span class="lbl">Raised from</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Calculus I';
+const UNIT = {n:3, of:8, name:'Differentiation rules'};
+const CONF = ['under 50%', '50%', '75%', '90%', '100%'];
+const TESTS = String.raw`def test_power_one():
+    assert d_power(3, 2, 1, 5) == 3
+
+def test_inside_is_x():
+    assert d_power(1, 0, 3, 2) == 12
+
+def test_linear_inside():
+    assert d_power(2, 1, 5, 0) == 10
+
+def test_negative_inside():
+    assert d_power(-1, 4, 2, 1) == 6`;
+
+/* Every answer, as the evidence has it. `by` is what it was graded by; `outcome` is what a judge decides. */
+const ANSWERS = {
+  why: {kind:'written', n:1, at:'17 November 2026, 10:12', conf:2, verdict:'incorrect',
+    prompt:String.raw`In your own words, why does the chain rule multiply the two rates instead of adding them?`,
+    text:String.raw`Because the derivative of a composition is the product of the two derivatives. You take the outer derivative and the inner derivative and multiply them, which is what the rule says.`,
+    flaw:String.raw`It restates the rule. It does not say why the two rates combine by multiplying.`,
+    by:['Graded against this rubric', String.raw`Correct if it says that a small change in $x$ is scaled by the inner rate, and that the scaled change is then scaled again by the outer rate, or gives another account of two scalings compounding. Restating the formula, or saying that the rule says so, is not enough.`],
+    outcome:{verdict:'incorrect', reason:String.raw`The answer says that the two derivatives are multiplied and gives the rule itself as the reason. Nothing in it says that the inner rate scales the change the outer function receives, which is what the rubric asks for.`}},
+  exp: {kind:'choice', n:2, at:'17 November 2026, 10:21', conf:3, verdict:'incorrect',
+    prompt:String.raw`What is the derivative of $e^{-x^2}$?`,
+    options:[String.raw`$e^{-x^2}$`, String.raw`$-2x\,e^{-x^2}$`, String.raw`$2x\,e^{-x^2}$`, String.raw`$-x^2e^{-x^2-1}$`],
+    picked:1, key:2,
+    outcome:{verdict:'correct', key:1, reason:String.raw`The inside, $-x^2$, has derivative $-2x$, so the derivative is $-2x\,e^{-x^2}$, which is B. The key, C, drops the sign.`}},
+  pow: {kind:'math', at:'16 November 2026, 18:40', conf:2, verdict:'correct',
+    prompt:String.raw`Differentiate $h(x) = (2x+1)^5$.`,
+    answer:String.raw`5(2x+1)^4 \cdot 2`, expected:String.raw`10(2x+1)^4`,
+    outcome:{verdict:'correct', reason:String.raw`$5(2x+1)^4\cdot 2$ equals the expected $10(2x+1)^4$.`}},
+  idk: {kind:'unknown', at:'17 November 2026, 10:05', verdict:'unknown',
+    prompt:String.raw`Why is the outer derivative taken at $g(x)$ and not at $x$?`,
+    stuck:String.raw`I can do the steps but I don't see what "at $g(x)$" is saying.`},
+  code: {kind:'code', at:'17 November 2026, 10:44', conf:3, verdict:'incorrect',
+    prompt:String.raw`Finish <code>d_power(a, b, n, x)</code> in <code>chain.py</code> so that it returns the derivative of $(ax+b)^n$ at $x$.`,
+    out:[['','test_chain.py ...F'],['f','FAILED test_chain.py::test_negative_inside'],['f','    assert d_power(-1, 4, 2, 1) == 6'],['f','    AssertionError: assert -6 == 6'],['','3 passed, 1 failed in 0.03s']],
+    by:['Graded by these tests, in test_chain.py', `<pre>${TESTS}</pre>`],
+    outcome:{verdict:'correct', reason:String.raw`The derivative of $(-x+4)^2$ at $1$ is $2\cdot 3\cdot(-1) = -6$, which the function returns. <code>test_negative_inside</code> expects $6$, so the test is wrong, and the other three pass.`}},
+  cont: {kind:'written', at:'9 November 2026, 20:15', conf:3, verdict:'incorrect',
+    prompt:String.raw`What does it mean for $f$ to be continuous at $a$?`,
+    text:String.raw`For every $\varepsilon > 0$ there is a $\delta > 0$ such that $|f(x) - f(a)| < \varepsilon$ whenever $|x - a| < \delta$.`,
+    flaw:String.raw`It does not say that $\lim_{x\to a} f(x)$ exists and equals $f(a)$.`,
+    by:['Graded against this rubric', String.raw`Correct if it says that $f(a)$ is defined, that $\lim_{x\to a} f(x)$ exists, and that the two are equal.`],
+    said:String.raw`The epsilon-delta statement is the definition of that limit being $f(a)$, so it says the same thing.`,
+    outcome:{verdict:'correct', reason:String.raw`The answer is the $\varepsilon$-$\delta$ form of $\lim_{x\to a} f(x) = f(a)$, and $f(a)$ is defined, since the statement uses it. The rubric's three conditions follow from it.`}}
+};
+for (const [id, a] of Object.entries(ANSWERS)) a.id = id;
+const choice = (a, i) => `${'ABCD'[i]}. ${a.options[i]}`;
+ANSWERS.exp.by = ['Graded by this key', choice(ANSWERS.exp, ANSWERS.exp.key)];
+ANSWERS.pow.by = ['Graded by comparing your answer with', `$${ANSWERS.pow.expected}$`];
+
+/* "What I know": the units, their objectives, and the answers behind each */
+const KNOWN = [
+  {n:2, title:'Limits and continuity', status:['Passed', 'pass'], objectives:[
+    {stmt:'State what it means for a function to be continuous at a point', answers:['cont']}]},
+  {n:3, title:UNIT.name, status:['In progress', 'now'], objectives:[
+    {stmt:'Apply the chain rule to a composite function', answers:['pow', 'exp']},
+    {stmt:'Explain why the chain rule multiplies the two rates', answers:['idk', 'why']},
+    {stmt:String.raw`Write a function that applies the chain rule to $(ax+b)^n$`, answers:['code']}]}
+];
+
+/* ---------------- state ---------------- */
+const VIEW = {session:['In the session'], known:['"What I know"']};
+const url = new URLSearchParams(location.search);
+let view = VIEW[url.get('view')] ? url.get('view') : 'session';
+let disputes, form, pending = [];     // disputes: id -> {reason, outcome?}; form: the one open
+function reset(){
+  pending.forEach(clearTimeout); pending = [];
+  disputes = {cont:{reason:ANSWERS.cont.said, outcome:ANSWERS.cont.outcome}};
+  form = null;
+}
+
+/* ---------------- deciding (simulated) ---------------- */
+const outcomeOf = a => disputes[a.id]?.outcome;
+const gradeNow = a => outcomeOf(a)?.verdict ?? a.verdict;
+const keyNow = a => outcomeOf(a)?.key ?? a.key;
+const changed = a => outcomeOf(a) && gradeNow(a) !== a.verdict;
+function send(){
+  const a = ANSWERS[form.id], reason = form.reason.trim();
+  if (!reason) return;
+  disputes[a.id] = {reason};
+  form = null;
+  render();
+  pending.push(setTimeout(() => { disputes[a.id].outcome = a.outcome; render(); }, 1600));
+}
+
+/* the passing rule, so that an objective's status follows the corrected grade */
+function status(ids){
+  let missed = false, row = 0, passed = false;
+  for (const a of ids.map(id => ANSWERS[id])) {
+    if (gradeNow(a) !== 'correct') { missed = true; row = 0; passed = false; continue; }
+    row++;
+    if (row >= 2 || (!missed && a.conf >= 3)) passed = true;
+  }
+  return passed ? ['Passed', 'pass'] : ['Not passed yet', 'miss'];
+}
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const WORD = {correct:'<span class="ok">Correct</span>', incorrect:'<span class="no">Not quite</span>', unknown:'<span class="dk">Did not know</span>'};
+const NAME = {correct:'Correct', incorrect:'Not quite'};
+const line = (k, v) => `<div class="qa-line"><span class="k">${k}</span><span class="qa-flaw">${v}</span></div>`;
+const sure = a => `${CONF[a.conf]} sure`;
+
+/* the answer as it was given; `card` puts how sure beside it, as the session's card does */
+function answerHtml(a, card){
+  const c = card ? `<span class="c">${sure(a)}</span>` : '';
+  if (a.kind === 'unknown') return line('Your answer', "I don't know") + line('Stuck on', a.stuck);
+  if (a.kind === 'written') return `<div class="qa-said">${a.text}</div>` + (card ? `<div class="qa-line">${c}</div>` : '');
+  if (a.kind === 'choice') return `<div class="qa-line"><span class="k">Your answer</span><span>${choice(a, a.picked)}</span>${c}</div>`
+    + (gradeNow(a) === 'correct' ? '' : line('Correct answer', choice(a, keyNow(a))));
+  if (a.kind === 'math') return `<div class="qa-line"><span class="k">Your answer</span><span>$${a.answer}$</span>${c}</div>`
+    + (gradeNow(a) === 'correct' ? '' : line('Correct answer', `$${a.expected}$`));
+  return `<div class="qa-line"><span class="k">Your answer</span><span><code>chain.py</code>, as you ran it</span>${c}</div>
+    <div class="qa-out">${a.out.map(([cl, l]) => `<span class="${cl}">${esc(l)}</span>`).join('\n')}</div>`;
+}
+/* the first grade's reason, which stays while the grade does */
+const flawHtml = a => a.flaw && !changed(a) ? line('The first flaw', a.flaw) : '';
+
+/* the dispute: the button, the form, or its record */
+function disputeHtml(a){
+  if (a.kind === 'unknown') return '';
+  const d = disputes[a.id];
+  if (!d && form?.id !== a.id) return `<button type="button" class="textbtn" data-act="dispute" data-id="${a.id}">Dispute this grade</button>`;
+  if (!d) {
+    return `<div class="dp"><span class="dp-k">${a.by[0]}</span><div class="dp-by">${a.by[1]}</div>
+      <label class="dp-k" for="why">Why is the grade wrong?</label>
+      <textarea class="field reason" id="why" data-id="${a.id}"></textarea>
+      <div class="qa-foot"><span class="qa-aside">Decided once, by a separate check that sees the question, what it was graded by, your answer and this reason, and nothing of the conversation.</span><span class="dp-btns">
+        <button type="button" class="textbtn" data-act="cancel">Cancel</button>
+        <button type="button" class="btn sm" data-act="send" disabled>Send dispute</button></span></div></div>`;
+  }
+  const o = d.outcome;
+  const first = changed(a) ? line('First graded', `${NAME[a.verdict]}${a.flaw ? `: ${a.flaw}` : a.kind === 'choice' ? `, by the key ${choice(a, a.key)}` : a.kind === 'code' ? ', by the tests' : ''}`) : '';
+  const outcome = !o ? '<span class="dk">Deciding <span class="wait" aria-hidden="true"></span></span>'
+    : (o.verdict === a.verdict ? '<b>The grade stands.</b> ' : `<b>Changed to ${NAME[o.verdict]}.</b> `) + o.reason;
+  return `<div class="dp-rec">${first}${line('Your dispute', esc(d.reason))}${line('Outcome', outcome)}</div>`;
+}
+const after = a => changed(a) ? '<span class="chg">after your dispute</span>' : '';
+
+function card(id){
+  const a = ANSWERS[id];
+  return `<div class="qa-card done"><div class="q-count">Question ${a.n} ${WORD[gradeNow(a)]}${after(a)}</div>
+    <div class="qa-prompt">${a.prompt}</div>${answerHtml(a, true)}${flawHtml(a)}${disputeHtml(a)}</div>`;
+}
+function entry(id){
+  const a = ANSWERS[id];
+  return `<li class="wk-entry"><div class="q-count"><span>${a.at}</span>${WORD[gradeNow(a)]}${after(a)}${a.kind === 'unknown' ? '' : `<span>${sure(a)}</span>`}</div>
+    <div class="qa-prompt">${a.prompt}</div>${answerHtml(a, false)}${flawHtml(a)}${disputeHtml(a)}</li>`;
+}
+
+/* ---------------- the two views ---------------- */
+const crumbs = (trail, here) => `<nav class="crumbs">${trail.map(t => `<button type="button">${t}</button><span>/</span>`).join('')}<b>${here}</b></nav>`;
+function sessionView(){
+  const thread = [
+    `<div class="pf-mark"><span><b>Check</b> Questions on this segment. Each answer is recorded.</span></div>`,
+    card('why'),
+    `<div class="pf-mark"><span><b>Detour</b> Working through question 1. Nothing here is graded or counts as help.</span></div>`,
+    String.raw`<div class="th-tutor prose"><p>You have the rule right: the two derivatives are multiplied. The question is why. Say $x$ moves by a small step. What does the inside, $g$, do to that step before the outer function ever sees it?</p></div>`,
+    `<hr class="th-sep">`,
+    String.raw`<div class="th-you">It stretches it by $g'(x)$, so the outer function gets a step that is already scaled.</div>`,
+    `<hr class="th-sep">`,
+    String.raw`<div class="th-tutor prose"><p>Yes, and the outer function then scales that step again, by $f'$ at the point it has reached. Scaling twice is multiplying, which is the <strong>reason</strong> the rule asks for.</p></div>`,
+    card('exp'),
+    `<div class="pf-mark"><span><b>Detour</b> Working through question 2. Nothing here is graded or counts as help.</span></div>`,
+    String.raw`<div class="th-tutor prose"><p>The answer is C, $2x\,e^{-x^2}$. The outer function is $e^u$, which is its own derivative, taken at $u = -x^2$, and the inside contributes $2x$. Where did the minus sign in your answer come from?</p></div>`,
+    `<div class="pf-act"><button type="button" class="btn sm">Ready for another question</button><button type="button" class="textbtn">Move on without the check</button></div>`
+  ];
+  return `<div class="th has-top"><header class="nl">${crumbs(['Library', COURSE], UNIT.name)}
+    <button type="button" class="nl-pos"><span class="ticks" aria-hidden="true"><i class="past"></i><i class="past"></i><i class="now"></i><i></i><i></i></span>Segment 3 of 5</button></header>
+    <div class="th-scroll"><div class="th-col">${thread.join('')}</div></div>
+    <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+}
+function knownView(){
+  const all = KNOWN.flatMap(u => u.objectives).map(o => status(o.answers)[1]);
+  const passed = all.filter(s => s === 'pass').length;
+  const counts = [[passed, 'passed'], [all.length - passed, 'not passed yet']].filter(([n]) => n).map(([n, w]) => `${n} ${w}`);
+  const unit = u => `<section><div class="cv-hrow"><h2 class="pg-h">Unit ${u.n}: ${u.title}</h2><span class="wk-s ${u.status[1]}">${u.status[0]}</span></div>
+    <ol class="wk-objs">${u.objectives.map(o => { const [text, cls] = status(o.answers);
+      return `<li class="wk-obj"><div class="wk-ohead"><span class="wk-stmt">${o.stmt}</span><span class="wk-s ${cls}">${text}</span></div>
+        <ol class="wk-ev">${o.answers.map(entry).join('')}</ol></li>`; }).join('')}</ol></section>`;
+  return `<div class="pg"><header class="nl">${crumbs(['Library', COURSE], 'What I know')}</header>
+    <div class="pg-scroll"><div class="pg-col"><h1 class="cv-title">What I know</h1>
+      <p class="cv-at">2 units started, with ${all.length} objectives: ${counts.join(' and ')}.</p>
+      ${KNOWN.map(unit).join('')}</div></div></div>`;
+}
+
+/* ---------------- render and input ---------------- */
+function render(){
+  const scroller = () => $('.th-scroll') ?? $('.pg-scroll');
+  const top = scroller()?.scrollTop, same = app.dataset.view === view;
+  app.innerHTML = view === 'session' ? sessionView() : knownView();
+  app.dataset.view = view;
+  math(app);
+  const s = scroller();
+  s.scrollTop = same ? top : view === 'session' ? s.scrollHeight : 0;
+  const w = $('#why'); if (w) { w.value = form.reason; w.focus(); sync(); }
+  for (const b of document.querySelectorAll('#g-view button')) b.setAttribute('aria-pressed', b.dataset.v === view);
+  history.replaceState(null, '', `?view=${view}`);
+}
+function sync(){ const b = app.querySelector('[data-act=send]'); if (b) b.disabled = !form.reason.trim(); }
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'dispute') { form = {id:b.dataset.id, reason:''}; render(); }
+  else if (act === 'cancel') { form = null; render(); }
+  else if (act === 'send') send();
+});
+app.addEventListener('input', e => { if (e.target.id === 'why') { form.reason = e.target.value; sync(); } });
+app.addEventListener('submit', e => e.preventDefault());    // sending messages is piece 1; not wired here
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [v, [name]] of Object.entries(VIEW)) {
+  const b = document.createElement('button');
+  b.textContent = name; b.dataset.v = v;
+  b.addEventListener('click', () => { view = v; form = null; render(); });
+  $('#g-view').appendChild(b);
+}
+reset(); render();
+</script>
+</body>
+</html>
