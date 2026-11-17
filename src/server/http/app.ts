@@ -84,14 +84,17 @@ export function createApp(options: {
         409,
       );
     }
-    // A draft proposed before style notes existed (task 2.10) has none.
+    // A draft proposed before style notes existed (task 2.10) has none, and
+    // one proposed before background notes (task 2.22) has no background.
     const style = await dataRoot.readStyle(stored.id);
+    const background = await dataRoot.readBackground(stored.id);
     const intake = intakes.review({
       id: stored.id,
       proposal: {
         title: stored.course.title,
         units: curriculum.units,
         ...(style === undefined ? {} : { style }),
+        ...(background === undefined ? {} : { background }),
       },
     });
     return c.json({ intakeId: intake.id } satisfies IntakeStarted);

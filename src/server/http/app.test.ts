@@ -46,8 +46,14 @@ const FIRST = {
     },
   ],
   style: "Short explanations, a picture before the algebra.",
+  background: "The learner can multiply matrices, and wants to follow PCA.",
 };
 const REVISED = { ...FIRST, units: FIRST.units.slice(0, 1) };
+
+/** The tutor's reply to the learner's first message, where it cannot propose (task 2.22). */
+const OPENING: FakeTurn = [
+  { text: "What do you know already? Shall I propose?" },
+];
 
 function setUp(script: FakeTurn[], replies: FakeReply[] = []) {
   const backend = createFakeBackend(script, replies);
@@ -106,6 +112,12 @@ async function say(
   await setup.intakes.get(intakeId)?.settled();
 }
 
+/** The learner's first message, then their answer to the tutor's question. */
+async function opened(setup: ReturnType<typeof setUp>, intakeId: string) {
+  await say(setup, intakeId, ASK);
+  await say(setup, intakeId, "Matrices. Go ahead.");
+}
+
 type Frame = { event?: string; id?: string; data?: unknown };
 
 /** Reads server-sent events until `count` frames have arrived. */
@@ -142,7 +154,10 @@ async function readFrames(response: Response, count: number) {
 }
 
 test("a new course starts as an intake, and its first proposal puts it in the library as a draft", async () => {
-  const setup = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
+  const setup = setUp([
+    OPENING,
+    [{ call: "propose_curriculum", input: FIRST }],
+  ]);
   const { app } = setup;
 
   const empty = await app.request("/api/courses");
@@ -154,6 +169,10 @@ test("a new course starts as an intake, and its first proposal puts it in the li
     courses: [],
   });
   await say(setup, intakeId, ASK);
+  expect(await (await app.request("/api/courses")).json()).toEqual({
+    courses: [],
+  });
+  await say(setup, intakeId, "Matrices. Go ahead.");
 
   const draft = {
     id: "linear-algebra-for-pca",
@@ -246,12 +265,13 @@ test("a reconnecting page gets only what it missed, unless the log is another on
 
 test("approval names the revision shown; a replaced or unknown one is refused, and approval ends the intake", async () => {
   const setup = setUp([
+    OPENING,
     [{ call: "propose_curriculum", input: FIRST }],
     [{ call: "propose_curriculum", input: REVISED }],
   ]);
   const { app } = setup;
   const intakeId = await startIntake(app);
-  await say(setup, intakeId, ASK);
+  await opened(setup, intakeId);
   await say(setup, intakeId, "One unit is enough.");
   const approval = `/api/intakes/${intakeId}/approval`;
 
@@ -284,12 +304,13 @@ test("approval names the revision shown; a replaced or unknown one is refused, a
 
 test("approval is refused while the tutor is writing, and stopping the tutor's turn allows it", async () => {
   const setup = setUp([
+    OPENING,
     [{ call: "propose_curriculum", input: FIRST }],
     [{ text: "Let me reconsider" }, { hold: true }],
   ]);
   const { app } = setup;
   const intakeId = await startIntake(app);
-  await say(setup, intakeId, ASK);
+  await opened(setup, intakeId);
 
   const intake = setup.intakes.get(intakeId);
   const writing = new Promise<void>((resolve) => {
@@ -347,9 +368,12 @@ test("malformed bodies are refused with a reason, and nothing reaches the tutor"
 });
 
 test("a course outlives the server, and an intake in progress does not", async () => {
-  const before = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
+  const before = setUp([
+    OPENING,
+    [{ call: "propose_curriculum", input: FIRST }],
+  ]);
   const intakeId = await startIntake(before.app);
-  await say(before, intakeId, ASK);
+  await opened(before, intakeId);
   expect(
     (
       await post(before.app, `/api/intakes/${intakeId}/approval`, {
@@ -374,10 +398,13 @@ test("a course outlives the server, and an intake in progress does not", async (
   expect(gone.status).toBe(404);
 });
 
-test("a draft opens for review in its running intake, or after a restart in a new one that starts from it with its style note", async () => {
-  const before = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
+test("a draft opens for review in its running intake, or after a restart in a new one that starts from it with its notes", async () => {
+  const before = setUp([
+    OPENING,
+    [{ call: "propose_curriculum", input: FIRST }],
+  ]);
   const intakeId = await startIntake(before.app);
-  await say(before, intakeId, ASK);
+  await opened(before, intakeId);
   const review = "/api/courses/linear-algebra-for-pca/review";
 
   const running = await post(before.app, review);
@@ -419,11 +446,16 @@ test("a draft opens for review in its running intake, or after a restart in a ne
   );
 });
 
-test("a draft stored before style notes existed reopens without one, and can be approved", async () => {
-  const before = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
-  await say(before, await startIntake(before.app), ASK);
+test("a draft stored before style and background notes existed reopens without them, and can be approved", async () => {
+  const before = setUp([
+    OPENING,
+    [{ call: "propose_curriculum", input: FIRST }],
+  ]);
+  await opened(before, await startIntake(before.app));
   await before.intakes.close();
-  await rm(join(dir, "courses", "linear-algebra-for-pca", "style.md"));
+  const course = join(dir, "courses", "linear-algebra-for-pca");
+  await rm(join(course, "style.md"));
+  await rm(join(course, "background.md"));
 
   const after = setUp([]);
   const reopened = await post(
@@ -435,12 +467,12 @@ test("a draft stored before style notes existed reopens without one, and can be 
     await after.app.request(`/api/intakes/${intakeId}/events`),
     3,
   );
-  const { style: _, ...withoutNote } = FIRST;
+  const { style: _, background: __, ...withoutNotes } = FIRST;
   expect(stream.first[2]?.data).toEqual({
     type: "curriculum_proposed",
     courseId: "linear-algebra-for-pca",
     revision: 1,
-    ...withoutNote,
+    ...withoutNotes,
   });
   await stream.close();
   const approval = await post(after.app, `/api/intakes/${intakeId}/approval`, {
@@ -450,10 +482,13 @@ test("a draft stored before style notes existed reopens without one, and can be 
 });
 
 test("review keeps the same intake during approval and when its record read is stale", async () => {
-  const setup = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
+  const setup = setUp([
+    OPENING,
+    [{ call: "propose_curriculum", input: FIRST }],
+  ]);
   const { app, dataRoot, intakes } = setup;
   const intakeId = await startIntake(app);
-  await say(setup, intakeId, ASK);
+  await opened(setup, intakeId);
   const courseId = "linear-algebra-for-pca";
   const draft = await dataRoot.readCourse(courseId);
   const writing = Promise.withResolvers<void>();

@@ -123,6 +123,10 @@ export type Item =
       style: string | undefined;
       /** The style note differs from the revision before's. */
       styleChanged: boolean;
+      /** What the learner told the planner; a draft from before task 2.22 has none. */
+      background: string | undefined;
+      /** The background note differs from the revision before's. */
+      backgroundChanged: boolean;
     }
   | { kind: "note"; key: number; text: string };
 
@@ -454,6 +458,10 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             style: event.style,
             styleChanged:
               previous !== undefined && previous.style !== event.style,
+            background: event.background,
+            backgroundChanged:
+              previous !== undefined &&
+              previous.background !== event.background,
           },
         ],
         tutorOpen: false,

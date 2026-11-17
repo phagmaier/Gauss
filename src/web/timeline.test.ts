@@ -104,7 +104,15 @@ const EIGEN: Unit = {
 };
 const SHORT = "Short explanations, a picture first.";
 const PREDICT = "Short explanations. Checks ask you to predict, not compute.";
-const proposed = (revision: number, units: Unit[], style?: string) =>
+const KNOWS = "The learner multiplies matrices with ease.";
+const KNOWS_MAPS =
+  "The learner multiplies matrices with ease and knows what a linear map is.";
+const proposed = (
+  revision: number,
+  units: Unit[],
+  style?: string,
+  background?: string,
+) =>
   ({
     type: "curriculum_proposed",
     courseId: "linear-algebra",
@@ -112,9 +120,10 @@ const proposed = (revision: number, units: Unit[], style?: string) =>
     title: "Linear algebra",
     units,
     ...(style === undefined ? {} : { style }),
+    ...(background === undefined ? {} : { background }),
   }) as const;
 
-test("each proposal is a card, a revision marks what changed since the one before, the style note included, and approval is recorded", () => {
+test("each proposal is a card, a revision marks what changed since the one before, each note included, and approval is recorded", () => {
   const revised = { ...VECTORS, title: "Vectors, maps and matrices" };
   const gentler = {
     ...EIGEN,
@@ -123,16 +132,16 @@ test("each proposal is a card, a revision marks what changed since the one befor
   const state = play([
     { type: "learner", text: "Linear algebra." },
     { type: "turn_start" },
-    proposed(1, [VECTORS, EIGEN], SHORT),
+    proposed(1, [VECTORS, EIGEN], SHORT, KNOWS),
     { type: "turn_end", outcome: "done" },
-    { type: "learner", text: "Shorter, please." },
+    { type: "learner", text: "I know linear maps. Shorter, please." },
     { type: "turn_start" },
     { type: "tutor_text", text: "I renamed the first unit." },
-    proposed(2, [revised, EIGEN], SHORT),
+    proposed(2, [revised, EIGEN], SHORT, KNOWS_MAPS),
     { type: "turn_end", outcome: "done" },
     { type: "learner", text: "And eigenvectors more gently." },
     { type: "turn_start" },
-    proposed(3, [revised, gentler], PREDICT),
+    proposed(3, [revised, gentler], PREDICT, KNOWS_MAPS),
     { type: "turn_end", outcome: "done" },
     {
       type: "curriculum_approved",
@@ -152,6 +161,8 @@ test("each proposal is a card, a revision marks what changed since the one befor
       changed: new Set(),
       style: SHORT,
       styleChanged: false,
+      background: KNOWS,
+      backgroundChanged: false,
     },
     {
       kind: "proposal",
@@ -163,6 +174,8 @@ test("each proposal is a card, a revision marks what changed since the one befor
       changed: new Set(["vectors"]),
       style: SHORT,
       styleChanged: false,
+      background: KNOWS_MAPS,
+      backgroundChanged: true,
     },
     {
       kind: "proposal",
@@ -175,6 +188,8 @@ test("each proposal is a card, a revision marks what changed since the one befor
       changed: new Set(["eigen"]),
       style: PREDICT,
       styleChanged: true,
+      background: KNOWS_MAPS,
+      backgroundChanged: false,
     },
   ]);
   expect(state.latestRevision).toBe(3);
@@ -196,17 +211,29 @@ test("a draft reopened after a restart is marked, and its proposal is the first 
   expect(state.approved).toBeNull();
 });
 
-test("a draft stored before style notes existed has none, and a revision that adds one marks it changed", () => {
+test("a draft stored before its notes existed has none, and a revision that adds them marks them changed", () => {
   const state = play([
     { type: "draft_reopened" },
     proposed(1, [VECTORS]),
     { type: "learner", text: "Fewer computations." },
-    proposed(2, [VECTORS], PREDICT),
+    proposed(2, [VECTORS], PREDICT, KNOWS),
   ]);
 
   expect(state.items.filter((i) => i.kind === "proposal")).toMatchObject([
-    { revision: 1, style: undefined, styleChanged: false },
-    { revision: 2, style: PREDICT, styleChanged: true },
+    {
+      revision: 1,
+      style: undefined,
+      styleChanged: false,
+      background: undefined,
+      backgroundChanged: false,
+    },
+    {
+      revision: 2,
+      style: PREDICT,
+      styleChanged: true,
+      background: KNOWS,
+      backgroundChanged: true,
+    },
   ]);
 });
 

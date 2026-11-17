@@ -275,6 +275,18 @@ function ProposalCard(props: {
             "No note was proposed, so the tutor's default style applies."}
         </p>
       </section>
+      <section className="cs" aria-label="What the tutor will know about you">
+        <div className="cs-h">
+          <span>What the tutor will know about you</span>
+          {proposal.backgroundChanged ? (
+            <span className="chg">Changed</span>
+          ) : null}
+        </div>
+        <p className="cs-t">
+          {proposal.background ??
+            "Nothing was recorded, so the tutor starts from your answers."}
+        </p>
+      </section>
       {error === undefined ? null : <p className="qa-error">{error}</p>}
       <div className="qa-foot">
         <button

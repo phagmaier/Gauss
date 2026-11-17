@@ -46,6 +46,7 @@ const CURRICULUM: CurriculumProposal = {
     },
   ],
   style: "Short.",
+  background: "The learner knows algebra.",
 };
 
 function setUp() {
@@ -184,11 +185,16 @@ test(
   WHOLE_UNIT_MS,
 );
 
-test("an intake proposes a curriculum from the learner's first message, revises it when asked, and the revision can be approved", async () => {
+test("an intake asks first, proposes a curriculum titled from the learner's first message with their reply as its background, revises it when asked, and the revision can be approved", async () => {
   const { dataRoot, intakes } = setUp();
   const intake = intakes.start();
 
   expect(intake.say("Topology for analysts")).toEqual({ ok: true });
+  await intake.settled();
+  expect(intake.courseId()).toBeUndefined();
+  expect(intake.events().at(-2)).toMatchObject({ type: "tutor_text" });
+
+  expect(intake.say("I know metric spaces.")).toEqual({ ok: true });
   await intake.settled();
 
   const id = intake.courseId();
@@ -196,6 +202,7 @@ test("an intake proposes a curriculum from the learner's first message, revises 
   const first = await dataRoot.readCourse(id);
   expect(first?.course.title).toBe("Topology for analysts");
   expect(first?.curriculum?.approval.status).toBe("draft");
+  expect(await dataRoot.readBackground(id)).toContain("I know metric spaces.");
   const firstUnits = first?.curriculum?.units.map((u) => u.id) ?? [];
   expect(firstUnits.length).toBeGreaterThan(1);
 
@@ -222,6 +229,8 @@ test("/one-off proposes a course of one unit", async () => {
   const intake = intakes.start();
 
   intake.say("What is a group? /one-off");
+  await intake.settled();
+  intake.say("None at all.");
   await intake.settled();
 
   const stored = await dataRoot.readCourse(intake.courseId() ?? "");

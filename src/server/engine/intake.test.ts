@@ -79,6 +79,8 @@ const FIRST = {
   ],
   style:
     "Short explanations, each starting from a picture in two dimensions. Checks are mostly small computations by hand. One new idea per segment.",
+  background:
+    "The learner multiplies matrices with ease, but eigenvectors never clicked. They want enough linear algebra to follow PCA.",
 };
 
 // The learner asked for a shorter start: the first two units are merged into
@@ -96,7 +98,23 @@ const REVISED = {
   ],
   style:
     "Short explanations, each starting from a picture in two dimensions. Checks ask you to predict and explain more than to compute.",
+  background:
+    "The learner multiplies matrices with ease and knows what a linear map is, but eigenvectors never clicked. They want enough linear algebra to follow PCA.",
 };
+
+/** The tutor's reply to the learner's first message, where it cannot propose (task 2.22). */
+const OPENING: FakeTurn = [
+  { text: "Do you know what a matrix does to a vector? Shall I propose?" },
+];
+const ANSWER = "I do. Go ahead.";
+
+/** The learner's first message, then their answer to the tutor's question. */
+async function opened(intake: Intake) {
+  intake.say(ASK);
+  await intake.settled();
+  intake.say(ANSWER);
+  await intake.settled();
+}
 
 function proposals(intake: Intake) {
   return intake
@@ -107,8 +125,9 @@ function proposals(intake: Intake) {
     );
 }
 
-test("a valid proposal creates the course with a draft curriculum, shows it, and ends the tutor's turn", async () => {
+test("a valid proposal creates the course with a draft curriculum and its notes, shows it, and ends the tutor's turn", async () => {
   const { backend, intake } = setUp([
+    OPENING,
     [
       { text: "Here is a course built backwards from PCA." },
       { call: "propose_curriculum", input: FIRST },
@@ -118,9 +137,11 @@ test("a valid proposal creates the course with a draft curriculum, shows it, and
 
   expect(intake.say(ASK)).toEqual({ ok: true });
   await intake.settled();
+  expect(intake.say(ANSWER)).toEqual({ ok: true });
+  await intake.settled();
 
-  expect(intake.events()).toMatchObject([
-    { type: "learner", text: ASK },
+  expect(intake.events().slice(4)).toMatchObject([
+    { type: "learner", text: ANSWER },
     { type: "turn_start" },
     { type: "tutor_text", text: "Here is a course built backwards from PCA." },
     {
@@ -130,6 +151,7 @@ test("a valid proposal creates the course with a draft curriculum, shows it, and
       title: "Linear algebra for PCA",
       units: FIRST.units,
       style: FIRST.style,
+      background: FIRST.background,
     },
     { type: "turn_end", outcome: "done" },
   ]);
@@ -139,14 +161,89 @@ test("a valid proposal creates the course with a draft curriculum, shows it, and
     curriculum: { approval: { status: "draft" }, units: FIRST.units },
   });
   expect(await reload().readStyle("linear-algebra-for-pca")).toBe(FIRST.style);
+  expect(await reload().readBackground("linear-algebra-for-pca")).toBe(
+    FIRST.background,
+  );
+  expect(backend.sessions).toHaveLength(1);
   expect(backend.sessions[0]?.systemPrompt).toBe("You are a test planner.");
   expect(backend.sessions[0]?.tools.map((t) => t.name)).toEqual([
     "propose_curriculum",
   ]);
+  expect(backend.received[1]?.text).toBe(
+    `[Message from the learner. Allowed now: reply, or propose a curriculum with propose_curriculum.]\n${ANSWER}`,
+  );
+});
+
+test("nothing can be proposed in reply to the learner's first message: the tool refuses with the reason, nothing is stored, and the tutor's question stands", async () => {
+  const { backend, intake } = setUp([
+    [
+      { call: "propose_curriculum", input: FIRST },
+      { text: "First: what do you know about eigenvectors?" },
+    ],
+    [{ call: "propose_curriculum", input: FIRST }],
+  ]);
+
+  intake.say(ASK);
+  await intake.settled();
+
   const turn = backend.received[0]?.text ?? "";
   expect(turn).toMatch(/^\[Start of the intake\./);
-  expect(turn).toMatch(/propose_curriculum/);
+  expect(turn).toContain("propose_curriculum is refused in this turn.");
   expect(turn.endsWith(`]\n${ASK}`)).toBe(true);
+  expect(backend.calls[0]?.result).toEqual({
+    status: "refused",
+    text: expect.stringMatching(
+      /^Not in reply to the learner's first message: nothing is proposed before they have answered you once\. Ask what you still need to know/,
+    ),
+  });
+  expect(proposals(intake)).toEqual([]);
+  expect(intake.courseId()).toBeUndefined();
+  expect(await reload().listCourses()).toEqual([]);
+  expect(intake.events().slice(-2)).toEqual([
+    {
+      type: "tutor_text",
+      text: "First: what do you know about eigenvectors?",
+    },
+    { type: "turn_end", outcome: "done" },
+  ]);
+
+  intake.say(ANSWER);
+  await intake.settled();
+
+  expect(backend.calls[1]?.result.status).toBe("done");
+  expect(proposals(intake).map((p) => p.revision)).toEqual([1]);
+});
+
+test("a first message the tutor never received leaves the next one as the first, where nothing can be proposed", async () => {
+  const fake = createFakeBackend([
+    [{ call: "propose_curriculum", input: FIRST }, { text: "What else?" }],
+  ]);
+  let first = true;
+  const intake = createIntake({
+    backend: {
+      ...fake,
+      async startSession(options) {
+        if (first) {
+          first = false;
+          throw new Error("Temporary startup failure.");
+        }
+        return fake.startSession(options);
+      },
+    },
+    systemPrompt: "You are a test planner.",
+    dataRoot: openDataRoot({ path: dir }),
+  });
+
+  intake.say(ASK);
+  await intake.settled();
+  intake.say(ASK);
+  await intake.settled();
+
+  expect(fake.received.map((t) => t.text)).toEqual([
+    expect.stringMatching(/^\[Start of the intake\./),
+  ]);
+  expect(fake.calls[0]?.result.status).toBe("refused");
+  expect(proposals(intake)).toEqual([]);
 });
 
 test("an invalid proposal is refused with the reason, stores nothing, and the tutor can then propose again", async () => {
@@ -157,6 +254,7 @@ test("an invalid proposal is refused with the reason, stores nothing, and the tu
     ),
   };
   const { backend, intake } = setUp([
+    OPENING,
     [
       { call: "propose_curriculum", input: broken },
       { text: "That was not right; let me fix it." },
@@ -164,8 +262,7 @@ test("an invalid proposal is refused with the reason, stores nothing, and the tu
     [{ call: "propose_curriculum", input: FIRST }],
   ]);
 
-  intake.say(ASK);
-  await intake.settled();
+  await opened(intake);
 
   const refused = backend.calls[0]?.result;
   expect(refused?.status).toBe("refused");
@@ -183,7 +280,7 @@ test("an invalid proposal is refused with the reason, stores nothing, and the tu
   intake.say("Go on.");
   await intake.settled();
 
-  expect(backend.received[1]?.text).toBe(
+  expect(backend.received[2]?.text).toBe(
     "[Message from the learner. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nGo on.",
   );
   expect(proposals(intake).map((p) => p.revision)).toEqual([1]);
@@ -192,21 +289,21 @@ test("an invalid proposal is refused with the reason, stores nothing, and the tu
   ]);
 });
 
-test("a reply to a proposal is a change request, and the revision replaces the draft and its style note in the same course", async () => {
+test("a reply to a proposal is a change request, and the revision replaces the draft and its notes in the same course", async () => {
   const { backend, intake } = setUp([
+    OPENING,
     [{ call: "propose_curriculum", input: FIRST }],
     [
       { text: "I merged the first two units." },
       { call: "propose_curriculum", input: REVISED },
     ],
   ]);
-  intake.say(ASK);
-  await intake.settled();
+  await opened(intake);
 
   intake.say("I can already multiply matrices. Can the start be shorter?");
   await intake.settled();
 
-  const turn = backend.received[1]?.text ?? "";
+  const turn = backend.received[2]?.text ?? "";
   expect(turn).toMatch(/^\[Message from the learner about proposal 1,/);
   expect(turn).toContain(
     "call propose_curriculum with the whole revised curriculum",
@@ -221,6 +318,7 @@ test("a reply to a proposal is a change request, and the revision replaces the d
     title: "Linear algebra, then PCA",
     units: REVISED.units,
     style: REVISED.style,
+    background: REVISED.background,
   });
   const courses = await reload().listCourses();
   expect(courses).toHaveLength(1);
@@ -232,15 +330,18 @@ test("a reply to a proposal is a change request, and the revision replaces the d
   expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
     REVISED.style,
   );
+  expect(await reload().readBackground("linear-algebra-for-pca")).toBe(
+    REVISED.background,
+  );
 });
 
-test("approving the latest revision approves the stored curriculum, keeps its style note, and ends the intake", async () => {
+test("approving the latest revision approves the stored curriculum, keeps its notes, and ends the intake", async () => {
   const { intake } = setUp([
+    OPENING,
     [{ call: "propose_curriculum", input: FIRST }],
     [{ call: "propose_curriculum", input: REVISED }],
   ]);
-  intake.say(ASK);
-  await intake.settled();
+  await opened(intake);
   intake.say("Shorter, please.");
   await intake.settled();
 
@@ -261,6 +362,9 @@ test("approving the latest revision approves the stored curriculum, keeps its st
   });
   expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
     REVISED.style,
+  );
+  expect(await reload().readBackground("linear-algebra-for-pca")).toBe(
+    REVISED.background,
   );
   expect(intake.say("One more thing.")).toMatchObject({
     ok: false,
@@ -303,12 +407,12 @@ test("approval is refused before any proposal, and while the tutor is writing", 
 // those unseen units.
 test("a revision saved only in part cannot be approved through the card before it; a full proposal then can", async () => {
   const { backend, intake } = setUp([
+    OPENING,
     [{ call: "propose_curriculum", input: FIRST }],
     [{ call: "propose_curriculum", input: REVISED }],
     [{ call: "propose_curriculum", input: REVISED }],
   ]);
-  intake.say(ASK);
-  await intake.settled();
+  await opened(intake);
 
   disk.refuses = "style.md";
   intake.say("Shorter, please.");
@@ -365,9 +469,11 @@ describe("a draft reopened for review, its first conversation lost in a restart"
 
   /** The course as the first intake left it: one draft on disk. */
   async function storeDraft() {
-    const { intake } = setUp([[{ call: "propose_curriculum", input: FIRST }]]);
-    intake.say(ASK);
-    await intake.settled();
+    const { intake } = setUp([
+      OPENING,
+      [{ call: "propose_curriculum", input: FIRST }],
+    ]);
+    await opened(intake);
     await intake.close();
   }
 
@@ -484,11 +590,11 @@ describe("a draft reopened for review, its first conversation lost in a restart"
 
   test("keeps the intake for that course, including after approval", async () => {
     const { intakes } = reopen([
+      OPENING,
       [{ call: "propose_curriculum", input: FIRST }],
     ]);
     const first = intakes.start();
-    first.say(ASK);
-    await first.settled();
+    await opened(first);
 
     expect(intakes.review(DRAFT)).toBe(first);
     expect(intakes.get(first.id)).toBe(first);
@@ -516,11 +622,11 @@ describe("an intake left idle (task 2.15)", () => {
 
   test("has its session kept in the intakes' folder, closed once idle for IDLE_MS, resumed by the next message, and closed for good by approval", async () => {
     const { backend, timer, intake } = setUpIdle([
+      OPENING,
       [{ call: "propose_curriculum", input: FIRST }],
       [{ call: "propose_curriculum", input: REVISED }],
     ]);
-    intake.say(ASK);
-    await intake.settled();
+    await opened(intake);
     const [id] = backend.ids;
     expect(backend.sessions[0]).toMatchObject({
       cwd: intakeFolder(),
@@ -543,7 +649,7 @@ describe("an intake left idle (task 2.15)", () => {
       cwd: intakeFolder(),
       resumeId: id,
     });
-    expect(backend.received[1]?.text).toMatch(
+    expect(backend.received[2]?.text).toMatch(
       /^\[Message from the learner about proposal 1,/,
     );
     expect(proposals(intake).at(-1)).toMatchObject({ revision: 2 });
@@ -559,14 +665,14 @@ describe("an intake left idle (task 2.15)", () => {
     const kept = new Set<string>();
     const { backend, timer, intake } = setUpIdle(
       [
+        OPENING,
         [{ call: "propose_curriculum", input: FIRST }],
         [{ text: "The start is two units long." }],
         [{ text: "Yes." }],
       ],
       kept,
     );
-    intake.say(ASK);
-    await intake.settled();
+    await opened(intake);
     const [lost] = backend.ids;
     timer.advance(IDLE_MS);
     await closing();
@@ -587,16 +693,17 @@ describe("an intake left idle (task 2.15)", () => {
       lost,
       undefined,
     ]);
-    const turn = backend.received[1]?.text ?? "";
+    const turn = backend.received[2]?.text ?? "";
     expect(turn).toMatch(/^\[The learner is reviewing proposal 1,/);
     expect(turn).toContain(FIRST.units[2]?.goal);
     expect(turn).toContain(FIRST.style);
+    expect(turn).toContain(FIRST.background);
     expect(turn.endsWith("]\nIs the start too long?")).toBe(true);
 
     // Told once.
     intake.say("Good.");
     await intake.settled();
-    expect(backend.received[2]?.text).toMatch(
+    expect(backend.received[3]?.text).toMatch(
       /^\[Message from the learner about proposal 1,/,
     );
   });

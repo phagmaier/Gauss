@@ -74,6 +74,7 @@ export async function seedCourses(options: {
     title,
     units,
     style: "Scripted: a short explanation, then one question at a time.",
+    background: "Scripted: the learner is trying the app on seeded courses.",
   });
 
   /**

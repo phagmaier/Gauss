@@ -263,28 +263,40 @@ describe("planned units", () => {
   });
 });
 
-describe("a proposal's style note", () => {
-  const proposal = { title: "Calculus I", units: APPROVED.units };
+// The style note (task 2.10) and the background note (task 2.22).
+describe.each(["style", "background"] as const)(
+  "a proposal's %s note",
+  (note) => {
+    const proposal = {
+      title: "Calculus I",
+      units: APPROVED.units,
+      style: "Short explanations. Many small exercises.",
+      background: "The learner knows limits and wants derivatives next.",
+    };
 
-  test("is kept trimmed", () => {
-    const style = "Short explanations. Many small exercises.";
-    expect(
-      CurriculumProposal.parse({ ...proposal, style: `  ${style}\n` }).style,
-    ).toBe(style);
-  });
+    test("is kept trimmed", () => {
+      const text = proposal[note];
+      expect(
+        CurriculumProposal.parse({ ...proposal, [note]: `  ${text}\n` })[note],
+      ).toBe(text);
+    });
 
-  // The tutor gets these reasons back when propose_curriculum refuses.
-  test.each([
-    { name: "missing", style: undefined, message: /expected string/i },
-    { name: "only spaces", style: "  \n ", message: /too small/i },
-    { name: "too long", style: "x".repeat(801), message: /too big/i },
-  ])("is required and short: $name is refused", ({ style, message }) => {
-    const result = CurriculumProposal.safeParse({ ...proposal, style });
-    expect(result.error?.issues).toEqual([
-      expect.objectContaining({
-        path: ["style"],
-        message: expect.stringMatching(message),
-      }),
-    ]);
-  });
-});
+    // The tutor gets these reasons back when propose_curriculum refuses.
+    test.each([
+      { name: "missing", text: undefined, message: /expected string/i },
+      { name: "only spaces", text: "  \n ", message: /too small/i },
+      { name: "too long", text: "x".repeat(801), message: /too big/i },
+    ])("is required and short: $name is refused", ({ text, message }) => {
+      const result = CurriculumProposal.safeParse({
+        ...proposal,
+        [note]: text,
+      });
+      expect(result.error?.issues).toEqual([
+        expect.objectContaining({
+          path: [note],
+          message: expect.stringMatching(message),
+        }),
+      ]);
+    });
+  },
+);

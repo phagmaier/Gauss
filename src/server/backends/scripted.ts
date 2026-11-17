@@ -6,10 +6,12 @@
 //
 // What it does, by the tools its session has:
 //
-// - An intake (propose_curriculum): proposes four units, titled from the
-//   learner's first message. "/one-off" in that message proposes one unit.
-//   Later messages are answered in text; "/revise" proposes a revision with
-//   one unit fewer.
+// - An intake (propose_curriculum): asks a question in reply to the
+//   learner's first message, where the engine refuses a proposal (task
+//   2.22), and proposes four units in reply to the next, titled from the
+//   first message, with that reply as the background note. "/one-off" in
+//   either message proposes one unit. Later messages are answered in text;
+//   "/revise" proposes a revision with one unit fewer.
 // - A unit's planning (plan_unit): two segments of one objective each. The
 //   first objective is checked by choice questions, the second by written
 //   ones.
@@ -45,6 +47,7 @@
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { HelpJudgment } from "../../shared/question.ts";
+import type { TeachingTool } from "../tools/tool.ts";
 import type { EngineTurn, OneShotRequest, SessionOptions } from "./backend.ts";
 import {
   createFakeBackend,
@@ -109,7 +112,8 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     ];
   }
   if (has("plan_unit")) return planning(header);
-  if (has("propose_curriculum")) return intake(header, body);
+  const propose = session.tools.find((t) => t.name === "propose_curriculum");
+  if (propose !== undefined) return intake(header, body, propose);
   return teaching(header, body);
 }
 
@@ -134,9 +138,16 @@ function planning(header: string): FakeStep[] {
 
 const STYLE = "Scripted: a short explanation, then one question at a time.";
 
+/**
+ * Each intake's first message, by its propose_curriculum tool, which is the
+ * same across the intake's sessions (a resumed one too) and no other's.
+ */
+const firstMessages = new WeakMap<TeachingTool, string>();
+
 function proposal(
   title: string,
   kind: "first" | "revised" | "one-off",
+  background: string,
 ): CurriculumProposal {
   const unit = (id: string, name: string, prerequisites: string[]) => ({
     id,
@@ -145,7 +156,12 @@ function proposal(
     prerequisites,
   });
   if (kind === "one-off") {
-    return { title, units: [unit("basics", "The basics", [])], style: STYLE };
+    return {
+      title,
+      units: [unit("basics", "The basics", [])],
+      style: STYLE,
+      background,
+    };
   }
   const units =
     kind === "first"
@@ -160,27 +176,47 @@ function proposal(
           unit("methods", "Methods", ["basics"]),
           unit("synthesis", "Putting it together", ["methods"]),
         ];
-  return { title, units, style: STYLE };
+  return { title, units, style: STYLE, background };
 }
 
-function intake(header: string, body: string): FakeStep[] {
+function intake(header: string, body: string, tool: TeachingTool): FakeStep[] {
+  /** The text, without the commands, on one line and short. */
+  const plain = (text: string) =>
+    text
+      .replace(/\/(one-off|revise)\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80);
+  const background = `Scripted. The learner said: ${plain(body) || "nothing"}`;
   const propose = (kind: "first" | "revised" | "one-off", title: string) => [
     { text: "Here is a scripted curriculum." },
-    { call: "propose_curriculum", input: proposal(title, kind) },
+    { call: "propose_curriculum", input: proposal(title, kind, background) },
   ];
-  const said = (command: string) =>
-    body.replace(command, "").replace(/\s+/g, " ").trim().slice(0, 80);
-  // Nothing proposed yet: the opening turn, or a message before a proposal.
-  if (
-    header.startsWith("[Start of the intake") ||
-    header.includes("reply, or propose")
-  ) {
-    return body.includes("/one-off")
-      ? propose("one-off", said("/one-off") || "Scripted one-off")
-      : propose("first", said("") || "Scripted course");
+  if (header.startsWith("[Start of the intake")) {
+    firstMessages.set(tool, body);
+    return [
+      {
+        text:
+          "A scripted question: what do you know about this already, and " +
+          "how far should the course go? When you reply, I will propose a " +
+          "curriculum: a card with its units, how I would teach them and " +
+          "what you told me, which you can push back on or approve.",
+      },
+    ];
+  }
+  // Nothing proposed yet: the reply to the question, or a message to a new
+  // session that lost the conversation before a proposal.
+  if (header.includes("reply, or propose")) {
+    const first = firstMessages.get(tool) ?? body;
+    const kind = `${first} ${body}`.includes("/one-off") ? "one-off" : "first";
+    return propose(
+      kind,
+      plain(first) ||
+        (kind === "one-off" ? "Scripted one-off" : "Scripted course"),
+    );
   }
   if (body.includes("/revise")) {
-    return propose("revised", said("/revise") || "Scripted course, revised");
+    return propose("revised", plain(body) || "Scripted course, revised");
   }
   return [
     {

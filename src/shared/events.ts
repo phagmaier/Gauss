@@ -161,6 +161,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     units: z.array(Unit),
     /** The style note; a draft stored before notes existed (task 2.10) has none. */
     style: z.string().optional(),
+    /** The background note; a draft stored before task 2.22 has none. */
+    background: z.string().optional(),
   }),
   /** The learner approved a revision of the curriculum. The intake is over. */
   z.object({

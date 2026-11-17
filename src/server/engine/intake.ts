@@ -1,16 +1,17 @@
 // The intake chat (brief.md, "How a course runs", steps 1 and 3). The learner
 // says what they want to learn; the page asks that question itself, so the
-// tutor's session starts with the learner's answer. The tutor proposes a
-// curriculum and a style note with propose_curriculum, the learner pushes
-// back by replying, and approves the latest revision on its card, which
-// ends the intake.
+// tutor's session starts with the learner's answer. The tutor asks what it
+// needs to know, and cannot propose in reply to that first message (task
+// 2.22). It proposes a curriculum, a style note and a background note with
+// propose_curriculum, the learner pushes back by replying, and approves the
+// latest revision on its card, which ends the intake.
 //
 // The first proposal creates the course, named by the proposal's title, and
-// every proposal is stored as its draft curriculum and style note (task
-// 2.10). Before the first one, nothing is stored. Revision numbers and the
-// conversation are in memory, so a restart loses them; the stored draft can
-// then be reopened for review in a new intake, which starts from it as
-// proposal 1 (task 1.6).
+// every proposal is stored as its draft curriculum, style note (task 2.10)
+// and background note (task 2.22). Before the first one, nothing is stored.
+// Revision numbers and the conversation are in memory, so a restart loses
+// them; the stored draft can then be reopened for review in a new intake,
+// which starts from it as proposal 1 (task 1.6).
 //
 // The tutor's session is kept, in the intakes' folder, so that it can be
 // closed while idle and resumed with the next message (task 2.15). One that
@@ -80,12 +81,19 @@ export function createIntake(options: {
   let approved = false;
   /** The session to resume was lost: the next turn tells the new one where the intake stands. */
   let lost = false;
+  /**
+   * The turn in progress delivers the learner's first message, in reply to
+   * which nothing is proposed. Set as each turn's text is composed, which is
+   * after the turn before it has ended.
+   */
+  let opening = false;
 
   const proposeCurriculum = proposeCurriculumTool({
     async propose(proposal) {
       if (approved) {
         return { refused: "The learner has approved the curriculum." };
       }
+      if (opening) return { refused: FIRST_TURN };
       if (courseId === undefined) {
         courseId = (await dataRoot.createCourse({ title: proposal.title })).id;
       }
@@ -99,6 +107,7 @@ export function createIntake(options: {
         title: proposal.title,
         units: proposal.units,
         style: proposal.style,
+        background: proposal.background,
       });
       return { revision: latest };
     },
@@ -163,6 +172,7 @@ export function createIntake(options: {
         learnerId: id,
         // Composed when sent, since a lost session is found then.
         text() {
+          opening = false;
           if (lost) {
             lost = false;
             return shown === undefined
@@ -170,9 +180,9 @@ export function createIntake(options: {
               : reviewTurn(text, shown, latest);
           }
           if (tutor.started()) return messageTurn(text, about);
-          return draft === undefined
-            ? openingTurn(text)
-            : reviewTurn(text, draft.proposal, 1);
+          if (draft !== undefined) return reviewTurn(text, draft.proposal, 1);
+          opening = true;
+          return openingTurn(text);
         },
       });
       return { ok: true };
@@ -223,6 +233,14 @@ export function createIntake(options: {
 }
 
 const INTAKE_OVER = "The curriculum is approved; this intake is over.";
+
+/** Why propose_curriculum is refused in the intake's first turn. */
+const FIRST_TURN =
+  "Not in reply to the learner's first message: nothing is proposed before " +
+  "they have answered you once. Ask what you still need to know (their " +
+  "background, what they already understand, how far to go), at most two " +
+  "questions; or, if you know enough, say in a few lines what you would " +
+  "propose and ask whether to go ahead. Then end your turn.";
 
 /** The record holds a draft other than the card's, from a save that failed partway. */
 const DRAFT_MISMATCH =
@@ -279,8 +297,9 @@ function openingTurn(text: string): string {
   return (
     "[Start of the intake. The app has asked the learner what they want to " +
     "learn and what they already know; their answer follows. Allowed now: " +
-    "ask what you still need to know, or propose a curriculum with " +
-    `propose_curriculum.]\n${text}`
+    "ask what you still need to know, at most two questions, or say what " +
+    "you would propose and ask whether to go ahead. propose_curriculum is " +
+    `refused in this turn.]\n${text}`
   );
 }
 

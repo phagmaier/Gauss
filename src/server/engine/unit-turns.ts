@@ -25,16 +25,27 @@ export interface UnitContext {
 }
 
 /**
+ * The course's notes, kept with its curriculum. A course approved before
+ * style notes (task 2.10) or background notes (task 2.22) existed lacks them.
+ */
+export interface CourseNotes {
+  style: string | undefined;
+  background: string | undefined;
+}
+
+/**
  * The tutor's system prompt: `prompts/tutor.md`, then the course and the
- * unit's plan, then the course's style note, or the default style when it
- * has none. A session keeps the prompt it started with (task 0.4), so the
- * position is in every turn's header instead.
+ * unit's plan, then the course's background note, or a line saying none was
+ * recorded, then its style note, or the default style when it has none. A
+ * session keeps the prompt it started with (task 0.4), so the position is in
+ * every turn's header instead.
  */
 export function tutorSystemPrompt(
   tutor: string,
   context: UnitContext,
-  style: string | undefined,
+  notes: CourseNotes,
 ): string {
+  const { style, background } = notes;
   const { units, plan } = context;
   const at = units.findIndex((u) => u.id === context.unitId);
   const unit = units[at];
@@ -56,6 +67,13 @@ export function tutorSystemPrompt(
       `Segment ${i + 1}, "${segment.title}":`,
       ...segment.objectives.map((id) => `- "${id}": ${statement.get(id)}`),
     ]),
+    "",
+    "# The learner",
+    "",
+    background === undefined || background.trim() === ""
+      ? "No background note was recorded for this course: learn what the " +
+        "learner knows from what they ask and answer."
+      : `What the learner told the planner when the course was made: ${background.trim()}`,
     "",
     "# This course's style",
     "",

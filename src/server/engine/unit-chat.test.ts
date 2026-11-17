@@ -78,6 +78,8 @@ const CURRICULUM: CurriculumProposal = {
     },
   ],
   style: "Very short explanations. Many small exercises.",
+  background:
+    "The learner knows limits well and has never seen a derivative. They want to differentiate the functions of a first course.",
 };
 
 // Segment 1 teaches two objectives, so its check needs an answer on each.
@@ -394,10 +396,11 @@ test("starting a unit plans it, sends segment 1's teaching turn, and the end of 
   expect(course?.course.lastOpenedAt).toBe(NOW);
 });
 
-test("the tutor's system prompt holds tutor.md, the course, the unit's plan and, for a course approved before style notes existed, the default style", async () => {
+test("the tutor's system prompt holds tutor.md, the course, the unit's plan and, for a course approved before its notes existed, a line saying no background was recorded and the default style", async () => {
   const setup = setUp([TEACH]);
   await makeCourse();
   await rm(join(dir, "courses", COURSE, "style.md"));
+  await rm(join(dir, "courses", COURSE, "background.md"));
 
   await open(setup);
 
@@ -422,6 +425,10 @@ test("the tutor's system prompt holds tutor.md, the course, the unit's plan and,
       'Segment 2, "The limit":',
       '- "derivative-limit": Compute a derivative as the limit of difference quotients.',
       "",
+      "# The learner",
+      "",
+      "No background note was recorded for this course: learn what the learner knows from what they ask and answer.",
+      "",
       "# This course's style",
       "",
       "This course has no style note of its own: use the default style above.",
@@ -430,7 +437,7 @@ test("the tutor's system prompt holds tutor.md, the course, the unit's plan and,
   );
 });
 
-test("the style note approved with the curriculum takes the default's place in the system prompt", async () => {
+test("the background and style notes approved with the curriculum end the system prompt, the style note in the default's place", async () => {
   const setup = setUp([TEACH]);
   await makeCourse();
 
@@ -438,8 +445,19 @@ test("the style note approved with the curriculum takes the default's place in t
 
   const prompt = setup.backend.sessions[0]?.systemPrompt ?? "";
   expect(
-    prompt.endsWith(`# This course's style\n\n${CURRICULUM.style}\n`),
+    prompt.endsWith(
+      [
+        "# The learner",
+        "",
+        `What the learner told the planner when the course was made: ${CURRICULUM.background}`,
+        "",
+        "# This course's style",
+        "",
+        `${CURRICULUM.style}\n`,
+      ].join("\n"),
+    ),
   ).toBe(true);
+  expect(prompt).not.toContain("No background note was recorded");
   expect(prompt).not.toContain("default style above");
 });
 
@@ -1650,6 +1668,7 @@ test('a unit whose id every object has as a property, "constructor", opens like 
       },
     ],
     style: CURRICULUM.style,
+    background: CURRICULUM.background,
   };
   await root.saveProposal(id, proposal);
   await root.approveCurriculum(id, proposal);
@@ -3522,11 +3541,12 @@ test("a session the backend cannot find, as after Claude Code's 30-day cleanup, 
   const fresh = after.backend.sessions[0];
   expect(fresh?.resumeId).toBeUndefined();
   expect(fresh?.cwd).toBe(FOLDER());
-  // The seed: tutor.md, the course, the unit's plan and the style note.
+  // The seed: tutor.md, the course, the unit's plan and the notes.
   expect(fresh?.systemPrompt).toContain(TUTOR);
   expect(fresh?.systemPrompt).toContain(
     '- "secant-slope": Read a difference quotient as the slope of a secant line.',
   );
+  expect(fresh?.systemPrompt).toContain(CURRICULUM.background);
   expect(fresh?.systemPrompt).toContain(CURRICULUM.style);
   expect(after.backend.received[0]?.text).toMatch(
     new RegExp(`Phase: discuss\\. Message from the learner\\. ${JOINED_NOTE}`),

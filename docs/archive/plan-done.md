@@ -1162,3 +1162,36 @@ tested"). Stage 1 is finished.
   both labels and the grade. `mise run check` passed: 617 TypeScript tests
   and one Python test; the existing CSS specificity warning remains.
   Findings: `decisions.md`, "Help-judge review fixes".
+
+### 2.22 Planning conversation and background note
+
+- Status: done
+- Depends on: stage 2's tasks above
+- Why: the planner proposed four units on its first reply to a request
+  for a short unit, and what the learner says at intake never reaches the
+  tutor (note 1).
+- Do: `planner.md`: find out the learner's background, what they already
+  understand (by asking, not quizzing) and how far to go, in as many
+  short rounds as it needs, two questions at most at a time; keep to the
+  size the learner asks for; before proposing, say in a few lines what it
+  means to propose and ask to go ahead. `propose_curriculum` is refused
+  in the intake's first turn, with a reason. The proposal carries a
+  background note (a few plain sentences, a zod schema in `src/shared/`),
+  stored with the draft as `style.md` is and kept on approval; the unit
+  planner's session and the tutor's system prompt get it. A course
+  without one says none was recorded. Update `scripted.ts` and
+  architecture sections 3, 5 and 9.
+- Done when: tests cover the first-turn refusal and the note stored,
+  kept on approval and given to both prompts; one real intake on Sonnet
+  5.5 asking for a short unit on the chain rule asks before proposing and
+  proposes one unit.
+- Note: done on 2026-11-16. The refusal applies to the opening turn only,
+  not a reopened draft's or a lost session's first turn. The note is also
+  shown on the card ("What the tutor will know about you"), the agent's
+  addition. In the first real run on Sonnet 5.5 the planner asked three
+  questions at once; `planner.md` now counts every question in a message,
+  and the second run asked two, then the third with the request to go ahead.
+  Both runs asked before proposing and proposed one unit. `mise run check`
+  passed; eight injected faults each failed tests; browser run on `pnpm
+  dev:fake`. Findings: `decisions.md`, "Planning conversation and background
+  note".

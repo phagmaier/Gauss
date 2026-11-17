@@ -318,10 +318,13 @@ function createUnitChat(
         unitId,
         plan,
       };
-      const style = await dataRoot.readStyle(courseId);
+      const notes = {
+        style: await dataRoot.readStyle(courseId),
+        background: await dataRoot.readBackground(courseId),
+      };
       const loaded = createUnitAgents({
         backend: options.backend,
-        systemPrompt: tutorSystemPrompt(options.systemPrompt, context, style),
+        systemPrompt: tutorSystemPrompt(options.systemPrompt, context, notes),
         tools: [askQuestionTool(questionBoard)],
         cwd: dataRoot.courseFolder(courseId),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,

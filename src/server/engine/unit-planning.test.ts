@@ -43,6 +43,8 @@ const PROPOSAL = {
     },
   ],
   style: "Short explanations, many small exercises.",
+  background:
+    "The learner took calculus at school and remembers the power rule. They want to differentiate anything they meet.",
 };
 
 const DERIVATIVE_PLAN: Plan = {
@@ -134,7 +136,7 @@ test("a planning session stores the plan, then closes", async () => {
 });
 
 describe("the session's one turn", () => {
-  test("names the unit, and gives the curriculum with how the learner stands on each planned objective", async () => {
+  test("names the unit, and gives the background note, then the curriculum with how the learner stands on each planned objective", async () => {
     const id = await course();
     await root.storePlan(id, "derivative", DERIVATIVE_PLAN);
     // The definition passed at 90%; the rate was missed.
@@ -169,9 +171,14 @@ describe("the session's one turn", () => {
 
     await planner.plan(id, "rules");
 
-    const [header, intro, json] = fake.received[0]?.text.split("\n") ?? [];
+    const text = fake.received[0]?.text ?? "";
+    const lines = text.split("\n");
+    const [header, intro, json] = [lines[0], lines.at(-2), lines.at(-1)];
     expect(header).toMatch(
       /^\[Plan unit 2 of 2 of the course "Calculus I": "Differentiation rules" \(id "rules"\)\. Allowed now: plan_unit/,
+    );
+    expect(text).toContain(
+      `]\nWhat the learner told the planner when the course was made:\n${PROPOSAL.background}\n\nThe curriculum, in order`,
     );
     expect(intro).toMatch(/with how the learner stands on it/);
     expect(JSON.parse(json ?? "")).toEqual({
@@ -188,6 +195,22 @@ describe("the session's one turn", () => {
         PROPOSAL.units[1],
       ],
     });
+  });
+
+  test("says no background note was recorded for a course approved before there were any", async () => {
+    const id = await course();
+    await rm(join(dir, "courses", id, "background.md"));
+    const { fake, planner } = setUp([
+      [{ call: "plan_unit", input: DERIVATIVE_PLAN }],
+    ]);
+
+    await planner.plan(id, "derivative");
+
+    const text = fake.received[0]?.text ?? "";
+    expect(text).toContain(
+      "]\nNo background note was recorded for this course: nothing is known about the learner beyond their record.\n\nThe curriculum, in order",
+    );
+    expect(text).not.toContain("What the learner told");
   });
 });
 

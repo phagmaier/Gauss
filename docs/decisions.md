@@ -58,6 +58,7 @@ findings are the record.
 | Detour queue review fix | Task 2.20a: the next-question request after ending a detour shares the feedback queue's stale-question and Stop guards; deterministic interleaving regressions | Touching `anotherQuestion`, `askNext`, or the unit chat's queues |
 | Help judge | Task 2.21: clarification or help judged after each reply during an open question, what the judge sees, failures and restarts counting as help, the answer that waits, Stop kept as 2.17a has it, the tutor's headers and `tutor.md`, the page's lines and notice, the hand-judged set and the model (Haiku 5.5) | Touching help (`judging`, `assisted`, `help-judge.ts`, `help-judge.md`, `JUDGE_MODEL`), answers kept on the open question, `ended`'s reply in `conversation.ts`, the message box's notice; stage 3's disputes |
 | Help-judge review fixes | Task 2.21a: no new judging or late queued results during shutdown; clarification labels describe a reply, not cumulative answer eligibility; regression and browser checks | Touching help-judge shutdown, `replyEnded`, or `judgmentSays` |
+| Planning conversation and background note | Task 2.22: the intake's first turn and its refusal, asking to go ahead left to the prompt, the background note (schema, `background.md`, approval, courses without one), the note on the card, where the unit planner and tutor get it, `planner.md`, the scripted intake, the two real runs on Sonnet 5.5 | Touching `planner.md`, `propose_curriculum`, the intake's turns, `background.md` or `readBackground`, the proposal card, the unit planner's turn or the tutor's system prompt; stage 5's learner profile |
 
 ## Page design (plan task 1.0)
 
@@ -4285,3 +4286,110 @@ agent's and can be overturned.
 - **Full check.** `mise run check` passed: Biome (110 files, with the existing
   descending-specificity warning in `styles.css`), TypeScript, 617
   TypeScript tests and one Python test.
+
+## Planning conversation and background note (plan task 2.22)
+
+Done on 2026-11-16. The choices are the agent's and can be overturned.
+
+- **The first turn cannot propose.** The intake refuses
+  `propose_curriculum` in the turn that delivers the learner's first
+  message, the one composed as the opening turn: "Not in reply to the
+  learner's first message: nothing is proposed before they have answered
+  you once", then what to do instead. The opening header says so, and
+  allows at most two questions or saying what would be proposed. The intake
+  sets a flag when it composes the opening turn and clears it when it
+  composes the next one: turns run one at a time and a tool runs only
+  inside a turn, so the flag is set exactly while the opening turn runs. A
+  reopened draft's first turn and a new session's after a lost one are not
+  the opening turn, since the learner has spoken by then. A first message
+  that never reached the tutor (its session failed to start) leaves the
+  next message as the first, refused too.
+- **Asking to go ahead is the prompt's, not the engine's.** The engine
+  holds no proposal back until the learner agrees: whether a reply is
+  agreement ("go ahead", "just propose something") is a judgement on the
+  learner's words. The refusal makes sure the learner answers once;
+  `planner.md` asks for the rest.
+- **The background note.** `BackgroundNote` in `src/shared/curriculum.ts`:
+  required in `CurriculumProposal`, plain text, trimmed, 1 to 800
+  characters, two to four sentences about "the learner", only what they
+  said. Third person, unlike the style note, because the unit planner and
+  the tutor read it as a description of someone else. Stored as
+  `background.md` in `saveProposal`, after `style.md`; refused after
+  approval like the rest; approval compares it with the card's
+  (`DraftMismatch`, "background note"), and leaves it as it is.
+  `readBackground` reads it trimmed, none for a blank file. Drafts and
+  courses from before this task have none; nothing is migrated.
+- **The card shows it**, an addition to the plan's text: a section "What
+  the tutor will know about you" under the style note, marked "Changed"
+  when it differs from the revision before, or "Nothing was recorded, so
+  the tutor starts from your answers." for an older draft. The unit
+  planner and the tutor act on the note, so the learner sees it before
+  approving and can correct it, as with the style note.
+- **Where it goes.** The unit planner's one turn carries it after the
+  header and before the curriculum ("What the learner told the planner when
+  the course was made:"), and `unit-planner.md` asks it to build on what
+  the learner already understands, give room to what they said does not
+  make sense, and go no further than they asked, within the unit's goal.
+  The tutor's system prompt has a section "# The learner" between the plan
+  and the style, and `tutor.md` says to pitch explanations to it and that
+  it is what the learner said, not what they have shown: only check
+  answers count. A course without one tells both that none was recorded.
+  Kept sessions are rebuilt with the current system prompt (task 2.14),
+  but courses from before have no note to add.
+- **`planner.md`.** Before proposing, find out the learner's background,
+  what they already understand (by asking, not quizzing) and how far to
+  go, in rounds of at most two questions, counting every question in a
+  message, for as many rounds as needed. Then say what proposing means (a
+  card with the units, how they would be taught and a note of what the
+  learner said; push back on any of it; nothing starts until approval),
+  say how many units, and ask to go ahead. Keep to the size the learner
+  asks for: a short unit or a narrow question is one unit, and a larger
+  course is suggested in a sentence, not proposed. A section on the
+  background note, with an example.
+- **The scripted intake** asks a question in reply to the first message
+  and proposes in reply to the next, titled from the first message (kept
+  for each intake by its `propose_curriculum` tool, which is the same
+  object across the intake's sessions), with "Scripted. The learner said:"
+  and the reply as the background note. "/one-off" works in either
+  message. A browser check now needs two messages to reach a card.
+- **Real runs on Sonnet 5.5** (`pnpm dev`, `GAUSS_CLAUDE_MODEL=
+  claude-sonnet-5-5`, scratch roots under `/tmp/gauss-222-real/`), driven
+  through the routes, each opening with "I'd like a short unit on the
+  chain rule." In the first, the planner asked about background and
+  understanding as "Two quick questions", then a third, how far to go: one
+  too many. No proposal was tried in the first turn (Claude Code's session
+  log). To an answer on background and understanding, it said it would
+  propose one unit, what the card would hold, that nothing starts until
+  approval, and asked "Shall I go ahead and propose it?"; to "Yes, go
+  ahead." it proposed one unit, "The chain rule", with a style note and a
+  background note that kept to what was said. `planner.md` then got its
+  counting rule (every question in a message, however numbered; the third
+  thing in the next round). In the second run, on a restarted server, it
+  asked two questions; to the same answer it said it would propose one
+  unit, what the card holds and that nothing starts until approval, then
+  asked the third question, how far to go, or to say "go ahead"; to
+  "Confident differentiation of nested functions is enough. Go ahead." it
+  proposed one unit, "The chain rule, why and how". Its background note
+  (390 characters) matched the learner's words. Approved through the
+  route, `background.md` stayed. The turns as sent matched the headers. Not
+  run on a model: the unit planner and the tutor reading the note; tests
+  check they receive it, and the stage's user check will show its use.
+- **Observed in passing, not acted on:** the intake session's log shows
+  Claude Code adding the account's context (a system reminder with the
+  user's email address) to the first message. It comes from the learner's
+  own Claude Code setup, as other leaks in "Claude on the plan login" do.
+- **Checks:** `mise run check` passed lint (one warning from before, in
+  `base.css`), type-checking, 627 TypeScript tests and one Python test.
+  New or extended tests: the first-turn refusal and the proposal after it,
+  a failed first startup, the note in the proposal event, stored, revised,
+  kept on approval and refused after it, approval refused for a different
+  or missing note, the review route with and without notes, the note in
+  the unit planner's turn and the tutor's system prompt (and the lines for
+  a course without one), the card's change mark, and the scripted intake.
+  Each of eight faults made a test fail: no refusal, the flag never
+  cleared, `background.md` not written, approval ignoring the note, the
+  planner or the tutor not given it, the review route dropping it, and the
+  change mark ignoring it. Browser run on `pnpm dev:fake`: the first
+  message got the scripted question, the reply a card with the new section
+  under the style note, approval kept `background.md`; the browser was
+  closed before the server stopped.

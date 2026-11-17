@@ -1,9 +1,10 @@
 // The data root: the folder that holds every course (architecture.md
 // section 3). This module creates, lists, reads and marks opened courses
 // and their units, stores and approves their curricula, each draft with its
-// style note, reads those notes, stores the plans of their units, keeps the
-// position of each unit in progress in state.json, appends to and reads the
-// evidence log, and appends to and reads the units' session transcripts.
+// style note and background note, reads those notes, stores the plans of
+// their units, keeps the position of each unit in progress in state.json,
+// appends to and reads the evidence log, and appends to and reads the units'
+// session transcripts.
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -75,10 +76,17 @@ export interface DataRoot {
    */
   readStyle(id: string): Promise<string | undefined>;
   /**
+   * The course's background note, background.md, trimmed, or undefined when
+   * it has none (a course proposed before background notes existed, task
+   * 2.22) or the file is blank.
+   */
+  readBackground(id: string): Promise<string | undefined>;
+  /**
    * Stores the tutor's proposal as the course's draft curriculum, replacing
-   * any earlier draft, its style note as style.md, and its title as the
-   * course's title. Refused, changing nothing, once the curriculum is
-   * approved, so the approved note is the one approval found.
+   * any earlier draft, its style note as style.md, its background note as
+   * background.md, and its title as the course's title. Refused, changing
+   * nothing, once the curriculum is approved, so the approved notes are the
+   * ones approval found.
    */
   saveProposal(
     id: string,
@@ -86,9 +94,9 @@ export interface DataRoot {
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
   /**
    * Approves the draft curriculum, at the clock's time, if the record holds
-   * exactly the proposal shown: its title, units and style note. Otherwise
-   * it throws DraftMismatch and changes nothing, so a draft whose save
-   * stopped partway is never approved unseen.
+   * exactly the proposal shown: its title, units, style note and background
+   * note. Otherwise it throws DraftMismatch and changes nothing, so a draft
+   * whose save stopped partway is never approved unseen.
    */
   approveCurriculum(
     id: string,
@@ -169,6 +177,9 @@ export class DraftMismatch extends Error {
   }
 }
 
+/** The plain-text notes kept with a course's curriculum. */
+type Note = "style.md" | "background.md";
+
 export function openDataRoot(options: {
   path: string;
   /** The clock for the dates in the record; tests set it. */
@@ -195,12 +206,10 @@ export function openDataRoot(options: {
     return stored;
   }
 
-  /** The course's style.md, trimmed; undefined if there is none or it is blank. */
-  async function readNote(id: string): Promise<string | undefined> {
+  /** A note in the course's folder, trimmed; undefined if there is none or it is blank. */
+  async function readNote(id: string, note: Note): Promise<string | undefined> {
     try {
-      return (
-        (await readFile(courseFile(id, "style.md"), "utf8")).trim() || undefined
-      );
+      return (await readFile(courseFile(id, note), "utf8")).trim() || undefined;
     } catch (error) {
       if (hasCode(error, "ENOENT")) return undefined;
       throw error;
@@ -286,11 +295,17 @@ export function openDataRoot(options: {
 
     async readStyle(id) {
       await existingCourse(id);
-      return readNote(id);
+      return readNote(id, "style.md");
+    },
+
+    async readBackground(id) {
+      await existingCourse(id);
+      return readNote(id, "background.md");
     },
 
     async saveProposal(id, proposal) {
-      const { title, units, style } = CurriculumProposal.parse(proposal);
+      const { title, units, style, background } =
+        CurriculumProposal.parse(proposal);
       const path = courseFile(id, "curriculum.json");
       return withFileLock(path, async () => {
         const stored = await existingCourse(id);
@@ -305,6 +320,10 @@ export function openDataRoot(options: {
         };
         await writeJson(path, Curriculum, curriculum);
         await writeFileAtomic(courseFile(id, "style.md"), `${style}\n`);
+        await writeFileAtomic(
+          courseFile(id, "background.md"),
+          `${background}\n`,
+        );
         const course = { ...stored.course, title };
         if (title !== stored.course.title) {
           await writeJson(courseFile(id, "course.json"), Course, course);
@@ -323,14 +342,19 @@ export function openDataRoot(options: {
         if (stored.curriculum.approval.status === "approved") {
           throw new Error(`The curriculum of "${id}" is already approved.`);
         }
-        // saveProposal writes three files in turn, so one that failed or
+        // saveProposal writes four files in turn, so one that failed or
         // stopped partway can leave a draft no card has shown.
         const differ: string[] = [];
         if (stored.course.title !== shown.title) differ.push("title");
         if (!isDeepStrictEqual(stored.curriculum.units, shown.units)) {
           differ.push("units");
         }
-        if ((await readNote(id)) !== shown.style) differ.push("style note");
+        if ((await readNote(id, "style.md")) !== shown.style) {
+          differ.push("style note");
+        }
+        if ((await readNote(id, "background.md")) !== shown.background) {
+          differ.push("background note");
+        }
         if (differ.length > 0) throw new DraftMismatch(id, differ);
         const curriculum: Curriculum = {
           ...stored.curriculum,

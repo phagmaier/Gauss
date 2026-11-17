@@ -168,9 +168,29 @@ export const StyleNote = z
 export type StyleNote = z.infer<typeof StyleNote>;
 
 /**
+ * A course's background note (brief.md, "Terms"): what the learner told the
+ * planner at intake about what they know and what they want, in plain text.
+ * Proposed with the curriculum and approved with it (task 2.22), kept as the
+ * course's background.md, and given to each unit's planner and tutor.
+ */
+export const BackgroundNote = z
+  .string()
+  .trim()
+  .min(1)
+  .max(800)
+  .describe(
+    "What the learner told you about themselves, for the tutors who will " +
+      "teach the units: their background, what they already understand " +
+      "and what they do not, and how far they want to go. Two to four " +
+      'plain sentences about the learner ("The learner ..."), only what ' +
+      "they said. No Markdown or LaTeX.",
+  );
+export type BackgroundNote = z.infer<typeof BackgroundNote>;
+
+/**
  * What the tutor sends with propose_curriculum (task 1.4): the course's
- * title, its units and its style note (task 2.10). Stored as a draft until
- * the learner approves it.
+ * title, its units, its style note (task 2.10) and its background note
+ * (task 2.22). Stored as a draft until the learner approves it.
  */
 export const CurriculumProposal = z.object({
   title: Course.shape.title.describe(
@@ -178,16 +198,19 @@ export const CurriculumProposal = z.object({
   ),
   units: Units,
   style: StyleNote,
+  background: BackgroundNote,
 });
 export type CurriculumProposal = z.infer<typeof CurriculumProposal>;
 
 /**
  * A proposal as its card shows it: as the tutor sent it, or as a reopened
  * draft was read back. A draft stored before style notes existed (task
- * 2.10) has none.
+ * 2.10) has none, and one stored before background notes (task 2.22) has no
+ * background note.
  */
-export type ShownProposal = Omit<CurriculumProposal, "style"> & {
+export type ShownProposal = Omit<CurriculumProposal, "style" | "background"> & {
   style?: string;
+  background?: string;
 };
 
 /** One prerequisite entry: `units[at].prerequisites[slot]`. */

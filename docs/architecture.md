@@ -78,6 +78,7 @@ with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
   courses/<course-id>/
     course.json                   title, backend, settings (web search on/off), dates, when each unit was last opened
     style.md                      per-course teaching style note, proposed and approved with the curriculum
+    background.md                 background note: what the learner told the planner at intake, proposed and approved with the curriculum (task 2.22)
     curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
     state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question (with the learner messages whose replies wait for the help judge, and an answer kept while it is graded or waits for them), tutor session, open detour
     evidence.jsonl                append-only: answers, grades (with a written answer's flaw), confidence, overrides, disputes
@@ -202,14 +203,18 @@ derived status.
   the tab loses nothing.
 - The intake chat (task 1.4, `src/server/engine/intake.ts`) is the one chat
   with no unit. The page asks the opening question, so its session starts
-  with the learner's answer. The first `propose_curriculum` creates the
-  course, named by the proposal's title; each proposal replaces the draft
-  in `curriculum.json` and the style note in `style.md` (task 2.10), and a
-  reply to one is a change request. Approving
-  the latest revision, while the tutor is not writing, ends the intake.
-  Approval passes the proposal the card shows, and the record refuses it
-  unless the title, units and note on disk are that proposal, so a save
-  that failed partway is never approved unseen.
+  with the learner's answer. `propose_curriculum` is refused in that first
+  turn, the one that delivers the learner's first message, so the learner
+  always answers the planner once before a card appears (task 2.22); a
+  reopened draft's first turn, or a new session's after a lost one, is not
+  that turn. The first proposal creates the course, named by the
+  proposal's title; each proposal replaces the draft in `curriculum.json`,
+  the style note in `style.md` (task 2.10) and the background note in
+  `background.md` (task 2.22), and a reply to one is a change request.
+  Approving the latest revision, while the tutor is not writing, ends the
+  intake. Approval passes the proposal the card shows, and the record
+  refuses it unless the title, units and notes on disk are that proposal,
+  so a save that failed partway is never approved unseen.
   Before the first proposal nothing is stored. The intake's session is kept,
   in the data root's `intake/` folder, only so that it can be closed while
   idle and resumed (task 2.15): a restart still loses the intake. A session
@@ -221,7 +226,9 @@ derived status.
   first delivered turn (task 1.6). A failed startup or a Stop before sending
   leaves that context for the next attempt (task 2.15a). A draft proposed
   before task 2.10 has no note; a course approved without one is taught in
-  the default style of `prompts/tutor.md`.
+  the default style of `prompts/tutor.md`. One proposed before task 2.22
+  has no background note, and its unit planner and tutor are told none was
+  recorded.
 - The unit chat (task 2.6, `src/server/engine/unit-chat.ts`) is one per
   unit, kept in memory until the server stops. Opening a unit not in
   progress plans it if it has no plan, writes its position (segment 1,
@@ -468,7 +475,7 @@ served to it over the standard tool protocol (MCP).
 
 | Tool | Effect |
 | --- | --- |
-| `propose_curriculum` | Stores a draft curriculum with its style note (`style.md`) and shows them for review; approval covers both (task 2.10) |
+| `propose_curriculum` | Stores a draft curriculum with its style note (`style.md`, task 2.10) and background note (`background.md`, task 2.22) and shows them for review; approval covers all three. Refused in the intake's first turn (task 2.22) |
 | `amend_curriculum` | Proposes a change; applied only after the learner confirms |
 | `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
 | `ask_question` | Posts a question on an objective of the segment, in the check (section 4): a `choice` question with its answer letter, its choices shuffled by the engine (task 2.17), or a `written` one with its rubric (task 2.8; `QuestionInput` in `src/shared/question.ts`) |
@@ -778,16 +785,19 @@ gives the planning session the unit's sections.
 Kept as editable files in `prompts/`. The tutor's system prompt is assembled
 from `tutor.md`, the course's `style.md`, and course context from the record:
 as built in task 2.6, `tutor.md`, then the course's units with their goals,
-the unit taught and its plan, then `style.md` or a line saying to use the
-default style in `tutor.md`. The learner's profile, the last handoff note
-and open misconceptions join it in stage 5.
+the unit taught and its plan, then the course's `background.md` or a line
+saying none was recorded (task 2.22), then `style.md` or a line saying to
+use the default style in `tutor.md`. The unit planner's one turn carries
+the background note too, before the curriculum. The learner's profile, the
+last handoff note and open misconceptions join it in stage 5.
 `examiner.md` drives assessments, `grader.md` rubric grading (revised in
 task 2.9 against `scripts/grader-set.ts`, which `scripts/grade-set.ts`
 grades on a real model: re-run it when the prompt changes), `help-judge.md`
 the call on whether a reply during an open question was help (task 2.21,
 checked against `scripts/help-set.ts` by `scripts/judge-set.ts`: re-run
 it when the prompt changes), `planner.md`
-the intake's curriculum proposal and its style note, `unit-planner.md` the planning session that
+the intake: its questions, asking to go ahead, and the curriculum proposal
+with its style and background notes (task 2.22), `unit-planner.md` the planning session that
 plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
 sheets. Each is drafted in the stage that first needs it and revised against
 real transcripts.

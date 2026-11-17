@@ -1,11 +1,11 @@
 // Planning a unit when it starts (brief.md, "How a course runs"; task 2.5).
 // A unit without a plan is planned in a backend session of its own, with
 // prompts/unit-planner.md, before the tutor's session starts. The session
-// gets one turn holding the course and its curriculum, with how the learner
-// stands on each objective planned so far, and stores the plan through
-// plan_unit; then it closes. A session that ends without a plan is tried once
-// more, in a new session told why; after that the failure is the caller's to
-// report to the learner.
+// gets one turn holding the course's background note (task 2.22) and its
+// curriculum, with how the learner stands on each objective planned so far,
+// and stores the plan through plan_unit; then it closes. A session that ends
+// without a plan is tried once more, in a new session told why; after that
+// the failure is the caller's to report to the learner.
 
 import type { Curriculum, StoredUnit } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -76,13 +76,18 @@ export function createUnitPlanner(options: {
     if (unit.plan !== undefined) return { ok: true, plan: unit.plan };
 
     const evidence = await dataRoot.readEvidence(courseId);
+    const background = await dataRoot.readBackground(courseId);
     const context = planningContext(stored, curriculum, unit, evidence);
     let problem: string | undefined;
     for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
       const outcome = await runSession(
         courseId,
         unitId,
-        planningTurn(stored, curriculum, unit, context, problem),
+        planningTurn(stored, curriculum, unit, {
+          context,
+          background,
+          earlierProblem: problem,
+        }),
       );
       if ("plan" in outcome) return { ok: true, plan: outcome.plan };
       problem = outcome.problem;
@@ -209,9 +214,14 @@ function planningTurn(
   stored: StoredCourse,
   curriculum: Curriculum,
   unit: StoredUnit,
-  context: string,
-  earlierProblem: string | undefined,
+  given: {
+    context: string;
+    /** The course's background note; a course from before task 2.22 has none. */
+    background: string | undefined;
+    earlierProblem: string | undefined;
+  },
 ): string {
+  const { context, background, earlierProblem } = given;
   const at = curriculum.units.indexOf(unit) + 1;
   const retry =
     earlierProblem === undefined
@@ -222,8 +232,17 @@ function planningTurn(
     `"${stored.course.title}": "${unit.title}" (id "${unit.id}"). Allowed ` +
     "now: plan_unit, once the plan is ready. Nobody reads your text or " +
     `answers questions here.${retry}]\n` +
+    `${backgroundSection(background)}\n\n` +
     "The curriculum, in order, as JSON. Units already planned list their " +
     "objectives, each with how the learner stands on it.\n" +
     context
   );
+}
+
+/** The course's background note (task 2.22), or a line saying none was recorded. */
+function backgroundSection(background: string | undefined): string {
+  return background === undefined || background.trim() === ""
+    ? "No background note was recorded for this course: nothing is known " +
+        "about the learner beyond their record."
+    : `What the learner told the planner when the course was made:\n${background.trim()}`;
 }

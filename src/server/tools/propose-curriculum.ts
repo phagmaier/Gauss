@@ -1,6 +1,7 @@
 // The propose_curriculum teaching tool (architecture.md section 5). The tutor
-// sends the whole curriculum each time, with its style note (task 2.10); the
-// intake stores it as the draft and shows it to the learner as a card.
+// sends the whole curriculum each time, with its style note (task 2.10) and
+// background note (task 2.22); the intake stores it as the draft and shows it
+// to the learner as a card.
 // Posting ends the tutor's turn, so the card is the last thing in it, and
 // the learner's reply arrives as the next turn. An invalid curriculum is
 // refused with the schema's reasons.
@@ -21,11 +22,12 @@ export function proposeCurriculumTool(board: CurriculumBoard): TeachingTool {
     name: "propose_curriculum",
     description:
       "Propose the course's curriculum: its title, its units, each with " +
-      "one goal and the units it builds on, and a short note on how you " +
-      "would teach it. It appears to the learner as a card with an Approve " +
+      "one goal and the units it builds on, a short note on how you would " +
+      "teach it, and a short note on what the learner told you about " +
+      "themselves. It appears to the learner as a card with an Approve " +
       "button. Posting ends your turn, so say anything you want to say " +
       "before calling this. To revise, call it again with the whole revised " +
-      "curriculum and note; it replaces the one before. Keep the id of " +
+      "curriculum and notes; it replaces the one before. Keep the id of " +
       "every unit you keep.",
     input: CurriculumProposal,
     async run(proposal) {

@@ -45,7 +45,7 @@ them.
 | 2.2 | Plan, state and evidence records | Schemas in `src/shared/plan.ts`, `state.ts`, `evidence.ts`; record operations `storePlan`, `readState` and `writePosition` (one unit's position; `null` takes it out), `appendEvidence` and `readEvidence`. An objective is taught in one segment only, so 2.7's extra segment needs a place of its own. Each read-and-write-back and each append goes through `record/file-lock.ts`; `record/json-lines.ts` serves 2.13's transcripts. |
 | 2.3 | Objective status | `objectiveStatus` and `unitStatus` in `record/status.ts`. Passed: since the last miss, unassisted correct answers to two different questions, or one at 90% or 100%. Help (2.7 records it): the tutor received a learner message while the question was open. A unit with a position in `state.json` is in progress, so 2.7 takes it out when the unit closes. |
 | 2.4 | Markdown and math | `Prose`, `InlineProse` and `AnswerPreview` in `src/web/prose.tsx` (react-markdown, remark-math, rehype-katex): the tutor's text, prompts and choices. `AnswerPreview` is not mounted yet: put it under the written answer field (2.8 or 2.11). Prompts must ask for `$` math, `$$` on a line of its own for display, and `\$` for a dollar sign (2.16); images are never shown. |
-| 2.5 | Unit planning | `createUnitPlanner(...).plan(course, unit)` in `engine/unit-planning.ts` returns the stored plan or plans the unit in a session of its own (`prompts/unit-planner.md`, `tools/plan-unit.ts`); problems `not-found`, `not-approved`, `failed` with a message for the learner. Not wired yet: 2.6 reads the prompt in `main.ts` and calls it when a unit starts. The session is not given the learner's background, which the record does not keep. |
+| 2.5 | Unit planning | `createUnitPlanner(...).plan(course, unit)` in `engine/unit-planning.ts` returns the stored plan or plans the unit in a session of its own (`prompts/unit-planner.md`, `tools/plan-unit.ts`); problems `not-found`, `not-approved`, `failed` with a message for the learner. Not wired yet: 2.6 reads the prompt in `main.ts` and calls it when a unit starts. Since 2.22 its turn carries the course's background note. |
 | 2.6 | Unit chat and phases | `engine/unit-chat.ts` (phases, refusals, routes under `/api/courses/<id>/units/<unit>/`), headers and system prompt in `engine/unit-turns.ts`, `close_segment`; no `start_segment` (the learner starts segments). The check's answers are the evidence after `checkFrom` in the position. For 2.7: help is written `false`, the last segment stays closed in `state.json`, and opening a unit with no position starts it at segment 1. A reopened unit gets a new session (2.14 resumes); a turn's header is composed when it is sent. |
 | 2.7 | Check rules and unit close | `engine/check-rules.ts`: an objective is done in a check once passed or after 3 questions, at least one per check. Help is marked on the open question when the tutor receives a message. The unit ends with its last segment: `unit_end` (the closing card), then `unit_closed` when all passed; otherwise `go-over-again` (a segment after the plan's, in the position's `again`) or `finish` (override of the rest). Events carry statuses (`unit_status`, `graded.assisted`). A finished unit opens finished, never restarted. |
 | 2.8 | Rubric grading | `oneShot` in the adapter (SDK structured output, checked against a zod schema); `ask_question` takes `kind: "written"` with a rubric; `createGrader` in `engine/grading.ts` grades from the question, rubric and answer only, and returns `WrittenGrade` (verdict, and the flaw when incorrect). A written answer is final once sent, kept in `state.json` until graded, and graded outside the chat's queue; a failure is `grading_failed`, and `grade-again` retries. Page events `grading`, `grading_failed`, and `graded` with the answer and `flaw`; no written card yet (2.11). The grader uses the tutor's model until 2.9 picks one. The backend drops every `ANTHROPIC_` and `CLAUDE` variable. |
@@ -70,6 +70,7 @@ them.
 | 2.20a | Detour queue review fix | Ending a detour uses `askNext` too: a newer question (open or already answered) or Stop skips its stale queued request. Three deterministic regressions failed before the fix and pass after it. |
 | 2.21 | Help judge | After each reply to a message the tutor received while a question waited for its answer, a one-shot call on Haiku 5.5 (`engine/help-judge.ts`, `prompts/help-judge.md`, `JUDGE_MODEL`) returns clarification or help; help or a failed call marks the question `assisted`. Pending calls are `judging` on the open question; an answer sent meanwhile is kept (`OpenQuestion.answer` now takes any answer) and graded once they are in; a restart counts cut-off calls as help. The page shows the call under the reply and a notice above the message box (`helpNotice`, `judgmentSays`). Re-run `node scripts/judge-set.ts --runs 2` when the prompt, `HelpJudgment` or the model changes. |
 | 2.21a | Help-judge review fixes | Shutdown leaves unjudged exchanges and waiting answers for reopening; new judging calls and queued results are ignored after close. Clarification labels describe only that reply, never promise the answer still counts after earlier help. Five regression cases failed before the fix and passed after; the fake-backend browser flow and `mise run check` passed. |
+| 2.22 | Planning conversation and background note | `propose_curriculum` is refused in the intake's opening turn; asking to go ahead is `planner.md`'s. `BackgroundNote` (`src/shared/curriculum.ts`) is required in the proposal, stored as `background.md` (`readBackground`), checked at approval, shown on the card, and given to the unit planner's turn and the tutor's system prompt ("# The learner"); courses from before have none and both are told so. The scripted intake asks first, so a browser check takes two messages to reach a card. Sonnet 5.5 asked before proposing and proposed one unit in two real runs. Not run on a model: the planner and tutor using the note. |
 
 ## Stage 2: session engine
 
@@ -84,28 +85,7 @@ notes, unit notes, transcript export and style changes (stage 5); detours
 themselves came in task 2.20. A unit in this stage closes without a gate
 or notes.
 
-### 2.22 Planning conversation and background note
-
-- Status: todo
-- Depends on: stage 2's tasks above
-- Why: the planner proposed four units on its first reply to a request
-  for a short unit, and what the learner says at intake never reaches the
-  tutor (note 1).
-- Do: `planner.md`: find out the learner's background, what they already
-  understand (by asking, not quizzing) and how far to go, in as many
-  short rounds as it needs, two questions at most at a time; keep to the
-  size the learner asks for; before proposing, say in a few lines what it
-  means to propose and ask to go ahead. `propose_curriculum` is refused
-  in the intake's first turn, with a reason. The proposal carries a
-  background note (a few plain sentences, a zod schema in `src/shared/`),
-  stored with the draft as `style.md` is and kept on approval; the unit
-  planner's session and the tutor's system prompt get it. A course
-  without one says none was recorded. Update `scripted.ts` and
-  architecture sections 3, 5 and 9.
-- Done when: tests cover the first-turn refusal and the note stored,
-  kept on approval and given to both prompts; one real intake on Sonnet
-  5.5 asking for a short unit on the chain rule asks before proposing and
-  proposes one unit.
+Every task of this stage is done (2026-11-16); its user check is next.
 
 **User check:** complete one unit of a math course across two sittings,
 stopping in the middle of a segment. Start a new course, so that the
