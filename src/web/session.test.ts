@@ -449,7 +449,7 @@ test("the judge's call belongs to the reply it judged: no line above it, and one
   ]);
 });
 
-test("the line for each file the tutor wrote stands where it wrote it, in its reply: no line around it inside the reply, one before the learner's next message", () => {
+test("the line for each file the tutor wrote, and the reference to each artifact it showed, stand where it wrote or showed them, in its reply: no line around them inside the reply, one before the learner's next message", () => {
   const timeline = play([
     planned,
     phase(0, "check"),
@@ -466,15 +466,23 @@ test("the line for each file the tutor wrote stands where it wrote it, in its re
     { type: "file_written", path: "bpe.py" },
     { type: "turn_end", outcome: "done" },
     { type: "learner", text: "Thanks." },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "A picture of a merge." },
+    { type: "artifact", file: "1-a-merge.html", title: "A merge" },
+    { type: "tutor_text", text: "Try another pair." },
+    { type: "turn_end", outcome: "done" },
+    { type: "learner", text: "Done." },
   ]);
   const lines = timeline.items.map((item, i) => {
     const line = divided(timeline.items[i - 1], item) ? "-- " : "";
     const said =
       item.kind === "file"
         ? item.path
-        : item.kind === "tutor" || item.kind === "learner"
-          ? item.text
-          : item.kind;
+        : item.kind === "artifact"
+          ? item.title
+          : item.kind === "tutor" || item.kind === "learner"
+            ? item.text
+            : item.kind;
     return `${line}${said}`;
   });
 
@@ -488,6 +496,10 @@ test("the line for each file the tutor wrote stands where it wrote it, in its re
     "-- This one, with a comment.",
     "bpe.py",
     "-- Thanks.",
+    "-- A picture of a merge.",
+    "A merge",
+    "Try another pair.",
+    "-- Done.",
   ]);
 });
 

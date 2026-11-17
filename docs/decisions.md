@@ -17,7 +17,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Product decisions | What the user decided, when, and why | Changing what the product does; breaking down a stage |
 | Toolchain | Versions, type-checking, Biome, pnpm and uv settings | Changing tooling or `tsconfig.json` |
 | Claude backend | The Agent SDK on the plan login: environment, isolation, ending turns, Stop, sessions and resume, one-shot calls, thinking | Touching `src/server/backends/` |
-| Confinement | Keeping the tutor's writes in its folder: the option set, what it blocked, the working and temporary folders, the engine's sandbox | Giving the tutor built-in tools (stage 3), web access (stage 4); running commands from the engine |
+| Confinement | Keeping the tutor's writes in its folder: the option set, what it blocked, the working and temporary folders, the engine's sandbox; artifacts' frame and policy, and WebRTC | Giving the tutor built-in tools (stage 3), web access (stage 4); running commands from the engine; changing artifacts |
 | Codex | What the Codex SDK can and cannot do | Stage 6 |
 | Record | Ids, writes, the file lock, logs, transcripts on disk, the backup | Touching `src/server/record/` or a record file's schema |
 | Objective status | The passing rule and its history, help, overrides, the question count | Touching `record/status.ts`, `engine/check-rules.ts`, or what counts as help |
@@ -399,9 +399,8 @@ isolation options, kept every write inside `dir`:
   Python packages through uv only; names checked to be package names (no
   URL, path or option); wheels only, so that no package's build script
   runs; the network open to the package index alone.
-- **An open question locks the course's whole workspace**, as it does
-  `show_artifact`: another unit shares those files, and the help judge sees
-  only the reply's text. The guard reads all persisted positions, not just
+- **An open question locks the course's whole workspace**: another unit
+  shares those files, and the help judge sees only the reply's text. The guard reads all persisted positions, not just
   opened chats. Mutations reserve the workspace until confirmed completion
   or permission denial, and question posting shares that reservation queue.
   Missing completion reports keep the course locked even when a session
@@ -418,6 +417,37 @@ isolation options, kept every write inside `dir`:
   (`ls ~` empty), where mise installs `python` and `uv`, which were then
   not found, and it still let a command read `../state.json` with the
   data root in `/tmp`. Settle reads before the tutor gets web access.
+- **Artifacts (task 3.6, the agent's choices).** The route serves an
+  artifact under `ARTIFACT_POLICY` (`http/app.ts`), and the page frames it
+  with `sandbox="allow-scripts"`. Seen in Chromium 157 on `pnpm dev:fake`:
+  its scripts ran; `fetch` to the app and to the web, an image from the
+  web, `window.open`, and reading the page around it were all refused;
+  `frame-ancestors 'self'` let the app's page frame it under the sandbox.
+  CSP has no `navigate-to`, so the frame navigating itself away is stopped
+  by the page's `frame-src 'self'` (seen: "Framing 'https://example.com/'
+  violates ... frame-src 'self'"). `'unsafe-eval'` is allowed, so an aid
+  can plot a function the learner types; eval reaches no network.
+- **WebRTC gets out of an artifact.** In the frame, an `RTCPeerConnection`
+  given a public STUN server gathered a server-reflexive candidate: the
+  request reached the server. CSP's `webrtc 'block'` is "Unrecognized" in
+  Chromium 157, and removing the constructor in the artifact is undone by
+  a nested `srcdoc` frame's own script. So a document the tutor writes can
+  send what it holds out, by STUN or TURN. Left open in stage 3, where the
+  tutor reads no text from outside the machine; with unconfined reads it
+  is a channel out for a tutor misled by a source or a web page, so 4.0
+  settles it. DNS prefetch from an artifact was not tried.
+- **Artifacts in the record.** Stored as the tutor gave them, numbered on
+  from the highest number in `artifacts/`, and given their name by a hard
+  link, so a file there is never replaced. Refused while a question of its
+  own unit is open, not the course's: the help judge judges only that
+  unit's replies, and another unit's tutor can say anything in text too.
+  At most 100 KB: Haiku's two aids were 3.3 and 3.5 KB, and the limit
+  catches a pasted library. A document that names an address on the web
+  (`src`, `href`, CSS `url()`, `@import`) is refused with the address,
+  since nothing would load in the frame and models reach for CDN scripts.
+- **No KaTeX in artifacts.** The app's KaTeX would need a route for its
+  files and exceptions in the policy naming the server's host and port;
+  MathML and Unicode text need neither, so the policy loads nothing.
 
 ## Codex
 
@@ -1018,6 +1048,13 @@ from piece 13 of the mocks (2026-11-17). The look is in "Page design".
   a message.
 - Once, a choice question's right answer reused the teaching's phrase,
   which the prompt already forbids.
+- **Artifacts** (task 3.6, Haiku 5.5, two aids asked for in a discussion;
+  none was shown unasked, though the style note asked for "a picture
+  before the algebra"). The first wrote `color-scheme: dark;` outside a
+  CSS rule, which dropped the `body` rule after it: a white page in a
+  serif font. With the exact opening block in `tutor.md`, the second
+  matched the page. Both wrote `$` math in labels, the second once, after
+  `tutor.md` said not to.
 
 **`unit-planner.md`**: one idea per objective, tested by "could a learner
 know one part and not the other", up to eight objectives rather than
@@ -1173,6 +1210,14 @@ was asked and rejected.
   POST, and a draft edited meanwhile survives the send's success.
 - **Biome's descending-specificity rule** flags selectors like `.cs p` after
   `.prose li > p`; give the element its own class.
+- **Only an artifact shown while the page is open opens the pane** (task
+  3.6, the agent's choice): `hello` carries the index of the log's last
+  event, and a replayed artifact is only referred to, so a reload does not
+  reopen old aids. On `pnpm dev:fake` the scripted teaching ends before the
+  page's stream connects, so its first aid is only referred to; `/artifact`
+  shows one live. The pane matches its reference by file, since keys are
+  numbered afresh after a restart. Esc does not reach the page while focus
+  is inside the frame; the close button does.
 
 ## HTTP and event stream
 

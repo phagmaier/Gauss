@@ -5,7 +5,9 @@
 // where the thread has reached (03-phases.html). A question is a card in the
 // thread (02-check-question.html), and the unit ends with a closing card
 // (10-unit-end.html). "Start fresh" is in the outline, and the conversations
-// before a fresh start stay in the thread, dimmed (11-start-fresh.html).
+// before a fresh start stay in the thread, dimmed (11-start-fresh.html). An
+// artifact the tutor shows opens in the side pane, and its reference in the
+// thread opens and closes it (05-side-pane.html).
 //
 // Opening the view opens the unit on the server, which starts it or picks it
 // up, then follows its event stream. A unit chat lives in the server's
@@ -30,7 +32,7 @@ import type { Plan } from "../shared/plan.ts";
 import type { AnswerSubmission } from "../shared/question.ts";
 import { getJsonUntilAnswered, post, postStatus } from "./api.ts";
 import { Composer } from "./Composer.tsx";
-import { Link, TopLine } from "./Frame.tsx";
+import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
@@ -50,6 +52,7 @@ import {
   whereInUnit,
 } from "./session.ts";
 import {
+  type ArtifactItem,
   conversations,
   emptyTimeline,
   type Item,
@@ -82,6 +85,8 @@ export function Session(props: { courseId: string; unitId: string }) {
   const [attempt, setAttempt] = useState(0);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [confirming, setConfirming] = useState<"move-on" | "finish">();
+  /** The artifact open in the side pane. */
+  const [pane, setPane] = useState<ArtifactItem>();
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
@@ -136,7 +141,7 @@ export function Session(props: { courseId: string; unitId: string }) {
       events.addEventListener("hello", (e: MessageEvent<string>) => {
         const hello = Hello.parse(JSON.parse(e.data));
         setConnected(true);
-        dispatch({ type: "hello", chatId: hello.chatId });
+        dispatch({ type: "hello", chatId: hello.chatId, last: hello.last });
       });
       events.onmessage = (e: MessageEvent<string>) => {
         dispatch({
@@ -165,6 +170,12 @@ export function Session(props: { courseId: string; unitId: string }) {
     const el = scroller.current;
     if (el !== null && pinned.current) el.scrollTop = el.scrollHeight;
   });
+
+  // An artifact the tutor shows while the page is open opens at once.
+  useEffect(() => {
+    if (timeline.shown !== null) setPane(timeline.shown);
+  }, [timeline.shown]);
+  const closePane = useCallback(() => setPane(undefined), []);
 
   // A confirmation belongs to the step it was asked for.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the unit moves on
@@ -220,7 +231,7 @@ export function Session(props: { courseId: string; unitId: string }) {
   );
 
   return (
-    <div className="th has-top">
+    <div className={pane === undefined ? "th has-top" : "th has-top has-pane"}>
       <TopLine
         trail={[
           { label: "Library", to: paths.library },
@@ -288,6 +299,16 @@ export function Session(props: { courseId: string; unitId: string }) {
                       place={place}
                       busy={busy}
                       current={item === lastCard(timeline)}
+                      // By file, which names one artifact of the course
+                      // across restarts, where keys are numbered afresh.
+                      showing={
+                        item.kind === "artifact" && pane?.file === item.file
+                      }
+                      onArtifact={(artifact) =>
+                        setPane(
+                          pane?.file === artifact.file ? undefined : artifact,
+                        )
+                      }
                       asked={item.key === asked?.key ? askedAt : undefined}
                       confirming={confirming === "finish"}
                       onConfirm={(asking) =>
@@ -375,6 +396,23 @@ export function Session(props: { courseId: string; unitId: string }) {
           onStop={() => void act("interrupt")}
         />
       </div>
+      {pane === undefined ? null : (
+        <SidePane
+          title={pane.title}
+          subtitle="From the tutor"
+          onClose={closePane}
+        >
+          <iframe
+            key={pane.file}
+            src={`/api/courses/${enc(courseId)}/artifacts/${enc(pane.file)}`}
+            // Scripts run, with an origin of their own; the artifact's
+            // policy keeps it from the network (task 3.6).
+            sandbox="allow-scripts"
+            referrerPolicy="no-referrer"
+            title={pane.title}
+          />
+        </SidePane>
+      )}
     </div>
   );
 }
@@ -542,6 +580,10 @@ function ThreadItem(props: {
   busy: boolean;
   /** The last closing card, the only one whose steps can be taken. */
   current: boolean;
+  /** This is the artifact the side pane shows. */
+  showing: boolean;
+  /** Opens the artifact in the side pane, or closes it if it is showing. */
+  onArtifact(artifact: ArtifactItem): void;
   /**
    * The open question, shown above the message box instead: the last item
    * of the thread, or one that more has followed.
@@ -576,6 +618,19 @@ function ThreadItem(props: {
             The tutor wrote <code>{item.path}</code>
           </span>
         </p>
+      );
+    case "artifact":
+      return (
+        <button
+          type="button"
+          className="ref"
+          aria-pressed={props.showing}
+          onClick={() => props.onArtifact(item)}
+        >
+          {AID_ICON}
+          <b>{item.title}</b>
+          <span className="go">{props.showing ? "Showing" : "Open"}</span>
+        </button>
       );
     case "judgment": {
       const { text, tone } = judgmentSays(item);
@@ -680,6 +735,23 @@ function ThreadItem(props: {
 }
 
 /** A file's outline, for the line of each file the tutor writes (piece 14). */
+const AID_ICON = (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 18 18"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M2.5 15.5h13" />
+    <path d="M3 12c2-7 4-9 6-4s4 3 6-4" />
+  </svg>
+);
+
 const FILE_ICON = (
   <svg
     width="15"

@@ -312,6 +312,37 @@ test("/one-off proposes a course of one unit", async () => {
   expect(stored?.curriculum?.units).toHaveLength(1);
 });
 
+test("the teaching of a unit's first segment shows the scripted artifact, and /artifact shows it again; the second segment's teaching shows none", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const { chat } = opened;
+  await chat.settled();
+  const shown = () =>
+    chat.events().flatMap((e) => (e.type === "artifact" ? [e.file] : []));
+
+  expect(shown()).toEqual(["1-the-tangent-to-y-x2.html"]);
+  const html = await dataRoot.readArtifact(
+    COURSE,
+    "1-the-tangent-to-y-x2.html",
+  );
+  expect(html).toContain('<input id="x" type="range"');
+  expect(html).toContain("fetch(url)");
+
+  expect(chat.say("Again, please. /artifact")).toEqual({ ok: true });
+  await chat.settled();
+  expect(shown()).toEqual([
+    "1-the-tangent-to-y-x2.html",
+    "2-the-tangent-to-y-x2.html",
+  ]);
+
+  expect(await chat.override()).toEqual({ ok: true });
+  expect(await chat.nextSegment()).toEqual({ ok: true });
+  await chat.settled();
+  expect(shown()).toHaveLength(2);
+});
+
 test("/hold keeps the tutor's turn open until it is stopped, and /fail in a written answer fails its grading", async () => {
   const { dataRoot, units, backend } = setUp();
   await approvedCourse(dataRoot);

@@ -1052,6 +1052,82 @@ test.each(["no-such-course", "../linear-algebra"])(
     await expect(root.readTranscripts(missing, "eigen")).rejects.toThrow(
       /no course/,
     );
+    await expect(
+      root.writeArtifact(missing, { title: "A graph", html: "<p>x</p>" }),
+    ).rejects.toThrow(/no course/);
+    expect(await root.readArtifact(missing, "1-a-graph.html")).toBeUndefined();
     expect(await readdir(join(dir, "courses"))).toEqual(["linear-algebra"]);
   },
 );
+
+describe("artifacts (task 3.6)", () => {
+  const GRAPH = "<!doctype html><p>The graph of x²</p>";
+
+  test("each artifact is stored whole as a new file, numbered on from the highest number in the folder, and reads back", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id } = await root.createCourse({ title: "Linear algebra" });
+
+    expect(
+      await root.writeArtifact(id, {
+        title: "The slope of sin(x²)",
+        html: GRAPH,
+      }),
+    ).toEqual({ number: 1, file: "1-the-slope-of-sin-x2.html" });
+    // A file the folder holds already, which is not one of Gauss's, and one
+    // whose number is higher than any written.
+    const folder = join(dir, "courses", id, "artifacts");
+    await writeFile(join(folder, "notes.txt"), "mine");
+    await writeFile(join(folder, "7-kept.html"), "kept");
+    expect(
+      await root.writeArtifact(id, { title: "??", html: "<p>second</p>" }),
+    ).toEqual({ number: 8, file: "8-artifact.html" });
+
+    expect(await root.readArtifact(id, "1-the-slope-of-sin-x2.html")).toBe(
+      GRAPH,
+    );
+    expect(await root.readArtifact(id, "8-artifact.html")).toBe(
+      "<p>second</p>",
+    );
+    expect(await root.readArtifact(id, "7-kept.html")).toBe("kept");
+    expect((await readdir(folder)).sort()).toEqual([
+      "1-the-slope-of-sin-x2.html",
+      "7-kept.html",
+      "8-artifact.html",
+      "notes.txt",
+    ]);
+  });
+
+  test("two artifacts stored at once get two numbers", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id } = await root.createCourse({ title: "Linear algebra" });
+
+    const stored = await Promise.all([
+      root.writeArtifact(id, { title: "A", html: "a" }),
+      root.writeArtifact(id, { title: "B", html: "b" }),
+    ]);
+
+    expect(stored).toEqual([
+      { number: 1, file: "1-a.html" },
+      { number: 2, file: "2-b.html" },
+    ]);
+    expect(await root.readArtifact(id, "1-a.html")).toBe("a");
+    expect(await root.readArtifact(id, "2-b.html")).toBe("b");
+  });
+
+  test.each([
+    "2-missing.html",
+    "../course.json",
+    "1-a.html/../../course.json",
+    "0-zero.html",
+    "1-A.html",
+    "1-a.htm",
+    "notes.txt",
+  ])("%j is no artifact", async (file) => {
+    const root = openDataRoot({ path: dir });
+    const { id } = await root.createCourse({ title: "Linear algebra" });
+    await root.writeArtifact(id, { title: "A", html: "a" });
+    await writeFile(join(dir, "courses", id, "artifacts", "notes.txt"), "x");
+
+    expect(await root.readArtifact(id, file)).toBeUndefined();
+  });
+});

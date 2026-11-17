@@ -87,7 +87,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     units/<unit-id>/handoff.md    (stage 5) written at the end of each session in the unit
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
     sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
-    artifacts/                    (stage 3) HTML aids the tutor shows, written by the engine
+    artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
     notes/                        (stage 5) HTML notes per unit, cheat sheets
     workspace/                    the tutor's working folder, where its sessions are kept: starter code and the learner's work
 ```
@@ -242,8 +242,9 @@ The rules:
   on: `ask_question` outside the check, in a detour, while feedback is
   pending, while a question is open, on an objective not in the segment
   or already done in this check, and once the unit is finished. Its file
-  writes and commands (section 5) are refused while a question is open. A
-  refusal does not end the turn; a posted question does.
+  writes and commands (section 5) are refused while a question is open,
+  and `show_artifact` while a question of its unit is. A refusal does not
+  end the turn; a posted question does.
 - **Feedback, then the next question.** The turn after a graded correct
   answer is for feedback alone; no tool may be called in it, and
   questions are refused from when it is queued until it ends. When it
@@ -346,7 +347,7 @@ tool server, for Codex an MCP server.
 | `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
 | `install_packages` | (stage 3) Asks the learner, through a card, to install named packages into the workspace; on Install the engine runs a command it builds itself, the one command with network access, open to the package index only. Refused while a question is open |
-| `show_artifact` | (stage 3) Shows an HTML aid, given whole in the call, in the side pane; the engine writes it to `artifacts/`. Refused while a question is open |
+| `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/`, numbered, and the thread keeps a reference to it. Refused while a question of the unit is open, over 100 KB, and for a document that names an address on the web. Does not end the turn |
 | `propose_style` | (stage 5) Proposes a change to `style.md`; applied only after the learner confirms |
 | `write_handoff` | (stage 5) Saves the handoff note |
 | `close_unit` | (stage 5) Refused unless the gate is passed or bypassed and notes exist |
@@ -638,10 +639,15 @@ no automated tests.
 - **Rendering** (`src/web/prose.tsx`): model text and the learner's answers
   become React elements, never HTML. Raw HTML shows as text, images are
   never fetched, unsafe links lose their address, KaTeX runs untrusted.
-- (stage 3) Artifacts open in the side pane beside the session's thread,
-  in a frame that runs scripts without same-origin access, served with a
-  policy that allows no network, so generated HTML can neither touch the
-  app nor send anything out.
+- **Artifacts** open in the side pane beside the session's thread (piece
+  5), one at a time. One shown while the page is open opens at once; its
+  reference in the thread opens and closes it, and Esc or the close button
+  closes it. The frame is `sandbox="allow-scripts"`, and the route serves
+  the document under `ARTIFACT_POLICY` (`http/app.ts`): an origin of its
+  own, its scripts run, and nothing is loaded or fetched but what it holds
+  inline, nor any form sent or window opened. The page's own policy,
+  `frame-src 'self'` in `src/web/index.html`, keeps the frame from
+  navigating away. WebRTC is not blocked (`decisions.md`, "Confinement").
 
 The look and layout were settled with static mocks in `docs/prototype/`
 (start at `index.html`; the shared look is `base.css`, copied into
@@ -651,7 +657,8 @@ The look and layout were settled with static mocks in `docs/prototype/`
 mainly `events.ts`, `library.ts` and `what-i-know.ts`):
 
 - `GET /api/courses`, `GET /api/courses/<id>` (with each unit's progress),
-  `GET /api/courses/<id>/what-i-know`, `POST /api/courses/<id>/review`
+  `GET /api/courses/<id>/what-i-know`, `GET
+  /api/courses/<id>/artifacts/<file>`, `POST /api/courses/<id>/review`
   (the intake for a draft).
 - `POST /api/intakes`, then under `/api/intakes/<id>/`: `events`,
   `messages`, `approval`, `interrupt`. An intake is addressed by an id of
@@ -662,7 +669,9 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   `interrupt`. A unit not opened since the server started answers 404 on
   all but `open`.
 - An event stream replays its chat's log with ids `<log id>.<index>`, so a
-  page that reconnects gets only what it missed. Refusals and failures
+  page that reconnects gets only what it missed. It starts with `hello`,
+  outside the log: the chat's id and the index of the log's last event,
+  so the page knows which events happened while it was open. Refusals and failures
   answer with the reason as `error`.
 - The server listens on `127.0.0.1` only, refuses host names other than
   `localhost`, and refuses a POST whose `Origin` is not its own page.
@@ -726,3 +735,7 @@ in every course, while sources add one kind of course.
   settings confine the tutor's writes to the course's workspace; the
   engine runs tests and the symbolic check in a sandbox too. Reads are
   not confined, which matters once the tutor has web access.
+- **The tutor's artifacts run scripts in the learner's browser.**
+  Mitigation: a sandboxed frame with an origin of its own, and a policy
+  that loads and fetches nothing. WebRTC still reaches the network, which
+  matters once the tutor reads text from outside the machine.

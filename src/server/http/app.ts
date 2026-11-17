@@ -1,6 +1,7 @@
 // HTTP routes: the library and the intake chat that starts a course (plan
-// task 1.5), the unit chats (task 2.6), and "What I know" with the course's
-// calibration (tasks 2.26 and 2.29). Each chat has an event stream from the
+// task 1.5), the unit chats (task 2.6), "What I know" with the course's
+// calibration (tasks 2.26 and 2.29), and the artifacts the tutor shows
+// (task 3.6). Each chat has an event stream from the
 // server to the page, and a POST for each thing the learner does in it. Only
 // Gauss's own page may use any of them.
 
@@ -97,6 +98,19 @@ export function createApp(options: {
         evidence,
       ) satisfies WhatIKnow,
     );
+  });
+
+  // An artifact the tutor showed (task 3.6), for the frame in the session's
+  // side pane. Its headers keep it from the app and the network, framed or
+  // opened on its own.
+  app.get("/api/courses/:id/artifacts/:file", async (c) => {
+    const html = await dataRoot.readArtifact(
+      c.req.param("id"),
+      c.req.param("file"),
+    );
+    return html === undefined
+      ? c.json({ error: "No such artifact." }, 404)
+      : c.body(html, 200, ARTIFACT_HEADERS);
   });
 
   // A draft is reviewed in an intake: the one that proposed it, if it is
@@ -285,6 +299,38 @@ export function createApp(options: {
 }
 
 /**
+ * An artifact's policy. `sandbox` without `allow-same-origin` gives it an
+ * origin of its own, so its scripts cannot read the app, its storage or the
+ * page around it, even opened on its own; the frame has the same sandbox.
+ * Nothing is fetched or loaded but what the document holds inline, and no
+ * form is sent. Only the app's own page may frame it. The page's own policy
+ * (`frame-src 'self'` in `src/web/index.html`) stops the frame navigating
+ * away, which the artifact's policy cannot.
+ */
+export const ARTIFACT_POLICY = [
+  "sandbox allow-scripts",
+  "default-src 'none'",
+  "script-src 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'unsafe-inline'",
+  "img-src data: blob:",
+  "font-src data:",
+  "media-src data: blob:",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'self'",
+].join("; ");
+
+const ARTIFACT_HEADERS = {
+  "Content-Type": "text/html; charset=utf-8",
+  "Content-Security-Policy": ARTIFACT_POLICY,
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "X-DNS-Prefetch-Control": "off",
+  "Cache-Control": "no-store",
+};
+
+/**
  * A chat's event log, replayed from the start (or from after the
  * Last-Event-ID the browser sends when it reconnects), then live events.
  * Event ids are `<log id>.<index>`.
@@ -297,8 +343,9 @@ function streamLog(
   const from = replayFrom(c.req.header("Last-Event-ID"), log.id);
   return streamSSE(c, async (stream) => {
     // Taken together, before any await, so no event is missed or repeated.
-    const pending: [PageEvent, number][] = log
-      .events()
+    const logged = log.events();
+    const last = logged.length - 1;
+    const pending: [PageEvent, number][] = logged
       .slice(from)
       .map((event, i) => [event, from + i]);
     let wake: (() => void) | undefined;
@@ -313,7 +360,7 @@ function streamLog(
     try {
       await stream.writeSSE({
         event: "hello",
-        data: JSON.stringify({ chatId: log.id } satisfies Hello),
+        data: JSON.stringify({ chatId: log.id, last } satisfies Hello),
       });
       while (!stream.aborted) {
         const next = pending.shift();

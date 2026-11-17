@@ -35,31 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.6 Artifacts
-
-- Status: todo
-- Depends on: stage 2
-- Why: the brief's visual and interactive aids. Piece 5 settled where they
-  show: a pane beside the thread, and a reference in the thread that
-  opens and closes it.
-- Do: `show_artifact` takes a title and a self-contained HTML document;
-  the engine writes it to `artifacts/`, numbered and never overwritten, and
-  the session page opens it in piece 5's pane. The frame runs scripts but
-  has no same-origin access, and the artifact is served with a policy
-  that allows no network, so it can reach neither the app nor anything
-  else; decide whether it may load the app's KaTeX. Refused while a
-  question is open (an aid could help with the answer, and the help judge
-  sees only text), and over a size limit, with the reason. Transcripts and
-  replay keep the reference. `tutor.md` gets the lines the tutor needs:
-  when an aid helps, self-contained, the page's colours. The scripted
-  backend shows one.
-- Done when: tests cover the tool (stored, numbered, refused while a
-  question is open and when too large) and the route's headers; `mise run
-  check` passes; on `pnpm dev:fake` an artifact opens beside the thread,
-  runs its script, is refused a fetch, and reopens from its reference
-  after a reload, and the browser is closed before the server stops; one
-  short run on Haiku 5.5 shows an artifact the tutor made.
-
 ### 3.11 Installing a course's packages
 
 - Status: todo
@@ -204,7 +179,9 @@ its outcome.
   promise to what is built: computations checked symbolically, coding
   exercises in a workspace graded by tests, visual aids beside the chat,
   and packages installed once the learner approves them. `unit-planner.md`
-  only if objectives need to say how they are checked.
+  only if objectives need to say how they are checked. On Haiku the tutor
+  showed no artifact unasked, and wrote `$` math in one although
+  `tutor.md` says not to (`decisions.md`, "Prompts").
 - Done when: one run on Sonnet 5.5 (the result depends on the model's
   judgment), kept short, on a scratch data root: an intake for a short
   coding course whose proposal promises only what is built, then a segment
@@ -270,6 +247,10 @@ a detour, a unit gate, generated notes and an exported transcript.
     command read beside the workspace (`decisions.md`, "Confinement");
     the sandbox's own read rules are untried. Settle it before the tutor
     gets web access;
+  - an artifact can send data out through WebRTC, which its policy cannot
+    block in Chromium (`decisions.md`, "Confinement"); with unconfined
+    reads that is a channel out for a tutor misled by a source or a web
+    page. Settle it with reads; DNS prefetch from an artifact is untried;
   - the account's email address reaches every Claude session
     (`decisions.md`, "Claude backend"): with web access, a request could
     carry it, as it could anything else in the context;

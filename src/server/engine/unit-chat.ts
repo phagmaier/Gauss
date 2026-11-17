@@ -38,7 +38,9 @@
 //
 // A tool called out of phase is refused with a reason the tutor can act on;
 // so are the tutor's file writes and commands while a question is open
-// (task 3.3), when it has them.
+// (task 3.3), when it has them, and an artifact while a question of the
+// unit is open (task 3.6): show_artifact stores the aid in the course's
+// artifacts/ folder, and the thread keeps a reference to it.
 // The engine composes every turn's header (unit-turns.ts) and writes the
 // unit's position to state.json after every change, before the page is told,
 // so a restart reopens the unit where it was. The chat's events are its
@@ -76,6 +78,10 @@ import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
+import {
+  type ArtifactShelf,
+  showArtifactTool,
+} from "../tools/show-artifact.ts";
 import {
   isLastSegment,
   notPassed,
@@ -425,7 +431,10 @@ function createUnitChat(
       const loaded = createUnitAgents({
         backend: options.backend,
         systemPrompt: tutorSystemPrompt(options.systemPrompt, context, notes),
-        tools: [askQuestionTool(questionBoard)],
+        tools: [
+          askQuestionTool(questionBoard),
+          showArtifactTool(artifactShelf),
+        ],
         cwd: await dataRoot.workspaceFolder(courseId),
         ...(options.workspaceTools === true
           ? { workspace: options.workspace.tools }
@@ -976,6 +985,32 @@ function createUnitChat(
           });
         },
       ),
+  };
+
+  // Not while a question of the unit is open, answered or not: an aid could
+  // help with the answer, and the help judge reads only the tutor's text.
+  const artifactShelf: ArtifactShelf = {
+    show: (artifact) =>
+      exclusive(async () => {
+        const r = running;
+        if (r === undefined) return { refused: "The unit is not open." };
+        const open = r.record.position.openQuestion;
+        if (open !== undefined) {
+          return {
+            refused:
+              `Question ${open.number} is open: nothing can be shown beside ` +
+              "the conversation until its answer is graded, since an aid " +
+              "could help with the answer.",
+          };
+        }
+        const stored = await dataRoot.writeArtifact(courseId, artifact);
+        log.emit({
+          type: "artifact",
+          file: stored.file,
+          title: artifact.title,
+        });
+        return stored;
+      }),
   };
 
   // --- What the learner does -------------------------------------------------

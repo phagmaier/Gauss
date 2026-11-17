@@ -80,11 +80,20 @@ export interface JudgmentItem {
   unjudged?: "failed" | "restart";
 }
 
+/** An artifact the tutor showed, by its file in the course's artifacts/ (task 3.6, piece 5). */
+export interface ArtifactItem {
+  kind: "artifact";
+  key: number;
+  file: string;
+  title: string;
+}
+
 export type Item =
   | { kind: "learner"; key: number; id?: string; text: string }
   | { kind: "tutor"; key: number; text: string }
   /** A file the tutor wrote, by its path in the workspace (task 3.3, piece 14). */
   | { kind: "file"; key: number; path: string }
+  | ArtifactItem
   | QuestionItem
   | JudgmentItem
   /** A phase of a segment began, or the chat opened in it. */
@@ -136,6 +145,13 @@ export interface Timeline {
   chatId: string | null;
   /** The index of the last event applied, or -1. */
   last: number;
+  /** The index of the last event already in the log when the page connected, or -1. */
+  replayed: number;
+  /**
+   * The newest artifact the tutor showed while the page was open, which the
+   * page opens in its pane; one replayed is only referred to.
+   */
+  shown: ArtifactItem | null;
   items: Item[];
   /** The tutor is writing. */
   busy: boolean;
@@ -166,6 +182,8 @@ export interface Timeline {
 export const emptyTimeline: Timeline = {
   chatId: null,
   last: -1,
+  replayed: -1,
+  shown: null,
   items: [],
   busy: false,
   tutorOpen: false,
@@ -216,15 +234,22 @@ function stepFromCard(items: Item[], stepTaken: "again" | "moved-on"): Item[] {
 }
 
 export type TimelineAction =
-  /** Sent first on every connection; a new chat id means the server restarted. */
-  | { type: "hello"; chatId: string }
+  /**
+   * Sent first on every connection; a new chat id means the server
+   * restarted. `last` is the index of the last event the log held then.
+   */
+  | { type: "hello"; chatId: string; last?: number }
   | { type: "event"; index: number; event: PageEvent };
 
 export function reduce(state: Timeline, action: TimelineAction): Timeline {
   if (action.type === "hello") {
     return action.chatId === state.chatId
       ? state
-      : { ...emptyTimeline, chatId: action.chatId };
+      : {
+          ...emptyTimeline,
+          chatId: action.chatId,
+          replayed: action.last ?? -1,
+        };
   }
   const { index, event } = action;
   if (index <= state.last) return state;
@@ -321,6 +346,21 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         items: [...state.items, { kind: "file", key: index, path: event.path }],
         tutorOpen: false,
       };
+    case "artifact": {
+      // The tutor's text after it goes below it.
+      const item: ArtifactItem = {
+        kind: "artifact",
+        key: index,
+        file: event.file,
+        title: event.title,
+      };
+      return {
+        ...next,
+        items: [...state.items, item],
+        tutorOpen: false,
+        shown: index > state.replayed ? item : state.shown,
+      };
+    }
     case "question":
       // A unit opened again, after a failure or a restart, posts its open
       // question again.

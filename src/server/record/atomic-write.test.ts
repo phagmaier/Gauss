@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { writeFileAtomic } from "./atomic-write.ts";
+import { writeFileAtomic, writeFileNew } from "./atomic-write.ts";
 
 let folder: string;
 beforeEach(async () => {
@@ -50,4 +50,14 @@ test("a write into a folder that does not exist fails", async () => {
   await expect(
     writeFileAtomic(join(folder, "missing", "state.json"), "x"),
   ).rejects.toThrow(/ENOENT/);
+});
+
+test("a new file is written whole only where no file is: one that is there is kept as it was", async () => {
+  expect(await writeFileNew(join(folder, "1-graph.html"), "first")).toBe(true);
+  expect(await writeFileNew(join(folder, "1-graph.html"), "second")).toBe(
+    false,
+  );
+
+  expect(await readFile(join(folder, "1-graph.html"), "utf8")).toBe("first");
+  expect(await readdir(folder)).toEqual(["1-graph.html"]);
 });

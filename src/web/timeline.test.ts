@@ -69,6 +69,60 @@ test("a hello from another chat starts the thread over", () => {
   expect(state).toEqual({ ...emptyTimeline, chatId: "chat-2" });
 });
 
+test("an artifact is a reference in the tutor's reply, which goes on below it; only one shown after the page connected is opened", () => {
+  const events: PageEvent[] = [
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Look." },
+    { type: "artifact", file: "1-a-line.html", title: "A line" },
+    { type: "tutor_text", text: "Drag it." },
+    { type: "turn_end", outcome: "done" },
+    { type: "learner", text: "Another?" },
+    { type: "turn_start" },
+    { type: "artifact", file: "2-a-curve.html", title: "A curve" },
+  ];
+  const line = {
+    kind: "artifact",
+    key: 2,
+    file: "1-a-line.html",
+    title: "A line",
+  };
+  const curve = {
+    kind: "artifact",
+    key: 7,
+    file: "2-a-curve.html",
+    title: "A curve",
+  };
+  // The page connected when the log held the first five events.
+  const apply = (state: Timeline, from: number, to: number) =>
+    events
+      .slice(from, to)
+      .reduce(
+        (s, event, i) => reduce(s, { type: "event", index: from + i, event }),
+        state,
+      );
+  const connected = reduce(emptyTimeline, {
+    type: "hello",
+    chatId: "chat-1",
+    last: 4,
+  });
+
+  const replayed = apply(connected, 0, 5);
+  expect(replayed.items).toEqual([
+    { kind: "tutor", key: 1, text: "Look." },
+    line,
+    { kind: "tutor", key: 3, text: "Drag it." },
+  ]);
+  expect(replayed.shown).toBeNull();
+
+  const live = apply(replayed, 5, 8);
+  expect(live.items.at(-1)).toEqual(curve);
+  expect(live.shown).toEqual(curve);
+
+  // Reconnecting to the same chat replays nothing it has, and keeps it.
+  const again = reduce(live, { type: "hello", chatId: "chat-1", last: 7 });
+  expect(again.shown).toEqual(curve);
+});
+
 test("a turn that ends in an error or is stopped leaves a note, and the tutor is no longer writing", () => {
   const state = play([
     { type: "turn_start" },

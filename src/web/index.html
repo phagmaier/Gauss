@@ -3,6 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- An artifact's frame may hold only the app's own pages: an artifact
+         cannot leave by navigating its frame (task 3.6). -->
+    <meta http-equiv="Content-Security-Policy" content="frame-src 'self'" />
     <title>Gauss</title>
     <link rel="icon" href="data:," />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

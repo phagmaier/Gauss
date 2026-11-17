@@ -27,6 +27,11 @@
 //   asks for a sum, and the right choice is that sum; the engine shuffles
 //   the choices (task 2.17), so its letter varies. A math question asks for
 //   a sum of terms in x, and any expression equal to it is right.
+// - Artifacts (task 3.6): the teaching of a unit's first segment shows one,
+//   a tangent to a parabola that a slider moves, with a button that tries
+//   to reach the app and the web and says what was refused; so does a reply
+//   to a message with "/artifact" in it, which the engine refuses while a
+//   question is open.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -241,9 +246,10 @@ function teaching(header: string, body: string, math: boolean): FakeStep[] {
         text:
           `**Scripted teaching.** ${where}\n\n` +
           "Inline math reads $e^{i\\pi} + 1 = 0$, and display math:\n\n" +
-          "$$\\int_0^1 x\\,dx = \\tfrac{1}{2}$$\n\n" +
-          'Ask anything, or press "ready" for the check.',
+          "$$\\int_0^1 x\\,dx = \\tfrac{1}{2}$$\n\n",
       },
+      ...(header.includes("; segment 1 of ") ? showArtifact() : []),
+      { text: 'Ask anything, or press "ready" for the check.' },
     ];
   }
   const answered = /The learner answered question (\d+)\./.exec(header)?.[1];
@@ -277,6 +283,9 @@ function teaching(header: string, body: string, math: boolean): FakeStep[] {
       },
     ];
   }
+  if (/(^|\s)\/artifact\b/.test(body)) {
+    return [...showArtifact(), { text: "Scripted: that was the aid." }];
+  }
   if (header.includes("The learner started a fresh conversation")) {
     const where = header.slice(1, header.indexOf(" The learner started"));
     return [{ text: `**Scripted fresh start.** ${where}` }];
@@ -290,6 +299,97 @@ function teaching(header: string, body: string, math: boolean): FakeStep[] {
     },
   ];
 }
+
+/** Shows the scripted artifact, with a line before it. */
+function showArtifact(): FakeStep[] {
+  return [
+    { text: "A scripted aid opens beside the conversation: drag the slider." },
+    {
+      call: "show_artifact",
+      input: { title: "The tangent to y = x²", html: SCRIPTED_ARTIFACT },
+    },
+  ];
+}
+
+/**
+ * The scripted artifact, in the page's colours: a slider moves a point on
+ * y = x² and its tangent, and a button tries what the pane must refuse.
+ */
+const SCRIPTED_ARTIFACT = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 18px 20px; background: #292c3c; color: #c6d0f5;
+    font: 15px/1.5 "IBM Plex Sans", system-ui, sans-serif; }
+  svg { display: block; width: 100%; height: auto; }
+  .axis { stroke: #51576d; }
+  .curve { fill: none; stroke: #ca9ee6; stroke-width: 2; }
+  .tan { stroke: #e5c890; stroke-width: 2; }
+  label { display: flex; gap: 12px; align-items: center; margin: 10px 0; color: #a5adce; }
+  input { flex: 1; accent-color: #ca9ee6; }
+  output, b { font-variant-numeric: tabular-nums; }
+  button { font: inherit; color: #c6d0f5; background: #414559; border: 1px solid #51576d;
+    border-radius: 8px; padding: 4px 12px; cursor: pointer; }
+  ul { padding-left: 1.2em; color: #a5adce; }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 400 220" role="img" aria-label="The parabola y = x squared and its tangent">
+  <line class="axis" x1="0" y1="200" x2="400" y2="200"/>
+  <line class="axis" x1="200" y1="0" x2="200" y2="220"/>
+  <path class="curve" id="curve"/>
+  <line class="tan" id="tan"/>
+  <circle id="pt" r="4.5" fill="#e5c890"/>
+</svg>
+<label>x <input id="x" type="range" min="-2" max="2" step="0.01" value="1"><output id="xv"></output></label>
+<p>Slope of the tangent, 2x: <b id="slope"></b></p>
+<p><button id="check" type="button">Try to reach the app and the web</button></p>
+<ul id="results"></ul>
+<script>
+  var sx = function (x) { return 200 + x * 90; };
+  var sy = function (y) { return 200 - y * 45; };
+  var d = "";
+  for (var i = 0; i <= 200; i++) {
+    var x = -2.2 + 4.4 * i / 200;
+    d += (i ? "L" : "M") + sx(x).toFixed(1) + " " + sy(x * x).toFixed(1);
+  }
+  document.getElementById("curve").setAttribute("d", d);
+  function draw() {
+    var a = Number(document.getElementById("x").value), m = 2 * a;
+    var tan = document.getElementById("tan");
+    tan.setAttribute("x1", sx(a - 1)); tan.setAttribute("y1", sy(a * a - m));
+    tan.setAttribute("x2", sx(a + 1)); tan.setAttribute("y2", sy(a * a + m));
+    var pt = document.getElementById("pt");
+    pt.setAttribute("cx", sx(a)); pt.setAttribute("cy", sy(a * a));
+    document.getElementById("xv").textContent = a.toFixed(2);
+    document.getElementById("slope").textContent = m.toFixed(2);
+  }
+  document.getElementById("x").addEventListener("input", draw);
+  draw();
+  function say(what, outcome) {
+    var li = document.createElement("li");
+    li.textContent = what + ": " + outcome;
+    document.getElementById("results").appendChild(li);
+  }
+  function attempt(what, url) {
+    fetch(url).then(
+      function (r) { say(what, "reached (" + r.status + ")"); },
+      function (e) { say(what, "refused (" + e.name + ")"); }
+    );
+  }
+  document.getElementById("check").addEventListener("click", function () {
+    document.getElementById("results").textContent = "";
+    attempt("The app's courses", "/api/courses");
+    attempt("A site on the web", "https://example.com/");
+    try { say("The page around it", "read (" + parent.document.title + ")"); }
+    catch (e) { say("The page around it", "refused (" + e.name + ")"); }
+  });
+</script>
+</body>
+</html>
+`;
 
 /** How many questions this check has asked on the objective, as the header says. */
 function asked(header: string, objective: string): number {

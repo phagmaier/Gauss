@@ -2,6 +2,7 @@
 // posts back.
 
 import { z } from "zod";
+import { ArtifactFile } from "./artifact.ts";
 import { Slug, Timestamp } from "./course.ts";
 import { Unit } from "./curriculum.ts";
 import { Plan } from "./plan.ts";
@@ -64,6 +65,16 @@ export const PageEvent = z.discriminatedUnion("type", [
    * Files its commands write are not seen.
    */
   z.object({ type: z.literal("file_written"), path: z.string() }),
+  /**
+   * The tutor showed an artifact (task 3.6), stored in the course's
+   * artifacts/ folder: the thread keeps a reference that opens it in the
+   * side pane.
+   */
+  z.object({
+    type: z.literal("artifact"),
+    file: ArtifactFile,
+    title: z.string(),
+  }),
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),
   /**
@@ -258,7 +269,14 @@ export type PageEvent = z.infer<typeof PageEvent>;
  * other than the one it was showing starts over, because the server
  * restarted.
  */
-export const Hello = z.object({ chatId: z.string() });
+export const Hello = z.object({
+  chatId: z.string(),
+  /**
+   * The index of the last event in the log when the page connected, or -1:
+   * the events after it happened while the page was there to see them.
+   */
+  last: z.number().int().min(-1),
+});
 export type Hello = z.infer<typeof Hello>;
 
 /** A message the learner typed in the message box. */

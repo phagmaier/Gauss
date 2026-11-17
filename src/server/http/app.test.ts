@@ -207,7 +207,8 @@ test("an intake's event stream says hello, replays its log with ids, then sends 
   const stream = await readFrames(response, 5);
 
   expect(stream.first).toMatchObject([
-    { event: "hello", data: { chatId: intakeId } },
+    // The log held four events when the page connected.
+    { event: "hello", data: { chatId: intakeId, last: 3 } },
     { id: `${intakeId}.0`, data: { type: "learner", text: ASK } },
     { id: `${intakeId}.1`, data: { type: "turn_start" } },
     {
@@ -659,7 +660,7 @@ test("opening a unit marks its course opened, and the unit's event stream replay
   expect(response.headers.get("Content-Type")).toContain("text/event-stream");
   const stream = await readFrames(response, 9);
   expect(stream.first).toEqual([
-    { event: "hello", data: { chatId } },
+    { event: "hello", data: { chatId, last: 7 } },
     { id: `${chatId}.0`, data: { type: "session", startedAt: NOW } },
     { id: `${chatId}.1`, data: { type: "unit_plan", plan: VECTORS_PLAN } },
     {
@@ -689,6 +690,49 @@ test("opening a unit marks its course opened, and the unit's event stream replay
     },
   ]);
   await stream.close();
+});
+
+test("an artifact the tutor showed is served whole, under a policy that keeps it from the app and the network", async () => {
+  const html = "<!doctype html><p>A graph</p><script>draw()</script>";
+  const setup = setUp([
+    [
+      { text: "See the graph." },
+      { call: "show_artifact", input: { title: "A graph", html } },
+    ],
+  ]);
+  await approvedCourse();
+  await openUnit(setup);
+  const path = `/api/courses/${COURSE}/artifacts/1-a-graph.html`;
+
+  const response = await setup.app.request(path);
+
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe(html);
+  expect(Object.fromEntries(response.headers)).toEqual({
+    "content-type": "text/html; charset=utf-8",
+    "content-security-policy":
+      "sandbox allow-scripts; default-src 'none'; " +
+      "script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; " +
+      "img-src data: blob:; font-src data:; media-src data: blob:; " +
+      "base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "cross-origin-resource-policy": "same-origin",
+    "x-dns-prefetch-control": "off",
+    "cache-control": "no-store",
+  });
+
+  // Only an artifact of the course, and only from Gauss's own address.
+  const refused = await Promise.all(
+    [
+      `/api/courses/${COURSE}/artifacts/2-a-graph.html`,
+      `/api/courses/${COURSE}/artifacts/..%2Fcourse.json`,
+      `/api/courses/${COURSE}/artifacts/course.json`,
+      "/api/courses/another-course/artifacts/1-a-graph.html",
+      `http://gauss.example.com${path}`,
+    ].map(async (url) => (await setup.app.request(url)).status),
+  );
+  expect(refused).toEqual([404, 404, 404, 404, 403]);
 });
 
 test("a segment runs through the unit routes: a message, ready, an answer, another question refused, moving on and the next segment", async () => {

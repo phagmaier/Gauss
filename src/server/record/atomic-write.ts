@@ -8,7 +8,7 @@
 // ends in ".tmp", and the record reads only the files it knows by name.
 
 import { randomUUID } from "node:crypto";
-import { open, rename, rm } from "node:fs/promises";
+import { link, open, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 export async function writeFileAtomic(
@@ -31,6 +31,45 @@ export async function writeFileAtomic(
     throw error;
   }
   await syncFolder(folder);
+}
+
+/**
+ * Writes a new file whole, never over one that is there: false, with nothing
+ * written, if the path is taken. The contents go to a flushed temporary file
+ * first, as in writeFileAtomic; a hard link then gives them the name, which
+ * fails if the name is taken, where a rename would replace the file.
+ */
+export async function writeFileNew(
+  path: string,
+  contents: string,
+): Promise<boolean> {
+  const folder = dirname(path);
+  const temporary = join(folder, `.${basename(path)}.${randomUUID()}.tmp`);
+  try {
+    const file = await open(temporary, "wx");
+    try {
+      await file.writeFile(contents, "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    try {
+      await link(temporary, path);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "EEXIST"
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  } finally {
+    await rm(temporary, { force: true });
+  }
+  await syncFolder(folder);
+  return true;
 }
 
 export async function syncFolder(folder: string): Promise<void> {

@@ -3,8 +3,8 @@
 // and their units, stores and approves their curricula, each draft with its
 // style note and background note, reads those notes, stores the plans of
 // their units, keeps the position of each unit in progress in state.json,
-// appends to and reads the evidence log, and appends to and reads the units'
-// session transcripts.
+// appends to and reads the evidence log, appends to and reads the units'
+// session transcripts, and stores and reads the artifacts the tutor shows.
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -15,6 +15,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
+import { ArtifactFile } from "../../shared/artifact.ts";
 import { Course, Slug } from "../../shared/course.ts";
 import {
   Curriculum,
@@ -26,7 +27,7 @@ import { EvidenceEntry } from "../../shared/evidence.ts";
 import type { StoredCourse } from "../../shared/library.ts";
 import { Plan } from "../../shared/plan.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
-import { writeFileAtomic } from "./atomic-write.ts";
+import { writeFileAtomic, writeFileNew } from "./atomic-write.ts";
 import { withFileLock } from "./file-lock.ts";
 import {
   appendJsonLine,
@@ -150,6 +151,21 @@ export interface DataRoot {
    * that line and not the unit.
    */
   readTranscripts(id: string, unitId: string): Promise<Transcript[]>;
+  /**
+   * Stores an artifact the tutor showed (task 3.6) in the course's
+   * artifacts/ folder, as `<number>-<title as a slug>.html`, numbered on
+   * from the highest number there and never written over a file that is
+   * there. Returns its number and its file's name.
+   */
+  writeArtifact(
+    id: string,
+    artifact: { title: string; html: string },
+  ): Promise<{ number: number; file: ArtifactFile }>;
+  /**
+   * An artifact's document, or undefined when the course has none by that
+   * name, or the name cannot be an artifact's.
+   */
+  readArtifact(id: string, file: string): Promise<string | undefined>;
 }
 
 /**
@@ -462,6 +478,37 @@ export function openDataRoot(options: {
       });
     },
 
+    async writeArtifact(id, { title, html }) {
+      await existingCourse(id);
+      const folder = courseFile(id, "artifacts");
+      return withFileLock(folder, async () => {
+        await mkdir(folder, { recursive: true });
+        const taken = (await readdir(folder)).map(artifactNumber);
+        const slug = idFromTitle(title, ARTIFACT_SLUG_LENGTH, "artifact");
+        for (let number = Math.max(0, ...taken) + 1; ; number++) {
+          const file = ArtifactFile.parse(`${number}-${slug}.html`);
+          if (await writeFileNew(join(folder, file), html)) {
+            return { number, file };
+          }
+        }
+      });
+    },
+
+    async readArtifact(id, file) {
+      if (
+        !Slug.safeParse(id).success ||
+        !ArtifactFile.safeParse(file).success
+      ) {
+        return undefined;
+      }
+      try {
+        return await readFile(join(courses, id, "artifacts", file), "utf8");
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return undefined;
+        throw error;
+      }
+    },
+
     async readTranscripts(id, unitId) {
       const unit = Slug.parse(unitId);
       const folder = courseFile(id, "sessions");
@@ -509,11 +556,26 @@ function noCourse(id: string): string {
   return `There is no course "${id}".`;
 }
 
+/** The number an artifact's file name starts with; 0 for any other file. */
+function artifactNumber(name: string): number {
+  return ArtifactFile.safeParse(name).success ? Number.parseInt(name, 10) : 0;
+}
+
 /** Leaves room within Slug's 60 characters for a "-2" or longer suffix. */
 const ID_LENGTH = 50;
 
-/** The title's letters and digits as a slug, cut at a word; "course" if none. */
-function idFromTitle(title: string): string {
+/** Enough of an artifact's title for its file to be found by eye. */
+const ARTIFACT_SLUG_LENGTH = 40;
+
+/**
+ * The title's letters and digits as a slug, cut at a word within `length`;
+ * `fallback` if it has none.
+ */
+function idFromTitle(
+  title: string,
+  length = ID_LENGTH,
+  fallback = "course",
+): string {
   const words =
     title
       .normalize("NFKD")
@@ -523,10 +585,10 @@ function idFromTitle(title: string): string {
   let id = "";
   for (const word of words) {
     const longer = id === "" ? word : `${id}-${word}`;
-    if (longer.length > ID_LENGTH) break;
+    if (longer.length > length) break;
     id = longer;
   }
-  return id || words[0]?.slice(0, ID_LENGTH) || "course";
+  return id || words[0]?.slice(0, length) || fallback;
 }
 
 /**
