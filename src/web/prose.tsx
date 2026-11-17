@@ -156,6 +156,33 @@ export const InlineProse = memo(function InlineProse(props: { text: string }) {
 });
 
 /**
+ * An expression as typed in the math field, or a math question's expected
+ * answer, set as math. Dollar signs are dropped, as the symbolic check
+ * drops them, so the text is one formula. It stands alone, so it is set in
+ * display style, which sets fractions full size, within its line.
+ */
+export function MathText(props: { source: string }) {
+  const source = props.source.replaceAll("$", "").replace(/\s+/g, " ").trim();
+  return <InlineProse text={`$\\displaystyle ${source}$`} />;
+}
+
+/**
+ * The math field's expression as it will be read, shown under the field
+ * while the learner types (mock 2).
+ */
+export function MathPreview(props: { source: string }) {
+  return (
+    <div className="prev math" aria-live="polite">
+      {props.source.replaceAll("$", "").trim() === "" ? (
+        <span className="faint">What you type appears here as math</span>
+      ) : (
+        <MathText source={props.source} />
+      )}
+    </div>
+  );
+}
+
+/**
  * The learner's typed answer as it will read, math rendered, shown under
  * the field while they type (mock 2). The written answer field (2.8, 2.11)
  * mounts it.

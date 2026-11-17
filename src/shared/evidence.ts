@@ -2,11 +2,11 @@
 // "Evidence"), or the learner's override. The log is appended to, never
 // rewritten, and objective status is derived from it (task 2.3), never
 // stored. Entries name objectives by id, which is unique in the course.
-// Disputes join in stage 3.
+// Disputes join in task 3.8.
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
-import { AnswerSubmission, Question, Verdict } from "./question.ts";
+import { AnswerSubmission, Question, Unsettled, Verdict } from "./question.ts";
 
 /** A graded answer to a check question. */
 export const AnswerEvidence = z
@@ -28,10 +28,15 @@ export const AnswerEvidence = z
     assisted: z.boolean(),
     verdict: Verdict,
     /**
-     * For a written answer graded incorrect, and only there: the first
+     * For an answer the grader graded incorrect, and only there: the first
      * flawed step or missing element, as the grader named it (task 2.8).
      */
     flaw: z.string().min(1).optional(),
+    /**
+     * For a math answer the symbolic check did not settle, and only there:
+     * why. The grader graded it instead (task 3.5).
+     */
+    unsettled: Unsettled.optional(),
   })
   .refine((e) => (e.answer.kind === "unknown") === (e.verdict === "unknown"), {
     message: `An "I don't know" is graded "unknown", and nothing else is.`,
@@ -46,15 +51,35 @@ export const AnswerEvidence = z
   )
   .refine(
     (e) =>
-      (e.flaw !== undefined) ===
-      (e.question.kind === "written" && e.verdict === "incorrect"),
+      e.unsettled === undefined ||
+      (e.question.kind === "math" && e.answer.kind === "math"),
     {
-      message:
-        "A written answer graded incorrect names its flaw, and no other answer does.",
-      path: ["flaw"],
+      message: "Only a math answer can be left unsettled by the check.",
+      path: ["unsettled"],
     },
-  );
+  )
+  .refine((e) => (e.flaw !== undefined) === gradedIncorrectByGrader(e), {
+    message:
+      "An answer the grader graded incorrect names its flaw, and no other answer does.",
+    path: ["flaw"],
+  });
 export type AnswerEvidence = z.infer<typeof AnswerEvidence>;
+
+/**
+ * The grader grades a written answer, and a math answer the check did not
+ * settle; it names a flaw in each one it grades incorrect.
+ */
+function gradedIncorrectByGrader(e: {
+  question: Question;
+  verdict: Verdict;
+  unsettled?: Unsettled | undefined;
+}): boolean {
+  return (
+    e.verdict === "incorrect" &&
+    (e.question.kind === "written" ||
+      (e.question.kind === "math" && e.unsettled !== undefined))
+  );
+}
 
 /** The learner moved on without passing these objectives (brief.md, "Override"). */
 export const OverrideEvidence = z.object({

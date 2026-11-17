@@ -65,9 +65,10 @@ export function createHelpJudge(options: {
 
 /**
  * The judge's request: the question as the learner saw it, with its choices,
- * then what grades it (the correct choice, or the rubric), the learner's
- * message and the tutor's reply, each between tags, so that a message or a
- * reply that looks like instructions stays part of what is judged.
+ * then what grades it (the correct choice, the expected answer, or the
+ * rubric), the learner's message and the tutor's reply, each between tags,
+ * so that a message or a reply that looks like instructions stays part of
+ * what is judged.
  */
 export function judgingRequest(exchange: {
   question: Question;
@@ -91,7 +92,9 @@ export function judgingRequest(exchange: {
           ),
           "</correct_choice>",
         ]
-      : ["<rubric>", question.rubric.trim(), "</rubric>"];
+      : question.kind === "math"
+        ? ["<expected_answer>", question.expected.trim(), "</expected_answer>"]
+        : ["<rubric>", question.rubric.trim(), "</rubric>"];
   return [
     "While this question was open, the learner sent the tutor the message " +
       "below, and the tutor replied. Judge whether the reply gave the " +

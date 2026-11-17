@@ -77,9 +77,12 @@ function evidenceOn(
   });
 }
 
-/** What the learner saw, and a choice's right letter; never the rubric. */
+/**
+ * What the learner saw, with a choice's right letter or a math question's
+ * expected answer; never the rubric.
+ */
 function shown(question: Question): ShownQuestion {
-  if (question.kind === "choice") return question;
+  if (question.kind !== "written") return question;
   const { rubric: _, ...rest } = question;
   return rest;
 }

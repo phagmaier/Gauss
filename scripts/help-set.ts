@@ -1,10 +1,10 @@
 // The help judge's hand-judged set (plan task 2.21; the verdicts and the
-// reasons for them are in docs/decisions.md, "Help judge"). Five questions
-// as a tutor would post them, each with its answer key or rubric, and
-// exchanges during them: a message the learner sent while the question was
-// open and the tutor's reply, each judged by hand against the rules in
-// `prompts/help-judge.md`. `scripts/judge-set.ts` judges them on a real
-// model.
+// reasons for them are in docs/decisions.md, "Help judge"). Six questions
+// as a tutor would post them, each with its answer key, expected answer or
+// rubric, and exchanges during them: a message the learner sent while the
+// question was open and the tutor's reply, each judged by hand against the
+// rules in `prompts/help-judge.md`. `scripts/judge-set.ts` judges them on a
+// real model.
 //
 // Math is written as the learner and the tutor write it: `$` for inline
 // math.
@@ -71,6 +71,12 @@ const limit: Question = {
   rubric: tex`A complete answer: given $\varepsilon > 0$, chooses $\delta$ (for example $\delta = \min(1, \varepsilon/7)$), and shows that $0 < |x - 3| < \delta$ implies $|x^2 - 9| < \varepsilon$: $|x^2 - 9| = |x-3||x+3|$, and $|x - 3| < 1$ gives $|x + 3| < 7$, so $|x^2 - 9| < 7\delta \le \varepsilon$.
 May not be assumed: that polynomials are continuous, or any limit law that gives the result at once.
 Wrong: a $\delta$ that depends on $x$; a bound on $|x+3|$ never secured; a $\delta$ that does not depend on $\varepsilon$.`,
+};
+
+const power: Question = {
+  kind: "math",
+  prompt: tex`Differentiate $h(x) = (2x+1)^5$. Give $h'(x)$.`,
+  expected: "10(2x+1)^4",
 };
 
 export const HELP_SET: HandJudgedExchange[] = [
@@ -142,6 +148,15 @@ export const HELP_SET: HandJudgedExchange[] = [
     question: evenSum,
     message: "Does every integer include negative numbers and zero?",
     reply: "Yes: every integer, negative ones and zero included.",
+    verdict: "clarification",
+  },
+  {
+    id: "C9",
+    tests: "the form of a math answer",
+    question: power,
+    message: "Do I have to expand it, or can I leave it in brackets?",
+    reply:
+      "Either: any form equal to your answer is accepted, expanded or not.",
     verdict: "clarification",
   },
   // --- Help: anything toward the answer -----------------------------------
@@ -237,6 +252,24 @@ export const HELP_SET: HandJudgedExchange[] = [
     message: "Does 'between $t = 1$ and $t = 3$' include both ends?",
     reply:
       "Yes: take the heights at the two ends, $t = 1$ and $t = 3$, and compare them over that time.",
+    verdict: "help",
+  },
+  {
+    id: "H12",
+    tests: "reacting to a typed guess at a math answer",
+    question: power,
+    message: tex`Is it $5(2x+1)^4$?`,
+    reply:
+      "Close, but something from the inside of the bracket is still missing.",
+    verdict: "help",
+  },
+  {
+    id: "H13",
+    tests: "an answer about notation that slips in the step the answer needs",
+    question: power,
+    message: tex`What does $h'(x)$ mean?`,
+    reply:
+      "It is the derivative of $h$. When the inside of a power is not just $x$, remember that its own derivative comes in too.",
     verdict: "help",
   },
 ];

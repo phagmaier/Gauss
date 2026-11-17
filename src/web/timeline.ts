@@ -12,8 +12,8 @@ import type { PageEvent } from "../shared/events.ts";
 import type { Plan } from "../shared/plan.ts";
 import type {
   AnswerSubmission,
+  GradedAnswer,
   QuestionView,
-  WrittenAnswer,
 } from "../shared/question.ts";
 import type { Phase } from "../shared/state.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
@@ -31,8 +31,8 @@ export interface QuestionItem {
    * to be judged, kept until they are (task 2.21).
    */
   waiting?: AnswerSubmission;
-  /** A written answer sent and kept until it is graded (task 2.8). */
-  grading?: WrittenAnswer;
+  /** A written or math answer sent and kept until it is graded (tasks 2.8, 3.5). */
+  grading?: GradedAnswer;
   /** Why the last grading of the kept answer failed. */
   gradingFailed?: string;
   graded?: Graded;

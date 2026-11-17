@@ -25,7 +25,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Session engine | The chats' design choices: phases, the feedback turn, queues, detours, choice order, planning, intake, resume, idle sessions, transcripts | Touching `src/server/engine/` |
 | Grader prompt | The hand-graded set, the grader's model and rules | Changing `grader.md`, `WrittenGrade` or the grader's model; disputes |
 | Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
-| Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits | Changing `mathcheck.py`, or what a math question accepts |
+| Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits; math questions in the engine and on the page | Changing `mathcheck.py`, math questions, or what they accept |
 | Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides | Building or changing disputes |
 | Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
@@ -832,11 +832,14 @@ designed.
   the server shutting down is not recorded, so the next opening decides.
 - **A clarification label is about its reply only**: a later clarification
   does not undo an earlier help.
-- **Haiku 5.5 is the judge's model.** On the set (`scripts/help-set.ts`: 19
-  exchanges on five questions, eight clarifications and eleven helps, among
-  them a refusal with a hint and a message telling the judge it is
-  clarification) it agreed with every hand verdict in two runs, in 2.5 to
-  4 seconds a call. Sonnet was not tried: Haiku left nothing to improve,
+- **Haiku 5.5 is the judge's model.** On the first set (19 exchanges on
+  five questions) it agreed with every hand verdict in two runs, in 2.5 to
+  4 seconds a call. The set (`scripts/help-set.ts`) now has 22 exchanges on
+  six questions, nine clarifications and thirteen helps, among them a
+  refusal with a hint and a message telling the judge it is clarification.
+  With the math question's three (task 3.5), one run agreed 22 of 22 and
+  another 21 of 22: C3 judged help, the safe side, which C3 alone did not
+  repeat in four runs on each of the new and the old prompt. Sonnet was not tried: Haiku left nothing to improve,
   an answer can wait on the call, and the call follows every message during
   a question.
 - **The page's notice** says asking what a question means is free and a
@@ -846,8 +849,9 @@ designed.
 
 ## Symbolic check
 
-All the agent's choices (task 3.4), open to change. `pytools/mathcheck.py`'s
-header states the rules; the pairs that settled them are its tests.
+All the agent's choices (tasks 3.4 and 3.5), open to change.
+`pytools/mathcheck.py`'s header states the rules; the pairs that settled
+them are its tests.
 
 - **SymPy's LaTeX parser on its ANTLR backend** (SymPy 1.14, with
   `antlr4-python3-runtime` 4.11, the version SymPy checks for). Plain input
@@ -901,7 +905,43 @@ header states the rules; the pairs that settled them are its tests.
   `BaseException`, which SymPy's `except Exception` does not catch. A
   number above 10^100000 is refused when read: Python's exact power runs in
   C, where no alarm stops it. In the engine's sandbox with nothing writable
-  a run takes about 0.6 seconds, most of it importing SymPy.
+  a run takes 0.6 to 1.4 seconds, most of it starting SymPy; the engine
+  allows 12.
+
+Math questions in the engine (task 3.5):
+
+- **The expected expression is read when the question is posted**, and a
+  question whose expression does not read is refused with the check's
+  reason, so every answer is compared with something the check can read.
+  A check that fails at posting refuses the question too; so does a
+  server without the sandbox, whose tutor is told to ask a written
+  question. Rejected: posting without the reading, then grading every
+  answer by the grader when the expression turns out unreadable.
+- **Primes are read, not refused**: `f'(x)` is an unknown function, so an
+  expected answer with one posts, and every answer to it is undecided and
+  goes to the grader. `tutor.md` tells the tutor to put no derivative
+  notation in `expected`.
+- **A math answer is kept and graded as a written one is**, outside the
+  chat's queue, since a run can take seconds and the grader minutes. "Grade
+  again" runs the check again, not only the grader: a failed run may pass.
+- **Unsettled answers go to the grader** with a rubric made in code from
+  the expression (`mathRubric`), which repeats the check's rules (any equal
+  form, three significant figures, `+ C`). `grader.md` was left unchanged,
+  so the grade set needs no re-run; the rubric tells the grader that no
+  working is asked for. The learner's reasoning is not sent: the grade is
+  on the expression. The evidence keeps why (`unsettled`), and the flaw
+  when the grader finds one, so the tutor, the card and "What I know" can
+  say who graded it.
+- **The expected answer is shown once graded**, as a choice's key is: on
+  the card and in "What I know" after a miss, and in the help judge's
+  request.
+- **The page's math field** is a one-line textarea whose expression is
+  rendered beneath it through the same Markdown and KaTeX path as all
+  model text (`MathText` in `prose.tsx`: the text between `$` signs, in
+  display style so fractions are legible), never as HTML. The preview
+  shows KaTeX's reading, which is not the check's: an expression KaTeX
+  sets may still be unreadable to the check, and then the grader grades
+  it.
 
 ## Disputes
 
@@ -1218,6 +1258,8 @@ will close.
 - A question withdrawn by an override whose `overridden` transcript line was
   lost still shows as open, and answering it is refused.
 - The help judge sees one exchange at a time (above).
+- The grader's grading of math answers the symbolic check does not settle
+  has no hand-graded set: the grade set holds written answers only.
 - Opening a unit with a long history draws its whole thread once.
 - Keys go to the message box, not the pinned card, after sending a message.
 - No limit on refused `plan_unit` calls within one planning turn.

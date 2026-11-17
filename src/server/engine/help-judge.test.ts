@@ -83,6 +83,27 @@ test("for a written question the request holds its rubric in place of choices", 
   expect(prompt).not.toContain("<choices>");
 });
 
+test("for a math question the request holds its expected answer in place of choices", async () => {
+  const { backend, judge } = setUp([CLARIFICATION]);
+
+  await judge.judge({
+    question: {
+      kind: "math",
+      prompt: "Differentiate $(2x+1)^5$.",
+      expected: "10(2x+1)^4",
+    },
+    message: MESSAGE,
+    reply: REPLY,
+  });
+
+  const prompt = backend.oneShots[0]?.prompt ?? "";
+  expect(prompt).toContain(
+    "<question>\nDifferentiate $(2x+1)^5$.\n</question>\n\n<expected_answer>\n10(2x+1)^4\n</expected_answer>\n\n<message>",
+  );
+  expect(prompt).not.toContain("<choices>");
+  expect(prompt).not.toContain("<rubric>");
+});
+
 test.each<{ name: string; reply: FakeReply; outcome: unknown }>([
   {
     name: "a clarification",

@@ -3,16 +3,23 @@
 // against its rubric in a one-shot request with the grader's own prompt
 // (`prompts/grader.md`, task 2.8): the request holds the question, the rubric
 // and the answer, and nothing of the tutor's conversation, so the grade does
-// not lean on what the tutor said or hoped.
+// not lean on what the tutor said or hoped. A math answer is compared with
+// the expected expression by the symbolic check (math-check.ts, task 3.5);
+// one the check does not settle goes to the grader, with a rubric made from
+// the expression.
 
 import {
   type AnswerSubmission,
   type ChoiceLetter,
+  type MathAnswer,
+  type MathQuestion,
+  type Unsettled,
   type Verdict,
   WrittenGrade,
   type WrittenQuestion,
 } from "../../shared/question.ts";
 import type { TutorBackend } from "../backends/backend.ts";
+import type { MathCheck } from "./math-check.ts";
 
 export function gradeChoice(
   correct: ChoiceLetter,
@@ -41,6 +48,56 @@ export interface Grader {
     answer: string,
     signal?: AbortSignal,
   ): Promise<WrittenOutcome>;
+}
+
+/** A math answer's grade, or why there is none. */
+export type MathOutcome =
+  | {
+      ok: true;
+      verdict: "correct" | "incorrect";
+      /** Set when the grader graded it incorrect. */
+      flaw?: string;
+      /** Set when the check did not settle it, so the grader graded it. */
+      unsettled?: Unsettled;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Grades a math answer by the symbolic check, or, when the check does not
+ * settle it, by the grader against a rubric made from the expected
+ * expression. Never throws: a failed grading is the grader's failure.
+ */
+export async function gradeMath(
+  question: MathQuestion,
+  answer: MathAnswer,
+  by: { check: MathCheck; grader: Grader },
+  signal?: AbortSignal,
+): Promise<MathOutcome> {
+  const checked = await by.check.compare(question.expected, answer.expression);
+  if (checked.result === "equivalent") return { ok: true, verdict: "correct" };
+  if (checked.result === "different") return { ok: true, verdict: "incorrect" };
+  const graded = await by.grader.grade(
+    { kind: "written", prompt: question.prompt, rubric: mathRubric(question) },
+    answer.expression,
+    signal,
+  );
+  return graded.ok ? { ...graded, unsettled: checked } : graded;
+}
+
+/**
+ * The rubric the grader gets for a math answer the check did not settle:
+ * correct if equal to the expected expression, as the check counts
+ * equality (decisions.md, "Symbolic check").
+ */
+export function mathRubric(question: MathQuestion): string {
+  const expected = question.expected.replaceAll("$", "");
+  return [
+    "The question asks only for a result, typed in a math field as LaTeX or plain text; no working is needed.",
+    `Correct if the answer is mathematically equal to the expected answer, $${expected}$, in any form: rearranged, factored or expanded, simplified or not, or in other notation. A decimal counts if it is the exact value correctly rounded to at least three significant figures. Values separated by commas are compared as a set, in any order.`,
+    "If the expected answer has a constant of integration ($+ C$), an answer that differs from it by a constant and has a constant of its own is equal to it; one with no constant is incorrect.",
+    "Read the notation charitably where its meaning is plain. An answer whose meaning cannot be made out is incorrect.",
+    "Incorrect: anything not equal to the expected answer. As the flaw, say where the answer differs from the expected one.",
+  ].join("\n");
 }
 
 /** How long a grading request may take before it is stopped and fails. */

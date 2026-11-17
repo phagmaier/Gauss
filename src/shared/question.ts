@@ -1,8 +1,9 @@
 // Check questions: what the tutor posts, what the record keeps, what the page
-// shows, and what the learner sends back. Two answer kinds so far: multiple
-// choice, graded by the engine, and written answers (proofs, derivations,
-// explanations), graded against a rubric by a separate model call (task
-// 2.8). The other kinds in architecture.md section 6 join in stage 3.
+// shows, and what the learner sends back. Three answer kinds so far: multiple
+// choice, graded by the engine; math, an expression compared with the
+// expected one by the symbolic check (task 3.5); and written answers
+// (proofs, derivations, explanations), graded against a rubric by a separate
+// model call (task 2.8). Code questions join in task 3.7.
 
 import { z } from "zod";
 import { Slug } from "./course.ts";
@@ -55,6 +56,15 @@ const rubric = z
     "Written questions only: how to grade the answer, for a grader who sees only the question, this rubric and the answer. Say what a complete, correct answer must establish, step by step, and the errors or gaps that make it wrong. Never shown to the learner.",
   );
 
+const expected = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1000)
+  .describe(
+    "Math questions only: the expected answer, in LaTeX without $ signs (`3x^2`, `\\frac{1}{2}`, `x = 2`): one expression, one equation, or several values separated by commas. A symbolic check compares the learner's answer with it, so any equal form counts. Shown to the learner once the answer is graded.",
+  );
+
 function answerIsAChoice(q: {
   choices: string[];
   answer: ChoiceLetter;
@@ -76,13 +86,14 @@ export const QuestionInput = z
       "The id of the objective the question checks: one of the segment's objectives, as the header lists them",
     ),
     kind: z
-      .enum(["choice", "written"])
+      .enum(["choice", "math", "written"])
       .describe(
-        '"choice": the learner picks one of the choices, graded against `answer`. "written": the learner writes the answer (a proof, a derivation, an explanation), graded against `rubric` by a separate grader.',
+        '"choice": the learner picks one of the choices, graded against `answer`. "math": the learner types an expression, compared with `expected` by a symbolic check. "written": the learner writes the answer (a proof, a derivation, an explanation), graded against `rubric` by a separate grader.',
       ),
     prompt,
     choices: choices.optional(),
     answer: answer.optional(),
+    expected: expected.optional(),
     rubric: rubric.optional(),
   })
   .superRefine((q, ctx) => {
@@ -102,10 +113,29 @@ export const QuestionInput = z
       ) {
         issue("answer", NOT_A_CHOICE);
       }
+      if (q.rubric !== undefined || q.expected !== undefined) {
+        issue(
+          q.rubric !== undefined ? "rubric" : "expected",
+          "A choice question has no rubric and no expected expression: its answer letter grades it.",
+        );
+      }
+    } else if (q.kind === "math") {
+      if (q.expected === undefined) {
+        issue(
+          "expected",
+          "A math question needs the expected answer to compare with.",
+        );
+      }
+      if (q.choices !== undefined || q.answer !== undefined) {
+        issue(
+          q.choices !== undefined ? "choices" : "answer",
+          "A math question has no choices and no answer letter: the learner types the answer.",
+        );
+      }
       if (q.rubric !== undefined) {
         issue(
           "rubric",
-          "A choice question has no rubric: its answer grades it.",
+          "A math question has no rubric: its expected answer grades it.",
         );
       }
     } else {
@@ -116,6 +146,12 @@ export const QuestionInput = z
         issue(
           q.choices !== undefined ? "choices" : "answer",
           "A written question has no choices and no answer letter: the learner writes the answer.",
+        );
+      }
+      if (q.expected !== undefined) {
+        issue(
+          "expected",
+          "A written question has no expected expression: its rubric grades it.",
         );
       }
     }
@@ -134,6 +170,13 @@ export const ChoiceQuestion = z
   .refine(answerIsAChoice, { message: NOT_A_CHOICE, path: ["answer"] });
 export type ChoiceQuestion = z.infer<typeof ChoiceQuestion>;
 
+export const MathQuestion = z.object({
+  kind: z.literal("math"),
+  prompt,
+  expected,
+});
+export type MathQuestion = z.infer<typeof MathQuestion>;
+
 export const WrittenQuestion = z.object({
   kind: z.literal("written"),
   prompt,
@@ -143,6 +186,7 @@ export type WrittenQuestion = z.infer<typeof WrittenQuestion>;
 
 export const Question = z.discriminatedUnion("kind", [
   ChoiceQuestion,
+  MathQuestion,
   WrittenQuestion,
 ]);
 export type Question = z.infer<typeof Question>;
@@ -160,7 +204,10 @@ export function postedQuestion({
 
 // --- What the page sees and sends --------------------------------------------
 
-/** A posted question as the page sees it: never the answer or the rubric. */
+/**
+ * A posted question as the page sees it: never the answer letter, the
+ * expected expression or the rubric.
+ */
 export const QuestionView = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("choice"),
@@ -168,6 +215,12 @@ export const QuestionView = z.discriminatedUnion("kind", [
     number: z.number().int().positive(),
     prompt: z.string(),
     choices: z.array(z.string()),
+  }),
+  z.object({
+    kind: z.literal("math"),
+    id: z.string(),
+    number: z.number().int().positive(),
+    prompt: z.string(),
   }),
   z.object({
     kind: z.literal("written"),
@@ -191,6 +244,26 @@ export const WrittenAnswer = z.object({
 export type WrittenAnswer = z.infer<typeof WrittenAnswer>;
 
 /**
+ * An answer to a math question: an expression as typed in the math field,
+ * LaTeX or plain, which the symbolic check reads (task 3.5).
+ */
+export const MathAnswer = z.object({
+  kind: z.literal("math"),
+  questionId: z.string(),
+  expression: z.string().trim().min(1).max(1000),
+  confidence: Confidence,
+  reasoning: z.string().max(10_000).optional(),
+});
+export type MathAnswer = z.infer<typeof MathAnswer>;
+
+/** An answer graded outside the chat's queue: a written one, or a math one. */
+export const GradedAnswer = z.discriminatedUnion("kind", [
+  WrittenAnswer,
+  MathAnswer,
+]);
+export type GradedAnswer = z.infer<typeof GradedAnswer>;
+
+/**
  * The learner's answer, or "I don't know", which asks no confidence and can
  * say where the learner got stuck (task 2.20).
  */
@@ -202,6 +275,7 @@ export const AnswerSubmission = z.discriminatedUnion("kind", [
     confidence: Confidence,
     reasoning: z.string().max(10_000).optional(),
   }),
+  MathAnswer,
   WrittenAnswer,
   z.object({
     kind: z.literal("unknown"),
@@ -215,6 +289,19 @@ export type AnswerSubmission = z.infer<typeof AnswerSubmission>;
 /** "unknown" is the learner's "I don't know": a miss, never a confident one. */
 export const Verdict = z.enum(["correct", "incorrect", "unknown"]);
 export type Verdict = z.infer<typeof Verdict>;
+
+/**
+ * Why the symbolic check did not settle a math answer, which the grader then
+ * graded against a rubric made from the expected expression (task 3.5): it
+ * could not read the answer, could not decide within its limits, or did not
+ * run (it failed, ran out of time, or has no sandbox). The reason is the
+ * check's, or the failure's.
+ */
+export const Unsettled = z.object({
+  result: z.enum(["unparsable", "undecided", "failed"]),
+  reason: z.string().min(1),
+});
+export type Unsettled = z.infer<typeof Unsettled>;
 
 // --- What the grader returns -------------------------------------------------
 

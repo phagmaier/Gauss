@@ -567,11 +567,16 @@ details.why summary:hover {
   color: var(--soft);
   font-size: 0.86em;
 }
-/* the grader's first flaw, or where the learner got stuck, beside its label while there is room */
+/* the grader's first flaw, where the learner got stuck, or why the grader graded a math answer, beside its label while there is room */
 .qa-flaw,
-.qa-stuck-said {
+.qa-stuck-said,
+.qa-by {
   flex: 1 1 20em;
   min-width: 0;
+}
+.qa-by {
+  color: var(--soft);
+  font-size: 0.9em;
 }
 /* "I don't know" asks where the learner got stuck, before it is sent (task 2.20) */
 .qa-stuck {
@@ -598,6 +603,22 @@ details.why summary:hover {
 .written {
   min-height: 7.5em;
   resize: vertical;
+}
+/* the math field (mock 2): one line that grows, typed in monospace */
+.mathin {
+  resize: none;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 0.94em;
+}
+/* its preview: the expression set as math, larger than the text */
+.prev.math {
+  display: flex;
+  align-items: center;
+  font-size: 1.15em;
+}
+.prev.math .faint {
+  font-size: 0.76em;
 }
 /* a short note at the left of a card's foot */
 .qa-aside {

@@ -13,8 +13,10 @@
 //   either message proposes one unit. Later messages are answered in text;
 //   "/revise" proposes a revision with one unit fewer.
 // - A unit's planning (plan_unit): two segments of one objective each. The
-//   first objective is checked by choice questions, the second by written
-//   ones.
+//   first objective is checked by choice questions, and every second
+//   question on it is a math question (task 3.5) when the session has the
+//   file and shell tools, which it has when the sandbox runs, as the
+//   symbolic check needs; the second objective is checked by written ones.
 // - A unit's tutor (ask_question): teaches in the teach phase, gives
 //   feedback alone on a graded answer (the engine then asks for the next
 //   question, or closes the segment, task 2.16a), opens the detour a miss
@@ -23,12 +25,15 @@
 //   question when the header allows one, and otherwise replies in text,
 //   which after a fresh start says where the unit stands. A choice question
 //   asks for a sum, and the right choice is that sum; the engine shuffles
-//   the choices (task 2.17), so its letter varies.
+//   the choices (task 2.17), so its letter varies. A math question asks for
+//   a sum of terms in x, and any expression equal to it is right.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
 // A written answer is graded correct unless it has the word "wrong" in it;
-// "/fail" in it fails the grading. The tutor's reply to a message sent while
+// "/fail" in it fails the grading. The symbolic check grades a math answer;
+// one it cannot read (`2x \oops`) goes to the scripted grader, which grades
+// it the same way (`2x \wrong` is incorrect, `/fail` fails). The tutor's reply to a message sent while
 // a question is open (task 2.21) is judged clarification if the message has
 // the word "mean" in it ("What does $h$ mean?"), and help otherwise; "/fail"
 // in the message fails the judging, which counts as help. A message with
@@ -114,7 +119,7 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   if (has("plan_unit")) return planning(header);
   const propose = session.tools.find((t) => t.name === "propose_curriculum");
   if (propose !== undefined) return intake(header, body, propose);
-  return teaching(header, body);
+  return teaching(header, body, session.workspace !== undefined);
 }
 
 /** A turn's header, between its brackets, and what follows it. */
@@ -227,7 +232,7 @@ function intake(header: string, body: string, tool: TeachingTool): FakeStep[] {
 
 // --- Teaching a unit -------------------------------------------------------
 
-function teaching(header: string, body: string): FakeStep[] {
+function teaching(header: string, body: string, math: boolean): FakeStep[] {
   if (header.includes("Phase: teach.")) {
     // "Unit 1 of 6, "Limits"; segment 1 of 2, "The idea", on "limits-idea"."
     const where = header.slice(1, header.indexOf(" Phase:"));
@@ -268,7 +273,7 @@ function teaching(header: string, body: string): FakeStep[] {
       { text: "Scripted lead-in to a question." },
       {
         call: "ask_question",
-        input: question(objective, asked(header, objective) + 1),
+        input: question(objective, asked(header, objective) + 1, math),
       },
     ];
   }
@@ -294,8 +299,22 @@ function asked(header: string, objective: string): number {
   return said === null ? 0 : Number(said[1]);
 }
 
-/** The objective's question, different for each number, so none is asked twice in a check. */
-function question(objective: string, number: number): unknown {
+/**
+ * The objective's question, different for each number, so none is asked
+ * twice in a check: a math one every second question, if `math`.
+ */
+function question(objective: string, number: number, math: boolean): unknown {
+  if (math && !objective.endsWith(WRITTEN) && number % 2 === 0) {
+    return {
+      objective,
+      kind: "math",
+      prompt:
+        `Math question ${number} on "${objective}": what is ` +
+        `$${number}x + ${number}x$? (Scripted: the symbolic check grades it, ` +
+        `and any expression equal to $${2 * number}x$ is correct.)`,
+      expected: `${2 * number}x`,
+    };
+  }
   return objective.endsWith(WRITTEN)
     ? {
         objective,

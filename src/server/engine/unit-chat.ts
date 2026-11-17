@@ -15,7 +15,11 @@
 //   with the learner, and no question is posted until the learner asks for
 //   another one. A choice is graded at once; a written answer is kept
 //   in state.json and graded by the grader (grading.ts), outside the
-//   chat's queue, and if the grading fails it can be graded again.
+//   chat's queue, and if the grading fails it can be graded again. A math
+//   question's expected expression must read when it is posted, and its
+//   answer is kept and graded the same way, by the symbolic check
+//   (math-check.ts, task 3.5), or by the grader when the check does not
+//   settle it.
 //   A message the tutor receives while a question waits for its answer
 //   has the tutor's reply judged, once it ends, by the help judge
 //   (help-judge.ts, task 2.21): clarification leaves the answer counting,
@@ -61,13 +65,11 @@ import type { PageEvent } from "../../shared/events.ts";
 import {
   type AnswerSubmission,
   CHOICE_LETTERS,
+  type GradedAnswer,
   postedQuestion,
   type Question,
   type QuestionInput,
   type QuestionView,
-  type Verdict,
-  type WrittenAnswer,
-  type WrittenQuestion,
 } from "../../shared/question.ts";
 import type { OpenQuestion, Phase } from "../../shared/state.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
@@ -83,10 +85,16 @@ import {
 } from "./check-rules.ts";
 import { type ChoiceOrder, randomOrder, reorder } from "./choice-order.ts";
 import type { ChatResult, Timer } from "./conversation.ts";
-import { type Grader, gradeChoice } from "./grading.ts";
+import { type Grader, gradeChoice, gradeMath } from "./grading.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
+import { type MathCheck, noMathCheck } from "./math-check.ts";
 import { createTranscribedLog } from "./transcript.ts";
-import { createUnitAgents, type UnitAgents } from "./unit-agents.ts";
+import {
+  createUnitAgents,
+  type Grade,
+  type Grading,
+  type UnitAgents,
+} from "./unit-agents.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
   type Answered,
@@ -128,11 +136,12 @@ export interface UnitChat {
    */
   anotherQuestion(): Promise<ChatResult>;
   /**
-   * The learner's answer to the open question. A written one is graded
-   * after this returns; the page hears the grade, or that grading failed.
+   * The learner's answer to the open question. A written or math one is
+   * graded after this returns; the page hears the grade, or that grading
+   * failed.
    */
   answer(submission: AnswerSubmission): Promise<ChatResult>;
-  /** Grades again the written answer whose grading failed. */
+  /** Grades again the written or math answer whose grading failed. */
   gradeAgain(): Promise<ChatResult>;
   /** The learner moves on without the check, which is recorded. */
   override(): Promise<ChatResult>;
@@ -188,8 +197,14 @@ interface ChatOptions {
   systemPrompt: string;
   dataRoot: DataRoot;
   planner: UnitPlanner;
-  /** Grades written answers. */
+  /** Grades written answers, and math answers the symbolic check does not settle. */
   grader: Grader;
+  /**
+   * Reads math questions' expected expressions and compares answers with
+   * them (task 3.5). Without it, math questions are refused, and an answer
+   * to one already open goes to the grader.
+   */
+  mathCheck?: MathCheck;
   /** Judges the tutor's replies to messages sent while a question is open. */
   judge: HelpJudge;
   /**
@@ -419,7 +434,6 @@ function createUnitChat(
         keep: (id) => exclusive(() => record.keepSession(id)),
         // Only a turn calls it, once `r` is set.
         lost: (learnerId) => fallBack(r, learnerId),
-        grader: options.grader,
         judge: options.judge,
         log,
         exclusive,
@@ -687,7 +701,7 @@ function createUnitChat(
   async function recordAnswer(
     r: Running,
     submission: AnswerSubmission,
-    grade: { verdict: Verdict; flaw?: string },
+    grade: Grade,
     stops?: number,
   ): Promise<void> {
     tellGrade(r, await r.record.answer(submission, grade), stops);
@@ -695,8 +709,8 @@ function createUnitChat(
 
   /**
    * Grades an answer to the open question once no reply during it waits
-   * for the judge: a written one by the grader, kept in state.json first,
-   * and any other at once. Runs inside `exclusive`.
+   * for the judge: a written or math one outside the queue, kept in
+   * state.json first, and any other at once. Runs inside `exclusive`.
    */
   async function grade(
     r: Running,
@@ -705,13 +719,13 @@ function createUnitChat(
     stops?: number,
   ): Promise<void> {
     const { question } = open;
-    if (answer.kind === "written" && question.kind === "written") {
+    if (answer.kind === "written" || answer.kind === "math") {
       // Kept before it is graded, so a restart does not lose it.
       const kept: OpenQuestion = { ...open, answer };
       if (open.answer === undefined) {
         await r.record.move({ ...r.record.position, openQuestion: kept });
       }
-      startGrading(r, kept, question, answer, stops);
+      startGrading(r, kept, answer, stops);
       return;
     }
     await recordAnswer(
@@ -824,25 +838,36 @@ function createUnitChat(
   }
 
   /**
-   * Grades the open question's kept written answer. The grader runs outside
-   * `exclusive`, so the chat goes on while it works; its grade is recorded
-   * inside, if the question is still open.
+   * Grades the open question's kept written or math answer. The grading
+   * runs outside `exclusive`, so the chat goes on while it works; its grade
+   * is recorded inside, if the question is still open.
    */
   function startGrading(
     r: Running,
     open: OpenQuestion,
-    question: WrittenQuestion,
-    answer: WrittenAnswer,
+    answer: GradedAnswer,
     stops?: number,
   ): void {
+    const { question } = open;
+    const { grader } = options;
+    const check = options.mathCheck ?? noMathCheck;
+    let run: Grading["run"];
+    if (answer.kind === "written" && question.kind === "written") {
+      run = (signal) => grader.grade(question, answer.text, signal);
+    } else if (answer.kind === "math" && question.kind === "math") {
+      run = (signal) => gradeMath(question, answer, { check, grader }, signal);
+    } else {
+      // The answer's kind is its question's: `answer` and the schema check it.
+      throw new Error("The answer is not of its question's kind.");
+    }
     r.agents.grade({
       questionId: open.id,
-      question,
       answer,
+      run,
       applies: () =>
         r.record.position.openQuestion?.id === open.id &&
         r.record.finished === undefined,
-      record: (grade) => recordAnswer(r, answer, grade, stops),
+      record: (grade: Grade) => recordAnswer(r, answer, grade, stops),
     });
   }
 
@@ -921,6 +946,14 @@ function createUnitChat(
             };
           }
           const posted = postedQuestion(question);
+          if (posted.kind === "math") {
+            // Read before it is posted, so that every answer is compared
+            // with an expression the check can read.
+            const unread = await (options.mathCheck ?? noMathCheck).read(
+              posted.expected,
+            );
+            if (unread !== undefined) return unread;
+          }
           const open: OpenQuestion = {
             id: randomUUID(),
             number: r.record.checkAnswers.length + 1,
@@ -1095,7 +1128,9 @@ function createUnitChat(
               error:
                 question.kind === "choice"
                   ? `Question ${open.number} is answered with one of its choices.`
-                  : `Question ${open.number} is answered in writing.`,
+                  : question.kind === "math"
+                    ? `Question ${open.number} is answered with an expression.`
+                    : `Question ${open.number} is answered in writing.`,
             };
           }
           if (
@@ -1141,8 +1176,7 @@ function createUnitChat(
           const kept = open?.answer;
           if (
             open === undefined ||
-            kept?.kind !== "written" ||
-            open.question.kind !== "written"
+            (kept?.kind !== "written" && kept?.kind !== "math")
           ) {
             return refused("No answer is waiting to be graded again.");
           }
@@ -1150,7 +1184,7 @@ function createUnitChat(
           if (r.agents.grading()) {
             return refused("The answer is being graded.");
           }
-          startGrading(r, open, open.question, kept);
+          startGrading(r, open, kept);
           return { ok: true };
         },
         { whileWriting: true },
@@ -1250,6 +1284,7 @@ const UNIT_FINISHED = "The unit is finished.";
 const WAITS_FOR_JUDGE =
   "Your answer to this question is kept, and is graded once the tutor's replies while it was open have been judged.";
 
+/** The question as the page sees it: never its grading material. */
 function view(open: OpenQuestion): QuestionView {
   const { id, number, question } = open;
   return question.kind === "choice"
@@ -1260,7 +1295,7 @@ function view(open: OpenQuestion): QuestionView {
         prompt: question.prompt,
         choices: question.choices,
       }
-    : { kind: "written", id, number, prompt: question.prompt };
+    : { kind: question.kind, id, number, prompt: question.prompt };
 }
 
 function refused(error: string): ChatResult {

@@ -4,7 +4,11 @@
 // and answer. The view is drawn in WhatIKnow.tsx from what the server
 // derives (src/server/record/what-i-know.ts).
 
-import { type ChoiceLetter, confidenceLabel } from "../shared/question.ts";
+import {
+  type ChoiceLetter,
+  confidenceLabel,
+  type Unsettled,
+} from "../shared/question.ts";
 import type { ObjectiveStatus, UnitStatus } from "../shared/status.ts";
 import type { ShownEvidence, WhatIKnow } from "../shared/what-i-know.ts";
 import { unitNumbers } from "./units.ts";
@@ -90,6 +94,10 @@ export interface AnswerLine {
   help?: string;
   /** The right choice, for a choice question missed. */
   correctChoice?: ChoiceLetter;
+  /** The expected answer, for a math question missed. */
+  expected?: string;
+  /** Why the grader graded a math answer, when the symbolic check did not. */
+  gradedBy?: string;
 }
 
 export function answerLine(
@@ -118,7 +126,27 @@ export function answerLine(
     ...(question.kind === "choice" && verdict !== "correct"
       ? { correctChoice: question.answer }
       : {}),
+    ...(question.kind === "math" && verdict !== "correct"
+      ? { expected: question.expected }
+      : {}),
+    ...(entry.unsettled === undefined
+      ? {}
+      : { gradedBy: unsettledLine(entry.unsettled) }),
   };
+}
+
+/**
+ * Why the grader graded a math answer: the symbolic check did not settle
+ * it. The graded card in the session says it too.
+ */
+export function unsettledLine(unsettled: Unsettled): string {
+  const why =
+    unsettled.result === "unparsable"
+      ? `could not read the answer (${unsettled.reason})`
+      : unsettled.result === "undecided"
+        ? `could not decide it (${unsettled.reason})`
+        : `did not run (${unsettled.reason})`;
+  return `The grader, since the symbolic check ${why}.`;
 }
 
 /**

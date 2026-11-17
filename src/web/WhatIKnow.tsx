@@ -18,7 +18,7 @@ import {
 import { getJson } from "./api.ts";
 import { calibrationRows, hasCalibration } from "./calibration.ts";
 import { Link, TopLine } from "./Frame.tsx";
-import { InlineProse, Prose } from "./prose.tsx";
+import { InlineProse, MathText, Prose } from "./prose.tsx";
 import { ChoiceLabel } from "./QuestionCard.tsx";
 import { paths } from "./route.ts";
 import {
@@ -178,12 +178,17 @@ function AnswerEntry(props: {
           <span className="k">Your answer</span>
           {answer.kind === "choice" ? (
             <ChoiceLabel choices={choices} letter={answer.choice} />
+          ) : answer.kind === "math" ? (
+            <span>
+              <MathText source={answer.expression} />
+            </span>
           ) : (
             <span>I don't know</span>
           )}
         </div>
       )}
-      {answer.kind === "choice" && answer.reasoning !== undefined ? (
+      {(answer.kind === "choice" || answer.kind === "math") &&
+      answer.reasoning !== undefined ? (
         <div className="qa-line">
           <span className="k">Your reasoning</span>
           <span className="qa-flaw">
@@ -201,6 +206,20 @@ function AnswerEntry(props: {
         <div className="qa-line">
           <span className="k">Correct answer</span>
           <ChoiceLabel choices={choices} letter={line.correctChoice} />
+        </div>
+      )}
+      {line.expected === undefined ? null : (
+        <div className="qa-line">
+          <span className="k">Correct answer</span>
+          <span>
+            <MathText source={line.expected} />
+          </span>
+        </div>
+      )}
+      {line.gradedBy === undefined ? null : (
+        <div className="qa-line">
+          <span className="k">Graded by</span>
+          <span className="qa-by">{line.gradedBy}</span>
         </div>
       )}
       {entry.flaw === undefined ? null : (

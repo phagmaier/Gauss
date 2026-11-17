@@ -1,13 +1,17 @@
 // The check question card, as settled in docs/prototype/02-check-question.html:
-// answered inside the card, with how sure and, for a choice, an optional
-// reasoning; shrunk to a record once graded. Two answer kinds: multiple
-// choice, and a written answer, which is its own reasoning and is graded by
-// the grader (task 2.8): the card keeps the answer as sent while it is
-// graded, says why a grading failed, and offers to grade it again. The
-// prompt, the choices and a written answer are Markdown with math.
+// answered inside the card, with how sure and, for a choice or a math
+// answer, an optional reasoning; shrunk to a record once graded. Three
+// answer kinds: multiple choice; math, an expression typed in a field that
+// shows it as math as it is typed, compared with the expected answer by the
+// symbolic check (task 3.5); and a written answer, which is its own
+// reasoning and is graded by the grader (task 2.8). The card keeps a math or
+// written answer as sent while it is graded, says why a grading failed, and
+// offers to grade it again. The prompt, the choices and a written answer are
+// Markdown with math.
 //
 // Keys, when not typing (mock 2): A to F pick a choice, 1 to 5 how sure, and
-// Enter submits.
+// Enter submits. Enter in the math field submits too, or, before how sure is
+// picked, moves to the first level.
 //
 // "I don't know" asks, before it is sent, where the learner got stuck, which
 // they may leave blank (task 2.20); the tutor is given it in the detour the
@@ -16,18 +20,26 @@
 // An answer sent while the tutor's replies during the question are still
 // being judged for help is kept as sent until they are (task 2.21).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type AnswerSubmission,
   CHOICE_LETTERS,
   type ChoiceLetter,
   type Confidence,
   confidenceLabel,
+  type GradedAnswer,
   type QuestionView,
   type WrittenAnswer,
 } from "../shared/question.ts";
-import { AnswerPreview, InlineProse, Prose } from "./prose.tsx";
+import {
+  AnswerPreview,
+  InlineProse,
+  MathPreview,
+  MathText,
+  Prose,
+} from "./prose.tsx";
 import type { Graded, QuestionItem } from "./timeline.ts";
+import { unsettledLine } from "./what-i-know.ts";
 
 type ChoiceView = Extract<QuestionView, { kind: "choice" }>;
 
@@ -90,10 +102,25 @@ function OpenCard(props: {
   const [stuck, setStuck] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
+  /** The first level of how sure, which Enter in the math field moves to. */
+  const firstLevel = useRef<HTMLButtonElement>(null);
 
   /** The answer as it would be sent, or undefined while it is incomplete. */
   function answer(): AnswerSubmission | undefined {
     if (confidence === undefined) return undefined;
+    if (question.kind === "math") {
+      const expression = text.trim();
+      const said = reasoning.trim();
+      return expression === ""
+        ? undefined
+        : {
+            kind: "math",
+            questionId: question.id,
+            expression,
+            confidence,
+            ...(said === "" ? {} : { reasoning: said }),
+          };
+    }
     if (question.kind === "written") {
       const written = text.trim();
       return written === ""
@@ -188,6 +215,35 @@ function OpenCard(props: {
               choice={choice}
               onChoose={(letter) => setChoice(letter)}
             />
+          ) : question.kind === "math" ? (
+            <>
+              <textarea
+                className="field mathin"
+                aria-label="Your answer"
+                placeholder="Type your answer, for example 3x^2"
+                rows={1}
+                // The longest expression the check reads (`MathAnswer`).
+                maxLength={1000}
+                spellCheck={false}
+                value={text}
+                disabled={sending}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  // One line that grows with what is typed (mock 2).
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${e.target.scrollHeight + 2}px`;
+                }}
+                onKeyDown={(e) => {
+                  // Enter submits, as in the message box; Shift+Enter is a new line.
+                  if (e.key !== "Enter" || e.shiftKey || sending) return;
+                  e.preventDefault();
+                  if (ready !== undefined) void send(ready);
+                  else if (confidence === undefined)
+                    firstLevel.current?.focus();
+                }}
+              />
+              <MathPreview source={text} />
+            </>
           ) : (
             <>
               <textarea
@@ -204,11 +260,12 @@ function OpenCard(props: {
           <fieldset className="qa-conf">
             <legend>How sure are you?</legend>
             <div className="chips">
-              {CONFIDENCE.map((c) => (
+              {CONFIDENCE.map((c, i) => (
                 <button
                   type="button"
                   className="chip"
                   key={c.value}
+                  ref={i === 0 ? firstLevel : undefined}
                   aria-pressed={confidence === c.value}
                   onClick={() => setConfidence(c.value)}
                 >
@@ -217,7 +274,7 @@ function OpenCard(props: {
               ))}
             </div>
           </fieldset>
-          {question.kind === "choice" ? (
+          {question.kind !== "written" ? (
             <details className="why">
               <summary>Add your reasoning</summary>
               <textarea
@@ -328,10 +385,10 @@ function Choices(props: {
   );
 }
 
-/** A written answer as sent, kept while it is graded, or after its grading failed. */
+/** A written or math answer as sent, kept while it is graded, or after its grading failed. */
 function KeptCard(props: {
   question: QuestionView;
-  answer: WrittenAnswer;
+  answer: GradedAnswer;
   failed: string | undefined;
   onGradeAgain(): Promise<string | undefined>;
 }) {
@@ -363,7 +420,7 @@ function KeptCard(props: {
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
-      <WrittenRecord answer={answer} />
+      <AnswerRecord question={question} answer={answer} />
       {failed === undefined ? null : (
         <>
           <p className="qa-error">The grading failed: {failed}</p>
@@ -416,7 +473,7 @@ function WaitingCard(props: {
   );
 }
 
-/** The answer as sent: the written text, the choice, or "I don't know". */
+/** The answer as sent: the written text, the choice, the expression, or "I don't know". */
 function AnswerRecord(props: {
   question: QuestionView;
   answer: AnswerSubmission;
@@ -430,6 +487,13 @@ function AnswerRecord(props: {
         {answer.kind === "choice" ? (
           <>
             <ChoiceText question={question} letter={answer.choice} />
+            <span className="c">{confidenceLabel(answer.confidence)} sure</span>
+          </>
+        ) : answer.kind === "math" ? (
+          <>
+            <span>
+              <MathText source={answer.expression} />
+            </span>
             <span className="c">{confidenceLabel(answer.confidence)} sure</span>
           </>
         ) : (
@@ -510,6 +574,20 @@ function GradedCard(props: { question: QuestionView; graded: Graded }) {
         <div className="qa-line">
           <span className="k">Correct answer</span>
           <ChoiceText question={question} letter={graded.correctChoice} />
+        </div>
+      )}
+      {graded.verdict === "correct" || graded.expected === undefined ? null : (
+        <div className="qa-line">
+          <span className="k">Correct answer</span>
+          <span>
+            <MathText source={graded.expected} />
+          </span>
+        </div>
+      )}
+      {graded.unsettled === undefined ? null : (
+        <div className="qa-line">
+          <span className="k">Graded by</span>
+          <span className="qa-by">{unsettledLine(graded.unsettled)}</span>
         </div>
       )}
       {graded.flaw === undefined ? null : (

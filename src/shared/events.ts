@@ -8,9 +8,10 @@ import { Plan } from "./plan.ts";
 import {
   AnswerSubmission,
   ChoiceLetter,
+  GradedAnswer,
   QuestionView,
+  Unsettled,
   Verdict,
-  WrittenAnswer,
 } from "./question.ts";
 import { Phase } from "./state.ts";
 import { ObjectiveStatus, UnitStatus } from "./status.ts";
@@ -66,19 +67,20 @@ export const PageEvent = z.discriminatedUnion("type", [
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),
   /**
-   * A written answer was sent and is being graded (task 2.8). Sent again
-   * when it is graded again after a failure, and when a unit reopens with an
-   * answer a restart kept from its grade.
+   * A written or math answer was sent and is being graded (tasks 2.8 and
+   * 3.5). Sent again when it is graded again after a failure, and when a
+   * unit reopens with an answer a restart kept from its grade.
    */
   z.object({
     type: z.literal("grading"),
     questionId: z.string(),
-    answer: WrittenAnswer,
+    answer: GradedAnswer,
   }),
   /**
    * An answer was sent while replies of the tutor's to the learner's
    * messages during the question were still to be judged (task 2.21). It
-   * is kept, and graded once they are; a written one is then `grading`.
+   * is kept, and graded once they are; a written or math one is then
+   * `grading`.
    */
   z.object({
     type: z.literal("answer_waiting"),
@@ -110,7 +112,7 @@ export const PageEvent = z.discriminatedUnion("type", [
     unjudged: z.enum(["failed", "restart"]).optional(),
   }),
   /**
-   * The grading of a written answer failed. The answer is kept, the
+   * The grading of a written or math answer failed. The answer is kept, the
    * question stays open, and the learner can have it graded again.
    */
   z.object({
@@ -118,7 +120,10 @@ export const PageEvent = z.discriminatedUnion("type", [
     questionId: z.string(),
     error: z.string(),
   }),
-  /** An answer was graded. The correct choice, or the flaw, is revealed here. */
+  /**
+   * An answer was graded. The correct choice, the expected expression, or
+   * the flaw, is revealed here.
+   */
   z.object({
     type: z.literal("graded"),
     questionId: z.string(),
@@ -127,7 +132,11 @@ export const PageEvent = z.discriminatedUnion("type", [
     answer: AnswerSubmission,
     /** For a choice question: the correct choice. */
     correctChoice: ChoiceLetter.optional(),
-    /** For a written answer graded incorrect: the first flawed step or missing element. */
+    /** For a math question: the expected answer (task 3.5). */
+    expected: z.string().optional(),
+    /** For a math answer the symbolic check did not settle: why, so the grader graded it. */
+    unsettled: Unsettled.optional(),
+    /** For an answer the grader graded incorrect: the first flawed step or missing element. */
     flaw: z.string().optional(),
     /** Given with help, so a correct answer does not count toward passing. */
     assisted: z.boolean(),

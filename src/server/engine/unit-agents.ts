@@ -1,10 +1,10 @@
 // The tutor, the grader and the help judge of one unit chat (unit-chat.ts;
 // split out in task 2.8b): the tutor's conversation, the grading of a written
-// answer, and the judging of a reply to a message sent while a question was
-// open (task 2.21). They run outside the chat's queue, so the chat goes on
-// while they work; a grade and a judge's call are recorded inside it. The
-// queue is the chat's, given here, so there is one order for every change to
-// the unit.
+// or math answer, and the judging of a reply to a message sent while a
+// question was open (task 2.21). They run outside the chat's queue, so the
+// chat goes on while they work; a grade and a judge's call are recorded
+// inside it. The queue is the chat's, given here, so there is one order for
+// every change to the unit.
 //
 // The tutor's sessions run in the course's workspace and are kept, so a
 // unit reopened after a restart resumes its tutor (task 2.14). A new session's id
@@ -15,10 +15,10 @@
 // opening it only asks the backend whether the session is there.
 
 import type {
+  GradedAnswer,
   Question,
+  Unsettled,
   Verdict,
-  WrittenAnswer,
-  WrittenQuestion,
 } from "../../shared/question.ts";
 import {
   SessionNotFound,
@@ -34,18 +34,27 @@ import {
   type Timer,
   type Turn,
 } from "./conversation.ts";
-import type { Grader } from "./grading.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 
-/** The grading of an open question's kept written answer. */
+/** A grade, with the flaw and why the check left it to the grader, if so. */
+export interface Grade {
+  verdict: Verdict;
+  flaw?: string;
+  unsettled?: Unsettled;
+}
+
+/** The grading of an open question's kept written or math answer. */
 export interface Grading {
   questionId: string;
-  question: WrittenQuestion;
-  answer: WrittenAnswer;
+  answer: GradedAnswer;
+  /** Grades the answer, by the grader or the symbolic check. Never throws. */
+  run(
+    signal: AbortSignal,
+  ): Promise<({ ok: true } & Grade) | { ok: false; error: string }>;
   /** Whether the grade still applies when it comes: the question is open. */
   applies(): boolean;
   /** Records the grade. Runs inside the chat's queue. */
-  record(grade: { verdict: Verdict; flaw?: string }): Promise<void>;
+  record(grade: Grade): Promise<void>;
 }
 
 /** The judging of the tutor's reply to a message sent while a question was open. */
@@ -84,10 +93,10 @@ export interface UnitAgents {
   /** Stops the tutor's turn in progress, if there is one. */
   interrupt(): Promise<void>;
   /**
-   * Grades a kept written answer and tells the page it is being graded. The
-   * grade is recorded inside the queue, if it still applies; a failed
-   * grading, or a record that throws, is `grading_failed`. The grading
-   * counts as running until then.
+   * Grades a kept written or math answer and tells the page it is being
+   * graded. The grade is recorded inside the queue, if it still applies; a
+   * failed grading, or a record that throws, is `grading_failed`. The
+   * grading counts as running until then.
    */
   grade(grading: Grading): void;
   /** A grading is running. */
@@ -128,7 +137,6 @@ export function createUnitAgents(options: {
    * Called before the turn's text is composed.
    */
   lost: (learnerId?: string) => void;
-  grader: Grader;
   judge: HelpJudge;
   log: EventLog;
   /** The chat's queue. */
@@ -136,8 +144,7 @@ export function createUnitAgents(options: {
   /** Closes idle sessions; the system's timer if not given. */
   timer?: Timer;
 }): UnitAgents {
-  const { backend, systemPrompt, tools, cwd, grader, judge, log, exclusive } =
-    options;
+  const { backend, systemPrompt, tools, cwd, judge, log, exclusive } = options;
   const workspace =
     options.workspace === undefined ? {} : { workspace: options.workspace };
 
@@ -235,18 +242,19 @@ export function createUnitAgents(options: {
     interrupt: () => tutor.interrupt(),
 
     grade(grading) {
-      const { questionId, question, answer } = grading;
+      const { questionId, answer } = grading;
       const stop = new AbortController();
       log.emit({ type: "grading", questionId, answer });
       const done = (async () => {
-        const outcome = await grader.grade(question, answer.text, stop.signal);
+        const outcome = await grading.run(stop.signal);
         await exclusive(async () => {
           const failed = (error: string) =>
             log.emit({ type: "grading_failed", questionId, error });
           try {
             if (!grading.applies()) return;
             if (!outcome.ok) return failed(outcome.error);
-            await grading.record(outcome);
+            const { ok: _, ...grade } = outcome;
+            await grading.record(grade);
           } catch (error) {
             failed(error instanceof Error ? error.message : String(error));
           } finally {

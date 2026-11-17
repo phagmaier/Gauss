@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
 import { createFakeBackend } from "../backends/fake.ts";
 import { createEventLog } from "./conversation.ts";
-import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
 import { createUnitAgents } from "./unit-agents.ts";
 
@@ -23,7 +22,6 @@ test.each(["before judging starts", "before a queued judgment records"])(
       title: "Review regression",
       keep: async () => {},
       lost: () => {},
-      grader: createGrader({ backend, systemPrompt: "Grader." }),
       judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
       log,
       exclusive: async (work) => {

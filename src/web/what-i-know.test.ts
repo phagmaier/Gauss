@@ -110,6 +110,11 @@ const CHOICE: ShownQuestion = {
   answer: "B",
 };
 const WRITTEN: ShownQuestion = { kind: "written", prompt: "Why?" };
+const MATH: ShownQuestion = {
+  kind: "math",
+  prompt: "Differentiate $x^3$.",
+  expected: "3x^2",
+};
 type Answer = Extract<ShownEvidence, { kind: "answer" }>;
 
 test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
@@ -211,6 +216,63 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       says: {
         verdict: { text: "Did not know", className: "dk" },
         correctChoice: "B",
+      },
+    },
+    {
+      name: "a right math answer: no correction",
+      entry: {
+        kind: "answer",
+        recordedAt: AT,
+        question: MATH,
+        answer: {
+          kind: "math",
+          questionId: "q",
+          expression: "3*x^2",
+          confidence: "90",
+        },
+        assisted: false,
+        verdict: "correct",
+      },
+      says: { verdict: { text: "Correct", className: "ok" }, sure: "90% sure" },
+    },
+    {
+      name: "a wrong math answer the check could not read: the expected answer, and why the grader graded it",
+      entry: {
+        kind: "answer",
+        recordedAt: AT,
+        question: MATH,
+        answer: {
+          kind: "math",
+          questionId: "q",
+          expression: "3x^2 \\oops",
+          confidence: "50",
+        },
+        assisted: false,
+        verdict: "incorrect",
+        flaw: "It has a stray command.",
+        unsettled: { result: "unparsable", reason: "\\oops is not understood" },
+      },
+      says: {
+        verdict: { text: "Not quite", className: "no" },
+        sure: "50% sure",
+        expected: "3x^2",
+        gradedBy:
+          "The grader, since the symbolic check could not read the answer (\\oops is not understood).",
+      },
+    },
+    {
+      name: '"I don\'t know" on a math question: the expected answer',
+      entry: {
+        kind: "answer",
+        recordedAt: AT,
+        question: MATH,
+        answer: { kind: "unknown", questionId: "q" },
+        assisted: false,
+        verdict: "unknown",
+      },
+      says: {
+        verdict: { text: "Did not know", className: "dk" },
+        expected: "3x^2",
       },
     },
   ],

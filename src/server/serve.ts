@@ -11,6 +11,7 @@ import type { TutorBackend } from "./backends/backend.ts";
 import { createGrader } from "./engine/grading.ts";
 import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
+import { createMathCheck } from "./engine/math-check.ts";
 import { startSandbox } from "./engine/sandbox.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
@@ -28,7 +29,7 @@ const host = "127.0.0.1";
 export async function serve(options: {
   /** Runs the intakes, the planning of units and their tutors. */
   backend: TutorBackend;
-  /** Grades written answers. */
+  /** Grades written answers, and math answers the symbolic check does not settle. */
   graderBackend: TutorBackend;
   /** Judges whether a reply during an open question was help (task 2.21). */
   judgeBackend: TutorBackend;
@@ -55,7 +56,8 @@ export async function serve(options: {
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
   // The engine's commands run in it (task 3.2); it says once if it cannot,
-  // and tutors then get no file and shell tools.
+  // and tutors then get no file and shell tools, and math questions are
+  // refused with the reason.
   const sandbox = await startSandbox({
     log: (line) => process.stdout.write(`${line}\n`),
   });
@@ -90,6 +92,7 @@ export async function serve(options: {
       backend: options.judgeBackend,
       systemPrompt: judgePrompt,
     }),
+    mathCheck: createMathCheck({ sandbox }),
     // Tutors run commands only where the sandbox runs (task 3.3).
     workspaceTools: sandbox.available,
   });

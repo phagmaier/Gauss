@@ -84,6 +84,24 @@ test("a written question is posted with its rubric", async () => {
   expect(posted).toEqual([WRITTEN]);
 });
 
+const MATH = {
+  objective: "power-rule",
+  kind: "math",
+  prompt: "Give the derivative of $x^3$.",
+  expected: "3x^2",
+};
+
+test("a math question is posted with its expected answer", async () => {
+  const { posted, tool } = setUp();
+
+  expect(await tool.run(MATH)).toEqual({
+    status: "done",
+    text: "Posted as question 1. Your turn is over; the learner's answer will arrive in the next message.",
+    endTurn: true,
+  });
+  expect(posted).toEqual([MATH]);
+});
+
 test.each([
   {
     name: "an answer that is not one of its choices",
@@ -114,6 +132,36 @@ test.each([
     name: "choices, as a written question",
     input: { ...WRITTEN, choices: ["$3x^2$", "$x^2$"], answer: "A" },
     reason: "A written question has no choices",
+  },
+  {
+    name: "an expected answer, as a written question",
+    input: { ...WRITTEN, expected: "3x^2" },
+    reason: "A written question has no expected expression",
+  },
+  {
+    name: "an expected answer, as a choice question",
+    input: { ...QUESTION, expected: "3x^2" },
+    reason: "A choice question has no rubric and no expected expression",
+  },
+  {
+    name: "no expected answer, as a math question",
+    input: { ...MATH, expected: undefined },
+    reason: "A math question needs the expected answer",
+  },
+  {
+    name: "a blank expected answer, as a math question",
+    input: { ...MATH, expected: "  " },
+    reason: "expected",
+  },
+  {
+    name: "a rubric, as a math question",
+    input: { ...MATH, rubric: "Any form of $3x^2$." },
+    reason: "A math question has no rubric",
+  },
+  {
+    name: "choices, as a math question",
+    input: { ...MATH, choices: ["$3x^2$", "$x^2$"], answer: "A" },
+    reason: "A math question has no choices",
   },
   {
     name: "an objective named in words rather than by its id",

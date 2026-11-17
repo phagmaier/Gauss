@@ -35,38 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.5 Math questions
-
-- Status: todo
-- Depends on: 3.2, 3.4
-- Why: the symbolic check needs a question kind the tutor can post and the
-  learner can answer.
-- Do: a `math` kind for `ask_question` with the expected expression, which
-  the engine parses when the question is posted, refusing it with the
-  reason if it does not parse. The learner answers in piece 2's math field
-  with its live preview, with confidence and optional reasoning. Grading
-  runs `mathcheck.py` in the sandbox (3.2); an answer that does not parse,
-  or a check that errors or runs out of time, goes to the grader with a
-  rubric made from the expression ("correct if mathematically equivalent
-  to ..."). The graded card, the answer turn, "What I know" and the help
-  judge's message carry the expression as they carry a choice key; re-run
-  the judge's set if `help-judge.md` changes. `tutor.md` gets the lines
-  the tutor needs to use the kind; the scripted backend posts one.
-- Done when: fake-backend tests cover an equivalent and a different
-  answer, an expression refused when posted, an unparsable answer graded
-  by the grader, and the evidence and "What I know" for each; `mise run
-  check` passes; on `pnpm dev:fake` a math question is answered with the
-  preview and graded, and the browser closed before the server stops; one
-  short run on Haiku 5.5 posts a math question that the check grades.
-- Note: run `pytools/.venv/bin/python -I pytools/mathcheck.py` with the
-  request on standard input (its header), under a time limit above its own
-  8 seconds, say 12. `undecided` goes to the grader as an unparsable answer
-  does. A request with no answer only reads the expected side, for posting;
-  its `reason` is the refusal's. `tutor.md` needs what the check accepts
-  (`decisions.md`, "Symbolic check"): `+ C` on an antiderivative, no
-  derivative notation or inequalities, decimals to three significant
-  figures.
-
 ### 3.6 Artifacts
 
 - Status: todo
@@ -192,7 +160,10 @@ its outcome.
   a unit in progress is told in its next turn's header. A one-shot call
   decides, failing as the grader's does (shown, and tried again on
   request), its prompt `prompts/dispute-judge.md` drafted here and finished
-  in 3.9. The scripted backend decides disputes both ways.
+  in 3.9. The scripted backend decides disputes both ways. A math answer
+  was graded by its expected expression, by the check or, when the
+  evidence has `unsettled`, by the grader with the rubric `mathRubric`
+  makes; a wrong expected expression is a wrong key.
 - Done when: tests on hand-worked records cover an overturned miss that
   passes an objective, an overturned pass that takes one away, a
   corrected key, calibration counting the corrected verdict, a second

@@ -133,6 +133,32 @@ you have to say first, then the lead-in, then the call.
   correct one: a wrong letter marks a right answer wrong. The app shuffles
   the choices before the learner sees them, and its reply lists them as
   shown; name them by those letters from then on.
+- **Math questions.** For a computed result: a derivative, an
+  antiderivative, a value, a solution. The learner types an expression,
+  and a symbolic check compares it with `expected`, so any equal form is
+  right and no working is asked for. Use one only where every expression
+  equal to the answer is a right answer: not to simplify, expand or
+  factor, since the expression in the question already equals its
+  simplified form; ask those as choice or written questions. Say in the
+  prompt what to give ("Give $f'(x)$.", "Give both solutions, separated
+  by a comma.").
+  - Write `expected` in LaTeX without `$` signs: one expression, one
+    equation (`y = 2x + 1`), or values separated by commas, compared in
+    any order. `e` is Euler's number, `\log` the natural logarithm, and
+    `i` a plain variable.
+  - Put no derivative notation (`\frac{dy}{dx}`, `f'(x)`, `y' = `),
+    inequality, interval, sum, integral or limit in `expected`: the check
+    refuses most of them and cannot compare the rest. Ask for the
+    derivative itself, and ask about an interval or an inequality in a
+    choice or written question.
+  - An antiderivative's `expected` ends in `+ C`, and the prompt says to
+    include the constant: an answer without one is wrong.
+  - A decimal answer is right only when correctly rounded to at least
+    three significant figures, so for a value that is not a whole number,
+    ask for the exact value or say how many figures to give.
+  - An `expected` the check cannot read is refused when you post, with
+    the reason. The grade tells you whether the check decided it, or
+    could not and a grader judged it.
 - **Written questions.** For a proof, a derivation or an explanation; use
   one at least once in a segment whose objective is about arguing or
   explaining. Say exactly what to write and how much ("Prove ...",

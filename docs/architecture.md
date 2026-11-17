@@ -270,12 +270,13 @@ The rules:
   answer will not count. A reply with no text is not judged. An answer sent
   while an exchange is unjudged is kept and graded once the calls are in; a
   restart counts unjudged exchanges as help.
-- **Written answers.** A written answer is final once sent. It is kept on
-  the open question, then graded outside the chat's queue, so messages and
-  turns go on meanwhile; until its grade is recorded, another answer and
-  moving on are refused. A failed grading is shown, and the answer is
-  graded again as sent when the learner asks or the unit reopens. "I don't
-  know" is recorded at once, with no grader call.
+- **Written and math answers.** A written or math answer is final once
+  sent. It is kept on the open question, then graded outside the chat's
+  queue (section 6), so messages and turns go on meanwhile; until its grade
+  is recorded, another answer and moving on are refused. A failed grading
+  is shown, and the answer is graded again as sent when the learner asks
+  or the unit reopens. A choice is graded, and "I don't know" recorded, at
+  once.
 - **A question has one answer.** An open question whose answer the evidence
   already holds (by `questionId`) is closed with that answer, never graded
   or recorded again.
@@ -310,15 +311,18 @@ calls have time limits and a learner may take twenty minutes or close the
 tab.
 
 1. The tutor calls `ask_question` with the objective, the prompt, the
-   answer kind, and the grading material (an answer letter, or a rubric;
-   from stage 3 an expected expression, or tests and their command, which
-   the engine checks before it posts the question; section 6).
+   answer kind, and the grading material: an answer letter, an expected
+   expression, which the symbolic check must read or the question is
+   refused with the check's reason, or a rubric; (stage 3) for code, tests
+   and their command, which the engine checks before it posts the question
+   (section 6).
 2. The engine stores the open question in `state.json` and the page shows
    it. A choice question's choices are shuffled first and the answer letter
    moved with them (`engine/choice-order.ts`); the tool's reply lists them
    as shown. Grading material never reaches the page. The engine ends the
    tutor's turn itself.
-3. The learner submits an answer, a confidence level and optional reasoning
+3. The learner submits an answer (a choice, an expression typed in the math
+   field, or a written answer), a confidence level and optional reasoning
    (a written answer is its own reasoning), or "I don't know".
 4. The engine grades it (section 6) and appends the evidence.
 5. The tutor gets the result as the next turn: feedback, or a detour's
@@ -338,7 +342,7 @@ tool server, for Codex an MCP server.
 | --- | --- |
 | `propose_curriculum` | Stores a draft curriculum with its style note and background note and shows them for review; approval covers all three. Refused in the intake's first turn |
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session |
-| `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, or `written` with a rubric (`QuestionInput` in `src/shared/question.ts`) |
+| `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, `math` with an expected expression, or `written` with a rubric (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
 | `install_packages` | (stage 3) Asks the learner, through a card, to install named packages into the workspace; on Install the engine runs a command it builds itself, the one command with network access, open to the package index only. Refused while a question is open |
@@ -368,21 +372,24 @@ with sources (stage 4).
 | Answer kind | Method | Notes |
 | --- | --- | --- |
 | Multiple choice | Exact match in the engine | Reasoning is passed to the tutor for feedback |
-| Computational math | (stage 3) `pytools/mathcheck.py` compares the answer with the expected expression using SymPy | The expression must parse for the question to be posted. An answer that does not parse, or a check that errors or runs out of time, goes to the grader with a rubric made from the expression |
+| Computational math | The symbolic check, `pytools/mathcheck.py`, compares the answer with the expected expression using SymPy | The expression must read for the question to be posted. An answer the check cannot read, or cannot decide, or a check that fails or runs out of time, goes to the grader with a rubric made from the expression (`mathRubric` in `engine/grading.ts`); the evidence keeps why (`unsettled`) |
 | Code | (stage 3) Runs the question's tests, which the learner does not see until the answer is graded, with their command on the files in `workspace/` | Checked when the question is posted, so tests that cannot tell right code from wrong are refused |
 | Proof, explanation, reconstruction | A separate one-shot model call, `prompts/grader.md` with the question's rubric | Names the first flawed step or missing element; never sees the tutor's conversation |
 
 - **The grader** (`engine/grading.ts`) is one `oneShot` request (section 7):
   system prompt `grader.md`, and a message holding the question as the
   learner saw it, the rubric and the answer, each between tags, and nothing
-  else. The reply is `WrittenGrade` (`src/shared/question.ts`): correct or
-  incorrect, no partial credit, and the flaw when incorrect, which the
-  evidence keeps. A reply out of shape, a failed request or one past three
+  else. For a math answer the rubric is made from the expected expression,
+  and the answer is the expression without the learner's reasoning. The
+  reply is `WrittenGrade` (`src/shared/question.ts`): correct or incorrect,
+  no partial credit, and the flaw when incorrect, which the evidence
+  keeps. A reply out of shape, a failed request or one past three
   minutes is a failed grading. It runs on Claude Sonnet 5.5 (`GRADER_MODEL`
   in `backends/claude.ts`).
 - **The help judge** (`engine/help-judge.ts`) is a one-shot request of the
   same kind: `help-judge.md`, and a message holding the question with its
-  correct choice or rubric, the learner's message and the tutor's reply.
+  correct choice, expected answer or rubric, the learner's message and the
+  tutor's reply.
   The reply is `HelpJudgment`: a reason, never shown, then clarification or
   help. A reply out of shape, a failed request or one past two minutes
   counts as help. It runs on Claude Haiku 5.5 (`JUDGE_MODEL`).
@@ -401,8 +408,14 @@ with sources (stage 4).
   evaluated as Python. Without an answer it only reads the expected side.
   It runs with the venv's own Python (`pytools/.venv/bin/python
   -I`), so a sandboxed run needs no uv cache, and stops itself after 8
-  seconds. (stage 3) The engine does not run it yet.
-- **The engine's commands** (stage 3: the tests and the symbolic check)
+  seconds. The engine runs it (`engine/math-check.ts`) in the sandbox with
+  nothing writable and a 12-second limit: with no answer to read a math
+  question's expected expression when it is posted, and with the answer to
+  grade it. A run that fails, runs out of time or writes something out of
+  shape is a failure, which goes to the grader as an undecided answer
+  does. Where the sandbox cannot run, math questions are refused when
+  posted.
+- **The engine's commands** (the symbolic check; (stage 3) the tests)
   run text a model or the learner wrote, so each runs through
   `engine/sandbox.ts`, on `@anthropic-ai/sandbox-runtime`: no network,
   writes only to the folders the caller names and to the command's own
@@ -602,9 +615,10 @@ no automated tests.
   finished) or Continue; the diagram in the side pane; "What I know".
 - **What I know** (`/courses/<id>/what-i-know`): each started unit's
   objectives with their status and, under each, its evidence in log order
-  (question, answer, confidence, help, grade with a written answer's flaw,
-  date) and overrides; never a rubric. Under the summary, the course's
-  calibration: for each confidence level, how many unassisted answers were
+  (question, answer, confidence, help, grade with the grader's flaw, the
+  right choice or expected answer of a question missed, why the grader
+  graded a math answer, date) and overrides; never a rubric. Under the
+  summary, the course's calibration: for each confidence level, how many unassisted answers were
   correct, "I don't know" apart.
 - **Session** (`/courses/<id>/units/<unit>`): the thread with rendered
   Markdown and math; phase markers; one next-step control where the thread
@@ -614,8 +628,11 @@ no automated tests.
   line for each file the tutor writes with its file tools, once a reply,
   with its path in the workspace (piece 14); the detour marker and "Ready
   for another question"; the closing card; a top
-  line with the unit's position, whose outline holds Start fresh. Keys: A
-  to F pick a choice, 1 to 5 how sure, Enter submits. The view posts
+  line with the unit's position, whose outline holds Start fresh. A math
+  question is answered in a one-line field whose expression is shown as
+  math beneath it as it is typed (piece 2). Keys: A to F pick a choice, 1
+  to 5 how sure, Enter submits; Enter in the math field submits, or moves
+  to how sure if that is not picked. The view posts
   `open`, follows `events`, and opens the unit again if the stream answers
   404 (the chat was lost).
 - **Rendering** (`src/web/prose.tsx`): model text and the learner's answers
@@ -656,7 +673,8 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   from worked examples written by hand. Engine flows run on the fake
   backend; idle closing runs on a fake timer (`engine/fake-timer.ts`) that
   the test moves on; choice order is fixed with `order: givenOrder`. The
-  sandbox's tests run real commands in it, so they need what it needs and
+  sandbox's tests, and those of math questions, which run the real
+  symbolic check, run real commands in it, so they need what it needs and
   fail where it cannot run.
 - **Python helpers (pytest via uv)**: equivalent and non-equivalent
   expression pairs worked by hand, and `mathcheck.py` run on the venv's

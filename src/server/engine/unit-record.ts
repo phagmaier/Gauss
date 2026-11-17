@@ -24,7 +24,11 @@ import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
-import type { AnswerSubmission, Verdict } from "../../shared/question.ts";
+import type {
+  AnswerSubmission,
+  Unsettled,
+  Verdict,
+} from "../../shared/question.ts";
 import type { Detour, OpenQuestion, UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
@@ -80,7 +84,7 @@ export interface UnitRecord {
    */
   answer(
     submission: AnswerSubmission,
-    grade: { verdict: Verdict; flaw?: string },
+    grade: { verdict: Verdict; flaw?: string; unsettled?: Unsettled },
   ): Promise<Answered>;
   /**
    * Closes the open question, and tells the page, if the evidence has its
@@ -290,6 +294,7 @@ export async function openUnitRecord(options: {
       let entry = recordedAnswer(question.id);
       if (entry === undefined) {
         const flaw = grade.verdict === "incorrect" ? grade.flaw : undefined;
+        const { unsettled } = grade;
         entry = {
           kind: "answer",
           recordedAt: now().toISOString(),
@@ -299,6 +304,7 @@ export async function openUnitRecord(options: {
           assisted: question.assisted === true,
           verdict: grade.verdict,
           ...(flaw === undefined ? {} : { flaw }),
+          ...(unsettled === undefined ? {} : { unsettled }),
         };
         // The evidence first: a stop before the position is written leaves
         // the question open, and reopening closes it with this entry.
@@ -359,7 +365,10 @@ export function gradedEvent(entry: AnswerEvidence): PageEvent {
     answer: entry.answer,
     ...(entry.question.kind === "choice"
       ? { correctChoice: entry.question.answer }
-      : {}),
+      : entry.question.kind === "math"
+        ? { expected: entry.question.expected }
+        : {}),
+    ...(entry.unsettled === undefined ? {} : { unsettled: entry.unsettled }),
     ...(entry.flaw === undefined ? {} : { flaw: entry.flaw }),
     assisted: entry.assisted,
   };

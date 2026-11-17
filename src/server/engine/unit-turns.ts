@@ -162,7 +162,9 @@ export function answerTurn(
       `The learner answered "I don't know", which counts as a miss.` +
         (question.kind === "choice"
           ? ` The correct choice is ${question.answer}.`
-          : ""),
+          : question.kind === "math"
+            ? ` The expected answer is ${question.expected}.`
+            : ""),
       answer.stuck === undefined
         ? "They did not say where they got stuck."
         : `Where they got stuck, in their words: ${answer.stuck}`,
@@ -176,6 +178,14 @@ export function answerTurn(
       entry.verdict === "correct"
         ? "Graded: correct."
         : `Graded: incorrect. The correct choice is ${question.answer}.`,
+    );
+  } else if (answer.kind === "math" && question.kind === "math") {
+    lines.push(
+      `The learner's answer, at ${confidenceLabel(answer.confidence)} confidence: ${answer.expression}`,
+      answer.reasoning === undefined || answer.reasoning.trim() === ""
+        ? "They gave no reasoning."
+        : `Their reasoning: ${answer.reasoning}`,
+      mathGrade(entry, question.expected),
     );
   } else if (answer.kind === "written") {
     lines.push(
@@ -208,6 +218,31 @@ export function answerTurn(
 }
 
 /**
+ * How a math answer was graded: by the symbolic check, or by the grader
+ * when the check did not settle it.
+ */
+function mathGrade(entry: AnswerEvidence, expected: string): string {
+  const { unsettled } = entry;
+  if (unsettled === undefined) {
+    return entry.verdict === "correct"
+      ? `The symbolic check found it equal to the expected answer, ${expected}: correct.`
+      : `The symbolic check found it not equal to the expected answer, ${expected}: incorrect.`;
+  }
+  const why =
+    unsettled.result === "unparsable"
+      ? `could not read it (${unsettled.reason})`
+      : unsettled.result === "undecided"
+        ? `could not decide whether it equals the expected answer (${unsettled.reason})`
+        : `did not run (${unsettled.reason})`;
+  const by =
+    `The symbolic check ${why}, so the grader, which saw only the question, ` +
+    `the expected answer, ${expected}, and this answer, graded it`;
+  return entry.verdict === "correct"
+    ? `${by} correct.`
+    : `${by} incorrect. The flaw it found: ${entry.flaw}`;
+}
+
+/**
  * What the first turn of a detour allows (task 2.20): it takes the place of
  * the feedback on the missed answer. The tutor gives the right answer, finds
  * where the confusion is and works through it, and from the objective's
@@ -222,11 +257,13 @@ function detourOpening(where: Where, entry: AnswerEvidence): string {
   const from =
     answer.kind === "choice"
       ? `from the choice they picked${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
-      : answer.kind === "written"
-        ? "from the grader's flaw and what they wrote, or, if that does not show it, "
-        : answer.stuck !== undefined
-          ? "from where they say they got stuck, or, if that does not show it, "
-          : "";
+      : answer.kind === "math"
+        ? `from the answer they gave${entry.flaw === undefined ? "" : ", the grader's flaw"}${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
+        : answer.kind === "written"
+          ? "from the grader's flaw and what they wrote, or, if that does not show it, "
+          : answer.stuck !== undefined
+            ? "from where they say they got stuck, or, if that does not show it, "
+            : "";
   const again =
     missed >= 2
       ? ` "${entry.objective}" has been missed ${missed} times in this check, ` +

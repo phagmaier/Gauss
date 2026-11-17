@@ -1,11 +1,14 @@
 import { expect, test } from "vitest";
 import {
   type AnswerSubmission,
+  type MathAnswer,
+  type MathQuestion,
   WrittenGrade,
   type WrittenQuestion,
 } from "../../shared/question.ts";
 import { createFakeBackend, type FakeReply } from "../backends/fake.ts";
-import { createGrader, gradeChoice } from "./grading.ts";
+import { createGrader, gradeChoice, gradeMath } from "./grading.ts";
+import type { MathCheck, MathResult } from "./math-check.ts";
 
 test.each([
   {
@@ -173,4 +176,81 @@ test.each<{ name: string; reply: FakeReply; stopFirst?: true }>([
     ok: false,
     error: "The request was stopped.",
   });
+});
+
+// --- Math answers the check does not settle (task 3.5) ------------------------
+// The check itself is the real one in math-check.test.ts and
+// math-questions.test.ts; here it is faked to give each result.
+
+const MATH: MathQuestion = {
+  kind: "math",
+  prompt: "Give the derivative of $x^3$.",
+  expected: "3x^2",
+};
+const MATH_ANSWER: MathAnswer = {
+  kind: "math",
+  questionId: "q1",
+  expression: "3x^2",
+  confidence: "90",
+};
+const checkGiving = (result: MathResult): MathCheck => ({
+  read: async () => undefined,
+  compare: async () => result,
+});
+
+test.each<{ name: string; result: MathResult; outcome: unknown }>([
+  {
+    name: "equal",
+    result: { result: "equivalent" },
+    outcome: { ok: true, verdict: "correct" },
+  },
+  {
+    name: "not equal",
+    result: { result: "different" },
+    outcome: { ok: true, verdict: "incorrect" },
+  },
+])(
+  "an answer the check finds $name is graded by it alone",
+  async ({ result, outcome }) => {
+    const { backend, grader } = setUp([]);
+
+    expect(
+      await gradeMath(MATH, MATH_ANSWER, {
+        check: checkGiving(result),
+        grader,
+      }),
+    ).toEqual(outcome);
+    expect(backend.oneShots).toEqual([]);
+  },
+);
+
+test("an answer the check could not grade, because it failed or ran out of time, is graded by the grader against a rubric made from the expression", async () => {
+  const { backend, grader } = setUp([{ output: { verdict: "correct" } }]);
+  const failed = {
+    result: "failed",
+    reason: "it took longer than 12 seconds",
+  } as const;
+
+  expect(
+    await gradeMath(MATH, MATH_ANSWER, { check: checkGiving(failed), grader }),
+  ).toEqual({ ok: true, verdict: "correct", unsettled: failed });
+  const prompt = backend.oneShots[0]?.prompt ?? "";
+  expect(prompt).toContain(
+    "<question>\nGive the derivative of $x^3$.\n</question>",
+  );
+  expect(prompt).toContain(
+    "Correct if the answer is mathematically equal to the expected answer, $3x^2$, in any form",
+  );
+  expect(prompt).toContain("<answer>\n3x^2\n</answer>");
+});
+
+test("when the grader then fails, the grading fails, and nothing is graded", async () => {
+  const { grader } = setUp([{ fail: "The model was busy." }]);
+
+  expect(
+    await gradeMath(MATH, MATH_ANSWER, {
+      check: checkGiving({ result: "undecided", reason: "no proof found" }),
+      grader,
+    }),
+  ).toEqual({ ok: false, error: "The model was busy." });
 });

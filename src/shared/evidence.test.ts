@@ -57,6 +57,27 @@ const WRITTEN_MISS = {
   verdict: "incorrect",
   flaw: "The line $y = 6x$ does not pass through $(3, 9)$.",
 };
+// A math answer the check could not read, which the grader graded incorrect.
+const MATH_MISS = {
+  kind: "answer",
+  recordedAt: "2026-11-15T10:18:00.000Z",
+  objective: "tangent-line",
+  question: {
+    kind: "math",
+    prompt: "Give the slope of $y = x^2$ at $x = 3$.",
+    expected: "6",
+  },
+  answer: {
+    kind: "math",
+    questionId: "q8",
+    expression: "2 \\cdot 3 \\cdot 3",
+    confidence: "50",
+  },
+  assisted: false,
+  verdict: "incorrect",
+  flaw: "It gives $18$, not the slope $6$.",
+  unsettled: { result: "undecided", reason: "the check ran out of time" },
+};
 const OVERRIDE = {
   kind: "override",
   recordedAt: "2026-11-15T10:20:00.000Z",
@@ -74,6 +95,14 @@ test.each([
   {
     name: "a written answer graded correct",
     entry: { ...WRITTEN_MISS, verdict: "correct", flaw: undefined },
+  },
+  {
+    name: "a math answer the grader graded incorrect, with why and its flaw",
+    entry: MATH_MISS,
+  },
+  {
+    name: "a math answer the check graded incorrect",
+    entry: { ...MATH_MISS, flaw: undefined, unsettled: undefined },
   },
   { name: "an override", entry: OVERRIDE },
 ])("$name parses unchanged", ({ entry }) => {
@@ -117,6 +146,21 @@ describe("rejects", () => {
       name: "a choice answer with a flaw",
       input: { ...ASSISTED_MISS, flaw: "Step 1." },
       path: ["flaw"],
+    },
+    {
+      name: "a math answer the check graded incorrect, with a flaw",
+      input: { ...MATH_MISS, unsettled: undefined },
+      path: ["flaw"],
+    },
+    {
+      name: "a math answer the grader graded incorrect, without its flaw",
+      input: { ...MATH_MISS, flaw: undefined },
+      path: ["flaw"],
+    },
+    {
+      name: "a choice answer left unsettled by the symbolic check",
+      input: { ...ASSISTED_MISS, unsettled: MATH_MISS.unsettled },
+      path: ["unsettled"],
     },
     {
       name: "a choice answer to a written question",

@@ -4,9 +4,9 @@
 // record when asked (src/server/record/what-i-know.ts), never stored.
 //
 // A question is shown as the learner saw it, and a choice question with its
-// right letter, since it has been answered. A written question's rubric is
-// left out: it is written for the grader and never shown to the learner
-// (`rubric` in question.ts).
+// right letter and a math question with its expected answer, since it has
+// been answered. A written question's rubric is left out: it is written for
+// the grader and never shown to the learner (`rubric` in question.ts).
 
 import { z } from "zod";
 import { Calibration } from "./calibration.ts";
@@ -15,6 +15,8 @@ import { Objective } from "./plan.ts";
 import {
   AnswerSubmission,
   ChoiceQuestion,
+  MathQuestion,
+  Unsettled,
   Verdict,
   WrittenQuestion,
 } from "./question.ts";
@@ -22,6 +24,7 @@ import { ObjectiveStatus, UnitStatus } from "./status.ts";
 
 export const ShownQuestion = z.discriminatedUnion("kind", [
   ChoiceQuestion,
+  MathQuestion,
   WrittenQuestion.omit({ rubric: true }),
 ]);
 export type ShownQuestion = z.infer<typeof ShownQuestion>;
@@ -41,6 +44,7 @@ export const ShownEvidence = z.discriminatedUnion("kind", [
     assisted: z.boolean(),
     verdict: Verdict,
     flaw: z.string().min(1).optional(),
+    unsettled: Unsettled.optional(),
   }),
   z.object({ kind: z.literal("override"), recordedAt: Timestamp }),
 ]);

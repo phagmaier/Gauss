@@ -6,6 +6,8 @@ import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
+import { createMathCheck, type MathCheck } from "../engine/math-check.ts";
+import { startSandbox } from "../engine/sandbox.ts";
 import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import { openDataRoot } from "../record/data-root.ts";
@@ -49,7 +51,7 @@ const CURRICULUM: CurriculumProposal = {
   background: "The learner knows algebra.",
 };
 
-function setUp() {
+function setUp(given: { mathCheck?: MathCheck } = {}) {
   const backend = createScriptedBackend();
   const dataRoot = openDataRoot({ path: dir });
   const units = createUnitChats({
@@ -59,6 +61,10 @@ function setUp() {
     planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
+    // As the server has it where the sandbox runs (serve.ts).
+    ...(given.mathCheck === undefined
+      ? {}
+      : { mathCheck: given.mathCheck, workspaceTools: true }),
   });
   const intakes = createIntakes({ backend, systemPrompt: "Intake.", dataRoot });
   return { backend, dataRoot, units, intakes };
@@ -181,6 +187,74 @@ test(
       derivative: { status: "not-started" },
     });
     expect(chat.events().at(-1)).not.toMatchObject({ type: "unit_failed" });
+  },
+  WHOLE_UNIT_MS,
+);
+
+test(
+  "where the sandbox runs, the second question on the first objective is a math question, which the symbolic check grades",
+  async () => {
+    // The real check in the real sandbox, so the scripted expected
+    // expression is one it reads.
+    const sandbox = await startSandbox({ log: () => {} });
+    if (!sandbox.available) {
+      throw new Error(`This test needs the sandbox: ${sandbox.reason}`);
+    }
+    try {
+      const { dataRoot, units } = setUp({
+        mathCheck: createMathCheck({ sandbox }),
+      });
+      await approvedCourse(dataRoot);
+      const opened = await units.open(COURSE, "limits");
+      if (!opened.ok) throw new Error(opened.error);
+      const chat = opened.chat;
+      await chat.settled();
+      const open = async () => {
+        const question = (await dataRoot.readState(COURSE)).units.limits
+          ?.openQuestion;
+        if (question === undefined) throw new Error("No question is open.");
+        return question;
+      };
+
+      expect(await chat.ready()).toEqual({ ok: true });
+      await chat.settled();
+      const first = await open();
+      if (first.question.kind !== "choice") throw new Error("Not a choice.");
+      // Right, but unsure: a second question is needed.
+      await chat.answer({
+        kind: "choice",
+        questionId: first.id,
+        choice: first.question.answer,
+        confidence: "50",
+      });
+      await chat.settled();
+
+      const second = await open();
+      expect(second.question).toMatchObject({ kind: "math", expected: "4x" });
+      expect(
+        await chat.answer({
+          kind: "math",
+          questionId: second.id,
+          expression: "2x + 2x",
+          confidence: "75",
+        }),
+      ).toEqual({ ok: true });
+      await chat.settled();
+
+      const evidence = await dataRoot.readEvidence(COURSE);
+      expect(evidence.at(-1)).toMatchObject({
+        question: { kind: "math" },
+        verdict: "correct",
+      });
+      // Two right answers to different questions pass the objective, and
+      // the segment closes.
+      expect((await dataRoot.readState(COURSE)).units.limits).toMatchObject({
+        segment: 0,
+        phase: "closed",
+      });
+    } finally {
+      await sandbox.close();
+    }
   },
   WHOLE_UNIT_MS,
 );
