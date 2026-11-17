@@ -64,6 +64,7 @@ them.
 | 2.16 | Tutor prompt | `prompts/tutor.md`: headers and refusals, the rhythm, teaching 250 to 400 words (never over 600), feedback under 100 words in its own turn, lead-ins that help with nothing, questions and rubrics for the grader, help, the default style that `style.md` adjusts, `$` math. Sonnet 5.5 met the check over two segments. Choice order is 2.17's; a wrong key cannot be undone until disputes (stage 3). |
 | 2.17 | Shuffle the choices | The engine shuffles a choice question's choices when it is posted and moves the answer letter with them (`engine/choice-order.ts`); everything after sees the stored order, and `ask_question`'s reply lists it for the tutor. Tests pass `order: givenOrder` to `createUnitChats`. The scripted tutor's right choice is the sum it asks for, at any letter. |
 | 2.17a | Feedback queue review fixes | Questions are blocked from when feedback is queued until it ends, including in earlier learner replies; their headers say feedback is pending. Stop cancels the automatic next question across intervening replies, and a later learner message can post one. |
+| 2.18 | Thread separators and the pinned question | `divided` and `openQuestion` in `src/web/session.ts`. The open question sits above the message box with the next-step control until graded or withdrawn; the latest question, answered after the thread went on, moves to the end (`moved`), leaving an `answered-below` line (`timeline.ts`). 2.21's notice goes on the message box while `openQuestion` is set. |
 
 ## Stage 2: session engine
 
@@ -77,23 +78,6 @@ baseline, the misconception record of detours, the unit gate, handoff
 notes, unit notes, transcript export and style changes (stage 5); detours
 themselves are task 2.20. A unit in this stage closes without a gate or
 notes.
-
-### 2.18 Thread separators and the pinned question
-
-- Status: todo
-- Depends on: stage 2's tasks above
-- Why: the thread has no visible break between turns, and an open
-  question scrolls out of view once the learner and tutor write below it
-  (the user's notes 3 and 4).
-- Do: a thin dividing line and more space between turns in the session
-  thread: each tutor reply, learner message, question card and marker.
-  While a question is open, it sits above the message box, where it can
-  be answered, until it is answered; its graded record then sits in the
-  thread where it was posted. Match the look of `docs/prototype/base.css`.
-- Done when: a browser check on `pnpm dev:fake` shows turns separated, and
-  a question that stays visible and answerable above the message box while
-  several messages are exchanged; screenshots go in the report for the
-  user to judge the look.
 
 ### 2.19 Strict passing and no question limit
 

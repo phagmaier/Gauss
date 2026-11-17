@@ -250,6 +250,29 @@ button:focus-visible {
 .th-foot {
   padding: 0 24px 20px;
 }
+/* a line between messages, with room on either side (task 2.18) */
+.th-sep {
+  border: 0;
+  height: 1px;
+  background: var(--line);
+  margin: 2.2em 0;
+}
+/* the open question, kept above the message box until it is answered */
+.th-pin {
+  max-width: calc(var(--measure) + 36px);
+  max-height: 50dvh;
+  overflow: auto;
+  margin: 0 auto 12px;
+}
+/* the next-step control goes with the open question */
+.th-pin-act {
+  max-width: calc(var(--measure) + 36px);
+  margin: -2px auto 10px;
+}
+/* where the open question was posted */
+.th-asked {
+  margin: 0.6em 0 1em;
+}
 .box {
   display: flex;
   align-items: flex-end;
@@ -475,6 +498,28 @@ details.why summary:hover {
   cursor: default;
 }
 
+/* the open question above the message box, made compact (task 2.18) */
+.th-pin .qa-card {
+  margin: 0;
+  padding: 14px 18px 12px;
+}
+.th-pin .qa-prompt {
+  font-size: 1em;
+  margin: 0.15em 0 0.6em;
+}
+.th-pin .qa-opts {
+  gap: 6px;
+}
+.th-pin .opt {
+  padding: 0.3em 0.9em;
+}
+.th-pin .qa-conf {
+  margin: 0.7em 0 0.5em;
+}
+.th-pin .qa-foot {
+  margin-top: 0.6em;
+}
+
 /* after grading the card shrinks to a record of what happened */
 .qa-card.done {
   padding: 16px 22px;
@@ -562,6 +607,9 @@ details.why summary:hover {
   font-size: 0.94em;
   color: var(--soft);
   scroll-margin-bottom: 24px;
+}
+.th-pin-act .pf-act {
+  margin: 0;
 }
 .btn.sm {
   padding: 0.34em 0.9em;

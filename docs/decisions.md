@@ -52,6 +52,7 @@ findings are the record.
 | Tutor prompt | Task 2.16's two runs: the transcripts against its check, feedback that went into the tutor's thinking and what did not fix it, the refusal rule, the feedback turn (2.16a), the rerun, feedback length, the wrong answer key and the choice-letter rule, what `tutor.md` says and why | Touching `tutor.md`, the turn after an answer (2.16a), thinking settings in `backends/claude.ts`, Start fresh in a check |
 | Feedback queue review fixes | Pending feedback blocks questions from earlier messages; Stop cancels the automatic next question across intervening replies | Touching queued feedback, question posting, or Stop in `unit-chat.ts` (task 2.17a) |
 | Stage 2 user check | The user's first try of the stage 2 check: what the record showed, the user's decisions (strict passing, a detour after every miss, clarification is not help, the planner asks first, separators), the details the agent chose, and tasks 2.18 to 2.22 | Any of tasks 2.18 to 2.22; touching the passing rule, the check's question count, help, detours, `planner.md` or `tutor.md` |
+| Thread separators and the pinned question | Task 2.18: where lines go between messages, the open question above the message box, an answered question moved to where it was answered, the browser run | Touching the session thread (`divided`, `openQuestion` in `session.ts`, the `graded` case in `timeline.ts`), the question card's place, or the foot of the session view |
 
 ## Page design (plan task 1.0)
 
@@ -3789,3 +3790,74 @@ Chosen by the agent, and open to change:
 
 These are tasks 2.18 to 2.22 in `docs/plan.md`. The stage 2 user check is
 taken again after them, on a new course.
+
+## Thread separators and the pinned question (plan task 2.18)
+
+Built on 2026-11-16, from the user's notes 3 and 4 ("Stage 2 user
+check"). The choices are the agent's and can be overturned; the look is
+for the user to judge from the screenshots.
+
+- **Lines go between messages, not inside an exchange.** `divided(before,
+  item)` in `src/web/session.ts` puts a thin line (`.th-sep`, the
+  `--line` colour, 2.2em either side) above a tutor reply, a learner
+  message, a question or the closing card when a message comes before it.
+  None at the top, next to a marker (which has its own line or space), or
+  above a page note such as "Stopped.", which belongs to what it follows.
+  None between the tutor's lead-in and its question, between a question
+  and the feedback on its answer, or between two learner messages in a
+  row. So a check reads as one block per question: lead-in, card,
+  feedback.
+- **The open question sits above the message box** (`.th-pin` in the
+  foot), from when it is posted until it is graded or withdrawn, including
+  a written answer waiting for its grade. Keeping it in one place from
+  posting to answer keeps its React state, so a half-written answer or a
+  picked choice survives messages sent meanwhile (seen in the browser
+  run). The next-step control ("Move on without the check") goes under it
+  in the foot, since it would otherwise sit between the lead-in and the
+  card. Where the question was posted the thread shows nothing while it
+  is the last item, and "Question N is open, above the message box." once
+  something follows it.
+- **The pinned card is compact** (less padding, smaller prompt, tighter
+  choices) and at most half the window high, scrolling inside beyond that.
+  A three-choice question and a written question with its preview fit
+  whole at 800 pixels; at 650 the card scrolls. Rejected: a sticky card at
+  the top of the thread, which covers the teaching the learner scrolls up
+  to reread, and a collapse control, not needed yet.
+- **An answered question moves to where it was answered.** Found in the
+  browser run: a question answered after a conversation below it went
+  back to where it was posted, so the learner, at the bottom, saw the
+  tutor's feedback but not the card with the verdict and the right answer.
+  The `graded` case in `timeline.ts` now moves the latest question to the
+  end of the thread when anything followed it (`moved: true`, keyed by the
+  `graded` event), and leaves an `answered-below` item where it was
+  posted ("Question N was answered further down."). A grade for an earlier
+  question, which can only be one restored when the unit opens because
+  its line was lost (task 2.13, `restoreGrades`), moves nothing; nor does
+  a grade sent again. A withdrawn question stays where it was posted.
+- **Keys were not changed.** After sending a message, focus stays in the
+  message box, so A to F, 1 to 5 and Enter go there rather than to the
+  pinned card; in the browser run "b4" was sent as a message that way.
+  This was so before, but the card now sits right above the box. Left as
+  is; a later task could move focus to the card when a question is
+  posted.
+- **Checks:** `mise run check` passed (lint, types, 554 TypeScript tests,
+  one Python test). New tests, worked by hand: the open question in six
+  states; the lines of a whole thread (teaching, discussion, two learner
+  messages, a check, a stopped reply); a question answered below where it
+  was posted, and its lines; the closing card and markers; a restored
+  grade left in place, and a grade sent again moving nothing. Each of
+  these faults failed at least one test: no exceptions inside an
+  exchange, feedback divided from its question, a line above a note or
+  after a marker, a question open outside a check, a withdrawn or
+  grading question not open, no move, a move when graded again, a move
+  when nothing followed, a moved card joined to the reply before it, the
+  posted line split from its lead-in, and a restored grade moved.
+- **Browser run** on `pnpm dev:fake` (1280 by 800, then 650): messages in
+  a discussion divided; a question posted with the card above the message
+  box and the move-on control under it; two messages during the open
+  question, the card staying in view; an answer by clicks, the card moving
+  to above its feedback, and the line left where it was posted; a written
+  question with a draft kept across a message, graded in the pinned spot
+  and moved down; the move-on confirmation in the foot. Screenshots are in
+  `.playwright-mcp/2.18-*.png` (not committed). The browser was closed
+  before the server stopped.

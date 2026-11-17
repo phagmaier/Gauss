@@ -29,6 +29,11 @@ export interface QuestionItem {
   graded?: Graded;
   /** The learner moved on without the check while it was open. */
   withdrawn?: boolean;
+  /**
+   * The thread went on below it before it was answered, so it is shown where
+   * it was answered, and a line stands where it was posted (task 2.18).
+   */
+  moved?: boolean;
 }
 
 /** Where a unit chat is: the phase of a segment that began last. */
@@ -57,6 +62,8 @@ export type Item =
   /** A phase of a segment began, or the chat opened in it. */
   | ({ kind: "phase"; key: number } & Position)
   | UnitEndItem
+  /** Where a question was posted that was answered further down (task 2.18). */
+  | { kind: "answered-below"; key: number; number: number }
   /** A unit's session, a sitting, began after an earlier one (task 2.13). */
   | {
       kind: "session";
@@ -308,18 +315,41 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
           gradingFailed: event.error,
         })),
       };
-    case "graded":
+    case "graded": {
+      const at = state.items.findIndex(
+        (i) => i.kind === "question" && i.question.id === event.questionId,
+      );
+      const asked = state.items[at];
+      if (asked?.kind !== "question") return next;
+      const { grading: _, gradingFailed: __, ...rest } = asked;
+      const answered: QuestionItem = { ...rest, graded: event };
+      // A question the thread went on below before it was answered is shown
+      // at the bottom, where it was answered and where the tutor's feedback
+      // on it follows; a line stands where it was posted. Only the latest
+      // question is answered now: a grade for an earlier one is a grade
+      // whose line was lost, shown when the unit opens (task 2.13), and its
+      // card stays where it was.
+      if (
+        asked.graded !== undefined ||
+        at === state.items.length - 1 ||
+        at !== state.items.findLastIndex((i) => i.kind === "question")
+      ) {
+        return { ...next, items: state.items.with(at, answered) };
+      }
       return {
         ...next,
-        items: withQuestion(
-          state.items,
-          event.questionId,
-          ({ grading: _, gradingFailed: __, ...item }) => ({
-            ...item,
-            graded: event,
-          }),
-        ),
+        items: [
+          ...state.items.slice(0, at),
+          {
+            kind: "answered-below",
+            key: asked.key,
+            number: asked.question.number,
+          },
+          ...state.items.slice(at + 1),
+          { ...answered, key: index, moved: true },
+        ],
       };
+    }
     case "draft_reopened":
       return { ...next, reopened: true };
     case "curriculum_proposed": {

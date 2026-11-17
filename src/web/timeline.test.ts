@@ -367,6 +367,60 @@ test("a written answer is kept on its card while graded, a failed grading says w
   });
 });
 
+test("a question the thread went on below is shown where it was answered, and a line stands where it was posted", () => {
+  const graded = LOG[5] as PageEvent;
+  const events: PageEvent[] = [
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Now one on powers." },
+    { type: "question", question: QUESTION },
+    { type: "turn_end", outcome: "done" },
+    { type: "learner", text: "Is x³ x cubed?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Yes." },
+    { type: "turn_end", outcome: "done" },
+    graded,
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Right." },
+  ];
+  const state = play(events);
+
+  expect(state.items).toEqual([
+    { kind: "phase", key: 0, segment: 0, phase: "check" },
+    { kind: "tutor", key: 2, text: "Now one on powers." },
+    { kind: "answered-below", key: 3, number: 1 },
+    { kind: "learner", key: 5, text: "Is x³ x cubed?" },
+    { kind: "tutor", key: 7, text: "Yes." },
+    { kind: "question", key: 9, question: QUESTION, graded, moved: true },
+    { kind: "tutor", key: 11, text: "Right." },
+  ]);
+  // The grade sent again, as a unit opened again sends it, moves nothing.
+  expect(
+    reduce(state, { type: "event", index: 12, event: graded }).items,
+  ).toEqual(state.items);
+});
+
+test("a grade restored for an earlier question, whose line was lost, leaves its card where it was", () => {
+  const restored = LOG[5] as PageEvent;
+  const state = play([
+    { type: "session", startedAt: "2026-11-16T09:00:00.000Z" },
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: QUESTION },
+    { type: "learner", text: "Is x³ x cubed?" },
+    { type: "question", question: { ...QUESTION, id: "q5", number: 2 } },
+    { type: "session", startedAt: "2026-11-16T10:00:00.000Z" },
+    restored,
+  ]);
+  expect(state.items.map((i) => i.kind)).toEqual([
+    "phase",
+    "question",
+    "learner",
+    "question",
+    "session",
+  ]);
+  expect(state.items[1]).toMatchObject({ key: 2, graded: restored });
+});
+
 test("moving on withdraws the open question, and a note says it was recorded", () => {
   const state = play([
     { type: "phase", segment: 1, phase: "check" },

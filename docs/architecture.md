@@ -727,7 +727,10 @@ real transcripts.
 - **Session**: chat with rendered Markdown and math; question widgets (choice,
   typed math with live preview, free text, "run my code") with confidence and
   reasoning fields; phase indicator and the "ready" and "override" controls;
-  side pane for artifacts and cited source passages.
+  side pane for artifacts and cited source passages. A line divides one
+  message from the next, and the open question sits above the message box,
+  with the next-step control, until it is graded or withdrawn (task 2.18,
+  `divided` and `openQuestion` in `src/web/session.ts`).
 
 Text from a model, and the learner's typed answers, are rendered as
 Markdown with `$` math by `src/web/prose.tsx`, as React elements and never

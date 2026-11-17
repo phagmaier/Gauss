@@ -15,6 +15,7 @@
 // (Vite's client does), which opens the unit the same way.
 
 import {
+  Fragment,
   type ReactNode,
   useCallback,
   useEffect,
@@ -35,8 +36,10 @@ import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
 import {
   closingCard,
+  divided,
   lastCard,
   nextStep,
+  openQuestion,
   outline,
   type Placement,
   phaseMarker,
@@ -189,6 +192,28 @@ export function Session(props: { courseId: string; unitId: string }) {
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
+  const asked = openQuestion(timeline);
+  // Where the open question was posted, a line says where it went, once
+  // something has followed it there.
+  const askedAt =
+    asked === undefined
+      ? undefined
+      : timeline.items.at(-1) === asked
+        ? "last"
+        : "earlier";
+  const control = (
+    <NextStepControl
+      step={step}
+      timeline={timeline}
+      busy={busy}
+      confirming={confirming === "move-on"}
+      place={place}
+      onConfirm={(asking) => setConfirming(asking ? "move-on" : undefined)}
+      onAct={(route) => void act(route)}
+      onCourse={toCourse}
+      onNext={toNext}
+    />
+  );
 
   return (
     <div className="th has-top">
@@ -249,26 +274,31 @@ export function Session(props: { courseId: string; unitId: string }) {
                 const before =
                   i > 0 ? part.items[i - 1] : parts[p - 1]?.items.at(-1);
                 return (
-                  <ThreadItem
-                    key={item.key}
-                    item={item}
-                    // A session's marker sets it apart as the top of the thread does.
-                    first={before === undefined || before.kind === "session"}
-                    plan={plan}
-                    place={place}
-                    busy={busy}
-                    current={item === lastCard(timeline)}
-                    confirming={confirming === "finish"}
-                    onConfirm={(asking) =>
-                      setConfirming(asking ? "finish" : undefined)
-                    }
-                    onAnswer={(submission) => post(path("answers"), submission)}
-                    onGradeAgain={() => post(path("grade-again"))}
-                    onAgain={() => act("go-over-again")}
-                    onFinish={() => act("finish")}
-                    onCourse={toCourse}
-                    onNext={toNext}
-                  />
+                  <Fragment key={item.key}>
+                    {divided(before, item) ? <hr className="th-sep" /> : null}
+                    <ThreadItem
+                      item={item}
+                      // A session's marker sets it apart as the top of the thread does.
+                      first={before === undefined || before.kind === "session"}
+                      plan={plan}
+                      place={place}
+                      busy={busy}
+                      current={item === lastCard(timeline)}
+                      asked={item.key === asked?.key ? askedAt : undefined}
+                      confirming={confirming === "finish"}
+                      onConfirm={(asking) =>
+                        setConfirming(asking ? "finish" : undefined)
+                      }
+                      onAnswer={(submission) =>
+                        post(path("answers"), submission)
+                      }
+                      onGradeAgain={() => post(path("grade-again"))}
+                      onAgain={() => act("go-over-again")}
+                      onFinish={() => act("finish")}
+                      onCourse={toCourse}
+                      onNext={toNext}
+                    />
+                  </Fragment>
                 );
               })}
             </div>
@@ -288,19 +318,7 @@ export function Session(props: { courseId: string; unitId: string }) {
               />
             </div>
           ) : null}
-          <NextStepControl
-            step={step}
-            timeline={timeline}
-            busy={busy}
-            confirming={confirming === "move-on"}
-            place={place}
-            onConfirm={(asking) =>
-              setConfirming(asking ? "move-on" : undefined)
-            }
-            onAct={(route) => void act(route)}
-            onCourse={toCourse}
-            onNext={toNext}
-          />
+          {asked === undefined ? control : null}
           {problem === undefined ? null : <p className="ph-note">{problem}</p>}
           {courseProblem === undefined ? null : (
             <p className="ph-note">
@@ -321,6 +339,20 @@ export function Session(props: { courseId: string; unitId: string }) {
         </div>
       </div>
       <div className="th-foot">
+        {asked === undefined ? null : (
+          // Kept in view while the conversation goes on below it (task 2.18).
+          <div className="th-pin">
+            <QuestionCard
+              key={asked.key}
+              item={asked}
+              onAnswer={(submission) => post(path("answers"), submission)}
+              onGradeAgain={() => post(path("grade-again"))}
+            />
+          </div>
+        )}
+        {asked === undefined ? null : (
+          <div className="th-pin-act">{control}</div>
+        )}
         <Composer
           enabled={open && timeline.failed === null}
           busy={busy}
@@ -501,6 +533,11 @@ function ThreadItem(props: {
   busy: boolean;
   /** The last closing card, the only one whose steps can be taken. */
   current: boolean;
+  /**
+   * The open question, shown above the message box instead: the last item
+   * of the thread, or one that more has followed.
+   */
+  asked: "last" | "earlier" | undefined;
   confirming: boolean;
   onConfirm(asking: boolean): void;
   onAnswer(submission: AnswerSubmission): Promise<string | undefined>;
@@ -522,8 +559,19 @@ function ThreadItem(props: {
       );
     case "note":
       return <p className="ph-note">{item.text}</p>;
-    case "question":
+    case "answered-below":
       return (
+        <p className="q-count th-asked">
+          Question {item.number} was answered further down.
+        </p>
+      );
+    case "question":
+      if (props.asked === "last") return null;
+      return props.asked === "earlier" ? (
+        <p className="q-count th-asked">
+          Question {item.question.number} is open, above the message box.
+        </p>
+      ) : (
         <QuestionCard
           item={item}
           onAnswer={props.onAnswer}

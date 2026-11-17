@@ -6,7 +6,9 @@ import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import {
   closingCard,
+  divided,
   nextStep,
+  openQuestion,
   outline,
   phaseMarker,
   placement,
@@ -14,6 +16,7 @@ import {
 } from "./session.ts";
 import {
   emptyTimeline,
+  type Item,
   type Position,
   reduce,
   type Timeline,
@@ -261,6 +264,154 @@ test.each<[string, PageEvent[], ReturnType<typeof nextStep>]>([
   ],
 ])("the next step %s", (_, events, step) => {
   expect(nextStep(play(events))).toBe(step);
+});
+
+// --- The thread ---------------------------------------------------------------
+
+const said = (text: string): PageEvent[] => [
+  { type: "turn_start" },
+  { type: "tutor_text", text },
+  { type: "turn_end", outcome: "done" },
+];
+const asked = (question: typeof CHOICE | typeof WRITTEN): PageEvent[] => [
+  { type: "turn_start" },
+  { type: "tutor_text", text: "Now one on powers." },
+  { type: "question", question },
+  { type: "turn_end", outcome: "done" },
+];
+const right: PageEvent = {
+  type: "graded",
+  questionId: "q1",
+  verdict: "correct",
+  answer: { kind: "choice", questionId: "q1", choice: "A", confidence: "90" },
+  correctChoice: "A",
+  assisted: false,
+};
+
+test.each<[string, PageEvent[], string | undefined]>([
+  ["a question being answered", [...asked(CHOICE)], "q1"],
+  [
+    "a written answer waiting for its grade",
+    [
+      ...asked(WRITTEN),
+      { type: "grading", questionId: "q2", answer: PROOF },
+      { type: "grading_failed", questionId: "q2", error: "Timed out." },
+    ],
+    "q2",
+  ],
+  ["no question once the last is graded", [...asked(CHOICE), right], undefined],
+  [
+    "the next question after a graded one",
+    [...asked(CHOICE), right, ...said("Right."), ...asked(WRITTEN)],
+    "q2",
+  ],
+  [
+    "no question once it is withdrawn",
+    [
+      ...asked(CHOICE),
+      {
+        type: "overridden",
+        segment: 0,
+        objectives: ["power-rule"],
+        withdrawnQuestionId: "q1",
+      },
+    ],
+    undefined,
+  ],
+  // A question is open only in a check, whatever the thread kept.
+  [
+    "no question once the segment closed",
+    [...asked(CHOICE), phase(0, "closed")],
+    undefined,
+  ],
+])("the open question: %s", (_, events, id) => {
+  const timeline = play([planned, phase(0, "check"), ...events]);
+  expect(openQuestion(timeline)?.question.id).toBe(id);
+});
+
+test("lines divide the messages of a thread, but not the parts of one exchange", () => {
+  const timeline = play([
+    planned,
+    phase(0, "teach"),
+    ...said("A power of $x$ comes down."),
+    phase(0, "discuss"),
+    { type: "learner", text: "Why does the power drop?" },
+    { type: "learner", text: "And for $x^0$?" },
+    ...said("Because each factor contributes one."),
+    phase(0, "check"),
+    ...asked(CHOICE),
+    right,
+    ...said("Right: $3x^2$."),
+    ...asked(WRITTEN),
+    { type: "learner", text: "What may I assume?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "The limit laws" },
+    { type: "turn_end", outcome: "interrupted" },
+    { type: "learner", text: "Thanks." },
+  ]);
+  const lines = timeline.items.map((item, i) => {
+    const line = divided(timeline.items[i - 1], item) ? "-- " : "";
+    return `${line}${item.kind}`;
+  });
+  expect(lines).toEqual([
+    "phase", // teach, at the top: no marker
+    "tutor", // the teaching, at the top
+    "phase", // Discuss
+    "learner", // after a marker
+    "learner", // the learner's second message in a row
+    "-- tutor",
+    "phase", // Check
+    "tutor", // the lead-in, after a marker
+    "question", // with its lead-in
+    "tutor", // the feedback, with its question
+    "-- tutor", // the next lead-in
+    "question",
+    "-- learner",
+    "-- tutor",
+    "note", // "Stopped." belongs to the reply it stopped
+    "-- learner",
+  ]);
+});
+
+test("a question answered below where it was posted begins an exchange there, and the line where it was posted goes with its lead-in", () => {
+  const timeline = play([
+    planned,
+    phase(0, "check"),
+    ...asked(CHOICE),
+    { type: "learner", text: "Is it 1 + 1?" },
+    ...said("Yes, the sum."),
+    right,
+    ...said("Right: 2."),
+  ]);
+  const lines = timeline.items.map((item, i) => {
+    const line = divided(timeline.items[i - 1], item) ? "-- " : "";
+    return `${line}${item.kind}`;
+  });
+  expect(lines).toEqual([
+    "phase",
+    "tutor",
+    "answered-below",
+    "-- learner",
+    "-- tutor",
+    "-- question",
+    "tutor",
+  ]);
+});
+
+test("a line goes between the closing card and the messages around it, never at the top", () => {
+  const card: Item = {
+    kind: "unit_end",
+    key: 1,
+    passed: true,
+    objectives: {},
+  };
+  const tutor: Item = { kind: "tutor", key: 2, text: "Done." };
+  expect(divided(undefined, tutor)).toBe(false);
+  expect(divided(tutor, card)).toBe(true);
+  expect(divided(card, tutor)).toBe(true);
+  expect(divided({ kind: "fresh", key: 3, reason: "learner" }, tutor)).toBe(
+    false,
+  );
 });
 
 // --- The closing card --------------------------------------------------------

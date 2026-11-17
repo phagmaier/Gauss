@@ -1,7 +1,8 @@
 // What the session view (docs/prototype/03-phases.html, 04-session-nav.html,
 // 10-unit-end.html) says about where a unit stands, derived from its thread
 // (timeline.ts): the position in the top line and the outline, the one
-// next-step control, the closing card, and the unit's place in its course.
+// next-step control, the open question and the lines between messages, the
+// closing card, and the unit's place in its course.
 
 import type { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
@@ -15,7 +16,13 @@ import {
   progressOf,
   segmentStand,
 } from "./progress.ts";
-import type { Position, Timeline, UnitEndItem } from "./timeline.ts";
+import type {
+  Item,
+  Position,
+  QuestionItem,
+  Timeline,
+  UnitEndItem,
+} from "./timeline.ts";
 
 type Finished = Timeline["finished"];
 
@@ -80,14 +87,8 @@ export function nextStep(timeline: Timeline): NextStep {
       return null;
     case "discuss":
       return "ready";
-    case "check": {
-      const open = timeline.items.findLast(
-        (i) => i.kind === "question" && i.graded === undefined && !i.withdrawn,
-      );
-      return open?.kind === "question" && open.grading !== undefined
-        ? null
-        : "move-on";
-    }
+    case "check":
+      return openQuestion(timeline)?.grading === undefined ? "move-on" : null;
     case "closed":
       return position.segment >= plan.segments.length - 1
         ? null
@@ -99,6 +100,61 @@ export function nextStep(timeline: Timeline): NextStep {
 export function lastCard(timeline: Timeline): UnitEndItem | undefined {
   const card = timeline.items.findLast((i) => i.kind === "unit_end");
   return card?.kind === "unit_end" ? card : undefined;
+}
+
+// --- The thread ----------------------------------------------------------------
+
+/**
+ * The question that still waits on the learner, in a check: one being
+ * answered, or a written answer sent and not yet graded. The page keeps it
+ * above the message box until it is graded or withdrawn (task 2.18).
+ */
+export function openQuestion(timeline: Timeline): QuestionItem | undefined {
+  if (timeline.position?.phase !== "check") return undefined;
+  const open = timeline.items.findLast((i) => i.kind === "question");
+  return open?.kind === "question" &&
+    open.graded === undefined &&
+    open.withdrawn !== true
+    ? open
+    : undefined;
+}
+
+/** The items that are messages, between which a dividing line can go. */
+const MESSAGES = new Set<Item["kind"]>([
+  "learner",
+  "tutor",
+  "question",
+  "answered-below",
+  "unit_end",
+]);
+
+/** The line left where a question was posted stands for the question there. */
+const asPosted = (item: Item) =>
+  item.kind === "answered-below" ? "question" : item.kind;
+
+/**
+ * Whether a dividing line goes above an item, the one before it in the
+ * thread given (task 2.18). Lines go between messages: the tutor's, the
+ * learner's, a question and the closing card. None at the top of the thread
+ * or next to a marker, which sets the item apart already; none above a note
+ * from the page, which belongs to what it follows; and none inside one
+ * exchange: between the tutor's lead-in and the question it posted, between
+ * a question and the tutor's feedback on its answer, or between two of the
+ * learner's messages in a row. A question answered below where it was
+ * posted begins its exchange where it was answered (`moved`).
+ */
+export function divided(before: Item | undefined, item: Item): boolean {
+  if (before === undefined || !MESSAGES.has(item.kind)) return false;
+  if (!MESSAGES.has(before.kind) && before.kind !== "note") return false;
+  // A question answered further down than it was posted begins an exchange
+  // there: its answer and the tutor's feedback.
+  if (item.kind === "question" && item.moved === true) return true;
+  const pair = `${asPosted(before)} ${asPosted(item)}`;
+  return (
+    pair !== "tutor question" &&
+    pair !== "question tutor" &&
+    pair !== "learner learner"
+  );
 }
 
 /**

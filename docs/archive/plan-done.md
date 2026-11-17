@@ -989,3 +989,29 @@ tested"). Stage 1 is finished.
   through a later message. `mise run check` passed: lint, types, 543
   TypeScript tests and one Python test. No real-model run. Findings:
   `decisions.md`, "Feedback queue review fixes".
+
+### 2.18 Thread separators and the pinned question
+
+- Status: done
+- Depends on: stage 2's tasks above
+- Why: the thread has no visible break between turns, and an open
+  question scrolls out of view once the learner and tutor write below it
+  (the user's notes 3 and 4).
+- Do: a thin dividing line and more space between turns in the session
+  thread: each tutor reply, learner message, question card and marker.
+  While a question is open, it sits above the message box, where it can
+  be answered, until it is answered; its graded record then sits in the
+  thread where it was posted. Match the look of `docs/prototype/base.css`.
+- Done when: a browser check on `pnpm dev:fake` shows turns separated, and
+  a question that stays visible and answerable above the message box while
+  several messages are exchanged; screenshots go in the report for the
+  user to judge the look.
+- Note: done on 2026-11-16. Lines between messages but not inside one
+  exchange (lead-in, card, feedback); the open question above the message
+  box with the move-on control under it, compact and at most half the
+  window high; the latest question, answered after the conversation went
+  on below it, moved to where it was answered. `mise run check` passed
+  (554 TypeScript tests, one Python test); each of thirteen injected
+  faults failed a test. Browser run on `pnpm dev:fake`, with screenshots
+  for the user. Findings: `decisions.md`, "Thread separators and the
+  pinned question".
