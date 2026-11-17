@@ -65,6 +65,7 @@ them.
 | 2.17 | Shuffle the choices | The engine shuffles a choice question's choices when it is posted and moves the answer letter with them (`engine/choice-order.ts`); everything after sees the stored order, and `ask_question`'s reply lists it for the tutor. Tests pass `order: givenOrder` to `createUnitChats`. The scripted tutor's right choice is the sum it asks for, at any letter. |
 | 2.17a | Feedback queue review fixes | Questions are blocked from when feedback is queued until it ends, including in earlier learner replies; their headers say feedback is pending. Stop cancels the automatic next question across intervening replies, and a later learner message can post one. |
 | 2.18 | Thread separators and the pinned question | `divided` and `openQuestion` in `src/web/session.ts`. The open question sits above the message box with the next-step control until graded or withdrawn; the latest question, answered after the thread went on, moves to the end (`moved`), leaving an `answered-below` line (`timeline.ts`). 2.21's notice goes on the message box while `openQuestion` is set. |
+| 2.19 | Strict passing and no question limit | Passing needs, since the last miss, an unassisted answer at 90% or 100%, and a second correct one to a different question if ever missed (`record/status.ts`). No limit: an objective is done in a check only once passed (`engine/check-rules.ts`); reasons for another question are `missed`, `assisted`, `unconfident` and `confirm`, and the header counts "(N asked)", which `scripted.ts` reads. Records are not migrated. |
 
 ## Stage 2: session engine
 
@@ -78,31 +79,6 @@ baseline, the misconception record of detours, the unit gate, handoff
 notes, unit notes, transcript export and style changes (stage 5); detours
 themselves are task 2.20. A unit in this stage closes without a gate or
 notes.
-
-### 2.19 Strict passing and no question limit
-
-- Status: todo
-- Depends on: stage 2's tasks above
-- Why: segments closed at the three-question limit with objectives not
-  passed and no override recorded; the user wants passing strict by
-  default (`decisions.md`, "Stage 2 user check").
-- Do: the passing rule in `record/status.ts` becomes: since its last miss,
-  an unassisted correct answer at 90% or 100%, and for an objective ever
-  missed, a second unassisted correct answer to a different question.
-  Remove the limit in `engine/check-rules.ts`: an objective is done in a
-  check only once it passes, and the segment closes when all have passed
-  or the learner moves on (an override, as now). The closing card's rows
-  lose "the limit". Update the check headers, `tutor.md` (the check, and
-  a rule against promising what the app does not do, such as "we'll come
-  back to it"), `scripted.ts` if its answers no longer close a check, and
-  architecture section 4.
-- Done when: hand-worked status tests pass, including the user's real
-  sequences (an "I don't know", then correct at 75%, then correct with
-  help: not passed; three "I don't know"s: not passed), one confident
-  first answer passing, two unconfident ones not, and a miss then a
-  confident and another correct answer passing; check-rule tests show no
-  limit; `mise run check` passes; on `pnpm dev:fake` a check with misses
-  keeps asking until the objective passes or the learner moves on.
 
 ### 2.20 Detour after a miss
 

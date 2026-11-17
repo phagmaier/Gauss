@@ -12,7 +12,6 @@ import type { UnitPosition } from "../../shared/state.ts";
 import {
   isLastSegment,
   type ObjectiveCheck,
-  QUESTION_LIMIT,
   segmentOf,
 } from "./check-rules.ts";
 
@@ -360,19 +359,17 @@ function checkStanding(where: Where): { standing: string; toAsk: string[] } {
 /** Where one objective stands in the check, for the tutor. */
 export function checkText(check: ObjectiveCheck | undefined): string {
   if (check === undefined || check.state === "unasked") return "not asked yet";
-  const count = `${check.asked} of at most ${QUESTION_LIMIT} asked`;
-  if (check.state === "done") {
-    return check.reason === "passed"
-      ? "passed"
-      : `not passed after ${QUESTION_LIMIT} questions, the limit`;
-  }
+  if (check.state === "done") return "passed";
+  const count = `${check.asked} asked`;
   switch (check.reason) {
     case "missed":
       return `missed, so another question is needed (${count})`;
     case "assisted":
       return `answered correctly with help, which does not count, so another question is needed (${count})`;
     case "unconfident":
-      return `answered correctly but not confidently, so another question is needed (${count})`;
+      return `answered correctly but under 90% sure, which does not pass, so another question is needed (${count})`;
+    case "confirm":
+      return `answered correctly and confidently, but missed earlier, so a second correct answer, to a different question, is needed (${count})`;
   }
 }
 

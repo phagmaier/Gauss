@@ -467,13 +467,13 @@ test("a closing card when some did not pass says why for each, and how many", ()
       id: "product-rule",
       statement: "Apply the product rule.",
       passed: false,
-      why: "The check reached its limit of questions",
+      why: "Its check ended before it passed",
     },
     {
       id: "chain-rule",
       statement: "Apply the chain rule.",
       passed: false,
-      why: "You moved on without the check",
+      why: "You moved on before it passed",
     },
   ]);
   expect(card.notPassed).toBe(2);

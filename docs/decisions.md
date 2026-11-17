@@ -53,6 +53,7 @@ findings are the record.
 | Feedback queue review fixes | Pending feedback blocks questions from earlier messages; Stop cancels the automatic next question across intervening replies | Touching queued feedback, question posting, or Stop in `unit-chat.ts` (task 2.17a) |
 | Stage 2 user check | The user's first try of the stage 2 check: what the record showed, the user's decisions (strict passing, a detour after every miss, clarification is not help, the planner asks first, separators), the details the agent chose, and tasks 2.18 to 2.22 | Any of tasks 2.18 to 2.22; touching the passing rule, the check's question count, help, detours, `planner.md` or `tutor.md` |
 | Thread separators and the pinned question | Task 2.18: where lines go between messages, the open question above the message box, an answered question moved to where it was answered, the browser run | Touching the session thread (`divided`, `openQuestion` in `session.ts`, the `graded` case in `timeline.ts`), the question card's place, or the foot of the session view |
+| Strict passing | Task 2.19: the passing rule with a confident answer and a second after a miss, no question limit, the `confirm` reason, the header wording and the scripted tutor, the closing card's reasons, records closed at the old limit | Touching `record/status.ts`, `engine/check-rules.ts`, the check headers in `unit-turns.ts`, the closing card's rows, or `scripted.ts`'s question numbering |
 
 ## Page design (plan task 1.0)
 
@@ -1293,7 +1294,9 @@ not. The rules were chosen by the agent and can be overturned.
   word, and it would mislead for an objective whose segment closed at the
   check's limit. Learner-facing copy says "Not passed" for both attempted
   and overridden objectives (mock 10).
-- **The passing rule.** An objective passes once, since its last miss, it
+- **The passing rule** (replaced by task 2.19, "Strict passing": a
+  confident answer is now needed, and a second after a miss). An objective
+  passes once, since its last miss, it
   has unassisted correct answers to two different questions, or one given
   at 90% or 100%. Two questions is the brief's "varied problems"; one
   confident answer is its "fewer after confident correct answers", without
@@ -1677,7 +1680,9 @@ choices are the agent's and can be overturned.
   `ask_question` on an objective that is done is refused, with the
   objectives still open, and `close_segment` is refused, with where each
   open one stands, until all are done.
-- **The limit is three questions per objective per check.** Two misses
+- **The limit is three questions per objective per check** (removed by
+  task 2.19, "Strict passing": an objective is asked until it passes or
+  the learner moves on). Two misses
   already mark a likely misconception (the brief's trigger for a detour,
   stage 5); a third question is one more chance after the tutor's
   feedback, and more would make a segment of two objectives drag past six
@@ -3861,3 +3866,71 @@ for the user to judge from the screenshots.
   and moved down; the move-on confirmation in the foot. Screenshots are in
   `.playwright-mcp/2.18-*.png` (not committed). The browser was closed
   before the server stopped.
+
+## Strict passing (plan task 2.19)
+
+Built on 2026-11-16, from the user's decision that passing is strict by
+default ("Stage 2 user check"). It replaces the passing rule of task 2.3
+and the question limit of task 2.7.
+
+- **The passing rule** (`objectiveStatus` in `record/status.ts`): since
+  its last miss, an objective needs an unassisted correct answer given at
+  90% or 100%; and if it was ever missed, a second unassisted correct
+  answer, to a different question, in that same stretch. Unsure correct
+  answers alone never pass, however many. Everything else of task 2.3
+  stands: a miss clears the answers before it, help counts for nothing,
+  "different" is what the learner saw, log order decides, and an override
+  never takes a pass away.
+- **No limit** (`objectiveCheck` in `engine/check-rules.ts`). An objective
+  is done in a check only once it passes; `QUESTION_LIMIT` and the `limit`
+  reason are gone, and `done` carries no reason. The segment closes when
+  every objective has passed (each asked at least once in the check), or
+  when the learner moves on, recorded as an override as before.
+- **A fourth reason for another question, `confirm`**: the last answer was
+  correct, confident and unassisted, but the objective was missed before,
+  so it needs a second correct answer to a different question. Without it
+  the header would call that answer "not confident". The tutor's line for
+  each reason says what the next answer must show: "answered correctly but
+  under 90% sure, which does not pass", "answered correctly and
+  confidently, but missed earlier, so a second correct answer, to a
+  different question, is needed". The count is "(N asked)", with no
+  maximum.
+- **The scripted tutor** numbered its questions from the header's old
+  "(N of at most" wording. Left unchanged, it numbered every question 1,
+  repeated one question, and its whole-unit test never ended (a
+  timeout), since a repeated question never counts as a second problem.
+  It now reads "(N asked)".
+- **The closing card's reasons.** "Attempted" at a unit's end can now
+  only come from a check closed at the old limit, as in the user's
+  chain-rule course: "Its check ended before it passed". "Overridden" is
+  now often a move made partway through a check: "You moved on before it
+  passed". The notes "You moved on without the check" keep the control's
+  name.
+- **Records from before.** Nothing is migrated: status is derived, so an
+  objective passed under the old rule by two unsure answers is attempted
+  now. A unit opened in a check asks again on it; a closed segment is not
+  reopened. The dev seed passes objectives with one 90% answer and no
+  misses, which passes under both rules.
+- **`tutor.md`**: the check bullet says an objective is asked until it
+  passes or the learner moves on, with no limit; the feedback section
+  forbids promising what the app has not said it will do ("we'll come
+  back to that skill later in the unit", from the user's sitting).
+- **Checks:** `mise run check` passed (lint, types, 563 TypeScript tests,
+  one Python test). The status and check-rule cases were worked again by
+  hand under the new rule, with the user's own sequences ("I don't know",
+  correct at 75%, correct at 90% with help: not passed; three "I don't
+  know"s: not passed, and asked again). Four unit-chat tests were
+  rewritten: two more correct answers after a miss before the segment
+  closes; a fourth question on an objective posted, not refused, then
+  moving on to the closing card; unsure answers asking for more until one
+  is confident; moving on from the closing card, now reached by moving on
+  from the check. Each of these faults failed tests: the old rule, one
+  confident answer always enough, two answers always needed, a miss not
+  remembered, the limit put back, and `confirm` reported as unsure.
+- **Browser run** on `pnpm dev:fake`: a confident miss, then a correct
+  answer at 90%, brought a third question, and a second correct answer
+  closed the segment; in segment 2 four misses brought a fifth question,
+  and moving on withdrew it and showed the closing card with "You moved on
+  before it passed". The browser was closed before the server stopped.
+  No real-model run: the tutor's prompt changed by two sentences, which
+  2.20's real run reads.

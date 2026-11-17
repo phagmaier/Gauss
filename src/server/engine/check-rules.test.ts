@@ -37,7 +37,8 @@ function answer(
 }
 
 // Each case: the evidence before the check, the check's answers, and where
-// the objective stands, worked out by hand from the rules in check-rules.ts.
+// the objective stands, worked out by hand from the rules in check-rules.ts
+// and status.ts (task 2.19).
 test.each<{
   name: string;
   before?: EvidenceEntry[];
@@ -67,9 +68,9 @@ test.each<{
     expected: { state: "more", reason: "unconfident", asked: 1 },
   },
   {
-    name: "one correct answer at 90%",
+    name: "one correct answer at 90%, never missed",
     check: [answer(1, "correct", "90")],
-    expected: { state: "done", reason: "passed", asked: 1 },
+    expected: { state: "done", asked: 1 },
   },
   {
     name: "a confident correct answer with help",
@@ -79,41 +80,61 @@ test.each<{
   {
     name: "two unsure correct answers to different questions",
     check: [answer(1, "correct", "50"), answer(2, "correct", "75")],
-    expected: { state: "done", reason: "passed", asked: 2 },
-  },
-  {
-    name: "the same question answered correctly twice",
-    check: [answer(1, "correct", "50"), answer(1, "correct", "75")],
     expected: { state: "more", reason: "unconfident", asked: 2 },
   },
   {
-    name: "a correct answer before the check, and one unsure in it",
-    before: [answer(1, "correct", "50")],
+    name: "a pass before the check, and an unsure correct answer in it",
+    before: [answer(1, "correct", "90")],
     check: [answer(2, "correct", "50")],
-    expected: { state: "done", reason: "passed", asked: 1 },
+    expected: { state: "done", asked: 1 },
   },
   {
     name: "a miss, then a confident correct answer",
     check: [answer(1, "incorrect"), answer(2, "correct", "100")],
-    expected: { state: "done", reason: "passed", asked: 2 },
+    expected: { state: "more", reason: "confirm", asked: 2 },
   },
   {
-    name: "three questions without a pass",
+    name: "a miss, then a confident and an unsure correct answer",
+    check: [
+      answer(1, "incorrect"),
+      answer(2, "correct", "100"),
+      answer(3, "correct", "50"),
+    ],
+    expected: { state: "done", asked: 3 },
+  },
+  {
+    name: "a miss, then the same question answered confidently twice",
+    check: [
+      answer(1, "incorrect"),
+      answer(2, "correct", "90"),
+      answer(2, "correct", "90"),
+    ],
+    expected: { state: "more", reason: "confirm", asked: 3 },
+  },
+  {
+    name: "the user's sitting: \"I don't know\", correct at 75%, correct at 90% with help",
+    check: [
+      answer(1, "unknown"),
+      answer(2, "correct", "75"),
+      answer(3, "correct", "90", true),
+    ],
+    expected: { state: "more", reason: "assisted", asked: 3 },
+  },
+  {
+    name: 'three "I don\'t know"s, with no limit',
+    check: [answer(1, "unknown"), answer(2, "unknown"), answer(3, "unknown")],
+    expected: { state: "more", reason: "missed", asked: 3 },
+  },
+  {
+    name: "a pass on the fifth question",
     check: [
       answer(1, "incorrect"),
       answer(2, "correct", "50"),
       answer(3, "incorrect"),
+      answer(4, "correct", "75"),
+      answer(5, "correct", "90"),
     ],
-    expected: { state: "done", reason: "limit", asked: 3 },
-  },
-  {
-    name: "a pass on the third question",
-    check: [
-      answer(1, "incorrect"),
-      answer(2, "correct", "50"),
-      answer(3, "correct", "75"),
-    ],
-    expected: { state: "done", reason: "passed", asked: 3 },
+    expected: { state: "done", asked: 5 },
   },
 ])("$name", ({ before = [], check, expected }) => {
   expect(objectiveCheck("slope", [...before, ...check], check)).toEqual(

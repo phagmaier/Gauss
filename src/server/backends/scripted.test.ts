@@ -99,9 +99,10 @@ test(
     expect(await position()).toMatchObject({ segment: 0, phase: "discuss" });
     expect(chat.events().some((e) => e.type === "tutor_text")).toBe(true);
 
-    // Each segment: ready, then answers until the tutor closes it. A written
-    // answer saying "wrong" is graded incorrect, so that objective needs a
-    // second question, which must not repeat the first.
+    // Each segment: ready, then answers until the segment closes. A written
+    // answer saying "wrong" is graded incorrect, so that objective then needs
+    // two correct answers to different questions (task 2.19), and no
+    // question may repeat another.
     const prompts: string[] = [];
     const kinds = new Set<string>();
     const segments = plan?.segments.length ?? 0;

@@ -135,7 +135,8 @@ overridden) is derived from its objectives', and a unit with a position in
 `state.json` is in progress. The functions are in
 `src/server/record/status.ts`, the statuses in `src/shared/status.ts`, and
 the rules (what passes, what counts as help) in `decisions.md`, "Objective
-status". The curriculum diagram is generated from `curriculum.json` plus
+status", with the passing rule as task 2.19 changed it ("Strict passing").
+The curriculum diagram is generated from `curriculum.json` plus
 derived status.
 
 ## 4. Session engine
@@ -258,11 +259,11 @@ derived status.
 
 ### Phases
 
-**Being changed by tasks 2.19 to 2.21** (`decisions.md`, "Stage 2 user
-check"): a stricter passing rule and no question limit (2.19), a detour
-inside the check after every miss, which replaces the detour design below
-(2.20), and help judged by a separate call (2.21). Each task rewrites the
-rules here that it changes.
+**Being changed by tasks 2.20 and 2.21** (`decisions.md`, "Stage 2 user
+check"): a detour inside the check after every miss, which replaces the
+detour design below (2.20), and help judged by a separate call (2.21).
+Each task rewrites the rules here that it changes. Task 2.19's stricter
+passing rule and the check with no limit are written in below.
 
 Per segment: `teach -> discuss -> check -> closed`. A detour pushes the current
 position, runs its own small teach/discuss/check on the weak objective, and
@@ -272,10 +273,10 @@ pops back.
 | --- | --- | --- |
 | teach to discuss | the tutor's teaching turn ends, or the learner stops it | automatic, also when the turn fails, so the learner can ask for what was missed |
 | discuss to check | the learner presses "ready" | `ask_question` is rejected before this |
-| check to closed | the tutor's feedback on the answer that leaves every objective done in this check ends (task 2.16a) | automatic, also when the feedback is stopped or fails; a unit reopened at that point closes the segment as it opens |
+| check to closed | the tutor's feedback on the answer that leaves every objective passed, each asked at least once in this check, ends (tasks 2.16a, 2.19) | automatic, also when the feedback is stopped or fails; a unit reopened at that point closes the segment as it opens |
 | discuss or check to closed | the learner moves on without the check | recorded as an override of the segment's objectives; an open question is withdrawn |
 | closed to the next segment's teach | the learner starts it | none after the unit's last segment |
-| last segment closed to the unit's end | automatic | the closing card; the unit is passed and leaves `state.json` when every objective passed |
+| last segment closed to the unit's end | automatic | the closing card; the unit is passed and leaves `state.json` when every objective passed; since task 2.19 one not passed was moved on from (or closed at the old limit) |
 | unit's end to one more segment | the learner goes over the objectives not passed again | a segment after the plan's last, on those objectives, kept in the position |
 | unit's end to finished | the learner moves on without them | recorded as an override of the objectives not passed; the unit leaves `state.json`, overridden |
 | any to detour | confident wrong answer, or second miss on an objective | engine offers it; tutor or learner can start it |
@@ -303,13 +304,17 @@ The rules of tasks 2.6 and 2.7:
   learner's next message can post a question. The tutor closes no segment:
   the check rules say when it is done, so a tool for it only added a way
   to stall (`decisions.md`, "Feedback turn").
-- **How many questions** (`src/server/engine/check-rules.ts`, task 2.7):
-  each objective of the segment gets at least one question in the check,
-  and is done once it has passed (section 3's derived status) or once
-  three of its questions have been answered in this check. So a miss, an
-  unconfident correct answer or one given with help asks for another, and
-  a confident correct answer ends it at one. An objective at the limit
-  stays attempted, and the closing card offers it again.
+- **How many questions** (`src/server/engine/check-rules.ts`, tasks 2.7
+  and 2.19): each objective of the segment gets at least one question in
+  the check, and is done only once it has passed (section 3's derived
+  status: since its last miss, an unassisted correct answer at 90% or
+  100%, and a second one to a different question if it was ever missed).
+  There is no limit: an objective is asked again until it passes or the
+  learner moves on, which is recorded as an override. So a miss, an unsure
+  correct answer, one given with help, or a first confident one after a
+  miss asks for another question, and a confident correct answer to an
+  objective never missed ends it at one. The header says which, so the
+  tutor knows what the next question must show.
 - **Help** is noted when a learner message reaches the tutor while a
   question is open: the open question is marked in `state.json`, and its
   answer is recorded as assisted.

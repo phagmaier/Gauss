@@ -111,24 +111,30 @@ describe("objective status", () => {
 
     { name: "one correct answer at 90%", log: [right("90")], is: "passed" },
     {
-      name: "correct answers to two questions at 75% and under 50%",
-      log: [right("75"), right("under-50")],
+      name: "after a miss, a confident correct answer and an unsure one to another question",
+      log: [wrong("50"), right("100"), right("50")],
       is: "passed",
     },
     {
-      name: "a correct answer with help between two without",
-      log: [right("75"), right("100", { assisted: true }), right("50")],
+      name: "after a miss, an unsure correct answer and a confident one to another question",
+      log: [dontKnow(), right("50"), right("90")],
       is: "passed",
     },
     {
-      name: `a correct answer at 100% after a miss and an "I don't know"`,
-      log: [wrong("100"), dontKnow(), right("100")],
-      is: "passed",
-    },
-    {
-      name: "one prompt with other choices, which is another question",
+      name: "after a miss, two correct answers with one with help between them",
       log: [
-        right("75", { prompt: SPACED }),
+        wrong("75"),
+        right("90"),
+        right("100", { assisted: true }),
+        right("50"),
+      ],
+      is: "passed",
+    },
+    {
+      name: "after a miss, one prompt with other choices, which is another question",
+      log: [
+        wrong("75"),
+        right("90", { prompt: SPACED }),
         right("75", { prompt: SPACED, choices: ["$2x$", "$x^2$", "$0$"] }),
       ],
       is: "passed",
@@ -149,6 +155,36 @@ describe("objective status", () => {
       log: [right("75")],
       is: "attempted",
     },
+    {
+      name: "correct answers to two questions at 75% and under 50%",
+      log: [right("75"), right("under-50")],
+      is: "attempted",
+    },
+    {
+      name: `a correct answer at 100% after a miss and an "I don't know"`,
+      log: [wrong("100"), dontKnow(), right("100")],
+      is: "attempted",
+    },
+    {
+      name: "after a miss, a confident correct answer, then one with help",
+      log: [wrong("75"), right("90"), right("100", { assisted: true })],
+      is: "attempted",
+    },
+    {
+      name: "after a miss, two correct answers at 75%",
+      log: [wrong("90"), right("75"), right("75")],
+      is: "attempted",
+    },
+    {
+      name: `the user's sitting: "I don't know", correct at 75%, correct at 90% with help`,
+      log: [dontKnow(), right("75"), right("90", { assisted: true })],
+      is: "attempted",
+    },
+    {
+      name: `the user's sitting: three "I don't know"s`,
+      log: [dontKnow(), dontKnow(), dontKnow()],
+      is: "attempted",
+    },
     { name: "a wrong answer at 100%", log: [wrong("100")], is: "attempted" },
     { name: `an "I don't know"`, log: [dontKnow()], is: "attempted" },
     {
@@ -162,12 +198,22 @@ describe("objective status", () => {
       is: "attempted",
     },
     {
-      name: "one question answered correctly twice, spaced differently",
+      name: "after a miss, one question answered correctly twice, spaced differently",
       log: [
-        right("75", { prompt: SPACED }),
-        right("75", { prompt: `  Differentiate  $\\sin(x^2)$.\n` }),
+        wrong("75"),
+        right("90", { prompt: SPACED }),
+        right("90", { prompt: `  Differentiate  $\\sin(x^2)$.\n` }),
       ],
       is: "attempted",
+    },
+    {
+      name: "after a miss, written answers at 90% and 75% to different questions",
+      log: [
+        wrong("75"),
+        written("correct", "Explain why $(\\sin x^2)' = 2x\\cos x^2$.", "90"),
+        written("correct", "Differentiate $e^{3x}$ and explain each step."),
+      ],
+      is: "passed",
     },
     {
       name: "two written answers at 75% to different questions",
@@ -175,31 +221,39 @@ describe("objective status", () => {
         written("correct", "Explain why $(\\sin x^2)' = 2x\\cos x^2$."),
         written("correct", "Differentiate $e^{3x}$ and explain each step."),
       ],
+      is: "attempted",
+    },
+    {
+      name: "after a miss, one written question answered correctly twice",
+      log: [
+        wrong("75"),
+        written("correct", SPACED, "90"),
+        written("correct", SPACED, "90"),
+      ],
+      is: "attempted",
+    },
+    {
+      name: "after a miss, a written question with the prompt of a choice question",
+      log: [
+        wrong("75"),
+        right("90", { prompt: SPACED }),
+        written("correct", SPACED),
+      ],
       is: "passed",
     },
     {
-      name: "one written question answered correctly twice",
-      log: [written("correct", SPACED), written("correct", SPACED)],
+      name: "a miss between two confident correct answers",
+      log: [right("90"), wrong("50"), right("90")],
       is: "attempted",
     },
     {
-      name: "a written question with the prompt of a choice question",
-      log: [right("75", { prompt: SPACED }), written("correct", SPACED)],
-      is: "passed",
-    },
-    {
-      name: "a miss between two correct answers",
-      log: [right("75"), wrong("50"), right("75")],
+      name: `an "I don't know" between two correct answers at 100%`,
+      log: [right("100"), dontKnow(), right("100")],
       is: "attempted",
     },
     {
-      name: `an "I don't know" between two correct answers`,
-      log: [right("75"), dontKnow(), right("75")],
-      is: "attempted",
-    },
-    {
-      name: "a miss with help between two correct answers",
-      log: [right("75"), wrong("75", { assisted: true }), right("75")],
+      name: "a miss with help between two confident correct answers",
+      log: [right("90"), wrong("75", { assisted: true }), right("90")],
       is: "attempted",
     },
     {
@@ -262,11 +316,11 @@ const UNIT = StoredUnit.parse({
 });
 const SITTING = [
   // Segment 1's check: a miss clears the first correct answer, and two
-  // more pass the product rule.
+  // more, one of them confident, pass the product rule.
   right("75", { objective: PRODUCT }),
   wrong("90", { objective: PRODUCT }),
   right("50", { objective: PRODUCT }),
-  right("75", { objective: PRODUCT }),
+  right("90", { objective: PRODUCT }),
   // Segment 2's check: the learner wrote to the tutor while the first
   // question was open, so its answer had help. Implicit passes at 90%.
   right("100", { assisted: true }),
@@ -276,7 +330,8 @@ const SITTING = [
   // "Move on without the check": the chain rule has one correct answer
   // since its miss, so it is overridden; implicit stays passed.
   override(CHAIN, IMPLICIT),
-  // "Go over the one again": the chain rule passes at 90%.
+  // "Go over the one again": the chain rule passes at 90%, its second
+  // correct answer since its miss.
   right("90"),
 ];
 const CLOSED_AT_END: UnitPosition = { segment: 1, phase: "closed" };

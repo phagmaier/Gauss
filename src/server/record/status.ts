@@ -1,6 +1,7 @@
 // Objective and unit status, derived from the evidence log and never stored
 // (architecture.md section 3). Pure: the caller reads the record. The rules,
-// with the reasons for them, are in docs/decisions.md, "Objective status".
+// with the reasons for them, are in docs/decisions.md, "Objective status",
+// and the passing rule as task 2.19 changed it in "Strict passing".
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -14,8 +15,10 @@ import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
  *
  * - A miss (a wrong answer or "I don't know", with help or without) clears
  *   the correct answers before it.
- * - The objective passes once, since its last miss, it has unassisted
- *   correct answers to two different questions, or one given at 90% or 100%.
+ * - The objective passes once, since its last miss, it has an unassisted
+ *   correct answer given at 90% or 100%; and, if it was ever missed, a
+ *   second unassisted correct answer, to a different question (task 2.19).
+ *   Unsure correct answers alone never pass it.
  * - A correct answer given with help counts for nothing either way.
  * - An override marks it overridden, but never takes away a pass. A later
  *   answer takes the override's place.
@@ -25,6 +28,7 @@ export function objectiveStatus(
   objective: string,
 ): ObjectiveStatus {
   let answered = false;
+  let missed = false;
   let overridden = false;
   /** The questions answered correctly without help since the last miss. */
   let problems = new Set<string>();
@@ -39,6 +43,7 @@ export function objectiveStatus(
     answered = true;
     overridden = false;
     if (entry.verdict !== "correct") {
+      missed = true;
       problems = new Set();
       confident = false;
     } else if (!entry.assisted) {
@@ -51,7 +56,7 @@ export function objectiveStatus(
     }
   }
 
-  if (confident || problems.size >= 2) return "passed";
+  if (confident && (!missed || problems.size >= 2)) return "passed";
   if (overridden) return "overridden";
   return answered ? "attempted" : "not-started";
 }

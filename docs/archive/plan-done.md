@@ -1015,3 +1015,36 @@ tested"). Stage 1 is finished.
   faults failed a test. Browser run on `pnpm dev:fake`, with screenshots
   for the user. Findings: `decisions.md`, "Thread separators and the
   pinned question".
+
+### 2.19 Strict passing and no question limit
+
+- Status: done
+- Depends on: stage 2's tasks above
+- Why: segments closed at the three-question limit with objectives not
+  passed and no override recorded; the user wants passing strict by
+  default (`decisions.md`, "Stage 2 user check").
+- Do: the passing rule in `record/status.ts` becomes: since its last miss,
+  an unassisted correct answer at 90% or 100%, and for an objective ever
+  missed, a second unassisted correct answer to a different question.
+  Remove the limit in `engine/check-rules.ts`: an objective is done in a
+  check only once it passes, and the segment closes when all have passed
+  or the learner moves on (an override, as now). The closing card's rows
+  lose "the limit". Update the check headers, `tutor.md` (the check, and
+  a rule against promising what the app does not do, such as "we'll come
+  back to it"), `scripted.ts` if its answers no longer close a check, and
+  architecture section 4.
+- Done when: hand-worked status tests pass, including the user's real
+  sequences (an "I don't know", then correct at 75%, then correct with
+  help: not passed; three "I don't know"s: not passed), one confident
+  first answer passing, two unconfident ones not, and a miss then a
+  confident and another correct answer passing; check-rule tests show no
+  limit; `mise run check` passes; on `pnpm dev:fake` a check with misses
+  keeps asking until the objective passes or the learner moves on.
+- Note: done on 2026-11-16. The passing rule and no limit as asked; a
+  fourth reason, `confirm`, for a confident answer that is not enough
+  after a miss; the header's count is "(N asked)", and the scripted tutor
+  reads it (it looped on one question before); the closing card's
+  reasons reworded; `tutor.md` gained the two sentences. `mise run check`
+  passed (563 TypeScript tests, one Python test); six injected faults
+  each failed tests. Browser run on `pnpm dev:fake`. Findings:
+  `decisions.md`, "Strict passing".

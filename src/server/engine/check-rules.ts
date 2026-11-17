@@ -1,33 +1,37 @@
-// How many questions a check asks (brief.md, "Teaching style"; task 2.7),
-// and which segment a unit's position is in. Pure: the chat keeps the
-// evidence and passes it in.
+// How many questions a check asks (brief.md, "Teaching style" and "Mastery
+// and evidence"; tasks 2.7 and 2.19), and which segment a unit's position is
+// in. Pure: the chat keeps the evidence and passes it in.
 //
-// Each objective of the segment gets at least one question in the check. It
-// is done once it has passed (src/server/record/status.ts: two unassisted
-// correct answers to different questions since the last miss, or one given
-// at 90% or 100%), or once QUESTION_LIMIT of its questions have been
-// answered in this check. So a miss, an unconfident correct answer or an
-// answer given with help asks for another question, and a confident correct
-// answer ends the objective's check at one.
+// Each objective of the segment gets at least one question in the check, and
+// is done only once it has passed (src/server/record/status.ts: since its
+// last miss, an unassisted correct answer at 90% or 100%, and a second one
+// to a different question if it was ever missed). There is no limit: until
+// it passes, or the learner moves on, the objective is asked again. So a
+// miss, an unsure correct answer, an answer given with help, or a first
+// confident one after a miss asks for another question, and a confident
+// correct answer to an objective never missed ends its check at one.
 
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
+import { isConfident } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import { objectiveStatus } from "../record/status.ts";
-
-/** The most questions one objective is asked in one check. */
-export const QUESTION_LIMIT = 3;
 
 /** Where one objective stands in the check under way. */
 export type ObjectiveCheck =
   | { state: "unasked" }
   | {
       state: "more";
-      /** Why another question is needed, from its last answer. */
-      reason: "missed" | "assisted" | "unconfident";
+      /**
+       * Why another question is needed, from its last answer: a miss, a
+       * correct answer with help, one under 90%, or a confident one to an
+       * objective missed before, which needs a second (`confirm`).
+       */
+      reason: "missed" | "assisted" | "unconfident" | "confirm";
       asked: number;
     }
-  | { state: "done"; reason: "passed" | "limit"; asked: number };
+  /** Passed: it needs no more questions in this check. */
+  | { state: "done"; asked: number };
 
 /**
  * @param evidence the evidence on the unit's objectives, in log order
@@ -43,15 +47,16 @@ export function objectiveCheck(
   if (last === undefined) return { state: "unasked" };
   const asked = answers.length;
   if (objectiveStatus(evidence, objective) === "passed") {
-    return { state: "done", reason: "passed", asked };
+    return { state: "done", asked };
   }
-  if (asked >= QUESTION_LIMIT) return { state: "done", reason: "limit", asked };
   const reason =
     last.verdict !== "correct"
       ? "missed"
       : last.assisted
         ? "assisted"
-        : "unconfident";
+        : last.answer.kind === "unknown" || !isConfident(last.answer.confidence)
+          ? "unconfident"
+          : "confirm";
   return { state: "more", reason, asked };
 }
 

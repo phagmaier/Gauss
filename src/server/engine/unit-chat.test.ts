@@ -578,7 +578,7 @@ test("an answer is graded, appended to the evidence, and sent to the tutor with 
     derivative: { segment: 0, phase: "check", checkFrom: 0 },
   });
   expect(setup.backend.received[2]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner answered question 1. In this check, "difference-quotient": missed, so another question is needed (1 of at most 3 asked); "secant-slope": not asked yet. Allowed now: your feedback on this answer, written as text, and nothing else. No tool may be called in this reply: once it ends, the app asks you for the next question in a message of its own.]\n' +
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner answered question 1. In this check, "difference-quotient": missed, so another question is needed (1 asked); "secant-slope": not asked yet. Allowed now: your feedback on this answer, written as text, and nothing else. No tool may be called in this reply: once it ends, the app asks you for the next question in a message of its own.]\n' +
       'Question 1, on "difference-quotient":\n' +
       `${Q_QUOTIENT.prompt}\n` +
       "A. $\\frac{f(a+h)-f(a)}{h}$\n" +
@@ -1285,6 +1285,16 @@ const Q_SECANT_2: ChoiceInput = {
   prompt: "Between which points does that secant run?",
   choices: ["$a$ and $0$", "$a$ and $a+h$", "$h$ and $a+h$"],
 };
+const Q_QUOTIENT_3: ChoiceInput = {
+  ...Q_QUOTIENT,
+  prompt: "Which is the difference quotient of $k$ at $-1$?",
+  choices: ["$\\frac{k(-1+h)-k(-1)}{h}$", "$\\frac{k(h)-k(-1)}{h}$"],
+};
+const Q_SECANT_3: ChoiceInput = {
+  ...Q_SECANT,
+  prompt: "As $h$ shrinks, what does the secant's slope approach?",
+  choices: ["Zero", "The slope of the tangent at $a$", "The value $f(a)$"],
+};
 
 /** The SHORT unit's unit_status event. */
 function shortStatus(
@@ -1308,7 +1318,7 @@ function closedSegments(chat: UnitChat): number[] {
     );
 }
 
-test("a miss on an objective requires another question on it before the segment closes", async () => {
+test("after a miss an objective needs two more correct answers, to different questions, before the segment closes", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
@@ -1316,6 +1326,8 @@ test("a miss on an objective requires another question on it before the segment 
     ask(Q_SECANT),
     FEEDBACK,
     ask(Q_QUOTIENT_2),
+    FEEDBACK,
+    ask(Q_QUOTIENT_3),
     FEEDBACK,
   ]);
   await makeCourse(true, SHORT);
@@ -1327,29 +1339,32 @@ test("a miss on an objective requires another question on it before the segment 
 
   expect(closedSegments(chat)).toEqual([]);
   expect(setup.backend.received[5]?.text).toContain(
-    'In this check, "difference-quotient": missed, so another question is needed (1 of at most 3 asked); "secant-slope": passed. Allowed now: a lead-in of one sentence, then a question on "difference-quotient" with ask_question',
+    'In this check, "difference-quotient": missed, so another question is needed (1 asked); "secant-slope": passed. Allowed now: a lead-in of one sentence, then a question on "difference-quotient" with ask_question',
+  );
+
+  await answer(chat, "A"); // confident and correct, but one is not enough after a miss
+
+  expect(closedSegments(chat)).toEqual([]);
+  expect(setup.backend.received[7]?.text).toContain(
+    '"difference-quotient": answered correctly and confidently, but missed earlier, so a second correct answer, to a different question, is needed (2 asked)',
   );
 
   await answer(chat, "A");
 
   expect(closedSegments(chat)).toEqual([0]);
-  expect(setup.backend.received).toHaveLength(7);
+  expect(setup.backend.received).toHaveLength(9);
 });
 
-test("the limit lets the segment close with an objective not passed, after which no more questions are asked on it", async () => {
+test("there is no limit: an objective not passed is asked again until it passes or the learner moves on", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
     FEEDBACK,
     ask(Q_QUOTIENT_2),
     FEEDBACK,
+    ask(Q_QUOTIENT_3),
+    FEEDBACK,
     ask(Q_QUOTIENT),
-    FEEDBACK,
-    [
-      { call: "ask_question", input: Q_QUOTIENT_2 },
-      { call: "ask_question", input: Q_SECANT },
-    ],
-    FEEDBACK,
   ]);
   await makeCourse(true, SHORT);
   const chat = await open(setup);
@@ -1357,22 +1372,28 @@ test("the limit lets the segment close with an objective not passed, after which
 
   await answer(chat, "B");
   await answer(chat, "A", "50"); // correct but unsure: not passed yet
-  await answer(chat, "C");
-
-  expect(setup.backend.calls[3]?.result).toEqual({
-    status: "refused",
-    text: '"difference-quotient" needs no more questions in this check: not passed after 3 questions, the limit. Ask about "secant-slope" instead.',
-  });
-
   await answer(chat, "B");
+
+  // A fourth question on it is posted, not refused, and the segment stays open.
+  expect(setup.backend.received[7]?.text).toContain(
+    '"difference-quotient": missed, so another question is needed (3 asked)',
+  );
+  expect((await position()).derivative?.openQuestion?.question.prompt).toBe(
+    Q_QUOTIENT.prompt,
+  );
+  expect(closedSegments(chat)).toEqual([]);
+
+  // Moving on withdraws it, and closes the unit's only segment.
+  expect(await chat.override()).toEqual({ ok: true });
+  await chat.settled();
 
   expect(closedSegments(chat)).toEqual([0]);
   expect(since(chat, "unit_end")[0]).toEqual({
     type: "unit_end",
     passed: false,
     objectives: {
-      "difference-quotient": "attempted",
-      "secant-slope": "passed",
+      "difference-quotient": "overridden",
+      "secant-slope": "overridden",
     },
   });
   // The unit stays in progress while its closing card waits.
@@ -1381,7 +1402,7 @@ test("the limit lets the segment close with an objective not passed, after which
   });
 });
 
-test("a confident correct answer ends an objective's check at one question; an unsure one asks for another", async () => {
+test("a confident correct answer ends an objective's check at one question; unsure ones ask for more until one is confident", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
@@ -1389,6 +1410,8 @@ test("a confident correct answer ends an objective's check at one question; an u
     ask(Q_SECANT),
     FEEDBACK,
     ask(Q_SECANT_2),
+    FEEDBACK,
+    ask(Q_SECANT_3),
     FEEDBACK,
   ]);
   await makeCourse(true, SHORT);
@@ -1404,18 +1427,29 @@ test("a confident correct answer ends an objective's check at one question; an u
   await answer(chat, "B", "75");
 
   expect(setup.backend.received[5]?.text).toContain(
-    '"secant-slope": answered correctly but not confidently, so another question is needed (1 of at most 3 asked). Allowed now: a lead-in of one sentence, then a question on "secant-slope"',
+    '"secant-slope": answered correctly but under 90% sure, which does not pass, so another question is needed (1 asked). Allowed now: a lead-in of one sentence, then a question on "secant-slope"',
   );
 
   await answer(chat, "B", "50");
 
+  // Two unsure correct answers do not pass it.
+  expect(closedSegments(chat)).toEqual([]);
+
+  await answer(chat, "B", "90");
+
   expect(closedSegments(chat)).toEqual([0]);
-  // Three questions in all: one for the confident answer, two for the unsure ones.
+  // Four questions in all: one for the confident answer, three for the
+  // secant: two unsure, then one confident.
   expect(
     (await reload().readEvidence(COURSE)).map((e) =>
       e.kind === "answer" ? e.objective : e.kind,
     ),
-  ).toEqual(["difference-quotient", "secant-slope", "secant-slope"]);
+  ).toEqual([
+    "difference-quotient",
+    "secant-slope",
+    "secant-slope",
+    "secant-slope",
+  ]);
 });
 
 test("an answer is recorded as given with help when the tutor received a message while its question was open, and a correct one then does not count", async () => {
@@ -1454,7 +1488,7 @@ test("an answer is recorded as given with help when the tutor received a message
     shortStatus("in-progress", "attempted", "not-started"),
   ]);
   expect(setup.backend.received[3]?.text).toContain(
-    '"difference-quotient": answered correctly with help, which does not count, so another question is needed (1 of at most 3 asked)',
+    '"difference-quotient": answered correctly with help, which does not count, so another question is needed (1 asked)',
   );
   expect(setup.backend.received[3]?.text).toContain(
     "They had help: you received a message from them while the question was open, so this answer does not count toward passing.",
@@ -1581,20 +1615,18 @@ test("moving on without the objectives not passed records them as overridden and
     TEACH,
     ask(Q_QUOTIENT),
     FEEDBACK,
-    ask(Q_QUOTIENT_2),
-    FEEDBACK,
-    ask(Q_QUOTIENT),
-    FEEDBACK,
     ask(Q_SECANT),
     FEEDBACK,
+    ask(Q_QUOTIENT_2),
   ]);
   await makeCourse(true, SHORT);
   const chat = await open(setup);
   await toCheck(chat);
-  await answer(chat, "B");
-  await answer(chat, "B");
-  await answer(chat, "B");
-  await answer(chat, "B");
+  await answer(chat, "B"); // missed
+  await answer(chat, "B"); // passed
+  // Moving on from the check reaches the unit's closing card.
+  expect(await chat.override()).toEqual({ ok: true });
+  await chat.settled();
   const turns = setup.backend.received.length;
 
   expect(await chat.finishUnit()).toEqual({ ok: true });
@@ -1845,7 +1877,7 @@ test("a written answer graded incorrect is recorded with the flaw the grader nam
       `The first flaw it found: ${FLAW}`,
   );
   expect(setup.backend.received[2]?.text).toContain(
-    '"difference-quotient": missed, so another question is needed (1 of at most 3 asked)',
+    '"difference-quotient": missed, so another question is needed (1 asked)',
   );
 });
 

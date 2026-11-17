@@ -230,7 +230,7 @@ function teaching(header: string, body: string): FakeStep[] {
 
 /** How many questions this check has asked on the objective, as the header says. */
 function asked(header: string, objective: string): number {
-  const said = new RegExp(`"${objective}": [^;]*?\\((\\d+) of at most`).exec(
+  const said = new RegExp(`"${objective}": [^;]*?\\((\\d+) asked\\)`).exec(
     header,
   );
   return said === null ? 0 : Number(said[1]);

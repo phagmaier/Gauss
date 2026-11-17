@@ -211,10 +211,14 @@ const WORDS = [
 const word = (n: number) => WORDS[n] ?? String(n);
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Why an objective did not pass, as the card's row says it (piece 10). */
+/**
+ * Why an objective did not pass, as the card's row says it (piece 10). A
+ * check now goes on until each objective passes (task 2.19), so one only
+ * attempted at the unit's end is from a check closed at the old limit.
+ */
 const WHY: Record<Exclude<ObjectiveStatus, "passed">, string> = {
-  attempted: "The check reached its limit of questions",
-  overridden: "You moved on without the check",
+  attempted: "Its check ended before it passed",
+  overridden: "You moved on before it passed",
   "not-started": "Not checked yet",
 };
 
