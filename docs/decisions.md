@@ -17,7 +17,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Product decisions | What the user decided, when, and why | Changing what the product does; breaking down a stage |
 | Toolchain | Versions, type-checking, Biome, pnpm and uv settings | Changing tooling or `tsconfig.json` |
 | Claude backend | The Agent SDK on the plan login: environment, isolation, ending turns, Stop, sessions and resume, one-shot calls, thinking | Touching `src/server/backends/` |
-| Confinement | Keeping the tutor's writes in its folder: the option set and what it blocked | Giving the tutor built-in tools (stage 3), web access (stage 4) |
+| Confinement | Keeping the tutor's writes in its folder: the option set, what it blocked, the working and temporary folders, the engine's sandbox | Giving the tutor built-in tools (stage 3), web access (stage 4); running commands from the engine |
 | Codex | What the Codex SDK can and cannot do | Stage 6 |
 | Record | Ids, writes, the file lock, logs, transcripts on disk, the backup | Touching `src/server/record/` or a record file's schema |
 | Objective status | The passing rule and its history, help, overrides, the question count | Touching `record/status.ts`, `engine/check-rules.ts`, or what counts as help |
@@ -25,6 +25,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Session engine | The chats' design choices: phases, the feedback turn, queues, detours, choice order, planning, intake, resume, idle sessions, transcripts | Touching `src/server/engine/` |
 | Grader prompt | The hand-graded set, the grader's model and rules | Changing `grader.md`, `WrittenGrade` or the grader's model; disputes |
 | Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
+| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides | Building or changing disputes |
 | Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
 | Page behaviour | Rendering, performance, the pinned question, dimming, keys, retries | Touching `src/web/` |
@@ -171,8 +172,12 @@ in its platform package (2.1.325), not the `claude` on the path.
   mode (`CLAUDE_CODE_SIMPLE`) does, but does not use the plan login. A
   separate configuration folder would need a copy of the login, and
   refreshing one copy can sign the learner out. It goes only to Anthropic.
-  Look again when the tutor gets built-in tools, or a newer SDK adds a
-  switch.
+  The tutor's file and shell tools (stage 3) change nothing, by the
+  agent's judgment in task 3.0: the tutor has no web tool and its sandbox
+  no network, so the address can reach only Anthropic, which has it as
+  the account's, or a workspace file the model chose to write it in. Web
+  access (stage 4) would let a request carry it, with anything else in
+  the context; 4.0 has the point. Look again if an SDK adds a switch.
 
 **Tools and ending a turn**
 
@@ -258,9 +263,8 @@ in its platform package (2.1.325), not the `claude` on the path.
 
 ## Confinement
 
-Observed with throwaway scripts; for stage 3, when the tutor first gets
-built-in tools. This option set, added to the isolation options, kept every
-write inside `dir`:
+Observed with throwaway scripts in stage 0. This option set, added to the
+isolation options, kept every write inside `dir`:
 
 ```ts
 {
@@ -286,25 +290,63 @@ write inside `dir`:
   are confined by `blockWritesOutsideWorkingDirectories` and the `Edit`
   rules. Refused in the run: `Write` outside, shell writes to `/tmp` and
   the home folder (also with `dangerouslyDisableSandbox`), Python writing
-  outside, and both layers' writes to the protected file.
-- **The sandbox leaves Claude Code's per-user temp folder writable**, which
-  every Claude Code session of the user shares. `CLAUDE_CODE_TMPDIR`
-  inside the working directory moves it there. Sandboxed commands fall
-  back to a short path under `/tmp` when that path is long; the limit is
-  not documented, so check the real course path.
+  outside, and both layers' writes to the protected file. An `Edit` rule
+  with one leading slash is anchored at the working directory; `//` makes
+  it absolute, which `/${dir}` does for an absolute `dir`.
 - **`dontAsk` needs an allow rule for `Bash`**, or some sandboxed commands
   are refused as a permission matter with no reason given.
 - A session leaves `.claude/` and the `.tmp/` above in its working
   directory.
+- **The tutor's working directory is the course's `workspace/`** (task 3.0,
+  the agent's choice), the other way round from closing the record inside
+  the course folder. The folder holds only what the tutor may write, so
+  the record lies outside it and both layers keep it out with no list of
+  paths: the file tools write only where the one `Edit` allow rule says,
+  and sandboxed commands only in the working directory, the allowed paths
+  and Claude Code's temporary folder. Rejected: the course folder as the
+  working directory with each record file denied, since every new record
+  file (stage 5's misconceptions and handoff notes) would need its own
+  rule, and whether a deny stops a command creating a file that does not
+  exist yet was never tried. Artifacts are written by the engine from
+  `show_artifact`'s input, so the tutor needs no second folder. Intakes
+  run in the data root's empty `intake/` folder, so a tool given to them
+  later is confined to nothing of value.
+- **Every tutor gets the tools**, in every course: one way of running, and
+  a math tutor can check its own expressions with Python. The planner, the
+  unit planner and one-shot calls get none.
+- **`CLAUDE_CODE_TMPDIR` in the course folder is too long.** The sandbox
+  leaves Claude Code's per-user temporary folder,
+  `<CLAUDE_CODE_TMPDIR or the system's>/claude-<uid>`, writable, and the
+  system's one is shared by every Claude Code session of the user. Read in
+  the code of Claude Code 2.1.325 (the binary the SDK bundles; task 3.0):
+  sandboxed commands get that folder as `$TMPDIR` only if its path is at
+  most 44 bytes, for Unix sockets; otherwise `/tmp/claude-<uid>`, the
+  shared one, with a warning. Here
+  `/home/phagmaier/gauss/courses/<id>/.tmp/claude-1000` is at least 48
+  bytes. So the tutor's is a private folder per course under `/tmp`:
+  `/tmp/gauss-<8 hex digits>/claude-1000` is 31 bytes.
+- **The engine runs model-written text in a sandbox too** (task 3.0, the
+  agent's choice): a code question's tests and the symbolic check, whose
+  SymPy parser evaluates its input. It uses
+  `@anthropic-ai/sandbox-runtime`, the runtime Anthropic developed for
+  Claude Code's sandbox (a research preview, version 0.0.x): no network,
+  writes only where the run needs. Rejected: a
+  bubblewrap command line written by hand (Linux only, and each
+  protection the runtime adds would be ours to get right), and running
+  tests through a tutor session, which puts a model between the test and
+  the grade.
+- **Writes and commands are refused while a question is open**, as
+  `show_artifact` is: the tutor could fix the learner's code, and the help
+  judge sees only the reply's text. Reads stay allowed, so the tutor can
+  look at the code to clarify the question.
 - **Reads are not confined**: sandboxed commands can read most of the
   machine, credential files included. The sandbox's network is closed
-  until domains are allowed (documented, not tried). Settle both before
-  the tutor gets web access.
-- Open: whether the course folder is the working directory with the record
-  files closed to the tutor (both layers can close a path), or the other
-  way round. Intakes run in the data root's empty `intake/` folder for
-  this reason, so a tool given to them later is confined to nothing of
-  value.
+  until domains are allowed (documented, not tried), and the tutor has no
+  web tool, so in stage 3 what it reads can reach only Anthropic. SDK
+  0.3.325 documents `blockReadsOutsideWorkingDirectories`, which refuses
+  file-tool reads outside the working directories and, it says, makes the
+  sandbox deny commands such reads too; not tried. Settle reads before the
+  tutor gets web access.
 
 ## Codex
 
@@ -730,6 +772,46 @@ designed.
   reply that helps makes the answer count as given with help. "Anything
   else counts as help" was not used: the tutor declines what it may not
   give, so asking for more is free when the reply gives nothing.
+
+## Disputes
+
+Settled in task 3.0 as the agent's choices; who decides a dispute, and the
+look, are the user's in task 3.1, from the agent's recommendation below.
+
+- **What can be disputed**: any graded answer, of any kind, at any time,
+  in a finished unit too. Not "I don't know", which nothing graded. Not the
+  help judge's call: "when unsure, help" is its rule by design, and a false
+  help costs one more question.
+- **One dispute per answer.** A second would be another draw from the same
+  judge.
+- **An outcome replaces the answer's verdict where the answer stands in
+  the log**, not where the dispute does: a regraded answer counts as if it
+  had been graded so, for status, the check rules, calibration and "What I
+  know". The answer's line keeps the original grade; the dispute's line,
+  naming the answer by `questionId`, holds the learner's reason and the
+  outcome. The log stays append-only.
+- **A wrong choice key is corrected only by a dispute**: the outcome can
+  name the right letter, which then shows wherever the key did. The tutor
+  is told in its next header, since its feedback or detour taught from the
+  wrong key; a restart before then loses the note, as with moving on.
+- **An outcome changes no phase.** An overturned miss leaves its detour
+  open until the learner asks for another question; the check rules then
+  decide with the corrected verdict, closing the segment if nothing is
+  left to ask.
+- **The learner sees what the answer was graded by while disputing**: the
+  rubric, the choice key, the expected expression or the tests. The
+  question is over, the detour has already given the right answer, and an
+  argument about a grade needs what it was graded against. Everywhere else
+  the rubric stays hidden.
+- **Who decides** (recommended to the user for task 3.1): a one-shot call
+  that sees the question, what it was graded by, the answer, the grade and
+  the learner's reason, and nothing of the conversation, as the grader
+  does. The learner's own word would make "passed" mean what they say;
+  the tutor wrote the key it would judge.
+- **An overturned dispute on a written answer is a candidate for the
+  grader's set** (`scripts/grader-set.ts`): added by hand, with its grade
+  checked, when `grader.md` is next revised. Nothing is added
+  automatically, since the set's grades are hand-checked.
 
 ## Prompts
 
