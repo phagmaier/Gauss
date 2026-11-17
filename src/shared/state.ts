@@ -2,7 +2,8 @@
 // (architecture.md section 3). Several units can be in progress at once,
 // each keeping its place (task 2.1, piece 12). A unit is in progress from
 // when it starts until it closes; the engine writes its position after every
-// change, so an open question survives a restart. Detours join in stage 5.
+// change, so an open question, or an open detour (task 2.20), survives a
+// restart.
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
@@ -47,6 +48,22 @@ export const OpenQuestion = z
   });
 export type OpenQuestion = z.infer<typeof OpenQuestion>;
 
+/**
+ * A detour (task 2.20): the pause in a check after a miss, where the tutor
+ * finds the learner's confusion and works through it with them. It opens
+ * when the missed answer's question closes and lasts until the learner asks
+ * for another question, or moves on. No question is posted during it.
+ */
+export const Detour = z.object({
+  /** The question missed, by its id. */
+  questionId: z.string().min(1),
+  /** Its number as the page shows it. */
+  number: z.number().int().positive(),
+  /** The objective it checked. */
+  objective: Slug,
+});
+export type Detour = z.infer<typeof Detour>;
+
 export const UnitPosition = z
   .object({
     /**
@@ -70,6 +87,8 @@ export const UnitPosition = z
      */
     checkFrom: z.number().int().nonnegative().optional(),
     openQuestion: OpenQuestion.optional(),
+    /** In the check, after a miss, until the learner asks for another question. */
+    detour: Detour.optional(),
     /** The tutor's session on the backend, once the backend has reported it. */
     tutorSessionId: z.string().min(1).optional(),
   })
@@ -81,7 +100,17 @@ export const UnitPosition = z
   .refine((p) => p.openQuestion === undefined || p.phase === "check", {
     message: "A question can be open only in the check.",
     path: ["openQuestion"],
-  });
+  })
+  .refine(
+    (p) =>
+      p.detour === undefined ||
+      (p.phase === "check" && p.openQuestion === undefined),
+    {
+      message:
+        "A detour is open only in the check, and never with a question open.",
+      path: ["detour"],
+    },
+  );
 export type UnitPosition = z.infer<typeof UnitPosition>;
 
 export const State = z.object({

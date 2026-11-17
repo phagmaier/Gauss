@@ -36,6 +36,7 @@ import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
 import {
   closingCard,
+  detourSays,
   divided,
   lastCard,
   nextStep,
@@ -565,6 +566,14 @@ function ThreadItem(props: {
           Question {item.number} was answered further down.
         </p>
       );
+    case "detour":
+      return (
+        <div className="pf-mark">
+          <span>
+            <b>Detour</b> {detourSays(item.number)}
+          </span>
+        </div>
+      );
     case "question":
       if (props.asked === "last") return null;
       return props.asked === "earlier" ? (
@@ -804,35 +813,24 @@ function NextStepControl(props: {
     case "move-on":
       return (
         <div className="pf-act">
-          {props.confirming ? (
-            <span className="confirm">
-              <span>This will be recorded as an override.</span>
-              <button
-                type="button"
-                className="textbtn"
-                disabled={busy}
-                onClick={() => props.onAct("override")}
-              >
-                Move on
-              </button>
-              <button
-                type="button"
-                className="textbtn"
-                onClick={() => props.onConfirm(false)}
-              >
-                Stay
-              </button>
-            </span>
-          ) : (
+          <MoveOn {...props} />
+        </div>
+      );
+    case "detour":
+      // Moving on stays open in a detour (task 2.20).
+      return (
+        <div className="pf-act">
+          {props.confirming ? null : (
             <button
               type="button"
-              className="textbtn"
+              className="btn sm"
               disabled={busy}
-              onClick={() => props.onConfirm(true)}
+              onClick={() => props.onAct("another-question")}
             >
-              Move on without the check
+              Ready for another question
             </button>
           )}
+          <MoveOn {...props} />
         </div>
       );
     case "next-segment":
@@ -886,6 +884,45 @@ function NextStepControl(props: {
       );
     }
   }
+}
+
+/** Moving on without the check, which asks once, as it is recorded as an override. */
+function MoveOn(props: {
+  busy: boolean;
+  confirming: boolean;
+  onConfirm(asking: boolean): void;
+  onAct(route: string): void;
+}) {
+  const { busy } = props;
+  return props.confirming ? (
+    <span className="confirm">
+      <span>This will be recorded as an override.</span>
+      <button
+        type="button"
+        className="textbtn"
+        disabled={busy}
+        onClick={() => props.onAct("override")}
+      >
+        Move on
+      </button>
+      <button
+        type="button"
+        className="textbtn"
+        onClick={() => props.onConfirm(false)}
+      >
+        Stay
+      </button>
+    </span>
+  ) : (
+    <button
+      type="button"
+      className="textbtn"
+      disabled={busy}
+      onClick={() => props.onConfirm(true)}
+    >
+      Move on without the check
+    </button>
+  );
 }
 
 /** When a session began, in the learner's own format: the day and the time. */

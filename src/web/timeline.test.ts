@@ -670,6 +670,76 @@ test("a unit reopened where its thread is shows nothing twice: not its phase, it
   });
 });
 
+// --- Detours (task 2.20) ------------------------------------------------------
+
+const MISSED: PageEvent = {
+  type: "graded",
+  questionId: "q1",
+  verdict: "unknown",
+  answer: { kind: "unknown", questionId: "q1", stuck: "The exponent." },
+  correctChoice: "A",
+  assisted: false,
+};
+const DETOUR: PageEvent = { type: "detour", questionId: "q1", number: 1 };
+
+test("a detour is a marker after the missed question's card, open until the learner asks for another question", () => {
+  const state = play([
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: QUESTION },
+    MISSED,
+    DETOUR,
+    { type: "turn_start" },
+    { type: "tutor_text", text: "It is $3x^2$." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+
+  expect(state.items).toEqual([
+    { kind: "phase", key: 0, segment: 0, phase: "check" },
+    { kind: "question", key: 1, question: QUESTION, graded: MISSED },
+    { kind: "detour", key: 3, questionId: "q1", number: 1 },
+    { kind: "tutor", key: 5, text: "It is $3x^2$." },
+  ]);
+  expect(state.detour).toEqual({ questionId: "q1", number: 1 });
+
+  expect(play([DETOUR, { type: "detour_end" }]).detour).toBeNull();
+  // Moving on closes the segment, which ends the detour.
+  expect(
+    play([DETOUR, { type: "phase", segment: 0, phase: "closed" }]).detour,
+  ).toBeNull();
+});
+
+test("a unit reopened in a detour shows its marker once; one reopened after the detour ended, whose end the thread lost, has none open", () => {
+  const before: PageEvent[] = [
+    began(MONDAY),
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: QUESTION },
+    MISSED,
+    DETOUR,
+  ];
+  const reopened = play([
+    ...before,
+    began(TUESDAY),
+    { type: "phase", segment: 0, phase: "check" },
+    DETOUR,
+  ]);
+
+  expect(reopened.items.map((i) => i.kind)).toEqual([
+    "phase",
+    "question",
+    "detour",
+    "session",
+  ]);
+  expect(reopened.detour).toEqual({ questionId: "q1", number: 1 });
+
+  // The record had the detour ended; the transcript lost its detour_end.
+  const ended = play([
+    ...before,
+    began(TUESDAY),
+    { type: "phase", segment: 0, phase: "check" },
+  ]);
+  expect(ended.detour).toBeNull();
+});
+
 test("a unit reopened past where its thread got to shows the phase it is in", () => {
   // A transcript can lose its last lines in a crash; the record has the phase.
   const state = play([

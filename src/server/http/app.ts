@@ -191,6 +191,12 @@ export function createApp(options: {
     withUnit(async (c, chat) => reply(c, await chat.ready(), 202)),
   );
 
+  // In a detour after a miss: ends it, and asks the tutor for the next question.
+  app.post(
+    `${unitPath}/another-question`,
+    withUnit(async (c, chat) => reply(c, await chat.anotherQuestion(), 202)),
+  );
+
   app.post(
     `${unitPath}/answers`,
     withUnit(async (c, chat) => {

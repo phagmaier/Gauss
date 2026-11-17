@@ -61,7 +61,8 @@ export function outline(
 
 /**
  * The one control that moves the unit on, at the point the thread has
- * reached (mock 3): "ready" in the discussion, moving on in the check, the
+ * reached (mock 3): "ready" in the discussion, moving on in the check, and
+ * in a detour asking for another question or moving on (task 2.20), the
  * next segment once one closes, and the way out of a finished unit. None in
  * teach, while a written answer waits for its grade (moving on is refused
  * then), or at the closing card, whose foot holds the steps.
@@ -69,6 +70,7 @@ export function outline(
 export type NextStep =
   | "ready"
   | "move-on"
+  | "detour"
   | "next-segment"
   | "leave"
   | "try-again"
@@ -88,6 +90,7 @@ export function nextStep(timeline: Timeline): NextStep {
     case "discuss":
       return "ready";
     case "check":
+      if (timeline.detour !== null) return "detour";
       return openQuestion(timeline)?.grading === undefined ? "move-on" : null;
     case "closed":
       return position.segment >= plan.segments.length - 1
@@ -191,6 +194,11 @@ export function phaseMarker(
     case "closed":
       return { name: "Done" };
   }
+}
+
+/** What a detour's marker says after its name (task 2.20). */
+export function detourSays(number: number): string {
+  return `Working through question ${number}. Nothing here is graded or counts as help.`;
 }
 
 // --- The closing card ----------------------------------------------------------

@@ -29,6 +29,11 @@ export type ObjectiveCheck =
        */
       reason: "missed" | "assisted" | "unconfident" | "confirm";
       asked: number;
+      /**
+       * How many of its answers in this check were misses. From the second,
+       * the detour after a miss teaches the objective again (task 2.20).
+       */
+      missed: number;
     }
   /** Passed: it needs no more questions in this check. */
   | { state: "done"; asked: number };
@@ -57,7 +62,8 @@ export function objectiveCheck(
         : last.answer.kind === "unknown" || !isConfident(last.answer.confidence)
           ? "unconfident"
           : "confirm";
-  return { state: "more", reason, asked };
+  const missed = answers.filter((a) => a.verdict !== "correct").length;
+  return { state: "more", reason, asked, missed };
 }
 
 /** The segment a position is in: one of the plan's, or the one going over the rest again. */

@@ -649,7 +649,7 @@ test("opening a unit marks its course opened, and the unit's event stream replay
   await stream.close();
 });
 
-test("a segment runs through the unit routes: a message, ready, an answer, moving on and the next segment", async () => {
+test("a segment runs through the unit routes: a message, ready, an answer, another question refused, moving on and the next segment", async () => {
   const setup = setUp([
     [{ text: "A map is fixed by a basis." }],
     [{ text: "Because every vector is a combination of the basis." }],
@@ -693,6 +693,12 @@ test("a segment runs through the unit routes: a message, ready, an answer, movin
   });
   expect(again.status).toBe(409);
   expect(await again.json()).toEqual({ error: "No question is open." });
+  // A correct answer opens no detour, so there is none to end (task 2.20).
+  const another = await post(setup.app, `${UNIT}/another-question`);
+  expect(another.status).toBe(409);
+  expect(await another.json()).toEqual({
+    error: "No detour is open, so there is nothing to end.",
+  });
 
   const moved = await post(setup.app, `${UNIT}/override`);
   expect(moved.status).toBe(200);

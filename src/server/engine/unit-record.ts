@@ -5,6 +5,9 @@
 // is appended to the evidence before its question is closed, and a question
 // has one answer: one the evidence already holds is the one kept (task 2.8a).
 //
+// A miss opens a detour (task 2.20) in the same write that closes its
+// question, so a restart never finds the question closed and no detour.
+//
 // The position also keeps the id of the unit's tutor session, so a unit
 // reopened after a restart resumes it (task 2.14): every position written
 // carries the id kept last, whatever position the chat gives.
@@ -19,7 +22,7 @@ import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { AnswerSubmission, Verdict } from "../../shared/question.ts";
-import type { OpenQuestion, UnitPosition } from "../../shared/state.ts";
+import type { Detour, OpenQuestion, UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
@@ -66,9 +69,10 @@ export interface UnitRecord {
   startCheck(): Promise<void>;
   /**
    * Records the graded answer to the open question, closes the question,
-   * and tells the page. If the evidence has an answer to it already,
-   * because writing state.json failed after it, that one is kept and this
-   * answer and grade are dropped.
+   * and tells the page; a miss opens a detour as the question closes. If
+   * the evidence has an answer to it already, because writing state.json
+   * failed after it, that one is kept and this answer and grade are
+   * dropped.
    */
   answer(
     submission: AnswerSubmission,
@@ -76,13 +80,16 @@ export interface UnitRecord {
   ): Promise<Answered>;
   /**
    * Closes the open question, and tells the page, if the evidence has its
-   * answer already: a stop came between recording it and closing it.
+   * answer already: a stop came between recording it and closing it. A
+   * miss opens its detour, as `answer` does.
    */
   closeAnswered(): Promise<Answered | undefined>;
+  /** Ends the open detour, and tells the page: the learner asks for another question. */
+  endDetour(): Promise<void>;
   /**
    * The learner moves on without the check: records an override of the
    * segment's objectives and closes the segment, withdrawing any open
-   * question.
+   * question and ending any detour.
    */
   overrideSegment(): Promise<{
     objectives: string[];
@@ -187,15 +194,27 @@ export async function openUnitRecord(options: {
     );
   }
 
-  /** Closes the question its recorded answer answers, and tells the page. */
+  /**
+   * Closes the question its recorded answer answers, and tells the page.
+   * A miss opens a detour on it.
+   */
   async function close(
     question: OpenQuestion,
     entry: AnswerEvidence,
   ): Promise<Answered> {
     const { openQuestion: _, ...rest } = position;
-    await move(rest);
+    const detour: Detour | undefined =
+      entry.verdict === "correct"
+        ? undefined
+        : {
+            questionId: question.id,
+            number: question.number,
+            objective: question.objective,
+          };
+    await move(detour === undefined ? rest : { ...rest, detour });
     emit(gradedEvent(entry));
     emit(status());
+    if (detour !== undefined) emit(detourEvent(detour));
     return { question, entry };
   }
 
@@ -282,6 +301,11 @@ export async function openUnitRecord(options: {
       return close(question, entry);
     },
 
+    async endDetour() {
+      const { detour: _, ...rest } = position;
+      await move(rest, () => emit({ type: "detour_end" }));
+    },
+
     async overrideSegment() {
       const { segment } = position;
       const objectives = [...segmentOf(plan, position).objectives];
@@ -291,7 +315,7 @@ export async function openUnitRecord(options: {
         objectives,
       });
       const withdrawn = position.openQuestion;
-      const { checkFrom: _, openQuestion: __, ...rest } = position;
+      const { checkFrom: _, openQuestion: __, detour: ___, ...rest } = position;
       await move({ ...rest, phase: "closed" }, () => {
         emit({
           type: "overridden",
@@ -323,6 +347,15 @@ export function gradedEvent(entry: AnswerEvidence): PageEvent {
       : {}),
     ...(entry.flaw === undefined ? {} : { flaw: entry.flaw }),
     assisted: entry.assisted,
+  };
+}
+
+/** A `detour` event: a detour opened after a miss, or the chat opened in it. */
+export function detourEvent(detour: Detour): PageEvent {
+  return {
+    type: "detour",
+    questionId: detour.questionId,
+    number: detour.number,
   };
 }
 

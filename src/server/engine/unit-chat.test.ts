@@ -16,7 +16,13 @@ import type { Plan } from "../../shared/plan.ts";
 import type { ChoiceLetter, Confidence } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
-import { conversations, emptyTimeline, reduce } from "../../web/timeline.ts";
+import { nextStep } from "../../web/session.ts";
+import {
+  conversations,
+  emptyTimeline,
+  reduce,
+  type Timeline,
+} from "../../web/timeline.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import {
   createFakeBackend,
@@ -272,6 +278,16 @@ const positionNow = (): unknown => {
   return rest;
 };
 
+/** The thread the page builds from the chat's events. */
+function replay(chat: UnitChat): Timeline {
+  return chat
+    .events()
+    .reduce(
+      (state, event, index) => reduce(state, { type: "event", index, event }),
+      reduce(emptyTimeline, { type: "hello", chatId: chat.id }),
+    );
+}
+
 /** The events from the last one of this type on, or every event if none. */
 function since(chat: UnitChat, type: PageEvent["type"]): PageEvent[] {
   const events = chat.events();
@@ -323,6 +339,12 @@ async function answer(
 /** Takes the unit to its check, with nothing asked yet. */
 async function toCheck(chat: UnitChat) {
   expect(await chat.ready()).toEqual({ ok: true });
+  await chat.settled();
+}
+
+/** Ends the detour a miss opened, which asks the tutor for the next question (task 2.20). */
+async function anotherQuestion(chat: UnitChat) {
+  expect(await chat.anotherQuestion()).toEqual({ ok: true });
   await chat.settled();
 }
 
@@ -520,12 +542,11 @@ test('"ready" starts the check, and the tutor\'s question is stored in state.jso
   );
 });
 
-test("an answer is graded, appended to the evidence, and sent to the tutor with the question", async () => {
+test("a miss is graded, appended to the evidence and opens a detour, whose first turn sends the tutor the question and asks it to find the confusion; no question follows", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
-    [{ text: "Not quite." }],
-    [{ text: "Ask me if anything is unclear." }],
+    [{ text: "Not quite: A divides by $h$. Where did B come from?" }],
   ]);
   await makeCourse();
   const chat = await open(setup);
@@ -543,42 +564,54 @@ test("an answer is graded, appended to the evidence, and sent to the tutor with 
   ).toEqual({ ok: true });
   await chat.settled();
 
-  expect(since(chat, "graded")[0]).toEqual({
-    type: "graded",
+  const choice = {
+    kind: "choice",
     questionId: id,
-    verdict: "incorrect",
-    answer: {
-      kind: "choice",
+    choice: "B",
+    confidence: "75",
+    reasoning: "The change in f.",
+  } as const;
+  // The detour opens after the grade, before the tutor's first turn in it.
+  expect(since(chat, "graded")).toEqual([
+    {
+      type: "graded",
       questionId: id,
-      choice: "B",
-      confidence: "75",
-      reasoning: "The change in f.",
+      verdict: "incorrect",
+      answer: choice,
+      correctChoice: "A",
+      assisted: false,
     },
-    correctChoice: "A",
-    assisted: false,
-  });
+    status("in-progress", "attempted"),
+    { type: "detour", questionId: id, number: 1 },
+    { type: "turn_start" },
+    {
+      type: "tutor_text",
+      text: "Not quite: A divides by $h$. Where did B come from?",
+    },
+    { type: "turn_end", outcome: "done" },
+  ]);
   expect(await reload().readEvidence(COURSE)).toEqual([
     {
       kind: "answer",
       recordedAt: NOW,
       objective: "difference-quotient",
       question: stored(Q_QUOTIENT),
-      answer: {
-        kind: "choice",
-        questionId: id,
-        choice: "B",
-        confidence: "75",
-        reasoning: "The change in f.",
-      },
+      answer: choice,
       assisted: false,
       verdict: "incorrect",
     },
   ]);
+  // The position holds the open detour, so a restart reopens it.
   expect(await position()).toEqual({
-    derivative: { segment: 0, phase: "check", checkFrom: 0 },
+    derivative: {
+      segment: 0,
+      phase: "check",
+      checkFrom: 0,
+      detour: { questionId: id, number: 1, objective: "difference-quotient" },
+    },
   });
   expect(setup.backend.received[2]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner answered question 1. In this check, "difference-quotient": missed, so another question is needed (1 asked); "secant-slope": not asked yet. Allowed now: your feedback on this answer, written as text, and nothing else. No tool may be called in this reply: once it ends, the app asks you for the next question in a message of its own.]\n' +
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner answered question 1. In this check, "difference-quotient": missed, so another question is needed (1 asked); "secant-slope": not asked yet. The miss opens a detour, a pause in the check: no question is posted until the learner presses "Ready for another question", and nothing said in it is graded. Allowed now, as text, with no tool: give the right answer and why it is right; then find where the confusion is, from the choice they picked and their reasoning, or, if that does not show it, by asking them one question, and work through it with them. You may suggest pressing "Ready for another question" once the confusion seems cleared.]\n' +
       'Question 1, on "difference-quotient":\n' +
       `${Q_QUOTIENT.prompt}\n` +
       "A. $\\frac{f(a+h)-f(a)}{h}$\n" +
@@ -589,6 +622,9 @@ test("an answer is graded, appended to the evidence, and sent to the tutor with 
       "Their reasoning: The change in f.\n" +
       "Graded: incorrect. The correct choice is A.",
   );
+  // The engine asks for no next question: the learner ends the detour.
+  expect(setup.backend.received).toHaveLength(3);
+  expect(nextStep(replay(chat))).toBe("detour");
 });
 
 test('"I don\'t know" is recorded as unknown and the tutor is told it is a miss', async () => {
@@ -609,8 +645,233 @@ test('"I don\'t know" is recorded as unknown and the tutor is told it is a miss'
     verdict: "unknown",
   });
   expect(setup.backend.received[2]?.text).toContain(
-    'The learner answered "I don\'t know", which counts as a miss. The correct choice is A.',
+    'The learner answered "I don\'t know", which counts as a miss. The correct choice is A.\nThey did not say where they got stuck.',
   );
+  // With nothing to go on, the tutor asks where the confusion is.
+  expect(setup.backend.received[2]?.text).toContain(
+    "then find where the confusion is, by asking them one question, and work through it with them.",
+  );
+  expect((await position()).derivative?.detour?.number).toBe(1);
+});
+
+test("the line saying where an \"I don't know\" got stuck is kept with the answer and given to the tutor in the detour's first turn", async () => {
+  const setup = setUp([TEACH, ask(Q_QUOTIENT), [{ text: "Let me explain." }]]);
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  const stuck = "I did not see why $h$ goes in the denominator.";
+
+  expect(
+    await chat.answer({
+      kind: "unknown",
+      questionId: openQuestionId(chat),
+      stuck,
+    }),
+  ).toEqual({ ok: true });
+  await chat.settled();
+
+  expect((await reload().readEvidence(COURSE))[0]).toMatchObject({
+    answer: { kind: "unknown", questionId: openQuestionId(chat), stuck },
+  });
+  expect(since(chat, "graded")[0]).toMatchObject({ answer: { stuck } });
+  const turn = setup.backend.received[2]?.text ?? "";
+  expect(turn).toContain(`\nWhere they got stuck, in their words: ${stuck}`);
+  expect(turn).toContain(
+    "then find where the confusion is, from where they say they got stuck, or, if that does not show it, by asking them one question,",
+  );
+});
+
+test('in a detour no question can be posted and a message is not help; "Ready for another question" ends it and asks for a question on an objective still open, whose answer counts', async () => {
+  const setup = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    [{ text: "A is right. What made B look right?" }],
+    // A reply in the detour that tries to post a question.
+    [
+      { call: "ask_question", input: Q_QUOTIENT_2 },
+      { text: "Because $h$ is the run." },
+    ],
+    ask(Q_QUOTIENT_2),
+    FEEDBACK,
+  ]);
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "B");
+
+  chat.say("I forgot to divide. Why by h?");
+  await chat.settled();
+
+  expect(setup.backend.calls.at(-1)?.result).toEqual({
+    status: "refused",
+    text: 'A detour is open after the miss on question 1: no question may be posted until the learner presses "Ready for another question". The learner sees only the text you write, never your thinking: work through the confusion with them as text, suggest pressing it if they seem ready, then end your reply.',
+  });
+  expect(setup.backend.received[3]?.text).toBe(
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. Message from the learner. In this check, "difference-quotient": missed, so another question is needed (1 asked); "secant-slope": not asked yet. A detour is open after the miss on question 1, on "difference-quotient": nothing in it is graded, and the learner\'s messages are not help. Allowed now: work through the confusion with the learner. ask_question is refused until they press "Ready for another question"; you may suggest it once the confusion seems cleared.]\n' +
+      "I forgot to divide. Why by h?",
+  );
+  expect(chat.events().filter((e) => e.type === "question")).toHaveLength(1);
+
+  const from = chat.events().length;
+  await anotherQuestion(chat);
+
+  expect(chat.events()[from]).toEqual({ type: "detour_end" });
+  expect(setup.backend.received[4]?.text).toBe(
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner pressed "Ready for another question": the detour after question 1 is over, and the check goes on. In this check, "difference-quotient": missed, so another question is needed (1 asked); "secant-slope": not asked yet. Allowed now: a lead-in of one sentence, then a question on "difference-quotient" and "secant-slope" with ask_question, unlike the ones asked before. Do not go back over the detour. Posting ends your turn.]',
+  );
+  const at = (await position()).derivative;
+  expect(at?.detour).toBeUndefined();
+  expect(at?.openQuestion).toMatchObject({
+    number: 2,
+    objective: "difference-quotient",
+  });
+  // Once ended, there is no detour to end.
+  expect(await chat.anotherQuestion()).toEqual({
+    ok: false,
+    status: 409,
+    error: "No detour is open, so there is nothing to end.",
+  });
+
+  await answer(chat, "A");
+
+  // The message in the detour was not help: the answer counts.
+  expect(
+    (await reload().readEvidence(COURSE)).map((e) =>
+      e.kind === "answer" ? [e.verdict, e.assisted] : e.kind,
+    ),
+  ).toEqual([
+    ["incorrect", false],
+    ["correct", false],
+  ]);
+  expect(setup.backend.received[5]?.text).not.toContain("They had help");
+});
+
+test("from the second miss on an objective in this check, the detour's first turn asks the tutor to teach it again another way", async () => {
+  const setup = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    FEEDBACK,
+    ask(Q_QUOTIENT_2),
+    FEEDBACK,
+  ]);
+  await makeCourse(true, SHORT);
+  const chat = await open(setup);
+  await toCheck(chat);
+  const again = "has been missed";
+
+  await answer(chat, "B");
+
+  expect(setup.backend.received[2]?.text).not.toContain(again);
+
+  await anotherQuestion(chat);
+  await chat.answer({ kind: "unknown", questionId: openQuestionId(chat) });
+  await chat.settled();
+
+  expect(setup.backend.received[4]?.text).toContain(
+    'by asking them one question, and work through it with them. "difference-quotient" has been missed 2 times in this check, so after the right answer, teach the objective again another way: a new angle and a new example, not a repeat of your teaching, and not only a fix of this one mistake. You may suggest',
+  );
+});
+
+test("moving on from a detour ends it, records the override and closes the segment", async () => {
+  const setup = setUp([TEACH, ask(Q_QUOTIENT), FEEDBACK, [{ text: "Okay." }]]);
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "B");
+  const from = chat.events().length;
+
+  expect(await chat.override()).toEqual({ ok: true });
+
+  expect(chat.events().slice(from)).toEqual([
+    {
+      type: "overridden",
+      segment: 0,
+      objectives: ["difference-quotient", "secant-slope"],
+    },
+    status("in-progress", "overridden", "overridden"),
+    { type: "phase", segment: 0, phase: "closed" },
+  ]);
+  expect((await reload().readEvidence(COURSE)).at(-1)).toEqual({
+    kind: "override",
+    recordedAt: NOW,
+    objectives: ["difference-quotient", "secant-slope"],
+  });
+  expect(await position()).toEqual({
+    derivative: { segment: 0, phase: "closed" },
+  });
+  expect(nextStep(replay(chat))).toBe("next-segment");
+
+  chat.say("Fine.");
+  await chat.settled();
+
+  expect(setup.backend.received[3]?.text).toContain(
+    'The learner moved on without finishing the check of the segment just closed, which is recorded as an override of "difference-quotient" and "secant-slope".',
+  );
+});
+
+test("a restart reopens a detour: the thread shows it once, nothing is sent, and the learner ends it as before", async () => {
+  const before = setUp([TEACH, ask(Q_QUOTIENT), FEEDBACK]);
+  await makeCourse();
+  const first = await open(before);
+  await toCheck(first);
+  await answer(first, "B");
+  const id = openQuestionId(first);
+  await before.units.close();
+
+  const after = setUp([ask(Q_SECANT)]);
+  const chat = await open(after);
+
+  expect(since(chat, "session")).toEqual([
+    SESSION,
+    { type: "unit_plan", plan: PLAN },
+    status("in-progress", "attempted"),
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "detour", questionId: id, number: 1 },
+  ]);
+  expect(after.backend.received).toEqual([]);
+  const thread = replay(chat);
+  expect(thread.items.filter((i) => i.kind === "detour")).toHaveLength(1);
+  expect(nextStep(thread)).toBe("detour");
+
+  await anotherQuestion(chat);
+
+  expect(after.backend.received[0]?.text).toContain(
+    "the detour after question 1 is over, and the check goes on.",
+  );
+  expect((await position()).derivative?.openQuestion?.number).toBe(2);
+  expect(nextStep(replay(chat))).toBe("move-on");
+});
+
+test("a miss recorded before a restart that left its question open opens its detour when the unit reopens", async () => {
+  const before = setUp([TEACH, ask(Q_QUOTIENT)]);
+  await makeCourse();
+  const first = await open(before);
+  await toCheck(first);
+  const id = openQuestionId(first);
+  await before.units.close();
+  // The answer reached the evidence; the restart came before the question closed.
+  await reload().appendEvidence(COURSE, {
+    kind: "answer",
+    recordedAt: NOW,
+    objective: "difference-quotient",
+    question: stored(Q_QUOTIENT),
+    answer: { kind: "unknown", questionId: id },
+    assisted: false,
+    verdict: "unknown",
+  });
+
+  const after = setUp([[{ text: "Let me explain." }]]);
+  const chat = await open(after);
+
+  expect((await position()).derivative).toEqual({
+    segment: 0,
+    phase: "check",
+    checkFrom: 0,
+    detour: { questionId: id, number: 1, objective: "difference-quotient" },
+  });
+  expect(after.backend.received[0]?.text).toContain("The miss opens a detour");
+  expect(after.backend.received).toHaveLength(1);
+  expect(chat.events().filter((e) => e.type === "detour")).toHaveLength(1);
 });
 
 test("the segment closes when the feedback on the answer that leaves every objective done in this check ends, and not before, even with an objective passed before the check", async () => {
@@ -992,7 +1253,7 @@ test("an answer to another question, or naming a choice the question does not ha
   expect(await reload().readEvidence(COURSE)).toEqual([]);
 });
 
-test('"ready", moving on and the next segment wait until the tutor has finished', async () => {
+test('"ready", another question, moving on and the next segment wait until the tutor has finished', async () => {
   const setup = setUp([
     TEACH,
     [{ text: "Let me think" }, { hold: true }],
@@ -1010,6 +1271,7 @@ test('"ready", moving on and the next segment wait until the tutor has finished'
     error: "Wait until the tutor has finished, or stop it.",
   };
   expect(await chat.ready()).toEqual(wait);
+  expect(await chat.anotherQuestion()).toEqual(wait);
   expect(await chat.override()).toEqual(wait);
   expect(await chat.nextSegment()).toEqual(wait);
 
@@ -1335,6 +1597,7 @@ test("after a miss an objective needs two more correct answers, to different que
   await toCheck(chat);
 
   await answer(chat, "B"); // a confident miss
+  await anotherQuestion(chat);
   await answer(chat, "B");
 
   expect(closedSegments(chat)).toEqual([]);
@@ -1371,8 +1634,10 @@ test("there is no limit: an objective not passed is asked again until it passes 
   await toCheck(chat);
 
   await answer(chat, "B");
+  await anotherQuestion(chat);
   await answer(chat, "A", "50"); // correct but unsure: not passed yet
   await answer(chat, "B");
+  await anotherQuestion(chat);
 
   // A fourth question on it is posted, not refused, and the segment stays open.
   expect(setup.backend.received[7]?.text).toContain(
@@ -1623,6 +1888,7 @@ test("moving on without the objectives not passed records them as overridden and
   const chat = await open(setup);
   await toCheck(chat);
   await answer(chat, "B"); // missed
+  await anotherQuestion(chat);
   await answer(chat, "B"); // passed
   // Moving on from the check reaches the unit's closing card.
   expect(await chat.override()).toEqual({ ok: true });

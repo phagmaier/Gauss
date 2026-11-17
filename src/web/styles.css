@@ -543,10 +543,25 @@ details.why summary:hover {
   color: var(--soft);
   font-size: 0.86em;
 }
-/* the grader's first flaw, beside its label while there is room */
-.qa-flaw {
+/* the grader's first flaw, or where the learner got stuck, beside its label while there is room */
+.qa-flaw,
+.qa-stuck-said {
   flex: 1 1 20em;
   min-width: 0;
+}
+/* "I don't know" asks where the learner got stuck, before it is sent (task 2.20) */
+.qa-stuck {
+  margin-top: 0.9em;
+}
+.qa-stuck label {
+  display: block;
+  color: var(--soft);
+  font-size: 0.94em;
+}
+.qa-optional {
+  color: var(--faint);
+  font-size: 0.9em;
+  margin-left: 0.4em;
 }
 
 /* a written answer as sent: Markdown with math, set off from the prompt */

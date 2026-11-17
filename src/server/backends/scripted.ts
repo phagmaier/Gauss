@@ -15,11 +15,13 @@
 //   ones.
 // - A unit's tutor (ask_question): teaches in the teach phase, gives
 //   feedback alone on a graded answer (the engine then asks for the next
-//   question, or closes the segment, task 2.16a), posts a question when the
-//   header allows one, and otherwise replies in text, which after a fresh
-//   start says where the unit stands. A choice question asks for a sum,
-//   and the right choice is that sum; the engine shuffles the choices (task
-//   2.17), so its letter varies.
+//   question, or closes the segment, task 2.16a), opens the detour a miss
+//   starts with a reply that repeats where an "I don't know" got stuck
+//   (the learner then asks for another question, task 2.20), posts a
+//   question when the header allows one, and otherwise replies in text,
+//   which after a fresh start says where the unit stands. A choice question
+//   asks for a sum, and the right choice is that sum; the engine shuffles
+//   the choices (task 2.17), so its letter varies.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -198,6 +200,20 @@ function teaching(header: string, body: string): FakeStep[] {
     ];
   }
   const answered = /The learner answered question (\d+)\./.exec(header)?.[1];
+  if (answered !== undefined && header.includes("The miss opens a detour")) {
+    const stuck = /^Where they got stuck, in their words: (.*)$/m.exec(body);
+    return [
+      {
+        text:
+          `**Scripted detour** on question ${answered}: the right answer, ` +
+          "and where the confusion is." +
+          (stuck === null
+            ? " You did not say where you got stuck."
+            : ` You got stuck at: "${stuck[1]?.slice(0, 200)}".`) +
+          ' Press "Ready for another question" when you are.',
+      },
+    ];
+  }
   if (answered !== undefined) {
     return [{ text: `Scripted feedback on question ${answered}.` }];
   }

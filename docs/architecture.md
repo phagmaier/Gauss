@@ -259,15 +259,19 @@ derived status.
 
 ### Phases
 
-**Being changed by tasks 2.20 and 2.21** (`decisions.md`, "Stage 2 user
-check"): a detour inside the check after every miss, which replaces the
-detour design below (2.20), and help judged by a separate call (2.21).
-Each task rewrites the rules here that it changes. Task 2.19's stricter
-passing rule and the check with no limit are written in below.
+**Being changed by task 2.21** (`decisions.md`, "Stage 2 user check"):
+help judged by a separate call, which rewrites the help rule below. Task
+2.19's stricter passing rule, the check with no limit, and task 2.20's
+detours are written in.
 
-Per segment: `teach -> discuss -> check -> closed`. A detour pushes the current
-position, runs its own small teach/discuss/check on the weak objective, and
-pops back.
+Per segment: `teach -> discuss -> check -> closed`. Inside the check, every
+miss opens a detour (task 2.20): a pause after the missed answer in which
+the tutor finds the learner's confusion and works through it with them,
+until the learner asks for another question. It has no teach / discuss /
+check of its own: the check's next question is its re-check. This replaced
+an earlier design in which a detour pushed the position and ran its own
+small cycle, opened by a `start_detour` tool (`decisions.md`, "Detour after
+a miss").
 
 | Transition | Triggered by | Engine rule |
 | --- | --- | --- |
@@ -279,7 +283,8 @@ pops back.
 | last segment closed to the unit's end | automatic | the closing card; the unit is passed and leaves `state.json` when every objective passed; since task 2.19 one not passed was moved on from (or closed at the old limit) |
 | unit's end to one more segment | the learner goes over the objectives not passed again | a segment after the plan's last, on those objectives, kept in the position |
 | unit's end to finished | the learner moves on without them | recorded as an override of the objectives not passed; the unit leaves `state.json`, overridden |
-| any to detour | confident wrong answer, or second miss on an objective | engine offers it; tutor or learner can start it |
+| check to detour | a miss: a wrong answer or "I don't know" (task 2.20) | automatic: the missed question closes into a detour, in the same write of `state.json` |
+| detour to check | the learner presses "Ready for another question" | the engine asks for the next question (`nextQuestionTurn`); moving on stays open in a detour, and closes the segment as from the check |
 
 The rules of tasks 2.6 and 2.7:
 
@@ -288,12 +293,14 @@ The rules of tasks 2.6 and 2.7:
   (below), while a question is open, on an objective not in the segment,
   or on one already done in this check, and once the unit is finished. A
   refusal does not end the turn; a posted question does.
-- **The turn after an answer is for feedback alone** (task 2.16a). Its
-  header allows feedback and nothing else. `ask_question` is refused
+- **The turn after an answer is for feedback alone** (task 2.16a), or,
+  after a miss, opens the detour (below). Its header allows that and
+  nothing else. `ask_question` is refused
   from when that feedback is queued until it ends, including in replies
   to earlier learner messages; their headers say feedback is still
   pending (task 2.17a). When it ends, the segment closes if every objective
-  is done in this check; otherwise, unless the learner stopped it, the
+  is done in this check; otherwise, unless the learner stopped it or a
+  detour is open, the
   engine sends the next check turn (`nextQuestionTurn` in `unit-turns.ts`),
   which asks for a lead-in and a question on the objectives still open.
   That turn is queued behind any learner message sent during the
@@ -315,6 +322,27 @@ The rules of tasks 2.6 and 2.7:
   miss asks for another question, and a confident correct answer to an
   objective never missed ends it at one. The header says which, so the
   tutor knows what the next question must show.
+- **Detours** (task 2.20). A miss in the check, a wrong answer or "I
+  don't know", closes its question into a detour, kept in the position
+  (`detour` in `src/shared/state.ts`), so a restart reopens it; the page
+  hears `detour`, and `detour_end` when it ends. Its first turn takes the
+  feedback's place: the header asks the tutor to give the right answer
+  and why, then find where the confusion is (from the choice picked, the
+  grader's flaw, the learner's reasoning or the line saying where they got
+  stuck, or else by asking one question) and work through it; from the
+  objective's second miss in this check, to teach the objective again
+  another way (`missed` in `check-rules.ts`). During the detour the
+  engine posts no question and `ask_question` is refused; the learner's
+  messages are not help, since no question is open. The learner ends it
+  with "Ready for another question" (`another-question`), which sends
+  `nextQuestionTurn`; it waits, as other steps do, while the tutor writes.
+  A correct answer opens none: the next question follows by itself. A
+  unit reopened in a detour sends nothing until the learner acts, also
+  when a restart cut its first turn off. Recording the misconception a
+  detour found (`misconceptions.jsonl`) is stage 5's.
+- **"I don't know"** can carry a line on where the learner got stuck
+  (`stuck` in `AnswerSubmission`), kept with the answer in the evidence and
+  given to the tutor in the detour's first turn.
 - **Help** is noted when a learner message reaches the tutor while a
   question is open: the open question is marked in `state.json`, and its
   answer is recorded as assisted.
@@ -395,7 +423,9 @@ have time limits and a learner may take twenty minutes or close the tab.
 5. The engine sends the tutor the result as the next turn, which is for
    feedback alone: no tool may be called in it. Then the engine asks for
    the next question in a turn of its own, or closes the segment when the
-   check is done (section 4, "Phases"; task 2.16a). Asked for feedback and
+   check is done (section 4, "Phases"; task 2.16a). After a miss the turn
+   opens a detour instead, and the next question waits until the learner
+   asks for it (task 2.20). Asked for feedback and
    the next question in one turn, the tutor on Claude with adaptive
    thinking wrote its feedback in its thinking, which the page never
    shows, in 7 of 8 answer turns (`decisions.md`, "Tutor prompt").
@@ -416,7 +446,7 @@ served to it over the standard tool protocol (MCP).
 | `amend_curriculum` | Proposes a change; applied only after the learner confirms |
 | `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
 | `ask_question` | Posts a question on an objective of the segment, in the check (section 4): a `choice` question with its answer letter, its choices shuffled by the engine (task 2.17), or a `written` one with its rubric (task 2.8; `QuestionInput` in `src/shared/question.ts`) |
-| `start_detour`, `end_detour` | Open and close a detour; closing records the misconception found |
+| (none for detours) | The engine opens a detour on a miss and the learner ends it (section 4, task 2.20). How the tutor records the misconception a detour found is stage 5's |
 | `quote_source` | Returns a verified quote block, or an error if the text is not in the source |
 | `show_artifact` | Displays an HTML file from `artifacts/` in the side pane |
 | `propose_style` | Proposes a change to `style.md`; applied only after the learner confirms |
@@ -735,7 +765,11 @@ real transcripts.
   side pane for artifacts and cited source passages. A line divides one
   message from the next, and the open question sits above the message box,
   with the next-step control, until it is graded or withdrawn (task 2.18,
-  `divided` and `openQuestion` in `src/web/session.ts`).
+  `divided` and `openQuestion` in `src/web/session.ts`). A detour has a
+  marker after the missed question's card, and the next-step control then
+  offers "Ready for another question" beside moving on; "I don't know"
+  asks, before it is sent, where the learner got stuck, which they may
+  leave blank (task 2.20).
 
 Text from a model, and the learner's typed answers, are rendered as
 Markdown with `$` math by `src/web/prose.tsx`, as React elements and never
@@ -757,7 +791,7 @@ stored draft. A unit chat is addressed by its course and unit, under
 `/api/courses/<id>/units/<unit>/` (task 2.6): `open` starts the unit or
 picks it up and must come first, then `events`, `messages`, `ready`,
 `answers`, `grade-again` (a written answer whose grading failed, task
-2.8), `override`, `next-segment`, `go-over-again` and `finish` (the
+2.8), `another-question` (ends a detour, task 2.20), `override`, `next-segment`, `go-over-again` and `finish` (the
 closing card's two steps), `start-fresh` (task 2.14) and `interrupt`. A
 unit not opened
 since the server started answers 404 on all but `open`. An event stream replays its chat's log with ids

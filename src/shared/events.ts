@@ -93,6 +93,24 @@ export const PageEvent = z.discriminatedUnion("type", [
     assisted: z.boolean(),
   }),
   /**
+   * A detour opened after a miss in the check (task 2.20), or the chat
+   * opened in one: the tutor works through the confusion with the learner,
+   * and no question is posted until the learner asks for another one, or
+   * moves on. It follows the missed question's `graded`.
+   */
+  z.object({
+    type: z.literal("detour"),
+    /** The question missed. */
+    questionId: z.string(),
+    number: z.number().int().positive(),
+  }),
+  /**
+   * The learner asked for another question, which ends the detour. A
+   * detour also ends when the learner moves on, with the segment's
+   * "closed" phase.
+   */
+  z.object({ type: z.literal("detour_end") }),
+  /**
    * The intake starts from a stored draft, because the conversation that
    * proposed it was lost in a restart. Its proposal follows as revision 1.
    */

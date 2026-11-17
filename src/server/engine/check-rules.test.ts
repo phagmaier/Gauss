@@ -55,17 +55,17 @@ test.each<{
   {
     name: "a miss",
     check: [answer(1, "incorrect", "90")],
-    expected: { state: "more", reason: "missed", asked: 1 },
+    expected: { state: "more", reason: "missed", asked: 1, missed: 1 },
   },
   {
     name: 'an "I don\'t know"',
     check: [answer(1, "unknown")],
-    expected: { state: "more", reason: "missed", asked: 1 },
+    expected: { state: "more", reason: "missed", asked: 1, missed: 1 },
   },
   {
     name: "one correct answer at 75%",
     check: [answer(1, "correct", "75")],
-    expected: { state: "more", reason: "unconfident", asked: 1 },
+    expected: { state: "more", reason: "unconfident", asked: 1, missed: 0 },
   },
   {
     name: "one correct answer at 90%, never missed",
@@ -75,12 +75,12 @@ test.each<{
   {
     name: "a confident correct answer with help",
     check: [answer(1, "correct", "100", true)],
-    expected: { state: "more", reason: "assisted", asked: 1 },
+    expected: { state: "more", reason: "assisted", asked: 1, missed: 0 },
   },
   {
     name: "two unsure correct answers to different questions",
     check: [answer(1, "correct", "50"), answer(2, "correct", "75")],
-    expected: { state: "more", reason: "unconfident", asked: 2 },
+    expected: { state: "more", reason: "unconfident", asked: 2, missed: 0 },
   },
   {
     name: "a pass before the check, and an unsure correct answer in it",
@@ -91,7 +91,7 @@ test.each<{
   {
     name: "a miss, then a confident correct answer",
     check: [answer(1, "incorrect"), answer(2, "correct", "100")],
-    expected: { state: "more", reason: "confirm", asked: 2 },
+    expected: { state: "more", reason: "confirm", asked: 2, missed: 1 },
   },
   {
     name: "a miss, then a confident and an unsure correct answer",
@@ -109,7 +109,7 @@ test.each<{
       answer(2, "correct", "90"),
       answer(2, "correct", "90"),
     ],
-    expected: { state: "more", reason: "confirm", asked: 3 },
+    expected: { state: "more", reason: "confirm", asked: 3, missed: 1 },
   },
   {
     name: "the user's sitting: \"I don't know\", correct at 75%, correct at 90% with help",
@@ -118,12 +118,18 @@ test.each<{
       answer(2, "correct", "75"),
       answer(3, "correct", "90", true),
     ],
-    expected: { state: "more", reason: "assisted", asked: 3 },
+    expected: { state: "more", reason: "assisted", asked: 3, missed: 1 },
   },
   {
     name: 'three "I don\'t know"s, with no limit',
     check: [answer(1, "unknown"), answer(2, "unknown"), answer(3, "unknown")],
-    expected: { state: "more", reason: "missed", asked: 3 },
+    expected: { state: "more", reason: "missed", asked: 3, missed: 3 },
+  },
+  {
+    name: "a miss before the check is not counted among the check's misses",
+    before: [answer(1, "incorrect")],
+    check: [answer(2, "correct", "50"), answer(3, "incorrect")],
+    expected: { state: "more", reason: "missed", asked: 2, missed: 1 },
   },
   {
     name: "a pass on the fifth question",

@@ -119,6 +119,12 @@ test(
         at !== undefined && at.phase === "check";
         at = await position()
       ) {
+        if (at.detour !== undefined) {
+          // A miss opens a detour, which the learner ends (task 2.20).
+          expect(await chat.anotherQuestion()).toEqual({ ok: true });
+          await chat.settled();
+          continue;
+        }
         const open = await openQuestion();
         prompts.push(open.question.prompt);
         kinds.add(open.question.kind);
@@ -150,6 +156,16 @@ test(
       e.kind === "answer" ? e.verdict : e.kind,
     );
     expect(verdicts.filter((v) => v === "incorrect")).toHaveLength(1);
+    // The miss opened a detour, which the scripted tutor answered as one.
+    expect(chat.events().filter((e) => e.type === "detour")).toHaveLength(1);
+    expect(
+      chat
+        .events()
+        .some(
+          (e) =>
+            e.type === "tutor_text" && e.text.startsWith("**Scripted detour**"),
+        ),
+    ).toBe(true);
     expect(verdicts.filter((v) => v === "correct")).toHaveLength(
       verdicts.length - 1,
     );

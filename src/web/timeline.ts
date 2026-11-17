@@ -64,6 +64,8 @@ export type Item =
   | UnitEndItem
   /** Where a question was posted that was answered further down (task 2.18). */
   | { kind: "answered-below"; key: number; number: number }
+  /** A detour began after the miss on this question (task 2.20). */
+  | { kind: "detour"; key: number; questionId: string; number: number }
   /** A unit's session, a sitting, began after an earlier one (task 2.13). */
   | {
       kind: "session";
@@ -123,6 +125,8 @@ export interface Timeline {
   failed: string | null;
   /** The phase that began last; null until the unit is open, and when it opens finished. */
   position: Position | null;
+  /** The detour open in the check, after the miss on this question (task 2.20). */
+  detour: { questionId: string; number: number } | null;
   /** The unit is finished, and how. */
   finished: "passed" | "overridden" | null;
 }
@@ -141,6 +145,7 @@ export const emptyTimeline: Timeline = {
   planning: false,
   failed: null,
   position: null,
+  detour: null,
   finished: null,
 };
 
@@ -395,12 +400,13 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...(event.again === undefined ? {} : { again: event.again }),
       };
       // A chat that opens in the phase the thread is in, as a unit reopened
-      // after a restart does, begins nothing new.
+      // after a restart does, begins nothing new. A detour still open is
+      // said again after the phase, so one whose end the thread lost ends.
       if (
         state.position?.segment === position.segment &&
         state.position.phase === position.phase
       ) {
-        return { ...next, position };
+        return { ...next, position, detour: null };
       }
       // Going over again starts with the extra segment's teaching.
       const items =
@@ -411,9 +417,29 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...next,
         items: [...items, { kind: "phase", key: index, ...position }],
         position,
+        detour: null,
         tutorOpen: false,
       };
     }
+    case "detour": {
+      const detour = { questionId: event.questionId, number: event.number };
+      // A unit reopened in a detour says so again: its marker is shown once.
+      if (
+        state.items.some(
+          (i) => i.kind === "detour" && i.questionId === event.questionId,
+        )
+      ) {
+        return { ...next, detour };
+      }
+      return {
+        ...next,
+        items: [...state.items, { kind: "detour", key: index, ...detour }],
+        detour,
+        tutorOpen: false,
+      };
+    }
+    case "detour_end":
+      return { ...next, detour: null };
     case "unit_end":
       if (cardStanding(state.items)) return next;
       return {

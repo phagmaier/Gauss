@@ -1048,3 +1048,44 @@ tested"). Stage 1 is finished.
   passed (563 TypeScript tests, one Python test); six injected faults
   each failed tests. Browser run on `pnpm dev:fake`. Findings:
   `decisions.md`, "Strict passing".
+
+### 2.20 Detour after a miss
+
+- Status: done
+- Depends on: 2.19
+- Why: after a miss the next question came at once, with no room to find
+  or fix the confusion (notes 2, 5 and 6).
+- Do: a miss (wrong or "I don't know") in a check starts a detour. Its
+  first turn replaces the feedback turn: the header asks the tutor to give
+  the right answer and why, then find where the confusion is (from the
+  choice picked, the grader's flaw, the learner's reasoning or stuck line,
+  or by asking one question) and work through it; at the second miss on
+  the objective in this check, to teach the objective again another way.
+  The engine posts no next question during a detour; the learner presses
+  "Ready for another question" (the tutor may suggest it), which sends
+  `nextQuestionTurn`. A correct answer keeps the automatic next question.
+  Messages in a detour are not help. Moving on stays open in a detour.
+  The position holds the open detour, so a restart reopens it. "I don't
+  know" takes an optional line on where the learner got stuck, kept with
+  the answer and given to the tutor. Update `tutor.md`'s feedback
+  section, `scripted.ts`, the page (the button, the detour's marker) and
+  architecture section 4 (the detour replaces its `start_detour` design;
+  the misconception record stays in stage 5).
+- Done when: fake-backend tests show a miss opens a detour with no
+  question until "ready", a correct answer still leads to the next
+  question, "ready" asks for one on an open objective, a message in a
+  detour is not help, a restart reopens a detour, moving on from one
+  records the override, and the stuck line reaches the tutor's turn; a
+  browser check on `pnpm dev:fake`; one real segment on Sonnet 5.5 with a
+  wrong answer and an "I don't know", its transcript read against what
+  the headers ask (the confusion found, no question until ready, teaching
+  again after a second miss).
+- Note: done on 2026-11-16. As asked; the agent's choices: the detour
+  opens in the write that closes the missed question; the page hears
+  `detour` and `detour_end`; teaching again from the second miss on,
+  counted in this check; "I don't know" hides the answer fields while it
+  asks where the learner got stuck (found in the browser run). `mise run
+  check` passed (578 TypeScript tests, one Python test); six injected
+  faults each failed tests. Browser run on `pnpm dev:fake`; one real
+  segment on Sonnet 5.5, whose turns matched the headers. Findings:
+  `decisions.md`, "Detour after a miss".

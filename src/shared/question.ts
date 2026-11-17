@@ -185,7 +185,10 @@ export const WrittenAnswer = z.object({
 });
 export type WrittenAnswer = z.infer<typeof WrittenAnswer>;
 
-/** The learner's answer, or "I don't know", which asks no confidence. */
+/**
+ * The learner's answer, or "I don't know", which asks no confidence and can
+ * say where the learner got stuck (task 2.20).
+ */
 export const AnswerSubmission = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("choice"),
@@ -198,6 +201,8 @@ export const AnswerSubmission = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("unknown"),
     questionId: z.string(),
+    /** Where the learner got stuck, in their words; the tutor is given it. */
+    stuck: z.string().trim().min(1).max(10_000).optional(),
   }),
 ]);
 export type AnswerSubmission = z.infer<typeof AnswerSubmission>;

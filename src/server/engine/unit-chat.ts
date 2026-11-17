@@ -10,7 +10,10 @@
 //   answer is graded, recorded with whether the learner had help, and sent
 //   to the tutor in a turn for feedback only, where no tool may be called.
 //   When it ends, the engine asks for the next question in a turn of its
-//   own (task 2.16a). A choice is graded at once; a written answer is kept
+//   own (task 2.16a). A miss opens a detour instead (task 2.20): its first
+//   turn takes the feedback's place, the tutor works through the confusion
+//   with the learner, and no question is posted until the learner asks for
+//   another one. A choice is graded at once; a written answer is kept
 //   in state.json and graded by the grader (grading.ts), outside the
 //   chat's queue, and if the grading fails it can be graded again;
 // - check to closed: the engine closes the segment when the feedback on the
@@ -78,6 +81,7 @@ import { createUnitAgents, type UnitAgents } from "./unit-agents.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
   type Answered,
+  detourEvent,
   gradedEvent,
   openUnitRecord,
   phaseEvent,
@@ -109,6 +113,11 @@ export interface UnitChat {
   say(text: string): ChatResult;
   /** The learner is ready for the check. */
   ready(): Promise<ChatResult>;
+  /**
+   * In a detour after a miss: the learner is ready for another question,
+   * which ends the detour and asks the tutor for one.
+   */
+  anotherQuestion(): Promise<ChatResult>;
   /**
    * The learner's answer to the open question. A written one is graded
    * after this returns; the page hears the grade, or that grading failed.
@@ -327,6 +336,8 @@ function createUnitChat(
       }
       const { position } = record;
       log.emit(phaseEvent(position));
+      // A detour waits on the learner, as an open question does.
+      if (position.detour !== undefined) log.emit(detourEvent(position.detour));
       const open = position.openQuestion;
       if (open !== undefined) {
         log.emit({ type: "question", question: view(open) });
@@ -465,7 +476,9 @@ function createUnitChat(
    * Given the next question to plan in the same reply, the tutor wrote its
    * feedback in its thinking, which the learner never sees (task 2.16).
    * When the turn ends, the segment closes if the check is done; otherwise,
-   * unless the learner stopped it, the next question is asked for.
+   * unless the learner stopped it, the next question is asked for. After a
+   * miss the turn opens the detour the miss opened (task 2.20), and nothing
+   * follows it: the learner asks for the next question.
    */
   function tellGrade(r: Running, { question, entry }: Answered): void {
     const { number } = question;
@@ -482,7 +495,12 @@ function createUnitChat(
           r.feedback = undefined;
           if (!nextAfter(r, number)) return;
           if (checkDone(r)) await closeSegment(r);
-          else if (outcome !== "interrupted") askNext(r, number, stops);
+          else if (
+            outcome !== "interrupted" &&
+            r.record.position.detour === undefined
+          ) {
+            askNext(r, number, stops);
+          }
         }),
     });
   }
@@ -599,6 +617,9 @@ function createUnitChat(
             return { refused: UNIT_FINISHED };
           }
           const { position } = r.record;
+          if (position.detour !== undefined) {
+            return { refused: inDetour(position.detour.number) };
+          }
           if (r.feedback !== undefined) {
             const { number, started } = r.feedback;
             return {
@@ -750,6 +771,19 @@ function createUnitChat(
         if (phase !== "discuss") return refused(NOT_NOW.ready[phase]);
         await r.record.startCheck();
         r.agents.send({ text: () => readyTurn(where(r)) });
+        return { ok: true };
+      }),
+
+    anotherQuestion: () =>
+      act(async (r) => {
+        const { detour } = r.record.position;
+        if (detour === undefined) {
+          return refused("No detour is open, so there is nothing to end.");
+        }
+        await r.record.endDetour();
+        r.agents.send({
+          text: () => nextQuestionTurn(where(r), detour.number, "detour"),
+        });
         return { ok: true };
       }),
 
@@ -934,6 +968,17 @@ function view(open: OpenQuestion): QuestionView {
 
 function refused(error: string): ChatResult {
   return { ok: false, status: 409, error };
+}
+
+/** Why ask_question is refused in a detour (task 2.20), in its first turn or later. */
+function inDetour(number: number): string {
+  return (
+    `A detour is open after the miss on question ${number}: no question ` +
+    'may be posted until the learner presses "Ready for another question". ' +
+    "The learner sees only the text you write, never your thinking: work " +
+    "through the confusion with them as text, suggest pressing it if they " +
+    "seem ready, then end your reply."
+  );
 }
 
 /** A learner's earlier message must not post a question before feedback. */

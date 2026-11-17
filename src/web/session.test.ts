@@ -170,6 +170,14 @@ const PROOF = {
   text: "Add and subtract.",
   confidence: "50" as const,
 };
+const MISS: PageEvent = {
+  type: "graded",
+  questionId: "q1",
+  verdict: "incorrect",
+  answer: { kind: "choice", questionId: "q1", choice: "B", confidence: "90" },
+  correctChoice: "A",
+  assisted: false,
+};
 
 test.each<[string, PageEvent[], ReturnType<typeof nextStep>]>([
   ["while the unit opens", [], null],
@@ -222,6 +230,29 @@ test.each<[string, PageEvent[], ReturnType<typeof nextStep>]>([
         answer: PROOF,
         assisted: false,
       },
+    ],
+    "move-on",
+  ],
+  [
+    "in a detour after a miss",
+    [
+      planned,
+      phase(0, "check"),
+      { type: "question", question: CHOICE },
+      MISS,
+      { type: "detour", questionId: "q1", number: 1 },
+    ],
+    "detour",
+  ],
+  [
+    "once the learner asked for another question",
+    [
+      planned,
+      phase(0, "check"),
+      { type: "question", question: CHOICE },
+      MISS,
+      { type: "detour", questionId: "q1", number: 1 },
+      { type: "detour_end" },
     ],
     "move-on",
   ],
@@ -396,6 +427,25 @@ test("a question answered below where it was posted begins an exchange there, an
     "-- question",
     "tutor",
   ]);
+});
+
+test("a detour's marker stands between a missed question and the tutor's reply, with no line on either side, and the detour is not a question left open", () => {
+  const timeline = play([
+    planned,
+    phase(0, "check"),
+    ...asked(CHOICE),
+    MISS,
+    { type: "detour", questionId: "q1", number: 1 },
+    ...said("It is $3x^2$: the exponent comes down."),
+  ]);
+  const kinds = timeline.items.map((i) => i.kind);
+  const lines = timeline.items.map((item, i) =>
+    divided(timeline.items[i - 1], item),
+  );
+
+  expect(kinds.slice(-3)).toEqual(["question", "detour", "tutor"]);
+  expect(lines.slice(-2)).toEqual([false, false]);
+  expect(openQuestion(timeline)).toBeUndefined();
 });
 
 test("a line goes between the closing card and the messages around it, never at the top", () => {

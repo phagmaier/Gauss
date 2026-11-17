@@ -8,6 +8,10 @@
 //
 // Keys, when not typing (mock 2): A to F pick a choice, 1 to 5 how sure, and
 // Enter submits.
+//
+// "I don't know" asks, before it is sent, where the learner got stuck, which
+// they may leave blank (task 2.20); the tutor is given it in the detour the
+// miss opens.
 
 import { useEffect, useState } from "react";
 import {
@@ -75,6 +79,9 @@ function OpenCard(props: {
   const [text, setText] = useState("");
   const [confidence, setConfidence] = useState<Confidence>();
   const [reasoning, setReasoning] = useState("");
+  /** "I don't know" was pressed: the card asks where the learner got stuck. */
+  const [unknown, setUnknown] = useState(false);
+  const [stuck, setStuck] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -104,6 +111,15 @@ function OpenCard(props: {
   }
   const ready = answer();
 
+  function sendUnknown() {
+    const said = stuck.trim();
+    void send({
+      kind: "unknown",
+      questionId: question.id,
+      ...(said === "" ? {} : { stuck: said }),
+    });
+  }
+
   async function send(submission: AnswerSubmission) {
     setSending(true);
     setError(undefined);
@@ -118,7 +134,7 @@ function OpenCard(props: {
   // One keystroke for a choice and for how sure, as mock 2 has it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || sending) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || sending || unknown) return;
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest("input, textarea, select, [contenteditable]")) return;
       const key = e.key.toUpperCase();
@@ -156,73 +172,123 @@ function OpenCard(props: {
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
-      {question.kind === "choice" ? (
-        <Choices
-          question={question}
-          choice={choice}
-          onChoose={(letter) => setChoice(letter)}
-        />
-      ) : (
+      {/* "I don't know" asks for no choice and no confidence: they are hidden,
+      and kept, while it asks where the learner got stuck. */}
+      {unknown ? null : (
         <>
-          <textarea
-            className="field written"
-            aria-label="Your answer"
-            placeholder="Write your answer"
-            value={text}
-            disabled={sending}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <AnswerPreview text={text} />
+          {question.kind === "choice" ? (
+            <Choices
+              question={question}
+              choice={choice}
+              onChoose={(letter) => setChoice(letter)}
+            />
+          ) : (
+            <>
+              <textarea
+                className="field written"
+                aria-label="Your answer"
+                placeholder="Write your answer"
+                value={text}
+                disabled={sending}
+                onChange={(e) => setText(e.target.value)}
+              />
+              <AnswerPreview text={text} />
+            </>
+          )}
+          <fieldset className="qa-conf">
+            <legend>How sure are you?</legend>
+            <div className="chips">
+              {CONFIDENCE.map((c) => (
+                <button
+                  type="button"
+                  className="chip"
+                  key={c.value}
+                  aria-pressed={confidence === c.value}
+                  onClick={() => setConfidence(c.value)}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          {question.kind === "choice" ? (
+            <details className="why">
+              <summary>Add your reasoning</summary>
+              <textarea
+                className="field reason"
+                aria-label="Your reasoning"
+                value={reasoning}
+                onChange={(e) => setReasoning(e.target.value)}
+              />
+            </details>
+          ) : null}
         </>
       )}
-      <fieldset className="qa-conf">
-        <legend>How sure are you?</legend>
-        <div className="chips">
-          {CONFIDENCE.map((c) => (
+      {error === undefined ? null : <p className="qa-error">{error}</p>}
+      {unknown ? (
+        <div className="qa-stuck">
+          <label htmlFor={`stuck-${question.id}`}>
+            Where did you get stuck?{" "}
+            <span className="qa-optional">Optional</span>
+          </label>
+          <textarea
+            id={`stuck-${question.id}`}
+            className="field reason"
+            // biome-ignore lint/a11y/noAutofocus: opened by the learner's own click, to type in at once
+            autoFocus
+            value={stuck}
+            disabled={sending}
+            placeholder="The step or idea where you lost the thread"
+            onChange={(e) => setStuck(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends, as in the message box; Shift+Enter is a new line.
+              if (e.key === "Enter" && !e.shiftKey && !sending) {
+                e.preventDefault();
+                sendUnknown();
+              }
+            }}
+          />
+          <div className="qa-foot">
             <button
               type="button"
-              className="chip"
-              key={c.value}
-              aria-pressed={confidence === c.value}
-              onClick={() => setConfidence(c.value)}
+              className="textbtn"
+              disabled={sending}
+              onClick={() => setUnknown(false)}
             >
-              {c.label}
+              Back to the question
             </button>
-          ))}
+            <button
+              type="button"
+              className="btn"
+              disabled={sending}
+              onClick={sendUnknown}
+            >
+              Send "I don't know"
+            </button>
+          </div>
         </div>
-      </fieldset>
-      {question.kind === "choice" ? (
-        <details className="why">
-          <summary>Add your reasoning</summary>
-          <textarea
-            className="field reason"
-            aria-label="Your reasoning"
-            value={reasoning}
-            onChange={(e) => setReasoning(e.target.value)}
-          />
-        </details>
-      ) : null}
-      {error === undefined ? null : <p className="qa-error">{error}</p>}
-      <div className="qa-foot">
-        <button
-          type="button"
-          className="textbtn"
-          disabled={sending}
-          onClick={() => send({ kind: "unknown", questionId: question.id })}
-        >
-          I don't know
-        </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={sending || ready === undefined}
-          onClick={() => {
-            if (ready !== undefined) void send(ready);
-          }}
-        >
-          Submit answer
-        </button>
-      </div>
+      ) : (
+        <div className="qa-foot">
+          <button
+            type="button"
+            className="textbtn"
+            disabled={sending}
+            onClick={() => setUnknown(true)}
+          >
+            I don't know
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={sending || ready === undefined}
+            onClick={() => {
+              if (ready !== undefined) void send(ready);
+            }}
+          >
+            Submit answer
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -378,6 +444,12 @@ function GradedCard(props: { question: QuestionView; graded: Graded }) {
           )}
         </div>
       )}
+      {answer.kind === "unknown" && answer.stuck !== undefined ? (
+        <div className="qa-line">
+          <span className="k">Stuck on</span>
+          <span className="qa-stuck-said">{answer.stuck}</span>
+        </div>
+      ) : null}
       {graded.verdict === "correct" ||
       graded.correctChoice === undefined ? null : (
         <div className="qa-line">

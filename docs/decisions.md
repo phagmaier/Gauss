@@ -54,6 +54,7 @@ findings are the record.
 | Stage 2 user check | The user's first try of the stage 2 check: what the record showed, the user's decisions (strict passing, a detour after every miss, clarification is not help, the planner asks first, separators), the details the agent chose, and tasks 2.18 to 2.22 | Any of tasks 2.18 to 2.22; touching the passing rule, the check's question count, help, detours, `planner.md` or `tutor.md` |
 | Thread separators and the pinned question | Task 2.18: where lines go between messages, the open question above the message box, an answered question moved to where it was answered, the browser run | Touching the session thread (`divided`, `openQuestion` in `session.ts`, the `graded` case in `timeline.ts`), the question card's place, or the foot of the session view |
 | Strict passing | Task 2.19: the passing rule with a confident answer and a second after a miss, no question limit, the `confirm` reason, the header wording and the scripted tutor, the closing card's reasons, records closed at the old limit | Touching `record/status.ts`, `engine/check-rules.ts`, the check headers in `unit-turns.ts`, the closing card's rows, or `scripted.ts`'s question numbering |
+| Detour after a miss | Task 2.20: the detour in the position and its events, its first turn and the teaching again from the second miss, refusals and help in it, ending it and what a Stop then leaves, a restart, the "I don't know" line and its field, the marker and control, the checks and the real run on Sonnet 5.5 | Touching detours (`detour` in `state.ts`, `endDetour`, `anotherQuestion`, `detourOpening` in `unit-turns.ts`), `missed` in `check-rules.ts`, "I don't know" (`stuck`), the detour marker or control; 2.21's help judging, stage 5's misconception record |
 
 ## Page design (plan task 1.0)
 
@@ -3934,3 +3935,128 @@ and the question limit of task 2.7.
   before it passed". The browser was closed before the server stopped.
   No real-model run: the tutor's prompt changed by two sentences, which
   2.20's real run reads.
+
+## Detour after a miss (plan task 2.20)
+
+Built on 2026-11-16, from the user's decision that every miss starts a
+detour ("Stage 2 user check"). It replaces the earlier detour design, a
+pushed position with its own small cycle opened by `start_detour`. The
+choices below are the agent's and can be overturned.
+
+- **The detour is kept in the position** (`detour` in `src/shared/state.ts`:
+  the missed question's id and number, and its objective), only in the
+  check and never with a question open. A miss closes its question into
+  the detour in the same `state.json` write (`close` in
+  `engine/unit-record.ts`), so no restart finds the question closed and the
+  detour not open; a miss recorded before a restart that left its question
+  open opens its detour when the unit reopens (`closeAnswered`).
+- **The page hears `detour`**, after the missed question's `graded` and
+  `unit_status`, so the marker stands between the card and the tutor's
+  reply, and **`detour_end`** when the learner asks for another question.
+  Moving on ends it with the segment's "closed" phase. A chat that opens in
+  a detour says it again after the phase; the thread shows a detour's
+  marker once, matched by question id, and any phase event clears the open
+  detour first, so a transcript that lost its `detour_end` is corrected by
+  the reopened chat rather than leaving the button up.
+- **Its first turn replaces the feedback turn.** The header
+  (`detourOpening` in `unit-turns.ts`) asks for the right answer and why,
+  then where the confusion is: from the choice picked (and the reasoning,
+  when given), the grader's flaw and what was written, or the stuck line,
+  or else by one question; with nothing to go on (an "I don't know" with
+  no line), by one question. Then work through it, and the tutor may
+  suggest the button.
+- **Teaching again from the second miss on**, counted within this check
+  (`missed` on an objective's "more" state in `check-rules.ts`; misses
+  before the check do not count). Every later miss asks again too: if two
+  ways did not work, a third is wanted, not a fix of one mistake.
+- **No question in a detour.** `ask_question` is refused with its own
+  reason (`inDetour` in `unit-chat.ts`), checked before the feedback
+  refusals, in the first turn and every reply. Messages in a detour are
+  not help: no question is open, so the help rule does not apply; the
+  header says so.
+- **"Ready for another question"** (`anotherQuestion`, route
+  `another-question`) ends the detour at once and sends `nextQuestionTurn`
+  ("the detour after question N is over ... Do not go back over the
+  detour"). It waits while the tutor writes, as "ready" does, which also
+  keeps it from ending a detour whose first turn has not been sent. If the
+  learner stops that turn, or the tutor posts nothing, the check has no
+  question and no detour, as after a stopped automatic question (task
+  2.17a): the next message's header asks for a question. Not changed.
+- **A restart that cut the detour's first turn off does not resend it**,
+  as a feedback turn is not resent: the unit opens in the detour with the
+  button, and a message gets the detour's header.
+- **"I don't know" asks where the learner got stuck** before it is sent
+  (`stuck` on the "unknown" `AnswerSubmission`, trimmed, at most 10,000
+  characters, left out when blank). It is kept in the evidence, shown on
+  the graded card ("Stuck on"), and given to the tutor in the detour's
+  first turn ("Where they got stuck, in their words: ..."; "They did not
+  say where they got stuck." when blank). Found in the browser run: in the
+  pinned card, capped at half the window (task 2.18), the field's buttons
+  fell below the fold, so while it asks, the choices, written answer,
+  confidence and reasoning are hidden; what was picked or typed is kept
+  for "Back to the question". Enter sends, Shift+Enter makes a new line.
+- **The marker** reads "**Detour** Working through question N. Nothing
+  here is graded or counts as help." A longer first version wrapped and
+  lost its rule line. The next-step control in a detour is "Ready for
+  another question" with "Move on without the check" beside it; confirming
+  a move hides the first. The card's label was "Where you got stuck",
+  which pushed its value out of the label column.
+- **`tutor.md`**: "Feedback, then the next question" became "Feedback,
+  detours, then the next question": feedback is for correct answers; the
+  detour's three steps (the right answer, the confusion found, worked
+  through) with replies under 150 words; teaching again under 300 words
+  when the header says the objective was missed twice or more; suggest the
+  button once the learner can say what went wrong, never hurry them. The
+  lead-in after a detour does not go back over it.
+- **The scripted tutor** answers a detour's first turn with "**Scripted
+  detour** on question N", repeating the stuck line, so the browser run
+  can see it reach the tutor.
+- **Checks:** `mise run check` passed (lint, types, 578 TypeScript tests,
+  one Python test). New fake-backend tests: a miss opens a detour (the
+  full header, the position on disk, the events, no further turn); "I
+  don't know" without and with a stuck line; in a detour a question is
+  refused, a message is not help, and "Ready for another question" asks
+  for one on an objective still open, whose answer counts; teaching again
+  at the second miss and not the first; moving on from a detour; a restart
+  in a detour; a miss recorded before a restart opening its detour. The
+  correct-answer test of task 2.16a shows no detour. Four earlier tests
+  that missed and expected the next question at once now press the button
+  first. The HTTP test posts `another-question` on an open unit (409, the
+  chat's reason). Page tests: the marker and its lines, the next step in
+  and after a detour, a reopened detour shown once, a lost `detour_end`
+  corrected. Each of six injected faults failed tests: the next question
+  sent after a miss, questions not refused in a detour, the detour not
+  said on reopening, teaching again from the first miss, the stuck line
+  dropped, and help marked in a detour.
+- **Browser run** on `pnpm dev:fake` (1280 by 800): a confident wrong
+  choice opened the detour (marker, scripted reply, the two controls); a
+  message in it got a reply and no question; the button brought question
+  2; "I don't know" opened the stuck field, and the line reached the
+  tutor and the card; the server was restarted in the detour, and the
+  unit reopened in it, its markers shown once; moving on from it recorded
+  the override and closed the segment. `state.json` and the evidence were
+  read after: two unassisted misses, the stuck line kept, the override,
+  no detour left. Screenshots are in `.playwright-mcp/2.20-*.png` (not
+  committed). The browser was closed before the server stopped.
+- **Real run on Sonnet 5.5** (`pnpm dev`, `GAUSS_CLAUDE_MODEL=
+  claude-sonnet-5-5`, scratch root `/tmp/gauss-220/data`), one segment of
+  one objective (the chain rule, plan stored by hand), driven through the
+  routes. Teaching: 312 words. Question 1, a confident wrong choice whose
+  reasoning evaluated the outer derivative at $x$: the detour's first turn
+  (167 words) gave the answer and why, named that slip from the reasoning
+  ("puts $x$ where the inner function belongs"), and asked one question;
+  the learner's reply was confirmed (77 words) with a check to use, and
+  the button suggested, no question posted. Question 2, "I don't know"
+  with a line on not telling outer from inner in a cosine: the header
+  asked for teaching again (missed twice), and the tutor (235 words) gave
+  the answer, then a new angle (the last operation on a calculator is the
+  outer function) and a new example, and asked whether it was clear. No
+  `ask_question` call in either detour. Question 3 correct at 90%:
+  feedback (30 words), then question 4 by itself; a correct written answer
+  at 100% passed the objective and closed the segment and the unit. The
+  turns as sent, in Claude Code's session log, matched the headers above
+  word for word.
+- **Left open.** Recording the misconception a detour found
+  (`misconceptions.jsonl`) is stage 5's. The real run had a cooperative
+  learner; a learner who keeps asking in a detour, or presses the button
+  at once, was not tried on a model.

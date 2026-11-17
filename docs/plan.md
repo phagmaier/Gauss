@@ -66,6 +66,7 @@ them.
 | 2.17a | Feedback queue review fixes | Questions are blocked from when feedback is queued until it ends, including in earlier learner replies; their headers say feedback is pending. Stop cancels the automatic next question across intervening replies, and a later learner message can post one. |
 | 2.18 | Thread separators and the pinned question | `divided` and `openQuestion` in `src/web/session.ts`. The open question sits above the message box with the next-step control until graded or withdrawn; the latest question, answered after the thread went on, moves to the end (`moved`), leaving an `answered-below` line (`timeline.ts`). 2.21's notice goes on the message box while `openQuestion` is set. |
 | 2.19 | Strict passing and no question limit | Passing needs, since the last miss, an unassisted answer at 90% or 100%, and a second correct one to a different question if ever missed (`record/status.ts`). No limit: an objective is done in a check only once passed (`engine/check-rules.ts`); reasons for another question are `missed`, `assisted`, `unconfident` and `confirm`, and the header counts "(N asked)", which `scripted.ts` reads. Records are not migrated. |
+| 2.20 | Detour after a miss | A miss closes its question into a detour kept in the position (`detour` in `state.ts`); its first turn replaces the feedback (`detourOpening` in `unit-turns.ts`), teaching again from the objective's second miss in the check (`missed` in `check-rules.ts`); no question until the learner's "Ready for another question" (`anotherQuestion`, route `another-question`), which sends `nextQuestionTurn`. Page events `detour` and `detour_end`. "I don't know" carries an optional `stuck` line. Messages in a detour are not help, since no question is open: 2.21 judges only messages during an open question. |
 
 ## Stage 2: session engine
 
@@ -77,40 +78,8 @@ under "Stage 2 breakdown". Not in this stage: the symbolic math check, code
 questions, artifacts and disputes (stage 3); sources (stage 4); the
 baseline, the misconception record of detours, the unit gate, handoff
 notes, unit notes, transcript export and style changes (stage 5); detours
-themselves are task 2.20. A unit in this stage closes without a gate or
-notes.
-
-### 2.20 Detour after a miss
-
-- Status: todo
-- Depends on: 2.19
-- Why: after a miss the next question came at once, with no room to find
-  or fix the confusion (notes 2, 5 and 6).
-- Do: a miss (wrong or "I don't know") in a check starts a detour. Its
-  first turn replaces the feedback turn: the header asks the tutor to give
-  the right answer and why, then find where the confusion is (from the
-  choice picked, the grader's flaw, the learner's reasoning or stuck line,
-  or by asking one question) and work through it; at the second miss on
-  the objective in this check, to teach the objective again another way.
-  The engine posts no next question during a detour; the learner presses
-  "Ready for another question" (the tutor may suggest it), which sends
-  `nextQuestionTurn`. A correct answer keeps the automatic next question.
-  Messages in a detour are not help. Moving on stays open in a detour.
-  The position holds the open detour, so a restart reopens it. "I don't
-  know" takes an optional line on where the learner got stuck, kept with
-  the answer and given to the tutor. Update `tutor.md`'s feedback
-  section, `scripted.ts`, the page (the button, the detour's marker) and
-  architecture section 4 (the detour replaces its `start_detour` design;
-  the misconception record stays in stage 5).
-- Done when: fake-backend tests show a miss opens a detour with no
-  question until "ready", a correct answer still leads to the next
-  question, "ready" asks for one on an open objective, a message in a
-  detour is not help, a restart reopens a detour, moving on from one
-  records the override, and the stuck line reaches the tutor's turn; a
-  browser check on `pnpm dev:fake`; one real segment on Sonnet 5.5 with a
-  wrong answer and an "I don't know", its transcript read against what
-  the headers ask (the confusion found, no question until ready, teaching
-  again after a second miss).
+themselves came in task 2.20. A unit in this stage closes without a gate
+or notes.
 
 ### 2.21 Clarification or help
 

@@ -66,6 +66,16 @@ test("a written answer kept while it is graded parses unchanged", () => {
   expect(State.parse(state)).toEqual(state);
 });
 
+// A detour open after question 2 was missed (task 2.20): no question is open.
+const DETOUR = { questionId: "q4", number: 2, objective: "tangent-line" };
+
+test("a detour open in the check parses unchanged", () => {
+  const { openQuestion: _, ...derivative } = STATE.units.derivative;
+  const state = { units: { derivative: { ...derivative, detour: DETOUR } } };
+
+  expect(State.parse(state)).toEqual(state);
+});
+
 test("a course with no unit in progress has an empty state", () => {
   expect(State.parse({ units: {} })).toEqual({ units: {} });
 });
@@ -154,6 +164,22 @@ describe("rejects", () => {
       },
       path: ["units", "derivative", "openQuestion", "answer", "questionId"],
       message: /another question/,
+    },
+    {
+      name: "a detour with a question open",
+      input: { units: { derivative: { ...derivative, detour: DETOUR } } },
+      path: ["units", "derivative", "detour"],
+      message: /never with a question open/,
+    },
+    {
+      name: "a detour outside the check",
+      input: {
+        units: {
+          integral: { ...STATE.units.integral, detour: DETOUR },
+        },
+      },
+      path: ["units", "integral", "detour"],
+      message: /only in the check/,
     },
   ])("$name", ({ input, path, message }) => {
     const result = State.safeParse(input);

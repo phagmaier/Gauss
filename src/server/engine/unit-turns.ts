@@ -145,6 +145,9 @@ export function answerTurn(
         (question.kind === "choice"
           ? ` The correct choice is ${question.answer}.`
           : ""),
+      answer.stuck === undefined
+        ? "They did not say where they got stuck."
+        : `Where they got stuck, in their words: ${answer.stuck}`,
     );
   } else if (answer.kind === "choice" && question.kind === "choice") {
     lines.push(
@@ -173,13 +176,54 @@ export function answerTurn(
       "They had help: you received a message from them while the question was open, so this answer does not count toward passing.",
     );
   }
+  const { detour } = where.position;
   return turn(
     where,
     `The learner answered question ${number}.`,
     lines.join("\n"),
-    where.finished === undefined && where.position.phase === "check"
-      ? feedbackAllowed(where)
-      : undefined,
+    where.finished !== undefined || where.position.phase !== "check"
+      ? undefined
+      : detour?.questionId === answer.questionId
+        ? detourOpening(where, entry)
+        : feedbackAllowed(where),
+  );
+}
+
+/**
+ * What the first turn of a detour allows (task 2.20): it takes the place of
+ * the feedback on the missed answer. The tutor gives the right answer, finds
+ * where the confusion is and works through it, and from the objective's
+ * second miss in this check teaches it again another way. No tool: the
+ * learner asks for the next question.
+ */
+function detourOpening(where: Where, entry: AnswerEvidence): string {
+  const { standing } = checkStanding(where);
+  const check = where.checks.get(entry.objective);
+  const missed = check?.state === "more" ? check.missed : 1;
+  const { answer } = entry;
+  const from =
+    answer.kind === "choice"
+      ? `from the choice they picked${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
+      : answer.kind === "written"
+        ? "from the grader's flaw and what they wrote, or, if that does not show it, "
+        : answer.stuck !== undefined
+          ? "from where they say they got stuck, or, if that does not show it, "
+          : "";
+  const again =
+    missed >= 2
+      ? ` "${entry.objective}" has been missed ${missed} times in this check, ` +
+        "so after the right answer, teach the objective again another way: " +
+        "a new angle and a new example, not a repeat of your teaching, and " +
+        "not only a fix of this one mistake."
+      : "";
+  return (
+    `In this check, ${standing}. The miss opens a detour, a pause in the ` +
+    'check: no question is posted until the learner presses "Ready for ' +
+    'another question", and nothing said in it is graded. Allowed now, as ' +
+    "text, with no tool: give the right answer and why it is right; then " +
+    `find where the confusion is, ${from}by asking them one question, and ` +
+    `work through it with them.${again} You may suggest pressing "Ready ` +
+    'for another question" once the confusion seems cleared.'
   );
 }
 
@@ -203,18 +247,30 @@ function feedbackAllowed(where: Where): string {
 }
 
 /**
- * The turn after the feedback on an answer, when the check needs another
- * question (task 2.16a): the header alone.
+ * The turn that asks for the check's next question, with the header alone:
+ * after the feedback on a correct answer (task 2.16a), or once the learner
+ * ends the detour after question `number` (task 2.20).
  */
-export function nextQuestionTurn(where: Where, number: number): string {
+export function nextQuestionTurn(
+  where: Where,
+  number: number,
+  after: "feedback" | "detour" = "feedback",
+): string {
   const { standing, toAsk } = checkStanding(where);
   return turn(
     where,
-    `The check goes on after your feedback on question ${number}.`,
+    after === "feedback"
+      ? `The check goes on after your feedback on question ${number}.`
+      : 'The learner pressed "Ready for another question": the detour ' +
+          `after question ${number} is over, and the check goes on.`,
     undefined,
     `In this check, ${standing}. Allowed now: a lead-in of one sentence, ` +
       `then a question on ${quoted(toAsk)} with ask_question, unlike the ` +
-      "ones asked before. Do not repeat your feedback. Posting ends your turn.",
+      "ones asked before. " +
+      (after === "feedback"
+        ? "Do not repeat your feedback."
+        : "Do not go back over the detour.") +
+      " Posting ends your turn.",
   );
 }
 
@@ -317,6 +373,17 @@ function allowed(where: Where): string {
         );
       }
       const { standing, toAsk } = checkStanding(where);
+      const { detour } = position;
+      if (detour !== undefined) {
+        return (
+          `In this check, ${standing}. A detour is open after the miss on ` +
+          `question ${detour.number}, on "${detour.objective}": nothing in ` +
+          "it is graded, and the learner's messages are not help. Allowed " +
+          "now: work through the confusion with the learner. ask_question " +
+          'is refused until they press "Ready for another question"; you ' +
+          "may suggest it once the confusion seems cleared."
+        );
+      }
       if (toAsk.length > 0) {
         return (
           `In this check, ${standing}. Allowed now: post a question on ` +
