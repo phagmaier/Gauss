@@ -1,7 +1,9 @@
 # Gauss: product brief
 
-Status: draft for correction, 2026-11-13. Planning only; nothing is built yet.
-"Gauss" is a working name taken from the project directory.
+What the product does, as the user has decided it. Stages 0 to 2 are built
+(`plan.md`); who decided each point, and why, is in `decisions.md`,
+"Product decisions". "Gauss" is a working name taken from the project
+directory.
 
 ## Purpose
 
@@ -36,8 +38,9 @@ acceptance cases because together they exercise every grading and content path:
   the learner's confidence, whether help was used, the grade, and the date.
 - **Assessment**: any run of questions over a chosen set of objectives that
   records evidence without teaching.
-- **Detour**: a temporary side-track that traces the learner's reasoning to find
-  a misunderstanding, fixes it, then returns to the interrupted segment.
+- **Detour**: the pause after a miss in a check, in which the tutor traces the
+  learner's reasoning to find the misunderstanding and works through it; the
+  check goes on when the learner asks for another question.
 - **Source**: a document the learner supplies (PDF, EPUB, TXT, Markdown) that a
   course teaches from.
 - **Course record**: the files holding the curriculum, objective status,
@@ -92,9 +95,10 @@ The learner moves from discuss to check with a "ready" control; the tutor may
 suggest it. A segment closes only when every one of its objectives has
 passed, or when the learner moves on, which is recorded as an override.
 
-Units are sized by content (a handful of objectives), not by time. Progress is
-saved after every segment and every answer, so a session can stop anywhere and
-resume at the same segment and phase.
+Units are sized by content (a handful of objectives), not by time; sitting
+length is not a design input. Progress is saved after every segment and every
+answer, so a session can stop anywhere and resume at the same segment and
+phase.
 
 ## Teaching style
 
@@ -106,8 +110,9 @@ resume at the same segment and phase.
 - The learner can change it at any time by saying so ("shorter explanations",
   "more exercises"). The tutor can suggest a change based on results but must
   ask; style never changes silently.
-- Separately, the number and difficulty of check questions adapt automatically
-  within limits: more after a miss, fewer after confident correct answers.
+- Separately, the number of check questions adapts automatically: more after
+  a miss, fewer after a confident correct answer, with no limit until the
+  objective passes or the learner moves on.
 
 ## Mastery and evidence
 
@@ -220,8 +225,8 @@ it in any sitting.
 
 Risk: Anthropic announced and then paused (June 2026) a move of Agent SDK usage
 on plans to separate metered credits. Terms may change again; the adapter
-keeps the backend replaceable. Codex's documentation does not explicitly
-address SDK use on a ChatGPT plan login; verify before the technical spec.
+keeps the backend replaceable. Codex runs on a ChatGPT plan login (seen in
+the stage 0 spike), though its documentation does not address SDK use on one.
 
 ## Scope
 
@@ -233,70 +238,11 @@ start of each sitting, detours, source ingestion with verified quotes,
 artifacts, workspace, transcripts, unit notes, library view, backup.
 
 Later: Codex backend, on-demand self-test, cheat sheets, handwritten-work
-photos.
+photos; starred messages for the notes, if the generated notes miss what the
+learner wants kept.
 
-## Decision status
+## Dropped
 
-Stated by the learner: local web app; courses, units and one-offs; optional
-baseline; demonstration before moving on, with manual override; confidence and
-reasoning on answers; reasoning-trace detours; artifacts; workspace access;
-curriculum diagram with review; sources in the four formats; lecture-style
-teaching of sources; no formal proof checking; web search only when needed;
-transcripts; HTML notes; both subscriptions.
-
-Proposed by the agent and accepted by the learner on 2026-11-13 without
-item-by-item review ("the brief is fine", judgment delegated): objectives as
-the unit of tracking; the three-phase segment rhythm; passed / retained tiers;
-two-level curriculum planning; verified quotes; grade disputes; Claude backend
-first; the first-version scope above.
-
-Settled on 2026-11-13:
-
-- Sitting length is not a design input. Resume works at any point instead.
-- Retention is checked at the unit gate (blocking, with bypass) and in an
-  opt-in review mode. The learner suggested both; folding earlier objectives
-  into the gate was the agent's addition.
-- Teaching style is a per-course text note, changed only with the learner's
-  agreement. The learner was unsure and delegated this.
-
-Settled on 2026-11-13 from the page prototype (`docs/decisions.md`):
-
-- Confidence is five percentage levels, replacing the earlier three levels.
-- "I don't know" is always available on a question, and counts as a miss but
-  never as a confident wrong answer (the agent's proposal, accepted).
-- "Confident" means 90% or 100%. The learner offered to drop the percentages
-  and delegated the choice; the agent kept them because they make this rule
-  concrete and allow calibration feedback later.
-
-Settled on 2026-11-16 from the user's first try of stage 2's check
-(`docs/decisions.md`, "Stage 2 user check"). The user decided: passing is
-strict by default, with override always open; every miss starts a detour,
-which the learner ends when ready; the check pauses after misses only;
-"I don't know" takes an optional line on where the learner got stuck;
-writing during an open question stays allowed, and clarification is not
-help; the planner asks what it needs before proposing. The agent chose,
-and the user can overturn: one confident answer as part of passing; no
-limit on questions; teaching again after a second miss; a separate call
-judging help; no proposal in the planner's first turn; the background note.
-
-Settled on 2026-11-17 from a review of the stage 2 record, which the user
-brought after the check passed (`docs/decisions.md`, "Stage 2 review"). The
-user decided:
-
-- Passing no longer needs a confident answer: two unassisted correct answers
-  in a row to different questions pass, or one confident answer if the
-  objective was never missed. This overturns the agent's choice of
-  2026-11-16; after a miss, one confident answer is still not enough.
-- Review questions open each sitting, on by default and skippable, in place
-  of the opt-in review mode of 2026-11-13.
-- Testing out of a unit replaces the optional baseline, which the learner
-  had asked for: the intake now asks about background, and a probe quiz
-  pays off only if it lets the learner skip something.
-- Course finals are dropped: gates and review cover the same ground.
-- A course with no source quotes nothing from the model's memory verbatim.
-- The "what I know" view, calibration and a backup of the data folder join
-  the first version. Starred messages for the notes wait until the
-  generated notes have been used.
-
-Open questions: none at the product level. Technical choices are in
-`architecture.md`.
+Course finals (unit gates and review cover the same ground), the optional
+baseline quiz (replaced by testing out of a unit), and an opt-in review mode
+(replaced by review questions at the start of each sitting).

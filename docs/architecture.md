@@ -1,15 +1,10 @@
 # Gauss: architecture
 
-Status: draft, 2026-11-13, revised through stage 0 (closed 2026-11-15).
-Companion to `brief.md`, which defines the terms used here (course, unit,
-objective, segment, session, evidence, detour). Technical choices in this
-document were delegated to the agent by the learner.
-
-Facts about the two agent SDKs in section 7 are either **verified** (read in
-the official documentation on 2026-11-13) or **observed** in a stage 0 run,
-with the task that observed them. Stage 0 answered every item first marked
-"to verify". What it left open is listed at the end of section 7, each with
-the stage that settles it.
+How the system works now. `brief.md` defines the terms used here (course,
+unit, objective, segment, session, evidence, detour) and what the product
+must do; `decisions.md` holds why things are as they are. Where this
+document and the code disagree, the code is right and this document is
+out of date: fix it.
 
 ## 1. Shape of the system
 
@@ -31,449 +26,296 @@ Three rules hold the design together:
 2. **The tutor changes the record only through teaching tools.** The server
    validates every call against the current phase, so the teaching rhythm is
    enforced by code and not by the prompt.
-3. **The backend is replaceable.** The engine talks to an adapter interface and
-   never imports an SDK directly.
+3. **The backend is replaceable.** The engine talks to an adapter interface
+   and never imports an SDK directly.
 
 ## 2. Repository layout
 
-A single package. The server and the page share type definitions, which is the
-reason for using one language.
+A single package. The server and the page share type definitions, which is
+the reason for using one language.
 
 ```
 Gauss/
-  docs/                 brief.md, architecture.md, decisions as they arise
-  prompts/              tutor.md, examiner.md, grader.md, help-judge.md, planner.md, notes.md
+  docs/                 brief.md, architecture.md, decisions.md, plan.md; prototype/ (the page mocks)
+  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md; later examiner.md, notes.md
   src/
-    shared/             zod schemas: record files, questions, events
+    shared/             zod schemas: record files, questions, events, route bodies
     server/
-      record/           read/write course files; derive objective status
-      engine/           segment state machine, assessment selection, grading dispatch
+      main.ts, serve.ts the real server's start, and the wiring it shares with the dev server
+      record/           read/write course files; derive status, progress, "what I know"; the backup
+      engine/           the chats, phase and check rules, turn texts, grading and help-judge dispatch
       tools/            teaching tool definitions (transport-free functions)
-      backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model), codex.ts (later)
-      sources/          ingestion orchestration, quote verification
+      backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
-    web/                React app: library, chat, question widgets, diagram, panes
-  pytools/              uv project: convert.py, mathcheck.py
-  scripts/              run by hand: grade-set.ts (task 2.9) and judge-set.ts (task 2.21) on a real model, dev-fake.ts with none (task 2.12b)
+      sources/          (stage 4) ingestion, quote verification
+    web/                React app: library, intake, course, session, "what I know"
+  pytools/              uv project; (stage 3) mathcheck.py, (stage 4) convert.py
+  scripts/              dev-fake.ts (no model); grade-set.ts and judge-set.ts with their sets (real model)
   mise.toml             pinned node, pnpm, python, uv
-  package.json, pnpm-lock.yaml
 ```
 
 Dependencies, kept few: `@anthropic-ai/claude-agent-sdk`, `zod` (the SDK's
-tool helper requires it), a small HTTP framework (Hono), React with Vite,
-KaTeX, Mermaid, a Markdown renderer (react-markdown with remark-gfm,
-remark-math and rehype-katex, task 2.4), Vitest. Python side: SymPy, plus
-a PDF and an EPUB converter chosen in stage 4.
+tool helper requires it), Hono with `@hono/node-server`, React with Vite,
+KaTeX, react-markdown with remark-gfm, remark-math and rehype-katex, Vitest,
+Biome. Python side: SymPy (stage 3), and a PDF and an EPUB converter chosen
+in stage 4. The curriculum diagram is laid out by the page itself
+(`src/web/diagram.ts`), not by a diagram library.
 
 ## 3. Data on disk
 
-Course data lives outside the repository so the code can be published without
-books, transcripts or progress. Default data root: `~/gauss/`, overridable
-with `GAUSS_DATA_ROOT`. The record module is `src/server/record/`.
+Course data lives outside the repository so the code can be published
+without books, transcripts or progress. The data root is `GAUSS_DATA_ROOT`,
+or `~/gauss/`; only `main.ts` reads the environment, and the record module
+(`src/server/record/`) takes the root as an argument.
 
 ```
 <data root>/
-  .git/, .gitignore               the record's history (task 2.25): commits after each segment close, unit end and approval
-  profile.md                      learner profile; one-line index of finished courses
-  intake/                         where intakes' sessions run, so they are kept (task 2.15); Gauss writes nothing in it
+  .git/, .gitignore               the record's history: commits after each segment close, unit end and approval
+  profile.md                      (stage 5) learner profile; one-line index of finished courses
+  intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
   courses/<course-id>/
-    course.json                   title, backend, settings (web search on/off), dates, when each unit was last opened
-    style.md                      per-course teaching style note, proposed and approved with the curriculum
-    background.md                 background note: what the learner told the planner at intake, proposed and approved with the curriculum (task 2.22)
-    curriculum.json               units, prerequisites, goals; objectives and segments once a unit is planned
-    state.json                    each unit in progress: segment (or the one going over objectives again), phase, where its check began, open question (with the learner messages whose replies wait for the help judge, and an answer kept while it is graded or waits for them), tutor session, open detour
-    evidence.jsonl                append-only: answers, grades (with a written answer's flaw), confidence, overrides, disputes
-    misconceptions.jsonl          append-only: findings from detours
-    units/<unit-id>/handoff.md    written at the end of each session in the unit
-    sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n, one sitting: its page events, owned by Gauss (not the SDK's own log)
-    sources/<source-id>/          original file, outline.json, sections/*.md, pages/ (images on demand)
-    artifacts/                    HTML aids generated by the tutor
-    notes/                        HTML notes per unit, cheat sheets
-    workspace/                    starter code and the learner's work
+    course.json                   title, backend, settings, dates, when each unit was last opened
+    style.md                      the course's style note, proposed and approved with the curriculum
+    background.md                 the background note: what the learner told the planner, approved with the curriculum
+    curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts
+    state.json                    a position for each unit in progress
+    evidence.jsonl                append-only: answers, grades, confidence, overrides; (stage 3) disputes
+    misconceptions.jsonl          (stage 5) append-only: findings from detours
+    units/<unit-id>/handoff.md    (stage 5) written at the end of each session in the unit
+    sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
+    sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
+    artifacts/                    (stage 3) HTML aids generated by the tutor
+    notes/                        (stage 5) HTML notes per unit, cheat sheets
+    workspace/                    (stage 3) starter code and the learner's work
 ```
 
-The shapes of the record files are the schemas in `src/shared/`:
-`course.ts`, `curriculum.ts` (a unit's plan in `plan.ts`), `state.ts` and
-`evidence.ts`. A curriculum is a draft until the learner approves it. A unit
-gets its plan, its objectives and the segments that teach them, when it
-starts (section 4); units not started have none. Objective ids are unique
-in the course, because the evidence names an objective by its id alone.
-Where a course stands (curriculum awaiting review, a unit in progress,
-finished) and whether it is a one-off (a course with one unit) are derived
-from the record, not stored. The library routes send each course with its
-units' status and the segment of each unit in progress
-(`record/progress.ts`, task 2.12), derived when asked. In the list of every
-course, one whose state or evidence cannot be read is sent with the reason
-and no progress, so the others stay in reach. A course exists from its first proposal
-(section 4, the intake chat).
+The shapes are the schemas in `src/shared/`: `course.ts`, `curriculum.ts`
+(a unit's plan in `plan.ts`), `state.ts`, `evidence.ts`. A course id is its
+folder's name, made from its title; unit and objective ids are slugs, and
+objective ids are unique in the course, because the evidence names an
+objective by its id alone. A curriculum is a draft until the learner
+approves it. A course exists from its first proposal. No file has a schema
+version: a field added later must be optional.
 
-`state.json` holds a position for each unit in progress, not one current
-unit: several units can be in progress at once, each keeping its place. A
-unit is taken out of it when it is no longer in progress. The engine writes
-a unit's position after every change, so an open question survives a
-restart.
-
-The data root is a git repository (`src/server/record/backup.ts`, task
-2.25), made on the server's first start if it is not one, with a
-`.gitignore` that keeps `courses/` and `profile.md` and leaves out
-`intake/` and the temporary files below. The engine asks for a commit once
-a segment's close, a unit's end or an approval is written; commits run in
-the background, one at a time, by "Gauss", and one that fails is logged and
-never fails the engine. The server commits what changed since its last run
-when it starts. `pnpm dev` keeps it unless `GAUSS_BACKUP=off`; `pnpm
-dev:fake` only with `GAUSS_BACKUP=on`; tests pass it in.
-
-Every record file but the logs is written whole: to a temporary file in its
-folder, then renamed over it, so a process that stops partway leaves the old
-version or the new one. The logs (`evidence.jsonl`, `misconceptions.jsonl`
-and the transcripts) are appended to, one entry per line, so a crash can
-leave the start of a line at the end. An entry counts once its line ends:
-reading skips an unfinished last line, and the next append clears it first.
-A transcript only shows the conversation, so it is written without
-flushing to disk (a server that is stopped loses none of it, a server
-killed at most the events of its last moment, a stopped machine its last
-lines), and a line of it that cannot be read is left out rather than
-failing the unit (task 2.13).
-Work that reads a record file and writes it back, and every append, waits
-for the work on that file before it (`record/file-lock.ts`), so writes land
-in the order they were made and none is lost. A course's id is its folder's
-name, made from its title.
-
-Objective status (not started, attempted, passed, overridden; retained and
-slipping join with the unit gate in stage 5) is **derived** from
-`evidence.jsonl` by a pure function and never stored, so it cannot disagree
-with the evidence. A unit's status (not started, in progress, passed,
-overridden) is derived from its objectives', and a unit with a position in
-`state.json` is in progress. The functions are in
-`src/server/record/status.ts`, the statuses in `src/shared/status.ts`, and
-the rules (what passes, what counts as help) in `decisions.md`, "Objective
-status", with the passing rule as task 2.23 changed it ("Passing without
-a confident answer") and help as task 2.21 changed it ("Help judge").
-The curriculum diagram is generated from `curriculum.json` plus
-derived status.
+- **Derived, never stored**: objective status (not started, attempted,
+  passed, overridden; retained and slipping in stage 5), from
+  `evidence.jsonl` by the pure functions in `record/status.ts`; a unit's
+  status from its objectives', where a unit with a position in
+  `state.json` is in progress; where a course stands and whether it is a
+  one-off (a course of one unit); each unit's progress for the library
+  (`record/progress.ts`); and "what I know" with its calibration counts
+  (`record/what-i-know.ts`, `record/calibration.ts`). The rules for passing
+  and help are in section 4; the reasons in `decisions.md`, "Objective
+  status".
+- **`state.json`** holds a position for each unit in progress, not one
+  current unit: several units can be in progress at once. A position
+  holds the segment, the phase, where the check began (`checkFrom`), the
+  open question (with its kept answer and the exchanges awaiting the help
+  judge), an open detour, the extra segment that goes over objectives
+  again, and the tutor's session id. The engine writes it after every
+  change, before the page hears of the change.
+- **Writes.** Every file but the logs is written whole: to a temporary file
+  in its folder, flushed, then renamed over it. The logs (evidence,
+  misconceptions, transcripts) are appended a line at a time; an entry
+  counts once its line ends, reading skips an unfinished last line, and the
+  next append clears it first. Each read-and-write-back and each append
+  waits for the work on that file before it (`record/file-lock.ts`). A file
+  that cannot be read is an error naming the file, except that the library
+  lists such a course with the reason, and a transcript line that cannot be
+  read is left out. Transcripts are not flushed to disk.
+- **Backup.** The data root is a git repository (`record/backup.ts`), made
+  on the first start if it is not one, with a `.gitignore` that keeps
+  `courses/` and `profile.md`. The engine asks for a commit once a
+  segment's close, a unit's end or an approval is written; commits run in
+  the background, one at a time, by "Gauss", and a failure is logged and
+  never fails the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off
+  for `pnpm dev:fake` unless `=on`; tests pass it in.
 
 ## 4. Session engine
 
 ### Chats and resume
 
-- A chat is one backend session bound to one unit. Reopening the unit resumes
-  that backend session by its id, with the course folder as working directory
-  (task 2.14): the id is kept in the unit's position in `state.json`, written
-  when the session starts and before its first turn, and carried by every
-  position written after. Opening the unit asks the backend whether it has
-  the session, without starting it (`hasSession`), so whether it can be
-  resumed is known at once and a unit opened only to look at it holds no
-  process; the first turn then resumes it (task 2.15).
-  Lookup uses the same sanitized environment as the tutor. If Gauss inherits
-  `CLAUDE_CONFIG_DIR`, lookup runs in a short Node subprocess without that
-  override, since the SDK has no explicit local-storage-root option. It
-  starts neither Claude Code nor a model request (task 2.15a).
-  The Claude backend sends the system prompt afresh with every request
-  (`snapshot: false`), so a resumed session gets the current prompt, a
-  revised `prompts/tutor.md` included; without that, a resumed session
-  keeps the prompt it started with (task 0.4).
-- A new unit always starts a new backend session, seeded from the record:
-  profile, style note, curriculum summary, the unit's plan, the last handoff
-  note, open misconceptions.
-- A unit without a plan is planned before its tutor session starts, in a
-  backend session of its own (`src/server/engine/unit-planning.ts`, task
-  2.5): one turn with the curriculum and how the learner stands on each
-  objective planned so far, the `plan_unit` tool, and then it closes. A
-  session that ends without a plan is tried once more; then the unit
-  reports that it could not be planned.
-- "Start fresh" is in the unit's outline while the unit is open and not
-  finished, and is the automatic fallback when a backend session cannot be
-  resumed (task 2.14). Either way the tutor gets a new session, seeded from
-  the record (its system prompt) and told in its first header that it is
-  new, and the thread shows a "Fresh start" marker (`fresh_start`), with the
-  conversation before it dimmed, except a card that still waits on the
-  learner or on its grade (an open question, the closing card), which
-  stands for the unit and not for that conversation. The learner's takes the old id out of the
-  position, closes the old session, and sends the new one a turn to pick up
-  where the unit stands; it waits, as other steps do, while the tutor
-  writes. The fallback sends nothing until the learner acts. A session the
-  backend cannot find is the only failure that falls back (an unknown id,
-  or one Claude Code's sweep deleted after its 30 days, fails before any
-  model request); resuming that fails another way fails that turn, with the
-  reason, and the next turn tries again, so a passing fault never costs the
-  conversation, and the learner's Start fresh leaves a fault that stays
-  (task 2.15).
-- **Idle sessions** (task 2.15, `src/server/engine/conversation.ts`). Each
-  chat's session is a Claude Code process. A kept session, a unit's tutor's
-  or an intake's, is closed once it has been idle for ten minutes
-  (`IDLE_MS`): no turn queued or running, and no grading whose grade will be
-  sent to it. The next turn resumes it by its id, which costs about half a
-  second. A session that fails to start or to resume fails its turn, and the
-  next turn tries again. One the backend cannot find when a turn resumes it
-  gives way to a new one, as at the opening, but the marker then comes
-  after the learner's message and explicitly identifies it (`PageEvent` in
-  `src/shared/events.ts`). The page puts that message and any queued later
-  messages in the new conversation. Fallbacks on non-message turns move no
-  learner message; old transcripts without identities still load.
-- `state.json` is written after every phase change and every answer, so closing
-  the tab loses nothing.
-- The intake chat (task 1.4, `src/server/engine/intake.ts`) is the one chat
-  with no unit. The page asks the opening question, so its session starts
-  with the learner's answer. `propose_curriculum` is refused in that first
-  turn, the one that delivers the learner's first message, so the learner
-  always answers the planner once before a card appears (task 2.22); a
-  reopened draft's first turn, or a new session's after a lost one, is not
-  that turn. The first proposal creates the course, named by the
-  proposal's title; each proposal replaces the draft in `curriculum.json`,
-  the style note in `style.md` (task 2.10) and the background note in
-  `background.md` (task 2.22), and a reply to one is a change request.
-  Approving the latest revision, while the tutor is not writing, ends the
-  intake. Approval passes the proposal the card shows, and the record
-  refuses it unless the title, units and notes on disk are that proposal,
-  so a save that failed partway is never approved unseen.
-  Before the first proposal nothing is stored. The intake's session is kept,
-  in the data root's `intake/` folder, only so that it can be closed while
-  idle and resumed (task 2.15): a restart still loses the intake. A session
-  lost then gives way to a new one, given the latest proposal as a reopened
-  draft's is, or, if nothing was proposed, what was said so far: the
-  learner's earlier messages and the planner's replies, from the intake's
-  events (task 2.22a). A draft whose intake was lost in a restart is reviewed in a new
-  intake that starts from the stored draft as proposal 1, its earlier
-  conversation gone; the tutor gets the draft, with its style note, in the
-  first delivered turn (task 1.6). A failed startup or a Stop before sending
-  leaves that context for the next attempt (task 2.15a). A draft proposed
-  before task 2.10 has no note; a course approved without one is taught in
-  the default style of `prompts/tutor.md`. One proposed before task 2.22
-  has no background note, and its unit planner and tutor are told none was
-  recorded.
-- The unit chat (task 2.6, `src/server/engine/unit-chat.ts`) is one per
-  unit, kept in memory until the server stops. Opening a unit not in
-  progress plans it if it has no plan, writes its position (segment 1,
-  teach) and sends the teaching turn. Opening one in progress picks it up
-  where `state.json` has it, resuming its tutor (above). A unit reopened in
-  teach, whose teaching a restart cut off, is taught again. Opening a unit
-  marks its course opened.
-  Its thread is rebuilt from its transcripts (below).
-  The chat holds the phase rules and coordinates two parts (task 2.8b):
-  `unit-record.ts` keeps the unit's position and evidence and writes each
-  change before the page hears of it, and `unit-agents.ts` runs the tutor
-  and the grader. Every change to the unit goes through the chat's one
-  queue, which the agents are given for recording a grade.
-- **Sessions and transcripts** (task 2.13, `src/server/engine/transcript.ts`).
-  A session is one sitting in a unit. One starts when the unit's chat
-  opens, which is once per server run, and again when something happens
-  after the unit has been quiet for an hour. None starts inside a turn of
-  the tutor's: a reply the machine slept through stays in its session, and
-  the next one starts with what comes after the turn. Each session's page
-  events are appended, as they happen, to its transcript,
-  `sessions/<unit id>.<n>.jsonl` (section 3), which starts with a `session`
-  event. A unit chat's event log starts with its earlier sessions'
-  transcripts, in order, each reply's text joined into one event, so a unit
-  reopened after a restart shows its whole thread; the page marks each
-  session after the first, and does not show twice the phase, open question
-  or closing card that the reopened chat repeats. A question the earlier
-  thread left open whose answer the evidence has is shown its grade again
-  when the unit opens. Intakes have no transcripts.
-- Every chat is built from the event log and turn queue in
-  `src/server/engine/conversation.ts`. A turn's text can be composed when it
-  is sent rather than when it is queued, so its header says how things
-  stand then; and a turn can run work when it ends, before the next is sent.
-  Stop applies to the turn in progress from the moment it starts: one
-  stopped before it reaches the backend, while its session starts or its
-  text is composed, is not sent, and ends interrupted (task 2.8a).
+Every chat is built on `engine/conversation.ts`: an event log the page
+replays, and a turn queue that sends one turn at a time. A turn's text is
+composed when it is sent, so its header says how things stand then; a
+turn can run work when it ends, and a queued turn can be skipped when its
+time comes. Stop applies to the turn in progress from the moment it starts,
+also before it reaches the backend.
+
+- **The intake chat** (`engine/intake.ts`) has no unit. The page asks the
+  opening question, so the session starts with the learner's answer.
+  `propose_curriculum` is refused in the turn that delivers the learner's
+  first message, so the learner answers the planner once before a card
+  appears. The first proposal creates the course; each proposal replaces the
+  draft with its style note and background note, and a reply to one is a
+  change request. Approval names the proposal the card shows, and the
+  record refuses it (`DraftMismatch`) unless the files on disk are that
+  proposal. Approval ends the intake. Intakes are kept in memory: a restart
+  loses one in progress, and its draft is reviewed in a new intake that
+  starts from the stored draft (`POST /api/courses/<id>/review`).
+- **Unit planning** (`engine/unit-planning.ts`). A unit without a plan is
+  planned when it is opened, in a session of its own: one turn with the
+  background note, the curriculum and the status of every objective planned
+  so far, the `plan_unit` tool, then it closes. A session that ends without
+  a plan is tried once more, told why; then the unit reports that it could
+  not be planned.
+- **The unit chat** (`engine/unit-chat.ts`), one per unit, kept in memory
+  until the server stops. It holds the phase rules, the teaching tools and
+  the learner's actions, and owns the unit's one queue, through which every
+  change to the unit goes. It coordinates `engine/unit-record.ts`, which
+  keeps the position and evidence and writes each change before the page
+  hears of it, and `engine/unit-agents.ts`, which runs the tutor, the grader
+  and the help judge. Opening a unit not in progress plans it if needed,
+  writes its position (segment 1, teach) and sends the teaching turn;
+  opening one in progress picks it up where `state.json` has it. Opening a
+  unit marks it opened in `course.json`. A unit reopened in teach is taught
+  again.
+- **Kept sessions and resume.** A tutor's session and an intake's are kept
+  by the backend and resumed by id, in the folder they ran in (the course's,
+  or the data root's `intake/`); the tutor's id is in the unit's position.
+  Opening a unit only asks the backend whether the session is still there
+  (`hasSession`); the first turn resumes it. The system prompt is sent
+  afresh on every request, so a resumed session gets the current prompt.
+- **Idle sessions.** A kept session is closed after ten minutes (`IDLE_MS`)
+  with no turn queued or running and nothing waiting to send it a turn (a
+  grading); the next turn resumes it.
+- **Start fresh.** The learner can start a new tutor session from the unit's
+  outline: the old one is closed and its id taken out of the position, and
+  the new session gets one turn to pick up where the unit stands. A session
+  the backend cannot find (a deleted file, or Claude Code's 30-day sweep)
+  falls back the same way, but sends nothing until the learner acts. Either
+  way the new session's system prompt is the seed from the record (section
+  9), its first header says it is new, and the page shows a "Fresh start"
+  marker and dims the conversation before it, except a card that still
+  waits (an open question, the closing card). A resume that fails another
+  way fails that turn, and the next turn tries again.
+- **Sessions and transcripts** (`engine/transcript.ts`). A session is one
+  sitting in a unit. One starts when the unit's chat opens (once per server
+  run) and when something happens after an hour quiet, never inside a
+  tutor's turn. Each session's page events go to its transcript. A unit
+  chat's log starts with its earlier sessions' transcripts, so the thread
+  survives restarts; the page marks each later session, and does not show
+  twice what the reopened chat repeats. Intakes have no transcripts.
 
 ### Phases
 
-Task 2.19's check with no limit, task 2.20's detours and task 2.21's help
-judge (`decisions.md`, "Stage 2 user check"), and task 2.23's passing rule
-(`decisions.md`, "Stage 2 review"), are written in.
-
 Per segment: `teach -> discuss -> check -> closed`. Inside the check, every
-miss opens a detour (task 2.20): a pause after the missed answer in which
-the tutor finds the learner's confusion and works through it with them,
-until the learner asks for another question. It has no teach / discuss /
-check of its own: the check's next question is its re-check. This replaced
-an earlier design in which a detour pushed the position and ran its own
-small cycle, opened by a `start_detour` tool (`decisions.md`, "Detour after
-a miss").
+miss opens a detour: a pause in which the tutor finds the learner's
+confusion and works through it with them, until the learner asks for
+another question. The check's next question is the detour's re-check.
 
 | Transition | Triggered by | Engine rule |
 | --- | --- | --- |
-| teach to discuss | the tutor's teaching turn ends, or the learner stops it | automatic, also when the turn fails, so the learner can ask for what was missed |
-| discuss to check | the learner presses "ready" | `ask_question` is rejected before this |
-| check to closed | the tutor's feedback on the answer that leaves every objective passed, each asked at least once in this check, ends (tasks 2.16a, 2.19) | automatic, also when the feedback is stopped or fails; a unit reopened at that point closes the segment as it opens |
-| discuss or check to closed | the learner moves on without the check | recorded as an override of the segment's objectives; an open question is withdrawn |
+| teach to discuss | the teaching turn ends, however it ends | automatic |
+| discuss to check | the learner presses "ready" | `ask_question` is refused before this |
+| check to detour | a miss: a wrong answer or "I don't know" | the missed question closes into a detour in the same write |
+| detour to check | the learner presses "Ready for another question" | the engine asks the tutor for the next question |
+| check to closed | the feedback on the answer that leaves every objective done ends | automatic, also when the feedback is stopped or fails |
+| discuss, check or detour to closed | the learner moves on | an override of the segment's objectives; an open question is withdrawn |
 | closed to the next segment's teach | the learner starts it | none after the unit's last segment |
-| last segment closed to the unit's end | automatic | the closing card; the unit is passed and leaves `state.json` when every objective passed; since task 2.19 one not passed was moved on from (or closed at the old limit) |
-| unit's end to one more segment | the learner goes over the objectives not passed again | a segment after the plan's last, on those objectives, kept in the position |
-| unit's end to finished | the learner moves on without them | recorded as an override of the objectives not passed; the unit leaves `state.json`, overridden |
-| check to detour | a miss: a wrong answer or "I don't know" (task 2.20) | automatic: the missed question closes into a detour, in the same write of `state.json` |
-| detour to check | the learner presses "Ready for another question" | the engine asks for the next question (`nextQuestionTurn`); moving on stays open in a detour, and closes the segment as from the check |
+| last segment closed to the unit's end | automatic | the closing card; when every objective passed, the unit is passed and leaves `state.json` |
+| unit's end to one more segment | the learner goes over the objectives not passed | a segment after the plan's last, on those objectives, kept in the position |
+| unit's end to finished | the learner moves on without them | an override of the objectives not passed; the unit leaves `state.json` |
 
-The rules of tasks 2.6 and 2.7:
+The rules:
 
-- **The tutor's tools are refused out of phase** with a reason it can act
-  on: `ask_question` outside the check, in the feedback on an answer
-  (below), while a question is open, on an objective not in the segment,
-  or on one already done in this check, and once the unit is finished. A
-  refusal does not end the turn; a posted question does.
-- **The turn after an answer is for feedback alone** (task 2.16a), or,
-  after a miss, opens the detour (below). Its header allows that and
-  nothing else. `ask_question` is refused
-  from when that feedback is queued until it ends, including in replies
-  to earlier learner messages; their headers say feedback is still
-  pending (task 2.17a). When it ends, the segment closes if every objective
-  is done in this check; otherwise, unless the learner stopped it or a
-  detour is open, the
-  engine sends the next check turn (`nextQuestionTurn` in `unit-turns.ts`),
-  which asks for a lead-in and a question on the objectives still open.
-  That turn is queued behind any learner message sent during the
-  feedback, and is skipped if the reply to that message posted a question or the learner
-  pressed Stop since the feedback was queued (`skip` on a queued turn,
-  `conversation.ts`). Stop during an intervening reply cancels the
-  automatic question too; feedback still queued is delivered, and the
-  learner's next message can post a question. The tutor closes no segment:
-  the check rules say when it is done, so a tool for it only added a way
-  to stall (`decisions.md`, "Feedback turn").
-- **How many questions** (`src/server/engine/check-rules.ts`, tasks 2.7,
-  2.19 and 2.23): each objective of the segment gets at least one question
-  in the check, and is done only once it has passed (section 3's derived
-  status: since its last miss, unassisted correct answers to two different
-  questions, at any confidence, or one at 90% or 100% if it was never
-  missed). There is no limit: an objective is asked again until it passes
-  or the learner moves on, which is recorded as an override. So a miss, a
-  correct answer given with help, or a first correct answer that does not
-  pass alone (`second`) asks for another question, and a confident correct
-  answer to an objective never missed ends it at one. The header says
-  which, so the tutor knows what the next question must show.
-- **Detours** (task 2.20). A miss in the check, a wrong answer or "I
-  don't know", closes its question into a detour, kept in the position
-  (`detour` in `src/shared/state.ts`), so a restart reopens it; the page
-  hears `detour`, and `detour_end` when it ends. Its first turn takes the
-  feedback's place: the header asks the tutor to give the right answer
-  and why, then find where the confusion is (from the choice picked, the
-  grader's flaw, the learner's reasoning or the line saying where they got
-  stuck, or else by asking one question) and work through it; from the
-  objective's second miss in this check, to teach the objective again
-  another way (`missed` in `check-rules.ts`). During the detour the
-  engine posts no question and `ask_question` is refused; the learner's
-  messages are not help, since no question is open. The learner ends it
-  with "Ready for another question" (`another-question`), which sends
-  `nextQuestionTurn`; it waits, as other steps do, while the tutor writes.
-  Its queued turn is skipped if an intervening learner reply has posted
-  a question, including one already missed, or Stop cancels the request
-  (task 2.20a).
-  A correct answer opens none: the next question follows by itself. A
-  unit reopened in a detour sends nothing until the learner acts, also
-  when a restart cut its first turn off. Recording the misconception a
-  detour found (`misconceptions.jsonl`) is stage 5's.
-- **"I don't know"** can carry a line on where the learner got stuck
-  (`stuck` in `AnswerSubmission`), kept with the answer in the evidence and
-  given to the tutor in the detour's first turn.
-- **Help** is judged (task 2.21, `engine/help-judge.ts`). A learner
-  message that reaches the tutor while a question waits for its answer
-  begins an exchange: its id joins the open question's `judging` in
-  `state.json`. When the tutor's reply ends, a separate one-shot call, the
-  help judge (section 6), reads the question with its correct choice or
-  rubric, the message and the reply, and returns clarification (only what
-  the question asks: its wording, its notation, the form of answer wanted,
-  or nothing that bears on the answer) or help (anything toward the
-  answer). Help, or a call that fails, marks the open question `assisted`,
-  and its answer is recorded as given with help; clarification changes
-  nothing. A reply with no text is not judged and is no help. The page
-  hears `judging` after the reply and `judged` with the call; the tutor's
-  header says what it may clarify and that a judge reads its replies, and
-  once one is judged help, that the answer will not count. The judge runs
-  outside the chat's queue, like the grader.
-- **An answer waits for the judge.** An answer sent while any exchange on
-  its question is unjudged, its reply still being written included, is
-  kept on the open question (`answer_waiting` to the page) and graded once
-  the last call is in; another answer and moving on are refused
-  meanwhile. A Stop after it was sent cancels the automatic next question
-  as for an answer recorded at once (task 2.17a). A message sent after an
-  answer is not an exchange. A restart loses the calls under way: a unit
-  reopened with replies still waiting counts them as help (`judged` with
-  `unjudged: "restart"`) and grades an answer kept for them; a judging
-  stopped because the chat is closing is not recorded.
-- **"This check"** is the evidence after the point where it began, which the
-  position keeps (`checkFrom`, the number of entries the log held then):
-  the check's answers are the entries after it that name the segment's
-  objectives. A question is numbered after the check's answers.
-- **The learner's "ready", move on, next segment and the closing card's
-  steps wait for the tutor**: while it is writing, they are refused, and
-  Stop is always there. An answer and a message are taken at any time.
-- **A finished unit is not started again.** Opening a unit with no position
-  whose objectives make it passed or overridden shows it finished; one
-  reopened at its waiting closing card shows the card again.
+- **Passing** (`record/status.ts`). Since its last miss, an objective
+  passes with unassisted correct answers to two different questions, at
+  any confidence, or with one at 90% or 100% if it was never missed. A
+  miss clears the correct answers before it. An answer given with help
+  counts for nothing and clears nothing. Questions differ when what the
+  learner saw differs. An override marks an objective overridden but never
+  takes away a pass, and a later answer takes the override's place. The
+  log's order decides, not timestamps.
+- **How many questions** (`engine/check-rules.ts`). Each objective of the
+  segment gets at least one question in the check, and is done only once
+  it has passed; there is no limit. The check's answers are the evidence
+  after `checkFrom`. The tutor's header says, for each objective, why
+  another question is needed (`missed`, `assisted`, `second`) and how many
+  were asked.
+- **The tutor's tools are refused out of phase**, with a reason it can act
+  on: `ask_question` outside the check, in a detour, while feedback is
+  pending, while a question is open, on an objective not in the segment
+  or already done in this check, and once the unit is finished. A refusal
+  does not end the turn; a posted question does.
+- **Feedback, then the next question.** The turn after a graded correct
+  answer is for feedback alone; no tool may be called in it, and
+  questions are refused from when it is queued until it ends. When it
+  ends, the segment closes if every objective is done; otherwise the
+  engine sends a turn asking for a lead-in and the next question
+  (`nextQuestionTurn` in `unit-turns.ts`). That turn is skipped if a
+  reply to a learner message has posted a question meanwhile, or the
+  learner pressed Stop.
+- **Detours.** The detour is kept in the position, so a restart reopens it.
+  Its first turn takes the feedback's place: the right answer and why, then
+  where the confusion is (from the choice picked, the grader's flaw, the
+  learner's reasoning or where they said they got stuck, or else by asking),
+  worked through with the learner; from the objective's second miss in the
+  check, the objective taught again another way. In a detour no question is
+  posted and messages are not help. "I don't know" can carry a line on
+  where the learner got stuck (`stuck`).
+- **Help** (`engine/help-judge.ts`). A learner message the tutor receives
+  while a question waits for its answer starts an exchange, kept on the
+  open question. When the tutor's reply ends, a separate one-shot call, the
+  help judge (section 6), decides clarification (only what the question
+  asks: its wording, notation, the form of answer wanted, or nothing toward
+  the answer) or help (anything toward the answer). Help, or a call that
+  fails, marks the question assisted; the tutor's header then says the
+  answer will not count. A reply with no text is not judged. An answer sent
+  while an exchange is unjudged is kept and graded once the calls are in; a
+  restart counts unjudged exchanges as help.
+- **Written answers.** A written answer is final once sent. It is kept on
+  the open question, then graded outside the chat's queue, so messages and
+  turns go on meanwhile; until its grade is recorded, another answer and
+  moving on are refused. A failed grading is shown, and the answer is
+  graded again as sent when the learner asks or the unit reopens. "I don't
+  know" is recorded at once, with no grader call.
+- **A question has one answer.** An open question whose answer the evidence
+  already holds (by `questionId`) is closed with that answer, never graded
+  or recorded again.
+- **The learner's steps wait for the tutor**: "ready", moving on, the next
+  segment, "another question", Start fresh and the closing card's steps are
+  refused while the tutor is writing; Stop is always there. Answers and
+  messages are taken at any time.
 - **Moving on sends the tutor nothing.** The next turn's header says the
   learner moved on, and which question was withdrawn.
-- **Every change is written to `state.json` before the page hears of it**;
-  an answer is appended to the evidence before its question is closed, so
-  a crash between the two leaves the question open with its answer kept,
-  never an answer lost.
-- **A question has one answer** (task 2.8a). An open question whose answer
-  the evidence already holds, found by the question's id, is closed with
-  that answer, and the tutor told, with no grading and nothing recorded:
-  when a unit is reopened after such a crash, and when an answer is sent
-  again after writing `state.json` failed.
-
-The rules of task 2.8, for written answers (section 6):
-
-- **A written answer is final once sent.** It is kept on the open question
-  in `state.json`, then graded outside the chat's queue, so messages and
-  the tutor's turns go on meanwhile. Until its grade is recorded, another
-  answer and moving on are refused, also after a failed grading, and so
-  is the tutor's `ask_question`; grading again is
-  refused while a grading runs. A message then is not help: help
-  ends when the answer is sent. A written answer that waited for the
-  judge is graded once the last call is in.
-- **A failed grading is shown, and the answer graded again as sent**: the
-  question stays open with its answer, and nothing reaches the tutor until
-  there is a grade. A unit reopened with a kept answer grades it again at
-  once, as a teaching turn a restart cut off is taught again, unless its
-  grade is recorded already (above).
-- **"I don't know" on a written question** is recorded at once, with no
-  grader call.
+- **A finished unit is not started again.** Opening one shows it finished;
+  one reopened at its closing card shows the card again.
+- **Order of writes.** Every change is written to `state.json` before the
+  page hears of it; an answer is appended to the evidence before its
+  question is closed, so a crash between the two leaves the question open
+  with its answer kept.
 
 ### Turn protocol
 
 The engine composes every message the tutor receives: a short header (unit,
-segment, phase, what is allowed now, and in a source course the segment's
-sections) followed by either the learner's text or an event ("learner pressed
-ready", "answer submitted", "override"). For a unit chat the wording is in
-`src/server/engine/unit-turns.ts`: the header also names what happened and
-what the tutor has not been told yet (an override, a new session); an
-answer's turn repeats the question with its choices, the learner's answer,
-confidence and reasoning, and the grade. The tutor's system prompt is
-assembled there too (section 9).
+segment, phase, what is allowed now, what happened that the tutor has not
+been told, and in a source course the segment's sections), followed by the
+learner's text or an event. An answer's turn repeats the question with its
+choices, the learner's answer, confidence, reasoning and the grade. The
+wording is in `engine/unit-turns.ts` for unit chats, `engine/intake.ts` and
+`engine/unit-planning.ts`; the scripted backend reads it, so rewording a
+header can break `pnpm dev:fake`, and its tests then fail.
 
 ### Question flow
 
-Questions do not block a tool call while the learner thinks, because tool calls
-have time limits and a learner may take twenty minutes or close the tab.
+Questions do not block a tool call while the learner thinks, because tool
+calls have time limits and a learner may take twenty minutes or close the
+tab.
 
-1. The tutor calls `ask_question` with the objective, the prompt, the answer
-   kind, and the grading material (answer key, expected expression, test
-   command, or rubric).
-2. The tool stores the open question in `state.json`, returns "posted; end your
-   turn", and the page renders the widget. A choice question's choices are
-   shuffled first, the answer letter moved with the correct one, and stored
-   in that order; the tool's reply lists them as shown, so the tutor's later
-   letters match the learner's (task 2.17, `engine/choice-order.ts`). The
-   tutor put the correct choice first in most questions, and asked to place
-   it at random it wrote a wrong key (task 2.16). The grading material is
-   never sent to the page. The engine then ends the tutor's turn itself,
-   because the model does not reliably stop on its own (task 0.3). While a
-   question is open, `ask_question` is rejected.
-3. The learner submits an answer, a confidence level, and optional reasoning
-   (a written answer is its own reasoning).
-4. The engine grades it (section 6) and appends evidence. A written answer
-   is kept in `state.json` while the grader works, and the page hears
-   `grading`, then `graded` or `grading_failed` (task 2.8).
-5. The engine sends the tutor the result as the next turn, which is for
-   feedback alone: no tool may be called in it. Then the engine asks for
-   the next question in a turn of its own, or closes the segment when the
-   check is done (section 4, "Phases"; task 2.16a). After a miss the turn
-   opens a detour instead, and the next question waits until the learner
-   asks for it (task 2.20). Asked for feedback and
-   the next question in one turn, the tutor on Claude with adaptive
-   thinking wrote its feedback in its thinking, which the page never
-   shows, in 7 of 8 answer turns (`decisions.md`, "Tutor prompt").
+1. The tutor calls `ask_question` with the objective, the prompt, the
+   answer kind, and the grading material (an answer letter, or a rubric;
+   from stage 3 an expected expression or a test command).
+2. The engine stores the open question in `state.json` and the page shows
+   it. A choice question's choices are shuffled first and the answer letter
+   moved with them (`engine/choice-order.ts`); the tool's reply lists them
+   as shown. Grading material never reaches the page. The engine ends the
+   tutor's turn itself.
+3. The learner submits an answer, a confidence level and optional reasoning
+   (a written answer is its own reasoning), or "I don't know".
+4. The engine grades it (section 6) and appends the evidence.
+5. The tutor gets the result as the next turn: feedback, or a detour's
+   first turn after a miss (above).
 
 Assessments (the unit gate, testing out of a unit, and the review questions
 that open a sitting; stage 5) reuse this flow with the examiner prompt in
@@ -481,83 +323,74 @@ place of the tutor prompt, over objectives the engine selects.
 
 ## 5. Teaching tools
 
-Defined once as plain functions over the record and engine, then bound to each
-backend. For Claude they are an in-process tool server; for Codex they will be
-served to it over the standard tool protocol (MCP).
+Defined once as plain functions over the record and engine
+(`src/server/tools/`), then bound to each backend: for Claude an in-process
+tool server, for Codex an MCP server.
 
 | Tool | Effect |
 | --- | --- |
-| `propose_curriculum` | Stores a draft curriculum with its style note (`style.md`, task 2.10) and background note (`background.md`, task 2.22) and shows them for review; approval covers all three. Refused in the intake's first turn (task 2.22) |
-| `amend_curriculum` | Proposes a change; applied only after the learner confirms |
-| `plan_unit` | Sets a unit's objectives and segments, in the unit's planning session when it starts (`engine/unit-planning.ts`) |
-| `ask_question` | Posts a question on an objective of the segment, in the check (section 4): a `choice` question with its answer letter, its choices shuffled by the engine (task 2.17), or a `written` one with its rubric (task 2.8; `QuestionInput` in `src/shared/question.ts`) |
-| (none for detours) | The engine opens a detour on a miss and the learner ends it (section 4, task 2.20). How the tutor records the misconception a detour found is stage 5's |
-| `quote_source` | Returns a verified quote block, or an error if the text is not in the source |
-| `show_artifact` | Displays an HTML file from `artifacts/` in the side pane |
-| `propose_style` | Proposes a change to `style.md`; applied only after the learner confirms |
-| `write_handoff` | Saves the handoff note |
-| `close_unit` | Rejected unless the gate is passed or bypassed and notes exist |
+| `propose_curriculum` | Stores a draft curriculum with its style note and background note and shows them for review; approval covers all three. Refused in the intake's first turn |
+| `plan_unit` | Sets the unit's objectives and segments, in its planning session |
+| `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, or `written` with a rubric (`QuestionInput` in `src/shared/question.ts`) |
+| `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
+| `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
+| `show_artifact` | (stage 3) Displays an HTML file from `artifacts/` in the side pane |
+| `propose_style` | (stage 5) Proposes a change to `style.md`; applied only after the learner confirms |
+| `write_handoff` | (stage 5) Saves the handoff note |
+| `close_unit` | (stage 5) Refused unless the gate is passed or bypassed and notes exist |
 
-The tutor also gets file reading and search over the course folder, file
-writing limited to `workspace/`, `artifacts/` and `notes/`, a shell for running
-tests and the Python helpers, and web search when the course allows it. It
-cannot write the record files directly.
+The learner starts segments and the engine closes them, so there is no tool
+for either; detours are opened by the engine and ended by the learner.
+
+From stage 3 the tutor also gets file reading and search over the course
+folder, file writing limited to `workspace/`, `artifacts/` and `notes/`, a
+shell for running tests and the Python helpers, and web search when the
+course allows it. It cannot write the record files.
 
 ## 6. Grading
 
 | Answer kind | Method | Notes |
 | --- | --- | --- |
-| Multiple choice | Exact match in the engine | Reasoning text is passed to the tutor for feedback |
-| Computational math | `pytools/mathcheck.py` compares the answer with the expected expression using SymPy | Falls back to rubric grading if either side fails to parse |
-| Code | Runs the question's test command in `workspace/` | Tests are written by the tutor before the question is posted |
-| Proof, explanation, reconstruction | A separate one-shot model call using `prompts/grader.md` and the question's rubric | Must name the first flawed step or missing element; no access to the tutor's conversation |
+| Multiple choice | Exact match in the engine | Reasoning is passed to the tutor for feedback |
+| Computational math | (stage 3) `pytools/mathcheck.py` compares the answer with the expected expression using SymPy | Falls back to rubric grading if either side fails to parse |
+| Code | (stage 3) Runs the question's test command in `workspace/` | Tests are written by the tutor before the question is posted |
+| Proof, explanation, reconstruction | A separate one-shot model call, `prompts/grader.md` with the question's rubric | Names the first flawed step or missing element; never sees the tutor's conversation |
 
-Rubric grading as built in task 2.8 (`src/server/engine/grading.ts`): the
-grader is one `oneShot` request (section 7) whose system prompt is
-`grader.md` and whose message holds the question as the learner saw it, the
-rubric and the answer, each between tags, and nothing else: not the
-objective, the confidence, or anything of the tutor's conversation. The
-reply is `WrittenGrade` in `src/shared/question.ts`: `correct` or
-`incorrect`, with no partial credit, and the flaw, required when incorrect,
-which the evidence and the `graded` event keep. A reply not in that shape,
-a failed request, or one past the time limit (three minutes) is a failed
-grading, which the learner can retry. The grader runs on the tutor's
-backend with a model of its own, Claude Sonnet 5.5 (`GRADER_MODEL` in
-`backends/claude.ts`), chosen in task 2.9 on a set of answers graded by
-hand (`scripts/grader-set.ts`; the results are in `decisions.md`, "Grader
-prompt"); `GAUSS_CLAUDE_MODEL`, when set for a development run, replaces it
-as it does every session's model. `grader.md` has the grader check every
-step and computation, accept any valid method, and name only the first
-flaw, pointed at, without the repair and without the rubric, which the
-learner never sees.
-
-The help judge (task 2.21, section 4's "Help") is a one-shot request of the
-same kind: `prompts/help-judge.md`, a message holding the question with its
-choices and correct choice, or its rubric, the learner's message and the
-tutor's reply, each between tags, and the reply `HelpJudgment` in
-`src/shared/question.ts` (a reason, which is never shown, then
-`clarification` or `help`). A reply not in that shape, a failed request or
-one past two minutes counts as help. It runs on Claude Haiku 5.5
-(`JUDGE_MODEL` in `backends/claude.ts`), chosen on a hand-judged set
-(`scripts/help-set.ts`, run by `scripts/judge-set.ts`; the results are in
-`decisions.md`, "Help judge"), and `GAUSS_CLAUDE_MODEL` replaces it as it
-does the grader's.
-
-Every grade can be disputed. A dispute is appended to the evidence log and
-passed to the tutor; the original grade is kept alongside the outcome.
+- **The grader** (`engine/grading.ts`) is one `oneShot` request (section 7):
+  system prompt `grader.md`, and a message holding the question as the
+  learner saw it, the rubric and the answer, each between tags, and nothing
+  else. The reply is `WrittenGrade` (`src/shared/question.ts`): correct or
+  incorrect, no partial credit, and the flaw when incorrect, which the
+  evidence keeps. A reply out of shape, a failed request or one past three
+  minutes is a failed grading. It runs on Claude Sonnet 5.5 (`GRADER_MODEL`
+  in `backends/claude.ts`).
+- **The help judge** (`engine/help-judge.ts`) is a one-shot request of the
+  same kind: `help-judge.md`, and a message holding the question with its
+  correct choice or rubric, the learner's message and the tutor's reply.
+  The reply is `HelpJudgment`: a reason, never shown, then clarification or
+  help. A reply out of shape, a failed request or one past two minutes
+  counts as help. It runs on Claude Haiku 5.5 (`JUDGE_MODEL`).
+- `GAUSS_CLAUDE_MODEL`, when set, replaces both models. Each was chosen on a
+  hand-made set: re-run `node scripts/grade-set.ts --runs 2` when
+  `grader.md`, `WrittenGrade` or `GRADER_MODEL` changes, and
+  `node scripts/judge-set.ts --runs 2` when `help-judge.md`,
+  `HelpJudgment` or `JUDGE_MODEL` changes.
+- (stage 3) Every grade can be disputed. A dispute is appended to the
+  evidence log and passed to the tutor; the original grade is kept
+  alongside the outcome.
 
 ## 7. Backends
 
 ### Adapter
 
-Revised in task 0.5 from what the minimal page needed. The code is the
-reference: `src/server/backends/backend.ts` and `src/server/tools/tool.ts`.
+The code is the reference: `src/server/backends/backend.ts` and
+`src/server/tools/tool.ts`.
 
 ```ts
 interface TutorBackend {
-  startSession(opts: SessionOptions): Promise<TutorSession>;  // opts: system prompt, teaching tools, cwd (kept there), resumeId, title; SessionNotFound
-  hasSession(id: string, cwd: string): Promise<boolean>;  // a kept session is there to resume, found without starting it (task 2.15)
-  oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal; the grader (task 2.8), the help judge (task 2.21), later notes
+  startSession(opts: SessionOptions): Promise<TutorSession>;  // system prompt, tools, cwd, resumeId, title; rejects with SessionNotFound
+  hasSession(id: string, cwd: string): Promise<boolean>;      // a kept session is there, found without starting it
+  oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal
 }
 interface TutorSession {
   readonly backendSessionId: string;  // known from the start, before the first turn
@@ -567,7 +400,7 @@ interface TutorSession {
 }
 interface TeachingTool {
   name: string; description: string;
-  inputShape: ZodRawShape;  // the input's fields, for backends that describe tools by fields
+  inputShape: ZodRawShape;
   run(input: unknown): Promise<ToolResult>;  // validates, then runs; never throws
 }
 type ToolResult =
@@ -575,368 +408,218 @@ type ToolResult =
   | { status: "refused"; text: string };  // the reason goes back to the model
 ```
 
-- Teaching tools are passed to `startSession` as transport-free definitions,
-  and each backend binds them its own way.
-- A tool ends the tutor's turn by returning `endTurn` with a `done` result.
-  A refused call never ends the turn, so the model sees why and can try
-  again (task 0.3).
-- `send` handles one turn at a time; the engine waits for its `turn_end`
-  before sending the next. It never throws: a failure is a `turn_end` whose
-  outcome is `error`. The outcomes are `done`, `ended_by_tool`,
-  `interrupted` and `error`.
-- `oneShot` (task 2.8) is one request with its own system prompt, no tools,
-  no conversation before it and nothing kept after it. The reply is asked
-  for as JSON in the schema's shape and checked against the zod schema
-  (`checkReply` in `backend.ts`), so a reply not in shape is a failure. It
-  never throws.
-- A session given a working directory (`cwd`: the course's folder, or the
-  intakes' folder) is kept and can be resumed by its id (`resumeId`, in the
-  same folder); one without, such as a unit's planning, is not kept. A
-  resumed session is ready when `startSession` resolves; one the backend
-  cannot find rejects with `SessionNotFound`, its own failure, which the
-  engine answers by starting fresh (task 2.14). `hasSession` says whether a
-  kept session is there without starting it, so a unit's opening needs no
-  process (task 2.15). A new kept session is given a `title` (the course and
-  the unit, or "Gauss: new course"), so the backend makes none up.
-- Still to add, in the stage that first needs it: built-in tools and their
-  confinement to the course folder (stage 3, when the tutor first writes
-  and runs files).
+- A `done` result with `endTurn` ends the tutor's turn; a refused call never
+  does, so the model sees why and can try again.
+- `send` handles one turn at a time and never throws: a failure is a
+  `turn_end` whose outcome is `error`. The outcomes are `done`,
+  `ended_by_tool`, `interrupted` and `error`.
+- `oneShot` is one request with its own system prompt, no tools, nothing
+  before it and nothing kept after it. The reply is checked against the zod
+  schema, so a reply not in shape is a failure. It never throws.
+- A session given a working directory is kept and can be resumed by id in
+  the same directory; one without (a unit's planning) is not kept. A kept
+  session gets a `title`. `startSession` with a `resumeId` the backend
+  cannot find rejects with `SessionNotFound`, the only failure the engine
+  answers by starting fresh.
+- The fake backend (`backends/fake.ts`) runs the real teaching tools and
+  gives one-shot requests scripted replies, checked as the real backend
+  checks its own; it keeps sessions in a set that backends can share, so a
+  test's restart resumes them. The scripted backend (`backends/scripted.ts`)
+  is the fake driven by the turn headers, for `pnpm dev:fake`.
 
-A scripted fake implementation (`src/server/backends/fake.ts`) backs the
-automated tests. It runs the real teaching tools, so a test sees what the
-tool returned and whether it ended the turn, and gives one-shot requests
-scripted replies, checked as the real backend checks its own. It keeps the
-sessions started with a working directory, in a set that backends can
-share, so a test's restart resumes them.
+### Claude
 
-### Claude (first)
+`backends/claude.ts`, on the Claude Agent SDK, signed in with the learner's
+plan. The findings behind each option are in `decisions.md`, "Claude
+backend".
 
-Verified in the Agent SDK documentation:
-
-- Package `@anthropic-ai/claude-agent-sdk`; `query({ prompt, options })`
-  returns a stream of messages. A streamed `prompt` gives multi-turn sessions
-  and enables `interrupt()`.
-- Custom tools: `tool()` plus `createSdkMcpServer()`, passed in
-  `options.mcpServers`, named `mcp__<server>__<tool>` and pre-approved through
-  `allowedTools`. Custom tools are deferred behind tool search by default;
-  `alwaysLoad: true` keeps their definitions in the prompt.
-- Tool calls have a time limit (`MCP_TOOL_TIMEOUT`, or `timeout` on the
-  server), which is why questions do not block.
-- `resume: <session id>` continues a session; `includePartialMessages` streams
-  partial text.
-- `systemPrompt` takes a custom string; `tools: [...]` limits which built-in
-  tools exist; `cwd` sets the working folder.
-- A `sandbox` option exists.
-- Signed in with a plan, SDK usage draws from the plan's limits (help center,
-  2026-11). A move to separate metered credits was announced and paused in
-  June 2026.
-
-Observed in stage 0 (details in `decisions.md`):
-
-- The SDK uses the existing `claude` plan login when no API key is set. A set
-  `ANTHROPIC_API_KEY` takes precedence over the plan login, so the backend
-  leaves it out of the environment it gives the SDK (task 0.2). So do
-  `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`, which sent requests to
-  another server with another token in task 2.8, so the backend drops
-  every `ANTHROPIC_` variable, and every `CLAUDE` one, which includes the
-  cloud-provider switches (`CLAUDE_CODE_USE_BEDROCK` and the like).
-- A one-shot request is a `query()` with a string prompt and the SDK's
-  structured output (`outputFormat` with a JSON Schema from
-  `z.toJSONSchema(schema, { target: "draft-7" })`); the reply is the
-  result's `structured_output`. It works with `tools: []` and the
-  isolation options below: a grading on Haiku 5.5 took 3.3 seconds (task
-  2.8).
-- Keeping the learner's personal Claude Code settings, instructions, memory,
-  skills and connectors out of the tutor takes `settingSources: []`,
-  `skills: []`, `strictMcpConfig: true` and
+- **Plan login, never an API key.** The SDK is given an environment without
+  any `ANTHROPIC_` or `CLAUDE` variable: a key, a base URL or a token, or a
+  cloud-provider switch, would take the session off the plan.
+- **Isolation from the learner's own Claude Code**: `settingSources: []`,
+  `skills: []`, `strictMcpConfig: true`, and
   `settings: { autoMemoryEnabled: false, disableClaudeAiConnectors: true }`.
-  `settingSources: []` alone still loads the auto-memory, lists Claude Code's
-  bundled skills, and connects the learner's claude.ai connectors (tasks 0.2
-  and 0.3).
-  The account's email address still reaches every session, in a system
-  reminder on the first message: Claude Code reads it from the login's
-  account record, and no option or variable turns it off (task 2.22a).
-- Custom tools are deferred only when `ToolSearch` is among the session's
-  tools. The tutor's tool list leaves it out, and the teaching tool server
-  sets `alwaysLoad: true` as well (task 0.3).
-- A `PostToolUse` hook returning `continue: false` ends the turn right after
-  a tool call, and the session continues with the next message. This is how
-  the Claude backend ends the turn after `ask_question` (task 0.3): the
-  tool's `endTurn` sets a flag, and the hook stops the turn only when the
-  flag is set (task 0.5).
-- The backend picks the session id itself with the `sessionId` option, so
-  the id is known before the first turn (task 0.5).
-- `interrupt()` stopped a turn before or during its text, and the session
-  answered the next message normally in task 0.5's runs. Review fix 0.8
-  covers a gap those runs missed: the SDK leaves pending input runnable
-  after an interrupt. A `UserPromptSubmit` hook stops a cancelled prompt at
-  pickup; if it already passed that hook, the backend interrupts again at
-  the first response `message_start`, when the turn has an abort controller.
-  It refuses late teaching-tool callbacks and drains remaining output without
-  publishing it. A request may start in the post-hook gap before it can be
-  interrupted; stopping is not a guarantee of zero token usage. These race
-  cases are regression-tested against a simulated SDK boundary, not a live
-  backend; see `decisions.md` under "Review fixes".
-- A session resumes by id in a new process (`resume`); see section 4 for what
-  carries over (task 0.4). With a streamed prompt, an id Claude Code cannot
-  find fails while the process starts, before any input and any model
-  request: `initializationResult()` rejects with "No conversation found with
-  session ID", which the backend reports as `SessionNotFound`; a session it
-  finds resolves it in about half a second (task 2.14). The SDK takes a
-  chosen `sessionId` only for a new session, so a resume passes `resume`
-  alone. Kept sessions are stored under
-  `~/.claude/projects/<course folder, encoded>/<id>.jsonl`, and nothing is
-  written in the course folder while the tutor has no built-in tools.
-  `systemPrompt: { type: "custom", prompt, snapshot: false }` makes a
-  resumed session use the prompt it is resumed with (task 2.14). A new
-  session given `title` records it (a `custom-title` line in its file) and
-  Claude Code generates no title of its own, which it otherwise does from
-  the first message; a resumed session keeps the title it has. A session
-  whose process was stopped while it wrote a reply resumes: its file ends
-  with the message it was answering, and the next turn goes on from there.
-  `getSessionInfo(id, { dir })` reads one kept session's file with no
-  process, in 4 to 7 ms; it is undefined for an unknown id, for a session
-  kept in another folder and for a folder that does not exist, and did not
-  throw for any of them (tasks 2.14 and 2.15). The Claude backend's
-  `hasSession` is that call.
-- Claude Code's sweep deletes a kept session once its file is older than
-  `cleanupPeriodDays` (30 by default, from the learner's own settings). A
-  session file backdated 31 days was deleted by a Claude Code process within
-  a quarter of an hour, and resuming it then failed as an unknown id does
-  (task 2.14). Which process sweeps, and when, was not pinned down: neither
-  an SDK session nor a `claude -p` run swept at once.
-- Writes are confined to one directory by two layers: the Bash sandbox
-  (bubblewrap on Linux) for shell commands, with unsandboxed retries off and
-  Claude Code's temp directory moved inside it (`CLAUDE_CODE_TMPDIR`); and
-  `dontAsk` mode, path-scoped `Edit` rules and
-  `blockWritesOutsideWorkingDirectories` for the file tools. Reads are not
-  confined. The exact options are in `decisions.md` (task 0.4).
+  The account's email address still reaches every session; no option
+  removes it.
+- **Tools**: built-in tools named with `tools` (none yet), never
+  `ToolSearch`; the teaching tools are an in-process MCP server with
+  `alwaysLoad: true`.
+- **Ending the turn**: a `PostToolUse` hook stops the turn when a teaching
+  tool returned `endTurn`, since the model does not reliably stop by
+  itself.
+- **Stop**: `interrupt()`, plus a `UserPromptSubmit` hook that stops a
+  cancelled turn the SDK picks up later, and a second interrupt at the
+  response's start for one that slipped past the hook. A stopped request
+  may still have spent tokens.
+- **Sessions**: one long-lived `query()` per session with a streamed prompt;
+  the id is chosen up front (`sessionId`); resume passes `resume` alone, in
+  the same `cwd`; the system prompt is
+  `{ type: "custom", prompt, snapshot: false }`, so a resumed session uses
+  the current one; `hasSession` reads the session file with
+  `getSessionInfo`, starting no process.
+- **One-shot**: a `query()` with a string prompt, no tools, the isolation
+  options, and the SDK's structured output (`outputFormat` with a draft-7
+  JSON Schema from `z.toJSONSchema`).
 
-### Codex (later)
+### Codex (stage 6)
 
-Verified: package `@openai/codex-sdk`; `startThread()`, `thread.run()`,
-`resumeThread(id)`; a `sandboxMode` option; the SDK's documentation points to
-the Codex app server for streamed events.
-
-Observed in the stage 0 spike (task 0.6; details in `decisions.md`):
-
-- The SDK runs on the ChatGPT plan login with no API key. Each turn is a
-  new `codex exec` process, and a thread continues by id.
-- Teaching tools can be served over MCP from Gauss's own process, given to
-  Codex as a `mcp_servers` config override with
-  `default_tools_approval_mode = "approve"`. A tool ends the turn by having
-  the backend abort it; the thread resumes normally after.
-- The SDK delivers each message whole, so text does not stream. The app
-  server's protocol has text deltas; a Codex backend that streams would use
-  it instead of the SDK. Not tried.
-- The thread id is known only when the first turn starts, which the
-  adapter's `backendSessionId` does not allow yet.
-- Custom instructions replace Codex's own through `model_instructions_file`.
-  Keeping out the learner's own Codex setup is unsolved: the global
-  `AGENTS.md`, skills and multi-agent instructions stayed in with every
-  config override tried. A separate `CODEX_HOME` with its own login is the
-  likely route. Stage 6 settles these when the Codex backend is chosen.
-
-### Open after stage 0
-
-Each item names the stage that settles it; details are in `decisions.md`.
-Settled since: the other variables that may redirect the SDK (task 2.8,
-above), and resume, with `snapshot: false` and the 30-day sweep ending in
-the fallback (task 2.14, above and section 4).
-
-| Open question | Settled in |
-| --- | --- |
-| Which course folders the tutor may write, how the record files are closed to it (an `Edit` deny rule and a sandbox `denyWrite` entry both work), and whether `CLAUDE_CODE_TMPDIR` on the real course path is short enough for the sandbox (task 0.4) | Stage 3, when the tutor first writes and runs files |
-| Reads are not confined: sandboxed commands can read most of the machine (task 0.4) | Stage 4, before the tutor gets web access |
-| A reply after a mid-sentence stop was slow once (10 to 30 seconds), cause unknown (task 0.5); 2.14's real run used no Stop | Stage 2, if it recurs in the real run of task 2.16 |
-| Codex: streaming through the app server, the thread id arriving with the first turn, and keeping the learner's own Codex setup out (task 0.6) | Stage 6, with the Codex backend |
+Not built. The stage 0 spike showed it can run on the ChatGPT login with
+teaching tools served over MCP, but the SDK does not stream text, reports
+the thread id only with the first turn, and cannot keep the learner's own
+Codex setup out (`decisions.md`, "Codex").
 
 ## 8. Sources
 
-1. **Ingest** (`pytools/convert.py`): copy the original; convert to Markdown;
-   build an outline from the headings or the table of contents; write one
-   file per section, and `outline.json`, whose shape is a zod schema in
-   `src/shared/` written in stage 4.
+Built in stage 4; this is the design (`decisions.md`, "Sources").
+
+1. **Ingest** (`pytools/convert.py`): copy the original; convert to
+   Markdown; build an outline from the headings or the table of contents;
+   write one file per section, and `outline.json`, whose schema is written
+   in stage 4.
    - The outline nests as the source does, to any depth. A **section** is a
-     leaf of the outline and the only kind of entry with a file. Text between
-     a heading and its first subheading becomes a section of its own.
+     leaf of the outline and the only kind of entry with a file. Text
+     between a heading and its first subheading is a section of its own.
    - Each section records where it sits in the original (a page range, or a
      paragraph range for formats without pages), for citations and page
      images.
-   - A section has a size limit, below what one file read returns
-     (25,000 tokens by default; `decisions.md`, "Source sections"). A
+   - A section has a size limit, below what one file read returns. A
      stretch over the limit with no headings is cut at paragraph boundaries
      into parts of roughly equal size, titled from its parent and position.
-     Stage 4 sets the limit by trial on real files.
    - The same file and converter always give the same sections and ids.
-     Ingesting again with a different converter means mapping the units
-     again.
 2. **Map**: during curriculum planning each unit lists the sections it
    teaches. When the unit is planned, each segment names the sections it
    draws on.
-3. **Teach**: the engine names the current segment's sections in the turn
-   header, and the tutor reads those files. It may read other sections of the
-   source when the discussion needs them. For a page whose text lost equations
-   or figures, it requests the page image.
-4. **Quote**: `quote_source` checks the text against the source's whole text,
-   its sections in order, after normalising whitespace and punctuation
-   variants, so a quote that crosses a cut still verifies. It returns the
+3. **Plan**: the unit's planning session reads the unit's whole text, so
+   the tutor's session starts from the stored plan rather than carrying the
+   text from its first turn.
+4. **Teach**: the engine names the current segment's sections in the turn
+   header, and the tutor reads those files. It may read other sections when
+   the discussion needs them, and requests a page image for a page whose
+   text lost equations or figures.
+5. **Quote**: `quote_source` checks the text against the source's whole
+   text, its sections in order, after normalising whitespace and
+   punctuation, so a quote across a cut still verifies. It returns the
    section and the page or paragraph, and the page links the quote to its
-   place in the source.
+   place.
 
-Converters are chosen in stage 4 by trying candidates on real files (a clean
-PDF book, an arXiv paper, an EPUB). Scanned PDFs are detected and reported as
-needing text recognition; that step is not in the first version.
-
-Unit planning reads the whole unit's text in a planning session of its own,
-which runs before the tutor's session starts (decided in plan task 2.0,
-built in 2.5). Done in the tutor's session, that text would stay in context
-from the first turn, and reading one segment's sections at a time would
-save nothing. The tutor's session starts from the stored plan. Stage 4
-gives the planning session the unit's sections.
+Scanned PDFs are detected and reported as needing text recognition; that
+step is not in the first version.
 
 ## 9. Prompts
 
-Kept as editable files in `prompts/`. The tutor's system prompt is assembled
-from `tutor.md`, the course's `style.md`, and course context from the record:
-as built in task 2.6, `tutor.md`, then the course's units with their goals,
-the unit taught and its plan, then the course's `background.md` or a line
-saying none was recorded (task 2.22), then `style.md` or a line saying to
-use the default style in `tutor.md`. The unit planner's one turn carries
-the background note too, before the curriculum. The learner's profile, the
-last handoff note and open misconceptions join it in stage 5.
-`examiner.md` drives assessments, `grader.md` rubric grading (revised in
-task 2.9 against `scripts/grader-set.ts`, which `scripts/grade-set.ts`
-grades on a real model: re-run it when the prompt changes), `help-judge.md`
-the call on whether a reply during an open question was help (task 2.21,
-checked against `scripts/help-set.ts` by `scripts/judge-set.ts`: re-run
-it when the prompt changes), `planner.md`
-the intake: its questions, asking to go ahead, and the curriculum proposal
-with its style and background notes (task 2.22), `unit-planner.md` the planning session that
-plans a unit when it starts (task 2.5), `notes.md` unit notes and cheat
-sheets. Each is drafted in the stage that first needs it and revised against
-real transcripts. Since task 2.24 the unit planner writes one idea per
-objective, and `tutor.md` asks one thing per question, quotes nothing
-verbatim from memory (stage 4 brings quotes it can check), and ends its
-teaching with an ungraded exercise for the discussion.
+Kept as files in `prompts/`, each revised against real runs.
+
+- `tutor.md` is the start of the tutor's system prompt, which
+  `engine/unit-turns.ts` assembles: `tutor.md`, the course's units with
+  their goals, the unit taught and its plan, "# The learner" with
+  `background.md` (or a line saying none was recorded), then `style.md` (or
+  a line saying to use `tutor.md`'s default style). Stage 5 adds the
+  profile, the last handoff note and open misconceptions.
+- `planner.md` drives the intake: its questions, asking to go ahead, and the
+  proposal with its style and background notes.
+- `unit-planner.md` drives a unit's planning session.
+- `grader.md` and `help-judge.md` are the one-shot calls of section 6.
+- Later: `examiner.md` for assessments (stage 5), `notes.md` for unit notes
+  and cheat sheets.
+
+Model text is Markdown with `$` math: `$...$` inline, `$$` for display,
+`\$` for a dollar sign; no `\(...\)`, HTML or images (section 10). Every
+prompt that writes for the page must say so.
 
 ## 10. Page
 
-- **Library**: all courses and one-offs with progress; create, open, resume.
-  Every row opens its course view (task 2.28; before it, a course with a
-  unit in progress opened that unit's session).
-- **Course**: curriculum diagram with status, unit list, notes, sources; a
-  card at the top leads to the unit in progress most recently opened, or
-  else the next unit in order, and every unit not started has Start (task
-  2.12, `src/web/progress.ts`).
-- **What I know** (task 2.26), at `/courses/<id>/what-i-know`, linked from
-  the course view: each started unit's objectives with their status, and
-  under each its evidence in log order (question, answer, confidence,
-  help, grade with a written answer's flaw, date), overrides as lines of
-  their own; never a rubric (`WhatIKnow.tsx`, `what-i-know.ts`). Under its
-  summary, the course's calibration: for each confidence level, how many of
-  the answers given without help were correct, with "I don't know" apart
-  (tasks 2.27 and 2.29, `src/web/calibration.ts`).
-- **Session**: chat with rendered Markdown and math; question widgets (choice,
-  typed math with live preview, free text, "run my code") with confidence and
-  reasoning fields; phase indicator and the "ready" and "override" controls;
-  side pane for artifacts and cited source passages. A line divides one
-  message from the next, and the open question sits above the message box,
-  with the next-step control, until it is graded or withdrawn (task 2.18,
-  `divided` and `openQuestion` in `src/web/session.ts`). A detour has a
-  marker after the missed question's card, and the next-step control then
-  offers "Ready for another question" beside moving on; "I don't know"
-  asks, before it is sent, where the learner got stuck, which they may
-  leave blank (task 2.20). While a question waits for its answer, a line
-  above the message box says that asking what it means is free and that a
-  reply helping toward the answer makes it given with help; the judge's
-  call on each reply during it is a line under the reply, and an answer
-  that waits for a call is shown on the card as kept (task 2.21,
-  `helpNotice` and `judgmentSays` in `session.ts`).
+`src/web/`, React built by Vite. Each view's logic sits in a tested pure
+module beside it (`session.ts`, `timeline.ts`, `progress.ts`, `library.ts`,
+`what-i-know.ts`, `diagram.ts`, `route.ts`); the components themselves have
+no automated tests.
 
-Text from a model, and the learner's typed answers, are rendered as
-Markdown with `$` math by `src/web/prose.tsx`, as React elements and never
-as HTML (`decisions.md`, "Markdown and math").
+- **Library** (`/`): every course and one-off, with where it stands, a tick
+  per unit, and when it was last opened; finished courses grouped at the
+  bottom. Every row opens its course view.
+- **Intake** (`/intakes/<id>`): the conversation, with each proposal as a
+  card (units, "How I would teach it", "What the tutor will know about
+  you", the diagram, Approve); a revision marks what changed.
+- **Course** (`/courses/<id>`): a card at the top that leads to the unit in
+  progress most recently opened, or else the next unit in order (the first
+  not started whose prerequisites are finished); the unit list with each
+  unit's status, Start (which asks first when a prerequisite is not
+  finished) or Continue; the diagram in the side pane; "What I know".
+- **What I know** (`/courses/<id>/what-i-know`): each started unit's
+  objectives with their status and, under each, its evidence in log order
+  (question, answer, confidence, help, grade with a written answer's flaw,
+  date) and overrides; never a rubric. Under the summary, the course's
+  calibration: for each confidence level, how many unassisted answers were
+  correct, "I don't know" apart.
+- **Session** (`/courses/<id>/units/<unit>`): the thread with rendered
+  Markdown and math; phase markers; one next-step control where the thread
+  has reached; the open question pinned above the message box until it is
+  graded or withdrawn, then moved to where it was answered; the help
+  notice above the message box and the judge's call under each reply; the
+  detour marker and "Ready for another question"; the closing card; a top
+  line with the unit's position, whose outline holds Start fresh. Keys: A
+  to F pick a choice, 1 to 5 how sure, Enter submits. The view posts
+  `open`, follows `events`, and opens the unit again if the stream answers
+  404 (the chat was lost).
+- **Rendering** (`src/web/prose.tsx`): model text and the learner's answers
+  become React elements, never HTML. Raw HTML shows as text, images are
+  never fetched, unsafe links lose their address, KaTeX runs untrusted.
+- Artifacts render in a sandboxed frame so generated HTML cannot touch the
+  app (stage 3).
 
-Artifacts render in a sandboxed frame so generated HTML cannot touch the app.
+The look and layout were settled with static mocks in `docs/prototype/`
+(start at `index.html`; the shared look is `base.css`, copied into
+`src/web/styles.css`); the picks are in `decisions.md`, "Page design".
 
-The page talks to the server through the routes in `src/server/http/app.ts`
-(task 1.5); the bodies they take and send are schemas in `src/shared/`
-(`events.ts`, `library.ts`, `what-i-know.ts`, `calibration.ts`). The
-library reads courses from the record. `GET /api/courses/<id>/what-i-know`
-sends a course's objectives with their status and evidence, and its
-calibration counts (`record/calibration.ts`), derived when asked
-(`record/what-i-know.ts`); a draft is refused (tasks 2.26 and 2.29).
-"New course" starts an intake, which the page addresses by an id of its
-own until it ends, because the course exists only from the first proposal;
-the intake's event stream, messages, approval and stop are routes under
-`/api/intakes/<id>/`. Intakes are held in memory, so a restart ends one in
-progress, whose routes then answer 404; a course it proposed stays in the
-library as a draft. Opening a draft (`POST /api/courses/<id>/review`)
-returns the intake still running for it, or a new one that starts from the
-stored draft. A unit chat is addressed by its course and unit, under
-`/api/courses/<id>/units/<unit>/` (task 2.6): `open` starts the unit or
-picks it up and must come first, then `events`, `messages`, `ready`,
-`answers`, `grade-again` (a written answer whose grading failed, task
-2.8), `another-question` (ends a detour, task 2.20), `override`, `next-segment`, `go-over-again` and `finish` (the
-closing card's two steps), `start-fresh` (task 2.14) and `interrupt`. A
-unit not opened
-since the server started answers 404 on all but `open`. An event stream replays its chat's log with ids
-`<log id>.<index>`, so a page that reconnects gets only what it missed.
-Only Gauss's own page may use the API (`decisions.md`, "Minimal page").
-The page shows a unit's session at `/courses/<id>/units/<unit>` (task
-2.11): it posts `open`, then follows `events`, and when that stream
-answers 404 (the chat was lost) it opens the unit again and follows the
-new chat, whose thread starts with the unit's earlier sessions, each after
-the first under a "New session" marker with its date (task 2.13). A "Fresh
-start" marker follows the session's when the tutor's conversation was
-replaced, and the thread before it is dimmed, but for a card that still
-waits (task 2.14). A session is reached from the course view's card and units, from "Start
-unit 1" after approval, and from the closing card's "Start unit N", which
-is the next unit in order once this one is finished.
+**Routes** (`src/server/http/app.ts`; bodies are schemas in `src/shared/`,
+mainly `events.ts`, `library.ts` and `what-i-know.ts`):
 
-The layout of these views was settled with static mocks: `docs/prototype/`
-(start at `index.html`; the shared look is `base.css`), with the choices
-recorded in `docs/decisions.md`. Task 1.6 built the library, the intake and
-the course view from them (`src/web/`), and task 2.11 the session view
-(`Session.tsx`, with its logic in `session.ts` and `timeline.ts`). The
-curriculum diagram is laid out
-by the page itself (`src/web/diagram.ts`), not by Mermaid, to keep the
-settled look.
+- `GET /api/courses`, `GET /api/courses/<id>` (with each unit's progress),
+  `GET /api/courses/<id>/what-i-know`, `POST /api/courses/<id>/review`
+  (the intake for a draft).
+- `POST /api/intakes`, then under `/api/intakes/<id>/`: `events`,
+  `messages`, `approval`, `interrupt`. An intake is addressed by an id of
+  its own, since the course exists only from the first proposal.
+- Under `/api/courses/<id>/units/<unit>/`: `open` first, then `events`,
+  `messages`, `ready`, `answers`, `grade-again`, `another-question`,
+  `override`, `next-segment`, `go-over-again`, `finish`, `start-fresh`,
+  `interrupt`. A unit not opened since the server started answers 404 on
+  all but `open`.
+- An event stream replays its chat's log with ids `<log id>.<index>`, so a
+  page that reconnects gets only what it missed. Refusals and failures
+  answer with the reason as `error`.
+- The server listens on `127.0.0.1` only, refuses host names other than
+  `localhost`, and refuses a POST whose `Origin` is not its own page.
 
 ## 11. Testing
 
-- **Automated (Vitest)**: status derivation from evidence, phase rules and
-  rejected transitions, gate objective selection, quote verification, grading
-  dispatch, record read/write, and engine flows driven by the fake backend.
-  Expected results come from worked examples written by hand. Idle closing
-  runs on a fake timer (`engine/fake-timer.ts`), which the test moves on.
+- **Automated (Vitest)**: tests sit beside the code. Expected results come
+  from worked examples written by hand. Engine flows run on the fake
+  backend; idle closing runs on a fake timer (`engine/fake-timer.ts`) that
+  the test moves on; choice order is fixed with `order: givenOrder`.
 - **Python helpers (pytest via uv)**: known equivalent and non-equivalent
-  expression pairs; conversion of small fixture files.
-- **Browser checks with no model**: `pnpm dev:fake` runs the server on the
-  scripted backend and a seeded scratch data root (task 2.12b). A test takes
-  that backend through the engine, so it keeps up with the engine's rules.
-- **Manual smoke tests**: real-backend sessions, since they spend plan usage
-  and are not deterministic. Saved transcripts become material for prompt
-  revision.
+  expression pairs; conversion of small fixture files (stages 3 and 4).
+- **Browser checks with no model**: `pnpm dev:fake`, the real server on the
+  scripted backend and a seeded scratch data root.
+- **Real-model runs**: by hand, short, on Haiku 5.5 unless the result
+  depends on the model's judgment. A run's turns as sent, with headers,
+  tool inputs and thinking, are in Claude Code's session log under
+  `~/.claude/projects/<course folder, every character but letters and
+  digits made "-">/`; the page events are in the course's `sessions/`.
 
 ## 12. Build stages
 
 Each stage ends with something the learner can use and a stated check. The
-task-level breakdown and status live in `plan.md`.
-
-Stage 5 is built before stage 4 (the user's choice, 2026-11-17,
-`decisions.md`, "Stage 2 review"): the gate and review make "passed"
-trustworthy in every course, while sources add one kind of course. The
-numbers are kept, because documents and code name the stages by them.
+task-level breakdown and status live in `plan.md`. Stage 5 is built before
+stage 4 (the user's choice): the gate and review make "passed" trustworthy
+in every course, while sources add one kind of course.
 
 | Stage | Builds | Done when |
 | --- | --- | --- |
-| 0. Spike and skeleton | Git, `mise.toml`, pnpm, lint and test setup. A page that streams one Claude reply on the plan login and round-trips one `ask_question` call. A one-hour Codex spike. | The "to verify" items in section 7 are answered in writing and the adapter interface is confirmed or revised |
-| 1. Record and library | Data root, course creation by intake chat, `propose_curriculum`, review and approval, diagram, library | A course can be created and approved, and survives a restart |
-| 2. Session engine | `plan_unit`, segment phases, `ask_question` for multiple choice and rubric-graded answers, confidence, evidence, derived status, override, resume, transcripts, math rendering; then (tasks 2.23 to 2.27) the passing rule without a confident answer, single-idea objectives, the backup, the "what I know" view and calibration | A unit of a math course is completed across two sittings, stopping mid-segment |
-| 3. Checked grading and aids | SymPy check, workspace and code tests, artifacts pane, disputes | A coding unit and a computational unit are graded without a model judging the answer |
-| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting (skippable), retained and slipping status, the misconception record from detours, handoff notes, the learner profile, HTML notes, transcript export, style changes | One course runs from intake to a closed second unit, with a unit tested out of or started, review questions in a later sitting, a detour, a unit gate, generated notes and an exported transcript |
+| 0. Spike and skeleton (done) | Toolchain; a page that streams a Claude reply on the plan login and round-trips a question; a Codex spike | The SDK questions are answered in writing and the adapter is confirmed |
+| 1. Record and library (done) | Data root, course creation by intake, review and approval, diagram, library | A course can be created and approved, and survives a restart |
+| 2. Session engine (done) | Unit planning, phases, choice and rubric-graded questions, confidence, evidence, derived status, override, detours, help judging, resume, transcripts, math rendering, backup, "what I know", calibration | A unit of a math course is completed across two sittings, stopping mid-segment |
+| 3. Checked grading and aids | SymPy check, workspace and code tests, artifacts pane, disputes, the tutor's built-in tools | A coding unit and a computational unit are graded without a model judging the answer |
+| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style changes | One course runs from intake to a closed second unit, with a unit tested out of or started, review questions in a later sitting, a detour, a unit gate, generated notes and an exported transcript |
 | 4. Sources (after 5) | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting | A lecture on one chapter of the *Phenomenology* with verified quotes, and one unit taught from a paper |
 | 6. Later | Codex backend, self-test, cheat sheets, photo input; starred messages for the notes, if the generated notes miss what the learner wants kept | Per feature |
 
@@ -945,16 +628,16 @@ numbers are kept, because documents and code name the stages by them.
 - **Plan terms change.** Mitigation: the adapter; an API key would also work
   with the same code, at metered cost.
 - **The tutor ignores the protocol** (keeps lecturing, hints at answers).
-  Mitigation: engine-side rejection of out-of-phase calls, and prompt revision
-  from transcripts. Hints in free text cannot be fully prevented.
-- **Lenient rubric grading.** Mitigation: separate grader call, required
+  Mitigation: engine-side refusal of out-of-phase calls, the help judge, and
+  prompt revision from transcripts. Hints in free text cannot be fully
+  prevented.
+- **Lenient rubric grading.** Mitigation: a separate grader call, a required
   pointer to the flaw, disputes. Proof grades remain a model's judgment.
 - **Poor PDF conversion.** Mitigation: page-image fallback; scanned files
   flagged at ingestion.
 - **Cutting a long stretch can split an argument.** Mitigation: cuts fall
   only at paragraph boundaries, and the tutor can read the neighbouring
   sections.
-- **The tutor's shell runs on the learner's machine.** Mitigation: the sandbox
-  and permission settings confine writes to the course folder (confirmed in
-  task 0.4). Reads are not confined, which matters once the tutor has web
-  access.
+- **The tutor's shell runs on the learner's machine.** Mitigation: the
+  sandbox and permission settings confine writes to the course folder.
+  Reads are not confined, which matters once the tutor has web access.
