@@ -91,6 +91,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
     notes/                        (stage 5) HTML notes per unit, cheat sheets
     packages/                     Gauss's uv project and lockfile; never taken from the workspace
+    .package-install.tmp/         pending environment rollback or a committed install receipt
     workspace/                    the tutor's working folder: starter code, the learner's work and the installed .venv/
 ```
 
@@ -123,8 +124,11 @@ version: a field added later must be optional.
   again, the tutor's session id, and the tutor's request to install
   packages while it waits for the learner. Completed package cards are
   kept separately from positions in the same file, so their outcomes
-  survive even if a transcript line is lost or a unit finishes. Changes
-  are written before the page hears of them.
+  survive even if a transcript line is lost or a unit finishes. Before
+  the first unit exposes the workspace, the course rolls back an
+  interrupted install or saves its committed receipt without rerunning uv.
+  The journal is kept until the result is saved. Changes are written
+  before the page hears of them.
 - **Writes.** Every file but the logs is written whole: to a temporary file
   in its folder, flushed, then renamed over it. The logs (evidence,
   misconceptions, transcripts) are appended a line at a time; an entry
@@ -704,10 +708,11 @@ no automated tests.
   line for each file the tutor writes with its file tools, once a reply,
   with its path in the workspace (piece 14); a package request's card
   (piece 14) with its packages, commands and folder, Install and "Not
-  now", then the outcome with the output's end; the detour marker and "Ready
-  for another question"; the closing card; a top
-  line with the unit's position, whose outline holds Start fresh. A math
-  question is answered in a one-line field whose expression is shown as
+  now", then the outcome with the output's end. If saving fails, the
+  card offers Retry saving without another install. The thread also has
+  the detour marker and "Ready for another question", and the closing card.
+  The top line shows the unit's position and its outline has Start fresh.
+  A math question is answered in a one-line field whose expression is shown as
   math beneath it as it is typed (piece 2). A code question's card names
   each file to edit by its full path, with "Copy path", and says the tests
   are not shown; "Run the tests", with how sure, is the answer, and the
@@ -751,7 +756,8 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   its own, since the course exists only from the first proposal.
 - Under `/api/courses/<id>/units/<unit>/`: `open` first, then `events`,
   `messages`, `ready`, `answers`, `grade-again`, `another-question`,
-  `packages/install` and `packages/not-now` (with the request's id),
+  `packages/install`, `packages/not-now` and `packages/retry-saving`
+  (with the request's id),
   `override`, `next-segment`, `go-over-again`, `finish`, `start-fresh`,
   `interrupt`. A unit not opened since the server started answers 404 on
   all but `open`.

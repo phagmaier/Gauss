@@ -425,17 +425,20 @@ isolation options, kept every write inside `dir`:
     local builds, a fresh environment at the final path (entry-point
     scripts use that path) and a fresh install-cache location. Copying
     wheels prevents workspace edits from changing the cache.
-  - A request is kept in the unit's position, so it survives a restart;
-    one per course at a time, since installs share the workspace. An
-    install under way is not waited for when the server stops, and its
-    request waits again. New questions and tutor mutations wait for the
-    course's install; a check it blocked is prompted again if still
-    waiting (the agent's choice).
-  - A terminal card is saved with the change to the unit's position.
-    Transcripts are not flushed; otherwise a crash could show controls
-    for a request that no longer exists. The tutor's notification is
-    still a note in memory. An open question gets no extra tutor turn
-    for an outcome: a normal reply or later feedback carries the note.
+  - A request is kept in the unit's position, one per course.
+    New questions and tutor mutations wait for the course's install; a
+    check it blocked is prompted again if still waiting.
+  - A journal makes rollback and result recovery independent of approval
+    (the agent's choice). uv writes the new environment in place so its
+    entry points keep their paths. Only committing the journal makes that
+    candidate usable; the same marker publishes a request-bound receipt.
+    On failure, the previous environment is restored before the failure
+    receipt can be used. This lets a restart finish either write without
+    treating it as a new approval. If the receipt is saved but cleanup
+    fails, no later install starts until cleanup succeeds.
+  - The tutor's notification is a note in memory. An open question gets
+    no extra tutor turn for an outcome: a normal reply or later feedback
+    carries the note.
 - **The backup keeps the learner's workspace files** (the agent's choice,
   task 3.11): they are the learner's work, small, and the history undoes
   a tutor's overwrite. `.venv/`, `__pycache__/` and `.pytest_cache/` are

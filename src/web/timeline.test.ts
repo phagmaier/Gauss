@@ -1263,10 +1263,10 @@ test("a package request is one card in the tutor's reply, which installs and is 
   });
   expect(historical.items[1]).toEqual({ ...card, status: "historical" });
 
-  const saveFailed = play(
-    [{ type: "packages_save_failed", requestId: "r1" }],
-    { ...installing, last: -1 },
-  );
+  const saveFailed = play([{ type: "packages_save_failed", requestId: "r1" }], {
+    ...installing,
+    last: -1,
+  });
   expect(saveFailed.items[1]).toEqual({ ...card, status: "save-failed" });
 
   const saved = play(

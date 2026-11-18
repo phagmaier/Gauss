@@ -261,7 +261,9 @@ export async function recoverPackageInstall(
   await rmdir(park);
 }
 
-async function readReceipt(folder: string): Promise<PackageReceipt | undefined> {
+async function readReceipt(
+  folder: string,
+): Promise<PackageReceipt | undefined> {
   const path = join(folder, "receipt.json");
   const state = await entry(path);
   if (state === undefined) return undefined;

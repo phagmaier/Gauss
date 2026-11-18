@@ -55,7 +55,11 @@ test("a result that could not be saved offers only Retry saving", () => {
   const replayed = render({ ...card, status: "historical" });
   expect(replayed).not.toContain("<button");
 
-  const recorded = render({ ...card, outcome: "installed", output: "Added pytest" });
+  const recorded = render({
+    ...card,
+    outcome: "installed",
+    output: "Added pytest",
+  });
   expect(recorded).toContain("Added pytest");
   expect(recorded).not.toContain("<button");
 });

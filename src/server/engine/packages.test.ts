@@ -35,8 +35,8 @@ import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
 import {
   createPackageInstaller,
-  type PackageInstaller,
   PACKAGE_HOSTS,
+  type PackageInstaller,
 } from "./packages.ts";
 import type { SandboxCommand, SandboxResult } from "./sandbox.ts";
 import { createUnitChats } from "./unit-chat.ts";
@@ -137,7 +137,10 @@ describe("the install", () => {
   ) {
     return subject.install(workspace, "loops", {
       request: { id: "approved", packages, requestedAt: NOW },
-      preview: { commands: subject.commands(workspace, packages), folder: workspace },
+      preview: {
+        commands: subject.commands(workspace, packages),
+        folder: workspace,
+      },
     });
   }
 
@@ -209,7 +212,9 @@ describe("the install", () => {
       python: PY,
     });
 
-    expect(await install(installer, workspace, [{ name: "pytest" }])).toMatchObject({
+    expect(
+      await install(installer, workspace, [{ name: "pytest" }]),
+    ).toMatchObject({
       outcome: "installed",
       output: "",
     });
@@ -1069,8 +1074,14 @@ test("Retry saving preserves the original install outcome after the unit finishe
     await writeFile(path, state);
   }
 
-  expect(await chat.installPackages(id)).toMatchObject({ ok: false, status: 409 });
-  expect(await chat.declinePackages(id)).toMatchObject({ ok: false, status: 409 });
+  expect(await chat.installPackages(id)).toMatchObject({
+    ok: false,
+    status: 409,
+  });
+  expect(await chat.declinePackages(id)).toMatchObject({
+    ok: false,
+    status: 409,
+  });
   expect(await chat.retryPackageSave(id)).toEqual({ ok: true });
   await chat.settled();
   expect(existsSync(journal)).toBe(false);
@@ -1253,7 +1264,9 @@ test.each([
       marker === "candidate" ? "new environment" : "previous environment",
     );
     expect(
-      existsSync(join(environment, marker === "candidate" ? "old" : "candidate")),
+      existsSync(
+        join(environment, marker === "candidate" ? "old" : "candidate"),
+      ),
     ).toBe(false);
     expect(launches).toHaveLength(1);
     expect(second.backend.received).toEqual([]);
@@ -1319,7 +1332,11 @@ test("reopening a kept code answer only starts grading after rollback", async ()
     ["previous environment", "false", "def count(): return 2"],
   ]);
   expect(second.chat.events()).toContainEqual(
-    expect.objectContaining({ type: "graded", questionId: id, verdict: "incorrect" }),
+    expect.objectContaining({
+      type: "graded",
+      questionId: id,
+      verdict: "incorrect",
+    }),
   );
   expect(existsSync(journal)).toBe(false);
   await second.units.close();
@@ -1340,28 +1357,33 @@ test("a saved receipt whose cleanup failed cannot obstruct a different install a
   const journal = join(course, ".package-install.tmp");
   const behind = join(course, "blocked-journal");
   const writePosition = root.writePosition;
-  const intercept = vi.spyOn(root, "writePosition").mockImplementation(
-    async (...args) => {
+  const intercept = vi
+    .spyOn(root, "writePosition")
+    .mockImplementation(async (...args) => {
       const saved = await writePosition(...args);
       if (args[3]?.request.id === id) {
         await rename(journal, behind);
         await writeFile(journal, "blocks journal cleanup");
       }
       return saved;
-    },
-  );
+    });
   expect(await chat.installPackages(id)).toEqual({ ok: true });
   await chat.settled();
   intercept.mockRestore();
 
-  expect((await root.readState(COURSE)).packageCompletions?.loops?.[id]).toMatchObject({
+  expect(
+    (await root.readState(COURSE)).packageCompletions?.loops?.[id],
+  ).toMatchObject({
     outcome: "installed",
     output: "First install",
   });
   expect(existsSync(join(behind, "committed", "receipt.json"))).toBe(true);
   const next = requestId(chat.events());
   expect(next).not.toBe(id);
-  expect(await chat.installPackages(next)).toMatchObject({ ok: false, status: 409 });
+  expect(await chat.installPackages(next)).toMatchObject({
+    ok: false,
+    status: 409,
+  });
   expect(fake.commands).toHaveLength(1);
 
   await rm(journal);

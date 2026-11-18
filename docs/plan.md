@@ -35,14 +35,7 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.16 Recover package installs before reuse
-
-- Status: in progress
-- Done when: reopening rolls back an interrupted install before the workspace
-  is used; a completed install whose outcome write failed is recovered
-  without rerunning uv; a live save failure offers Retry saving rather than
-  another approval. Exercise both restart cases and the card on the fake
-  backend.
+Every task of the stage is done; the stage waits for the user's check.
 
 ## Stage 5: mastery loop (built before stage 4)
 

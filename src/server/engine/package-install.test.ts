@@ -50,8 +50,15 @@ function installer(
     commands: subject.commands,
     install(workspace: string, packages: PackageSpec[]) {
       return subject.install(workspace, "loops", {
-        request: { id: "approved", packages, requestedAt: "2026-11-17T10:00:00Z" },
-        preview: { commands: subject.commands(workspace, packages), folder: workspace },
+        request: {
+          id: "approved",
+          packages,
+          requestedAt: "2026-11-17T10:00:00Z",
+        },
+        preview: {
+          commands: subject.commands(workspace, packages),
+          folder: workspace,
+        },
       });
     },
   };

@@ -583,7 +583,8 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
         if (recoveryBlocked) return { refused: PACKAGE_RECOVERY_BLOCKED };
         if (pending !== undefined) {
           return {
-            refused: "The previous package install's result still needs to be saved.",
+            refused:
+              "The previous package install's result still needs to be saved.",
           };
         }
         const state = await dataRoot.readState(courseId);
@@ -981,7 +982,8 @@ function createUnitChat(
       const { request, preview, outcome, output } = completion;
       if (request.id === pendingInstall?.request.id) continue;
       const was = shown.get(request.id);
-      if (!shown.has(request.id)) log.emit(requestedEvent(request, preview, true));
+      if (!shown.has(request.id))
+        log.emit(requestedEvent(request, preview, true));
       if (
         was === undefined ||
         was.outcome !== outcome ||
@@ -1636,10 +1638,13 @@ function createUnitChat(
   function showSaveFailure(completion: PackageCompletion): void {
     const { request, preview } = completion;
     if (
-      !log.events().some(
-        (event) =>
-          event.type === "packages_requested" && event.requestId === request.id,
-      )
+      !log
+        .events()
+        .some(
+          (event) =>
+            event.type === "packages_requested" &&
+            event.requestId === request.id,
+        )
     ) {
       log.emit(requestedEvent(request, preview, true));
     }
