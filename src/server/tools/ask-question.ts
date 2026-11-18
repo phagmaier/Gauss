@@ -34,8 +34,9 @@ export function askQuestionTool(board: QuestionBoard): TeachingTool {
       "Post one check question to the learner, on one objective of the " +
       'segment. It appears as a card in the conversation. A "choice" ' +
       'question gives choices and the letter of the correct one; a "math" ' +
-      "question asks for an expression and gives the expected one, which " +
-      "a symbolic check compares the answer with; a " +
+      "question asks for an expression and gives the expected one, with " +
+      '"symbolic" grading for unrestricted answers or "grader" grading ' +
+      "for requirements the symbolic check cannot honor; a " +
       '"written" question asks for a proof, a derivation or an ' +
       "explanation, and gives a rubric, which a separate grader uses to " +
       'grade the answer without seeing this conversation; a "code" ' +

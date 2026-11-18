@@ -92,9 +92,13 @@ export const PageEvent = z.discriminatedUnion("type", [
     commands: z.array(z.array(z.string())),
     /** The workspace, an absolute path, where the commands run. */
     folder: z.string(),
+    /** A card replayed from a transcript does not grant approval by itself. */
+    historical: z.literal(true).optional(),
   }),
   /** The learner pressed Install, and the commands run. */
   z.object({ type: z.literal("packages_installing"), requestId: z.string() }),
+  /** The command ended but its result has not been written to state.json. */
+  z.object({ type: z.literal("packages_save_failed"), requestId: z.string() }),
   /**
    * The request is answered: installed, failed, or "Not now". An install
    * keeps the end of its output.

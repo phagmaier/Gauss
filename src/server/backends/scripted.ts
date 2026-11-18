@@ -461,6 +461,7 @@ function question(objective: string, number: number, math: boolean): unknown {
     return {
       objective,
       kind: "math",
+      mathGrading: "symbolic",
       prompt:
         `Math question ${number} on "${objective}": what is ` +
         `$${number}x + ${number}x$? (Scripted: the symbolic check grades it, ` +

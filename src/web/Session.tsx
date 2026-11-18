@@ -337,6 +337,9 @@ export function Session(props: { courseId: string; unitId: string }) {
                       onNotNow={(requestId) =>
                         post(path("packages/not-now"), { requestId })
                       }
+                      onRetrySaving={(requestId) =>
+                        post(path("packages/retry-saving"), { requestId })
+                      }
                       onAgain={() => act("go-over-again")}
                       onFinish={() => act("finish")}
                       onCourse={toCourse}
@@ -616,6 +619,7 @@ function ThreadItem(props: {
   onGradeAgain(): Promise<string | undefined>;
   onInstall(requestId: string): Promise<string | undefined>;
   onNotNow(requestId: string): Promise<string | undefined>;
+  onRetrySaving(requestId: string): Promise<string | undefined>;
   onAgain(): void;
   onFinish(): void;
   onCourse(): void;
@@ -662,6 +666,7 @@ function ThreadItem(props: {
           busy={props.busy}
           onInstall={() => props.onInstall(item.requestId)}
           onNotNow={() => props.onNotNow(item.requestId)}
+          onRetrySaving={() => props.onRetrySaving(item.requestId)}
         />
       );
     case "judgment": {

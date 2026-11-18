@@ -28,7 +28,8 @@ Comparing (decisions.md, "Symbolic check"):
 - numbers: a decimal of at least three significant figures matches a value
   within half a unit of its last digit;
 - equations: equal up to a non-zero constant factor; `x = 2` and `2` match;
-- lists, separated by commas, optionally in `\\{ \\}`: compared as sets.
+- lists, separated by commas, optionally in `\\{ \\}`: exact duplicates are
+  ignored, then distinct values must match one-to-one, including when rounded.
 """
 
 import cmath
@@ -276,9 +277,13 @@ def _read_expression(tokens):
         raise Unparsable("a side of its '=' is empty")
     if "\\{" in tokens or "\\}" in tokens:
         raise Unparsable("\\{ is understood only around a list")
-    unsigned = tokens[1:] if tokens[0] in ("+", "-") else tokens
-    decimal = "".join(tokens) if len(unsigned) == 1 and "." in unsigned[0] else None
-    tokens = _exact_decimals(_brace_d(_fix_powers(_fix_roots(list(tokens)))))
+    literal = _literal_number(tokens)
+    decimal = literal if literal is not None and "." in literal else None
+    if any(left == right == "!" for left, right in zip(tokens, tokens[1:])):
+        raise Unparsable("double factorial notation is not understood")
+    tokens = _fix_powers(_fix_roots(list(tokens)))
+    _refuse_zero_function_powers(tokens)
+    tokens = _exact_decimals(_brace_d(tokens))
     _refuse_ambiguous_division(tokens)
     try:
         expr = parse_latex(" ".join(tokens), strict=True)
@@ -297,6 +302,23 @@ def _read_expression(tokens):
         raise Unparsable(f"it could not be read as math ({first})") from None
 
 
+def _literal_number(tokens):
+    """A signed number, possibly grouped, preserving all of its digits."""
+    sign = ""
+    while tokens:
+        if tokens[0] in ("(", "{") and _matching(tokens, 0) == len(tokens) - 1:
+            tokens = tokens[1:-1]
+        elif tokens[0] in ("+", "-"):
+            if tokens[0] == "-":
+                sign = "" if sign else "-"
+            tokens = tokens[1:]
+        else:
+            break
+    if len(tokens) == 1 and tokens[0][0].isdigit():
+        return sign + tokens[0]
+    return None
+
+
 def _is_atom(token):
     return token[0].isdigit() or (len(token) == 1 and token.isalpha()) or token[1:] in _GREEK | _CONSTANTS
 
@@ -308,11 +330,13 @@ def _fix_roots(tokens):
         if tokens[i] == "\\sqrt" and i + 1 < len(tokens):
             k = i + 1
             if tokens[k] == "[":
-                k = _matching(tokens, k) + 1
-            if k < len(tokens) and tokens[k] == "(":
+                # ANTLR uses the principal complex branch, not the ordinary
+                # real odd root of a negative number.
+                raise Unparsable("indexed root notation is not understood")
+            if tokens[k] == "(":
                 end = _matching(tokens, k)
                 tokens[k], tokens[end] = "{", "}"
-            elif k < len(tokens) and _is_atom(tokens[k]):
+            elif _is_atom(tokens[k]):
                 tokens[k : k + 1] = ["{", tokens[k], "}"]
         i += 1
     return tokens
@@ -341,6 +365,20 @@ def _fix_powers(tokens):
     return tokens
 
 
+def _refuse_zero_function_powers(tokens):
+    # ANTLR silently discards a literal zero exponent written on a function.
+    for i, token in enumerate(tokens[:-1]):
+        if token[1:] not in _FUNCTIONS:
+            continue
+        k = i + 1
+        if tokens[k] == "_" and k + 1 < len(tokens):
+            k = _after_script(tokens, k + 1)
+        if k + 1 < len(tokens) and tokens[k] == "^":
+            exponent = _literal_number(tokens[k + 1 : _after_script(tokens, k + 1)])
+            if exponent is not None and not any(digit in "123456789" for digit in exponent):
+                raise Unparsable(r"a zero power on a function is not understood: write (\cos(x))^0")
+
+
 def _brace_d(tokens):
     # The parser reads `d` before a letter as a differential (`dx` one symbol).
     return [part for token in tokens for part in (["{", "d", "}"] if token == "d" else [token])]
@@ -360,11 +398,14 @@ def _exact_decimals(tokens):
 
 
 def _refuse_ambiguous_division(tokens):
-    """`1/2x` could be x/2 or 1/(2x), so it is refused."""
+    """`1/2x` and `1/2|x|` could mean two different things."""
+    abs_open = False
     for i, token in enumerate(tokens):
+        if token == "|":
+            abs_open = not abs_open
         if token in ("/", "\\div"):
             k = _skip_operand(tokens, i + 1)
-            if k < len(tokens) and _starts_operand(tokens[k]):
+            if k < len(tokens) and (_starts_operand(tokens[k]) or (tokens[k] == "|" and not abs_open)):
                 raise Unparsable(
                     "a division followed by a product is ambiguous: write \\frac{a}{bc}, a/(bc) or (a/b)c"
                 )
@@ -391,8 +432,6 @@ def _skip_operand(tokens, k):
             return n  # the parser will report the unclosed bar
     elif token in ("\\frac", "\\binom", "\\sqrt"):
         k += 1
-        if token == "\\sqrt" and k < n and tokens[k] == "[":
-            k = _matching(tokens, k) + 1
         for _ in range(1 if token == "\\sqrt" else 2):
             if k >= n:
                 return n
@@ -413,8 +452,12 @@ def _skip_scripts(tokens, k):
     while k < n and tokens[k] in ("^", "_", "!", "'"):
         k += 1
         if tokens[k - 1] in ("^", "_") and k < n:
-            k = _matching(tokens, k) + 1 if tokens[k] in _PAIRS else k + 1
+            k = _after_script(tokens, k)
     return k
+
+
+def _after_script(tokens, k):
+    return _matching(tokens, k) + 1 if tokens[k] in _PAIRS else k + 1
 
 
 def _refuse_huge_numbers(expr):
@@ -519,37 +562,117 @@ def _undecided_sampling():
 def _compare_lists(expected, answer, clock):
     if len(expected) == 1 and len(answer) == 1:
         return _compare_items(expected[0], answer[0], clock)
-    verdicts = [[_compare_items(e, a, clock) for a in answer] for e in expected]
-    columns = [list(column) for column in zip(*verdicts, strict=True)]
-    unmatched = [line for line in verdicts + columns if EQUIVALENT not in line]
-    if not unmatched:
+    expected, expected_uncertainty = _distinct(expected, clock)
+    answer, answer_uncertainty = _distinct(answer, clock)
+    # Unsettled exact comparisons may change the number of distinct values.
+    if uncertainty := expected_uncertainty or answer_uncertainty:
+        return uncertainty
+    if len(expected) != len(answer):
+        return DIFFERENT
+    verdicts = [[_compare_groups(e, a, clock) for a in answer] for e in expected]
+    if _has_matching(verdicts):
         return EQUIVALENT
-    for line in unmatched:
-        undecided = next((v for v in line if v.result == "undecided"), None)
-        if undecided is not None:
-            return undecided
+    if _has_matching(verdicts, permit_undecided=True):
+        return Verdict("undecided", "the check could not prove a match for every distinct value")
     return DIFFERENT
 
 
-def _compare_items(expected, answer, clock):
+def _distinct(items, clock):
+    """Groups proven exact duplicates, preserving their decimal spellings."""
+    groups, uncertainty = [], None
+    for item in items:
+        unresolved = None
+        for group in groups:
+            representative = group[0]
+            verdict = _compare_items(representative, item, clock, rounding=False)
+            if verdict == EQUIVALENT:
+                if type(representative) is not type(item):
+                    # A scalar can match isolated equations for different
+                    # variables, so don't use that convention to deduplicate.
+                    unresolved = Verdict("undecided", "a list mixes an equation with its isolated value")
+                    continue
+                if item not in group:
+                    group.append(item)
+                break
+            if verdict.result == "undecided":
+                unresolved = verdict
+        else:
+            groups.append([item])
+            uncertainty = uncertainty or unresolved
+    return groups, uncertainty
+
+
+def _compare_groups(expected, answer, clock):
+    remaining = DIFFERENT
+    for e in expected:
+        for a in answer:
+            verdict = _compare_items(e, a, clock)
+            if verdict == EQUIVALENT:
+                return verdict
+            if verdict.result == "undecided":
+                remaining = verdict
+    return remaining
+
+
+def _has_matching(verdicts, *, permit_undecided=False):
+    """Can every expected value use a different answer value?"""
+    matched = {}
+
+    def assign(row, seen):
+        for column, verdict in enumerate(verdicts[row]):
+            if column in seen or verdict == DIFFERENT:
+                continue
+            if verdict.result == "undecided" and not permit_undecided:
+                continue
+            seen.add(column)
+            if column not in matched or assign(matched[column], seen):
+                matched[column] = row
+                return True
+        return False
+
+    return all(assign(row, set()) for row in range(len(verdicts)))
+
+
+def _isolated(equation):
+    """The variable and value of an isolated equation, in either order."""
+    lhs, rhs = equation.lhs, equation.rhs
+    # `x = y` could name either variable's value; don't guess from order.
+    if isinstance(lhs.expr, Symbol) and isinstance(rhs.expr, Symbol):
+        return None
+    if isinstance(lhs.expr, Symbol) and lhs.expr not in rhs.expr.free_symbols:
+        return lhs.expr, rhs
+    if isinstance(rhs.expr, Symbol) and rhs.expr not in lhs.expr.free_symbols:
+        return rhs.expr, lhs
+    return None
+
+
+def _compare_items(expected, answer, clock, *, rounding=True):
     if isinstance(expected, Expression) and isinstance(answer, Expression):
-        return _compare_expressions(expected, answer, clock)
+        return _compare_expressions(expected, answer, clock, rounding=rounding)
     if isinstance(expected, Equation) and isinstance(answer, Equation):
+        left, right = _isolated(expected), _isolated(answer)
+        # Wrapping both numbers in assignments to the same variable must
+        # not disable the numeric rule. Other equations use their residuals.
+        if (
+            left is not None
+            and right is not None
+            and left[0] == right[0]
+            and not left[1].expr.free_symbols
+            and not right[1].expr.free_symbols
+        ):
+            return _compare_expressions(left[1], right[1], clock, rounding=rounding)
         return _compare_equations(expected, answer, clock)
     equation = expected if isinstance(expected, Equation) else answer
-    # `x = 2` against `2`: the side that is not the lone variable.
-    if isinstance(equation.lhs.expr, Symbol) and equation.lhs.expr not in equation.rhs.expr.free_symbols:
-        value = equation.rhs
-    elif isinstance(equation.rhs.expr, Symbol) and equation.rhs.expr not in equation.lhs.expr.free_symbols:
-        value = equation.lhs
-    else:
+    isolated = _isolated(equation)
+    if isolated is None:
         return Verdict("undecided", "one side is an equation and the other an expression")
+    _, value = isolated
     if equation is expected:
-        return _compare_expressions(value, answer, clock)
-    return _compare_expressions(expected, value, clock)
+        return _compare_expressions(value, answer, clock, rounding=rounding)
+    return _compare_expressions(expected, value, clock, rounding=rounding)
 
 
-def _compare_expressions(expected, answer, clock):
+def _compare_expressions(expected, answer, clock, *, rounding):
     x, y = expected.expr, answer.expr
     if x == y:
         return EQUIVALENT
@@ -559,7 +682,7 @@ def _compare_expressions(expected, answer, clock):
             return Verdict("undecided", "an infinite value could not be simplified")
         return EQUIVALENT if sx == sy else DIFFERENT
     if not x.free_symbols and not y.free_symbols:
-        return _compare_numbers(expected, answer, clock)
+        return _compare_numbers(expected, answer, clock, rounding=rounding)
     parts = _without_integration_constant(x, y)
     if parts is not None:
         return _differ_by_a_constant(*parts, clock)
@@ -579,20 +702,21 @@ def _infinite(expr):
     return expr.has(sympy.oo, sympy.zoo, sympy.nan) or expr.has(-sympy.oo)
 
 
-def _compare_numbers(expected, answer, clock):
+def _compare_numbers(expected, answer, clock, *, rounding):
     x, y = expected.expr, answer.expr
     difference = _simplified(x - y, clock)
     if difference is None:
         difference = x - y
     if difference == 0:
         return EQUIVALENT
-    for side in (answer, expected):
-        if side.decimal is not None and _significant_figures(side.decimal) >= 3:
-            # Subtract exactly before comparing: converting either side to a
-            # machine float can erase an error larger than the last-digit unit.
-            error = abs(difference) - _half_unit(side.decimal)
-            if error.is_nonpositive is True:
-                return EQUIVALENT
+    if rounding:
+        for side in (answer, expected):
+            if side.decimal is not None and _significant_figures(side.decimal) >= 3:
+                # Subtract exactly before comparing: converting either side to a
+                # machine float can erase an error larger than the last-digit unit.
+                error = abs(difference) - _half_unit(side.decimal)
+                if error.is_nonpositive is True:
+                    return EQUIVALENT
     if difference.is_zero is False:
         return DIFFERENT
     value = _value(difference, {})

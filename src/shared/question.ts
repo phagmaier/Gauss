@@ -63,7 +63,13 @@ const expected = z
   .min(1)
   .max(1000)
   .describe(
-    "Math questions only: the expected answer, in LaTeX without $ signs (`3x^2`, `\\frac{1}{2}`, `x = 2`): one expression, one equation, or several values separated by commas. A symbolic check compares the learner's answer with it, so any equal form counts. Shown to the learner once the answer is graded.",
+    "Math questions only: the expected answer, in LaTeX without $ signs, shown once graded. With symbolic grading, use one expression, one equation or values separated by commas (`3x^2`, `\\frac{1}{2}`, `x = 2`). With grader grading, give the answer that meets all conditions in the prompt.",
+  );
+
+const mathGrading = z
+  .enum(["symbolic", "grader"])
+  .describe(
+    'Required for math questions. Use "symbolic" only if any equivalent form is correct under the app’s defaults (including correctly rounded decimals with at least three significant figures and unordered sets), with no special precision, exactness, form, order, domain or variable assumptions. Use "grader" if any of these restrictions applies, if the notation is unsupported, or if in doubt. State all restrictions in the prompt.',
   );
 
 // --- Code questions (task 3.7) -----------------------------------------------
@@ -236,12 +242,13 @@ export const QuestionInput = z
     kind: z
       .enum(["choice", "math", "written", "code"])
       .describe(
-        '"choice": the learner picks one of the choices, graded against `answer`. "math": the learner types an expression, compared with `expected` by a symbolic check. "written": the learner writes the answer (a proof, a derivation, an explanation), graded against `rubric` by a separate grader. "code": the learner edits `files` in the workspace, graded by running `tests` with `command`.',
+        '"choice": the learner picks one of the choices, graded against `answer`. "math": the learner types an expression, graded against `expected` according to `mathGrading`. "written": the learner writes the answer (a proof, a derivation, an explanation), graded against `rubric` by a separate grader. "code": the learner edits `files` in the workspace, graded by running `tests` with `command`.',
       ),
     prompt,
     choices: choices.optional(),
     answer: answer.optional(),
     expected: expected.optional(),
+    mathGrading: mathGrading.optional(),
     rubric: rubric.optional(),
     files: files.optional(),
     tests: tests.optional(),
@@ -252,6 +259,9 @@ export const QuestionInput = z
   .superRefine((q, ctx) => {
     const issue = (path: string, message: string) =>
       ctx.addIssue({ code: "custom", path: [path], message });
+    if (q.kind !== "math" && q.mathGrading !== undefined) {
+      issue("mathGrading", "Only a math question has a math grading policy.");
+    }
     if (q.kind === "code") {
       for (const field of REQUIRED_CODE_FIELDS) {
         if (q[field] === undefined) {
@@ -318,6 +328,12 @@ export const QuestionInput = z
           "A math question needs the expected answer to compare with.",
         );
       }
+      if (q.mathGrading === undefined) {
+        issue(
+          "mathGrading",
+          'A math question must choose "symbolic" or "grader" grading.',
+        );
+      }
       if (q.choices !== undefined || q.answer !== undefined) {
         issue(
           q.choices !== undefined ? "choices" : "answer",
@@ -366,6 +382,8 @@ export const MathQuestion = z.object({
   kind: z.literal("math"),
   prompt,
   expected,
+  // Older questions did not declare that symbolic grading was applicable.
+  mathGrading: mathGrading.optional(),
 });
 export type MathQuestion = z.infer<typeof MathQuestion>;
 
@@ -556,12 +574,11 @@ export type Verdict = z.infer<typeof Verdict>;
 /**
  * Why the symbolic check did not settle a math answer, which the grader then
  * graded against a rubric made from the expected expression (task 3.5): it
- * could not read the answer, could not decide within its limits, or did not
- * run (it failed, ran out of time, or has no sandbox). The reason is the
- * check's, or the failure's.
+ * was not used, could not read the answer, could not decide within its limits,
+ * or failed. The reason says why.
  */
 export const Unsettled = z.object({
-  result: z.enum(["unparsable", "undecided", "failed"]),
+  result: z.enum(["unparsable", "undecided", "failed", "skipped"]),
   reason: z.string().min(1),
 });
 export type Unsettled = z.infer<typeof Unsettled>;

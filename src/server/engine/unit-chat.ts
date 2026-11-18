@@ -88,6 +88,7 @@ import type {
 } from "../../shared/evidence.ts";
 import type {
   PackageCompletion,
+  PackageReceipt,
   PackageRequest,
 } from "../../shared/packages.ts";
 import {
@@ -138,7 +139,11 @@ import type { ChatResult, Timer } from "./conversation.ts";
 import { type Grader, gradeChoice, gradeMath } from "./grading.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 import { type MathCheck, noMathCheck } from "./math-check.ts";
-import type { InstallResult, PackageInstaller } from "./packages.ts";
+import {
+  clearPackageInstall,
+  type PackageInstaller,
+  recoverPackageInstall,
+} from "./packages.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import {
   createUnitAgents,
@@ -207,6 +212,8 @@ export interface UnitChat {
   installPackages(requestId: string): Promise<ChatResult>;
   /** "Not now" to the tutor's request that waits. */
   declinePackages(requestId: string): Promise<ChatResult>;
+  /** Saves an install's original result without running its command again. */
+  retryPackageSave(requestId: string): Promise<ChatResult>;
   /** The learner moves on without the check, which is recorded. */
   override(): Promise<ChatResult>;
   /** The learner starts the next segment, once this one is closed. */
@@ -377,6 +384,14 @@ export function createUnitChats(options: ChatOptions): UnitChats {
 
 interface CourseWorkspace {
   tools: WorkspaceTools;
+  /** Restores the workspace before the course's first chat uses it. */
+  prepare(folder: string): Promise<PackageReceipt | undefined>;
+  /** Saves a live or previously unsaved install result. */
+  saveInstall(
+    folder: string,
+    receipt: PackageReceipt,
+    save: (completion: PackageReceipt["completion"]) => Promise<boolean>,
+  ): Promise<PackageReceipt["completion"]>;
   post<T>(
     attempt: { unitId: Slug; stopped(): boolean; retry(): void },
     work: () => Promise<T>,
@@ -406,6 +421,11 @@ const INSTALLING =
   "Packages are being installed in the workspace: no file may be written " +
   "and no command run until that ends. You may still read files.";
 
+const PACKAGE_SAVE_FAILED =
+  "The install finished, but its result could not be saved. Use Retry saving to save it without installing again.";
+const PACKAGE_RECOVERY_BLOCKED =
+  "The workspace could not be restored after installing packages.";
+
 /**
  * The course's mutation reservations, question commits, package requests
  * and installs share one queue. Never enter a chat's queue from here:
@@ -415,10 +435,66 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
   const exclusive = createSerial();
   let active = 0;
   let installing: { owner: Slug; retries: Map<Slug, () => void> } | undefined;
+  let prepared = false;
+  let recoveryBlocked = false;
+  let pending: PackageReceipt | undefined;
+  let cleanupNeeded: string | undefined;
+
+  async function clearSavedInstall(folder: string) {
+    try {
+      await clearPackageInstall(folder);
+      cleanupNeeded = undefined;
+    } catch (error) {
+      cleanupNeeded = folder;
+      console.error("A saved install's journal could not be cleared:", error);
+    }
+  }
+
+  /**
+   * Reconcile before any chat reads this course's state into memory. A
+   * finished unit keeps a withdrawal as the receipt's anchor until saved.
+   */
+  async function settleReceipt(folder: string, receipt: PackageReceipt) {
+    const { unitId, completion } = receipt;
+    const state = await dataRoot.readState(courseId);
+    const position = Object.hasOwn(state.units, unitId)
+      ? state.units[unitId]
+      : undefined;
+    const completions = state.packageCompletions ?? {};
+    const recorded = Object.hasOwn(completions, unitId)
+      ? completions[unitId]?.[completion.request.id]
+      : undefined;
+    let next: UnitPosition | null;
+    if (position?.packageRequest?.id === completion.request.id) {
+      const { packageRequest: _, ...rest } = position;
+      next = rest;
+    } else if (position === undefined && recorded?.outcome === "withdrawn") {
+      next = null;
+    } else {
+      if (
+        recorded?.outcome !== completion.outcome ||
+        recorded.output !== completion.output
+      ) {
+        throw new Error("The saved install does not match a package request.");
+      }
+      await clearSavedInstall(folder);
+      return;
+    }
+    try {
+      await dataRoot.writePosition(courseId, unitId, next, completion);
+    } catch (error) {
+      console.error("An install could not be recorded:", error);
+      pending = receipt;
+      return;
+    }
+    await clearSavedInstall(folder);
+  }
+
   const tools: WorkspaceTools = {
     acquire: () =>
       exclusive(async () => {
         if (installing !== undefined) return { refused: INSTALLING };
+        if (recoveryBlocked) return { refused: PACKAGE_RECOVERY_BLOCKED };
         const open = openInCourse(await dataRoot.readState(courseId));
         if (open !== undefined) {
           return {
@@ -441,6 +517,39 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
   };
   return {
     tools,
+    prepare(folder) {
+      return exclusive(async () => {
+        if (recoveryBlocked) throw new Error(PACKAGE_RECOVERY_BLOCKED);
+        if (!prepared) {
+          const receipt = await recoverPackageInstall(folder);
+          if (receipt !== undefined) await settleReceipt(folder, receipt);
+          prepared = true;
+        }
+        return pending;
+      });
+    },
+    saveInstall(folder, receipt, save) {
+      return exclusive(async () => {
+        pending = receipt;
+        recoveryBlocked = true;
+        const kept = await recoverPackageInstall(folder);
+        if (
+          kept !== undefined &&
+          (kept.unitId !== receipt.unitId ||
+            kept.completion.request.id !== receipt.completion.request.id)
+        ) {
+          throw new Error("The install journal has another request's result.");
+        }
+        recoveryBlocked = false;
+        const completion = kept?.completion ?? receipt.completion;
+        if (!(await save(completion))) {
+          throw new Error("The install does not match a package request.");
+        }
+        if (kept !== undefined) await clearSavedInstall(folder);
+        pending = undefined;
+        return completion;
+      });
+    },
     post(attempt, work) {
       return exclusive(async () => {
         if (attempt.stopped()) return QUESTION_STOPPED;
@@ -454,6 +563,7 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
               "you are told when the install ends, and can post the question then.",
           };
         }
+        if (recoveryBlocked) return { refused: PACKAGE_RECOVERY_BLOCKED };
         if (active > 0) {
           return {
             refused:
@@ -467,6 +577,15 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
     },
     request<T>(work: () => Promise<T>): Promise<T | { refused: string }> {
       return exclusive(async () => {
+        if (installing !== undefined) {
+          return { refused: "Packages are being installed in this course." };
+        }
+        if (recoveryBlocked) return { refused: PACKAGE_RECOVERY_BLOCKED };
+        if (pending !== undefined) {
+          return {
+            refused: "The previous package install's result still needs to be saved.",
+          };
+        }
         const state = await dataRoot.readState(courseId);
         const open = openInCourse(state);
         if (open !== undefined) {
@@ -493,6 +612,17 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
       return exclusive(async () => {
         if (installing !== undefined) {
           return { refused: "Packages are being installed in this course." };
+        }
+        if (recoveryBlocked) return { refused: PACKAGE_RECOVERY_BLOCKED };
+        if (pending !== undefined) return { refused: PACKAGE_SAVE_FAILED };
+        if (cleanupNeeded !== undefined) {
+          await clearSavedInstall(cleanupNeeded);
+          if (cleanupNeeded !== undefined) {
+            return {
+              refused:
+                "The previous install was saved, but its journal could not be cleared.",
+            };
+          }
         }
         const open = openInCourse(await dataRoot.readState(courseId));
         if (open !== undefined) {
@@ -568,7 +698,7 @@ function createUnitChat(
   /** The install that runs, by its request's id; `settled` waits for it. */
   let install: { requestId: string; done: Promise<void> } | undefined;
   /** The install ran, but its result still needs to be written to state.json. */
-  let pendingInstall: PackageCompletion | undefined;
+  let pendingInstall: PackageReceipt["completion"] | undefined;
   /** The code questions whose kept answer's tests have run past their limit once. */
   const timedOut = new Set<string>();
   const code = options.codeRunner ?? noCodeRunner;
@@ -580,6 +710,10 @@ function createUnitChat(
 
   async function load(): Promise<void> {
     try {
+      const workspace = await dataRoot.workspaceFolder(courseId);
+      const pending = await options.workspace.prepare(workspace);
+      folder = workspace;
+      if (pending?.unitId === unitId) pendingInstall = pending.completion;
       // The earlier sessions' thread first, then this session's.
       await log.open();
       const stored = await dataRoot.readCourse(courseId);
@@ -601,6 +735,8 @@ function createUnitChat(
         plan,
         emit: log.emit,
         packagePreview,
+        savingPackage: (id) =>
+          install?.requestId === id || pendingInstall?.request.id === id,
         now,
         ...(options.backup === undefined ? {} : { backup: options.backup }),
       });
@@ -614,7 +750,6 @@ function createUnitChat(
         style: await dataRoot.readStyle(courseId),
         background: await dataRoot.readBackground(courseId),
       };
-      folder = await dataRoot.workspaceFolder(courseId);
       const loaded = createUnitAgents({
         backend: options.backend,
         systemPrompt: tutorSystemPrompt(options.systemPrompt, context, notes),
@@ -625,7 +760,7 @@ function createUnitChat(
             ? []
             : [installPackagesTool(packageDesk)]),
         ],
-        cwd: folder,
+        cwd: workspace,
         ...(options.workspaceTools === true
           ? { workspace: options.workspace.tools }
           : {}),
@@ -652,6 +787,7 @@ function createUnitChat(
       restoreGrades(record);
       restoreDisputes(r);
       restorePackages(record.packageCompletions);
+      if (pendingInstall !== undefined) showSaveFailure(pendingInstall);
       log.emit(record.status());
       if (record.finished !== undefined) {
         log.emit({ type: "unit_closed", status: record.finished });
@@ -660,7 +796,10 @@ function createUnitChat(
       const { position } = record;
       log.emit(phaseEvent(position));
       // A request waits on the learner, as an open question does.
-      if (position.packageRequest !== undefined) {
+      if (
+        position.packageRequest !== undefined &&
+        pendingInstall === undefined
+      ) {
         log.emit(requestedEvent(position.packageRequest));
       }
       // A detour waits on the learner, as an open question does.
@@ -840,8 +979,9 @@ function createUnitChat(
     }
     for (const completion of completions) {
       const { request, preview, outcome, output } = completion;
+      if (request.id === pendingInstall?.request.id) continue;
       const was = shown.get(request.id);
-      if (!shown.has(request.id)) log.emit(requestedEvent(request, preview));
+      if (!shown.has(request.id)) log.emit(requestedEvent(request, preview, true));
       if (
         was === undefined ||
         was.outcome !== outcome ||
@@ -1322,9 +1462,8 @@ function createUnitChat(
           const workspace = folder;
           if (workspace === undefined)
             return { refused: "The unit is not open." };
-          if (posted.kind === "math") {
-            // Read before it is posted, so that every answer is compared
-            // with an expression the check can read.
+          if (posted.kind === "math" && posted.mathGrading === "symbolic") {
+            // Only symbolic questions need an expected answer the check reads.
             const unread = await (options.mathCheck ?? noMathCheck).read(
               posted.expected,
             );
@@ -1448,12 +1587,14 @@ function createUnitChat(
   function requestedEvent(
     request: PackageRequest,
     preview = packagePreview(request),
+    historical?: true,
   ): PageEvent {
     return {
       type: "packages_requested",
       requestId: request.id,
       packages: request.packages,
       ...preview,
+      ...(historical === undefined ? {} : { historical }),
     };
   }
 
@@ -1462,6 +1603,7 @@ function createUnitChat(
     r: Running,
     requestId: string,
   ): PackageRequest | string {
+    if (pendingInstall?.request.id === requestId) return PACKAGE_SAVE_FAILED;
     const request = r.record.position.packageRequest;
     if (request === undefined || request.id !== requestId) {
       return "That request to install packages is not waiting.";
@@ -1473,16 +1615,11 @@ function createUnitChat(
   }
 
   /**
-   * Saves the outcome before the page sees it. The note goes in the next
-   * turn's header, with a turn of its own only if no question is open
-   * and something else has not delivered it first. Runs inside `exclusive`.
+   * Tells the tutor in the next header, with a turn of its own only if no
+   * question is open and something else has not delivered it first.
    */
-  async function answerRequest(
-    r: Running,
-    completion: PackageCompletion,
-  ): Promise<void> {
-    const saved = await r.record.completePackageRequest(completion);
-    if (!saved || r.record.finished !== undefined) return;
+  function tellPackageOutcome(r: Running, completion: PackageCompletion): void {
+    if (r.record.finished !== undefined) return;
     const { request, outcome, output } = completion;
     const note = packagesNote(outcome, request.packages, output);
     r.notes.push(note);
@@ -1496,26 +1633,40 @@ function createUnitChat(
     });
   }
 
+  function showSaveFailure(completion: PackageCompletion): void {
+    const { request, preview } = completion;
+    if (
+      !log.events().some(
+        (event) =>
+          event.type === "packages_requested" && event.requestId === request.id,
+      )
+    ) {
+      log.emit(requestedEvent(request, preview, true));
+    }
+    log.emit({ type: "packages_save_failed", requestId: request.id });
+  }
+
   /** A retry writes the result of the original command; it never runs it again. */
   async function recordInstall(
     r: Running,
-    completion: PackageCompletion,
-  ): Promise<ChatResult> {
+    workspace: string,
+    completion: PackageReceipt["completion"],
+  ): Promise<PackageReceipt["completion"] | undefined> {
+    let saved: PackageReceipt["completion"];
     try {
-      await answerRequest(r, completion);
+      saved = await options.workspace.saveInstall(
+        workspace,
+        { unitId, completion },
+        (outcome) => r.record.completePackageRequest(outcome),
+      );
     } catch (error) {
       pendingInstall = completion;
       console.error("An install could not be recorded:", error);
-      if (r.record.finished === undefined) {
-        // Re-enable the card's controls after the background write failed.
-        log.emit(requestedEvent(completion.request, completion.preview));
-      }
-      return refused(
-        "The install finished, but its result could not be saved. Try again to save it without running the install again.",
-      );
+      showSaveFailure(completion);
+      return undefined;
     }
     pendingInstall = undefined;
-    return { ok: true };
+    return saved;
   }
 
   /** Installs the request's packages outside the chat's queue. */
@@ -1528,26 +1679,19 @@ function createUnitChat(
   ): Promise<void> {
     const preview = packagePreview(request);
     return (async () => {
-      let result: InstallResult;
-      try {
-        result = await installer.install(workspace, request.packages);
-      } finally {
-        claim.done();
-      }
+      const result = await installer.install(workspace, unitId, {
+        request,
+        preview,
+      });
       await exclusive(async () => {
-        try {
-          await recordInstall(r, {
-            request,
-            preview,
-            outcome: result.ok ? "installed" : "failed",
-            output: result.output,
-          });
-        } finally {
-          install = undefined;
-        }
+        const saved = await recordInstall(r, workspace, result);
+        install = undefined;
+        claim.done();
+        if (saved !== undefined) tellPackageOutcome(r, saved);
       });
     })().catch((error: unknown) => {
       install = undefined;
+      claim.done();
       console.error("An install could not be recorded:", error);
     });
   }
@@ -1792,9 +1936,6 @@ function createUnitChat(
       act(async (r) => {
         const request = waitingRequest(r, requestId);
         if (typeof request === "string") return refused(request);
-        if (pendingInstall?.request.id === requestId) {
-          return recordInstall(r, pendingInstall);
-        }
         const { installer } = options;
         if (installer === undefined || folder === undefined) {
           return refused(
@@ -1816,18 +1957,32 @@ function createUnitChat(
         async (r) => {
           const request = waitingRequest(r, requestId);
           if (typeof request === "string") return refused(request);
-          if (pendingInstall?.request.id === requestId) {
-            return recordInstall(r, pendingInstall);
-          }
-          await answerRequest(r, {
+          const completion: PackageCompletion = {
             request,
             preview: packagePreview(request),
             outcome: "declined",
-          });
+          };
+          if (await r.record.completePackageRequest(completion)) {
+            tellPackageOutcome(r, completion);
+          }
           return { ok: true };
         },
         { whileWriting: true },
       ),
+
+    retryPackageSave: (requestId) =>
+      exclusive(async () => {
+        const r = running;
+        if (r === undefined || folder === undefined) return notOpen();
+        const pending = pendingInstall;
+        if (pending?.request.id !== requestId) {
+          return refused("That package install does not need to be saved.");
+        }
+        const saved = await recordInstall(r, folder, pending);
+        if (saved === undefined) return refused(PACKAGE_SAVE_FAILED);
+        tellPackageOutcome(r, saved);
+        return { ok: true };
+      }),
 
     override: () =>
       act(async (r) => {
@@ -1935,8 +2090,8 @@ function createUnitChat(
       const posting = codePosting;
       posting?.stop.abort();
       await Promise.all([agents?.close(), posting?.done]);
-      // An install under way is not waited for: it stops with the server,
-      // and its request still waits when the unit opens again.
+      // An install under way is not waited for. Reopening reconciles its
+      // journal before the course workspace can be used again.
       await log.flushed();
     },
   };

@@ -31,7 +31,7 @@ test("an expected answer the check reads is accepted, and one it cannot is refus
   expect(refused?.refused).toContain(
     "derivative notation is not understood: give the derivative itself",
   );
-  expect(refused?.refused).toContain("ask a written question instead");
+  expect(refused?.refused).toContain('repost with mathGrading: "grader"');
 });
 
 test.each([

@@ -35,14 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.15 Make symbolic grades trustworthy
-
-- Status: in progress
-- Done when: a stated precision or domain cannot be ignored by a definitive
-  symbolic grade; ordinary notation is interpreted correctly or deferred;
-  one rounded value cannot satisfy two distinct required values. Regression
-  cases have hand-worked outcomes and include an engine grade and fallback.
-
 ### 3.16 Recover package installs before reuse
 
 - Status: in progress

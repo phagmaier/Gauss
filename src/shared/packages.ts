@@ -6,7 +6,7 @@
 // text of its own can become a URL, a path or an option of the command.
 
 import { z } from "zod";
-import { Timestamp } from "./course.ts";
+import { Slug, Timestamp } from "./course.ts";
 
 /**
  * A package's name on the index, as PEP 508 has it: letters, digits, and
@@ -98,6 +98,16 @@ export const PackageCompletion = z.object({
   output: z.string().optional(),
 });
 export type PackageCompletion = z.infer<typeof PackageCompletion>;
+
+/** The install outcome, kept beside the environment until state.json has it. */
+export const PackageReceipt = z.object({
+  unitId: Slug,
+  completion: PackageCompletion.extend({
+    outcome: PackagesOutcome.extract(["installed", "failed"]),
+    output: z.string(),
+  }),
+});
+export type PackageReceipt = z.infer<typeof PackageReceipt>;
 
 /** The learner's answer to a request, as the page posts it. */
 export const PackagesAnswer = z.object({ requestId: z.string().min(1) });

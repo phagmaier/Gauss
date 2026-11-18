@@ -326,6 +326,15 @@ export function createApp(options: {
     }),
   );
 
+  app.post(
+    `${unitPath}/packages/retry-saving`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, PackagesAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.retryPackageSave(body.data.requestId), 200);
+    }),
+  );
+
   // Moving on sends the tutor nothing until the learner's next step.
   app.post(
     `${unitPath}/override`,

@@ -104,8 +104,8 @@ export interface PackagesItem {
   commands: string[][];
   /** The workspace the commands run in. */
   folder: string;
-  /** The learner pressed Install, and no answer has come yet. */
-  installing?: boolean;
+  /** Only the current chat can make approval or saving available. */
+  status?: "historical" | "installing" | "save-failed";
   outcome?: PackagesOutcome;
   /** The end of the install's output. */
   output?: string;
@@ -399,7 +399,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
     }
     case "packages_requested":
       // The reopened unit supplies the current plan for the same request.
-      // Keep the card where it was and let the learner approve it again.
+      // Keep the card where it was. Only the live notice permits approval.
       if (
         state.items.some(
           (i) => i.kind === "packages" && i.requestId === event.requestId,
@@ -410,11 +410,12 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
           items: withRequest(
             state.items,
             event.requestId,
-            ({ installing: _, ...item }) => ({
+            ({ status: _, ...item }) => ({
               ...item,
               packages: event.packages,
               commands: event.commands,
               folder: event.folder,
+              ...(event.historical ? { status: "historical" as const } : {}),
             }),
           ),
         };
@@ -430,6 +431,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             packages: event.packages,
             commands: event.commands,
             folder: event.folder,
+            ...(event.historical ? { status: "historical" as const } : {}),
           },
         ],
         tutorOpen: false,
@@ -439,8 +441,20 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...next,
         items: withRequest(state.items, event.requestId, (item) => ({
           ...item,
-          installing: true,
+          status: "installing",
         })),
+      };
+    case "packages_save_failed":
+      return {
+        ...next,
+        items: withRequest(
+          state.items,
+          event.requestId,
+          ({ outcome: _, output: __, ...item }) => ({
+            ...item,
+            status: "save-failed",
+          }),
+        ),
       };
     case "packages_answered":
       return {
@@ -448,7 +462,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         items: withRequest(
           state.items,
           event.requestId,
-          ({ installing: _, ...item }) => ({
+          ({ status: _, output: __, ...item }) => ({
             ...item,
             outcome: event.outcome,
             ...(event.output === undefined ? {} : { output: event.output }),

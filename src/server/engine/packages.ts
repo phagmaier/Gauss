@@ -14,11 +14,15 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import type { Slug } from "../../shared/course.ts";
 import {
+  type PackageCompletion,
+  PackageReceipt,
   type PackageSpec,
   PackagesInput,
   requirement,
 } from "../../shared/packages.ts";
+import { syncFolder, writeFileAtomic } from "../record/atomic-write.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import type { SandboxCommand, SandboxResult } from "./sandbox.ts";
@@ -36,20 +40,18 @@ const PROJECT_FOLDER = "packages";
 const PROJECT_FILES = ["pyproject.toml", "uv.lock"] as const;
 const INSTALL_PARK = ".package-install.tmp";
 
-export interface InstallResult {
-  ok: boolean;
-  /** The end of what the commands wrote, both streams. */
-  output: string;
-}
+type InstallCompletion = PackageReceipt["completion"];
+type InstallCard = Pick<PackageCompletion, "request" | "preview">;
 
 export interface PackageInstaller {
   /** The networked command the approval card shows and the installer runs. */
   commands(workspace: string, packages: readonly PackageSpec[]): string[][];
-  /** Installs the packages in the workspace. Never throws. */
+  /** Installs the packages and journals the result until the chat saves it. */
   install(
     workspace: string,
-    packages: readonly PackageSpec[],
-  ): Promise<InstallResult>;
+    unitId: Slug,
+    card: InstallCard,
+  ): Promise<InstallCompletion>;
 }
 
 export function createPackageInstaller(options: {
@@ -94,22 +96,25 @@ export function createPackageInstaller(options: {
 
   return {
     commands: (workspace, packages) => [command(workspace, packages)],
-    async install(workspace, packages) {
+    async install(workspace, unitId, card) {
       const output: string[] = [];
-      let ok = false;
+      const completion = (
+        outcome: InstallCompletion["outcome"],
+      ): InstallCompletion => ({ ...card, outcome, output: lastLines(output) });
       try {
-        const argv = command(workspace, packages);
+        const argv = command(workspace, card.request.packages);
         const folder = await checkedFolder(resolve(workspace));
         const course = dirname(folder);
+        if (await recoverPackageInstall(folder)) {
+          throw new Error("The previous install's result has not been saved.");
+        }
         const project = await checkedFolder(join(course, PROJECT_FOLDER), true);
         const park = join(course, INSTALL_PARK);
         const environment = join(folder, ".venv");
-        // Preserve the old environment beside the workspace, outside uv's
-        // allowlist, under a name the course backup ignores.
-        await recoverInstall(project, environment, park);
         const cache = await checkedFolder(resolve(options.cacheFolder), true);
         await mkdir(park);
         try {
+          await syncFolder(course);
           const preparing = join(park, "preparing");
           const running = join(park, "running");
           await mkdir(preparing);
@@ -123,71 +128,102 @@ export function createPackageInstaller(options: {
           // Rename the directory entry itself, including a dangling symlink.
           if (await entry(environment)) {
             await rename(environment, join(preparing, "previous"));
+            await syncFolder(preparing);
+            await syncFolder(folder);
           }
           await rename(preparing, running);
+          await syncFolder(park);
 
-          const manifest = join(project, "pyproject.toml");
-          if (!(await entry(manifest))) {
-            await rm(join(project, "uv.lock"), { force: true });
-            const dependencies = await recordedRoots(
-              dataRoot,
-              basename(course),
-            );
-            await writeFile(manifest, projectManifest(dependencies), {
-              flag: "wx",
+          let outcome: InstallCompletion["outcome"] = "failed";
+          try {
+            const manifest = join(project, "pyproject.toml");
+            if (!(await entry(manifest))) {
+              await rm(join(project, "uv.lock"), { force: true });
+              const dependencies = await recordedRoots(
+                dataRoot,
+                basename(course),
+              );
+              await writeFile(manifest, projectManifest(dependencies), {
+                flag: "wx",
+              });
+            }
+            // uv gets an empty directory at the final path, both to bind it
+            // into the sandbox and to keep generated entry-point paths valid.
+            await mkdir(environment);
+            const result = await options.run({
+              argv,
+              cwd: project,
+              writable: [project, cache, environment],
+              hosts: PACKAGE_HOSTS,
+              env: {
+                UV_PROJECT_ENVIRONMENT: environment,
+                UV_CACHE_DIR: cache,
+                UV_LINK_MODE: "copy",
+              },
+              timeLimitMs: TIME_LIMIT_MS,
             });
+            output.push(result.stdout, result.stderr);
+            if (result.timedOut) {
+              output.push(
+                `Stopped after ${TIME_LIMIT_MS / 60_000} minutes, its time limit.`,
+              );
+            } else if (result.exitCode !== 0) {
+              output.push(`Exit status ${result.exitCode}.`);
+            } else {
+              outcome = "installed";
+            }
+          } catch (error) {
+            output.push(error instanceof Error ? error.message : String(error));
           }
-          // uv gets an empty directory at the final path, both to bind it
-          // into the sandbox and to keep generated entry-point paths valid.
-          await mkdir(environment);
-          const result = await options.run({
-            argv,
-            cwd: project,
-            writable: [project, cache, environment],
-            hosts: PACKAGE_HOSTS,
-            env: {
-              UV_PROJECT_ENVIRONMENT: environment,
-              UV_CACHE_DIR: cache,
-              UV_LINK_MODE: "copy",
-            },
-            timeLimitMs: TIME_LIMIT_MS,
-          });
-          output.push(result.stdout, result.stderr);
-          if (result.timedOut) {
-            output.push(
-              `Stopped after ${TIME_LIMIT_MS / 60_000} minutes, its time limit.`,
-            );
-          } else if (result.exitCode !== 0) {
-            output.push(`Exit status ${result.exitCode}.`);
-          } else {
+          await writeFileAtomic(
+            join(running, "receipt.json"),
+            JSON.stringify({
+              unitId,
+              completion: completion(outcome),
+            } satisfies PackageReceipt),
+          );
+          if (outcome === "installed") {
+            // Publish the candidate and its receipt with the same rename.
+            await syncFolder(folder);
+            await syncFolder(project);
             await rename(running, join(park, "committed"));
-            ok = true;
+            await syncFolder(park);
           }
-        } finally {
-          await recoverInstall(project, environment, park);
+        } catch (error) {
+          output.push(error instanceof Error ? error.message : String(error));
         }
+        const receipt = await recoverPackageInstall(folder);
+        if (receipt !== undefined) return receipt.completion;
       } catch (error) {
         output.push(error instanceof Error ? error.message : String(error));
       }
-      return { ok, output: lastLines(output) };
+      return completion("failed");
     },
   };
 }
 
-/** Recovers a failed or interrupted swap without ever opening the old venv. */
-async function recoverInstall(
-  project: string,
-  environment: string,
-  park: string,
-): Promise<void> {
-  const state = await entry(park);
-  if (state === undefined) return;
-  if (!state.isDirectory()) throw new Error(`Not a directory: ${park}`);
+/**
+ * Recovers an interrupted swap without ever opening the old venv. A
+ * published receipt is only read here; the course clears it after saving.
+ */
+export async function recoverPackageInstall(
+  workspace: string,
+): Promise<PackageReceipt | undefined> {
+  const path = join(dirname(resolve(workspace)), INSTALL_PARK);
+  if (!(await entry(path))) return undefined;
+  const folder = await checkedFolder(resolve(workspace));
+  const park = await checkedFolder(join(dirname(folder), INSTALL_PARK));
+  const environment = join(folder, ".venv");
   const preparing = join(park, "preparing");
   const running = join(park, "running");
+  const committed = join(park, "committed");
   const active = await entry(running);
   if (active !== undefined) {
     if (!active.isDirectory()) throw new Error(`Not a directory: ${running}`);
+    const project = await checkedFolder(
+      join(dirname(folder), PROJECT_FOLDER),
+      true,
+    );
     for (const name of PROJECT_FILES) {
       const file = join(project, name);
       const saved = join(running, name);
@@ -204,8 +240,40 @@ async function recoverInstall(
       throw new Error(`Not a directory: ${preparing}`);
     const previous = join(preparing, "previous");
     if (await entry(previous)) await rename(previous, environment);
-    await rm(preparing, { recursive: true });
+    const receipt = await readReceipt(preparing);
+    if (receipt?.completion.outcome === "failed") {
+      // The previous environment is back; the failure can now be recorded.
+      await rename(preparing, committed);
+      await syncFolder(park);
+    } else {
+      // An installed receipt not yet committed goes away with its candidate.
+      await rm(preparing, { recursive: true });
+    }
   }
+  const done = await entry(committed);
+  if (done !== undefined) {
+    if (!done.isDirectory()) throw new Error(`Not a directory: ${committed}`);
+    const receipt = await readReceipt(committed);
+    if (receipt !== undefined) return receipt;
+    // Older journals committed the environment without a receipt.
+    await rm(committed, { recursive: true });
+  }
+  await rmdir(park);
+}
+
+async function readReceipt(folder: string): Promise<PackageReceipt | undefined> {
+  const path = join(folder, "receipt.json");
+  const state = await entry(path);
+  if (state === undefined) return undefined;
+  if (!state.isFile()) throw new Error(`Not a regular file: ${path}`);
+  return PackageReceipt.parse(JSON.parse(await readFile(path, "utf8")));
+}
+
+/** Discards the journal of a committed result once state.json has it. */
+export async function clearPackageInstall(workspace: string): Promise<void> {
+  const path = join(dirname(resolve(workspace)), INSTALL_PARK);
+  if (!(await entry(path))) return;
+  const park = await checkedFolder(path);
   await rm(join(park, "committed"), { recursive: true, force: true });
   await rmdir(park);
 }

@@ -169,6 +169,8 @@ export async function openUnitRecord(options: {
   plan: Plan;
   emit: (event: PageEvent) => void;
   packagePreview: (request: PackageRequest) => PackageCompletion["preview"];
+  /** An install that started keeps its card until the real outcome arrives. */
+  savingPackage: (requestId: string) => boolean;
   /** The clock for the evidence's dates. */
   now: () => Date;
   /** Commits the record once a segment closes or the unit ends; none if not given. */
@@ -333,15 +335,17 @@ export async function openUnitRecord(options: {
     await dataRoot.writePosition(courseId, unitId, null, completion);
     finished = how;
     position = closed;
-    if (completion !== undefined) keepCompletion(completion);
+    if (completion !== undefined) {
+      keepCompletion(completion, !options.savingPackage(completion.request.id));
+    }
     emit(status());
     emit({ type: "unit_closed", status: how });
     backup.commit(`${courseId}: unit ${unitId} finished, ${how}`);
   }
 
-  function keepCompletion(completion: PackageCompletion): void {
+  function keepCompletion(completion: PackageCompletion, tell = true): void {
     completed[completion.request.id] = completion;
-    emit(packagesAnsweredEvent(completion));
+    if (tell) emit(packagesAnsweredEvent(completion));
   }
 
   return {
@@ -410,6 +414,14 @@ export async function openUnitRecord(options: {
     async completePackageRequest(completion) {
       const { packageRequest, ...next } = position;
       const { id } = completion.request;
+      const recorded = completed[id];
+      if (
+        recorded?.outcome === completion.outcome &&
+        recorded.output === completion.output
+      ) {
+        emit(packagesAnsweredEvent(recorded));
+        return true;
+      }
       if (finished !== undefined) {
         // The unit ended during the install. Replace its withdrawal with
         // the install's result, but do not give the finished unit a position.

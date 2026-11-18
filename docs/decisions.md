@@ -942,11 +942,12 @@ them are its tests.
   `\left(`, `\sqrt(x)`, `x^(2n)`, `x^-1` and a number with a leading zero.
 - **Reading**: `e` is Euler's number, `i` a variable, `\log` the natural
   logarithm (the parser's reading); decimals are exact; a comma always
-  separates values (`1,000` is two). Refused, with the reason: a product
-  after division (`1/2x`, `1/sin(x)y`), chained powers without grouping,
-  derivative notation, inequalities, points and intervals, sums, integrals
-  and limits. Undefined intermediate values are refused (the agent's
-  choice): SymPy can otherwise simplify `1/(1/0)` to `0`.
+  separates values (`1,000` is two). Refused where the parser would guess:
+  a product after division, ungrouped chained powers, double factorial,
+  indexed roots, or a literal zero superscript on a function. Derivative
+  notation, inequalities, intervals, sums, integrals and limits are not
+  supported. Undefined intermediate values are refused: SymPy can
+  otherwise simplify `1/(1/0)` to `0`.
 - **Equality requires a symbolic proof** (the agent's choice). A zero
   simplified difference proves equality; sampling can only disprove it.
   Agreement leaves the result undecided for the grader. Six values in
@@ -961,14 +962,18 @@ them are its tests.
   difference. Proven nonzero differences, irrational ones included, are
   different unless the decimal allowance applies. No fixed relative
   tolerance may certify equality.
+- **Lists match distinct values one to one** (the agent's choice).
+  Exact duplicates count once; tolerances apply to the cross-list matches
+  only. One rounded value cannot stand for two nearby solutions.
 - **`+ C`** as a term on both sides is a constant of integration, so the
   sides may differ by a constant: antiderivatives found by different routes
   differ so. A `C` that multiplies (`Ce^x`) is an ordinary variable.
 - **Equations** match through a proven non-zero constant ratio of their
-  residuals; tautologies are distinguished explicitly. An equation with a
-  lone variable on one side compares as a value only if that variable does
-  not occur on its other side. Other equation/expression pairs are
-  undecided, for the grader to read.
+  residuals; tautologies are distinguished explicitly. An equation
+  with one unambiguous isolated variable can compare as its value.
+  Two equations isolating the same variable to numeric values use
+  the usual decimal rule. If both sides could name the variable,
+  comparison with a scalar goes to the grader.
 - **"Undecided"** is a result beside equivalent, different and unparsable:
   the sides read, but the check could not settle them in time or could not
   evaluate them. The grader decides it, as it does an unparsable answer.
@@ -981,28 +986,26 @@ them are its tests.
 
 Math questions in the engine (task 3.5):
 
-- **The expected expression is read when the question is posted**, and a
-  question whose expression does not read is refused with the check's
-  reason, so every answer is compared with something the check can read.
-  A check that fails at posting refuses the question too; so does a
-  server without the sandbox, whose tutor is told to ask a written
-  question. Rejected: posting without the reading, then grading every
-  answer by the grader when the expression turns out unreadable.
+- **Symbolic grading is opt-in** (the agent's choice). The tool requires the
+  tutor to declare that the default equality rules apply. Questions with
+  special precision, exactness, domain, order or answer form use the grader.
+  Checking the prompt for keywords cannot establish that it has no other
+  constraints. Legacy questions without a policy default to the grader.
+  A declared symbolic question must pass the expected expression read
+  before it can post; a declared grader question needs no sandbox.
 - **Primes are read, not refused**: `f'(x)` is an unknown function, so an
   expected answer with one posts, and every answer to it is undecided and
   goes to the grader. `tutor.md` tells the tutor to put no derivative
   notation in `expected`.
 - **A math answer is kept and graded as a written one is**, outside the
-  chat's queue, since a run can take seconds and the grader minutes. "Grade
-  again" runs the check again, not only the grader: a failed run may pass.
-- **Unsettled answers go to the grader** with a rubric made in code from
-  the expression (`mathRubric`), which repeats the check's rules (any equal
-  form, three significant figures, `+ C`). `grader.md` was left unchanged,
-  so the grade set needs no re-run; the rubric tells the grader that no
-  working is asked for. The learner's reasoning is not sent: the grade is
-  on the expression. The evidence keeps why (`unsettled`), and the flaw
-  when the grader finds one, so the tutor, the card and "What I know" can
-  say who graded it.
+  chat's queue, since a run can take seconds and the grader minutes. On a
+  symbolic question, "Grade again" retries the check too: a failed run
+  may pass.
+- **The math rubric follows the question first** (`mathRubric`), using
+  symbolic defaults only where the prompt has not specified a rule.
+  The learner's reasoning is not sent: the grade is on the expression.
+  The evidence keeps why the symbolic check did not grade it
+  (`unsettled`) and the grader's flaw when supplied.
 - **The expected answer is shown once graded**, as a choice's key is: on
   the card and in "What I know" after a miss, and in the help judge's
   request.

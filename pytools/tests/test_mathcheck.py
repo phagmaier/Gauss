@@ -129,6 +129,12 @@ def test_a_self_referential_equation_does_not_unwrap_to_its_other_side(reverse, 
     assert verdict(*(pair[::-1] if reverse else pair)) == "undecided"
 
 
+@pytest.mark.parametrize("equation", ["x = y", "y = x"])
+def test_two_lone_variables_do_not_choose_which_value_to_compare(equation):
+    assert verdict(equation, "x") == "undecided"
+    assert verdict("x", equation) == "undecided"
+
+
 @pytest.mark.parametrize(
     ("expected", "answer", "result"),
     [
@@ -153,10 +159,33 @@ def test_equation_zero_residuals_and_unproven_ratios(expected, answer, result):
         ("1, -2", "1, 2", "different"),
         ("1, -2", "1", "different"),
         ("1, -2", "1, -2, 3", "different"),
+        ("1/3, 1/3", "0.333", "equivalent"),  # one distinct value
+        ("3.140, 3.14", r"\pi", "equivalent"),  # duplicate value, second spelling rounds pi
+        ("1/3, 3331/10000", "0.333", "different"),  # one input cannot count as two values
+        # Both first values can only use 0.333; 2/3 can use either of the others.
+        ("1/3, 3331/10000, 2/3", "0.333, 0.667, 0.6667", "different"),
+        # 0.333 can match either value, but 0.3331 cannot match 1/3.
+        ("3331/10000, 1/3", "0.333, 0.3331", "equivalent"),
+        ("x+4, 2", "2, |x+4|", "undecided"),  # their first terms differ at x = -5
     ],
 )
 def test_lists_compare_as_sets(expected, answer, result):
     assert verdict(expected, answer) == result
+
+
+@pytest.mark.parametrize(
+    ("decimal", "result"),
+    [("0.333", "equivalent"), ("0.33", "different"), ("0.334", "different")],
+)
+def test_rounding_an_isolated_value_does_not_depend_on_which_sides_are_equations(decimal, result):
+    for exact in ["1/3", "x = 1/3"]:
+        for rounded in [decimal, f"({decimal}) = x"]:
+            assert verdict(exact, rounded) == result
+            assert verdict(rounded, exact) == result
+
+
+def test_rounded_isolated_values_do_not_match_equations_for_different_variables():
+    assert verdict("x = 1/3", "y = 0.333") == "different"
 
 
 @pytest.mark.parametrize(
@@ -232,6 +261,11 @@ def test_unparsable_sides(expected, answer, side):
         ("2^{3}^{0}", "ambiguous"),
         ("1/sin(x)y", "ambiguous"),
         ("1/|x|y", "ambiguous"),
+        ("1/2|x|", "ambiguous"),
+        (r"1/2\left|x\right|", "ambiguous"),
+        (r"\cos^{0}(\pi)", "zero power"),
+        ("3!!", "double factorial"),
+        (r"\sqrt[3]{-8}", "indexed root"),
     ],
 )
 def test_invalid_or_ambiguous_math_cannot_be_a_grade(expression, why):
@@ -247,6 +281,8 @@ def test_invalid_or_ambiguous_math_cannot_be_a_grade(expression, why):
         ("1", "(2^3)^0"),
         (r"\frac{1}{y\sin(x)}", "1/(sin(x)y)"),
         (r"\frac{1}{|x|y}", "1/(|x|y)"),
+        ("1/2", "|1/2|"),
+        ("1", r"(\cos(\pi))^0"),
     ],
 )
 def test_explicit_grouping_disambiguates_powers_and_division(expected, answer):

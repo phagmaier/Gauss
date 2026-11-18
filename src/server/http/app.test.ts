@@ -1810,6 +1810,16 @@ test("the package card's routes: Install and Not now name the request, which is 
     400,
   );
   expect(
+    (await post(setup.app, `${UNIT}/packages/retry-saving`, {})).status,
+  ).toBe(400);
+  expect(
+    (
+      await post(setup.app, `${UNIT}/packages/retry-saving`, {
+        requestId: first,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
     (
       await post(setup.app, `${UNIT}/packages/install`, {
         requestId: "another",

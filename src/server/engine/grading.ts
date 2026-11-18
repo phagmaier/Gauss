@@ -73,7 +73,16 @@ export async function gradeMath(
   by: { check: MathCheck; grader: Grader },
   signal?: AbortSignal,
 ): Promise<MathOutcome> {
-  const checked = await by.check.compare(question.expected, answer.expression);
+  const checked =
+    question.mathGrading === "symbolic"
+      ? await by.check.compare(question.expected, answer.expression)
+      : ({
+          result: "skipped",
+          reason:
+            question.mathGrading === "grader"
+              ? "this question calls for the grader rather than the symbolic check"
+              : "the saved question does not specify a symbolic grading policy",
+        } as const);
   if (checked.result === "equivalent") return { ok: true, verdict: "correct" };
   if (checked.result === "different") return { ok: true, verdict: "incorrect" };
   const graded = await by.grader.grade(
@@ -86,17 +95,20 @@ export async function gradeMath(
 
 /**
  * The rubric the grader gets for a math answer the check did not settle:
- * correct if equal to the expected expression, as the check counts
- * equality (decisions.md, "Symbolic check").
+ * compare with the expected answer while honoring any requirements in the
+ * prompt. The symbolic defaults only apply where the question permits them.
  */
 export function mathRubric(question: MathQuestion): string {
   const expected = question.expected.replaceAll("$", "");
   return [
     "The question asks only for a result, typed in a math field as LaTeX or plain text; no working is needed.",
-    `Correct if the answer is mathematically equal to the expected answer, $${expected}$, in any form: rearranged, factored or expanded, simplified or not, or in other notation. A decimal counts if it is the exact value correctly rounded to at least three significant figures. Values separated by commas are compared as a set, in any order.`,
-    "If the expected answer has a constant of integration ($+ C$), an answer that differs from it by a constant and has a constant of its own is equal to it; one with no constant is incorrect.",
+    "Follow the question's stated requirements first: its domain and variable assumptions, exactness, precision (including the requested number of significant figures or decimal places), form, order and any other conditions. Check the submitted result itself against those requirements. A mathematically equivalent value in a form the question rules out is not correct.",
+    `Correct if the answer is mathematically equal to the expected answer, $${expected}$, in any form the question allows: rearranged, factored or expanded, simplified or not, or in other notation. Compare on the domain the question asks for.`,
+    "If rounding is requested, compare with the expected answer rounded as requested, even if the expected answer gives an exact value. Require the requested precision in the submitted notation, including trailing zeros when needed. If an exact result is requested, a rounded approximation is incorrect. Only when no precision or exactness is specified, allow decimals correctly rounded to at least three significant figures.",
+    "Unless the question requires otherwise, compare comma-separated values as a set in any order. Each distinct required value needs its own submitted value; one rounded value cannot stand for two different values.",
+    "If the expected answer has a constant of integration ($+ C$), an answer that differs from it by a constant and has a constant of its own is equal to it; one with no constant is incorrect unless the question allows it.",
     "Read the notation charitably where its meaning is plain. An answer whose meaning cannot be made out is incorrect.",
-    "Incorrect: anything not equal to the expected answer. As the flaw, say where the answer differs from the expected one.",
+    "Incorrect: an answer that does not equal the expected result on the required domain or does not meet a stated requirement. Name the difference or unmet requirement as the flaw.",
   ].join("\n");
 }
 

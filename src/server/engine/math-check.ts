@@ -20,8 +20,8 @@ export type MathResult =
 
 export interface MathCheck {
   /**
-   * Whether the expected expression reads, as posting a math question
-   * needs: nothing, or the reason it cannot be used.
+   * Whether the expected expression reads, as posting a symbolic math
+   * question needs: nothing, or the reason it cannot be used.
    */
   read(expected: string): Promise<{ refused: string } | undefined>;
   /** Compares an answer with the expected expression. Never throws. */
@@ -29,13 +29,13 @@ export interface MathCheck {
 }
 
 /**
- * A check that cannot run: math questions are refused when posted, and an
- * answer to one posted earlier goes to the grader.
+ * A check that cannot run: symbolic questions are refused when posted,
+ * and an answer to one posted earlier goes to the grader.
  */
 export const noMathCheck: MathCheck = {
   read: async () => ({
     refused:
-      "The symbolic check that grades math questions is not available. Ask a written question instead.",
+      'The symbolic check is not available. Repost with mathGrading: "grader" or ask a written question.',
   }),
   compare: async () => ({
     result: "failed",
@@ -114,17 +114,17 @@ export function createMathCheck(options: {
       const out = await run({ expected });
       if ("failed" in out) {
         return {
-          refused: `The symbolic check could not read the expected answer: ${out.failed}. Ask a written question instead.`,
+          refused: `The symbolic check could not read the expected answer: ${out.failed}. Repost with mathGrading: "grader" or ask a written question.`,
         };
       }
       if (out.result === "parsed") return undefined;
       if (out.result === "unparsable") {
         return {
-          refused: `The symbolic check cannot read the expected answer: ${out.reason}. Write it as one expression, one equation or values separated by commas, without derivative notation, inequalities, intervals, sums, integrals or limits; or ask a written question instead.`,
+          refused: `The symbolic check cannot read the expected answer: ${out.reason}. Rewrite it as one expression, one equation or values separated by commas; or repost with mathGrading: "grader".`,
         };
       }
       return {
-        refused: `The symbolic check gave no reading of the expected answer (${out.result}). Ask a written question instead.`,
+        refused: `The symbolic check gave no reading of the expected answer (${out.result}). Repost with mathGrading: "grader" or ask a written question.`,
       };
     },
 

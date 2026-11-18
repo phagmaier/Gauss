@@ -24,6 +24,7 @@ export function PackagesCard(props: {
   busy: boolean;
   onInstall(): Promise<string | undefined>;
   onNotNow(): Promise<string | undefined>;
+  onRetrySaving(): Promise<string | undefined>;
 }) {
   const { item } = props;
   const [sending, setSending] = useState(false);
@@ -100,15 +101,32 @@ export function PackagesCard(props: {
       </div>
       {lines}
       <div className="qa-foot">
-        <span className="qa-aside">
-          {count === 1 ? "It is" : "They are"} downloaded from pypi.org. No
-          other command of this course gets network access.
-        </span>
-        {item.installing === true ? (
+        {item.status === "save-failed" ? (
+          <span className="qa-aside" role="status">
+            The install finished, but its result couldn't be saved.
+          </span>
+        ) : (
+          <span className="qa-aside">
+            {count === 1 ? "It is" : "They are"} downloaded from pypi.org. No
+            other command of this course gets network access.
+          </span>
+        )}
+        {item.status === "installing" ? (
           <span className="dk" role="status">
             Installing <span className="wait" aria-hidden="true" />
           </span>
-        ) : (
+        ) : item.status === "save-failed" ? (
+          <span className="pk-btns">
+            <button
+              type="button"
+              className="btn sm"
+              disabled={sending}
+              onClick={() => answer(props.onRetrySaving)}
+            >
+              Retry saving
+            </button>
+          </span>
+        ) : item.status === "historical" ? null : (
           <span className="pk-btns">
             <button
               type="button"

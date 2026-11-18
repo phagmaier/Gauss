@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import {
   type AnswerSubmission,
   type MathAnswer,
-  type MathQuestion,
+  MathQuestion,
   WrittenGrade,
   type WrittenQuestion,
 } from "../../shared/question.ts";
@@ -186,6 +186,7 @@ const MATH: MathQuestion = {
   kind: "math",
   prompt: "Give the derivative of $x^3$.",
   expected: "3x^2",
+  mathGrading: "symbolic",
 };
 const MATH_ANSWER: MathAnswer = {
   kind: "math",
@@ -242,6 +243,34 @@ test("an answer the check could not grade, because it failed or ran out of time,
     "Correct if the answer is mathematically equal to the expected answer, $3x^2$, in any form",
   );
   expect(prompt).toContain("<answer>\n3x^2\n</answer>");
+});
+
+test("a saved math question without a grading policy never takes a symbolic verdict", async () => {
+  const question = MathQuestion.parse({
+    kind: "math",
+    prompt: "Give $1/3$ to exactly five significant figures.",
+    expected: "1/3",
+  });
+  const flaw = "The answer has only three significant figures.";
+  const { backend, grader } = setUp([
+    { output: { verdict: "incorrect", flaw } },
+  ]);
+  expect(
+    await gradeMath(
+      question,
+      { ...MATH_ANSWER, expression: "0.333" },
+      { check: checkGiving({ result: "equivalent" }), grader },
+    ),
+  ).toEqual({
+    ok: true,
+    verdict: "incorrect",
+    flaw,
+    unsettled: {
+      result: "skipped",
+      reason: "the saved question does not specify a symbolic grading policy",
+    },
+  });
+  expect(backend.oneShots).toHaveLength(1);
 });
 
 test("when the grader then fails, the grading fails, and nothing is graded", async () => {

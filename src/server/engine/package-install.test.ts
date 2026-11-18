@@ -15,7 +15,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import type { PageEvent } from "../../shared/events.ts";
 import type { PackageSpec } from "../../shared/packages.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
-import { createPackageInstaller } from "./packages.ts";
+import { clearPackageInstall, createPackageInstaller } from "./packages.ts";
 import type { SandboxCommand, SandboxResult } from "./sandbox.ts";
 
 let dir: string;
@@ -45,7 +45,16 @@ function installer(
     python: PYTHON,
     ...(dataRoot === undefined ? {} : { dataRoot }),
   };
-  return createPackageInstaller(options);
+  const subject = createPackageInstaller(options);
+  return {
+    commands: subject.commands,
+    install(workspace: string, packages: PackageSpec[]) {
+      return subject.install(workspace, "loops", {
+        request: { id: "approved", packages, requestedAt: "2026-11-17T10:00:00Z" },
+        preview: { commands: subject.commands(workspace, packages), folder: workspace },
+      });
+    },
+  };
 }
 
 function request(
@@ -152,7 +161,7 @@ test("the networked install uses only the new request and previously approved, s
     { name: "pytest", version: ">=8" },
   ]);
 
-  expect(result).toMatchObject({ ok: true });
+  expect(result.outcome).toBe("installed");
   expect(network).toHaveLength(1);
   expect(network[0]?.cwd).toBe(
     join(dirname(await realpath(workspace)), "packages"),
@@ -219,7 +228,7 @@ test("a failed command preserves the old environment even after writing a candid
 
   const result = await subject.install(workspace, [{ name: "pytest" }]);
 
-  expect(result.ok).toBe(false);
+  expect(result.outcome).toBe("failed");
   expect(result.output).toContain("fixture resolution failed");
   expect(await readFile(oldFile, "utf8")).toBe("previous environment\n");
   expect(existsSync(join(workspace, ".venv", "candidate.txt"))).toBe(false);
@@ -251,12 +260,13 @@ test("an interrupted swap is undone before the next install starts", async () =>
 
   const result = await subject.install(workspace, [{ name: "pytest" }]);
 
-  expect(result).toMatchObject({ ok: false });
+  expect(result.outcome).toBe("failed");
   expect(result.output).toContain("second install failed");
   expect(await readdir(environment)).toEqual(["kept.txt"]);
   expect(await readFile(join(environment, "kept.txt"), "utf8")).toBe(
     "previous environment\n",
   );
+  await clearPackageInstall(workspace);
   expect(existsSync(dirname(park))).toBe(false);
 });
 
@@ -278,7 +288,7 @@ test("a symlink in a workspace parent is refused before the environment is touch
     { name: "pytest" },
   ]);
 
-  expect(result.ok).toBe(false);
+  expect(result.outcome).toBe("failed");
   expect(commands).toHaveLength(0);
   expect(await readFile(oldFile, "utf8")).toBe("previous environment\n");
 });

@@ -338,11 +338,11 @@ tab.
 
 1. The tutor calls `ask_question` with the objective, the prompt, the
    answer kind, and the grading material: an answer letter, an expected
-   expression, which the symbolic check must read or the question is
-   refused with the check's reason, or a rubric; for code, the files the
-   learner edits, whose starter versions the tutor has written in the
-   workspace, the tests, the solution, the command, and any workspace
-   dependencies the tests or learner's code need. The engine runs the
+   expression with a math grading policy, or a rubric. For symbolic grading,
+   the expected expression must read or the question is refused. For code,
+   the tutor supplies the files the learner edits (with starter versions
+   already in the workspace), the tests, solution, command, and any
+   workspace dependencies the tests or learner's code need. The engine runs the
    tests on the starter files and on the solution, and refuses the question
    unless they fail on the first and pass on the second (section 6).
    Stop cancels posting during validation; for code it also stops the runs
@@ -374,7 +374,7 @@ tool server, for Codex an MCP server.
 | --- | --- |
 | `propose_curriculum` | Stores a draft curriculum with its style note and background note and shows them for review; approval covers all three. Refused in the intake's first turn |
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session |
-| `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, `math` with an expected expression, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
+| `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Refused while a question of the course is open or another request waits. Does not end the turn |
@@ -404,18 +404,19 @@ with sources (stage 4).
 | Answer kind | Method | Notes |
 | --- | --- | --- |
 | Multiple choice | Exact match in the engine | Reasoning is passed to the tutor for feedback |
-| Computational math | The symbolic check, `pytools/mathcheck.py`, compares the answer with the expected expression using SymPy | The expression must read for the question to be posted. An answer the check cannot read, or cannot decide, or a check that fails or runs out of time, goes to the grader with a rubric made from the expression (`mathRubric` in `engine/grading.ts`); the evidence keeps why (`unsettled`) |
+| Computational math | The symbolic check (`pytools/mathcheck.py`) for questions declared unrestricted; otherwise the grader | An unreadable or undecided answer, failed check, or time-out also goes to the grader. The evidence keeps why (`unsettled`) |
 | Code | Runs the question's tests with their command on the learner's files as sent, in the engine's sandbox; exit status 0 is correct | The tests must fail on the starter files and pass on the solution for the question to be posted. The learner sees the end of their output once graded, never the tests |
 | Proof, explanation, reconstruction | A separate one-shot model call, `prompts/grader.md` with the question's rubric | Names the first flawed step or missing element; never sees the tutor's conversation |
 
 - **The grader** (`engine/grading.ts`) is one `oneShot` request (section 7):
   system prompt `grader.md`, and a message holding the question as the
   learner saw it, the rubric and the answer, each between tags, and nothing
-  else. For a math answer the rubric is made from the expected expression,
-  and the answer is the expression without the learner's reasoning. The
-  reply is `WrittenGrade` (`src/shared/question.ts`): correct or incorrect,
-  no partial credit, and the flaw when incorrect, which the evidence
-  keeps. A reply out of shape, a failed request or one past three
+  else. For a math answer the rubric uses the expected expression and
+  gives priority to the prompt's constraints. The answer is the expression
+  without the learner's reasoning. `WrittenGrade` (`src/shared/question.ts`)
+  gives a correct or incorrect verdict with no partial credit, and the
+  flaw when incorrect, which the evidence keeps. A reply out of shape,
+  a failed request or one past three
   minutes is a failed grading. It runs on Claude Sonnet 5.5 (`GRADER_MODEL`
   in `backends/claude.ts`).
 - **The help judge** (`engine/help-judge.ts`) is a one-shot request of the
@@ -444,10 +445,10 @@ with sources (stage 4).
   a sandboxed run needs no uv cache. A comparison has an eight-second
   limit; the engine (`engine/math-check.ts`) gives the whole process,
   including parsing, 12 seconds, in the sandbox with nothing writable:
-  it reads the expected expression when posting a math question and
-  compares the submitted expression when grading it. Failures, timeouts
-  and malformed output go to the grader, as undecided readings do. Without
-  a sandbox, the engine refuses to post math questions.
+  it reads the expected expression before posting a question declared
+  symbolic, and compares the expressions when grading it. Questions
+  declared for the grader, or saved without a policy, skip the check.
+  Without a sandbox, a new question must choose the grader.
 - **Code questions** (`engine/code-run.ts`; why, `decisions.md`, "Code
   questions"). The engine saves the declared workspace dependencies in the
   question at posting. Each run uses a scratch folder containing the

@@ -89,6 +89,7 @@ const MATH = {
   kind: "math",
   prompt: "Give the derivative of $x^3$.",
   expected: "3x^2",
+  mathGrading: "symbolic",
 };
 
 test("a math question is posted with its expected answer", async () => {
@@ -303,6 +304,16 @@ test.each([
     name: "an expected answer, as a choice question",
     input: { ...QUESTION, expected: "3x^2" },
     reason: "A choice question has no rubric and no expected expression",
+  },
+  {
+    name: "no grading policy, as a math question",
+    input: { ...MATH, mathGrading: undefined },
+    reason: 'A math question must choose "symbolic" or "grader" grading.',
+  },
+  {
+    name: "a math grading policy, as a written question",
+    input: { ...WRITTEN, mathGrading: "grader" },
+    reason: "Only a math question has a math grading policy.",
   },
   {
     name: "no expected answer, as a math question",

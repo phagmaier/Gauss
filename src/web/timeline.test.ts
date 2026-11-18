@@ -1255,8 +1255,36 @@ test("a package request is one card in the tutor's reply, which installs and is 
     ...asked,
     last: -1,
   });
-  expect(installing.items[1]).toEqual({ ...card, installing: true });
+  expect(installing.items[1]).toEqual({ ...card, status: "installing" });
 
+  const historical = play([{ ...requested, historical: true }], {
+    ...installing,
+    last: -1,
+  });
+  expect(historical.items[1]).toEqual({ ...card, status: "historical" });
+
+  const saveFailed = play(
+    [{ type: "packages_save_failed", requestId: "r1" }],
+    { ...installing, last: -1 },
+  );
+  expect(saveFailed.items[1]).toEqual({ ...card, status: "save-failed" });
+
+  const saved = play(
+    [
+      {
+        type: "packages_answered",
+        requestId: "r1",
+        outcome: "failed",
+        output: "Exit status 1.",
+      },
+    ],
+    { ...saveFailed, last: -1 },
+  );
+  expect(saved.items[1]).toEqual({
+    ...card,
+    outcome: "failed",
+    output: "Exit status 1.",
+  });
   // A restart ended the install. The current plan supersedes transcript details.
   const plan = {
     commands: [["uv", "pip", "install", "pytest>=8"]],

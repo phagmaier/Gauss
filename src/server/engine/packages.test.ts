@@ -3,31 +3,41 @@
 // chat, with the commands' run faked (no network, no uv). The real install
 // through the sandbox is checked by hand (the task's commit says how).
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   lstat,
   mkdir,
   mkdtemp,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
-import { PackageName, PackagesInput } from "../../shared/packages.ts";
+import {
+  PackageName,
+  type PackageSpec,
+  PackagesInput,
+} from "../../shared/packages.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { givenOrder } from "./choice-order.ts";
+import type { CodeRunner } from "./code-run.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
-import { createPackageInstaller, PACKAGE_HOSTS } from "./packages.ts";
+import {
+  createPackageInstaller,
+  type PackageInstaller,
+  PACKAGE_HOSTS,
+} from "./packages.ts";
 import type { SandboxCommand, SandboxResult } from "./sandbox.ts";
 import { createUnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
@@ -120,6 +130,17 @@ describe("the names the tutor may give", () => {
 });
 
 describe("the install", () => {
+  function install(
+    subject: PackageInstaller,
+    workspace: string,
+    packages: PackageSpec[],
+  ) {
+    return subject.install(workspace, "loops", {
+      request: { id: "approved", packages, requestedAt: NOW },
+      preview: { commands: subject.commands(workspace, packages), folder: workspace },
+    });
+  }
+
   test("the single UV command uses the pinned Python and only PyPI wheels", async () => {
     const workspace = join(dir, "workspace");
     const cache = join(dir, "cache", "uv");
@@ -132,9 +153,9 @@ describe("the install", () => {
     });
     const packages = [{ name: "pytest", version: ">=8" }, { name: "numpy" }];
 
-    const result = await installer.install(workspace, packages);
+    const result = await install(installer, workspace, packages);
 
-    expect(result).toEqual({ ok: true, output: "" });
+    expect(result).toMatchObject({ outcome: "installed", output: "" });
     expect(fake.commands).toEqual([
       {
         argv: expect.arrayContaining([
@@ -188,8 +209,8 @@ describe("the install", () => {
       python: PY,
     });
 
-    expect(await installer.install(workspace, [{ name: "pytest" }])).toEqual({
-      ok: true,
+    expect(await install(installer, workspace, [{ name: "pytest" }])).toMatchObject({
+      outcome: "installed",
       output: "",
     });
 
@@ -210,9 +231,9 @@ describe("the install", () => {
       python: PY,
     });
 
-    const result = await installer.install(workspace, [{ name: "nope" }]);
+    const result = await install(installer, workspace, [{ name: "nope" }]);
 
-    expect(result.ok).toBe(false);
+    expect(result.outcome).toBe("failed");
     const said = result.output.split("\n");
     expect(said).toHaveLength(30);
     expect(said.at(0)).toBe("line 12");
@@ -230,10 +251,10 @@ describe("the install", () => {
       python: PY,
     });
 
-    const result = await installer.install(workspace, [{ name: "pytest" }]);
+    const result = await install(installer, workspace, [{ name: "pytest" }]);
 
-    expect(result).toEqual({
-      ok: false,
+    expect(result).toMatchObject({
+      outcome: "failed",
       output: "Stopped after 10 minutes, its time limit.",
     });
   });
@@ -286,7 +307,15 @@ async function start(
   script: FakeTurn[],
   run = fakeRun().run,
   unitId = "loops",
-  extra: { workspaceTools?: boolean } = {},
+  {
+    codeRunner,
+    withoutInstaller = false,
+    workspaceTools = false,
+  }: {
+    codeRunner?: CodeRunner;
+    withoutInstaller?: boolean;
+    workspaceTools?: boolean;
+  } = {},
 ) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   if ((await root.readCourse(COURSE)) === undefined) {
@@ -314,13 +343,18 @@ async function start(
     now: () => new Date(NOW),
     timer: createFakeTimer(),
     order: givenOrder,
-    ...extra,
-    installer: createPackageInstaller({
-      run,
-      cacheFolder: join(dir, "cache", "uv"),
-      dataRoot: root,
-      python: PY,
-    }),
+    workspaceTools,
+    ...(codeRunner === undefined ? {} : { codeRunner }),
+    ...(withoutInstaller
+      ? {}
+      : {
+          installer: createPackageInstaller({
+            run,
+            cacheFolder: join(dir, "cache", "uv"),
+            dataRoot: root,
+            python: PY,
+          }),
+        }),
   });
   const opened = await units.open(COURSE, unitId);
   if (!opened.ok) throw new Error(opened.error);
@@ -333,6 +367,7 @@ function cards(events: readonly PageEvent[]) {
     (e) =>
       e.type === "packages_requested" ||
       e.type === "packages_installing" ||
+      e.type === "packages_save_failed" ||
       e.type === "packages_answered",
   );
 }
@@ -797,8 +832,9 @@ test("a package completion the transcript lost is replayed once after restart", 
   await third.units.close();
 });
 
-test("another unit's question blocked by an install is reasked when the install completes", async () => {
+test("opening another unit leaves a live install alone and its blocked question is reasked when the install completes", async () => {
   const held = Promise.withResolvers<SandboxResult>();
+  const candidateReady = Promise.withResolvers<void>();
   const setsQuestion = {
     call: "ask_question",
     input: {
@@ -823,17 +859,34 @@ test("another unit's question blocked by an install is reasked when the install 
       afterInstall,
       afterInstall,
     ],
-    fakeRun([held.promise]).run,
+    async (command) => {
+      const environment = command.env?.UV_PROJECT_ENVIRONMENT ?? "";
+      await writeFile(join(environment, "candidate"), "candidate is live");
+      candidateReady.resolve();
+      return held.promise;
+    },
   );
-  const opened = await units.open(COURSE, "sets");
-  if (!opened.ok) throw new Error(opened.error);
-  const sets = opened.chat;
-  await sets.settled();
+  const course = join(dir, "courses", COURSE);
+  const environment = join(course, "workspace", ".venv");
+  const running = join(course, ".package-install.tmp", "running");
+  await mkdir(environment);
+  await writeFile(join(environment, "old"), "previous environment");
 
   expect(await loops.installPackages(requestId(loops.events()))).toEqual({
     ok: true,
   });
+  await candidateReady.promise;
+  const opened = await units.open(COURSE, "sets");
+  if (!opened.ok) throw new Error(opened.error);
+  const sets = opened.chat;
   try {
+    await sets.settled();
+    expect(await readFile(join(running, "previous", "old"), "utf8")).toBe(
+      "previous environment",
+    );
+    expect(await readFile(join(environment, "candidate"), "utf8")).toBe(
+      "candidate is live",
+    );
     expect(await sets.ready()).toEqual({ ok: true });
     await sets.settled();
     expect(backend.calls.slice(-2).map((call) => call.result)).toEqual([
@@ -963,20 +1016,20 @@ test("a finished unit recovers its withdrawn package card even when both transcr
   );
 
   const second = await start([]);
-  expect(cards(second.chat.events())).toEqual(withdrawn);
+  expect(cards(second.chat.events())).toEqual([
+    { ...withdrawn[0], historical: true },
+    withdrawn[1],
+  ]);
   expect(second.backend.received).toEqual([]);
   await second.units.close();
 });
 
-test("a retry after a failed package completion write saves the result without reinstalling", async () => {
+test("Retry saving preserves the original install outcome after the unit finishes", async () => {
   const started = Promise.withResolvers<void>();
   const held = Promise.withResolvers<SandboxResult>();
   const fake = fakeRun([held.promise]);
-  const { chat, root, units } = await start(
-    [
-      [{ text: "Teaching." }, ask([{ name: "pytest" }])],
-      [{ text: "Installed." }],
-    ],
+  const { backend, chat, root, units } = await start(
+    [[{ text: "Teaching." }, ask([{ name: "pytest" }])]],
     (command) => {
       started.resolve();
       return fake.run(command);
@@ -986,9 +1039,15 @@ test("a retry after a failed package completion write saves the result without r
   const [request] = cards(chat.events());
   expect(await chat.installPackages(id)).toEqual({ ok: true });
   await started.promise;
+  expect(await chat.override()).toEqual({ ok: true });
+  expect(await chat.finishUnit()).toEqual({ ok: true });
+  expect((await root.readState(COURSE)).units.loops).toBeUndefined();
+  expect(backend.received).toHaveLength(1);
 
   const path = join(dir, "courses", COURSE, "state.json");
   const state = await readFile(path);
+  const journal = join(dir, "courses", COURSE, ".package-install.tmp");
+  const receipt = join(journal, "committed", "receipt.json");
   await rm(path);
   await mkdir(path);
   try {
@@ -997,15 +1056,25 @@ test("a retry after a failed package completion write saves the result without r
     expect(cards(chat.events())).toEqual([
       request,
       { type: "packages_installing", requestId: id },
-      request,
+      { type: "packages_save_failed", requestId: id },
     ]);
+    expect(existsSync(receipt)).toBe(true);
+    expect(await chat.retryPackageSave(id)).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    expect(existsSync(receipt)).toBe(true);
   } finally {
     await rm(path, { recursive: true });
     await writeFile(path, state);
   }
 
-  expect(await chat.installPackages(id)).toEqual({ ok: true });
+  expect(await chat.installPackages(id)).toMatchObject({ ok: false, status: 409 });
+  expect(await chat.declinePackages(id)).toMatchObject({ ok: false, status: 409 });
+  expect(await chat.retryPackageSave(id)).toEqual({ ok: true });
   await chat.settled();
+  expect(existsSync(journal)).toBe(false);
+  expect(backend.received).toHaveLength(1);
   expect(fake.commands.map((command) => command.argv[1])).toEqual(["add"]);
   expect(cards(chat.events()).at(-1)).toEqual({
     type: "packages_answered",
@@ -1013,8 +1082,299 @@ test("a retry after a failed package completion write saves the result without r
     outcome: "installed",
     output: " + pytest==9.2.0",
   });
-  expect(
-    (await root.readState(COURSE)).units.loops?.packageRequest,
-  ).toBeUndefined();
+  const saved = await root.readState(COURSE);
+  expect(saved.units.loops).toBeUndefined();
+  expect(saved.packageCompletions?.loops?.[id]).toMatchObject({
+    outcome: "installed",
+    output: " + pytest==9.2.0",
+  });
+  await units.close();
+});
+
+test.each(["preparing", "running"] as const)(
+  "reopening restores a legacy %s journal before a tutor turn, even without an installer",
+  async (stage) => {
+    const first = await start([
+      [{ text: "Teaching." }, ask([{ name: "pytest" }])],
+    ]);
+    await first.units.close();
+    const course = join(dir, "courses", COURSE);
+    const environment = join(course, "workspace", ".venv");
+    const project = join(course, "packages");
+    const journal = join(course, ".package-install.tmp");
+    const parked = join(journal, stage);
+    await mkdir(join(parked, "previous"), { recursive: true });
+    await mkdir(project);
+    await writeFile(join(parked, "previous", "old"), "previous environment");
+    await writeFile(join(parked, "pyproject.toml"), "previous manifest");
+    await writeFile(join(parked, "uv.lock"), "previous lock");
+    if (stage === "running") {
+      await mkdir(environment);
+      await writeFile(join(environment, "candidate"), "interrupted candidate");
+    }
+    await writeFile(
+      join(project, "pyproject.toml"),
+      stage === "running" ? "interrupted manifest" : "previous manifest",
+    );
+    await writeFile(
+      join(project, "uv.lock"),
+      stage === "running" ? "interrupted lock" : "previous lock",
+    );
+
+    const observed: unknown[] = [];
+    const reopened = await start(
+      [
+        () => {
+          observed.push({
+            old: readFileSync(join(environment, "old"), "utf8"),
+            candidate: existsSync(join(environment, "candidate")),
+            manifest: readFileSync(join(project, "pyproject.toml"), "utf8"),
+            lock: readFileSync(join(project, "uv.lock"), "utf8"),
+          });
+          return [{ text: "Teaching sets." }];
+        },
+      ],
+      undefined,
+      "sets",
+      { withoutInstaller: true },
+    );
+    expect(observed).toEqual([
+      {
+        old: "previous environment",
+        candidate: false,
+        manifest: "previous manifest",
+        lock: "previous lock",
+      },
+    ]);
+    expect(existsSync(journal)).toBe(false);
+    const loops = await reopened.units.open(COURSE, "loops");
+    if (!loops.ok) throw new Error(loops.error);
+    await loops.chat.settled();
+    const id = requestId(first.chat.events());
+    expect(cards(loops.chat.events()).at(-1)).toMatchObject({
+      type: "packages_requested",
+      requestId: id,
+    });
+    expect(cards(loops.chat.events()).at(-1)).not.toHaveProperty("historical");
+    expect(await loops.chat.declinePackages(id)).toEqual({ ok: true });
+    await reopened.units.close();
+  },
+);
+
+test.each([
+  {
+    outcome: "installed",
+    exitCode: 0,
+    output: "pytest was added",
+    marker: "candidate",
+  },
+  {
+    outcome: "failed",
+    exitCode: 1,
+    output: "resolution failed\nExit status 1.",
+    marker: "old",
+  },
+])(
+  "a restart saves a committed $outcome receipt without rerunning uv",
+  async ({ outcome, exitCode, output, marker }) => {
+    const entered = Promise.withResolvers<void>();
+    const held = Promise.withResolvers<void>();
+    const launches: string[][] = [];
+    const run = async (command: SandboxCommand) => {
+      launches.push([...command.argv]);
+      const environment = command.env?.UV_PROJECT_ENVIRONMENT ?? "";
+      await writeFile(join(environment, "candidate"), "new environment");
+      entered.resolve();
+      await held.promise;
+      return { ...ok(output.split("\n")[0]), exitCode };
+    };
+    const first = await start(
+      [[{ text: "Teaching." }, ask([{ name: "pytest" }])]],
+      run,
+    );
+    const id = requestId(first.chat.events());
+    const course = join(dir, "courses", COURSE);
+    const environment = join(course, "workspace", ".venv");
+    const journal = join(course, ".package-install.tmp");
+    await mkdir(environment);
+    await writeFile(join(environment, "old"), "previous environment");
+    expect(await first.chat.installPackages(id)).toEqual({ ok: true });
+    await entered.promise;
+
+    const path = join(course, "state.json");
+    const state = await readFile(path);
+    await rm(path);
+    await mkdir(path);
+    try {
+      held.resolve();
+      await first.chat.settled();
+      expect(cards(first.chat.events()).at(-1)).toEqual({
+        type: "packages_save_failed",
+        requestId: id,
+      });
+      expect(existsSync(join(journal, "committed", "receipt.json"))).toBe(true);
+    } finally {
+      await rm(path, { recursive: true });
+      await writeFile(path, state);
+    }
+    expect(
+      (await first.root.readState(COURSE)).units.loops?.packageRequest?.id,
+    ).toBe(id);
+    await first.units.close();
+
+    const second = await start([], run, "loops", { withoutInstaller: true });
+    expect(
+      cards(second.chat.events()).filter(
+        (e) => e.type === "packages_requested" && !e.historical,
+      ),
+    ).toEqual([]);
+    expect(cards(second.chat.events()).at(-1)).toEqual({
+      type: "packages_answered",
+      requestId: id,
+      outcome,
+      output,
+    });
+    expect(await second.chat.installPackages(id)).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    expect(await second.chat.declinePackages(id)).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    const saved = await second.root.readState(COURSE);
+    expect(saved.packageCompletions?.loops?.[id]).toMatchObject({
+      outcome,
+      output,
+    });
+    expect(saved.units.loops?.packageRequest).toBeUndefined();
+    expect(existsSync(journal)).toBe(false);
+    expect(await readFile(join(environment, marker), "utf8")).toBe(
+      marker === "candidate" ? "new environment" : "previous environment",
+    );
+    expect(
+      existsSync(join(environment, marker === "candidate" ? "old" : "candidate")),
+    ).toBe(false);
+    expect(launches).toHaveLength(1);
+    expect(second.backend.received).toEqual([]);
+    await second.units.close();
+  },
+);
+
+test("reopening a kept code answer only starts grading after rollback", async () => {
+  const first = await start([[{ text: "Teaching." }]]);
+  const course = join(dir, "courses", COURSE);
+  const environment = join(course, "workspace", ".venv");
+  const journal = join(course, ".package-install.tmp");
+  const previous = join(journal, "running", "previous");
+  await mkdir(previous, { recursive: true });
+  await writeFile(join(previous, "old"), "previous environment");
+  await mkdir(environment);
+  await writeFile(join(environment, "candidate"), "interrupted candidate");
+  const id = "kept-code";
+  await first.root.writePosition(COURSE, "loops", {
+    phase: "check",
+    segment: 0,
+    checkFrom: 0,
+    openQuestion: {
+      id,
+      number: 1,
+      objective: "loop-count",
+      postedAt: NOW,
+      question: {
+        kind: "code",
+        prompt: "Count three items.",
+        files: ["loop.py"],
+        tests: [{ path: "test_loop.py", content: "assert count() == 3" }],
+        solution: [{ path: "loop.py", content: "def count(): return 3" }],
+        command: [".venv/bin/python", "-m", "pytest"],
+        inputs: [],
+      },
+      answer: {
+        kind: "code",
+        questionId: id,
+        confidence: "90",
+        files: [{ path: "loop.py", content: "def count(): return 2" }],
+      },
+    },
+  });
+  await first.units.close();
+
+  const observed: string[][] = [];
+  const second = await start([[{ text: "Feedback." }]], undefined, "loops", {
+    withoutInstaller: true,
+    codeRunner: {
+      check: async () => ({ refused: "Expected only a kept answer." }),
+      async run(_question, files, workspace) {
+        observed.push([
+          await readFile(join(workspace, ".venv", "old"), "utf8"),
+          String(existsSync(join(workspace, ".venv", "candidate"))),
+          files[0]?.content ?? "",
+        ]);
+        return { result: "failed", exitCode: 1, output: "Expected 3; got 2." };
+      },
+    },
+  });
+  expect(observed).toEqual([
+    ["previous environment", "false", "def count(): return 2"],
+  ]);
+  expect(second.chat.events()).toContainEqual(
+    expect.objectContaining({ type: "graded", questionId: id, verdict: "incorrect" }),
+  );
+  expect(existsSync(journal)).toBe(false);
+  await second.units.close();
+});
+
+test("a saved receipt whose cleanup failed cannot obstruct a different install after cleanup is possible", async () => {
+  const fake = fakeRun([ok("First install"), ok("Second install")]);
+  const { root, chat, units } = await start(
+    [
+      [{ text: "Teaching." }, ask([{ name: "pytest" }])],
+      [{ text: "One more." }, ask([{ name: "numpy" }])],
+      [{ text: "Done." }],
+    ],
+    fake.run,
+  );
+  const id = requestId(chat.events());
+  const course = join(dir, "courses", COURSE);
+  const journal = join(course, ".package-install.tmp");
+  const behind = join(course, "blocked-journal");
+  const writePosition = root.writePosition;
+  const intercept = vi.spyOn(root, "writePosition").mockImplementation(
+    async (...args) => {
+      const saved = await writePosition(...args);
+      if (args[3]?.request.id === id) {
+        await rename(journal, behind);
+        await writeFile(journal, "blocks journal cleanup");
+      }
+      return saved;
+    },
+  );
+  expect(await chat.installPackages(id)).toEqual({ ok: true });
+  await chat.settled();
+  intercept.mockRestore();
+
+  expect((await root.readState(COURSE)).packageCompletions?.loops?.[id]).toMatchObject({
+    outcome: "installed",
+    output: "First install",
+  });
+  expect(existsSync(join(behind, "committed", "receipt.json"))).toBe(true);
+  const next = requestId(chat.events());
+  expect(next).not.toBe(id);
+  expect(await chat.installPackages(next)).toMatchObject({ ok: false, status: 409 });
+  expect(fake.commands).toHaveLength(1);
+
+  await rm(journal);
+  await rename(behind, journal);
+  expect(await chat.installPackages(next)).toEqual({ ok: true });
+  await chat.settled();
+  expect(fake.commands).toHaveLength(2);
+  expect(cards(chat.events()).at(-1)).toEqual({
+    type: "packages_answered",
+    requestId: next,
+    outcome: "installed",
+    output: "Second install",
+  });
+  expect(existsSync(journal)).toBe(false);
   await units.close();
 });

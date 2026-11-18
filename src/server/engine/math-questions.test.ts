@@ -97,6 +97,7 @@ const MATH = {
   kind: "math",
   prompt: PROMPT,
   expected: EXPECTED,
+  mathGrading: "symbolic",
 };
 
 const TEACH: FakeTurn = [{ text: "The inside's rate multiplies." }];
@@ -250,7 +251,12 @@ test(
         kind: "answer",
         recordedAt: NOW,
         objective: "chain-power",
-        question: { kind: "math", prompt: PROMPT, expected: EXPECTED },
+        question: {
+          kind: "math",
+          prompt: PROMPT,
+          expected: EXPECTED,
+          mathGrading: "symbolic",
+        },
         answer,
         assisted: false,
         verdict: "correct",
@@ -272,6 +278,7 @@ test(
       kind: "math",
       prompt: PROMPT,
       expected: EXPECTED,
+      mathGrading: "symbolic",
     });
     expect(line.expected).toBeUndefined();
     expect(line.gradedBy).toBeUndefined();
@@ -405,7 +412,7 @@ test(
     const [request] = backend.oneShots;
     expect(request?.prompt).toContain(`<question>\n${PROMPT}\n</question>`);
     expect(request?.prompt).toContain(
-      "Correct if the answer is mathematically equal to the expected answer, $10(2x+1)^4$, in any form",
+      "Correct if the answer is mathematically equal to the expected answer, $10(2x+1)^4$, in any form the question allows",
     );
     expect(request?.prompt).toContain(
       "<answer>\n5(2x+1)^4 \\times \\oops\n</answer>",
@@ -445,14 +452,87 @@ test(
   CHECKED_MS,
 );
 
-test("with no symbolic check, a math question is refused when posted", async () => {
+test.each([
+  {
+    requirement: "precision",
+    prompt: "Give $1/3$ to exactly five significant figures.",
+    expected: "1/3",
+    expression: "0.333",
+    // 1/3 to five significant figures is 0.33333, not 0.333.
+    grade: {
+      verdict: "incorrect",
+      flaw: "The answer has only three significant figures.",
+    },
+  },
+  {
+    requirement: "domain",
+    prompt: "For $x > 0$, give the derivative of $x^2/2$.",
+    expected: "x",
+    expression: "sqrt(x^2)",
+    // sqrt(x^2) = |x| = x on the requested positive half-line.
+    grade: { verdict: "correct" },
+  },
+])(
+  "a stated $requirement requirement goes to the grader, not the symbolic check",
+  async ({ prompt, expected, expression, grade }) => {
+    const question = { ...MATH, mathGrading: "grader", prompt, expected };
+    const { backend, root, chat } = await setUp(
+      [TEACH, ask(question), FEEDBACK],
+      {
+        // The question must post even when symbolic preflight cannot run.
+        mathCheck: null,
+        replies: [{ output: grade }],
+      },
+    );
+
+    await answerWith(chat, expression);
+
+    const unsettled = {
+      result: "skipped",
+      reason:
+        "this question calls for the grader rather than the symbolic check",
+    };
+    expect(chat.events()).toContainEqual(
+      expect.objectContaining({
+        type: "graded",
+        expected,
+        ...grade,
+        unsettled,
+      }),
+    );
+    expect(await root.readEvidence(COURSE)).toEqual([
+      expect.objectContaining({
+        question: { kind: "math", mathGrading: "grader", prompt, expected },
+        ...grade,
+        unsettled,
+      }),
+    ]);
+
+    expect(backend.oneShots).toHaveLength(1);
+    const [request] = backend.oneShots;
+    expect(request?.prompt).toContain(`<question>\n${prompt}\n</question>`);
+    expect(request?.prompt).toContain(`expected answer, $${expected}$`);
+    expect(request?.prompt).toContain(
+      "Follow the question's stated requirements first: its domain and variable assumptions, exactness, precision",
+    );
+    expect(request?.prompt).toContain(
+      "If rounding is requested, compare with the expected answer rounded as requested, even if the expected answer gives an exact value.",
+    );
+    expect(request?.prompt).toContain(
+      "Compare on the domain the question asks for.",
+    );
+    expect(request?.prompt).toContain(`<answer>\n${expression}\n</answer>`);
+  },
+);
+
+test("with no symbolic check, a symbolic math question is refused when posted", async () => {
   const { backend, chat } = await setUp([TEACH, ask(MATH)], {
     mathCheck: null,
   });
 
   expect(backend.calls[0]?.result).toEqual({
     status: "refused",
-    text: "The symbolic check that grades math questions is not available. Ask a written question instead.",
+    text: 'The symbolic check is not available. Repost with mathGrading: "grader" or ask a written question.',
   });
   expect(chat.events().some((e: PageEvent) => e.type === "question")).toBe(
     false,
