@@ -99,8 +99,11 @@ Built before 5.0. Each task is the user's note from the stage 3 check
   lists, in the course's workspace, behind the Origin check every POST
   has. A failure to start it shows by the button. It runs outside the
   sandbox, as the learner's own click would. The user chose the system
-  default over a set command; on their machine a `.py` file has no default
-  and plain text opens Calibre's viewer, which they are setting themselves.
+  default over a set command. On their machine it is now Neovim in Tern
+  (set in their NixOS config, 2026-11-18), and `xdg-open` there exits 0
+  once Tern has started it. Without `WAYLAND_DISPLAY` or `DISPLAY`,
+  `xdg-open` fails with "no method available" (exit 3): a server started
+  outside a desktop shell has neither, and the button must say so.
 - Done when: route tests with a stub opener: a listed file opens; another
   path, another course's question and an unknown question are refused. In
   the browser on `pnpm dev:fake`, the button opens a starter file in the
