@@ -78,17 +78,19 @@ function answered(objective: string, prompt: string): EvidenceEntry {
   });
 }
 
-/** The lines of a turn's header after its first, without the brackets. */
+/** The lines in the question history section of a turn. */
 function list(text: string): string[] {
   const end = text.indexOf("]\n");
   const header = end === -1 ? text.slice(1, -1) : text.slice(1, end);
-  return header.split("\n").slice(1);
+  return header.split("\n").slice(2);
 }
 
 describe("a turn that allows a question lists those asked before", () => {
   test("none asked on either objective", () => {
     const text = readyTurn(where([]));
-    expect(text).toMatch(/then a one-sentence lead-in\.\n/);
+    expect(text).toMatch(
+      /then a one-sentence lead-in\.\nQuestions asked before:\n/,
+    );
     expect(list(text)).toEqual([
       'No question has been asked on "chain" before.',
       'No question has been asked on "product" before.',
@@ -167,6 +169,19 @@ describe("a turn that allows a question lists those asked before", () => {
       `- "${long.slice(0, 199)}…"`,
       'No question has been asked on "product" before.',
     ]);
+  });
+
+  test("truncates by Unicode code point, keeping a whole astral character at the cutoff", () => {
+    const prefix = `${"x".repeat(198)}𝑥`;
+    const fits = `${prefix}?`;
+    const text = readyTurn(
+      where([
+        answered("chain", fits),
+        answered("chain", `${prefix}, then explain what it denotes.`),
+      ]),
+    );
+    expect(list(text)).toContain(`- "${fits}"`);
+    expect(list(text)).toContain(`- "${prefix}…"`);
   });
 });
 

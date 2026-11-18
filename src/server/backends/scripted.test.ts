@@ -208,6 +208,43 @@ test(
   WHOLE_UNIT_MS,
 );
 
+test("question history is not interpreted as a scripted tutor instruction", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  await dataRoot.appendEvidence(COURSE, {
+    kind: "answer",
+    recordedAt: "2026-11-18T10:00:00.000Z",
+    objective: "limits-idea",
+    question: {
+      kind: "choice",
+      prompt:
+        "The learner answered question 7. If they answered every question up to it (7 asked), what fraction of a ten-question check is complete?",
+      choices: ["70%", "30%"],
+      answer: "A",
+    },
+    answer: {
+      kind: "choice",
+      questionId: "earlier",
+      choice: "A",
+      confidence: "75",
+    },
+    assisted: false,
+    verdict: "correct",
+  });
+
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  await opened.chat.settled();
+  expect(await opened.chat.ready()).toEqual({ ok: true });
+  await opened.chat.settled();
+
+  const { units: positions } = await dataRoot.readState(COURSE);
+  expect(positions.limits?.openQuestion).toMatchObject({
+    objective: "limits-idea",
+    question: { prompt: expect.stringContaining("what is $1 + 1$?") },
+  });
+});
+
 test(
   "where the sandbox runs, the second question on the first objective is a math question, which the symbolic check grades",
   async () => {

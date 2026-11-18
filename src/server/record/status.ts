@@ -5,12 +5,12 @@
 // with its dispute's verdict (disputes.ts).
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
-import type {
-  AnswerEvidence,
-  DisputeEvidence,
-  EvidenceEntry,
-} from "../../shared/evidence.ts";
-import { isConfident, type Question } from "../../shared/question.ts";
+import type { DisputeEvidence, EvidenceEntry } from "../../shared/evidence.ts";
+import {
+  CONFIDENCE_LEVELS,
+  isConfident,
+  type Question,
+} from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import {
   hasPassed,
@@ -43,82 +43,115 @@ export function objectiveStatus(
   evidence: readonly EvidenceEntry[],
   objective: string,
 ): ObjectiveStatus {
-  return standing(evidence, objective).status;
+  return statusOf(collectStandings(evidence, [objective]).get(objective));
 }
 
-/**
- * The answers that pass the objective, if it is passed or retained: its
- * unassisted correct answers since its last miss, each counted with its
- * dispute's verdict, in log order. None if it is not passed.
- */
-export function passingAnswers(
-  evidence: readonly EvidenceEntry[],
-  objective: string,
-): AnswerEvidence[] {
-  const { status, since } = standing(evidence, objective);
-  return hasPassed(status) ? since : [];
+interface ObjectiveStanding {
+  status: ObjectiveStatus;
+  /** Index in CONFIDENCE_LEVELS of the least confident unassisted correct answer since the last miss, or Infinity if none. */
+  lowestConfidence: number;
 }
 
-/** The objective's status, and its unassisted correct answers since its last miss. */
-function standing(
+/** Derives standings for a batch of objectives in one pass over the counted log. */
+export function objectiveStandings(
   evidence: readonly EvidenceEntry[],
-  objective: string,
-): { status: ObjectiveStatus; since: AnswerEvidence[] } {
-  let answered = false;
-  let missed = false;
-  let overridden = false;
-  /** The answers correct without help since the last miss. */
-  let since: AnswerEvidence[] = [];
-  /** Whether it was passed when it was last missed, and missed in a review or a gate. */
-  let slipped = false;
-  const passes = () =>
-    new Set(since.map((e) => problemOf(e.question))).size >= 2 ||
-    (!missed && since.some(confident));
+  objectives: Iterable<string>,
+): Map<string, ObjectiveStanding> {
+  const result = new Map<string, ObjectiveStanding>();
+  for (const [id, standing] of collectStandings(evidence, objectives)) {
+    result.set(id, {
+      status: statusOf(standing),
+      lowestConfidence: standing.lowestConfidence,
+    });
+  }
+  return result;
+}
+
+interface Standing {
+  answered: boolean;
+  missed: boolean;
+  overridden: boolean;
+  slipped: boolean;
+  // Up to two distinct questions answered correctly without help since the last miss.
+  problems: Set<string>;
+  confident: boolean;
+  cold: boolean;
+  lowestConfidence: number;
+}
+
+function collectStandings(
+  evidence: readonly EvidenceEntry[],
+  objectives: Iterable<string>,
+): Map<string, Standing> {
+  const standings = new Map<string, Standing>();
+  for (const id of objectives) {
+    standings.set(id, {
+      answered: false,
+      missed: false,
+      overridden: false,
+      slipped: false,
+      problems: new Set(),
+      confident: false,
+      cold: false,
+      lowestConfidence: Infinity,
+    });
+  }
+  if (standings.size === 0) return standings;
 
   for (const entry of countedEvidence(evidence)) {
     if (entry.kind === "override") {
-      if (entry.objectives.includes(objective)) overridden = true;
+      for (const id of entry.objectives) {
+        const standing = standings.get(id);
+        if (standing !== undefined) standing.overridden = true;
+      }
       continue;
     }
-    if (entry.objective !== objective) continue;
-    answered = true;
-    overridden = false;
+    const standing = standings.get(entry.objective);
+    if (standing === undefined) continue;
+
+    standing.answered = true;
+    standing.overridden = false;
     const mode = entry.assessment?.mode;
+    const cold = mode === "review" || mode === "gate";
     if (entry.verdict !== "correct") {
       if (mode === "test-out") continue;
-      if (passes()) slipped = mode === "review" || mode === "gate";
-      missed = true;
-      since = [];
+      if (passes(standing)) standing.slipped = cold;
+      standing.missed = true;
+      standing.problems.clear();
+      standing.confident = false;
+      standing.cold = false;
+      standing.lowestConfidence = Infinity;
     } else if (!entry.assisted) {
-      since.push(entry);
+      if (standing.problems.size < 2) {
+        standing.problems.add(problemOf(entry.question));
+      }
+      standing.cold ||= cold;
+      const { answer } = entry;
+      standing.confident ||=
+        answer.kind !== "unknown" && isConfident(answer.confidence);
+      standing.lowestConfidence = Math.min(
+        standing.lowestConfidence,
+        answer.kind === "unknown"
+          ? 0
+          : CONFIDENCE_LEVELS.indexOf(answer.confidence),
+      );
     }
   }
-
-  const status: ObjectiveStatus = passes()
-    ? since.some(cold)
-      ? "retained"
-      : "passed"
-    : overridden
-      ? "overridden"
-      : slipped
-        ? "slipping"
-        : answered
-          ? "attempted"
-          : "not-started";
-  return { status, since };
+  return standings;
 }
 
-/** Whether the answer was given at 90% or 100%. */
-function confident(entry: AnswerEvidence): boolean {
+function passes(standing: Standing): boolean {
   return (
-    entry.answer.kind !== "unknown" && isConfident(entry.answer.confidence)
+    standing.problems.size >= 2 || (standing.confident && !standing.missed)
   );
 }
 
-/** Whether the answer was given in a review or a gate. */
-function cold(entry: AnswerEvidence): boolean {
-  const mode = entry.assessment?.mode;
-  return mode === "review" || mode === "gate";
+function statusOf(standing: Standing | undefined): ObjectiveStatus {
+  if (standing === undefined) return "not-started";
+  if (passes(standing)) return standing.cold ? "retained" : "passed";
+  if (standing.overridden) return "overridden";
+  if (standing.slipped) return "slipping";
+  return standing.answered ? "attempted" : "not-started";
 }
 
 /**

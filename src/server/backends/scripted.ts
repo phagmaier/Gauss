@@ -73,6 +73,7 @@ import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import { DisputeJudgment } from "../../shared/dispute.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
+import { QUESTION_HISTORY_START } from "../engine/unit-turns.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 import type { EngineTurn, OneShotRequest, SessionOptions } from "./backend.ts";
@@ -145,7 +146,9 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   const coding =
     tools &&
     /^The course is "[^"\n]*\bcod(e|ing)\b/im.test(session.systemPrompt);
-  return teaching(header, body, tools ? (coding ? "code" : "math") : "none");
+  const historyAt = header.lastIndexOf(QUESTION_HISTORY_START);
+  const controls = historyAt === -1 ? header : header.slice(0, historyAt);
+  return teaching(controls, body, tools ? (coding ? "code" : "math") : "none");
 }
 
 /** A turn's header, between its brackets, and what follows it. */

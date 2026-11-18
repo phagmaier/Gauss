@@ -573,7 +573,7 @@ test('"ready" starts the check, and the tutor\'s question is stored in state.jso
     },
   });
   expect(setup.backend.received[1]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner pressed "ready". In this check, "difference-quotient": not asked yet; "secant-slope": not asked yet. Allowed now: post a question on "difference-quotient" and "secant-slope" with ask_question, unlike the ones asked before. Posting ends your turn, so write what you have to say first, then a one-sentence lead-in.\nNo question has been asked on "difference-quotient" before.\nNo question has been asked on "secant-slope" before.]',
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner pressed "ready". In this check, "difference-quotient": not asked yet; "secant-slope": not asked yet. Allowed now: post a question on "difference-quotient" and "secant-slope" with ask_question, unlike the ones asked before. Posting ends your turn, so write what you have to say first, then a one-sentence lead-in.\nQuestions asked before:\nNo question has been asked on "difference-quotient" before.\nNo question has been asked on "secant-slope" before.]',
   );
 });
 
@@ -752,7 +752,7 @@ test('in a detour no question can be posted and a message is not help; "Ready fo
 
   expect(chat.events()[from]).toEqual({ type: "detour_end" });
   expect(setup.backend.received[4]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner pressed "Ready for another question": the detour after question 1 is over, and the check goes on. In this check, "difference-quotient": missed, so another question is needed (1 asked); "secant-slope": not asked yet. Allowed now: a lead-in of one sentence, then a question on "difference-quotient" and "secant-slope" with ask_question, unlike the ones asked before. Do not go back over the detour. Posting ends your turn.\nAsked on "difference-quotient" before, the oldest first:\n- "Which is the difference quotient of $f$ at $a$?"\nNo question has been asked on "secant-slope" before.]',
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner pressed "Ready for another question": the detour after question 1 is over, and the check goes on. In this check, "difference-quotient": missed, so another question is needed (1 asked); "secant-slope": not asked yet. Allowed now: a lead-in of one sentence, then a question on "difference-quotient" and "secant-slope" with ask_question, unlike the ones asked before. Do not go back over the detour. Posting ends your turn.\nQuestions asked before:\nAsked on "difference-quotient" before, the oldest first:\n- "Which is the difference quotient of $f$ at $a$?"\nNo question has been asked on "secant-slope" before.]',
   );
   const at = (await position()).derivative;
   expect(at?.detour).toBeUndefined();
@@ -4108,7 +4108,7 @@ test("a fresh session started in the check is told the questions the evidence ho
   const first = setup.backend.received.at(-1)?.text ?? "";
   expect(first).toContain("The learner started a fresh conversation");
   expect(first).toMatch(
-    /then a one-sentence lead-in\.\nAsked on "difference-quotient" before, the oldest first:\n- "Which is the difference quotient of \$f\$ at \$a\$\?"\nNo question has been asked on "secant-slope" before\.\]\nGreet them/,
+    /then a one-sentence lead-in\.\nQuestions asked before:\nAsked on "difference-quotient" before, the oldest first:\n- "Which is the difference quotient of \$f\$ at \$a\$\?"\nNo question has been asked on "secant-slope" before\.\]\nGreet them/,
   );
 });
 
@@ -4355,7 +4355,7 @@ test("after an answer, the tutor's turn is for feedback alone, with ask_question
     "turn_end",
   ]);
   expect(setup.backend.received[3]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The check goes on after your feedback on question 1. In this check, "difference-quotient": passed; "secant-slope": not asked yet. Allowed now: a lead-in of one sentence, then a question on "secant-slope" with ask_question, unlike the ones asked before. Do not repeat your feedback. Posting ends your turn.\nNo question has been asked on "secant-slope" before.]',
+    '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The check goes on after your feedback on question 1. In this check, "difference-quotient": passed; "secant-slope": not asked yet. Allowed now: a lead-in of one sentence, then a question on "secant-slope" with ask_question, unlike the ones asked before. Do not repeat your feedback. Posting ends your turn.\nQuestions asked before:\nNo question has been asked on "secant-slope" before.]',
   );
 
   await answer(chat, "B");

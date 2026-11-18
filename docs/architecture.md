@@ -342,12 +342,13 @@ segment, phase, what is allowed now, what happened that the tutor has not
 been told, and in a source course the segment's sections), followed by the
 learner's text or an event. An answer's turn repeats the question with its
 choices, the learner's answer, confidence, reasoning and the grade. A turn
-that allows a question lists, for each objective it may be on, the
-questions the evidence holds on it, the latest six, so a question is
-fresh even in a new tutor session. The
-wording is in `engine/unit-turns.ts` for unit chats, `engine/intake.ts` and
-`engine/unit-planning.ts`; the scripted backend reads it, so rewording a
-header can break `pnpm dev:fake`, and its tests then fail.
+that allows a question adds a separate “Questions asked before” section to
+the header: the latest six recorded prompts for each objective it may ask
+about. This gives a new tutor session examples to avoid repeating. The
+scripted backend reads the instructions before that section, not the
+recorded prompts. Header wording lives in `engine/unit-turns.ts` for unit
+chats, `engine/intake.ts` and `engine/unit-planning.ts`; changing the
+wording the script reads can break `pnpm dev:fake`.
 
 ### Question flow
 

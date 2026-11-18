@@ -127,17 +127,20 @@ describe("which objectives review may ask", () => {
     ]);
   });
 
-  test("a slipping objective overridden on the closing card is left out", () => {
+  test("slipping objectives overridden together on the closing card are left out", () => {
     const evidence = [
       pass("l-one"),
       wrong("l-one", { in: "gate" }),
+      pass("l-two"),
+      wrong("l-two", { in: "gate" }),
+      pass("d-one"),
       EvidenceEntry.parse({
         kind: "override",
         recordedAt: ago(2 * HOUR),
-        objectives: ["l-one"],
+        objectives: ["l-one", "l-two"],
       }),
     ];
-    expect(pick(evidence)).toEqual([]);
+    expect(pick(evidence)).toEqual(["d-one"]);
   });
 
   test("an objective no plan holds is left out, though the evidence has it passed", () => {

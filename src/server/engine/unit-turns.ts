@@ -640,6 +640,9 @@ export function checkText(check: ObjectiveCheck | undefined): string {
 /** How many of the questions asked on an objective a turn lists, the latest. */
 const ASKED_LISTED = 6;
 
+/** Separates question history from the scripted backend's control text. */
+export const QUESTION_HISTORY_START = "\nQuestions asked before:\n";
+
 /**
  * For a turn that allows a question: the questions the evidence holds on
  * each objective it may be on, a line each, from a new line. Each prompt is
@@ -647,30 +650,31 @@ const ASKED_LISTED = 6;
  * backend takes the first "]" at a line's end for the header's.
  */
 function askedBefore(where: Where, objectives: readonly string[]): string {
-  return objectives
-    .map((id) => {
-      const prompts = where.evidence.flatMap((e) =>
-        e.kind === "answer" && e.objective === id ? [e.question.prompt] : [],
-      );
-      if (prompts.length === 0) {
-        return `\nNo question has been asked on "${id}" before.`;
-      }
-      const listed = prompts.slice(-ASKED_LISTED);
-      const head =
-        listed.length < prompts.length
-          ? `The latest ${listed.length} of the ${prompts.length} questions asked on "${id}" before, the oldest first:`
-          : `Asked on "${id}" before, the oldest first:`;
-      return [head, ...listed.map((p) => `- "${shortPrompt(p)}"`)]
-        .map((line) => `\n${line}`)
-        .join("");
-    })
-    .join("");
+  if (objectives.length === 0) return "";
+  const sections = objectives.map((id) => {
+    const prompts = where.evidence.flatMap((e) =>
+      e.kind === "answer" && e.objective === id ? [e.question.prompt] : [],
+    );
+    if (prompts.length === 0) {
+      return `No question has been asked on "${id}" before.`;
+    }
+    const listed = prompts.slice(-ASKED_LISTED);
+    const head =
+      listed.length < prompts.length
+        ? `The latest ${listed.length} of the ${prompts.length} questions asked on "${id}" before, the oldest first:`
+        : `Asked on "${id}" before, the oldest first:`;
+    return [head, ...listed.map((p) => `- "${shortPrompt(p)}"`)].join("\n");
+  });
+  return QUESTION_HISTORY_START + sections.join("\n");
 }
 
 /** A question's prompt on one line, cut to 200 characters, for a header. */
 function shortPrompt(prompt: string): string {
   const line = oneLine(prompt);
-  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+  if (line.length <= 200) return line;
+  // In Unicode mode the final two characters establish that the line is too long.
+  const prefix = /^(.{199}).{2}/u.exec(line)?.[1];
+  return prefix === undefined ? line : `${prefix}…`;
 }
 
 /** Text on one line: a header ends at its first "]" and line end. */

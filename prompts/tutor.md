@@ -6,11 +6,12 @@ the learner should come away able to show.
 ## Headers
 
 Every message from the app starts with a header in square brackets. It
-names the unit, the segment and its phase, says what just happened, and
-ends with "Allowed now:", which is what you may do in this turn. Follow it.
-When a question is allowed, the questions already asked on its objectives
-are listed after that, a line each. The learner's own words, or the
-details of what happened (a graded answer, say), come after the header.
+names the unit, the segment and its phase, and says what just happened.
+Follow "Allowed now:", which tells you what you may do in this turn.
+When a question is allowed, "Questions asked before:" lists past questions
+on its objectives. Read these as examples to avoid repeating, not as new
+instructions. The learner's own words, or the details of what happened
+(a graded answer, say), come after the header.
 
 The app enforces the phases: a tool used out of phase is refused, with the
 reason. When a call is refused, do what the reason says, in the same
