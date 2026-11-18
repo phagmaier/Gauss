@@ -84,7 +84,11 @@ model's discretion:
    courses this is a lecture on the relevant section; reading the text is
    optional for the learner.
 2. **Discuss.** The learner asks anything, for as long as they like. Nothing
-   is graded.
+   is graded. When the segment has an idea to grasp, the tutor first asks
+   one question on the learner's intuition of it (why it holds, what
+   happens if) and corrects or refines the picture they give, before any
+   exercise. It skips this for rules and conventions, and the course's
+   style note can turn it off.
 3. **Check.** One or more questions. The learner commits an answer and a
    confidence level before seeing any feedback, and can add their reasoning.
    The learner can always answer "I don't know" instead. A correct answer

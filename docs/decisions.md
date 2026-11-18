@@ -116,6 +116,19 @@ The brief states the result; this is who decided and why.
   approves a card. The agent had recommended that the learner run the
   install command themselves; what it chose under the user's pick is in
   "Confinement".
+- **2026-11-18, the stage 3 check** (a Python course and a numerical
+  solvers course, on Opus 5.5). It passed: code graded by tests, a math
+  answer graded symbolically, an artifact and a dispute. The user's notes
+  became tasks 3.19 to 3.22: starter files that hold what a question gives
+  (Opus had them type given values into the file); the install card's
+  command and output shown only on request or failure; a pinned question
+  that can be hidden; and an "Open" button for a code question's files.
+  For "Open" they chose the system's default app over a set command
+  (Ghostty with nvim). They also suggested questions on the learner's
+  intuition before the check. The agent supported it: explaining or
+  predicting exposes a picture a correct computation can hide, for one or
+  two exchanges a segment. The user chose it on by default, with the tutor
+  judging when; the style note can turn it off.
 
 ## Toolchain
 

@@ -16,57 +16,102 @@ user's choice; the numbers are kept because code and documents use them.
 - Stage 2, session engine: passed on 2026-11-17, at the second try (the
   first added tasks 2.18 to 2.22). A review of the record then added tasks
   2.23 to 2.29 (`decisions.md`, "Product decisions").
+- Stage 3, checked grading and aids: passed on 2026-11-18. The user's
+  notes from the check added tasks 3.19 to 3.22 (`decisions.md`, "Product
+  decisions").
 
-Separate from the Stage 3 check, the Stage 2 follow-up still to observe:
-an objective passed by two unsure correct answers.
+Still to observe from stage 2: an objective passed by two unsure correct
+answers. The stage 3 check did not show one.
 
-## Stage 3: checked grading and aids
+## Stage 3 follow-up: the check's notes
 
-Implementation is complete. Stage 5 waits for the user's check below.
-Scope: [architecture §12](architecture.md#12-build-stages). Rationale:
-`decisions.md`, "Confinement" and "Disputes"; designs: pieces 13 and 14 in
-the [prototype](prototype/index.html). Not in this stage: web access and
-confining sandbox reads (4.0), or notes (5.0).
+Built before 5.0. Each task is the user's note from the stage 3 check
+(`decisions.md`, "Product decisions", 2026-11-18).
 
-**User check.** On Linux, run `mise run setup` if dependencies are not
-installed, and have `bwrap`, `socat` and `rg` on `PATH`. From the repository,
-start the real app with a scratch data root:
+### 3.19 Prompts: starters and intuition questions
 
-```sh
-scratch=$(mktemp -d) &&
-  GAUSS_DATA_ROOT="$scratch" GAUSS_BACKUP=off mise exec -- pnpm dev
-```
+- Status: todo
+- **Starters hold what the question gives.** In the check, Opus 5.5 asked
+  the learner to type four given values into `order.py`, whose starter was
+  a comment and `raise NotImplementedError`. The objective was "stores
+  values of the basic types in variables", and `tutor.md`'s starter rule
+  ("nothing that does the exercise") let the tutor count typing the values
+  as the exercise. The starter holds the values, names, data, imports and
+  signatures the prompt gives; the learner writes only what the objective
+  checks, and is never asked to copy text from the prompt into a file.
+  `unit-planner.md`: no objective whose only check is copying.
+- **Intuition questions.** For a segment with an idea to grasp, the
+  teaching turn ends with one question on the learner's intuition (explain
+  why, predict, what if), never "does that make sense?". In the
+  discussion the tutor says what is right in the answer, corrects what is
+  off, and follows up once only if the picture is still shaky; the
+  exercise comes after. Skipped for rules and conventions (the signs of
+  Python's `//` and `%`), where the exercise stays as it is. Ungraded, no
+  card, no evidence, and "ready" stays the learner's at any time.
+  `planner.md`: the style note can turn it off. The brief's "Session
+  rhythm" already says so.
+- Done when: one real run on Sonnet 5.5 on a scratch data root, with
+  plans seeded:
+  - the user's Python course plan, whose first segment covers
+    `script-basic-types` and `python-numeric-division`: its code question's
+    starter holds the given values and passes the posting checks, and the
+    segment has no intuition question;
+  - a math segment with an idea to grasp: its teaching ends with an
+    intuition question, and the tutor's reply to a half-right answer
+    corrects it before the exercise.
 
-Open <http://localhost:4320>. The server prints the scratch root. If it
-reports "No sandbox for the engine's commands", resolve that before trying
-code or math grading. Opening a unit can spend Claude plan usage without
-a message. In the empty library, use "New course" to propose and approve
-one short Python course and one short computational math course.
+  Findings in `decisions.md`, "Prompts"; `mise run check` passes.
 
-1. **Code:** In a short Python unit, edit the starter file named on a code
-   question, pick a confidence level, and press "Run the tests". Confirm
-   the graded card shows the test output and the expected verdict.
-2. **Math:** In a computational math unit, ask for a question that accepts
-   any equivalent expression, and submit a known correct answer. Confirm
-   a correct grade. To verify it came from the symbolic check, find the
-   answer in `<scratch>/courses/<course-id>/evidence.jsonl`: its
-   `question.mathGrading` is `"symbolic"` and it has no `unsettled` field.
-   A card that says "The grader, since the symbolic check …" does not
-   count for this check.
-3. **Artifact:** In discussion, ask for a visual aid. Confirm it renders
-   in the side pane, opening it from the thread if needed.
-4. **Dispute:** From a graded card or "What I know", choose "Dispute this
-   grade" and submit a reason. Confirm the outcome and the judge's reason
-   appear on the answer; the verdict does not have to change.
+### 3.20 The install card folds its command and output
 
-Close the test browser before stopping the server.
+- Status: todo
+- The packages stay in view. The commands and their folder go behind a
+  closed "Show the command"; once answered, the output goes behind "Show
+  the output", closed after an install and open after a failed one. The
+  user needs the command and output only when something fails. A closed
+  disclosure keeps the command there to check before pressing Install.
+- Done when: `packages-card.test.ts` covers a waiting, an installed and a
+  failed card; in the browser on `pnpm dev:fake`, a waiting card shows the
+  packages with the command closed, and an installed card shows "Installed"
+  with the output closed; `mise run check` passes.
+
+### 3.21 Hide the pinned question
+
+- Status: todo
+- A "Hide" control on the pinned question card shrinks it to one line above
+  the message box, with the question's number and "Show". The card stays
+  mounted while hidden, so a half-written answer, a picked choice and a
+  confidence level survive (`decisions.md`, "Page behaviour", the pinned
+  question). A newly posted question shows. The card, up to half the
+  window high, got in the way of rereading the teaching.
+- Done when: in the browser on `pnpm dev:fake`, with a question pinned and
+  an answer half written, Hide frees the space, Show brings the card back
+  with the answer intact, and the next question posted shows;
+  `mise run check` passes.
+
+### 3.22 Open a code question's files
+
+- Status: todo
+- An "Open" button beside "Copy path" on a code question's card opens the
+  file in the system's default app (`xdg-open` on Linux, `open` on macOS),
+  started by the server and left running. The request names the question
+  and the file, never a path: the server opens only a file the question
+  lists, in the course's workspace, behind the Origin check every POST
+  has. A failure to start it shows by the button. It runs outside the
+  sandbox, as the learner's own click would. The user chose the system
+  default over a set command; on their machine a `.py` file has no default
+  and plain text opens Calibre's viewer, which they are setting themselves.
+- Done when: route tests with a stub opener: a listed file opens; another
+  path, another course's question and an unknown question are refused. In
+  the browser on `pnpm dev:fake`, the button opens a starter file in the
+  default app. `mise run check` passes.
 
 ## Stage 5: mastery loop (built before stage 4)
 
 ### 5.0 Break down the stage
 
 - Status: todo
-- Depends on: stage 3
+- Depends on: 3.19 to 3.22
 - The breakdown must settle:
   - review questions at the start of each sitting: two or three on
     objectives passed in earlier sittings, those passed with the least
@@ -78,8 +123,8 @@ Close the test browser before stopping the server.
   - testing out of a unit, which replaces the baseline: the unit's gate
     taken before it is taught, once the unit is planned (objectives exist
     only then), and how a partial result shortens the unit;
-  - the misconception record (`misconceptions.jsonl`) from detours, and
-    what reads it;
+  - the misconception record (`misconceptions.jsonl`) from detours
+    from what intuition questions show (3.19), and what reads it;
   - the learner profile (`profile.md`, `architecture.md` section 3): what
     it holds beside the background note, and who writes it when;
   - handoff notes, written "at the end of each session": a session ends
