@@ -45,8 +45,8 @@ acceptance cases because together they exercise every grading and content path:
   course teaches from.
 - **Course record**: the files holding the curriculum, objective status,
   evidence, misconceptions found, and handoff notes.
-- **Handoff note**: a short summary written at the end of a session so the next
-  session can start cold.
+- **Handoff note**: a short summary of how a unit has gone, rewritten each
+  time a segment closes, so a new session can start cold.
 - **Background note**: what the learner told the planner at intake about what
   they already know and what they want, kept with the course and given to the
   tutor.
@@ -66,11 +66,13 @@ acceptance cases because together they exercise every grading and content path:
    table of contents is the skeleton.
 3. **Unit sessions.** Detailed objectives and segments for a unit are planned
    when the unit starts, using the record as it stands then. Before a unit
-   is taught, the learner can test out of it by taking its gate, and skip
-   what they pass. Each sitting opens with a few review questions on
-   objectives passed in earlier sittings, which the learner can skip.
-4. **Unit close.** The unit is marked passed or overridden, HTML notes are
-   generated, and a handoff note is written.
+   is taught, the learner can choose to test out of it by taking its gate;
+   they are shown what they passed and confirm before any of it is
+   skipped. Each sitting opens with the offer of a few review questions on
+   objectives passed in earlier sittings, which the learner starts or
+   skips.
+4. **Unit close.** The unit is marked passed or overridden, a handoff note
+   is written, and the learner is offered notes on the unit.
 
 The tutor can propose curriculum changes mid-course (for example a remedial
 unit); the learner approves them.
@@ -129,6 +131,8 @@ phase.
 - **Retained**: confirmed by a correct answer after time has passed. Evidence
   for this comes from two places: the unit gate and the review questions
   that open each sitting (below).
+- **Slipping**: an objective that had passed and was then missed, in review
+  or a gate, until it passes again.
 - **Unit gate**: the check that closes a unit. It covers the unit's own
   objectives plus a few objectives from earlier units, which are cold by then.
   A missed earlier objective gets a short refresher and a re-ask. The learner
@@ -172,10 +176,18 @@ Formal proof checking (Lean or similar) is out of scope.
 
 One mechanism, different selections of objectives: segment check, unit gate,
 testing out of a unit (its gate, taken before it is taught), review questions
-at the start of each sitting, and on-demand self-test. Review picks objectives
-passed in earlier sittings, those passed with the least confidence first, and
-asks fresh questions each time. It is on by default, and the learner can skip
-it in any sitting.
+at the start of each sitting, and on-demand self-test.
+
+- **Review** picks objectives passed in earlier sittings: slipping ones
+  first, then those passed with the least confidence. It asks fresh
+  questions each time. Every sitting offers it on a card, and the learner
+  starts it or skips it; nobody is made to review.
+- **A miss in review or the gate** starts a detour, then one more question
+  on the objective.
+- **Testing out** is the learner's choice, confirmed before it starts. It
+  gives no feedback between questions, and a miss in it does not count
+  against the objective afterwards. Nothing is skipped until the learner
+  has seen what they passed and agreed.
 
 ## Sources
 
@@ -201,8 +213,12 @@ it in any sitting.
   Gauss installs the packages a course needs once the learner approves them.
 - **Math input**: typed plain text or LaTeX with live preview.
 - **Transcripts**: every session can be exported as a document.
-- **Notes**: HTML notes per completed unit, kept in a course notes folder;
-  cheat sheets on request.
+- **Notes**: HTML notes per finished unit, kept in a course notes folder,
+  written when the learner asks for them; a finished unit offers them. They
+  cover what the unit taught, give more room to what the learner struggled
+  with, and keep what made an idea click. The learner can add instructions
+  of their own (what to focus on, how to lay it out). Cheat sheets on
+  request.
 - **Library**: a home view of all courses and one-offs, to stop and resume any.
 - **What I know**: per course, every objective with its status and the
   answers behind it (question, answer, confidence, help, grade, date).
@@ -218,7 +234,9 @@ it in any sitting.
 
 - Per course: the course record. Each session is rebuilt from it.
 - Across courses: a short learner profile and a one-line index of finished
-  courses. Nothing else is shared.
+  courses. Nothing else is shared. The planner proposes the profile's text
+  with a curriculum and the learner approves it; the learner can edit it at
+  any time.
 
 ## Backends and stack
 

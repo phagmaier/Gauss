@@ -595,6 +595,29 @@ stage 6.
   its own rules. Answers are not committed one by one: the segment's close
   takes them.
 
+- **2026-11-18, the stage 5 designs**, answered when the stage was broken
+  down, before any mock. The user decided:
+  - review is offered on a card with Start and Skip at each sitting's
+    start, and does not start by itself: "if someone is confident they
+    don't need a review we shouldn't force them to have one". This
+    replaces "on by default" (2026-11-17); the card still comes unasked,
+    so it is not the opt-in mode they dropped;
+  - a miss in review opens a detour and one more question, as in the
+    gate;
+  - testing out is offered beside Start, and nothing is skipped without
+    the learner's say: "you have to consent to skipping something". The
+    agent read that as two steps, a confirmation before the test and a
+    result card whose answer does the skipping;
+  - notes are offered when a unit finishes, not written unasked. They
+    follow a standard (what the unit taught, more room for what the
+    learner struggled with, what made things click), and the learner can
+    add instructions of their own on top;
+  - the profile is proposed by the planner and approved with the
+    curriculum, and the learner can edit it;
+  - the brief's wording: a handoff note is written when a segment closes;
+    review asks slipping objectives first; a miss while testing out does
+    not count afterwards.
+
 ## Objective status
 
 - **The passing rule** is the user's (2026-11-17): since the last miss, two
@@ -1220,10 +1243,9 @@ The judge's set and model (task 3.9), the agent's choices:
 ## Mastery loop
 
 The design stage 5 is built to, from its breakdown (task 5.0, 2026-11-18).
-The choices are the agent's and open to change; those that change the
-experience go to the user as mocks in task 5.1, and their picks are
-recorded in "Product decisions" and "Page design". Nothing here is built
-until its task is done; `architecture.md` says what is.
+The choices are the agent's and open to change, except the user's picks of
+that day ("Product decisions"), marked here as theirs. Nothing here is
+built until its task is done; `architecture.md` says what is.
 
 **Assessments**
 
@@ -1241,8 +1263,9 @@ until its task is done; `architecture.md` says what is.
   an answer was given cold, and log order alone cannot say.
 - **One question per objective; a miss opens a detour and one more
   question**, then the assessment moves on whatever the answer. It is the
-  brief's "short refresher and a re-ask", for review too, so every miss
-  is worked through and none starts a run without end. The passing rule
+  brief's "short refresher and a re-ask", for review too (the user's
+  pick), so every miss is worked through and none starts a run without
+  end. The passing rule
   is untouched: after a miss an objective needs two correct answers, so
   the second comes from a later review, or from going over the unit's
   objectives again.
@@ -1270,11 +1293,15 @@ until its task is done; `architecture.md` says what is.
 
 **Review**
 
-- **When**: a unit not finished is opened in a new sitting (the chat is
-  new, or quiet for an hour), nothing waits on the learner, and the
-  course has had no review within the hour, so two units opened together
-  get one. An open question or a detour is picked up instead, and that
-  sitting has no review.
+- **When**: offered on a card, with Start and Skip, when a unit not
+  finished is opened in a new sitting (the chat is new, or quiet for an
+  hour), nothing waits on the learner, and the course has been offered
+  no review within the hour, so two units opened together get one card.
+  The card is the user's pick; the agent had recommended starting by
+  itself. It also means opening a unit sends the tutor nothing. An open
+  question or a detour is picked up instead, and that sitting has no
+  review. A message sent while the card waits skips it (the agent's):
+  the learner has gone on.
 - **Which**: slipping first, since the gap is known; then passed, the
   least confident first, as the brief has it; then retained, the longest
   unanswered first. Never an objective answered within the hour. Three,
@@ -1299,7 +1326,11 @@ until its task is done; `architecture.md` says what is.
 - **Offered beside Start, taken before the unit is taught**, never partway
   through. No feedback and no detour: a miss there means "teach me this".
   An unsure correct answer gets its second question at once, so the
-  passing rule decides what is skipped.
+  passing rule decides what can be skipped.
+- **Nothing is skipped without the learner's say** (the user's): the
+  button asks before the test starts, and the test ends in a card that
+  names what was passed and what that would skip. The learner can have
+  the whole unit taught anyway; what was passed stays passed.
 - **A segment is skipped whole or taught in part**; the plan is not
   rewritten, so the outline still shows what the unit holds.
 
@@ -1327,6 +1358,13 @@ until its task is done; `architecture.md` says what is.
   finished courses is derived from the record, not kept in the file.
   Nothing is written to it without the learner seeing it, as with the
   style note.
+- **Notes are written when the learner asks** (the user's): a finished
+  unit offers them, with a box for instructions of the learner's own.
+  The standard is `notes.md`'s: what the unit taught, more room for what
+  the learner struggled with, and what made an idea click. The struggles
+  come from the evidence and the misconception record; what clicked is
+  the handoff writer's reading of the conversation, so the handoff note
+  keeps it, and it is a model's judgment, not a record.
 - **Notes are Markdown from a one-shot call, rendered by the engine to a
   standalone HTML file with MathML.** The brief's HTML notes are for
   reading without the app; HTML written by the model would need the

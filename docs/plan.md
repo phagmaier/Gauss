@@ -29,10 +29,10 @@ The scope is `architecture.md` section 12's: review questions, the unit
 gate, testing out of a unit, retained and slipping status, handoff notes,
 the misconception record, the learner profile, unit notes, transcript
 export, and style and curriculum changes. The choices behind this
-breakdown are in `decisions.md`, "Mastery loop". They are the agent's; 5.1
-puts those that change the experience to the user, and a pick that differs
-revises the tasks after it. Not in this stage: sources and web access
-(4.0), self-test and cheat sheets (stage 6).
+breakdown are in `decisions.md`, "Mastery loop": the agent's, but for the
+user's picks of 2026-11-18 ("Product decisions"), which the tasks below
+follow. Not in this stage: sources and web access (4.0), self-test and
+cheat sheets (stage 6).
 
 **User check:** one course runs from intake to a closed second unit: a unit
 tested out of or started, review questions at the start of a later sitting,
@@ -43,50 +43,38 @@ a detour, a unit gate, generated notes and an exported transcript.
 - Status: todo
 - Depends on: stage 3
 - Why: review, the gate, testing out, the notes and the profile have no
-  page design (`decisions.md`, "Page design"), and each holds a choice
-  that is the learner's to make.
+  page design (`decisions.md`, "Page design"). What they do is settled
+  (the user's picks, 2026-11-18); how they look is not, and the tasks
+  below build from the mocks.
 - Do: mocks in `docs/prototype/`, built as the earlier pieces were, each
-  with the agent's recommendation marked and the rest shown as the agent
-  would build it.
-  - Piece 15, review questions. Ask: whether review starts by itself when
-    a unit is opened in a new sitting, with "Skip review" beside it
-    (recommended: it is the user's "on by default"; it spends a tutor's
-    turn at each such opening), or waits behind a card with Start and
-    Skip; and whether a miss opens a detour and one more question on the
-    objective (recommended, as the brief has it for the gate) or only
-    shows the right answer. Show: the marker that opens the review and
-    the one that returns to the segment, a question card as in a check,
-    feedback of a sentence or two.
-  - Piece 16, testing out and the gate. Ask where testing out is offered:
-    beside Start on a unit not started, in the course view (recommended:
-    Start stays one click), or on a card each time a unit first opens.
-    Show: the test, with no feedback between questions, and what it ends
-    in (segments skipped, or the unit finished); the gate's card once the
-    unit's teaching is over, with how many questions it has, Start and
+  shown as the agent would build it.
+  - Piece 15, review questions: the card that offers the review when a
+    sitting starts, with how many questions, Start and Skip; the marker
+    that opens the review and the one that returns to the segment; a
+    question card as in a check; feedback of a sentence or two; a miss,
+    its detour and the second question; "Skip review" partway.
+  - Piece 16, testing out and the gate: "Test out" beside Start on a unit
+    not started, in the course view, and what it asks before it starts;
+    the test, with no feedback between questions; its result card, which
+    names what was passed and what would be skipped, with the step that
+    skips it and the step that has it all taught; the gate's card once
+    the unit's teaching is over, with how many questions, Start and
     "Skip the gate"; the closing card after it; retained and slipping on
     the closing card, in "What I know" and on the course view's unit
     rows, with their words and colours.
-  - Piece 17, notes and export. Ask: notes written when a unit finishes
-    (recommended) or only on request. Show: a unit's notes in a reader,
-    with their parts (each objective's idea, a worked example from the
-    sessions, what the learner got wrong and its correction); a finished
-    unit's row in the course view with "Notes" and "Open"; "Export
-    transcript" in the unit's outline, and the exported document.
-  - Piece 18, the profile. Ask who writes it: the planner proposes its
-    text on the proposal card, approved with the curriculum, and a
-    Profile page lets the learner edit it at any time (recommended); the
-    learner alone, on that page; or Gauss without asking. Show: the
-    card's section, marked when changed; the page; a recorded
+  - Piece 17, notes and export: the closing card's offer of notes, with
+    its box for the learner's own instructions; a unit's notes in a
+    reader, with their parts (what each objective taught, with an example
+    from the sessions; where the learner struggled and the correction;
+    what made an idea click); "Write again"; a finished unit's row in
+    the course view, with and without notes; "Export transcript" in the
+    unit's outline, and the exported document.
+  - Piece 18, the profile: its section of the proposal card, marked when
+    changed; the Profile page, where the learner edits it; a recorded
     misconception under its objective in "What I know".
-  - The brief's wording, to confirm with the picks: a handoff note is
-    written when a segment closes, not at a session's end; review asks
-    slipping objectives before the least confident passes; a miss while
-    testing out does not count against the objective afterwards.
-- Done when: the user has picked an answer to each question; the picks are
-  in `decisions.md` ("Page design", and "Product decisions" for the
-  rules); `docs/prototype/index.html` lists the new pieces; `brief.md`
-  has the wording the user agreed to; the tasks below are revised where a
-  pick differs from the recommendation.
+- Done when: the user has looked at the four pieces; what they change is
+  in `decisions.md`, "Page design", and in the tasks below;
+  `docs/prototype/index.html` lists the new pieces.
 
 ### 5.2 Retained and slipping
 
@@ -155,7 +143,7 @@ a detour, a unit gate, generated notes and an exported transcript.
 - Why: the brief's review at the start of each sitting, and the mechanism
   the gate and testing out share: questions without teaching, on
   objectives the engine picks.
-- Do: as 5.1 settles; with its recommendations:
+- Do: laid out as 5.1 shows:
   - An assessment runs in the unit's thread, asked by the unit's tutor.
     It is kept in the unit's position beside the phase, which it leaves
     alone (its mode, its objectives, where it began in the evidence), so
@@ -170,31 +158,39 @@ a detour, a unit gate, generated notes and an exported transcript.
     a check; when the learner ends it, the objective is asked once more,
     and the assessment then moves on whatever the answer (a second miss
     opens its detour, and no third question follows).
-  - Review starts when a unit not finished is opened (the `open` route)
-    and all of these hold: the chat is new or has been quiet for an hour;
-    nothing waits on the learner (no open question, detour, kept answer,
-    package request or closing card); the course has had no review in
-    the last hour, started or skipped (kept in `course.json`); and 5.3's
-    pick of three, over the whole course, is not empty. A marker opens
-    it and the tutor is asked for the first question. "Skip review" ends
-    it at any point, withdrawing an open question with nothing recorded
-    for it. When it ends, a marker says the unit goes on, and a teaching
-    turn that waited is sent.
+  - Review is offered, on a card, when a unit not finished is opened (the
+    `open` route) and all of these hold: the chat is new or has been
+    quiet for an hour; nothing waits on the learner (no open question,
+    detour, kept answer, package request or closing card); the course
+    has been offered no review in the last hour (kept in `course.json`);
+    and 5.3's pick of three, over the whole course, is not empty. The
+    card says how many questions, with Start and Skip, and is kept in
+    the position; showing it sends the tutor nothing. The unit's steps
+    and a teaching turn that waits hold until it is answered, and a
+    message sent meanwhile skips it. Start puts a marker in the thread
+    and asks the tutor for the first question. "Skip review" ends a
+    review at any point, withdrawing an open question with nothing
+    recorded for it. When it ends or is skipped, a marker says the unit
+    goes on, and the teaching turn that waited is sent.
   - The turns' wording in `unit-turns.ts`; a section of `tutor.md` on
     assessments, drafted here and finished in 5.13: no teaching, one
     question per turn, each unlike those listed as asked, feedback of a
-    sentence or two; the page's markers and "Skip review"; the route;
+    sentence or two; the page's card, markers and "Skip review"; the
+    routes;
     the scripted backend, which reads the new headers; a seeded course
     with objectives passed more than an hour before.
-- Done when: fake-backend tests cover: review starting when it is due,
-  and not when each condition fails; one question per objective; a miss,
+- Done when: fake-backend tests cover: the card shown when a review is
+  due, and not when each condition fails, with no turn sent; Start; Skip
+  on the card, and by a message; one question per objective; a miss,
   its detour, the second question and moving on after it; a skip with a
-  question open; a restart in the middle; an answer on another unit's
+  question open; a restart at the card and in the middle; an answer on
+  another unit's
   objective recorded on that objective with the mode; the unit going on
   from each phase, the teaching turn sent after a review that came
-  first; two units opened within the hour getting one review. Route
-  tests pass; `mise run check` passes; on `pnpm dev:fake` a review is
-  answered, skipped in another sitting, and missed once, and the browser
+  first; two units opened within the hour getting one card. Route tests
+  pass; `mise run check` passes; on `pnpm dev:fake` a review is started
+  and answered, skipped in another sitting, and missed once, and the
+  browser
   is closed before the server stops; one short run on Haiku 5.5 where
   unit 2's tutor asks a review question on a unit 1 objective that
   differs from the ones listed.
@@ -247,27 +243,36 @@ a detour, a unit gate, generated notes and an exported transcript.
 - Depends on: 5.4
 - Why: the brief's replacement for the baseline quiz: a learner who knows
   a unit's material should not sit through it.
-- Do: as 5.1 settles; with its recommendation, "Test out" beside Start on
-  a unit not started. It opens the unit, which is planned as any unit is
-  (objectives exist only then), and starts an assessment over all its
-  objectives in place of the teaching turn; a review that is due comes
-  first. Its rules differ from 5.4's: no feedback turn and no detour;
-  the turn that brings a grade asks for the next question. A correct answer at 90% or 100% passes the
-  objective and ends its questions; a correct answer below that gets a
-  second question; a miss ends its questions. When it ends, or the
-  learner presses "Start learning instead", the tutor says in a few
-  sentences what the test showed. If every objective passed, the unit is
-  finished, with no gate. Otherwise teaching starts at the first segment
-  with an objective not passed: a segment whose objectives all passed is
-  skipped, and one with a passed objective teaches and checks only the
-  other, the tutor told what the learner showed. Which objectives a
-  segment leaves out is fixed when it starts and kept in the position,
-  as `again` is. The page shows the skipped segments as skipped.
-  `tutor.md`'s section covers the test; the scripted backend and the
-  seed reach one.
+- Do: "Test out" beside Start on a unit not started, laid out as 5.1
+  shows. It asks once before it starts, saying what the test is and that
+  what is passed can then be skipped; Start teaches the unit as before.
+  It opens the unit, which is planned as any unit is (objectives exist
+  only then), and starts an assessment over all its objectives in place
+  of the teaching turn; a review that is due is offered first.
+  - Its rules differ from 5.4's: no feedback turn and no detour; the turn
+    that brings a grade asks for the next question. A correct answer at
+    90% or 100% passes the objective and ends its questions; a correct
+    answer below that gets a second question; a miss ends its questions.
+  - When it ends, or the learner presses "Start learning instead", the
+    tutor says in a few sentences what the test showed, and a result
+    card names what was passed and what that would skip. Nothing is
+    skipped until the learner answers it: one step skips what was
+    passed, the other has the whole unit taught, and what was passed
+    stays passed either way. With every objective passed, the first
+    step finishes the unit, with no gate.
+  - Skipping: teaching starts at the first segment with an objective not
+    passed. A segment whose objectives all passed is skipped, and one
+    with a passed objective teaches and checks only the other, the tutor
+    told what the learner showed. Which objectives a segment leaves out
+    is fixed when it starts and kept in the position, as `again` is. The
+    page shows the skipped segments as skipped.
+  - `tutor.md`'s section covers the test; the scripted backend and the
+    seed reach one.
 - Done when: fake-backend tests cover: every objective passed and the
-  unit finished untaught; a partial result, with a segment skipped and a
-  segment of two objectives teaching one; a second question after an
+  unit finished untaught once the learner agrees, and taught in full when
+  they choose that; a partial result, with a segment skipped and a
+  segment of two objectives teaching one; nothing skipped while the
+  result card waits, across a restart too; a second question after an
   unsure correct answer; a miss with no detour, after which one
   confident correct answer in the segment's check passes; "Start
   learning instead" partway; a restart in the test; the unit's gate
@@ -295,7 +300,8 @@ a detour, a unit gate, generated notes and an exported transcript.
   - It writes the unit's handoff note, whole, in place of the one before
     (`units/<unit-id>/handoff.md`), within about 250 words: what was
     taught and with which examples, what the learner found hard or asked
-    for, what was left open.
+    for, what made an idea click (the example or the wording after which
+    they had it), and what was left open.
   - It writes the misconceptions it finds, appended to
     `misconceptions.jsonl` (schema in `src/shared/`): the objective, what
     the learner believed, what is so, and where it showed (a detour's
@@ -336,7 +342,7 @@ a detour, a unit gate, generated notes and an exported transcript.
 - Why: each intake asks for the learner's background again, and what
   holds across courses (what they know, how they like to be taught) has
   no place to live.
-- Do: as 5.1 settles; with its recommendation: `profile.md` in the data
+- Do: laid out as 5.1 shows: `profile.md` in the data
   root, plain text with a length limit. The planner is given it, with
   the titles of the finished courses (derived from the record, not kept
   in the file), and is told not to ask what it already answers.
@@ -365,33 +371,49 @@ a detour, a unit gate, generated notes and an exported transcript.
 - Depends on: 5.1, 5.5, 5.7
 - Why: the brief's notes per finished unit, kept where the learner can
   open them without the app.
-- Do: as 5.1 settles; with its recommendation: a one-shot call, the notes
-  writer (`prompts/notes.md`; Sonnet 5.5, since the notes are kept), when
-  a unit that was taught finishes, outside the chat's queue. It is given
-  the unit's goal and plan, the tutor's teaching and the discussion from
-  the transcripts, the questions missed with their right answers, the
-  handoff note and the unit's misconceptions, and writes Markdown with
-  `$` math within a length limit. The engine keeps the Markdown and
-  renders it to `notes/<unit-id>.html`, a document with no script that
-  loads nothing: a renderer on the server that 5.10 shares, on unified
-  with remark-parse, remark-gfm, remark-math, remark-rehype, rehype-katex
-  set to write MathML, and rehype-stringify, with the page's colours
-  inline. Raw HTML in the text is dropped. The notes open in the reader
-  5.1 shows, served as artifacts are. The closing card says the notes
-  are being written, then offers them, or says why not, with "Try
-  again". In the course view a finished unit with notes shows "Notes"
-  and "Open"; one without shows "Write notes", which also serves a unit
-  tested out of and one finished before notes existed. `scriptedReply`
-  answers the new request.
+- Do: a finished unit offers notes; none are written unasked. The closing
+  card of a unit that finishes has "Write notes" with a box for the
+  learner's own instructions, which may be left empty; the course view
+  has the same on a finished unit without notes (one tested out of, or
+  finished before notes existed, too). Laid out as 5.1 shows.
+  - The notes writer is a one-shot call (`prompts/notes.md`; Sonnet 5.5,
+    since the notes are kept), outside the chat's queue. It is given the
+    unit's goal and plan, the tutor's teaching and the discussion from
+    the transcripts, the questions missed with their right answers, the
+    handoff note and the unit's misconceptions, and the learner's
+    instructions between tags, and writes Markdown with `$` math within
+    a length limit.
+  - `notes.md` sets the standard notes, the same for every unit: what
+    each objective taught, with an example from the sessions; more room
+    for what the learner struggled with (the misses, the detours, the
+    misconceptions) and its correction; what made an idea click, from
+    the handoff note. The learner's instructions add to that or change
+    its form (a focus, a layout, a length); they do not replace what the
+    unit taught, and nothing is included that was not taught.
+  - The engine keeps the Markdown and the instructions, and renders the
+    Markdown to `notes/<unit-id>.html`, a document with no script that
+    loads nothing: a renderer on the server that 5.10 shares, on unified
+    with remark-parse, remark-gfm, remark-math, remark-rehype,
+    rehype-katex set to write MathML, and rehype-stringify, with the
+    page's colours inline. Raw HTML in the text is dropped.
+  - The notes open in the reader 5.1 shows, served as artifacts are. The
+    card says the notes are being written, then offers them, or says why
+    not, with "Try again". "Write again", in the reader, takes new
+    instructions and replaces the notes; the backup keeps the earlier
+    ones. In the course view a finished unit with notes shows "Notes"
+    and "Open".
+  - `scriptedReply` answers the new request, and its notes repeat the
+    instructions, so a browser check shows they arrived.
 - Done when: tests cover the renderer (math as MathML, a table, raw HTML
-  and a script dropped, no address to load in the output), the notes
-  written at a unit's finish and what the writer is given, a failed
-  call and "Try again", no call for a unit tested out of whole, and the
+  and a script dropped, no address to load in the output); no call when
+  a unit finishes; the call on "Write notes" and what the writer is
+  given, with instructions and without; a failed call and "Try again";
+  "Write again" replacing the notes; a unit tested out of whole; and the
   route's headers. `mise run check` passes; on `pnpm dev:fake` a unit's
-  notes open from the closing card and from the course view, the file
-  opens from the folder with its math shown, and the browser is closed
-  before the server stops; one run on Haiku 5.5 to see the flow (5.13
-  reads notes written by Sonnet).
+  notes are written from the closing card with instructions and from
+  the course view without, the file opens from the folder with its math
+  shown, and the browser is closed before the server stops; one run on
+  Haiku 5.5 to see the flow (5.13 reads notes written by Sonnet).
 - Note: the renderer's packages are new direct dependencies; all but
   rehype-stringify are installed already under react-markdown. Look each
   up with context7, and name them in the report and in `architecture.md`
@@ -491,7 +513,9 @@ a detour, a unit gate, generated notes and an exported transcript.
   assessment; a handoff note from which the fresh session picks up
   without asking the learner what was covered; misconceptions true to
   their detours, and none invented; notes that hold what was taught and
-  nothing that was not. Run the handoff writer on the same stretches on
+  nothing that was not, give their room to what the learner missed, name
+  what made an idea click as the sessions show it, and follow the
+  learner's instructions without dropping the rest. Run the handoff writer on the same stretches on
   Haiku 5.5 and Sonnet 5.5 and keep the cheaper if it holds up.
 - Done when: the findings and the model choice are in `decisions.md`,
   "Prompts" and "Mastery loop"; `mise run check` passes, and the
