@@ -141,12 +141,20 @@ def check(expected, answer=None, *, seconds=TIME_LIMIT, simplify_seconds=SIMPLIF
     except Unparsable as error:
         return {"result": "unparsable", "side": "answer", "reason": str(error)}
     clock = _Clock(seconds, simplify_seconds)
+    def alarm(_signum, _frame):
+        raise _Alarm
+
+    previous = signal.signal(signal.SIGALRM, alarm)
     try:
+        signal.setitimer(signal.ITIMER_REAL, clock.remaining())
         verdict = _compare_lists(expected_items, answer_items, clock)
-    except TimeUp:
+    except (TimeUp, _Alarm):
         verdict = Verdict("undecided", "the check ran out of time")
     except Exception as error:  # a SymPy failure is not a grade
         verdict = Verdict("undecided", f"the check failed: {type(error).__name__}")
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
     if verdict.reason is None:
         return {"result": verdict.result}
     return {"result": verdict.result, "reason": verdict.reason}
@@ -277,7 +285,10 @@ def _read_expression(tokens):
         if not isinstance(expr, sympy.Expr) or isinstance(expr, sympy.core.relational.Relational):
             raise Unparsable("it is not an expression")
         _refuse_huge_numbers(expr)
-        return Expression(_finish(expr), decimal)
+        finished = _finish(expr)
+        if finished.has(sympy.nan, sympy.zoo):
+            raise Unparsable("it contains an undefined value")
+        return Expression(finished, decimal)
     except Unparsable:
         raise
     except Exception as error:  # the parser's errors, and RecursionError on deep nesting
@@ -315,14 +326,17 @@ def _fix_powers(tokens):
             k = i + 1
             if tokens[k] in ("+", "-") and k + 1 < len(tokens):
                 k += 1
-            if tokens[k] == "(":
+            if tokens[k] in ("(", "{"):
                 end = _matching(tokens, k)
-            elif k > i + 1 and _is_atom(tokens[k]):
+            elif _is_atom(tokens[k]):
                 end = k
             else:
                 end = None
             if end is not None:
-                tokens[i + 1 : end + 1] = ["{", *tokens[i + 1 : end + 1], "}"]
+                if tokens[end + 1 : end + 2] == ["^"]:
+                    raise Unparsable("chained powers are ambiguous: group them explicitly")
+                if tokens[k] == "(" or (k > i + 1 and tokens[k] != "{"):
+                    tokens[i + 1 : end + 1] = ["{", *tokens[i + 1 : end + 1], "}"]
         i += 1
     return tokens
 
@@ -370,6 +384,11 @@ def _skip_operand(tokens, k):
     token = tokens[k]
     if token in _PAIRS:
         k = _matching(tokens, k) + 1
+    elif token == "|":
+        try:
+            k = tokens.index("|", k + 1) + 1
+        except ValueError:
+            return n  # the parser will report the unclosed bar
     elif token in ("\\frac", "\\binom", "\\sqrt"):
         k += 1
         if token == "\\sqrt" and k < n and tokens[k] == "[":
@@ -380,8 +399,17 @@ def _skip_operand(tokens, k):
             k = _matching(tokens, k) + 1 if tokens[k] == "{" else k + 1
     elif _is_atom(token):
         k += 1
-    else:  # a function, whose argument the parser decides
+    elif token[1:] in _FUNCTIONS:
+        # A function's exponent or base precedes its argument.
+        k = _skip_scripts(tokens, k + 1)
+        k = _skip_operand(tokens, k)
+    else:
         return n
+    return _skip_scripts(tokens, k)
+
+
+def _skip_scripts(tokens, k):
+    n = len(tokens)
     while k < n and tokens[k] in ("^", "_", "!", "'"):
         k += 1
         if tokens[k - 1] in ("^", "_") and k < n:
@@ -402,6 +430,8 @@ _NAMED = {"e": E, "pi": pi}  # the parser reads both as variables
 
 def _finish(expr):
     """Evaluates what the parser left unevaluated; `e`, `\\pi` and `x(...)` as the text means."""
+    if expr is sympy.nan or expr is sympy.zoo:
+        raise Unparsable("it contains an undefined value")
     if isinstance(expr, Symbol):
         return _NAMED.get(expr.name, expr)
     if not expr.args:
@@ -409,8 +439,13 @@ def _finish(expr):
     args = [_finish(arg) for arg in expr.args]
     if isinstance(expr, AppliedUndef) and "'" not in expr.func.__name__ and len(args) == 1:
         name = expr.func.__name__
-        return _NAMED.get(name, Symbol(name)) * args[0]
-    return expr.func(*args)
+        result = _NAMED.get(name, Symbol(name)) * args[0]
+    else:
+        result = expr.func(*args)
+    # Check intermediate results: SymPy can simplify (1/0)^0 to 1.
+    if result is sympy.nan or result is sympy.zoo:
+        raise Unparsable("it contains an undefined value")
+    return result
 
 
 # Comparing
@@ -421,37 +456,32 @@ class _Clock:
         self.end = time.monotonic() + seconds
         self.simplify_seconds = simplify_seconds
 
-    def left(self):
-        return self.end - time.monotonic()
-
-    def check(self):
-        if self.left() <= 0:
+    def remaining(self):
+        seconds = self.end - time.monotonic()
+        if seconds <= 0:
             raise TimeUp
+        return seconds
 
 
 def _simplified(expr, clock):
     """`simplify(expr)`, or None when it takes longer than its share of the time."""
-    clock.check()
-    seconds = min(clock.simplify_seconds, clock.left())
-    if seconds <= 0:
+    remaining = clock.remaining()
+    if clock.simplify_seconds <= 0:
         return None
-
-    def alarm(_signum, _frame):
-        raise _Alarm
-
-    previous = signal.signal(signal.SIGALRM, alarm)
+    short = clock.simplify_seconds < remaining
     try:
-        try:
-            signal.setitimer(signal.ITIMER_REAL, seconds)
-            return sympy.simplify(expr)
-        finally:
-            signal.setitimer(signal.ITIMER_REAL, 0)
+        if short:
+            signal.setitimer(signal.ITIMER_REAL, clock.simplify_seconds)
+        return sympy.simplify(expr)
     except _Alarm:
+        if not short:
+            raise
         return None
     except Exception:
         return None
     finally:
-        signal.signal(signal.SIGALRM, previous)
+        if short:
+            signal.setitimer(signal.ITIMER_REAL, clock.remaining())
 
 
 def _value(expr, point):
@@ -475,7 +505,7 @@ def _samples(exprs, clock):
     symbols = sorted(set().union(*(e.free_symbols for e in exprs)), key=lambda s: s.name)
     rng = random.Random(0)
     for _ in range(SAMPLE_TRIES if symbols else 1):
-        clock.check()
+        clock.remaining()
         point = {s: Rational(rng.randint(-3000, 3000), 997) for s in symbols}
         values = [_value(e, point) for e in exprs]
         if None not in values:

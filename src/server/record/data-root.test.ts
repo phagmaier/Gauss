@@ -1101,17 +1101,29 @@ describe("artifacts (task 3.6)", () => {
     const root = openDataRoot({ path: dir });
     const { id } = await root.createCourse({ title: "Linear algebra" });
 
-    const stored = await Promise.all([
+    const [first, second] = await Promise.all([
       root.writeArtifact(id, { title: "A", html: "a" }),
       root.writeArtifact(id, { title: "B", html: "b" }),
     ]);
 
-    expect(stored).toEqual([
-      { number: 1, file: "1-a.html" },
-      { number: 2, file: "2-b.html" },
-    ]);
-    expect(await root.readArtifact(id, "1-a.html")).toBe("a");
-    expect(await root.readArtifact(id, "2-b.html")).toBe("b");
+    expect([first.number, second.number].sort()).toEqual([1, 2]);
+    expect(first.file).toBe(`${first.number}-a.html`);
+    expect(second.file).toBe(`${second.number}-b.html`);
+    expect(await root.readArtifact(id, first.file)).toBe("a");
+    expect(await root.readArtifact(id, second.file)).toBe("b");
+  });
+
+  test("artifact numbering refuses exhaustion instead of reusing an unsafe number", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id } = await root.createCourse({ title: "Linear algebra" });
+    const folder = join(dir, "courses", id, "artifacts");
+    await mkdir(folder);
+    await writeFile(join(folder, "9007199254740992-kept.html"), "kept");
+
+    await expect(
+      root.writeArtifact(id, { title: "New aid", html: "new" }),
+    ).rejects.toThrow(/artifact number/i);
+    expect(await readdir(folder)).toEqual(["9007199254740992-kept.html"]);
   });
 
   test.each([

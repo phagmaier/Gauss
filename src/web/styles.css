@@ -892,6 +892,9 @@ details.why summary:hover {
 }
 .sv-head b {
   font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sv-head span {
@@ -941,6 +944,7 @@ details.why summary:hover {
   grid-row: 2 / 4;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   border-left: 1px solid var(--line);
   background: var(--mantle);
@@ -982,6 +986,7 @@ details.why summary:hover {
 }
 .ref b {
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .ref .go {
   margin-left: auto;

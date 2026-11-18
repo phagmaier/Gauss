@@ -14,6 +14,7 @@ import {
   type IntakeStarted,
   LearnerMessage,
   type PageEvent,
+  type UnitOpened,
 } from "../../shared/events.ts";
 import type { CourseWithProgress, Library } from "../../shared/library.ts";
 import { PackagesAnswer } from "../../shared/packages.ts";
@@ -101,17 +102,22 @@ export function createApp(options: {
     );
   });
 
-  // An artifact the tutor showed (task 3.6), for the frame in the session's
-  // side pane. Its headers keep it from the app and the network, framed or
-  // opened on its own.
+  // An artifact runs only in the app's side pane. Other requests get its
+  // source as inert text, even when its URL is opened in the browser.
   app.get("/api/courses/:id/artifacts/:file", async (c) => {
     const html = await dataRoot.readArtifact(
       c.req.param("id"),
       c.req.param("file"),
     );
-    return html === undefined
-      ? c.json({ error: "No such artifact." }, 404)
-      : c.body(html, 200, ARTIFACT_HEADERS);
+    if (html === undefined) return c.json({ error: "No such artifact." }, 404);
+    const inPane =
+      c.req.header("Sec-Fetch-Dest") === "iframe" &&
+      c.req.header("Sec-Fetch-Site") === "same-origin";
+    return c.body(
+      html,
+      200,
+      inPane ? ARTIFACT_FRAME_HEADERS : ARTIFACT_TEXT_HEADERS,
+    );
   });
 
   // A draft is reviewed in an intake: the one that proposed it, if it is
@@ -199,9 +205,14 @@ export function createApp(options: {
   const unitPath = "/api/courses/:id/units/:unit";
 
   app.post(`${unitPath}/open`, async (c) => {
-    const opened = await units.open(c.req.param("id"), c.req.param("unit"));
+    const courseId = c.req.param("id");
+    const unitId = c.req.param("unit");
+    // Opening can start a turn. There is also time for events before SSE
+    // connects, so take the cursor before anything in this request waits.
+    const last = (units.get(courseId, unitId)?.events().length ?? 0) - 1;
+    const opened = await units.open(courseId, unitId);
     return opened.ok
-      ? c.json({ ok: true })
+      ? c.json({ ok: true, chatId: opened.chat.id, last } satisfies UnitOpened)
       : c.json({ error: opened.error }, opened.status);
   });
 
@@ -321,7 +332,7 @@ export function createApp(options: {
 /**
  * An artifact's policy. `sandbox` without `allow-same-origin` gives it an
  * origin of its own, so its scripts cannot read the app, its storage or the
- * page around it, even opened on its own; the frame has the same sandbox.
+ * page around it; the frame has the same sandbox.
  * Nothing is fetched or loaded but what the document holds inline, and no
  * form is sent. Only the app's own page may frame it. The page's own policy
  * (`frame-src 'self'` in `src/web/index.html`) stops the frame navigating
@@ -340,14 +351,19 @@ export const ARTIFACT_POLICY = [
   "frame-ancestors 'self'",
 ].join("; ");
 
-const ARTIFACT_HEADERS = {
-  "Content-Type": "text/html; charset=utf-8",
+const ARTIFACT_TEXT_HEADERS = {
+  "Content-Type": "text/plain; charset=utf-8",
   "Content-Security-Policy": ARTIFACT_POLICY,
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
   "Cross-Origin-Resource-Policy": "same-origin",
   "X-DNS-Prefetch-Control": "off",
   "Cache-Control": "no-store",
+};
+
+const ARTIFACT_FRAME_HEADERS = {
+  ...ARTIFACT_TEXT_HEADERS,
+  "Content-Type": "text/html; charset=utf-8",
 };
 
 /**

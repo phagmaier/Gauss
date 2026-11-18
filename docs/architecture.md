@@ -76,7 +76,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
   .git/, .gitignore               the record's history: commits after each segment close, unit end and approval
   profile.md                      (stage 5) learner profile; one-line index of finished courses
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
-  cache/uv/                       uv's cache for installing courses' packages; outside the record and its history
+  cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
     course.json                   title, backend, settings, dates, when each unit was last opened
     style.md                      the course's style note, proposed and approved with the curriculum
@@ -90,8 +90,8 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
     notes/                        (stage 5) HTML notes per unit, cheat sheets
-    workspace/                    the tutor's working folder, where its sessions are kept: starter code and the learner's work;
-                                  once packages are installed, a uv project (pyproject.toml, uv.lock) and its .venv/
+    packages/                     Gauss's uv project and lockfile; never taken from the workspace
+    workspace/                    the tutor's working folder: starter code, the learner's work and the installed .venv/
 ```
 
 The shapes are the schemas in `src/shared/`: `course.ts`, `curriculum.ts`
@@ -118,8 +118,10 @@ version: a field added later must be optional.
   open question (with its kept answer and the exchanges awaiting the help
   judge), an open detour, the extra segment that goes over objectives
   again, the tutor's session id, and the tutor's request to install
-  packages while it waits for the learner. The engine writes it after
-  every change, before the page hears of the change.
+  packages while it waits for the learner. Completed package cards are
+  kept separately from positions in the same file, so their outcomes
+  survive even if a transcript line is lost or a unit finishes. Changes
+  are written before the page hears of them.
 - **Writes.** Every file but the logs is written whole: to a temporary file
   in its folder, flushed, then renamed over it. The logs (evidence,
   misconceptions, transcripts) are appended a line at a time; an entry
@@ -246,8 +248,9 @@ The rules:
   on: `ask_question` outside the check, in a detour, while feedback is
   pending, while a question is open, on an objective not in the segment
   or already done in this check, and once the unit is finished. Its file
-  writes and commands (section 5) are refused while a question is open,
-  and `show_artifact` while a question of its unit is;
+  writes and commands (section 5) are refused while a question is open;
+  `show_artifact` is refused while a question of its unit is open or its
+  unit is finished;
   `install_packages` while a question of the course is open or another
   request of the course waits. A refusal does not
   end the turn; a posted question does.
@@ -323,6 +326,7 @@ tab.
    refused with the check's reason, or a rubric; (stage 3) for code, tests
    and their command, which the engine checks before it posts the question
    (section 6).
+   Stop during math validation cancels the post before it is written.
 2. The engine stores the open question in `state.json` and the page shows
    it. A choice question's choices are shuffled first and the answer letter
    moved with them (`engine/choice-order.ts`); the tool's reply lists them
@@ -352,8 +356,8 @@ tool server, for Codex an MCP server.
 | `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, `math` with an expected expression, or `written` with a rubric (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
-| `install_packages` | Asks the learner, through a card, to install Python packages, named with optional version ranges (`PackagesInput` in `src/shared/packages.ts`), into the workspace. The request waits in the unit's position until the learner presses Install or "Not now". Install runs the commands `engine/packages.ts` builds, in the engine's sandbox with the workspace writable and the network open to PyPI alone, the one command of a course with network access; the workspace is closed to the tutors' changes and to questions while it runs. The outcome, with the end of the output, goes to the tutor in a turn of its own. Refused while a question of the course is open and while another request waits. Does not end the turn |
-| `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/`, numbered, and the thread keeps a reference to it. Refused while a question of the unit is open, over 100 KB, and for a document that names an address on the web. Does not end the turn |
+| `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Refused while a question of the course is open or another request waits. Does not end the turn |
+| `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
 | `propose_style` | (stage 5) Proposes a change to `style.md`; applied only after the learner confirms |
 | `write_handoff` | (stage 5) Saves the handoff note |
 | `close_unit` | (stage 5) Refused unless the gate is passed or bypassed and notes exist |
@@ -413,15 +417,14 @@ with sources (stage 4).
   find a counterexample but never certify equivalence. It reads plain
   input by rewriting it to LaTeX for SymPy's parser, so no input is
   evaluated as Python. Without an answer it only reads the expected side.
-  It runs with the venv's own Python (`pytools/.venv/bin/python
-  -I`), so a sandboxed run needs no uv cache, and stops itself after 8
-  seconds. The engine runs it (`engine/math-check.ts`) in the sandbox with
-  nothing writable and a 12-second limit: with no answer to read a math
-  question's expected expression when it is posted, and with the answer to
-  grade it. A run that fails, runs out of time or writes something out of
-  shape is a failure, which goes to the grader as an undecided answer
-  does. Where the sandbox cannot run, math questions are refused when
-  posted.
+  It runs with the venv's own Python (`pytools/.venv/bin/python -I`), so
+  a sandboxed run needs no uv cache. A comparison has an eight-second
+  limit; the engine (`engine/math-check.ts`) gives the whole process,
+  including parsing, 12 seconds, in the sandbox with nothing writable:
+  it reads the expected expression when posting a math question and
+  compares the submitted expression when grading it. Failures, timeouts
+  and malformed output go to the grader, as undecided readings do. Without
+  a sandbox, the engine refuses to post math questions.
 - **The engine's commands** (the symbolic check; (stage 3) the tests)
   run text a model or the learner wrote, so each runs through
   `engine/sandbox.ts`, on `@anthropic-ai/sandbox-runtime`: no network,
@@ -641,21 +644,20 @@ no automated tests.
   question is answered in a one-line field whose expression is shown as
   math beneath it as it is typed (piece 2). Keys: A to F pick a choice, 1
   to 5 how sure, Enter submits; Enter in the math field submits, or moves
-  to how sure if that is not picked. The view posts
-  `open`, follows `events`, and opens the unit again if the stream answers
-  404 (the chat was lost).
+  to how sure if that is not picked. A confidence shortcut there returns
+  focus to the math field. The view posts `open`, follows `events`, and
+  opens the unit again if the stream answers 404 (the chat was lost).
 - **Rendering** (`src/web/prose.tsx`): model text and the learner's answers
   become React elements, never HTML. Raw HTML shows as text, images are
   never fetched, unsafe links lose their address, KaTeX runs untrusted.
 - **Artifacts** open in the side pane beside the session's thread (piece
-  5), one at a time. One shown while the page is open opens at once; its
-  reference in the thread opens and closes it, and Esc or the close button
-  closes it. The frame is `sandbox="allow-scripts"`, and the route serves
-  the document under `ARTIFACT_POLICY` (`http/app.ts`): an origin of its
-  own, its scripts run, and nothing is loaded or fetched but what it holds
-  inline, nor any form sent or window opened. The page's own policy,
-  `frame-src 'self'` in `src/web/index.html`, keeps the frame from
-  navigating away. WebRTC is not blocked (`decisions.md`, "Confinement").
+  5), one at a time. A new artifact since the page opened opens at once,
+  even before its event stream connects; restored transcript references
+  do not. Esc, Close or the thread reference closes it. Only same-origin
+  iframe requests get HTML; a direct URL shows inert text. The frame and
+  the response policy sandbox HTML to its own origin with scripts allowed.
+  The parent page's `frame-src 'self'` prevents the frame from navigating
+  away. WebRTC is not blocked (`decisions.md`, "Confinement").
 
 The look and layout were settled with static mocks in `docs/prototype/`
 (start at `index.html`; the shared look is `base.css`, copied into

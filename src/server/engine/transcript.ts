@@ -132,7 +132,13 @@ export function createTranscribedLog(options: {
           for (const problem of unreadable) {
             console.error(`A transcript line was left out: ${problem}`);
           }
-          for (const event of joinText(events)) log.emit(event);
+          for (const event of joinText(events)) {
+            log.emit(
+              event.type === "artifact"
+                ? { ...event, historical: true }
+                : event,
+            );
+          }
         }
         begin((earlier.at(-1)?.session ?? 0) + 1, now());
       })().catch((error: unknown) => {

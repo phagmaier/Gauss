@@ -70,9 +70,8 @@ import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type {
+  PackageCompletion,
   PackageRequest,
-  PackageSpec,
-  PackagesOutcome,
 } from "../../shared/packages.ts";
 import {
   type AnswerSubmission,
@@ -83,7 +82,12 @@ import {
   type QuestionInput,
   type QuestionView,
 } from "../../shared/question.ts";
-import type { OpenQuestion, Phase, State } from "../../shared/state.ts";
+import type {
+  OpenQuestion,
+  Phase,
+  State,
+  UnitPosition,
+} from "../../shared/state.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
@@ -108,7 +112,7 @@ import type { ChatResult, Timer } from "./conversation.ts";
 import { type Grader, gradeChoice, gradeMath } from "./grading.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 import { type MathCheck, noMathCheck } from "./math-check.ts";
-import type { PackageInstaller } from "./packages.ts";
+import type { InstallResult, PackageInstaller } from "./packages.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import {
   createUnitAgents,
@@ -122,6 +126,7 @@ import {
   detourEvent,
   gradedEvent,
   openUnitRecord,
+  packagesAnsweredEvent,
   phaseEvent,
   type UnitRecord,
 } from "./unit-record.ts";
@@ -141,6 +146,7 @@ import {
   tutorSystemPrompt,
   type UnitContext,
   type Where,
+  workspaceReadyTurn,
 } from "./unit-turns.ts";
 
 export interface UnitChat {
@@ -323,7 +329,10 @@ export function createUnitChats(options: ChatOptions): UnitChats {
 
 interface CourseWorkspace {
   tools: WorkspaceTools;
-  post<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
+  post<T>(
+    attempt: { unitId: Slug; stopped(): boolean; retry(): void },
+    work: () => Promise<T>,
+  ): Promise<T | { refused: string }>;
   /**
    * Runs `work`, which makes a package request, unless a question is open
    * or a request waits in a unit of the course.
@@ -334,7 +343,7 @@ interface CourseWorkspace {
    * install runs, unless a question is open or a change is under way; the
    * caller calls `done` once it ends.
    */
-  beginInstall(): Promise<{ done(): void } | { refused: string }>;
+  beginInstall(owner: Slug): Promise<{ done(): void } | { refused: string }>;
 }
 
 /** The question open in a unit of the course, if there is one. */
@@ -357,11 +366,11 @@ const INSTALLING =
 function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
   const exclusive = createSerial();
   let active = 0;
-  let installing = false;
+  let installing: { owner: Slug; retries: Map<Slug, () => void> } | undefined;
   const tools: WorkspaceTools = {
     acquire: () =>
       exclusive(async () => {
-        if (installing) return { refused: INSTALLING };
+        if (installing !== undefined) return { refused: INSTALLING };
         const open = openInCourse(await dataRoot.readState(courseId));
         if (open !== undefined) {
           return {
@@ -384,9 +393,13 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
   };
   return {
     tools,
-    post<T>(work: () => Promise<T>): Promise<T | { refused: string }> {
+    post(attempt, work) {
       return exclusive(async () => {
-        if (installing) {
+        if (attempt.stopped()) return QUESTION_STOPPED;
+        if (installing !== undefined) {
+          if (attempt.unitId !== installing.owner) {
+            installing.retries.set(attempt.unitId, attempt.retry);
+          }
           return {
             refused:
               "Packages are being installed in the workspace. End your turn; " +
@@ -428,9 +441,9 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
         return work();
       });
     },
-    beginInstall() {
+    beginInstall(owner) {
       return exclusive(async () => {
-        if (installing) {
+        if (installing !== undefined) {
           return { refused: "Packages are being installed in this course." };
         }
         const open = openInCourse(await dataRoot.readState(courseId));
@@ -445,13 +458,13 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
               "The tutor is changing the workspace. Try again once it has finished.",
           };
         }
-        installing = true;
-        let ended = false;
+        const claim = { owner, retries: new Map<Slug, () => void>() };
+        installing = claim;
         return {
           done() {
-            if (ended) return;
-            ended = true;
-            installing = false;
+            if (installing !== claim) return;
+            installing = undefined;
+            for (const retry of claim.retries.values()) retry();
           },
         };
       });
@@ -506,6 +519,8 @@ function createUnitChat(
   let folder: string | undefined;
   /** The install that runs, by its request's id; `settled` waits for it. */
   let install: { requestId: string; done: Promise<void> } | undefined;
+  /** The install ran, but its result still needs to be written to state.json. */
+  let pendingInstall: PackageCompletion | undefined;
 
   // --- Opening ---------------------------------------------------------------
 
@@ -531,6 +546,7 @@ function createUnitChat(
         unit: { ...storedUnit, plan },
         plan,
         emit: log.emit,
+        packagePreview,
         now,
         ...(options.backup === undefined ? {} : { backup: options.backup }),
       });
@@ -580,6 +596,7 @@ function createUnitChat(
       }
       running = r;
       restoreGrades(record);
+      restorePackages(record.packageCompletions);
       log.emit(record.status());
       if (record.finished !== undefined) {
         log.emit({ type: "unit_closed", status: record.finished });
@@ -686,6 +703,37 @@ function createUnitChat(
       if (id === open || graded.has(id)) continue;
       const entry = record.recordedAnswer(id);
       if (entry !== undefined) log.emit(gradedEvent(entry));
+    }
+  }
+
+  /** Replays a completed card if the transcript did not keep it or its outcome. */
+  function restorePackages(completions: readonly PackageCompletion[]): void {
+    if (completions.length === 0) return;
+    const shown = new Map<
+      string,
+      Extract<PageEvent, { type: "packages_answered" }> | undefined
+    >();
+    for (const event of log.events()) {
+      if (event.type === "packages_requested" && !shown.has(event.requestId)) {
+        shown.set(event.requestId, undefined);
+      } else if (
+        event.type === "packages_answered" &&
+        shown.has(event.requestId)
+      ) {
+        shown.set(event.requestId, event);
+      }
+    }
+    for (const completion of completions) {
+      const { request, preview, outcome, output } = completion;
+      const was = shown.get(request.id);
+      if (!shown.has(request.id)) log.emit(requestedEvent(request, preview));
+      if (
+        was === undefined ||
+        was.outcome !== outcome ||
+        was.output !== output
+      ) {
+        log.emit(packagesAnsweredEvent(completion));
+      }
     }
   }
 
@@ -807,6 +855,25 @@ function createUnitChat(
       skip: () => stopCount !== stops || !nextAfter(r, number),
       text: () => nextQuestionTurn(where(r), number, after),
     });
+  }
+
+  /** Continues the same check after another unit's workspace install. */
+  function retryAfterInstall(
+    r: Running,
+    check: UnitPosition,
+    number: number,
+    stopped: () => boolean,
+  ): void {
+    const skip = () =>
+      closing ||
+      stopped() ||
+      !nextAfter(r, number) ||
+      r.record.position.segment !== check.segment ||
+      r.record.position.checkFrom !== check.checkFrom ||
+      r.record.position.detour !== undefined ||
+      r.feedback !== undefined;
+    if (skip()) return;
+    r.agents.send({ skip, text: () => workspaceReadyTurn(where(r)) });
   }
 
   /** Every objective of the segment is done in this check. */
@@ -1025,13 +1092,16 @@ function createUnitChat(
   // --- The teaching tools ----------------------------------------------------
 
   const questionBoard = {
-    post: (question: QuestionInput) =>
-      exclusive(
+    post(question: QuestionInput) {
+      const stops = stopCount;
+      const stopped = () => stopCount !== stops;
+      return exclusive(
         async (): Promise<
           | { id: string; number: number; question: Question }
           | { refused: string }
         > => {
           const r = running;
+          if (stopped()) return QUESTION_STOPPED;
           if (r === undefined) return { refused: "The unit is not open." };
           if (r.record.finished !== undefined) {
             return { refused: UNIT_FINISHED };
@@ -1087,28 +1157,37 @@ function createUnitChat(
             );
             if (unread !== undefined) return unread;
           }
-          const open: OpenQuestion = {
-            id: randomUUID(),
-            number: r.record.checkAnswers.length + 1,
-            objective: question.objective,
-            postedAt: now().toISOString(),
-            // Shown and stored in the engine's order (task 2.17).
-            question:
-              posted.kind === "choice"
-                ? reorder(posted, order(posted.choices.length))
-                : posted,
-          };
-          return options.workspace.post(async () => {
-            await r.record.move({ ...position, openQuestion: open });
-            log.emit({ type: "question", question: view(open) });
-            return {
-              id: open.id,
-              number: open.number,
-              question: open.question,
-            };
-          });
+          const since = r.record.checkAnswers.length;
+          return options.workspace.post(
+            {
+              unitId,
+              stopped,
+              retry: () => retryAfterInstall(r, position, since, stopped),
+            },
+            async () => {
+              const open: OpenQuestion = {
+                id: randomUUID(),
+                number: since + 1,
+                objective: question.objective,
+                postedAt: now().toISOString(),
+                // Shown and stored in the engine's order (task 2.17).
+                question:
+                  posted.kind === "choice"
+                    ? reorder(posted, order(posted.choices.length))
+                    : posted,
+              };
+              await r.record.move({ ...position, openQuestion: open });
+              log.emit({ type: "question", question: view(open) });
+              return {
+                id: open.id,
+                number: open.number,
+                question: open.question,
+              };
+            },
+          );
         },
-      ),
+      );
+    },
   };
 
   // Not while a question of the unit is open, answered or not: an aid could
@@ -1118,6 +1197,7 @@ function createUnitChat(
       exclusive(async () => {
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
+        if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
         const open = r.record.position.openQuestion;
         if (open !== undefined) {
           return {
@@ -1161,15 +1241,26 @@ function createUnitChat(
       }),
   };
 
-  /** The card's event for a request that waits. */
-  function requestedEvent(request: PackageRequest): PageEvent {
+  function packagePreview(
+    request: PackageRequest,
+  ): PackageCompletion["preview"] {
+    return {
+      commands:
+        options.installer?.commands(folder ?? "", request.packages) ?? [],
+      folder: folder ?? "",
+    };
+  }
+
+  /** The card that presents a package request. */
+  function requestedEvent(
+    request: PackageRequest,
+    preview = packagePreview(request),
+  ): PageEvent {
     return {
       type: "packages_requested",
       requestId: request.id,
       packages: request.packages,
-      commands:
-        options.installer?.commands(folder ?? "", request.packages) ?? [],
-      folder: folder ?? "",
+      ...preview,
     };
   }
 
@@ -1189,37 +1280,49 @@ function createUnitChat(
   }
 
   /**
-   * Takes the answered request out of the position, tells the page, and
-   * sends the tutor the outcome in a turn of its own, unless a turn sent
-   * before it has told it already. An install that ends after its unit
-   * did, which withdrew the request, is shown on the card and told to no
-   * one. Runs inside `exclusive`.
+   * Saves the outcome before the page sees it. The note goes in the next
+   * turn's header, with a turn of its own only if no question is open
+   * and something else has not delivered it first. Runs inside `exclusive`.
    */
   async function answerRequest(
     r: Running,
-    request: PackageRequest,
-    outcome: PackagesOutcome,
-    output?: string,
+    completion: PackageCompletion,
   ): Promise<void> {
-    const tell = () =>
-      log.emit({
-        type: "packages_answered",
-        requestId: request.id,
-        outcome,
-        ...(output === undefined ? {} : { output }),
-      });
-    if (r.record.finished !== undefined) {
-      tell();
-      return;
-    }
-    if (r.record.position.packageRequest?.id !== request.id) return;
-    await r.record.keepPackageRequest(undefined, tell);
+    const saved = await r.record.completePackageRequest(completion);
+    if (!saved || r.record.finished !== undefined) return;
+    const { request, outcome, output } = completion;
     const note = packagesNote(outcome, request.packages, output);
     r.notes.push(note);
+    if (r.record.position.openQuestion !== undefined) return;
     r.agents.send({
-      skip: () => !r.notes.includes(note),
+      skip: () =>
+        r.record.finished !== undefined ||
+        r.record.position.openQuestion !== undefined ||
+        !r.notes.includes(note),
       text: () => packagesTurn(where(r)),
     });
+  }
+
+  /** A retry writes the result of the original command; it never runs it again. */
+  async function recordInstall(
+    r: Running,
+    completion: PackageCompletion,
+  ): Promise<ChatResult> {
+    try {
+      await answerRequest(r, completion);
+    } catch (error) {
+      pendingInstall = completion;
+      console.error("An install could not be recorded:", error);
+      if (r.record.finished === undefined) {
+        // Re-enable the card's controls after the background write failed.
+        log.emit(requestedEvent(completion.request, completion.preview));
+      }
+      return refused(
+        "The install finished, but its result could not be saved. Try again to save it without running the install again.",
+      );
+    }
+    pendingInstall = undefined;
+    return { ok: true };
   }
 
   /** Installs the request's packages outside the chat's queue. */
@@ -1230,29 +1333,30 @@ function createUnitChat(
     workspace: string,
     claim: { done(): void },
   ): Promise<void> {
-    const packages: readonly PackageSpec[] = request.packages;
+    const preview = packagePreview(request);
     return (async () => {
-      let result: { ok: boolean; output: string };
+      let result: InstallResult;
       try {
-        result = await installer.install(workspace, packages);
+        result = await installer.install(workspace, request.packages);
       } finally {
         claim.done();
       }
-      await exclusive(() =>
-        answerRequest(
-          r,
-          request,
-          result.ok ? "installed" : "failed",
-          result.output,
-        ),
-      );
-    })()
-      .catch((error: unknown) => {
-        console.error("An install could not be recorded:", error);
-      })
-      .finally(() => {
-        install = undefined;
+      await exclusive(async () => {
+        try {
+          await recordInstall(r, {
+            request,
+            preview,
+            outcome: result.ok ? "installed" : "failed",
+            output: result.output,
+          });
+        } finally {
+          install = undefined;
+        }
       });
+    })().catch((error: unknown) => {
+      install = undefined;
+      console.error("An install could not be recorded:", error);
+    });
   }
 
   // --- What the learner does -------------------------------------------------
@@ -1471,13 +1575,16 @@ function createUnitChat(
       act(async (r) => {
         const request = waitingRequest(r, requestId);
         if (typeof request === "string") return refused(request);
+        if (pendingInstall?.request.id === requestId) {
+          return recordInstall(r, pendingInstall);
+        }
         const { installer } = options;
         if (installer === undefined || folder === undefined) {
           return refused(
             "Packages cannot be installed: the sandbox does not run.",
           );
         }
-        const claim = await options.workspace.beginInstall();
+        const claim = await options.workspace.beginInstall(unitId);
         if ("refused" in claim) return refused(claim.refused);
         log.emit({ type: "packages_installing", requestId });
         install = {
@@ -1488,12 +1595,22 @@ function createUnitChat(
       }),
 
     declinePackages: (requestId) =>
-      act(async (r) => {
-        const request = waitingRequest(r, requestId);
-        if (typeof request === "string") return refused(request);
-        await answerRequest(r, request, "declined");
-        return { ok: true };
-      }),
+      act(
+        async (r) => {
+          const request = waitingRequest(r, requestId);
+          if (typeof request === "string") return refused(request);
+          if (pendingInstall?.request.id === requestId) {
+            return recordInstall(r, pendingInstall);
+          }
+          await answerRequest(r, {
+            request,
+            preview: packagePreview(request),
+            outcome: "declined",
+          });
+          return { ok: true };
+        },
+        { whileWriting: true },
+      ),
 
     override: () =>
       act(async (r) => {
@@ -1587,6 +1704,7 @@ function createUnitChat(
 }
 
 const UNIT_FINISHED = "The unit is finished.";
+const QUESTION_STOPPED = { refused: "Stop canceled posting this question." };
 
 /** An answer kept while the tutor's replies during its question are judged (task 2.21). */
 const WAITS_FOR_JUDGE =

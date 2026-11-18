@@ -521,13 +521,11 @@ test("a unit whose session is the script's broken one opens, and every message f
 });
 
 test("/packages asks to install the names after it, pytest if none; the turn with the answer says how it ended", async () => {
-  const installed: string[][] = [];
+  const installed: (readonly string[])[] = [];
   const { dataRoot, units } = setUp({
     installer: createPackageInstaller({
       run: async (command) => {
-        installed.push(
-          command.argv.slice(command.argv.indexOf("--no-progress") + 1),
-        );
+        installed.push(command.argv);
         return {
           exitCode: 0,
           timedOut: false,
@@ -557,7 +555,7 @@ test("/packages asks to install the names after it, pytest if none; the turn wit
   expect(request().packages).toEqual([{ name: "pytest" }]);
   expect(await chat.installPackages(request().requestId)).toEqual({ ok: true });
   await chat.settled();
-  expect(installed.at(-1)).toEqual(["pytest"]);
+  expect(installed).toEqual([expect.arrayContaining(["uv", "add", "pytest"])]);
   expect(lastText()).toEqual({
     type: "tutor_text",
     text: "**Scripted:** the packages: they are installed.",
@@ -568,6 +566,7 @@ test("/packages asks to install the names after it, pytest if none; the turn wit
   expect(request().packages).toEqual([{ name: "numpy" }, { name: "sympy" }]);
   expect(await chat.declinePackages(request().requestId)).toEqual({ ok: true });
   await chat.settled();
+  expect(installed).toHaveLength(1);
   expect(lastText()).toEqual({
     type: "tutor_text",
     text: '**Scripted:** the packages: you said "Not now", so they are not installed.',

@@ -2,8 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { Hello, PageEvent, UnitOpened } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
 import type { ChoiceQuestion, WrittenQuestion } from "../../shared/question.ts";
+import { emptyTimeline, reduce } from "../../web/timeline.ts";
 import {
   createFakeBackend,
   type FakeReply,
@@ -631,7 +633,7 @@ async function approvedCourse(draft = false) {
 async function openUnit(setup: ReturnType<typeof setUp>) {
   const response = await post(setup.app, `${UNIT}/open`);
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ ok: true });
+  expect(await response.json()).toMatchObject({ ok: true });
   await setup.units.get(COURSE, "vectors")?.settled();
 }
 
@@ -701,23 +703,36 @@ test("opening a unit marks its course opened, and the unit's event stream replay
   await stream.close();
 });
 
-test("an artifact the tutor showed is served whole, under a policy that keeps it from the app and the network", async () => {
-  const html = "<!doctype html><p>A graph</p><script>draw()</script>";
-  const setup = setUp([
-    [
-      { text: "See the graph." },
-      { call: "show_artifact", input: { title: "A graph", html } },
-    ],
-  ]);
+const GRAPH = {
+  call: "show_artifact",
+  input: {
+    title: "A graph",
+    html: '<!doctype html><p>A graph</p><script>document.title = "Graph";</script>',
+  },
+};
+const GRAPH_REFERENCE = {
+  kind: "artifact",
+  file: "1-a-graph.html",
+  title: "A graph",
+};
+
+test("an artifact is served as HTML in the pane, but its direct URL serves inert text", async () => {
+  const setup = setUp([[GRAPH]]);
   await approvedCourse();
   await openUnit(setup);
-  const path = `/api/courses/${COURSE}/artifacts/1-a-graph.html`;
+  const path = `/api/courses/${COURSE}/artifacts/${GRAPH_REFERENCE.file}`;
 
-  const response = await setup.app.request(path);
+  const response = await setup.app.request(path, {
+    headers: {
+      "Sec-Fetch-Dest": "iframe",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "same-origin",
+    },
+  });
 
   expect(response.status).toBe(200);
-  expect(await response.text()).toBe(html);
-  expect(Object.fromEntries(response.headers)).toEqual({
+  expect(await response.text()).toBe(GRAPH.input.html);
+  expect(Object.fromEntries(response.headers)).toMatchObject({
     "content-type": "text/html; charset=utf-8",
     "content-security-policy":
       "sandbox allow-scripts; default-src 'none'; " +
@@ -731,6 +746,22 @@ test("an artifact the tutor showed is served whole, under a policy that keeps it
     "cache-control": "no-store",
   });
 
+  const outsidePane: HeadersInit[] = [
+    { "Sec-Fetch-Dest": "document", "Sec-Fetch-Site": "none" },
+    { "Sec-Fetch-Dest": "document", "Sec-Fetch-Site": "same-origin" },
+    { "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "same-site" },
+    { "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "cross-site" },
+    {},
+  ];
+  for (const headers of outsidePane) {
+    const inert = await setup.app.request(path, { headers });
+    expect(inert.status).toBe(200);
+    expect(inert.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(inert.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(inert.headers.get("Cache-Control")).toBe("no-store");
+    expect(await inert.text()).toBe(GRAPH.input.html);
+  }
+
   // Only an artifact of the course, and only from Gauss's own address.
   const refused = await Promise.all(
     [
@@ -742,6 +773,125 @@ test("an artifact the tutor showed is served whole, under a policy that keeps it
     ].map(async (url) => (await setup.app.request(url)).status),
   );
   expect(refused).toEqual([404, 404, 404, 404, 403]);
+});
+
+test("an artifact restored after the unit's event stream connects is marked as historical", async () => {
+  const before = setUp([[GRAPH]]);
+  await approvedCourse();
+  await openUnit(before);
+  await before.units.close();
+
+  const after = setUp([]);
+  const release = Promise.withResolvers<void>();
+  const readTranscripts = after.dataRoot.readTranscripts;
+  vi.spyOn(after.dataRoot, "readTranscripts").mockImplementationOnce(
+    async (id, unit) => {
+      await release.promise;
+      return readTranscripts(id, unit);
+    },
+  );
+
+  try {
+    expect((await post(after.app, `${UNIT}/open`)).status).toBe(200);
+    const response = await after.app.request(`${UNIT}/events`);
+    const stream = await readFrames(response, 1);
+    try {
+      expect(Hello.parse(stream.first[0]?.data).last).toBe(-1);
+      release.resolve();
+      await settle(after);
+      const frames = await stream.more(
+        after.units.get(COURSE, "vectors")?.events().length ?? 0,
+      );
+      expect(frames.map(({ data }) => PageEvent.parse(data))).toContainEqual({
+        type: "artifact",
+        file: GRAPH_REFERENCE.file,
+        title: GRAPH_REFERENCE.title,
+        historical: true,
+      });
+    } finally {
+      await stream.close();
+    }
+  } finally {
+    release.resolve();
+    await settle(after);
+    await after.units.close();
+  }
+});
+
+test("the page opens an artifact the tutor shows between opening a unit and connecting to its event stream", async () => {
+  const setup = setUp([[GRAPH]]);
+  await approvedCourse();
+  const opened = await post(setup.app, `${UNIT}/open`);
+  expect(opened.status).toBe(200);
+  await settle(setup);
+
+  const stream = await readFrames(
+    await setup.app.request(`${UNIT}/events`),
+    1 + (setup.units.get(COURSE, "vectors")?.events().length ?? 0),
+  );
+  await stream.close();
+  await setup.units.close();
+
+  const [greeting, ...events] = stream.first;
+  const hello = Hello.parse(greeting?.data);
+  const { chatId, last } = UnitOpened.parse(await opened.json());
+  expect({ chatId, last }).toEqual({ chatId: hello.chatId, last: -1 });
+  expect(hello.last).toBeGreaterThan(last);
+  const timeline = events.reduce(
+    (state, { id, data }) =>
+      reduce(state, {
+        type: "event",
+        index: Number(id?.split(".")[1]),
+        event: PageEvent.parse(data),
+      }),
+    reduce(emptyTimeline, { type: "hello", chatId, last }),
+  );
+  expect(timeline.shown).toMatchObject(GRAPH_REFERENCE);
+});
+
+test("opening an active unit takes its cursor before any awaited work", async () => {
+  const setup = setUp([[{ text: "A map is fixed by a basis." }], [GRAPH]]);
+  await approvedCourse();
+  await openUnit(setup);
+  const chat = setup.units.get(COURSE, "vectors");
+  if (chat === undefined) throw new Error("The unit is not open.");
+  const last = chat.events().length - 1;
+
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const readCourse = setup.dataRoot.readCourse;
+  vi.spyOn(setup.dataRoot, "readCourse").mockImplementationOnce(async (id) => {
+    entered.resolve();
+    await release.promise;
+    return readCourse(id);
+  });
+  const opening = post(setup.app, `${UNIT}/open`);
+  try {
+    await entered.promise;
+    const message = await post(setup.app, `${UNIT}/messages`, {
+      text: "Show me a graph.",
+    });
+    expect(message.status).toBe(202);
+    await chat.settled();
+    expect(chat.events().slice(last + 1)).toContainEqual({
+      type: "artifact",
+      file: GRAPH_REFERENCE.file,
+      title: GRAPH_REFERENCE.title,
+    });
+
+    release.resolve();
+    const response = await opening;
+    expect(response.status).toBe(200);
+    expect(UnitOpened.parse(await response.json())).toEqual({
+      ok: true,
+      chatId: chat.id,
+      last,
+    });
+  } finally {
+    release.resolve();
+    await opening;
+    await setup.units.close();
+  }
 });
 
 test("a segment runs through the unit routes: a message, ready, an answer, another question refused, moving on and the next segment", async () => {
@@ -1471,10 +1621,10 @@ test("what I know counts calibration on its own course's answers only", async ()
 
 test("the package card's routes: Install and Not now name the request, which is answered once", async () => {
   await approvedCourse();
-  const ran: string[][] = [];
+  const ran: (readonly string[])[] = [];
   const installer = createPackageInstaller({
     run: async (command) => {
-      ran.push([...command.argv]);
+      ran.push(command.argv);
       return {
         exitCode: 0,
         timedOut: false,
@@ -1525,7 +1675,7 @@ test("the package card's routes: Install and Not now name the request, which is 
   });
   expect(installed.status).toBe(202);
   await settle(setup);
-  expect(ran.map((argv) => argv[1])).toEqual(["init", "add"]);
+  expect(ran).toEqual([expect.arrayContaining(["uv", "add", "pytest"])]);
   const again = await post(setup.app, `${UNIT}/packages/not-now`, {
     requestId: first,
   });
@@ -1551,5 +1701,5 @@ test("the package card's routes: Install and Not now name the request, which is 
     requestId: second,
     outcome: "declined",
   });
-  expect(ran).toHaveLength(2);
+  expect(ran).toHaveLength(1);
 });

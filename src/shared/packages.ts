@@ -87,6 +87,18 @@ export const PackagesOutcome = z.enum([
 ]);
 export type PackagesOutcome = z.infer<typeof PackagesOutcome>;
 
+/** The terminal card, recoverable even if both of its transcript lines are lost. */
+export const PackageCompletion = z.object({
+  request: PackageRequest,
+  preview: z.object({
+    commands: z.array(z.array(z.string())),
+    folder: z.string(),
+  }),
+  outcome: PackagesOutcome,
+  output: z.string().optional(),
+});
+export type PackageCompletion = z.infer<typeof PackageCompletion>;
+
 /** The learner's answer to a request, as the page posts it. */
 export const PackagesAnswer = z.object({ requestId: z.string().min(1) });
 export type PackagesAnswer = z.infer<typeof PackagesAnswer>;

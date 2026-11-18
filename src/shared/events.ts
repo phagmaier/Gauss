@@ -75,6 +75,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     type: z.literal("artifact"),
     file: ArtifactFile,
     title: z.string(),
+    /** Restored from a transcript: the thread refers to it without opening it. */
+    historical: z.literal(true).optional(),
   }),
   /**
    * The tutor asked to install packages in the course's workspace (task
@@ -298,13 +300,14 @@ export type PageEvent = z.infer<typeof PageEvent>;
  */
 export const Hello = z.object({
   chatId: z.string(),
-  /**
-   * The index of the last event in the log when the page connected, or -1:
-   * the events after it happened while the page was there to see them.
-   */
+  /** The index of the last event in the log when the stream connected, or -1. */
   last: z.number().int().min(-1),
 });
 export type Hello = z.infer<typeof Hello>;
+
+/** A unit opened, with the last event it already had when the page asked. */
+export const UnitOpened = Hello.extend({ ok: z.literal(true) });
+export type UnitOpened = z.infer<typeof UnitOpened>;
 
 /** A message the learner typed in the message box. */
 export const LearnerMessage = z.object({

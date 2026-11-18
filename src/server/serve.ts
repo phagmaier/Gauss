@@ -96,14 +96,15 @@ export async function serve(options: {
     }),
     mathCheck: createMathCheck({ sandbox }),
     // Tutors run commands only where the sandbox runs (task 3.3), and ask
-    // for packages only where they can be installed (task 3.11). uv's cache
-    // is in the data root, outside the record and its backup.
+    // for packages only where they can be installed. The install cache is
+    // separate from the old workspace-based installer's cache and the backup.
     workspaceTools: sandbox.available,
     ...(sandbox.available
       ? {
           installer: createPackageInstaller({
+            dataRoot,
             run: sandbox.run,
-            cacheFolder: resolve(dataRootPath, "cache", "uv"),
+            cacheFolder: resolve(dataRootPath, "cache", "package-uv"),
             python: await projectPython(),
           }),
         }

@@ -106,17 +106,20 @@ const ask = (question: unknown): FakeStep[] => [
 ];
 const FEEDBACK: FakeTurn = [{ text: "Feedback." }];
 
-/** The course, its unit planned, then the unit opened and in its check. */
-async function setUp(
-  script: FakeTurn[],
-  given: { replies?: FakeReply[]; mathCheck?: MathCheck | null } = {},
-) {
+async function seedCourse() {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
   await root.saveProposal(id, CURRICULUM);
   await root.approveCurriculum(id, CURRICULUM);
   await root.storePlan(id, "chain", PLAN);
+}
 
+/** The course, its unit planned, then the unit opened and in its check. */
+async function setUp(
+  script: FakeTurn[],
+  given: { replies?: FakeReply[]; mathCheck?: MathCheck | null } = {},
+) {
+  await seedCourse();
   const started = await start(script, given);
   expect(await started.chat.ready()).toEqual({ ok: true });
   await started.chat.settled();
@@ -346,6 +349,37 @@ test(
   },
   CHECKED_MS,
 );
+
+test("Stop during held math preflight neither stores nor posts the question", async () => {
+  const reading = Promise.withResolvers<string>();
+  const held = Promise.withResolvers<undefined>();
+  await seedCourse();
+  const { chat, root, units } = await start([TEACH, ask(MATH)], {
+    mathCheck: {
+      read(expected) {
+        reading.resolve(expected);
+        return held.promise;
+      },
+      compare: check.compare,
+    },
+  });
+
+  expect(await chat.ready()).toEqual({ ok: true });
+  const expected = await reading.promise;
+  try {
+    await chat.interrupt();
+  } finally {
+    held.resolve(undefined);
+  }
+  await chat.settled();
+
+  expect(expected).toBe(EXPECTED);
+  expect(
+    (await root.readState(COURSE)).units.chain?.openQuestion,
+  ).toBeUndefined();
+  expect(chat.events().filter((e) => e.type === "question")).toEqual([]);
+  await units.close();
+});
 
 test(
   "an answer the check cannot read goes to the grader with a rubric made from the expression, and the evidence keeps why and the flaw",

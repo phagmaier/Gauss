@@ -222,6 +222,37 @@ def test_unparsable_sides(expected, answer, side):
     assert result["reason"]
 
 
+@pytest.mark.parametrize(
+    ("expression", "why"),
+    [
+        ("0/0", "undefined"),
+        ("1/(1/0)", "undefined"),
+        ("(1/0)^0", "undefined"),
+        ("2^3^0", "ambiguous"),
+        ("2^{3}^{0}", "ambiguous"),
+        ("1/sin(x)y", "ambiguous"),
+        ("1/|x|y", "ambiguous"),
+    ],
+)
+def test_invalid_or_ambiguous_math_cannot_be_a_grade(expression, why):
+    for result, side in [(check(expression), "expected"), (check("0", expression), "answer")]:
+        assert (result["result"], result["side"]) == ("unparsable", side)
+        assert why in result["reason"]
+
+
+@pytest.mark.parametrize(
+    ("expected", "answer"),
+    [
+        ("8", "2^{(3^1)}"),
+        ("1", "(2^3)^0"),
+        (r"\frac{1}{y\sin(x)}", "1/(sin(x)y)"),
+        (r"\frac{1}{|x|y}", "1/(|x|y)"),
+    ],
+)
+def test_explicit_grouping_disambiguates_powers_and_division(expected, answer):
+    assert verdict(expected, answer) == "equivalent"
+
+
 def test_input_meant_to_run_code_is_unparsable_and_not_run(tmp_path):
     marker = tmp_path / "ran"
     for code in ["__import__('os').getcwd()", f"__import__('os').mkdir('{marker}')"]:
@@ -257,6 +288,16 @@ def test_a_check_out_of_time_is_undecided():
     result = check(r"\sin^2 x + \cos^2 x", "1", seconds=0)
     assert result["result"] == "undecided"
     assert result["reason"]
+
+
+def test_the_comparison_deadline_also_caps_sampling(monkeypatch):
+    def slow_value(_expression, _point):
+        time.sleep(0.25)
+        pytest.fail("sample evaluation ran past the comparison deadline")
+
+    monkeypatch.setattr("mathcheck._value", slow_value)
+    result = check("x", "2x", seconds=0.1, simplify_seconds=0)
+    assert result == {"result": "undecided", "reason": "the check ran out of time"}
 
 
 def run_script(request):

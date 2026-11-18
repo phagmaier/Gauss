@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
-import { PackageRequest } from "./packages.ts";
+import { PackageCompletion, PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question } from "./question.ts";
 
 /** A segment's phases, in order (architecture.md section 4, "Phases"). */
@@ -137,5 +137,9 @@ export type UnitPosition = z.infer<typeof UnitPosition>;
 export const State = z.object({
   /** The units in progress, by id. */
   units: z.record(Slug, UnitPosition),
+  /** Terminal package cards, by unit id and request id, including finished units. */
+  packageCompletions: z
+    .record(Slug, z.record(z.string().min(1), PackageCompletion))
+    .optional(),
 });
 export type State = z.infer<typeof State>;

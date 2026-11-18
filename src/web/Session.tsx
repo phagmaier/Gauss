@@ -26,11 +26,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { Hello, PageEvent } from "../shared/events.ts";
+import { Hello, PageEvent, UnitOpened } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { AnswerSubmission } from "../shared/question.ts";
-import { getJsonUntilAnswered, post, postStatus } from "./api.ts";
+import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { PackagesCard } from "./PackagesCard.tsx";
@@ -128,7 +128,7 @@ export function Session(props: { courseId: string; unitId: string }) {
       if (!stopped)
         retry = setTimeout(() => setAttempt((n) => n + 1), RETRY_MS);
     };
-    void postStatus(path("open")).then((opened) => {
+    void postFor(path("open"), UnitOpened).then((opened) => {
       if (stopped) return;
       if (!opened.ok) {
         // An unreachable server may be restarting; a refusal is final.
@@ -137,12 +137,20 @@ export function Session(props: { courseId: string; unitId: string }) {
         return;
       }
       setRefused(undefined);
+      const { chatId, last } = opened.data;
       const events = new EventSource(path("events"));
       source = events;
       events.addEventListener("hello", (e: MessageEvent<string>) => {
         const hello = Hello.parse(JSON.parse(e.data));
+        if (hello.chatId !== chatId) {
+          // A restart raced the connection. Open the new chat for its cursor.
+          events.close();
+          setConnected(false);
+          again();
+          return;
+        }
         setConnected(true);
-        dispatch({ type: "hello", chatId: hello.chatId, last: hello.last });
+        dispatch({ type: "hello", chatId, last });
       });
       events.onmessage = (e: MessageEvent<string>) => {
         dispatch({

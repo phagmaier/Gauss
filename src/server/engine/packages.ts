@@ -1,28 +1,25 @@
-// Installing a course's packages (task 3.11; decisions.md, "Confinement"):
-// the one command of a course with network access, open to the package index
-// alone. The tutor names the packages; the commands are built here, from
-// names and version ranges the schema has checked, so that no text of the
-// tutor's runs with the network open. Python's packages go in through uv.
-//
-// The tutor can write anything in the workspace, so the commands trust
-// nothing in it that could run:
-//
-// - `.venv` is removed first and made again, since a `python` or a `.pth`
-//   file the tutor put there would run when uv looks at the environment;
-// - `--no-build` and `--no-install-project`: wheels only, and the workspace's
-//   own project is never built, so no build script or `setup.py` runs;
-// - `--no-config` and `--no-sources`: no `uv.toml`, index or source of the
-//   tutor's applies;
-// - `--python` names the project's own interpreter, and none is downloaded.
-//
-// uv's cache lies outside the record, in the data root's `cache/uv`, and is
-// copied from rather than linked to, so that a file the tutor changes in the
-// environment does not change the cache.
+// The tutor controls the workspace, so uv resolves packages in a separate,
+// engine-owned project. The learner's previous environment is parked outside
+// uv's writable paths until the fresh environment is ready.
 
-import { existsSync } from "node:fs";
-import { mkdir, readFile, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { type PackageSpec, requirement } from "../../shared/packages.ts";
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+  writeFile,
+} from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
+import {
+  type PackageSpec,
+  PackagesInput,
+  requirement,
+} from "../../shared/packages.ts";
+import type { DataRoot } from "../record/data-root.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import type { SandboxCommand, SandboxResult } from "./sandbox.ts";
 
@@ -35,6 +32,10 @@ const TIME_LIMIT_MS = 10 * 60_000;
 /** How many lines of the output's end the card and the tutor get. */
 const OUTPUT_LINES = 30;
 
+const PROJECT_FOLDER = "packages";
+const PROJECT_FILES = ["pyproject.toml", "uv.lock"] as const;
+const INSTALL_PARK = ".package-install.tmp";
+
 export interface InstallResult {
   ok: boolean;
   /** The end of what the commands wrote, both streams. */
@@ -42,7 +43,7 @@ export interface InstallResult {
 }
 
 export interface PackageInstaller {
-  /** The commands an install of these packages runs in the workspace, in order. */
+  /** The networked command the approval card shows and the installer runs. */
   commands(workspace: string, packages: readonly PackageSpec[]): string[][];
   /** Installs the packages in the workspace. Never throws. */
   install(
@@ -58,60 +59,97 @@ export function createPackageInstaller(options: {
   cacheFolder: string;
   /** The Python the workspace's environment is made from. */
   python: string;
+  /** Course records used only to migrate earlier successful installs. */
+  dataRoot?: Pick<DataRoot, "readCourse" | "readTranscripts">;
 }): PackageInstaller {
-  const { cacheFolder, python } = options;
+  const { python, dataRoot } = options;
 
-  function commands(
+  function command(
     workspace: string,
     packages: readonly PackageSpec[],
-  ): string[][] {
-    const add = [
+  ): [string, ...string[]] {
+    return [
       "uv",
       "add",
+      "--directory",
+      resolve(workspace, "..", PROJECT_FOLDER),
+      "--default-index",
+      "https://pypi.org/simple",
       "--no-build",
       "--no-install-project",
+      "--no-install-workspace",
+      "--no-install-local",
       "--no-sources",
       "--no-config",
       "--no-python-downloads",
+      "--raw",
       "--python",
       python,
       "--color",
       "never",
       "--no-progress",
-      ...packages.map(requirement),
+      ...PackagesInput.parse({ packages }).packages.map(requirement),
     ];
-    if (existsSync(join(workspace, "pyproject.toml"))) return [add];
-    const init = [
-      "uv",
-      "init",
-      "--bare",
-      "--no-workspace",
-      "--vcs",
-      "none",
-      "--no-config",
-      "--no-python-downloads",
-      "--python",
-      python,
-    ];
-    return [init, add];
   }
 
   return {
-    commands,
+    commands: (workspace, packages) => [command(workspace, packages)],
     async install(workspace, packages) {
       const output: string[] = [];
+      let ok = false;
       try {
-        await mkdir(cacheFolder, { recursive: true });
-        await rm(join(workspace, ".venv"), { recursive: true, force: true });
-        for (const argv of commands(workspace, packages)) {
-          const [program, ...rest] = argv;
-          if (program === undefined) continue;
+        const argv = command(workspace, packages);
+        const folder = await checkedFolder(resolve(workspace));
+        const course = dirname(folder);
+        const project = await checkedFolder(join(course, PROJECT_FOLDER), true);
+        const park = join(course, INSTALL_PARK);
+        const environment = join(folder, ".venv");
+        // Preserve the old environment beside the workspace, outside uv's
+        // allowlist, under a name the course backup ignores.
+        await recoverInstall(project, environment, park);
+        const cache = await checkedFolder(resolve(options.cacheFolder), true);
+        await mkdir(park);
+        try {
+          const preparing = join(park, "preparing");
+          const running = join(park, "running");
+          await mkdir(preparing);
+          for (const name of PROJECT_FILES) {
+            const file = join(project, name);
+            const state = await entry(file);
+            if (state === undefined) continue;
+            if (!state.isFile()) throw new Error(`Not a regular file: ${file}`);
+            await copyFile(file, join(preparing, name));
+          }
+          // Rename the directory entry itself, including a dangling symlink.
+          if (await entry(environment)) {
+            await rename(environment, join(preparing, "previous"));
+          }
+          await rename(preparing, running);
+
+          const manifest = join(project, "pyproject.toml");
+          if (!(await entry(manifest))) {
+            await rm(join(project, "uv.lock"), { force: true });
+            const dependencies = await recordedRoots(
+              dataRoot,
+              basename(course),
+            );
+            await writeFile(manifest, projectManifest(dependencies), {
+              flag: "wx",
+            });
+          }
+          // uv gets an empty directory at the final path, both to bind it
+          // into the sandbox and to keep generated entry-point paths valid.
+          await mkdir(environment);
           const result = await options.run({
-            argv: [program, ...rest],
-            cwd: workspace,
-            writable: [workspace, cacheFolder],
-            hosts: argv[1] === "add" ? PACKAGE_HOSTS : [],
-            env: { UV_CACHE_DIR: cacheFolder, UV_LINK_MODE: "copy" },
+            argv,
+            cwd: project,
+            writable: [project, cache, environment],
+            hosts: PACKAGE_HOSTS,
+            env: {
+              UV_PROJECT_ENVIRONMENT: environment,
+              UV_CACHE_DIR: cache,
+              UV_LINK_MODE: "copy",
+            },
             timeLimitMs: TIME_LIMIT_MS,
           });
           output.push(result.stdout, result.stderr);
@@ -119,20 +157,154 @@ export function createPackageInstaller(options: {
             output.push(
               `Stopped after ${TIME_LIMIT_MS / 60_000} minutes, its time limit.`,
             );
-            return { ok: false, output: lastLines(output) };
-          }
-          if (result.exitCode !== 0) {
+          } else if (result.exitCode !== 0) {
             output.push(`Exit status ${result.exitCode}.`);
-            return { ok: false, output: lastLines(output) };
+          } else {
+            await rename(running, join(park, "committed"));
+            ok = true;
           }
+        } finally {
+          await recoverInstall(project, environment, park);
         }
-        return { ok: true, output: lastLines(output) };
       } catch (error) {
         output.push(error instanceof Error ? error.message : String(error));
-        return { ok: false, output: lastLines(output) };
       }
+      return { ok, output: lastLines(output) };
     },
   };
+}
+
+/** Recovers a failed or interrupted swap without ever opening the old venv. */
+async function recoverInstall(
+  project: string,
+  environment: string,
+  park: string,
+): Promise<void> {
+  const state = await entry(park);
+  if (state === undefined) return;
+  if (!state.isDirectory()) throw new Error(`Not a directory: ${park}`);
+  const preparing = join(park, "preparing");
+  const running = join(park, "running");
+  const active = await entry(running);
+  if (active !== undefined) {
+    if (!active.isDirectory()) throw new Error(`Not a directory: ${running}`);
+    for (const name of PROJECT_FILES) {
+      const file = join(project, name);
+      const saved = join(running, name);
+      await rm(file, { force: true });
+      if (await entry(saved)) await copyFile(saved, file);
+    }
+    await rm(environment, { recursive: true, force: true });
+    // On reentry after this rename there is no candidate left to remove.
+    await rename(running, preparing);
+  }
+  const pending = await entry(preparing);
+  if (pending !== undefined) {
+    if (!pending.isDirectory())
+      throw new Error(`Not a directory: ${preparing}`);
+    const previous = join(preparing, "previous");
+    if (await entry(previous)) await rename(previous, environment);
+    await rm(preparing, { recursive: true });
+  }
+  await rm(join(park, "committed"), { recursive: true, force: true });
+  await rmdir(park);
+}
+
+/** Checks ancestors before looking through them, allowing macOS system aliases. */
+async function checkedFolder(path: string, create = false): Promise<string> {
+  const parent = dirname(path);
+  if (parent === path) return path;
+  const folder = join(await checkedFolder(parent, create), basename(path));
+  let state = await entry(folder);
+  if (create && state === undefined) {
+    await mkdir(folder, { recursive: true });
+    state = await entry(folder);
+  }
+  if (state?.isDirectory()) return folder;
+  if (
+    process.platform === "darwin" &&
+    state?.isSymbolicLink() &&
+    (folder === "/tmp" || folder === "/var") &&
+    (await realpath(folder)) === `/private${folder}`
+  ) {
+    return `/private${folder}`;
+  }
+  throw new Error(
+    `Not a directory (symbolic links are not allowed): ${folder}`,
+  );
+}
+
+async function entry(path: string) {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function recordedRoots(
+  dataRoot: Pick<DataRoot, "readCourse" | "readTranscripts"> | undefined,
+  courseId: string,
+): Promise<string[]> {
+  const course = await dataRoot?.readCourse(courseId);
+  const roots = new Map<string, string>();
+  if (dataRoot === undefined) return [];
+  for (const unit of course?.curriculum?.units ?? []) {
+    const requests = new Map<
+      string,
+      { packages: readonly PackageSpec[]; approved: boolean }
+    >();
+    for (const transcript of await dataRoot.readTranscripts(
+      courseId,
+      unit.id,
+    )) {
+      for (const event of transcript.events) {
+        if (event.type === "packages_requested") {
+          if (requests.has(event.requestId)) continue; // Restored waiting card.
+          const parsed = PackagesInput.safeParse({ packages: event.packages });
+          if (parsed.success) {
+            requests.set(event.requestId, {
+              packages: parsed.data.packages,
+              approved: false,
+            });
+          }
+        } else if (event.type === "packages_installing") {
+          const request = requests.get(event.requestId);
+          if (request !== undefined) request.approved = true;
+        } else if (
+          event.type === "packages_answered" &&
+          event.outcome !== "withdrawn"
+        ) {
+          const request = requests.get(event.requestId);
+          requests.delete(event.requestId);
+          if (request?.approved && event.outcome === "installed") {
+            for (const pkg of request.packages) {
+              const name = pkg.name.toLowerCase().replace(/[-_.]+/g, "-");
+              roots.set(name, requirement(pkg));
+            }
+          }
+        }
+      }
+    }
+  }
+  return [...roots.values()];
+}
+
+function projectManifest(dependencies: readonly string[]): string {
+  return `[project]
+name = "gauss-course-packages"
+version = "0.0.0"
+dependencies = [${dependencies.map((dependency) => JSON.stringify(dependency)).join(", ")}]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = []
+`;
 }
 
 /**

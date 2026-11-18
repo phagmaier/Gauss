@@ -164,11 +164,11 @@ export interface Timeline {
   chatId: string | null;
   /** The index of the last event applied, or -1. */
   last: number;
-  /** The index of the last event already in the log when the page connected, or -1. */
-  replayed: number;
+  /** Last event in the log when the page asked to open it, or -1. */
+  openedThrough: number;
   /**
-   * The newest artifact the tutor showed while the page was open, which the
-   * page opens in its pane; one replayed is only referred to.
+   * The newest live artifact shown after the page opened. Older and restored
+   * artifacts are only referred to.
    */
   shown: ArtifactItem | null;
   items: Item[];
@@ -201,7 +201,7 @@ export interface Timeline {
 export const emptyTimeline: Timeline = {
   chatId: null,
   last: -1,
-  replayed: -1,
+  openedThrough: -1,
   shown: null,
   items: [],
   busy: false,
@@ -265,21 +265,21 @@ function stepFromCard(items: Item[], stepTaken: "again" | "moved-on"): Item[] {
 
 export type TimelineAction =
   /**
-   * Sent first on every connection; a new chat id means the server
-   * restarted. `last` is the index of the last event the log held then.
+   * A new chat id means the server restarted. For a unit, `last` is the
+   * last event the chat already had when the page asked to open the unit.
    */
   | { type: "hello"; chatId: string; last?: number }
   | { type: "event"; index: number; event: PageEvent };
 
 export function reduce(state: Timeline, action: TimelineAction): Timeline {
   if (action.type === "hello") {
-    return action.chatId === state.chatId
+    const { chatId, last } = action;
+    if (chatId !== state.chatId) {
+      return { ...emptyTimeline, chatId, openedThrough: last ?? -1 };
+    }
+    return last === undefined || last === state.openedThrough
       ? state
-      : {
-          ...emptyTimeline,
-          chatId: action.chatId,
-          replayed: action.last ?? -1,
-        };
+      : { ...state, openedThrough: last };
   }
   const { index, event } = action;
   if (index <= state.last) return state;
@@ -388,12 +388,13 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...next,
         items: [...state.items, item],
         tutorOpen: false,
-        shown: index > state.replayed ? item : state.shown,
+        shown:
+          !event.historical && index > state.openedThrough ? item : state.shown,
       };
     }
     case "packages_requested":
-      // A unit opened again shows a request that waits again; a restart
-      // ended an install under way, so the card asks again.
+      // The reopened unit supplies the current plan for the same request.
+      // Keep the card where it was and let the learner approve it again.
       if (
         state.items.some(
           (i) => i.kind === "packages" && i.requestId === event.requestId,
@@ -404,7 +405,12 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
           items: withRequest(
             state.items,
             event.requestId,
-            ({ installing: _, ...item }) => item,
+            ({ installing: _, ...item }) => ({
+              ...item,
+              packages: event.packages,
+              commands: event.commands,
+              folder: event.folder,
+            }),
           ),
         };
       }

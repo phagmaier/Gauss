@@ -69,7 +69,7 @@ test("a hello from another chat starts the thread over", () => {
   expect(state).toEqual({ ...emptyTimeline, chatId: "chat-2" });
 });
 
-test("an artifact is a reference in the tutor's reply, which goes on below it; only one shown after the page connected is opened", () => {
+test("artifact references split the tutor's reply, and only new artifacts open the pane", () => {
   const events: PageEvent[] = [
     { type: "turn_start" },
     { type: "tutor_text", text: "Look." },
@@ -92,7 +92,7 @@ test("an artifact is a reference in the tutor's reply, which goes on below it; o
     file: "2-a-curve.html",
     title: "A curve",
   };
-  // The page connected when the log held the first five events.
+  // The page opened when the log held the first five events.
   const apply = (state: Timeline, from: number, to: number) =>
     events
       .slice(from, to)
@@ -119,8 +119,33 @@ test("an artifact is a reference in the tutor's reply, which goes on below it; o
   expect(live.shown).toEqual(curve);
 
   // Reconnecting to the same chat replays nothing it has, and keeps it.
-  const again = reduce(live, { type: "hello", chatId: "chat-1", last: 7 });
-  expect(again.shown).toEqual(curve);
+  const again = reduce(live, { type: "hello", chatId: "chat-1", last: 4 });
+  expect(again).toBe(live);
+
+  // A fresh open of the same chat takes a new cursor without clearing the thread.
+  const reopened = reduce(replayed, {
+    type: "hello",
+    chatId: "chat-1",
+    last: 7,
+  });
+  const caughtUp = apply(reopened, 5, 8);
+  expect(caughtUp.items.at(-1)).toEqual(curve);
+  expect(caughtUp.shown).toBeNull();
+});
+
+test("an artifact restored after the page opens is a thread reference without opening the pane", () => {
+  const restored = {
+    type: "artifact",
+    file: "1-a-line.html",
+    title: "A line",
+    historical: true,
+  } as const;
+  const state = play([restored]);
+
+  expect(state.items).toEqual([
+    { kind: "artifact", key: 0, file: "1-a-line.html", title: "A line" },
+  ]);
+  expect(state.shown).toBeNull();
 });
 
 test("a turn that ends in an error or is stopped leaves a note, and the tutor is no longer writing", () => {
@@ -1192,10 +1217,17 @@ test("a package request is one card in the tutor's reply, which installs and is 
   });
   expect(installing.items[1]).toEqual({ ...card, installing: true });
 
-  // A restart ended the install; the reopened unit says the request again.
-  const reopened = play([requested], { ...installing, last: -1 });
+  // A restart ended the install. The current plan supersedes transcript details.
+  const plan = {
+    commands: [["uv", "pip", "install", "pytest>=8"]],
+    folder: "/new/data/courses/c/workspace",
+  };
+  const reopened = play([{ ...requested, ...plan }], {
+    ...installing,
+    last: -1,
+  });
   expect(reopened.items).toHaveLength(3);
-  expect(reopened.items[1]).toEqual(card);
+  expect(reopened.items[1]).toEqual({ ...card, ...plan });
 
   const answered = play(
     [
@@ -1211,6 +1243,7 @@ test("a package request is one card in the tutor's reply, which installs and is 
   );
   expect(answered.items[1]).toEqual({
     ...card,
+    ...plan,
     outcome: "installed",
     output: " + pytest==9.2.0",
   });

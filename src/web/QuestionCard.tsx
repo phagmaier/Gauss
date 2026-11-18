@@ -104,6 +104,7 @@ function OpenCard(props: {
   const [error, setError] = useState<string>();
   /** The first level of how sure, which Enter in the math field moves to. */
   const firstLevel = useRef<HTMLButtonElement>(null);
+  const mathField = useRef<HTMLTextAreaElement>(null);
 
   /** The answer as it would be sent, or undefined while it is incomplete. */
   function answer(): AnswerSubmission | undefined {
@@ -182,6 +183,15 @@ function OpenCard(props: {
       const level = CONFIDENCE[Number(e.key) - 1];
       if (e.key.length === 1 && level !== undefined) {
         setConfidence(level.value);
+        // Enter on a focused button activates it. Return to the math field
+        // after the confidence shortcut so the next Enter submits the answer.
+        if (
+          question.kind === "math" &&
+          firstLevel.current?.closest("fieldset")?.contains(target)
+        ) {
+          e.preventDefault();
+          mathField.current?.focus();
+        }
         return;
       }
       // Enter on a button or link presses it instead.
@@ -218,6 +228,7 @@ function OpenCard(props: {
           ) : question.kind === "math" ? (
             <>
               <textarea
+                ref={mathField}
                 className="field mathin"
                 aria-label="Your answer"
                 placeholder="Type your answer, for example 3x^2"

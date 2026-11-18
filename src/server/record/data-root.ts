@@ -25,6 +25,7 @@ import {
 import { PageEvent } from "../../shared/events.ts";
 import { EvidenceEntry } from "../../shared/evidence.ts";
 import type { StoredCourse } from "../../shared/library.ts";
+import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { writeFileAtomic, writeFileNew } from "./atomic-write.ts";
@@ -119,13 +120,15 @@ export interface DataRoot {
   readState(id: string): Promise<State>;
   /**
    * Sets the unit's position in state.json, or with null takes the unit out
-   * (it is no longer in progress), and returns the state as written. Writes
-   * land in the order they were called, each on the one before.
+   * (it is no longer in progress), and returns the state as written. A package
+   * completion is saved in the same write. Writes land in the order they were
+   * called, each on the one before.
    */
   writePosition(
     id: string,
     unitId: string,
     position: UnitPosition | null,
+    completion?: PackageCompletion,
   ): Promise<State>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
   appendEvidence(id: string, entry: EvidenceEntry): Promise<void>;
@@ -428,16 +431,21 @@ export function openDataRoot(options: {
       return (await readJson(path, State)) ?? { units: {} };
     },
 
-    async writePosition(id, unitId, position) {
+    async writePosition(id, unitId, position, completion) {
       const unit = Slug.parse(unitId);
       // Checked and copied now, so a later change to the caller's object
       // cannot reach a write still waiting its turn.
       const checked = position === null ? null : UnitPosition.parse(position);
+      const completed =
+        completion === undefined
+          ? undefined
+          : PackageCompletion.parse(completion);
       const path = courseFile(id, "state.json");
       return withFileLock(path, async () => {
         await existingCourse(id);
         const before = (await readJson(path, State)) ?? { units: {} };
         const state: State = {
+          ...before,
           units:
             checked === null
               ? Object.fromEntries(
@@ -445,6 +453,16 @@ export function openDataRoot(options: {
                 )
               : { ...before.units, [unit]: checked },
         };
+        if (completed !== undefined) {
+          const completions = before.packageCompletions ?? {};
+          const forUnit = Object.hasOwn(completions, unit)
+            ? completions[unit]
+            : undefined;
+          state.packageCompletions = {
+            ...completions,
+            [unit]: { ...forUnit, [completed.request.id]: completed },
+          };
+        }
         await writeJson(path, State, state);
         return state;
       });
@@ -483,14 +501,18 @@ export function openDataRoot(options: {
       const folder = courseFile(id, "artifacts");
       return withFileLock(folder, async () => {
         await mkdir(folder, { recursive: true });
-        const taken = (await readdir(folder)).map(artifactNumber);
+        let highest = 0;
+        for (const name of await readdir(folder)) {
+          highest = Math.max(highest, artifactNumber(name));
+        }
         const slug = idFromTitle(title, ARTIFACT_SLUG_LENGTH, "artifact");
-        for (let number = Math.max(0, ...taken) + 1; ; number++) {
+        for (let number = highest + 1; Number.isSafeInteger(number); number++) {
           const file = ArtifactFile.parse(`${number}-${slug}.html`);
           if (await writeFileNew(join(folder, file), html)) {
             return { number, file };
           }
         }
+        throw new Error("No safe artifact number is available in this course.");
       });
     },
 

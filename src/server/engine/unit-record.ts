@@ -23,7 +23,10 @@ import type { Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
-import type { PackageRequest } from "../../shared/packages.ts";
+import type {
+  PackageCompletion,
+  PackageRequest,
+} from "../../shared/packages.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type {
   AnswerSubmission,
@@ -53,6 +56,8 @@ export interface UnitRecord {
   readonly evidence: readonly EvidenceEntry[];
   /** The answers to the segment's objectives in this check, in order. */
   readonly checkAnswers: readonly AnswerEvidence[];
+  /** Completed package cards, kept even after the unit's position is removed. */
+  readonly packageCompletions: readonly PackageCompletion[];
   /** Set once the unit is finished and taken out of state.json. */
   readonly finished: "passed" | "overridden" | undefined;
   /** The unit had a position in state.json when it was opened: it was under way. */
@@ -75,14 +80,12 @@ export interface UnitRecord {
    */
   keepSession(id: string | undefined): Promise<void>;
   /**
-   * Writes the tutor's request to install packages into the position, or
-   * takes it out once answered (task 3.11). It is kept across moves, as the
-   * session's id is. Nothing is written once the unit is finished.
+   * Writes the tutor's request to install packages into the position. It is
+   * kept across moves, as the session's id is.
    */
-  keepPackageRequest(
-    request: PackageRequest | undefined,
-    tell?: () => void,
-  ): Promise<void>;
+  keepPackageRequest(request: PackageRequest, tell: () => void): Promise<void>;
+  /** Saves and shows the completion, removing the matching pending request. */
+  completePackageRequest(completion: PackageCompletion): Promise<boolean>;
   /** Starts the segment's check: this check is the evidence from here on. */
   startCheck(): Promise<void>;
   /**
@@ -133,6 +136,7 @@ export async function openUnitRecord(options: {
   unit: StoredUnit;
   plan: Plan;
   emit: (event: PageEvent) => void;
+  packagePreview: (request: PackageRequest) => PackageCompletion["preview"];
   /** The clock for the evidence's dates. */
   now: () => Date;
   /** Commits the record once a segment closes or the unit ends; none if not given. */
@@ -143,7 +147,11 @@ export async function openUnitRecord(options: {
   const unitId = unit.id;
   // The unit's own entry only: an id such as "constructor" is also the name
   // of a property every object inherits.
-  const positions = (await dataRoot.readState(courseId)).units;
+  const { units: positions, packageCompletions = {} } =
+    await dataRoot.readState(courseId);
+  const completed = Object.hasOwn(packageCompletions, unitId)
+    ? (packageCompletions[unitId] ?? {})
+    : {};
   const stored = Object.hasOwn(positions, unitId)
     ? positions[unitId]
     : undefined;
@@ -165,14 +173,15 @@ export async function openUnitRecord(options: {
   }
   let checkAnswers = answersInCheck(allEvidence, position, plan);
   let sessionId = position.tutorSessionId;
-  let packageRequest = position.packageRequest;
 
   async function move(given: UnitPosition, tell?: () => void): Promise<void> {
     const { tutorSessionId: _, packageRequest: __, ...rest } = given;
     const next: UnitPosition = {
       ...rest,
       ...(sessionId === undefined ? {} : { tutorSessionId: sessionId }),
-      ...(packageRequest === undefined ? {} : { packageRequest }),
+      ...(position.packageRequest === undefined
+        ? {}
+        : { packageRequest: position.packageRequest }),
     };
     await dataRoot.writePosition(courseId, unitId, next);
     const was = position;
@@ -261,20 +270,27 @@ export async function openUnitRecord(options: {
         objectives: [...objectives],
       });
     }
-    await dataRoot.writePosition(courseId, unitId, null);
+    const { packageRequest, ...closed } = position;
+    const completion: PackageCompletion | undefined =
+      packageRequest === undefined
+        ? undefined
+        : {
+            request: packageRequest,
+            preview: options.packagePreview(packageRequest),
+            outcome: "withdrawn",
+          };
+    await dataRoot.writePosition(courseId, unitId, null, completion);
     finished = how;
-    // A request that waits leaves state.json with the position.
-    if (packageRequest !== undefined) {
-      emit({
-        type: "packages_answered",
-        requestId: packageRequest.id,
-        outcome: "withdrawn",
-      });
-      packageRequest = undefined;
-    }
+    position = closed;
+    if (completion !== undefined) keepCompletion(completion);
     emit(status());
     emit({ type: "unit_closed", status: how });
     backup.commit(`${courseId}: unit ${unitId} finished, ${how}`);
+  }
+
+  function keepCompletion(completion: PackageCompletion): void {
+    completed[completion.request.id] = completion;
+    emit(packagesAnsweredEvent(completion));
   }
 
   return {
@@ -284,6 +300,9 @@ export async function openUnitRecord(options: {
     evidence,
     get checkAnswers() {
       return checkAnswers;
+    },
+    get packageCompletions() {
+      return Object.values(completed);
     },
     get finished() {
       return finished;
@@ -308,14 +327,27 @@ export async function openUnitRecord(options: {
 
     async keepPackageRequest(request, tell) {
       if (finished !== undefined) return;
-      const was = packageRequest;
-      packageRequest = request;
-      try {
-        await move(position, tell);
-      } catch (error) {
-        packageRequest = was;
-        throw error;
+      const next = { ...position, packageRequest: request };
+      await dataRoot.writePosition(courseId, unitId, next);
+      position = next;
+      tell();
+    },
+
+    async completePackageRequest(completion) {
+      const { packageRequest, ...next } = position;
+      const { id } = completion.request;
+      if (finished !== undefined) {
+        // The unit ended during the install. Replace its withdrawal with
+        // the install's result, but do not give the finished unit a position.
+        if (completed[id]?.outcome !== "withdrawn") return false;
+        await dataRoot.writePosition(courseId, unitId, null, completion);
+      } else {
+        if (packageRequest?.id !== id) return false;
+        await dataRoot.writePosition(courseId, unitId, next, completion);
+        position = next;
       }
+      keepCompletion(completion);
+      return true;
     },
 
     async startCheck() {
@@ -388,6 +420,20 @@ export async function openUnitRecord(options: {
     },
 
     finish,
+  };
+}
+
+/** The durable outcome of a package card. */
+export function packagesAnsweredEvent({
+  request,
+  outcome,
+  output,
+}: PackageCompletion): PageEvent {
+  return {
+    type: "packages_answered",
+    requestId: request.id,
+    outcome,
+    ...(output === undefined ? {} : { output }),
   };
 }
 

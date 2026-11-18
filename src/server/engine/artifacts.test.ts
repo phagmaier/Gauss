@@ -227,3 +227,38 @@ test("while a question is open nothing is shown, with the reason; once it is gra
     { file: "1-why-it-is-right.html", title: "Why it is right" },
   ]);
 });
+
+test("a finished unit can still reply but cannot store a new artifact", async () => {
+  const { backend, root, chat } = await start([
+    [{ text: "Teaching." }],
+    [{ call: "ask_question", input: CHOICE }],
+    [{ text: "Correct." }],
+    [show("A line"), { text: "The unit is finished." }],
+  ]);
+  expect(await chat.ready()).toEqual({ ok: true });
+  await chat.settled();
+  const posted = chat.events().findLast((event) => event.type === "question");
+  if (posted?.type !== "question") throw new Error("no question posted");
+  expect(
+    await chat.answer({
+      kind: "choice",
+      questionId: posted.question.id,
+      choice: "A",
+      confidence: "90",
+    }),
+  ).toEqual({ ok: true });
+  await chat.settled();
+  expect(chat.events()).toContainEqual({
+    type: "unit_closed",
+    status: "passed",
+  });
+
+  expect(chat.say("Can you show it once more?")).toEqual({ ok: true });
+  await chat.settled();
+  expect(backend.calls.at(-1)?.result).toEqual({
+    status: "refused",
+    text: "The unit is finished.",
+  });
+  expect(chat.events().some((event) => event.type === "artifact")).toBe(false);
+  expect(await root.readArtifact(COURSE, "1-a-line.html")).toBeUndefined();
+});

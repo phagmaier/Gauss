@@ -136,6 +136,14 @@ export function readyTurn(where: Where): string {
   return turn(where, 'The learner pressed "ready".');
 }
 
+/** Resumes a check whose question was blocked by another unit's install. */
+export function workspaceReadyTurn(where: Where): string {
+  return turn(
+    where,
+    "The package install in the course workspace ended. Continue the check by posting the question that was blocked.",
+  );
+}
+
 /**
  * The first turn of the session the learner's "Start fresh" begins (task
  * 2.14). Its notes say the conversation is new.

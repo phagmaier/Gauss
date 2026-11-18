@@ -5,9 +5,11 @@
 
 import { existsSync } from "node:fs";
 import {
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -118,7 +120,7 @@ describe("the names the tutor may give", () => {
 });
 
 describe("the install", () => {
-  test("in a workspace with no project: the project made, then the packages added, the network open to PyPI for the second only", async () => {
+  test("the single UV command uses the pinned Python and only PyPI wheels", async () => {
     const workspace = join(dir, "workspace");
     const cache = join(dir, "cache", "uv");
     await mkdir(workspace);
@@ -133,75 +135,44 @@ describe("the install", () => {
     const result = await installer.install(workspace, packages);
 
     expect(result).toEqual({ ok: true, output: "" });
-    const common = {
-      cwd: workspace,
-      writable: [workspace, cache],
-      env: { UV_CACHE_DIR: cache, UV_LINK_MODE: "copy" },
-      timeLimitMs: 600_000,
-    };
     expect(fake.commands).toEqual([
       {
-        ...common,
-        argv: [
-          "uv",
-          "init",
-          "--bare",
-          "--no-workspace",
-          "--vcs",
-          "none",
-          "--no-config",
-          "--no-python-downloads",
-          "--python",
-          PY,
-        ],
-        hosts: [],
-      },
-      {
-        ...common,
-        argv: [
+        argv: expect.arrayContaining([
           "uv",
           "add",
+          "--directory",
+          join(dir, "packages"),
+          "--default-index",
+          "https://pypi.org/simple",
           "--no-build",
           "--no-install-project",
+          "--no-install-workspace",
+          "--no-install-local",
           "--no-sources",
           "--no-config",
           "--no-python-downloads",
           "--python",
           PY,
-          "--color",
-          "never",
-          "--no-progress",
           "pytest>=8",
           "numpy",
-        ],
+        ]),
+        cwd: await realpath(join(dir, "packages")),
+        writable: await Promise.all(
+          [join(dir, "packages"), cache, join(workspace, ".venv")].map((path) =>
+            realpath(path),
+          ),
+        ),
+        env: {
+          UV_PROJECT_ENVIRONMENT: await realpath(join(workspace, ".venv")),
+          UV_CACHE_DIR: await realpath(cache),
+          UV_LINK_MODE: "copy",
+        },
         hosts: ["pypi.org", "files.pythonhosted.org"],
+        timeLimitMs: 600_000,
       },
     ]);
     expect(PACKAGE_HOSTS).toEqual(["pypi.org", "files.pythonhosted.org"]);
     expect(existsSync(cache)).toBe(true);
-  });
-
-  test("in a workspace with a project, only the packages are added, and an environment there is removed first", async () => {
-    const workspace = join(dir, "workspace");
-    await mkdir(join(workspace, ".venv", "bin"), { recursive: true });
-    await writeFile(join(workspace, "pyproject.toml"), "[project]\n");
-    await writeFile(join(workspace, ".venv", "bin", "python"), "#!/bin/sh\n");
-    await writeFile(join(workspace, "kept.py"), "print(1)\n");
-    const fake = fakeRun();
-    const installer = createPackageInstaller({
-      run: fake.run,
-      cacheFolder: join(dir, "cache"),
-      python: PY,
-    });
-
-    expect(installer.commands(workspace, [{ name: "pytest" }])).toHaveLength(1);
-    await installer.install(workspace, [{ name: "pytest" }]);
-
-    expect(fake.commands.map((c) => c.argv.slice(0, 2))).toEqual([
-      ["uv", "add"],
-    ]);
-    expect(existsSync(join(workspace, ".venv"))).toBe(false);
-    expect(existsSync(join(workspace, "kept.py"))).toBe(true);
   });
 
   test("an environment that is a link to a folder elsewhere loses the link only", async () => {
@@ -217,9 +188,12 @@ describe("the install", () => {
       python: PY,
     });
 
-    await installer.install(workspace, [{ name: "pytest" }]);
+    expect(await installer.install(workspace, [{ name: "pytest" }])).toEqual({
+      ok: true,
+      output: "",
+    });
 
-    expect(existsSync(join(workspace, ".venv"))).toBe(false);
+    expect((await lstat(join(workspace, ".venv"))).isDirectory()).toBe(true);
     expect(await readFile(join(elsewhere, "kept.txt"), "utf8")).toBe(
       "the learner's\n",
     );
@@ -229,11 +203,7 @@ describe("the install", () => {
     const workspace = join(dir, "workspace");
     await mkdir(workspace);
     const lines = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`);
-    const fake = fakeRun([
-      ok(),
-      { ...ok(lines.join("\n")), exitCode: 1 },
-      ok(),
-    ]);
+    const fake = fakeRun([{ ...ok(lines.join("\n")), exitCode: 1 }]);
     const installer = createPackageInstaller({
       run: fake.run,
       cacheFolder: join(dir, "cache"),
@@ -253,7 +223,6 @@ describe("the install", () => {
   test("a command past its time limit fails the install", async () => {
     const workspace = join(dir, "workspace");
     await mkdir(workspace);
-    await writeFile(join(workspace, "pyproject.toml"), "[project]\n");
     const fake = fakeRun([{ ...ok(), exitCode: null, timedOut: true }]);
     const installer = createPackageInstaller({
       run: fake.run,
@@ -349,6 +318,7 @@ async function start(
     installer: createPackageInstaller({
       run,
       cacheFolder: join(dir, "cache", "uv"),
+      dataRoot: root,
       python: PY,
     }),
   });
@@ -389,8 +359,14 @@ test("a request shows its card with the commands and the workspace, and is kept 
       requestId: expect.any(String),
       packages: [{ name: "pytest", version: ">=8" }],
       commands: [
-        expect.arrayContaining(["uv", "init", "--bare"]),
-        expect.arrayContaining(["uv", "add", "--no-build", "pytest>=8"]),
+        expect.arrayContaining([
+          "uv",
+          "add",
+          "--directory",
+          join(dir, "courses", COURSE, "packages"),
+          "--no-build",
+          "pytest>=8",
+        ]),
       ],
       folder: workspace,
     },
@@ -424,7 +400,7 @@ test("what is not a package name is refused with the reason, and nothing is aske
 });
 
 test("Install runs the commands and tells the tutor in a turn of its own; the request leaves the position", async () => {
-  const fake = fakeRun([ok(), ok(" + pytest==9.2.0")]);
+  const fake = fakeRun([ok(" + pytest==9.2.0")]);
   const { backend, root, chat } = await start(
     [
       [{ text: "Teaching." }, ask([{ name: "pytest" }])],
@@ -437,7 +413,7 @@ test("Install runs the commands and tells the tutor in a turn of its own; the re
   expect(await chat.installPackages(id)).toEqual({ ok: true });
   await chat.settled();
 
-  expect(fake.commands.map((c) => c.argv[1])).toEqual(["init", "add"]);
+  expect(fake.commands).toHaveLength(1);
   expect(cards(chat.events()).slice(1)).toEqual([
     { type: "packages_installing", requestId: id },
     {
@@ -468,7 +444,6 @@ test("Install runs the commands and tells the tutor in a turn of its own; the re
 
 test("a failed install tells the tutor with the end of the output, and it may ask again", async () => {
   const fake = fakeRun([
-    ok(),
     { ...ok("error: No solution found for nopkg"), exitCode: 1 },
   ]);
   const { backend, chat } = await start(
@@ -533,7 +508,7 @@ test("an answer is told once: a learner's message queued when the install ends c
       [{ hold: true }],
       [{ text: "Noted." }],
     ],
-    fakeRun([ok(), held.promise]).run,
+    fakeRun([held.promise]).run,
   );
   const id = requestId(chat.events());
   expect(await chat.installPackages(id)).toEqual({ ok: true });
@@ -611,7 +586,7 @@ test("the request that waits is said in every header until it is answered, and k
   expect(requestId(chat.events())).toBe(id);
   expect(await chat.installPackages(id)).toEqual({ ok: true });
   await chat.settled();
-  expect(fake.commands).toHaveLength(2);
+  expect(fake.commands).toHaveLength(1);
   expect(backend.received.at(-1)?.text).toContain(
     "The learner installed the packages you asked for: pytest.",
   );
@@ -672,7 +647,7 @@ test("a second request is refused while one waits, in another unit too", async (
 
 test("while the packages install, no question is posted and the tutor writes nothing, then both are allowed again", async () => {
   const held = Promise.withResolvers<SandboxResult>();
-  const fake = fakeRun([ok(), held.promise]);
+  const fake = fakeRun([held.promise]);
   const { backend, chat } = await start(
     [
       [{ text: "Teaching." }, ask([{ name: "pytest" }])],
@@ -766,5 +741,280 @@ test("Install is refused while a question is open, and allowed once it is graded
   // In the detour after the miss no question is open.
   expect(await chat.installPackages(id)).toEqual({ ok: true });
   await chat.settled();
-  expect(fake.commands).toHaveLength(2);
+  expect(fake.commands).toHaveLength(1);
+});
+
+test("a package completion the transcript lost is replayed once after restart", async () => {
+  const first = await start(
+    [
+      [{ text: "Teaching." }, ask([{ name: "pytest" }])],
+      [{ text: "Installed." }],
+    ],
+    fakeRun([ok(" + pytest==9.2.0")]).run,
+  );
+  const id = requestId(first.chat.events());
+  expect(await first.chat.installPackages(id)).toEqual({ ok: true });
+  await first.chat.settled();
+  const answered = cards(first.chat.events()).filter(
+    (e) => e.type === "packages_answered",
+  );
+  expect(answered).toEqual([
+    expect.objectContaining({
+      requestId: id,
+      outcome: "installed",
+      output: " + pytest==9.2.0",
+    }),
+  ]);
+  // Ordinary writes, including in another unit, preserve completed cards.
+  await first.root.writePosition(COURSE, "sets", {
+    segment: 0,
+    phase: "discuss",
+  });
+  await first.units.close();
+
+  // Lose just the terminal line of this scratch transcript, not the record.
+  const path = join(dir, "courses", COURSE, "sessions", "loops.1.jsonl");
+  const lines = (await readFile(path, "utf8")).split("\n");
+  const at = lines.findIndex(
+    (line) => line !== "" && JSON.parse(line).type === "packages_answered",
+  );
+  expect(at).toBeGreaterThan(0);
+  lines.splice(at, 1);
+  await writeFile(path, lines.join("\n"));
+
+  const fake = fakeRun();
+  const second = await start([], fake.run);
+  expect(
+    cards(second.chat.events()).filter((e) => e.type === "packages_answered"),
+  ).toEqual(answered);
+  expect(fake.commands).toEqual([]);
+  await second.units.close();
+
+  const third = await start([]);
+  expect(
+    cards(third.chat.events()).filter((e) => e.type === "packages_answered"),
+  ).toEqual(answered);
+  await third.units.close();
+});
+
+test("another unit's question blocked by an install is reasked when the install completes", async () => {
+  const held = Promise.withResolvers<SandboxResult>();
+  const setsQuestion = {
+    call: "ask_question",
+    input: {
+      ...CHOICE,
+      objective: "set-count",
+      prompt: "How many elements are in the set {1, 2, 3}?",
+    },
+  };
+  // The two notifications can run in either order: only Sets asks again.
+  const afterInstall: FakeTurn = ({ text }) =>
+    text.includes('"set-count"') ? [setsQuestion] : [{ text: "Installed." }];
+  const {
+    backend,
+    root,
+    units,
+    chat: loops,
+  } = await start(
+    [
+      [{ text: "Teaching loops." }, ask([{ name: "pytest" }])],
+      [{ text: "Teaching sets." }],
+      [setsQuestion, setsQuestion],
+      afterInstall,
+      afterInstall,
+    ],
+    fakeRun([held.promise]).run,
+  );
+  const opened = await units.open(COURSE, "sets");
+  if (!opened.ok) throw new Error(opened.error);
+  const sets = opened.chat;
+  await sets.settled();
+
+  expect(await loops.installPackages(requestId(loops.events()))).toEqual({
+    ok: true,
+  });
+  try {
+    expect(await sets.ready()).toEqual({ ok: true });
+    await sets.settled();
+    expect(backend.calls.slice(-2).map((call) => call.result)).toEqual([
+      expect.objectContaining({
+        status: "refused",
+        text: expect.stringContaining("Packages are being installed"),
+      }),
+      expect.objectContaining({
+        status: "refused",
+        text: expect.stringContaining("Packages are being installed"),
+      }),
+    ]);
+    expect(sets.events().filter((e) => e.type === "question")).toEqual([]);
+    expect(
+      (await root.readState(COURSE)).units.sets?.openQuestion,
+    ).toBeUndefined();
+  } finally {
+    held.resolve(ok());
+    await loops.settled();
+  }
+  await sets.settled();
+
+  expect(sets.events().filter((e) => e.type === "question")).toEqual([
+    expect.objectContaining({
+      question: expect.objectContaining({ prompt: setsQuestion.input.prompt }),
+    }),
+  ]);
+  expect(backend.received).toHaveLength(5);
+  await units.close();
+});
+
+test('"Not now" during its own open question waits for a safe tutor turn', async () => {
+  const fake = fakeRun();
+  const { backend, chat, units } = await start(
+    [
+      [{ text: "Teaching." }, ask([{ name: "pytest" }])],
+      [{ call: "ask_question", input: CHOICE }],
+      [{ text: "Not quite: the detour." }],
+      [{ text: "Let's review the loop." }],
+    ],
+    fake.run,
+  );
+  const id = requestId(chat.events());
+  expect(await chat.ready()).toEqual({ ok: true });
+  await chat.settled();
+  const posted = chat.events().findLast((e) => e.type === "question");
+  if (posted?.type !== "question") throw new Error("no question");
+  const before = chat.events().length;
+
+  expect(await chat.declinePackages(id)).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(cards(chat.events()).at(-1)).toEqual({
+    type: "packages_answered",
+    requestId: id,
+    outcome: "declined",
+  });
+  expect(
+    chat
+      .events()
+      .slice(before)
+      .filter((e) => e.type === "tutor_text"),
+  ).toEqual([]);
+  expect(backend.received).toHaveLength(2);
+  expect(fake.commands).toEqual([]);
+
+  expect(
+    await chat.answer({
+      kind: "choice",
+      questionId: posted.question.id,
+      choice: "B",
+      confidence: "90",
+    }),
+  ).toEqual({ ok: true });
+  await chat.settled();
+  expect(chat.say("Can we review why?")).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(
+    backend.received
+      .slice(2)
+      .filter((t) =>
+        t.text.includes('The learner answered "Not now" to installing pytest.'),
+      ),
+  ).toHaveLength(1);
+  await units.close();
+});
+
+test("a finished unit recovers its withdrawn package card even when both transcript lines are lost", async () => {
+  const first = await start([
+    [{ text: "Teaching." }, ask([{ name: "pytest" }])],
+    [{ call: "ask_question", input: CHOICE }],
+    [{ text: "Right." }],
+  ]);
+  expect(await first.chat.ready()).toEqual({ ok: true });
+  await first.chat.settled();
+  const posted = first.chat.events().findLast((e) => e.type === "question");
+  if (posted?.type !== "question") throw new Error("no question");
+  expect(
+    await first.chat.answer({
+      kind: "choice",
+      questionId: posted.question.id,
+      choice: "A",
+      confidence: "90",
+    }),
+  ).toEqual({ ok: true });
+  await first.chat.settled();
+  const withdrawn = cards(first.chat.events());
+  expect(withdrawn).toEqual([
+    expect.objectContaining({ type: "packages_requested" }),
+    expect.objectContaining({
+      type: "packages_answered",
+      outcome: "withdrawn",
+    }),
+  ]);
+  await first.units.close();
+
+  const path = join(dir, "courses", COURSE, "sessions", "loops.1.jsonl");
+  const lines = (await readFile(path, "utf8")).split("\n");
+  await writeFile(
+    path,
+    lines
+      .filter(
+        (line) => line === "" || !JSON.parse(line).type.startsWith("packages_"),
+      )
+      .join("\n"),
+  );
+
+  const second = await start([]);
+  expect(cards(second.chat.events())).toEqual(withdrawn);
+  expect(second.backend.received).toEqual([]);
+  await second.units.close();
+});
+
+test("a retry after a failed package completion write saves the result without reinstalling", async () => {
+  const started = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<SandboxResult>();
+  const fake = fakeRun([held.promise]);
+  const { chat, root, units } = await start(
+    [
+      [{ text: "Teaching." }, ask([{ name: "pytest" }])],
+      [{ text: "Installed." }],
+    ],
+    (command) => {
+      started.resolve();
+      return fake.run(command);
+    },
+  );
+  const id = requestId(chat.events());
+  const [request] = cards(chat.events());
+  expect(await chat.installPackages(id)).toEqual({ ok: true });
+  await started.promise;
+
+  const path = join(dir, "courses", COURSE, "state.json");
+  const state = await readFile(path);
+  await rm(path);
+  await mkdir(path);
+  try {
+    held.resolve(ok(" + pytest==9.2.0"));
+    await chat.settled();
+    expect(cards(chat.events())).toEqual([
+      request,
+      { type: "packages_installing", requestId: id },
+      request,
+    ]);
+  } finally {
+    await rm(path, { recursive: true });
+    await writeFile(path, state);
+  }
+
+  expect(await chat.installPackages(id)).toEqual({ ok: true });
+  await chat.settled();
+  expect(fake.commands.map((command) => command.argv[1])).toEqual(["add"]);
+  expect(cards(chat.events()).at(-1)).toEqual({
+    type: "packages_answered",
+    requestId: id,
+    outcome: "installed",
+    output: " + pytest==9.2.0",
+  });
+  expect(
+    (await root.readState(COURSE)).units.loops?.packageRequest,
+  ).toBeUndefined();
+  await units.close();
 });

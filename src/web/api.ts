@@ -75,14 +75,6 @@ export async function post(
   return answer.ok ? undefined : answer.error;
 }
 
-/** Posts; the server's reason and the status when it refuses (0: not reached). */
-export function postStatus(
-  path: string,
-  body?: unknown,
-): Promise<Answer<undefined>> {
-  return request(path, undefined, postInit(body));
-}
-
 /**
  * Gets until the server answers. A server not reached, or one that failed
  * (5xx), is asked again after a wait that doubles from a second up to 15

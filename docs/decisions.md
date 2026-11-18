@@ -397,43 +397,39 @@ isolation options, kept every write inside `dir`:
   same in the tutor's sandbox (task 3.3). So the tutor is told to run
   `.venv/bin/python` (`tutor.md`, "Packages").
 - **Installing packages is the one command with network access** (the
-  user's pick, piece 14; the rest of this entry is the agent's, task
-  3.11). The tutor names the packages and the engine builds the commands
-  (`engine/packages.ts`), so no text of the tutor's runs with the network
-  open: reads are not confined, and a command that can read the machine
-  and reach the network can send anything out. Python through uv only;
-  another language's packages when a course needs them.
+  user's pick, piece 14). The tutor names the packages and the engine
+  builds the command (`engine/packages.ts`): reads are not confined, so
+  tutor code must not run with network access. Python through uv only;
+  add another language's package manager when a course needs it.
   - Names and version ranges are checked by regular expressions
     (`src/shared/packages.ts`): no URL, path, option, extra or marker.
   - The network: `registerCommandNetworkLists` under a random command id,
     `pypi.org` and `files.pythonhosted.org` exactly (the runtime matches a
     host whole). Seen: `pypi.org` tunnelled, `example.com` and
     `github.com` refused with 403, a command given no hosts refused all.
-  - The workspace is the tutor's, so the commands trust nothing in it
-    that runs. Seen with uv 0.13.7: `--no-build` alone still built the
-    workspace's own project, running a `setup.py` the tutor could write
-    (stopped then only by the read-only file system); with
-    `--no-install-project` too it is never built, nor for its metadata,
-    and a package with no wheel is refused. A `python` planted in `.venv`
-    ran when uv looked at the environment, so `.venv` is removed first
-    (a link only loses the link) and made again, its packages copied from
-    the cache. `--no-config` ignored an index in the tutor's
-    `pyproject.toml` and `uv.toml`; `--no-sources` ignores
-    `tool.uv.sources`; `--python` names the interpreter `pytools/.venv`
-    was made from, and none is downloaded.
-  - uv's cache is `<data root>/cache/uv`, outside the record, writable
-    only by the install, and copied from (`UV_LINK_MODE=copy`), so a file
-    the tutor changes in `.venv` does not change the cache.
+  - The installer uses an engine-owned uv project outside the workspace
+    (agent's choice). `--no-config` and `--no-sources` did not stop uv
+    reading the workspace project's dependencies; `--no-build` also does
+    not forbid all first-party and editable builds. No workspace
+    manifest, lockfile or environment participates in resolution. The
+    user chose to carry forward earlier roots only from transcripts that
+    record the request, approval and successful install.
+  - The installer parks the old environment without following links,
+    and restores it on failure. uv gets the pinned base Python, no
+    local builds, a fresh environment at the final path (entry-point
+    scripts use that path) and a fresh install-cache location. Copying
+    wheels prevents workspace edits from changing the cache.
   - A request is kept in the unit's position, so it survives a restart;
     one per course at a time, since installs share the workspace. An
     install under way is not waited for when the server stops, and its
-    request waits again. While it runs, the course's workspace is closed
-    to the tutors' writes and commands and to questions; Install is
-    refused while a question of the course is open.
-  - The outcome reaches the tutor as a note in the next header, in a
-    turn sent for it, skipped if a learner's message took the note
-    first; it is kept in memory, so a restart between the answer and
-    that turn loses it (the card still shows it).
+    request waits again. New questions and tutor mutations wait for the
+    course's install; a check it blocked is prompted again if still
+    waiting (the agent's choice).
+  - A terminal card is saved with the change to the unit's position.
+    Transcripts are not flushed; otherwise a crash could show controls
+    for a request that no longer exists. The tutor's notification is
+    still a note in memory. An open question gets no extra tutor turn
+    for an outcome: a normal reply or later feedback carries the note.
 - **The backup keeps the learner's workspace files** (the agent's choice,
   task 3.11): they are the learner's work, small, and the history undoes
   a tutor's overwrite. `.venv/`, `__pycache__/` and `.pytest_cache/` are
@@ -457,16 +453,12 @@ isolation options, kept every write inside `dir`:
   (`ls ~` empty), where mise installs `python` and `uv`, which were then
   not found, and it still let a command read `../state.json` with the
   data root in `/tmp`. Settle reads before the tutor gets web access.
-- **Artifacts (task 3.6, the agent's choices).** The route serves an
-  artifact under `ARTIFACT_POLICY` (`http/app.ts`), and the page frames it
-  with `sandbox="allow-scripts"`. Seen in Chromium 157 on `pnpm dev:fake`:
-  its scripts ran; `fetch` to the app and to the web, an image from the
-  web, `window.open`, and reading the page around it were all refused;
-  `frame-ancestors 'self'` let the app's page frame it under the sandbox.
-  CSP has no `navigate-to`, so the frame navigating itself away is stopped
-  by the page's `frame-src 'self'` (seen: "Framing 'https://example.com/'
-  violates ... frame-src 'self'"). `'unsafe-eval'` is allowed, so an aid
-  can plot a function the learner types; eval reaches no network.
+- **Artifacts.** The frame and response policy give the aid an opaque
+  origin and allow inline scripts. CSP has no `navigate-to`: the parent
+  page's `frame-src 'self'` stops an external navigation, but a direct
+  tab has no parent. The user chose inert text for direct loads, rather
+  than refusing them. `'unsafe-eval'` is allowed in the frame so an aid
+  can plot a function the learner types.
 - **WebRTC gets out of an artifact.** In the frame, an `RTCPeerConnection`
   given a public STUN server gathered a server-reflexive candidate: the
   request reached the server. CSP's `webrtc 'block'` is "Unrecognized" in
@@ -478,9 +470,10 @@ isolation options, kept every write inside `dir`:
   settles it. DNS prefetch from an artifact was not tried.
 - **Artifacts in the record.** Stored as the tutor gave them, numbered on
   from the highest number in `artifacts/`, and given their name by a hard
-  link, so a file there is never replaced. Refused while a question of its
-  own unit is open, not the course's: the help judge judges only that
-  unit's replies, and another unit's tutor can say anything in text too.
+  link, so a file there is never replaced. The engine refuses writes when
+  no safe number remains rather than repeating a number (agent's choice).
+  The question guard is per unit, not per course: the help judge sees only
+  that unit's replies, and another unit's tutor can say anything in text too.
   At most 100 KB: Haiku's two aids were 3.3 and 3.5 KB, and the limit
   catches a pasted library. A document that names an address on the web
   (`src`, `href`, CSS `url()`, `@import`) is refused with the address,
@@ -940,10 +933,11 @@ them are its tests.
   `\left(`, `\sqrt(x)`, `x^(2n)`, `x^-1` and a number with a leading zero.
 - **Reading**: `e` is Euler's number, `i` a variable, `\log` the natural
   logarithm (the parser's reading); decimals are exact; a comma always
-  separates values (`1,000` is two). Refused, with the reason: `a/bc`
-  (most people typing `1/2x` mean x/2, the parser reads 1/(2x)),
-  derivative notation (`dy/dx` would read as y/x), inequalities, points and
-  intervals, sums, integrals and limits.
+  separates values (`1,000` is two). Refused, with the reason: a product
+  after division (`1/2x`, `1/sin(x)y`), chained powers without grouping,
+  derivative notation, inequalities, points and intervals, sums, integrals
+  and limits. Undefined intermediate values are refused (the agent's
+  choice): SymPy can otherwise simplify `1/(1/0)` to `0`.
 - **Equality requires a symbolic proof** (the agent's choice). A zero
   simplified difference proves equality; sampling can only disprove it.
   Agreement leaves the result undecided for the grader. Six values in
@@ -969,14 +963,12 @@ them are its tests.
 - **"Undecided"** is a result beside equivalent, different and unparsable:
   the sides read, but the check could not settle them in time or could not
   evaluate them. The grader decides it, as it does an unparsable answer.
-- **Time**: 8 seconds for the comparison, each simplification cut off at 2
-  by an alarm, after which sample points may find a counterexample, otherwise
-  leaving it undecided. The alarm raises a
-  `BaseException`, which SymPy's `except Exception` does not catch. A
-  number above 10^100000 is refused when read: Python's exact power runs in
-  C, where no alarm stops it. In the engine's sandbox with nothing writable
-  a run takes 0.6 to 1.4 seconds, most of it starting SymPy; the engine
-  allows 12.
+- **Time**: an alarm bounds the whole eight-second comparison, including
+  sampling, and each simplification gets at most two seconds. The alarm
+  raises a `BaseException` so SymPy's `except Exception` does not catch
+  it. Exact arithmetic in C may not return to Python when the alarm fires;
+  very large literals are refused, and the engine enforces a separate
+  12-second process limit including startup and parsing.
 
 Math questions in the engine (task 3.5):
 
