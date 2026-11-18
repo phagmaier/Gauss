@@ -1220,6 +1220,43 @@ The judge's set and model (task 3.9), the agent's choices:
   question asked for the very function its teaching had written out in
   full, which "a new example" in `tutor.md` rules out.
 
+Revised as a whole for stage 3 (task 3.10), from runs on Sonnet 5.5 on a
+scratch data root: a coding course from intake, its unit seeded twice
+more after prompt fixes, a seeded chain-rule unit and a seeded visual one.
+The agent's choices:
+
+- **The kind of question follows from what the objective has the learner
+  do**: compute a result, a math question; write code, a code question;
+  argue or explain, a written one; recognise or choose, a choice. A choice
+  never stands in for the others, since it shows recognition, not that
+  the learner can produce the answer. Each objective in the runs got its
+  kind.
+- **A package request ends the reply, after the teaching.** Told to "say
+  what each is for, then end your reply", the tutor asked for pytest at
+  the start of a teaching turn and ended it there, with no teaching. Said
+  as "the last thing in your reply ... never in place of" the teaching,
+  the next run taught, then asked.
+- **The rule against copying sits in the Teach phase.** Under "Code
+  questions" it did not reach the teaching turn: Sonnet, like Haiku,
+  wrote out the function its first code question then asked for. In the
+  Teach phase, the next run taught the technique on letter pairs in a
+  word and asked for it on ids. An objective as narrow as one line, which
+  names its implementation ("... using zip"), leaves little else to teach.
+- **Artifacts are shown unasked** for what is seen or moved, with
+  examples. On a unit whose style note asked for a picture first, the
+  tutor opened its teaching with a secant slider and taught from it, with
+  no LaTeX in it and the opening block as given; on pair counting and the
+  chain rule it showed none, as the rule intends. Haiku was not retried.
+- **No test command for the learner**: a first code question told the
+  learner to run `python3 test_pairs.py`, which they do not have; the card
+  runs the tests. Not seen again after the prompt said so.
+- **Not seen in the runs**: scratch work in `$TMPDIR` and the learner's
+  files left alone (no detour came), and a dispute's outcome in a header.
+- **Left as they are**: feedback on a confident correct answer ran three
+  or four sentences, over the one or two asked; a written question asked
+  two things (why the most frequent pair, and what replaces it); one
+  first code question had no lead-in.
+
 **`unit-planner.md`**: one idea per objective, tested by "could a learner
 know one part and not the other", up to eight objectives rather than
 joining two. Of the wordings tried, the test with examples helped; a rule
@@ -1228,13 +1265,23 @@ one verb and one claim worked best (five of six single-idea objectives).
 A compound objective still slips through now and then, which "one thing
 per question" catches when questions are written. A length limit in
 `plan_unit` was rejected: a poor proxy for one idea, and long statements
-are normal in mathematics.
+are normal in mathematics. It is told the four kinds of check and that
+the verb names one (task 3.10): for a coding unit Sonnet wrote five of six
+objectives as "Write a function that ...". One was "Compute" with a list
+for its result, which the symbolic check would compare in any order
+(`tutor.md` now says a list whose order matters is not a math question),
+and one named its implementation ("using zip"); neither is addressed in
+`unit-planner.md`.
 
 **`planner.md`**: questions in rounds of at most two, counting every
 question in a message (the first run asked three under "Two quick
 questions"); a short unit or a narrow question is one unit, and a larger
-course is suggested, not proposed; it promises only what a chat tutor can
-do. The style note is 1 to 800 characters, required, so every card has the
+course is suggested, not proposed; it promises only what is built,
+listed in the prompt with what is not. With that list, the run's proposal
+promised Python exercises in files the learner edits, graded by tests,
+and a few choice questions. Coding exercises are promised in Python only
+(the agent's choice): packages install through uv, and no other
+language's tools were tried in the sandbox. The style note is 1 to 800 characters, required, so every card has the
 section (the mocks' notes run under 300; the cap stops a lecture posing as
 a note). The background note is required too, and in the third person,
 since the unit planner and the tutor read it as a description of someone

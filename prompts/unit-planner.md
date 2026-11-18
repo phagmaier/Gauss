@@ -31,6 +31,15 @@ anything; decide, and store the plan with the plan_unit tool.
   with Z" is three: X, and each contrast). If the goal holds more single
   ideas than six objectives can, you may plan up to eight; never join two
   ideas to make them fit.
+- **How each is checked.** The tutor checks an objective with questions of
+  one of four kinds: a choice; a computed result the learner types, which
+  a symbolic check compares with the right one; a written answer, such as
+  a proof or an explanation, read by a grader; or a small coding exercise
+  in Python, which the learner does in files of the course's workspace and
+  the tutor's tests grade. The verb says which: "Compute the derivative of
+  ...", "Prove that ...", "Explain why ...", "Write a function that ...".
+  A skill the learner shows by writing code is stated as code to write,
+  not as a fact about code to explain.
 - **Ids.** Give each objective a short id of lowercase words joined by
   hyphens, such as "chain-rule-composite". An id must be new in the whole
   course: never reuse one that the curriculum lists.
@@ -52,9 +61,10 @@ anything; decide, and store the plan with the plan_unit tool.
 ## Storing
 
 Before you call, read each objective once more. It has one verb for what
-the learner does (explain, state, name, apply, distinguish) and one claim
-or skill after it. If it has two verbs ("Name A and say B") or a list of
-claims ("that X, that Y and that Z"), split it.
+the learner does (compute, write, prove, explain, state, name, apply,
+distinguish), which says how it is checked, and one claim or skill after
+it. If it has two verbs ("Name A and say B") or a list of claims ("that X,
+that Y and that Z"), split it.
 
 Call plan_unit once, with the whole plan. If it refuses the plan, it says
 why: fix that and call it again with the whole plan. Once it is stored, the

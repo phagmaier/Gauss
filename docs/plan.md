@@ -35,32 +35,7 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.10 Prompts for the stage
-
-- Status: todo
-- Depends on: 3.5, 3.6, 3.7, 3.8, 3.11
-- Why: the tutor must pick the kind of question that fits an objective and
-  use its tools well; `planner.md` still promises only teaching in a chat
-  (explanations, choice and written questions).
-- Do: revise `tutor.md` as a whole for the stage: the kind of question for
-  an objective (an expression for a computation, code for a coding skill,
-  written for an argument); the workspace (starter code there, scratch work
-  in its temporary folder, the learner's files left alone); when to show an
-  artifact; a dispute's outcome reported in a header. Widen `planner.md`'s
-  promise to what is built: computations checked symbolically, coding
-  exercises in a workspace graded by tests, visual aids beside the chat,
-  and packages installed once the learner approves them. `unit-planner.md`
-  only if objectives need to say how they are checked. On Haiku the tutor
-  showed no artifact unasked, and wrote `$` math in one although
-  `tutor.md` says not to; it posted a code question before writing the
-  starter file, which was refused, and it taught the very solution its
-  first code question then asked for (`decisions.md`, "Prompts").
-- Done when: one run on Sonnet 5.5 (the result depends on the model's
-  judgment), kept short, on a scratch data root: an intake for a short
-  coding course whose proposal promises only what is built, then a segment
-  of its first unit with a code question that passes the posting checks;
-  and a segment of a computational unit with a math question. The
-  findings are in `decisions.md`, "Prompts"; `mise run check` passes.
+Every task of the stage is done; the stage waits for the user's check.
 
 ## Stage 5: mastery loop (built before stage 4)
 
