@@ -123,7 +123,7 @@ Built before 5.0. Each task is the user's note from the stage 3 check
   - testing out of a unit, which replaces the baseline: the unit's gate
     taken before it is taught, once the unit is planned (objectives exist
     only then), and how a partial result shortens the unit;
-  - the misconception record (`misconceptions.jsonl`) from detours
+  - the misconception record (`misconceptions.jsonl`) from detours and
     from what intuition questions show (3.19), and what reads it;
   - the learner profile (`profile.md`, `architecture.md` section 3): what
     it holds beside the background note, and who writes it when;
