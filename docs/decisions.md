@@ -28,6 +28,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits; math questions in the engine and on the page | Changing `mathcheck.py`, math questions, or what they accept |
 | Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept | Changing code questions or how their tests run |
 | Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides; how they are built; the judge's set and model | Building or changing disputes or `dispute-judge.md` |
+| Mastery loop | Stage 5's design: assessments in the unit's thread, retained and slipping, review, the gate, testing out, handoff notes and misconceptions, the profile, notes and export | Working a stage 5 task; touching assessments, status or the record's notes |
 | Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
 | Page behaviour | Rendering, performance, the pinned question, dimming, keys, retries | Touching `src/web/` |
@@ -606,7 +607,7 @@ stage 6.
   confident answer) had no "after a miss" condition.
 - **A miss** is a wrong answer or "I don't know", with help or without, and
   clears the correct answers before it; so a miss after a pass takes the
-  pass away (stage 5 may call that slipping). "I don't know" is never a
+  pass away, which is slipping ("Mastery loop"). "I don't know" is never a
   confident miss.
 - **Different questions** means what the learner saw differs: the prompt
   and the choices, spacing ignored. A written and a choice question are
@@ -1161,9 +1162,9 @@ Built in task 3.8; these are the agent's choices, open to change.
   objective with the dispute. A unit with no position and an objective
   neither passed nor overridden reads as a record left half-written, and
   opening it would teach it again from segment 1; the learner did move on
-  from the objective when the unit ended. Stage 5's slipping status may
-  replace this. In a unit in progress nothing is added: its closing card
-  offers the objective again.
+  from the objective when the unit ended. Slipping does not replace this
+  ("Mastery loop"): the objective never passed. In a unit in progress
+  nothing is added: its closing card offers the objective again.
 - **The check rules decide at their next point**: ending a detour closes
   the segment if nothing is left to ask (before, a miss could never leave
   nothing), an idle check closes, and the closing card is shown again;
@@ -1215,6 +1216,126 @@ The judge's set and model (task 3.9), the agent's choices:
   the prompt's three, and some name the repair (a $\delta$ capped at 1).
   The question is over and the learner has seen what graded it, so neither
   was tightened.
+
+## Mastery loop
+
+The design stage 5 is built to, from its breakdown (task 5.0, 2026-11-18).
+The choices are the agent's and open to change; those that change the
+experience go to the user as mocks in task 5.1, and their picks are
+recorded in "Product decisions" and "Page design". Nothing here is built
+until its task is done; `architecture.md` says what is.
+
+**Assessments**
+
+- **The unit's tutor asks them, in the unit's thread**: review, the gate
+  and the test before a unit are runs of questions kept in the unit's
+  position beside its phase. Rejected: a separate examiner session with a
+  prompt of its own, the first plan. It would be a second session in each
+  unit chat to resume, stop, close when idle and start fresh; a miss
+  needs teaching, which an examiner must not do, so the detour would go
+  to the tutor anyway; and the tutor that teaches the rest of a unit
+  should know what its test showed. The cost is a section of `tutor.md`
+  and questions posed from a long conversation.
+- **An answer's evidence names its assessment** (`review`, `gate`,
+  `test-out`), absent for a segment's check. Retained needs to know that
+  an answer was given cold, and log order alone cannot say.
+- **One question per objective; a miss opens a detour and one more
+  question**, then the assessment moves on whatever the answer. It is the
+  brief's "short refresher and a re-ask", for review too, so every miss
+  is worked through and none starts a run without end. The passing rule
+  is untouched: after a miss an objective needs two correct answers, so
+  the second comes from a later review, or from going over the unit's
+  objectives again.
+- **Fresh questions come from a list, not from memory**: the turn that
+  asks for a question lists those the evidence holds on its objective.
+  The same list stops a new tutor session repeating a check's problems.
+
+**Status**
+
+- **Retained** is passed with, since the last miss, an unassisted correct
+  answer in a review or a gate. A gate answer counts even on an objective
+  passed minutes before, as the brief has it; a test's answer does not,
+  being one answer with nothing before it, and review confirms it later.
+  Retention does not lapse with time: review keeps returning to retained
+  objectives, the longest unanswered first.
+- **Slipping** is an objective that had passed, was then missed, and has
+  not passed again. Only an assessment can miss a passed objective, so
+  the rule needs no mode. It is not "attempted", which would make a
+  finished unit read as half-written and teach it again; a finished unit
+  stays finished. An overturned pass in a finished unit still records an
+  override ("Disputes"): that objective never passed.
+- **A miss while testing out is not a miss afterwards.** It came before
+  any teaching, and counted, it would take away the one confident answer
+  that passes an objective never missed.
+
+**Review**
+
+- **When**: a unit not finished is opened in a new sitting (the chat is
+  new, or quiet for an hour), nothing waits on the learner, and the
+  course has had no review within the hour, so two units opened together
+  get one. An open question or a detour is picked up instead, and that
+  sitting has no review.
+- **Which**: slipping first, since the gap is known; then passed, the
+  least confident first, as the brief has it; then retained, the longest
+  unanswered first. Never an objective answered within the hour. Three,
+  over the whole course. No schedule of intervals: the order is the
+  spacing.
+
+**The gate**
+
+- **Offered on a card, not started by itself**: it is the long one (the
+  unit's objectives and three others), and an answer is colder the next
+  day. Skipping it is the brief's bypass, and leaves what was passed
+  passed. No record of the skip is kept beyond that.
+- **It asks only what is passed**: not the objectives the learner just
+  moved on without, and not those the test passed, which were cold when
+  asked. A miss on the unit's own objective goes to the closing card as
+  an objective not passed, by the steps that exist.
+- **No `close_unit` tool**: the engine ends a unit as it closes a segment
+  ("Session engine": the learner starts, the engine closes).
+
+**Testing out**
+
+- **Offered beside Start, taken before the unit is taught**, never partway
+  through. No feedback and no detour: a miss there means "teach me this".
+  An unsure correct answer gets its second question at once, so the
+  passing rule decides what is skipped.
+- **A segment is skipped whole or taught in part**; the plan is not
+  rewritten, so the outline still shows what the unit holds.
+
+**Handoff notes and misconceptions**
+
+- **Written by a one-shot call when a segment closes**, and when the unit
+  finishes. The brief's "end of a session" is no event: a server stops,
+  or an hour passes. A close is one, and a sitting that closed nothing
+  has little to hand on. Rejected: a `write_handoff` tool and a tool for
+  misconceptions, which rest on the tutor remembering to call them (the
+  feedback turn showed text lost when a turn had also to call a tool);
+  and a call when the idle session closes, which spends one on every
+  break.
+- **The same call finds misconceptions**, from detours and from the
+  discussion, where the intuition question is: it reads that stretch
+  anyway. Open or not is derived from the objective's status.
+- **The unit's own note goes into a new session's first turn**, not the
+  system prompt, which is sent with every request: a change to it at
+  each close would cost the running session its cache.
+
+**Profile, notes and export**
+
+- **The profile is free text the learner approves**: proposed by the
+  planner with the curriculum, edited on a page of its own. The index of
+  finished courses is derived from the record, not kept in the file.
+  Nothing is written to it without the learner seeing it, as with the
+  style note.
+- **Notes are Markdown from a one-shot call, rendered by the engine to a
+  standalone HTML file with MathML.** The brief's HTML notes are for
+  reading without the app; HTML written by the model would need the
+  artifact's frame and has no reliable math, and KaTeX's HTML output
+  needs its stylesheet and fonts. The transcript export uses the same
+  renderer.
+- **Style and curriculum changes are cards the tutor asks for**
+  (`propose_style`, `amend_curriculum`), answered as a package request
+  is. A started or finished unit cannot be dropped by a change.
 
 ## Prompts
 

@@ -37,7 +37,7 @@ the reason for using one language.
 ```
 Gauss/
   docs/                 brief.md, architecture.md, decisions.md, plan.md; prototype/ (the page mocks)
-  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md; later examiner.md, notes.md
+  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md; later handoff.md, notes.md
   src/
     shared/             zod schemas: record files, questions, events, route bodies
     server/
@@ -75,7 +75,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
 ```
 <data root>/
   .git/, .gitignore               the record's history: commits after each segment close, unit end and approval
-  profile.md                      (stage 5) learner profile; one-line index of finished courses
+  profile.md                      (stage 5) learner profile: free text the learner approves
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
   cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
@@ -85,12 +85,12 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts
     state.json                    a position for each unit in progress
     evidence.jsonl                append-only: answers, grades, confidence, overrides, disputes with their outcomes
-    misconceptions.jsonl          (stage 5) append-only: findings from detours
-    units/<unit-id>/handoff.md    (stage 5) written at the end of each session in the unit
+    misconceptions.jsonl          (stage 5) append-only: findings from detours and discussions
+    units/<unit-id>/handoff.md    (stage 5) the unit's handoff note, rewritten when a segment closes
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
     sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
-    notes/                        (stage 5) HTML notes per unit, cheat sheets
+    notes/                        (stage 5) each unit's notes: Markdown and the HTML file made from it
     packages/                     Gauss's uv project and lockfile; never taken from the workspace
     .package-install.tmp/         pending environment rollback or a committed install receipt
     workspace/                    the tutor's working folder: starter code, the learner's work and the installed .venv/
@@ -366,8 +366,9 @@ tab.
    first turn after a miss (above).
 
 Assessments (the unit gate, testing out of a unit, and the review questions
-that open a sitting; stage 5) reuse this flow with the examiner prompt in
-place of the tutor prompt, over objectives the engine selects.
+that open a sitting; stage 5) reuse this flow in the unit's thread, asked
+by the unit's tutor over objectives the engine selects (`decisions.md`,
+"Mastery loop").
 
 ## 5. Teaching tools
 
@@ -385,8 +386,6 @@ tool server, for Codex an MCP server.
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Refused while a question of the course is open or another request waits. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
 | `propose_style` | (stage 5) Proposes a change to `style.md`; applied only after the learner confirms |
-| `write_handoff` | (stage 5) Saves the handoff note |
-| `close_unit` | (stage 5) Refused unless the gate is passed or bypassed and notes exist |
 
 The learner starts segments and the engine closes them, so there is no tool
 for either; detours are opened by the engine and ended by the learner.
@@ -656,14 +655,17 @@ Kept as files in `prompts/`, each revised against real runs.
   their goals, the unit taught and its plan, "# The learner" with
   `background.md` (or a line saying none was recorded), then `style.md` (or
   a line saying to use `tutor.md`'s default style). Stage 5 adds the
-  profile, the last handoff note and open misconceptions.
+  profile, the handoff notes of the unit's prerequisites and the open
+  misconceptions on other units' objectives; the unit's own handoff note
+  goes into a new session's first turn.
 - `planner.md` drives the intake: its questions, asking to go ahead, and the
   proposal with its style and background notes.
 - `unit-planner.md` drives a unit's planning session.
 - `grader.md`, `help-judge.md` and `dispute-judge.md` are the one-shot
   calls of section 6.
-- Later: `examiner.md` for assessments (stage 5), `notes.md` for unit notes
-  and cheat sheets.
+- Later (stage 5): `handoff.md` for the call that writes handoff notes and
+  finds misconceptions, and `notes.md` for unit notes. Assessments get a
+  section of `tutor.md`, not a prompt of their own.
 
 Model text is Markdown with `$` math: `$...$` inline, `$$` for display,
 `\$` for a dollar sign; no `\(...\)`, HTML or images (section 10). Every
@@ -815,7 +817,7 @@ Stage scope is listed here; task status and user checks live in the
 | 1. Record and library | Data root, course creation by intake, review and approval, diagram, library |
 | 2. Session engine | Unit planning, phases, choice and rubric-graded questions, confidence, evidence, derived status, override, detours, help judging, resume, transcripts, math rendering, backup, "What I know", calibration |
 | 3. Checked grading and aids | SymPy check, workspace and code tests, installing a course's packages, artifacts pane, disputes, the tutor's built-in tools |
-| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style changes |
+| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style and curriculum changes |
 | 4. Sources (after 5) | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting |
 | 6. Later | Codex backend, self-test, cheat sheets, photo input; starred messages for the notes, if the generated notes miss what the learner wants kept |
 
