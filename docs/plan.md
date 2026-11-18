@@ -28,19 +28,6 @@ answers. The stage 3 check did not show one.
 Built before 5.0. Each task is the user's note from the stage 3 check
 (`decisions.md`, "Product decisions", 2026-11-18).
 
-### 3.20 The install card folds its command and output
-
-- Status: todo
-- The packages stay in view. The commands and their folder go behind a
-  closed "Show the command"; once answered, the output goes behind "Show
-  the output", closed after an install and open after a failed one. The
-  user needs the command and output only when something fails. A closed
-  disclosure keeps the command there to check before pressing Install.
-- Done when: `packages-card.test.ts` covers a waiting, an installed and a
-  failed card; in the browser on `pnpm dev:fake`, a waiting card shows the
-  packages with the command closed, and an installed card shows "Installed"
-  with the output closed; `mise run check` passes.
-
 ### 3.21 Hide the pinned question
 
 - Status: todo

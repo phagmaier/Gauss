@@ -1430,7 +1430,10 @@ was asked and rejected.
   counts answers to different questions).
 - **Packages are installed from a card** the tutor asks for: the packages,
   the command, Install and "Not now". Rejected: the learner running the
-  command in their own terminal from the tutor's instructions.
+  command in their own terminal from the tutor's instructions. The command
+  and the output are folded away, the output open only after a failed
+  install: the user needs them only when something fails (the user's note
+  from the stage 3 check, task 3.20).
 - **The thread has a line for each file the tutor writes** ("The tutor
   wrote `bpe.py`"); the agent's, as shown in piece 14.
 - **Words**: learner-facing copy says "segment", the brief's term; the extra

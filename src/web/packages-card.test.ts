@@ -63,3 +63,88 @@ test("a result that could not be saved offers only Retry saving", () => {
   expect(recorded).toContain("Added pytest");
   expect(recorded).not.toContain("<button");
 });
+
+/** The card's disclosures: each one's summary, whether it starts open, and what it holds. */
+function disclosures(markup: string) {
+  return [
+    ...markup.matchAll(
+      /<details([^>]*)><summary>([^<]*)<\/summary>([\s\S]*?)<\/details>/g,
+    ),
+  ].map(([, attributes = "", summary = "", body = ""]) => ({
+    summary,
+    open: /\sopen=/.test(attributes),
+    body,
+  }));
+}
+
+/** The card without its disclosures: what shows before anything is opened. */
+function shown(markup: string) {
+  return markup.replace(/<details[\s\S]*?<\/details>/g, "");
+}
+
+test("a waiting card shows the packages, with the command folded away until asked for", () => {
+  const markup = render({
+    ...card,
+    packages: [{ name: "pytest" }, { name: "numpy", version: ">=2" }],
+  });
+  expect(shown(markup)).toContain("<code>pytest</code>");
+  expect(shown(markup)).toContain("<code>numpy&gt;=2</code>");
+  expect(shown(markup)).not.toContain("uv add");
+  expect(disclosures(markup)).toEqual([
+    {
+      summary: "Show the command",
+      open: false,
+      body: expect.stringMatching(
+        /uv add pytest[\s\S]*<code>\/course\/workspace<\/code>/,
+      ),
+    },
+  ]);
+
+  const two = render({
+    ...card,
+    commands: [
+      ["uv", "add", "pytest"],
+      ["uv", "sync"],
+    ],
+  });
+  expect(disclosures(two).map((d) => d.summary)).toEqual(["Show the commands"]);
+});
+
+test("an answered card folds its output, unless the install failed", () => {
+  const installed = render({
+    ...card,
+    outcome: "installed",
+    output: "Installed 5 packages",
+  });
+  expect(shown(installed)).toContain("Installed");
+  expect(shown(installed)).toContain("<code>pytest</code>");
+  expect(shown(installed)).not.toContain("Installed 5 packages");
+  expect(disclosures(installed)).toEqual([
+    { summary: "Show the command", open: false, body: expect.any(String) },
+    {
+      summary: "Show the output",
+      open: false,
+      body: expect.stringContaining("Installed 5 packages"),
+    },
+  ]);
+
+  const failed = render({
+    ...card,
+    outcome: "failed",
+    output: "No solution found when resolving dependencies",
+  });
+  expect(shown(failed)).toContain("the install failed");
+  expect(disclosures(failed)).toEqual([
+    { summary: "Show the command", open: false, body: expect.any(String) },
+    {
+      summary: "Show the output",
+      open: true,
+      body: expect.stringContaining("No solution found"),
+    },
+  ]);
+
+  const declined = render({ ...card, outcome: "declined", output: "" });
+  expect(disclosures(declined).map((d) => d.summary)).toEqual([
+    "Show the command",
+  ]);
+});

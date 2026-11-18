@@ -2,6 +2,8 @@
 // docs/prototype/14-code-question.html): the packages, the commands Install
 // runs and where, Install and "Not now"; while the commands run, that they
 // do; once answered, a record of the outcome with the end of the output.
+// The commands and the output are folded away until asked for, the output
+// shown at once only when the install failed (task 3.20).
 
 import { useState } from "react";
 import { requirement } from "../shared/packages.ts";
@@ -44,11 +46,11 @@ export function PackagesCard(props: {
           ))}
         </span>
       </div>
-      <div className="qa-line">
-        <span className="k">
-          {item.commands.length === 1 ? "Command" : "Commands"}
-        </span>
-        <span className="qa-flaw">
+      <details className="why pk-more">
+        <summary>
+          Show the {item.commands.length === 1 ? "command" : "commands"}
+        </summary>
+        <div className="pk-cmds">
           {item.commands.map((words, i) => (
             <span key={words.join(" ")} className="pk-cmd">
               {i > 0 ? "then " : null}
@@ -56,8 +58,8 @@ export function PackagesCard(props: {
             </span>
           ))}
           in <code>{item.folder}</code>
-        </span>
-      </div>
+        </div>
+      </details>
     </>
   );
 
@@ -77,7 +79,10 @@ export function PackagesCard(props: {
         </div>
         {lines}
         {item.output === undefined || item.output === "" ? null : (
-          <div className="qa-out">{item.output}</div>
+          <details className="why pk-more" open={item.outcome === "failed"}>
+            <summary>Show the output</summary>
+            <div className="qa-out">{item.output}</div>
+          </details>
         )}
       </div>
     );

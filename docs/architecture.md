@@ -707,8 +707,10 @@ no automated tests.
   notice above the message box and the judge's call under each reply; a
   line for each file the tutor writes with its file tools, once a reply,
   with its path in the workspace (piece 14); a package request's card
-  (piece 14) with its packages, commands and folder, Install and "Not
-  now", then the outcome with the output's end. If saving fails, the
+  (piece 14) with its packages, Install and "Not now", and its commands
+  and folder under a closed "Show the command"; then the outcome, with
+  the output's end under "Show the output", open only when the install
+  failed. If saving fails, the
   card offers Retry saving without another install. The thread also has
   the detour marker and "Ready for another question", and the closing card.
   The top line shows the unit's position and its outline has Start fresh.

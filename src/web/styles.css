@@ -676,8 +676,14 @@ details.why summary:hover {
   font-weight: 600;
   font-size: 1.14em;
 }
-.pk .qa-line + .qa-line {
-  margin-top: 0.2em;
+/* the commands and the output, folded away until asked for (task 3.20) */
+.pk-more {
+  margin-top: 0.4em;
+}
+.pk-cmds {
+  margin-top: 0.3em;
+  color: var(--soft);
+  font-size: 0.9em;
 }
 .pk-btns {
   display: flex;
