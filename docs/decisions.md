@@ -1513,6 +1513,12 @@ will close.
   feedback failed.
 - A question withdrawn by an override whose `overridden` transcript line was
   lost still shows as open, and answering it is refused.
+- Stop during an artifact write can still open the aid when the write
+  finishes. A math field's Enter shortcut can submit while an input
+  method is still composing text.
+- Sandboxed commands and artifact scripts have no resource budgets for
+  peak disk, memory or CPU use. The command deadline and output cap do
+  not supply those budgets.
 - The help judge sees one exchange at a time (above).
 - The grader's grading of math answers the symbolic check does not settle
   has no hand-graded set: the grade set holds written answers only.

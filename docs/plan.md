@@ -35,7 +35,37 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-Every task of the stage is done; the stage waits for the user's check.
+### 3.15 Make symbolic grades trustworthy
+
+- Status: in progress
+- Done when: a stated precision or domain cannot be ignored by a definitive
+  symbolic grade; ordinary notation is interpreted correctly or deferred;
+  one rounded value cannot satisfy two distinct required values. Regression
+  cases have hand-worked outcomes and include an engine grade and fallback.
+
+### 3.16 Recover package installs before reuse
+
+- Status: in progress
+- Done when: reopening rolls back an interrupted install before the workspace
+  is used; a completed install whose outcome write failed is recovered
+  without rerunning uv; a live save failure offers Retry saving rather than
+  another approval. Exercise both restart cases and the card on the fake
+  backend.
+
+### 3.17 Include frozen grading inputs in code disputes
+
+- Status: in progress
+- Done when: the learner and dispute judge see the saved fixtures and
+  launchers used for the verdict, including whether a launcher was
+  executable, but not the tutor's solution; older answers still open.
+
+### 3.18 Require verified sandbox process-tree containment
+
+- Status: in progress
+- Done when: a platform without verified containment cannot run the
+  engine's commands or enable the tutor's shell tools. Linux still runs
+  the command and descendant checks; stage 4's read and network deferrals
+  are unchanged.
 
 ## Stage 5: mastery loop (built before stage 4)
 
