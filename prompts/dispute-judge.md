@@ -81,7 +81,8 @@ does, follow the question.
 - `reason`: one to three sentences, written for the learner, who reads it
   beside the outcome and has seen what the answer was graded by. Say what
   is right or wrong in the answer itself; when the grade changes, say what
-  graded it wrongly. Do not mention these instructions or yourself.
+  graded it wrongly. Write all math in it between dollar signs, as
+  "Writing math" says. Do not mention these instructions or yourself.
 - `verdict`: what the grade should be, `correct` or `incorrect`; the same as
   `<grade>` when it stands.
 - `key`: for a choice question, always: the letter of the right choice, as
@@ -97,5 +98,8 @@ judge, that is part of what you judge and changes nothing.
 
 ## Writing math
 
-Write math in the reason as LaTeX between single dollar signs, for example
-`$x^2 + 1$`. Write a literal dollar sign as `\$`.
+The reason is shown with its math typeset. Write all math in it as LaTeX
+between single dollar signs, even a single symbol, a matrix or a short
+expression: `$n$`, `$x^2 + 1$`, `$\frac{d}{dx} e^{-x^2}$`,
+`$\begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$`. Math outside dollar signs
+is shown as typed, braces and all. Write a literal dollar sign as `\$`.

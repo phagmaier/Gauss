@@ -81,8 +81,10 @@ export const GRADER_MODEL = "claude-sonnet-5-5";
 export const JUDGE_MODEL = "claude-haiku-5-5";
 
 /**
- * The dispute judge's model (task 3.8): the grader's until task 3.9 picks
- * one on a hand-judged set, since a dispute reviews the grader's work.
+ * The dispute judge's model (task 3.9; docs/decisions.md, "Disputes"). On
+ * the hand-judged set in `scripts/dispute-set.ts` it agreed with every hand
+ * outcome; so did Haiku 5.5, but a dispute reviews the grader's work, which
+ * is Sonnet's.
  */
 export const DISPUTE_MODEL = "claude-sonnet-5-5";
 

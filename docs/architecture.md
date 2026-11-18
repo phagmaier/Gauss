@@ -50,7 +50,7 @@ Gauss/
       sources/          (stage 4) ingestion, quote verification
     web/                React app: library, intake, course, session, "what I know"
   pytools/              sandbox_exec.py (Linux workload filter), mathcheck.py; (stage 4) convert.py
-  scripts/              dev-fake.ts (no model); grade-set.ts and judge-set.ts with their sets (real model)
+  scripts/              dev-fake.ts (no model); grade-set.ts, judge-set.ts and decide-set.ts with their sets (real model)
   mise.toml             pinned node, pnpm, python, uv
 ```
 
@@ -426,11 +426,12 @@ with sources (stage 4).
   help. A reply out of shape, a failed request or one past two minutes
   counts as help. It runs on Claude Haiku 5.5 (`JUDGE_MODEL`).
 - `GAUSS_CLAUDE_MODEL`, when set, replaces the grader's and the judges'
-  models. The grader's and the help judge's were chosen on hand-made sets:
-  re-run `node scripts/grade-set.ts --runs 2` when
-  `grader.md`, `WrittenGrade` or `GRADER_MODEL` changes, and
-  `node scripts/judge-set.ts --runs 2` when `help-judge.md`,
-  `HelpJudgment` or `JUDGE_MODEL` changes.
+  models. Each was chosen on a hand-made set: re-run
+  `node scripts/grade-set.ts --runs 2` when `grader.md`, `WrittenGrade` or
+  `GRADER_MODEL` changes, `node scripts/judge-set.ts --runs 2` when
+  `help-judge.md`, `HelpJudgment` or `JUDGE_MODEL` changes, and
+  `node scripts/decide-set.ts --runs 2` when `dispute-judge.md`,
+  `disputeRequest`, `DisputeJudgment` or `DISPUTE_MODEL` changes.
 - **The symbolic check** (`pytools/mathcheck.py`; its header says what it
   reads, writes and counts as equal, and `decisions.md`, "Symbolic check",
   why) takes the expected expression and the answer as JSON, LaTeX or
@@ -502,8 +503,7 @@ with sources (stage 4).
   letter, from which a choice's verdict must follow. A reply out of shape,
   a failed request or one past three minutes fails as the grader's does:
   nothing is recorded, the page shows why, and the learner can send the
-  dispute again. It runs on Claude Sonnet 5.5 (`DISPUTE_MODEL`), the
-  grader's model, not yet chosen on a hand-judged set.
+  dispute again. It runs on Claude Sonnet 5.5 (`DISPUTE_MODEL`).
 
 ## 7. Backends
 

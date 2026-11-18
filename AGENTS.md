@@ -156,6 +156,7 @@ mise activated, or `mise exec -- <command>`.
 | Run the app with no model, on seeded courses (http://localhost:4330) | `pnpm dev:fake` (`--empty` for no courses) |
 | Grade the grader's hand-graded set (real model) | `node scripts/grade-set.ts --runs 2` (`--model`, `--prompt`, `--only`) |
 | Judge the help judge's hand-judged set (real model) | `node scripts/judge-set.ts --runs 2` (same options) |
+| Decide the dispute judge's hand-judged set (real model) | `node scripts/decide-set.ts --runs 2` (same options) |
 
 | Variable | Effect |
 | --- | --- |

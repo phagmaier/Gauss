@@ -27,7 +27,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
 | Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits; math questions in the engine and on the page | Changing `mathcheck.py`, math questions, or what they accept |
 | Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept | Changing code questions or how their tests run |
-| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides; how they are built | Building or changing disputes |
+| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides; how they are built; the judge's set and model | Building or changing disputes or `dispute-judge.md` |
 | Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
 | Page behaviour | Rendering, performance, the pinned question, dimming, keys, retries | Touching `src/web/` |
@@ -1132,10 +1132,43 @@ Built in task 3.8; these are the agent's choices, open to change.
   otherwise directly, as only a chat writes the unit's position. A chat
   that opens later shows each dispute its thread lacks and tells the tutor
   then, so a dispute raised from "What I know" still reaches the tutor.
-- **The model is the grader's, Sonnet 5.5,** until task 3.9's set; a
-  dispute reviews the grader's work, so it should not be weaker.
 - **The scripted judge** keeps a grade unless the reason has "/change",
   and fails on "/fail" (`scripted.ts`'s header).
+
+The judge's set and model (task 3.9), the agent's choices:
+
+- **The set** (`scripts/dispute-set.ts`, run by `scripts/decide-set.ts`):
+  18 recorded answers with the learner's reasons, decided by hand. Eight
+  grades that should change: a wrong key, argued and merely claimed; a
+  wrong expected answer; a right answer in set notation the check could not
+  read; another antiderivative, off by a constant; a proof by another
+  method than the rubric's; a right proof disputed with effort alone; a
+  test asking for more than the question. A wrong key beside a wrong
+  choice, whose grade stands with the key corrected. Nine wrong answers
+  disputed to persuade: effort, a rubric called unfair, the error restated
+  with certainty, the missing case given in the reason only, a false
+  "another form", a physical argument, a test's tie rule called unfair
+  when it is the question's, instructions to the judge, and a grader's
+  flaw rightly refuted on an answer wrong elsewhere. Not in it: a learner
+  disputing a grade of correct.
+- **An outcome agrees** when its verdict, a choice's right letter, and
+  whether a math question's expected answer is corrected all match the
+  hand outcome. A corrected expected answer is compared by the reader.
+- **Sonnet 5.5 is the judge's model.** It agreed with every hand outcome in
+  three runs over two prompt versions, 3 to 6 seconds a call. Haiku 5.5
+  agreed in its one run too, so the set does not separate them. Sonnet was
+  kept: a dispute reviews the grader's Sonnet work, Haiku failed a correct
+  proof in plain words on the grader's set, and disputes are too rare for
+  cost to count. Opus was not tried. A set that separates the models would
+  need longer proofs.
+- **Math between dollar signs.** With the rule only at the prompt's end, 3
+  of 18 reasons wrote math as plain text (`e^{-x^2}`, a matrix as nested
+  brackets), which the page shows raw. Repeated in the `reason` field's
+  instructions, with a matrix among its examples: none of the next 36.
+- **Left as they are**: a few reasons run to five or six sentences, past
+  the prompt's three, and some name the repair (a $\delta$ capped at 1).
+  The question is over and the learner has seen what graded it, so neither
+  was tightened.
 
 ## Prompts
 

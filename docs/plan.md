@@ -35,27 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.9 The dispute judge
-
-- Status: todo
-- Depends on: 3.8
-- Why: a judge that gives way to a confident argument would make a dispute
-  a way to pass, and one that never does would make disputes pointless.
-- Do: a hand-judged set of disputes, run as the grader's and the help
-  judge's are: a wrong choice key, a correct proof graded incorrect, a
-  correct answer in another valid form, a test that rejects a right
-  solution, and wrong answers with persuasive reasons (effort, a claim
-  that the rubric was unfair, the error restated with confidence).
-  Revise `dispute-judge.md` until two runs agree with every outcome; choose
-  the model. In place: the drafted prompt, the request
-  (`disputeRequest` in `engine/dispute-judge.ts`), its reply
-  (`DisputeJudgment`) and `DISPUTE_MODEL`, Sonnet 5.5 for now; still to
-  write, a set and its runner, as `scripts/judge-set.ts` runs the help
-  judge's, and its command in `AGENTS.md`.
-- Done when: two runs agree with every hand outcome; the set, the results
-  and the model are in `decisions.md`, "Disputes". The check depends on
-  the model's judgment, so it may use Sonnet or Opus.
-
 ### 3.10 Prompts for the stage
 
 - Status: todo
