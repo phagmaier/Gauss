@@ -88,6 +88,80 @@ describe("a command", () => {
 
     expect(result.stdout).toBe(`${odd}|two|`);
   });
+
+  test("verifies that a failing command actually started", async () => {
+    const options = {
+      cwd: work,
+      writable: [],
+      timeLimitMs: 10_000,
+      verifyLaunch: true,
+    };
+    const missing = join(work, "missing");
+    await expect(sandbox.run({ ...options, argv: [missing] })).rejects.toThrow(
+      `Sandbox could not launch ${JSON.stringify(missing)}`,
+    );
+    await expect(
+      sandbox.run({
+        ...options,
+        argv: ["sh", "-c", "printf 'test failed' >&2; exit 1"],
+      }),
+    ).resolves.toEqual({
+      exitCode: 1,
+      timedOut: false,
+      stdout: "",
+      stderr: "test failed",
+      cut: false,
+    });
+  });
+
+  test("distinguishes a signal from an ordinary exit with the same number", async () => {
+    const options = {
+      cwd: work,
+      writable: [],
+      timeLimitMs: 10_000,
+      verifyLaunch: true,
+    };
+    await expect(
+      sandbox.run({ ...options, argv: ["sh", "-c", "kill -TERM $$"] }),
+    ).rejects.toThrow("was terminated by signal");
+    await expect(
+      sandbox.run({ ...options, argv: ["sh", "-c", "exit 143"] }),
+    ).resolves.toMatchObject({ exitCode: 143, timedOut: false });
+  });
+
+  test("cancels a running command and removes its temporary directory before rejecting", async () => {
+    const controller = new AbortController();
+    const reason = new Error("stopped");
+    const ready = join(work, "ready");
+    const result = sandbox
+      .run({
+        argv: [
+          "sh",
+          "-c",
+          'printf "%s" "$TMPDIR" > "$1"; exec sleep 30',
+          "sh",
+          ready,
+        ],
+        cwd: work,
+        writable: [work],
+        timeLimitMs: 10_000,
+        verifyLaunch: true,
+        signal: controller.signal,
+      })
+      .catch((error: unknown) => error);
+    let temporary: string;
+    try {
+      temporary = await vi.waitFor(async () => {
+        const path = await readFile(ready, "utf8");
+        expect(path).not.toBe("");
+        return path;
+      }, 2000);
+    } finally {
+      controller.abort(reason);
+      expect(await result).toBe(reason);
+    }
+    expect(existsSync(temporary)).toBe(false);
+  });
 });
 
 describe("writes", () => {

@@ -106,6 +106,11 @@ export const CodeFile = z.object({
 });
 export type CodeFile = z.infer<typeof CodeFile>;
 
+const SavedCodeInput = CodeFile.extend({
+  executable: z.literal(true).optional(),
+});
+export type SavedCodeInput = z.infer<typeof SavedCodeInput>;
+
 const files = z
   .array(WorkspacePath)
   .min(1)
@@ -119,6 +124,12 @@ const tests = z
   .max(5)
   .describe(
     "Code questions only: the test files, each with its path and whole text. Never write them in the workspace: the app keeps them and runs them, and the learner sees only their output, once the answer is graded.",
+  );
+const dependencies = z
+  .array(WorkspacePath)
+  .max(5)
+  .describe(
+    "Code questions only: paths of workspace files the tests or solution need besides the learner's files, such as helpers, data and launchers. Write these first as plain UTF-8 files. The app saves their contents and whether they are executable when you post, and runs use that copy. Do not list installed packages in `.venv`.",
   );
 const solution = z
   .array(CodeFile)
@@ -135,11 +146,12 @@ const command = z
     message: "The command's first word is the program to run.",
   })
   .describe(
-    'Code questions only: the command that runs the tests, as its words, with no shell: [".venv/bin/python", "-m", "pytest", "-q", "test_bpe.py"]. It runs in a folder that mirrors the workspace, with the files of `files` (the starter versions, your solution, or the learner\'s) and your test files at their paths, and the workspace\'s `.venv`. Exit status 0 means correct. It must finish within 60 seconds.',
+    'Code questions only: the command that runs the tests, as its words, with no shell: [".venv/bin/python", "-m", "pytest", "-q", "test_bpe.py"]. It runs in a folder containing only the learner files, tests, saved dependencies and a read-only link to the workspace\'s `.venv` if present. Exit status 0 means correct. It must finish within 60 seconds.',
   );
 
-/** The fields only a code question has. */
-const CODE_FIELDS = ["files", "tests", "solution", "command"] as const;
+/** The fields a code question must have. */
+const REQUIRED_CODE_FIELDS = ["files", "tests", "solution", "command"] as const;
+const CODE_FIELDS = [...REQUIRED_CODE_FIELDS, "dependencies"] as const;
 
 /**
  * What is wrong with a code question's files: the solution gives each file
@@ -147,7 +159,13 @@ const CODE_FIELDS = ["files", "tests", "solution", "command"] as const;
  * other.
  */
 function codeIssues(
-  q: { files: string[]; tests: CodeFile[]; solution: CodeFile[] },
+  q: {
+    files: string[];
+    tests: CodeFile[];
+    solution: CodeFile[];
+    dependencies?: string[] | undefined;
+    inputs?: CodeFile[] | undefined;
+  },
   issue: (path: string, message: string) => void,
 ): void {
   if (new Set(q.files).size !== q.files.length) {
@@ -172,10 +190,24 @@ function codeIssues(
     issue("tests", "A test file cannot be one of the files the learner edits.");
   }
   const all = [...new Set([...q.files, ...tested])];
+  const extra = q.dependencies ?? q.inputs?.map((f) => f.path) ?? [];
+  const extraField = q.inputs === undefined ? "dependencies" : "inputs";
+  if (new Set(extra).size !== extra.length) {
+    issue(extraField, "Each dependency has a path of its own.");
+  }
+  if (extra.some((path) => all.includes(path))) {
+    issue(
+      extraField,
+      "A dependency cannot be a file the learner edits or a test file.",
+    );
+  }
+  all.push(...extra);
   const nested = all.find((a) => all.some((b) => b.startsWith(`${a}/`)));
   if (nested !== undefined) {
     issue(
-      "tests",
+      extra.some((path) => path === nested || path.startsWith(`${nested}/`))
+        ? extraField
+        : "tests",
       `"${nested}" cannot be a file and a folder of files at once.`,
     );
   }
@@ -213,6 +245,7 @@ export const QuestionInput = z
     rubric: rubric.optional(),
     files: files.optional(),
     tests: tests.optional(),
+    dependencies: dependencies.optional(),
     solution: solution.optional(),
     command: command.optional(),
   })
@@ -220,7 +253,7 @@ export const QuestionInput = z
     const issue = (path: string, message: string) =>
       ctx.addIssue({ code: "custom", path: [path], message });
     if (q.kind === "code") {
-      for (const field of CODE_FIELDS) {
+      for (const field of REQUIRED_CODE_FIELDS) {
         if (q[field] === undefined) {
           issue(
             field,
@@ -241,13 +274,13 @@ export const QuestionInput = z
           );
         }
       }
-      const { files, tests, solution } = q;
+      const { files, tests, solution, dependencies } = q;
       if (
         files !== undefined &&
         tests !== undefined &&
         solution !== undefined
       ) {
-        codeIssues({ files, tests, solution }, issue);
+        codeIssues({ files, tests, solution, dependencies }, issue);
       }
       return;
     }
@@ -255,7 +288,7 @@ export const QuestionInput = z
     if (code !== undefined) {
       issue(
         code,
-        "Only a code question has files, tests, a solution and a command.",
+        "Only a code question has files, tests, a solution, a command and dependencies.",
       );
     }
     if (q.kind === "choice") {
@@ -346,7 +379,8 @@ export type WrittenQuestion = z.infer<typeof WrittenQuestion>;
 /**
  * A code question (task 3.7): the files the learner edits in the workspace,
  * and the grading material, kept here and never in the workspace: the
- * tests, the tutor's solution, and the command that runs the tests.
+ * tests, the tutor's solution, the captured dependency files and the command
+ * that runs the tests.
  */
 export const CodeQuestion = z
   .object({
@@ -356,6 +390,8 @@ export const CodeQuestion = z
     tests,
     solution,
     command,
+    /** Missing only from questions stored before dependency snapshots. */
+    inputs: z.array(SavedCodeInput).max(5).optional(),
   })
   .superRefine((q, ctx) =>
     codeIssues(q, (path, message) =>
@@ -387,8 +423,8 @@ export function postedQuestion({
 
 /**
  * A posted question as the page sees it: never the answer letter, the
- * expected expression, the rubric, or a code question's tests, solution or
- * command.
+ * expected expression, the rubric, or a code question's tests, solution,
+ * captured dependencies or command.
  */
 export const QuestionView = z.discriminatedUnion("kind", [
   z.object({

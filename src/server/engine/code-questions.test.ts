@@ -20,6 +20,8 @@ import {
 } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";
+import { nextStep } from "../../web/session.ts";
+import { emptyTimeline, reduce } from "../../web/timeline.ts";
 import { answerLine } from "../../web/what-i-know.ts";
 import {
   createFakeBackend,
@@ -30,7 +32,7 @@ import { openDataRoot } from "../record/data-root.ts";
 import { whatIKnow } from "../record/what-i-know.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import { givenOrder } from "./choice-order.ts";
-import { type CodeRunner, createCodeRunner } from "./code-run.ts";
+import { type CodeRunner, createCodeRunner, noCodeRunner } from "./code-run.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
@@ -111,14 +113,16 @@ const PROMPT =
   "Finish `most_common_pair(ids)` in `bpe.py`: the pair of neighbouring ids that occurs most often, the first one on a tie.";
 const CODE = {
   objective: "count-pairs",
-  kind: "code",
+  kind: "code" as const,
   prompt: PROMPT,
   files: ["bpe.py"],
   tests: [{ path: "test_bpe.py", content: TESTS }],
   solution: [{ path: "bpe.py", content: SOLUTION }],
   command: [".venv/bin/python", "-m", "pytest", "-q", "test_bpe.py"],
 };
-const QUESTION = (({ objective: _, ...rest }) => rest)(CODE);
+const QUESTION = (({ objective: _, ...rest }) => ({ ...rest, inputs: [] }))(
+  CODE,
+);
 
 const TEACH: FakeTurn = [{ text: "Count each pair." }];
 /** The tutor writes the starter file, then posts the question. */
@@ -142,14 +146,17 @@ async function seedCourse() {
 }
 
 /** The course, its unit planned, then the unit opened and in its check. */
-async function setUp(
-  script: FakeTurn[],
-  given: { codeRunner?: CodeRunner | null } = {},
-) {
+async function setUp(script: FakeTurn[], codeRunner: CodeRunner = runner) {
   const workspace = await seedCourse();
+  const opened = await openChat(script, codeRunner);
+  expect(await opened.chat.ready()).toEqual({ ok: true });
+  await opened.chat.settled();
+  return { ...opened, workspace };
+}
+
+async function openChat(script: FakeTurn[], codeRunner: CodeRunner) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const backend = createFakeBackend(script);
-  const codeRunner = given.codeRunner === undefined ? runner : given.codeRunner;
   const units = createUnitChats({
     backend,
     systemPrompt: "Tutor.",
@@ -161,7 +168,7 @@ async function setUp(
     }),
     grader: createGrader({ backend, systemPrompt: "Grader." }),
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
-    ...(codeRunner === null ? {} : { codeRunner }),
+    codeRunner,
     workspaceTools: true,
     now: () => new Date(NOW),
     timer: createFakeTimer(),
@@ -171,9 +178,7 @@ async function setUp(
   if (!opened.ok) throw new Error(opened.error);
   const chat = opened.chat;
   await chat.settled();
-  expect(await chat.ready()).toEqual({ ok: true });
-  await chat.settled();
-  return { backend, root, units, chat, workspace };
+  return { backend, root, units, chat };
 }
 
 function openQuestionId(chat: UnitChat): string {
@@ -433,7 +438,7 @@ test(
     const quick = createCodeRunner({ sandbox, timeLimitMs: 1500 });
     const { root, chat, workspace } = await setUp(
       [TEACH, ask(CODE), [{ text: "The loop never ends." }]],
-      { codeRunner: quick },
+      quick,
     );
     const LOOPS = "def most_common_pair(ids):\n    while True:\n        pass\n";
     await edit(workspace, LOOPS);
@@ -502,13 +507,133 @@ test(
 test(
   "without the sandbox a code question is refused, saying to ask another kind",
   async () => {
-    const { backend } = await setUp([TEACH, ask(CODE)], { codeRunner: null });
+    const { backend } = await setUp([TEACH, ask(CODE)], noCodeRunner);
 
     const call = backend.calls.find((c) => c.name === "ask_question");
     expect(call?.result).toEqual({
       status: "refused",
       text: "Code questions need the sandbox that runs their tests, and it does not run here. Ask another kind of question.",
     });
+  },
+  RUNS_MS,
+);
+
+test("Stop cancels code preflight without publishing the question", async () => {
+  await seedCourse();
+  const started = Promise.withResolvers<AbortSignal | undefined>();
+  const held = Promise.withResolvers<{ question: typeof QUESTION }>();
+  const { chat, root, units } = await openChat([TEACH, ask(CODE)], {
+    ...runner,
+    check(_question, _workspace, _dependencies, signal) {
+      signal?.addEventListener(
+        "abort",
+        () => held.resolve({ question: QUESTION }),
+        { once: true },
+      );
+      started.resolve(signal);
+      return held.promise;
+    },
+  });
+  try {
+    expect(await chat.ready()).toEqual({ ok: true });
+    const signal = await started.promise;
+    await chat.interrupt();
+    expect(signal?.aborted).toBe(true);
+    await chat.settled();
+    expect(chat.events().filter((e) => e.type === "question")).toEqual([]);
+    expect(
+      (await root.readState(COURSE)).units.bpe?.openQuestion,
+    ).toBeUndefined();
+  } finally {
+    held.resolve({ question: QUESTION });
+    await units.close();
+  }
+});
+
+test(
+  "an open code question cannot accept a new submission without a sandbox",
+  async () => {
+    const old = await setUp([TEACH, ask(CODE)]);
+    const questionId = openQuestionId(old.chat);
+    await old.units.close();
+    const { chat, root, units } = await openChat([], noCodeRunner);
+    try {
+      expect(
+        await chat.answer({ kind: "code", questionId, confidence: "90" }),
+      ).toMatchObject({ ok: false, error: expect.stringContaining("sandbox") });
+      expect(
+        (await root.readState(COURSE)).units.bpe?.openQuestion?.answer,
+      ).toBeUndefined();
+      expect(await chat.override()).toEqual({ ok: true });
+      expect(await root.readEvidence(COURSE)).toEqual([
+        { kind: "override", recordedAt: NOW, objectives: ["count-pairs"] },
+      ]);
+    } finally {
+      await units.close();
+    }
+  },
+  RUNS_MS,
+);
+
+test(
+  "shutdown stops grading; an infrastructure failure after reopen allows moving on",
+  async () => {
+    const started = Promise.withResolvers<AbortSignal | undefined>();
+    const lateMiss = {
+      result: "failed",
+      exitCode: 1,
+      output: "Assertion failed.",
+    } as const;
+    const held = Promise.withResolvers<typeof lateMiss>();
+    const old = await setUp([TEACH, ask(CODE)], {
+      ...runner,
+      run(_question, _files, _workspace, signal) {
+        signal?.addEventListener("abort", () => held.resolve(lateMiss), {
+          once: true,
+        });
+        started.resolve(signal);
+        return held.promise;
+      },
+    });
+    const questionId = openQuestionId(old.chat);
+    const submission = { kind: "code", questionId, confidence: "90" } as const;
+    expect(await old.chat.answer(submission)).toEqual({ ok: true });
+    const signal = await started.promise;
+    const closed = old.units.close();
+    try {
+      expect(signal?.aborted).toBe(true);
+      await closed;
+      expect(await old.root.readEvidence(COURSE)).toEqual([]);
+      expect(
+        (await old.root.readState(COURSE)).units.bpe?.openQuestion?.answer,
+      ).toMatchObject(submission);
+    } finally {
+      held.resolve(lateMiss);
+      await closed;
+    }
+
+    const { chat, root, units } = await openChat([], noCodeRunner);
+    try {
+      expect(chat.events().at(-1)).toMatchObject({
+        type: "grading_failed",
+        questionId,
+        error: expect.stringContaining("sandbox"),
+      });
+      const page = chat
+        .events()
+        .reduce(
+          (state, event, index) =>
+            reduce(state, { type: "event", index, event }),
+          emptyTimeline,
+        );
+      expect(nextStep(page)).toBe("move-on");
+      expect(await chat.override()).toEqual({ ok: true });
+      expect(await root.readEvidence(COURSE)).toEqual([
+        { kind: "override", recordedAt: NOW, objectives: ["count-pairs"] },
+      ]);
+    } finally {
+      await units.close();
+    }
   },
   RUNS_MS,
 );

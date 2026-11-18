@@ -1,10 +1,10 @@
-// A code question's tests as the engine runs them (task 3.7): in a folder
-// that mirrors the workspace, in the real sandbox, so these tests need what
-// the sandbox needs and fail where it cannot run. The tests run on the
-// project's own pytest, in `pytools/.venv`, which a workspace's `.venv`
-// links to here as an installed environment would be there.
+// A code question's tests as the engine runs them (task 3.7): in their own
+// exercise folder, in the real sandbox, so these tests fail where the
+// sandbox cannot run. The workspace's `.venv` links to `pytools/.venv` to
+// run the project's own pytest.
 
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readdir,
@@ -23,7 +23,7 @@ import {
   expect,
   test,
 } from "vitest";
-import type { CodeQuestion } from "../../shared/question.ts";
+import { type CodeAnswer, CodeQuestion } from "../../shared/question.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import {
   type CodeRunner,
@@ -69,7 +69,7 @@ def most_common_pair(ids):
         counts[pair] = counts.get(pair, 0) + 1
     return max(counts, key=counts.get)
 `;
-/** A helper the solution imports, which stays in the workspace. */
+/** A workspace helper the solution imports. */
 const HELPER = `def pairs(ids):
     return list(zip(ids, ids[1:]))
 `;
@@ -92,23 +92,53 @@ const QUESTION: CodeQuestion = {
   solution: [{ path: "bpe.py", content: SOLUTION }],
   command: [".venv/bin/python", "-m", "pytest", "-q", "test_bpe.py"],
 };
+const DEPENDENCIES = ["counting.py"];
+const EXERCISE = {
+  ...QUESTION,
+  inputs: [{ path: "counting.py", content: HELPER }],
+};
+
+function submission(files = QUESTION.solution): CodeAnswer {
+  return { kind: "code", questionId: "q1", confidence: "75", files };
+}
 
 async function write(path: string, content: string) {
   await mkdir(dirname(join(workspace, path)), { recursive: true });
   await writeFile(join(workspace, path), content);
 }
 
-test("the tests pass on the solution, through the workspace's environment and with the workspace's other files, and leave the workspace as it was", async () => {
+test("a published exercise keeps its helper and executable launcher when their sources change", async () => {
   await write("bpe.py", STARTER);
   await write("counting.py", HELPER);
+  const launcher =
+    "#!/bin/sh\nexec .venv/bin/python -m pytest -q test_bpe.py\n";
+  await write("run-tests.sh", launcher);
+  await chmod(join(workspace, "run-tests.sh"), 0o755);
   // The caches a run of pytest in the workspace leaves, as the tutor's might.
   await mkdir(join(workspace, ".pytest_cache"));
   await mkdir(join(workspace, "__pycache__"));
 
-  const ran = await runner.run(QUESTION, QUESTION.solution, workspace);
+  const checked = await runner.check(
+    { ...QUESTION, command: ["./run-tests.sh"] },
+    workspace,
+    [...DEPENDENCIES, "run-tests.sh"],
+  );
+  if ("refused" in checked) throw new Error(checked.refused);
+  const question = CodeQuestion.parse(
+    JSON.parse(JSON.stringify(checked.question)),
+  );
+  expect(question.inputs).toEqual([
+    { path: "counting.py", content: HELPER },
+    { path: "run-tests.sh", content: launcher, executable: true },
+  ]);
+  const changed = "def pairs(ids):\n    return []\n";
+  await write("counting.py", changed);
+  await chmod(join(workspace, "run-tests.sh"), 0o644);
 
-  expect(ran).toMatchObject({ result: "passed", exitCode: 0 });
-  expect(ran.result === "passed" && ran.output).toMatch(/^2 passed in /m);
+  const graded = await gradeCode(runner, question, submission(), workspace);
+
+  expect(graded).toMatchObject({ ok: true, verdict: "correct" });
+  expect(graded.ok && graded.output).toMatch(/^2 passed in /m);
   // Nothing of the run is left in the workspace: no test file, no caches.
   expect((await readdir(workspace)).sort()).toEqual([
     ".pytest_cache",
@@ -116,29 +146,25 @@ test("the tests pass on the solution, through the workspace's environment and wi
     "__pycache__",
     "bpe.py",
     "counting.py",
+    "run-tests.sh",
   ]);
   expect(await readdir(join(workspace, "__pycache__"))).toEqual([]);
+  expect(await readFile(join(workspace, "counting.py"), "utf8")).toBe(changed);
 });
 
 test("a failing run is a miss whose output's end says which test failed and why", async () => {
-  await write("counting.py", HELPER);
-  const answer = {
-    kind: "code" as const,
-    questionId: "q1",
-    confidence: "75" as const,
-    // Keeps the last of the tied pairs.
-    files: [
-      {
-        path: "bpe.py",
-        content: SOLUTION.replace(
-          "return max(counts, key=counts.get)",
-          "return max(reversed(counts), key=counts.get)",
-        ),
-      },
-    ],
-  };
+  // Keeps the last of the tied pairs.
+  const answer = submission([
+    {
+      path: "bpe.py",
+      content: SOLUTION.replace(
+        "return max(counts, key=counts.get)",
+        "return max(reversed(counts), key=counts.get)",
+      ),
+    },
+  ]);
 
-  const graded = await gradeCode(runner, QUESTION, answer, workspace);
+  const graded = await gradeCode(runner, EXERCISE, answer, workspace);
 
   expect(graded).toMatchObject({ ok: true, verdict: "incorrect" });
   const output = graded.ok ? graded.output : "";
@@ -150,9 +176,12 @@ test("a failing run is a miss whose output's end says which test failed and why"
 test("a question is refused when its tests pass on the starter files, and when they fail on the solution, with the output", async () => {
   await write("counting.py", HELPER);
   await write("bpe.py", SOLUTION);
-  const passes = await runner.check(QUESTION, workspace);
-  expect(passes?.refused).toContain(
-    "The tests pass on the starter files in the workspace",
+  const passes = await runner.check(QUESTION, workspace, DEPENDENCIES);
+  expect(passes).toHaveProperty(
+    "refused",
+    expect.stringContaining(
+      "The tests pass on the starter files in the workspace",
+    ),
   );
 
   await write("bpe.py", STARTER);
@@ -165,38 +194,93 @@ test("a question is refused when its tests pass on the starter files, and when t
       },
     ],
   };
-  const fails = await runner.check(wrong, workspace);
-  expect(fails?.refused).toContain("The tests fail on your solution");
-  expect(fails?.refused).toContain(
-    "FAILED test_bpe.py::test_tie_takes_the_first",
+  const fails = await runner.check(wrong, workspace, DEPENDENCIES);
+  expect(fails).toHaveProperty(
+    "refused",
+    expect.stringContaining("The tests fail on your solution"),
   );
-
-  expect(await runner.check(QUESTION, workspace)).toBeUndefined();
+  expect(fails).toHaveProperty(
+    "refused",
+    expect.stringContaining("FAILED test_bpe.py::test_tie_takes_the_first"),
+  );
 });
 
 test("a question whose starter file is not in the workspace is refused, saying to write it first", async () => {
-  const refused = await runner.check(QUESTION, workspace);
-  expect(refused?.refused).toBe(
+  const refused = await runner.check(QUESTION, workspace, DEPENDENCIES);
+  expect(refused).toHaveProperty(
+    "refused",
     '"bpe.py" is not in the workspace. Write its starter version there with your Write tool first, then post the question.',
   );
 });
 
-test("a run past its time limit is stopped, and its grading fails with the output's end", async () => {
-  const quick = createCodeRunner({ sandbox, timeLimitMs: 1500 });
-  const answer = {
-    kind: "code" as const,
-    questionId: "q1",
-    confidence: "50" as const,
-    files: [
+test("a missing declared dependency prevents publication", async () => {
+  await write("bpe.py", STARTER);
+  expect(await runner.check(QUESTION, workspace, DEPENDENCIES)).toHaveProperty(
+    "refused",
+    expect.stringContaining(
+      'Dependency "counting.py" is not in the workspace.',
+    ),
+  );
+});
+
+test("imports cannot fall back to files left undeclared in the workspace", async () => {
+  await write("bpe.py", STARTER);
+  await write("counting.py", HELPER);
+
+  expect(await runner.check(QUESTION, workspace, [])).toHaveProperty(
+    "refused",
+    expect.stringContaining("ModuleNotFoundError: No module named 'counting'"),
+  );
+});
+
+test("an old open question with no snapshot cannot be graded", async () => {
+  const legacy = CodeQuestion.parse(QUESTION);
+  const graded = await gradeCode(runner, legacy, submission(), workspace);
+  expect(graded).toMatchObject({
+    ok: false,
+    error: expect.stringContaining("predates saved exercise inputs"),
+  });
+});
+
+test("grading fails without a verdict when the published command cannot launch", async () => {
+  await write("bpe.py", STARTER);
+  const standalone = {
+    ...QUESTION,
+    solution: [
       {
         path: "bpe.py",
-        content:
-          "print('counting', flush=True)\n\ndef most_common_pair(ids):\n    while True:\n        pass\n",
+        content: SOLUTION.replace("from counting import pairs", HELPER),
       },
     ],
   };
+  const checked = await runner.check(standalone, workspace, []);
+  if ("refused" in checked) throw new Error(checked.refused);
+  expect(checked.question.inputs).toEqual([]);
+  await rm(join(workspace, ".venv"));
 
-  const graded = await gradeCode(quick, QUESTION, answer, workspace);
+  const graded = await gradeCode(
+    runner,
+    checked.question,
+    submission(standalone.solution),
+    workspace,
+  );
+  expect(graded).toEqual({
+    ok: false,
+    error: expect.stringContaining("The tests could not be run:"),
+  });
+});
+
+test("a run past its time limit is stopped, and its grading fails with the output's end", async () => {
+  const quick = createCodeRunner({ sandbox, timeLimitMs: 1500 });
+  const answer = submission([
+    {
+      path: "bpe.py",
+      content:
+        "print('counting', flush=True)\n\ndef most_common_pair(ids):\n    while True:\n        pass\n",
+    },
+  ]);
+
+  const graded = await gradeCode(quick, EXERCISE, answer, workspace);
 
   expect(graded.ok).toBe(false);
   if (graded.ok) return;
@@ -206,7 +290,7 @@ test("a run past its time limit is stopped, and its grading fails with the outpu
   );
 });
 
-test("files in subfolders are written in folders of their own, beside links to the workspace's other entries", async () => {
+test("nested learner files, tests and dependency files retain their paths", async () => {
   await write("src/bpe.py", STARTER);
   await write("src/counting.py", HELPER);
   await write("data/ids.txt", "1 2 3\n");
@@ -231,7 +315,18 @@ def test_reads_the_data():
     command: [".venv/bin/python", "-m", "pytest", "-q", "tests"],
   };
 
-  expect(await runner.check(nested, workspace)).toBeUndefined();
+  const checked = await runner.check(nested, workspace, [
+    "src/counting.py",
+    "data/ids.txt",
+  ]);
+  expect(checked).toMatchObject({
+    question: {
+      inputs: [
+        { path: "src/counting.py", content: HELPER },
+        { path: "data/ids.txt", content: "1 2 3\n" },
+      ],
+    },
+  });
   expect((await readdir(join(workspace, "src"))).sort()).toEqual([
     "bpe.py",
     "counting.py",
@@ -246,6 +341,7 @@ test("the learner's files are read as plain text files inside the workspace, and
     Buffer.from([0x63, 0xe9, 0x0a]),
   );
   await symlink(join(workspace, "bpe.py"), join(workspace, "link.py"));
+  await symlink(workspace, join(workspace, "alias"));
 
   expect(await readWorkspaceFiles(workspace, ["bpe.py"])).toEqual({
     files: [{ path: "bpe.py", content: STARTER }],
@@ -266,27 +362,32 @@ test("the learner's files are read as plain text files inside the workspace, and
     path: "link.py",
     problem: "not-a-file",
   });
+  expect(await readWorkspaceFiles(workspace, ["alias/bpe.py"])).toEqual({
+    path: "alias/bpe.py",
+    problem: "not-a-file",
+  });
 });
 
-test("a run cannot change the workspace through the links to it", async () => {
+test("a run cannot write through the environment link or change a workspace dependency", async () => {
   await write("counting.py", HELPER);
   const sneaky: CodeQuestion = {
-    ...QUESTION,
+    ...EXERCISE,
     tests: [
       {
         path: "test_bpe.py",
         content: `import errno
 
 
-def test_the_links_are_read_only():
-    for path in ("counting.py", ".venv/planted.txt"):
-        try:
-            with open(path, "w") as f:
-                f.write("changed")
-        except OSError as error:
-            assert error.errno in (errno.EROFS, errno.EACCES, errno.EPERM)
-        else:
-            raise AssertionError(f"wrote {path} through the link")
+def test_the_workspace_is_unchanged():
+    with open("counting.py", "w") as f:
+        f.write("changed")
+    try:
+        with open(".venv/planted.txt", "w") as f:
+            f.write("changed")
+    except OSError as error:
+        assert error.errno in (errno.EROFS, errno.EACCES, errno.EPERM)
+    else:
+        raise AssertionError("wrote through the environment link")
 `,
       },
     ],

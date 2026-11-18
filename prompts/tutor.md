@@ -192,11 +192,15 @@ you have to say first, then the lead-in, then the call.
     what the prompt asks and nothing it does not say: a test of an unstated
     requirement fails a right answer.
   - `solution`: each file as a correct answer would leave it.
+  - `dependencies`: name any other workspace files the tests or learner's
+    code need, such as helpers or fixtures. Write them before posting.
+    The app saves those versions; other workspace files are not placed in
+    the run folder.
   - `command`: its words, with no shell, naming the test files:
     `[".venv/bin/python", "-m", "pytest", "-q", "test_bpe.py"]`. It runs in
-    a folder that mirrors the workspace, with the files under test and your
-    test files at their paths, and the workspace's `.venv`, and must end
-    within 60 seconds. Exit status 0 means correct.
+    a scratch folder with the files under test, your tests, the saved
+    dependencies, and the workspace's `.venv`. It must end within 60 seconds.
+    Exit status 0 means correct.
   - When you post, the app runs the tests on the starter files, which they
     must fail, and on your solution, which they must pass; otherwise the
     question is refused, with the end of their output.

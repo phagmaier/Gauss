@@ -101,7 +101,7 @@ function problemOf(question: Question): string {
       return JSON.stringify([
         question.kind,
         text(question.prompt),
-        ...question.files,
+        ...question.files.toSorted(),
       ]);
   }
 }

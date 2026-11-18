@@ -543,6 +543,9 @@ function createUnitChat(
   /** The code questions whose kept answer's tests have run past their limit once. */
   const timedOut = new Set<string>();
   const code = options.codeRunner ?? noCodeRunner;
+  let codePosting:
+    | { stop: AbortController; done: Promise<unknown> }
+    | undefined;
 
   // --- Opening ---------------------------------------------------------------
 
@@ -1106,9 +1109,18 @@ function createUnitChat(
     } else if (answer.kind === "code" && question.kind === "code") {
       const workspace = folder;
       if (workspace === undefined) throw new Error("The unit is not open.");
-      run = async () => {
-        const graded = await gradeCode(code, question, answer, workspace);
-        if (graded.ok || graded.timedOut === undefined) return graded;
+      run = async (signal) => {
+        const graded = await gradeCode(
+          code,
+          question,
+          answer,
+          workspace,
+          signal,
+        );
+        if (graded.ok) return graded;
+        if (graded.timedOut === undefined) {
+          return { ok: false, error: graded.error, canMoveOn: true };
+        }
         // Past the limit a second time on the same files: the code, not a
         // slow moment, kept the tests from ending, so it is a miss.
         if (timedOut.has(open.id)) {
@@ -1162,7 +1174,7 @@ function createUnitChat(
   const questionBoard = {
     post(question: QuestionInput) {
       const stops = stopCount;
-      const stopped = () => stopCount !== stops;
+      const stopped = () => closing || stopCount !== stops;
       return exclusive(
         async (): Promise<
           | { id: string; number: number; question: Question }
@@ -1236,13 +1248,25 @@ function createUnitChat(
               retry: () => retryAfterInstall(r, position, since, stopped),
             },
             async () => {
+              let checked = posted;
               if (posted.kind === "code") {
-                // Inside the course's queue, so that no write of the
-                // tutor's can change the starter files between the check
-                // and the post.
-                const unfit = await code.check(posted, workspace);
-                if (unfit !== undefined) return unfit;
-                if (stopped()) return QUESTION_STOPPED;
+                // Hold the course queue until both runs and their cleanup finish.
+                const stop = new AbortController();
+                const done = code.check(
+                  posted,
+                  workspace,
+                  question.dependencies ?? [],
+                  stop.signal,
+                );
+                codePosting = { stop, done };
+                try {
+                  const result = await done;
+                  if (stopped()) return QUESTION_STOPPED;
+                  if ("refused" in result) return result;
+                  checked = result.question;
+                } finally {
+                  codePosting = undefined;
+                }
               }
               const open: OpenQuestion = {
                 id: randomUUID(),
@@ -1251,9 +1275,9 @@ function createUnitChat(
                 postedAt: now().toISOString(),
                 // Shown and stored in the engine's order (task 2.17).
                 question:
-                  posted.kind === "choice"
-                    ? reorder(posted, order(posted.choices.length))
-                    : posted,
+                  checked.kind === "choice"
+                    ? reorder(checked, order(checked.choices.length))
+                    : checked,
               };
               await r.record.move({ ...position, openQuestion: open });
               log.emit({ type: "question", question: view(open, workspace) });
@@ -1593,12 +1617,23 @@ function createUnitChat(
             };
           }
           let submission: AnswerSubmission;
-          if (sent.kind !== "code") submission = sent;
-          else {
+          if (sent.kind !== "code") {
+            submission = sent;
+          } else {
+            if (question.kind !== "code")
+              throw new Error("Expected a code question.");
+            const unavailable =
+              code.unavailable ??
+              (question.inputs === undefined
+                ? "This question predates saved exercise inputs."
+                : undefined);
+            if (unavailable !== undefined) {
+              return refused(
+                `${unavailable} Nothing was run or recorded. Move on without the check.`,
+              );
+            }
             // The files as they are now are the answer, final once sent.
-            const read = await readFiles(
-              question.kind === "code" ? question.files : [],
-            );
+            const read = await readFiles(question.files);
             if (typeof read === "string") return refused(read);
             submission = { ...sent, files: read };
           }
@@ -1708,9 +1743,11 @@ function createUnitChat(
         if (phase !== "discuss" && phase !== "check") {
           return refused(NOT_NOW.override[phase]);
         }
-        // A written answer is final once sent: moving on would withdraw its
-        // question, and the answer with it, also after a failed grading.
-        if (openQuestion?.answer !== undefined) {
+        // Only an infrastructure failure lets a kept answer be withdrawn.
+        if (
+          openQuestion?.answer !== undefined &&
+          !r.agents.canMoveOn(openQuestion.id)
+        ) {
           return refused(
             openQuestion.judging !== undefined || r.agents.grading()
               ? "An answer is being graded. Wait for its grade, then move on."
@@ -1774,6 +1811,7 @@ function createUnitChat(
 
     async interrupt() {
       stopCount += 1;
+      codePosting?.stop.abort();
       await running?.agents.interrupt();
     },
     async settled() {
@@ -1784,7 +1822,9 @@ function createUnitChat(
     },
     async close() {
       closing = true;
-      await agents?.close();
+      const posting = codePosting;
+      posting?.stop.abort();
+      await Promise.all([agents?.close(), posting?.done]);
       // An install under way is not waited for: it stops with the server,
       // and its request still waits when the unit opens again.
       await log.flushed();

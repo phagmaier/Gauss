@@ -159,7 +159,10 @@ export const PageEvent = z.discriminatedUnion("type", [
     type: z.literal("grading_failed"),
     questionId: z.string(),
     error: z.string(),
+    /** No verdict was possible; the learner may also move on without the check. */
+    canMoveOn: z.literal(true).optional(),
   }),
+
   /**
    * An answer was graded. The correct choice, the expected expression, or
    * the flaw, is revealed here.

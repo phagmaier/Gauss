@@ -1011,25 +1011,17 @@ Math questions in the engine (task 3.5):
 
 ## Code questions
 
-All the agent's choices (task 3.7), open to change. The card is in "Page
-design"; the sandbox in "Confinement".
+Agent choices, open to change. The card is in "Page design"; the sandbox
+in "Confinement".
 
-- **Each run has a folder that mirrors the workspace**
-  (`engine/code-run.ts`): the files under test and the test files written
-  there, every other entry a link to the workspace's, `.venv` included,
-  and only that folder writable. So the tests are never in the workspace,
-  no run changes the learner's files, the files the tests ran on are the
-  ones recorded, and one command serves the starter, the solution and the
-  learner's files: the plan's note asked for placeholders in the command,
-  and none is needed. Python's `__pycache__` and pytest's `.pytest_cache`
-  are not linked: pytest warned that it could not write its cache through
-  the link, and a stale compiled file could stand for a file written in
-  its place. Rejected: running the learner's run in the workspace, made
-  writable, as the plan first had it (the tests would sit outside under a
-  placeholder, the solution's run would need another folder, a file saved
-  during the run would make the record differ from what ran, and caches
-  would land in the workspace); a copy of the whole workspace for each
-  run, which copies whatever data the learner keeps there.
+- **Run in a scratch folder, with declared dependencies saved at posting**
+  (`engine/code-run.ts`). A read-only link to `.venv` reuses the course's
+  installed packages; package installs are blocked while a question is open.
+  Linking other workspace files let edits to a helper change the grade of
+  an unchanged answer. Copying the entire workspace would include unrelated
+  files. Name the helpers, fixtures or scripts needed instead. Older
+  evidence still opens, but an old open question without saved inputs
+  cannot be graded reliably.
 - **The learner's files are read when "Run the tests" is pressed** and
   kept with the answer, in `state.json` and then the evidence, so a regrade
   or a restart runs the same files. Each must be a plain file inside the
@@ -1039,6 +1031,10 @@ design"; the sandbox in "Confinement".
   queue, so no write of the tutor's comes between reading the starter and
   posting; posting waits for the slower run, at most 60 seconds. A run
   that cannot start refuses the question with why.
+- **Infrastructure failures are not exercise misses.** A verified sandbox
+  run reports whether the test command itself exited. A missing launcher
+  or failed sandbox leaves no answer evidence. The kept submission can be
+  retried, or the learner can withdraw it by moving on with an override.
 - **60 seconds a run.** A run past it fails the grading, as the plan had
   it, since a slow moment can pass. A second run past it on the same files
   is a miss, with the output's end: the answer is final, and code that
@@ -1051,8 +1047,8 @@ design"; the sandbox in "Confinement".
   pytest's summary is at the end, and a bare traceback ends with its
   error. The page marks `FAILED`/`ERROR` lines and the last line.
 - **The help judge sees the tests and the solution**, not the command.
-  A question's problem, for "different questions", is its prompt and its
-  files.
+  A question's problem, for "different questions", is its prompt and set
+  of file paths, regardless of display order.
 - **The scripted backend** posts code questions in a course whose title
   says "code" or "coding", in plain Python, so `pnpm dev:fake` needs no
   package; its tutor writes the starter through the fake backend, whose
@@ -1398,6 +1394,11 @@ will close.
 - The help judge sees one exchange at a time (above).
 - The grader's grading of math answers the symbolic check does not settle
   has no hand-graded set: the grade set holds written answers only.
+- Code questions: Copy path can be stale after a data-root move; only
+  "What I know" shows the submitted file contents, and the tutor's copy
+  omits trailing whitespace. In the scripted backend, file names can
+  collide across units and grading feedback can be mistaken for a scripted
+  command. Fix collisions before multi-unit scripted browser checks.
 - Opening a unit with a long history draws its whole thread once.
 - Keys go to the message box, not the pinned card, after sending a message.
 - No limit on refused `plan_unit` calls within one planning turn.

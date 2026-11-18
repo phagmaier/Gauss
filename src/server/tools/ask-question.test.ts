@@ -116,13 +116,20 @@ const CODE = {
     },
   ],
   command: [".venv/bin/python", "-m", "pytest", "-q", "test_power.py"],
-};
+} satisfies QuestionInput;
 
-test("a code question is posted with its files, tests, solution and command", async () => {
+test("a code question sends dependency paths to the board but not to the stored question candidate", async () => {
   const { posted, tool } = setUp();
 
-  expect(await tool.run(CODE)).toMatchObject({ status: "done", endTurn: true });
-  expect(posted).toEqual([CODE]);
+  const input = { ...CODE, dependencies: ["helpers/pairs.py", "data.txt"] };
+  expect(await tool.run(input)).toMatchObject({
+    status: "done",
+    endTurn: true,
+  });
+  expect(posted).toEqual([input]);
+  const candidate = postedQuestion(input);
+  expect(candidate).not.toHaveProperty("dependencies");
+  expect(candidate).not.toHaveProperty("inputs");
 });
 
 test.each([
@@ -140,7 +147,14 @@ test.each([
   {
     name: "files, as a math question",
     input: { ...MATH, files: ["power.py"] },
-    reason: "Only a code question has files, tests, a solution and a command.",
+    reason:
+      "Only a code question has files, tests, a solution, a command and dependencies.",
+  },
+  {
+    name: "dependencies, as a math question",
+    input: { ...MATH, dependencies: ["data.txt"] },
+    reason:
+      "Only a code question has files, tests, a solution, a command and dependencies.",
   },
   {
     name: "a solution for a file the learner does not edit",
@@ -183,6 +197,53 @@ test.each([
     input: { ...CODE, tests: [{ path: ".venv/test_power.py", content: "" }] },
     reason:
       '".venv/test_power.py" is in .venv, where no file of a question can be.',
+  },
+  {
+    name: "a dependency outside the workspace",
+    input: { ...CODE, dependencies: ["../helpers.py"] },
+    reason: "is not a path in the workspace",
+  },
+  {
+    name: "a dependency in a reserved folder",
+    input: { ...CODE, dependencies: [".git/config"] },
+    reason: '".git/config" is in .git, where no file of a question can be.',
+  },
+  {
+    name: "too many dependencies",
+    input: {
+      ...CODE,
+      dependencies: Array.from({ length: 6 }, (_, i) => `data/${i}.txt`),
+    },
+    reason: "expected array to have <=5 items",
+  },
+  {
+    name: "duplicate dependencies",
+    input: { ...CODE, dependencies: ["helpers.py", "helpers.py"] },
+    reason: "Each dependency has a path of its own.",
+  },
+  {
+    name: "a dependency that is a test file",
+    input: { ...CODE, dependencies: ["test_power.py"] },
+    reason: "A dependency cannot be a file the learner edits or a test file.",
+  },
+  {
+    name: "a dependency that is the learner's file",
+    input: { ...CODE, dependencies: ["power.py"] },
+    reason: "A dependency cannot be a file the learner edits or a test file.",
+  },
+  {
+    name: "a dependency inside another dependency",
+    input: { ...CODE, dependencies: ["helpers", "helpers/pairs.py"] },
+    reason: '"helpers" cannot be a file and a folder of files at once.',
+  },
+  {
+    name: "a test file inside a dependency",
+    input: {
+      ...CODE,
+      tests: [{ path: "helpers/check.py", content: "" }],
+      dependencies: ["helpers"],
+    },
+    reason: '"helpers" cannot be a file and a folder of files at once.',
   },
   {
     name: "a command with no program",

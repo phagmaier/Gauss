@@ -54,7 +54,9 @@ export interface Grading {
   /** Grades the answer, by the grader, the symbolic check or the tests. Never throws. */
   run(
     signal: AbortSignal,
-  ): Promise<({ ok: true } & Grade) | { ok: false; error: string }>;
+  ): Promise<
+    ({ ok: true } & Grade) | { ok: false; error: string; canMoveOn?: true }
+  >;
   /** Whether the grade still applies when it comes: the question is open. */
   applies(): boolean;
   /** Records the grade. Runs inside the chat's queue. */
@@ -105,6 +107,8 @@ export interface UnitAgents {
   grade(grading: Grading): void;
   /** A grading is running. */
   grading(): boolean;
+  /** A code grading failed before it could determine a verdict. */
+  canMoveOn(questionId: string): boolean;
   /**
    * Judges a reply and tells the page it is being judged. The call, or its
    * failure, is recorded inside the queue; a record that throws is logged.
@@ -204,7 +208,10 @@ export function createUnitAgents(options: {
   }
 
   /** The grading running. */
-  let running: { stop: AbortController; done: Promise<void> } | undefined;
+  let running:
+    | { stop: AbortController; done: Promise<void>; code: boolean }
+    | undefined;
+  let failedCodeQuestion: string | undefined;
   /** The judgings running: one per reply, and replies can end while one runs. */
   const judgings = new Set<{ stop: AbortController; done: Promise<void> }>();
   let tutor = conversation();
@@ -247,6 +254,8 @@ export function createUnitAgents(options: {
 
     grade(grading) {
       const { questionId, answer } = grading;
+      if (closed) return;
+      failedCodeQuestion = undefined;
       const stop = new AbortController();
       log.emit({ type: "grading", questionId, answer });
       const done = (async () => {
@@ -255,8 +264,17 @@ export function createUnitAgents(options: {
           const failed = (error: string) =>
             log.emit({ type: "grading_failed", questionId, error });
           try {
-            if (!grading.applies()) return;
-            if (!outcome.ok) return failed(outcome.error);
+            if (stop.signal.aborted || !grading.applies()) return;
+            if (!outcome.ok) {
+              if (outcome.canMoveOn) failedCodeQuestion = questionId;
+              log.emit({
+                type: "grading_failed",
+                questionId,
+                error: outcome.error,
+                ...(outcome.canMoveOn ? { canMoveOn: true as const } : {}),
+              });
+              return;
+            }
             const { ok: _, ...grade } = outcome;
             await grading.record(grade);
           } catch (error) {
@@ -267,10 +285,11 @@ export function createUnitAgents(options: {
           }
         });
       })();
-      running = { stop, done };
+      running = { stop, done, code: answer.kind === "code" };
     },
 
     grading: () => running !== undefined,
+    canMoveOn: (questionId) => failedCodeQuestion === questionId,
 
     judge(judging) {
       if (closed) return;
@@ -326,9 +345,14 @@ export function createUnitAgents(options: {
 
     async close() {
       closed = true;
-      running?.stop.abort();
+      const grading = running;
+      grading?.stop.abort();
       for (const judging of judgings) judging.stop.abort();
-      await Promise.all([tutor.close(), ...closing]);
+      await Promise.all([
+        tutor.close(),
+        ...closing,
+        grading?.code ? grading.done : undefined,
+      ]);
     },
   };
 }

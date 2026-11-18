@@ -16,9 +16,10 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { type FileHandle, mkdtemp, open, rm } from "node:fs/promises";
 import { constants, homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   SandboxManager,
   type SandboxRuntimeConfig,
@@ -53,6 +54,10 @@ export interface SandboxCommand {
    * keeps its order; `stderr` is then empty.
    */
   mergeOutput?: boolean;
+  /** Rejects launch, sandbox wrapper, or signal failures, but not timeouts. */
+  verifyLaunch?: boolean;
+  /** Cancels the run, rejecting after the command and its temporary files are gone. */
+  signal?: AbortSignal;
 }
 
 export interface SandboxResult {
@@ -83,6 +88,9 @@ export type Sandbox =
     };
 
 const DEFAULT_OUTPUT_LIMIT = 64 * 1024;
+const launchSupervisor = fileURLToPath(
+  new URL("../../../pytools/sandbox_verify.py", import.meta.url),
+);
 // No Unix socket may be made that could connect to one on the host. A
 // missing runtime seccomp helper may only warn, and a successful `true` says
 // nothing about Unix-socket confinement. A stream pair must be allowed: it is
@@ -179,6 +187,7 @@ function configFor(writable: readonly string[]): SandboxRuntimeConfig {
 }
 
 async function run(command: SandboxCommand): Promise<SandboxResult> {
+  command.signal?.throwIfAborted();
   for (const path of [command.cwd, ...command.writable]) {
     if (!isAbsolute(path)) throw new Error(`Not an absolute path: ${path}`);
   }
@@ -195,26 +204,39 @@ async function run(command: SandboxCommand): Promise<SandboxResult> {
   // id is random, as the runtime requires, and lives only while it runs.
   const hosts = command.hosts ?? [];
   const commandId = randomBytes(16).toString("base64url");
+  let status: FileHandle | undefined;
   try {
+    let argv: readonly string[] = command.argv;
+    if (command.verifyLaunch === true) {
+      const statusPath = join(temporary, ".launch-status");
+      status = await open(statusPath, "wx+", 0o600);
+      argv = [sandboxPython, "-I", launchSupervisor, statusPath, ...argv];
+    }
     const exports = [["TMPDIR", temporary], ...variables]
       .map(([name, value]) => `export ${name}=${quote(value ?? "")}; `)
       .join("");
     const merge = command.mergeOutput === true ? " 2>&1" : "";
-    const script = `${exports}exec ${sandboxCommand(command.argv)}${merge}`;
+    const script = `${exports}exec ${sandboxCommand(argv)}${merge}`;
+    command.signal?.throwIfAborted();
     const wrapped = await SandboxManager.wrapWithSandbox(
       script,
       undefined,
       configFor([...command.writable, temporary]),
-      undefined,
+      command.signal,
       { commandId },
     );
-    if (hosts.length > 0) {
-      SandboxManager.registerCommandNetworkLists(commandId, {
-        allowedDomains: [...hosts],
-      });
-    }
     try {
-      return await runWrapped(wrapped, command);
+      command.signal?.throwIfAborted();
+      if (hosts.length > 0) {
+        SandboxManager.registerCommandNetworkLists(commandId, {
+          allowedDomains: [...hosts],
+        });
+      }
+      const result = await runWrapped(wrapped, command);
+      if (status !== undefined && !result.timedOut) {
+        result.exitCode = await verifiedExitCode(status, command, result);
+      }
+      return result;
     } finally {
       if (hosts.length > 0) {
         SandboxManager.unregisterCommandNetworkLists(commandId);
@@ -222,16 +244,61 @@ async function run(command: SandboxCommand): Promise<SandboxResult> {
       SandboxManager.cleanupAfterCommand();
     }
   } finally {
-    await rm(temporary, { recursive: true, force: true });
+    try {
+      if (status !== undefined) await status.close();
+    } finally {
+      await rm(temporary, { recursive: true, force: true });
+    }
+    command.signal?.throwIfAborted();
   }
+}
+
+/** Only the supervisor's side channel can confirm an ordinary exit. */
+async function verifiedExitCode(
+  status: FileHandle,
+  command: SandboxCommand,
+  result: SandboxResult,
+): Promise<number> {
+  if (result.exitCode !== 0) {
+    throw sandboxFailure(
+      `Sandbox wrapper or guard failed (exit status ${result.exitCode})`,
+      result,
+    );
+  }
+  // One signed 32-bit status. Read an extra byte to detect a malformed record.
+  const data = Buffer.alloc(5);
+  const { bytesRead } = await status.read(data, 0, data.length, 0);
+  if (bytesRead !== 4) {
+    throw sandboxFailure(
+      "Sandbox did not report a verified exit status",
+      result,
+    );
+  }
+  const code = data.readInt32BE();
+  if (code >= 0 && code <= 255) return code;
+  const program = JSON.stringify(command.argv[0]);
+  if (code === 256) {
+    throw sandboxFailure(`Sandbox could not launch ${program}`, result);
+  }
+  if (code < 0 && code >= -255) {
+    throw new Error(
+      `Sandbox command ${program} was terminated by signal ${-code}`,
+    );
+  }
+  throw new Error("Sandbox reported an invalid exit status");
+}
+
+function sandboxFailure(message: string, result: SandboxResult): Error {
+  const detail = (result.stderr || result.stdout).trim();
+  return new Error(detail === "" ? message : `${message}: ${detail}`);
 }
 
 /**
  * Runs the runtime's command line. It runs in a process group of its own,
- * which the time limit kills; bubblewrap gives the command a PID namespace,
- * so everything the command started dies with it, whatever group or
- * session it moved to. The runtime's own argv form starts `/bin/bash`,
- * which not every system has; `/bin/sh` is what it is written for.
+ * which the time limit or cancellation kills. Bubblewrap gives the command
+ * a PID namespace, so everything the command started dies with it, whatever
+ * group or session it moved to. The runtime's own argv form starts
+ * `/bin/bash`, which not every system has; `/bin/sh` is what it is written for.
  */
 function runWrapped(
   wrapped: string,
@@ -255,24 +322,40 @@ function runWrapped(
     }
 
     let timedOut = false;
-    const timer = setTimeout(() => {
-      // Ended, its output not yet all read: it kept to its limit.
-      if (child.exitCode !== null || child.signalCode !== null) return;
-      timedOut = true;
+    const killGroup = () => {
       if (child.pid === undefined) return;
       try {
         process.kill(-child.pid, "SIGKILL");
       } catch {
-        // It ended as the limit came.
+        // The process group was already gone.
       }
+    };
+    const abort = command.signal;
+    abort?.addEventListener("abort", killGroup, { once: true });
+    if (abort?.aborted === true) killGroup();
+    const timer = setTimeout(() => {
+      if (abort?.aborted === true) return;
+      // Ended, its output not yet all read: it kept to its limit.
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      timedOut = true;
+      killGroup();
     }, command.timeLimitMs);
 
+    let spawnError: Error | undefined;
     child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
+      spawnError = error;
     });
     child.on("close", (code, signal) => {
       clearTimeout(timer);
+      abort?.removeEventListener("abort", killGroup);
+      if (abort?.aborted === true) {
+        reject(abort.reason);
+        return;
+      }
+      if (spawnError !== undefined) {
+        reject(spawnError);
+        return;
+      }
       const out = stdout.end();
       const err = stderr.end();
       resolve({

@@ -101,6 +101,34 @@ const override = (...objectives: string[]) =>
 
 const SPACED = "Differentiate $\\sin(x^2)$.";
 
+test("the same two-file exercise in a different display order counts once", () => {
+  function solved(questionId: string, files: string[], prompt: string) {
+    const code = files.map((path) => ({ path, content: "value = 42\n" }));
+    return EvidenceEntry.parse({
+      kind: "answer",
+      recordedAt: "2026-11-15T10:00:00.000Z",
+      objective: CHAIN,
+      question: {
+        kind: "code",
+        prompt,
+        files,
+        solution: code,
+        tests: [{ path: "check.py", content: "assert True\n" }],
+        command: ["python", "check.py"],
+      },
+      answer: { kind: "code", questionId, confidence: "50", files: code },
+      verdict: "correct",
+      output: "Exit status 0.",
+      assisted: false,
+    });
+  }
+  const first = solved("q1", ["a.py", "b.py"], "Set both values to 42.");
+  const reordered = solved("q2", ["b.py", "a.py"], "Set both values to 42.");
+  const different = solved("q3", ["a.py", "b.py"], "Return the sum.");
+  expect(objectiveStatus([first, reordered], CHAIN)).toBe("attempted");
+  expect(objectiveStatus([first, different], CHAIN)).toBe("passed");
+});
+
 describe("objective status", () => {
   const cases: { name: string; log: EvidenceEntry[]; is: ObjectiveStatus }[] = [
     { name: "no evidence", log: [], is: "not-started" },

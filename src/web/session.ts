@@ -93,7 +93,8 @@ export function nextStep(timeline: Timeline): NextStep {
     case "check": {
       if (timeline.detour !== null) return "detour";
       const open = openQuestion(timeline);
-      return open?.grading === undefined && open?.waiting === undefined
+      return open?.canMoveOn === true ||
+        (open?.grading === undefined && open?.waiting === undefined)
         ? "move-on"
         : null;
     }

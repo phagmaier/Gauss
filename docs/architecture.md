@@ -328,11 +328,12 @@ tab.
    expression, which the symbolic check must read or the question is
    refused with the check's reason, or a rubric; for code, the files the
    learner edits, whose starter versions the tutor has written in the
-   workspace, the tests, the solution and the command. The engine runs the
+   workspace, the tests, the solution, the command, and any workspace
+   dependencies the tests or learner's code need. The engine runs the
    tests on the starter files and on the solution, and refuses the question
    unless they fail on the first and pass on the second (section 6).
-   Stop during math or code validation cancels the post before it is
-   written.
+   Stop cancels posting during validation; for code it also stops the runs
+   before releasing the course workspace queue.
 2. The engine stores the open question in `state.json` and the page shows
    it. A choice question's choices are shuffled first and the answer letter
    moved with them (`engine/choice-order.ts`); the tool's reply lists them
@@ -433,19 +434,19 @@ with sources (stage 4).
   and malformed output go to the grader, as undecided readings do. Without
   a sandbox, the engine refuses to post math questions.
 - **Code questions** (`engine/code-run.ts`; why, `decisions.md`, "Code
-  questions"). Each run of a question's tests has a folder of its own that
-  mirrors the workspace: the files under test written there (the starter
-  versions, the solution, or the learner's files as sent) and the test
-  files at their paths, and every other entry of the workspace, `.venv`
-  among them, a link to it, but for Python's and pytest's caches. The
-  command runs there in the sandbox, which can write only that folder, so
-  no run changes the workspace, and the tests are never in it. Each run
-  has 60 seconds. The end of the output, both streams in order, the last
-  40 lines, is the evidence's `output`. At posting the two runs go at once,
-  inside the course's workspace queue, so no tutor write comes between
-  them and the post. A run past its limit fails the grading; past it again
-  on the same files, the answer is a miss. Without a sandbox, code
-  questions are refused.
+  questions"). The engine saves the declared workspace dependencies in the
+  question at posting. Each run uses a scratch folder containing the
+  files under test (starter, solution, or the learner's saved answer), the
+  tests, the frozen dependencies, and a read-only link to `.venv`. It does
+  not link other workspace files. Both posting runs use the same inputs
+  while holding the workspace queue.
+  The sandbox distinguishes a test command's exit status from a launch or
+  sandbox failure; the latter records no grade. A learner cannot submit
+  without a sandbox; after an infrastructure failure the learner can retry
+  a kept answer or move on with an override. Shutdown cancels runs and a kept
+  answer is graded when the unit reopens. Each run has 60 seconds. The end of
+  both output streams is evidence. A run past its limit fails the grading;
+  past it again on the same files, the answer is a miss.
 - **The engine's commands** (the symbolic check, a code question's tests)
   run text a model or the learner wrote, so each runs through
   `engine/sandbox.ts`, on `@anthropic-ai/sandbox-runtime`: no network,

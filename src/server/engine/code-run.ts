@@ -4,25 +4,21 @@
 // and the workspace never holds: the tests, the tutor's solution, and the
 // command that runs the tests.
 //
-// Every run of the tests has a folder of its own that mirrors the workspace:
-// the files under test are written there (the starter versions, the
-// solution, or the learner's files as they were when "Run the tests" was
-// pressed), the test files at their paths, and every other entry of the
-// workspace, `.venv` among them, is a link to it. The command runs there in
-// the engine's sandbox, which writes only to that folder and to its own
-// temporary one, so a run never changes the workspace, and the files the
-// tests ran on are the ones the record keeps. Exit status 0 is a pass.
+// Every run has a folder of its own that contains only the files under test
+// (the starter versions, the solution, or the learner's files as sent), the
+// test files, the saved dependency files, and a read-only link to the live
+// `.venv` if present. The command runs there in the sandbox, which writes
+// only to that folder and to its own temporary one. Exit status 0 is a pass.
 //
 // When the question is posted, the tests must fail on the starter files the
 // tutor wrote in the workspace and pass on its solution: tests that cannot
 // tell right code from wrong are a code question's wrong key.
 
-import type { Dirent } from "node:fs";
+import type { Stats } from "node:fs";
 import {
   lstat,
   mkdir,
   mkdtemp,
-  readdir,
   readFile,
   realpath,
   rm,
@@ -36,6 +32,7 @@ import {
   type CodeAnswer,
   type CodeFile,
   type CodeQuestion,
+  type SavedCodeInput,
 } from "../../shared/question.ts";
 import { duration } from "./grading.ts";
 import type { Sandbox } from "./sandbox.ts";
@@ -46,13 +43,6 @@ export const CODE_TIME_LIMIT_MS = 60_000;
 /** How much of a run's output's end is kept: lines, then characters. */
 const OUTPUT_LINES = 40;
 const OUTPUT_CHARS = 8000;
-
-/**
- * Entries of the workspace a run's folder does not link to, in the folders
- * it makes itself: Python's compiled files, which could be stale for a file
- * written in their place, and pytest's cache, which a run cannot write.
- */
-const NOT_LINKED = new Set(["__pycache__", ".pytest_cache"]);
 
 /** What one run of the tests gave, or why it gave nothing. */
 export type CodeRunResult =
@@ -66,43 +56,57 @@ export type CodeRunResult =
   | { result: "error"; reason: string };
 
 export interface CodeRunner {
+  /** Why a code question cannot be submitted here, as a sentence. */
+  unavailable?: string;
   /**
-   * Whether the question can be posted: its starter files are in the
-   * workspace, and its tests fail on them and pass on its solution. Nothing,
-   * or the reason it cannot, for the tutor.
+   * Checks the starter files and saves the dependencies before running both
+   * preflights. Returns the checked question, or the reason not to post it.
    */
   check(
     question: CodeQuestion,
     workspace: string,
-  ): Promise<{ refused: string } | undefined>;
+    dependencies: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<{ question: CodeQuestion } | { refused: string }>;
   /** Runs the question's tests on these files. Never throws. */
   run(
     question: CodeQuestion,
     files: readonly CodeFile[],
     workspace: string,
+    signal?: AbortSignal,
   ): Promise<CodeRunResult>;
 }
 
 /**
- * A runner with no sandbox: code questions are refused when posted, and an
- * answer to one posted earlier fails its grading, to be graded again.
+ * A runner with no sandbox: neither posting nor grading is available.
  */
-export const noCodeRunner: CodeRunner = {
-  check: async () => ({
-    refused:
-      "Code questions need the sandbox that runs their tests, and it does not run here. Ask another kind of question.",
-  }),
-  run: async () => ({
-    result: "error",
-    reason: "the sandbox that runs the tests is not available",
-  }),
-};
+export const noCodeRunner = unavailableCodeRunner(
+  "The sandbox that runs the tests is not available",
+  "Code questions need the sandbox that runs their tests, and it does not run here. Ask another kind of question.",
+);
+
+function unavailableCodeRunner(reason: string, refused: string): CodeRunner {
+  return {
+    unavailable: `${reason}.`,
+    check: async () => ({ refused }),
+    run: async () => ({ result: "error", reason }),
+  };
+}
+
+const NO_INPUTS = "this question predates saved exercise inputs";
 
 export function createCodeRunner(options: {
   sandbox: Sandbox;
   timeLimitMs?: number;
 }): CodeRunner {
   const { sandbox } = options;
+  if (!sandbox.available) {
+    return unavailableCodeRunner(
+      `The sandbox that runs the tests is not available (${sandbox.reason})`,
+      `Code questions need the sandbox that runs their tests, and it does not run here (${sandbox.reason}). Ask another kind of question.`,
+    );
+  }
+  const activeSandbox = sandbox;
   const timeLimitMs = options.timeLimitMs ?? CODE_TIME_LIMIT_MS;
   const limit = duration(timeLimitMs);
 
@@ -110,25 +114,33 @@ export function createCodeRunner(options: {
     question: CodeQuestion,
     files: readonly CodeFile[],
     workspace: string,
+    signal?: AbortSignal,
   ): Promise<CodeRunResult> {
-    if (!sandbox.available) {
-      return {
-        result: "error",
-        reason: `there is no sandbox to run them in (${sandbox.reason})`,
-      };
-    }
     let folder: string | undefined;
     try {
+      signal?.throwIfAborted();
+      if (question.inputs === undefined) {
+        return { result: "error", reason: NO_INPUTS };
+      }
       folder = await mkdtemp(join(tmpdir(), "gauss-code-"));
-      await mirror(folder, workspace, [...files, ...question.tests]);
+      await populate(
+        folder,
+        workspace,
+        [...files, ...question.tests, ...question.inputs],
+        signal,
+      );
+      signal?.throwIfAborted();
       const [program, ...rest] = question.command;
-      const ran = await sandbox.run({
+      const ran = await activeSandbox.run({
         argv: [program ?? "", ...rest],
         cwd: folder,
         writable: [folder],
         timeLimitMs,
         mergeOutput: true,
+        verifyLaunch: true,
+        ...(signal === undefined ? {} : { signal }),
       });
+      signal?.throwIfAborted();
       if (ran.timedOut) {
         return {
           result: "timed-out",
@@ -138,7 +150,13 @@ export function createCodeRunner(options: {
           ),
         };
       }
-      const exitCode = ran.exitCode ?? 1;
+      const { exitCode } = ran;
+      if (exitCode === null) {
+        return {
+          result: "error",
+          reason: "the tests ended without an exit status",
+        };
+      }
       return exitCode === 0
         ? {
             result: "passed",
@@ -164,10 +182,12 @@ export function createCodeRunner(options: {
 
   return {
     run,
-    async check(question, workspace) {
-      let starter: Awaited<ReturnType<typeof readWorkspaceFiles>>;
+    async check(question, workspace, dependencies, signal) {
+      let starter: WorkspaceFilesResult;
       try {
-        starter = await readWorkspaceFiles(workspace, question.files);
+        starter = await readWorkspaceFiles(workspace, question.files, {
+          signal,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return { refused: `The starter files could not be read: ${message}` };
@@ -180,11 +200,33 @@ export function createCodeRunner(options: {
               : `The starter version of ${fileProblem(starter)} Write it again with your Write tool, then post the question.`,
         };
       }
+      let inputs: WorkspaceFilesResult;
+      try {
+        inputs = await readWorkspaceFiles(workspace, dependencies, {
+          signal,
+          preserveExecutable: true,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { refused: `The dependencies could not be read: ${message}` };
+      }
+      if ("problem" in inputs) {
+        return {
+          refused: `Dependency ${fileProblem(inputs)} Write it as a plain UTF-8 file in the workspace before posting the question.`,
+        };
+      }
+      const checked = { ...question, inputs: inputs.files };
       // Both at once: posting waits for the slower.
       const [solved, started] = await Promise.all([
-        run(question, question.solution, workspace),
-        run(question, starter.files, workspace),
+        run(checked, question.solution, workspace, signal),
+        run(checked, starter.files, workspace, signal),
       ]);
+      if (signal?.aborted === true) {
+        return {
+          refused:
+            "The tests were stopped before the question could be posted.",
+        };
+      }
       for (const ran of [solved, started]) {
         if (ran.result === "error") {
           return { refused: `The tests could not be run: ${ran.reason}.` };
@@ -214,7 +256,7 @@ export function createCodeRunner(options: {
         );
       }
       return problems.length === 0
-        ? undefined
+        ? { question: checked }
         : { refused: `The question was not posted. ${problems.join("\n\n")}` };
     },
   };
@@ -236,8 +278,12 @@ export async function gradeCode(
   question: CodeQuestion,
   answer: CodeAnswer,
   workspace: string,
+  signal?: AbortSignal,
 ): Promise<CodeOutcome> {
-  const ran = await runner.run(question, answer.files, workspace);
+  if (question.inputs === undefined) {
+    return { ok: false, error: `The tests could not be run: ${NO_INPUTS}.` };
+  }
+  const ran = await runner.run(question, answer.files, workspace, signal);
   switch (ran.result) {
     case "passed":
       return { ok: true, verdict: "correct", output: ran.output };
@@ -258,6 +304,10 @@ export async function gradeCode(
 /** Why a file of the workspace cannot be read as a code question's file. */
 export type FileProblem = "missing" | "not-a-file" | "too-large" | "not-text";
 
+export type WorkspaceFilesResult =
+  | { files: SavedCodeInput[] }
+  | { path: string; problem: FileProblem };
+
 /**
  * Reads the files from the workspace, by their paths in it, as a code
  * question runs them: each a plain file inside the workspace, no larger
@@ -267,33 +317,49 @@ export type FileProblem = "missing" | "not-a-file" | "too-large" | "not-text";
 export async function readWorkspaceFiles(
   workspace: string,
   paths: readonly string[],
-): Promise<{ files: CodeFile[] } | { path: string; problem: FileProblem }> {
+  options?: { signal?: AbortSignal | undefined; preserveExecutable?: boolean },
+): Promise<WorkspaceFilesResult> {
+  const { signal, preserveExecutable } = options ?? {};
+  signal?.throwIfAborted();
+  if (paths.length === 0) return { files: [] };
   const root = await realpath(workspace);
-  const files: CodeFile[] = [];
+  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
+  const files: SavedCodeInput[] = [];
   for (const path of paths) {
+    signal?.throwIfAborted();
     const full = join(root, path);
-    let entry: Awaited<ReturnType<typeof lstat>>;
+    if (!full.startsWith(prefix)) return { path, problem: "not-a-file" };
+    let entry: Stats;
     try {
       entry = await lstat(full);
     } catch {
+      signal?.throwIfAborted();
       return { path, problem: "missing" };
     }
-    // A link, or a folder on the way that is one, could lead out of it.
-    if (
-      !entry.isFile() ||
-      !(await realpath(full)).startsWith(`${root}${sep}`)
-    ) {
+    signal?.throwIfAborted();
+    // Reject links, including in parent folders: a declared path must name
+    // a plain file directly, not an alias for another workspace path.
+    if (!entry.isFile() || (await realpath(full)) !== full) {
       return { path, problem: "not-a-file" };
     }
+    signal?.throwIfAborted();
     if (entry.size > CODE_FILE_LIMIT) return { path, problem: "too-large" };
-    const bytes = await readFile(full);
+    const bytes = await readFile(
+      full,
+      signal === undefined ? undefined : { signal },
+    );
+    signal?.throwIfAborted();
     if (bytes.length > CODE_FILE_LIMIT) return { path, problem: "too-large" };
     try {
       const content = new TextDecoder("utf-8", {
         fatal: true,
         ignoreBOM: true,
       }).decode(bytes);
-      files.push({ path, content });
+      files.push(
+        preserveExecutable === true && (entry.mode & 0o111) !== 0
+          ? { path, content, executable: true }
+          : { path, content },
+      );
     } catch {
       return { path, problem: "not-text" };
     }
@@ -319,49 +385,33 @@ export function fileProblem(found: {
   }
 }
 
-/**
- * Makes `folder` mirror the workspace: `files` written at their paths, and
- * every other entry of the workspace linked, except in the folders that
- * hold a written file, which are made here, their other entries linked.
- */
-async function mirror(
+/** Writes the exercise into its own folder, sharing only the environment. */
+async function populate(
   folder: string,
   workspace: string,
-  files: readonly CodeFile[],
+  files: readonly SavedCodeInput[],
+  signal?: AbortSignal,
 ): Promise<void> {
-  const written = new Set(files.map((f) => f.path));
-  const made = new Set(
-    files.flatMap((f) => {
-      const words = f.path.split("/");
-      return words.slice(1).map((_, i) => words.slice(0, i + 1).join("/"));
-    }),
-  );
-  async function link(path: string): Promise<void> {
-    let entries: Dirent[];
-    try {
-      entries = await readdir(join(workspace, path), { withFileTypes: true });
-    } catch {
-      return; // A folder the workspace does not have: nothing to link.
-    }
-    for (const entry of entries) {
-      const at = path === "" ? entry.name : `${path}/${entry.name}`;
-      if (written.has(at) || NOT_LINKED.has(entry.name)) continue;
-      if (made.has(at)) {
-        // A file of the workspace where a folder is made is left out.
-        if (entry.isDirectory()) {
-          await mkdir(join(folder, at));
-          await link(at);
-        }
-        continue;
-      }
-      await symlink(join(workspace, at), join(folder, at));
-    }
+  signal?.throwIfAborted();
+  const venv = join(workspace, ".venv");
+  const installed = await lstat(venv).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+    return undefined;
+  });
+  signal?.throwIfAborted();
+  if (installed !== undefined) {
+    await symlink(venv, join(folder, ".venv"));
   }
-  await link("");
   for (const file of files) {
+    signal?.throwIfAborted();
     const at = join(folder, file.path);
     await mkdir(dirname(at), { recursive: true });
-    await writeFile(at, file.content);
+    signal?.throwIfAborted();
+    await writeFile(
+      at,
+      file.content,
+      file.executable ? { mode: 0o755 } : undefined,
+    );
   }
 }
 

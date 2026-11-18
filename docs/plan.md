@@ -38,7 +38,7 @@ its outcome.
 ### 3.8 Disputes
 
 - Status: todo
-- Depends on: 3.5, 3.7
+- Depends on: 3.5, 3.7a
 - Why: a grade can be wrong (a wrong choice key, a grader too harsh or too
   lenient, a wrong test), and a dispute is the only way to correct one.
 - Do: piece 13, under the rules in `decisions.md`, "Disputes": a dispute

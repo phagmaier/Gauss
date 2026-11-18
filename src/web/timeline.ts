@@ -36,6 +36,8 @@ export interface QuestionItem {
   grading?: GradedAnswer;
   /** Why the last grading of the kept answer failed. */
   gradingFailed?: string;
+  /** A code grading failed without determining a verdict. */
+  canMoveOn?: true;
   graded?: Graded;
   /** The learner moved on without the check while it was open. */
   withdrawn?: boolean;
@@ -482,7 +484,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         items: withQuestion(
           state.items,
           event.questionId,
-          ({ gradingFailed: _, waiting: __, ...item }) => ({
+          ({ gradingFailed: _, waiting: __, canMoveOn: ___, ...item }) => ({
             ...item,
             grading: event.answer,
           }),
@@ -494,6 +496,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         items: withQuestion(state.items, event.questionId, (item) => ({
           ...item,
           gradingFailed: event.error,
+          ...(event.canMoveOn ? { canMoveOn: true as const } : {}),
         })),
       };
     case "graded": {
@@ -502,7 +505,13 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       );
       const asked = state.items[at];
       if (asked?.kind !== "question") return next;
-      const { grading: _, gradingFailed: __, waiting: ___, ...rest } = asked;
+      const {
+        grading: _,
+        gradingFailed: __,
+        waiting: ___,
+        canMoveOn: ____,
+        ...rest
+      } = asked;
       const answered: QuestionItem = { ...rest, graded: event };
       // A question the thread went on below before it was answered is shown
       // at the bottom, where it was answered and where the tutor's feedback
