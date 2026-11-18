@@ -1,8 +1,9 @@
 // What the "What I know" view says (task 2.26): a summary of the course's
 // objectives by status, the units not started, each objective's and unit's
 // status word, and what one answer in its evidence says beside its question
-// and answer. The view is drawn in WhatIKnow.tsx from what the server
-// derives (src/server/record/what-i-know.ts).
+// and answer, with the verdict and key a dispute left (task 3.8; dispute.ts).
+// The view is drawn in WhatIKnow.tsx from what the server derives
+// (src/server/record/what-i-know.ts).
 
 import {
   type ChoiceLetter,
@@ -11,6 +12,7 @@ import {
 } from "../shared/question.ts";
 import type { ObjectiveStatus, UnitStatus } from "../shared/status.ts";
 import type { ShownEvidence, WhatIKnow } from "../shared/what-i-know.ts";
+import { standing, verdictWord } from "./dispute.ts";
 import { unitNumbers } from "./units.ts";
 
 /** A word and the class that colours it. */
@@ -87,14 +89,17 @@ export function unstartedLine(view: WhatIKnow): string | null {
 
 /** What an answer's line says beside its question and answer. */
 export interface AnswerLine {
+  /** The verdict it counts with: a dispute's, if it has one. */
   verdict: Word;
+  /** A dispute changed the verdict. */
+  changed: boolean;
   /** How sure the learner said they were; none for "I don't know". */
   sure?: string;
   /** Set when the answer was given with help. */
   help?: string;
-  /** The right choice, for a choice question missed. */
+  /** The right choice, for a choice question missed, as a dispute left it. */
   correctChoice?: ChoiceLetter;
-  /** The expected answer, for a math question missed. */
+  /** The expected answer, for a math question missed, as a dispute left it. */
   expected?: string;
   /** Why the grader graded a math answer, when the symbolic check did not. */
   gradedBy?: string;
@@ -103,14 +108,17 @@ export interface AnswerLine {
 export function answerLine(
   entry: Extract<ShownEvidence, { kind: "answer" }>,
 ): AnswerLine {
-  const { answer, question, verdict } = entry;
+  const { answer, question } = entry;
+  const now = standing({
+    verdict: entry.verdict,
+    key: question.kind === "choice" ? question.answer : undefined,
+    expected: question.kind === "math" ? question.expected : undefined,
+    dispute: entry.dispute,
+  });
+  const { verdict } = now;
   return {
-    verdict:
-      verdict === "correct"
-        ? { text: "Correct", className: "ok" }
-        : verdict === "incorrect"
-          ? { text: "Not quite", className: "no" }
-          : { text: "Did not know", className: "dk" },
+    verdict: verdictWord(verdict),
+    changed: now.changed,
     ...(answer.kind === "unknown"
       ? {}
       : { sure: `${confidenceLabel(answer.confidence)} sure` }),
@@ -123,11 +131,11 @@ export function answerLine(
               : "With help",
         }
       : {}),
-    ...(question.kind === "choice" && verdict !== "correct"
-      ? { correctChoice: question.answer }
+    ...(question.kind === "choice" && verdict !== "correct" && now.key
+      ? { correctChoice: now.key }
       : {}),
-    ...(question.kind === "math" && verdict !== "correct"
-      ? { expected: question.expected }
+    ...(question.kind === "math" && verdict !== "correct" && now.expected
+      ? { expected: now.expected }
       : {}),
     ...(entry.unsettled === undefined
       ? {}

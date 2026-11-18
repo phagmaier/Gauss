@@ -9,11 +9,13 @@
 // passes, or the learner moves on, the objective is asked again. So a miss,
 // an answer given with help, or a first correct answer that does not pass
 // alone asks for another question, and a confident correct answer to an
-// objective never missed ends its check at one.
+// objective never missed ends its check at one. A disputed answer counts
+// with its dispute's verdict (task 3.8).
 
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { UnitPosition } from "../../shared/state.ts";
+import { countedAnswers } from "../record/disputes.ts";
 import { objectiveStatus } from "../record/status.ts";
 
 /** Where one objective stands in the check under way. */
@@ -39,15 +41,19 @@ export type ObjectiveCheck =
   | { state: "done"; asked: number };
 
 /**
- * @param evidence the evidence on the unit's objectives, in log order
- * @param inCheck the answers given in this check, in order
+ * @param evidence the evidence on the unit's objectives, in log order, with
+ *   the disputes of their answers
+ * @param inCheck the answers given in this check, in order, as recorded
  */
 export function objectiveCheck(
   objective: string,
   evidence: readonly EvidenceEntry[],
   inCheck: readonly AnswerEvidence[],
 ): ObjectiveCheck {
-  const answers = inCheck.filter((a) => a.objective === objective);
+  const answers = countedAnswers(
+    inCheck.filter((a) => a.objective === objective),
+    evidence,
+  );
   const last = answers.at(-1);
   if (last === undefined) return { state: "unasked" };
   const asked = answers.length;

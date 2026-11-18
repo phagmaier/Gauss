@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ArtifactFile } from "./artifact.ts";
 import { Slug, Timestamp } from "./course.ts";
 import { Unit } from "./curriculum.ts";
+import { ShownDispute } from "./dispute.ts";
 import { PackageSpec, PackagesOutcome } from "./packages.ts";
 import { Plan } from "./plan.ts";
 import {
@@ -185,6 +186,18 @@ export const PageEvent = z.discriminatedUnion("type", [
     output: z.string().optional(),
     /** Given with help, so a correct answer does not count toward passing. */
     assisted: z.boolean(),
+  }),
+  /**
+   * The learner disputed the grade of the answer to a question, and the
+   * dispute judge decided (task 3.8): the answer now counts with the
+   * outcome's verdict, and a corrected key shows in place of the first.
+   * Sent too when the chat opens with a dispute its thread does not show,
+   * raised from "What I know" while the chat was not open.
+   */
+  z.object({
+    type: z.literal("disputed"),
+    questionId: z.string(),
+    dispute: ShownDispute,
   }),
   /**
    * A detour opened after a miss in the check (task 2.20), or the chat

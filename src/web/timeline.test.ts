@@ -894,6 +894,46 @@ test("a unit reopened where its thread is shows nothing twice: not its phase, it
   });
 });
 
+// --- Disputes (task 3.8) -------------------------------------------------------
+
+test("a dispute's outcome attaches to its question's card, wherever the card is, and a closing card standing is shown again with the statuses a dispute changed", () => {
+  const dispute = {
+    recordedAt: "2026-11-17T10:00:00.000Z",
+    reason: "The key is wrong.",
+    outcome: {
+      verdict: "correct" as const,
+      reason: "B is right.",
+      key: "B" as const,
+    },
+  };
+  const state = play([
+    ...LOG,
+    { type: "phase", segment: 1, phase: "closed" },
+    NOT_ALL,
+    { type: "disputed", questionId: "q1", dispute },
+    // One for a question the thread does not have changes nothing.
+    { type: "disputed", questionId: "q9", dispute },
+    { ...NOT_ALL, passed: true, objectives: { "chain-rule": "passed" } },
+  ]);
+
+  expect(state.items.find((i) => i.kind === "question")).toEqual({
+    kind: "question",
+    key: 3,
+    question: QUESTION,
+    graded: LOG[5],
+    dispute,
+  });
+  const cards = state.items.filter((i) => i.kind === "unit_end");
+  expect(cards).toEqual([
+    {
+      kind: "unit_end",
+      key: 9,
+      passed: true,
+      objectives: { "chain-rule": "passed" },
+    },
+  ]);
+});
+
 // --- Detours (task 2.20) ------------------------------------------------------
 
 const MISSED: PageEvent = {

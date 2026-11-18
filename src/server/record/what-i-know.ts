@@ -3,7 +3,8 @@
 // `GET /api/courses/<id>/what-i-know` sends it. Derived from the record when
 // asked, never stored (architecture.md section 3): statuses by
 // objectiveStatus and unitStatus, as the course view's progress has them;
-// with the course's calibration (task 2.29).
+// with the course's calibration (task 2.29). A disputed answer is shown
+// with its dispute, and counts with its verdict (task 3.8).
 
 import type { Curriculum } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -17,6 +18,7 @@ import type {
   WhatIKnow,
 } from "../../shared/what-i-know.ts";
 import { countCalibration } from "./calibration.ts";
+import { disputesIn } from "./disputes.ts";
 import { objectiveStatus, unitStatus } from "./status.ts";
 
 /**
@@ -65,7 +67,9 @@ function evidenceOn(
   evidence: readonly EvidenceEntry[],
   objective: string,
 ): ShownEvidence[] {
+  const disputes = disputesIn(evidence);
   return evidence.flatMap((entry): ShownEvidence[] => {
+    if (entry.kind === "dispute") return [];
     if (entry.kind === "override") {
       return entry.objectives.includes(objective)
         ? [{ kind: "override", recordedAt: entry.recordedAt }]
@@ -73,7 +77,22 @@ function evidenceOn(
     }
     if (entry.objective !== objective) return [];
     const { objective: _, question, ...answer } = entry;
-    return [{ ...answer, question: shown(question) }];
+    const dispute = disputes.get(answer.answer.questionId);
+    return [
+      {
+        ...answer,
+        question: shown(question),
+        ...(dispute === undefined
+          ? {}
+          : {
+              dispute: {
+                recordedAt: dispute.recordedAt,
+                reason: dispute.reason,
+                outcome: dispute.outcome,
+              },
+            }),
+      },
+    ];
   });
 }
 

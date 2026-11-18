@@ -15,6 +15,13 @@
 // Once a segment's close or the unit's end is written, the backup is asked
 // for a commit (task 2.25).
 //
+// A dispute of one of the unit's answers (task 3.8) is written here when the
+// unit's chat is open, so it lands in order with the chat's own writes; one
+// written elsewhere while the chat was not open is learned when it opens.
+// Either way the page is told, with the statuses the outcome gives. In a
+// finished unit, a dispute that takes a pass away records the objective as
+// overridden with it, so the unit stays finished.
+//
 // The chat decides which changes the phase rules allow; this module carries
 // them out. Its changes are not safe to run concurrently: the chat makes them
 // only from inside its queue. Reading is safe at any time.
@@ -22,7 +29,12 @@
 import type { Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
-import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
+import type {
+  AnswerEvidence,
+  DisputeEvidence,
+  EvidenceEntry,
+  OverrideEvidence,
+} from "../../shared/evidence.ts";
 import type {
   PackageCompletion,
   PackageRequest,
@@ -37,7 +49,8 @@ import type { Detour, OpenQuestion, UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
-import { objectiveStatus, unitStatus } from "../record/status.ts";
+import { disputesIn } from "../record/disputes.ts";
+import { objectiveStatus, takesPass, unitStatus } from "../record/status.ts";
 import { segmentOf } from "./check-rules.ts";
 
 /** A question closed with its answer, as the tutor is to be told it. */
@@ -66,6 +79,20 @@ export interface UnitRecord {
   status(): PageEvent;
   /** The answer the evidence has to the question, if it has one. */
   recordedAnswer(questionId: string): AnswerEvidence | undefined;
+  /** The dispute of the answer to the question, if it has one. */
+  disputeOf(questionId: string): DisputeEvidence | undefined;
+  /**
+   * Records the dispute of one of the unit's answers, with an override of
+   * its objective if the unit is finished and the dispute takes its pass,
+   * and tells the page. Throws DisputeRefused if the record refuses it.
+   */
+  dispute(entry: DisputeEvidence): Promise<void>;
+  /**
+   * Keeps a dispute written to the record without this unit, with the
+   * override written with it, and tells the page; nothing if it is kept
+   * already. False if it was.
+   */
+  learnDispute(entry: DisputeEvidence, override?: OverrideEvidence): boolean;
   objectiveStatuses(): Record<string, ObjectiveStatus>;
   /**
    * Writes the position to state.json, with the tutor session's id kept, then
@@ -241,6 +268,25 @@ export async function openUnitRecord(options: {
   }
 
   /**
+   * Keeps the dispute and its override, and tells the page. A finished
+   * unit's status can change with it: overridden once a pass is taken, or
+   * passed once a miss is overturned.
+   */
+  function keepDispute(
+    entry: DisputeEvidence,
+    override: OverrideEvidence | undefined,
+  ): void {
+    evidence.push(entry);
+    if (override !== undefined) evidence.push(override);
+    if (finished !== undefined) {
+      const now = unitStatus(unit, evidence, undefined);
+      if (now === "passed" || now === "overridden") finished = now;
+    }
+    emit(disputedEvent(entry));
+    emit(status());
+  }
+
+  /**
    * Closes the question its recorded answer answers, and tells the page.
    * A miss opens a detour on it.
    */
@@ -315,8 +361,31 @@ export async function openUnitRecord(options: {
     reopened: stored !== undefined,
     status,
     recordedAnswer,
+    disputeOf: (questionId) => disputesIn(evidence).get(questionId),
     objectiveStatuses,
     move,
+
+    async dispute(entry) {
+      const answered = recordedAnswer(entry.questionId);
+      const override: OverrideEvidence | undefined =
+        finished !== undefined &&
+        answered !== undefined &&
+        takesPass(evidence, entry, answered.objective)
+          ? {
+              kind: "override",
+              recordedAt: entry.recordedAt,
+              objectives: [answered.objective],
+            }
+          : undefined;
+      await dataRoot.appendDispute(courseId, entry, override);
+      keepDispute(entry, override);
+    },
+
+    learnDispute(entry, override) {
+      if (disputesIn(evidence).has(entry.questionId)) return false;
+      keepDispute(entry, override);
+      return true;
+    },
 
     async keepSession(id) {
       if (finished !== undefined || id === sessionId) return;
@@ -462,6 +531,19 @@ export function gradedEvent(entry: AnswerEvidence): PageEvent {
   };
 }
 
+/** A `disputed` event: the outcome of a dispute of the answer to a question. */
+export function disputedEvent(entry: DisputeEvidence): PageEvent {
+  return {
+    type: "disputed",
+    questionId: entry.questionId,
+    dispute: {
+      recordedAt: entry.recordedAt,
+      reason: entry.reason,
+      outcome: entry.outcome,
+    },
+  };
+}
+
 /** A `detour` event: a detour opened after a miss, or the chat opened in it. */
 export function detourEvent(detour: Detour): PageEvent {
   return {
@@ -499,16 +581,26 @@ function checkPosition(plan: Plan, position: UnitPosition): void {
   }
 }
 
-/** The entries about the plan's objectives: answers on them, overrides naming them. */
+/**
+ * The entries about the plan's objectives: answers on them, overrides naming
+ * them, and disputes of those answers.
+ */
 function concerning(
   evidence: readonly EvidenceEntry[],
   plan: Plan,
 ): EvidenceEntry[] {
   const ids = new Set(plan.objectives.map((o) => o.id));
+  const answers = new Set(
+    evidence.flatMap((e) =>
+      e.kind === "answer" && ids.has(e.objective) ? [e.answer.questionId] : [],
+    ),
+  );
   return evidence.filter((e) =>
     e.kind === "answer"
       ? ids.has(e.objective)
-      : e.objectives.some((id) => ids.has(id)),
+      : e.kind === "override"
+        ? e.objectives.some((id) => ids.has(id))
+        : answers.has(e.questionId),
   );
 }
 

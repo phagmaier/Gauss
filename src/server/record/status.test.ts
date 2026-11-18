@@ -4,7 +4,7 @@ import { EvidenceEntry } from "../../shared/evidence.ts";
 import type { Confidence } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
-import { objectiveStatus, unitStatus } from "./status.ts";
+import { objectiveStatus, takesPass, unitStatus } from "./status.ts";
 
 // Every expected status below was worked out by hand from the rules in
 // docs/decisions.md, "Objective status", with the passing rule of task 2.23
@@ -517,5 +517,89 @@ describe("unit status", () => {
 
   test.each(cases)("$name: $is", ({ unit, log, position, is }) => {
     expect(unitStatus(unit, log, position)).toBe(is);
+  });
+});
+
+/** The dispute of an answer's grade, decided `verdict` (task 3.8). */
+function disputed(
+  entry: EvidenceEntry,
+  verdict: "correct" | "incorrect",
+): EvidenceEntry & { kind: "dispute" } {
+  if (entry.kind !== "answer") throw new Error("Only an answer is disputed.");
+  return EvidenceEntry.parse({
+    kind: "dispute",
+    recordedAt: "2026-11-16T09:00:00.000Z",
+    questionId: entry.answer.questionId,
+    reason: "The grade is wrong.",
+    outcome: { verdict, reason: "Decided by hand." },
+  }) as EvidenceEntry & { kind: "dispute" };
+}
+
+describe("a disputed answer counts with its dispute's verdict, where the answer stands", () => {
+  // Worked by hand: the log read with each disputed answer's verdict
+  // replaced, at the answer's place, and the dispute itself ignored.
+  const missed90 = wrong("90");
+  const then75 = right("75");
+  const alone100 = right("100");
+  const first75 = right("75", { prompt: "First." });
+  const second75 = right("75", { prompt: "Second." });
+  const early = wrong("75");
+  const cases: { name: string; log: EvidenceEntry[]; is: ObjectiveStatus }[] = [
+    {
+      name: "a miss at 90% then one unsure correct answer, as graded",
+      log: [missed90, then75],
+      is: "attempted",
+    },
+    {
+      // Never missed now, and the first answer was at 90%.
+      name: "the same with the miss overturned: it passes",
+      log: [missed90, then75, disputed(missed90, "correct")],
+      is: "passed",
+    },
+    {
+      name: "the same with the miss's grade standing: nothing changes",
+      log: [missed90, then75, disputed(missed90, "incorrect")],
+      is: "attempted",
+    },
+    {
+      name: "one correct answer at 100%, as graded",
+      log: [alone100],
+      is: "passed",
+    },
+    {
+      name: "the same with the pass overturned: it is taken away",
+      log: [alone100, disputed(alone100, "incorrect")],
+      is: "attempted",
+    },
+    {
+      // The first is a miss now, which clears nothing after it: one
+      // unsure correct answer is left.
+      name: "two unsure correct answers, the first overturned",
+      log: [first75, second75, disputed(first75, "incorrect")],
+      is: "attempted",
+    },
+    {
+      // In place, the overturned miss is an unsure correct answer before
+      // the override, which then stands; counted at the dispute's place it
+      // would come after the override and take its place.
+      name: "a miss overturned to an unsure correct answer before an override",
+      log: [early, override(CHAIN), disputed(early, "correct")],
+      is: "overridden",
+    },
+  ];
+  test.each(cases)("$name: $is", ({ log, is }) => {
+    expect(objectiveStatus(log, CHAIN)).toBe(is);
+  });
+
+  test("a dispute takes the pass only when it leaves the objective neither passed nor overridden", () => {
+    const alone = right("100");
+    expect(takesPass([alone], disputed(alone, "incorrect"), CHAIN)).toBe(true);
+    // Overridden after the answer: the override stands once the pass goes.
+    expect(
+      takesPass([alone, override(CHAIN)], disputed(alone, "incorrect"), CHAIN),
+    ).toBe(false);
+    const missed = wrong("50");
+    expect(takesPass([missed], disputed(missed, "correct"), CHAIN)).toBe(false);
+    expect(takesPass([alone], disputed(alone, "correct"), CHAIN)).toBe(false);
   });
 });

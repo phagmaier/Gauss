@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
+import type { AnswerEvidence } from "../../shared/evidence.ts";
 import { type CodeRunner, createCodeRunner } from "../engine/code-run.ts";
+import { createDisputeJudge } from "../engine/dispute-judge.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
@@ -652,5 +654,78 @@ test("/packages asks to install the names after it, pytest if none; the turn wit
   expect(lastText()).toEqual({
     type: "tutor_text",
     text: '**Scripted:** the packages: you said "Not now", so they are not installed.',
+  });
+});
+
+test('the scripted dispute judge keeps a grade unless the reason has "/change", changes it both ways with the key following, and fails on "/fail"', async () => {
+  const judge = createDisputeJudge({
+    backend: createScriptedBackend(),
+    systemPrompt: "Decide.",
+  });
+  const choice = (picked: "A" | "B"): AnswerEvidence => ({
+    kind: "answer",
+    recordedAt: "2026-11-17T10:00:00.000Z",
+    objective: "limits-idea",
+    question: {
+      kind: "choice",
+      prompt: "What is $1 + 1$?",
+      choices: ["$2$", "$3$", "$1$"],
+      answer: "A",
+    },
+    answer: {
+      kind: "choice",
+      questionId: "q",
+      choice: picked,
+      confidence: "75",
+    },
+    assisted: false,
+    verdict: picked === "A" ? "correct" : "incorrect",
+  });
+  const written: AnswerEvidence = {
+    kind: "answer",
+    recordedAt: "2026-11-17T10:00:00.000Z",
+    objective: "limits-proof",
+    question: { kind: "written", prompt: "Why?", rubric: "Because." },
+    answer: {
+      kind: "written",
+      questionId: "w",
+      text: "Because.",
+      confidence: "50",
+    },
+    assisted: false,
+    verdict: "correct",
+  };
+
+  // The grade stands, and with it the key: no correction is kept.
+  expect(await judge.decide(choice("B"), "B is right.")).toEqual({
+    ok: true,
+    outcome: {
+      verdict: "incorrect",
+      reason:
+        'Scripted: the grade stands, since the reason does not have "/change" in it.',
+    },
+  });
+  expect(await judge.decide(choice("B"), "/change: B is right.")).toEqual({
+    ok: true,
+    outcome: {
+      verdict: "correct",
+      reason:
+        'Scripted: the reason has "/change" in it, so the grade is changed.',
+      key: "B",
+    },
+  });
+  expect(await judge.decide(choice("A"), "/change I guessed.")).toMatchObject({
+    ok: true,
+    outcome: { verdict: "incorrect", key: "B" },
+  });
+  expect(
+    await judge.decide(written, "/change It proves nothing."),
+  ).toMatchObject({
+    ok: true,
+    outcome: { verdict: "incorrect" },
+  });
+  expect(await judge.decide(written, "/fail")).toEqual({
+    ok: false,
+    error: "The scripted dispute judge was told to fail.",
   });
 });

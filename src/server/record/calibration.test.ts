@@ -128,3 +128,40 @@ test("no answers at all gives every level empty", () => {
     unknown: 0,
   });
 });
+
+test("a disputed answer is counted with its dispute's verdict, at the confidence it was given", () => {
+  const missed = choice("90", "incorrect");
+  const passed = choice("75", "correct");
+  const helped = choice("100", "incorrect", true);
+  const stands = choice("50", "incorrect");
+  const dispute = (entry: EvidenceEntry, verdict: "correct" | "incorrect") =>
+    EvidenceEntry.parse({
+      kind: "dispute",
+      recordedAt: AT,
+      questionId: entry.kind === "answer" ? entry.answer.questionId : "",
+      reason: "The grade is wrong.",
+      outcome: { verdict, reason: "Decided by hand." },
+    });
+  const log = [
+    missed,
+    passed,
+    helped,
+    stands,
+    dispute(missed, "correct"),
+    dispute(passed, "incorrect"),
+    // Still given with help: left out whatever its verdict.
+    dispute(helped, "correct"),
+    dispute(stands, "incorrect"),
+  ];
+  // By hand: 90% one correct of one, 75% none of one, 50% none of one.
+  expect(countCalibration(log)).toEqual({
+    levels: [
+      { confidence: "under-50", correct: 0, answered: 0 },
+      { confidence: "50", correct: 0, answered: 1 },
+      { confidence: "75", correct: 0, answered: 1 },
+      { confidence: "90", correct: 1, answered: 1 },
+      { confidence: "100", correct: 0, answered: 0 },
+    ],
+    unknown: 0,
+  });
+});

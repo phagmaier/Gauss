@@ -1,13 +1,18 @@
 // HTTP routes: the library and the intake chat that starts a course (plan
 // task 1.5), the unit chats (task 2.6), "What I know" with the course's
-// calibration (tasks 2.26 and 2.29), and the artifacts the tutor shows
-// (task 3.6). Each chat has an event stream from the
+// calibration (tasks 2.26 and 2.29), the artifacts the tutor shows (task
+// 3.6), and disputes of recorded answers' grades (task 3.8). Each chat has an event stream from the
 // server to the page, and a POST for each thing the learner does in it. Only
 // Gauss's own page may use any of them.
 
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { z } from "zod";
+import {
+  DisputePost,
+  type GradedBy,
+  type ShownDispute,
+} from "../../shared/dispute.ts";
 import {
   Approval,
   type Hello,
@@ -21,6 +26,7 @@ import { PackagesAnswer } from "../../shared/packages.ts";
 import { AnswerPost } from "../../shared/question.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
+import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { DataRoot } from "../record/data-root.ts";
@@ -31,9 +37,10 @@ export function createApp(options: {
   dataRoot: DataRoot;
   intakes: Intakes;
   units: UnitChats;
+  disputes: Disputes;
   heartbeatMs?: number;
 }) {
-  const { dataRoot, intakes, units } = options;
+  const { dataRoot, intakes, units, disputes } = options;
   const heartbeatMs = options.heartbeatMs ?? 20_000;
   const app = new Hono();
   app.use("/api/*", localOnly);
@@ -100,6 +107,35 @@ export function createApp(options: {
         evidence,
       ) satisfies WhatIKnow,
     );
+  });
+
+  // Disputes (task 3.8), of any recorded answer of the course, from the
+  // session's graded card or from "What I know". What the answer was graded
+  // by is shown only to dispute it. A dispute waits for its outcome, which
+  // its unit's chat also sends, if it is open.
+  const answerPath = "/api/courses/:id/answers/:question";
+
+  app.get(`${answerPath}/graded-by`, async (c) => {
+    const found = await disputes.gradedBy(
+      c.req.param("id"),
+      c.req.param("question"),
+    );
+    return found.ok
+      ? c.json(found.gradedBy satisfies GradedBy)
+      : c.json({ error: found.error }, found.status);
+  });
+
+  app.post(`${answerPath}/dispute`, async (c) => {
+    const body = await readBody(c, DisputePost);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const raised = await disputes.raise(
+      c.req.param("id"),
+      c.req.param("question"),
+      body.data.reason,
+    );
+    if (!raised.ok) return c.json({ error: raised.error }, raised.status);
+    const { recordedAt, reason, outcome } = raised.dispute;
+    return c.json({ recordedAt, reason, outcome } satisfies ShownDispute);
   });
 
   // An artifact runs only in the app's side pane. Other requests get its

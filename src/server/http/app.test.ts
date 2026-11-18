@@ -12,6 +12,8 @@ import {
   type FakeTurn,
 } from "../backends/fake.ts";
 import { givenOrder } from "../engine/choice-order.ts";
+import { createDisputeJudge } from "../engine/dispute-judge.ts";
+import { createDisputes } from "../engine/disputes.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
@@ -67,6 +69,8 @@ function setUp(
   script: FakeTurn[],
   replies: FakeReply[] = [],
   installer?: PackageInstaller,
+  /** The dispute judge's replies, in order, on a backend of its own. */
+  rulings: FakeReply[] = [],
 ) {
   const backend = createFakeBackend(script, replies);
   const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
@@ -89,8 +93,18 @@ function setUp(
     order: givenOrder,
     ...(installer === undefined ? {} : { installer }),
   });
-  const app = createApp({ dataRoot, intakes, units });
-  return { backend, dataRoot, intakes, units, app };
+  const disputeBackend = createFakeBackend([], rulings);
+  const disputes = createDisputes({
+    dataRoot,
+    units,
+    judge: createDisputeJudge({
+      backend: disputeBackend,
+      systemPrompt: "Decide.",
+    }),
+    now: () => new Date(NOW),
+  });
+  const app = createApp({ dataRoot, intakes, units, disputes });
+  return { backend, disputeBackend, dataRoot, intakes, units, app };
 }
 
 type App = ReturnType<typeof createApp>;
@@ -1617,6 +1631,138 @@ test("what I know counts calibration on its own course's answers only", async ()
   });
   // The counts across all courses are gone (task 2.29).
   expect((await app.request("/api/calibration")).status).toBe(404);
+});
+
+// --- Disputes (task 3.8) ------------------------------------------------------
+
+/** The course's route for the recorded answer to a question. */
+const answerRoute = (questionId: string) =>
+  `/api/courses/${COURSE}/answers/${questionId}`;
+
+test("what an answer was graded by is given only for a recorded, graded answer", async () => {
+  await courseWithEvidence();
+  const { app } = setUp([]);
+
+  const written = await app.request(`${answerRoute("q2")}/graded-by`);
+  expect(written.status).toBe(200);
+  expect(await written.json()).toEqual({
+    kind: "written",
+    rubric: COLUMNS_WRITTEN.rubric,
+  });
+  const choice = await app.request(`${answerRoute("q1")}/graded-by`);
+  expect(await choice.json()).toEqual({ kind: "choice", key: "B" });
+  // "I don't know", a question with no answer recorded (as an open one has
+  // not), and a course that is not there.
+  expect((await app.request(`${answerRoute("q4")}/graded-by`)).status).toBe(
+    409,
+  );
+  expect((await app.request(`${answerRoute("open")}/graded-by`)).status).toBe(
+    404,
+  );
+  expect(
+    (await app.request("/api/courses/nowhere/answers/q2/graded-by")).status,
+  ).toBe(404);
+});
+
+test('a dispute through its route waits for the outcome, which What I know then shows with the status it gives; a second, an "I don\'t know", a blank reason and a failed judge are refused', async () => {
+  await courseWithEvidence();
+  const { app, disputeBackend } = setUp([], [], undefined, [
+    { fail: "The model is unavailable." },
+    { output: { reason: "It restates the rule.", verdict: "incorrect" } },
+  ]);
+  const reason = "I wrote down the rule without saying why it holds.";
+
+  // The judge's failure records nothing; the same dispute then goes through.
+  const failed = await post(app, `${answerRoute("q5")}/dispute`, { reason });
+  expect(failed.status).toBe(502);
+  expect(await failed.json()).toEqual({
+    error:
+      "The dispute could not be decided, and nothing was recorded: The model is unavailable.",
+  });
+  const decided = await post(app, `${answerRoute("q5")}/dispute`, { reason });
+  expect(decided.status).toBe(200);
+  const outcome = {
+    recordedAt: NOW,
+    reason,
+    outcome: { verdict: "incorrect", reason: "It restates the rule." },
+  };
+  expect(await decided.json()).toEqual(outcome);
+  expect(disputeBackend.oneShots).toHaveLength(2);
+
+  const known = (await (
+    await app.request(`/api/courses/${COURSE}/what-i-know`)
+  ).json()) as {
+    units: {
+      objectives:
+        | { id: string; status: string; evidence: Record<string, unknown>[] }[]
+        | null;
+    }[];
+  };
+  const basis = known.units[0]?.objectives?.find((o) => o.id === "basis-image");
+  // Since q1's miss: q3 with help, q5 now a miss, q7 correct, unsure: one
+  // unassisted correct answer since the last miss, so not passed.
+  expect(basis?.status).toBe("attempted");
+  expect(basis?.evidence[2]).toMatchObject({
+    answer: { questionId: "q5" },
+    verdict: "correct",
+    dispute: outcome,
+  });
+
+  const second = await post(app, `${answerRoute("q5")}/dispute`, { reason });
+  expect(second.status).toBe(409);
+  const unknown = await post(app, `${answerRoute("q4")}/dispute`, { reason });
+  expect(unknown.status).toBe(409);
+  const blank = await post(app, `${answerRoute("q2")}/dispute`, {
+    reason: "  ",
+  });
+  expect(blank.status).toBe(400);
+  const none = await post(app, `${answerRoute("open")}/dispute`, { reason });
+  expect(none.status).toBe(404);
+  expect(disputeBackend.oneShots).toHaveLength(2);
+});
+
+test("a dispute raised through its route while the unit is open reaches the unit's event stream", async () => {
+  const setup = setUp(
+    [
+      [{ text: "A map is fixed by a basis." }],
+      [{ call: "ask_question", input: QUESTION }],
+      [{ text: "Right." }],
+      [{ text: "Any questions before the next one?" }],
+    ],
+    [],
+    undefined,
+    [{ output: { reason: "Guessed.", verdict: "incorrect", key: "B" } }],
+  );
+  await approvedCourse();
+  await openUnit(setup);
+  expect((await post(setup.app, `${UNIT}/ready`)).status).toBe(202);
+  await settle(setup);
+  const chat = setup.units.get(COURSE, "vectors");
+  const posted = chat?.events().findLast((e) => e.type === "question");
+  const questionId = posted?.type === "question" ? posted.question.id : "";
+  await post(setup.app, `${UNIT}/answers`, {
+    kind: "choice",
+    questionId,
+    choice: "A",
+    confidence: "50",
+  });
+  await settle(setup);
+
+  const decided = await post(setup.app, `${answerRoute(questionId)}/dispute`, {
+    reason: "I guessed A.",
+  });
+
+  expect(decided.status).toBe(200);
+  expect(chat?.events().findLast((e) => e.type === "disputed")).toEqual({
+    type: "disputed",
+    questionId,
+    dispute: {
+      recordedAt: NOW,
+      reason: "I guessed A.",
+      outcome: { verdict: "incorrect", reason: "Guessed.", key: "B" },
+    },
+  });
+  await setup.units.close();
 });
 
 test("the package card's routes: Install and Not now name the request, which is answered once", async () => {

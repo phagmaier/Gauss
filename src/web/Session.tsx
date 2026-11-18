@@ -22,6 +22,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -32,6 +33,7 @@ import type { Plan } from "../shared/plan.ts";
 import type { AnswerPost } from "../shared/question.ts";
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer } from "./Composer.tsx";
+import { type DisputeApi, disputeApi } from "./Dispute.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { PackagesCard } from "./PackagesCard.tsx";
 import { InlineProse, Prose } from "./prose.tsx";
@@ -96,6 +98,7 @@ export function Session(props: { courseId: string; unitId: string }) {
       `/api/courses/${enc(courseId)}/units/${enc(unitId)}/${route}`,
     [courseId, unitId],
   );
+  const disputes = useMemo(() => disputeApi(courseId), [courseId]);
 
   // The course's details name the unit and the one to start next. A failure to
   // load them is asked again until the server answers, so it never leaves
@@ -319,6 +322,7 @@ export function Session(props: { courseId: string; unitId: string }) {
                         )
                       }
                       asked={item.key === asked?.key ? askedAt : undefined}
+                      disputes={disputes}
                       confirming={confirming === "finish"}
                       onConfirm={(asking) =>
                         setConfirming(asking ? "finish" : undefined)
@@ -385,6 +389,7 @@ export function Session(props: { courseId: string; unitId: string }) {
             <QuestionCard
               key={asked.key}
               item={asked}
+              disputes={disputes}
               onAnswer={(submission) => post(path("answers"), submission)}
               onGradeAgain={() => post(path("grade-again"))}
             />
@@ -604,6 +609,7 @@ function ThreadItem(props: {
    * of the thread, or one that more has followed.
    */
   asked: "last" | "earlier" | undefined;
+  disputes: DisputeApi;
   confirming: boolean;
   onConfirm(asking: boolean): void;
   onAnswer(submission: AnswerPost): Promise<string | undefined>;
@@ -695,6 +701,7 @@ function ThreadItem(props: {
       ) : (
         <QuestionCard
           item={item}
+          disputes={props.disputes}
           onAnswer={props.onAnswer}
           onGradeAgain={props.onGradeAgain}
         />

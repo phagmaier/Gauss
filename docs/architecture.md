@@ -37,13 +37,13 @@ the reason for using one language.
 ```
 Gauss/
   docs/                 brief.md, architecture.md, decisions.md, plan.md; prototype/ (the page mocks)
-  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md; later examiner.md, notes.md
+  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md; later examiner.md, notes.md
   src/
     shared/             zod schemas: record files, questions, events, route bodies
     server/
       main.ts, serve.ts the real server's start, and the wiring it shares with the dev server
       record/           read/write course files; derive status, progress, "what I know"; the backup
-      engine/           the chats, phase and check rules, turn texts, grading and help-judge dispatch, the sandbox for commands
+      engine/           the chats, phase and check rules, turn texts, grading, help-judge and dispute dispatch, the sandbox for commands
       tools/            teaching tool definitions (transport-free functions)
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
@@ -83,7 +83,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     background.md                 the background note: what the learner told the planner, approved with the curriculum
     curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts
     state.json                    a position for each unit in progress
-    evidence.jsonl                append-only: answers, grades, confidence, overrides; (stage 3) disputes
+    evidence.jsonl                append-only: answers, grades, confidence, overrides, disputes with their outcomes
     misconceptions.jsonl          (stage 5) append-only: findings from detours
     units/<unit-id>/handoff.md    (stage 5) written at the end of each session in the unit
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
@@ -111,7 +111,10 @@ version: a field added later must be optional.
   (`record/progress.ts`); and "what I know" with its calibration counts
   (`record/what-i-know.ts`, `record/calibration.ts`). The rules for passing
   and help are in section 4; the reasons in `decisions.md`, "Objective
-  status".
+  status". A disputed answer counts with its dispute's verdict, where the
+  answer stands in the log; its own line keeps the first grade
+  (`record/disputes.ts`, which status, the check rules and calibration
+  read the log through).
 - **`state.json`** holds a position for each unit in progress, not one
   current unit: several units can be in progress at once. A position
   holds the segment, the phase, where the check began (`checkFrom`), the
@@ -293,6 +296,16 @@ The rules:
 - **A question has one answer.** An open question whose answer the evidence
   already holds (by `questionId`) is closed with that answer, never graded
   or recorded again.
+- **Disputes** (section 6) change no phase. Where the check rules would
+  decide next, they decide with the corrected verdict: ending a detour
+  closes the segment if nothing is left to ask, a check with no question
+  open, no detour and no feedback to come closes if nothing is left, and
+  the closing card is shown again with the statuses as they now are (the
+  unit finishes if every objective passed). A dispute that takes the pass
+  from an objective of a finished unit records that objective as
+  overridden with it, so the unit stays finished. The tutor of a unit in
+  progress is told the outcome in its next header (`disputeNote` in
+  `unit-turns.ts`).
 - **The learner's steps wait for the tutor**: "ready", moving on, the next
   segment, "another question", Start fresh and the closing card's steps are
   refused while the tutor is writing; Stop is always there. Answers and
@@ -412,8 +425,9 @@ with sources (stage 4).
   The reply is `HelpJudgment`: a reason, never shown, then clarification or
   help. A reply out of shape, a failed request or one past two minutes
   counts as help. It runs on Claude Haiku 5.5 (`JUDGE_MODEL`).
-- `GAUSS_CLAUDE_MODEL`, when set, replaces both models. Each was chosen on a
-  hand-made set: re-run `node scripts/grade-set.ts --runs 2` when
+- `GAUSS_CLAUDE_MODEL`, when set, replaces the grader's and the judges'
+  models. The grader's and the help judge's were chosen on hand-made sets:
+  re-run `node scripts/grade-set.ts --runs 2` when
   `grader.md`, `WrittenGrade` or `GRADER_MODEL` changes, and
   `node scripts/judge-set.ts --runs 2` when `help-judge.md`,
   `HelpJudgment` or `JUDGE_MODEL` changes.
@@ -462,15 +476,34 @@ with sources (stage 4).
   nothing that needs it
   runs. Installing packages (section 5) runs there too, with the network
   open to the package index.
-- (stage 3) **Disputes.** Every graded answer can be disputed once. The
-  dispute names the answer by its `questionId` and is appended to the
-  evidence with the learner's reason and the outcome; an overturned answer
-  counts with its new verdict where it stands in the log, and its line
-  keeps the original grade. A dispute is the only way to correct a wrong
-  choice key. The tutor of a unit in progress is told in its next header.
-  A one-shot call decides, seeing the question, what the answer was
-  graded by, the answer, the grade and the reason, and nothing of the
-  conversation (`decisions.md`, "Disputes").
+- **Disputes** (`engine/disputes.ts`; why, `decisions.md`, "Disputes").
+  Any graded answer of the course can be disputed once, from its graded
+  card in the session or from "What I know", in a finished unit too; not
+  "I don't know". While disputing, the learner sees what the answer was
+  graded by (`GradedBy` in `src/shared/dispute.ts`) and writes a reason,
+  which is required. The dispute judge decides, outside every queue, and
+  one dispute of an answer is decided at a time. Its outcome (`DisputeEvidence`
+  in `src/shared/evidence.ts`) names the answer by `questionId` and holds
+  the verdict the answer now counts with, the judge's reason, and a
+  corrected choice key or expected expression, which shows wherever the
+  first one did. It is written through the unit's chat when that is open,
+  in its queue; otherwise directly, and the chat shows it, and tells the
+  tutor, when it opens. The record refuses a second dispute of an answer
+  as it appends (`appendDispute` in `record/data-root.ts`).
+- **The dispute judge** (`engine/dispute-judge.ts`) is a one-shot request:
+  `dispute-judge.md`, and a message holding the question as the learner saw
+  it with its choices, how it was graded and what graded it (the key; the
+  expected expression, with the rubric `mathRubric` makes when the evidence
+  has `unsettled`; the rubric; the tests and their command, not the
+  solution), the answer with its reasoning, the grade with the flaw or the
+  tests' output, and the learner's reason, each between tags; never the
+  confidence or the conversation. The reply is `DisputeJudgment`: a reason
+  shown to the learner, the verdict, and for a choice question the right
+  letter, from which a choice's verdict must follow. A reply out of shape,
+  a failed request or one past three minutes fails as the grader's does:
+  nothing is recorded, the page shows why, and the learner can send the
+  dispute again. It runs on Claude Sonnet 5.5 (`DISPUTE_MODEL`), the
+  grader's model, not yet chosen on a hand-judged set.
 
 ## 7. Backends
 
@@ -619,7 +652,8 @@ Kept as files in `prompts/`, each revised against real runs.
 - `planner.md` drives the intake: its questions, asking to go ahead, and the
   proposal with its style and background notes.
 - `unit-planner.md` drives a unit's planning session.
-- `grader.md` and `help-judge.md` are the one-shot calls of section 6.
+- `grader.md`, `help-judge.md` and `dispute-judge.md` are the one-shot
+  calls of section 6.
 - Later: `examiner.md` for assessments (stage 5), `notes.md` for unit notes
   and cheat sheets.
 
@@ -650,9 +684,14 @@ no automated tests.
   (question, answer, confidence, help, grade with the grader's flaw, the
   right choice or expected answer of a question missed, why the grader
   graded a math answer, a code answer's files as run and its tests' output,
-  date) and overrides; never a rubric or a code question's tests. Under the
-  summary, the course's calibration: for each confidence level, how many unassisted answers were
-  correct, "I don't know" apart.
+  date) and overrides; a rubric or a code question's tests only while that
+  answer is disputed. Each graded answer has "Dispute this grade" (piece
+  13; `src/web/Dispute.tsx`), and a disputed one shows the verdict it now
+  counts with, marked "after your dispute" when changed, with its first
+  grade, the reason and the outcome; once an outcome is in, the view is
+  loaded again. Under the summary, the course's calibration: for each
+  confidence level, how many unassisted answers were correct, "I don't
+  know" apart.
 - **Session** (`/courses/<id>/units/<unit>`): the thread with rendered
   Markdown and math; phase markers; one next-step control where the thread
   has reached; the open question pinned above the message box until it is
@@ -668,7 +707,10 @@ no automated tests.
   math beneath it as it is typed (piece 2). A code question's card names
   each file to edit by its full path, with "Copy path", and says the tests
   are not shown; "Run the tests", with how sure, is the answer, and the
-  graded card shows the end of the tests' output (piece 14). Keys: A to F pick a choice, 1
+  graded card shows the end of the tests' output (piece 14). A graded card
+  can be disputed in place, as in "What I know" (piece 13); its outcome
+  also comes over the event stream (`disputed`), so a dispute raised in
+  either view shows in the other. Keys: A to F pick a choice, 1
   to 5 how sure, Enter submits; Enter in the math field submits, or moves
   to how sure if that is not picked. A confidence shortcut there returns
   focus to the math field. The view posts `open`, follows `events`, and
@@ -696,6 +738,10 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   `GET /api/courses/<id>/what-i-know`, `GET
   /api/courses/<id>/artifacts/<file>`, `POST /api/courses/<id>/review`
   (the intake for a draft).
+- Under `/api/courses/<id>/answers/<question id>/`, for a recorded answer:
+  `GET graded-by` (what graded it, for its dispute), and `POST dispute`
+  with the reason, which answers once the outcome is recorded (502 when
+  the judge failed and nothing was recorded).
 - `POST /api/intakes`, then under `/api/intakes/<id>/`: `events`,
   `messages`, `approval`, `interrupt`. An intake is addressed by an id of
   its own, since the course exists only from the first proposal.

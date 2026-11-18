@@ -137,6 +137,7 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       },
       says: {
         verdict: { text: "Correct", className: "ok" },
+        changed: false,
         sure: "50% sure",
       },
     },
@@ -157,6 +158,7 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       },
       says: {
         verdict: { text: "Correct", className: "ok" },
+        changed: false,
         sure: "under 50% sure",
         help: "With help, so it did not count",
       },
@@ -178,6 +180,7 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       },
       says: {
         verdict: { text: "Not quite", className: "no" },
+        changed: false,
         sure: "100% sure",
         help: "With help",
         correctChoice: "B",
@@ -201,6 +204,7 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       },
       says: {
         verdict: { text: "Not quite", className: "no" },
+        changed: false,
         sure: "75% sure",
       },
     },
@@ -216,6 +220,7 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       },
       says: {
         verdict: { text: "Did not know", className: "dk" },
+        changed: false,
         correctChoice: "B",
       },
     },
@@ -234,7 +239,11 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
         assisted: false,
         verdict: "correct",
       },
-      says: { verdict: { text: "Correct", className: "ok" }, sure: "90% sure" },
+      says: {
+        verdict: { text: "Correct", className: "ok" },
+        changed: false,
+        sure: "90% sure",
+      },
     },
     {
       name: "a wrong math answer the check could not read: the expected answer, and why the grader graded it",
@@ -255,6 +264,7 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       },
       says: {
         verdict: { text: "Not quite", className: "no" },
+        changed: false,
         sure: "50% sure",
         expected: "3x^2",
         gradedBy:
@@ -273,7 +283,127 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       },
       says: {
         verdict: { text: "Did not know", className: "dk" },
+        changed: false,
         expected: "3x^2",
+      },
+    },
+    {
+      name: "a choice missed, then changed by a dispute that corrected the key to the choice picked",
+      entry: {
+        kind: "answer",
+        recordedAt: AT,
+        question: CHOICE,
+        answer: {
+          kind: "choice",
+          questionId: "q",
+          choice: "A",
+          confidence: "75",
+        },
+        assisted: false,
+        verdict: "incorrect",
+        dispute: {
+          recordedAt: AT,
+          reason: "One is right.",
+          outcome: {
+            verdict: "correct",
+            reason: "The key was wrong.",
+            key: "A",
+          },
+        },
+      },
+      says: {
+        verdict: { text: "Correct", className: "ok" },
+        changed: true,
+        sure: "75% sure",
+      },
+    },
+    {
+      name: "a choice missed whose key a dispute corrected to a choice not picked: still missed, with the corrected key",
+      entry: {
+        kind: "answer",
+        recordedAt: AT,
+        question: { ...CHOICE, choices: ["One", "Two", "Three"] },
+        answer: {
+          kind: "choice",
+          questionId: "q",
+          choice: "A",
+          confidence: "50",
+        },
+        assisted: false,
+        verdict: "incorrect",
+        dispute: {
+          recordedAt: AT,
+          reason: "B is not right either.",
+          outcome: {
+            verdict: "incorrect",
+            reason: "Three is the right one.",
+            key: "C",
+          },
+        },
+      },
+      says: {
+        verdict: { text: "Not quite", className: "no" },
+        changed: false,
+        sure: "50% sure",
+        correctChoice: "C",
+      },
+    },
+    {
+      name: "a right written answer with help, changed to a miss by a dispute: help then changes nothing",
+      entry: {
+        kind: "answer",
+        recordedAt: AT,
+        question: WRITTEN,
+        answer: {
+          kind: "written",
+          questionId: "q",
+          text: "Because.",
+          confidence: "90",
+        },
+        assisted: true,
+        verdict: "correct",
+        dispute: {
+          recordedAt: AT,
+          reason: "I guessed; this proves nothing.",
+          outcome: { verdict: "incorrect", reason: "It gives no reason." },
+        },
+      },
+      says: {
+        verdict: { text: "Not quite", className: "no" },
+        changed: true,
+        sure: "90% sure",
+        help: "With help",
+      },
+    },
+    {
+      name: "a math miss whose grade stands, though a dispute corrected the expected answer",
+      entry: {
+        kind: "answer",
+        recordedAt: AT,
+        question: MATH,
+        answer: {
+          kind: "math",
+          questionId: "q",
+          expression: "x^2",
+          confidence: "100",
+        },
+        assisted: false,
+        verdict: "incorrect",
+        dispute: {
+          recordedAt: AT,
+          reason: "The expected answer is wrong.",
+          outcome: {
+            verdict: "incorrect",
+            reason: "It is $3x^2 + 1$; $x^2$ is not that either.",
+            expected: "3x^2 + 1",
+          },
+        },
+      },
+      says: {
+        verdict: { text: "Not quite", className: "no" },
+        changed: false,
+        sure: "100% sure",
+        expected: "3x^2 + 1",
       },
     },
   ],

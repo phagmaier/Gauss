@@ -11,6 +11,7 @@ import Markdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { CHOICE_LETTERS, type ChoiceLetter } from "../shared/question.ts";
 
 /** The parts of a Markdown syntax tree node that `displayMathLines` reads. */
 interface MdNode {
@@ -198,5 +199,19 @@ export function AnswerPreview(props: { text: string }) {
         <Prose text={props.text} />
       )}
     </div>
+  );
+}
+
+/** A choice by its letter and its text, as the learner saw it. */
+export function ChoiceLabel(props: {
+  choices: readonly string[];
+  letter: ChoiceLetter;
+}) {
+  const { choices, letter } = props;
+  return (
+    <span>
+      {letter}.{" "}
+      <InlineProse text={choices[CHOICE_LETTERS.indexOf(letter)] ?? ""} />
+    </span>
   );
 }

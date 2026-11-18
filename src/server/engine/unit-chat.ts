@@ -50,6 +50,14 @@
 // position, the install runs outside the chat's queue with the course's
 // workspace closed to every other change, and the answer goes to the tutor
 // in a turn of its own.
+// A dispute of an answer's grade (task 3.8) is decided outside the chat
+// (disputes.ts) and, when the chat is open, recorded inside its queue, so it
+// lands in order with the chat's own writes; one recorded while the chat
+// was not open is shown, and told, when it opens. The tutor of a unit in
+// progress is told the outcome in its next header. An outcome changes no
+// phase: where the check rules would decide next (the end of a detour, a
+// check with nothing left to ask, the closing card), they decide with the
+// corrected verdict.
 // The engine composes every turn's header (unit-turns.ts) and writes the
 // unit's position to state.json after every change, before the page is told,
 // so a restart reopens the unit where it was. The chat's events are its
@@ -74,6 +82,10 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";
+import type {
+  DisputeEvidence,
+  OverrideEvidence,
+} from "../../shared/evidence.ts";
 import type {
   PackageCompletion,
   PackageRequest,
@@ -138,6 +150,7 @@ import type { UnitPlanner } from "./unit-planning.ts";
 import {
   type Answered,
   detourEvent,
+  disputedEvent,
   gradedEvent,
   openUnitRecord,
   packagesAnsweredEvent,
@@ -147,6 +160,7 @@ import {
 import {
   answerTurn,
   checkText,
+  disputeNote,
   freshTurn,
   JOINED_NOTE,
   messageTurn,
@@ -215,6 +229,21 @@ export interface UnitChat {
   startFresh(): Promise<ChatResult>;
   /** Stops the tutor's turn in progress, if there is one. */
   interrupt(): Promise<void>;
+  /**
+   * Records the dispute of one of the unit's answers, once the unit is open,
+   * and tells the page and, in a unit in progress, the tutor's next header.
+   * False if the unit could not be opened, so nothing was recorded. Throws
+   * DisputeRefused if the record refuses it.
+   */
+  recordDispute(entry: DisputeEvidence): Promise<boolean>;
+  /**
+   * Takes in a dispute recorded without the chat, with the override recorded
+   * with it, if the unit's record read when it opened did not have it.
+   */
+  learnDispute(
+    entry: DisputeEvidence,
+    override?: OverrideEvidence,
+  ): Promise<void>;
   /** Resolves once the chat has opened and every turn sent so far has finished. */
   settled(): Promise<void>;
   close(): Promise<void>;
@@ -621,6 +650,7 @@ function createUnitChat(
       }
       running = r;
       restoreGrades(record);
+      restoreDisputes(r);
       restorePackages(record.packageCompletions);
       log.emit(record.status());
       if (record.finished !== undefined) {
@@ -728,6 +758,66 @@ function createUnitChat(
       if (id === open || graded.has(id)) continue;
       const entry = record.recordedAnswer(id);
       if (entry !== undefined) log.emit(gradedEvent(entry));
+    }
+  }
+
+  /**
+   * Shows the outcome of each dispute of the unit's answers that the earlier
+   * sessions' thread does not: one raised from "What I know" while the chat
+   * was not open, or whose line was lost. In a unit in progress, the tutor
+   * is told it in its next header.
+   */
+  function restoreDisputes(r: Running): void {
+    const shown = new Set<string>();
+    for (const event of log.events()) {
+      if (event.type === "disputed") shown.add(event.questionId);
+    }
+    for (const entry of r.record.evidence) {
+      if (entry.kind !== "dispute" || shown.has(entry.questionId)) continue;
+      if (r.record.disputeOf(entry.questionId) !== entry) continue;
+      shown.add(entry.questionId);
+      log.emit(disputedEvent(entry));
+      tellDispute(r, entry);
+    }
+  }
+
+  /** Tells the tutor of a unit in progress the outcome, in its next header. */
+  function tellDispute(r: Running, entry: DisputeEvidence): void {
+    const answered = r.record.recordedAnswer(entry.questionId);
+    if (r.record.finished === undefined && answered !== undefined) {
+      r.notes.push(disputeNote(answered, entry));
+    }
+  }
+
+  /**
+   * After a dispute's outcome is kept: the tutor is told, and the check rules
+   * decide with the corrected verdict where nothing else is waiting for
+   * them. A check with no question open, no detour and no feedback to come
+   * closes if nothing is left to ask; at the unit's end, the closing card is
+   * shown again with the statuses as they are now, and the unit finishes if
+   * every objective has passed. A detour stays open until the learner asks
+   * for another question. Runs inside `exclusive`.
+   */
+  async function disputeKept(
+    r: Running,
+    entry: DisputeEvidence,
+  ): Promise<void> {
+    tellDispute(r, entry);
+    const { position, finished } = r.record;
+    if (finished !== undefined) return;
+    if (
+      position.phase === "check" &&
+      position.openQuestion === undefined &&
+      position.detour === undefined &&
+      r.feedback === undefined &&
+      checkDone(r)
+    ) {
+      await closeSegment(r);
+    } else if (
+      position.phase === "closed" &&
+      isLastSegment(r.context.plan, position)
+    ) {
+      await endUnit(r);
     }
   }
 
@@ -1577,7 +1667,9 @@ function createUnitChat(
         }
         const stops = stopCount;
         await r.record.endDetour();
-        askNext(r, detour.number, stops, "detour");
+        // A dispute during the detour can have left nothing to ask.
+        if (checkDone(r)) await closeSegment(r);
+        else askNext(r, detour.number, stops, "detour");
         return { ok: true };
       }),
 
@@ -1813,6 +1905,24 @@ function createUnitChat(
       stopCount += 1;
       codePosting?.stop.abort();
       await running?.agents.interrupt();
+    },
+    async recordDispute(entry) {
+      await loading;
+      return exclusive(async () => {
+        const r = running;
+        if (r === undefined) return false;
+        await r.record.dispute(entry);
+        await disputeKept(r, entry);
+        return true;
+      });
+    },
+    async learnDispute(entry, override) {
+      await loading;
+      await exclusive(async () => {
+        const r = running;
+        if (r === undefined) return;
+        if (r.record.learnDispute(entry, override)) await disputeKept(r, entry);
+      });
     },
     async settled() {
       await loading;

@@ -27,7 +27,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
 | Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits; math questions in the engine and on the page | Changing `mathcheck.py`, math questions, or what they accept |
 | Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept | Changing code questions or how their tests run |
-| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides | Building or changing disputes |
+| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides; how they are built | Building or changing disputes |
 | Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
 | Page behaviour | Rendering, performance, the pinned question, dimming, keys, retries | Touching `src/web/` |
@@ -1094,6 +1094,48 @@ from piece 13 of the mocks (2026-11-17). The look is in "Page design".
   grader's set** (`scripts/grader-set.ts`): added by hand, with its grade
   checked, when `grader.md` is next revised. Nothing is added
   automatically, since the set's grades are hand-checked.
+
+Built in task 3.8; these are the agent's choices, open to change.
+
+- **The answer's verdict is replaced where it is read**, not by rewriting
+  the log: `countedEvidence` in `record/disputes.ts` gives the log with
+  each disputed answer's verdict, and status, the check rules and
+  calibration read through it. A second dispute line, which the record
+  refuses as it appends, would be ignored.
+- **A wrong expected expression is corrected like a key**: the outcome can
+  carry the right expression, which shows where the expected one did. Not
+  checked by the symbolic check: it is shown, never graded against.
+- **A choice outcome's verdict follows from its key.** The judge names the
+  right letter; a verdict that does not follow from it is a failed call,
+  not a guess at which the judge meant.
+- **The judge sees the tests, not the tutor's solution**: a wrong test was
+  checked to pass on the solution at posting, so the solution is as wrong
+  and would argue for the test.
+- **An overturned pass in a finished unit records an override** of that
+  objective with the dispute. A unit with no position and an objective
+  neither passed nor overridden reads as a record left half-written, and
+  opening it would teach it again from segment 1; the learner did move on
+  from the objective when the unit ended. Stage 5's slipping status may
+  replace this. In a unit in progress nothing is added: its closing card
+  offers the objective again.
+- **The check rules decide at their next point**: ending a detour closes
+  the segment if nothing is left to ask (before, a miss could never leave
+  nothing), an idle check closes, and the closing card is shown again;
+  the timeline replaces a standing card's statuses rather than ignoring
+  the repeat.
+- **Deciding is not kept**: the route waits for the outcome, since "What I
+  know" has no event stream; a failed call, or a server stopped while
+  deciding, records nothing, and the learner sends the dispute again. Kept
+  in memory only: one dispute of an answer at a time.
+- **Written through the unit's chat when it is open**, in its queue, so it
+  cannot land between the chat's own writes (finishing the unit, for one);
+  otherwise directly, as only a chat writes the unit's position. A chat
+  that opens later shows each dispute its thread lacks and tells the tutor
+  then, so a dispute raised from "What I know" still reaches the tutor.
+- **The model is the grader's, Sonnet 5.5,** until task 3.9's set; a
+  dispute reviews the grader's work, so it should not be weaker.
+- **The scripted judge** keeps a grade unless the reason has "/change",
+  and fails on "/fail" (`scripted.ts`'s header).
 
 ## Prompts
 

@@ -80,6 +80,12 @@ export const GRADER_MODEL = "claude-sonnet-5-5";
  */
 export const JUDGE_MODEL = "claude-haiku-5-5";
 
+/**
+ * The dispute judge's model (task 3.8): the grader's until task 3.9 picks
+ * one on a hand-judged set, since a dispute reviews the grader's work.
+ */
+export const DISPUTE_MODEL = "claude-sonnet-5-5";
+
 export function createClaudeBackend(
   backendOptions: ClaudeBackendOptions = {},
 ): TutorBackend {

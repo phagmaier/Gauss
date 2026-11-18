@@ -10,6 +10,8 @@ import { getRequestListener } from "@hono/node-server";
 import { createServer as createViteServer } from "vite";
 import type { TutorBackend } from "./backends/backend.ts";
 import { createCodeRunner } from "./engine/code-run.ts";
+import { createDisputeJudge } from "./engine/dispute-judge.ts";
+import { createDisputes } from "./engine/disputes.ts";
 import { createGrader } from "./engine/grading.ts";
 import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
@@ -36,6 +38,8 @@ export async function serve(options: {
   graderBackend: TutorBackend;
   /** Judges whether a reply during an open question was help (task 2.21). */
   judgeBackend: TutorBackend;
+  /** Decides disputes of answers' grades (task 3.8). */
+  disputeBackend: TutorBackend;
   dataRootPath: string;
   port: number;
   /** Keeps the record's history in git (task 2.25). */
@@ -50,12 +54,14 @@ export async function serve(options: {
     tutorPrompt,
     graderPrompt,
     judgePrompt,
+    disputePrompt,
   ] = await Promise.all([
     prompt("planner.md"),
     prompt("unit-planner.md"),
     prompt("tutor.md"),
     prompt("grader.md"),
     prompt("help-judge.md"),
+    prompt("dispute-judge.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
   // The engine's commands run in it (task 3.2); it says once if it cannot,
@@ -112,7 +118,17 @@ export async function serve(options: {
         }
       : {}),
   });
-  const api = getRequestListener(createApp({ dataRoot, intakes, units }).fetch);
+  const disputes = createDisputes({
+    dataRoot,
+    units,
+    judge: createDisputeJudge({
+      backend: options.disputeBackend,
+      systemPrompt: disputePrompt,
+    }),
+  });
+  const api = getRequestListener(
+    createApp({ dataRoot, intakes, units, disputes }).fetch,
+  );
 
   const server = createServer();
   const vite = await createViteServer({

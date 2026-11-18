@@ -8,11 +8,15 @@
 // been answered. A written question's rubric is left out: it is written for
 // the grader and never shown to the learner (`rubric` in question.ts); so
 // are a code question's tests, solution and command (task 3.7), whose
-// output the answer keeps.
+// output the answer keeps. A disputed answer carries its dispute (task
+// 3.8): the answer keeps its first grade, and the dispute the outcome it
+// now counts with; what it was graded by is asked for only to dispute it
+// (`GradedBy` in dispute.ts).
 
 import { z } from "zod";
 import { Calibration } from "./calibration.ts";
 import { Slug, Timestamp } from "./course.ts";
+import { ShownDispute } from "./dispute.ts";
 import { Objective } from "./plan.ts";
 import {
   AnswerSubmission,
@@ -42,7 +46,8 @@ export type ShownQuestion = z.infer<typeof ShownQuestion>;
  * One line of an objective's evidence: an answer that checked it, or an
  * override that named it (with any other objectives, which are not listed).
  * The fields of an answer are the evidence's (`AnswerEvidence` in
- * evidence.ts), less the objective, which is the one it sits under.
+ * evidence.ts), less the objective, which is the one it sits under, with
+ * its dispute if it has one. `verdict` is the first grade.
  */
 export const ShownEvidence = z.discriminatedUnion("kind", [
   z.object({
@@ -55,12 +60,14 @@ export const ShownEvidence = z.discriminatedUnion("kind", [
     flaw: z.string().min(1).optional(),
     unsettled: Unsettled.optional(),
     output: z.string().optional(),
+    dispute: ShownDispute.optional(),
   }),
   z.object({ kind: z.literal("override"), recordedAt: Timestamp }),
 ]);
 export type ShownEvidence = z.infer<typeof ShownEvidence>;
 
 export const KnownObjective = Objective.extend({
+  /** With each disputed answer counted by its dispute's verdict. */
   status: ObjectiveStatus,
   /** In log order, the order it was recorded in, whatever its timestamps say. */
   evidence: z.array(ShownEvidence),

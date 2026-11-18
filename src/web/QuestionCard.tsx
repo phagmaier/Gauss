@@ -22,8 +22,13 @@
 //
 // An answer sent while the tutor's replies during the question are still
 // being judged for help is kept as sent until they are (task 2.21).
+//
+// A graded card can be disputed (task 3.8, piece 13; Dispute.tsx). Its
+// verdict, and the right choice or expected answer of a miss, are then the
+// ones the dispute left, and a verdict the dispute changed is marked.
 
 import { useEffect, useRef, useState } from "react";
+import type { ShownDispute } from "../shared/dispute.ts";
 import {
   type AnswerPost,
   type AnswerSubmission,
@@ -35,8 +40,11 @@ import {
   type QuestionView,
   type WrittenAnswer,
 } from "../shared/question.ts";
+import { type DisputeApi, DisputePart, VerdictNow } from "./Dispute.tsx";
+import { standing } from "./dispute.ts";
 import {
   AnswerPreview,
+  ChoiceLabel,
   InlineProse,
   MathPreview,
   MathText,
@@ -57,12 +65,20 @@ const CONFIDENCE: { value: Confidence; label: string }[] = [
 
 export function QuestionCard(props: {
   item: QuestionItem;
+  disputes: DisputeApi;
   onAnswer(submission: AnswerPost): Promise<string | undefined>;
   onGradeAgain(): Promise<string | undefined>;
 }) {
   const { item } = props;
   if (item.graded !== undefined) {
-    return <GradedCard question={item.question} graded={item.graded} />;
+    return (
+      <GradedCard
+        question={item.question}
+        graded={item.graded}
+        dispute={item.dispute}
+        disputes={props.disputes}
+      />
+    );
   }
   if (item.withdrawn === true) {
     return (
@@ -625,20 +641,6 @@ function ChoiceText(props: { question: QuestionView; letter: ChoiceLetter }) {
   ) : null;
 }
 
-/** A choice by its letter and its text, as the learner saw it ("What I know" too). */
-export function ChoiceLabel(props: {
-  choices: readonly string[];
-  letter: ChoiceLetter;
-}) {
-  const { choices, letter } = props;
-  return (
-    <span>
-      {letter}.{" "}
-      <InlineProse text={choices[CHOICE_LETTERS.indexOf(letter)] ?? ""} />
-    </span>
-  );
-}
-
 function WrittenRecord(props: { answer: WrittenAnswer }) {
   return (
     <>
@@ -654,22 +656,29 @@ function WrittenRecord(props: { answer: WrittenAnswer }) {
   );
 }
 
-function GradedCard(props: { question: QuestionView; graded: Graded }) {
-  const { question, graded } = props;
+function GradedCard(props: {
+  question: QuestionView;
+  graded: Graded;
+  dispute: ShownDispute | undefined;
+  disputes: DisputeApi;
+}) {
+  const { question, graded, dispute } = props;
   const { answer } = graded;
-  const verdict =
-    graded.verdict === "correct" ? (
-      <span className="ok">Correct</span>
-    ) : graded.verdict === "incorrect" ? (
-      <span className="no">Not quite</span>
-    ) : (
-      <span className="dk">Did not know</span>
-    );
+  const first = {
+    kind: question.kind,
+    verdict: graded.verdict,
+    key: graded.correctChoice,
+    expected: graded.expected,
+    flaw: graded.flaw,
+    dispute,
+  };
+  const now = standing(first);
+  const choices = question.kind === "choice" ? question.choices : [];
   return (
     <div className="qa-card done">
       <div className="q-count">
-        Question {question.number} {verdict}
-        {graded.assisted && graded.verdict === "correct" ? (
+        Question {question.number} <VerdictNow first={first} />
+        {graded.assisted && now.verdict === "correct" ? (
           <span>With help, so it does not count toward passing</span>
         ) : null}
       </div>
@@ -680,18 +689,21 @@ function GradedCard(props: { question: QuestionView; graded: Graded }) {
       {graded.output === undefined ? null : (
         <CodeOutput output={graded.output} verdict={graded.verdict} />
       )}
-      {graded.verdict === "correct" ||
-      graded.correctChoice === undefined ? null : (
+      {now.verdict === "correct" ||
+      question.kind !== "choice" ||
+      now.key === undefined ? null : (
         <div className="qa-line">
           <span className="k">Correct answer</span>
-          <ChoiceText question={question} letter={graded.correctChoice} />
+          <ChoiceLabel choices={choices} letter={now.key} />
         </div>
       )}
-      {graded.verdict === "correct" || graded.expected === undefined ? null : (
+      {now.verdict === "correct" ||
+      question.kind !== "math" ||
+      now.expected === undefined ? null : (
         <div className="qa-line">
           <span className="k">Correct answer</span>
           <span>
-            <MathText source={graded.expected} />
+            <MathText source={now.expected} />
           </span>
         </div>
       )}
@@ -701,7 +713,8 @@ function GradedCard(props: { question: QuestionView; graded: Graded }) {
           <span className="qa-by">{unsettledLine(graded.unsettled)}</span>
         </div>
       )}
-      {graded.flaw === undefined ? null : (
+      {/* The first flaw stays while the grade it belongs to does. */}
+      {graded.flaw === undefined || now.changed ? null : (
         <div className="qa-line">
           <span className="k">The first flaw</span>
           <span className="qa-flaw">
@@ -709,6 +722,12 @@ function GradedCard(props: { question: QuestionView; graded: Graded }) {
           </span>
         </div>
       )}
+      <DisputePart
+        api={props.disputes}
+        questionId={graded.questionId}
+        first={first}
+        choices={choices}
+      />
     </div>
   );
 }

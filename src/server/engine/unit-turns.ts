@@ -5,7 +5,7 @@
 // details follow it. Pure, so the wording is tested without a chat.
 
 import type { Unit } from "../../shared/curriculum.ts";
-import type { AnswerEvidence } from "../../shared/evidence.ts";
+import type { AnswerEvidence, DisputeEvidence } from "../../shared/evidence.ts";
 import {
   type PackageSpec,
   type PackagesOutcome,
@@ -368,6 +368,43 @@ export function overrideNote(
   return (
     "The learner moved on without finishing the check of the segment just " +
     `closed, which is recorded as an override of ${quoted(objectives)}.${question}`
+  );
+}
+
+/**
+ * The note that tells the tutor of a unit in progress how a dispute of an
+ * answer's grade ended (task 3.8), since its feedback or detour may have
+ * taught from a wrong key: the question, the grade before and after, a
+ * corrected key or expected answer, the judge's reason and the learner's.
+ */
+export function disputeNote(
+  answer: AnswerEvidence,
+  dispute: DisputeEvidence,
+): string {
+  const { question } = answer;
+  const { outcome } = dispute;
+  // On one line: a header ends at its first "]" and line end.
+  const line = (text: string) => text.trim().replace(/\s+/g, " ");
+  const prompt = line(question.prompt);
+  const shown = prompt.length > 200 ? `${prompt.slice(0, 199)}…` : prompt;
+  const first = answer.verdict === "correct" ? "correct" : "incorrect";
+  const grade =
+    outcome.verdict === first
+      ? `kept the grade, ${first}`
+      : `changed the grade from ${first} to ${outcome.verdict}`;
+  const key =
+    outcome.key !== undefined && question.kind === "choice"
+      ? ` The key was wrong: the correct choice is ${outcome.key}, not ${question.answer}.`
+      : outcome.expected !== undefined && question.kind === "math"
+        ? ` The expected answer was wrong: it is ${outcome.expected}, not ${question.expected}.`
+        : "";
+  return (
+    `The learner disputed the grade of their answer to a question on ` +
+    `"${answer.objective}" ("${shown}"), giving this reason: ` +
+    `"${line(dispute.reason)}". A separate judge, which saw the question, ` +
+    `what it was graded by, the answer and that reason, ${grade}.${key} ` +
+    `Its reason: ${line(outcome.reason)} The answer now counts as ` +
+    `${outcome.verdict}, and where the check stands follows from that.`
   );
 }
 

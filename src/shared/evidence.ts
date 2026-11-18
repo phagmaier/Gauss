@@ -1,11 +1,13 @@
 // One line of evidence.jsonl: a recorded result for an objective (brief.md,
-// "Evidence"), or the learner's override. The log is appended to, never
-// rewritten, and objective status is derived from it (task 2.3), never
-// stored. Entries name objectives by id, which is unique in the course.
-// Disputes join in task 3.8.
+// "Evidence"), the learner's override, or a dispute of an answer's grade
+// with its outcome (task 3.8). The log is appended to, never rewritten, and
+// objective status is derived from it (task 2.3), never stored. Entries
+// name objectives by id, which is unique in the course, and a dispute names
+// its answer by the question's id.
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
+import { DisputeOutcome, DisputeReason } from "./dispute.ts";
 import { AnswerSubmission, Question, Unsettled, Verdict } from "./question.ts";
 
 /** A graded answer to a check question. */
@@ -99,8 +101,24 @@ export const OverrideEvidence = z.object({
 });
 export type OverrideEvidence = z.infer<typeof OverrideEvidence>;
 
+/**
+ * The learner disputed the grade of the answer to question `questionId`,
+ * and the dispute judge decided (task 3.8). The answer's own line keeps its
+ * first grade; it counts with this outcome's verdict where it stands in the
+ * log. One per answer, and never for "I don't know".
+ */
+export const DisputeEvidence = z.object({
+  kind: z.literal("dispute"),
+  recordedAt: Timestamp,
+  questionId: z.string(),
+  reason: DisputeReason,
+  outcome: DisputeOutcome,
+});
+export type DisputeEvidence = z.infer<typeof DisputeEvidence>;
+
 export const EvidenceEntry = z.discriminatedUnion("kind", [
   AnswerEvidence,
   OverrideEvidence,
+  DisputeEvidence,
 ]);
 export type EvidenceEntry = z.infer<typeof EvidenceEntry>;

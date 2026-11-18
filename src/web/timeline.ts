@@ -8,6 +8,7 @@
 
 import type { Slug } from "../shared/course.ts";
 import type { Unit } from "../shared/curriculum.ts";
+import type { ShownDispute } from "../shared/dispute.ts";
 import type { PageEvent } from "../shared/events.ts";
 import type { PackageSpec, PackagesOutcome } from "../shared/packages.ts";
 import type { Plan } from "../shared/plan.ts";
@@ -39,6 +40,8 @@ export interface QuestionItem {
   /** A code grading failed without determining a verdict. */
   canMoveOn?: true;
   graded?: Graded;
+  /** The dispute of its grade, with the outcome the answer now counts with (task 3.8). */
+  dispute?: ShownDispute;
   /** The learner moved on without the check while it was open. */
   withdrawn?: boolean;
   /**
@@ -540,6 +543,14 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ],
       };
     }
+    case "disputed":
+      return {
+        ...next,
+        items: withQuestion(state.items, event.questionId, (item) => ({
+          ...item,
+          dispute: event.dispute,
+        })),
+      };
     case "judging":
       return {
         ...next,
@@ -675,8 +686,21 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
     }
     case "detour_end":
       return { ...next, detour: null };
-    case "unit_end":
-      if (cardStanding(state.items)) return next;
+    case "unit_end": {
+      // The card standing is shown again: by a chat that opened at it, or
+      // with the statuses a dispute changed (task 3.8).
+      const at = state.items.findLastIndex((i) => i.kind === "unit_end");
+      const card = state.items[at];
+      if (cardStanding(state.items) && card?.kind === "unit_end") {
+        return {
+          ...next,
+          items: state.items.with(at, {
+            ...card,
+            passed: event.passed,
+            objectives: event.objectives,
+          }),
+        };
+      }
       return {
         ...next,
         items: [
@@ -690,6 +714,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ],
         tutorOpen: false,
       };
+    }
     case "unit_closed":
       return {
         ...next,

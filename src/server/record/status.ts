@@ -1,18 +1,19 @@
 // Objective and unit status, derived from the evidence log and never stored
 // (architecture.md section 3). Pure: the caller reads the record. The rules,
-// with the reasons for them, are in docs/decisions.md, "Objective status",
-// and the passing rule as task 2.23 changed it in "Passing without a
-// confident answer".
+// with the reasons for them, are in docs/decisions.md, "Objective status".
+// A disputed answer counts with its dispute's verdict (disputes.ts).
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
-import type { EvidenceEntry } from "../../shared/evidence.ts";
+import type { DisputeEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import { isConfident, type Question } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
+import { countedEvidence } from "./disputes.ts";
 
 /**
  * One objective's status. The evidence is read in log order, the order it
- * was recorded in, whatever its timestamps say.
+ * was recorded in, whatever its timestamps say, each disputed answer with
+ * its dispute's verdict (task 3.8).
  *
  * - A miss (a wrong answer or "I don't know", with help or without) clears
  *   the correct answers before it.
@@ -36,7 +37,7 @@ export function objectiveStatus(
   /** Whether one of those answers was given at 90% or 100%. */
   let confident = false;
 
-  for (const entry of evidence) {
+  for (const entry of countedEvidence(evidence)) {
     if (entry.kind === "override") {
       if (entry.objectives.includes(objective)) overridden = true;
       continue;
@@ -104,4 +105,21 @@ function problemOf(question: Question): string {
         ...question.files.toSorted(),
       ]);
   }
+}
+
+/**
+ * Whether the dispute takes the pass from the objective, leaving it neither
+ * passed nor overridden. In a finished unit the objective is then recorded
+ * as overridden with the dispute (task 3.8): the learner moved on from it
+ * when the unit ended, and a finished unit is not started again.
+ */
+export function takesPass(
+  evidence: readonly EvidenceEntry[],
+  dispute: DisputeEvidence,
+  objective: string,
+): boolean {
+  return (
+    objectiveStatus(evidence, objective) === "passed" &&
+    objectiveStatus([...evidence, dispute], objective) === "attempted"
+  );
 }

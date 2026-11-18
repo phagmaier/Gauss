@@ -4,10 +4,12 @@
 // the answer (or "I don't know" and where the learner got stuck), how sure,
 // help, the grade with a written answer's flaw, and the date; an override is
 // a line of its own. Its words are in what-i-know.ts. Under the summary, the
-// course's calibration (task 2.29), its words in calibration.ts. Stage 3's
-// disputes will be raised from the answers here.
+// course's calibration (task 2.29), its words in calibration.ts. Each
+// graded answer can be disputed here (task 3.8, Dispute.tsx); once its
+// outcome is in, the view is loaded again, since statuses and calibration
+// follow the corrected grade.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Calibration } from "../shared/calibration.ts";
 import {
   WhatIKnow as Known,
@@ -17,9 +19,11 @@ import {
 } from "../shared/what-i-know.ts";
 import { getJson } from "./api.ts";
 import { calibrationRows, hasCalibration } from "./calibration.ts";
+import { type DisputeApi, DisputePart, disputeApi } from "./Dispute.tsx";
+import { AFTER_DISPUTE } from "./dispute.ts";
 import { Link, TopLine } from "./Frame.tsx";
-import { InlineProse, MathText, Prose } from "./prose.tsx";
-import { ChoiceLabel, CodeOutput, FileNames } from "./QuestionCard.tsx";
+import { ChoiceLabel, InlineProse, MathText, Prose } from "./prose.tsx";
+import { CodeOutput, FileNames } from "./QuestionCard.tsx";
 import { paths } from "./route.ts";
 import {
   answerLine,
@@ -35,17 +39,21 @@ export function WhatIKnow(props: { courseId: string }) {
   // Undefined while loading, null when there is no such course.
   const [view, setView] = useState<Known | null>();
   const [problem, setProblem] = useState<string>();
+  const disputes = useMemo(() => disputeApi(courseId), [courseId]);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     void getJson(
       `/api/courses/${encodeURIComponent(courseId)}/what-i-know`,
       Known,
     ).then((answer) => {
-      if (answer.ok) setView(answer.data);
-      else if (answer.status === 404) setView(null);
+      if (answer.ok) {
+        setView(answer.data);
+        setProblem(undefined);
+      } else if (answer.status === 404) setView(null);
       else setProblem(answer.error);
     });
   }, [courseId]);
+  useEffect(load, [load]);
 
   const unstarted = view == null ? null : unstartedLine(view);
   return (
@@ -79,6 +87,8 @@ export function WhatIKnow(props: { courseId: string }) {
                     key={unit.id}
                     unit={unit}
                     objectives={unit.objectives}
+                    disputes={disputes}
+                    onDisputed={load}
                   />
                 ),
               )}
@@ -93,7 +103,15 @@ export function WhatIKnow(props: { courseId: string }) {
   );
 }
 
-function UnitSection(props: { unit: KnownUnit; objectives: KnownObjective[] }) {
+/** The course's dispute routes, and what to do once one is decided. */
+interface Disputing {
+  disputes: DisputeApi;
+  onDisputed(): void;
+}
+
+function UnitSection(
+  props: { unit: KnownUnit; objectives: KnownObjective[] } & Disputing,
+) {
   const { unit } = props;
   const word = unitWord(unit.status);
   const headingId = `wk-unit-${unit.id}`;
@@ -107,14 +125,19 @@ function UnitSection(props: { unit: KnownUnit; objectives: KnownObjective[] }) {
       </div>
       <ol className="wk-objs">
         {props.objectives.map((objective) => (
-          <ObjectiveItem key={objective.id} objective={objective} />
+          <ObjectiveItem
+            key={objective.id}
+            objective={objective}
+            disputes={props.disputes}
+            onDisputed={props.onDisputed}
+          />
         ))}
       </ol>
     </section>
   );
 }
 
-function ObjectiveItem(props: { objective: KnownObjective }) {
+function ObjectiveItem(props: { objective: KnownObjective } & Disputing) {
   const { objective } = props;
   const mark = objectiveMark(objective.status);
   return (
@@ -134,7 +157,11 @@ function ObjectiveItem(props: { objective: KnownObjective }) {
             // biome-ignore lint/suspicious/noArrayIndexKey: see above
             <li key={i} className="wk-entry">
               {entry.kind === "answer" ? (
-                <AnswerEntry entry={entry} />
+                <AnswerEntry
+                  entry={entry}
+                  disputes={props.disputes}
+                  onDisputed={props.onDisputed}
+                />
               ) : (
                 <div className="q-count">
                   <span>{recordedOn(entry.recordedAt)}</span>
@@ -149,9 +176,9 @@ function ObjectiveItem(props: { objective: KnownObjective }) {
   );
 }
 
-function AnswerEntry(props: {
-  entry: Extract<ShownEvidence, { kind: "answer" }>;
-}) {
+function AnswerEntry(
+  props: { entry: Extract<ShownEvidence, { kind: "answer" }> } & Disputing,
+) {
   const { entry } = props;
   const { question, answer } = entry;
   const line = answerLine(entry);
@@ -161,6 +188,7 @@ function AnswerEntry(props: {
       <div className="q-count">
         <span>{recordedOn(entry.recordedAt)}</span>
         <span className={line.verdict.className}>{line.verdict.text}</span>
+        {line.changed ? <span className="chg">{AFTER_DISPUTE}</span> : null}
         {line.sure === undefined ? null : <span>{line.sure}</span>}
         {line.help === undefined ? null : (
           <span className="wk-help">{line.help}</span>
@@ -245,13 +273,30 @@ function AnswerEntry(props: {
           <span className="qa-by">{line.gradedBy}</span>
         </div>
       )}
-      {entry.flaw === undefined ? null : (
+      {/* The first flaw stays while the grade it belongs to does. */}
+      {entry.flaw === undefined || line.changed ? null : (
         <div className="qa-line">
           <span className="k">The first flaw</span>
           <span className="qa-flaw">
             <InlineProse text={entry.flaw} />
           </span>
         </div>
+      )}
+      {answer.kind === "unknown" ? null : (
+        <DisputePart
+          api={props.disputes}
+          questionId={answer.questionId}
+          first={{
+            kind: question.kind,
+            verdict: entry.verdict,
+            key: question.kind === "choice" ? question.answer : undefined,
+            expected: question.kind === "math" ? question.expected : undefined,
+            flaw: entry.flaw,
+            dispute: entry.dispute,
+          }}
+          choices={choices}
+          onDisputed={props.onDisputed}
+        />
       )}
     </>
   );

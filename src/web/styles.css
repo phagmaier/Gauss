@@ -1513,6 +1513,72 @@ button.dn:hover {
   color: var(--yellow);
 }
 
+/* ---- Disputes, settled in piece 13: the graded card opens in place, and a separate check decides ---- */
+.dp-open {
+  display: inline-block;
+  margin-top: 0.7em;
+  font-size: 0.84em;
+}
+.dp {
+  border-top: 1px solid var(--surface0);
+  margin-top: 0.9em;
+  padding-top: 0.8em;
+}
+.dp-k {
+  display: block;
+  font-size: 0.86em;
+  color: var(--soft);
+  margin: 0 0 0.3em;
+}
+/* what the answer was graded by: shown only here */
+.dp-by {
+  background: var(--base);
+  border: 1px solid var(--surface0);
+  border-radius: var(--r);
+  padding: 0.6em 0.9em;
+  margin: 0 0 1em;
+  font-size: 0.94em;
+}
+.wk-entry .dp-by {
+  background: var(--mantle);
+}
+.dp-by pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.86em;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+.dp .reason {
+  margin-top: 0;
+}
+.dp-btns {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  flex: none;
+}
+.dp .textbtn {
+  margin-top: 0;
+  font-size: 0.9em;
+}
+/* the dispute's record: the first grade, the reason, the outcome */
+.dp-rec {
+  border-top: 1px solid var(--surface0);
+  margin-top: 0.8em;
+  padding-top: 0.7em;
+  display: grid;
+  gap: 0.25em;
+}
+.dp-said {
+  flex: 1 1 20em;
+  min-width: 0;
+  white-space: pre-wrap;
+}
+.q-count .chg {
+  color: var(--yellow);
+}
+
 /* ---- Calibration on a course's What I know (tasks 2.27, 2.29): counts per level of confidence ---- */
 /* its heading is the section's first child, which would lose the heading's space above */
 .cal-sec {

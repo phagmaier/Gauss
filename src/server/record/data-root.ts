@@ -3,8 +3,8 @@
 // and their units, stores and approves their curricula, each draft with its
 // style note and background note, reads those notes, stores the plans of
 // their units, keeps the position of each unit in progress in state.json,
-// appends to and reads the evidence log, appends to and reads the units'
-// session transcripts, and stores and reads the artifacts the tutor shows.
+// appends to and reads the evidence log, appends a dispute once per answer,
+// appends to and reads the units' session transcripts, and stores and reads the artifacts the tutor shows.
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -23,12 +23,17 @@ import {
   type ShownProposal,
 } from "../../shared/curriculum.ts";
 import { PageEvent } from "../../shared/events.ts";
-import { EvidenceEntry } from "../../shared/evidence.ts";
+import {
+  DisputeEvidence,
+  EvidenceEntry,
+  OverrideEvidence,
+} from "../../shared/evidence.ts";
 import type { StoredCourse } from "../../shared/library.ts";
 import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { writeFileAtomic, writeFileNew } from "./atomic-write.ts";
+import { disputable } from "./disputes.ts";
 import { withFileLock } from "./file-lock.ts";
 import {
   appendJsonLine,
@@ -135,6 +140,19 @@ export interface DataRoot {
   /** The evidence, oldest first, without a last line a crash cut short. */
   readEvidence(id: string): Promise<EvidenceEntry[]>;
   /**
+   * Appends a dispute of a recorded answer, with the override it brings if
+   * it takes the pass from an objective of a finished unit (task 3.8), in
+   * one write. Throws DisputeRefused, appending nothing, when the evidence
+   * has no answer to the question, the answer is "I don't know", or it was
+   * disputed already: checked as the append waits its turn, so two disputes
+   * of one answer cannot both land.
+   */
+  appendDispute(
+    id: string,
+    dispute: DisputeEvidence,
+    override?: OverrideEvidence,
+  ): Promise<void>;
+  /**
    * Appends the page events to the transcript of the unit's session with
    * this number, made if it is new. Appends land in the order called. They
    * are not flushed to disk, as the record's other files are: a transcript
@@ -189,6 +207,16 @@ export interface Transcript {
  * Approval was refused because the stored draft is not the proposal the
  * learner saw: saving a later one stopped partway, or the files were edited.
  */
+/** A dispute the record refuses (`appendDispute`), with the route's status. */
+export class DisputeRefused extends Error {
+  readonly status: 404 | 409;
+  constructor(status: 404 | 409, message: string) {
+    super(message);
+    this.name = "DisputeRefused";
+    this.status = status;
+  }
+}
+
 export class DraftMismatch extends Error {
   constructor(id: string, parts: readonly string[]) {
     super(
@@ -481,6 +509,21 @@ export function openDataRoot(options: {
       const path = courseFile(id, "evidence.jsonl");
       await existingCourse(id);
       return readJsonLines(path, EvidenceEntry);
+    },
+
+    async appendDispute(id, dispute, override) {
+      const entries = [
+        DisputeEvidence.parse(dispute),
+        ...(override === undefined ? [] : [OverrideEvidence.parse(override)]),
+      ];
+      const path = courseFile(id, "evidence.jsonl");
+      await withFileLock(path, async () => {
+        await existingCourse(id);
+        const evidence = await readJsonLines(path, EvidenceEntry);
+        const answer = disputable(evidence, dispute.questionId);
+        if (!answer.ok) throw new DisputeRefused(answer.status, answer.error);
+        await appendJsonLines(path, entries);
+      });
     },
 
     async appendTranscript(id, unitId, session, events) {

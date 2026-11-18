@@ -923,6 +923,71 @@ describe("evidence", () => {
   });
 });
 
+describe("disputes", () => {
+  const dispute = (questionId: string, reason: string) => ({
+    kind: "dispute" as const,
+    recordedAt: "2026-11-17T10:00:00.000Z",
+    questionId,
+    reason,
+    outcome: { verdict: "incorrect" as const, reason: "By hand." },
+  });
+
+  test("two disputes of one answer sent together: one lands with its override, the other is refused and nothing of it is written", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    await root.appendEvidence(id, answer(1));
+    const override: EvidenceEntry = {
+      kind: "override",
+      recordedAt: "2026-11-17T10:00:00.000Z",
+      objectives: ["eigenvector"],
+    };
+
+    const results = await Promise.allSettled([
+      root.appendDispute(id, dispute("q1", "First."), override),
+      root.appendDispute(id, dispute("q1", "Second.")),
+    ]);
+
+    expect(results[0]?.status).toBe("fulfilled");
+    expect(results[1]).toMatchObject({
+      status: "rejected",
+      reason: { name: "DisputeRefused", status: 409 },
+    });
+    expect(await openDataRoot({ path: dir }).readEvidence(id)).toEqual([
+      answer(1),
+      dispute("q1", "First."),
+      override,
+    ]);
+  });
+
+  test('a dispute of an answer the log does not have, or of an "I don\'t know", is refused', async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    await root.appendEvidence(id, {
+      ...answer(2),
+      answer: { kind: "unknown", questionId: "q2" },
+      verdict: "unknown",
+    });
+
+    await expect(
+      root.appendDispute(id, dispute("q9", "Wrong.")),
+    ).rejects.toMatchObject({
+      name: "DisputeRefused",
+      status: 404,
+    });
+    await expect(
+      root.appendDispute(id, dispute("q2", "Wrong.")),
+    ).rejects.toMatchObject({
+      name: "DisputeRefused",
+      status: 409,
+    });
+    // A blank reason fails its schema.
+    await expect(root.appendDispute(id, dispute("q2", "  "))).rejects.toThrow();
+    expect((await root.readEvidence(id)).map((e) => e.kind)).toEqual([
+      "answer",
+    ]);
+  });
+});
+
 describe("transcripts", () => {
   const begun = (startedAt: string): PageEvent => ({
     type: "session",

@@ -54,6 +54,12 @@
 // "/hold" keeps its reply open, so an answer sent meanwhile waits for the
 // judging, which comes once the reply is stopped.
 //
+// A dispute of a grade (task 3.8) is decided by the scripted judge: the
+// grade stands unless the learner's reason has "/change" in it, which
+// changes it; for a choice question changed to correct, the key becomes the
+// choice picked, and changed to incorrect, the first other choice. "/fail"
+// in the reason fails the call, which records nothing.
+//
 // Every session it starts in a folder (a unit's tutor, an intake) is kept,
 // across restarts too, so a unit reopened after a restart resumes its tutor
 // (task 2.14), and an idle session closed is resumed (task 2.15). A session id it
@@ -64,8 +70,9 @@
 // tutor, until the learner starts fresh.
 
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
+import { DisputeJudgment } from "../../shared/dispute.ts";
 import type { Plan } from "../../shared/plan.ts";
-import { HelpJudgment } from "../../shared/question.ts";
+import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 import type { EngineTurn, OneShotRequest, SessionOptions } from "./backend.ts";
@@ -533,6 +540,7 @@ function codeQuestion(objective: string, number: number): FakeStep[] {
 
 function scriptedReply(request: OneShotRequest<unknown>): FakeReply {
   if (request.schema === HelpJudgment) return scriptedJudgment(request);
+  if (request.schema === DisputeJudgment) return scriptedDispute(request);
   const answer =
     /<answer>\n([\s\S]*)\n<\/answer>/.exec(request.prompt)?.[1] ?? "";
   if (answer.includes("/fail")) {
@@ -546,6 +554,41 @@ function scriptedReply(request: OneShotRequest<unknown>): FakeReply {
         },
       }
     : { output: { verdict: "correct" } };
+}
+
+/**
+ * The dispute judge's call: the grade stands, unless the reason has
+ * "/change" in it. A choice question's key follows the verdict.
+ */
+function scriptedDispute(request: OneShotRequest<unknown>): FakeReply {
+  const tagged = (name: string) =>
+    new RegExp(`<${name}>\n([\\s\\S]*?)\n</${name}>`).exec(request.prompt)?.[1];
+  const reason = tagged("reason") ?? "";
+  if (reason.includes("/fail")) {
+    return { fail: "The scripted dispute judge was told to fail." };
+  }
+  const graded = tagged("grade") === "correct" ? "correct" : "incorrect";
+  const change = reason.includes("/change");
+  const verdict = change
+    ? graded === "correct"
+      ? "incorrect"
+      : "correct"
+    : graded;
+  const choices = tagged("choices")?.split("\n").length;
+  const picked = /^([A-F])\./.exec(tagged("answer") ?? "")?.[1];
+  const key = /^([A-F])\./.exec(tagged("key") ?? "")?.[1];
+  const other = CHOICE_LETTERS.slice(0, choices).find((l) => l !== picked);
+  return {
+    output: {
+      reason: change
+        ? 'Scripted: the reason has "/change" in it, so the grade is changed.'
+        : 'Scripted: the grade stands, since the reason does not have "/change" in it.',
+      verdict,
+      ...(choices === undefined
+        ? {}
+        : { key: !change ? key : verdict === "correct" ? picked : other }),
+    },
+  };
 }
 
 /** The help judge's call: clarification if the message asks what something means. */

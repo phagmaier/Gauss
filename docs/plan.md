@@ -35,36 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.8 Disputes
-
-- Status: todo
-- Depends on: 3.5, 3.7a
-- Why: a grade can be wrong (a wrong choice key, a grader too harsh or too
-  lenient, a wrong test), and a dispute is the only way to correct one.
-- Do: piece 13, under the rules in `decisions.md`, "Disputes": a dispute
-  names an answer by its `questionId` (on the evidence and in "What I know"
-  already) and carries the learner's reason; it is appended to the evidence
-  with its outcome. It is raised from the graded card in the session and
-  from each answer in "What I know" (a route under `/api/courses/<id>/`):
-  the card opens in place with what the answer was graded by and a field
-  for the reason, and keeps the first grade, the reason and the outcome.
-  Status, the check rules, calibration and "What I know" read the corrected
-  verdict; a corrected choice key shows wherever the key did; the tutor of
-  a unit in progress is told in its next turn's header. A one-shot call
-  decides, failing as the grader's does (shown, and tried again on
-  request), its prompt `prompts/dispute-judge.md` drafted here and finished
-  in 3.9. The scripted backend decides disputes both ways. A math answer
-  was graded by its expected expression, by the check or, when the
-  evidence has `unsettled`, by the grader with the rubric `mathRubric`
-  makes; a wrong expected expression is a wrong key.
-- Done when: tests on hand-worked records cover an overturned miss that
-  passes an objective, an overturned pass that takes one away, a
-  corrected key, calibration counting the corrected verdict, a second
-  dispute on one answer refused, an "I don't know" refused, and the
-  tutor's header; route tests pass; `mise run check` passes; on `pnpm
-  dev:fake` a dispute raised in the session and one from "What I know"
-  show their outcomes, and the browser is closed before the server stops.
-
 ### 3.9 The dispute judge
 
 - Status: todo
@@ -77,7 +47,11 @@ its outcome.
   solution, and wrong answers with persuasive reasons (effort, a claim
   that the rubric was unfair, the error restated with confidence).
   Revise `dispute-judge.md` until two runs agree with every outcome; choose
-  the model.
+  the model. In place: the drafted prompt, the request
+  (`disputeRequest` in `engine/dispute-judge.ts`), its reply
+  (`DisputeJudgment`) and `DISPUTE_MODEL`, Sonnet 5.5 for now; still to
+  write, a set and its runner, as `scripts/judge-set.ts` runs the help
+  judge's, and its command in `AGENTS.md`.
 - Done when: two runs agree with every hand outcome; the set, the results
   and the model are in `decisions.md`, "Disputes". The check depends on
   the model's judgment, so it may use Sonnet or Opus.

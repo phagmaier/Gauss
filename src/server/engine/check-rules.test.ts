@@ -169,3 +169,36 @@ test("answers on other objectives are not counted", () => {
     state: "unasked",
   });
 });
+
+test("a disputed answer in the check counts with its dispute's verdict, for why another question is needed and how many were missed", () => {
+  const dispute = (
+    q: number,
+    verdict: "correct" | "incorrect",
+  ): EvidenceEntry => ({
+    kind: "dispute",
+    recordedAt: AT,
+    questionId: `q${q}`,
+    reason: "The grade is wrong.",
+    outcome: { verdict, reason: "Decided by hand." },
+  });
+  // A miss at 75% overturned: one unsure correct answer, which needs a second.
+  const missed = [answer(1, "incorrect", "75")];
+  expect(
+    objectiveCheck("slope", [...missed, dispute(1, "correct")], missed),
+  ).toEqual({
+    state: "more",
+    reason: "second",
+    asked: 1,
+    missed: 0,
+  });
+  // A pass at 90% overturned: a miss, which a detour then teaches from.
+  const passed = [answer(1, "correct", "90")];
+  expect(
+    objectiveCheck("slope", [...passed, dispute(1, "incorrect")], passed),
+  ).toEqual({
+    state: "more",
+    reason: "missed",
+    asked: 1,
+    missed: 1,
+  });
+});
