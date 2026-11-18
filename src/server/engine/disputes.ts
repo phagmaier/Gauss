@@ -203,6 +203,11 @@ export function gradedBy(entry: AnswerEvidence): GradedBy | undefined {
     case "written":
       return { kind: "written", rubric: question.rubric };
     case "code":
-      return { kind: "code", tests: question.tests, command: question.command };
+      return {
+        kind: "code",
+        tests: question.tests,
+        command: question.command,
+        ...(question.inputs === undefined ? {} : { inputs: question.inputs }),
+      };
   }
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { DisputeJudgment } from "../../shared/dispute.ts";
+import { DisputeJudgment, GradedBy } from "../../shared/dispute.ts";
 import { type AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import { createFakeBackend } from "../backends/fake.ts";
 import {
@@ -7,6 +7,7 @@ import {
   disputeOutcome,
   disputeRequest,
 } from "./dispute-judge.ts";
+import { gradedBy } from "./disputes.ts";
 import { mathRubric } from "./grading.ts";
 
 // The answers below are hand-made records; every expected outcome was worked
@@ -88,14 +89,21 @@ const CODE = recorded({
       {
         path: "test_chain.py",
         content:
-          "from chain import d_power\nassert d_power(-1, 4, 2, 1) == 6\n",
+          'from chain import d_power\nassert d_power(-1, 4, 2, 1) == int(open("sign.txt").read())\n',
       },
     ],
     solution: [
       { path: "chain.py", content: "def d_power(a, b, n, x):\n    return 6\n" },
     ],
-    command: [".venv/bin/python", "test_chain.py"],
-    inputs: [],
+    command: ["./check"],
+    inputs: [
+      {
+        path: "check",
+        content: "#!/bin/sh\nexec .venv/bin/python test_chain.py\n",
+        executable: true,
+      },
+      { path: "sign.txt", content: "6\n\n" },
+    ],
   },
   answer: {
     kind: "code",
@@ -179,10 +187,11 @@ test("the other kinds' requests carry what graded each: the rubric and the flaw,
 
   const code = disputeRequest(CODE, "The test expects the wrong sign.");
   expect(code).toContain(
-    '<tests>\n<file path="test_chain.py">\nfrom chain import d_power\nassert d_power(-1, 4, 2, 1) == 6\n</file>\n</tests>',
+    '<tests>\n<file path="test_chain.py">\nfrom chain import d_power\nassert d_power(-1, 4, 2, 1) == int(open("sign.txt").read())\n</file>\n</tests>',
   );
+  expect(code).toContain("<command>\n./check\n</command>");
   expect(code).toContain(
-    "<command>\n.venv/bin/python test_chain.py\n</command>",
+    '<inputs>\n<file path="check" executable="true">\n#!/bin/sh\nexec .venv/bin/python test_chain.py\n\n</file>\n<file path="sign.txt" executable="false">\n6\n\n\n</file>\n</inputs>',
   );
   expect(code).toContain('<answer>\n<file path="chain.py">');
   expect(code).toContain(
@@ -190,6 +199,34 @@ test("the other kinds' requests carry what graded each: the rubric and the flaw,
   );
   // The tutor's solution is not what graded it, so the judge does not see it.
   expect(code).not.toContain("return 6");
+});
+
+test("the dispute card gets the frozen fixtures and launcher, but not a solution, and old answers still load", () => {
+  const { question } = CODE;
+  if (question.kind !== "code") throw new Error("expected a code question");
+  expect(GradedBy.parse(gradedBy(CODE))).toEqual({
+    kind: "code",
+    tests: question.tests,
+    command: ["./check"],
+    inputs: [
+      {
+        path: "check",
+        content: "#!/bin/sh\nexec .venv/bin/python test_chain.py\n",
+        executable: true,
+      },
+      { path: "sign.txt", content: "6\n\n" },
+    ],
+  });
+  const { inputs: _, ...legacyQuestion } = question;
+  const legacy = { ...CODE, question: legacyQuestion };
+  expect(GradedBy.parse(gradedBy(legacy))).toEqual({
+    kind: "code",
+    tests: question.tests,
+    command: ["./check"],
+  });
+  expect(disputeRequest(legacy, "The sign is wrong.")).not.toContain(
+    "<inputs>",
+  );
 });
 
 test.each<{

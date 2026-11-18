@@ -21,7 +21,9 @@ The request gives you, each between tags:
   when a grader graded it because the symbolic check could not, the rubric
   the grader had, `<rubric>`; for a written answer, the `<rubric>` the tutor
   wrote; for a code question, the `<tests>`, each file between `<file>`
-  tags that give its path, and the `<command>` that ran them.
+  tags that give its path, the `<command>` that ran them, and any frozen
+  workspace files in `<inputs>`. Each input's `executable` attribute says
+  whether the run could execute that file directly.
 - `<answer>`: the learner's answer (the choice picked, the expression, the
   written answer, or their files, each between `<file>` tags), and any
   `<reasoning>` they added.
@@ -56,8 +58,8 @@ The grade is wrong when:
   and was graded correct. A learner may dispute a correct grade.
 - **A test is wrong**, for a code question: it rejects a solution that does
   what the question asks, or accepts one that does not. Read the learner's
-  files and the output: a failure that comes from the test's own mistake,
-  or from something the question never asked for, is a wrong test.
+  files, the tests, the saved inputs and the output: a wrong fixture or
+  launcher can misgrade the answer just as a wrong assertion can.
 
 The grade stands when the answer is wrong by what the question asks, or
 right and graded correct, whatever the reason says. In particular, none of

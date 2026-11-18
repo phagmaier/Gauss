@@ -495,12 +495,12 @@ with sources (stage 4).
   `dispute-judge.md`, and a message holding the question as the learner saw
   it with its choices, how it was graded and what graded it (the key; the
   expected expression, with the rubric `mathRubric` makes when the evidence
-  has `unsettled`; the rubric; the tests and their command, not the
-  solution), the answer with its reasoning, the grade with the flaw or the
-  tests' output, and the learner's reason, each between tags; never the
-  confidence or the conversation. The reply is `DisputeJudgment`: a reason
-  shown to the learner, the verdict, and for a choice question the right
-  letter, from which a choice's verdict must follow. A reply out of shape,
+  has `unsettled`; the rubric; the tests, frozen workspace inputs and
+  command, not the solution), the answer with its reasoning, the grade with
+  the flaw or the tests' output, and the learner's reason, each between
+  tags; never the confidence or the conversation. `DisputeJudgment` gives
+  a reason shown to the learner, the verdict, and for a choice question the
+  right letter, from which its verdict must follow. A reply out of shape,
   a failed request or one past three minutes fails as the grader's does:
   nothing is recorded, the page shows why, and the learner can send the
   dispute again. It runs on Claude Sonnet 5.5 (`DISPUTE_MODEL`).
@@ -684,12 +684,13 @@ no automated tests.
   (question, answer, confidence, help, grade with the grader's flaw, the
   right choice or expected answer of a question missed, why the grader
   graded a math answer, a code answer's files as run and its tests' output,
-  date) and overrides; a rubric or a code question's tests only while that
-  answer is disputed. Each graded answer has "Dispute this grade" (piece
-  13; `src/web/Dispute.tsx`), and a disputed one shows the verdict it now
-  counts with, marked "after your dispute" when changed, with its first
-  grade, the reason and the outcome; once an outcome is in, the view is
-  loaded again. Under the summary, the course's calibration: for each
+  date) and overrides; a rubric or a code question's tests and frozen
+  inputs only while that answer is disputed. Each graded answer has
+  "Dispute this grade" (piece 13; `src/web/Dispute.tsx`), and a disputed
+  one shows the verdict it now counts with, marked "after your dispute"
+  when changed, with its first grade, the reason and the outcome. Once an
+  outcome is in, the view is loaded again. Under the summary, the course's
+  calibration shows, for each
   confidence level, how many unassisted answers were correct, "I don't
   know" apart.
 - **Session** (`/courses/<id>/units/<unit>`): the thread with rendered

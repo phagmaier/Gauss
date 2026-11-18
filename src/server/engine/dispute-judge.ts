@@ -201,12 +201,24 @@ export function disputeRequest(entry: AnswerEvidence, reason: string): string {
     lines.push(
       ...tag(
         "graded_by",
-        "The tests below, run with the command below on the learner's files; exit status 0 is correct, anything else incorrect.",
+        "The tests below, run with the command below on the learner's files and the saved inputs (if shown); exit status 0 is correct, anything else incorrect.",
       ),
       "<tests>",
       ...question.tests.flatMap(fileBlock),
       "</tests>",
       "",
+      ...(question.inputs?.length
+        ? [
+            "<inputs>",
+            ...question.inputs.flatMap((file) => [
+              `<file path="${file.path}" executable="${file.executable === true}">`,
+              file.content,
+              "</file>",
+            ]),
+            "</inputs>",
+            "",
+          ]
+        : []),
       ...tag("command", question.command.join(" ")),
       "<answer>",
       ...answer.files.flatMap(fileBlock),

@@ -298,6 +298,24 @@ function GradedByBlock(props: {
                 <pre>{file.content}</pre>
               </div>
             ))}
+            {by.inputs === undefined ? (
+              <p className="wk-file">
+                No saved dependency list for this answer.
+              </p>
+            ) : by.inputs.length > 0 ? (
+              <>
+                <p className="dp-k">Saved grading inputs</p>
+                {by.inputs.map((file) => (
+                  <div key={file.path}>
+                    <p className="wk-file">
+                      <code>{file.path}</code>
+                      {file.executable ? " — executable" : " — not executable"}
+                    </p>
+                    <pre>{file.content}</pre>
+                  </div>
+                ))}
+              </>
+            ) : null}
             <p className="wk-file">
               Run with <code>{by.command.join(" ")}</code>
             </p>

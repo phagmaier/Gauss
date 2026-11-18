@@ -106,7 +106,7 @@ export const CodeFile = z.object({
 });
 export type CodeFile = z.infer<typeof CodeFile>;
 
-const SavedCodeInput = CodeFile.extend({
+export const SavedCodeInput = CodeFile.extend({
   executable: z.literal(true).optional(),
 });
 export type SavedCodeInput = z.infer<typeof SavedCodeInput>;

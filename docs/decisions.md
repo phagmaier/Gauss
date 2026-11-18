@@ -1108,9 +1108,11 @@ Built in task 3.8; these are the agent's choices, open to change.
 - **A choice outcome's verdict follows from its key.** The judge names the
   right letter; a verdict that does not follow from it is a failed call,
   not a guess at which the judge meant.
-- **The judge sees the tests, not the tutor's solution**: a wrong test was
-  checked to pass on the solution at posting, so the solution is as wrong
-  and would argue for the test.
+- **The judge sees the tests and frozen workspace inputs, not the tutor's
+  solution** (the agent's choice). A fixture or launcher can set the
+  verdict even when the tests look right; the solution was already
+  checked to pass and would argue for the tests. The learner sees the
+  same inputs while disputing.
 - **An overturned pass in a finished unit records an override** of that
   objective with the dispute. A unit with no position and an objective
   neither passed nor overridden reads as a record left half-written, and

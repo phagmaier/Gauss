@@ -52,13 +52,6 @@ its outcome.
   another approval. Exercise both restart cases and the card on the fake
   backend.
 
-### 3.17 Include frozen grading inputs in code disputes
-
-- Status: in progress
-- Done when: the learner and dispute judge see the saved fixtures and
-  launchers used for the verdict, including whether a launcher was
-  executable, but not the tutor's solution; older answers still open.
-
 ### 3.18 Require verified sandbox process-tree containment
 
 - Status: in progress

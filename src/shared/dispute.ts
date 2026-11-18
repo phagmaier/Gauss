@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { Timestamp } from "./course.ts";
-import { ChoiceLetter, CodeFile } from "./question.ts";
+import { ChoiceLetter, CodeFile, SavedCodeInput } from "./question.ts";
 
 /** The learner's reason, required, as long as a choice's reasoning may be. */
 export const DisputeReason = z.string().trim().min(1).max(10_000);
@@ -83,7 +83,7 @@ export type DisputeJudgment = z.infer<typeof DisputeJudgment>;
  * What a recorded answer was graded by, which the learner sees while
  * disputing it, and nowhere else: the choice key, the expected expression
  * (with the rubric the grader had, when the symbolic check left it to the
- * grader), the rubric, or a code question's tests and their command.
+ * grader), the rubric, or a code question's tests, saved inputs and command.
  */
 export const GradedBy = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("choice"), key: ChoiceLetter }),
@@ -97,6 +97,8 @@ export const GradedBy = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("code"),
     tests: z.array(CodeFile),
+    /** Missing from answers recorded before dependency snapshots. */
+    inputs: z.array(SavedCodeInput).optional(),
     command: z.array(z.string()),
   }),
 ]);
