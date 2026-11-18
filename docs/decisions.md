@@ -130,6 +130,41 @@ The brief states the result; this is who decided and why.
   predicting exposes a picture a correct computation can hide, for one or
   two exchanges a segment. The user chose it on by default, with the tutor
   judging when; the style note can turn it off.
+- **2026-11-18, the stage 5 designs**, answered when the stage was broken
+  down, before any mock. The user decided:
+  - review is offered on a card with Start and Skip at each sitting's
+    start, and does not start by itself: "if someone is confident they
+    don't need a review we shouldn't force them to have one". This
+    replaces "on by default" (2026-11-17); the card still comes unasked,
+    so it is not the opt-in mode they dropped;
+  - a miss in review opens a detour and one more question, as in the
+    gate;
+  - testing out is offered beside Start, and nothing is skipped without
+    the learner's say: "you have to consent to skipping something". The
+    agent read that as two steps, a confirmation before the test and a
+    result card whose answer does the skipping;
+  - notes are offered when a unit finishes, not written unasked. They
+    follow a standard (what the unit taught, more room for what the
+    learner struggled with, what made things click), and the learner can
+    add instructions of their own on top;
+  - the profile is proposed by the planner and approved with the
+    curriculum, and the learner can edit it;
+  - the brief's wording: a handoff note is written when a segment closes;
+    review asks slipping objectives first; a miss while testing out does
+    not count afterwards.
+- **2026-11-18, the stage 5 mocks** (pieces 15 to 18). The user looked at
+  all four and accepted them as shown, but for the notes. Piece 17 had
+  drawn a unit's notes as text the engine rendered from the model's
+  Markdown; they turned it down: it "looks like markdown in obsidian",
+  and the notes are HTML so that they "can have visuals and be
+  expressive", a page that "looks nice", "actual html". They added that
+  the notes need not be shown inside the app if that were what held them
+  to plain text: downloading them or opening them in the browser would
+  do. They also picked KaTeX's own output, with its styles and fonts
+  written into the file, for the math of the notes and the exported
+  transcript, over MathML, which the agent had planned and then showed
+  drawing badly. What the agent chose under these is in "Mastery loop"
+  and "Page design".
 
 ## Toolchain
 
@@ -594,29 +629,6 @@ stage 6.
   another repository gets its own; one that is already a repository keeps
   its own rules. Answers are not committed one by one: the segment's close
   takes them.
-
-- **2026-11-18, the stage 5 designs**, answered when the stage was broken
-  down, before any mock. The user decided:
-  - review is offered on a card with Start and Skip at each sitting's
-    start, and does not start by itself: "if someone is confident they
-    don't need a review we shouldn't force them to have one". This
-    replaces "on by default" (2026-11-17); the card still comes unasked,
-    so it is not the opt-in mode they dropped;
-  - a miss in review opens a detour and one more question, as in the
-    gate;
-  - testing out is offered beside Start, and nothing is skipped without
-    the learner's say: "you have to consent to skipping something". The
-    agent read that as two steps, a confirmation before the test and a
-    result card whose answer does the skipping;
-  - notes are offered when a unit finishes, not written unasked. They
-    follow a standard (what the unit taught, more room for what the
-    learner struggled with, what made things click), and the learner can
-    add instructions of their own on top;
-  - the profile is proposed by the planner and approved with the
-    curriculum, and the learner can edit it;
-  - the brief's wording: a handoff note is written when a segment closes;
-    review asks slipping objectives first; a miss while testing out does
-    not count afterwards.
 
 ## Objective status
 
@@ -1360,17 +1372,37 @@ built until its task is done; `architecture.md` says what is.
   style note.
 - **Notes are written when the learner asks** (the user's): a finished
   unit offers them, with a box for instructions of the learner's own.
-  The standard is `notes.md`'s: what the unit taught, more room for what
-  the learner struggled with, and what made an idea click. The struggles
-  come from the evidence and the misconception record; what clicked is
-  the handoff writer's reading of the conversation, so the handoff note
-  keeps it, and it is a model's judgment, not a record.
-- **Notes are Markdown from a one-shot call, rendered by the engine to a
-  standalone HTML file with MathML.** The brief's HTML notes are for
-  reading without the app; HTML written by the model would need the
-  artifact's frame and has no reliable math, and KaTeX's HTML output
-  needs its stylesheet and fonts. The transcript export uses the same
-  renderer.
+  What they hold is `notes.md`'s standard: what the unit taught, more
+  room for what the learner struggled with, and what made an idea click.
+  The struggles come from the evidence and the misconception record; what
+  clicked is the handoff writer's reading of the conversation, so the
+  handoff note keeps it, and it is a model's judgment, not a record.
+- **A unit's notes are a page the notes writer designs and writes whole**
+  (the user's, from piece 17): HTML with its own layout and styles, and
+  figures as inline SVG where a picture explains. Dropped: Markdown from
+  the writer, rendered by the engine into one fixed look, which the user
+  found no better than a Markdown viewer.
+- **The engine finishes the writer's document; it does not lay it out.**
+  It draws the math, which the writer leaves as TeX in marked elements,
+  with KaTeX, and writes KaTeX's stylesheet and fonts into the file (the
+  user's pick), so the file loads nothing. MathML was dropped for both
+  files: a browser draws it with the machine's math font, and in Chromium
+  primes shrank to specks and brackets did not grow around a fraction.
+- **Notes have no script** (the agent's): the file is meant to be opened
+  from its folder, where no frame confines it, and a script there could
+  carry what the page holds to any address by navigating to it. The
+  engine drops scripts, refuses a document that names an address on the
+  web, as it does an artifact, and writes a policy into the file that
+  allows inline styles and `data:` images and fonts only. Moving parts
+  stay with artifacts, which run in the app's frame.
+- **The notes are read in the app as well as in the browser** (the
+  agent's; the user allowed the browser alone): the app already frames a
+  tutor's document for artifacts, so the reader is that frame filling a
+  page, with "Open in browser" beside it.
+- **The transcript export is the engine's own document**, built from the
+  sessions' page events so that it reads as the thread does, with the
+  tutor's Markdown rendered on the server and its math written as the
+  notes' is.
 - **Style and curriculum changes are cards the tutor asks for**
   (`propose_style`, `amend_curriculum`), answered as a package request
   is. A started or finished unit cannot be dropped by a change.
@@ -1543,9 +1575,11 @@ render math.
 
 ## Page design
 
-Picked by the user from the mocks in `docs/prototype/` (pieces 1 to 14),
-2026-11-13, 2026-11-15 and 2026-11-17. Each mock's header comment says what
-was asked and rejected.
+Picked by the user from the mocks in `docs/prototype/` (pieces 1 to 18),
+2026-11-13, 2026-11-15, 2026-11-17 and 2026-11-18. Each mock's header
+comment says what was asked and rejected. Pieces 15 to 18 were shown as
+the agent would build them and accepted so, but for the notes
+("Product decisions").
 
 - **Thread layout**: one centred column, the tutor's text unframed, the
   learner's messages on the right, one message box at the bottom. Rejected:
@@ -1619,8 +1653,68 @@ was asked and rejected.
 - **Words**: learner-facing copy says "segment", the brief's term; the extra
   segment is "Going over again", not "Review", which names stage 5's review
   questions.
-- Not designed yet: a light theme, the unit gate, the notes and source
-  readers, settings, narrow screens.
+- **Review is a card, then markers around its questions** (piece 15).
+  The card sits under the sitting's marker: how many questions, what they
+  are, Skip and "Start the review"; while it waits the unit's own control
+  is not offered. Start and Skip turn it into a marker line, which is its
+  record. A question's head counts objectives ("Question 2 of 3"), says
+  "second question" after a miss, and names the unit of another unit's
+  objective. "Skip review" stays beside the question or the detour's
+  control and asks nothing first. After a second miss the control reads
+  "Go on with the review". The closing marker says what the review did
+  ("Two retained, one slipping") and where the unit goes on.
+- **"Test out" is beside Start on every unit not started, and under the
+  card's "Start unit N"** (piece 16), so that it is seen before Start is
+  pressed. It asks once, saying what the test is. The test is a marker
+  and question cards, each saying which objective it is on; a graded card
+  shows its verdict and the right answer as everywhere, and "no feedback"
+  means that the tutor says nothing between questions. "Start learning
+  instead" ends it. The result card has a row per objective with why,
+  then each segment as skipped, taught in part or taught, and the steps
+  "Skip what I passed" and "Teach me the whole unit" ("Finish the unit"
+  when everything passed). Skipped segments stay in the outline, struck
+  through, and in the top line as hollow ticks.
+- **The gate is offered on a card** (piece 16): how many questions and on
+  what, that it waits for another sitting, "Skip the gate", which asks
+  once since the gate is offered once, and "Start the gate". In it
+  everything is as in a review. The closing card after it gives each
+  objective its status as it stands, and under them the other units'
+  objectives the gate asked.
+- **Retained is teal and slipping is peach** (piece 16; Catppuccin's
+  `#81c8be` and `#ef9f76`); passed stays green and not passed yet yellow.
+  Both words are on the closing card and on each objective of "What I
+  know". In the course view a finished unit keeps its word, with "3 of 5
+  retained" and "1 slipping" as lines under it. In "What I know" an
+  answer given in a review, a gate or a test says so on its line, and a
+  miss while testing out says that it is not counted.
+- **Notes are offered in a section of the closing card** (piece 17): a
+  sentence on what they are, one line for the learner's instructions, and
+  "Write notes", drawn quieter than the card's next step. While they are
+  written the section says so; then "Open the notes", or the reason with
+  "Try again". In the course view a finished unit has "Notes" beside
+  "Open", or "Write notes", which opens the same line under the row.
+- **The notes' reader is a page**: the writer's page in a frame under the
+  top line, which has "Open in browser" and "Write again"; above the
+  frame, when the notes were written, with which instructions, and the
+  file's path with "Copy path". What a unit's notes look like is the
+  writer's; `17-notes-example.html` is the kind of page meant.
+- **"Export transcript" is in the unit's outline**, above "Start fresh".
+  The document reads as the thread does, in the page's colours and the
+  reader's own font, names an aid without including it, and prints in
+  dark text on white, as the notes do.
+- **The profile is a section of the proposal card**, under the style
+  note: "What I would remember about you", always shown. A first course
+  marks it "New"; a later one that changes it marks it "Changed", marks
+  each new sentence and lists each dropped one, since the text reaches
+  every later course. The Profile page is reached from the library's top
+  line: what the text is for, the text in one box with its length against
+  the limit and Save, and the finished courses a planner is given.
+- **A misconception sits under its objective in "What I know"**, above
+  the answers (piece 18): what the learner believed, what is so, and
+  where it showed. It is ruled in peach and says "Open" while the
+  objective is not passed, and is grey and "Cleared" once it has.
+- Not designed yet: a light theme, the source reader, the cards for style
+  and curriculum changes, settings, narrow screens.
 
 ## Page behaviour
 

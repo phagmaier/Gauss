@@ -370,6 +370,95 @@ button.dn:hover{border-color:var(--overlay0)}
 .pk .qa-line+.qa-line{margin-top:.2em}
 .pk-btns{display:flex;gap:16px;align-items:baseline;flex:none}
 
+/* ---- From the app (src/web/styles.css): the parts pieces 15 to 18 show ---- */
+.cv-acts{display:flex;gap:1.3em;align-items:baseline}                              /* the links beside the course view's Units heading */
+.wk-s.over{color:var(--soft)}
+.wk-none{margin:.3em 0 0;color:var(--faint);font-size:.9em}
+.wk-help{color:var(--yellow)}
+.pg-lead{margin:.4em 0 0;color:var(--soft);max-width:34em}
+.cal-lead{margin:0 0 .8em;color:var(--soft);font-size:.94em}
+
+/* ---- Retained and slipping, settled in piece 16: two more words, each with a colour of its own ---- */
+:root{--teal:#81c8be;--peach:#ef9f76}
+.kept{color:var(--teal)}
+.slip{color:var(--peach)}
+.wk-s.kept,.ue-rows .st.kept{color:var(--teal)}
+.wk-s.slip,.ue-rows .st.slip{color:var(--peach)}
+/* a finished unit's row in the course view: how many of its objectives are retained, and how many are slipping */
+.cu-s{text-align:right}
+.cu-s small{display:block;font-size:.94em;line-height:1.45}
+
+/* ---- Review questions, settled in piece 15: a card that offers them, then markers around the questions ---- */
+/* a card that offers something to start or to skip: review, the unit gate */
+.as .q-count b{color:var(--ink);font-weight:600;font-size:1.14em}
+.as-says{margin:.35em 0 0;font-size:.96em;color:var(--soft)}
+.as-says+.as-says{margin-top:.5em}
+/* whose objective a question is on, when it is another unit's */
+.q-count .q-from{margin-left:auto;text-align:right}
+
+/* ---- Testing out and the gate, settled in piece 16 ---- */
+/* "Test out" under the card's Start */
+.cn-go{display:grid;justify-items:center;gap:.45em}
+.cn-ask{grid-column:1/-1;border-top:1px solid var(--surface0);margin-top:.7em;padding-top:.7em;font-size:.9em;color:var(--soft)}
+/* what a test is, said before it starts: a sentence too long for the buttons' line */
+.confirm .says{flex:1 1 100%;max-width:34em}
+/* a section of a card under its rows: what a test would skip, the gate's other objectives, the notes */
+.ue-sec{border-top:1px solid var(--surface0);margin-top:.5em;padding-top:.8em}
+.ue-sec>.cs-h{margin-bottom:.1em}
+.ue-rows .st.skip{color:var(--faint)}
+/* a segment the test let the learner skip: in the top line's ticks and in the outline */
+.ticks .skip{background:none;box-shadow:inset 0 0 0 1px var(--surface1)}
+.uo-list .skip .uo-t{text-decoration:line-through;text-decoration-color:var(--overlay0)}
+.uo-list .skip i{border-style:dashed}
+.uo-list small{display:block;color:var(--faint);font-weight:400}
+/* where an answer was given, on its line in "What I know" */
+.wk-in{color:var(--soft)}
+
+/* ---- Notes and export, settled in piece 17 ---- */
+/* the offer of notes: one line for the learner's own instructions, and the button */
+.nt-row{display:flex;gap:10px;align-items:center;margin-top:.6em}
+.nt-row .field{flex:1;min-width:0;resize:none;font-size:.94em}
+.nt-row .btn{flex:none}
+/* a button that is not the card's next step: "Write notes" beside "Start unit N" */
+.btn.quiet{background:var(--surface1);color:var(--ink)}
+.nt-state{display:flex;gap:1em;align-items:baseline;flex-wrap:wrap;margin-top:.4em;font-size:.94em}
+.cu-row .nt-row{max-width:34em;margin:.6em 0 .2em}
+/* the box that takes new instructions, in the reader */
+.nr-again{padding:16px 18px;background:var(--mantle);border:1px solid var(--surface1);border-radius:calc(var(--r) + 4px)}
+.nr-again label{display:block;font-size:.9em;color:var(--soft);margin-bottom:.4em}
+/* the exported transcript: a document the engine renders, standing alone. It loads nothing, so its type is the
+   reader's own. */
+.doc{font-family:system-ui,sans-serif}
+.doc>h1{font-size:2em;line-height:1.15;font-weight:600;margin:0 0 .3em}
+.doc .doc-sub{color:var(--soft);margin:0 0 2.4em;font-size:.94em}
+/* "Export transcript" in the unit's outline, above "Start fresh" */
+.uo-fresh+.uo-fresh{margin-top:1em}
+
+/* ---- The profile, settled in piece 18 ---- */
+/* its section of the proposal card: a sentence that is new is marked, one dropped is listed under the text */
+.cs ins{text-decoration:none;background:color-mix(in srgb,var(--yellow) 24%,transparent);border-radius:3px;padding:.1em .12em;
+  -webkit-box-decoration-break:clone;box-decoration-break:clone}
+.cs .cs-gone{color:var(--faint);font-size:.88em;margin-top:.5em}
+.cs .cs-gone s{text-decoration-color:var(--overlay0)}
+.cs-h .for{color:var(--faint)}
+/* the Profile page */
+.pr-text{min-height:11em;resize:vertical;margin-top:1.6em}
+.pr-foot{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-top:.7em;font-size:.9em;color:var(--soft)}
+.pr-foot .over{color:var(--red)}
+.pr-list{list-style:none;margin:0;padding:0;font-size:.96em}
+.pr-list li{display:flex;justify-content:space-between;gap:1.2em;padding:.45em 0;border-top:1px solid var(--surface0)}
+.pr-list li:first-child{border-top:0}
+.pr-list span{color:var(--faint);font-size:.9em;white-space:nowrap}
+.nl-acts{display:flex;gap:1.3em;align-items:baseline}
+/* a misconception, under its objective in "What I know" */
+.mc{margin:.7em 0 0;padding:.1em 0 .1em 1em;border-left:2px solid var(--peach);display:grid;gap:.2em}
+.mc.shut{border-left-color:var(--surface1)}
+.mc .q-count b{font-weight:600;color:var(--peach)}
+.mc.shut .q-count b{color:var(--soft)}
+
+/* Prototype only: a note about the mock itself, in the bar's colours so that it is not taken for the design. */
+.proto{margin:1.6em 0;padding:8px 12px;background:#F2F2F2;color:#161616;border-radius:8px;font:500 12.5px/1.45 system-ui,sans-serif}
+
 /* Prototype only: where a link leads until that view is designed. */
 .away{height:100dvh;display:grid;place-content:center;justify-items:start;gap:.5em;padding:24px}
 .away h1{font-size:1.7em;font-weight:600;margin:0}

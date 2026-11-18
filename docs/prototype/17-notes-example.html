@@ -1,0 +1,281 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 5.1, piece 17: an example of a unit's
+  notes, made by hand to show the kind of page the notes writer is asked
+  for. The reader in 17-notes-and-export.html shows this file in a frame.
+
+  A unit's notes are a page the model writes whole and designs itself:
+  its own layout and styles, and figures drawn in SVG where a picture
+  explains. It holds what the standard asks for (what each objective
+  taught with an example from the sessions, more room for what the
+  learner struggled with and its correction, what made an idea click),
+  laid out as the unit suggests and as the learner's instructions say.
+  Every unit's page will differ; this is one.
+
+  The real file has no script and loads nothing: the engine draws its math
+  with KaTeX and writes KaTeX's styles and fonts into it. This mock loads
+  KaTeX from a CDN and draws the math in the browser, to the same look.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Differentiation rules: notes</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<style>
+:root{
+  --bg:#303446; --card:#292c3c; --deep:#232634; --line:#414559; --line2:#51576d;
+  --ink:#c6d0f5; --soft:#a5adce; --faint:#838ba7;
+  --mauve:#ca9ee6; --yellow:#e5c890; --green:#a6d189; --peach:#ef9f76; --teal:#81c8be; --blue:#8caaee;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.65 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.page{max-width:1000px;margin:0 auto;padding:72px 36px 120px}
+.katex{font-size:1.08em}
+
+/* the head of the page */
+.kicker{margin:0;font-size:.82em;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--mauve)}
+h1{margin:.15em 0 .3em;font-size:3.1em;line-height:1.05;font-weight:650;letter-spacing:-.02em}
+.lede{margin:0;max-width:34em;font-size:1.14em;line-height:1.55;color:var(--soft)}
+.lede b{color:var(--ink);font-weight:600}
+.from{margin:1.3em 0 0;font-size:.86em;color:var(--faint)}
+
+/* the six rules on one line each */
+.glance{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:56px 0 0}
+.glance a{display:block;padding:16px 18px 14px;background:var(--card);border:1px solid var(--line);border-radius:14px;color:inherit;text-decoration:none}
+.glance a:hover{border-color:var(--line2)}
+.glance .k{display:block;font-size:.8em;color:var(--faint);margin-bottom:.5em}
+.glance .hard{border-color:color-mix(in srgb,var(--peach) 45%,var(--line))}
+.glance .hard .k{color:var(--peach)}
+
+/* one section per rule: words at the left, a figure at the right */
+section{margin-top:88px;scroll-margin-top:24px}
+.head{display:flex;align-items:baseline;gap:16px;margin-bottom:22px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.num{font-size:.86em;font-weight:600;color:var(--mauve);font-variant-numeric:tabular-nums}
+h2{margin:0;font-size:1.7em;line-height:1.2;font-weight:600;letter-spacing:-.01em}
+.tag{margin-left:auto;font-size:.8em;white-space:nowrap;color:var(--faint)}
+.tag.hard{color:var(--peach)}
+.cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:28px 48px;align-items:start}
+p{margin:0 0 1em}
+.rule{margin:0 0 1.1em;padding:20px 24px;background:var(--card);border-radius:14px;text-align:center;font-size:1.12em;overflow-x:auto}
+.rule .katex-display{margin:0}
+.eg{margin:1.3em 0 0;padding-left:18px;border-left:2px solid var(--line2)}
+.eg b{display:block;font-size:.8em;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:.3em}
+
+figure{margin:0;padding:22px 22px 16px;background:var(--card);border-radius:14px}
+figure svg{display:block;width:100%;height:auto}
+figcaption{margin-top:12px;font-size:.86em;line-height:1.5;color:var(--soft)}
+svg text{font:500 13px "IBM Plex Sans",system-ui,sans-serif;fill:var(--soft)}
+svg .big{font-size:15px;fill:var(--ink)}
+
+/* where the learner struggled, and what made it click */
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:28px}
+.note{padding:20px 22px;border-radius:14px;border:1px solid var(--line)}
+.note h3{margin:0 0 .6em;font-size:.8em;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.note p:last-child{margin-bottom:0}
+.wrong{background:color-mix(in srgb,var(--peach) 9%,var(--bg));border-color:color-mix(in srgb,var(--peach) 35%,var(--line))}
+.wrong h3{color:var(--peach)}
+.click{background:color-mix(in srgb,var(--mauve) 10%,var(--bg));border-color:color-mix(in srgb,var(--mauve) 35%,var(--line))}
+.click h3{color:var(--mauve)}
+.click q{display:block;margin:0 0 .6em;font-size:1.16em;line-height:1.45;font-style:italic;quotes:none}
+.fix{display:grid;grid-template-columns:auto 1fr;gap:.7em 1em;margin:.9em 0 0;align-items:center}
+.fix dt{font-size:.82em;color:var(--faint)}
+.fix dd{margin:0}
+.fix .no{color:var(--peach)}
+.fix .yes{color:var(--green)}
+
+@media (max-width:760px){
+  .page{padding:40px 20px 80px} h1{font-size:2.3em}
+  .glance{grid-template-columns:repeat(2,minmax(0,1fr))} .cols,.pair{grid-template-columns:minmax(0,1fr)}
+}
+/* on paper: dark text on white, and no section split across pages where it can be helped */
+@media print{
+  :root{--bg:#fff;--card:#f5f5f7;--deep:#eee;--line:#d8d8de;--line2:#bbb;--ink:#16161d;--soft:#3d3d4a;--faint:#6b6b78;
+    --mauve:#6c3fa5;--yellow:#7a5b00;--green:#2d6a1e;--peach:#a8501c;--teal:#1f6f66;--blue:#2b4f9e;color-scheme:light}
+  .page{padding:0} section{margin-top:48px} figure,.note,.rule,.head{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <p class="kicker">Calculus I · Unit 3</p>
+  <h1>Differentiation rules</h1>
+  <p class="lede">Six rules that turn any combination of elementary functions into its derivative. Four of them gave you no trouble. <b>The quotient rule and the chain rule took longer</b>, so they get the room here.</p>
+  <p class="from">From your sessions of 14 to 18 November 2026</p>
+</header>
+
+<nav class="glance" aria-label="The rules at a glance">
+  <a href="#power"><span class="k">Power</span>$\dfrac{d}{dx}\,x^n = nx^{n-1}$</a>
+  <a href="#product"><span class="k">Product</span>$(fg)' = f'g + fg'$</a>
+  <a href="#quotient" class="hard"><span class="k">Quotient · you struggled here</span>$\left(\dfrac{f}{g}\right)' = \dfrac{f'g - fg'}{g^2}$</a>
+  <a href="#chain" class="hard"><span class="k">Chain · you struggled here</span>$\bigl(f(g(x))\bigr)' = f'(g(x))\,g'(x)$</a>
+  <a href="#implicit"><span class="k">Implicit</span>every $y$ brings a $\dfrac{dy}{dx}$</a>
+  <a href="#inverse"><span class="k">Inverse</span>$(f^{-1})'(b) = \dfrac{1}{f'(a)}$</a>
+</nav>
+
+<section id="power">
+  <div class="head"><span class="num">01</span><h2>Powers, sums and constant multiples</h2><span class="tag">Passed first time</span></div>
+  <div class="cols">
+    <div>
+      <p>Bring the power down and lower it by one. A sum is differentiated term by term, and a constant factor stays where it is. A constant on its own goes, since it does not change.</p>
+      <div class="eg"><b>From your session</b>$\dfrac{d}{dx}\,(4x^3 - 2x + 7) = 12x^2 - 2$</div>
+    </div>
+    <div class="rule">$$\frac{d}{dx}\,x^n = nx^{n-1}$$</div>
+  </div>
+</section>
+
+<section id="product">
+  <div class="head"><span class="num">02</span><h2>The product rule</h2><span class="tag">Passed first time</span></div>
+  <div class="cols">
+    <div>
+      <div class="rule">$$(fg)' = f'g + fg'$$</div>
+      <p>Each factor takes its turn being differentiated while the other waits, and the two results add.</p>
+      <p>The picture is a rectangle with sides $f$ and $g$. When both sides grow a little, the area grows by two thin strips, one for each side. The corner where they meet is a small thing times a small thing, and vanishes.</p>
+      <div class="eg"><b>From your session</b>$\dfrac{d}{dx}\,x^2\sin x = 2x\sin x + x^2\cos x$</div>
+    </div>
+    <figure>
+      <svg viewBox="0 0 300 220" role="img" aria-label="A rectangle with sides f and g, grown by a strip on the right and a strip below">
+        <rect x="46" y="34" width="170" height="120" rx="3" fill="#ca9ee6" fill-opacity=".16" stroke="#ca9ee6" stroke-width="1.5"/>
+        <rect x="216" y="34" width="40" height="120" fill="#a6d189" fill-opacity=".22" stroke="#a6d189" stroke-width="1.5"/>
+        <rect x="46" y="154" width="170" height="30" fill="#8caaee" fill-opacity=".22" stroke="#8caaee" stroke-width="1.5"/>
+        <rect x="216" y="154" width="40" height="30" fill="none" stroke="#838ba7" stroke-width="1.2" stroke-dasharray="4 4"/>
+        <text x="131" y="100" text-anchor="middle" class="big">f · g</text>
+        <text x="236" y="100" text-anchor="middle" style="fill:#a6d189">g · df</text>
+        <text x="131" y="174" text-anchor="middle" style="fill:#8caaee">f · dg</text>
+        <text x="131" y="22" text-anchor="middle">f</text>
+        <text x="236" y="22" text-anchor="middle">df</text>
+        <text x="28" y="98" text-anchor="middle">g</text>
+        <text x="28" y="174" text-anchor="middle">dg</text>
+        <text x="236" y="206" text-anchor="middle" style="font-size:11px">vanishes</text>
+      </svg>
+      <figcaption>The area $fg$ grows by $g\,df$ and by $f\,dg$. That is the rule, read off the picture.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="quotient">
+  <div class="head"><span class="num">03</span><h2>The quotient rule</h2><span class="tag hard">Missed twice, then passed</span></div>
+  <div class="cols">
+    <div>
+      <div class="rule">$$\left(\frac{f}{g}\right)' = \frac{f'g - fg'}{g^2}$$</div>
+      <p>The top's derivative comes first, and the minus sign belongs to the term with $g'$. The order matters here in a way it does not in the product rule, because a difference is not the same both ways round.</p>
+    </div>
+    <div>
+      <p>You do not have to remember the order. Write the quotient as a product and let the product rule find it:</p>
+      <div class="rule">$$\begin{aligned}\left(f\cdot g^{-1}\right)' &= f'\cdot g^{-1} + f\cdot\left(-g^{-2}g'\right)\\[4px] &= \frac{f'g - fg'}{g^2}\end{aligned}$$</div>
+    </div>
+  </div>
+  <div class="pair">
+    <div class="note wrong">
+      <h3>Where it went wrong</h3>
+      <p>Twice you wrote the numerator the other way round, $fg' - f'g$. That gives an answer of the right size with the wrong sign, which is why it looked right.</p>
+      <dl class="fix">
+        <dt>Asked</dt><dd>$\dfrac{d}{dx}\,\dfrac{x}{x^2+1}$</dd>
+        <dt>You wrote</dt><dd class="no">$\dfrac{x^2-1}{(x^2+1)^2}$</dd>
+        <dt>It is</dt><dd class="yes">$\dfrac{1-x^2}{(x^2+1)^2}$</dd>
+      </dl>
+    </div>
+    <div class="note click">
+      <h3>What made it click</h3>
+      <q>The minus comes from differentiating $g^{-1}$, so it has to sit on the $g'$.</q>
+      <p>Once you derived the rule from the product rule yourself, you stopped trying to recall which term came first. Your next answer, on $\frac{\sin x}{x}$, was right.</p>
+    </div>
+  </div>
+</section>
+
+<section id="chain">
+  <div class="head"><span class="num">04</span><h2>The chain rule</h2><span class="tag hard">One miss, one long discussion</span></div>
+  <div class="cols">
+    <div>
+      <div class="rule">$$\frac{d}{dx}\,f\bigl(g(x)\bigr) = f'\bigl(g(x)\bigr)\cdot g'(x)$$</div>
+      <p>Differentiate the outer function and leave its input alone, then multiply by the derivative of the inner function.</p>
+      <p>Follow a small step in $x$. The inside stretches it by $g'(x)$. The outer function never sees the step you took: it sees the stretched one, and scales it again by its own rate, measured where its input is. Two scalings, one after the other, multiply.</p>
+      <div class="eg"><b>From your session</b>$\dfrac{d}{dx}\,\sin(x^2) = \cos(x^2)\cdot 2x$</div>
+    </div>
+    <figure>
+      <svg viewBox="0 0 300 230" role="img" aria-label="Three number lines: a small step in x is stretched on the line for x squared, then scaled again on the line for the sine">
+        <g stroke="#51576d" stroke-width="1.5"><path d="M20 44H280M20 118H280M20 192H280"/></g>
+        <g stroke="#838ba7" stroke-width="1" stroke-dasharray="3 4" fill="none"><path d="M120 44L96 118M144 44L176 118M96 118L124 192M176 118L170 192"/></g>
+        <path d="M120 44H144" stroke="#ca9ee6" stroke-width="5" stroke-linecap="round"/>
+        <path d="M96 118H176" stroke="#a6d189" stroke-width="5" stroke-linecap="round"/>
+        <path d="M124 192H170" stroke="#8caaee" stroke-width="5" stroke-linecap="round"/>
+        <text x="20" y="30" class="big">x</text>
+        <text x="20" y="104" class="big">u = x²</text>
+        <text x="20" y="178" class="big">y = sin u</text>
+        <text x="132" y="30" text-anchor="middle" style="fill:#ca9ee6">a small step</text>
+        <text x="280" y="88" text-anchor="end" style="fill:#a6d189">× 2x</text>
+        <text x="280" y="162" text-anchor="end" style="fill:#8caaee">× cos u, at u = x²</text>
+        <text x="147" y="216" text-anchor="middle" style="font-size:11px">the step, as the sine passes it on</text>
+      </svg>
+      <figcaption>The sine acts on the middle line. Its rate is taken at $u = x^2$, never at $x$.</figcaption>
+    </figure>
+  </div>
+  <div class="pair">
+    <div class="note wrong">
+      <h3>Where it went wrong</h3>
+      <p>Two things. At first you took the outer derivative at $x$ and asked why the answer was not $\cos(2x)$. Later, in the check, you lost the sign of the inside.</p>
+      <dl class="fix">
+        <dt>Asked</dt><dd>$\dfrac{d}{dx}\,e^{-x^2}$</dd>
+        <dt>You chose</dt><dd class="no">$2x\,e^{-x^2}$</dd>
+        <dt>It is</dt><dd class="yes">$-2x\,e^{-x^2}$</dd>
+      </dl>
+    </div>
+    <div class="note click">
+      <h3>What made it click</h3>
+      <q>The sine never sees $2x$. It sees $x^2$.</q>
+      <p>That sentence, from the discussion, settled where the outer rate is measured. The sign was a slip, not a gap: you named it yourself in the detour ("I dropped the minus").</p>
+    </div>
+  </div>
+</section>
+
+<section id="implicit">
+  <div class="head"><span class="num">05</span><h2>Implicit differentiation</h2><span class="tag">Passed first time</span></div>
+  <div class="cols">
+    <div>
+      <p>When a curve is given by an equation in $x$ and $y$, differentiate both sides with respect to $x$ and treat $y$ as a function of $x$. Every $y$ then brings a $\frac{dy}{dx}$, by the chain rule. Solve for it at the end.</p>
+      <div class="eg"><b>From your session</b>On the circle $x^2 + y^2 = 25$:
+        $$2x + 2y\,\frac{dy}{dx} = 0 \quad\Longrightarrow\quad \frac{dy}{dx} = -\frac{x}{y}$$
+        At $(3, 4)$ the slope is $-\frac{3}{4}$, at right angles to the radius, as a tangent to a circle must be.</div>
+    </div>
+    <figure>
+      <svg viewBox="0 0 340 240" role="img" aria-label="A circle of radius 5 with its tangent at the point 3, 4">
+        <g stroke="#414559" stroke-width="1.2"><path d="M30 126H250M150 14V232"/></g>
+        <circle cx="150" cy="126" r="90" fill="#ca9ee6" fill-opacity=".08" stroke="#ca9ee6" stroke-width="1.8"/>
+        <path d="M150 126L204 54" stroke="#838ba7" stroke-width="1.3" stroke-dasharray="4 4"/>
+        <path d="M132 0L276 108" stroke="#a6d189" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="204" cy="54" r="4.5" fill="#e5c890"/>
+        <text x="214" y="46" class="big">(3, 4)</text>
+        <text x="256" y="146" style="fill:#a6d189">slope −3/4</text>
+        <text x="166" y="100" style="font-size:11px">radius</text>
+      </svg>
+      <figcaption>The formula $-\frac{x}{y}$ gives the slope at every point of the circle at once, with no need to solve for $y$.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="inverse">
+  <div class="head"><span class="num">06</span><h2>Inverse functions</h2><span class="tag">Passed first time</span></div>
+  <div class="cols">
+    <div>
+      <p>An inverse swaps inputs and outputs, so it swaps rise and run. Its slope at a point is one over the slope of the original at the matching point.</p>
+      <div class="eg"><b>From your session</b>$f(x) = x^3 + x$ has $f(1) = 2$ and $f'(1) = 4$, so $(f^{-1})'(2) = \frac{1}{4}$, without ever writing the inverse down.</div>
+    </div>
+    <div>
+      <div class="rule">$$(f^{-1})'(b) = \frac{1}{f'(a)}\quad\text{where } f(a) = b$$</div>
+      <p>The same idea gives the two you will meet most:</p>
+      <div class="rule">$$\begin{aligned}\frac{d}{dx}\arctan x &= \frac{1}{1+x^2}\\[6px] \frac{d}{dx}\arcsin x &= \frac{1}{\sqrt{1-x^2}}\end{aligned}$$</div>
+    </div>
+  </div>
+</section>
+
+</div>
+<script>
+renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+</script>
+</body>
+</html>

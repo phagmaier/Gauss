@@ -216,9 +216,11 @@ at the start of each sitting, and on-demand self-test.
 - **Notes**: HTML notes per finished unit, kept in a course notes folder,
   written when the learner asks for them; a finished unit offers them. They
   cover what the unit taught, give more room to what the learner struggled
-  with, and keep what made an idea click. The learner can add instructions
-  of their own (what to focus on, how to lay it out). Cheat sheets on
-  request.
+  with, and keep what made an idea click. Each is a page designed for its
+  unit, with figures where a picture explains, not text set in one fixed
+  layout; it opens in the app and in a browser. The learner can add
+  instructions of their own (what to focus on, how to lay it out). Cheat
+  sheets on request.
 - **Library**: a home view of all courses and one-offs, to stop and resume any.
 - **What I know**: per course, every objective with its status and the
   answers behind it (question, answer, confidence, help, grade, date).

@@ -90,7 +90,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
     sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
-    notes/                        (stage 5) each unit's notes: Markdown and the HTML file made from it
+    notes/                        (stage 5) each unit's notes: the HTML page the notes writer wrote, as the engine finished it
     packages/                     Gauss's uv project and lockfile; never taken from the workspace
     .package-install.tmp/         pending environment rollback or a committed install receipt
     workspace/                    the tutor's working folder: starter code, the learner's work and the installed .venv/

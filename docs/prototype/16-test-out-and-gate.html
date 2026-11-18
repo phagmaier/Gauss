@@ -1,0 +1,497 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 5.1, piece 16: testing out of a unit, the
+  unit gate, and retained and slipping.
+  SETTLED 2026-11-18.
+  What these do was settled that day (decisions.md, "Mastery loop"), with
+  the user's pick that nothing is skipped without their say. This mock is
+  how the agent would lay it out; the user looked at it and changed
+  nothing.
+
+  Testing out:
+  - "Test out" is beside Start on every unit not started, and under the
+    card's "Start unit N", so that it is seen before Start is pressed: a
+    started unit cannot be tested out of. It asks once, saying what the
+    test is; a unit whose prerequisites are not finished says so there too.
+  - The test is a marker and then question cards as in a check, each
+    saying which objective it is on. A graded card shows its verdict and,
+    on a miss, the right answer, as everywhere; the tutor says nothing
+    between questions. A right answer at 90% or 100% ends an objective's
+    questions, a right answer below that brings a second one, a miss ends
+    them. "Start learning instead" ends the test at any point.
+  - It ends in a few sentences from the tutor and a result card: a row per
+    objective, then what skipping would do to each segment (skipped,
+    taught in part, taught). Its two steps are "Skip what I passed" and
+    "Teach me the whole unit"; what was passed stays passed either way.
+    With every objective passed the first reads "Finish the unit".
+  - Skipped segments stay in the outline and the top line, marked.
+
+  The gate:
+  - A card once the unit's teaching is over: how many questions and on
+    what, that it waits for another sitting, "Skip the gate" (which asks
+    once, since the gate is offered once) and "Start the gate".
+  - In the gate everything is as in a review (piece 15): one question per
+    objective, feedback of a sentence or two, a miss with its detour and
+    second question, "Skip the gate" beside the control.
+  - The closing card after it is piece 10's, with a status per objective
+    as it now stands, and under them the objectives of earlier units the
+    gate asked. A unit's own objective missed in the gate is slipping,
+    which is not passed, so the card offers piece 10's two steps for it.
+
+  Retained and slipping:
+  - Retained is teal and slipping is peach, on the closing card, on each
+    objective of "What I know", and as counts under a finished unit's
+    "Passed" in the course view. Passed stays green, not passed yet yellow.
+  - In "What I know" an answer given in a review, a gate or a test says so
+    on its line; a miss while testing out says that it is not counted.
+
+  The controls work. The test is graded as its rules say: start it from
+  the course view to take it from its first question, or use the bar. The
+  bar at the left jumps to a moment (?at=...). Keys: Esc closes the
+  outline, H hides the bar.
+
+  Everything is simulated. Not drawn: the notes' offer on the closing card
+  (piece 17), the questions of a gate after the one shown, the diagram,
+  and disputes.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 16: testing out and the gate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+@media (max-width:1100px){#bar{position:static;margin:8px;max-width:none}.th,.pg{height:auto;min-height:100dvh}}
+.katex{position:relative}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-test"><span class="lbl">Testing out</span></div>
+  <div class="grp" id="g-gate"><span class="lbl">The gate</span></div>
+  <div class="grp" id="g-known"><span class="lbl">The record</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+<div id="pop"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Calculus I';
+const CONF = ['under 50%', '50%', '75%', '90%', '100%'];
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const cap = s => s[0].toUpperCase() + s.slice(1);
+// piece 7's course. `needs` are indexes of the units a unit builds on. Units 1 to 3 are finished:
+// `kept` is how many of a unit's objectives are retained, of how many, and `slip` how many are slipping.
+const UNITS = [
+  {t:'Limits and continuity', goal:'Evaluate limits and decide where a function is continuous.', needs:[], kept:[4, 4]},
+  {t:'The derivative', goal:'Compute a derivative from its definition and read it as a rate of change.', needs:[0], kept:[3, 5], slip:1},
+  {t:'Differentiation rules', goal:'Differentiate any combination of elementary functions.', needs:[1], kept:[6, 7]},
+  {t:'Optimisation and related rates', goal:'Use derivatives to find extreme values and to relate changing quantities.', needs:[2]},
+  {t:'The integral as area', goal:'Define the definite integral as a limit of sums, and estimate it.', needs:[0]},
+  {t:'The fundamental theorem', goal:'Connect derivatives and integrals, and evaluate integrals with antiderivatives.', needs:[1, 4]},
+  {t:'Integration by substitution', goal:'Reverse the chain rule to integrate composite functions.', needs:[2, 5]},
+  {t:'Areas and volumes', goal:'Set up and evaluate integrals for areas between curves and volumes of revolution.', needs:[6]}
+];
+const NEXT = 3;        // the unit the card leads to, and the one this mock tests out of
+
+// Unit 4, as its plan has it once it is opened: five objectives in four segments, and the test's questions,
+// two per objective, since a right answer below 90% brings a second.
+const OBJ = [
+  {t:'Find the critical points of a function', short:'finding critical points', qs:[
+    {prompt:String.raw`Where are the critical points of $f(x) = x^3 - 3x$?`, options:[String.raw`$x = 0$`, String.raw`$x = -1$ and $x = 1$`, String.raw`$x = -\sqrt{3}$ and $x = \sqrt{3}$`, String.raw`$x = 0$ and $x = \pm\sqrt{3}$`], key:1},
+    {prompt:String.raw`Where are the critical points of $f(x) = x^4 - 8x^2$?`, options:[String.raw`$x = 0$ and $x = \pm 2$`, String.raw`$x = \pm 2$`, String.raw`$x = 0$ and $x = \pm 2\sqrt{2}$`, String.raw`$x = \pm\sqrt{2}$`], key:0}]},
+  {t:'Classify a critical point as a maximum, a minimum or neither', short:'classifying them', qs:[
+    {prompt:String.raw`$f'(2) = 0$ and $f''(2) = 5$. What does $f$ have at $x = 2$?`, options:['A local maximum', 'A local minimum', 'An inflection point', 'It cannot be told from this'], key:1},
+    {prompt:String.raw`$f'(x) = (x-1)^2(x+2)$. At which critical points does $f$ have a local extremum?`, options:['At both', String.raw`Only at $x = 1$`, String.raw`Only at $x = -2$`, 'At neither'], key:2}]},
+  {t:'Find the extreme values of a function on a closed interval', short:'extreme values on an interval', qs:[
+    {prompt:String.raw`What is the largest value of $f(x) = x^3 - 3x$ on $[0, 2]$?`, options:[String.raw`$-2$`, String.raw`$0$`, String.raw`$2$`, 'It has none'], key:2},
+    {prompt:String.raw`What is the smallest value of $f(x) = x^2 - 4x$ on $[0, 3]$?`, options:[String.raw`$-4$`, String.raw`$-3$`, String.raw`$0$`, String.raw`$2$`], key:0}]},
+  {t:'Set up and solve an optimisation problem from its description', short:'optimisation problems', qs:[
+    {prompt:'A rectangle has a perimeter of 20. What is the largest area it can have?', options:[String.raw`$20$`, String.raw`$24$`, String.raw`$25$`, String.raw`$100$`], key:2},
+    {prompt:'Two numbers that are not negative add up to 12. What is the largest their product can be?', options:[String.raw`$27$`, String.raw`$32$`, String.raw`$35$`, String.raw`$36$`], key:3}]},
+  {t:'Relate the rates of two quantities that change together', short:'related rates', qs:[
+    {prompt:String.raw`A circle's radius grows at 2 cm/s. How fast is its area growing when the radius is 5 cm?`, options:[String.raw`$4\pi$ cm²/s`, String.raw`$10\pi$ cm²/s`, String.raw`$20\pi$ cm²/s`, String.raw`$25\pi$ cm²/s`], key:2},
+    {prompt:String.raw`A square's side grows at 3 cm/s. How fast is its area growing when the side is 4 cm?`, options:['24 cm²/s', '12 cm²/s', '16 cm²/s', '48 cm²/s'], key:0}]}
+];
+const SEGMENTS = [{t:'Critical points', objs:[0]}, {t:'Classifying extrema', objs:[1, 2]}, {t:'Optimisation problems', objs:[3]}, {t:'Related rates', objs:[4]}];
+
+// Unit 3 at its gate. Its objectives, and the three the gate takes from earlier units.
+const GATED = {n:3, name:'Differentiation rules', segments:5};
+const OWN = ['Differentiate powers, sums and constant multiples', 'Apply the product rule', 'Apply the quotient rule', 'Apply the chain rule to a composite function',
+  'Differentiate a curve given implicitly', 'Differentiate the inverse trigonometric functions', "Find an inverse's derivative from the original function"];
+const OTHERS = [['Decide whether a function is continuous at a point', 'Unit 1'], ['Compute a derivative from its definition', 'Unit 2'], ['Read a derivative as a rate of change', 'Unit 2']];
+const LAST_SEGMENT = String.raw`
+<div class="qa-card done"><div class="q-count">Question 2 <span class="ok">Correct</span></div>
+  <div class="qa-prompt">What is the derivative of $\arctan(2x)$?</div>
+  <div class="qa-line"><span class="k">Your answer</span><span>B. $\dfrac{2}{1+4x^2}$</span><span class="c">90% sure</span></div></div>
+<div class="th-tutor prose"><p>Right. The derivative of $\arctan u$ is $\frac{1}{1+u^2}$, taken at $u = 2x$, and the inside contributes the 2.</p></div>
+<div class="pf-mark"><span><b>Done</b></span></div>`;
+const GATE_MARK = `<div class="pf-mark"><span><b>Unit gate</b> Nine questions: six on this unit and three from earlier units. Nothing is taught first; each answer is recorded.</span></div>`;
+const GATE_SIXTH = String.raw`
+<div class="qa-card done"><div class="q-count">Question 6 of 9 <span class="ok">Correct</span></div>
+  <div class="qa-prompt">$f(x) = x^3 + x$ has an inverse, and $f(1) = 2$. What is $(f^{-1})'(2)$?</div>
+  <div class="qa-line"><span class="k">Your answer</span><span>C. $\dfrac{1}{4}$</span><span class="c">75% sure</span></div></div>
+<div class="th-tutor prose"><p>Right: $f'(1) = 4$, and the inverse's slope at $2$ is one over it.</p></div>`;
+const GATE_Q = {prompt:String.raw`A car is $s(t)$ metres along a road after $t$ seconds, and $s'(4) = 12$. Which is true?`,
+  options:['After 4 seconds the car has gone 12 metres.', 'Over the first 4 seconds the car averaged 12 metres per second.', String.raw`At $t = 4$ the car is moving at 12 metres per second.`, 'The car gains 12 metres per second of speed each second.'], key:2};
+const GATE_LAST = String.raw`
+<div class="qa-card done"><div class="q-count">Question 9 of 9 <span class="ok">Correct</span><span class="q-from">Unit 1: Limits and continuity</span></div>
+  <div class="qa-prompt">$g(x) = \dfrac{\sin x}{x}$ for $x \neq 0$. Which value of $g(0)$ makes $g$ continuous at $0$?</div>
+  <div class="qa-line"><span class="k">Your answer</span><span>B. $1$</span><span class="c">100% sure</span></div></div>
+<div class="th-tutor prose"><p>Yes. The limit at $0$ is $1$, so that is the one value that agrees with it.</p></div>`;
+// How the gate ended, case by case: the marker, each of the unit's objectives, and the earlier units' three.
+// A status is [word, class, why]; own objective 2 was retained by a review before the gate.
+const KEPT = ['Retained', 'kept'], PASSED = ['Passed', 'pass'];
+const ENDS = {
+  all:{name:'After it', mark:'<b>Gate over</b> All nine retained.', own:OWN.map(() => KEPT), others:OTHERS.map(() => KEPT)},
+  own:{name:"One of the unit's missed", mark:'<b>Gate over</b> Eight retained, one slipping.',
+    own:OWN.map((_, i) => i === 2 ? ['Slipping', 'slip', 'Missed twice in the gate'] : KEPT), others:OTHERS.map(() => KEPT)},
+  other:{name:"An earlier unit's missed", mark:'<b>Gate over</b> Eight retained, one slipping.',
+    own:OWN.map(() => KEPT), others:OTHERS.map((_, i) => i === 1 ? ['Slipping', 'slip', 'Missed in the gate, then right once. Review comes back to it first.'] : KEPT)},
+  skipped:{name:'The gate skipped', mark:'<b>Gate skipped</b> What you passed stays passed. Nothing more is marked retained.',
+    own:OWN.map((_, i) => i === 1 ? ['Retained', 'kept', 'In a review, 18 November'] : PASSED), others:[]}
+};
+
+// "What I know": two of the course's units, with where each answer was given.
+const KNOWN = [
+  {n:2, title:'The derivative', status:['Passed', 'pass'], objectives:[
+    {stmt:'Read a derivative as a rate of change', status:KEPT, answers:[
+      {at:'10 November 2026, 19:02', ok:true, conf:1, prompt:String.raw`$P(t)$ is a town's population $t$ years after 2000, and $P'(5) = 300$. What does that say?`, said:'B. In 2005 the population was growing by 300 people a year.'},
+      {at:'10 November 2026, 19:06', ok:true, conf:2, prompt:String.raw`$T(h)$ is the temperature in °C at a height of $h$ km, and $T'(2) = -6.5$. What are the units of $T'(2)$?`, said:'C. °C per km'},
+      {at:'18 November 2026, 09:14', ok:true, conf:3, where:'In a review', prompt:String.raw`A tank holds $V(t)$ litres of water $t$ minutes after a valve opens, and $V'(10) = -3$. What does that say?`, said:String.raw`B. At $t = 10$ the tank is losing 3 litres per minute.`}]},
+    {stmt:'Compute a derivative from its definition', status:['Slipping', 'slip'], answers:[
+      {at:'9 November 2026, 20:40', ok:true, conf:3, prompt:String.raw`Use the definition to find the derivative of $f(x) = x^2$ at $x = 3$.`, said:String.raw`$6$`},
+      {at:'18 November 2026, 20:31', ok:false, conf:2, where:"In unit 3's gate", prompt:String.raw`Which limit is the derivative of $f(x) = \dfrac{1}{x}$ at $x = 2$?`, said:String.raw`A. $\displaystyle\lim_{h\to 0}\frac{\frac{1}{2+h} - \frac{1}{2}}{2}$`, right:String.raw`C. $\displaystyle\lim_{h\to 0}\frac{\frac{1}{2+h} - \frac{1}{2}}{h}$`},
+      {at:'18 November 2026, 20:36', ok:true, conf:2, where:"In unit 3's gate", prompt:String.raw`Use the definition to find the derivative of $f(x) = 3x + 1$ at $x = 4$.`, said:String.raw`$3$`}]}]},
+  {n:4, title:'Optimisation and related rates', status:['In progress', 'now'], objectives:[
+    {stmt:OBJ[0].t, status:PASSED, answers:[
+      {at:'19 November 2026, 08:50', ok:true, conf:4, where:'Testing out', prompt:OBJ[0].qs[0].prompt, said:`B. ${OBJ[0].qs[0].options[1]}`}]},
+    {stmt:OBJ[2].t, status:['Not passed yet', 'miss'], answers:[
+      {at:'19 November 2026, 08:54', unknown:true, where:'Testing out, so not counted as a miss', prompt:OBJ[2].qs[0].prompt, stuck:'Do I only look where the derivative is zero?'}]}]}
+];
+
+/* ---------------- state ---------------- */
+let view;                    // the bar's moment, by its key
+let asking = null;           // the course view: {i, kind:'start'|'test', card} while a unit asks before it opens
+let test;                    // the test: its log, the objective and question it is on, and how it ended
+let gate;                    // the gate: {confirming, answered} at its card and in it; {again} at the closing card
+let form, outline = false, away = null;
+function fresh(){ asking = null; test = {log:[], o:0, over:false, step:null}; gate = {confirming:false, answered:null, again:false}; form = {picked:null, conf:null}; outline = false; away = null; }
+
+/* ---------------- the test's rules ---------------- */
+const openQ = () => test.log.findLast(e => !e.ans && !e.withdrawn);
+const tries = o => test.log.filter(e => e.o === o && e.ans);
+function ask(o, k){ test.log.push({o, k}); form = {picked:null, conf:null}; }
+function answer(ans){
+  const e = openQ(), q = OBJ[e.o].qs[e.k];
+  e.ans = ans; e.ok = !ans.unknown && ans.picked === q.key;
+  // sure and right ends the objective's questions; unsure and right brings a second; a miss ends them
+  if (e.ok && e.k === 0 && ans.conf < 3) ask(e.o, 1);
+  else if (e.o + 1 < OBJ.length) ask(e.o + 1, 0);
+  else test.over = true;
+}
+function stopTest(){ const e = openQ(); if (e) e.withdrawn = true; test.over = true; }
+// What the test showed on an objective: passed or not, and why, in the row's small line.
+function shown(o){
+  const t = tries(o);
+  if (t.length === 0) return {passed:false, why:'Not asked'};
+  const [a, b] = t, sure = x => CONF[x.ans.conf];
+  if (a.ok && a.ans.conf >= 3) return {passed:true, why:`Right, ${sure(a)} sure`};
+  if (a.ok && b?.ok) return {passed:true, why:`Right twice, ${sure(a)} and ${sure(b)} sure`};
+  if (a.ok && b) return {passed:false, why:`Right once, ${sure(a)} sure, then ${b.ans.unknown ? 'did not know' : 'missed'}`};
+  if (a.ok) return {passed:false, why:`Right once, ${sure(a)} sure; its second question was not asked`};
+  return {passed:false, why:a.ans.unknown ? 'Did not know' : 'Missed'};
+}
+const passedSet = () => OBJ.map((_, o) => shown(o).passed);
+// What skipping would do to a segment: 'skip' (every objective passed), 'part' or 'teach' (none did).
+function fate(s, passed){
+  const got = s.objs.filter(o => passed[o]).length;
+  return got === s.objs.length ? 'skip' : got ? 'part' : 'teach';
+}
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app'), pop = $('#pop');
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const list = xs => xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
+const crumbs = (trail, here) => `<nav class="crumbs" aria-label="Where you are">${trail.map(t => `<button type="button" data-act="away" data-to="${t}">${t}</button><span>/</span>`).join('')}<b>${here}</b></nav>`;
+const thread = (here, pos, body, canOpen) => `<div class="th has-top"><header class="nl">${crumbs(['Library', COURSE], here)}
+  <button type="button" class="nl-pos"${canOpen ? ` data-act="outline" aria-expanded="${outline}"` : ''}>${pos}</button></header>
+  <div class="th-scroll"><div class="th-col">${body}</div></div>
+  <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+const ticks = marks => `<span class="ticks" aria-hidden="true">${marks.map(m => `<i class="${m}"></i>`).join('')}</span>`;
+const choice = (q, i) => `${'ABCD'[i]}. ${q.options[i]}`;
+const openCard = (head, q) => `<div class="qa-card">${head}<div class="qa-prompt">${q.prompt}</div>
+  <div class="qa-opts">${q.options.map((o, i) => `<button type="button" class="opt" data-opt="${i}" aria-pressed="false"><kbd>${'ABCD'[i]}</kbd><span>${o}</span></button>`).join('')}</div>
+  <div class="qa-conf"><span>How sure are you?</span><div class="chips" role="group" aria-label="How sure are you?">${CONF.map((c, i) => `<button type="button" class="chip" data-conf="${i}" aria-pressed="false">${c}</button>`).join('')}</div></div>
+  <div class="qa-foot"><button type="button" class="textbtn" data-act="unknown">I don't know</button><button type="button" class="btn" data-act="answer" disabled>Answer</button></div></div>`;
+function gradedCard(head, q, ans, ok){
+  const said = ans.unknown ? `<div class="qa-line"><span class="k">Your answer</span><span>I don't know</span></div>`
+    : `<div class="qa-line"><span class="k">Your answer</span><span>${choice(q, ans.picked)}</span><span class="c">${CONF[ans.conf]} sure</span></div>`;
+  return `<div class="qa-card done">${head}<div class="qa-prompt">${q.prompt}</div>${said}${ok ? '' : `<div class="qa-line"><span class="k">Correct answer</span><span>${choice(q, q.key)}</span></div>`}</div>`;
+}
+const verdictOf = (ans, ok) => ans.unknown ? '<span class="dk">Did not know</span>' : ok ? '<span class="ok">Correct</span>' : '<span class="no">Not quite</span>';
+const rows = items => `<ol class="ue-rows">${items.map(([text, [word, cls, why]]) => `<li><span>${text}</span><span class="st ${cls}">${word}</span>${why ? `<small>${why}</small>` : ''}</li>`).join('')}</ol>`;
+
+/* ---------------- the course view ---------------- */
+const finished = i => i < NEXT;
+const waitingFor = i => UNITS[i].needs.filter(n => !finished(n));
+const units = ns => `unit${ns.length > 1 ? 's' : ''} ${ns.map(n => n + 1).join(' and ')}`;
+const TEST_IS = "A test on this unit's objectives before anything is taught, with no explanations until it ends. It skips nothing by itself: you see what you passed, and then you choose.";
+function ask1(i){        // what a unit asks before it opens
+  const waits = waitingFor(i), builds = waits.length ? `This builds on ${units(waits)}, not finished yet. ` : '';
+  return asking.kind === 'test'
+    ? `<span class="confirm"><span class="says">${builds}${TEST_IS}</span><button type="button" class="textbtn" data-act="test" data-i="${i}">Start the test</button><button type="button" class="textbtn" data-act="cancel">Cancel</button></span>`
+    : `<span class="confirm"><span>${builds}</span><button type="button" class="textbtn" data-act="go" data-i="${i}">Start anyway</button><button type="button" class="textbtn" data-act="cancel">Cancel</button></span>`;
+}
+function unitRow(u, i){
+  const here = asking && asking.i === i && !asking.card;
+  const bits = [];
+  if (u.needs.length) bits.push(`<span>Builds on ${units(u.needs)}</span>`);
+  if (finished(i)) bits.push(`<button type="button" class="textbtn" data-act="go" data-i="${i}">Open</button>`);
+  else if (!here) bits.push(`<button type="button" class="textbtn" data-act="start" data-i="${i}">Start</button><button type="button" class="textbtn" data-act="testout" data-i="${i}">Test out</button>`);
+  const says = finished(i)
+    ? `Passed<small class="kept">${u.kept[0]} of ${u.kept[1]} retained</small>${u.slip ? `<small class="slip">${u.slip} slipping</small>` : ''}`
+    : i === NEXT ? 'Up next' : '';
+  return `<li class="cu-row ${finished(i) ? 'pass' : 'todo'}"><span class="cu-n">${i + 1}</span>
+    <div><div class="cu-t">${u.t}</div><div class="cu-g">${u.goal}</div><div class="cu-m">${bits.join('')}</div>${here ? ask1(i) : ''}</div>
+    <span class="cu-s ${finished(i) ? 'pass' : i === NEXT ? 'next' : ''}">${says}</span></li>`;
+}
+function courseView(){
+  const u = UNITS[NEXT], here = asking && asking.i === NEXT && asking.card;
+  return `<div class="pg"><header class="nl">${crumbs(['Library'], COURSE)}</header>
+    <div class="pg-scroll"><div class="pg-col">
+      <h1 class="cv-title">${COURSE}</h1><p class="cv-at">${UNITS.length} units, ${NEXT} finished.</p>
+      <section class="cn" aria-label="Up next"><div><div class="cn-k">Up next</div><div class="cn-t"><span>Unit ${NEXT + 1}</span>${u.t}</div><div class="cn-g">${u.goal}</div></div>
+        <div class="cn-go"><button type="button" class="btn" data-act="go" data-i="${NEXT}">Start unit ${NEXT + 1}</button>${here ? '' : `<button type="button" class="textbtn" data-act="testout" data-i="${NEXT}" data-card="1">Test out</button>`}</div>
+        ${here ? `<div class="cn-ask">${ask1(NEXT)}</div>` : ''}</section>
+      <div class="cv-hrow"><h2 class="pg-h">Units</h2><span class="cv-acts"><button type="button" class="textbtn" data-act="known">What I know</button><button type="button" class="textbtn">Show the diagram</button></span></div>
+      <ol class="cu">${UNITS.map(unitRow).join('')}</ol>
+    </div></div></div>`;
+}
+
+/* ---------------- the test, and what follows it ---------------- */
+function testItem(e, n){
+  const q = OBJ[e.o].qs[e.k];
+  const on = `<span class="q-from">Objective ${e.o + 1} of ${OBJ.length}${e.k ? ', second question' : ''}</span>`;
+  if (e.withdrawn) return `<div class="qa-card done"><div class="q-count">Question ${n} <span class="dk">Withdrawn</span>${on}</div><div class="qa-prompt">${q.prompt}</div></div>`;
+  if (!e.ans) return openCard(`<div class="q-count">Question ${n}${on}</div>`, q);
+  return gradedCard(`<div class="q-count">Question ${n} ${verdictOf(e.ans, e.ok)}${on}</div>`, q, e.ans, e.ok);
+}
+function resultCard(){
+  const passed = passedSet(), got = passed.filter(Boolean).length, all = got === OBJ.length;
+  const says = all ? `All ${WORDS[got]} passed` : got ? `${cap(WORDS[got])} of ${WORDS[OBJ.length]} passed` : 'None passed';
+  const head = `<div class="q-count"><b>Test finished</b><span class="${all ? 'ok' : 'dk'}">${says}</span></div>`;
+  const title = `Unit ${NEXT + 1}: ${UNITS[NEXT].t}`;
+  if (test.step) return `<div class="qa-card done">${head}<div class="qa-line"><span>${title}</span><span class="c">${test.step === 'skip' ? (all ? 'Finished without teaching.' : 'Skipping what you passed.') : 'Teaching the whole unit.'}</span></div></div>`;
+  const objRows = rows(OBJ.map((o, i) => { const s = shown(i); return [o.t, s.passed ? ['Passed', 'pass', s.why] : ['Not passed', 'miss', s.why]]; }));
+  if (got === 0) return `<div class="qa-card ue">${head}<div class="qa-prompt">${title}</div>${objRows}
+    <div class="qa-foot"><span class="qa-aside">Nothing to skip: the unit is taught from its first segment.</span><button type="button" class="btn" data-act="whole">Start the unit</button></div></div>`;
+  const FATE = {skip:['Skipped', 'skip'], teach:['Taught', '']};
+  const segRows = rows(SEGMENTS.map((s, i) => {
+    const f = fate(s, passed);
+    return [`${i + 1}. ${s.t}`, f === 'part' ? ['Taught in part', '', `Only: ${list(s.objs.filter(o => !passed[o]).map(o => OBJ[o].t.toLowerCase()))}`] : FATE[f]];
+  }));
+  return `<div class="qa-card ue">${head}<div class="qa-prompt">${title}</div>${objRows}
+    <div class="ue-sec"><div class="cs-h"><span>${all ? 'If you finish the unit here' : 'If you skip what you passed'}</span></div>${segRows}</div>
+    <p class="as-says">What you passed stays passed either way.</p>
+    <div class="qa-foot"><button type="button" class="textbtn" data-act="whole">${all ? 'Teach me the unit anyway' : 'Teach me the whole unit'}</button>
+      <button type="button" class="btn" data-act="skipit">${all ? 'Finish the unit' : 'Skip what I passed'}</button></div></div>`;
+}
+// What the tutor says when the test ends, from what it showed.
+function summary(){
+  const passed = passedSet(), has = OBJ.filter((_, i) => passed[i]).map(o => o.short), lacks = OBJ.filter((_, i) => !passed[i]).map(o => o.short);
+  if (!lacks.length) return 'That is the test. You answered on every objective of this unit, correctly and without much doubt. There is nothing in it I would need to teach you.';
+  if (!has.length) return 'That is the test. None of it is in place yet, which is what the unit is for.';
+  return `That is the test. You have ${list(has)}. What it did not show is ${list(lacks)}, and that is where I would teach.`;
+}
+// Where the unit stands once the result card is answered: the mark of each segment, and the one that starts.
+function standing(){
+  const passed = test.step === 'skip' ? passedSet() : OBJ.map(() => false);
+  const fates = SEGMENTS.map(s => fate(s, passed)), first = fates.findIndex(f => f !== 'skip');
+  return {fates, first, marks:fates.map((f, i) => f === 'skip' ? 'skip' : i === first ? 'now' : '')};
+}
+function testView(){
+  let n = 0;
+  const mark = `<div class="pf-mark"><span><b>Test</b> Questions on this unit's objectives, before anything is taught. Nothing is explained until it ends; each answer is recorded.</span></div>`;
+  const log = test.log.map(e => testItem(e, ++n)).join('');
+  const name = UNITS[NEXT].t;
+  if (!test.over) return thread(name, `${ticks(SEGMENTS.map(() => ''))}Testing out`,
+    `${mark}${log}<div class="pf-act"><button type="button" class="textbtn" data-act="stoptest">Start learning instead</button></div>`);
+  const head = `${mark}${log}<div class="th-tutor prose"><p>${summary()}</p></div>${resultCard()}`;
+  if (!test.step) return thread(name, `${ticks(SEGMENTS.map(() => ''))}Testing out`, head);
+  const {fates, first, marks} = standing();
+  if (first < 0) return thread(name, `${ticks(marks)}Finished`, `${head}
+    <div class="ph-note">This unit is finished: you passed every objective in the test, and nothing was taught. It has no gate.</div>
+    <div class="pf-act"><button type="button" class="btn sm" data-act="away" data-to="Unit ${NEXT + 2}">Start unit ${NEXT + 2}: ${UNITS[NEXT + 1].t}</button><button type="button" class="textbtn" data-act="course">Back to the course</button></div>`, true);
+  const note = test.step === 'whole' ? '' : `<div class="ph-note">Teaching starts at segment ${first + 1}${fates[first] === 'part' ? ', which leaves out what you passed in it' : ''}. The outline, at the top right, shows what is skipped.</div>`;
+  return thread(name, `${ticks(marks)}Segment ${first + 1} of ${SEGMENTS.length}`, `${head}${note}
+    <div class="ns-new"><div class="th-tutor prose"><h1>${SEGMENTS[first].t}</h1><p><span class="wait" aria-label="The tutor is writing"></span></p></div></div>`, true);
+}
+function outlineHtml(){
+  const {fates, first} = standing(), passed = passedSet();
+  const item = (s, i) => fates[i] === 'skip' ? `<li class="skip"><i></i><span><span class="uo-t">${s.t}</span><small>Skipped: passed in the test</small></span></li>`
+    : `<li class="${i === first ? 'now' : ''}"><i></i><span>${s.t}${fates[i] === 'part' ? `<small>Only: ${list(s.objs.filter(o => !passed[o]).map(o => OBJ[o].short))}</small>` : ''}</span></li>`;
+  return `<div class="np" role="dialog" aria-label="Unit outline"><div class="uo">${crumbs(['Library'], COURSE)}
+    <div class="uo-unit"><span>Unit ${NEXT + 1} of ${UNITS.length}</span><b>${UNITS[NEXT].t}</b></div>
+    <ol class="uo-list">${SEGMENTS.map(item).join('')}</ol></div></div>`;
+}
+
+/* ---------------- the gate ---------------- */
+const gatePos = `${ticks(Array(GATED.segments).fill('past'))}Unit gate`;
+const skipGate = (where) => gate.confirming
+  ? `<span class="confirm"><span>The gate is offered once. The unit finishes with what you passed, and nothing more is marked retained.</span><button type="button" class="textbtn" data-act="gate-skip">Skip the gate</button><button type="button" class="textbtn" data-act="gate-stay">Stay</button></span>`
+  : `<button type="button" class="textbtn" data-act="gate-ask">${where}</button>`;
+const gateCard = () => `<div class="qa-card as"><div class="q-count"><b>Unit gate</b>9 questions</div>
+  <div class="qa-prompt">${GATED.name}</div>
+  <p class="as-says">A question on each of the six objectives of this unit that no review has confirmed, and three on objectives of units 1 and 2, with nothing taught first. A right answer marks its objective retained; a miss is worked through, as in a check.</p>
+  <p class="as-says">It waits here, if you would rather take it in another sitting, when the answers say more.</p>
+  <div class="qa-foot">${skipGate('Skip the gate')}${gate.confirming ? '' : '<button type="button" class="btn" data-act="gate-start">Start the gate</button>'}</div></div>`;
+function gateView(){
+  if (view === 'gate') return thread(GATED.name, `${ticks(Array(GATED.segments).fill('past'))}Segment 5 of 5`, LAST_SEGMENT + gateCard());
+  const head = `<div class="q-count">Question 7 of 9${gate.answered ? ` ${verdictOf(gate.answered, gate.answered.ok)}` : ''}<span class="q-from">Unit 2: The derivative</span></div>`;
+  const seventh = gate.answered
+    ? gradedCard(head, GATE_Q, gate.answered, gate.answered.ok) + `<div class="proto">The gate goes on from here as a review does (piece 15): feedback of a sentence or two, or a detour and a second question. The bar shows how it ends.</div>`
+    : openCard(head, GATE_Q);
+  return thread(GATED.name, gatePos, `${GATE_MARK}${GATE_SIXTH}${seventh}<div class="pf-act">${skipGate('Skip the gate')}</div>`);
+}
+function endView(){
+  const end = ENDS[view.slice(4)], missed = end.own.filter(([, cls]) => cls === 'slip').length;
+  const verdict = missed ? `<span class="warn">${cap(WORDS[missed])} not passed</span>` : '<span class="ok">Passed</span>';
+  const head = `<div class="q-count"><b>Unit ${GATED.n} finished</b>${verdict}</div>`;
+  const before = view === 'end-skipped' ? LAST_SEGMENT : GATE_MARK + GATE_LAST;
+  const mark = `<div class="pf-mark"><span>${end.mark}</span></div>`;
+  if (gate.again) return thread(GATED.name, `${ticks(['past', 'past', 'past', 'past', 'now'])}Going over again`, `${before}${mark}
+    <div class="qa-card done">${head}<div class="qa-line"><span>${GATED.name}</span><span class="c">Six of seven objectives passed.</span></div></div>
+    <div class="pf-mark"><span><b>Teach</b> Going over one objective again.</span></div>
+    <div class="th-tutor prose"><h2>The quotient rule, again</h2><p><span class="wait" aria-label="The tutor is writing"></span></p></div>
+    <div class="proto">This segment ends in its own check. The gate is not offered a second time.</div>`);
+  const foot = missed
+    ? `<div class="qa-foot"><button type="button" class="textbtn" data-act="away" data-to="Unit ${GATED.n}, overridden">Move on without it</button><button type="button" class="btn" data-act="again">Go over it again</button></div>`
+    : `<div class="qa-foot"><button type="button" class="textbtn" data-act="course">Back to the course</button><button type="button" class="btn" data-act="go" data-i="${NEXT}">Start unit ${NEXT + 1}</button></div>`;
+  const others = end.others.length ? `<div class="ue-sec"><div class="cs-h"><span>Also asked, from earlier units</span></div>${rows(OTHERS.map(([t, unit], i) => {
+    const [word, cls, why] = end.others[i]; return [t, [word, cls, why ? `${unit}. ${why}` : unit]]; }))}</div>` : '';
+  return thread(GATED.name, `${ticks(Array(GATED.segments).fill('past'))}${missed ? 'Segment 5 of 5' : 'Finished'}`,
+    `${before}${mark}<div class="qa-card ue">${head}<div class="qa-prompt">${GATED.name}</div>${rows(OWN.map((t, i) => [t, end.own[i]]))}${others}${foot}</div>`);
+}
+
+/* ---------------- "What I know" ---------------- */
+function knownView(){
+  const entry = a => `<li class="wk-entry"><div class="q-count"><span>${a.at}</span>${verdictOf(a, a.ok)}${a.unknown ? '' : `<span>${CONF[a.conf]} sure</span>`}${a.where ? `<span class="wk-in">${a.where}</span>` : ''}</div>
+    <div class="qa-prompt">${a.prompt}</div>
+    ${a.unknown ? `<div class="qa-line"><span class="k">Your answer</span><span>I don't know</span></div><div class="qa-line"><span class="k">Stuck on</span><span class="qa-flaw">${a.stuck}</span></div>`
+      : `<div class="qa-line"><span class="k">Your answer</span><span>${a.said}</span></div>`}
+    ${a.right ? `<div class="qa-line"><span class="k">Correct answer</span><span>${a.right}</span></div>` : ''}</li>`;
+  const unit = u => `<section><div class="cv-hrow"><h2 class="pg-h">Unit ${u.n}: ${u.title}</h2><span class="wk-s ${u.status[1]}">${u.status[0]}</span></div>
+    <ol class="wk-objs">${u.objectives.map(o => `<li class="wk-obj"><div class="wk-ohead"><span class="wk-stmt">${o.stmt}</span><span class="wk-s ${o.status[1]}">${o.status[0]}</span></div>
+      <ol class="wk-ev">${o.answers.map(entry).join('')}</ol></li>`).join('')}</ol></section>`;
+  return `<div class="pg"><header class="nl">${crumbs(['Library', COURSE], 'What I know')}</header>
+    <div class="pg-scroll"><div class="pg-col"><h1 class="cv-title">What I know</h1>
+      <p class="cv-at">4 units started, with 21 objectives: 13 retained, 5 passed, 1 slipping and 2 not passed yet.</p>
+      <div class="proto">This mock draws two of the four units, and two objectives of each. Calibration, above the units, is as it is today.</div>
+      ${KNOWN.map(unit).join('')}</div></div></div>`;
+}
+const awayView = () => `<div class="away"><h1>${away.title}</h1><p>${away.text}</p><button type="button" class="btn" data-act="back">Back</button></div>`;
+
+/* ---------------- render and input ---------------- */
+const VIEWS = {
+  course:['g-test', 'The course view', () => {}],
+  test:['g-test', 'The test', () => { ask(0, 0); answer({picked:1, conf:4}); answer({picked:1, conf:1}); answer({picked:2, conf:2}); answer({unknown:true}); }],
+  result:['g-test', 'Its result', () => { VIEWS.test[2](); answer({picked:2, conf:3}); answer({picked:1, conf:2}); }],
+  taught:['g-test', 'What it skipped', () => { VIEWS.result[2](); test.step = 'skip'; }],
+  whole:['g-test', 'Every objective passed', () => { ask(0, 0); for (const o of OBJ) answer({picked:o.qs[0].key, conf:3}); }],
+  gate:['g-gate', 'Its card', () => {}],
+  ask:['g-gate', 'A question', () => {}],
+  'end-all':['g-gate', ENDS.all.name, () => {}],
+  'end-own':['g-gate', ENDS.own.name, () => {}],
+  'end-other':['g-gate', ENDS.other.name, () => {}],
+  'end-skipped':['g-gate', ENDS.skipped.name, () => {}],
+  known:['g-known', '"What I know"', () => {}]
+};
+const isTest = () => ['test', 'result', 'taught', 'whole'].includes(view);
+function render(keep){
+  const scroller = () => $('.th-scroll') ?? $('.pg-scroll');
+  const top = scroller()?.scrollTop;
+  app.innerHTML = away ? awayView() : view === 'course' ? courseView() : isTest() ? testView() : view === 'known' ? knownView() : view.startsWith('end') ? endView() : gateView();
+  pop.innerHTML = !away && outline ? outlineHtml() : '';
+  math(app); math(pop);
+  const s = scroller();
+  if (s) s.scrollTop = keep ? top : s.classList.contains('th-scroll') ? s.scrollHeight : 0;
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.v === view);
+  history.replaceState(null, '', `?at=${view}`);
+}
+function jump(key){ view = key; fresh(); VIEWS[key][2](); render(false); }
+function sync(){
+  for (const b of app.querySelectorAll('.opt')) b.setAttribute('aria-pressed', +b.dataset.opt === form.picked);
+  for (const b of app.querySelectorAll('.chip')) b.setAttribute('aria-pressed', +b.dataset.conf === form.conf);
+  const go = app.querySelector('[data-act=answer]'); if (go) go.disabled = form.picked === null || form.conf === null;
+}
+function leave(title, text){ away = {title, text}; outline = false; render(false); }
+function give(ans){        // an answer to the open question, the test's or the gate's
+  if (view === 'ask') gate.answered = {...ans, ok:!ans.unknown && ans.picked === GATE_Q.key};
+  else answer(ans);
+  render(false);
+}
+document.addEventListener('click', e => {
+  if (e.target.closest?.('#bar')) return;
+  const b = e.target.closest?.('button');
+  if (!b) { if (outline && !e.target.closest?.('#pop')) { outline = false; render(true); } return; }
+  const act = b.dataset.act, i = +b.dataset.i;
+  if (b.dataset.opt !== undefined) { form.picked = +b.dataset.opt; sync(); }
+  else if (b.dataset.conf !== undefined) { form.conf = +b.dataset.conf; sync(); }
+  else if (act === 'answer') give({...form});
+  else if (act === 'unknown') give({unknown:true});
+  else if (act === 'start') { if (waitingFor(i).length) { asking = {i, kind:'start'}; render(true); } else leave(`Unit ${i + 1}: ${UNITS[i].t}`, 'This plans the unit and opens its first session, as today.'); }
+  else if (act === 'testout') { asking = {i, kind:'test', card:!!b.dataset.card}; render(true); }
+  else if (act === 'cancel') { asking = null; render(true); }
+  else if (act === 'test') {
+    if (i !== NEXT) leave(`Testing out of unit ${i + 1}`, `This plans ${UNITS[i].t} and starts its test. The mock has questions for unit ${NEXT + 1} only.`);
+    else { view = 'test'; fresh(); ask(0, 0); render(false); }
+  }
+  else if (act === 'go') leave(`Unit ${i + 1}: ${UNITS[i].t}`, finished(i) ? 'This opens the unit as it finished.' : 'This plans the unit and opens its first session, as today.');
+  else if (act === 'known') jump('known');
+  else if (act === 'course') jump('course');
+  else if (act === 'stoptest') { stopTest(); render(false); }
+  else if (act === 'skipit' || act === 'whole') { test.step = act === 'whole' ? 'whole' : 'skip'; render(false); }
+  else if (act === 'outline') { outline = !outline; render(true); }
+  else if (act === 'gate-ask') { gate.confirming = true; render(false); }
+  else if (act === 'gate-stay') { gate.confirming = false; render(false); }
+  else if (act === 'gate-skip') jump('end-skipped');
+  else if (act === 'gate-start') jump('ask');
+  else if (act === 'again') { gate.again = true; render(false); }
+  else if (act === 'away') leave(b.dataset.to, 'A placeholder: this view is not part of this mock.');
+  else if (act === 'back') { away = null; render(false); }
+});
+app.addEventListener('submit', e => e.preventDefault());   // sending messages is piece 1; not wired here
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && outline) { outline = false; render(true); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [key, [group, name]] of Object.entries(VIEWS)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.v = key;
+  b.addEventListener('click', () => jump(key));
+  $(`#${group}`).appendChild(b);
+}
+const asked = new URLSearchParams(location.search).get('at');
+jump(VIEWS[asked] ? asked : 'course');
+</script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 5.1, piece 18: the learner profile, and a
+  misconception in "What I know".
+  SETTLED 2026-11-18.
+  The user picked that day that the planner proposes the profile with the
+  curriculum, and that nothing is written to it unseen (decisions.md,
+  "Mastery loop"). This mock is how the agent would lay that out; the
+  user looked at it and changed nothing.
+
+  The profile:
+  - A section of the proposal card, under "How I would teach it": "What I
+    would remember about you", always shown, since approving the card
+    writes it. A first course marks it "New". A later course that changes
+    it marks it "Changed", marks each sentence that is new, and lists each
+    sentence dropped under the text, because this text reaches every
+    course after this one. Unchanged, it says so.
+  - The Profile page is reached from the library's top line. It says what
+    the text is for, holds it in one box to edit, with its length against
+    the limit and Save, and lists the finished courses a new planner is
+    given with it, which come from the record and are not kept in the
+    text.
+
+  A misconception:
+  - Under its objective in "What I know", above the answers: what the
+    learner believed, what is so, and where it showed (a detour's question
+    or the discussion). It is ruled in peach and says "Open" while the
+    objective is not passed; once it has passed, the rule is grey and it
+    says "Cleared". Nothing stores open or not: it follows the objective.
+
+  The controls work: Approve, the page's box, its count and Save. The bar
+  at the left jumps to a moment (?at=...). Keys: H hides the bar.
+
+  Everything is simulated: piece 9's course and intake, and two objectives
+  of piece 16's.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 18: the profile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+@media (max-width:1100px){#bar{position:static;margin:8px;max-width:none}.th,.pg{height:auto;min-height:100dvh}}
+.katex{position:relative}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-card"><span class="lbl">On the proposal card</span></div>
+  <div class="grp" id="g-page"><span class="lbl">The page</span></div>
+  <div class="grp" id="g-known"><span class="lbl">The record</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+// Piece 9's course and intake.
+const TITLE = 'Linear algebra for PCA';
+const UNITS = [
+  {t:'Vectors and linear maps', goal:'Describe a linear map by what it does to a basis.', needs:[]},
+  {t:'Matrices as maps', goal:'Read a matrix as a linear map, and a product as a composition.', needs:[0]},
+  {t:'Subspaces, basis and dimension', goal:'Find a basis for a subspace and state its dimension.', needs:[0]},
+  {t:'Orthogonality and projections', goal:'Project a vector onto a subspace, and explain least squares with it.', needs:[2]},
+  {t:'Eigenvalues and eigenvectors', goal:'Find the directions a map only stretches, and by how much.', needs:[1, 2]},
+  {t:'The spectral theorem', goal:'Explain why a symmetric matrix has an orthogonal basis of eigenvectors.', needs:[3, 4]},
+  {t:'Principal component analysis', goal:'Derive PCA from the covariance matrix, and say what each component means.', needs:[5]}
+];
+const STYLE = 'Short explanations, each starting from a picture in two dimensions before the algebra. Checks ask you to predict and explain more than to compute: what a matrix does to a shape, which direction PCA would pick, and why. One new idea per segment, at a steady pace.';
+const YOU = 'Linear algebra, enough to really understand how PCA works. I use it at work as a black box. I can multiply matrices, but eigenvectors never clicked, and I would rather be made to predict things than to grind through sums.';
+// The profile as it stood, sentence by sentence, and as the planner proposes it. A sentence only in the second is
+// new; one only in the first was dropped.
+const WAS = ['Works as a data analyst and writes Python every day.', 'Knows single-variable calculus through integration.',
+  'Likes a picture or a worked example before the algebra, and short explanations.', 'Would rather be asked why than only to compute.'];
+const NOW = [WAS[0], WAS[1], 'Can multiply matrices, but has had no linear algebra beyond that.', WAS[2], 'Would rather be asked to predict and explain than to compute by hand.'];
+const LIMIT = 2000;
+const FINISHED = [['Python for data work', 'Finished 3 October 2026'], ['Probability, a refresher', 'One-off, finished 21 October 2026']];
+const LIBRARY = [['Linear algebra for PCA', 'Today', 'Unit 1 of 7, not started'], ['Calculus I', 'Yesterday', 'Unit 4 of 8: Optimisation and related rates']];
+
+// "What I know": two objectives of Calculus I, unit 3, each with a misconception and the answers under it.
+const KNOWN = [
+  {stmt:'Apply the quotient rule', status:['Not passed yet', 'miss'], mc:{found:'17 November 2026, in the detour after question 3',
+      believed:String.raw`The numerator of the quotient rule is $fg' - f'g$: the top's derivative comes second.`,
+      so:String.raw`It is $f'g - fg'$. Written as a product, $f\cdot g^{-1}$, the minus sign comes from differentiating $g^{-1}$, so it sits on the term with $g'$.`},
+    answers:[
+      {at:'17 November 2026, 10:31', ok:false, conf:3, prompt:String.raw`What is the derivative of $\dfrac{x}{x^2+1}$?`, said:String.raw`A. $\dfrac{x^2-1}{(x^2+1)^2}$`, right:String.raw`C. $\dfrac{1-x^2}{(x^2+1)^2}$`},
+      {at:'17 November 2026, 10:44', ok:true, conf:2, prompt:String.raw`What is the derivative of $\dfrac{\sin x}{x}$?`, said:String.raw`B. $\dfrac{x\cos x - \sin x}{x^2}$`}]},
+  {stmt:'Apply the chain rule to a composite function', status:['Retained', 'kept'], mc:{found:'16 November 2026, in the discussion',
+      believed:String.raw`The outer derivative is taken at $x$, so the derivative of $\sin(x^2)$ would be $\cos(2x)$.`,
+      so:String.raw`It is taken at the inside, $g(x)$, and multiplied by the rate of the inside: $\cos(x^2)\cdot 2x$.`},
+    answers:[
+      {at:'16 November 2026, 19:20', ok:true, conf:2, prompt:String.raw`Differentiate $h(x) = (2x+1)^5$.`, said:String.raw`$10(2x+1)^4$`},
+      {at:'16 November 2026, 19:24', ok:true, conf:3, prompt:String.raw`What is the derivative of $\cos(3x^2)$?`, said:String.raw`D. $-6x\sin(3x^2)$`},
+      {at:'18 November 2026, 20:12', ok:true, conf:3, where:"In the unit's gate", prompt:String.raw`What is the derivative of $\ln(x^2+1)$?`, said:String.raw`A. $\dfrac{2x}{x^2+1}$`}]}
+];
+const CONF = ['under 50%', '50%', '75%', '90%', '100%'];
+
+/* ---------------- state ---------------- */
+let view, approved, text, saved, savedNote, changedOn;
+function fresh(){ approved = false; saved = WAS.join(' '); text = saved; savedNote = false; changedOn = '2 November 2026'; }
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const crumbs = (trail, here) => `<nav class="crumbs" aria-label="Where you are">${trail.map(([t, to]) => `<button type="button" data-go="${to}">${t}</button><span>/</span>`).join('')}<b>${here}</b></nav>`;
+
+/* ---------------- the proposal card ---------------- */
+// The profile's section: the whole text as it would be saved, with what this proposal changes marked.
+function profileSection(){
+  const head = (tag, more) => `<div class="cs-h"><span>What I would remember about you</span><span class="for">in every course${more}</span>${tag}</div>`;
+  if (view === 'new') return `<div class="cs">${head('<span class="chg">New</span>', '')}<p>${NOW.join(' ')}</p></div>`;
+  if (view === 'same') return `<div class="cs">${head('', ', not changed')}<p>${WAS.join(' ')}</p></div>`;
+  const gone = WAS.filter(s => !NOW.includes(s));
+  return `<div class="cs">${head('<span class="chg">Changed</span>', '')}<p>${NOW.map(s => WAS.includes(s) ? s : `<ins>${s}</ins>`).join(' ')}</p>
+    ${gone.length ? `<p class="cs-gone">Dropped: ${gone.map(s => `<s>${s}</s>`).join(' ')}</p>` : ''}</div>`;
+}
+const SAYS = {
+  new:'Here is a course built backwards from PCA: seven units, each with one goal, and how I would teach them. Under that is what I would keep about you for any later course. Push back on anything. Nothing starts, and nothing is saved, until you approve.',
+  changed:'Here is a course built backwards from PCA: seven units, each with one goal, and how I would teach them. I would also change two things in your profile, marked under that. Push back on anything. Nothing starts, and nothing is saved, until you approve.',
+  same:'Here is a course built backwards from PCA: seven units, each with one goal, and how I would teach them. Your profile already says what I would keep. Push back on anything. Nothing starts until you approve.'
+};
+const unitList = () => `<ol class="cu">${UNITS.map((u, i) => `<li class="cu-row"><span class="cu-n">${i + 1}</span>
+  <div><div class="cu-t">${u.t}</div><div class="cu-g">${u.goal}</div>${u.needs.length ? `<div class="cu-m"><span>Builds on unit${u.needs.length > 1 ? 's' : ''} ${u.needs.map(n => n + 1).join(' and ')}</span></div>` : ''}</div>
+  <span class="cu-s"></span></li>`).join('')}</ol>`;
+const cardView = () => `<div class="th has-top"><header class="nl">${crumbs([['Library', 'library']], TITLE)}</header>
+  <div class="th-scroll"><div class="th-col">
+    <div class="th-tutor prose"><p>What do you want to learn? Tell me what you already know, and attach anything you want to learn from.</p></div>
+    <div class="th-you">${YOU}</div>
+    <div class="th-tutor prose"><p>${SAYS[view]}</p></div>
+    <div class="qa-card cp"><div class="q-count"><b>Proposed curriculum</b>${UNITS.length} units</div>${unitList()}
+      <div class="cs"><div class="cs-h"><span>How I would teach it</span></div><p>${STYLE}</p></div>
+      ${profileSection()}
+      <div class="qa-foot"><button type="button" class="textbtn">Show the diagram</button>${approved ? '<span class="ok">Approved</span>' : '<button type="button" class="btn" data-act="approve">Approve</button>'}</div></div>
+    ${approved ? `<div class="ph-note">Approved. The course is in your library${view === 'same' ? '' : ', and your profile is saved'}.</div>
+      <div class="pf-act"><button type="button" class="btn sm">Start unit 1</button><button type="button" class="textbtn" data-go="page">Open your profile</button></div>` : ''}
+  </div></div>
+  <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Push back, or ask a question" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+
+/* ---------------- the library, and the Profile page ---------------- */
+const libraryView = () => `<div class="pg"><header class="nl"><nav class="crumbs"><b>Library</b></nav>
+  <span class="nl-acts"><button type="button" class="textbtn" data-go="page">Profile</button><button type="button" class="btn sm">New course</button></span></header>
+  <div class="pg-scroll"><div class="pg-col"><h2 class="pg-h">In progress</h2>
+    <div class="lib-list">${LIBRARY.map(([t, when, where]) => `<button type="button" class="lc"><span class="lc-title">${t}</span><span class="lc-when">${when}</span><span class="lc-where">${where}</span></button>`).join('')}</div>
+    <h2 class="pg-h">Finished</h2>
+    <div class="lib-list">${FINISHED.map(([t, when]) => `<button type="button" class="lc done"><span class="lc-title">${t}</span><span class="lc-when"></span><span class="lc-where">${when}</span></button>`).join('')}</div>
+  </div></div></div>`;
+const countHtml = () => `<span class="${text.length > LIMIT ? 'over' : ''}">${text.length.toLocaleString('en-GB')} of ${LIMIT.toLocaleString('en-GB')} characters</span>`;
+const pageView = () => `<div class="pg"><header class="nl">${crumbs([['Library', 'library']], 'Profile')}</header>
+  <div class="pg-scroll"><div class="pg-col">
+    <h1 class="cv-title">Profile</h1>
+    <p class="pg-lead">What every course's planner and tutor are told about you. A planner proposes changes with a curriculum, and they are saved only when you approve it. You can edit it here at any time.</p>
+    <textarea class="field pr-text" id="text" aria-label="Your profile">${esc(text)}</textarea>
+    <div class="pr-foot"><span id="count">${countHtml()}<span class="faint" id="note">${savedNote ? ' · Saved' : ` · Last changed ${changedOn}`}</span></span>
+      <span class="dp-btns"><button type="button" class="textbtn" data-act="revert" id="revert" hidden>Undo my changes</button><button type="button" class="btn sm" data-act="save" id="save" disabled>Save</button></span></div>
+    <h2 class="pg-h">Finished courses</h2>
+    <p class="cal-lead">A new course's planner is given these titles with the text above. They come from your record and are not kept in the text.</p>
+    <ul class="pr-list">${FINISHED.map(([t, when]) => `<li>${t}<span>${when}</span></li>`).join('')}</ul>
+  </div></div></div>`;
+
+/* ---------------- "What I know" ---------------- */
+function knownView(){
+  const mc = o => { const open = o.status[1] !== 'pass' && o.status[1] !== 'kept';
+    return `<div class="mc${open ? '' : ' shut'}"><div class="q-count"><b>Misconception</b><span>${open ? 'Open' : 'Cleared'}</span><span>Found ${o.mc.found}</span></div>
+      <div class="qa-line"><span class="k">You believed</span><span class="qa-flaw">${o.mc.believed}</span></div>
+      <div class="qa-line"><span class="k">What is so</span><span class="qa-flaw">${o.mc.so}</span></div></div>`; };
+  const entry = a => `<li class="wk-entry"><div class="q-count"><span>${a.at}</span>${a.ok ? '<span class="ok">Correct</span>' : '<span class="no">Not quite</span>'}<span>${CONF[a.conf]} sure</span>${a.where ? `<span class="wk-in">${a.where}</span>` : ''}</div>
+    <div class="qa-prompt">${a.prompt}</div><div class="qa-line"><span class="k">Your answer</span><span>${a.said}</span></div>
+    ${a.right ? `<div class="qa-line"><span class="k">Correct answer</span><span>${a.right}</span></div>` : ''}</li>`;
+  return `<div class="pg"><header class="nl">${crumbs([['Library', 'library'], ['Calculus I', '']], 'What I know')}</header>
+    <div class="pg-scroll"><div class="pg-col"><h1 class="cv-title">What I know</h1>
+      <p class="cv-at">3 units started, with 16 objectives: 9 retained, 5 passed and 2 not passed yet.</p>
+      <div class="proto">This mock draws two objectives of unit 3: one with an open misconception, one with a misconception since cleared.</div>
+      <section><div class="cv-hrow"><h2 class="pg-h">Unit 3: Differentiation rules</h2><span class="wk-s now">In progress</span></div>
+        <ol class="wk-objs">${KNOWN.map(o => `<li class="wk-obj"><div class="wk-ohead"><span class="wk-stmt">${o.stmt}</span><span class="wk-s ${o.status[1]}">${o.status[0]}</span></div>
+          ${mc(o)}<ol class="wk-ev">${o.answers.map(entry).join('')}</ol></li>`).join('')}</ol></section>
+    </div></div></div>`;
+}
+
+/* ---------------- render and input ---------------- */
+const VIEWS = {
+  new:['g-card', 'A first course'], changed:['g-card', 'Changed by a later course'], same:['g-card', 'Not changed'],
+  library:['g-page', 'In the library'], page:['g-page', 'The Profile page'],
+  known:['g-known', 'A misconception']
+};
+const CARD = ['new', 'changed', 'same'];
+function render(){
+  app.innerHTML = CARD.includes(view) ? cardView() : view === 'library' ? libraryView() : view === 'page' ? pageView() : knownView();
+  math(app);
+  const s = $('.th-scroll'); if (s) s.scrollTop = s.scrollHeight;
+  if (view === 'page') sync();
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.v === view);
+  history.replaceState(null, '', `?at=${view}`);
+}
+// The page's count, Save and undo follow the box without drawing it again, which would lose the caret.
+function sync(){
+  const changed = text !== saved;
+  $('#count').firstElementChild.outerHTML = countHtml();
+  $('#save').disabled = !changed || text.length > LIMIT || !text.trim();
+  $('#revert').hidden = !changed;
+  $('#note').textContent = !changed ? (savedNote ? ' · Saved' : ` · Last changed ${changedOn}`) : text.length > LIMIT ? ' · Too long to save' : ' · Not saved';
+}
+function jump(key){ view = key; fresh(); render(); }
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (b.dataset.go) {
+    // an approved change is the profile from then on
+    if (b.dataset.go === 'page' && approved && view !== 'same') { saved = NOW.join(' '); text = saved; changedOn = 'today, with this course'; }
+    view = b.dataset.go; approved = false; render();
+  }
+  else if (act === 'approve') { approved = true; render(); }
+  else if (act === 'save') { saved = text; savedNote = true; render(); }
+  else if (act === 'revert') { text = saved; render(); }
+});
+app.addEventListener('input', e => { if (e.target.id === 'text') { text = e.target.value; sync(); } });
+app.addEventListener('submit', e => e.preventDefault());   // pushing back is piece 8; not wired here
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [key, [group, name]] of Object.entries(VIEWS)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.v = key;
+  b.addEventListener('click', () => jump(key));
+  $(`#${group}`).appendChild(b);
+}
+const asked = new URLSearchParams(location.search).get('at');
+jump(VIEWS[asked] ? asked : 'changed');
+</script>
+</body>
+</html>

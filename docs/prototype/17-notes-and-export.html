@@ -1,0 +1,332 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 5.1, piece 17: a unit's notes, and the
+  exported transcript.
+  SETTLED 2026-11-18.
+  Question: how are a unit's notes offered, read and written again, and
+  how is a transcript exported?
+
+  Round 1 showed the notes as text the engine rendered from the model's
+  Markdown: a heading per objective, paragraphs, ruled blocks. The user
+  turned that down: it "looks like markdown in obsidian", and notes are
+  HTML so that they can have visuals and be expressive. They also said
+  the notes need not be shown inside the app at all, if that were what
+  held them to plain text: opening them in the browser would do.
+
+  Picked:
+  - A unit's notes are a page the notes writer designs and writes whole,
+    as HTML with its own layout and styles and with figures where a
+    picture explains. 17-notes-example.html is one, made by hand.
+  - They are read in the app, in a frame that fills the page under the
+    top line, and "Open in browser" opens the same file in the system's
+    browser. Above the frame: when they were written and with which
+    instructions, and the file's path. "Write again" in the top line
+    takes new instructions and replaces the notes.
+  - The closing card of a finished unit has a section "Notes on this
+    unit": a sentence on what they are, one line for the learner's own
+    instructions, which may stay empty, and "Write notes", quieter than
+    the card's next step. Nothing is written unasked. While they are
+    written the section says so and the learner can go on; then it offers
+    "Open the notes", or says why not, with "Try again".
+  - In the course view a finished unit has "Notes" beside "Open" once it
+    has them, and "Write notes" until then, which opens the same line for
+    instructions under the row.
+  - "Export transcript" is in the unit's outline, above "Start fresh", and
+    downloads one document, which reads as the thread does: its markers,
+    the tutor's text, the learner's messages, each question as its graded
+    record. An aid is named, not included.
+  - Math in both files is KaTeX's own output, with its styles and fonts
+    written into the file, so that it looks as it does in the thread and
+    the file still loads nothing.
+  Rejected: notes as Markdown rendered by the engine (round 1); and
+  MathML in the two files, which the browser draws with the machine's
+  math font: in Chromium primes shrank to specks and brackets did not
+  grow around a fraction.
+
+  Both files print in dark text on white. The transcript is set in the
+  reader's own font, since it loads none.
+
+  The controls work. Notes take a moment to "write"; the mock has one
+  example page, whatever the instructions say. The bar at the left jumps
+  to a moment (?at=...). Keys: Esc closes the outline, H hides the bar.
+
+  Everything is simulated.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 17: notes and export</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+@media (max-width:1100px){#bar{position:static;margin:8px;max-width:none}.th,.pg{height:auto;min-height:100dvh}}
+.katex{position:relative}
+/* the reader: the top line, what the notes are, and the notes' own page in a frame that takes the rest */
+.nr{grid-template-rows:auto auto minmax(0,1fr)}
+.nr-top{padding:14px 20px;border-bottom:1px solid var(--line);font-size:.9em;color:var(--soft);display:grid;gap:.2em}
+.nr-top .qa-path{margin:0}
+.nr-top .nr-again{margin:.8em 0 .3em;max-width:calc(var(--measure) + 48px)}
+.nr-frame{display:block;width:100%;height:100%;border:0;background:var(--base)}
+.nr-frame.stale{opacity:.5}
+/* the exported file, as a browser shows it: a page that scrolls, with nothing of the app around it */
+.file{max-width:calc(var(--measure) + 48px);margin:0 auto;padding:56px 24px 96px}
+/* both files print in dark text on white */
+@media print{
+  :root{--base:#fff;--mantle:#f6f6f6;--crust:#eee;--surface0:#ddd;--surface1:#ccc;--overlay0:#888;--overlay1:#666;--subtext0:#444;--text:#111;
+    --mauve:#6c3fa5;--yellow:#7a5b00;--green:#2d6a1e;--red:#b3261e;--peach:#a8501c}
+  #bar,.proto{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-notes"><span class="lbl">Notes</span></div>
+  <div class="grp" id="g-export"><span class="lbl">Transcript</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+<div id="pop"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Calculus I';
+const UNIT = {n:3, of:8, name:'Differentiation rules'};
+const PATH = '~/gauss/calculus-i/notes/differentiation-rules.html';
+const TODAY = '18 November 2026';
+const SEGMENTS = ['Power and sum rules', 'Product and quotient rules', 'The chain rule', 'Implicit differentiation', 'Derivatives of inverse functions'];
+const OBJ = ['Differentiate powers, sums and constant multiples', 'Apply the product rule', 'Apply the quotient rule', 'Apply the chain rule to a composite function',
+  'Differentiate a curve given implicitly', 'Differentiate the inverse trigonometric functions', "Find an inverse's derivative from the original function"];
+const UNITS = [
+  {t:'Limits and continuity', goal:'Evaluate limits and decide where a function is continuous.', needs:[]},
+  {t:'The derivative', goal:'Compute a derivative from its definition and read it as a rate of change.', needs:[0]},
+  {t:'Differentiation rules', goal:'Differentiate any combination of elementary functions.', needs:[1]},
+  {t:'Optimisation and related rates', goal:'Use derivatives to find extreme values and to relate changing quantities.', needs:[2]}
+];
+const GATE_END = String.raw`
+<div class="qa-card done"><div class="q-count">Question 9 of 9 <span class="ok">Correct</span><span class="q-from">Unit 1: Limits and continuity</span></div>
+  <div class="qa-prompt">$g(x) = \dfrac{\sin x}{x}$ for $x \neq 0$. Which value of $g(0)$ makes $g$ continuous at $0$?</div>
+  <div class="qa-line"><span class="k">Your answer</span><span>B. $1$</span><span class="c">100% sure</span></div></div>
+<div class="th-tutor prose"><p>Yes. The limit at $0$ is $1$, so that is the one value that agrees with it.</p></div>
+<div class="pf-mark"><span><b>Gate over</b> All nine retained.</span></div>`;
+
+// A stretch of the exported transcript: the third session, with a missed question and its detour.
+const EXPORT = String.raw`
+<div class="pf-mark"><span><b>New session</b> 16 November 2026</span></div>
+<div class="th-tutor prose"><h1>The chain rule</h1>
+<p>Most functions you meet are built by feeding one function into another. Take $h(x) = \sin(x^2)$: first square $x$, then take the sine of the result. The chain rule tells you how fast $h$ changes, given how fast each step changes.</p>
+$$\frac{d}{dx}\,f\bigl(g(x)\bigr) = f'\bigl(g(x)\bigr)\cdot g'(x)$$
+<p>Differentiate the <strong>outer function</strong> and leave its input alone, then multiply by the derivative of the <strong>inner function</strong>.</p></div>
+<p class="fw">Aid shown: Two rates, one after the other (not part of this document)</p>
+<div class="pf-mark"><span><b>Discuss</b> Ask anything. Nothing here is graded.</span></div>
+<div class="th-you">Why isn't the derivative of $\sin(x^2)$ just $\cos(2x)$?</div>
+<hr class="th-sep">
+<div class="th-tutor prose"><p>Because the sine never sees $2x$. It sees $x^2$, so that is where its rate, $\cos$, is measured. The $2x$ is how fast that input is moving, and it multiplies.</p></div>
+<div class="pf-mark"><span><b>Check</b> Questions on this segment. Each answer is recorded.</span></div>
+<div class="qa-card done"><div class="q-count">Question 1 <span class="no">Not quite</span></div>
+  <div class="qa-prompt">What is the derivative of $e^{-x^2}$?</div>
+  <div class="qa-line"><span class="k">Your answer</span><span>C. $2x\,e^{-x^2}$</span><span class="c">90% sure</span></div>
+  <div class="qa-line"><span class="k">Correct answer</span><span>B. $-2x\,e^{-x^2}$</span></div></div>
+<div class="pf-mark"><span><b>Detour</b> Working through question 1. Nothing here is graded or counts as help.</span></div>
+<div class="th-tutor prose"><p>The answer is B. The outer function is $e^u$, which is its own derivative, taken at $u = -x^2$. What is the derivative of the inside?</p></div>
+<hr class="th-sep">
+<div class="th-you">$-2x$. I dropped the minus.</div>
+<hr class="th-sep">
+<div class="th-tutor prose"><p>That is all it was. The inside carries its sign into the product.</p></div>
+<div class="qa-card done"><div class="q-count">Question 2 <span class="ok">Correct</span></div>
+  <div class="qa-prompt">Differentiate $h(x) = (2x+1)^5$.</div>
+  <div class="qa-line"><span class="k">Your answer</span><span>$10(2x+1)^4$</span><span class="c">75% sure</span></div></div>`;
+
+/* ---------------- state ---------------- */
+// A unit's notes: none, 'writing', 'written' or 'failed', with the instructions they were written with and how many times.
+let notes, view, typed, courseAsking, againOpen, outline, pending = [];
+function fresh(){
+  pending.forEach(clearTimeout); pending = [];
+  notes = {0:{state:'written', instr:'', times:1, on:'9 November 2026'}, 1:{state:'none'}, 2:{state:'none'}};
+  typed = ''; courseAsking = null; againOpen = false; outline = false;
+}
+function write(u, instr, fail){
+  const before = notes[u];
+  notes[u] = {state:'writing', instr, times:before.times ?? 0, on:before.on, had:before.state === 'written'};
+  pending.push(setTimeout(() => {
+    notes[u] = fail ? {state:'failed', instr, times:notes[u].times} : {state:'written', instr, times:notes[u].times + 1, on:TODAY};
+    if (view === 'writing') view = 'written';
+    render(true);
+  }, 1800));
+}
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app'), pop = $('#pop');
+const DELIMS = [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}];
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:DELIMS, throwOnError:false});
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const crumbs = (trail, here) => `<nav class="crumbs" aria-label="Where you are">${trail.map(([t, to]) => `<button type="button" data-go="${to}">${t}</button><span>/</span>`).join('')}<b>${here}</b></nav>`;
+const ticks = marks => `<span class="ticks" aria-hidden="true">${marks.map(m => `<i class="${m}"></i>`).join('')}</span>`;
+const HOLD = 'What to focus on, or how to lay them out (optional)';
+const field = id => `<textarea class="field" id="${id}" rows="1" placeholder="${HOLD}" aria-label="Your instructions for the notes">${esc(typed)}</textarea>`;
+
+/* ---------------- the closing card, with its offer of notes ---------------- */
+function notesSection(){
+  const n = notes[2];
+  let body;
+  if (n.state === 'writing') body = `<div class="nt-state"><span class="dk" role="status">Writing the notes <span class="wait" aria-hidden="true"></span></span><span class="faint">This takes a minute. You can go on meanwhile.</span></div>`;
+  else if (n.state === 'written') body = `<div class="nt-state"><span>Written ${n.on}${n.instr ? ', with your instructions' : ''}.</span><button type="button" class="textbtn" data-go="reader">Open the notes</button></div>`;
+  else if (n.state === 'failed') body = `<div class="nt-state"><span class="no">The notes could not be written.</span><span>The reply was cut off before it ended.</span><button type="button" class="textbtn" data-act="retry">Try again</button></div>`;
+  else body = `<p class="as-says">A page of its own on what this unit taught, with figures where a picture helps, more room for what you found hard, and what made it click. Written from your sessions when you ask, and kept as a file you can open without Gauss.</p>
+    <div class="nt-row">${field('instr')}<button type="button" class="btn sm quiet" data-act="write">Write notes</button></div>`;
+  return `<div class="ue-sec"><div class="cs-h"><span>Notes on this unit</span></div>${body}</div>`;
+}
+const closingCard = () => `<div class="qa-card ue"><div class="q-count"><b>Unit ${UNIT.n} finished</b><span class="ok">Passed</span></div>
+  <div class="qa-prompt">${UNIT.name}</div>
+  <ol class="ue-rows">${OBJ.map(t => `<li><span>${t}</span><span class="st kept">Retained</span></li>`).join('')}</ol>
+  ${notesSection()}
+  <div class="qa-foot"><button type="button" class="textbtn" data-go="course">Back to the course</button><button type="button" class="btn">Start unit ${UNIT.n + 1}</button></div></div>`;
+const thread = (pos, body, open) => `<div class="th has-top"><header class="nl">${crumbs([['Library', ''], [COURSE, 'course']], UNIT.name)}
+  <button type="button" class="nl-pos" data-act="outline" aria-expanded="${open}">${pos}</button></header>
+  <div class="th-scroll"><div class="th-col">${body}</div></div>
+  <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+const cardView = () => thread(`${ticks(SEGMENTS.map(() => 'past'))}Finished`, GATE_END + closingCard(), false);
+
+/* ---------------- the reader ---------------- */
+// The notes are their own page, 17-notes-example.html, shown in a frame as the app shows an aid.
+const EXAMPLE = '17-notes-example.html';
+function readerView(){
+  const n = notes[2].state === 'none' || notes[2].state === 'failed' ? {state:'written', instr:'', times:1, on:TODAY} : notes[2];
+  const writing = n.state === 'writing';
+  const said = n.instr ? `. Your instructions: "${esc(n.instr)}"` : ', with no instructions of yours.';
+  const meta = writing ? `<span class="dk" role="status">Writing the notes again <span class="wait" aria-hidden="true"></span></span>`
+    : `<span>Written ${n.on} from this unit's sessions${said}${n.times > 1 ? ' <span class="proto" style="display:inline;margin:0 0 0 .6em;padding:2px 8px">The mock has one example page, so it shows the same one.</span>' : ''}</span>`;
+  const again = againOpen ? `<div class="nr-again"><label for="again">What should change? These instructions take the place of the earlier ones.</label>
+    <textarea class="field reason" id="again">${esc(typed)}</textarea>
+    <div class="qa-foot"><span class="qa-aside">The notes are written anew and replace these. The backup keeps the earlier ones.</span><span class="dp-btns">
+      <button type="button" class="textbtn" data-act="again-cancel">Cancel</button><button type="button" class="btn sm" data-act="again-go">Write again</button></span></div></div>` : '';
+  return `<div class="pg nr"><header class="nl">${crumbs([['Library', ''], [COURSE, 'course'], [UNIT.name, 'written']], 'Notes')}
+    <span class="nl-acts"><button type="button" class="textbtn" data-act="browser">Open in browser</button>${writing || againOpen ? '' : '<button type="button" class="btn sm" data-act="again">Write again</button>'}</span></header>
+    <div class="nr-top">${meta}<div class="qa-path"><code>${PATH}</code><button type="button" class="textbtn" data-act="copy">Copy path</button></div>${again}</div>
+    <iframe class="nr-frame${writing ? ' stale' : ''}" src="${EXAMPLE}" title="Notes on ${UNIT.name}"></iframe></div>`;
+}
+
+/* ---------------- the course view ---------------- */
+function unitRow(u, i){
+  const done = i < 3, n = notes[i], asking = courseAsking === i;
+  const bits = [];
+  if (u.needs.length) bits.push(`<span>Builds on unit ${u.needs[0] + 1}</span>`);
+  if (done) {
+    bits.push(`<button type="button" class="textbtn"${i === 2 ? ' data-go="written"' : ''}>Open</button>`);
+    if (n.state === 'written') bits.push(`<button type="button" class="textbtn" data-go="reader">Notes</button>`);
+    else if (n.state === 'writing') bits.push(`<span class="dk" role="status">Writing the notes <span class="wait" aria-hidden="true"></span></span>`);
+    else if (!asking) bits.push(`<button type="button" class="textbtn" data-act="row-ask" data-i="${i}">Write notes</button>`);
+  } else bits.push(`<button type="button" class="textbtn">Start</button><button type="button" class="textbtn">Test out</button>`);
+  const ask = asking ? `<div class="nt-row">${field('rowinstr')}<button type="button" class="btn sm quiet" data-act="row-write" data-i="${i}">Write notes</button></div>
+    <div class="cu-m"><button type="button" class="textbtn" data-act="row-cancel">Cancel</button></div>` : '';
+  return `<li class="cu-row ${done ? 'pass' : 'todo'}"><span class="cu-n">${i + 1}</span>
+    <div><div class="cu-t">${u.t}</div><div class="cu-g">${u.goal}</div><div class="cu-m">${bits.join('')}</div>${ask}</div>
+    <span class="cu-s ${done ? 'pass' : 'next'}">${done ? 'Passed' : 'Up next'}</span></li>`;
+}
+const courseView = () => `<div class="pg"><header class="nl">${crumbs([['Library', '']], COURSE)}</header>
+  <div class="pg-scroll"><div class="pg-col">
+    <h1 class="cv-title">${COURSE}</h1><p class="cv-at">8 units, 3 finished.</p>
+    <div class="proto">The first four units of the course. Unit 1 has notes; write unit 2's or unit 3's from its row.</div>
+    <div class="cv-hrow"><h2 class="pg-h">Units</h2><span class="cv-acts"><button type="button" class="textbtn">What I know</button><button type="button" class="textbtn">Show the diagram</button></span></div>
+    <ol class="cu">${UNITS.map(unitRow).join('')}</ol>
+  </div></div></div>`;
+
+/* ---------------- the outline, and the exported document ---------------- */
+const IN_PROGRESS = String.raw`
+<div class="pf-mark"><span><b>Discuss</b> Ask anything. Nothing here is graded.</span></div>
+<div class="th-you">Why isn't the derivative of $\sin(x^2)$ just $\cos(2x)$?</div>
+<hr class="th-sep">
+<div class="th-tutor prose"><p>Because the sine never sees $2x$. It sees $x^2$, so that is where its rate, $\cos$, is measured. The $2x$ is how fast that input is moving, and it multiplies.</p></div>
+<div class="pf-act"><button type="button" class="btn sm">I'm ready for the check</button></div>`;
+const outlineView = () => thread(`${ticks(['past', 'past', 'now', '', ''])}Segment 3 of 5`, IN_PROGRESS, outline);
+const outlineHtml = () => `<div class="np" role="dialog" aria-label="Unit outline"><div class="uo"><nav class="crumbs" aria-label="Where this session sits"><button type="button">Library</button><span>/</span><button type="button" data-go="course">${COURSE}</button></nav>
+  <div class="uo-unit"><span>Unit ${UNIT.n} of ${UNIT.of}</span><b>${UNIT.name}</b></div>
+  <ol class="uo-list">${SEGMENTS.map((s, i) => `<li class="${i < 2 ? 'past' : i === 2 ? 'now' : ''}"><i></i>${s}</li>`).join('')}</ol>
+  <div class="uo-fresh"><button type="button" class="textbtn" data-go="export">Export transcript</button><p>This unit's whole conversation as one document, to keep or to print.</p></div>
+  <div class="uo-fresh"><button type="button" class="textbtn">Start fresh</button><p>A new conversation with the tutor, from your progress. This one stays above.</p></div></div></div>`;
+const exportView = () => `<div class="file"><div class="proto">The downloaded file, <b>differentiation-rules-transcript.html</b>, as a browser opens it: nothing of Gauss is around it, and it loads nothing. Shown from its third session; the first two are above it in the real file.</div>
+  <article class="doc"><h1>${UNIT.name}</h1><p class="doc-sub">${COURSE}, unit ${UNIT.n}. Transcript of four sessions, 14 to 18 November 2026, exported ${TODAY}.</p>${EXPORT}</article></div>`;
+
+/* ---------------- render and input ---------------- */
+const VIEWS = {
+  offer:['g-notes', 'Offered on the closing card', () => {}],
+  writing:['g-notes', 'Being written', () => { notes[2] = {state:'writing', instr:'', times:0}; }],        // held here; "Write notes" finishes
+  written:['g-notes', 'Written', () => { notes[2] = {state:'written', instr:'', times:1, on:TODAY}; }],
+  failed:['g-notes', 'Could not be written', () => { notes[2] = {state:'failed', instr:'', times:0}; }],
+  reader:['g-notes', 'The notes', () => { notes[2] = {state:'written', instr:'', times:1, on:TODAY}; }],
+  again:['g-notes', 'Write again', () => { notes[2] = {state:'written', instr:'', times:1, on:TODAY}; againOpen = true; typed = 'Start with a table of the rules.'; }],
+  course:['g-notes', 'The course view', () => {}],
+  outline:['g-export', 'In the outline', () => { outline = true; }],
+  export:['g-export', 'The exported document', () => {}]
+};
+const CARD = ['offer', 'writing', 'written', 'failed'], READER = ['reader', 'again'];
+function render(keep){
+  const scroller = () => $('.th-scroll') ?? $('.pg-scroll');
+  const top = scroller()?.scrollTop, held = document.activeElement?.id;
+  document.body.style.overflow = view === 'export' ? 'auto' : '';
+  app.innerHTML = CARD.includes(view) ? cardView() : READER.includes(view) ? readerView() : view === 'course' ? courseView() : view === 'outline' ? outlineView() : exportView();
+  pop.innerHTML = view === 'outline' && outline ? outlineHtml() : '';
+  math(app); math(pop);
+  const s = scroller();
+  if (s) s.scrollTop = keep ? top : s.classList.contains('th-scroll') ? s.scrollHeight : 0;
+  if (keep && held) document.getElementById(held)?.focus();
+  for (const b of document.querySelectorAll('#bar button')) b.setAttribute('aria-pressed', b.dataset.v === view);
+  history.replaceState(null, '', `?at=${view}`);
+}
+function jump(key){ view = key; fresh(); VIEWS[key][2](); render(false); }
+function go(to){        // a link between the mock's views, keeping the notes as they stand
+  if (!to) return;
+  view = to; againOpen = false; courseAsking = null; outline = false; typed = '';
+  render(false);
+}
+document.addEventListener('click', e => {
+  if (e.target.closest?.('#bar')) return;
+  const b = e.target.closest?.('button');
+  if (!b) { if (outline && !e.target.closest?.('#pop')) { outline = false; render(true); } return; }
+  const act = b.dataset.act;
+  if (b.dataset.go !== undefined) go(b.dataset.go);
+  else if (act === 'write') { write(2, typed.trim()); typed = ''; view = 'writing'; render(true); }
+  else if (act === 'retry') { write(2, notes[2].instr); view = 'writing'; render(true); }
+  else if (act === 'again') { againOpen = true; typed = notes[2].instr ?? ''; render(true); $('#again')?.focus(); }
+  else if (act === 'again-cancel') { againOpen = false; typed = ''; render(true); }
+  else if (act === 'again-go') { againOpen = false; write(2, typed.trim()); typed = ''; view = 'reader'; render(true); }
+  else if (act === 'row-ask') { courseAsking = +b.dataset.i; typed = ''; render(true); $('#rowinstr')?.focus(); }
+  else if (act === 'row-cancel') { courseAsking = null; typed = ''; render(true); }
+  else if (act === 'row-write') { write(+b.dataset.i, typed.trim()); courseAsking = null; typed = ''; render(true); }
+  else if (act === 'copy') { b.textContent = 'Copied'; }
+  else if (act === 'browser') window.open(EXAMPLE, '_blank');
+  else if (act === 'outline') { if (view === 'outline') { outline = !outline; render(true); } }
+});
+app.addEventListener('input', e => { if (['instr', 'again', 'rowinstr'].includes(e.target.id)) typed = e.target.value; });
+app.addEventListener('submit', e => e.preventDefault());   // sending messages is piece 1; not wired here
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && outline) { outline = false; render(true); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar ---------------- */
+for (const [key, [group, name]] of Object.entries(VIEWS)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.v = key;
+  b.addEventListener('click', () => jump(key));
+  $(`#${group}`).appendChild(b);
+}
+const asked = new URLSearchParams(location.search).get('at');
+jump(VIEWS[asked] ? asked : 'offer');
+</script>
+</body>
+</html>

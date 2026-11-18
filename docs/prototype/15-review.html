@@ -1,0 +1,268 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 5.1, piece 15: review questions.
+  SETTLED 2026-11-18.
+  What review does was picked by the user that day (decisions.md, "Mastery
+  loop"): it is offered on a card when a sitting starts, never started by
+  itself; each objective gets one question; a miss opens a detour and one
+  more question. This mock is how the agent would lay that out; the user
+  looked at it and changed nothing.
+
+  Shown, and so picked:
+  - The card, under the "New session" marker: how many questions, what they
+    are, Skip and "Start the review". While it waits the unit's own control
+    ("I'm ready for the check") is not offered; a message sent skips it.
+  - Start and Skip turn the card into a marker line, which is its record:
+    "Review", then the questions, or "Review skipped".
+  - A question card as in a check. Its head counts objectives ("Question 2
+    of 3") and names the unit of an objective that is another unit's. The
+    graded card is the check's too.
+  - A right answer: feedback of a sentence or two, then the next question.
+  - A miss: the detour's marker and the tutor, as in a check, then "Ready
+    for another question". The second question says that it is one. After
+    it the review moves on whatever the answer; a second miss has its
+    detour, and the control then reads "Go on with the review".
+  - "Skip review" stays beside the question or the detour's control. It asks
+    nothing first: a skipped review loses nothing that was answered, and an
+    open question is withdrawn with nothing recorded.
+  - The closing marker says what the review did to the record (retained,
+    slipping) and where the unit goes on, and the unit's control is back.
+
+  The controls work, and the grading is real: pick the right choice or a
+  wrong one. The bar at the left jumps to a moment (?at=...). Keys: H hides
+  the bar.
+
+  Everything is simulated. Not drawn: the open question pinned above the
+  message box with Hide, "Dispute this grade" on a graded card, and the
+  other three kinds of question, all as they are in a check.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 15: review questions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="base.css">
+<style>
+/* prototype bar: a column at the left edge, clear of the top line */
+#bar{top:70px;left:12px;right:auto;margin:0;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+#bar .grp{flex-direction:column;align-items:stretch}
+#bar .lbl{margin:0 0 2px 9px}
+#bar button{text-align:left}
+#bar .keys{margin:0 9px}
+@media (max-width:1100px){#bar{position:static;margin:8px;max-width:none}.th,.pg{height:auto;min-height:100dvh}}
+.katex{position:relative}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="grp" id="g-at"><span class="lbl">Moment</span></div>
+  <span class="keys">H hides this</span>
+</div>
+<div id="app"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Calculus I';
+const UNIT = {n:3, name:'Differentiation rules', segment:3, of:5, segmentName:'The chain rule'};
+const CONF = ['under 50%', '50%', '75%', '90%', '100%'];
+// The end of the last sitting, then the marker of this one.
+const BEFORE = String.raw`
+<div class="pf-mark"><span><b>Discuss</b> Ask anything. Nothing here is graded.</span></div>
+<div class="th-you">Why isn't the derivative of $\sin(x^2)$ just $\cos(2x)$?</div>
+<hr class="th-sep">
+<div class="th-tutor prose"><p>Because the sine never sees $2x$. It sees $x^2$, so that is where its rate, $\cos$, is measured. The $2x$ is how fast that input is moving, and it multiplies.</p></div>
+<div class="pf-mark"><span><b>New session</b> 18 November 2026</span></div>`;
+// What the engine picked: three objectives over the whole course, each with a question and, after a miss, one more.
+// `right` and `wrong` are the tutor's words after the first and the second question.
+const PICK = [
+  {from:'Unit 2: The derivative', qs:[
+    {prompt:String.raw`A tank holds $V(t)$ litres of water $t$ minutes after a valve opens, and $V'(10) = -3$. What does that say?`,
+     options:['After 10 minutes the tank holds 3 litres less than at the start.', String.raw`At $t = 10$ the tank is losing 3 litres per minute.`, 'Over the first 10 minutes the tank lost 3 litres per minute on average.', String.raw`The tank is empty at $t = 10$.`], key:1},
+    {prompt:String.raw`A car is $s(t)$ metres along a road after $t$ seconds, and $s'(4) = 12$. Which is true?`,
+     options:['After 4 seconds the car has gone 12 metres.', 'Over the first 4 seconds the car averaged 12 metres per second.', String.raw`At $t = 4$ the car is moving at 12 metres per second.`, 'The car gains 12 metres per second of speed each second.'], key:2}],
+   right:[String.raw`Right. $V'(10)$ is a rate at one instant, in litres per minute, and its sign says the volume is falling.`,
+     'Yes: the speed at that instant, not the distance so far and not an average.'],
+   wrong:[String.raw`The answer is B. $V'(10)$ is how fast the volume is changing at the instant $t = 10$: 3 litres per minute, downward. It says nothing about how much has drained so far, and nothing about the minutes before. Which of those did your answer take it to be?`,
+     String.raw`It is C. Read $s'(4)$ aloud as "the rate of change of position at $t = 4$": a rate of position is a speed, and "at $t = 4$" pins it to one instant. An average over the 4 seconds would be $\frac{s(4) - s(0)}{4}$, which is another number.`]},
+  {from:null, qs:[
+    {prompt:String.raw`What is the derivative of $x^3e^x$?`,
+     options:[String.raw`$3x^2e^x$`, String.raw`$x^3e^x$`, String.raw`$3x^2 + e^x$`, String.raw`$3x^2e^x + x^3e^x$`], key:3},
+    {prompt:String.raw`What is the derivative of $x^2\ln x$?`,
+     options:[String.raw`$2x\ln x + x$`, String.raw`$2$`, String.raw`$2x\ln x$`, String.raw`$2x + \dfrac{1}{x}$`], key:0}],
+   right:[String.raw`Right. Each factor is differentiated in turn while the other waits: $3x^2\cdot e^x + x^3\cdot e^x$.`,
+     String.raw`Yes: $2x\cdot\ln x + x^2\cdot\frac{1}{x}$, and the second term simplifies to $x$.`],
+   wrong:[String.raw`The answer is D, $3x^2e^x + x^3e^x$. The product rule has two terms, and in each one factor is differentiated while the other is left as it is. Write out $f'g + fg'$ for $f = x^3$ and $g = e^x$: which term does your answer leave out?`,
+     String.raw`It is A. With $f = x^2$ and $g = \ln x$, the two terms are $f'g = 2x\ln x$ and $fg' = x^2\cdot\frac{1}{x} = x$. Both, added.`]},
+  {from:'Unit 1: Limits and continuity', qs:[
+    {prompt:String.raw`$f(x) = \dfrac{x^2 - 1}{x - 1}$ for $x \neq 1$, and $f(1) = 3$. Is $f$ continuous at $1$?`,
+     options:[String.raw`Yes, because $f(1)$ is defined.`, String.raw`Yes, because the limit at $1$ exists.`, String.raw`No: the limit at $1$ is $2$, and $f(1)$ is $3$.`, String.raw`No: the limit at $1$ does not exist.`], key:2},
+    {prompt:String.raw`$g(x) = \dfrac{\sin x}{x}$ for $x \neq 0$. Which value of $g(0)$ makes $g$ continuous at $0$?`,
+     options:[String.raw`$0$`, String.raw`$1$`, 'Any value', 'No value'], key:1}],
+   right:['Right. The limit exists and the value exists, but continuity needs the two to be equal.',
+     String.raw`Yes. The limit at $0$ is $1$, so that is the one value that agrees with it.`],
+   wrong:[String.raw`The answer is C. Away from $1$ the fraction is $x + 1$, so the limit at $1$ is $2$. Continuity at a point asks three things: the value is defined, the limit exists, and the two agree. Which of the three fails here?`,
+     String.raw`It is B. $\frac{\sin x}{x}$ tends to $1$ as $x$ tends to $0$, and continuity needs $g(0)$ to equal that limit, so only $1$ works.`]}
+];
+const WORDS = ['no', 'one', 'two', 'three'];
+const cap = s => s[0].toUpperCase() + s.slice(1);
+
+/* ---------------- state ---------------- */
+// stage: 'offer' (the card waits), 'on', 'over'. log: what the thread holds since the card.
+// waits: null (a question is open), 'another' (a detour, before the second question) or 'goon' (a detour after it).
+let stage, log, at, waits, form;
+function reset(){ stage = 'offer'; log = []; at = 0; waits = null; form = {picked:null, conf:null}; }
+
+/* ---------------- the review's rules ---------------- */
+const open = () => log.findLast(e => e.t === 'q' && !e.ans && !e.withdrawn);
+const where = `Back to segment ${UNIT.segment}, in its discussion.`;
+function ask(o, k){ log.push({t:'q', o, k}); waits = null; form = {picked:null, conf:null}; }
+function start(){ stage = 'on'; log.push({t:'mark', html:`<b>Review</b> ${cap(WORDS[PICK.length])} questions on objectives you passed before. Nothing is taught first; each answer is recorded.`}); ask(0, 0); }
+function answer(ans){
+  const q = open(), obj = PICK[q.o];
+  q.ans = ans;
+  q.ok = !ans.unknown && ans.picked === obj.qs[q.k].key;
+  if (q.ok) { log.push({t:'tutor', html:obj.right[q.k]}); next(); }
+  else {
+    log.push({t:'mark', html:`<b>Detour</b> Working through question ${q.o + 1}. Nothing here is graded or counts as help.`});
+    log.push({t:'tutor', html:ans.unknown ? obj.wrong[q.k].replace(/^(The answer is|It is)/, m => `That is fine. ${m}`) : obj.wrong[q.k]});
+    waits = q.k === 0 ? 'another' : 'goon';
+  }
+}
+function next(){ if (at + 1 < PICK.length) ask(++at, 0); else finish(); }
+// What the review did to the record: right at the first question is retained, a miss is slipping.
+function tally(){
+  const firsts = log.filter(e => e.t === 'q' && e.k === 0 && e.ans);
+  return {asked:firsts.length, kept:firsts.filter(e => e.ok).length};
+}
+function finish(){
+  const {asked, kept} = tally(), slip = asked - kept;
+  const says = slip === 0 ? `All ${WORDS[asked]} retained.` : kept === 0 ? `All ${WORDS[asked]} slipping.` : `${cap(WORDS[kept])} retained, ${WORDS[slip]} slipping.`;
+  log.push({t:'mark', html:`<b>Review over</b> ${says} ${where}`});
+  stage = 'over'; waits = null;
+}
+function skip(){
+  const q = open(); if (q) q.withdrawn = true;
+  const done = log.filter(e => e.t === 'q' && e.ans).length;
+  log.push({t:'mark', html:stage === 'offer' ? '<b>Review skipped</b> The unit goes on where it was.'
+    : `<b>Review skipped</b> ${done ? `What you answered is recorded. ` : ''}${where}`});
+  stage = 'over'; waits = null;
+}
+
+/* ---------------- parts ---------------- */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const choice = (q, i) => `${'ABCD'[i]}. ${q.options[i]}`;
+
+const offer = () => `<div class="qa-card as"><div class="q-count"><b>Review</b>${PICK.length} questions</div>
+  <p class="as-says">Questions on objectives you passed in earlier sittings, to see what has stayed. Nothing is taught first, and a right answer marks its objective retained.</p>
+  <p class="as-says">The unit goes on afterwards, where you left it.</p>
+  <div class="qa-foot"><button type="button" class="textbtn" data-act="skip">Skip</button><button type="button" class="btn" data-act="start">Start the review</button></div></div>`;
+
+function head(e, verdict){
+  const from = PICK[e.o].from;
+  return `<div class="q-count">Question ${e.o + 1} of ${PICK.length}${e.k ? '<span>second question</span>' : ''}${verdict}${from ? `<span class="q-from">${from}</span>` : ''}</div>`;
+}
+function question(e){
+  const q = PICK[e.o].qs[e.k];
+  if (e.withdrawn) return `<div class="qa-card done">${head(e, '<span class="dk">Withdrawn</span>')}<div class="qa-prompt">${q.prompt}</div></div>`;
+  if (!e.ans) return `<div class="qa-card">${head(e, '')}<div class="qa-prompt">${q.prompt}</div>
+    <div class="qa-opts">${q.options.map((o, i) => `<button type="button" class="opt" data-opt="${i}" aria-pressed="false"><kbd>${'ABCD'[i]}</kbd><span>${o}</span></button>`).join('')}</div>
+    <div class="qa-conf"><span>How sure are you?</span><div class="chips" role="group" aria-label="How sure are you?">${CONF.map((c, i) => `<button type="button" class="chip" data-conf="${i}" aria-pressed="false">${c}</button>`).join('')}</div></div>
+    <div class="qa-foot"><button type="button" class="textbtn" data-act="unknown">I don't know</button><button type="button" class="btn" data-act="answer" disabled>Answer</button></div></div>`;
+  const verdict = e.ans.unknown ? '<span class="dk">Did not know</span>' : e.ok ? '<span class="ok">Correct</span>' : '<span class="no">Not quite</span>';
+  const said = e.ans.unknown ? `<div class="qa-line"><span class="k">Your answer</span><span>I don't know</span></div>`
+    : `<div class="qa-line"><span class="k">Your answer</span><span>${choice(q, e.ans.picked)}</span><span class="c">${CONF[e.ans.conf]} sure</span></div>`;
+  return `<div class="qa-card done">${head(e, verdict)}<div class="qa-prompt">${q.prompt}</div>${said}
+    ${e.ok ? '' : `<div class="qa-line"><span class="k">Correct answer</span><span>${choice(q, q.key)}</span></div>`}</div>`;
+}
+const item = e => e.t === 'q' ? question(e) : e.t === 'mark' ? `<div class="pf-mark"><span>${e.html}</span></div>` : `<div class="th-tutor prose"><p>${e.html}</p></div>`;
+
+// The one control where the thread has reached. None while the card waits: the unit's steps hold.
+function control(){
+  const skipBtn = '<button type="button" class="textbtn" data-act="skip">Skip review</button>';
+  if (stage === 'offer') return '';
+  if (stage === 'over') return `<div class="pf-act"><button type="button" class="btn sm">I'm ready for the check</button></div>`;
+  if (waits === 'another') return `<div class="pf-act"><button type="button" class="btn sm" data-act="another">Ready for another question</button>${skipBtn}</div>`;
+  if (waits === 'goon') return at + 1 < PICK.length
+    ? `<div class="pf-act"><button type="button" class="btn sm" data-act="goon">Go on with the review</button>${skipBtn}</div>`
+    : `<div class="pf-act"><button type="button" class="btn sm" data-act="goon">Finish the review</button></div>`;
+  return `<div class="pf-act">${skipBtn}</div>`;
+}
+
+function view(){
+  const ticks = Array.from({length:UNIT.of}, (_, i) => `<i class="${i < UNIT.segment - 1 ? 'past' : i === UNIT.segment - 1 ? 'now' : ''}"></i>`).join('');
+  return `<div class="th has-top"><header class="nl"><nav class="crumbs" aria-label="Where this session sits"><button type="button">Library</button><span>/</span><button type="button">${COURSE}</button><span>/</span><b>${UNIT.name}</b></nav>
+    <button type="button" class="nl-pos"><span class="ticks" aria-hidden="true">${ticks}</span>Segment ${UNIT.segment} of ${UNIT.of}</button></header>
+    <div class="th-scroll"><div class="th-col">${BEFORE}${stage === 'offer' ? offer() : ''}${log.map(item).join('')}${control()}</div></div>
+    <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND_ICON}</button></form></div></div>`;
+}
+
+/* ---------------- render and input ---------------- */
+function render(){
+  app.innerHTML = view();
+  math(app);
+  const s = $('.th-scroll'); s.scrollTop = s.scrollHeight;
+}
+function sync(){
+  for (const b of app.querySelectorAll('.opt')) b.setAttribute('aria-pressed', +b.dataset.opt === form.picked);
+  for (const b of app.querySelectorAll('.chip')) b.setAttribute('aria-pressed', +b.dataset.conf === form.conf);
+  const go = app.querySelector('[data-act=answer]'); if (go) go.disabled = form.picked === null || form.conf === null;
+}
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (b.dataset.opt !== undefined) { form.picked = +b.dataset.opt; sync(); return; }
+  if (b.dataset.conf !== undefined) { form.conf = +b.dataset.conf; sync(); return; }
+  if (act === 'start') start();
+  else if (act === 'skip') skip();
+  else if (act === 'answer') answer({...form});
+  else if (act === 'unknown') answer({unknown:true});
+  else if (act === 'another') ask(at, 1);
+  else if (act === 'goon') next();
+  else return;
+  pressed(null); render();
+});
+app.addEventListener('submit', e => e.preventDefault());   // sending messages is piece 1; not wired here
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input,textarea,[contenteditable]')) return;
+  if (e.key.toLowerCase() === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- prototype bar: each moment is reached by playing the review up to it ---------------- */
+const right = () => answer({picked:PICK[open().o].qs[open().k].key, conf:3});
+const miss = () => { const q = PICK[open().o].qs[open().k]; answer({picked:(q.key + 1) % 4, conf:2}); };
+const MOMENTS = {
+  offer:['The card', () => {}],
+  open:['A question', () => { start(); }],
+  right:['A right answer', () => { start(); right(); }],
+  miss:['A miss', () => { start(); right(); miss(); }],
+  second:['The second question', () => { start(); right(); miss(); ask(at, 1); }],
+  missed2:['A second miss', () => { start(); right(); miss(); ask(at, 1); miss(); }],
+  over:['Over', () => { start(); right(); miss(); ask(at, 1); right(); right(); }],
+  partway:['Skipped partway', () => { start(); right(); skip(); }],
+  skipped:['Skipped on the card', () => { skip(); }]
+};
+function pressed(key){
+  for (const b of document.querySelectorAll('#g-at button')) b.setAttribute('aria-pressed', b.dataset.at === key);
+  history.replaceState(null, '', key ? `?at=${key}` : location.pathname);
+}
+function jump(key){ reset(); MOMENTS[key][1](); pressed(key); render(); }
+for (const [key, [name]] of Object.entries(MOMENTS)) {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.at = key;
+  b.addEventListener('click', () => jump(key));
+  $('#g-at').appendChild(b);
+}
+const asked = new URLSearchParams(location.search).get('at');
+jump(MOMENTS[asked] ? asked : 'offer');
+</script>
+</body>
+</html>
