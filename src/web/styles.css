@@ -259,10 +259,36 @@ button:focus-visible {
 }
 /* the open question, kept above the message box until it is answered */
 .th-pin {
+  position: relative;
   max-width: calc(var(--measure) + 36px);
   max-height: 50dvh;
   overflow: auto;
   margin: 0 auto 12px;
+}
+/* Hide, on the line of the card's number (task 3.21) */
+.th-hide {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  font-size: 0.86em;
+}
+/* the open question hidden: one line in its place */
+.th-hidden {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+  max-width: calc(var(--measure) + 36px);
+  margin: 0 auto 12px;
+  padding: 8px 18px;
+  background: var(--mantle);
+  border: 1px solid var(--surface1);
+  border-radius: calc(var(--r) + 6px);
+  color: var(--soft);
+}
+/* on the contents, since the width is measured in the bar's own font size */
+.th-hidden > * {
+  font-size: 0.86em;
 }
 /* the next-step control goes with the open question */
 .th-pin-act {

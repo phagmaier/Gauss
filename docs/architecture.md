@@ -703,7 +703,8 @@ no automated tests.
 - **Session** (`/courses/<id>/units/<unit>`): the thread with rendered
   Markdown and math; phase markers; one next-step control where the thread
   has reached; the open question pinned above the message box until it is
-  graded or withdrawn, then moved to where it was answered; the help
+  graded or withdrawn, then moved to where it was answered, with Hide,
+  which shrinks it to one line with Show until the next question; the help
   notice above the message box and the judge's call under each reply; a
   line for each file the tutor writes with its file tools, once a reply,
   with its path in the workspace (piece 14); a package request's card

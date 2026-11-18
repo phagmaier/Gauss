@@ -1469,7 +1469,12 @@ was asked and rejected.
   high. Once answered after the thread moved on, it moves to where it was
   answered, leaving a line where it was posted, so the verdict sits above
   the feedback. Rejected: a sticky card at the top, which covers the
-  teaching being reread.
+  teaching being reread. Hide shrinks it to one line, for rereading the
+  teaching (the user's note from the stage 3 check, task 3.21); hidden,
+  the card stays mounted, so its state survives, and its keys are off,
+  since its window-wide shortcuts would otherwise pick, rate and send an
+  answer the learner cannot see. Hidden is kept by the question's key, so
+  the next question shows; a reload shows it again.
 - **Dividing lines go between messages, not inside an exchange**: none
   between a lead-in and its question, a question and its feedback, or a
   reply and the judge's line under it.

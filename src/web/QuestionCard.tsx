@@ -66,6 +66,8 @@ const CONFIDENCE: { value: Confidence; label: string }[] = [
 export function QuestionCard(props: {
   item: QuestionItem;
   disputes: DisputeApi;
+  /** The learner hid the pinned card: it keeps its state, and its keys are off (task 3.21). */
+  hidden?: boolean;
   onAnswer(submission: AnswerPost): Promise<string | undefined>;
   onGradeAgain(): Promise<string | undefined>;
 }) {
@@ -105,11 +107,19 @@ export function QuestionCard(props: {
       />
     );
   }
-  return <OpenCard question={item.question} onAnswer={props.onAnswer} />;
+  return (
+    <OpenCard
+      question={item.question}
+      hidden={props.hidden === true}
+      onAnswer={props.onAnswer}
+    />
+  );
 }
 
 function OpenCard(props: {
   question: QuestionView;
+  /** Hidden by the learner: no key may pick, rate or send an answer unseen. */
+  hidden: boolean;
   onAnswer(submission: AnswerPost): Promise<string | undefined>;
 }) {
   const { question } = props;
@@ -191,7 +201,16 @@ function OpenCard(props: {
   // One keystroke for a choice and for how sure, as mock 2 has it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || sending || unknown) return;
+      if (
+        props.hidden ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        sending ||
+        unknown
+      ) {
+        return;
+      }
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest("input, textarea, select, [contenteditable]")) return;
       const key = e.key.toUpperCase();

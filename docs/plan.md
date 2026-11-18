@@ -28,20 +28,6 @@ answers. The stage 3 check did not show one.
 Built before 5.0. Each task is the user's note from the stage 3 check
 (`decisions.md`, "Product decisions", 2026-11-18).
 
-### 3.21 Hide the pinned question
-
-- Status: todo
-- A "Hide" control on the pinned question card shrinks it to one line above
-  the message box, with the question's number and "Show". The card stays
-  mounted while hidden, so a half-written answer, a picked choice and a
-  confidence level survive (`decisions.md`, "Page behaviour", the pinned
-  question). A newly posted question shows. The card, up to half the
-  window high, got in the way of rereading the teaching.
-- Done when: in the browser on `pnpm dev:fake`, with a question pinned and
-  an answer half written, Hide frees the space, Show brings the card back
-  with the answer intact, and the next question posted shows;
-  `mise run check` passes.
-
 ### 3.22 Open a code question's files
 
 - Status: todo

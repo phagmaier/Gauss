@@ -27,6 +27,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { Hello, PageEvent, UnitOpened } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
@@ -90,6 +91,9 @@ export function Session(props: { courseId: string; unitId: string }) {
   const [confirming, setConfirming] = useState<"move-on" | "finish">();
   /** The artifact open in the side pane. */
   const [pane, setPane] = useState<ArtifactItem>();
+  /** The open question the learner hid, by its key. */
+  const [hiddenKey, setHiddenKey] = useState<number>();
+  const hideButton = useRef<HTMLButtonElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
@@ -219,6 +223,8 @@ export function Session(props: { courseId: string; unitId: string }) {
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
   const asked = openQuestion(timeline);
+  // Hidden until shown again, or until another question is posted (task 3.21).
+  const hidden = asked !== undefined && asked.key === hiddenKey;
   const notice = helpNotice(timeline);
   // Where the open question was posted, a line says where it went, once
   // something has followed it there.
@@ -388,14 +394,42 @@ export function Session(props: { courseId: string; unitId: string }) {
       <div className="th-foot">
         {asked === undefined ? null : (
           // Kept in view while the conversation goes on below it (task 2.18).
-          <div className="th-pin">
+          // Hidden, it stays mounted, so a half-written answer survives.
+          <div className="th-pin" hidden={hidden}>
+            <button
+              type="button"
+              className="textbtn th-hide"
+              ref={hideButton}
+              onClick={() => setHiddenKey(asked.key)}
+            >
+              Hide
+            </button>
             <QuestionCard
               key={asked.key}
               item={asked}
               disputes={disputes}
+              hidden={hidden}
               onAnswer={(submission) => post(path("answers"), submission)}
               onGradeAgain={() => post(path("grade-again"))}
             />
+          </div>
+        )}
+        {asked === undefined || !hidden ? null : (
+          <div className="th-hidden">
+            <span>Question {asked.question.number} is hidden</span>
+            <button
+              type="button"
+              className="textbtn"
+              // It appears in place of Hide, which had the focus.
+              // biome-ignore lint/a11y/noAutofocus: only after Hide is pressed
+              autoFocus
+              onClick={() => {
+                flushSync(() => setHiddenKey(undefined));
+                hideButton.current?.focus();
+              }}
+            >
+              Show
+            </button>
           </div>
         )}
         {asked === undefined ? null : (
