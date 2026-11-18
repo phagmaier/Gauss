@@ -611,7 +611,7 @@ Codex setup out (`decisions.md`, "Codex").
 
 ## 8. Sources
 
-Built in stage 4; this is the design (`decisions.md`, "Sources").
+Planned for stage 4, not yet implemented (`decisions.md`, "Sources").
 
 1. **Ingest** (`pytools/convert.py`): copy the original; convert to
    Markdown; build an outline from the headings or the table of contents;
@@ -793,20 +793,18 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
 
 ## 12. Build stages
 
-Each stage ends with something the learner can use and a stated check. The
-task-level breakdown and status live in `plan.md`. Stage 5 is built before
-stage 4 (the user's choice): the gate and review make "passed" trustworthy
-in every course, while sources add one kind of course.
+Stage scope is listed here; task status and user checks live in the
+[plan](plan.md).
 
-| Stage | Builds | Done when |
-| --- | --- | --- |
-| 0. Spike and skeleton (done) | Toolchain; a page that streams a Claude reply on the plan login and round-trips a question; a Codex spike | The SDK questions are answered in writing and the adapter is confirmed |
-| 1. Record and library (done) | Data root, course creation by intake, review and approval, diagram, library | A course can be created and approved, and survives a restart |
-| 2. Session engine (done) | Unit planning, phases, choice and rubric-graded questions, confidence, evidence, derived status, override, detours, help judging, resume, transcripts, math rendering, backup, "what I know", calibration | A unit of a math course is completed across two sittings, stopping mid-segment |
-| 3. Checked grading and aids | SymPy check, workspace and code tests, installing a course's packages, artifacts pane, disputes, the tutor's built-in tools | A coding unit and a computational unit are graded without a model judging the answer |
-| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style changes | One course runs from intake to a closed second unit, with a unit tested out of or started, review questions in a later sitting, a detour, a unit gate, generated notes and an exported transcript |
-| 4. Sources (after 5) | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting | A lecture on one chapter of the *Phenomenology* with verified quotes, and one unit taught from a paper |
-| 6. Later | Codex backend, self-test, cheat sheets, photo input; starred messages for the notes, if the generated notes miss what the learner wants kept | Per feature |
+| Stage | Scope |
+| --- | --- |
+| 0. Spike and skeleton | Toolchain; a page that streams a Claude reply on the plan login and round-trips a question; a Codex spike |
+| 1. Record and library | Data root, course creation by intake, review and approval, diagram, library |
+| 2. Session engine | Unit planning, phases, choice and rubric-graded questions, confidence, evidence, derived status, override, detours, help judging, resume, transcripts, math rendering, backup, "What I know", calibration |
+| 3. Checked grading and aids | SymPy check, workspace and code tests, installing a course's packages, artifacts pane, disputes, the tutor's built-in tools |
+| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style changes |
+| 4. Sources (after 5) | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting |
+| 6. Later | Codex backend, self-test, cheat sheets, photo input; starred messages for the notes, if the generated notes miss what the learner wants kept |
 
 ## 13. Risks
 

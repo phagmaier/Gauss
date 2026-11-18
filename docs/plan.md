@@ -17,25 +17,49 @@ user's choice; the numbers are kept because code and documents use them.
   first added tasks 2.18 to 2.22). A review of the record then added tasks
   2.23 to 2.29 (`decisions.md`, "Product decisions").
 
-Still to see from the user's check of 2.23 to 2.29: an objective passed by
-two unsure correct answers.
+Separate from the Stage 3 check, the Stage 2 follow-up still to observe:
+an objective passed by two unsure correct answers.
 
 ## Stage 3: checked grading and aids
 
-The scope is `architecture.md` section 12's: the symbolic check, code
-questions graded by tests in the course's workspace, installing a course's
-packages, artifacts, disputes, and the tutor's file and shell tools. The
-choices behind this breakdown are in `decisions.md`, "Confinement" and
-"Disputes"; the designs are pieces 13 and 14 in `docs/prototype/`
-(`decisions.md`, "Page design"). Not in this stage: web access and
-confining what sandboxed commands read (4.0), notes (5.0).
+Implementation is complete. Stage 5 waits for the user's check below.
+Scope: [architecture §12](architecture.md#12-build-stages). Rationale:
+`decisions.md`, "Confinement" and "Disputes"; designs: pieces 13 and 14 in
+the [prototype](prototype/index.html). Not in this stage: web access and
+confining sandbox reads (4.0), or notes (5.0).
 
-**User check:** a coding unit and a computational math unit are graded by
-tests and the symbolic check, an artifact appears in the side pane, and a
-dispute of one grade, raised in the session or from "What I know", shows
-its outcome.
+**User check.** On Linux, run `mise run setup` if dependencies are not
+installed, and have `bwrap`, `socat` and `rg` on `PATH`. From the repository,
+start the real app with a scratch data root:
 
-Every task of the stage is done; the stage waits for the user's check.
+```sh
+scratch=$(mktemp -d) &&
+  GAUSS_DATA_ROOT="$scratch" GAUSS_BACKUP=off mise exec -- pnpm dev
+```
+
+Open <http://localhost:4320>. The server prints the scratch root. If it
+reports "No sandbox for the engine's commands", resolve that before trying
+code or math grading. Opening a unit can spend Claude plan usage without
+a message. In the empty library, use "New course" to propose and approve
+one short Python course and one short computational math course.
+
+1. **Code:** In a short Python unit, edit the starter file named on a code
+   question, pick a confidence level, and press "Run the tests". Confirm
+   the graded card shows the test output and the expected verdict.
+2. **Math:** In a computational math unit, ask for a question that accepts
+   any equivalent expression, and submit a known correct answer. Confirm
+   a correct grade. To verify it came from the symbolic check, find the
+   answer in `<scratch>/courses/<course-id>/evidence.jsonl`: its
+   `question.mathGrading` is `"symbolic"` and it has no `unsettled` field.
+   A card that says "The grader, since the symbolic check …" does not
+   count for this check.
+3. **Artifact:** In discussion, ask for a visual aid. Confirm it renders
+   in the side pane, opening it from the thread if needed.
+4. **Dispute:** From a graded card or "What I know", choose "Dispute this
+   grade" and submit a reason. Confirm the outcome and the judge's reason
+   appear on the answer; the verdict does not have to change.
+
+Close the test browser before stopping the server.
 
 ## Stage 5: mastery loop (built before stage 4)
 

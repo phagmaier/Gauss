@@ -11,10 +11,10 @@ Read only what the task needs.
 
 | Document | Holds | Read when |
 | --- | --- | --- |
-| `docs/plan.md` | Open tasks with their "done when" checks, and one line per finished stage | Always, first. It says what to do next. |
-| `docs/brief.md` | What the product does, and in "Terms" the words used everywhere | "Terms" always; other sections for the behaviour the task touches |
-| `docs/architecture.md` | How the system works now: structure, data, engine rules, tools, backends, page | Sections 1 and 2 for any code task, then the sections the task touches: 3 data, 4 engine, 5 tools, 6 grading, 7 backends, 8 sources, 9 prompts, 10 page, 11 testing |
-| `docs/decisions.md` | Why things are as they are: the user's decisions, rejected alternatives, SDK findings, known gaps | One section, found through the index at its top. Never the whole file. |
+| [Plan](docs/plan.md) | Open tasks, dependencies, and user checks | First when taking a plan task or checking stage status |
+| [Product brief](docs/brief.md) | Intended behaviour and shared terms | When working on product behaviour or terminology; read the relevant sections |
+| [Architecture](docs/architecture.md) | How the system works now | Sections 1 and 2 for orientation; then the sections the task touches |
+| [Decisions](docs/decisions.md) | Rationale, SDK findings, and known gaps | Follow the index to the relevant sections; don't load the whole file |
 
 Use the terms as `brief.md` defines them (course, unit, objective, segment,
 session, evidence, detour). Do not introduce synonyms in code or documents.
@@ -35,6 +35,10 @@ checks it passed (the message).
   out of date.
 
 ## How to work a task
+
+Use this workflow for an authorized plan task or when asked to continue the
+build. A question, review, or manual check does not by itself authorize
+starting a plan task, editing files, or committing.
 
 1. In `docs/plan.md`, take the first open task marked `todo` whose
    dependencies are done, unless the user names a different one. A task no
@@ -67,9 +71,7 @@ stage becomes one line under "Finished" in the plan.
 
 ## Keeping the documents
 
-The documents are read by agents at the start of every task, so each line
-costs every later task some attention. Write what a later agent needs and
-cannot get more cheaply from the code.
+Write what a later agent needs and cannot get more cheaply from the code.
 
 | What you learned | Where it goes |
 | --- | --- |
@@ -96,10 +98,9 @@ cannot get more cheaply from the code.
 ## Working with the user
 
 The user delegates technical choices, and design choices they have no basis
-to judge. Pick one, record it in `decisions.md` as the agent's choice so it
-can be overturned, and give the reason in a line in your report. Ask only
-about what the experience should be like, or a trade-off whose answer
-changes what gets built.
+to judge. Ask only about the experience or a trade-off whose answer
+changes what gets built. Record a delegated choice in `decisions.md` when
+its rationale would help a later agent avoid repeating the investigation.
 
 ## Project rules
 
@@ -152,8 +153,8 @@ mise activated, or `mise exec -- <command>`.
 | Type-check | `pnpm typecheck` |
 | Test, TypeScript | `pnpm test` (`pnpm test:watch` while working) |
 | Test, Python helpers | `uv run --directory pytools pytest` |
-| Run the app on Claude (http://localhost:4320; spends plan usage once a message is sent) | `pnpm dev` |
-| Run the app with no model, on seeded courses (http://localhost:4330) | `pnpm dev:fake` (`--empty` for no courses) |
+| Run the app on Claude (http://localhost:4320; opening a unit can spend plan usage even without sending a message) | `pnpm dev` |
+| Run the app with no model (http://localhost:4330; `--empty` skips seeding) | `pnpm dev:fake` |
 | Grade the grader's hand-graded set (real model) | `node scripts/grade-set.ts --runs 2` (`--model`, `--prompt`, `--only`) |
 | Judge the help judge's hand-judged set (real model) | `node scripts/judge-set.ts --runs 2` (same options) |
 | Decide the dispute judge's hand-judged set (real model) | `node scripts/decide-set.ts --runs 2` (same options) |

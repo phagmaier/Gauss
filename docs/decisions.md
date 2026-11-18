@@ -5,8 +5,8 @@ the alternatives they beat, what the SDKs and tools were seen to do, and
 the gaps left open. What the system does now is in `architecture.md`; how
 to add to this file is in `AGENTS.md`, "Keeping the documents".
 
-**Read one section, never the whole file.** Find it in the index;
-`grep -n '^## ' docs/decisions.md` gives the line numbers. The user's
+Use the index to read the sections relevant to the task, not the whole
+file. `grep -n '^## ' docs/decisions.md` gives the line numbers. The user's
 decisions are marked as theirs; the rest are the agent's, open to change.
 
 The build journal this file was condensed from, with every task's runs and

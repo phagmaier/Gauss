@@ -1,9 +1,9 @@
 # Gauss: product brief
 
-What the product does, as the user has decided it. Stages 0 to 2 are built
-(`plan.md`); who decided each point, and why, is in `decisions.md`,
-"Product decisions". "Gauss" is a working name taken from the project
-directory.
+What the product should do, as the user has decided it. The [plan](plan.md)
+tracks implementation and acceptance; `decisions.md`, "Product decisions",
+records who decided each point and why. "Gauss" is a working name taken
+from the project directory.
 
 ## Purpose
 
@@ -157,7 +157,7 @@ Grading method depends on the question, not the subject:
 
 | Answer type | Graded by |
 | --- | --- |
-| Code | Running tests, hidden until the answer is graded, on the learner's files in the workspace |
+| Code | Running tests on the learner's files in the workspace. Grading shows test output; the tests themselves are shown only when disputing the grade |
 | Computational math | A symbolic math check |
 | Proofs, explanations, philosophical reconstruction | A separate grading call with a rubric, which must point to the first flawed step or missing element |
 | Multiple choice | Exact match, plus the learner's stated reasoning if given |
