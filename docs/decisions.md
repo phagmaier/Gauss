@@ -1202,9 +1202,10 @@ The judge's set and model (task 3.9), the agent's choices:
 
 - **Teaching** runs 250 to 400 words by default and never over 600, whatever
   the style note says: the brief caps it and lets the style set length, and
-  the hard cap keeps a note from removing it. It ends with one short
-  exercise said to be ungraded. The runs taught one worked example in
-  full, at about 330 to 370 words.
+  the hard cap keeps a note from removing it. It ends with one ungraded
+  thing to try: a question on intuition or a short exercise (below, task
+  3.19). The runs taught one worked example in full, at about 330 to 370
+  words.
 - **Feedback** is under 100 words: one or two sentences for a confident
   correct answer, up to five otherwise, about the answer given. At 110 to
   137 words it read correct proofs back and went through choices not
@@ -1282,6 +1283,47 @@ The agent's choices:
   or four sentences, over the one or two asked; a written question asked
   two things (why the most frequent pair, and what replaces it); one
   first code question had no lead-in.
+
+From the user's stage 3 check (task 3.19), on Sonnet 5.5 on a scratch data
+root: the user's Python course with its stored plan three times, and the
+seeded chain-rule unit twice, with prompt fixes between runs.
+
+- **Starters hold what the question gives.** On Opus in the user's check,
+  and on Sonnet under a first rule ("leave out only the code the exercise
+  asks for"), the objective "stores values of the basic types in
+  variables" got a question that had the learner type four given values,
+  its tests asserting their types: the objective's wording read as leave
+  to make copying the exercise. Said as copying "even when the objective
+  speaks of storing values", the next two runs put the values in the
+  starter and tested what the learner's code computed from them.
+  `unit-planner.md` now states a coding objective as what the code
+  computes, never a step a check could only ask to be copied; no planning
+  call was run on it.
+- **Tests stay out of the workspace.** One Sonnet run tried its tests before
+  posting with a shell command: it wrote them in the workspace, copied its
+  solution over the learner's file, ran them and put the starter back. The
+  tests stayed in the workspace for the learner to read, and the starter,
+  written by a command, got no line in the thread. `tutor.md` now says the
+  posting checks make a trial needless, a trial goes in `$TMPDIR`, and
+  starters go through the Write tool; the last run did that. The engine does
+  not refuse a question whose tests sit in the workspace ("Known gaps").
+- **A question on intuition** ends the teaching of a segment with an idea
+  to grasp, by itself; the discussion corrects the answer, then offers an
+  exercise (the user's decision, "Product decisions", 2026-11-18). "The
+  exercise waits for the discussion" was read as where to try it: the
+  chain-rule teaching asked the question and an exercise together, and
+  reworded the prompt's own example, which was the chain rule. With an
+  example off the subject (a circle's area) and "ask this question alone",
+  it asked its own ("what does that 3 represent in terms of how fast
+  things change?"). Both replies to a half-right answer named what was
+  right, corrected the rest on a concrete case (the outer slope taken at
+  $g(x)$; a rate, not a size), then offered an exercise. The segment on
+  Python's types and division ended with an exercise and no such question
+  in all three runs.
+- **Left as they are**: in one run of three Sonnet asked for pytest only
+  once the check was open, which held the check up until it was installed
+  (the other two graded with `unittest` or plain asserts); one first code
+  question again had no lead-in.
 
 **`unit-planner.md`**: one idea per objective, tested by "could a learner
 know one part and not the other", up to eight objectives rather than
@@ -1553,6 +1595,10 @@ will close.
   omits trailing whitespace. In the scripted backend, file names can
   collide across units and grading feedback can be mistaken for a scripted
   command. Fix collisions before multi-unit scripted browser checks.
+- Code questions: nothing refuses a question whose tests or solution the
+  tutor left in the workspace, where the learner can read them; only
+  `tutor.md` forbids it (seen once, task 3.19). The posting check could
+  refuse a question whose test files are in the workspace.
 - Opening a unit with a long history draws its whole thread once.
 - Keys go to the message box, not the pinned card, after sending a message.
 - No limit on refused `plan_unit` calls within one planning turn.

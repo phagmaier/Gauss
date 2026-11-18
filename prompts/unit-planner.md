@@ -39,7 +39,10 @@ anything; decide, and store the plan with the plan_unit tool.
   the tutor's tests grade. The verb says which: "Compute the derivative of
   ...", "Prove that ...", "Explain why ...", "Write a function that ...".
   A skill the learner shows by writing code is stated as code to write,
-  not as a fact about code to explain.
+  not as a fact about code to explain. State what the code computes or
+  does ("Write a script that computes an invoice's total from its lines"),
+  never a step a check could only ask the learner to copy, such as storing
+  given values in variables.
 - **Ids.** Give each objective a short id of lowercase words joined by
   hyphens, such as "chain-rule-composite". An id must be new in the whole
   course: never reuse one that the curriculum lists.

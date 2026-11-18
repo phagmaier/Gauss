@@ -28,40 +28,6 @@ answers. The stage 3 check did not show one.
 Built before 5.0. Each task is the user's note from the stage 3 check
 (`decisions.md`, "Product decisions", 2026-11-18).
 
-### 3.19 Prompts: starters and intuition questions
-
-- Status: todo
-- **Starters hold what the question gives.** In the check, Opus 5.5 asked
-  the learner to type four given values into `order.py`, whose starter was
-  a comment and `raise NotImplementedError`. The objective was "stores
-  values of the basic types in variables", and `tutor.md`'s starter rule
-  ("nothing that does the exercise") let the tutor count typing the values
-  as the exercise. The starter holds the values, names, data, imports and
-  signatures the prompt gives; the learner writes only what the objective
-  checks, and is never asked to copy text from the prompt into a file.
-  `unit-planner.md`: no objective whose only check is copying.
-- **Intuition questions.** For a segment with an idea to grasp, the
-  teaching turn ends with one question on the learner's intuition (explain
-  why, predict, what if), never "does that make sense?". In the
-  discussion the tutor says what is right in the answer, corrects what is
-  off, and follows up once only if the picture is still shaky; the
-  exercise comes after. Skipped for rules and conventions (the signs of
-  Python's `//` and `%`), where the exercise stays as it is. Ungraded, no
-  card, no evidence, and "ready" stays the learner's at any time.
-  `planner.md`: the style note can turn it off. The brief's "Session
-  rhythm" already says so.
-- Done when: one real run on Sonnet 5.5 on a scratch data root, with
-  plans seeded:
-  - the user's Python course plan, whose first segment covers
-    `script-basic-types` and `python-numeric-division`: its code question's
-    starter holds the given values and passes the posting checks, and the
-    segment has no intuition question;
-  - a math segment with an idea to grasp: its teaching ends with an
-    intuition question, and the tutor's reply to a half-right answer
-    corrects it before the exercise.
-
-  Findings in `decisions.md`, "Prompts"; `mise run check` passes.
-
 ### 3.20 The install card folds its command and output
 
 - Status: todo

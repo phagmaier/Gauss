@@ -68,6 +68,11 @@ from a picture in two dimensions. Checks are mostly computations you type
 as an expression, with a written explanation once a unit's main idea is
 in place. One new idea per segment, at a steady pace."
 
+After teaching an idea, the tutor asks one ungraded question on the
+learner's intuition of it before any exercise. The note need not say so;
+if the learner does not want such questions, it says that instead ("No
+questions on intuition: straight to an exercise.").
+
 The tutor who teaches the units reads the note, and the learner approves
 it with the curriculum. Promise only what the app does:
 
