@@ -642,8 +642,8 @@ stage 6.
   confident answer) had no "after a miss" condition.
 - **A miss** is a wrong answer or "I don't know", with help or without, and
   clears the correct answers before it; so a miss after a pass takes the
-  pass away, which is slipping ("Mastery loop"). "I don't know" is never a
-  confident miss.
+  pass away, which in a review or a gate is slipping ("Mastery loop"). "I
+  don't know" is never a confident miss.
 - **Different questions** means what the learner saw differs: the prompt
   and the choices, spacing ignored. A written and a choice question are
   never the same. Code cannot judge variety beyond that; `tutor.md` asks
@@ -1271,8 +1271,9 @@ built until its task is done; `architecture.md` says what is.
   should know what its test showed. The cost is a section of `tutor.md`
   and questions posed from a long conversation.
 - **An answer's evidence names its assessment** (`review`, `gate`,
-  `test-out`), absent for a segment's check. Retained needs to know that
-  an answer was given cold, and log order alone cannot say.
+  `test-out`, with the unit whose thread held it), absent for a segment's
+  check. Retained needs to know that an answer was given cold, and log
+  order alone cannot say.
 - **One question per objective; a miss opens a detour and one more
   question**, then the assessment moves on whatever the answer. It is the
   brief's "short refresher and a re-ask", for review too (the user's
@@ -1293,15 +1294,30 @@ built until its task is done; `architecture.md` says what is.
   being one answer with nothing before it, and review confirms it later.
   Retention does not lapse with time: review keeps returning to retained
   objectives, the longest unanswered first.
-- **Slipping** is an objective that had passed, was then missed, and has
-  not passed again. Only an assessment can miss a passed objective, so
-  the rule needs no mode. It is not "attempted", which would make a
-  finished unit read as half-written and teach it again; a finished unit
-  stays finished. An overturned pass in a finished unit still records an
-  override ("Disputes"): that objective never passed.
+- **Slipping** is an objective that was passed when a review or a gate
+  missed it, and has not passed again. It is not "attempted", which would
+  make a finished unit read as half-written and teach it again; a
+  finished unit stays finished. An overturned pass in a finished unit
+  still records an override ("Disputes"): that objective never passed.
+- **The miss must be a review's or a gate's**, as the brief has it. The
+  breakdown had the rule without a mode, holding that only an assessment
+  can miss a passed objective; but a check can: the user's theology
+  record has a pass, then a miss in a check (under an older rule), and a
+  segment taught in full after a test passed its objective still asks it
+  once (5.6). There the objective reads "attempted", as it did before.
+  With the mode, every status of the user's five courses re-derived as
+  before (2026-11-18).
+- **An override marks a slipping objective overridden**, as it marks an
+  attempted one: moving on from the closing card is the learner's choice,
+  and the unit then reads overridden, as the card says. Review (5.3) then
+  leaves it out. The agent's choice.
+- **An answer names its assessment and the unit whose thread held it**
+  (`Assessment` in `evidence.ts`), so "What I know" can say "In unit 3's
+  gate", as piece 16 does. The agent's choice.
 - **A miss while testing out is not a miss afterwards.** It came before
   any teaching, and counted, it would take away the one confident answer
-  that passes an objective never missed.
+  that passes an objective never missed. It counts as an answer, so the
+  objective reads attempted.
 
 **Review**
 

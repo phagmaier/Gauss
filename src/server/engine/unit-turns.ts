@@ -95,8 +95,10 @@ export interface Where {
   position: UnitPosition;
   /** In the check: where each objective of the segment stands. */
   checks: ReadonlyMap<string, ObjectiveCheck>;
-  /** The unit's objectives that have not passed, in the plan's order. */
+  /** The unit's objectives that have not passed, slipping ones too, in the plan's order. */
   notPassed: readonly string[];
+  /** Those of them that are slipping: passed, then missed in a review or a gate. */
+  slipping: readonly string[];
   /** Set once the unit is finished and no longer in progress. */
   finished?: "passed" | "overridden";
   /** A graded answer's feedback is queued behind earlier learner messages. */
@@ -486,9 +488,15 @@ function describe(where: Where): string {
   const unitAt = context.units.findIndex((u) => u.id === context.unitId);
   const unit = `Unit ${unitAt + 1} of ${context.units.length}, "${context.units[unitAt]?.title}"`;
   if (where.finished !== undefined) {
-    return where.finished === "passed"
-      ? `${unit}. The unit is finished: every objective passed.`
-      : `${unit}. The unit is finished: the learner moved on without passing ${quoted(where.notPassed)}.`;
+    const { slipping } = where;
+    const movedOn = where.notPassed.filter((id) => !slipping.includes(id));
+    const since =
+      slipping.length === 0
+        ? ""
+        : ` Since then, ${quoted(slipping)} ${slipping.length === 1 ? "was" : "were"} missed in a review or a gate, and ${slipping.length === 1 ? "is" : "are"} slipping.`;
+    return movedOn.length === 0
+      ? `${unit}. The unit is finished: every objective passed.${since}`
+      : `${unit}. The unit is finished: the learner moved on without passing ${quoted(movedOn)}.${since}`;
   }
   const segment = segmentOf(context.plan, position);
   const which = segment.again

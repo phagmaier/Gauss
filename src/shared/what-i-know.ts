@@ -17,6 +17,7 @@ import { z } from "zod";
 import { Calibration } from "./calibration.ts";
 import { Slug, Timestamp } from "./course.ts";
 import { ShownDispute } from "./dispute.ts";
+import { Assessment } from "./evidence.ts";
 import { Objective } from "./plan.ts";
 import {
   AnswerSubmission,
@@ -60,6 +61,7 @@ export const ShownEvidence = z.discriminatedUnion("kind", [
     flaw: z.string().min(1).optional(),
     unsettled: Unsettled.optional(),
     output: z.string().optional(),
+    assessment: Assessment.optional(),
     dispute: ShownDispute.optional(),
   }),
   z.object({ kind: z.literal("override"), recordedAt: Timestamp }),

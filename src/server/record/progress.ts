@@ -1,6 +1,7 @@
 // Where each unit of a course stands, as the library routes send it to the
 // page (task 2.12): its status, derived by unitStatus from the evidence and
-// its position, and the segment of a unit in progress. Derived when asked,
+// its position, the segment of a unit in progress, and how many of a
+// finished unit's objectives are retained and slipping. Derived when asked,
 // never stored (architecture.md section 3).
 
 import type { Curriculum } from "../../shared/curriculum.ts";
@@ -12,7 +13,7 @@ import type {
 } from "../../shared/library.ts";
 import type { State } from "../../shared/state.ts";
 import type { DataRoot } from "./data-root.ts";
-import { unitStatus } from "./status.ts";
+import { objectiveStatus, unitStatus } from "./status.ts";
 
 /**
  * Each unit's progress, by id, for an approved curriculum; none for a draft,
@@ -32,13 +33,29 @@ export function courseProgress(
       const position = Object.hasOwn(state.units, unit.id)
         ? state.units[unit.id]
         : undefined;
+      const status = unitStatus(unit, evidence, position);
       const progress: UnitProgress = {
-        status: unitStatus(unit, evidence, position),
+        status,
         ...(position === undefined ? {} : { segment: position.segment }),
+        ...(status === "passed" || status === "overridden"
+          ? standing(unit.plan?.objectives ?? [], evidence)
+          : {}),
       };
       return [unit.id, progress];
     }),
   );
+}
+
+/** How many of the objectives are retained, and how many slipping. */
+function standing(
+  objectives: readonly { id: string }[],
+  evidence: readonly EvidenceEntry[],
+): { retained: number; slipping: number } {
+  const statuses = objectives.map((o) => objectiveStatus(evidence, o.id));
+  return {
+    retained: statuses.filter((s) => s === "retained").length,
+    slipping: statuses.filter((s) => s === "slipping").length,
+  };
 }
 
 /** The course with its progress, reading state.json and the evidence only when it can have any. */

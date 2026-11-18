@@ -200,7 +200,7 @@ test(
     const course = await dataRoot.readCourse(COURSE);
     if (course === undefined) throw new Error("The course is gone.");
     expect((await withProgress(dataRoot, course)).progress).toEqual({
-      limits: { status: "passed" },
+      limits: { status: "passed", retained: 0, slipping: 0 },
       derivative: { status: "not-started" },
     });
     expect(chat.events().at(-1)).not.toMatchObject({ type: "unit_failed" });

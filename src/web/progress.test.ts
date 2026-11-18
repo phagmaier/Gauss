@@ -111,6 +111,27 @@ test("each status: how the unit's row and node read", () => {
   });
 });
 
+test("a finished unit's word has under it how many of its objectives are retained, and how many slipping", () => {
+  const kept = course({
+    limits: { status: "passed", retained: 1, slipping: 0 },
+    derivative: { status: "overridden", retained: 0, slipping: 0 },
+    rules: { status: "passed", retained: 1, slipping: 2 },
+  });
+  const under = (id: string) =>
+    unitMark(kept, UNITS.find((u) => u.id === id) as StoredUnit).under;
+
+  expect(under("limits")).toEqual([
+    { text: "1 of 1 retained", className: "kept" },
+  ]);
+  expect(under("derivative")).toEqual([
+    { text: "0 of 1 retained", className: "kept" },
+  ]);
+  expect(under("rules")).toEqual([
+    { text: "1 of 3 retained", className: "kept" },
+    { text: "2 slipping", className: "slip" },
+  ]);
+});
+
 test("with no unit in progress, the next one in order is marked up next", () => {
   // A course just approved sends no progress for its units.
   expect(UNITS.map((u) => unitMark(course({}), u).text)).toEqual([

@@ -965,9 +965,7 @@ function ClosingCard(props: {
             <span>
               <InlineProse text={row.statement} />
             </span>
-            <span className={row.passed ? "st pass" : "st miss"}>
-              {row.passed ? "Passed" : "Not passed"}
-            </span>
+            <span className={`st ${row.word.className}`}>{row.word.text}</span>
             {row.why === undefined ? null : <small>{row.why}</small>}
           </li>
         ))}

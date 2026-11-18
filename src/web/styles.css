@@ -1,7 +1,7 @@
 /*
   The settled look (docs/decisions.md, "Page design"): Catppuccin Frappé with
   the mauve accent, IBM Plex Sans, dark first. Taken from
-  docs/prototype/base.css, pieces 1 to 12, keeping only what the page uses. Colours are the Catppuccin palette (catppuccin.com, MIT).
+  docs/prototype/base.css, pieces 1 to 16, keeping only what the page uses. Colours are the Catppuccin palette (catppuccin.com, MIT).
 */
 :root {
   --base: #303446;
@@ -17,6 +17,8 @@
   --yellow: #e5c890;
   --green: #a6d189;
   --red: #e78284;
+  --teal: #81c8be;
+  --peach: #ef9f76;
 
   --bg: var(--base);
   --field: var(--mantle);
@@ -1225,6 +1227,7 @@ details.why summary:hover {
   color: var(--faint);
   font-size: 0.88em;
   white-space: nowrap;
+  text-align: right;
 }
 .cu-s.pass {
   color: var(--green);
@@ -1668,4 +1671,31 @@ button.dn:hover {
 }
 .fw + .qa-card {
   margin-top: 1em;
+}
+
+/* ---- Retained and slipping, settled in piece 16: two more words, each with a colour of its own ---- */
+.kept {
+  color: var(--teal);
+}
+.slip {
+  color: var(--peach);
+}
+.wk-s.kept,
+.ue-rows .st.kept {
+  color: var(--teal);
+}
+.wk-s.slip,
+.ue-rows .st.slip {
+  color: var(--peach);
+}
+/* a finished unit's row in the course view: how many of its objectives are retained, and how many are slipping */
+/* biome-ignore lint/style/noDescendingSpecificity: the course view's rows are never inside the closing card */
+.cu-s small {
+  display: block;
+  font-size: 0.94em;
+  line-height: 1.45;
+}
+/* where an answer was given, on its line in "What I know" */
+.wk-in {
+  color: var(--soft);
 }

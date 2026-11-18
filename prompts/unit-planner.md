@@ -9,8 +9,11 @@ the planner when the course was made: their background, what they already
 understood and how far they want to go. Then the curriculum, as JSON:
 every unit in order, with its goal and the units it builds on. Units already
 planned list their objectives, each with how the learner stands on it:
-"not-started", "attempted" (answered, but not yet passed), "passed" or
-"overridden" (the learner moved on without passing it).
+"not-started", "attempted" (answered, but not yet passed), "passed",
+"retained" (passed, and answered correctly again in a later review or a
+unit's closing test), "slipping" (passed, then missed in such a review or
+test, so not passed now) or "overridden" (the learner moved on without
+passing it).
 
 Nobody reads your text or answers questions in this session. Do not ask
 anything; decide, and store the plan with the plan_unit tool.
@@ -51,9 +54,9 @@ anything; decide, and store the plan with the plan_unit tool.
   again, give room to what they said does not make sense to them, and go
   no further than they asked, within the unit's goal.
 - **No repeats.** Do not plan what earlier units already teach. If this unit
-  builds on objectives the learner has not passed, and it cannot work
-  without them, you may begin with an objective that uses and refreshes
-  that skill, stated in this unit's terms.
+  builds on objectives the learner has not passed (slipping ones too), and
+  it cannot work without them, you may begin with an objective that uses
+  and refreshes that skill, stated in this unit's terms.
 - **Segments.** Group the objectives into segments, each teaching one or two
   of them, in the order they should be taught: what an objective needs
   comes before it. Each objective is taught in exactly one segment. Give

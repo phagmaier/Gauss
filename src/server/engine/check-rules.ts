@@ -15,6 +15,7 @@
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { UnitPosition } from "../../shared/state.ts";
+import { hasPassed } from "../../shared/status.ts";
 import { countedAnswers } from "../record/disputes.ts";
 import { objectiveStatus } from "../record/status.ts";
 
@@ -57,7 +58,7 @@ export function objectiveCheck(
   const last = answers.at(-1);
   if (last === undefined) return { state: "unasked" };
   const asked = answers.length;
-  if (objectiveStatus(evidence, objective) === "passed") {
+  if (hasPassed(objectiveStatus(evidence, objective))) {
     return { state: "done", asked };
   }
   const reason =
@@ -98,12 +99,22 @@ export function isLastSegment(plan: Plan, position: UnitPosition): boolean {
   return position.segment >= plan.segments.length - 1;
 }
 
-/** The plan's objectives that have not passed, in the plan's order. */
+/** The plan's objectives that have not passed (slipping ones too), in the plan's order. */
 export function notPassed(
   plan: Plan,
   evidence: readonly EvidenceEntry[],
 ): string[] {
   return plan.objectives
     .map((o) => o.id)
-    .filter((id) => objectiveStatus(evidence, id) !== "passed");
+    .filter((id) => !hasPassed(objectiveStatus(evidence, id)));
+}
+
+/** The plan's objectives that are slipping, in the plan's order. */
+export function slipping(
+  plan: Plan,
+  evidence: readonly EvidenceEntry[],
+): string[] {
+  return plan.objectives
+    .map((o) => o.id)
+    .filter((id) => objectiveStatus(evidence, id) === "slipping");
 }

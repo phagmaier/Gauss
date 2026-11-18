@@ -126,6 +126,7 @@ import {
   type ObjectiveCheck,
   objectiveCheck,
   segmentOf,
+  slipping,
 } from "./check-rules.ts";
 import { type ChoiceOrder, randomOrder, reorder } from "./choice-order.ts";
 import {
@@ -1006,6 +1007,7 @@ function createUnitChat(
       position: record.position,
       checks: checks(r),
       notPassed: notPassed(r.context.plan, record.evidence),
+      slipping: slipping(r.context.plan, record.evidence),
       ...(record.finished === undefined ? {} : { finished: record.finished }),
       ...(r.feedback !== undefined && !r.feedback.started
         ? { feedbackPending: r.feedback.number }

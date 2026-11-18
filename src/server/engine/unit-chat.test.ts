@@ -2464,6 +2464,63 @@ test("a unit finished before a restart opens finished, and is not started again"
   });
 });
 
+test("a finished unit missed since in another unit's review stays finished, and its tutor is told what slipped", async () => {
+  const before = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    FEEDBACK,
+    ask(Q_SECANT),
+    FEEDBACK,
+  ]);
+  await makeCourse(true, SHORT);
+  const first = await open(before);
+  await toCheck(first);
+  await answer(first, "A");
+  await answer(first, "B");
+  await before.units.close();
+  // A later unit's review: the quotient answered right, the secant missed.
+  const reviewed = (
+    objective: string,
+    question: ChoiceInput,
+    choice: "A" | "B",
+  ) =>
+    reload().appendEvidence(COURSE, {
+      kind: "answer",
+      recordedAt: NOW,
+      objective,
+      question: { ...stored(question), prompt: `${question.prompt} Again.` },
+      answer: {
+        kind: "choice",
+        questionId: `review-${objective}`,
+        choice,
+        confidence: "75",
+      },
+      assisted: false,
+      verdict: choice === question.answer ? "correct" : "incorrect",
+      assessment: { mode: "review", unit: "rules" },
+    });
+  await reviewed("difference-quotient", Q_QUOTIENT, "A");
+  await reviewed("secant-slope", Q_SECANT, "A");
+
+  const after = setUp([[{ text: "Hello again." }]]);
+  const chat = await open(after);
+
+  expect(since(chat, "session")).toEqual([
+    SESSION,
+    { type: "unit_plan", plan: SHORT },
+    shortStatus("passed", "retained", "slipping"),
+    { type: "unit_closed", status: "passed" },
+  ]);
+  expect(after.backend.received).toEqual([]);
+  expect(await position()).toEqual({});
+
+  expect(chat.say("Hello.")).toEqual({ ok: true });
+  await chat.settled();
+  expect(after.backend.received[0]?.text).toBe(
+    '[Unit 1 of 2, "The derivative". The unit is finished: every objective passed. Since then, "secant-slope" was missed in a review or a gate, and is slipping. Message from the learner. Allowed now: reply to the learner. No teaching tools.]\nHello.',
+  );
+});
+
 test("a closing card that was waiting before a restart is shown again, and going over again works after it", async () => {
   const before = setUp([TEACH, ask(Q_QUOTIENT)]);
   await makeCourse(true, SHORT);

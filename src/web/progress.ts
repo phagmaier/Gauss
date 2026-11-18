@@ -169,11 +169,32 @@ export function lead(course: CourseWithProgress): Lead | null {
  * How a unit's row in the list and its node in the diagram show where it
  * stands: `state` is the class of the row and the node, `text` the word at
  * the row's right and on the node, `className` that word's own class.
+ * `under`, on a finished unit's row only, says under the word how many of
+ * its objectives are retained, and how many slipping if any (piece 16).
  */
 export interface UnitMark {
   state: "pass" | "over" | "now" | "todo";
   text: string;
   className: string;
+  under?: { text: string; className: string }[];
+}
+
+/** "2 of 3 retained", and "1 slipping" if any are; none when the counts are not sent. */
+function retention(
+  unit: StoredUnit,
+  progress: UnitProgress,
+): Pick<UnitMark, "under"> {
+  const { retained, slipping = 0 } = progress;
+  const total = unit.plan?.objectives.length;
+  if (retained === undefined || total === undefined) return {};
+  return {
+    under: [
+      { text: `${retained} of ${total} retained`, className: "kept" },
+      ...(slipping === 0
+        ? []
+        : [{ text: `${slipping} slipping`, className: "slip" }]),
+    ],
+  };
 }
 
 export function unitMark(
@@ -183,9 +204,19 @@ export function unitMark(
   const progress = progressOf(course.progress, unit.id);
   switch (progress.status) {
     case "passed":
-      return { state: "pass", text: "Passed", className: "pass" };
+      return {
+        state: "pass",
+        text: "Passed",
+        className: "pass",
+        ...retention(unit, progress),
+      };
     case "overridden":
-      return { state: "over", text: "Overridden", className: "" };
+      return {
+        state: "over",
+        text: "Overridden",
+        className: "",
+        ...retention(unit, progress),
+      };
     case "in-progress":
       return {
         state: "now",

@@ -84,7 +84,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     background.md                 the background note: what the learner told the planner, approved with the curriculum
     curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts
     state.json                    a position for each unit in progress
-    evidence.jsonl                append-only: answers, grades, confidence, overrides, disputes with their outcomes
+    evidence.jsonl                append-only: answers (with the assessment each was given in), grades, confidence, overrides, disputes with their outcomes
     misconceptions.jsonl          (stage 5) append-only: findings from detours and discussions
     units/<unit-id>/handoff.md    (stage 5) the unit's handoff note, rewritten when a segment closes
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
@@ -105,11 +105,12 @@ approves it. A course exists from its first proposal. No file has a schema
 version: a field added later must be optional.
 
 - **Derived, never stored**: objective status (not started, attempted,
-  passed, overridden; retained and slipping in stage 5), from
-  `evidence.jsonl` by the pure functions in `record/status.ts`; a unit's
-  status from its objectives', where a unit with a position in
-  `state.json` is in progress; where a course stands and whether it is a
-  one-off (a course of one unit); each unit's progress for the library
+  passed, retained, slipping, overridden), from `evidence.jsonl` by the
+  pure functions in `record/status.ts`; a unit's status from its
+  objectives', where a unit with a position in `state.json` is in
+  progress; where a course stands and whether it is a one-off (a course
+  of one unit); each unit's progress for the library, with how many of a
+  finished unit's objectives are retained and slipping
   (`record/progress.ts`); and "what I know" with its calibration counts
   (`record/what-i-know.ts`, `record/calibration.ts`). The rules for passing
   and help are in section 4; the reasons in `decisions.md`, "Objective
@@ -246,6 +247,16 @@ The rules:
   learner saw differs. An override marks an objective overridden but never
   takes away a pass, and a later answer takes the override's place. The
   log's order decides, not timestamps.
+- **Retained and slipping** (`record/status.ts`). An answer given in an
+  assessment names it (`review`, `gate` or `test-out`, and the unit whose
+  thread held it); an answer in a segment's check names none. A passed objective
+  is retained once, since its last miss, it has an unassisted correct
+  answer given in a review or a gate. A passed objective missed in a
+  review or a gate is slipping until it passes again; slipping is not
+  passed, so a check or the closing card treats it as an objective not
+  passed, but a finished unit with slipping objectives stays finished.
+  An override marks a slipping objective overridden. A miss while testing
+  out is no miss: it counts as an answer and clears nothing.
 - **How many questions** (`engine/check-rules.ts`). Each objective of the
   segment gets at least one question in the check, and is done only once
   it has passed; there is no limit. The check's answers are the evidence
@@ -687,14 +698,17 @@ no automated tests.
 - **Course** (`/courses/<id>`): a card at the top that leads to the unit in
   progress most recently opened, or else the next unit in order (the first
   not started whose prerequisites are finished); the unit list with each
-  unit's status, Start (which asks first when a prerequisite is not
-  finished) or Continue; the diagram in the side pane; "What I know".
+  unit's status (under a finished unit's word, how many of its objectives
+  are retained, in teal, and how many slipping, in peach, if any), Start
+  (which asks first when a prerequisite is not finished) or Continue; the
+  diagram in the side pane; "What I know".
 - **What I know** (`/courses/<id>/what-i-know`): each started unit's
-  objectives with their status and, under each, its evidence in log order
-  (question, answer, confidence, help, grade with the grader's flaw, the
-  right choice or expected answer of a question missed, why the grader
-  graded a math answer, a code answer's files as run and its tests' output,
-  date) and overrides; a rubric or a code question's tests and frozen
+  objectives with their status ("Retained" in teal, "Slipping" in peach)
+  and, under each, its evidence in log order (question, answer,
+  confidence, help, the assessment it was given in, grade with the
+  grader's flaw, the right choice or expected answer of a question missed,
+  why the grader graded a math answer, a code answer's files as run and
+  its tests' output, date) and overrides; a rubric or a code question's tests and frozen
   inputs only while that answer is disputed. Each graded answer has
   "Dispute this grade" (piece 13; `src/web/Dispute.tsx`), and a disputed
   one shows the verdict it now counts with, marked "after your dispute"

@@ -1,14 +1,17 @@
 // What the "What I know" view says (task 2.26): a summary of the course's
 // objectives by status, the units not started, each objective's and unit's
 // status word, and what one answer in its evidence says beside its question
-// and answer, with the verdict and key a dispute left (task 3.8; dispute.ts).
+// and answer, with the verdict and key a dispute left (task 3.8; dispute.ts)
+// and the assessment it was given in (piece 16).
 // The view is drawn in WhatIKnow.tsx from what the server derives
 // (src/server/record/what-i-know.ts).
 
+import type { Assessment } from "../shared/evidence.ts";
 import {
   type ChoiceLetter,
   confidenceLabel,
   type Unsettled,
+  type Verdict,
 } from "../shared/question.ts";
 import type { ObjectiveStatus, UnitStatus } from "../shared/status.ts";
 import type { ShownEvidence, WhatIKnow } from "../shared/what-i-know.ts";
@@ -23,7 +26,9 @@ export interface Word {
 
 /** The words in the order the summary counts them, as the learner reads them. */
 const STATUS_WORDS: Record<ObjectiveStatus, Word> = {
+  retained: { text: "Retained", className: "kept" },
   passed: { text: "Passed", className: "pass" },
+  slipping: { text: "Slipping", className: "slip" },
   overridden: { text: "Overridden", className: "over" },
   attempted: { text: "Not passed yet", className: "miss" },
   "not-started": { text: "Not started", className: "" },
@@ -50,8 +55,8 @@ export function unitWord(status: UnitStatus): Word {
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /**
- * "2 units started, with 9 objectives: 3 passed, 1 overridden, 3 not passed
- * yet and 2 not started." A unit has objectives once it starts.
+ * "2 units started, with 9 objectives: 2 retained, 1 passed, 1 slipping, 3
+ * not passed yet and 2 not started." A unit has objectives once it starts.
  */
 export function knownSummary(view: WhatIKnow): string {
   const started = view.units.flatMap((u) =>
@@ -103,10 +108,17 @@ export interface AnswerLine {
   expected?: string;
   /** Why the grader graded a math answer, when the symbolic check did not. */
   gradedBy?: string;
+  /** The assessment it was given in: "In a review", "In unit 3's gate", "Testing out". */
+  givenIn?: string;
 }
 
+/**
+ * @param unitNumber the number of the unit by its id, to name the unit whose
+ *   gate an answer was given in
+ */
 export function answerLine(
   entry: Extract<ShownEvidence, { kind: "answer" }>,
+  unitNumber: (unitId: string) => number | undefined = () => undefined,
 ): AnswerLine {
   const { answer, question } = entry;
   const now = standing({
@@ -140,7 +152,30 @@ export function answerLine(
     ...(entry.unsettled === undefined
       ? {}
       : { gradedBy: unsettledLine(entry.unsettled) }),
+    ...(entry.assessment === undefined
+      ? {}
+      : { givenIn: givenIn(entry.assessment, verdict, unitNumber) }),
   };
+}
+
+/** Where an answer was given; a miss while testing out does not count as one. */
+function givenIn(
+  assessment: Assessment,
+  verdict: Verdict,
+  unitNumber: (unitId: string) => number | undefined,
+): string {
+  switch (assessment.mode) {
+    case "review":
+      return "In a review";
+    case "gate": {
+      const number = unitNumber(assessment.unit);
+      return number === undefined ? "In a gate" : `In unit ${number}'s gate`;
+    }
+    case "test-out":
+      return verdict === "correct"
+        ? "Testing out"
+        : "Testing out, so not counted as a miss";
+  }
 }
 
 /**

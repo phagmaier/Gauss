@@ -28,6 +28,12 @@ export const UnitProgress = z.object({
    * on the server, since an open question carries its grading material.
    */
   segment: z.number().int().nonnegative().optional(),
+  /**
+   * For a finished unit: how many of its objectives are retained, and how
+   * many slipping (piece 16).
+   */
+  retained: z.number().int().nonnegative().optional(),
+  slipping: z.number().int().nonnegative().optional(),
 });
 export type UnitProgress = z.infer<typeof UnitProgress>;
 

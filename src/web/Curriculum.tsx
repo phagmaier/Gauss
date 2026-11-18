@@ -7,10 +7,11 @@ import type { Unit } from "../shared/curriculum.ts";
 import { type DiagramEdge, layOut } from "./diagram.ts";
 import { buildsOn } from "./units.ts";
 
-/** A short word at a unit's right, such as "Changed". */
+/** A short word at a unit's right, such as "Changed", and any lines under it. */
 export interface UnitMark {
   text: string;
   className: string;
+  under?: { text: string; className: string }[];
 }
 
 export function UnitList<U extends Unit>(props: {
@@ -55,6 +56,11 @@ export function UnitList<U extends Unit>(props: {
             </div>
             <span className={`cu-s ${mark?.className ?? ""}`}>
               {mark?.text}
+              {mark?.under?.map((line) => (
+                <small key={line.text} className={line.className}>
+                  {line.text}
+                </small>
+              ))}
             </span>
           </li>
         );

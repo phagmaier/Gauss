@@ -1180,7 +1180,7 @@ test("at the unit's end, going over again and finishing without the rest go thro
   expect(await finished.json()).toEqual({ ok: true });
   expect(await unitState()).toBeUndefined();
   expect(await progress()).toEqual({
-    vectors: { status: "overridden" },
+    vectors: { status: "overridden", retained: 0, slipping: 0 },
     eigen: { status: "not-started" },
   });
   const again = await post(setup.app, `${UNIT}/go-over-again`);
@@ -1371,7 +1371,7 @@ async function courseWithEvidence() {
       assisted: false,
       verdict: "correct",
     },
-    // Recorded last, though its timestamp is the earliest.
+    // Recorded last, though its timestamp is the earliest; given in a review.
     {
       kind: "answer",
       recordedAt: at("09:00"),
@@ -1385,6 +1385,7 @@ async function courseWithEvidence() {
       },
       assisted: false,
       verdict: "correct",
+      assessment: { mode: "review", unit: "vectors" },
     },
     {
       kind: "answer",
@@ -1424,8 +1425,9 @@ test("what I know sends each planned unit's objectives with their status and evi
             id: "basis-image",
             statement: "Describe a linear map by a basis.",
             // Since the miss, two different questions answered correctly
-            // without help; the answer with help counts for nothing.
-            status: "passed",
+            // without help, one in a review; the answer with help counts
+            // for nothing.
+            status: "retained",
             evidence: [
               {
                 kind: "answer",
@@ -1479,6 +1481,7 @@ test("what I know sends each planned unit's objectives with their status and evi
                 },
                 assisted: false,
                 verdict: "correct",
+                assessment: { mode: "review", unit: "vectors" },
               },
             ],
           },

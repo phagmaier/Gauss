@@ -51,8 +51,8 @@ test("the seed gives courses in each state, as the routes would send them", {
     "calculus-i": {
       approval: "approved",
       progress: {
-        limits: { status: "passed" },
-        derivative: { status: "overridden" },
+        limits: { status: "passed", retained: 2, slipping: 1 },
+        derivative: { status: "overridden", retained: 0, slipping: 0 },
         rules: { status: "in-progress", segment: 1 },
         optimisation: { status: "not-started" },
         integral: { status: "in-progress", segment: 0 },
@@ -70,8 +70,8 @@ test("the seed gives courses in each state, as the routes would send them", {
     probability: {
       approval: "approved",
       progress: {
-        events: { status: "passed" },
-        bayes: { status: "overridden" },
+        events: { status: "passed", retained: 0, slipping: 0 },
+        bayes: { status: "overridden", retained: 0, slipping: 0 },
       },
     },
     topology: { approval: "draft", progress: {} },
@@ -81,7 +81,9 @@ test("the seed gives courses in each state, as the routes would send them", {
     },
     "the-pigeonhole-principle": {
       approval: "approved",
-      progress: { pigeonhole: { status: "passed" } },
+      progress: {
+        pigeonhole: { status: "passed", retained: 0, slipping: 0 },
+      },
     },
   });
   // Of Calculus I's units in progress, unit 5 was opened last.

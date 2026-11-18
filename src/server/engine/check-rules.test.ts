@@ -94,6 +94,27 @@ test.each<{
     expected: { state: "done", asked: 1 },
   },
   {
+    // Going over a slipping objective again: a correct answer in an earlier
+    // review and one in the check pass it, and it is retained.
+    name: "slipping, a correct answer in a review, then one in the check",
+    before: [
+      answer(1, "correct", "90"),
+      { ...answer(2, "incorrect"), assessment: { mode: "gate", unit: "u" } },
+      { ...answer(3, "correct"), assessment: { mode: "review", unit: "u" } },
+    ],
+    check: [answer(4, "correct", "50")],
+    expected: { state: "done", asked: 1 },
+  },
+  {
+    name: "slipping before the check, and one correct answer in it",
+    before: [
+      answer(1, "correct", "90"),
+      { ...answer(2, "incorrect"), assessment: { mode: "gate", unit: "u" } },
+    ],
+    check: [answer(3, "correct", "100")],
+    expected: { state: "more", reason: "second", asked: 1, missed: 0 },
+  },
+  {
     name: "a miss, then a confident correct answer",
     check: [answer(1, "incorrect"), answer(2, "correct", "100")],
     expected: { state: "more", reason: "second", asked: 2, missed: 1 },

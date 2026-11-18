@@ -10,7 +10,19 @@ import { Slug, Timestamp } from "./course.ts";
 import { DisputeOutcome, DisputeReason } from "./dispute.ts";
 import { AnswerSubmission, Question, Unsettled, Verdict } from "./question.ts";
 
-/** A graded answer to a check question. */
+/**
+ * The runs of questions without teaching that a unit's tutor asks
+ * (docs/decisions.md, "Mastery loop"): review at the start of a sitting,
+ * the unit gate, and the test before a unit is taught.
+ */
+export const AssessmentMode = z.enum(["review", "gate", "test-out"]);
+export type AssessmentMode = z.infer<typeof AssessmentMode>;
+
+/** The assessment an answer was given in, and the unit whose thread held it. */
+export const Assessment = z.object({ mode: AssessmentMode, unit: Slug });
+export type Assessment = z.infer<typeof Assessment>;
+
+/** A graded answer to a question of a check or an assessment. */
 export const AnswerEvidence = z
   .object({
     kind: z.literal("answer"),
@@ -44,6 +56,11 @@ export const AnswerEvidence = z
      * they ran on the learner's files (task 3.7).
      */
     output: z.string().optional(),
+    /**
+     * For an answer given in an assessment, and only there: which. None for
+     * a segment's check. Retained and slipping read it (record/status.ts).
+     */
+    assessment: Assessment.optional(),
   })
   .refine((e) => (e.answer.kind === "unknown") === (e.verdict === "unknown"), {
     message: `An "I don't know" is graded "unknown", and nothing else is.`,

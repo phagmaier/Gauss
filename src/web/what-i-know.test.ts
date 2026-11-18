@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import type { ObjectiveStatus } from "../shared/status.ts";
 import type {
   ShownEvidence,
   ShownQuestion,
@@ -15,9 +16,10 @@ import {
 } from "./what-i-know.ts";
 
 // Every expected result is worked out by hand from the task (plan 2.26) and
-// the session's own words for a graded answer (QuestionCard.tsx).
+// the session's own words for a graded answer (QuestionCard.tsx); retained,
+// slipping and where an answer was given from piece 16 (plan 5.2).
 
-type Status = "passed" | "overridden" | "attempted" | "not-started";
+type Status = ObjectiveStatus;
 
 /** A course whose units have objectives of these statuses; null: not started. */
 const view = (...units: (Status[] | null)[]): WhatIKnow => ({
@@ -48,8 +50,20 @@ test.each([
     says: "2 units started, with 9 objectives: 3 passed, 1 overridden, 3 not passed yet and 2 not started.",
   },
   {
+    // Piece 16's order: retained, passed, slipping, then the rest.
+    units: [
+      ["slipping", "attempted", "retained", "passed"],
+      ["retained", "overridden", "not-started"],
+    ] as (Status[] | null)[],
+    says: "2 units started, with 7 objectives: 2 retained, 1 passed, 1 slipping, 1 overridden, 1 not passed yet and 1 not started.",
+  },
+  {
     units: [["passed"], null] as (Status[] | null)[],
     says: "1 unit started, with 1 objective: passed.",
+  },
+  {
+    units: [["slipping", "slipping"]] as (Status[] | null)[],
+    says: "1 unit started, with 2 objectives: all slipping.",
   },
   {
     units: [["passed", "passed"]] as (Status[] | null)[],
@@ -82,11 +96,20 @@ test("units not started are named on one line, after the others", () => {
 
 test("each status of an objective and of a unit has its word", () => {
   expect(
-    (["passed", "overridden", "attempted", "not-started"] as const).map(
-      objectiveMark,
-    ),
+    (
+      [
+        "retained",
+        "passed",
+        "slipping",
+        "overridden",
+        "attempted",
+        "not-started",
+      ] as const
+    ).map(objectiveMark),
   ).toEqual([
+    { text: "Retained", className: "kept" },
     { text: "Passed", className: "pass" },
+    { text: "Slipping", className: "slip" },
     { text: "Overridden", className: "over" },
     { text: "Not passed yet", className: "miss" },
     { text: "Not started", className: "" },
@@ -409,6 +432,73 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
   ],
 )("$name", ({ entry, says }) => {
   expect(answerLine(entry)).toEqual(says);
+});
+
+/** A choice answered `choice` (the key is B), in the assessment given, if any. */
+const given = (
+  choice: "A" | "B" | null,
+  assessment?: Answer["assessment"],
+  dispute?: Answer["dispute"],
+): Answer => ({
+  kind: "answer",
+  recordedAt: AT,
+  question: CHOICE,
+  answer:
+    choice === null
+      ? { kind: "unknown", questionId: "q" }
+      : { kind: "choice", questionId: "q", choice, confidence: "75" },
+  assisted: false,
+  verdict:
+    choice === null ? "unknown" : choice === "B" ? "correct" : "incorrect",
+  ...(assessment === undefined ? {} : { assessment }),
+  ...(dispute === undefined ? {} : { dispute }),
+});
+const OVERTURNED: Answer["dispute"] = {
+  recordedAt: AT,
+  reason: "A is right.",
+  outcome: { verdict: "correct", reason: "It is.", key: "A" },
+};
+
+test.each<{ name: string; entry: Answer; says: string | undefined }>([
+  { name: "in a segment's check", entry: given("B"), says: undefined },
+  {
+    name: "in a review",
+    entry: given("A", { mode: "review", unit: "limits" }),
+    says: "In a review",
+  },
+  {
+    name: "in a gate, named by its unit's number",
+    entry: given("B", { mode: "gate", unit: "derivative" }),
+    says: "In unit 2's gate",
+  },
+  {
+    name: "in the gate of a unit the course no longer lists",
+    entry: given("B", { mode: "gate", unit: "gone" }),
+    says: "In a gate",
+  },
+  {
+    name: "testing out, right",
+    entry: given("B", { mode: "test-out", unit: "limits" }),
+    says: "Testing out",
+  },
+  {
+    name: "testing out, missed",
+    entry: given("A", { mode: "test-out", unit: "limits" }),
+    says: "Testing out, so not counted as a miss",
+  },
+  {
+    name: `testing out, "I don't know"`,
+    entry: given(null, { mode: "test-out", unit: "limits" }),
+    says: "Testing out, so not counted as a miss",
+  },
+  {
+    name: "testing out, missed, then overturned by a dispute",
+    entry: given("A", { mode: "test-out", unit: "limits" }, OVERTURNED),
+    says: "Testing out",
+  },
+])("an answer given $name says so: $says", ({ entry, says }) => {
+  const numbers: Record<string, number> = { limits: 1, derivative: 2 };
+  expect(answerLine(entry, (id) => numbers[id]).givenIn).toBe(says);
 });
 
 test("a code question's output marks its failure lines, and its last line as the pass or the failure the verdict says", () => {

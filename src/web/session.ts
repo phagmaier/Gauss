@@ -306,18 +306,39 @@ const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * check now goes on until each objective passes (task 2.19), so one only
  * attempted at the unit's end is from a check closed at the old limit.
  */
-const WHY: Record<Exclude<ObjectiveStatus, "passed">, string> = {
+const WHY: Record<Exclude<ObjectiveStatus, "passed" | "retained">, string> = {
+  slipping: "It passed, then was missed in a review or a gate",
   attempted: "Its check ended before it passed",
   overridden: "You moved on before it passed",
   "not-started": "Not checked yet",
 };
 
+/** A row's word and the class that colours it (pieces 10 and 16). */
+function rowWord(status: ObjectiveStatus): { text: string; className: string } {
+  switch (status) {
+    case "passed":
+      return { text: "Passed", className: "pass" };
+    case "retained":
+      return { text: "Retained", className: "kept" };
+    case "slipping":
+      return { text: "Slipping", className: "slip" };
+    default:
+      return { text: "Not passed", className: "miss" };
+  }
+}
+
 export interface ClosingCard {
   verdict: { text: string; className: "ok" | "warn" };
-  /** "Five of seven objectives passed." */
+  /** "Five of seven objectives passed." Retained ones are passed; slipping ones are not. */
   summary: string;
   /** One row per objective, in the plan's order. */
-  rows: { id: string; statement: string; passed: boolean; why?: string }[];
+  rows: {
+    id: string;
+    statement: string;
+    passed: boolean;
+    word: { text: string; className: string };
+    why?: string;
+  }[];
   notPassed: number;
   /** The label of the step that goes over the objectives not passed again. */
   again: string;
@@ -331,9 +352,10 @@ export function closingCard(
 ): ClosingCard {
   const rows = plan.objectives.map((o) => {
     const status = card.objectives[o.id] ?? "not-started";
-    return status === "passed"
-      ? { id: o.id, statement: o.statement, passed: true }
-      : { id: o.id, statement: o.statement, passed: false, why: WHY[status] };
+    const row = { id: o.id, statement: o.statement, word: rowWord(status) };
+    return status === "passed" || status === "retained"
+      ? { ...row, passed: true }
+      : { ...row, passed: false, why: WHY[status] };
   });
   const total = rows.length;
   const missed = rows.filter((r) => !r.passed).length;

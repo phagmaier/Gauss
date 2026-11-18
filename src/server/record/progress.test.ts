@@ -5,7 +5,8 @@ import { courseProgress } from "./progress.ts";
 
 // The expected progress below was worked out by hand from the rules in
 // docs/decisions.md, "Objective status": what passes, and that a unit with a
-// position in state.json is in progress.
+// position in state.json is in progress; and "Mastery loop": what is
+// retained and slipping.
 
 const planned = (id: string, objectives: string[]): StoredUnit => ({
   id,
@@ -85,12 +86,62 @@ test("each unit's status, and the segment of each unit with a position", () => {
   ];
 
   expect(courseProgress(curriculum, state, evidence)).toEqual({
-    limits: { status: "passed" },
-    derivative: { status: "overridden" },
+    limits: { status: "passed", retained: 0, slipping: 0 },
+    derivative: { status: "overridden", retained: 0, slipping: 0 },
     rules: { status: "in-progress", segment: 1 },
     integral: { status: "in-progress", segment: 0 },
     substitution: { status: "in-progress" },
     constructor: { status: "not-started" },
+  });
+});
+
+/** An answer at 90% given in another unit's assessment. */
+const assessed = (
+  objective: string,
+  verdict: "correct" | "incorrect",
+  mode: "review" | "gate",
+) => {
+  const entry = sure(objective, verdict);
+  if (entry.kind !== "answer") throw new Error("An answer was made.");
+  return EvidenceEntry.parse({
+    ...entry,
+    question: { ...entry.question, prompt: `Again, about ${objective}.` },
+    answer: { ...entry.answer, questionId: `${mode}-${objective}` },
+    assessment: { mode, unit: "later" },
+  });
+};
+
+test("how many of a finished unit's objectives are retained and slipping, and none counted for a unit in progress", () => {
+  const curriculum = approved([
+    planned("limits", ["limit-law", "squeeze", "continuity"]),
+    planned("derivative", ["definition", "rate"]),
+    planned("rules", ["power"]),
+  ]);
+  const state = { units: { rules: { segment: 0, phase: "check" as const } } };
+  const evidence = [
+    // Limits: one retained by a review, one slipping after a gate, one passed.
+    sure("limit-law", "correct"),
+    sure("squeeze", "correct"),
+    sure("continuity", "correct"),
+    assessed("limit-law", "correct", "review"),
+    assessed("squeeze", "incorrect", "gate"),
+    // The derivative: one retained, one overridden.
+    sure("definition", "correct"),
+    assessed("definition", "correct", "gate"),
+    {
+      kind: "override" as const,
+      recordedAt: "2026-11-15T11:00:00.000Z",
+      objectives: ["rate"],
+    },
+    // The rules, in progress: retained, but not counted.
+    sure("power", "correct"),
+    assessed("power", "correct", "review"),
+  ];
+
+  expect(courseProgress(curriculum, state, evidence)).toEqual({
+    limits: { status: "passed", retained: 1, slipping: 1 },
+    derivative: { status: "overridden", retained: 1, slipping: 0 },
+    rules: { status: "in-progress", segment: 0 },
   });
 });
 

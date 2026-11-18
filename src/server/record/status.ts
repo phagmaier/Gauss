@@ -1,13 +1,18 @@
 // Objective and unit status, derived from the evidence log and never stored
 // (architecture.md section 3). Pure: the caller reads the record. The rules,
-// with the reasons for them, are in docs/decisions.md, "Objective status".
-// A disputed answer counts with its dispute's verdict (disputes.ts).
+// with the reasons for them, are in docs/decisions.md, "Objective status"
+// and, for retained and slipping, "Mastery loop". A disputed answer counts
+// with its dispute's verdict (disputes.ts).
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { DisputeEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import { isConfident, type Question } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
-import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
+import {
+  hasPassed,
+  type ObjectiveStatus,
+  type UnitStatus,
+} from "../../shared/status.ts";
 import { countedEvidence } from "./disputes.ts";
 
 /**
@@ -16,12 +21,17 @@ import { countedEvidence } from "./disputes.ts";
  * its dispute's verdict (task 3.8).
  *
  * - A miss (a wrong answer or "I don't know", with help or without) clears
- *   the correct answers before it.
+ *   the correct answers before it. A miss while testing out is not one: it
+ *   counts as an answer, and changes nothing else.
  * - The objective passes once, since its last miss, it has unassisted
  *   correct answers to two different questions, at any confidence; or, if
  *   it was never missed, one unassisted correct answer given at 90% or
  *   100% (task 2.23).
  * - A correct answer given with help counts for nothing either way.
+ * - Passed, it is retained if one of those answers was given in a review or
+ *   a gate.
+ * - Missed in a review or a gate while it was passed, it is slipping until
+ *   it passes again.
  * - An override marks it overridden, but never takes away a pass. A later
  *   answer takes the override's place.
  */
@@ -36,6 +46,11 @@ export function objectiveStatus(
   let problems = new Set<string>();
   /** Whether one of those answers was given at 90% or 100%. */
   let confident = false;
+  /** Whether one of those answers was given in a review or a gate. */
+  let cold = false;
+  /** Whether it was passed when it was last missed, and missed in a review or a gate. */
+  let slipped = false;
+  const passes = () => problems.size >= 2 || (confident && !missed);
 
   for (const entry of countedEvidence(evidence)) {
     if (entry.kind === "override") {
@@ -45,10 +60,14 @@ export function objectiveStatus(
     if (entry.objective !== objective) continue;
     answered = true;
     overridden = false;
+    const mode = entry.assessment?.mode;
     if (entry.verdict !== "correct") {
+      if (mode === "test-out") continue;
+      if (passes()) slipped = mode === "review" || mode === "gate";
       missed = true;
       problems = new Set();
       confident = false;
+      cold = false;
     } else if (!entry.assisted) {
       problems.add(problemOf(entry.question));
       if (
@@ -56,19 +75,21 @@ export function objectiveStatus(
         isConfident(entry.answer.confidence)
       )
         confident = true;
+      if (mode === "review" || mode === "gate") cold = true;
     }
   }
 
-  if (problems.size >= 2 || (confident && !missed)) return "passed";
+  if (passes()) return cold ? "retained" : "passed";
   if (overridden) return "overridden";
+  if (slipped) return "slipping";
   return answered ? "attempted" : "not-started";
 }
 
 /**
  * A unit's status. A unit with a position in `state.json` is in progress.
  * Otherwise its objectives decide: none with evidence, or no plan, is not
- * started; all passed is passed; all passed or overridden is overridden;
- * anything else is still in progress.
+ * started; all passed (retained or slipping since) is passed; all passed or
+ * overridden is overridden; anything else is still in progress.
  */
 export function unitStatus(
   unit: StoredUnit,
@@ -79,9 +100,10 @@ export function unitStatus(
   const statuses = (unit.plan?.objectives ?? []).map((o) =>
     objectiveStatus(evidence, o.id),
   );
+  const passedOnce = (s: ObjectiveStatus) => hasPassed(s) || s === "slipping";
   if (statuses.every((s) => s === "not-started")) return "not-started";
-  if (statuses.every((s) => s === "passed")) return "passed";
-  if (statuses.every((s) => s === "passed" || s === "overridden"))
+  if (statuses.every(passedOnce)) return "passed";
+  if (statuses.every((s) => passedOnce(s) || s === "overridden"))
     return "overridden";
   return "in-progress";
 }
@@ -108,18 +130,20 @@ function problemOf(question: Question): string {
 }
 
 /**
- * Whether the dispute takes the pass from the objective, leaving it neither
- * passed nor overridden. In a finished unit the objective is then recorded
- * as overridden with the dispute (task 3.8): the learner moved on from it
- * when the unit ended, and a finished unit is not started again.
+ * Whether the dispute takes the pass from the objective, leaving it
+ * attempted: passed, retained or slipping before, it has then never passed.
+ * In a finished unit the objective is then recorded as overridden with the
+ * dispute (task 3.8): the learner moved on from it when the unit ended, and
+ * a finished unit is not started again.
  */
 export function takesPass(
   evidence: readonly EvidenceEntry[],
   dispute: DisputeEvidence,
   objective: string,
 ): boolean {
+  const before = objectiveStatus(evidence, objective);
   return (
-    objectiveStatus(evidence, objective) === "passed" &&
+    (hasPassed(before) || before === "slipping") &&
     objectiveStatus([...evidence, dispute], objective) === "attempted"
   );
 }

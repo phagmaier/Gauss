@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { StoredUnit } from "../../shared/curriculum.ts";
-import { EvidenceEntry } from "../../shared/evidence.ts";
+import { type AssessmentMode, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Confidence } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
@@ -8,7 +8,8 @@ import { objectiveStatus, takesPass, unitStatus } from "./status.ts";
 
 // Every expected status below was worked out by hand from the rules in
 // docs/decisions.md, "Objective status", with the passing rule of task 2.23
-// ("Passing without a confident answer"), not by running the code.
+// ("Passing without a confident answer"), and "Mastery loop" for retained
+// and slipping, not by running the code.
 
 const CHAIN = "chain-rule";
 const PRODUCT = "product-rule";
@@ -23,6 +24,8 @@ interface Given {
   confidence?: Confidence;
   assisted?: boolean;
   recordedAt?: string;
+  /** The assessment it was given in; none for a segment's check. */
+  in?: AssessmentMode;
 }
 
 let asked = 0;
@@ -55,6 +58,9 @@ function answer(
           },
     assisted: given.assisted ?? false,
     verdict,
+    ...(given.in === undefined
+      ? {}
+      : { assessment: { mode: given.in, unit: "differentiation" } }),
   });
 }
 /** A written answer, graded as the grader would. */
@@ -331,6 +337,163 @@ describe("objective status", () => {
   });
 });
 
+describe("retained and slipping", () => {
+  const cases: { name: string; log: EvidenceEntry[]; is: ObjectiveStatus }[] = [
+    {
+      name: "a pass, then a correct answer in a review",
+      log: [right("90"), right("50", { in: "review" })],
+      is: "retained",
+    },
+    {
+      name: "a pass by two answers, then a correct answer in a gate",
+      log: [right("75"), right("50"), right("75", { in: "gate" })],
+      is: "retained",
+    },
+    {
+      // A gate's answer counts even with no time since the pass, and it
+      // can be the one that passes.
+      name: "after a miss, a correct answer in a check and one in a gate",
+      log: [wrong("75"), right("75"), right("50", { in: "gate" })],
+      is: "retained",
+    },
+    {
+      name: "one confident correct answer testing out passes, and is not retained",
+      log: [right("100", { in: "test-out" })],
+      is: "passed",
+    },
+    {
+      name: "a pass, then a correct answer testing out",
+      log: [right("90"), right("90", { in: "test-out" })],
+      is: "passed",
+    },
+    {
+      name: "a pass, then a correct answer in a review with help",
+      log: [right("90"), right("90", { in: "review", assisted: true })],
+      is: "passed",
+    },
+    {
+      name: "a pass, then a miss in a review",
+      log: [right("90"), wrong("75", { in: "review" })],
+      is: "slipping",
+    },
+    {
+      name: `a retained objective, then "I don't know" in a gate`,
+      log: [
+        right("90"),
+        right("75", { in: "review" }),
+        dontKnow({ in: "gate" }),
+      ],
+      is: "slipping",
+    },
+    {
+      name: "slipping, then one confident correct answer, which does not pass after a miss",
+      log: [right("90"), wrong("75", { in: "review" }), right("100")],
+      is: "slipping",
+    },
+    {
+      name: "slipping, then missed again in a check",
+      log: [right("90"), wrong("75", { in: "gate" }), right("75"), wrong("50")],
+      is: "slipping",
+    },
+    {
+      name: "slipping, then two correct answers in checks",
+      log: [
+        right("90"),
+        wrong("75", { in: "review" }),
+        right("75"),
+        right("50"),
+      ],
+      is: "passed",
+    },
+    {
+      name: "slipping, then two correct answers, one of them in a review",
+      log: [
+        right("90"),
+        wrong("75", { in: "review" }),
+        right("75", { in: "review" }),
+        right("50"),
+      ],
+      is: "retained",
+    },
+    {
+      // The miss clears the review's answer before it, and nothing since
+      // was given cold.
+      name: "retained, missed in a gate, then passed again in checks",
+      log: [
+        right("90"),
+        right("75", { in: "review" }),
+        wrong("50", { in: "gate" }),
+        right("75"),
+        right("75"),
+      ],
+      is: "passed",
+    },
+    {
+      name: "a miss in a review after a correct answer that did not pass",
+      log: [right("75"), wrong("75", { in: "review" })],
+      is: "attempted",
+    },
+    {
+      // Slipping needs the miss to be in a review or a gate, as the brief
+      // has it; an old record could miss a passed objective in a check.
+      name: "a pass, then a miss in a check",
+      log: [right("90"), wrong("50")],
+      is: "attempted",
+    },
+    {
+      name: "slipping, passed again, then missed in a check",
+      log: [
+        right("90"),
+        wrong("75", { in: "review" }),
+        right("75"),
+        right("50"),
+        wrong("50"),
+      ],
+      is: "attempted",
+    },
+    {
+      name: "a miss while testing out counts as an answer",
+      log: [dontKnow({ in: "test-out" })],
+      is: "attempted",
+    },
+    {
+      name: "a miss while testing out, then one confident correct answer",
+      log: [wrong("90", { in: "test-out" }), right("90")],
+      is: "passed",
+    },
+    {
+      // Not a miss, so it clears neither the correct answer before it nor
+      // the pass that answer and the next one make.
+      name: "an unsure correct answer and a miss testing out, then one correct answer",
+      log: [
+        right("75", { in: "test-out" }),
+        wrong("50", { in: "test-out" }),
+        right("50"),
+      ],
+      is: "passed",
+    },
+    {
+      name: "a pass testing out, then a miss testing out",
+      log: [right("100", { in: "test-out" }), dontKnow({ in: "test-out" })],
+      is: "passed",
+    },
+    {
+      name: "slipping, then moved on from",
+      log: [right("90"), wrong("75", { in: "gate" }), override(CHAIN)],
+      is: "overridden",
+    },
+    {
+      name: "overridden, then passed and missed in a review",
+      log: [override(CHAIN), right("90"), wrong("75", { in: "review" })],
+      is: "slipping",
+    },
+  ];
+
+  test.each(cases)("$name: $is", ({ log, is }) => {
+    expect(objectiveStatus(log, CHAIN)).toBe(is);
+  });
+});
+
 // The theology course's first objective as the user answered it on
 // 2026-11-17. Under task 2.19's rule the first two answers never counted,
 // and it ended overridden.
@@ -513,6 +676,38 @@ describe("unit status", () => {
       log: SITTING.slice(4, 9),
       is: "in-progress",
     },
+    {
+      name: "every objective passed, one retained since, and the unit closed",
+      unit: UNIT,
+      log: [...SITTING, right("50", { in: "review" })],
+      is: "passed",
+    },
+    {
+      // A miss in a later unit's review does not reopen a finished unit.
+      name: "every objective passed, one slipping since, and the unit closed",
+      unit: UNIT,
+      log: [...SITTING, wrong("75", { in: "review" })],
+      is: "passed",
+    },
+    {
+      name: "one objective overridden, one slipping since, and the unit closed",
+      unit: UNIT,
+      log: [
+        ...SITTING.slice(0, 9),
+        wrong("75", { objective: IMPLICIT, in: "gate" }),
+      ],
+      is: "overridden",
+    },
+    {
+      name: "one objective slipping, one only attempted, and no position",
+      unit: UNIT,
+      log: [
+        right("90", { objective: PRODUCT }),
+        wrong("75", { objective: PRODUCT, in: "review" }),
+        right("75"),
+      ],
+      is: "in-progress",
+    },
   ];
 
   test.each(cases)("$name: $is", ({ unit, log, position, is }) => {
@@ -544,6 +739,8 @@ describe("a disputed answer counts with its dispute's verdict, where the answer 
   const first75 = right("75", { prompt: "First." });
   const second75 = right("75", { prompt: "Second." });
   const early = wrong("75");
+  const reviewMissed = wrong("75", { in: "review" });
+  const reviewRight = right("50", { in: "review" });
   const cases: { name: string; log: EvidenceEntry[]; is: ObjectiveStatus }[] = [
     {
       name: "a miss at 90% then one unsure correct answer, as graded",
@@ -586,14 +783,37 @@ describe("a disputed answer counts with its dispute's verdict, where the answer 
       log: [early, override(CHAIN), disputed(early, "correct")],
       is: "overridden",
     },
+    {
+      name: "a pass, then a miss in a review overturned",
+      log: [alone100, reviewMissed, disputed(reviewMissed, "correct")],
+      is: "retained",
+    },
+    {
+      name: "a pass, then a review's correct answer overturned",
+      log: [alone100, reviewRight, disputed(reviewRight, "incorrect")],
+      is: "slipping",
+    },
   ];
   test.each(cases)("$name: $is", ({ log, is }) => {
     expect(objectiveStatus(log, CHAIN)).toBe(is);
   });
 
-  test("a dispute takes the pass only when it leaves the objective neither passed nor overridden", () => {
+  test("a dispute takes the pass only when it leaves the objective attempted", () => {
     const alone = right("100");
     expect(takesPass([alone], disputed(alone, "incorrect"), CHAIN)).toBe(true);
+    // Slipping or retained, the objective never passed once its pass goes.
+    const missed75 = wrong("75", { in: "review" });
+    expect(
+      takesPass([alone, missed75], disputed(alone, "incorrect"), CHAIN),
+    ).toBe(true);
+    const confirmed = right("50", { in: "review" });
+    expect(
+      takesPass([alone, confirmed], disputed(alone, "incorrect"), CHAIN),
+    ).toBe(true);
+    // Retained to slipping: it passed once, and its unit stays finished.
+    expect(
+      takesPass([alone, confirmed], disputed(confirmed, "incorrect"), CHAIN),
+    ).toBe(false);
     // Overridden after the answer: the override stands once the pass goes.
     expect(
       takesPass([alone, override(CHAIN)], disputed(alone, "incorrect"), CHAIN),

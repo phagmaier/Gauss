@@ -6,7 +6,7 @@
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import type { CurriculumProposal, Unit } from "../../shared/curriculum.ts";
-import type { EvidenceEntry } from "../../shared/evidence.ts";
+import type { AssessmentMode, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { openDataRoot, resolveDataRoot } from "./data-root.ts";
 
@@ -40,7 +40,9 @@ const DAY = 24 * 60 * 60 * 1000;
  * Seeds an empty data root with six courses and returns their ids; a data
  * root that has a course already is left as it is, and nothing is returned.
  *
- * - "Calculus I", six units: unit 1 passed, unit 2 overridden, units 3 and 5
+ * - "Calculus I", six units: unit 1 passed, its gate answered right on
+ *   both its objectives, and the second missed later in unit 3's review,
+ *   so one is retained and one slipping; unit 2 overridden, units 3 and 5
  *   in progress (5 opened last, 3 in its second segment), 4 and 6 not
  *   started.
  * - "Linear algebra for PCA", three units, approved and not started.
@@ -117,6 +119,32 @@ export async function seedCourses(options: {
       assisted: false,
       verdict: "correct",
     });
+    /** An answer at 75% in an assessment held in `held`'s thread. */
+    const assessed = (
+      objective: string,
+      mode: AssessmentMode,
+      held: string,
+      right: boolean,
+    ): EvidenceEntry => ({
+      kind: "answer",
+      recordedAt: clock.toISOString(),
+      objective,
+      question: {
+        kind: "choice",
+        prompt: `A seeded ${mode} question on "${objective}".`,
+        choices: ["The right answer", "A wrong answer"],
+        answer: "A",
+      },
+      answer: {
+        kind: "choice",
+        questionId: `seeded-${mode}-${objective}`,
+        choice: right ? "A" : "B",
+        confidence: "75",
+      },
+      assisted: false,
+      verdict: right ? "correct" : "incorrect",
+      assessment: { mode, unit: held },
+    });
     /** Plans the unit and returns its objectives' ids, by segment. */
     async function planned(unitId: string): Promise<string[][]> {
       const plan = options.plan(unitId);
@@ -144,6 +172,25 @@ export async function seedCourses(options: {
           recordedAt: clock.toISOString(),
           objectives: rest.flat(),
         });
+      },
+      async gated(unitId) {
+        const objectives = options.plan(unitId).objectives;
+        for (const { id: objective } of objectives) {
+          await root.appendEvidence(
+            id,
+            assessed(objective, "gate", unitId, true),
+          );
+        }
+      },
+      async reviewMissed(held, unitId, at) {
+        const objective = options.plan(unitId).objectives[at]?.id;
+        if (objective === undefined) {
+          throw new Error(`${unitId}'s plan has no objective ${at + 1}.`);
+        }
+        await root.appendEvidence(
+          id,
+          assessed(objective, "review", held, false),
+        );
       },
       async inProgress(unitId, segment) {
         const segments = await planned(unitId);
@@ -173,10 +220,12 @@ export async function seedCourses(options: {
       async (c) => {
         await c.approve();
         await c.passed("limits");
+        await c.gated("limits");
         c.daysAgo(5);
         await c.overridden("derivative");
         c.daysAgo(3);
         await c.inProgress("rules", 1);
+        await c.reviewMissed("rules", "limits", 1);
         c.daysAgo(1);
         await c.inProgress("integral", 0);
       },
@@ -238,6 +287,10 @@ interface Seeding {
   passed(unitId: string): Promise<void>;
   /** The unit, finished: its first segment passed, the rest moved on from. */
   overridden(unitId: string): Promise<void>;
+  /** The unit's gate, answered right on each of its objectives: they are retained. */
+  gated(unitId: string): Promise<void>;
+  /** A miss in a review held in `held`'s thread, on the objective at `at` of the unit's plan. */
+  reviewMissed(held: string, unitId: string, at: number): Promise<void>;
   /** The unit, opened and left in the discussion of that segment, those before it passed. */
   inProgress(unitId: string, segment: number): Promise<void>;
 }

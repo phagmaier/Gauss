@@ -705,17 +705,20 @@ test("a closing card when some did not pass says why for each, and how many", ()
       id: "power-rule",
       statement: "Differentiate a power of x.",
       passed: true,
+      word: { text: "Passed", className: "pass" },
     },
     {
       id: "product-rule",
       statement: "Apply the product rule.",
       passed: false,
+      word: { text: "Not passed", className: "miss" },
       why: "Its check ended before it passed",
     },
     {
       id: "chain-rule",
       statement: "Apply the chain rule.",
       passed: false,
+      word: { text: "Not passed", className: "miss" },
       why: "You moved on before it passed",
     },
   ]);
@@ -724,6 +727,43 @@ test("a closing card when some did not pass says why for each, and how many", ()
   expect(card.movedOn).toBe(
     "You moved on. The unit is recorded as overridden, and the two objectives stay not passed.",
   );
+});
+
+test("a closing card counts a retained objective as passed, and a slipping one as not passed", () => {
+  const card = closingCard(PLAN, {
+    passed: false,
+    objectives: {
+      "power-rule": "retained",
+      "product-rule": "passed",
+      "chain-rule": "slipping",
+    },
+  });
+
+  expect(card.verdict).toEqual({ text: "One not passed", className: "warn" });
+  expect(card.summary).toBe("Two of three objectives passed.");
+  expect(card.rows).toEqual([
+    {
+      id: "power-rule",
+      statement: "Differentiate a power of x.",
+      passed: true,
+      word: { text: "Retained", className: "kept" },
+    },
+    {
+      id: "product-rule",
+      statement: "Apply the product rule.",
+      passed: true,
+      word: { text: "Passed", className: "pass" },
+    },
+    {
+      id: "chain-rule",
+      statement: "Apply the chain rule.",
+      passed: false,
+      word: { text: "Slipping", className: "slip" },
+      why: "It passed, then was missed in a review or a gate",
+    },
+  ]);
+  expect(card.notPassed).toBe(1);
+  expect(card.again).toBe("Go over it again");
 });
 
 test("once moved on from, the card's verdict is overridden", () => {

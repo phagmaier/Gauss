@@ -3,7 +3,8 @@
 // each the evidence behind it in the order it was recorded: the question,
 // the answer (or "I don't know" and where the learner got stuck), how sure,
 // help, the grade with a written answer's flaw, and the date; an override is
-// a line of its own. Its words are in what-i-know.ts. Under the summary, the
+// a line of its own, and an answer given in a review, a gate or a test says
+// so (piece 16). Its words are in what-i-know.ts. Under the summary, the
 // course's calibration (task 2.29), its words in calibration.ts. Each
 // graded answer can be disputed here (task 3.8, Dispute.tsx); once its
 // outcome is in, the view is loaded again, since statuses and calibration
@@ -56,6 +57,8 @@ export function WhatIKnow(props: { courseId: string }) {
   useEffect(load, [load]);
 
   const unstarted = view == null ? null : unstartedLine(view);
+  const unitNumber = (id: string) =>
+    view?.units.find((u) => u.id === id)?.number;
   return (
     <div className="pg">
       <TopLine
@@ -89,6 +92,7 @@ export function WhatIKnow(props: { courseId: string }) {
                     objectives={unit.objectives}
                     disputes={disputes}
                     onDisputed={load}
+                    unitNumber={unitNumber}
                   />
                 ),
               )}
@@ -107,6 +111,8 @@ export function WhatIKnow(props: { courseId: string }) {
 interface Disputing {
   disputes: DisputeApi;
   onDisputed(): void;
+  /** A unit's number by its id, to name the unit whose gate an answer was given in. */
+  unitNumber(unitId: string): number | undefined;
 }
 
 function UnitSection(
@@ -130,6 +136,7 @@ function UnitSection(
             objective={objective}
             disputes={props.disputes}
             onDisputed={props.onDisputed}
+            unitNumber={props.unitNumber}
           />
         ))}
       </ol>
@@ -161,6 +168,7 @@ function ObjectiveItem(props: { objective: KnownObjective } & Disputing) {
                   entry={entry}
                   disputes={props.disputes}
                   onDisputed={props.onDisputed}
+                  unitNumber={props.unitNumber}
                 />
               ) : (
                 <div className="q-count">
@@ -181,7 +189,7 @@ function AnswerEntry(
 ) {
   const { entry } = props;
   const { question, answer } = entry;
-  const line = answerLine(entry);
+  const line = answerLine(entry, props.unitNumber);
   const choices = question.kind === "choice" ? question.choices : [];
   return (
     <>
@@ -192,6 +200,9 @@ function AnswerEntry(
         {line.sure === undefined ? null : <span>{line.sure}</span>}
         {line.help === undefined ? null : (
           <span className="wk-help">{line.help}</span>
+        )}
+        {line.givenIn === undefined ? null : (
+          <span className="wk-in">{line.givenIn}</span>
         )}
       </div>
       <div className="qa-prompt prose">

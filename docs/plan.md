@@ -40,43 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.2 Retained and slipping
-
-- Status: todo
-- Depends on: stage 3
-- Why: "passed" is evidence from minutes after the teaching. The brief's
-  second tier needs to know where an answer was given, and a miss after a
-  pass must not turn a finished unit into one half-written.
-- Do: an answer's evidence says which assessment it was given in
-  (`review`, `gate` or `test-out`; absent for a segment's check, and in
-  every record so far). `record/status.ts`, as `decisions.md`, "Mastery
-  loop" defines them: retained is passed with, since the last miss, an
-  unassisted correct answer given in a review or a gate; slipping is an
-  objective that had passed, was then missed, and has not passed again;
-  a miss while testing out counts as an answer but not as a miss. A
-  finished unit stays finished with slipping objectives. Everything that
-  switches on a status takes the two new ones: the closing card's list
-  of objectives not passed (slipping is not passed), unit progress, the
-  unit planner's status list, "What I know" (which also says where each
-  answer was given) and the course view, worded and coloured as piece 16
-  has them: "Retained" in teal and "Slipping" in peach, and under a
-  finished unit's word in the course view how many of its objectives are
-  retained and how many slipping. The dev seed gets a course with a retained and a slipping
-  objective.
-- Done when: tests on hand-worked logs pass: retained by a review answer
-  and by a gate answer, not by one given testing out or with help;
-  slipping after a miss that follows a pass, then passed again after two
-  correct answers, and retained when one of them was in a review; a miss
-  while testing out followed by one confident correct answer passes; a
-  disputed review answer counts with its dispute's verdict; a finished
-  unit with a slipping objective stays finished; a record with no
-  assessment named reads as before. `mise run check` passes; on `pnpm
-  dev:fake` "What I know" and the course view show both statuses, and
-  the browser is closed before the server stops.
-- Note: the rule that an overturned pass in a finished unit records an
-  override stays (`decisions.md`, "Disputes"): that objective never
-  passed, so it is not slipping.
-
 ### 5.3 What review asks, and what was asked before
 
 - Status: todo
@@ -115,7 +78,9 @@ a detour, a unit gate, generated notes and an exported transcript.
     alone (its mode, its objectives, where it began in the evidence), so
     a restart reopens it and the unit goes on where it was once it ends.
     In it `ask_question` is allowed on its objectives only, in any phase;
-    answers are recorded with its mode; help is judged as in a check;
+    answers are recorded with its `assessment` (its mode and the unit
+    whose thread holds it, `Assessment` in `evidence.ts`); help is judged
+    as in a check;
     "ready", the next segment and moving on are refused until it ends or
     is skipped.
   - Its rules, in a module of their own beside `check-rules.ts`: each

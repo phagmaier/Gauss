@@ -139,32 +139,45 @@ describe("the session's one turn", () => {
   test("names the unit, and gives the background note, then the curriculum with how the learner stands on each planned objective", async () => {
     const id = await course();
     await root.storePlan(id, "derivative", DERIVATIVE_PLAN);
-    // The definition passed at 90%; the rate was missed.
-    const answer = (objective: string, choice: string, verdict: string) =>
+    // The definition passed at 90% and was answered again in a review: it
+    // is retained. The rate passed at 90%, then was missed in a gate: it is
+    // slipping.
+    const answer = (
+      objective: string,
+      n: number,
+      verdict: string,
+      mode?: string,
+    ) =>
       EvidenceEntry.parse({
         kind: "answer",
         recordedAt: "2026-11-15T10:40:00.000Z",
         objective,
         question: {
           kind: "choice",
-          prompt: `A question on ${objective}`,
+          prompt: `Question ${n} on ${objective}`,
           choices: ["One", "Two"],
           answer: "A",
         },
         answer: {
           kind: "choice",
-          questionId: objective,
-          choice,
+          questionId: `${objective}-${n}`,
+          choice: verdict === "correct" ? "A" : "B",
           confidence: "90",
         },
         assisted: false,
         verdict,
+        ...(mode === undefined
+          ? {}
+          : { assessment: { mode, unit: "derivative" } }),
       });
-    await root.appendEvidence(
-      id,
-      answer("difference-quotient", "A", "correct"),
-    );
-    await root.appendEvidence(id, answer("rate", "B", "incorrect"));
+    for (const entry of [
+      answer("difference-quotient", 1, "correct"),
+      answer("rate", 1, "correct"),
+      answer("difference-quotient", 2, "correct", "review"),
+      answer("rate", 2, "incorrect", "gate"),
+    ]) {
+      await root.appendEvidence(id, entry);
+    }
     const { fake, planner } = setUp([
       [{ call: "plan_unit", input: RULES_PLAN }],
     ]);
@@ -188,8 +201,8 @@ describe("the session's one turn", () => {
         {
           ...PROPOSAL.units[0],
           objectives: [
-            { ...DERIVATIVE_PLAN.objectives[0], status: "passed" },
-            { ...DERIVATIVE_PLAN.objectives[1], status: "attempted" },
+            { ...DERIVATIVE_PLAN.objectives[0], status: "retained" },
+            { ...DERIVATIVE_PLAN.objectives[1], status: "slipping" },
           ],
         },
         PROPOSAL.units[1],
