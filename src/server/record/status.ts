@@ -5,7 +5,11 @@
 // with its dispute's verdict (disputes.ts).
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
-import type { DisputeEvidence, EvidenceEntry } from "../../shared/evidence.ts";
+import type {
+  AnswerEvidence,
+  DisputeEvidence,
+  EvidenceEntry,
+} from "../../shared/evidence.ts";
 import { isConfident, type Question } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import {
@@ -39,18 +43,37 @@ export function objectiveStatus(
   evidence: readonly EvidenceEntry[],
   objective: string,
 ): ObjectiveStatus {
+  return standing(evidence, objective).status;
+}
+
+/**
+ * The answers that pass the objective, if it is passed or retained: its
+ * unassisted correct answers since its last miss, each counted with its
+ * dispute's verdict, in log order. None if it is not passed.
+ */
+export function passingAnswers(
+  evidence: readonly EvidenceEntry[],
+  objective: string,
+): AnswerEvidence[] {
+  const { status, since } = standing(evidence, objective);
+  return hasPassed(status) ? since : [];
+}
+
+/** The objective's status, and its unassisted correct answers since its last miss. */
+function standing(
+  evidence: readonly EvidenceEntry[],
+  objective: string,
+): { status: ObjectiveStatus; since: AnswerEvidence[] } {
   let answered = false;
   let missed = false;
   let overridden = false;
-  /** The questions answered correctly without help since the last miss. */
-  let problems = new Set<string>();
-  /** Whether one of those answers was given at 90% or 100%. */
-  let confident = false;
-  /** Whether one of those answers was given in a review or a gate. */
-  let cold = false;
+  /** The answers correct without help since the last miss. */
+  let since: AnswerEvidence[] = [];
   /** Whether it was passed when it was last missed, and missed in a review or a gate. */
   let slipped = false;
-  const passes = () => problems.size >= 2 || (confident && !missed);
+  const passes = () =>
+    new Set(since.map((e) => problemOf(e.question))).size >= 2 ||
+    (!missed && since.some(confident));
 
   for (const entry of countedEvidence(evidence)) {
     if (entry.kind === "override") {
@@ -65,24 +88,37 @@ export function objectiveStatus(
       if (mode === "test-out") continue;
       if (passes()) slipped = mode === "review" || mode === "gate";
       missed = true;
-      problems = new Set();
-      confident = false;
-      cold = false;
+      since = [];
     } else if (!entry.assisted) {
-      problems.add(problemOf(entry.question));
-      if (
-        entry.answer.kind !== "unknown" &&
-        isConfident(entry.answer.confidence)
-      )
-        confident = true;
-      if (mode === "review" || mode === "gate") cold = true;
+      since.push(entry);
     }
   }
 
-  if (passes()) return cold ? "retained" : "passed";
-  if (overridden) return "overridden";
-  if (slipped) return "slipping";
-  return answered ? "attempted" : "not-started";
+  const status: ObjectiveStatus = passes()
+    ? since.some(cold)
+      ? "retained"
+      : "passed"
+    : overridden
+      ? "overridden"
+      : slipped
+        ? "slipping"
+        : answered
+          ? "attempted"
+          : "not-started";
+  return { status, since };
+}
+
+/** Whether the answer was given at 90% or 100%. */
+function confident(entry: AnswerEvidence): boolean {
+  return (
+    entry.answer.kind !== "unknown" && isConfident(entry.answer.confidence)
+  );
+}
+
+/** Whether the answer was given in a review or a gate. */
+function cold(entry: AnswerEvidence): boolean {
+  const mode = entry.assessment?.mode;
+  return mode === "review" || mode === "gate";
 }
 
 /**

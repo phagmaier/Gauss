@@ -40,31 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.3 What review asks, and what was asked before
-
-- Status: todo
-- Depends on: 5.2
-- Why: review and the gate ask about objectives the engine picks, and the
-  tutor asked for a question has to know the ones already asked: a new
-  tutor session repeats a check's problems today, since nothing lists
-  them, and review must ask a fresh question each sitting.
-- Do: a pure function in `record/` that picks objectives for review from
-  the course's plans and evidence at a given time. Only objectives that
-  are passed, retained or slipping, and whose last answer is more than an
-  hour old (`SESSION_GAP_MS`); slipping first, then passed ones by the
-  lowest confidence among the answers that passed them, the longest
-  unanswered first among equals, then retained ones, the longest
-  unanswered first; up to a count, and without the objectives the caller
-  leaves out. Every turn that allows a question lists, for each
-  objective it may be on, the questions the evidence holds on it: the
-  latest six, each on one line and shortened as `disputeNote` shortens a
-  prompt.
-- Done when: tests on hand-worked records cover each rule of the order
-  and its ties, the hour, the count and the objectives left out; tests
-  cover the turn's list (none, several, more than six, a prompt with
-  line breaks and a "]", which must not end the header for the scripted
-  backend); `mise run check` passes.
-
 ### 5.4 Review questions
 
 - Status: todo
@@ -132,7 +107,13 @@ a detour, a unit gate, generated notes and an exported transcript.
   restart leaves it waiting for a message (`decisions.md`, "Known gaps").
   The scripted backend's file names collide across units ("Known gaps"):
   fix that here, since review has one unit's tutor ask about another's
-  objective.
+  objective. The pick is `pickForReview` (`record/review.ts`). The list
+  of questions asked before reads `Where.evidence`, which is the unit's
+  own: a turn that may ask about another unit's objective needs that
+  objective's evidence in it. The scripted backend numbers its questions
+  from the check's "(n asked)", so a review would repeat a check's
+  "question 1", which counts as the same problem: number past the listed
+  ones.
 
 ### 5.5 The unit gate
 

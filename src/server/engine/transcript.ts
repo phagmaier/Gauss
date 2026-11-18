@@ -28,12 +28,9 @@
 // so the earlier sessions are joined again when they are replayed: a page
 // that connects is sent one event a reply, not one a piece.
 
-import type { PageEvent } from "../../shared/events.ts";
+import { type PageEvent, SESSION_GAP_MS } from "../../shared/events.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { createEventLog, type EventLog } from "./conversation.ts";
-
-/** How long a unit is quiet before the next thing that happens starts a session. */
-export const SESSION_GAP_MS = 60 * 60 * 1000;
 
 export interface TranscribedLog extends EventLog {
   /**

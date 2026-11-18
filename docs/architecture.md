@@ -341,7 +341,10 @@ The engine composes every message the tutor receives: a short header (unit,
 segment, phase, what is allowed now, what happened that the tutor has not
 been told, and in a source course the segment's sections), followed by the
 learner's text or an event. An answer's turn repeats the question with its
-choices, the learner's answer, confidence, reasoning and the grade. The
+choices, the learner's answer, confidence, reasoning and the grade. A turn
+that allows a question lists, for each objective it may be on, the
+questions the evidence holds on it, the latest six, so a question is
+fresh even in a new tutor session. The
 wording is in `engine/unit-turns.ts` for unit chats, `engine/intake.ts` and
 `engine/unit-planning.ts`; the scripted backend reads it, so rewording a
 header can break `pnpm dev:fake`, and its tests then fail.
@@ -379,7 +382,9 @@ tab.
 Assessments (the unit gate, testing out of a unit, and the review questions
 that open a sitting; stage 5) reuse this flow in the unit's thread, asked
 by the unit's tutor over objectives the engine selects (`decisions.md`,
-"Mastery loop").
+"Mastery loop"). Which ones review asks, and the gate asks of other units,
+is `pickForReview` in `record/review.ts`: passed, retained and slipping
+objectives not answered within the hour, slipping first.
 
 ## 5. Teaching tools
 

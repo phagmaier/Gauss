@@ -5,7 +5,11 @@
 // details follow it. Pure, so the wording is tested without a chat.
 
 import type { Unit } from "../../shared/curriculum.ts";
-import type { AnswerEvidence, DisputeEvidence } from "../../shared/evidence.ts";
+import type {
+  AnswerEvidence,
+  DisputeEvidence,
+  EvidenceEntry,
+} from "../../shared/evidence.ts";
 import {
   type PackageSpec,
   type PackagesOutcome,
@@ -105,6 +109,11 @@ export interface Where {
   feedbackPending?: number;
   /** Things the tutor has not been told yet, said once, in this header. */
   notes: readonly string[];
+  /**
+   * The evidence on the objectives a question may be on, in log order: a
+   * turn that allows a question lists those asked on them before.
+   */
+  evidence: readonly EvidenceEntry[];
 }
 
 export function teachTurn(where: Where, cutOff: boolean): string {
@@ -356,7 +365,8 @@ export function nextQuestionTurn(
       (after === "feedback"
         ? "Do not repeat your feedback."
         : "Do not go back over the detour.") +
-      " Posting ends your turn.",
+      " Posting ends your turn." +
+      askedBefore(where, toAsk),
   );
 }
 
@@ -385,10 +395,6 @@ export function disputeNote(
 ): string {
   const { question } = answer;
   const { outcome } = dispute;
-  // On one line: a header ends at its first "]" and line end.
-  const line = (text: string) => text.trim().replace(/\s+/g, " ");
-  const prompt = line(question.prompt);
-  const shown = prompt.length > 200 ? `${prompt.slice(0, 199)}…` : prompt;
   const first = answer.verdict === "correct" ? "correct" : "incorrect";
   const grade =
     outcome.verdict === first
@@ -402,10 +408,10 @@ export function disputeNote(
         : "";
   return (
     `The learner disputed the grade of their answer to a question on ` +
-    `"${answer.objective}" ("${shown}"), giving this reason: ` +
-    `"${line(dispute.reason)}". A separate judge, which saw the question, ` +
+    `"${answer.objective}" ("${shortPrompt(question.prompt)}"), giving this reason: ` +
+    `"${oneLine(dispute.reason)}". A separate judge, which saw the question, ` +
     `what it was graded by, the answer and that reason, ${grade}.${key} ` +
-    `Its reason: ${line(outcome.reason)} The answer now counts as ` +
+    `Its reason: ${oneLine(outcome.reason)} The answer now counts as ` +
     `${outcome.verdict}, and where the check stands follows from that.`
   );
 }
@@ -581,7 +587,8 @@ function allowed(where: Where): string {
           `In this check, ${standing}. Allowed now: post a question on ` +
           `${quoted(toAsk)} with ask_question, unlike the ones asked before. ` +
           "Posting ends your turn, so write what you have to say first, " +
-          "then a one-sentence lead-in."
+          "then a one-sentence lead-in." +
+          askedBefore(where, toAsk)
         );
       }
       // The segment closes when the feedback on the check's last answer
@@ -628,6 +635,47 @@ export function checkText(check: ObjectiveCheck | undefined): string {
     case "second":
       return `answered correctly, which does not pass alone, so a second correct answer, to a different question, is needed (${count})`;
   }
+}
+
+/** How many of the questions asked on an objective a turn lists, the latest. */
+const ASKED_LISTED = 6;
+
+/**
+ * For a turn that allows a question: the questions the evidence holds on
+ * each objective it may be on, a line each, from a new line. Each prompt is
+ * quoted, so no line of the list ends in a "]" of a prompt's: the scripted
+ * backend takes the first "]" at a line's end for the header's.
+ */
+function askedBefore(where: Where, objectives: readonly string[]): string {
+  return objectives
+    .map((id) => {
+      const prompts = where.evidence.flatMap((e) =>
+        e.kind === "answer" && e.objective === id ? [e.question.prompt] : [],
+      );
+      if (prompts.length === 0) {
+        return `\nNo question has been asked on "${id}" before.`;
+      }
+      const listed = prompts.slice(-ASKED_LISTED);
+      const head =
+        listed.length < prompts.length
+          ? `The latest ${listed.length} of the ${prompts.length} questions asked on "${id}" before, the oldest first:`
+          : `Asked on "${id}" before, the oldest first:`;
+      return [head, ...listed.map((p) => `- "${shortPrompt(p)}"`)]
+        .map((line) => `\n${line}`)
+        .join("");
+    })
+    .join("");
+}
+
+/** A question's prompt on one line, cut to 200 characters, for a header. */
+function shortPrompt(prompt: string): string {
+  const line = oneLine(prompt);
+  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+}
+
+/** Text on one line: a header ends at its first "]" and line end. */
+function oneLine(text: string): string {
+  return text.trim().replace(/\s+/g, " ");
 }
 
 /** Text between fences of backticks longer than any run of them in it. */

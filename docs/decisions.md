@@ -1335,6 +1335,14 @@ built until its task is done; `architecture.md` says what is.
   unanswered first. Never an objective answered within the hour. Three,
   over the whole course. No schedule of intervals: the order is the
   spacing.
+- **The pick's details** (`record/review.ts`, the agent's): "least
+  confident" is the lowest confidence among the answers that pass the
+  objective, those since its last miss, so an unsure answer a miss
+  cleared does not count. "Answered" is any answer, with help or in a
+  test too, by its timestamp, and "within the hour" means less than
+  `SESSION_GAP_MS` before, the same hour that starts a new sitting.
+  Slipping ones go the longest unanswered first, as retained ones do, and
+  equals then go in the course's order.
 
 **The gate**
 

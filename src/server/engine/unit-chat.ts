@@ -1013,6 +1013,7 @@ function createUnitChat(
         ? { feedbackPending: r.feedback.number }
         : {}),
       notes,
+      evidence: record.evidence,
     };
   }
 

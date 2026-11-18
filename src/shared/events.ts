@@ -19,6 +19,13 @@ import {
 import { Phase } from "./state.ts";
 import { ObjectiveStatus, UnitStatus } from "./status.ts";
 
+/**
+ * How long a unit is quiet before the next thing that happens starts a new
+ * session, a new sitting (engine/transcript.ts). Review leaves alone an
+ * objective answered within it (record/review.ts).
+ */
+export const SESSION_GAP_MS = 60 * 60 * 1000;
+
 /** A segment by its index in the unit's plan, from 0, as in state.json. */
 const SegmentIndex = z.number().int().nonnegative();
 
@@ -32,8 +39,8 @@ export const PageEvent = z.discriminatedUnion("type", [
   /**
    * A unit chat: a session, one sitting, began (task 2.13). Each transcript
    * starts with one. A session starts when the unit's chat opens, as after a
-   * restart, and when something happens after the unit has been quiet for a
-   * while; what came before it belongs to an earlier sitting.
+   * restart, and when something happens after the unit has been quiet for
+   * SESSION_GAP_MS; what came before it belongs to an earlier sitting.
    */
   z.object({ type: z.literal("session"), startedAt: Timestamp }),
   /**
