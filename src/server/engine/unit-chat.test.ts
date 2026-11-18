@@ -1483,6 +1483,27 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
   const id = openQuestionId(first);
   await before.units.close();
 
+  // A review happened while the check was in progress. Its answer confirms
+  // the earlier pass without replacing the question this check still owes.
+  await reload().appendEvidence(COURSE, {
+    kind: "answer",
+    recordedAt: NOW,
+    objective: "secant-slope",
+    question: {
+      ...stored(Q_SECANT),
+      prompt: "Which line joins the two points?",
+    },
+    answer: {
+      kind: "choice",
+      questionId: "review-secant",
+      choice: "B",
+      confidence: "75",
+    },
+    assisted: false,
+    verdict: "correct",
+    assessment: { mode: "review", unit: "rules" },
+  });
+
   // The server restarts: a new engine, a new backend, the same data root.
   const after = setUp([FEEDBACK, ask(Q_SECANT)]);
   const chat = await open(after);
@@ -1491,7 +1512,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
   expect(since(chat, "session")).toEqual([
     SESSION,
     { type: "unit_plan", plan: PLAN },
-    status("in-progress", "attempted", "passed"),
+    status("in-progress", "attempted", "retained"),
     { type: "phase", segment: 0, phase: "check" },
     {
       type: "question",
@@ -1517,7 +1538,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
     `Question 2, on "difference-quotient":\n${Q_QUOTIENT_AGAIN.prompt}`,
   );
   // The next question is on the objective not asked in this check, though
-  // it passed before it.
+  // it is retained.
   expect(after.backend.received[1]?.text).toContain(
     'Allowed now: a lead-in of one sentence, then a question on "secant-slope" with ask_question',
   );
@@ -1536,6 +1557,7 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
   ).toEqual([
     ["secant-slope", "correct"],
     ["difference-quotient", "correct"],
+    ["secant-slope", "correct"],
     ["difference-quotient", "correct"],
   ]);
 });

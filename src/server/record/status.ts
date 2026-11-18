@@ -100,6 +100,13 @@ export function unitStatus(
   const statuses = (unit.plan?.objectives ?? []).map((o) =>
     objectiveStatus(evidence, o.id),
   );
+  return unitStatusFromObjectives(statuses);
+}
+
+/** Derives the status of a unit with no position from its objective statuses. */
+export function unitStatusFromObjectives(
+  statuses: readonly ObjectiveStatus[],
+): UnitStatus {
   const passedOnce = (s: ObjectiveStatus) => hasPassed(s) || s === "slipping";
   if (statuses.every((s) => s === "not-started")) return "not-started";
   if (statuses.every(passedOnce)) return "passed";

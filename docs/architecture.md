@@ -259,10 +259,10 @@ The rules:
   out is no miss: it counts as an answer and clears nothing.
 - **How many questions** (`engine/check-rules.ts`). Each objective of the
   segment gets at least one question in the check, and is done only once
-  it has passed; there is no limit. The check's answers are the evidence
-  after `checkFrom`. The tutor's header says, for each objective, why
-  another question is needed (`missed`, `assisted`, `second`) and how many
-  were asked.
+  it has passed; there is no limit. The check's answers come from the
+  evidence after `checkFrom`, excluding answers given in an assessment.
+  The tutor's header says, for each objective, why another question is
+  needed (`missed`, `assisted`, `second`) and how many were asked.
 - **The tutor's tools are refused out of phase**, with a reason it can act
   on: `ask_question` outside the check, in a detour, while feedback is
   pending, while a question is open, on an objective not in the segment

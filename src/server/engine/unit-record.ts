@@ -630,6 +630,8 @@ function answersInCheck(
     .slice(position.checkFrom)
     .filter(
       (e): e is AnswerEvidence =>
-        e.kind === "answer" && objectives.includes(e.objective),
+        e.kind === "answer" &&
+        e.assessment === undefined &&
+        objectives.includes(e.objective),
     );
 }
