@@ -323,26 +323,13 @@ export async function readWorkspaceFiles(
   signal?.throwIfAborted();
   if (paths.length === 0) return { files: [] };
   const root = await realpath(workspace);
-  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
   const files: SavedCodeInput[] = [];
   for (const path of paths) {
     signal?.throwIfAborted();
-    const full = join(root, path);
-    if (!full.startsWith(prefix)) return { path, problem: "not-a-file" };
-    let entry: Stats;
-    try {
-      entry = await lstat(full);
-    } catch {
-      signal?.throwIfAborted();
-      return { path, problem: "missing" };
-    }
+    const found = await plainFile(root, path);
     signal?.throwIfAborted();
-    // Reject links, including in parent folders: a declared path must name
-    // a plain file directly, not an alias for another workspace path.
-    if (!entry.isFile() || (await realpath(full)) !== full) {
-      return { path, problem: "not-a-file" };
-    }
-    signal?.throwIfAborted();
+    if ("problem" in found) return { path, problem: found.problem };
+    const { full, entry } = found;
     if (entry.size > CODE_FILE_LIMIT) return { path, problem: "too-large" };
     const bytes = await readFile(
       full,
@@ -365,6 +352,42 @@ export async function readWorkspaceFiles(
     }
   }
   return { files };
+}
+
+/**
+ * The full path of a code question's file, by its path in the workspace,
+ * if it is a plain file there; otherwise why not, as `fileProblem` says it.
+ */
+export async function workspaceFile(
+  workspace: string,
+  path: string,
+): Promise<{ full: string } | { problem: FileProblem }> {
+  const found = await plainFile(await realpath(workspace), path);
+  return "problem" in found ? found : { full: found.full };
+}
+
+/** The file by its path in the workspace's real folder, if it is a plain file there. */
+async function plainFile(
+  root: string,
+  path: string,
+): Promise<
+  { full: string; entry: Stats } | { problem: "missing" | "not-a-file" }
+> {
+  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
+  const full = join(root, path);
+  if (!full.startsWith(prefix)) return { problem: "not-a-file" };
+  let entry: Stats;
+  try {
+    entry = await lstat(full);
+  } catch {
+    return { problem: "missing" };
+  }
+  // Reject links, including in parent folders: a declared path must name
+  // a plain file directly, not an alias for another workspace path.
+  if (!entry.isFile() || (await realpath(full)) !== full) {
+    return { problem: "not-a-file" };
+  }
+  return { full, entry };
 }
 
 /** "`bpe.py` is larger than 100 KB.", and so on. */

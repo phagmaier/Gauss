@@ -691,6 +691,9 @@ details.why summary:hover {
   color: var(--ink);
   overflow-wrap: anywhere;
 }
+.qa-path-error {
+  margin: 0 0 0.45em;
+}
 .wk-file {
   margin: 0.6em 0 0;
   font-size: 0.9em;

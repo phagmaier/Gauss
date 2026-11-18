@@ -21,6 +21,7 @@ import { startSandbox } from "./engine/sandbox.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
 import { createApp } from "./http/app.ts";
+import { systemOpener } from "./open-file.ts";
 import { noBackup, startBackup } from "./record/backup.ts";
 import { openDataRoot } from "./record/data-root.ts";
 
@@ -127,7 +128,13 @@ export async function serve(options: {
     }),
   });
   const api = getRequestListener(
-    createApp({ dataRoot, intakes, units, disputes }).fetch,
+    createApp({
+      dataRoot,
+      intakes,
+      units,
+      disputes,
+      openFile: systemOpener(),
+    }).fetch,
   );
 
   const server = createServer();

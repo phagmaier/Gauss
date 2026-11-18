@@ -31,7 +31,7 @@ import { flushSync } from "react-dom";
 import { Hello, PageEvent, UnitOpened } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
-import type { AnswerPost } from "../shared/question.ts";
+import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { type DisputeApi, disputeApi } from "./Dispute.tsx";
@@ -411,6 +411,12 @@ export function Session(props: { courseId: string; unitId: string }) {
               hidden={hidden}
               onAnswer={(submission) => post(path("answers"), submission)}
               onGradeAgain={() => post(path("grade-again"))}
+              onOpenFile={(questionId, file) =>
+                post(
+                  `/api/courses/${enc(courseId)}/questions/${enc(questionId)}/open`,
+                  { file } satisfies OpenFilePost,
+                )
+              }
             />
           </div>
         )}

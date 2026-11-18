@@ -42,6 +42,7 @@ Gauss/
     shared/             zod schemas: record files, questions, events, route bodies
     server/
       main.ts, serve.ts the real server's start, and the wiring it shares with the dev server
+      open-file.ts      the system's opener, for "Open" on a code question's files
       record/           read/write course files; derive status, progress, "what I know"; the backup
       engine/           the chats, phase and check rules, turn texts, grading, help-judge and dispute dispatch, the sandbox for commands
       tools/            teaching tool definitions (transport-free functions)
@@ -717,9 +718,14 @@ no automated tests.
   The top line shows the unit's position and its outline has Start fresh.
   A math question is answered in a one-line field whose expression is shown as
   math beneath it as it is typed (piece 2). A code question's card names
-  each file to edit by its full path, with "Copy path", and says the tests
-  are not shown; "Run the tests", with how sure, is the answer, and the
-  graded card shows the end of the tests' output (piece 14). A graded card
+  each file to edit by its full path, with "Copy path" and "Open", and says
+  the tests are not shown. "Open" has the server open the file in the
+  system's default app for it (`xdg-open` on Linux, `open` on macOS),
+  outside the sandbox, and leave the app running. Why it could not shows
+  under the button, including that a server started outside the desktop
+  session has no display to open it on. "Run the tests", with how sure, is
+  the answer, and the graded card shows the end of the tests' output
+  (piece 14). A graded card
   can be disputed in place, as in "What I know" (piece 13); its outcome
   also comes over the event stream (`disputed`), so a dispute raised in
   either view shows in the other. Keys: A to F pick a choice, 1
@@ -750,6 +756,10 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   `GET /api/courses/<id>/what-i-know`, `GET
   /api/courses/<id>/artifacts/<file>`, `POST /api/courses/<id>/review`
   (the intake for a draft).
+- `POST /api/courses/<id>/questions/<question id>/open` with `{ file }`,
+  the file's place in the list of an open code question of the course:
+  opens it if it is a plain file in the workspace (502 with the opener's
+  reason when it fails).
 - Under `/api/courses/<id>/answers/<question id>/`, for a recorded answer:
   `GET graded-by` (what graded it, for its dispute), and `POST dispute`
   with the reason, which answers once the outcome is recorded (502 when

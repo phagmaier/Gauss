@@ -1,7 +1,8 @@
 // HTTP routes: the library and the intake chat that starts a course (plan
 // task 1.5), the unit chats (task 2.6), "What I know" with the course's
 // calibration (tasks 2.26 and 2.29), the artifacts the tutor shows (task
-// 3.6), and disputes of recorded answers' grades (task 3.8). Each chat has an event stream from the
+// 3.6), disputes of recorded answers' grades (task 3.8), and "Open" on a
+// code question's files (task 3.22). Each chat has an event stream from the
 // server to the page, and a POST for each thing the learner does in it. Only
 // Gauss's own page may use any of them.
 
@@ -23,12 +24,14 @@ import {
 } from "../../shared/events.ts";
 import type { CourseWithProgress, Library } from "../../shared/library.ts";
 import { PackagesAnswer } from "../../shared/packages.ts";
-import { AnswerPost } from "../../shared/question.ts";
+import { AnswerPost, OpenFilePost } from "../../shared/question.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
+import { fileProblem, workspaceFile } from "../engine/code-run.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
+import type { FileOpener } from "../open-file.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { withProgress } from "../record/progress.ts";
 import { whatIKnow } from "../record/what-i-know.ts";
@@ -38,9 +41,11 @@ export function createApp(options: {
   intakes: Intakes;
   units: UnitChats;
   disputes: Disputes;
+  /** "Open" on a code question's card; the system's opener, or a stub in tests. */
+  openFile: FileOpener;
   heartbeatMs?: number;
 }) {
-  const { dataRoot, intakes, units, disputes } = options;
+  const { dataRoot, intakes, units, disputes, openFile } = options;
   const heartbeatMs = options.heartbeatMs ?? 20_000;
   const app = new Hono();
   app.use("/api/*", localOnly);
@@ -136,6 +141,43 @@ export function createApp(options: {
     if (!raised.ok) return c.json({ error: raised.error }, raised.status);
     const { recordedAt, reason, outcome } = raised.dispute;
     return c.json({ recordedAt, reason, outcome } satisfies ShownDispute);
+  });
+
+  // "Open" beside "Copy path" (task 3.22): one of the files an open code
+  // question of the course lists, named by its place in the list, from the
+  // course's workspace, in the system's default app.
+  app.post("/api/courses/:id/questions/:question/open", async (c) => {
+    const body = await readBody(c, OpenFilePost);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const courseId = c.req.param("id");
+    if ((await dataRoot.readCourse(courseId)) === undefined) {
+      return c.json({ error: "No such course." }, 404);
+    }
+    const questionId = c.req.param("question");
+    const open = Object.values((await dataRoot.readState(courseId)).units)
+      .map((position) => position.openQuestion)
+      .find((q) => q?.id === questionId);
+    if (open?.question.kind !== "code") {
+      return c.json(
+        { error: "No open code question of this course has that id." },
+        404,
+      );
+    }
+    const path = open.question.files[body.data.file];
+    if (path === undefined) {
+      return c.json({ error: "That question has no such file." }, 404);
+    }
+    const found = await workspaceFile(
+      await dataRoot.workspaceFolder(courseId),
+      path,
+    );
+    if ("problem" in found) {
+      return c.json({ error: fileProblem({ path, ...found }) }, 409);
+    }
+    const opened = await openFile(found.full);
+    return opened.ok
+      ? c.json({ ok: true })
+      : c.json({ error: opened.error }, 502);
   });
 
   // An artifact runs only in the app's side pane. Other requests get its

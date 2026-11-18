@@ -1073,6 +1073,26 @@ in "Confinement".
 - **The help judge sees the tests and the solution**, not the command.
   A question's problem, for "different questions", is its prompt and set
   of file paths, regardless of display order.
+- **"Open" names the file by its place in an open question's list**,
+  never by a path (`OpenFilePost`), and only while the question is open,
+  the only time the card has the button. The file must pass the same
+  plain-file check as "Run the tests" (`workspaceFile` in `code-run.ts`),
+  so a link the tutor left in the workspace cannot point the opener
+  elsewhere. Not guarded: the default app is chosen by the file's type,
+  which the tutor names, so a learner file named `.html` opens in the
+  browser; whether some type's default app runs the file rather than
+  showing it was not checked. The user chose the system default over a
+  set command, as their own click would do it ("Product decisions",
+  2026-11-18).
+- **An opener still running after 3 seconds counts as started.** xdg-open
+  with no desktop opener of its own (its generic mode, as on the user's
+  Hyprland) runs the app itself and can wait for it, while the failures
+  seen came at once. Its errors
+  go to a file, not a pipe: the app inherits the stream, and a pipe the
+  server closed could kill it with SIGPIPE. It runs in a process group of
+  its own, so Ctrl-C on the server does not reach the learner's editor.
+  Without `WAYLAND_DISPLAY` or `DISPLAY` xdg-open exits 3 with "no method
+  available", and the button adds that the server has no display.
 - **The scripted backend** posts code questions in a course whose title
   says "code" or "coding", in plain Python, so `pnpm dev:fake` needs no
   package; its tutor writes the starter through the fake backend, whose
@@ -1418,7 +1438,8 @@ was asked and rejected.
   corrected grade, marked "after your dispute". The user was asked only
   who decides; the layout is the agent's, as shown.
 - **A code question's card names the file to edit by its full path**, with
-  "Copy path", and says that the tests are not shown; "Run the tests"
+  "Copy path" and "Open" (the user's note from the stage 3 check), and
+  says that the tests are not shown; "Run the tests"
   takes a confidence level and is the answer. The graded card names the
   file as run and shows the end of the test output. In the detour after a
   failing run the tutor may run the tests on the learner's fixed file,

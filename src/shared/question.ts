@@ -567,6 +567,16 @@ export const AnswerPost = z.discriminatedUnion("kind", [
 ]);
 export type AnswerPost = z.infer<typeof AnswerPost>;
 
+/**
+ * "Open" on a code question's card (task 3.22): which of the question's
+ * files, by its place in the card's list. Never a path, so the server opens
+ * only a file the question lists.
+ */
+export const OpenFilePost = z.object({
+  file: z.number().int().nonnegative(),
+});
+export type OpenFilePost = z.infer<typeof OpenFilePost>;
+
 /** "unknown" is the learner's "I don't know": a miss, never a confident one. */
 export const Verdict = z.enum(["correct", "incorrect", "unknown"]);
 export type Verdict = z.infer<typeof Verdict>;

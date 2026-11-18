@@ -23,31 +23,6 @@ user's choice; the numbers are kept because code and documents use them.
 Still to observe from stage 2: an objective passed by two unsure correct
 answers. The stage 3 check did not show one.
 
-## Stage 3 follow-up: the check's notes
-
-Built before 5.0. Each task is the user's note from the stage 3 check
-(`decisions.md`, "Product decisions", 2026-11-18).
-
-### 3.22 Open a code question's files
-
-- Status: todo
-- An "Open" button beside "Copy path" on a code question's card opens the
-  file in the system's default app (`xdg-open` on Linux, `open` on macOS),
-  started by the server and left running. The request names the question
-  and the file, never a path: the server opens only a file the question
-  lists, in the course's workspace, behind the Origin check every POST
-  has. A failure to start it shows by the button. It runs outside the
-  sandbox, as the learner's own click would. The user chose the system
-  default over a set command. On their machine it is now Neovim in Tern
-  (set in their NixOS config, 2026-11-18), and `xdg-open` there exits 0
-  once Tern has started it. Without `WAYLAND_DISPLAY` or `DISPLAY`,
-  `xdg-open` fails with "no method available" (exit 3): a server started
-  outside a desktop shell has neither, and the button must say so.
-- Done when: route tests with a stub opener: a listed file opens; another
-  path, another course's question and an unknown question are refused. In
-  the browser on `pnpm dev:fake`, the button opens a starter file in the
-  default app. `mise run check` passes.
-
 ## Stage 5: mastery loop (built before stage 4)
 
 ### 5.0 Break down the stage

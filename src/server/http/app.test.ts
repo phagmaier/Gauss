@@ -1,10 +1,21 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Hello, PageEvent, UnitOpened } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
-import type { ChoiceQuestion, WrittenQuestion } from "../../shared/question.ts";
+import type {
+  ChoiceQuestion,
+  CodeQuestion,
+  WrittenQuestion,
+} from "../../shared/question.ts";
 import { emptyTimeline, reduce } from "../../web/timeline.ts";
 import {
   createFakeBackend,
@@ -23,6 +34,7 @@ import {
 } from "../engine/packages.ts";
 import { createUnitChats } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
+import type { FileOpener } from "../open-file.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { createApp } from "./app.ts";
 
@@ -103,8 +115,10 @@ function setUp(
     }),
     now: () => new Date(NOW),
   });
-  const app = createApp({ dataRoot, intakes, units, disputes });
-  return { backend, disputeBackend, dataRoot, intakes, units, app };
+  // Never the system's opener: a test must not open the learner's editor.
+  const openFile = vi.fn<FileOpener>(async () => ({ ok: true }));
+  const app = createApp({ dataRoot, intakes, units, disputes, openFile });
+  return { backend, disputeBackend, dataRoot, intakes, units, app, openFile };
 }
 
 type App = ReturnType<typeof createApp>;
@@ -1858,4 +1872,145 @@ test("the package card's routes: Install and Not now name the request, which is 
     outcome: "declined",
   });
   expect(ran).toHaveLength(1);
+});
+
+/** A code question on the files, as the tutor would post it. */
+function codeQuestion(files: string[]): CodeQuestion {
+  return {
+    kind: "code",
+    prompt: "Write `image`, the image of a vector under the map.",
+    files,
+    tests: [{ path: "test_maps.py", content: "assert False\n" }],
+    solution: files.map((path) => ({ path, content: "def image(v):\n" })),
+    command: ["python", "test_maps.py"],
+  };
+}
+
+/** Opens the code question in the course's check, with its starter files in the workspace. */
+async function withCodeQuestion(
+  courseId: string,
+  questionId: string,
+  files: string[],
+) {
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  await root.writePosition(courseId, "vectors", {
+    segment: 0,
+    phase: "check",
+    checkFrom: 0,
+    openQuestion: {
+      id: questionId,
+      number: 1,
+      objective: "basis-image",
+      postedAt: NOW,
+      question: codeQuestion(files),
+    },
+  });
+  const workspace = await root.workspaceFolder(courseId);
+  for (const path of files) {
+    await mkdir(dirname(join(workspace, path)), { recursive: true });
+    await writeFile(join(workspace, path), "def image(v):\n    raise\n");
+  }
+  return workspace;
+}
+
+function openPost(
+  app: App,
+  courseId: string,
+  questionId: string,
+  body: unknown,
+) {
+  return post(
+    app,
+    `/api/courses/${courseId}/questions/${questionId}/open`,
+    body,
+  );
+}
+
+test('"Open" opens a file the open code question lists, in its course\'s workspace, and refuses any other', async () => {
+  await approvedCourse();
+  const workspace = await withCodeQuestion(COURSE, "q1", [
+    "maps.py",
+    "lib/basis.py",
+  ]);
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  const other = { ...FIRST, title: "Calculus I" };
+  const { id: otherId } = await root.createCourse({ title: other.title });
+  await root.saveProposal(otherId, other);
+  await root.approveCurriculum(otherId, other);
+  await root.storePlan(otherId, "vectors", VECTORS_PLAN);
+  const otherWorkspace = await withCodeQuestion(otherId, "q9", ["limits.py"]);
+  const setup = setUp([]);
+  const { app } = setup;
+
+  const listed = await openPost(app, COURSE, "q1", { file: 1 });
+  const theirs = await openPost(app, otherId, "q9", { file: 0 });
+  expect([listed.status, theirs.status]).toEqual([200, 200]);
+  expect(setup.openFile.mock.calls).toEqual([
+    [join(await realpath(workspace), "lib", "basis.py")],
+    [join(await realpath(otherWorkspace), "limits.py")],
+  ]);
+
+  const refused = [
+    // A file the question does not list, named by its place or by a path.
+    await openPost(app, COURSE, "q1", { file: 2 }),
+    await openPost(app, COURSE, "q1", { file: "../course.json" }),
+    await openPost(app, COURSE, "q1", { path: join(workspace, "maps.py") }),
+    // Another course's question, an unknown question, an unknown course.
+    await openPost(app, COURSE, "q9", { file: 0 }),
+    await openPost(app, COURSE, "q2", { file: 0 }),
+    await openPost(app, "nowhere", "q1", { file: 0 }),
+    // Another site's page.
+    await app.request(`/api/courses/${COURSE}/questions/q1/open`, {
+      method: "POST",
+      headers: { Origin: "https://example.com" },
+      body: JSON.stringify({ file: 0 }),
+    }),
+  ];
+  expect(refused.map((r) => r.status)).toEqual([
+    404, 400, 400, 404, 404, 404, 403,
+  ]);
+  expect(await refused[0]?.json()).toEqual({
+    error: "That question has no such file.",
+  });
+  expect(await refused[3]?.json()).toEqual({
+    error: "No open code question of this course has that id.",
+  });
+  expect(setup.openFile).toHaveBeenCalledTimes(2);
+});
+
+test('"Open" refuses a listed file that is now a link or gone, with why, and passes on a failure to open it', async () => {
+  await approvedCourse();
+  const workspace = await withCodeQuestion(COURSE, "q1", [
+    "maps.py",
+    "basis.py",
+  ]);
+  const outside = join(dir, "notes.txt");
+  await writeFile(outside, "Not the learner's file.\n");
+  await rm(join(workspace, "maps.py"));
+  await symlink(outside, join(workspace, "maps.py"));
+  await rm(join(workspace, "basis.py"));
+  const setup = setUp([]);
+  const { app } = setup;
+
+  const linked = await openPost(app, COURSE, "q1", { file: 0 });
+  const gone = await openPost(app, COURSE, "q1", { file: 1 });
+  expect([linked.status, gone.status]).toEqual([409, 409]);
+  expect(((await linked.json()) as { error: string }).error).toContain(
+    '"maps.py" in the workspace is not a plain file',
+  );
+  expect(((await gone.json()) as { error: string }).error).toContain(
+    '"basis.py" is not in the workspace',
+  );
+  expect(setup.openFile).not.toHaveBeenCalled();
+
+  await writeFile(join(workspace, "basis.py"), "def image(v):\n");
+  setup.openFile.mockResolvedValueOnce({
+    ok: false,
+    error: "xdg-open: no method available (xdg-open exited with status 3).",
+  });
+  const failed = await openPost(app, COURSE, "q1", { file: 1 });
+  expect(failed.status).toBe(502);
+  expect(await failed.json()).toEqual({
+    error: "xdg-open: no method available (xdg-open exited with status 3).",
+  });
 });

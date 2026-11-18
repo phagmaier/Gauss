@@ -6,11 +6,12 @@
 // symbolic check (task 3.5); a written answer, which is its own reasoning
 // and is graded by the grader (task 2.8); and code (task 3.7, piece 14):
 // the card names the files to edit in the workspace by their full paths,
-// with "Copy path", and "Run the tests", with how sure, is the answer; the
-// graded card shows the end of the tests' output. The card keeps a math,
-// written or code answer as sent while it is graded, says why a grading
-// failed, and offers to grade it again. The prompt, the choices and a
-// written answer are Markdown with math.
+// with "Copy path" and "Open", which has the server open the file in the
+// system's default app (task 3.22), and "Run the tests", with how sure, is
+// the answer; the graded card shows the end of the tests' output. The card
+// keeps a math, written or code answer as sent while it is graded, says why
+// a grading failed, and offers to grade it again. The prompt, the choices
+// and a written answer are Markdown with math.
 //
 // Keys, when not typing (mock 2): A to F pick a choice, 1 to 5 how sure, and
 // Enter submits. Enter in the math field submits too, or, before how sure is
@@ -70,6 +71,11 @@ export function QuestionCard(props: {
   hidden?: boolean;
   onAnswer(submission: AnswerPost): Promise<string | undefined>;
   onGradeAgain(): Promise<string | undefined>;
+  /**
+   * Opens one of a code question's files, by its place in the list; given
+   * where the card can be open, the pinned question.
+   */
+  onOpenFile?(questionId: string, file: number): Promise<string | undefined>;
 }) {
   const { item } = props;
   if (item.graded !== undefined) {
@@ -112,6 +118,7 @@ export function QuestionCard(props: {
       question={item.question}
       hidden={props.hidden === true}
       onAnswer={props.onAnswer}
+      onOpenFile={props.onOpenFile}
     />
   );
 }
@@ -121,8 +128,11 @@ function OpenCard(props: {
   /** Hidden by the learner: no key may pick, rate or send an answer unseen. */
   hidden: boolean;
   onAnswer(submission: AnswerPost): Promise<string | undefined>;
+  onOpenFile:
+    | ((questionId: string, file: number) => Promise<string | undefined>)
+    | undefined;
 }) {
-  const { question } = props;
+  const { question, onOpenFile } = props;
   const [choice, setChoice] = useState<ChoiceLetter>();
   const [text, setText] = useState("");
   const [confidence, setConfidence] = useState<Confidence>();
@@ -268,7 +278,14 @@ function OpenCard(props: {
               onChoose={(letter) => setChoice(letter)}
             />
           ) : question.kind === "code" ? (
-            <CodeFiles files={question.files} />
+            <CodeFiles
+              files={question.files}
+              onOpen={
+                onOpenFile === undefined
+                  ? undefined
+                  : (file) => onOpenFile(question.id, file)
+              }
+            />
           ) : question.kind === "math" ? (
             <>
               <textarea
@@ -411,25 +428,77 @@ function OpenCard(props: {
   );
 }
 
-/** The files a code question's learner edits, each with "Copy path" (piece 14). */
-function CodeFiles(props: { files: readonly string[] }) {
-  const { files } = props;
+/** The files a code question's learner edits, each with "Copy path" (piece 14) and "Open". */
+function CodeFiles(props: {
+  files: readonly string[];
+  onOpen: ((file: number) => Promise<string | undefined>) | undefined;
+}) {
+  const { files, onOpen } = props;
   return (
     <div className="qa-file">
       <p className="qa-file-note">
         Edit {files.length === 1 ? "this file" : "these files"} in your own
         editor:
       </p>
-      {files.map((path) => (
-        <div className="qa-path" key={path}>
-          <code className="qa-path-name">{path}</code>
-          <CopyPath path={path} />
-        </div>
+      {files.map((path, i) => (
+        <OpenablePath
+          key={path}
+          path={path}
+          onOpen={onOpen === undefined ? undefined : () => onOpen(i)}
+        />
       ))}
       <p className="qa-file-note">
         The tests are not shown. Your first run from here is your answer.
       </p>
     </div>
+  );
+}
+
+/** A file's path with "Copy path" and "Open", and why opening it failed. */
+function OpenablePath(props: {
+  path: string;
+  onOpen: (() => Promise<string | undefined>) | undefined;
+}) {
+  const { path, onOpen } = props;
+  const [opening, setOpening] = useState(false);
+  const [opened, setOpened] = useState<"opened" | { error: string }>();
+
+  async function open() {
+    if (onOpen === undefined) return;
+    setOpening(true);
+    const error = await onOpen();
+    setOpening(false);
+    setOpened(error === undefined ? "opened" : { error });
+  }
+
+  return (
+    <>
+      <div className="qa-path">
+        <code className="qa-path-name">{path}</code>
+        <CopyPath path={path} />
+        {onOpen === undefined ? null : (
+          <button
+            type="button"
+            className="textbtn"
+            disabled={opening}
+            onClick={() => void open()}
+          >
+            {opening
+              ? "Opening"
+              : opened === "opened"
+                ? "Opened"
+                : opened === undefined
+                  ? "Open"
+                  : "Could not open"}
+          </button>
+        )}
+      </div>
+      {typeof opened === "object" ? (
+        <p className="qa-error qa-path-error" role="alert">
+          {opened.error}
+        </p>
+      ) : null}
+    </>
   );
 }
 
