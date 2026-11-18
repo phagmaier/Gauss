@@ -1,8 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
+import { type CodeRunner, createCodeRunner } from "../engine/code-run.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
@@ -56,7 +57,11 @@ const CURRICULUM: CurriculumProposal = {
 };
 
 function setUp(
-  given: { mathCheck?: MathCheck; installer?: PackageInstaller } = {},
+  given: {
+    mathCheck?: MathCheck;
+    codeRunner?: CodeRunner;
+    installer?: PackageInstaller;
+  } = {},
 ) {
   const backend = createScriptedBackend();
   const dataRoot = openDataRoot({ path: dir });
@@ -71,6 +76,9 @@ function setUp(
     ...(given.mathCheck === undefined
       ? {}
       : { mathCheck: given.mathCheck, workspaceTools: true }),
+    ...(given.codeRunner === undefined
+      ? {}
+      : { codeRunner: given.codeRunner, workspaceTools: true }),
     ...(given.installer === undefined ? {} : { installer: given.installer }),
   });
   const intakes = createIntakes({ backend, systemPrompt: "Intake.", dataRoot });
@@ -258,6 +266,80 @@ test(
       expect((await dataRoot.readState(COURSE)).units.limits).toMatchObject({
         segment: 0,
         phase: "closed",
+      });
+    } finally {
+      await sandbox.close();
+    }
+  },
+  WHOLE_UNIT_MS,
+);
+
+test(
+  "in a course whose title says code, the first objective's questions are code questions: the tutor writes the starter, which fails, and a fixed file passes",
+  async () => {
+    const sandbox = await startSandbox({ log: () => {} });
+    if (!sandbox.available) {
+      throw new Error(`This test needs the sandbox: ${sandbox.reason}`);
+    }
+    try {
+      const { dataRoot, units } = setUp({
+        codeRunner: createCodeRunner({ sandbox }),
+      });
+      const coding = { ...CURRICULUM, title: "Python code" };
+      const { id } = await dataRoot.createCourse({ title: coding.title });
+      await dataRoot.saveProposal(id, coding);
+      await dataRoot.approveCurriculum(id, coding);
+      const workspace = await dataRoot.workspaceFolder(id);
+      const opened = await units.open(id, "limits");
+      if (!opened.ok) throw new Error(opened.error);
+      const chat = opened.chat;
+      await chat.settled();
+      const open = async () => {
+        const question = (await dataRoot.readState(id)).units.limits
+          ?.openQuestion;
+        if (question === undefined) throw new Error("No question is open.");
+        return question;
+      };
+
+      expect(await chat.ready()).toEqual({ ok: true });
+      await chat.settled();
+      const first = await open();
+      expect(first.question).toMatchObject({
+        kind: "code",
+        files: ["exercise_1.py"],
+      });
+      expect(await readFile(join(workspace, "exercise_1.py"), "utf8")).toBe(
+        "def times(x):\n    return 0\n",
+      );
+      // The starter as it is: a miss, and a detour.
+      await chat.answer({
+        kind: "code",
+        questionId: first.id,
+        confidence: "50",
+      });
+      await chat.settled();
+      expect((await dataRoot.readEvidence(id)).at(-1)).toMatchObject({
+        verdict: "incorrect",
+        output: expect.stringContaining("times(1) gave 0, not 1"),
+      });
+      expect(await chat.anotherQuestion()).toEqual({ ok: true });
+      await chat.settled();
+
+      const second = await open();
+      expect(second.question).toMatchObject({ files: ["exercise_2.py"] });
+      await writeFile(
+        join(workspace, "exercise_2.py"),
+        "def times(x):\n    return x + x\n",
+      );
+      await chat.answer({
+        kind: "code",
+        questionId: second.id,
+        confidence: "90",
+      });
+      await chat.settled();
+      expect((await dataRoot.readEvidence(id)).at(-1)).toMatchObject({
+        verdict: "correct",
+        output: "Scripted: all 4 checks passed.",
       });
     } finally {
       await sandbox.close();

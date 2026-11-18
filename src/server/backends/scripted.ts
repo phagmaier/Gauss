@@ -17,6 +17,11 @@
 //   question on it is a math question (task 3.5) when the session has the
 //   file and shell tools, which it has when the sandbox runs, as the
 //   symbolic check needs; the second objective is checked by written ones.
+//   In a course whose title has the word "code" or "coding" in it, every
+//   question on the first objective is a code question (task 3.7), where
+//   the sandbox runs: the tutor writes its starter file, `exercise_<n>.py`
+//   in the workspace, whose `times(x)` returns 0, and the tests pass once
+//   it returns n times x.
 // - A unit's tutor (ask_question): teaches in the teach phase, gives
 //   feedback alone on a graded answer (the engine then asks for the next
 //   question, or closes the segment, task 2.16a), opens the detour a miss
@@ -61,6 +66,7 @@
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { HelpJudgment } from "../../shared/question.ts";
+import { sandboxPython } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 import type { EngineTurn, OneShotRequest, SessionOptions } from "./backend.ts";
 import {
@@ -128,7 +134,11 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   if (has("plan_unit")) return planning(header);
   const propose = session.tools.find((t) => t.name === "propose_curriculum");
   if (propose !== undefined) return intake(header, body, propose);
-  return teaching(header, body, session.workspace !== undefined);
+  const tools = session.workspace !== undefined;
+  const coding =
+    tools &&
+    /^The course is "[^"\n]*\bcod(e|ing)\b/im.test(session.systemPrompt);
+  return teaching(header, body, tools ? (coding ? "code" : "math") : "none");
 }
 
 /** A turn's header, between its brackets, and what follows it. */
@@ -241,7 +251,10 @@ function intake(header: string, body: string, tool: TeachingTool): FakeStep[] {
 
 // --- Teaching a unit -------------------------------------------------------
 
-function teaching(header: string, body: string, math: boolean): FakeStep[] {
+/** What the first objective's questions are besides choices, by the session's tools and course. */
+type Checked = "none" | "math" | "code";
+
+function teaching(header: string, body: string, kinds: Checked): FakeStep[] {
   if (header.includes("Phase: teach.")) {
     // "Unit 1 of 6, "Limits"; segment 1 of 2, "The idea", on "limits-idea"."
     const where = header.slice(1, header.indexOf(" Phase:"));
@@ -279,11 +292,15 @@ function teaching(header: string, body: string, math: boolean): FakeStep[] {
     header,
   )?.[1];
   if (objective !== undefined) {
+    const number = asked(header, objective) + 1;
+    if (kinds === "code" && !objective.endsWith(WRITTEN)) {
+      return codeQuestion(objective, number);
+    }
     return [
       { text: "Scripted lead-in to a question." },
       {
         call: "ask_question",
-        input: question(objective, asked(header, objective) + 1, math),
+        input: question(objective, number, kinds === "math"),
       },
     ];
   }
@@ -463,6 +480,53 @@ function question(objective: string, number: number, math: boolean): unknown {
         choices: [`$${2 * number}$`, `$${2 * number + 1}$`, `$${number}$`],
         answer: "A",
       };
+}
+
+/**
+ * The objective's code question `number`: the tutor writes the starter file,
+ * whose function returns 0, then posts the question, whose tests pass once
+ * it returns `number` times x. Plain Python, so no package is needed.
+ */
+function codeQuestion(objective: string, number: number): FakeStep[] {
+  const module = `exercise_${number}`;
+  const file = `${module}.py`;
+  const test = `test_${module}.py`;
+  return [
+    { text: "Scripted: the starter file for a code exercise." },
+    {
+      builtIn: "Write",
+      path: file,
+      content: "def times(x):\n    return 0\n",
+    },
+    { text: "Scripted lead-in to a code question." },
+    {
+      call: "ask_question",
+      input: {
+        objective,
+        kind: "code",
+        prompt:
+          `Code question ${number} on "${objective}": finish \`times(x)\` in ` +
+          `\`${file}\` so that it returns ${number} times \`x\`. (Scripted: ` +
+          `the starter returns 0, which fails; \`return ${number} * x\` passes.)`,
+        files: [file],
+        tests: [
+          {
+            path: test,
+            content:
+              `from ${module} import times\n\n` +
+              "for x in (0, 1, 2, 5):\n" +
+              "    got = times(x)\n" +
+              `    assert got == ${number} * x, f"times({x}) gave {got!r}, not {${number} * x}"\n` +
+              'print("Scripted: all 4 checks passed.")\n',
+          },
+        ],
+        solution: [
+          { path: file, content: `def times(x):\n    return ${number} * x\n` },
+        ],
+        command: [sandboxPython, test],
+      },
+    },
+  ];
 }
 
 // --- Grading and judging help ---------------------------------------------

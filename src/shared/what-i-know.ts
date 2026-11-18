@@ -6,7 +6,9 @@
 // A question is shown as the learner saw it, and a choice question with its
 // right letter and a math question with its expected answer, since it has
 // been answered. A written question's rubric is left out: it is written for
-// the grader and never shown to the learner (`rubric` in question.ts).
+// the grader and never shown to the learner (`rubric` in question.ts); so
+// are a code question's tests, solution and command (task 3.7), whose
+// output the answer keeps.
 
 import { z } from "zod";
 import { Calibration } from "./calibration.ts";
@@ -15,6 +17,7 @@ import { Objective } from "./plan.ts";
 import {
   AnswerSubmission,
   ChoiceQuestion,
+  CodeFile,
   MathQuestion,
   Unsettled,
   Verdict,
@@ -26,6 +29,12 @@ export const ShownQuestion = z.discriminatedUnion("kind", [
   ChoiceQuestion,
   MathQuestion,
   WrittenQuestion.omit({ rubric: true }),
+  z.object({
+    kind: z.literal("code"),
+    prompt: z.string(),
+    /** The files the learner edits, by their paths in the workspace. */
+    files: z.array(CodeFile.shape.path),
+  }),
 ]);
 export type ShownQuestion = z.infer<typeof ShownQuestion>;
 
@@ -45,6 +54,7 @@ export const ShownEvidence = z.discriminatedUnion("kind", [
     verdict: Verdict,
     flaw: z.string().min(1).optional(),
     unsettled: Unsettled.optional(),
+    output: z.string().optional(),
   }),
   z.object({ kind: z.literal("override"), recordedAt: Timestamp }),
 ]);

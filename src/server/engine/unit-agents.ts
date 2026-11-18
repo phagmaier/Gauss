@@ -1,6 +1,6 @@
 // The tutor, the grader and the help judge of one unit chat (unit-chat.ts;
-// split out in task 2.8b): the tutor's conversation, the grading of a written
-// or math answer, and the judging of a reply to a message sent while a
+// split out in task 2.8b): the tutor's conversation, the grading of a
+// written, math or code answer, and the judging of a reply to a message sent while a
 // question was open (task 2.21). They run outside the chat's queue, so the
 // chat goes on while they work; a grade and a judge's call are recorded
 // inside it. The queue is the chat's, given here, so there is one order for
@@ -36,18 +36,22 @@ import {
 } from "./conversation.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 
-/** A grade, with the flaw and why the check left it to the grader, if so. */
+/**
+ * A grade, with the flaw and why the check left it to the grader, if so, and
+ * for a code answer the end of its tests' output.
+ */
 export interface Grade {
   verdict: Verdict;
   flaw?: string;
   unsettled?: Unsettled;
+  output?: string;
 }
 
-/** The grading of an open question's kept written or math answer. */
+/** The grading of an open question's kept written, math or code answer. */
 export interface Grading {
   questionId: string;
   answer: GradedAnswer;
-  /** Grades the answer, by the grader or the symbolic check. Never throws. */
+  /** Grades the answer, by the grader, the symbolic check or the tests. Never throws. */
   run(
     signal: AbortSignal,
   ): Promise<({ ok: true } & Grade) | { ok: false; error: string }>;
@@ -93,7 +97,7 @@ export interface UnitAgents {
   /** Stops the tutor's turn in progress, if there is one. */
   interrupt(): Promise<void>;
   /**
-   * Grades a kept written or math answer and tells the page it is being
+   * Grades a kept written, math or code answer and tells the page it is being
    * graded. The grade is recorded inside the queue, if it still applies; a
    * failed grading, or a record that throws, is `grading_failed`. The
    * grading counts as running until then.

@@ -18,7 +18,7 @@ import {
 } from "../../shared/events.ts";
 import type { CourseWithProgress, Library } from "../../shared/library.ts";
 import { PackagesAnswer } from "../../shared/packages.ts";
-import { AnswerSubmission } from "../../shared/question.ts";
+import { AnswerPost } from "../../shared/question.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
@@ -259,13 +259,13 @@ export function createApp(options: {
   app.post(
     `${unitPath}/answers`,
     withUnit(async (c, chat) => {
-      const body = await readBody(c, AnswerSubmission);
+      const body = await readBody(c, AnswerPost);
       if (!body.ok) return c.json({ error: body.error }, 400);
       return reply(c, await chat.answer(body.data), 202);
     }),
   );
 
-  // A written answer whose grading failed, graded again as it was sent.
+  // A written, math or code answer whose grading failed, graded again as it was sent.
   app.post(
     `${unitPath}/grade-again`,
     withUnit(async (c, chat) => reply(c, await chat.gradeAgain(), 202)),

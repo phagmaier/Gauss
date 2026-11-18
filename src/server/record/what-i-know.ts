@@ -79,10 +79,22 @@ function evidenceOn(
 
 /**
  * What the learner saw, with a choice's right letter or a math question's
- * expected answer; never the rubric.
+ * expected answer; never the rubric, nor a code question's tests, solution
+ * or command.
  */
 function shown(question: Question): ShownQuestion {
-  if (question.kind !== "written") return question;
-  const { rubric: _, ...rest } = question;
-  return rest;
+  switch (question.kind) {
+    case "written": {
+      const { rubric: _, ...rest } = question;
+      return rest;
+    }
+    case "code":
+      return {
+        kind: "code",
+        prompt: question.prompt,
+        files: question.files,
+      };
+    default:
+      return question;
+  }
 }

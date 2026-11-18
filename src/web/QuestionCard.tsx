@@ -1,13 +1,16 @@
 // The check question card, as settled in docs/prototype/02-check-question.html:
 // answered inside the card, with how sure and, for a choice or a math
-// answer, an optional reasoning; shrunk to a record once graded. Three
+// answer, an optional reasoning; shrunk to a record once graded. Four
 // answer kinds: multiple choice; math, an expression typed in a field that
 // shows it as math as it is typed, compared with the expected answer by the
-// symbolic check (task 3.5); and a written answer, which is its own
-// reasoning and is graded by the grader (task 2.8). The card keeps a math or
-// written answer as sent while it is graded, says why a grading failed, and
-// offers to grade it again. The prompt, the choices and a written answer are
-// Markdown with math.
+// symbolic check (task 3.5); a written answer, which is its own reasoning
+// and is graded by the grader (task 2.8); and code (task 3.7, piece 14):
+// the card names the files to edit in the workspace by their full paths,
+// with "Copy path", and "Run the tests", with how sure, is the answer; the
+// graded card shows the end of the tests' output. The card keeps a math,
+// written or code answer as sent while it is graded, says why a grading
+// failed, and offers to grade it again. The prompt, the choices and a
+// written answer are Markdown with math.
 //
 // Keys, when not typing (mock 2): A to F pick a choice, 1 to 5 how sure, and
 // Enter submits. Enter in the math field submits too, or, before how sure is
@@ -22,6 +25,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  type AnswerPost,
   type AnswerSubmission,
   CHOICE_LETTERS,
   type ChoiceLetter,
@@ -39,7 +43,7 @@ import {
   Prose,
 } from "./prose.tsx";
 import type { Graded, QuestionItem } from "./timeline.ts";
-import { unsettledLine } from "./what-i-know.ts";
+import { outputLines, unsettledLine } from "./what-i-know.ts";
 
 type ChoiceView = Extract<QuestionView, { kind: "choice" }>;
 
@@ -53,7 +57,7 @@ const CONFIDENCE: { value: Confidence; label: string }[] = [
 
 export function QuestionCard(props: {
   item: QuestionItem;
-  onAnswer(submission: AnswerSubmission): Promise<string | undefined>;
+  onAnswer(submission: AnswerPost): Promise<string | undefined>;
   onGradeAgain(): Promise<string | undefined>;
 }) {
   const { item } = props;
@@ -90,7 +94,7 @@ export function QuestionCard(props: {
 
 function OpenCard(props: {
   question: QuestionView;
-  onAnswer(submission: AnswerSubmission): Promise<string | undefined>;
+  onAnswer(submission: AnswerPost): Promise<string | undefined>;
 }) {
   const { question } = props;
   const [choice, setChoice] = useState<ChoiceLetter>();
@@ -107,8 +111,11 @@ function OpenCard(props: {
   const mathField = useRef<HTMLTextAreaElement>(null);
 
   /** The answer as it would be sent, or undefined while it is incomplete. */
-  function answer(): AnswerSubmission | undefined {
+  function answer(): AnswerPost | undefined {
     if (confidence === undefined) return undefined;
+    if (question.kind === "code") {
+      return { kind: "code", questionId: question.id, confidence };
+    }
     if (question.kind === "math") {
       const expression = text.trim();
       const said = reasoning.trim();
@@ -154,7 +161,7 @@ function OpenCard(props: {
     });
   }
 
-  async function send(submission: AnswerSubmission) {
+  async function send(submission: AnswerPost) {
     setSending(true);
     setError(undefined);
     const refused = await props.onAnswer(submission);
@@ -225,6 +232,8 @@ function OpenCard(props: {
               choice={choice}
               onChoose={(letter) => setChoice(letter)}
             />
+          ) : question.kind === "code" ? (
+            <CodeFiles files={question.files} />
           ) : question.kind === "math" ? (
             <>
               <textarea
@@ -285,7 +294,7 @@ function OpenCard(props: {
               ))}
             </div>
           </fieldset>
-          {question.kind !== "written" ? (
+          {question.kind === "choice" || question.kind === "math" ? (
             <details className="why">
               <summary>Add your reasoning</summary>
               <textarea
@@ -359,11 +368,56 @@ function OpenCard(props: {
               if (ready !== undefined) void send(ready);
             }}
           >
-            Submit answer
+            {question.kind === "code" ? "Run the tests" : "Submit answer"}
           </button>
         </div>
       )}
     </div>
+  );
+}
+
+/** The files a code question's learner edits, each with "Copy path" (piece 14). */
+function CodeFiles(props: { files: readonly string[] }) {
+  const { files } = props;
+  return (
+    <div className="qa-file">
+      <p className="qa-file-note">
+        Edit {files.length === 1 ? "this file" : "these files"} in your own
+        editor:
+      </p>
+      {files.map((path) => (
+        <div className="qa-path" key={path}>
+          <code className="qa-path-name">{path}</code>
+          <CopyPath path={path} />
+        </div>
+      ))}
+      <p className="qa-file-note">
+        The tests are not shown. Your first run from here is your answer.
+      </p>
+    </div>
+  );
+}
+
+function CopyPath(props: { path: string }) {
+  const [copied, setCopied] = useState<"copied" | "failed">();
+  return (
+    <button
+      type="button"
+      className="textbtn"
+      onClick={() => {
+        // The page is served from localhost, where the clipboard is open.
+        navigator.clipboard.writeText(props.path).then(
+          () => setCopied("copied"),
+          () => setCopied("failed"),
+        );
+      }}
+    >
+      {copied === "copied"
+        ? "Copied"
+        : copied === "failed"
+          ? "Could not copy"
+          : "Copy path"}
+    </button>
   );
 }
 
@@ -396,7 +450,7 @@ function Choices(props: {
   );
 }
 
-/** A written or math answer as sent, kept while it is graded, or after its grading failed. */
+/** A written, math or code answer as sent, kept while it is graded, or after its grading failed. */
 function KeptCard(props: {
   question: QuestionView;
   answer: GradedAnswer;
@@ -422,7 +476,8 @@ function KeptCard(props: {
         Question {question.number}{" "}
         {failed === undefined ? (
           <span className="dk" role="status">
-            Grading <span className="wait" aria-hidden="true" />
+            {answer.kind === "code" ? "Running the tests" : "Grading"}{" "}
+            <span className="wait" aria-hidden="true" />
           </span>
         ) : (
           <span className="no">Not graded</span>
@@ -446,7 +501,7 @@ function KeptCard(props: {
               disabled={sending}
               onClick={() => void gradeAgain()}
             >
-              Grade again
+              {answer.kind === "code" ? "Run the tests again" : "Grade again"}
             </button>
           </div>
         </>
@@ -484,10 +539,15 @@ function WaitingCard(props: {
   );
 }
 
-/** The answer as sent: the written text, the choice, the expression, or "I don't know". */
+/**
+ * The answer as sent: the written text, the choice, the expression, the
+ * files run, or "I don't know".
+ */
 function AnswerRecord(props: {
   question: QuestionView;
   answer: AnswerSubmission;
+  /** The tests have run on a code answer's files. */
+  ran?: boolean;
 }) {
   const { question, answer } = props;
   if (answer.kind === "written") return <WrittenRecord answer={answer} />;
@@ -507,6 +567,14 @@ function AnswerRecord(props: {
             </span>
             <span className="c">{confidenceLabel(answer.confidence)} sure</span>
           </>
+        ) : answer.kind === "code" ? (
+          <>
+            <span>
+              <FileNames files={answer.files} />,{" "}
+              {props.ran === true ? "as you ran it" : "as you sent it"}
+            </span>
+            <span className="c">{confidenceLabel(answer.confidence)} sure</span>
+          </>
         ) : (
           <span>I don't know</span>
         )}
@@ -518,6 +586,35 @@ function AnswerRecord(props: {
         </div>
       ) : null}
     </>
+  );
+}
+
+/** "`bpe.py`", or "`a.py` and `b.py`" ("What I know" too). */
+export function FileNames(props: { files: readonly { path: string }[] }) {
+  const { files } = props;
+  return files.map((file, i) => (
+    <span key={file.path}>
+      {i === 0 ? "" : i === files.length - 1 ? " and " : ", "}
+      <code>{file.path}</code>
+    </span>
+  ));
+}
+
+/** The end of a code question's tests' output, failures and a pass marked ("What I know" too). */
+export function CodeOutput(props: {
+  output: string;
+  verdict: "correct" | "incorrect" | "unknown";
+}) {
+  return (
+    <div className="qa-out">
+      {outputLines(props.output, props.verdict).map((line, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: lines of one fixed text
+        <span key={i} className={line.mark}>
+          {line.text}
+          {"\n"}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -579,7 +676,10 @@ function GradedCard(props: { question: QuestionView; graded: Graded }) {
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
-      <AnswerRecord question={question} answer={answer} />
+      <AnswerRecord question={question} answer={answer} ran />
+      {graded.output === undefined ? null : (
+        <CodeOutput output={graded.output} verdict={graded.verdict} />
+      )}
       {graded.verdict === "correct" ||
       graded.correctChoice === undefined ? null : (
         <div className="qa-line">

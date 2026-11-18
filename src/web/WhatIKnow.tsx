@@ -19,7 +19,7 @@ import { getJson } from "./api.ts";
 import { calibrationRows, hasCalibration } from "./calibration.ts";
 import { Link, TopLine } from "./Frame.tsx";
 import { InlineProse, MathText, Prose } from "./prose.tsx";
-import { ChoiceLabel } from "./QuestionCard.tsx";
+import { ChoiceLabel, CodeOutput, FileNames } from "./QuestionCard.tsx";
 import { paths } from "./route.ts";
 import {
   answerLine,
@@ -182,11 +182,34 @@ function AnswerEntry(props: {
             <span>
               <MathText source={answer.expression} />
             </span>
+          ) : answer.kind === "code" ? (
+            <span>
+              <FileNames files={answer.files} />, as you ran it
+            </span>
           ) : (
             <span>I don't know</span>
           )}
         </div>
       )}
+      {entry.output === undefined ? null : (
+        <CodeOutput output={entry.output} verdict={entry.verdict} />
+      )}
+      {answer.kind === "code" ? (
+        <details className="why">
+          <summary>
+            Your {answer.files.length === 1 ? "file" : "files"} as you ran{" "}
+            {answer.files.length === 1 ? "it" : "them"}
+          </summary>
+          {answer.files.map((file) => (
+            <div key={file.path}>
+              <p className="wk-file">
+                <code>{file.path}</code>
+              </p>
+              <div className="qa-out">{file.content}</div>
+            </div>
+          ))}
+        </details>
+      ) : null}
       {(answer.kind === "choice" || answer.kind === "math") &&
       answer.reasoning !== undefined ? (
         <div className="qa-line">

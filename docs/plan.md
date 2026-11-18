@@ -35,49 +35,6 @@ tests and the symbolic check, an artifact appears in the side pane, and a
 dispute of one grade, raised in the session or from "What I know", shows
 its outcome.
 
-### 3.7 Code questions
-
-- Status: todo
-- Depends on: 3.2, 3.3, 3.11
-- Why: a coding course's exercises are graded by running tests (brief,
-  "Mastery and evidence").
-- Do: piece 14: a `code` kind for `ask_question` naming the files the
-  learner edits (the tutor writes their starter versions first), the tests,
-  kept as grading material outside the workspace and shown only in the
-  graded card's output and in a dispute, the tutor's solution, and the
-  command. The card names each file by its full path, with "Copy path", and
-  says that the tests are not shown. When the question is posted, the
-  engine runs the tests against the starter files, refusing the question if
-  they pass, and against the solution, refusing it if they fail: a test
-  that cannot tell right from wrong is the code question's wrong key. "Run
-  the tests", with a confidence level, submits: the command runs in the
-  sandbox with the workspace writable; exit status 0 is correct; a run past
-  its time limit is a failed grading the learner can retry; any other
-  failure is a miss, the output's end saying why, and starts a detour as
-  every miss does, after which the tutor posts a different exercise. The
-  evidence keeps the learner's files as run and the output's end. The
-  graded card, "What I know", the answer turn and the help judge's message
-  as for the other kinds. `tutor.md` gets the lines the tutor needs; the
-  scripted backend posts one, writing its starter file itself.
-- Done when: tests that run real commands in the sandbox, no model: a
-  passing and a failing submission recorded; a question refused because its
-  tests pass on the starter, and one because they fail on the solution; a
-  run past its limit; a file changed after it was submitted leaving the
-  record as it was. `mise run check` passes; on `pnpm dev:fake` a code
-  question is answered both ways, and the browser closed before the server
-  stops; one short run on Haiku 5.5 where the tutor asks for `pytest`
-  through 3.11's card, writes starter code and posts a question that passes
-  the checks, and a submission is graded.
-- Note: the solution has to sit where the tests look for the learner's
-  files without touching the workspace. One way: a scratch folder holding
-  the solution, as the folder the command runs in, with the workspace's
-  environment (for Python, `<workspace>/.venv/bin/python -m pytest` puts
-  the folder it runs in on the import path and has the packages 3.11
-  installed; `uv run` in the sandbox needs `UV_CACHE_DIR` somewhere
-  writable: "Confinement"). Settle the command's placeholders with it.
-  Install is refused while a question of the course is open, so the tutor
-  asks for packages before it posts a code question.
-
 ### 3.8 Disputes
 
 - Status: todo
@@ -142,7 +99,9 @@ its outcome.
   and packages installed once the learner approves them. `unit-planner.md`
   only if objectives need to say how they are checked. On Haiku the tutor
   showed no artifact unasked, and wrote `$` math in one although
-  `tutor.md` says not to (`decisions.md`, "Prompts").
+  `tutor.md` says not to; it posted a code question before writing the
+  starter file, which was refused, and it taught the very solution its
+  first code question then asked for (`decisions.md`, "Prompts").
 - Done when: one run on Sonnet 5.5 (the result depends on the model's
   judgment), kept short, on a scratch data root: an intake for a short
   coding course whose proposal promises only what is built, then a segment

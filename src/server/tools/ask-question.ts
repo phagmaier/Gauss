@@ -38,7 +38,11 @@ export function askQuestionTool(board: QuestionBoard): TeachingTool {
       "a symbolic check compares the answer with; a " +
       '"written" question asks for a proof, a derivation or an ' +
       "explanation, and gives a rubric, which a separate grader uses to " +
-      "grade the answer without seeing this conversation. Posting ends your " +
+      'grade the answer without seeing this conversation; a "code" ' +
+      "question names files in the workspace the learner edits, whose " +
+      "starter versions you write first, and gives the tests, your " +
+      "solution and the command that runs the tests, which must fail on the " +
+      "starter files and pass on the solution. Posting ends your " +
       "turn, so say anything you want to say before calling this. The " +
       "learner's answer, already graded, arrives in the next message, not " +
       "as this tool's result, and that reply is for your feedback only; " +

@@ -104,6 +104,39 @@ test("for a math question the request holds its expected answer in place of choi
   expect(prompt).not.toContain("<rubric>");
 });
 
+test("for a code question the request holds its tests and the tutor's solution, each file between tags with its path", async () => {
+  const { backend, judge } = setUp([CLARIFICATION]);
+
+  await judge.judge({
+    question: {
+      kind: "code",
+      prompt: "Finish `double(x)` in `double.py`.",
+      files: ["double.py"],
+      tests: [
+        {
+          path: "test_double.py",
+          content: "from double import double\n\nassert double(2) == 4\n",
+        },
+      ],
+      solution: [
+        { path: "double.py", content: "def double(x):\n    return 2 * x\n" },
+      ],
+      command: [".venv/bin/python", "test_double.py"],
+    },
+    message: MESSAGE,
+    reply: REPLY,
+  });
+
+  const prompt = backend.oneShots[0]?.prompt ?? "";
+  expect(prompt).toContain(
+    "<question>\nFinish `double(x)` in `double.py`.\n</question>\n\n" +
+      '<tests>\n<file path="test_double.py">\nfrom double import double\n\nassert double(2) == 4\n</file>\n</tests>\n\n' +
+      '<solution>\n<file path="double.py">\ndef double(x):\n    return 2 * x\n</file>\n</solution>\n\n<message>',
+  );
+  // The command is how the tests run, not what they check.
+  expect(prompt).not.toContain(".venv/bin/python");
+});
+
 test.each<{ name: string; reply: FakeReply; outcome: unknown }>([
   {
     name: "a clarification",

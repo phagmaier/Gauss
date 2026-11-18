@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import { createServer as createViteServer } from "vite";
 import type { TutorBackend } from "./backends/backend.ts";
+import { createCodeRunner } from "./engine/code-run.ts";
 import { createGrader } from "./engine/grading.ts";
 import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
@@ -58,8 +59,8 @@ export async function serve(options: {
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
   // The engine's commands run in it (task 3.2); it says once if it cannot,
-  // and tutors then get no file and shell tools, and math questions are
-  // refused with the reason.
+  // and tutors then get no file and shell tools, and math and code
+  // questions are refused with the reason.
   const sandbox = await startSandbox({
     log: (line) => process.stdout.write(`${line}\n`),
   });
@@ -95,6 +96,7 @@ export async function serve(options: {
       systemPrompt: judgePrompt,
     }),
     mathCheck: createMathCheck({ sandbox }),
+    codeRunner: createCodeRunner({ sandbox }),
     // Tutors run commands only where the sandbox runs (task 3.3), and ask
     // for packages only where they can be installed. The install cache is
     // separate from the old workspace-based installer's cache and the backup.

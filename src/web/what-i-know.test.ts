@@ -8,6 +8,7 @@ import {
   answerLine,
   knownSummary,
   objectiveMark,
+  outputLines,
   recordedOn,
   unitWord,
   unstartedLine,
@@ -278,6 +279,28 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
   ],
 )("$name", ({ entry, says }) => {
   expect(answerLine(entry)).toEqual(says);
+});
+
+test("a code question's output marks its failure lines, and its last line as the pass or the failure the verdict says", () => {
+  const failed = [
+    "..F",
+    "FAILED test_bpe.py::test_tie - assert (7, 8) == (5, 6)",
+    "1 failed, 2 passed in 0.04s",
+    "Exit status 1.",
+  ].join("\n");
+  expect(outputLines(failed, "incorrect")).toEqual([
+    { text: "..F" },
+    {
+      text: "FAILED test_bpe.py::test_tie - assert (7, 8) == (5, 6)",
+      mark: "f",
+    },
+    { text: "1 failed, 2 passed in 0.04s" },
+    { text: "Exit status 1.", mark: "f" },
+  ]);
+  expect(outputLines("...\n3 passed in 0.02s", "correct")).toEqual([
+    { text: "..." },
+    { text: "3 passed in 0.02s", mark: "p" },
+  ]);
 });
 
 test("an entry's date is the day and the time it was recorded, in local time", () => {

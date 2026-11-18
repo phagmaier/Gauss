@@ -97,7 +97,12 @@ export interface UnitRecord {
    */
   answer(
     submission: AnswerSubmission,
-    grade: { verdict: Verdict; flaw?: string; unsettled?: Unsettled },
+    grade: {
+      verdict: Verdict;
+      flaw?: string;
+      unsettled?: Unsettled;
+      output?: string;
+    },
   ): Promise<Answered>;
   /**
    * Closes the open question, and tells the page, if the evidence has its
@@ -361,7 +366,7 @@ export async function openUnitRecord(options: {
       let entry = recordedAnswer(question.id);
       if (entry === undefined) {
         const flaw = grade.verdict === "incorrect" ? grade.flaw : undefined;
-        const { unsettled } = grade;
+        const { unsettled, output } = grade;
         entry = {
           kind: "answer",
           recordedAt: now().toISOString(),
@@ -372,6 +377,7 @@ export async function openUnitRecord(options: {
           verdict: grade.verdict,
           ...(flaw === undefined ? {} : { flaw }),
           ...(unsettled === undefined ? {} : { unsettled }),
+          ...(output === undefined ? {} : { output }),
         };
         // The evidence first: a stop before the position is written leaves
         // the question open, and reopening closes it with this entry.
@@ -451,6 +457,7 @@ export function gradedEvent(entry: AnswerEvidence): PageEvent {
         : {}),
     ...(entry.unsettled === undefined ? {} : { unsettled: entry.unsettled }),
     ...(entry.flaw === undefined ? {} : { flaw: entry.flaw }),
+    ...(entry.output === undefined ? {} : { output: entry.output }),
     assisted: entry.assisted,
   };
 }

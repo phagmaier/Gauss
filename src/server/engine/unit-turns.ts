@@ -200,6 +200,20 @@ export function answerTurn(
         : `Their reasoning: ${answer.reasoning}`,
       mathGrade(entry, question.expected),
     );
+  } else if (answer.kind === "code" && question.kind === "code") {
+    lines.push(
+      `The learner ran the tests, at ${confidenceLabel(answer.confidence)} confidence, on their files as they were then:`,
+      "",
+      ...answer.files.flatMap((file) => [
+        `${file.path}:`,
+        fenced(file.content),
+        "",
+      ]),
+      entry.verdict === "correct"
+        ? "The tests passed: correct. The end of their output:"
+        : "The tests failed: incorrect. The end of their output:",
+      fenced(entry.output ?? ""),
+    );
   } else if (answer.kind === "written") {
     lines.push(
       `The learner wrote, at ${confidenceLabel(answer.confidence)} confidence:`,
@@ -272,11 +286,13 @@ function detourOpening(where: Where, entry: AnswerEvidence): string {
       ? `from the choice they picked${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
       : answer.kind === "math"
         ? `from the answer they gave${entry.flaw === undefined ? "" : ", the grader's flaw"}${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
-        : answer.kind === "written"
-          ? "from the grader's flaw and what they wrote, or, if that does not show it, "
-          : answer.stuck !== undefined
-            ? "from where they say they got stuck, or, if that does not show it, "
-            : "";
+        : answer.kind === "code"
+          ? "from the end of the tests' output and the files they ran, or, if that does not show it, "
+          : answer.kind === "written"
+            ? "from the grader's flaw and what they wrote, or, if that does not show it, "
+            : answer.stuck !== undefined
+              ? "from where they say they got stuck, or, if that does not show it, "
+              : "";
   const again =
     missed >= 2
       ? ` "${entry.objective}" has been missed ${missed} times in this check, ` +
@@ -567,6 +583,16 @@ export function checkText(check: ObjectiveCheck | undefined): string {
     case "second":
       return `answered correctly, which does not pass alone, so a second correct answer, to a different question, is needed (${count})`;
   }
+}
+
+/** Text between fences of backticks longer than any run of them in it. */
+function fenced(text: string): string {
+  const longest = Math.max(
+    0,
+    ...(text.match(/`+/g) ?? []).map((r) => r.length),
+  );
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return `${fence}\n${text.trimEnd()}\n${fence}`;
 }
 
 /** "a", or "a" and "b", or "a", "b" and "c". */

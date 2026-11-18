@@ -48,6 +48,11 @@ export interface SandboxCommand {
   timeLimitMs: number;
   /** How many bytes of each output stream are kept, its last; 64 KiB unless given. */
   outputLimit?: number;
+  /**
+   * Sends its standard error to its standard output, so what the two say
+   * keeps its order; `stderr` is then empty.
+   */
+  mergeOutput?: boolean;
 }
 
 export interface SandboxResult {
@@ -194,7 +199,8 @@ async function run(command: SandboxCommand): Promise<SandboxResult> {
     const exports = [["TMPDIR", temporary], ...variables]
       .map(([name, value]) => `export ${name}=${quote(value ?? "")}; `)
       .join("");
-    const script = `${exports}exec ${sandboxCommand(command.argv)}`;
+    const merge = command.mergeOutput === true ? " 2>&1" : "";
+    const script = `${exports}exec ${sandboxCommand(command.argv)}${merge}`;
     const wrapped = await SandboxManager.wrapWithSandbox(
       script,
       undefined,

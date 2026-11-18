@@ -149,6 +149,31 @@ export function unsettledLine(unsettled: Unsettled): string {
   return `The grader, since the symbolic check ${why}.`;
 }
 
+/** A line of a code question's output, marked when it says the run failed or passed. */
+export interface OutputLine {
+  text: string;
+  /** "f": a failure, "p": the pass; none for the rest. */
+  mark?: "f" | "p";
+}
+
+/**
+ * The end of a code question's tests' output, line by line (task 3.7): the
+ * lines that name a failure marked, and the last line, which says how the
+ * run ended, marked a pass or a failure by the verdict.
+ */
+export function outputLines(
+  output: string,
+  verdict: "correct" | "incorrect" | "unknown",
+): OutputLine[] {
+  const lines = output.split("\n");
+  return lines.map((text, i) => {
+    if (i === lines.length - 1) {
+      return { text, mark: verdict === "correct" ? "p" : "f" };
+    }
+    return /^(FAILED|ERROR)\b/.test(text) ? { text, mark: "f" } : { text };
+  });
+}
+
 /**
  * "14 November 2026, 10:05": the day and the time, in local time. Each part
  * is formatted on its own, as how a locale joins them differs between ICU

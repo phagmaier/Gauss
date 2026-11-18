@@ -26,6 +26,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Grader prompt | The hand-graded set, the grader's model and rules | Changing `grader.md`, `WrittenGrade` or the grader's model; disputes |
 | Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
 | Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits; math questions in the engine and on the page | Changing `mathcheck.py`, math questions, or what they accept |
+| Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept | Changing code questions or how their tests run |
 | Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides | Building or changing disputes |
 | Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
@@ -897,14 +898,17 @@ designed.
   does not undo an earlier help.
 - **Haiku 5.5 is the judge's model.** On the first set (19 exchanges on
   five questions) it agreed with every hand verdict in two runs, in 2.5 to
-  4 seconds a call. The set (`scripts/help-set.ts`) now has 22 exchanges on
-  six questions, nine clarifications and thirteen helps, among them a
+  4 seconds a call. The set (`scripts/help-set.ts`) now has 25 exchanges on
+  seven questions, ten clarifications and fifteen helps, among them a
   refusal with a hint and a message telling the judge it is clarification.
   With the math question's three (task 3.5), one run agreed 22 of 22 and
   another 21 of 22: C3 judged help, the safe side, which C3 alone did not
-  repeat in four runs on each of the new and the old prompt. Sonnet was not tried: Haiku left nothing to improve,
-  an answer can wait on the call, and the call follows every message during
-  a question.
+  repeat in four runs on each of the new and the old prompt. With a code
+  question's three (task 3.7: the file to edit, a case the tests try, a
+  reaction to the learner's code), one run agreed 25 of 25 and another 24
+  of 25, C3 again judged help. Sonnet was not tried: Haiku left nothing to
+  improve, an answer can wait on the call, and the call follows every
+  message during a question.
 - **The page's notice** says asking what a question means is free and a
   reply that helps makes the answer count as given with help. "Anything
   else counts as help" was not used: the tutor declines what it may not
@@ -1005,6 +1009,55 @@ Math questions in the engine (task 3.5):
   sets may still be unreadable to the check, and then the grader grades
   it.
 
+## Code questions
+
+All the agent's choices (task 3.7), open to change. The card is in "Page
+design"; the sandbox in "Confinement".
+
+- **Each run has a folder that mirrors the workspace**
+  (`engine/code-run.ts`): the files under test and the test files written
+  there, every other entry a link to the workspace's, `.venv` included,
+  and only that folder writable. So the tests are never in the workspace,
+  no run changes the learner's files, the files the tests ran on are the
+  ones recorded, and one command serves the starter, the solution and the
+  learner's files: the plan's note asked for placeholders in the command,
+  and none is needed. Python's `__pycache__` and pytest's `.pytest_cache`
+  are not linked: pytest warned that it could not write its cache through
+  the link, and a stale compiled file could stand for a file written in
+  its place. Rejected: running the learner's run in the workspace, made
+  writable, as the plan first had it (the tests would sit outside under a
+  placeholder, the solution's run would need another folder, a file saved
+  during the run would make the record differ from what ran, and caches
+  would land in the workspace); a copy of the whole workspace for each
+  run, which copies whatever data the learner keeps there.
+- **The learner's files are read when "Run the tests" is pressed** and
+  kept with the answer, in `state.json` and then the evidence, so a regrade
+  or a restart runs the same files. Each must be a plain file inside the
+  workspace (no link), at most 100 KB, and UTF-8; otherwise the press is
+  refused with what to fix, and nothing is recorded.
+- **At posting both runs go at once**, inside the course's workspace
+  queue, so no write of the tutor's comes between reading the starter and
+  posting; posting waits for the slower run, at most 60 seconds. A run
+  that cannot start refuses the question with why.
+- **60 seconds a run.** A run past it fails the grading, as the plan had
+  it, since a slow moment can pass. A second run past it on the same files
+  is a miss, with the output's end: the answer is final, and code that
+  loops would otherwise loop on every retry with no way on. The first
+  time-out is kept in memory, so a restart gives one more run. The other
+  way, a time-out a miss at once, is the user's to choose.
+- **The output kept** is both streams in order (`2>&1` inside the
+  sandbox), its last 40 lines and at most 8,000 characters, with "Exit
+  status N." after a failure and "Stopped after ..." after a time-out:
+  pytest's summary is at the end, and a bare traceback ends with its
+  error. The page marks `FAILED`/`ERROR` lines and the last line.
+- **The help judge sees the tests and the solution**, not the command.
+  A question's problem, for "different questions", is its prompt and its
+  files.
+- **The scripted backend** posts code questions in a course whose title
+  says "code" or "coding", in plain Python, so `pnpm dev:fake` needs no
+  package; its tutor writes the starter through the fake backend, whose
+  `Write` with content writes the file once the engine allows it.
+
 ## Disputes
 
 The agent's choices (task 3.0), except who decides, which the user picked
@@ -1087,6 +1140,14 @@ from piece 13 of the mocks (2026-11-17). The look is in "Page design".
   serif font. With the exact opening block in `tutor.md`, the second
   matched the page. Both wrote `$` math in labels, the second once, after
   `tutor.md` said not to.
+- **Code questions** (task 3.7, Haiku 5.5, one run). Told by the learner
+  that the check needed pytest, the tutor asked for it on the card and
+  waited for the install. It then called `ask_question` before writing the
+  starter file; the refusal ("not in the workspace") had it write the file
+  and post again in the same turn, so its lead-in showed twice. Its tests
+  checked only what its prompt said (the prompt ruled ties out). But the
+  question asked for the very function its teaching had written out in
+  full, which "a new example" in `tutor.md` rules out.
 
 **`unit-planner.md`**: one idea per objective, tested by "could a learner
 know one part and not the other", up to eight objectives rather than

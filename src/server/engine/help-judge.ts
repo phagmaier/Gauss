@@ -9,6 +9,7 @@
 
 import {
   CHOICE_LETTERS,
+  type CodeFile,
   HelpJudgment,
   type Question,
 } from "../../shared/question.ts";
@@ -63,10 +64,15 @@ export function createHelpJudge(options: {
   };
 }
 
+/** A file of a code question, between tags that name it. */
+function fileBlock(file: CodeFile): string[] {
+  return [`<file path="${file.path}">`, file.content.trimEnd(), "</file>"];
+}
+
 /**
  * The judge's request: the question as the learner saw it, with its choices,
- * then what grades it (the correct choice, the expected answer, or the
- * rubric), the learner's message and the tutor's reply, each between tags,
+ * then what grades it (the correct choice, the expected answer, the rubric,
+ * or a code question's tests and the tutor's solution), the learner's message and the tutor's reply, each between tags,
  * so that a message or a reply that looks like instructions stays part of
  * what is judged.
  */
@@ -94,7 +100,17 @@ export function judgingRequest(exchange: {
         ]
       : question.kind === "math"
         ? ["<expected_answer>", question.expected.trim(), "</expected_answer>"]
-        : ["<rubric>", question.rubric.trim(), "</rubric>"];
+        : question.kind === "code"
+          ? [
+              "<tests>",
+              ...question.tests.flatMap(fileBlock),
+              "</tests>",
+              "",
+              "<solution>",
+              ...question.solution.flatMap(fileBlock),
+              "</solution>",
+            ]
+          : ["<rubric>", question.rubric.trim(), "</rubric>"];
   return [
     "While this question was open, the learner sent the tutor the message " +
       "below, and the tutor replied. Judge whether the reply gave the " +

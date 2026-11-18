@@ -19,7 +19,11 @@
 //   question's expected expression must read when it is posted, and its
 //   answer is kept and graded the same way, by the symbolic check
 //   (math-check.ts, task 3.5), or by the grader when the check does not
-//   settle it.
+//   settle it. A code question names files in the workspace that the
+//   learner edits (task 3.7); its tests must fail on the starter files and
+//   pass on the tutor's solution when it is posted, and its answer, the
+//   learner's files as they are when "Run the tests" is pressed, is kept and
+//   graded the same way, by running the tests on them (code-run.ts).
 //   A message the tutor receives while a question waits for its answer
 //   has the tutor's reply judged, once it ends, by the help judge
 //   (help-judge.ts, task 2.21): clarification leaves the answer counting,
@@ -67,6 +71,7 @@
 // (`exclusive`), which the agents are given for recording a grade.
 
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type {
@@ -74,8 +79,10 @@ import type {
   PackageRequest,
 } from "../../shared/packages.ts";
 import {
+  type AnswerPost,
   type AnswerSubmission,
   CHOICE_LETTERS,
+  type CodeFile,
   type GradedAnswer,
   postedQuestion,
   type Question,
@@ -108,6 +115,13 @@ import {
   segmentOf,
 } from "./check-rules.ts";
 import { type ChoiceOrder, randomOrder, reorder } from "./choice-order.ts";
+import {
+  type CodeRunner,
+  fileProblem,
+  gradeCode,
+  noCodeRunner,
+  readWorkspaceFiles,
+} from "./code-run.ts";
 import type { ChatResult, Timer } from "./conversation.ts";
 import { type Grader, gradeChoice, gradeMath } from "./grading.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
@@ -165,12 +179,12 @@ export interface UnitChat {
    */
   anotherQuestion(): Promise<ChatResult>;
   /**
-   * The learner's answer to the open question. A written or math one is
-   * graded after this returns; the page hears the grade, or that grading
-   * failed.
+   * The learner's answer to the open question. A written, math or code one
+   * is graded after this returns; the page hears the grade, or that grading
+   * failed. A code answer's files are read from the workspace now.
    */
-  answer(submission: AnswerSubmission): Promise<ChatResult>;
-  /** Grades again the written or math answer whose grading failed. */
+  answer(submission: AnswerPost): Promise<ChatResult>;
+  /** Grades again the written, math or code answer whose grading failed. */
   gradeAgain(): Promise<ChatResult>;
   /**
    * Installs the packages of the tutor's request that waits. The page hears
@@ -241,6 +255,11 @@ interface ChatOptions {
    * to one already open goes to the grader.
    */
   mathCheck?: MathCheck;
+  /**
+   * Runs code questions' tests (task 3.7). Without it, code questions are
+   * refused, and an answer to one already open fails its grading.
+   */
+  codeRunner?: CodeRunner;
   /** Judges the tutor's replies to messages sent while a question is open. */
   judge: HelpJudge;
   /**
@@ -521,6 +540,9 @@ function createUnitChat(
   let install: { requestId: string; done: Promise<void> } | undefined;
   /** The install ran, but its result still needs to be written to state.json. */
   let pendingInstall: PackageCompletion | undefined;
+  /** The code questions whose kept answer's tests have run past their limit once. */
+  const timedOut = new Set<string>();
+  const code = options.codeRunner ?? noCodeRunner;
 
   // --- Opening ---------------------------------------------------------------
 
@@ -612,7 +634,7 @@ function createUnitChat(
       if (position.detour !== undefined) log.emit(detourEvent(position.detour));
       const open = position.openQuestion;
       if (open !== undefined) {
-        log.emit({ type: "question", question: view(open) });
+        log.emit({ type: "question", question: view(open, folder) });
         await exclusive(async () => {
           if (record.recordedAnswer(open.id) !== undefined) {
             // A restart came between recording the answer and closing its
@@ -909,7 +931,7 @@ function createUnitChat(
 
   /**
    * Grades an answer to the open question once no reply during it waits
-   * for the judge: a written or math one outside the queue, kept in
+   * for the judge: a written, math or code one outside the queue, kept in
    * state.json first, and any other at once. Runs inside `exclusive`.
    */
   async function grade(
@@ -919,7 +941,11 @@ function createUnitChat(
     stops?: number,
   ): Promise<void> {
     const { question } = open;
-    if (answer.kind === "written" || answer.kind === "math") {
+    if (
+      answer.kind === "written" ||
+      answer.kind === "math" ||
+      answer.kind === "code"
+    ) {
       // Kept before it is graded, so a restart does not lose it.
       const kept: OpenQuestion = { ...open, answer };
       if (open.answer === undefined) {
@@ -939,6 +965,27 @@ function createUnitChat(
       },
       stops,
     );
+  }
+
+  /**
+   * The learner's files of a code question as they are now, read from the
+   * workspace, or why the tests cannot be run on them.
+   */
+  async function readFiles(
+    paths: readonly string[],
+  ): Promise<CodeFile[] | string> {
+    if (folder === undefined) return "The unit is not open.";
+    try {
+      const read = await readWorkspaceFiles(folder, paths);
+      if ("files" in read) return read.files;
+      return (
+        `${fileProblem(read)} Nothing was run or recorded: put it right ` +
+        `at ${join(folder, read.path)} and run the tests again, or answer "I don't know".`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return `Your files could not be read: ${message}`;
+    }
   }
 
   // --- Help (task 2.21) ------------------------------------------------------
@@ -1038,9 +1085,9 @@ function createUnitChat(
   }
 
   /**
-   * Grades the open question's kept written or math answer. The grading
-   * runs outside `exclusive`, so the chat goes on while it works; its grade
-   * is recorded inside, if the question is still open.
+   * Grades the open question's kept written, math or code answer. The
+   * grading runs outside `exclusive`, so the chat goes on while it works;
+   * its grade is recorded inside, if the question is still open.
    */
   function startGrading(
     r: Running,
@@ -1056,6 +1103,27 @@ function createUnitChat(
       run = (signal) => grader.grade(question, answer.text, signal);
     } else if (answer.kind === "math" && question.kind === "math") {
       run = (signal) => gradeMath(question, answer, { check, grader }, signal);
+    } else if (answer.kind === "code" && question.kind === "code") {
+      const workspace = folder;
+      if (workspace === undefined) throw new Error("The unit is not open.");
+      run = async () => {
+        const graded = await gradeCode(code, question, answer, workspace);
+        if (graded.ok || graded.timedOut === undefined) return graded;
+        // Past the limit a second time on the same files: the code, not a
+        // slow moment, kept the tests from ending, so it is a miss.
+        if (timedOut.has(open.id)) {
+          return {
+            ok: true,
+            verdict: "incorrect",
+            output: graded.timedOut.output,
+          };
+        }
+        timedOut.add(open.id);
+        return {
+          ok: false,
+          error: `${graded.error} Run them again; if they run past it again, the answer is graded as a miss.`,
+        };
+      };
     } else {
       // The answer's kind is its question's: `answer` and the schema check it.
       throw new Error("The answer is not of its question's kind.");
@@ -1149,6 +1217,9 @@ function createUnitChat(
             };
           }
           const posted = postedQuestion(question);
+          const workspace = folder;
+          if (workspace === undefined)
+            return { refused: "The unit is not open." };
           if (posted.kind === "math") {
             // Read before it is posted, so that every answer is compared
             // with an expression the check can read.
@@ -1165,6 +1236,14 @@ function createUnitChat(
               retry: () => retryAfterInstall(r, position, since, stopped),
             },
             async () => {
+              if (posted.kind === "code") {
+                // Inside the course's queue, so that no write of the
+                // tutor's can change the starter files between the check
+                // and the post.
+                const unfit = await code.check(posted, workspace);
+                if (unfit !== undefined) return unfit;
+                if (stopped()) return QUESTION_STOPPED;
+              }
               const open: OpenQuestion = {
                 id: randomUUID(),
                 number: since + 1,
@@ -1177,7 +1256,7 @@ function createUnitChat(
                     : posted,
               };
               await r.record.move({ ...position, openQuestion: open });
-              log.emit({ type: "question", question: view(open) });
+              log.emit({ type: "question", question: view(open, workspace) });
               return {
                 id: open.id,
                 number: open.number,
@@ -1478,13 +1557,13 @@ function createUnitChat(
         return { ok: true };
       }),
 
-    answer: (submission) =>
+    answer: (sent) =>
       // An answer is taken while the tutor replies to a message.
       act(
         async (r) => {
           const open = r.record.position.openQuestion;
           if (open === undefined) return refused("No question is open.");
-          if (submission.questionId !== open.id) {
+          if (sent.questionId !== open.id) {
             return refused(
               `That question is not open; question ${open.number} is.`,
             );
@@ -1499,10 +1578,7 @@ function createUnitChat(
             );
           }
           const { question } = open;
-          if (
-            submission.kind !== "unknown" &&
-            submission.kind !== question.kind
-          ) {
+          if (sent.kind !== "unknown" && sent.kind !== question.kind) {
             return {
               ok: false,
               status: 400,
@@ -1511,8 +1587,20 @@ function createUnitChat(
                   ? `Question ${open.number} is answered with one of its choices.`
                   : question.kind === "math"
                     ? `Question ${open.number} is answered with an expression.`
-                    : `Question ${open.number} is answered in writing.`,
+                    : question.kind === "code"
+                      ? `Question ${open.number} is answered by running the tests on your files.`
+                      : `Question ${open.number} is answered in writing.`,
             };
+          }
+          let submission: AnswerSubmission;
+          if (sent.kind !== "code") submission = sent;
+          else {
+            // The files as they are now are the answer, final once sent.
+            const read = await readFiles(
+              question.kind === "code" ? question.files : [],
+            );
+            if (typeof read === "string") return refused(read);
+            submission = { ...sent, files: read };
           }
           if (
             submission.kind === "choice" &&
@@ -1557,7 +1645,9 @@ function createUnitChat(
           const kept = open?.answer;
           if (
             open === undefined ||
-            (kept?.kind !== "written" && kept?.kind !== "math")
+            (kept?.kind !== "written" &&
+              kept?.kind !== "math" &&
+              kept?.kind !== "code")
           ) {
             return refused("No answer is waiting to be graded again.");
           }
@@ -1710,18 +1800,27 @@ const QUESTION_STOPPED = { refused: "Stop canceled posting this question." };
 const WAITS_FOR_JUDGE =
   "Your answer to this question is kept, and is graded once the tutor's replies while it was open have been judged.";
 
-/** The question as the page sees it: never its grading material. */
-function view(open: OpenQuestion): QuestionView {
+/**
+ * The question as the page sees it: never its grading material. A code
+ * question's files are named by their full paths in the workspace.
+ */
+function view(open: OpenQuestion, workspace: string | undefined): QuestionView {
   const { id, number, question } = open;
-  return question.kind === "choice"
-    ? {
-        kind: "choice",
+  const { prompt } = question;
+  switch (question.kind) {
+    case "choice":
+      return { kind: "choice", id, number, prompt, choices: question.choices };
+    case "code":
+      return {
+        kind: "code",
         id,
         number,
-        prompt: question.prompt,
-        choices: question.choices,
-      }
-    : { kind: question.kind, id, number, prompt: question.prompt };
+        prompt,
+        files: question.files.map((path) => join(workspace ?? "", path)),
+      };
+    default:
+      return { kind: question.kind, id, number, prompt };
+  }
 }
 
 function refused(error: string): ChatResult {

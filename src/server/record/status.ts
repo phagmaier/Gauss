@@ -97,5 +97,11 @@ function problemOf(question: Question): string {
     case "math":
     case "written":
       return JSON.stringify([question.kind, text(question.prompt)]);
+    case "code":
+      return JSON.stringify([
+        question.kind,
+        text(question.prompt),
+        ...question.files,
+      ]);
   }
 }

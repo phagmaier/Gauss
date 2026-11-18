@@ -638,6 +638,38 @@ details.why summary:hover {
   white-space: pre;
 }
 
+/* a code question's lines in its output, piece 14 */
+.qa-out .f {
+  color: var(--red);
+}
+.qa-out .p {
+  color: var(--green);
+}
+/* the files a code question's learner edits, piece 14 */
+.qa-file {
+  font-size: 0.94em;
+  color: var(--soft);
+  margin: 0.6em 0 0.2em;
+}
+.qa-file-note {
+  margin: 0;
+}
+.qa-path {
+  display: flex;
+  gap: 0.2em 1em;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin: 0.3em 0 0.45em;
+}
+.qa-path-name {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.wk-file {
+  margin: 0.6em 0 0;
+  font-size: 0.9em;
+}
+
 /* ---- A card that asks for something other than an answer, piece 14 ---- */
 .pk-title {
   color: var(--ink);

@@ -29,7 +29,7 @@ import {
 import { Hello, PageEvent, UnitOpened } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
-import type { AnswerSubmission } from "../shared/question.ts";
+import type { AnswerPost } from "../shared/question.ts";
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
@@ -606,7 +606,7 @@ function ThreadItem(props: {
   asked: "last" | "earlier" | undefined;
   confirming: boolean;
   onConfirm(asking: boolean): void;
-  onAnswer(submission: AnswerSubmission): Promise<string | undefined>;
+  onAnswer(submission: AnswerPost): Promise<string | undefined>;
   onGradeAgain(): Promise<string | undefined>;
   onInstall(requestId: string): Promise<string | undefined>;
   onNotNow(requestId: string): Promise<string | undefined>;

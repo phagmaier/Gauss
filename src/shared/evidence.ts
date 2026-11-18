@@ -37,6 +37,11 @@ export const AnswerEvidence = z
      * why. The grader graded it instead (task 3.5).
      */
     unsettled: Unsettled.optional(),
+    /**
+     * For a code answer, and only there: the end of what the tests wrote as
+     * they ran on the learner's files (task 3.7).
+     */
+    output: z.string().optional(),
   })
   .refine((e) => (e.answer.kind === "unknown") === (e.verdict === "unknown"), {
     message: `An "I don't know" is graded "unknown", and nothing else is.`,
@@ -58,6 +63,11 @@ export const AnswerEvidence = z
       path: ["unsettled"],
     },
   )
+  .refine((e) => (e.output !== undefined) === (e.answer.kind === "code"), {
+    message:
+      "A code answer keeps the end of its tests' output, and no other answer does.",
+    path: ["output"],
+  })
   .refine((e) => (e.flaw !== undefined) === gradedIncorrectByGrader(e), {
     message:
       "An answer the grader graded incorrect names its flaw, and no other answer does.",

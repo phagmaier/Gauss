@@ -1,9 +1,10 @@
 // Check questions: what the tutor posts, what the record keeps, what the page
-// shows, and what the learner sends back. Three answer kinds so far: multiple
-// choice, graded by the engine; math, an expression compared with the
-// expected one by the symbolic check (task 3.5); and written answers
-// (proofs, derivations, explanations), graded against a rubric by a separate
-// model call (task 2.8). Code questions join in task 3.7.
+// shows, and what the learner sends back. Four answer kinds: multiple choice,
+// graded by the engine; math, an expression compared with the expected one by
+// the symbolic check (task 3.5); written answers (proofs, derivations,
+// explanations), graded against a rubric by a separate model call (task 2.8);
+// and code, files in the course's workspace the learner edits, graded by
+// running the tutor's tests on them (task 3.7).
 
 import { z } from "zod";
 import { Slug } from "./course.ts";
@@ -65,6 +66,121 @@ const expected = z
     "Math questions only: the expected answer, in LaTeX without $ signs (`3x^2`, `\\frac{1}{2}`, `x = 2`): one expression, one equation, or several values separated by commas. A symbolic check compares the learner's answer with it, so any equal form counts. Shown to the learner once the answer is graded.",
   );
 
+// --- Code questions (task 3.7) -----------------------------------------------
+
+/** The longest file of a code question: a test, the solution, a learner's file as run. */
+export const CODE_FILE_LIMIT = 100_000;
+
+/** The workspace's folders where no file of a question can be. */
+const RESERVED_FOLDERS = new Set([".venv", ".claude", ".git"]);
+const PATH_WORD = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * A file's path in the course's workspace, relative to it: words of
+ * letters, digits, ".", "_" and "-" separated by "/", never "." or "..",
+ * and not in the workspace's environment or Claude Code's folder.
+ */
+export const WorkspacePath = z
+  .string()
+  .min(1)
+  .max(200)
+  .superRefine((path, ctx) => {
+    const words = path.split("/");
+    if (words.some((w) => !PATH_WORD.test(w) || w === "." || w === "..")) {
+      ctx.addIssue({
+        code: "custom",
+        message: `"${path}" is not a path in the workspace: write it relative to the workspace, as words of letters, digits, ".", "_" and "-" separated by "/" (\`bpe.py\`, \`tests/test_bpe.py\`).`,
+      });
+    } else if (RESERVED_FOLDERS.has(words[0] ?? "")) {
+      ctx.addIssue({
+        code: "custom",
+        message: `"${path}" is in ${words[0]}, where no file of a question can be.`,
+      });
+    }
+  });
+
+/** A file of a code question, with its whole text. */
+export const CodeFile = z.object({
+  path: WorkspacePath.describe("Its path in the workspace, relative to it."),
+  content: z.string().max(CODE_FILE_LIMIT).describe("Its whole text."),
+});
+export type CodeFile = z.infer<typeof CodeFile>;
+
+const files = z
+  .array(WorkspacePath)
+  .min(1)
+  .max(5)
+  .describe(
+    "Code questions only: the files the learner edits, by their paths in the course's workspace, your working folder (`bpe.py`). Write the starter version of each there with your Write tool before you post: what the learner starts from, which the tests must fail on. The card shows each with its full path.",
+  );
+const tests = z
+  .array(CodeFile)
+  .min(1)
+  .max(5)
+  .describe(
+    "Code questions only: the test files, each with its path and whole text. Never write them in the workspace: the app keeps them and runs them, and the learner sees only their output, once the answer is graded.",
+  );
+const solution = z
+  .array(CodeFile)
+  .min(1)
+  .max(5)
+  .describe(
+    "Code questions only: your solution, each file of `files` by the same path, as a correct answer would leave it. The tests must pass on it. Never shown to the learner.",
+  );
+const command = z
+  .array(z.string().max(1000))
+  .min(1)
+  .max(40)
+  .refine((words) => (words[0] ?? "").trim() !== "", {
+    message: "The command's first word is the program to run.",
+  })
+  .describe(
+    'Code questions only: the command that runs the tests, as its words, with no shell: [".venv/bin/python", "-m", "pytest", "-q", "test_bpe.py"]. It runs in a folder that mirrors the workspace, with the files of `files` (the starter versions, your solution, or the learner\'s) and your test files at their paths, and the workspace\'s `.venv`. Exit status 0 means correct. It must finish within 60 seconds.',
+  );
+
+/** The fields only a code question has. */
+const CODE_FIELDS = ["files", "tests", "solution", "command"] as const;
+
+/**
+ * What is wrong with a code question's files: the solution gives each file
+ * the learner edits once, and no two files share a path or sit inside each
+ * other.
+ */
+function codeIssues(
+  q: { files: string[]; tests: CodeFile[]; solution: CodeFile[] },
+  issue: (path: string, message: string) => void,
+): void {
+  if (new Set(q.files).size !== q.files.length) {
+    issue("files", "Each file the learner edits is named once.");
+  }
+  const solved = q.solution.map((f) => f.path);
+  if (
+    new Set(solved).size !== solved.length ||
+    solved.length !== new Set(q.files).size ||
+    solved.some((path) => !q.files.includes(path))
+  ) {
+    issue(
+      "solution",
+      "The solution gives each file of `files` once, by the same path, and no other file.",
+    );
+  }
+  const tested = q.tests.map((f) => f.path);
+  if (new Set(tested).size !== tested.length) {
+    issue("tests", "Each test file has a path of its own.");
+  }
+  if (tested.some((path) => q.files.includes(path))) {
+    issue("tests", "A test file cannot be one of the files the learner edits.");
+  }
+  const all = [...new Set([...q.files, ...tested])];
+  const nested = all.find((a) => all.some((b) => b.startsWith(`${a}/`)));
+  if (nested !== undefined) {
+    issue(
+      "tests",
+      `"${nested}" cannot be a file and a folder of files at once.`,
+    );
+  }
+}
+
 function answerIsAChoice(q: {
   choices: string[];
   answer: ChoiceLetter;
@@ -86,19 +202,62 @@ export const QuestionInput = z
       "The id of the objective the question checks: one of the segment's objectives, as the header lists them",
     ),
     kind: z
-      .enum(["choice", "math", "written"])
+      .enum(["choice", "math", "written", "code"])
       .describe(
-        '"choice": the learner picks one of the choices, graded against `answer`. "math": the learner types an expression, compared with `expected` by a symbolic check. "written": the learner writes the answer (a proof, a derivation, an explanation), graded against `rubric` by a separate grader.',
+        '"choice": the learner picks one of the choices, graded against `answer`. "math": the learner types an expression, compared with `expected` by a symbolic check. "written": the learner writes the answer (a proof, a derivation, an explanation), graded against `rubric` by a separate grader. "code": the learner edits `files` in the workspace, graded by running `tests` with `command`.',
       ),
     prompt,
     choices: choices.optional(),
     answer: answer.optional(),
     expected: expected.optional(),
     rubric: rubric.optional(),
+    files: files.optional(),
+    tests: tests.optional(),
+    solution: solution.optional(),
+    command: command.optional(),
   })
   .superRefine((q, ctx) => {
     const issue = (path: string, message: string) =>
       ctx.addIssue({ code: "custom", path: [path], message });
+    if (q.kind === "code") {
+      for (const field of CODE_FIELDS) {
+        if (q[field] === undefined) {
+          issue(
+            field,
+            "A code question needs the files the learner edits, the tests, your solution and the command that runs the tests.",
+          );
+        }
+      }
+      for (const field of [
+        "choices",
+        "answer",
+        "expected",
+        "rubric",
+      ] as const) {
+        if (q[field] !== undefined) {
+          issue(
+            field,
+            "A code question has no choices, answer letter, expected expression or rubric: its tests grade it.",
+          );
+        }
+      }
+      const { files, tests, solution } = q;
+      if (
+        files !== undefined &&
+        tests !== undefined &&
+        solution !== undefined
+      ) {
+        codeIssues({ files, tests, solution }, issue);
+      }
+      return;
+    }
+    const code = CODE_FIELDS.find((field) => q[field] !== undefined);
+    if (code !== undefined) {
+      issue(
+        code,
+        "Only a code question has files, tests, a solution and a command.",
+      );
+    }
     if (q.kind === "choice") {
       if (q.choices === undefined) {
         issue("choices", "A choice question needs its choices.");
@@ -184,10 +343,32 @@ export const WrittenQuestion = z.object({
 });
 export type WrittenQuestion = z.infer<typeof WrittenQuestion>;
 
+/**
+ * A code question (task 3.7): the files the learner edits in the workspace,
+ * and the grading material, kept here and never in the workspace: the
+ * tests, the tutor's solution, and the command that runs the tests.
+ */
+export const CodeQuestion = z
+  .object({
+    kind: z.literal("code"),
+    prompt,
+    files,
+    tests,
+    solution,
+    command,
+  })
+  .superRefine((q, ctx) =>
+    codeIssues(q, (path, message) =>
+      ctx.addIssue({ code: "custom", path: [path], message }),
+    ),
+  );
+export type CodeQuestion = z.infer<typeof CodeQuestion>;
+
 export const Question = z.discriminatedUnion("kind", [
   ChoiceQuestion,
   MathQuestion,
   WrittenQuestion,
+  CodeQuestion,
 ]);
 export type Question = z.infer<typeof Question>;
 
@@ -206,7 +387,8 @@ export function postedQuestion({
 
 /**
  * A posted question as the page sees it: never the answer letter, the
- * expected expression or the rubric.
+ * expected expression, the rubric, or a code question's tests, solution or
+ * command.
  */
 export const QuestionView = z.discriminatedUnion("kind", [
   z.object({
@@ -227,6 +409,14 @@ export const QuestionView = z.discriminatedUnion("kind", [
     id: z.string(),
     number: z.number().int().positive(),
     prompt: z.string(),
+  }),
+  z.object({
+    kind: z.literal("code"),
+    id: z.string(),
+    number: z.number().int().positive(),
+    prompt: z.string(),
+    /** The files the learner edits, by their full paths. */
+    files: z.array(z.string()),
   }),
 ]);
 export type QuestionView = z.infer<typeof QuestionView>;
@@ -256,35 +446,72 @@ export const MathAnswer = z.object({
 });
 export type MathAnswer = z.infer<typeof MathAnswer>;
 
-/** An answer graded outside the chat's queue: a written one, or a math one. */
+/**
+ * "Run the tests" on a code question, as the page sends it (task 3.7). The
+ * engine reads the learner's files from the workspace then.
+ */
+export const CodeRun = z.object({
+  kind: z.literal("code"),
+  questionId: z.string(),
+  confidence: Confidence,
+});
+export type CodeRun = z.infer<typeof CodeRun>;
+
+/**
+ * A code answer as the record keeps it: the learner's files as they were
+ * when "Run the tests" was pressed, which the tests run on.
+ */
+export const CodeAnswer = CodeRun.extend({
+  files: z.array(CodeFile).min(1),
+});
+export type CodeAnswer = z.infer<typeof CodeAnswer>;
+
+/** An answer graded outside the chat's queue: a written, math or code one. */
 export const GradedAnswer = z.discriminatedUnion("kind", [
   WrittenAnswer,
   MathAnswer,
+  CodeAnswer,
 ]);
 export type GradedAnswer = z.infer<typeof GradedAnswer>;
 
-/**
- * The learner's answer, or "I don't know", which asks no confidence and can
- * say where the learner got stuck (task 2.20).
- */
+const ChoiceAnswer = z.object({
+  kind: z.literal("choice"),
+  questionId: z.string(),
+  choice: ChoiceLetter,
+  confidence: Confidence,
+  reasoning: z.string().max(10_000).optional(),
+});
+
+/** "I don't know", which asks no confidence and can say where the learner got stuck (task 2.20). */
+const UnknownAnswer = z.object({
+  kind: z.literal("unknown"),
+  questionId: z.string(),
+  /** Where the learner got stuck, in their words; the tutor is given it. */
+  stuck: z.string().trim().min(1).max(10_000).optional(),
+});
+
+/** The learner's answer as the record keeps it, or "I don't know". */
 export const AnswerSubmission = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("choice"),
-    questionId: z.string(),
-    choice: ChoiceLetter,
-    confidence: Confidence,
-    reasoning: z.string().max(10_000).optional(),
-  }),
+  ChoiceAnswer,
   MathAnswer,
   WrittenAnswer,
-  z.object({
-    kind: z.literal("unknown"),
-    questionId: z.string(),
-    /** Where the learner got stuck, in their words; the tutor is given it. */
-    stuck: z.string().trim().min(1).max(10_000).optional(),
-  }),
+  CodeAnswer,
+  UnknownAnswer,
 ]);
 export type AnswerSubmission = z.infer<typeof AnswerSubmission>;
+
+/**
+ * The learner's answer as the page sends it: as the record keeps it, except
+ * that a code answer is only "Run the tests", whose files the engine reads.
+ */
+export const AnswerPost = z.discriminatedUnion("kind", [
+  ChoiceAnswer,
+  MathAnswer,
+  WrittenAnswer,
+  CodeRun,
+  UnknownAnswer,
+]);
+export type AnswerPost = z.infer<typeof AnswerPost>;
 
 /** "unknown" is the learner's "I don't know": a miss, never a confident one. */
 export const Verdict = z.enum(["correct", "incorrect", "unknown"]);

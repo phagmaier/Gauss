@@ -1,7 +1,7 @@
 // The help judge's hand-judged set (plan task 2.21; the verdicts and the
-// reasons for them are in docs/decisions.md, "Help judge"). Six questions
-// as a tutor would post them, each with its answer key, expected answer or
-// rubric, and exchanges during them: a message the learner sent while the
+// reasons for them are in docs/decisions.md, "Help judge"). Seven questions
+// as a tutor would post them, each with its answer key, expected answer,
+// rubric, or tests and solution, and exchanges during them: a message the learner sent while the
 // question was open and the tutor's reply, each judged by hand against the
 // rules in `prompts/help-judge.md`. `scripts/judge-set.ts` judges them on a
 // real model.
@@ -77,6 +77,44 @@ const power: Question = {
   kind: "math",
   prompt: tex`Differentiate $h(x) = (2x+1)^5$. Give $h'(x)$.`,
   expected: "10(2x+1)^4",
+};
+
+const pairs: Question = {
+  kind: "code",
+  prompt:
+    "Finish `most_common_pair(ids)` in `bpe.py`: return the pair of neighbouring ids that occurs most often in the list. When several pairs tie, return the one that appears first. For `[1, 2, 3, 1, 2]` it returns `(1, 2)`.",
+  files: ["bpe.py"],
+  tests: [
+    {
+      path: "test_bpe.py",
+      content: `from bpe import most_common_pair
+
+
+def test_one_pair():
+    assert most_common_pair([1, 2, 3, 1, 2]) == (1, 2)
+
+
+def test_tie_takes_the_first():
+    assert most_common_pair([5, 6, 7, 8, 5, 6, 7, 8]) == (5, 6)
+
+
+def test_overlapping_run():
+    assert most_common_pair([4, 4, 4]) == (4, 4)
+`,
+    },
+  ],
+  solution: [
+    {
+      path: "bpe.py",
+      content: `def most_common_pair(ids):
+    counts = {}
+    for pair in zip(ids, ids[1:]):
+        counts[pair] = counts.get(pair, 0) + 1
+    return max(counts, key=counts.get)
+`,
+    },
+  ],
+  command: [".venv/bin/python", "-m", "pytest", "-q", "test_bpe.py"],
 };
 
 export const HELP_SET: HandJudgedExchange[] = [
@@ -157,6 +195,15 @@ export const HELP_SET: HandJudgedExchange[] = [
     message: "Do I have to expand it, or can I leave it in brackets?",
     reply:
       "Either: any form equal to your answer is accepted, expanded or not.",
+    verdict: "clarification",
+  },
+  {
+    id: "C10",
+    tests: "which file to edit, on a code question",
+    question: pairs,
+    message: "Do I edit bpe.py where it is, or make a new file for my answer?",
+    reply:
+      "Edit bpe.py at the path the card shows, and keep the function's name: that is the file and the function the tests run.",
     verdict: "clarification",
   },
   // --- Help: anything toward the answer -----------------------------------
@@ -270,6 +317,25 @@ export const HELP_SET: HandJudgedExchange[] = [
     message: tex`What does $h'(x)$ mean?`,
     reply:
       "It is the derivative of $h$. When the inside of a power is not just $x$, remember that its own derivative comes in too.",
+    verdict: "help",
+  },
+  {
+    id: "H14",
+    tests: "a case the tests try, which the question does not name",
+    question: pairs,
+    message: "Will the tests try a list with only one element?",
+    reply:
+      "No, but they do try a run like [4, 4, 4], so make sure overlapping pairs are counted.",
+    verdict: "help",
+  },
+  {
+    id: "H15",
+    tests: "reacting to the learner's code",
+    question: pairs,
+    message:
+      "I wrote `return max(set(pairs), key=pairs.count)`. Does that handle ties?",
+    reply:
+      "Not the way the question asks: a set has no order, so a tie could go either way.",
     verdict: "help",
   },
 ];

@@ -78,6 +78,39 @@ const MATH_MISS = {
   flaw: "It gives $18$, not the slope $6$.",
   unsettled: { result: "undecided", reason: "the check ran out of time" },
 };
+// A code answer the tests failed, with the learner's file as run.
+const CODE_MISS = {
+  kind: "answer",
+  recordedAt: "2026-11-15T10:19:00.000Z",
+  objective: "tangent-line",
+  question: {
+    kind: "code",
+    prompt: "Finish `slope(a)` in `tangent.py`: the slope of $y = x^2$ at $a$.",
+    files: ["tangent.py"],
+    tests: [
+      {
+        path: "test_tangent.py",
+        content:
+          "from tangent import slope\n\ndef test_three():\n    assert slope(3) == 6\n",
+      },
+    ],
+    solution: [
+      { path: "tangent.py", content: "def slope(a):\n    return 2 * a\n" },
+    ],
+    command: [".venv/bin/python", "-m", "pytest", "-q", "test_tangent.py"],
+  },
+  answer: {
+    kind: "code",
+    questionId: "q9",
+    confidence: "75",
+    files: [
+      { path: "tangent.py", content: "def slope(a):\n    return a * a\n" },
+    ],
+  },
+  assisted: false,
+  verdict: "incorrect",
+  output: "FAILED test_tangent.py::test_three - assert 9 == 6\nExit status 1.",
+};
 const OVERRIDE = {
   kind: "override",
   recordedAt: "2026-11-15T10:20:00.000Z",
@@ -103,6 +136,17 @@ test.each([
   {
     name: "a math answer the check graded incorrect",
     entry: { ...MATH_MISS, flaw: undefined, unsettled: undefined },
+  },
+  {
+    name: "a code answer the tests failed, with its files and output",
+    entry: CODE_MISS,
+  },
+  {
+    name: `an "I don't know" to a code question`,
+    entry: {
+      ...UNKNOWN,
+      question: CODE_MISS.question,
+    },
   },
   { name: "an override", entry: OVERRIDE },
 ])("$name parses unchanged", ({ entry }) => {
@@ -161,6 +205,32 @@ describe("rejects", () => {
       name: "a choice answer left unsettled by the symbolic check",
       input: { ...ASSISTED_MISS, unsettled: MATH_MISS.unsettled },
       path: ["unsettled"],
+    },
+    {
+      name: "a code answer without its tests' output",
+      input: { ...CODE_MISS, output: undefined },
+      path: ["output"],
+    },
+    {
+      name: "a choice answer with a code answer's output",
+      input: { ...ASSISTED_MISS, output: "1 passed" },
+      path: ["output"],
+    },
+    {
+      name: "a code answer graded incorrect with a flaw",
+      input: { ...CODE_MISS, flaw: "Squares a." },
+      path: ["flaw"],
+    },
+    {
+      name: "a code question whose solution is not the file the learner edits",
+      input: {
+        ...CODE_MISS,
+        question: {
+          ...CODE_MISS.question,
+          solution: [{ path: "other.py", content: "" }],
+        },
+      },
+      path: ["question", "solution"],
     },
     {
       name: "a choice answer to a written question",

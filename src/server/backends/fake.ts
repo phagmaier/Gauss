@@ -3,7 +3,9 @@
 // text, call a teaching tool, call a file or shell tool, or hold until it is
 // interrupted. Tool calls run the real teaching tool, and a call that ends
 // the turn ends it here too. A write or a command asks the engine first, as
-// Claude's hook does, and a file written is reported; nothing is written.
+// Claude's hook does, and a file written is reported; nothing is written,
+// unless a Write gives the file's content (a code question's starter file,
+// task 3.7), which is written in the working folder.
 // One-shot requests get the scripted replies in order, checked against the
 // request's schema as the real backends check theirs. In place of a list, a
 // function can answer every turn or request it is given, without end
@@ -17,6 +19,8 @@
 // script goes on across a resume: the fake has no conversation to carry.
 
 import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { ToolResult } from "../tools/tool.ts";
 import {
   type BackendEvent,
@@ -37,6 +41,8 @@ export type FakeStep =
   | {
       builtIn: "Read" | "Write" | "Edit" | "Bash";
       path?: string;
+      /** A Write's content: given, the file is written, once the engine allows it. */
+      content?: string;
       run_in_background?: boolean;
       /** Holds a successful mutation open, to exercise concurrent tools. */
       until?: Promise<void>;
@@ -282,12 +288,32 @@ async function builtIn(
   }
   const reservation =
     step.builtIn === "Read" ? undefined : await options.workspace.acquire();
-  return reservation !== undefined && "refused" in reservation
-    ? { result: { status: "refused", text: reservation.refused } }
-    : {
-        result: { status: "done", text: `${step.builtIn} ran.` },
-        ...(reservation === undefined ? {} : { release: reservation.release }),
+  if (reservation !== undefined && "refused" in reservation) {
+    return { result: { status: "refused", text: reservation.refused } };
+  }
+  const { cwd } = options;
+  if (
+    step.builtIn === "Write" &&
+    step.content !== undefined &&
+    step.path !== undefined &&
+    cwd !== undefined
+  ) {
+    const at = join(cwd, step.path);
+    try {
+      await mkdir(dirname(at), { recursive: true });
+      await writeFile(at, step.content);
+    } catch (error) {
+      reservation?.release();
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        result: { status: "refused", text: `Write failed: ${message}` },
       };
+    }
+  }
+  return {
+    result: { status: "done", text: `${step.builtIn} ran.` },
+    ...(reservation === undefined ? {} : { release: reservation.release }),
+  };
 }
 
 const STOP = Symbol("stopped");

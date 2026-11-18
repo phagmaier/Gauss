@@ -107,9 +107,9 @@ export const PageEvent = z.discriminatedUnion("type", [
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),
   /**
-   * A written or math answer was sent and is being graded (tasks 2.8 and
-   * 3.5). Sent again when it is graded again after a failure, and when a
-   * unit reopens with an answer a restart kept from its grade.
+   * A written, math or code answer was sent and is being graded (tasks 2.8,
+   * 3.5 and 3.7). Sent again when it is graded again after a failure, and
+   * when a unit reopens with an answer a restart kept from its grade.
    */
   z.object({
     type: z.literal("grading"),
@@ -119,7 +119,7 @@ export const PageEvent = z.discriminatedUnion("type", [
   /**
    * An answer was sent while replies of the tutor's to the learner's
    * messages during the question were still to be judged (task 2.21). It
-   * is kept, and graded once they are; a written or math one is then
+   * is kept, and graded once they are; a written, math or code one is then
    * `grading`.
    */
   z.object({
@@ -152,8 +152,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     unjudged: z.enum(["failed", "restart"]).optional(),
   }),
   /**
-   * The grading of a written or math answer failed. The answer is kept, the
-   * question stays open, and the learner can have it graded again.
+   * The grading of a written, math or code answer failed. The answer is
+   * kept, the question stays open, and the learner can have it graded again.
    */
   z.object({
     type: z.literal("grading_failed"),
@@ -178,6 +178,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     unsettled: Unsettled.optional(),
     /** For an answer the grader graded incorrect: the first flawed step or missing element. */
     flaw: z.string().optional(),
+    /** For a code answer: the end of the tests' output on the learner's files (task 3.7). */
+    output: z.string().optional(),
     /** Given with help, so a correct answer does not count toward passing. */
     assisted: z.boolean(),
   }),

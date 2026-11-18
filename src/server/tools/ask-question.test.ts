@@ -102,6 +102,106 @@ test("a math question is posted with its expected answer", async () => {
   expect(posted).toEqual([MATH]);
 });
 
+const CODE = {
+  objective: "power-rule",
+  kind: "code",
+  prompt:
+    "Finish `derivative(c, n)` in `power.py`: the derivative of $cx^n$ as a pair.",
+  files: ["power.py"],
+  tests: [{ path: "test_power.py", content: "from power import derivative\n" }],
+  solution: [
+    {
+      path: "power.py",
+      content: "def derivative(c, n):\n    return c * n, n - 1\n",
+    },
+  ],
+  command: [".venv/bin/python", "-m", "pytest", "-q", "test_power.py"],
+};
+
+test("a code question is posted with its files, tests, solution and command", async () => {
+  const { posted, tool } = setUp();
+
+  expect(await tool.run(CODE)).toMatchObject({ status: "done", endTurn: true });
+  expect(posted).toEqual([CODE]);
+});
+
+test.each([
+  {
+    name: "no tests, as a code question",
+    input: { ...CODE, tests: undefined },
+    reason: "A code question needs the files the learner edits, the tests",
+  },
+  {
+    name: "a rubric, as a code question",
+    input: { ...CODE, rubric: "Any." },
+    reason:
+      "A code question has no choices, answer letter, expected expression or rubric",
+  },
+  {
+    name: "files, as a math question",
+    input: { ...MATH, files: ["power.py"] },
+    reason: "Only a code question has files, tests, a solution and a command.",
+  },
+  {
+    name: "a solution for a file the learner does not edit",
+    input: { ...CODE, solution: [{ path: "other.py", content: "" }] },
+    reason: "The solution gives each file of `files` once, by the same path",
+  },
+  {
+    name: "a test file that is the learner's file",
+    input: { ...CODE, tests: [{ path: "power.py", content: "" }] },
+    reason: "A test file cannot be one of the files the learner edits.",
+  },
+  {
+    name: "a test file inside a file the learner edits",
+    input: {
+      ...CODE,
+      tests: [{ path: "power.py/test_power.py", content: "" }],
+    },
+    reason: '"power.py" cannot be a file and a folder of files at once.',
+  },
+  {
+    name: "a path outside the workspace",
+    input: {
+      ...CODE,
+      files: ["../power.py"],
+      solution: [{ path: "../power.py", content: "" }],
+    },
+    reason: '"../power.py" is not a path in the workspace',
+  },
+  {
+    name: "an absolute path",
+    input: {
+      ...CODE,
+      files: ["/tmp/power.py"],
+      solution: [{ path: "/tmp/power.py", content: "" }],
+    },
+    reason: "is not a path in the workspace",
+  },
+  {
+    name: "a test file in the workspace's environment",
+    input: { ...CODE, tests: [{ path: ".venv/test_power.py", content: "" }] },
+    reason:
+      '".venv/test_power.py" is in .venv, where no file of a question can be.',
+  },
+  {
+    name: "a command with no program",
+    input: { ...CODE, command: [" ", "test_power.py"] },
+    reason: "The command's first word is the program to run.",
+  },
+])(
+  "a code question with $name is refused with the reason, before the board",
+  async ({ input, reason }) => {
+    const { posted, tool } = setUp();
+
+    const result = await tool.run(input);
+
+    expect(result.status).toBe("refused");
+    expect(result.text).toContain(reason);
+    expect(posted).toEqual([]);
+  },
+);
+
 test.each([
   {
     name: "an answer that is not one of its choices",
