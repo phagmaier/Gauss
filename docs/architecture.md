@@ -468,9 +468,11 @@ with sources (stage 4).
   writes only to the folders the caller names and to the command's own
   `$TMPDIR`, removed when it ends, a time limit that stops the command with
   everything it started, and each decoded output stream kept within its byte
-  limit. On Linux, `pytools/sandbox_exec.py` adds an inherited seccomp filter
-  to commands (engine and tutor), using the project's venv Python, closing
-  the runtime's Unix-socket-pair route to host services. Reads and the server's
+  limit. The sandbox and built-in tutor tools are Linux-only: the runtime
+  contains descendants in a PID namespace. `pytools/sandbox_exec.py` adds
+  an inherited seccomp filter to commands (engine and tutor), using the
+  project's venv Python, closing the runtime's Unix-socket route to host
+  services. Reads and the server's
   environment are not confined (`decisions.md`, "Confinement"). The server
   starts the sandbox once (`serve.ts`) and probes both Unix-socket creation
   routes; when it cannot run safely, it says once what is missing, and

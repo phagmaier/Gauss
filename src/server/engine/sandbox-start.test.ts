@@ -31,3 +31,23 @@ test.runIf(process.platform === "linux")(
     }
   },
 );
+
+test("a runtime that supports macOS does not enable workloads without verified process-tree containment", async () => {
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  if (original === undefined) throw new Error("process.platform is missing");
+  const lines: string[] = [];
+  Object.defineProperty(process, "platform", { value: "darwin" });
+  try {
+    const sandbox = await startSandbox({ log: (line) => lines.push(line) });
+    try {
+      expect(sandbox.available).toBe(false);
+      expect(sandbox).not.toHaveProperty("run");
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("process-tree containment");
+    } finally {
+      await sandbox.close();
+    }
+  } finally {
+    Object.defineProperty(process, "platform", original);
+  }
+});

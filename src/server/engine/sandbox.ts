@@ -128,6 +128,12 @@ export async function startSandbox(options: {
     return { available: false, reason, close: () => Promise.resolve() };
   };
 
+  // Only Linux has the verified PID namespace and inherited workload guard.
+  if (process.platform !== "linux") {
+    return unavailable(
+      `process-tree containment is not verified on ${process.platform}`,
+    );
+  }
   if (!SandboxManager.isSupportedPlatform()) {
     return unavailable(`the sandbox does not run on ${process.platform}`);
   }
@@ -142,10 +148,7 @@ export async function startSandbox(options: {
   // Run the workload guard too: installed dependencies do not establish
   // that namespaces, seccomp and the project's Python actually work.
   const trial = await run({
-    argv:
-      process.platform === "linux"
-        ? [sandboxPython, "-I", "-c", socketProbe]
-        : ["true"],
+    argv: [sandboxPython, "-I", "-c", socketProbe],
     cwd: "/",
     writable: [],
     timeLimitMs: 10_000,

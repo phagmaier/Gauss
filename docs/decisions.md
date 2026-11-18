@@ -375,6 +375,11 @@ isolation options, kept every write inside `dir`:
   session of its own stops at the time limit (the PID namespace), and a
   server killed with SIGKILL takes its commands with it (`--die-with-parent`).
   The runtime's unasked writable paths are closed in `configFor`.
+- **Linux only** (the agent's choice). The macOS runtime can leave
+  descendants alive after the direct command exits; the deadline and tutor
+  workspace reservation cannot rely on that exit. Until there is verified
+  process-tree containment, commands and built-in tutor tools stay off on
+  other platforms.
 - **Linux commands need an extra workload filter** (the agent's choice).
   Runtime 0.0.83 blocks `socket(AF_UNIX)` but permits `socketpair`; a
   datagram endpoint was reconnected to a scratch host socket. Engine and

@@ -52,14 +52,6 @@ its outcome.
   another approval. Exercise both restart cases and the card on the fake
   backend.
 
-### 3.18 Require verified sandbox process-tree containment
-
-- Status: in progress
-- Done when: a platform without verified containment cannot run the
-  engine's commands or enable the tutor's shell tools. Linux still runs
-  the command and descendant checks; stage 4's read and network deferrals
-  are unchanged.
-
 ## Stage 5: mastery loop (built before stage 4)
 
 ### 5.0 Break down the stage
