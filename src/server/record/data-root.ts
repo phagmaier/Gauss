@@ -22,7 +22,7 @@ import {
   CurriculumProposal,
   type ShownProposal,
 } from "../../shared/curriculum.ts";
-import { PageEvent } from "../../shared/events.ts";
+import { PageEvent, SESSION_GAP_MS } from "../../shared/events.ts";
 import {
   DisputeEvidence,
   EvidenceEntry,
@@ -78,6 +78,13 @@ export interface DataRoot {
    * in unitsOpenedAt when a unit is named.
    */
   markOpened(id: string, unitId?: string): Promise<StoredCourse>;
+  /**
+   * Notes that review is offered in the course at `at`, unless it was
+   * offered less than SESSION_GAP_MS before: then it changes nothing and
+   * answers false. Checked and written under the course file's lock, so two
+   * units opened together cannot both offer one.
+   */
+  markReviewOffered(id: string, at: Date): Promise<boolean>;
   /**
    * The course's style note, style.md, trimmed, or undefined when it has
    * none (a course proposed before notes existed, task 2.10) or the file is
@@ -343,6 +350,26 @@ export function openDataRoot(options: {
         };
         await writeJson(path, Course, course);
         return { ...stored, course };
+      });
+    },
+
+    async markReviewOffered(id, at) {
+      const path = courseFile(id, "course.json");
+      return withFileLock(path, async () => {
+        const stored = await existingCourse(id);
+        const last = stored.course.reviewOfferedAt;
+        if (
+          last !== undefined &&
+          at.getTime() - Date.parse(last) < SESSION_GAP_MS
+        ) {
+          return false;
+        }
+        const course: Course = {
+          ...stored.course,
+          reviewOfferedAt: at.toISOString(),
+        };
+        await writeJson(path, Course, course);
+        return true;
       });
     },
 

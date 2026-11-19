@@ -377,6 +377,18 @@ export function createApp(options: {
     }),
   );
 
+  // An assessment's card (task 5.4): Start asks the tutor for its first
+  // question; Skip, on the card or partway, ends it.
+  app.post(
+    `${unitPath}/assessment/start`,
+    withUnit(async (c, chat) => reply(c, await chat.startAssessment(), 202)),
+  );
+
+  app.post(
+    `${unitPath}/assessment/skip`,
+    withUnit(async (c, chat) => reply(c, await chat.skipAssessment(), 200)),
+  );
+
   // Moving on sends the tutor nothing until the learner's next step.
   app.post(
     `${unitPath}/override`,

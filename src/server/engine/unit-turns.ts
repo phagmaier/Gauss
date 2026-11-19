@@ -4,9 +4,10 @@
 // the turn, and what is allowed now; the learner's text or the event's
 // details follow it. Pure, so the wording is tested without a chat.
 
-import type { Unit } from "../../shared/curriculum.ts";
+import type { StoredUnit } from "../../shared/curriculum.ts";
 import type {
   AnswerEvidence,
+  AssessmentMode,
   DisputeEvidence,
   EvidenceEntry,
 } from "../../shared/evidence.ts";
@@ -17,7 +18,9 @@ import {
 } from "../../shared/packages.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, confidenceLabel } from "../../shared/question.ts";
-import type { UnitPosition } from "../../shared/state.ts";
+import type { AssessmentRun, UnitPosition } from "../../shared/state.ts";
+import type { ObjectiveStatus } from "../../shared/status.ts";
+import type { RunObjective, RunStep } from "./assessment-rules.ts";
 import {
   isLastSegment,
   type ObjectiveCheck,
@@ -27,8 +30,8 @@ import {
 /** The unit being taught, as the course record has it. */
 export interface UnitContext {
   courseTitle: string;
-  /** The curriculum's units, in order. */
-  units: readonly Unit[];
+  /** The curriculum's units, in order, with their plans as read when the chat opened or an assessment was offered. */
+  units: readonly StoredUnit[];
   unitId: string;
   plan: Plan;
 }
@@ -114,6 +117,17 @@ export interface Where {
    * turn that allows a question lists those asked on them before.
    */
   evidence: readonly EvidenceEntry[];
+  /** An assessment offered or under way, with where it stands. */
+  assessment?: RunWhere;
+}
+
+/** An assessment offered or under way (task 5.4), with where it stands. */
+export interface RunWhere {
+  run: AssessmentRun;
+  /** Where each of its objectives stands, in its order. */
+  standing: readonly RunObjective[];
+  /** Once under way, the question it asks next; none once it has asked all it will. */
+  next: RunStep | undefined;
 }
 
 export function teachTurn(where: Where, cutOff: boolean): string {
@@ -243,15 +257,25 @@ export function answerTurn(
     );
   }
   const { detour } = where.position;
+  const opens = detour?.questionId === answer.questionId;
+  const running = where.assessment?.run.stage === "on";
   return turn(
     where,
     `The learner answered question ${number}.`,
     lines.join("\n"),
-    where.finished !== undefined || where.position.phase !== "check"
+    where.finished !== undefined
       ? undefined
-      : detour?.questionId === answer.questionId
-        ? detourOpening(where, entry)
-        : feedbackAllowed(where),
+      : entry.assessment !== undefined
+        ? !running
+          ? undefined
+          : opens
+            ? runDetourOpening(where, entry)
+            : runFeedbackAllowed(where)
+        : where.position.phase !== "check"
+          ? undefined
+          : opens
+            ? detourOpening(where, entry)
+            : feedbackAllowed(where),
   );
 }
 
@@ -291,19 +315,7 @@ function detourOpening(where: Where, entry: AnswerEvidence): string {
   const { standing } = checkStanding(where);
   const check = where.checks.get(entry.objective);
   const missed = check?.state === "more" ? check.missed : 1;
-  const { answer } = entry;
-  const from =
-    answer.kind === "choice"
-      ? `from the choice they picked${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
-      : answer.kind === "math"
-        ? `from the answer they gave${entry.flaw === undefined ? "" : ", the grader's flaw"}${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
-        : answer.kind === "code"
-          ? "from the end of the tests' output and the files they ran, or, if that does not show it, "
-          : answer.kind === "written"
-            ? "from the grader's flaw and what they wrote, or, if that does not show it, "
-            : answer.stuck !== undefined
-              ? "from where they say they got stuck, or, if that does not show it, "
-              : "";
+  const from = confusionFrom(entry);
   const again =
     missed >= 2
       ? ` "${entry.objective}" has been missed ${missed} times in this check, ` +
@@ -320,6 +332,22 @@ function detourOpening(where: Where, entry: AnswerEvidence): string {
     `work through it with them.${again} You may suggest pressing "Ready ` +
     'for another question" once the confusion seems cleared.'
   );
+}
+
+/** Where a missed answer may show the learner's confusion, for a detour's first turn. */
+function confusionFrom(entry: AnswerEvidence): string {
+  const { answer } = entry;
+  return answer.kind === "choice"
+    ? `from the choice they picked${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
+    : answer.kind === "math"
+      ? `from the answer they gave${entry.flaw === undefined ? "" : ", the grader's flaw"}${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
+      : answer.kind === "code"
+        ? "from the end of the tests' output and the files they ran, or, if that does not show it, "
+        : answer.kind === "written"
+          ? "from the grader's flaw and what they wrote, or, if that does not show it, "
+          : answer.stuck !== undefined
+            ? "from where they say they got stuck, or, if that does not show it, "
+            : "";
 }
 
 /**
@@ -367,6 +395,237 @@ export function nextQuestionTurn(
         : "Do not go back over the detour.") +
       " Posting ends your turn." +
       askedBefore(where, toAsk),
+  );
+}
+
+// --- Assessments (task 5.4) ----------------------------------------------------
+
+/** What an assessment is called, in a header and on its buttons. */
+export function runName(mode: AssessmentMode): string {
+  return mode === "test-out" ? "test" : mode;
+}
+
+/**
+ * The turn that asks for an assessment's next question, with the header
+ * alone: once the learner starts it, after the feedback on question
+ * `number`, once the learner ends the detour after it, or when a unit
+ * reopens in it with nothing open.
+ */
+export function runTurn(
+  where: Where,
+  event:
+    | { after: "start" | "reopened" }
+    | { after: "feedback" | "detour"; number: number; objective?: string },
+): string {
+  const run = where.assessment?.run;
+  const name = runName(run?.mode ?? "review");
+  const count = run?.objectives.length ?? 0;
+  let said: string;
+  switch (event.after) {
+    case "start":
+      said =
+        `The learner started the ${name}: ${count === 1 ? "one question" : `${count} questions`} ` +
+        "on objectives they passed before, one on each, and one more after a miss.";
+      break;
+    case "reopened":
+      said = `The ${name} goes on where it was.`;
+      break;
+    case "feedback":
+      said = `The ${name} goes on after your feedback on question ${event.number}.`;
+      break;
+    case "detour":
+      said =
+        `The learner pressed "${detourButton(where.assessment, event.objective ?? "")}": ` +
+        `the detour after question ${event.number} is over, and the ${name} goes on.`;
+      break;
+  }
+  return turn(where, said);
+}
+
+/**
+ * The note for the turn after an assessment the tutor was asking ended:
+ * every objective asked, or skipped partway.
+ */
+export function runEndNote(
+  mode: AssessmentMode,
+  ended:
+    | { skipped: true; withdrawn: number | undefined }
+    | { skipped: false; statuses: Record<string, ObjectiveStatus> },
+): string {
+  const name = runName(mode);
+  const goesOn = `The unit goes on where it stood before the ${name}.`;
+  if (ended.skipped) {
+    const withdrawn =
+      ended.withdrawn === undefined
+        ? ""
+        : `, and question ${ended.withdrawn} was withdrawn`;
+    return `The learner skipped the rest of the ${name}${withdrawn}. ${goesOn}`;
+  }
+  const said = Object.entries(ended.statuses).map(
+    ([id, status]) =>
+      `"${id}" ${status === "slipping" ? "slipping (passed before, now missed, so it must pass again)" : status}`,
+  );
+  return (
+    `The ${name} is over: ${said.join("; ")}. ${goesOn} Do not go back ` +
+    `over the ${name} unless the learner asks.`
+  );
+}
+
+/** The turn that takes the check up again once an assessment that came in it ends. */
+export function checkGoesOnTurn(where: Where): string {
+  return turn(where, "The check goes on.");
+}
+
+/** Where the assessment's objectives stand, for the tutor. */
+function runStanding(where: Where): string {
+  const { assessment } = where;
+  if (assessment === undefined) return "";
+  return assessment.run.objectives
+    .map(({ objective }, i) => {
+      const standing = assessment.standing[i];
+      const said =
+        standing === undefined || standing.state === "unasked"
+          ? "not asked yet"
+          : standing.state === "again"
+            ? "missed, so one more question follows the detour"
+            : standing.missed
+              ? "missed, then asked once more"
+              : "answered correctly";
+      return `question ${i + 1}, "${objective}": ${said}`;
+    })
+    .join("; ");
+}
+
+/** The objective as the tutor needs it: whose it is, and what it states. */
+function aboutObjective(where: Where, step: RunStep): string {
+  const { context } = where;
+  if (step.unit === context.unitId) {
+    const statement = context.plan.objectives.find(
+      (o) => o.id === step.objective,
+    )?.statement;
+    return `"${step.objective}" is an objective of this unit: ${statement}`;
+  }
+  const at = context.units.findIndex((u) => u.id === step.unit);
+  const unit = context.units[at];
+  const statement = unit?.plan?.objectives.find(
+    (o) => o.id === step.objective,
+  )?.statement;
+  return (
+    `"${step.objective}" is an objective of unit ${at + 1}, ` +
+    `"${unit?.title}", which this conversation may not have taught: ${statement}`
+  );
+}
+
+/**
+ * What the learner presses to end the detour after a miss on the
+ * objective: another question on it, or going on to the assessment's next
+ * objective, or its end.
+ */
+export function detourButton(
+  assessment: RunWhere | undefined,
+  objective: string,
+): string {
+  const name = runName(assessment?.run.mode ?? "review");
+  const at =
+    assessment?.run.objectives.findIndex((o) => o.objective === objective) ??
+    -1;
+  if (assessment?.standing[at]?.state === "again") {
+    return "Ready for another question";
+  }
+  return assessment?.next === undefined
+    ? `Finish the ${name}`
+    : `Go on with the ${name}`;
+}
+
+/** What an assessment allows while it is offered or under way; undefined once it is neither. */
+function runAllowed(where: Where): string | undefined {
+  const { assessment, position } = where;
+  if (assessment === undefined) return undefined;
+  const { run, next } = assessment;
+  const name = runName(run.mode);
+  if (run.stage === "offered") {
+    const count = run.objectives.length;
+    return (
+      `A ${name} of ${count === 1 ? "one question" : `${count} questions`} is ` +
+      "offered to the learner on a card, which they start or skip; the unit " +
+      "waits until they do. Allowed now: reply to the learner. No teaching tools."
+    );
+  }
+  // An open question, or feedback queued, reads as in a check.
+  const waiting = questionAllowed(where);
+  if (waiting !== undefined) return waiting;
+  const standing = runStanding(where);
+  const { detour } = position;
+  if (detour !== undefined) {
+    return (
+      `In this ${name}, ${standing}. A detour is open after the miss on ` +
+      `question ${detour.number}, on "${detour.objective}": nothing in it ` +
+      "is graded, and the learner's messages are not help. Allowed now: " +
+      "work through the confusion with the learner, briefly: a refresher, " +
+      "not the unit taught again. ask_question is refused until they press " +
+      `"${detourButton(assessment, detour.objective)}"; you may suggest it once ` +
+      "the confusion seems cleared."
+    );
+  }
+  if (next === undefined) {
+    return (
+      `In this ${name}, ${standing}. Every objective has been asked, and ` +
+      `the ${name} is ending. Allowed now: reply to the learner. No more questions.`
+    );
+  }
+  const unlike = next.second
+    ? ", and unlike the one just missed: ask about the same idea another way"
+    : "";
+  return (
+    `In this ${name}, ${standing}. Allowed now: a lead-in of one sentence, ` +
+    `then a question on "${next.objective}" with ask_question, unlike the ` +
+    `ones asked before${unlike}. ${aboutObjective(where, next)} No teaching ` +
+    `in a ${name}: before the question, no reminder of the idea, rule or ` +
+    "method, and no example. Posting ends your turn." +
+    askedBefore(where, [next.objective])
+  );
+}
+
+/** The turn after a correct answer in an assessment: feedback alone, briefly. */
+function runFeedbackAllowed(where: Where): string {
+  const name = runName(where.assessment?.run.mode ?? "review");
+  const next =
+    where.assessment?.next === undefined
+      ? `this was the ${name}'s last question, and the ${name} ends once your feedback does`
+      : "once it ends, the app asks you for the next question in a message of its own";
+  return (
+    `In this ${name}, ${runStanding(where)}. Allowed now: feedback on this ` +
+    "answer in a sentence or two, written as text, and nothing else: no " +
+    `teaching. No tool may be called in this reply: ${next}.`
+  );
+}
+
+/**
+ * The first turn of a detour in an assessment: the right answer, the
+ * confusion found and worked through, briefly. After a first miss one more
+ * question on the objective follows; after a second, none.
+ */
+function runDetourOpening(where: Where, entry: AnswerEvidence): string {
+  const name = runName(where.assessment?.run.mode ?? "review");
+  const button = detourButton(where.assessment, entry.objective);
+  const at =
+    where.assessment?.run.objectives.findIndex(
+      (o) => o.objective === entry.objective,
+    ) ?? -1;
+  const after =
+    where.assessment?.standing[at]?.state === "again"
+      ? `When they press it, one more question on "${entry.objective}" follows.`
+      : `Nothing more is asked on "${entry.objective}": when they press it, ` +
+        `the ${name} ${where.assessment?.next === undefined ? "ends" : "moves on to its next objective"}.`;
+  return (
+    `In this ${name}, ${runStanding(where)}. The miss opens a detour, a ` +
+    `pause in the ${name}: no question is posted until the learner presses ` +
+    `"${button}", and nothing said in it is graded. Allowed now, as text, ` +
+    "with no tool: give the right answer and why it is right; then find " +
+    `where the confusion is, ${confusionFrom(entry)}by asking them one ` +
+    "question, and work through it with them: a short refresher, not the " +
+    `unit taught again. ${after} You may suggest pressing "${button}" once ` +
+    "the confusion seems cleared."
   );
 }
 
@@ -469,7 +728,7 @@ function turn(
   where: Where,
   event: string,
   body?: string,
-  allowedNow = allowed(where),
+  allowedNow = runAllowed(where) ?? allowed(where),
 ): string {
   const waiting = where.position.packageRequest;
   const request =
@@ -509,7 +768,11 @@ function describe(where: Where): string {
     ? `a segment after the plan's ${context.plan.segments.length}, going over ${quoted(segment.objectives)} again`
     : `segment ${position.segment + 1} of ${context.plan.segments.length}, ` +
       `"${segment.title}", on ${quoted(segment.objectives)}`;
-  return `${unit}; ${which}. Phase: ${position.phase}.`;
+  const run =
+    where.assessment?.run.stage === "on"
+      ? ` A ${runName(where.assessment.run.mode)} is under way, and the segment waits until it ends.`
+      : "";
+  return `${unit}; ${which}. Phase: ${position.phase}.${run}`;
 }
 
 function allowed(where: Where): string {
@@ -532,44 +795,8 @@ function allowed(where: Where): string {
         "ask_question is refused until they do."
       );
     case "check": {
-      const open = position.openQuestion;
-      if (open !== undefined) {
-        const helped =
-          open.assisted === true
-            ? " A reply of yours to the learner while it was open was judged help, so the answer will be recorded as given with help."
-            : "";
-        if (open.answer !== undefined) {
-          const state =
-            open.judging === undefined
-              ? "the answer is being graded"
-              : "the answer is graded once your replies to the learner while it was open are judged";
-          return (
-            `Question ${open.number}, on "${open.objective}", is answered, ` +
-            `and ${state}.${helped} Allowed now: reply to the learner. ` +
-            "ask_question is refused until the grade arrives, in a message " +
-            "of its own."
-          );
-        }
-        return (
-          `Question ${open.number}, on "${open.objective}", is open.${helped} ` +
-          "Allowed now: reply without giving its answer away. You may " +
-          "clarify what the question asks: its wording, its notation, the " +
-          "form of answer wanted. A separate judge reads each reply you " +
-          "write while it is open, and one that gives anything toward the " +
-          "answer (a method, a step, a value, a similar worked example, a " +
-          "mistake to avoid, whether a guess is right) makes the answer " +
-          "count as given with help. ask_question is refused until the " +
-          "learner answers it."
-        );
-      }
-      if (where.feedbackPending !== undefined) {
-        return (
-          `Question ${where.feedbackPending} is graded, and your feedback on ` +
-          "it is queued in a message of its own. Allowed now: reply to the " +
-          "learner without posting a question; ask_question is refused " +
-          "until that feedback ends."
-        );
-      }
+      const waiting = questionAllowed(where);
+      if (waiting !== undefined) return waiting;
       const { standing, toAsk } = checkStanding(where);
       const { detour } = position;
       if (detour !== undefined) {
@@ -609,6 +836,52 @@ function allowed(where: Where): string {
             "choose. Allowed now: reply to the learner. No teaching tools " +
             "until the next segment starts.";
   }
+}
+
+/**
+ * What a question open, or a graded answer whose feedback is queued, allows,
+ * in a check or an assessment; undefined when neither is so.
+ */
+function questionAllowed(where: Where): string | undefined {
+  const open = where.position.openQuestion;
+  if (open !== undefined) {
+    const helped =
+      open.assisted === true
+        ? " A reply of yours to the learner while it was open was judged help, so the answer will be recorded as given with help."
+        : "";
+    if (open.answer !== undefined) {
+      const state =
+        open.judging === undefined
+          ? "the answer is being graded"
+          : "the answer is graded once your replies to the learner while it was open are judged";
+      return (
+        `Question ${open.number}, on "${open.objective}", is answered, ` +
+        `and ${state}.${helped} Allowed now: reply to the learner. ` +
+        "ask_question is refused until the grade arrives, in a message " +
+        "of its own."
+      );
+    }
+    return (
+      `Question ${open.number}, on "${open.objective}", is open.${helped} ` +
+      "Allowed now: reply without giving its answer away. You may " +
+      "clarify what the question asks: its wording, its notation, the " +
+      "form of answer wanted. A separate judge reads each reply you " +
+      "write while it is open, and one that gives anything toward the " +
+      "answer (a method, a step, a value, a similar worked example, a " +
+      "mistake to avoid, whether a guess is right) makes the answer " +
+      "count as given with help. ask_question is refused until the " +
+      "learner answers it."
+    );
+  }
+  if (where.feedbackPending !== undefined) {
+    return (
+      `Question ${where.feedbackPending} is graded, and your feedback on ` +
+      "it is queued in a message of its own. Allowed now: reply to the " +
+      "learner without posting a question; ask_question is refused " +
+      "until that feedback ends."
+    );
+  }
+  return undefined;
 }
 
 /** Where each of the segment's objectives stands in the check, and those that need a question. */

@@ -5,6 +5,7 @@ import type { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import {
+  assessmentEndMarker,
   closingCard,
   divided,
   helpNotice,
@@ -899,4 +900,83 @@ test("a course not loaded, or a unit not in it, has no place: never taken for th
     placement({ ...course(), curriculum: null }, "limits"),
   ).toBeUndefined();
   expect(placement(course(), "elsewhere")).toBeUndefined();
+});
+
+// --- Review (piece 15) --------------------------------------------------------
+
+test("in a review the control is its skip, beside its question in any phase; none while its answer is graded, nor while its card waits", () => {
+  const review: PageEvent = {
+    type: "assessment",
+    mode: "review",
+    stage: "offered",
+    count: 2,
+  };
+  const question: PageEvent = {
+    type: "question",
+    question: {
+      kind: "written",
+      id: "r1",
+      number: 1,
+      prompt: "Why?",
+      assessment: { of: 2 },
+    },
+  };
+  const atCard = play([planned, phase(1, "discuss"), review]);
+  expect(nextStep(atCard)).toBeNull();
+
+  const asked = play([
+    planned,
+    phase(1, "discuss"),
+    review,
+    { ...review, stage: "on" },
+    question,
+  ]);
+  expect(nextStep(asked)).toBe("assessment");
+  expect(openQuestion(asked)?.question.id).toBe("r1");
+
+  const grading = play([
+    planned,
+    phase(1, "discuss"),
+    { ...review, stage: "on" },
+    question,
+    {
+      type: "grading",
+      questionId: "r1",
+      answer: {
+        kind: "written",
+        questionId: "r1",
+        text: "Because.",
+        confidence: "75",
+      },
+    },
+  ]);
+  expect(nextStep(grading)).toBeNull();
+});
+
+test.each<[string, Record<string, ObjectiveStatus>, string]>([
+  [
+    "two retained and one slipping",
+    { a: "retained", b: "slipping", c: "retained" },
+    "Two retained, one slipping. Back to segment 2, in its discussion.",
+  ],
+  [
+    "one answered with help, so passed and not retained",
+    { a: "retained", b: "passed" },
+    "One retained, one passed, not yet retained. Back to segment 2, in its discussion.",
+  ],
+  [
+    "every one slipping",
+    { a: "slipping", b: "slipping", c: "slipping" },
+    "All three slipping. Back to segment 2, in its discussion.",
+  ],
+])("the marker at a review's end, with %s", (_, statuses, says) => {
+  const state = play([
+    planned,
+    phase(1, "discuss"),
+    { type: "assessment", mode: "review", stage: "on", count: 3 },
+    { type: "assessment_end", mode: "review", skipped: false, statuses },
+  ]);
+  const marker = state.items.at(-1);
+  if (marker?.kind !== "assessment_end") throw new Error("No end marker.");
+  expect(assessmentEndMarker(marker)).toEqual({ name: "Review over", says });
 });

@@ -74,12 +74,12 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
 
 ```
 <data root>/
-  .git/, .gitignore               the record's history: commits after each segment close, unit end and approval
+  .git/, .gitignore               the record's history: commits after each segment close, unit end, approval, and an assessment that recorded answers
   profile.md                      (stage 5) learner profile: free text the learner approves
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
   cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
-    course.json                   title, backend, settings, dates, when each unit was last opened
+    course.json                   title, backend, settings, dates, when each unit was last opened, when review was last offered
     style.md                      the course's style note, proposed and approved with the curriculum
     background.md                 the background note: what the learner told the planner, approved with the curriculum
     curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts
@@ -122,9 +122,11 @@ version: a field added later must be optional.
   current unit: several units can be in progress at once. A position
   holds the segment, the phase, where the check began (`checkFrom`), the
   open question (with its kept answer and the exchanges awaiting the help
-  judge), an open detour, the extra segment that goes over objectives
-  again, the tutor's session id, and the tutor's request to install
-  packages while it waits for the learner. Completed package cards are
+  judge), an open detour, an assessment offered or under way (beside the
+  phase; while it is under way the open question and the detour are its
+  own), the extra segment that goes over objectives again, the tutor's
+  session id, and the tutor's request to install packages while it waits
+  for the learner. Completed package cards are
   kept separately from positions in the same file, so their outcomes
   survive even if a transcript line is lost or a unit finishes. Before
   the first unit exposes the workspace, the course rolls back an
@@ -144,7 +146,8 @@ version: a field added later must be optional.
   on the first start if it is not one, with a `.gitignore` that keeps
   `courses/` and `profile.md`, the learner's files in workspaces with
   them, and leaves out `.venv/` and Python's caches. The engine asks for a commit once a
-  segment's close, a unit's end or an approval is written; commits run in
+  segment's close, a unit's end, an approval or the end of an assessment
+  that recorded answers is written; commits run in
   the background, one at a time, by "Gauss", and a failure is logged and
   never fails the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off
   for `pnpm dev:fake` unless `=on`; tests pass it in.
@@ -186,9 +189,10 @@ also before it reaches the backend.
   hears of it, and `engine/unit-agents.ts`, which runs the tutor, the grader
   and the help judge. Opening a unit not in progress plans it if needed,
   writes its position (segment 1, teach) and sends the teaching turn;
-  opening one in progress picks it up where `state.json` has it. Opening a
-  unit marks it opened in `course.json`. A unit reopened in teach is taught
-  again.
+  opening one in progress picks it up where `state.json` has it. Either can
+  first offer review, which holds the teaching turn ("Assessments" below).
+  Opening a unit marks it opened in `course.json`. A unit reopened in teach
+  is taught again.
 - **Kept sessions and resume.** A tutor's session and an intake's are kept
   by the backend and resumed by id, in the folder they ran in (the course's
   `workspace/`, made when a unit first opens, or the data root's
@@ -266,7 +270,9 @@ The rules:
 - **The tutor's tools are refused out of phase**, with a reason it can act
   on: `ask_question` outside the check, in a detour, while feedback is
   pending, while a question is open, on an objective not in the segment
-  or already done in this check, and once the unit is finished. Its file
+  or already done in this check, and once the unit is finished. In an
+  assessment it is allowed in any phase, on the objective the assessment
+  asks next only, and refused while its card waits. Its file
   writes and commands (section 5) are refused while a question is open;
   `show_artifact` is refused while a question of its unit is open or its
   unit is finished;
@@ -323,8 +329,10 @@ The rules:
   progress is told the outcome in its next header (`disputeNote` in
   `unit-turns.ts`).
 - **The learner's steps wait for the tutor**: "ready", moving on, the next
-  segment, "another question", Start fresh and the closing card's steps are
-  refused while the tutor is writing; Stop is always there. Answers and
+  segment, "another question", Start fresh, an assessment's Start and Skip
+  and the closing card's steps are refused while the tutor is writing;
+  Stop is always there. The unit's own steps also wait for an assessment
+  offered or under way. Answers and
   messages are taken at any time.
 - **Moving on sends the tutor nothing.** The next turn's header says the
   learner moved on, and which question was withdrawn.
@@ -344,8 +352,11 @@ learner's text or an event. An answer's turn repeats the question with its
 choices, the learner's answer, confidence, reasoning and the grade. A turn
 that allows a question adds a separate “Questions asked before” section to
 the header: the latest six recorded prompts for each objective it may ask
-about. This gives a new tutor session examples to avoid repeating. The
-scripted backend reads the instructions before that section, not the
+about. This gives a new tutor session examples to avoid repeating. In an
+assessment the header also names the objective's unit and statement, which
+the tutor's plan lacks when it is another unit's. The scripted backend
+reads the instructions before that section, and of the section only how
+many questions it lists, to number its next question past them, never the
 recorded prompts. Header wording lives in `engine/unit-turns.ts` for unit
 chats, `engine/intake.ts` and `engine/unit-planning.ts`; changing the
 wording the script reads can break `pnpm dev:fake`.
@@ -380,12 +391,55 @@ tab.
 5. The tutor gets the result as the next turn: feedback, or a detour's
    first turn after a miss (above).
 
-Assessments (the unit gate, testing out of a unit, and the review questions
-that open a sitting; stage 5) reuse this flow in the unit's thread, asked
-by the unit's tutor over objectives the engine selects (`decisions.md`,
-"Mastery loop"). Which ones review asks, and the gate asks of other units,
-is `pickForReview` in `record/review.ts`: passed, retained and slipping
-objectives not answered within the hour, slipping first.
+### Assessments
+
+An assessment is a run of questions without teaching, asked by the unit's
+tutor in the unit's thread over objectives the engine picks (`decisions.md`,
+"Mastery loop"). Review, which opens a sitting, is built; the unit gate and
+testing out of a unit (stage 5) are to come on the same parts.
+
+- **Kept in the position**, beside the phase, which it leaves alone
+  (`AssessmentRun` in `state.ts`): its mode, its objectives with their
+  units, whether its card is offered or it is under way, and where it began
+  in the evidence. While it is under way, the position's open question and
+  detour are its own, the question flow above is reused unchanged (help is
+  judged as in a check), and each answer is recorded with its
+  `assessment`, the mode and this unit. A restart reopens it: its card, its
+  open question or detour, or, with nothing open, the turn that asks for
+  its next question. The unit's record keeps the evidence on its plan's
+  objectives, on its assessment's, and on those of every answer given in
+  its thread; an answer on another unit's objective is told to that unit's
+  chat if it is open.
+- **Its rules** (`engine/assessment-rules.ts`): each objective gets one
+  question, in order; `ask_question` is refused on any other objective. A
+  correct answer gets a feedback turn, then the next objective's question
+  in a turn of its own. A miss opens a detour as in a check; when the
+  learner ends it, the objective is asked once more, and after that the
+  assessment moves on whatever the answer: a second miss has its detour,
+  and no third question follows. A question's number is its objective's
+  place in the assessment.
+- **Review is offered on a card** when a unit not finished is opened in a
+  new sitting (the chat is new, or `quiet()` in `engine/transcript.ts`:
+  nothing has happened for `SESSION_GAP_MS`), and nothing waits on the
+  learner or the tutor: no open question, detour, package request, closing
+  card, or turn queued. It asks about `pickForReview`'s three over the
+  whole course (`record/review.ts`: passed, retained and slipping
+  objectives not answered within the hour, slipping first); none when that
+  is empty. `course.json` keeps when review was last offered, and no card
+  comes within the hour of it, so two units opened together get one
+  (`markReviewOffered` in `record/data-root.ts`). Showing the card sends
+  the tutor nothing; a teaching turn that is due and the unit's own steps
+  ("ready", moving on, the next segment, the closing card's steps) wait
+  until it is answered. Start asks the tutor for the first question. A
+  message sent while the card waits skips it.
+- **"Skip review"** ends it on the card or partway, withdrawing an open
+  question with nothing recorded; it is refused while an answer is kept
+  for grading, as moving on is. When it ends or is skipped, the page is
+  told what it did (each answered objective's status) and the unit goes on
+  where it was: a teaching turn that waited is sent, a check takes up again
+  with a turn asking for its question (or closes if nothing is left), and
+  the discussion and a closed segment send nothing. The tutor that asked is
+  told in its next header (`runEndNote` in `unit-turns.ts`).
 
 ## 5. Teaching tools
 
@@ -737,6 +791,15 @@ no automated tests.
   failed. If saving fails, the
   card offers Retry saving without another install. The thread also has
   the detour marker and "Ready for another question", and the closing card.
+  Review (piece 15) is a card in the thread, with how many questions,
+  Skip and "Start the review", which holds the unit's own control until
+  it is answered and becomes a marker once started or skipped; a review
+  question's head says which of how many it is, "second question" after a
+  miss, and the unit of another unit's objective; "Skip review" sits
+  beside its question or detour, whose control after a second miss reads
+  "Go on with the review", or "Finish the review" at the last; its end is
+  a marker with how many objectives are retained and slipping and where
+  the unit goes on.
   The top line shows the unit's position and its outline has Start fresh.
   A math question is answered in a one-line field whose expression is shown as
   math beneath it as it is typed (piece 2). A code question's card names
@@ -794,8 +857,8 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   `packages/install`, `packages/not-now` and `packages/retry-saving`
   (with the request's id),
   `override`, `next-segment`, `go-over-again`, `finish`, `start-fresh`,
-  `interrupt`. A unit not opened since the server started answers 404 on
-  all but `open`.
+  `interrupt`, `assessment/start` and `assessment/skip`. A unit not opened
+  since the server started answers 404 on all but `open`.
 - An event stream replays its chat's log with ids `<log id>.<index>`, so a
   page that reconnects gets only what it missed. It starts with `hello`,
   outside the log: the chat's id and the index of the log's last event,

@@ -19,19 +19,22 @@
 //   symbolic check needs; the second objective is checked by written ones.
 //   In a course whose title has the word "code" or "coding" in it, every
 //   question on the first objective is a code question (task 3.7), where
-//   the sandbox runs: the tutor writes its starter file, `exercise_<n>.py`
-//   in the workspace, whose `times(x)` returns 0, and the tests pass once
-//   it returns n times x.
-// - A unit's tutor (ask_question): teaches in the teach phase, gives
-//   feedback alone on a graded answer (the engine then asks for the next
-//   question, or closes the segment, task 2.16a), opens the detour a miss
-//   starts with a reply that repeats where an "I don't know" got stuck
-//   (the learner then asks for another question, task 2.20), posts a
-//   question when the header allows one, and otherwise replies in text,
-//   which after a fresh start says where the unit stands. A choice question
-//   asks for a sum, and the right choice is that sum; the engine shuffles
-//   the choices (task 2.17), so its letter varies. A math question asks for
-//   a sum of terms in x, and any expression equal to it is right.
+//   the sandbox runs: the tutor writes its starter file,
+//   `exercise_<objective>_<n>.py` in the workspace, whose `times(x)`
+//   returns 0, and the tests pass once it returns n times x.
+// - A unit's tutor (ask_question): gives feedback alone on a graded answer
+//   (the engine then asks for the next question, or closes the segment,
+//   task 2.16a), opens the detour a miss starts with a reply that repeats
+//   where an "I don't know" got stuck (the learner then asks for another
+//   question, task 2.20), posts a question when the header allows one, in a
+//   check or a review (task 5.4), teaches in the teach phase, and otherwise
+//   replies in text, which after a fresh start says where the unit stands.
+//   Its questions on an objective are numbered past those the header lists
+//   as asked before, so none repeats one, whichever unit's thread asked it.
+//   A choice question asks for a sum, and the right choice is that sum; the
+//   engine shuffles the choices (task 2.17), so its letter varies. A math
+//   question asks for a sum of terms in x, and any expression equal to it
+//   is right.
 // - Artifacts (task 3.6): the teaching of a unit's first segment shows one,
 //   a tangent to a parabola that a slider moves, with a button that tries
 //   to reach the app and the web and says what was refused; so does a reply
@@ -148,7 +151,13 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     /^The course is "[^"\n]*\bcod(e|ing)\b/im.test(session.systemPrompt);
   const historyAt = header.lastIndexOf(QUESTION_HISTORY_START);
   const controls = historyAt === -1 ? header : header.slice(0, historyAt);
-  return teaching(controls, body, tools ? (coding ? "code" : "math") : "none");
+  const history = historyAt === -1 ? "" : header.slice(historyAt);
+  return teaching(
+    controls,
+    history,
+    body,
+    tools ? (coding ? "code" : "math") : "none",
+  );
 }
 
 /** A turn's header, between its brackets, and what follows it. */
@@ -264,8 +273,15 @@ function intake(header: string, body: string, tool: TeachingTool): FakeStep[] {
 /** What the first objective's questions are besides choices, by the session's tools and course. */
 type Checked = "none" | "math" | "code";
 
-function teaching(header: string, body: string, kinds: Checked): FakeStep[] {
-  if (header.includes("Phase: teach.")) {
+function teaching(
+  header: string,
+  history: string,
+  body: string,
+  kinds: Checked,
+): FakeStep[] {
+  // A review can be under way in any phase, teach too: what it allows comes
+  // before the phase.
+  if (header.includes("Allowed now: teach")) {
     // "Unit 1 of 6, "Limits"; segment 1 of 2, "The idea", on "limits-idea"."
     const where = header.slice(1, header.indexOf(" Phase:"));
     return [
@@ -302,7 +318,7 @@ function teaching(header: string, body: string, kinds: Checked): FakeStep[] {
     header,
   )?.[1];
   if (objective !== undefined) {
-    const number = asked(header, objective) + 1;
+    const number = askedBefore(history, objective) + 1;
     if (kinds === "code" && !objective.endsWith(WRITTEN)) {
       return codeQuestion(objective, number);
     }
@@ -447,12 +463,26 @@ const SCRIPTED_ARTIFACT = `<!doctype html>
 </html>
 `;
 
-/** How many questions this check has asked on the objective, as the header says. */
-function asked(header: string, objective: string): number {
-  const said = new RegExp(`"${objective}": [^;]*?\\((\\d+) asked\\)`).exec(
-    header,
+/**
+ * How many questions the header lists as asked on the objective before, in
+ * any check or review, so the next is numbered past them: a question asked
+ * again would count as the same problem.
+ */
+function askedBefore(history: string, objective: string): number {
+  const lines = history.split("\n");
+  const latest = new RegExp(
+    `^The latest \\d+ of the (\\d+) questions asked on "${objective}" before`,
   );
-  return said === null ? 0 : Number(said[1]);
+  for (const [i, line] of lines.entries()) {
+    const many = latest.exec(line);
+    if (many !== null) return Number(many[1]);
+    if (line.startsWith(`Asked on "${objective}" before`)) {
+      const listed = lines.slice(i + 1);
+      const end = listed.findIndex((l) => !l.startsWith('- "'));
+      return end === -1 ? listed.length : end;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -499,7 +529,8 @@ function question(objective: string, number: number, math: boolean): unknown {
  * it returns `number` times x. Plain Python, so no package is needed.
  */
 function codeQuestion(objective: string, number: number): FakeStep[] {
-  const module = `exercise_${number}`;
+  // The objective in the name: units share the course's workspace.
+  const module = `exercise_${objective.replaceAll("-", "_")}_${number}`;
   const file = `${module}.py`;
   const test = `test_${module}.py`;
   return [

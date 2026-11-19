@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
+import { AssessmentMode } from "./evidence.ts";
 import { PackageCompletion, PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question } from "./question.ts";
 
@@ -14,14 +15,17 @@ import { AnswerSubmission, Question } from "./question.ts";
 export const Phase = z.enum(["teach", "discuss", "check", "closed"]);
 export type Phase = z.infer<typeof Phase>;
 
-/** A question posted in the check and not yet graded. */
+/** A question posted in the check, or in an assessment, and not yet graded. */
 export const OpenQuestion = z
   .object({
     /** The id the page answers it by. */
     id: z.string().min(1),
     /** Its number as the page shows it. */
     number: z.number().int().positive(),
-    /** The id of the objective it checks. That it is one of the segment's is the engine's rule (task 2.6). */
+    /**
+     * The id of the objective it checks. That it is one of the segment's, or
+     * the one an assessment asks about next, is the engine's rule.
+     */
     objective: Slug,
     postedAt: Timestamp,
     /** What the learner sees, with the grading material, which the page never gets. */
@@ -64,10 +68,11 @@ export const OpenQuestion = z
 export type OpenQuestion = z.infer<typeof OpenQuestion>;
 
 /**
- * A detour (task 2.20): the pause in a check after a miss, where the tutor
- * finds the learner's confusion and works through it with them. It opens
- * when the missed answer's question closes and lasts until the learner asks
- * for another question, or moves on. No question is posted during it.
+ * A detour (task 2.20): the pause in a check, or an assessment, after a
+ * miss, where the tutor finds the learner's confusion and works through it
+ * with them. It opens when the missed answer's question closes and lasts
+ * until the learner asks for another question, moves on, or skips the
+ * assessment. No question is posted during it.
  */
 export const Detour = z.object({
   /** The question missed, by its id. */
@@ -78,6 +83,38 @@ export const Detour = z.object({
   objective: Slug,
 });
 export type Detour = z.infer<typeof Detour>;
+
+/** An objective an assessment asks about, with the unit whose plan holds it. */
+export const AssessedObjective = z.object({ unit: Slug, objective: Slug });
+export type AssessedObjective = z.infer<typeof AssessedObjective>;
+
+/**
+ * A run of questions without teaching, asked by the unit's tutor in the
+ * unit's thread (docs/decisions.md, "Mastery loop"): review at the start of
+ * a sitting. It is kept beside the phase, which it leaves alone, so a
+ * restart reopens it and the unit goes on where it was once it ends. While
+ * it is under way, the position's open question and detour are its own.
+ */
+export const AssessmentRun = z
+  .object({
+    mode: AssessmentMode,
+    /** "offered": its card waits for the learner's Start or Skip; "on": under way. */
+    stage: z.enum(["offered", "on"]),
+    /** What it asks about, in the order asked: one question each, and one more after a miss. */
+    objectives: z.array(AssessedObjective).min(1),
+    /**
+     * Once under way: how many entries the evidence log held when it began.
+     * Its answers are the entries after them that name its mode and this
+     * unit (`Assessment` in evidence.ts).
+     */
+    from: z.number().int().nonnegative().optional(),
+  })
+  .refine((a) => (a.stage === "on") === (a.from !== undefined), {
+    message:
+      "Where an assessment began in the evidence is kept once it is under way, and only then.",
+    path: ["from"],
+  });
+export type AssessmentRun = z.infer<typeof AssessmentRun>;
 
 export const UnitPosition = z
   .object({
@@ -101,9 +138,15 @@ export const UnitPosition = z
      * that name the segment's objectives (task 2.6).
      */
     checkFrom: z.number().int().nonnegative().optional(),
+    /** The check's question, or the assessment's while one is under way. */
     openQuestion: OpenQuestion.optional(),
-    /** In the check, after a miss, until the learner asks for another question. */
+    /**
+     * In the check, or in an assessment under way, after a miss, until the
+     * learner asks for another question.
+     */
     detour: Detour.optional(),
+    /** An assessment offered or under way, until it ends or is skipped. */
+    assessment: AssessmentRun.optional(),
     /** The tutor's session on the backend, once the backend has reported it. */
     tutorSessionId: z.string().min(1).optional(),
     /**
@@ -118,21 +161,36 @@ export const UnitPosition = z
       "Where the check began in the evidence is kept in the check, and only there.",
     path: ["checkFrom"],
   })
-  .refine((p) => p.openQuestion === undefined || p.phase === "check", {
-    message: "A question can be open only in the check.",
+  .refine((p) => p.openQuestion === undefined || asking(p), {
+    message:
+      "A question can be open only in the check, or in an assessment under way.",
     path: ["openQuestion"],
   })
   .refine(
     (p) =>
-      p.detour === undefined ||
-      (p.phase === "check" && p.openQuestion === undefined),
+      p.detour === undefined || (asking(p) && p.openQuestion === undefined),
     {
       message:
-        "A detour is open only in the check, and never with a question open.",
+        "A detour is open only in the check, or in an assessment under way, and never with a question open.",
       path: ["detour"],
+    },
+  )
+  .refine(
+    (p) =>
+      p.assessment?.stage !== "offered" ||
+      (p.openQuestion === undefined && p.detour === undefined),
+    {
+      message:
+        "An assessment is offered only while no question is open and no detour.",
+      path: ["assessment"],
     },
   );
 export type UnitPosition = z.infer<typeof UnitPosition>;
+
+/** Whether questions are asked: in the check, or in an assessment under way. */
+function asking(p: { phase: Phase; assessment?: AssessmentRun | undefined }) {
+  return p.phase === "check" || p.assessment?.stage === "on";
+}
 
 export const State = z.object({
   /** The units in progress, by id. */

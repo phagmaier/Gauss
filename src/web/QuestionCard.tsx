@@ -28,7 +28,7 @@
 // verdict, and the right choice or expected answer of a miss, are then the
 // ones the dispute left, and a verdict the dispute changed is marked.
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ShownDispute } from "../shared/dispute.ts";
 import {
   type AnswerPost,
@@ -91,9 +91,9 @@ export function QuestionCard(props: {
   if (item.withdrawn === true) {
     return (
       <div className="qa-card done">
-        <div className="q-count">
-          Question {item.question.number} <span className="dk">Withdrawn</span>
-        </div>
+        <QuestionHead question={item.question}>
+          <span className="dk">Withdrawn</span>
+        </QuestionHead>
         <div className="qa-prompt prose">
           <Prose text={item.question.prompt} />
         </div>
@@ -263,7 +263,7 @@ function OpenCard(props: {
   return (
     // "live": not dimmed with an earlier conversation (styles.css, ".stale").
     <div className="qa-card live">
-      <div className="q-count">Question {question.number}</div>
+      <QuestionHead question={question} />
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
@@ -576,8 +576,7 @@ function KeptCard(props: {
   return (
     // "live": it waits on its grade, or to be graded again.
     <div className="qa-card done live">
-      <div className="q-count">
-        Question {question.number}{" "}
+      <QuestionHead question={question}>
         {failed === undefined ? (
           <span className="dk" role="status">
             {answer.kind === "code" ? "Running the tests" : "Grading"}{" "}
@@ -586,7 +585,7 @@ function KeptCard(props: {
         ) : (
           <span className="no">Not graded</span>
         )}
-      </div>
+      </QuestionHead>
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
@@ -623,12 +622,11 @@ function WaitingCard(props: {
   return (
     // "live": it waits on its grade.
     <div className="qa-card done live">
-      <div className="q-count">
-        Question {question.number}{" "}
+      <QuestionHead question={question}>
         <span className="dk" role="status">
           Waiting <span className="wait" aria-hidden="true" />
         </span>
-      </div>
+      </QuestionHead>
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
@@ -764,12 +762,12 @@ function GradedCard(props: {
   const choices = question.kind === "choice" ? question.choices : [];
   return (
     <div className="qa-card done">
-      <div className="q-count">
-        Question {question.number} <VerdictNow first={first} />
+      <QuestionHead question={question}>
+        <VerdictNow first={first} />
         {graded.assisted && now.verdict === "correct" ? (
           <span>With help, so it does not count toward passing</span>
         ) : null}
-      </div>
+      </QuestionHead>
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
@@ -816,6 +814,30 @@ function GradedCard(props: {
         first={first}
         choices={choices}
       />
+    </div>
+  );
+}
+
+/**
+ * A question card's head: its number, and in an assessment which of how
+ * many, "second question" after a miss, and the unit of another unit's
+ * objective (piece 15). What follows it, the verdict or the state, comes
+ * between.
+ */
+function QuestionHead(props: { question: QuestionView; children?: ReactNode }) {
+  const { number, assessment } = props.question;
+  return (
+    <div className="q-count">
+      {assessment === undefined
+        ? `Question ${number}`
+        : `Question ${number} of ${assessment.of}`}
+      {assessment?.second === true ? <span>second question</span> : null}
+      {props.children}
+      {assessment?.from === undefined ? null : (
+        <span className="q-from">
+          Unit {assessment.from.number}: {assessment.from.title}
+        </span>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { AnswerEvidence } from "../../shared/evidence.ts";
+import { CHOICE_LETTERS } from "../../shared/question.ts";
 import { type CodeRunner, createCodeRunner } from "../engine/code-run.ts";
 import { createDisputeJudge } from "../engine/dispute-judge.ts";
 import { createGrader } from "../engine/grading.ts";
@@ -19,7 +20,11 @@ import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { withProgress } from "../record/progress.ts";
-import { BROKEN_SESSION, createScriptedBackend } from "./scripted.ts";
+import {
+  BROKEN_SESSION,
+  createScriptedBackend,
+  scriptedPlan,
+} from "./scripted.ts";
 
 // The scripted backend runs the dev server with no model (scripts/dev-fake.ts).
 // These tests take it through the engine, as the server wires it, so a change
@@ -208,6 +213,84 @@ test(
   WHOLE_UNIT_MS,
 );
 
+test("in a review, unit 2's scripted tutor asks about unit 1's objective, numbered past the question asked on it before, and the review ends before the teaching", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  await dataRoot.storePlan(COURSE, "limits", scriptedPlan("limits"));
+  // Passed long before, at 90%: review is due on it.
+  await dataRoot.appendEvidence(COURSE, {
+    kind: "answer",
+    recordedAt: "2026-11-01T10:00:00.000Z",
+    objective: "limits-idea",
+    question: {
+      kind: "choice",
+      prompt: 'Choice question 1 on "limits-idea": what is $1 + 1$?',
+      choices: ["$2$", "$3$", "$1$"],
+      answer: "A",
+    },
+    answer: {
+      kind: "choice",
+      questionId: "earlier",
+      choice: "A",
+      confidence: "90",
+    },
+    assisted: false,
+    verdict: "correct",
+  });
+  const opened = await units.open(COURSE, "derivative");
+  if (!opened.ok) throw new Error(opened.error);
+  const chat = opened.chat;
+  await chat.settled();
+  expect(chat.events()).toContainEqual({
+    type: "assessment",
+    mode: "review",
+    stage: "offered",
+    count: 1,
+  });
+
+  expect(await chat.startAssessment()).toEqual({ ok: true });
+  await chat.settled();
+  const posted = chat.events().findLast((e) => e.type === "question");
+  if (posted?.type !== "question" || posted.question.kind !== "choice") {
+    throw new Error("No choice question was posted.");
+  }
+  expect(posted.question).toMatchObject({
+    number: 1,
+    prompt: expect.stringContaining('Choice question 2 on "limits-idea"'),
+    assessment: { of: 1, from: { number: 1, title: "Limits" } },
+  });
+  const right = posted.question.choices.indexOf("$4$");
+  expect(
+    await chat.answer({
+      kind: "choice",
+      questionId: posted.question.id,
+      choice: CHOICE_LETTERS[right] ?? "A",
+      confidence: "75",
+    }),
+  ).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(chat.events()).toContainEqual({
+    type: "assessment_end",
+    mode: "review",
+    skipped: false,
+    statuses: { "limits-idea": "retained" },
+  });
+  expect(
+    chat
+      .events()
+      .some(
+        (e) =>
+          e.type === "tutor_text" &&
+          e.text.startsWith("**Scripted teaching.**"),
+      ),
+  ).toBe(true);
+  expect((await dataRoot.readState(COURSE)).units.derivative).toMatchObject({
+    segment: 0,
+    phase: "discuss",
+  });
+});
+
 test("question history is not interpreted as a scripted tutor instruction", async () => {
   const { dataRoot, units } = setUp();
   await approvedCourse(dataRoot);
@@ -238,10 +321,12 @@ test("question history is not interpreted as a scripted tutor instruction", asyn
   expect(await opened.chat.ready()).toEqual({ ok: true });
   await opened.chat.settled();
 
+  // Numbered past the one question listed, and not from the "(7 asked)" in
+  // its prompt.
   const { units: positions } = await dataRoot.readState(COURSE);
   expect(positions.limits?.openQuestion).toMatchObject({
     objective: "limits-idea",
-    question: { prompt: expect.stringContaining("what is $1 + 1$?") },
+    question: { prompt: expect.stringContaining("what is $2 + 2$?") },
   });
 });
 
@@ -345,11 +430,11 @@ test(
       const first = await open();
       expect(first.question).toMatchObject({
         kind: "code",
-        files: ["exercise_1.py"],
+        files: ["exercise_limits_idea_1.py"],
       });
-      expect(await readFile(join(workspace, "exercise_1.py"), "utf8")).toBe(
-        "def times(x):\n    return 0\n",
-      );
+      expect(
+        await readFile(join(workspace, "exercise_limits_idea_1.py"), "utf8"),
+      ).toBe("def times(x):\n    return 0\n");
       // The starter as it is: a miss, and a detour.
       await chat.answer({
         kind: "code",
@@ -365,9 +450,11 @@ test(
       await chat.settled();
 
       const second = await open();
-      expect(second.question).toMatchObject({ files: ["exercise_2.py"] });
+      expect(second.question).toMatchObject({
+        files: ["exercise_limits_idea_2.py"],
+      });
       await writeFile(
-        join(workspace, "exercise_2.py"),
+        join(workspace, "exercise_limits_idea_2.py"),
         "def times(x):\n    return x + x\n",
       );
       await chat.answer({

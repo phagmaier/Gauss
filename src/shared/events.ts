@@ -6,6 +6,7 @@ import { ArtifactFile } from "./artifact.ts";
 import { Slug, Timestamp } from "./course.ts";
 import { Unit } from "./curriculum.ts";
 import { ShownDispute } from "./dispute.ts";
+import { AssessmentMode } from "./evidence.ts";
 import { PackageSpec, PackagesOutcome } from "./packages.ts";
 import { Plan } from "./plan.ts";
 import {
@@ -225,9 +226,36 @@ export const PageEvent = z.discriminatedUnion("type", [
   /**
    * The learner asked for another question, which ends the detour. A
    * detour also ends when the learner moves on, with the segment's
-   * "closed" phase.
+   * "closed" phase, and when an assessment ends or is skipped.
    */
   z.object({ type: z.literal("detour_end") }),
+  /**
+   * An assessment (docs/decisions.md, "Mastery loop"; piece 15): "offered",
+   * its card, with Start and Skip; "on", the learner started it, and its
+   * questions follow, each with an `assessment` head. Sent again when the
+   * chat opens with one offered or under way. The unit's own steps wait
+   * until it ends.
+   */
+  z.object({
+    type: z.literal("assessment"),
+    mode: AssessmentMode,
+    stage: z.enum(["offered", "on"]),
+    /** How many objectives it asks about: a question on each, and one more after a miss. */
+    count: z.number().int().positive(),
+  }),
+  /**
+   * The assessment ended, every objective asked, or the learner skipped it,
+   * on its card or partway, which withdraws a question still open with
+   * nothing recorded. The unit goes on where it was.
+   */
+  z.object({
+    type: z.literal("assessment_end"),
+    mode: AssessmentMode,
+    skipped: z.boolean(),
+    /** The objectives it recorded an answer on, with their statuses now. */
+    statuses: z.record(Slug, ObjectiveStatus),
+    withdrawnQuestionId: z.string().optional(),
+  }),
   /**
    * The intake starts from a stored draft, because the conversation that
    * proposed it was lost in a restart. Its proposal follows as revision 1.

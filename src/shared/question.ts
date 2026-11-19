@@ -440,6 +440,31 @@ export function postedQuestion({
 // --- What the page sees and sends --------------------------------------------
 
 /**
+ * Where a question of an assessment stands in it, for its card's head
+ * (piece 15): its `number` is its objective's place among the `of` it asks
+ * about.
+ */
+export const AssessmentHead = z.object({
+  of: z.number().int().positive(),
+  /** The second question on its objective, after a miss. */
+  second: z.literal(true).optional(),
+  /** The unit whose objective it is, when that is another unit. */
+  from: z
+    .object({ number: z.number().int().positive(), title: z.string() })
+    .optional(),
+});
+export type AssessmentHead = z.infer<typeof AssessmentHead>;
+
+/** What every question the page sees has. */
+const ViewBase = {
+  id: z.string(),
+  number: z.number().int().positive(),
+  prompt: z.string(),
+  /** Set for a question of an assessment, and only there. */
+  assessment: AssessmentHead.optional(),
+};
+
+/**
  * A posted question as the page sees it: never the answer letter, the
  * expected expression, the rubric, or a code question's tests, solution,
  * captured dependencies or command.
@@ -447,28 +472,14 @@ export function postedQuestion({
 export const QuestionView = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("choice"),
-    id: z.string(),
-    number: z.number().int().positive(),
-    prompt: z.string(),
+    ...ViewBase,
     choices: z.array(z.string()),
   }),
-  z.object({
-    kind: z.literal("math"),
-    id: z.string(),
-    number: z.number().int().positive(),
-    prompt: z.string(),
-  }),
-  z.object({
-    kind: z.literal("written"),
-    id: z.string(),
-    number: z.number().int().positive(),
-    prompt: z.string(),
-  }),
+  z.object({ kind: z.literal("math"), ...ViewBase }),
+  z.object({ kind: z.literal("written"), ...ViewBase }),
   z.object({
     kind: z.literal("code"),
-    id: z.string(),
-    number: z.number().int().positive(),
-    prompt: z.string(),
+    ...ViewBase,
     /** The files the learner edits, by their full paths. */
     files: z.array(z.string()),
   }),

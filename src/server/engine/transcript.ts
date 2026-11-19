@@ -41,6 +41,11 @@ export interface TranscribedLog extends EventLog {
   open(): Promise<void>;
   /** Resolves once every event given so far is written, or its write failed. */
   flushed(): Promise<void>;
+  /**
+   * Whether the next event would start a new session: the log is open, the
+   * unit has been quiet for the gap, and no turn of the tutor's is open.
+   */
+  quiet(): boolean;
 }
 
 export function createTranscribedLog(options: {
@@ -145,6 +150,14 @@ export function createTranscribedLog(options: {
         throw error;
       });
       return opening;
+    },
+
+    quiet() {
+      return (
+        session !== undefined &&
+        !turnOpen &&
+        now().getTime() - session.lastAt >= gapMs
+      );
     },
 
     async flushed() {

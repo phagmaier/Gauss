@@ -15,6 +15,13 @@
 // Once a segment's close or the unit's end is written, the backup is asked
 // for a commit (task 2.25).
 //
+// An assessment (task 5.4) is kept in the position too, from when its card is
+// offered until it ends or is skipped; while it is under way, an answer is
+// recorded with its mode and this unit, and the position's open question and
+// detour are its own. It can ask about another unit's objectives, so the
+// evidence kept here is on the plan's objectives, those of the assessment,
+// and those of every answer given in this unit's thread.
+//
 // A dispute of one of the unit's answers (task 3.8) is written here when the
 // unit's chat is open, so it lands in order with the chat's own writes; one
 // written elsewhere while the chat was not open is learned when it opens.
@@ -45,12 +52,18 @@ import type {
   Unsettled,
   Verdict,
 } from "../../shared/question.ts";
-import type { Detour, OpenQuestion, UnitPosition } from "../../shared/state.ts";
+import type {
+  AssessmentRun,
+  Detour,
+  OpenQuestion,
+  UnitPosition,
+} from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { disputesIn } from "../record/disputes.ts";
 import { objectiveStatus, takesPass, unitStatus } from "../record/status.ts";
+import { answeredInRun, answersInRun } from "./assessment-rules.ts";
 import { segmentOf } from "./check-rules.ts";
 
 /** A question closed with its answer, as the tutor is to be told it. */
@@ -65,10 +78,15 @@ export interface UnitRecord {
    * kept once the unit is finished and out of state.json.
    */
   readonly position: UnitPosition;
-  /** The evidence on the unit's objectives, in log order. */
+  /**
+   * The evidence on the unit's objectives, in log order, and on those of its
+   * assessment and of every answer given in its thread.
+   */
   readonly evidence: readonly EvidenceEntry[];
   /** The answers to the segment's objectives in this check, in order. */
   readonly checkAnswers: readonly AnswerEvidence[];
+  /** The answers given in the assessment under way, in order; none without one. */
+  readonly runAnswers: readonly AnswerEvidence[];
   /** Completed package cards, kept even after the unit's position is removed. */
   readonly packageCompletions: readonly PackageCompletion[];
   /** Set once the unit is finished and taken out of state.json. */
@@ -93,6 +111,12 @@ export interface UnitRecord {
    * already. False if it was.
    */
   learnDispute(entry: DisputeEvidence, override?: OverrideEvidence): boolean;
+  /**
+   * Keeps an answer on one of the unit's objectives that another unit's
+   * assessment recorded, and tells the page its status; nothing if it is
+   * kept already. False if it was.
+   */
+  learnAnswer(entry: AnswerEvidence): boolean;
   objectiveStatuses(): Record<string, ObjectiveStatus>;
   /**
    * Writes the position to state.json, with the tutor session's id kept, then
@@ -115,6 +139,28 @@ export interface UnitRecord {
   completePackageRequest(completion: PackageCompletion): Promise<boolean>;
   /** Starts the segment's check: this check is the evidence from here on. */
   startCheck(): Promise<void>;
+  /**
+   * Offers the assessment on its card: it is kept in the position, and the
+   * evidence on its objectives is taken from `log`, the course's evidence
+   * as read now.
+   */
+  offerAssessment(
+    run: AssessmentRun,
+    log: readonly EvidenceEntry[],
+  ): Promise<void>;
+  /** Starts the assessment offered: its answers are the evidence from here on. */
+  startAssessment(): Promise<AssessmentRun>;
+  /**
+   * Ends the assessment, every objective asked or skipped: takes it out of
+   * the position with its detour, withdraws its open question with nothing
+   * recorded, and tells the page what it did to the record.
+   */
+  endAssessment(skipped: boolean): Promise<{
+    run: AssessmentRun;
+    withdrawn: OpenQuestion | undefined;
+    /** The objectives it recorded an answer on, in its order, with their statuses now. */
+    statuses: Record<string, ObjectiveStatus>;
+  }>;
   /**
    * Records the graded answer to the open question, closes the question,
    * and tells the page; a miss opens a detour as the question closes. If
@@ -191,7 +237,10 @@ export async function openUnitRecord(options: {
     : undefined;
   if (stored !== undefined) checkPosition(plan, stored);
   const allEvidence = await dataRoot.readEvidence(courseId);
-  const evidence = concerning(allEvidence, plan);
+  const evidence = concerning(
+    allEvidence,
+    objectivesKept(plan, stored?.assessment, allEvidence, unitId),
+  );
   const before = unitStatus(unit, evidence, undefined);
   let finished: "passed" | "overridden" | undefined =
     stored === undefined && (before === "passed" || before === "overridden")
@@ -206,6 +255,10 @@ export async function openUnitRecord(options: {
     await dataRoot.writePosition(courseId, unitId, position);
   }
   let checkAnswers = answersInCheck(allEvidence, position, plan);
+  let runAnswers =
+    position.assessment === undefined
+      ? []
+      : answersInRun(allEvidence, position.assessment, unitId);
   let sessionId = position.tutorSessionId;
 
   async function move(given: UnitPosition, tell?: () => void): Promise<void> {
@@ -356,6 +409,9 @@ export async function openUnitRecord(options: {
     get checkAnswers() {
       return checkAnswers;
     },
+    get runAnswers() {
+      return runAnswers;
+    },
     get packageCompletions() {
       return Object.values(completed);
     },
@@ -388,6 +444,13 @@ export async function openUnitRecord(options: {
     learnDispute(entry, override) {
       if (disputesIn(evidence).has(entry.questionId)) return false;
       keepDispute(entry, override);
+      return true;
+    },
+
+    learnAnswer(entry) {
+      if (recordedAnswer(entry.answer.questionId) !== undefined) return false;
+      evidence.push(entry);
+      emit(status());
       return true;
     },
 
@@ -442,12 +505,75 @@ export async function openUnitRecord(options: {
       checkAnswers = [];
     },
 
+    async startAssessment() {
+      const offered = position.assessment;
+      if (offered?.stage !== "offered") {
+        throw new Error("No assessment is offered.");
+      }
+      const from = (await dataRoot.readEvidence(courseId)).length;
+      const run: AssessmentRun = { ...offered, stage: "on", from };
+      await move({ ...position, assessment: run }, () =>
+        emit(assessmentEvent(run)),
+      );
+      runAnswers = [];
+      return run;
+    },
+
+    async offerAssessment(run, log) {
+      // An assessment can ask about other units' objectives.
+      evidence.splice(
+        0,
+        evidence.length,
+        ...concerning(log, objectivesKept(plan, run, log, unitId)),
+      );
+      await move({ ...position, assessment: run }, () =>
+        emit(assessmentEvent(run)),
+      );
+    },
+
+    async endAssessment(skipped) {
+      const run = position.assessment;
+      if (run === undefined)
+        throw new Error("No assessment is offered or under way.");
+      const answered = answeredInRun(run, runAnswers);
+      const withdrawn = position.openQuestion;
+      const {
+        assessment: _,
+        openQuestion: __,
+        detour: ___,
+        ...rest
+      } = position;
+      const statuses = Object.fromEntries(
+        answered.map((id) => [id, objectiveStatus(evidence, id)]),
+      );
+      await move(rest, () =>
+        emit({
+          type: "assessment_end",
+          mode: run.mode,
+          skipped,
+          statuses,
+          ...(withdrawn === undefined
+            ? {}
+            : { withdrawnQuestionId: withdrawn.id }),
+        }),
+      );
+      runAnswers = [];
+      if (answered.length > 0) {
+        backup.commit(
+          `${courseId}: ${run.mode} in ${unitId} ${skipped ? "skipped" : "ended"}`,
+        );
+      }
+      return { run, withdrawn, statuses };
+    },
+
     async answer(submission, grade) {
       const question = openQuestion();
       let entry = recordedAnswer(question.id);
       if (entry === undefined) {
         const flaw = grade.verdict === "incorrect" ? grade.flaw : undefined;
         const { unsettled, output } = grade;
+        const run =
+          position.assessment?.stage === "on" ? position.assessment : undefined;
         entry = {
           kind: "answer",
           recordedAt: now().toISOString(),
@@ -459,11 +585,15 @@ export async function openUnitRecord(options: {
           ...(flaw === undefined ? {} : { flaw }),
           ...(unsettled === undefined ? {} : { unsettled }),
           ...(output === undefined ? {} : { output }),
+          ...(run === undefined
+            ? {}
+            : { assessment: { mode: run.mode, unit: unitId } }),
         };
         // The evidence first: a stop before the position is written leaves
         // the question open, and reopening closes it with this entry.
         await append(entry);
-        checkAnswers.push(entry);
+        if (run === undefined) checkAnswers.push(entry);
+        else runAnswers.push(entry);
       }
       return close(question, entry);
     },
@@ -565,6 +695,16 @@ export function detourEvent(detour: Detour): PageEvent {
   };
 }
 
+/** An `assessment` event: its card offered, or it began, or the chat opened with it. */
+export function assessmentEvent(run: AssessmentRun): PageEvent {
+  return {
+    type: "assessment",
+    mode: run.mode,
+    stage: run.stage,
+    count: run.objectives.length,
+  };
+}
+
 /** A `phase` event: the segment's phase began, or the chat opened in it. */
 export function phaseEvent(position: UnitPosition): PageEvent {
   return {
@@ -594,14 +734,34 @@ function checkPosition(plan: Plan, position: UnitPosition): void {
 }
 
 /**
- * The entries about the plan's objectives: answers on them, overrides naming
+ * The objectives whose evidence the unit keeps: its plan's, its
+ * assessment's, and those of every answer given in its thread, some of which
+ * can be another unit's.
+ */
+function objectivesKept(
+  plan: Plan,
+  run: AssessmentRun | undefined,
+  log: readonly EvidenceEntry[],
+  unitId: string,
+): Set<string> {
+  const ids = new Set(plan.objectives.map((o) => o.id));
+  for (const { objective } of run?.objectives ?? []) ids.add(objective);
+  for (const entry of log) {
+    if (entry.kind === "answer" && entry.assessment?.unit === unitId) {
+      ids.add(entry.objective);
+    }
+  }
+  return ids;
+}
+
+/**
+ * The entries about these objectives: answers on them, overrides naming
  * them, and disputes of those answers.
  */
 function concerning(
   evidence: readonly EvidenceEntry[],
-  plan: Plan,
+  ids: ReadonlySet<string>,
 ): EvidenceEntry[] {
-  const ids = new Set(plan.objectives.map((o) => o.id));
   const answers = new Set(
     evidence.flatMap((e) =>
       e.kind === "answer" && ids.has(e.objective) ? [e.answer.questionId] : [],

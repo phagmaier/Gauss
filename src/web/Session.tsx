@@ -7,7 +7,9 @@
 // (10-unit-end.html). "Start fresh" is in the outline, and the conversations
 // before a fresh start stay in the thread, dimmed (11-start-fresh.html). An
 // artifact the tutor shows opens in the side pane, and its reference in the
-// thread opens and closes it (05-side-pane.html).
+// thread opens and closes it (05-side-pane.html). Review is offered on a card
+// in the thread, which becomes a marker once started or skipped, and its
+// questions carry their place in it (15-review.html).
 //
 // Opening the view opens the unit on the server, which starts it or picks it
 // up, then follows its event stream. A unit chat lives in the server's
@@ -41,6 +43,10 @@ import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
 import {
+  assessmentCard,
+  assessmentDetourStep,
+  assessmentEndMarker,
+  assessmentMarker,
   closingCard,
   detourSays,
   divided,
@@ -53,10 +59,12 @@ import {
   type Placement,
   phaseMarker,
   placement,
+  skipLabel,
   whereInUnit,
 } from "./session.ts";
 import {
   type ArtifactItem,
+  type AssessmentItem,
   conversations,
   emptyTimeline,
   type Item,
@@ -348,6 +356,13 @@ export function Session(props: { courseId: string; unitId: string }) {
                       }
                       onAgain={() => act("go-over-again")}
                       onFinish={() => act("finish")}
+                      offered={
+                        item.kind === "assessment" &&
+                        item.stage === "offered" &&
+                        timeline.assessment?.stage === "offered"
+                      }
+                      onStartAssessment={() => act("assessment/start")}
+                      onSkipAssessment={() => act("assessment/skip")}
                       onCourse={toCourse}
                       onNext={toNext}
                     />
@@ -662,6 +677,10 @@ function ThreadItem(props: {
   onRetrySaving(requestId: string): Promise<string | undefined>;
   onAgain(): void;
   onFinish(): void;
+  /** This is the card of the assessment offered now, whose Start and Skip can be pressed. */
+  offered: boolean;
+  onStartAssessment(): void;
+  onSkipAssessment(): void;
   onCourse(): void;
   onNext: (() => void) | undefined;
 }) {
@@ -737,6 +756,37 @@ function ThreadItem(props: {
           </span>
         </div>
       );
+    case "assessment": {
+      if (item.stage === "offered") {
+        return (
+          <AssessmentCard
+            item={item}
+            live={props.offered}
+            busy={props.busy}
+            onStart={props.onStartAssessment}
+            onSkip={props.onSkipAssessment}
+          />
+        );
+      }
+      const marker = assessmentMarker(item);
+      return (
+        <div className="pf-mark">
+          <span>
+            <b>{marker.name}</b> {marker.says}
+          </span>
+        </div>
+      );
+    }
+    case "assessment_end": {
+      const marker = assessmentEndMarker(item);
+      return (
+        <div className="pf-mark">
+          <span>
+            <b>{marker.name}</b> {marker.says}
+          </span>
+        </div>
+      );
+    }
     case "question":
       if (props.asked === "last") return null;
       return props.asked === "earlier" ? (
@@ -975,6 +1025,54 @@ function ClosingCard(props: {
   );
 }
 
+/**
+ * The card that offers an assessment, with Skip and Start (piece 15). Only
+ * the card offered now can be answered; one a restart left behind is shown
+ * as it was.
+ */
+function AssessmentCard(props: {
+  item: AssessmentItem;
+  live: boolean;
+  busy: boolean;
+  onStart(): void;
+  onSkip(): void;
+}) {
+  const card = assessmentCard(props.item);
+  return (
+    <div className={props.live ? "qa-card as live" : "qa-card as"}>
+      <div className="q-count">
+        <b>{card.title}</b>
+        {card.questions}
+      </div>
+      {card.says.map((line) => (
+        <p key={line} className="as-says">
+          {line}
+        </p>
+      ))}
+      {props.live ? (
+        <div className="qa-foot">
+          <button
+            type="button"
+            className="textbtn"
+            disabled={props.busy}
+            onClick={props.onSkip}
+          >
+            Skip
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={props.busy}
+            onClick={props.onStart}
+          >
+            {card.start}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** The one control that moves the unit on, where the thread has reached. */
 function NextStepControl(props: {
   step: ReturnType<typeof nextStep>;
@@ -1029,6 +1127,44 @@ function NextStepControl(props: {
           <MoveOn {...props} />
         </div>
       );
+    case "assessment":
+      return (
+        <div className="pf-act">
+          <button
+            type="button"
+            className="textbtn"
+            disabled={busy}
+            onClick={() => props.onAct("assessment/skip")}
+          >
+            {skipLabel(props.timeline)}
+          </button>
+        </div>
+      );
+    case "assessment-detour": {
+      const { label, skip } = assessmentDetourStep(props.timeline);
+      return (
+        <div className="pf-act">
+          <button
+            type="button"
+            className="btn sm"
+            disabled={busy}
+            onClick={() => props.onAct("another-question")}
+          >
+            {label}
+          </button>
+          {skip ? (
+            <button
+              type="button"
+              className="textbtn"
+              disabled={busy}
+              onClick={() => props.onAct("assessment/skip")}
+            >
+              {skipLabel(props.timeline)}
+            </button>
+          ) : null}
+        </div>
+      );
+    }
     case "next-segment":
       return (
         <div className="pf-act">

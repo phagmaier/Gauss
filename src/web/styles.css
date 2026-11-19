@@ -555,6 +555,10 @@ details.why summary:hover {
   margin: 0;
   padding: 14px 18px 12px;
 }
+/* the head's right end clears Hide, which sits on its line */
+.th-pin .q-count {
+  padding-right: 3.6em;
+}
 .th-pin .qa-prompt {
   font-size: 1em;
   margin: 0.15em 0 0.6em;
@@ -1698,4 +1702,25 @@ button.dn:hover {
 /* where an answer was given, on its line in "What I know" */
 .wk-in {
   color: var(--soft);
+}
+
+/* ---- Review questions, settled in piece 15: a card that offers them, then markers around the questions ---- */
+/* a card that offers something to start or to skip */
+.as .q-count b {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 1.14em;
+}
+.as-says {
+  margin: 0.35em 0 0;
+  font-size: 0.96em;
+  color: var(--soft);
+}
+.as-says + .as-says {
+  margin-top: 0.5em;
+}
+/* whose objective a question is on, when it is another unit's */
+.q-count .q-from {
+  margin-left: auto;
+  text-align: right;
 }

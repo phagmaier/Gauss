@@ -1316,3 +1316,111 @@ test("a package request is one card in the tutor's reply, which installs and is 
     output: " + pytest==9.2.0",
   });
 });
+
+test("a review's card becomes its marker when started; a restart that says the card or the review again adds nothing, and one that lost the start shows the marker", () => {
+  const offered: PageEvent = {
+    type: "assessment",
+    mode: "review",
+    stage: "offered",
+    count: 3,
+  };
+  const on: PageEvent = { ...offered, stage: "on" };
+  const phase: PageEvent = { type: "phase", segment: 1, phase: "discuss" };
+
+  const restartedAtCard = play([phase, offered, phase, offered]);
+  expect(restartedAtCard.items.filter((i) => i.kind === "assessment")).toEqual([
+    { kind: "assessment", key: 1, mode: "review", count: 3, stage: "offered" },
+  ]);
+  expect(restartedAtCard.assessment).toEqual({
+    mode: "review",
+    stage: "offered",
+    count: 3,
+  });
+
+  const restartedOn = play([phase, offered, on, phase, on]);
+  expect(restartedOn.items.filter((i) => i.kind === "assessment")).toEqual([
+    { kind: "assessment", key: 1, mode: "review", count: 3, stage: "on" },
+  ]);
+
+  // The thread lost the review's end, and the chat reopens without one: the
+  // unit's own steps are back.
+  const lostEnd = play([phase, offered, on, phase]);
+  expect(lostEnd.assessment).toBeNull();
+  // A second review, once the first ended, has a card of its own.
+  const second = play([
+    phase,
+    offered,
+    on,
+    { type: "assessment_end", mode: "review", skipped: false, statuses: {} },
+    offered,
+  ]);
+  expect(second.items.filter((i) => i.kind === "assessment")).toHaveLength(2);
+
+  const lostStart = play([phase, on]);
+  expect(lostStart.items.at(-1)).toEqual({
+    kind: "assessment",
+    key: 1,
+    mode: "review",
+    count: 3,
+    stage: "on",
+  });
+});
+
+test("a review skipped partway withdraws its open question, ends its detour and leaves a marker with where the unit was; one skipped on its card turns the card into that marker", () => {
+  const phase: PageEvent = { type: "phase", segment: 0, phase: "check" };
+  const offered: PageEvent = {
+    type: "assessment",
+    mode: "review",
+    stage: "offered",
+    count: 2,
+  };
+  const end: PageEvent = {
+    type: "assessment_end",
+    mode: "review",
+    skipped: true,
+    statuses: {},
+    withdrawnQuestionId: "q1",
+  };
+
+  const partway = play([
+    phase,
+    offered,
+    { ...offered, stage: "on" },
+    { type: "question", question: { ...QUESTION, assessment: { of: 2 } } },
+    end,
+  ]);
+  expect(partway.items.slice(-2)).toEqual([
+    {
+      kind: "question",
+      key: 3,
+      question: { ...QUESTION, assessment: { of: 2 } },
+      withdrawn: true,
+    },
+    {
+      kind: "assessment_end",
+      key: 4,
+      mode: "review",
+      skipped: true,
+      statuses: {},
+      at: { segment: 0, phase: "check" },
+    },
+  ]);
+  expect(partway.assessment).toBeNull();
+
+  const inDetour = play([
+    phase,
+    { ...offered, stage: "on" },
+    { type: "detour", questionId: "q0", number: 1 },
+    { type: "assessment_end", mode: "review", skipped: true, statuses: {} },
+  ]);
+  expect(inDetour.detour).toBeNull();
+
+  const onCard = play([
+    phase,
+    offered,
+    { type: "assessment_end", mode: "review", skipped: true, statuses: {} },
+  ]);
+  expect(onCard.items.filter((i) => i.kind.startsWith("assessment"))).toEqual([
+    { kind: "assessment", key: 1, mode: "review", count: 2, stage: "skipped" },
+  ]);
+});

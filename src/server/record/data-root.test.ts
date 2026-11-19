@@ -219,6 +219,28 @@ test("opening a unit marks its course opened and keeps the latest time each unit
   await expect(root.markOpened(id, "../limits")).rejects.toThrow();
 });
 
+test("review is noted as offered once an hour at most: two at once give one, and the next comes an hour after the last", async () => {
+  const root = openDataRoot({ path: dir });
+  const { id, course } = await root.createCourse({ title: "Calculus I" });
+  const at = (minutes: number) =>
+    new Date(Date.parse("2026-11-15T09:00:00.000Z") + minutes * 60_000);
+
+  const together = await Promise.all([
+    root.markReviewOffered(id, at(0)),
+    root.markReviewOffered(id, at(0)),
+  ]);
+  const within = await root.markReviewOffered(id, at(59));
+  const after = await root.markReviewOffered(id, at(60));
+
+  expect(together.toSorted()).toEqual([false, true]);
+  expect(within).toBe(false);
+  expect(after).toBe(true);
+  expect((await openDataRoot({ path: dir }).readCourse(id))?.course).toEqual({
+    ...course,
+    reviewOfferedAt: at(60).toISOString(),
+  });
+});
+
 test.each([
   { note: "style", file: "style.md" },
   { note: "background", file: "background.md" },

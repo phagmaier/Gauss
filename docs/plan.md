@@ -40,81 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.4 Review questions
-
-- Status: todo
-- Depends on: 5.3
-- Why: the brief's review at the start of each sitting, and the mechanism
-  the gate and testing out share: questions without teaching, on
-  objectives the engine picks.
-- Do: laid out as piece 15 shows (`docs/prototype/15-review.html`):
-  - An assessment runs in the unit's thread, asked by the unit's tutor.
-    It is kept in the unit's position beside the phase, which it leaves
-    alone (its mode, its objectives, where it began in the evidence), so
-    a restart reopens it and the unit goes on where it was once it ends.
-    In it `ask_question` is allowed on its objectives only, in any phase;
-    answers are recorded with its `assessment` (its mode and the unit
-    whose thread holds it, `Assessment` in `evidence.ts`); help is judged
-    as in a check;
-    "ready", the next segment and moving on are refused until it ends or
-    is skipped.
-  - Its rules, in a module of their own beside `check-rules.ts`: each
-    objective gets one question. A correct answer gets feedback of a
-    sentence or two, then the next objective. A miss opens a detour as in
-    a check; when the learner ends it, the objective is asked once more,
-    and the assessment then moves on whatever the answer (a second miss
-    opens its detour, and no third question follows).
-  - Review is offered, on a card, when a unit not finished is opened (the
-    `open` route) and all of these hold: the chat is new or has been
-    quiet for an hour; nothing waits on the learner (no open question,
-    detour, kept answer, package request or closing card); the course
-    has been offered no review in the last hour (kept in `course.json`);
-    and 5.3's pick of three, over the whole course, is not empty. The
-    card says how many questions, with Start and Skip, and is kept in
-    the position; showing it sends the tutor nothing. The unit's steps
-    and a teaching turn that waits hold until it is answered, and a
-    message sent meanwhile skips it. Start puts a marker in the thread
-    and asks the tutor for the first question. "Skip review" ends a
-    review at any point, withdrawing an open question with nothing
-    recorded for it. When it ends or is skipped, a marker says what it
-    did to the record (how many retained, how many slipping) and where
-    the unit goes on, and the teaching turn that waited is sent.
-  - The turns' wording in `unit-turns.ts`; a section of `tutor.md` on
-    assessments, drafted here and finished in 5.13: no teaching, one
-    question per turn, each unlike those listed as asked, feedback of a
-    sentence or two; the page's card, markers and "Skip review", and a
-    question's head (which of how many, "second question", the unit of
-    another unit's objective); the routes;
-    the scripted backend, which reads the new headers; a seeded course
-    with objectives passed more than an hour before.
-- Done when: fake-backend tests cover: the card shown when a review is
-  due, and not when each condition fails, with no turn sent; Start; Skip
-  on the card, and by a message; one question per objective; a miss,
-  its detour, the second question and moving on after it; a skip with a
-  question open; a restart at the card and in the middle; an answer on
-  another unit's
-  objective recorded on that objective with the mode; the unit going on
-  from each phase, the teaching turn sent after a review that came
-  first; two units opened within the hour getting one card. Route tests
-  pass; `mise run check` passes; on `pnpm dev:fake` a review is started
-  and answered, skipped in another sitting, and missed once, and the
-  browser
-  is closed before the server stops; one short run on Haiku 5.5 where
-  unit 2's tutor asks a review question on a unit 1 objective that
-  differs from the ones listed.
-- Note: an assessment reopened with no question open and no detour asks
-  for its next question; do not carry over the check's gap, where a
-  restart leaves it waiting for a message (`decisions.md`, "Known gaps").
-  The scripted backend's file names collide across units ("Known gaps"):
-  fix that here, since review has one unit's tutor ask about another's
-  objective. The pick is `pickForReview` (`record/review.ts`). The list
-  of questions asked before reads `Where.evidence`, which is the unit's
-  own: a turn that may ask about another unit's objective needs that
-  objective's evidence in it. The scripted backend numbers its questions
-  from the check's "(n asked)", so a review would repeat a check's
-  "question 1", which counts as the same problem: number past the listed
-  ones.
-
 ### 5.5 The unit gate
 
 - Status: todo
@@ -154,6 +79,13 @@ a detour, a unit gate, generated notes and an exported transcript.
   its gate with an objective of the first in it, and the browser is
   closed before the server stops; one short run on Haiku 5.5 through a
   gate.
+- Note: the gate is an `AssessmentRun` of mode "gate" (`state.ts`); 5.4's
+  run, rules, turns and page parts take a mode, but their wording is
+  review's: the card (`assessmentCard` in `src/web/session.ts`), the
+  start turn (`runTurn` in `unit-turns.ts`) and the end note. `offerReview`
+  in `unit-chat.ts` refuses at the closing card and leaves the unit's steps
+  waiting while a run exists; the gate comes at that card, so its offer
+  and the steps after it need their own path.
 
 ### 5.6 Testing out of a unit
 
@@ -204,6 +136,10 @@ a detour, a unit gate, generated notes and an exported transcript.
   `pnpm dev:fake` a unit is tested out of in part and its first taught
   segment starts, and the browser is closed before the server stops;
   one short run on Haiku 5.5 through a test.
+- Note: `engine/assessment-rules.ts` has review's rules alone; the test's
+  (no feedback, no detour, a second question after an unsure correct
+  answer) go there by mode, and the chat's feedback and detour branches
+  (`tellGrade`, `anotherQuestion`) follow them.
 
 ### 5.7 Handoff notes and the misconception record
 
@@ -256,8 +192,9 @@ a detour, a unit gate, generated notes and an exported transcript.
   shows in "What I know" after its segment closes, and the browser is
   closed before the server stops; one short run on Haiku 5.5 with a
   detour, then Start fresh, the note and the misconception read by eye.
-- Note: the tutor's system prompt is sent with every request, and a
-  change to it costs the session's cache. So what changes while a unit
+- Note: the turn that asks for a review or gate question is `runAllowed`
+  in `unit-turns.ts`. The tutor's system prompt is sent with every
+  request, and a change to it costs the session's cache. So what changes while a unit
   runs (its own note and misconceptions) goes into a new session's first
   turn, never into the system prompt.
 
@@ -480,6 +417,10 @@ a detour, a unit gate, generated notes and an exported transcript.
   what made an idea click as the sessions show it, and follow the
   learner's instructions without dropping the rest. Run the handoff writer on the same stretches on
   Haiku 5.5 and Sonnet 5.5 and keep the cheaper if it holds up.
+- From 5.4's Haiku run: feedback in a review was two sentences of working,
+  and a lead-in named what the question would use ("one on the limit
+  definition with a square root"), which `tutor.md` does not forbid in a
+  review.
 - Done when: the findings and the model choice are in `decisions.md`,
   "Prompts" and "Mastery loop"; `mise run check` passes, and the
   scripted backend's tests with it, since it reads the headers; the

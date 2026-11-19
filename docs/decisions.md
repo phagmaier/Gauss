@@ -1343,6 +1343,27 @@ built until its task is done; `architecture.md` says what is.
   `SESSION_GAP_MS` before, the same hour that starts a new sitting.
   Slipping ones go the longest unanswered first, as retained ones do, and
   equals then go in the course's order.
+- **The assessment shares the position's question and detour** (task 5.4,
+  the agent's): it starts only when neither is in use, and the check
+  cannot post while it runs, so the question flow, help judging and
+  restarts are reused unchanged. Rejected: slots of its own, which every
+  rule reading `openQuestion` would have had to learn.
+- **The unit goes on as the phase has it** (the agent's): a teaching turn
+  that waited is sent; a check takes up with a turn asking for its next
+  question, since a check with nothing open was waiting on the tutor; the
+  discussion and a closed segment send nothing, and the next header says
+  what the review did.
+- **A message on the card skips it, and the teaching goes first** (the
+  agent's): the card holds the teaching turn, so the turn the learner's
+  message brings is sent after it, as a message during teaching is.
+- **Skip is refused while an answer is kept for grading**, as moving on
+  is: withdrawing it would drop an answer the learner sent (the agent's).
+- **The header gives another unit's objective with its unit and
+  statement**: the tutor's system prompt holds its own plan only, and the
+  prompt is not changed mid-session (the agent's).
+- **An answer on another unit's objective is told to that unit's chat**,
+  if it is open: its record is read once, and with a stale one a unit
+  could finish passed with an objective slipping (the agent's).
 
 **The gate**
 
@@ -1833,6 +1854,11 @@ the agent would build them and accepted so, but for the notes
   the record's own operations, so a schema change the seed does not follow
   fails at once. `BROKEN_SESSION` in `scripted.ts` makes a session that
   cannot be resumed.
+- **The scripted tutor numbers a question past those listed as asked
+  before** (task 5.4): numbered from the check's "(n asked)", a review or
+  a segment going over objectives again repeated a check's "question 1",
+  which counts as the same problem. Its code files carry the objective in
+  their names, since units share the workspace.
 - **Close the browser before stopping a server.** A session page left open
   from one run kept asking to open its unit, and a real-backend scratch
   server started later on the same port, with a course of the same id,
@@ -1898,14 +1924,17 @@ will close.
   has no hand-graded set: the grade set holds written answers only.
 - Code questions: Copy path can be stale after a data-root move; only
   "What I know" shows the submitted file contents, and the tutor's copy
-  omits trailing whitespace. In the scripted backend, file names can
-  collide across units and grading feedback can be mistaken for a scripted
-  command. Fix collisions before multi-unit scripted browser checks.
+  omits trailing whitespace. In the scripted backend, grading feedback can
+  be mistaken for a scripted command.
 - Code questions: nothing refuses a question whose tests or solution the
   tutor left in the workspace, where the learner can read them; only
   `tutor.md` forbids it (seen once, task 3.19). The posting check could
   refuse a question whose test files are in the workspace.
 - Opening a unit with a long history draws its whole thread once.
+- A dispute of an answer given in one unit's review, on another unit's
+  objective, is recorded through the objective's unit: the review's thread
+  shows the outcome on the card from the route's answer, but its tutor is
+  not told, and its event stream does not send it.
 - Keys go to the message box, not the pinned card, after sending a message.
 - No limit on refused `plan_unit` calls within one planning turn.
 - The fake backend's `hasSession` ignores the folder.

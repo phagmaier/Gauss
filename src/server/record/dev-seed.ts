@@ -44,7 +44,8 @@ const DAY = 24 * 60 * 60 * 1000;
  *   both its objectives, and the second missed later in unit 3's review,
  *   so one is retained and one slipping; unit 2 overridden, units 3 and 5
  *   in progress (5 opened last, 3 in its second segment), 4 and 6 not
- *   started.
+ *   started. Every answer is a day old or more, so opening a unit not
+ *   finished offers review (task 5.4), on objectives of other units too.
  * - "Linear algebra for PCA", three units, approved and not started.
  * - "Probability", two units, finished: one passed, one overridden.
  * - "Topology", a draft awaiting review.

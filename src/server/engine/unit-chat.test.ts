@@ -1475,6 +1475,9 @@ test("a new engine over the same data root reopens a unit mid-check from state.j
     assisted: false,
     verdict: "correct",
   });
+  // That answer, from the day before, makes review due; one was offered in
+  // this hour already, so the unit is taken up at once, both times.
+  await reload().markReviewOffered(COURSE, new Date(NOW));
   const first = await open(before);
   await toCheck(first);
   // Correct but unsure, so the objective needs another question.

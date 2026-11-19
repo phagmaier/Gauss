@@ -10,6 +10,7 @@ import type { Slug } from "../shared/course.ts";
 import type { Unit } from "../shared/curriculum.ts";
 import type { ShownDispute } from "../shared/dispute.ts";
 import type { PageEvent } from "../shared/events.ts";
+import type { AssessmentMode } from "../shared/evidence.ts";
 import type { PackageSpec, PackagesOutcome } from "../shared/packages.ts";
 import type { Plan } from "../shared/plan.ts";
 import type {
@@ -86,6 +87,32 @@ export interface JudgmentItem {
   unjudged?: "failed" | "restart";
 }
 
+/**
+ * An assessment's card, with Start and Skip, which becomes its marker once
+ * started or skipped (piece 15).
+ */
+export interface AssessmentItem {
+  kind: "assessment";
+  key: number;
+  mode: AssessmentMode;
+  /** How many objectives it asks about. */
+  count: number;
+  /** "offered": the card waits; "on": started; "skipped": skipped on the card. */
+  stage: "offered" | "on" | "skipped";
+}
+
+/** The marker an assessment leaves once it ends, or is skipped partway (piece 15). */
+export interface AssessmentEndItem {
+  kind: "assessment_end";
+  key: number;
+  mode: AssessmentMode;
+  skipped: boolean;
+  /** The objectives it recorded an answer on, with their statuses then. */
+  statuses: Record<string, ObjectiveStatus>;
+  /** Where the unit goes on: the phase the thread was in. */
+  at: Position | null;
+}
+
 /** An artifact the tutor showed, by its file in the course's artifacts/ (task 3.6, piece 5). */
 export interface ArtifactItem {
   kind: "artifact";
@@ -123,6 +150,8 @@ export type Item =
   /** A phase of a segment began, or the chat opened in it. */
   | ({ kind: "phase"; key: number } & Position)
   | UnitEndItem
+  | AssessmentItem
+  | AssessmentEndItem
   /** Where a question was posted that was answered further down (task 2.18). */
   | { kind: "answered-below"; key: number; number: number }
   /** A detour began after the miss on this question (task 2.20). */
@@ -197,8 +226,14 @@ export interface Timeline {
   failed: string | null;
   /** The phase that began last; null until the unit is open, and when it opens finished. */
   position: Position | null;
-  /** The detour open in the check, after the miss on this question (task 2.20). */
+  /** The detour open in the check or an assessment, after the miss on this question (task 2.20). */
   detour: { questionId: string; number: number } | null;
+  /** An assessment offered or under way: the unit's own steps wait for it. */
+  assessment: {
+    mode: AssessmentMode;
+    stage: "offered" | "on";
+    count: number;
+  } | null;
   /** The unit is finished, and how. */
   finished: "passed" | "overridden" | null;
 }
@@ -220,6 +255,7 @@ export const emptyTimeline: Timeline = {
   failed: null,
   position: null,
   detour: null,
+  assessment: null,
   finished: null,
 };
 
@@ -660,13 +696,14 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...(event.again === undefined ? {} : { again: event.again }),
       };
       // A chat that opens in the phase the thread is in, as a unit reopened
-      // after a restart does, begins nothing new. A detour still open is
-      // said again after the phase, so one whose end the thread lost ends.
+      // after a restart does, begins nothing new. A detour or an assessment
+      // still open is said again after the phase, so one whose end the
+      // thread lost ends.
       if (
         state.position?.segment === position.segment &&
         state.position.phase === position.phase
       ) {
-        return { ...next, position, detour: null };
+        return { ...next, position, detour: null, assessment: null };
       }
       // Going over again starts with the extra segment's teaching.
       const items =
@@ -700,6 +737,85 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
     }
     case "detour_end":
       return { ...next, detour: null };
+    case "assessment": {
+      const run = { mode: event.mode, stage: event.stage, count: event.count };
+      const at = state.items.findLastIndex((i) => i.kind === "assessment");
+      const card = state.items[at];
+      // A chat that opens with the assessment the thread shows, one not
+      // ended, says it again.
+      const standing =
+        card?.kind === "assessment" &&
+        !state.items.slice(at).some((i) => i.kind === "assessment_end");
+      if (standing && card.stage === event.stage) {
+        return { ...next, assessment: run };
+      }
+      // Start turns the card into the assessment's marker.
+      if (
+        event.stage === "on" &&
+        card?.kind === "assessment" &&
+        card.stage === "offered"
+      ) {
+        return {
+          ...next,
+          assessment: run,
+          items: state.items.with(at, { ...card, stage: "on" }),
+        };
+      }
+      return {
+        ...next,
+        assessment: run,
+        items: [
+          ...state.items,
+          {
+            kind: "assessment",
+            key: index,
+            mode: event.mode,
+            count: event.count,
+            stage: event.stage,
+          },
+        ],
+        tutorOpen: false,
+      };
+    }
+    case "assessment_end": {
+      const { withdrawnQuestionId } = event;
+      const items =
+        withdrawnQuestionId === undefined
+          ? state.items
+          : withQuestion(state.items, withdrawnQuestionId, (item) => ({
+              ...item,
+              withdrawn: true,
+            }));
+      const at = items.findLastIndex((i) => i.kind === "assessment");
+      const card = items[at];
+      const settled = {
+        ...next,
+        assessment: null,
+        detour: null,
+        tutorOpen: false,
+      };
+      // Skipped on its card: the card becomes the marker that says so.
+      if (card?.kind === "assessment" && card.stage === "offered") {
+        return {
+          ...settled,
+          items: items.with(at, { ...card, stage: "skipped" }),
+        };
+      }
+      return {
+        ...settled,
+        items: [
+          ...items,
+          {
+            kind: "assessment_end",
+            key: index,
+            mode: event.mode,
+            skipped: event.skipped,
+            statuses: event.statuses,
+            at: state.position,
+          },
+        ],
+      };
+    }
     case "unit_end": {
       // The card standing is shown again: by a chat that opened at it, or
       // with the statuses a dispute changed (task 3.8).

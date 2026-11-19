@@ -1111,9 +1111,11 @@ test("a unit that is not there, of a draft, or not open is refused on every unit
     post(setup.app, `${UNIT}/finish`),
     post(setup.app, `${UNIT}/start-fresh`),
     post(setup.app, `${UNIT}/interrupt`),
+    post(setup.app, `${UNIT}/assessment/start`),
+    post(setup.app, `${UNIT}/assessment/skip`),
   ]);
   expect(notOpen.map((r) => r.status)).toEqual([
-    404, 404, 404, 404, 404, 404, 404, 404, 404, 404, 404,
+    404, 404, 404, 404, 404, 404, 404, 404, 404, 404, 404, 404, 404,
   ]);
   expect(await notOpen[0]?.json()).toEqual({
     error: "This unit is not open. Open it first.",
@@ -1141,6 +1143,58 @@ test("malformed bodies on the unit routes are refused with a reason, and nothing
   expect(setup.units.get(COURSE, "vectors")?.events()).toHaveLength(
     events ?? -1,
   );
+});
+
+test("review's card is answered through its routes: Start asks for the first question, and Skip withdraws it; each is refused when there is nothing for it", async () => {
+  const setup = setUp([[{ call: "ask_question", input: QUESTION }]]);
+  await approvedCourse();
+  // Segment 1's objective passed the day before, and the unit left in
+  // segment 2's discussion: a new sitting opens with review.
+  const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
+  await root.appendEvidence(COURSE, {
+    kind: "answer",
+    recordedAt: CREATED,
+    objective: "basis-image",
+    question: {
+      kind: "choice",
+      prompt: "An earlier question.",
+      choices: QUESTION.choices,
+      answer: "A",
+    },
+    answer: {
+      kind: "choice",
+      questionId: "earlier",
+      choice: "A",
+      confidence: "90",
+    },
+    assisted: false,
+    verdict: "correct",
+  });
+  await root.writePosition(COURSE, "vectors", { segment: 1, phase: "discuss" });
+  await openUnit(setup);
+  expect(await unitState()).toMatchObject({
+    assessment: { mode: "review", stage: "offered" },
+  });
+
+  const started = await post(setup.app, `${UNIT}/assessment/start`);
+  expect(started.status).toBe(202);
+  await settle(setup);
+  expect(await unitState()).toMatchObject({
+    assessment: { stage: "on" },
+    openQuestion: { objective: "basis-image" },
+  });
+  expect((await post(setup.app, `${UNIT}/assessment/start`)).status).toBe(409);
+
+  const skipped = await post(setup.app, `${UNIT}/assessment/skip`);
+  expect(skipped.status).toBe(200);
+  expect(await skipped.json()).toEqual({ ok: true });
+  expect(await unitState()).toEqual({ segment: 1, phase: "discuss" });
+  const again = await post(setup.app, `${UNIT}/assessment/skip`);
+  expect(again.status).toBe(409);
+  expect(await again.json()).toEqual({
+    error: "Nothing is offered or under way to skip.",
+  });
+  expect(setup.backend.received).toHaveLength(1);
 });
 
 test("at the unit's end, going over again and finishing without the rest go through their routes", async () => {

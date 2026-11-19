@@ -43,5 +43,12 @@ export const Course = z.object({
    * unit is opened, and in files written before then.
    */
   unitsOpenedAt: z.record(Slug, Timestamp).optional(),
+  /**
+   * When review was last offered on a card, in any of the course's units.
+   * No card is offered again within an hour of it, so two units opened
+   * together get one (docs/decisions.md, "Mastery loop"). Absent until a
+   * review is offered.
+   */
+  reviewOfferedAt: Timestamp.optional(),
 });
 export type Course = z.infer<typeof Course>;

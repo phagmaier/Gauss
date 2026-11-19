@@ -4,6 +4,7 @@
 // next-step control, the open question and the lines between messages, the
 // closing card, and the unit's place in its course.
 
+import type { AssessmentMode } from "../shared/evidence.ts";
 import type { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
@@ -17,6 +18,8 @@ import {
   segmentStand,
 } from "./progress.ts";
 import type {
+  AssessmentEndItem,
+  AssessmentItem,
   Item,
   JudgmentItem,
   Position,
@@ -66,12 +69,16 @@ export function outline(
  * in a detour asking for another question or moving on (task 2.20), the
  * next segment once one closes, and the way out of a finished unit. None in
  * teach, while an answer waits for its grade (moving on is refused then),
- * or at the closing card, whose foot holds the steps.
+ * or at the closing card, whose foot holds the steps. While an assessment
+ * is under way (piece 15), its skip, and in its detour the step that ends
+ * it; none while its card waits, which holds Start and Skip.
  */
 export type NextStep =
   | "ready"
   | "move-on"
   | "detour"
+  | "assessment"
+  | "assessment-detour"
   | "next-segment"
   | "leave"
   | "try-again"
@@ -85,6 +92,17 @@ export function nextStep(timeline: Timeline): NextStep {
     return card?.passed === true ? null : "leave";
   }
   if (position === null || plan === null) return null;
+  const run = timeline.assessment;
+  if (run !== null) {
+    if (run.stage === "offered") return null;
+    if (timeline.detour !== null) return "assessment-detour";
+    const open = openQuestion(timeline);
+    return open === undefined ||
+      open.canMoveOn === true ||
+      (open.grading === undefined && open.waiting === undefined)
+      ? "assessment"
+      : null;
+  }
   switch (position.phase) {
     case "teach":
       return null;
@@ -119,7 +137,12 @@ export function lastCard(timeline: Timeline): UnitEndItem | undefined {
  * the message box until it is graded or withdrawn (task 2.18).
  */
 export function openQuestion(timeline: Timeline): QuestionItem | undefined {
-  if (timeline.position?.phase !== "check") return undefined;
+  if (
+    timeline.position?.phase !== "check" &&
+    timeline.assessment?.stage !== "on"
+  ) {
+    return undefined;
+  }
   const open = timeline.items.findLast((i) => i.kind === "question");
   return open?.kind === "question" &&
     open.graded === undefined &&
@@ -281,6 +304,140 @@ export function phaseMarker(
 /** What a detour's marker says after its name (task 2.20). */
 export function detourSays(number: number): string {
   return `Working through question ${number}. Nothing here is graded or counts as help.`;
+}
+
+// --- Assessments (piece 15) ---------------------------------------------------
+
+/** What an assessment is called on the page, capitalised for a marker's name. */
+function runTitle(mode: AssessmentMode): string {
+  return mode === "review" ? "Review" : mode === "gate" ? "Gate" : "Test";
+}
+
+/** What an assessment's card says while it waits for Start or Skip. */
+export function assessmentCard(item: Pick<AssessmentItem, "mode" | "count">): {
+  title: string;
+  questions: string;
+  says: string[];
+  start: string;
+} {
+  return {
+    title: runTitle(item.mode),
+    questions: item.count === 1 ? "1 question" : `${item.count} questions`,
+    says: [
+      "Questions on objectives you passed in earlier sittings, to see what " +
+        "has stayed. Nothing is taught first, and a right answer marks its " +
+        "objective retained.",
+      "The unit goes on afterwards, where you left it.",
+    ],
+    start: "Start the review",
+  };
+}
+
+/** The marker a card leaves once started, or skipped on the card. */
+export function assessmentMarker(item: AssessmentItem): {
+  name: string;
+  says: string;
+} {
+  const title = runTitle(item.mode);
+  if (item.stage === "skipped") {
+    return { name: `${title} skipped`, says: "The unit goes on where it was." };
+  }
+  const count =
+    item.count === 1
+      ? "One question"
+      : `${capital(word(item.count))} questions`;
+  return {
+    name: title,
+    says: `${count} on objectives you passed before. Nothing is taught first; each answer is recorded.`,
+  };
+}
+
+/**
+ * The marker an assessment leaves once it ends, or is skipped partway: what
+ * it did to the record, and where the unit goes on.
+ */
+export function assessmentEndMarker(item: AssessmentEndItem): {
+  name: string;
+  says: string;
+} {
+  const title = runTitle(item.mode);
+  const where = goesOn(item.at);
+  const statuses = Object.values(item.statuses);
+  if (item.skipped) {
+    return {
+      name: `${title} skipped`,
+      says:
+        statuses.length === 0
+          ? where
+          : `What you answered is recorded. ${where}`,
+    };
+  }
+  const counts: [number, string][] = [
+    [statuses.filter((s) => s === "retained").length, "retained"],
+    [statuses.filter((s) => s === "slipping").length, "slipping"],
+    [statuses.filter((s) => s === "passed").length, "passed, not yet retained"],
+    [
+      statuses.filter(
+        (s) => s !== "retained" && s !== "slipping" && s !== "passed",
+      ).length,
+      "not passed",
+    ],
+  ];
+  const parts = counts.filter(([n]) => n > 0);
+  const [only] = parts;
+  const said =
+    parts.length === 1 && only !== undefined && only[0] > 1
+      ? `All ${word(only[0])} ${only[1]}.`
+      : `${capital(parts.map(([n, what]) => `${word(n)} ${what}`).join(", "))}.`;
+  return { name: `${title} over`, says: `${said} ${where}` };
+}
+
+/** Where the unit goes on after an assessment, from the phase it was in. */
+function goesOn(at: Position | null): string {
+  if (at === null) return "The unit goes on where it was.";
+  const segment =
+    at.again === undefined
+      ? `segment ${at.segment + 1}`
+      : "the segment going over objectives again";
+  switch (at.phase) {
+    case "teach":
+      return `${capital(segment)} is taught next.`;
+    case "discuss":
+      return `Back to ${segment}, in its discussion.`;
+    case "check":
+      return `Back to ${segment}, in its check.`;
+    case "closed":
+      return `Back to the end of ${segment}.`;
+  }
+}
+
+/**
+ * What ends a detour in an assessment: another question on its objective
+ * after a first miss; after a second, going on to the next objective, or
+ * the end. Skip stays beside it, but for the end.
+ */
+export function assessmentDetourStep(timeline: Timeline): {
+  label: string;
+  skip: boolean;
+} {
+  const title = runTitle(timeline.assessment?.mode ?? "review").toLowerCase();
+  const missed = timeline.items.findLast(
+    (i) =>
+      i.kind === "question" && i.question.id === timeline.detour?.questionId,
+  );
+  const head =
+    missed?.kind === "question" ? missed.question.assessment : undefined;
+  if (head?.second !== true) {
+    return { label: "Ready for another question", skip: true };
+  }
+  return missed?.kind === "question" && missed.question.number >= head.of
+    ? { label: `Finish the ${title}`, skip: false }
+    : { label: `Go on with the ${title}`, skip: true };
+}
+
+/** "Skip review", beside an assessment's question or detour. */
+export function skipLabel(timeline: Timeline): string {
+  return `Skip ${runTitle(timeline.assessment?.mode ?? "review").toLowerCase()}`;
 }
 
 // --- The closing card ----------------------------------------------------------
