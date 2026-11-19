@@ -37,19 +37,19 @@ the reason for using one language.
 ```
 Gauss/
   docs/                 brief.md, architecture.md, decisions.md, plan.md; prototype/ (the page mocks)
-  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md, handoff.md; later notes.md
+  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md, handoff.md, notes.md
   src/
     shared/             zod schemas: record files, questions, events, route bodies
     server/
       main.ts, serve.ts the real server's start, and the wiring it shares with the dev server
-      open-file.ts      the system's opener, for "Open" on a code question's files
+      open-file.ts      the system's opener, for a code question's files and a unit's notes
       record/           read/write course files; derive status, progress, "what I know"; the backup
-      engine/           the chats, phase and check rules, turn texts, grading, help-judge and dispute dispatch, the handoff writer, the sandbox for commands
+      engine/           chats and check rules, model calls, document finishing, the sandbox for commands
       tools/            teaching tool definitions (transport-free functions)
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
       sources/          (stage 4) ingestion, quote verification
-    web/                React app: library, profile, intake, course, session, "what I know"
+    web/                React app: library, profile, intake, course, session, "what I know", notes
   pytools/              sandbox_exec.py (Linux workload filter), mathcheck.py; (stage 4) convert.py
   scripts/              dev-fake.ts (no model); faults.ts (injects faults, runs the tests); grade-set.ts, judge-set.ts and decide-set.ts with their sets (real model)
   mise.toml             pinned node, pnpm, python, uv
@@ -57,10 +57,11 @@ Gauss/
 
 Dependencies, kept few: `@anthropic-ai/claude-agent-sdk`, `zod` (the SDK's
 tool helper requires it), Hono with `@hono/node-server`, React with Vite,
-KaTeX, react-markdown with remark-gfm, remark-math and rehype-katex, Vitest,
-Biome; `@anthropic-ai/sandbox-runtime`, the runtime developed for Claude
-Code's sandbox, which runs the engine's commands and on Linux needs `bwrap`,
-`socat` and `rg` on the machine. Python side:
+KaTeX, react-markdown with remark-gfm, remark-math and rehype-katex; unified,
+rehype-parse and rehype-stringify for standalone documents, with `@types/hast`
+for the document tree; Vitest and Biome; `@anthropic-ai/sandbox-runtime`,
+the runtime developed for Claude Code's sandbox. It runs the engine's
+commands and on Linux needs `bwrap`, `socat` and `rg` on the machine. Python side:
 SymPy, with `antlr4-python3-runtime` 4.11 for its LaTeX parser, and a PDF
 and an EPUB converter chosen in stage 4. The curriculum diagram is laid out
 by the page itself (`src/web/diagram.ts`), not by a diagram library.
@@ -92,7 +93,8 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
     sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
-    notes/                        (stage 5) each unit's notes: the HTML page the notes writer wrote, as the engine finished it
+    notes/<unit-id>.html          each unit's standalone notes, as the engine finished them
+    notes/<unit-id>.json          the writer's original document, kept as data, with the instructions and date
     packages/                     Gauss's uv project and lockfile; never taken from the workspace
     .package-install.tmp/         pending environment rollback or a committed install receipt
     workspace/                    the tutor's working folder: starter code, the learner's work and the installed .venv/
@@ -100,8 +102,9 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
 
 The shapes are the schemas in `src/shared/`: `course.ts`, `curriculum.ts`
 (a unit's plan in `plan.ts`), `state.ts`, `evidence.ts`, `misconception.ts`,
-`handoff.ts` for `handoff.json`, and `profile.ts` for `profile.md`. A course id is its
-folder's name, made from its title; unit and objective ids are slugs, and
+`handoff.ts` for `handoff.json`, `notes.ts` for the notes' source, and
+`profile.ts` for `profile.md`. A course id is its folder's name, made from
+its title; unit and objective ids are slugs, and
 objective ids are unique in the course, because the evidence names an
 objective by its id alone. A curriculum is a draft until the learner
 approves it. A course exists from its first proposal. No file has a schema
@@ -157,9 +160,9 @@ version: a field added later must be optional.
   on the first start if it is not one, with a `.gitignore` that keeps
   `courses/` and `profile.md`, the learner's files in workspaces with
   them, and leaves out `.venv/` and Python's caches. The engine asks for a commit once a
-  segment's close, a unit's end, an approval, a handoff note or the end of
-  an assessment that recorded answers is written, and the profile route
-  once the Profile page's save is; commits run in
+  segment's close, a unit's end, an approval, a handoff note, unit notes or
+  the end of an assessment that recorded answers is written, and the
+  profile route once the Profile page's save is; commits run in
   the background, one at a time, by "Gauss", and a failure is logged and
   never fails the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off
   for `pnpm dev:fake` unless `=on`; tests pass it in.
@@ -581,6 +584,24 @@ the test before a unit lets the learner skip what they know.
   units' objectives (`readEarlier`), in a section left out when it is
   empty. "What I know" shows each under its objective.
 
+### Unit notes
+
+`engine/notes.ts` accepts an explicit request for a finished unit, including
+one tested out of whole. The writer is a one-shot on Sonnet 5.5 by default,
+outside the chat queue. It reads the unit's goal and plan, the whole transcript
+with other units' assessment work left out, missed answers with their
+corrections, the handoff note, the unit's misconceptions and optional
+instructions. The plan is not evidence that a topic was taught. A rewrite
+leaves the previous file available until it succeeds; the backup takes
+the previous revision before it is replaced.
+
+`engine/standalone-html.ts` finishes the authored document for direct
+opening from disk. It allows static HTML and SVG, rejects web addresses
+and oversized input, and removes scripts, event handlers and non-fragment
+navigation. It renders marked TeX and dollar-delimited prose math with
+KaTeX, and embeds the stylesheet and WOFF2 fonts. A CSP meta permits inline
+styles and `data:` images and fonts, not scripts or external resources.
+
 ## 5. Teaching tools
 
 Defined once as plain functions over the record and engine
@@ -883,11 +904,11 @@ Kept as files in `prompts/`, each revised against real runs.
   calls of section 6; `handoff.md` is the one-shot call that writes
   handoff notes and finds misconceptions (section 4). Assessments have a
   section of `tutor.md`, not a prompt of their own.
-- Later (stage 5): `notes.md` for unit notes.
+- `notes.md` is the unit notes writer's prompt (section 4). It asks for
+  standalone HTML rather than Markdown.
 
-Model text is Markdown with `$` math: `$...$` inline, `$$` for display,
-`\$` for a dollar sign; no `\(...\)`, HTML or images (section 10). Every
-prompt that writes for the page must say so.
+Thread text is Markdown with `$` math: `$...$` inline, `$$` for display,
+`\$` for a dollar sign; no `\(...\)`, HTML or images (section 10).
 
 ## 10. Page
 
@@ -919,7 +940,8 @@ themselves have no automated tests.
   (which asks first when a prerequisite is not finished) or Continue, and
   beside Start, and under the card's "Start unit N", "Test out", which
   asks once, saying what the test is, then opens the unit with its test;
-  the diagram in the side pane; "What I know".
+  a finished unit offers "Write notes", or "Notes" beside "Open" once
+  saved. The diagram opens in the side pane; "What I know" opens its own page.
 - **What I know** (`/courses/<id>/what-i-know`): each started unit's
   objectives with their status ("Retained" in teal, "Slipping" in peach)
   and, under each, its evidence in log order (question, answer,
@@ -1012,13 +1034,20 @@ themselves have no automated tests.
   the response policy sandbox HTML to its own origin with scripts allowed.
   The parent page's `frame-src 'self'` prevents the frame from navigating
   away. WebRTC is not blocked (`decisions.md`, "Confinement").
+- **Notes** (`/courses/<id>/units/<unit>/notes`, piece 17): a finished
+  unit offers notes on its closing card, or on the result card when it
+  tested out of whole. The reader shows the saved HTML in a sandboxed
+  frame with no scripts, with its date, instructions and file path above.
+  "Open in browser" uses the system file opener. A write can be followed
+  after leaving and returning; "Try again" uses the failed attempt's
+  instructions, and "Write again" takes new instructions.
 
 The look and layout were settled with static mocks in `docs/prototype/`
 (start at `index.html`; the shared look is `base.css`, copied into
 `src/web/styles.css`); the picks are in `decisions.md`, "Page design".
 
 **Routes** (`src/server/http/app.ts`; bodies are schemas in `src/shared/`,
-mainly `events.ts`, `library.ts`, `what-i-know.ts` and `profile.ts`):
+mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`):
 
 - `GET /api/profile` (the text and the finished courses) and `POST
   /api/profile` with the new text and the one it replaces (409 if that is
@@ -1046,8 +1075,13 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts` and `profile.ts`):
   `interrupt`, `assessment/start` and `assessment/skip` (which is the
   test's "Start learning instead"), `test-out/skip` and `test-out/whole`.
   `test-out` opens a unit not started with its test, in place of `open`.
-  A unit not opened since the server started answers 404 on all but
-  `open` and `test-out`.
+  A unit not opened since the server started answers 404 on these chat
+  routes except `open` and `test-out`.
+- Under `/api/courses/<id>/units/<unit>/notes`: `GET` reads metadata and
+  the current attempt, `POST` starts a write (202), `GET /html` serves the
+  finished document as HTML only to a same-origin iframe (inert text
+  otherwise), and `POST /open` opens the saved file on disk. None opens
+  or requires the unit's chat.
 - An event stream replays its chat's log with ids `<log id>.<index>`, so a
   page that reconnects gets only what it missed. It starts with `hello`,
   outside the log: the chat's id and the index of the log's last event,

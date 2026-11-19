@@ -279,6 +279,8 @@ export function readStretch(
     plan: Plan;
     /** The objective of a question answered, by its id. */
     objectiveOf: (questionId: string) => string | undefined;
+    /** Notes read the whole unit instead of keeping only a recent stretch. */
+    whole?: boolean;
   },
 ): Stretch {
   const { plan, objectiveOf } = given;
@@ -453,7 +455,12 @@ export function readStretch(
     }
   }
   flush();
-  return { text: cut(parts), detours, objectives, worthReading };
+  return {
+    text: given.whole ? parts.join("\n\n") : cut(parts),
+    detours,
+    objectives,
+    worthReading,
+  };
 }
 
 const phaseWords = {

@@ -43,6 +43,7 @@ import {
 } from "../shared/question.ts";
 import { type DisputeApi, DisputePart, VerdictNow } from "./Dispute.tsx";
 import { standing } from "./dispute.ts";
+import { CopyPath } from "./Frame.tsx";
 import {
   AnswerPreview,
   ChoiceLabel,
@@ -499,29 +500,6 @@ function OpenablePath(props: {
         </p>
       ) : null}
     </>
-  );
-}
-
-function CopyPath(props: { path: string }) {
-  const [copied, setCopied] = useState<"copied" | "failed">();
-  return (
-    <button
-      type="button"
-      className="textbtn"
-      onClick={() => {
-        // The page is served from localhost, where the clipboard is open.
-        navigator.clipboard.writeText(props.path).then(
-          () => setCopied("copied"),
-          () => setCopied("failed"),
-        );
-      }}
-    >
-      {copied === "copied"
-        ? "Copied"
-        : copied === "failed"
-          ? "Could not copy"
-          : "Copy path"}
-    </button>
   );
 }
 

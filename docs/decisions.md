@@ -1553,13 +1553,17 @@ built until its task is done; `architecture.md` says what is.
   user's pick), so the file loads nothing. MathML was dropped for both
   files: a browser draws it with the machine's math font, and in Chromium
   primes shrank to specks and brackets did not grow around a fraction.
+- **Marked TeX is preferred, but dollar-delimited prose is rendered too.**
+  A Haiku 5.5 run used the requested display class but wrote its inline
+  fractions with dollars, leaving literal TeX without the fallback.
+  Code and SVG text are not scanned.
 - **Notes have no script** (the agent's): the file is meant to be opened
   from its folder, where no frame confines it, and a script there could
   carry what the page holds to any address by navigating to it. The
-  engine drops scripts, refuses a document that names an address on the
-  web, as it does an artifact, and writes a policy into the file that
-  allows inline styles and `data:` images and fonts only. Moving parts
-  stay with artifacts, which run in the app's frame.
+  engine keeps static HTML and SVG, rejects web addresses, and removes
+  navigation other than local fragments: the file's CSP alone cannot stop
+  a link from navigating away. Moving parts stay with artifacts, which
+  run in the app's frame.
 - **The notes are read in the app as well as in the browser** (the
   agent's; the user allowed the browser alone): the app already frames a
   tutor's document for artifacts, so the reader is that frame filling a

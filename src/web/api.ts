@@ -53,8 +53,13 @@ function postInit(body: unknown): RequestInit {
 export function getJson<T>(
   path: string,
   schema: z.ZodType<T>,
+  signal?: AbortSignal,
 ): Promise<Answer<T>> {
-  return request(path, schema, {}) as Promise<Answer<T>>;
+  return request(
+    path,
+    schema,
+    signal === undefined ? {} : { signal },
+  ) as Promise<Answer<T>>;
 }
 
 /** Posts and reads the answer. */
@@ -89,7 +94,7 @@ export async function getJsonUntilAnswered<T>(
   const { signal } = options;
   for (let wait = 1000; ; wait = Math.min(wait * 2, 15_000)) {
     if (signal.aborted) return undefined;
-    const answer = await getJson(path, schema);
+    const answer = await getJson(path, schema, signal);
     if (signal.aborted) return undefined;
     if (answer.ok || (answer.status !== 0 && answer.status < 500)) {
       return answer;

@@ -2,7 +2,7 @@
 // (docs/prototype/04-session-nav.html, 06-library.html) and the side pane
 // (05-side-pane.html).
 
-import { Fragment, type ReactNode, useEffect } from "react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { navigate } from "./route.ts";
 
 /** An address the page shows itself, so Back and new tabs work. */
@@ -94,5 +94,28 @@ export function SidePane(props: {
       </div>
       <div className="sv-body">{props.children}</div>
     </aside>
+  );
+}
+
+export function CopyPath(props: { path: string }) {
+  const [copied, setCopied] = useState<"copied" | "failed">();
+  return (
+    <button
+      type="button"
+      className="textbtn"
+      onClick={() => {
+        // The page is served from localhost, where the clipboard is open.
+        navigator.clipboard.writeText(props.path).then(
+          () => setCopied("copied"),
+          () => setCopied("failed"),
+        );
+      }}
+    >
+      {copied === "copied"
+        ? "Copied"
+        : copied === "failed"
+          ? "Could not copy"
+          : "Copy path"}
+    </button>
   );
 }

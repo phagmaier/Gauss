@@ -330,6 +330,8 @@ export interface UnitChat {
     entry: DisputeEvidence,
     override?: OverrideEvidence,
   ): Promise<void>;
+  /** Lets the notes writer read the latest transcript and handoff without entering the chat queue. */
+  settleNotesContext(): Promise<void>;
   /** Resolves once the chat has opened and every turn sent so far has finished. */
   settled(): Promise<void>;
   close(): Promise<void>;
@@ -3139,6 +3141,10 @@ function createUnitChat(
         if (r === undefined) return;
         if (r.record.learnDispute(entry, override)) await disputeKept(r, entry);
       });
+    },
+    async settleNotesContext() {
+      await handoffs?.settled();
+      await log.flushed();
     },
     async settled() {
       await loading;

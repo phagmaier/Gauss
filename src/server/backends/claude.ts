@@ -95,6 +95,9 @@ export const DISPUTE_MODEL = "claude-sonnet-5-5";
  */
 export const HANDOFF_MODEL = "claude-haiku-5-5";
 
+/** The notes writer's model: the learner keeps the document. */
+export const NOTES_MODEL = "claude-sonnet-5-5";
+
 export function createClaudeBackend(
   backendOptions: ClaudeBackendOptions = {},
 ): TutorBackend {

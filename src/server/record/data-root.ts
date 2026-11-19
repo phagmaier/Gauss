@@ -13,7 +13,7 @@
 // in src/shared/. Work that reads a file and writes it back, and every
 // append, runs through withFileLock, so it lands in the order called.
 
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -35,6 +35,7 @@ import {
 import { HandoffMark } from "../../shared/handoff.ts";
 import type { StoredCourse } from "../../shared/library.ts";
 import { Misconception } from "../../shared/misconception.ts";
+import { type NotesSaved, NotesSource } from "../../shared/notes.ts";
 import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
@@ -221,6 +222,17 @@ export interface DataRoot {
    * name, or the name cannot be an artifact's.
    */
   readArtifact(id: string, file: string): Promise<string | undefined>;
+  /** Metadata of a published notes file, or undefined before its first write. */
+  readNotes(id: string, unitId: string): Promise<NotesSaved | undefined>;
+  /** The published HTML, never the unprocessed writer's reply. */
+  readNotesHtml(id: string, unitId: string): Promise<string | undefined>;
+  /** Publishes a standalone notes file and keeps the source beside it. */
+  writeNotes(
+    id: string,
+    unitId: string,
+    html: string,
+    source: NotesSource,
+  ): Promise<void>;
   /**
    * The unit's handoff note, `units/<unit id>/handoff.md`, trimmed, with how
    * much of the thread it covers (`handoff.json`); undefined when the unit
@@ -423,6 +435,10 @@ export function openDataRoot(options: {
   /** A unit's folder under the course's `units/`, which need not exist yet. */
   function unitFolder(id: string, unitId: string): string {
     return courseFile(id, join("units", Slug.parse(unitId)));
+  }
+
+  function notesPath(id: string, unitId: string): string {
+    return courseFile(id, join("notes", Slug.parse(unitId)));
   }
 
   /** A file in the course's folder, which need not exist yet. */
@@ -786,6 +802,55 @@ export function openDataRoot(options: {
         if (hasCode(error, "ENOENT")) return undefined;
         throw error;
       }
+    },
+
+    async readNotes(id, unitId) {
+      const base = notesPath(id, unitId);
+      const path = `${base}.html`;
+      return withFileLock(base, async () => {
+        try {
+          if (!(await stat(path)).isFile()) return undefined;
+        } catch (error) {
+          if (hasCode(error, "ENOENT")) return undefined;
+          throw error;
+        }
+        const source = await readJson(`${base}.json`, NotesSource);
+        if (source === undefined)
+          throw new Error(`The notes at ${path} have no source record.`);
+        return {
+          path,
+          instructions: source.instructions,
+          writtenAt: source.writtenAt,
+        };
+      });
+    },
+
+    async readNotesHtml(id, unitId) {
+      try {
+        return await readFile(`${notesPath(id, unitId)}.html`, "utf8");
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return undefined;
+        throw error;
+      }
+    },
+
+    async writeNotes(id, unitId, html, source) {
+      const base = notesPath(id, unitId);
+      await withFileLock(base, async () => {
+        const folder = courseFile(id, "notes");
+        await mkdir(folder, { recursive: true });
+        const sourceFile = `${base}.json`;
+        const before = await readJson(sourceFile, NotesSource);
+        await writeJson(sourceFile, NotesSource, source);
+        try {
+          await writeFileAtomic(`${base}.html`, html);
+        } catch (error) {
+          // A rejected replacement must leave the earlier page and its instructions together.
+          if (before === undefined) await rm(sourceFile, { force: true });
+          else await writeJson(sourceFile, NotesSource, before);
+          throw error;
+        }
+      });
     },
 
     async readHandoff(id, unitId) {

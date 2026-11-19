@@ -7,7 +7,7 @@
 // started; one whose prerequisites are not finished asks once first (task
 // 2.12). "Test out" beside Start, and under the card's "Start unit N", asks
 // once, saying what the test is, then opens the unit with its test (task
-// 5.6, piece 16). Notes join in stage 5 and sources in stage 4.
+// 5.6, piece 16). Finished units offer notes (task 5.9, piece 17).
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { StoredUnit } from "../shared/curriculum.ts";
@@ -16,6 +16,7 @@ import { CourseWithProgress } from "../shared/library.ts";
 import { getJson, postFor } from "./api.ts";
 import { Diagram, UnitList } from "./Curriculum.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
+import { NotesOffer } from "./Notes.tsx";
 import {
   courseSummary,
   type Lead,
@@ -160,12 +161,20 @@ export function Course(props: { courseId: string }) {
             </button>
           </>
         );
-      default:
-        // A finished unit opens to how it finished; its notes join in stage 5.
+      case "passed":
+      case "overridden":
         return (
-          <Link to={paths.unit(courseId, unit.id)} className="textbtn">
-            Open
-          </Link>
+          <>
+            <Link to={paths.unit(courseId, unit.id)} className="textbtn">
+              Open
+            </Link>
+            <NotesOffer
+              key={unit.id}
+              courseId={courseId}
+              unitId={unit.id}
+              row
+            />
+          </>
         );
     }
   }

@@ -46,6 +46,7 @@ import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { type DisputeApi, disputeApi } from "./Dispute.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
+import { NotesOffer } from "./Notes.tsx";
 import { PackagesCard } from "./PackagesCard.tsx";
 import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
@@ -260,6 +261,21 @@ export function Session(props: { courseId: string; unitId: string }) {
   const result = timeline.testWaits
     ? timeline.items.findLast((i) => i.kind === "test_result")
     : undefined;
+  // A full test-out ends at the test card, not at a teaching closing card.
+  const notesItem =
+    timeline.finished === null
+      ? undefined
+      : finishedByTest(timeline)
+        ? timeline.items.findLast((i) => i.kind === "test_result")
+        : lastCard(timeline);
+  const notes =
+    timeline.finished === null ? null : (
+      <NotesOffer
+        key={paths.notes(courseId, unitId)}
+        courseId={courseId}
+        unitId={unitId}
+      />
+    );
   const asked = openQuestion(timeline);
   // Hidden until shown again, or until another question is posted (task 3.21).
   const hidden = asked !== undefined && asked.key === hiddenKey;
@@ -359,6 +375,7 @@ export function Session(props: { courseId: string; unitId: string }) {
                       place={place}
                       busy={busy}
                       current={item === standing}
+                      notes={item === notesItem ? notes : null}
                       // By file, which names one artifact of the course
                       // across restarts, where keys are numbered afresh.
                       showing={
@@ -416,6 +433,9 @@ export function Session(props: { courseId: string; unitId: string }) {
               })}
             </div>
           ))}
+          {notesItem === undefined && notes !== null ? (
+            <div className="qa-card ue">{notes}</div>
+          ) : null}
           {timeline.planning ? (
             <p className="ph-note">
               <span className="wait" aria-hidden="true" /> Planning this unit:
@@ -710,6 +730,7 @@ function ThreadItem(props: {
   busy: boolean;
   /** The closing card standing at the thread's end, the only one whose steps can be taken. */
   current: boolean;
+  notes: ReactNode;
   /** This is the artifact the side pane shows. */
   showing: boolean;
   /** Opens the artifact in the side pane, or closes it if it is showing. */
@@ -845,6 +866,7 @@ function ThreadItem(props: {
           item={item}
           plan={props.plan}
           place={props.place}
+          notes={props.notes}
           live={props.answers}
           busy={props.busy}
           onSkip={props.onSkipTested}
@@ -920,6 +942,7 @@ function ThreadItem(props: {
           card={item}
           plan={props.plan}
           place={props.place}
+          notes={props.notes}
           busy={props.busy}
           current={props.current}
           confirming={props.confirming}
@@ -976,6 +999,7 @@ function ClosingCard(props: {
   plan: Plan;
   /** Unknown until the course's details are loaded. */
   place: Placement | undefined;
+  notes: ReactNode;
   busy: boolean;
   current: boolean;
   confirming: boolean;
@@ -1002,6 +1026,7 @@ function ClosingCard(props: {
           <span>{title}</span>
           <span className="c">{view.summary}</span>
         </div>
+        {props.notes}
       </div>
     );
   }
@@ -1092,6 +1117,7 @@ function ClosingCard(props: {
           <CardRows rows={view.others} />
         </div>
       )}
+      {props.notes}
       {foot}
     </div>
   );
@@ -1106,6 +1132,7 @@ function TestResult(props: {
   item: TestResultItem;
   plan: Plan;
   place: Placement | undefined;
+  notes: ReactNode;
   /** It waits, and its steps can be taken. */
   live: boolean;
   busy: boolean;
@@ -1131,6 +1158,7 @@ function TestResult(props: {
             <span>{title}</span>
             <span className="c">{card.answered}</span>
           </div>
+          {props.notes}
         </div>
         {card.startsAt === undefined ? null : (
           <div className="ph-note">{card.startsAt}</div>
@@ -1155,6 +1183,7 @@ function TestResult(props: {
       {card.segments === null ? null : (
         <p className="as-says">What you passed stays passed either way.</p>
       )}
+      {props.notes}
       {!props.live ? null : card.segments === null ? (
         <div className="qa-foot">
           <span className="qa-aside">

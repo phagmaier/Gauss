@@ -101,7 +101,7 @@ export interface TutorSession {
 
 /**
  * One request on its own: its own system prompt, no tools, no conversation
- * before it, and nothing kept after it (the grader; later the notes). The
+ * before it, and nothing kept after it (grading, notes and other writers). The
  * reply is asked for as JSON in the schema's shape and checked against it.
  */
 export interface OneShotRequest<T> {

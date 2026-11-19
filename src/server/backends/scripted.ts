@@ -72,6 +72,9 @@
 // stretch fails the call, which records nothing: the next one reads that
 // stretch too.
 //
+// The notes writer (task 5.9) supplies a small standalone page with a
+// figure and math, repeating any instructions from the learner.
+//
 // A dispute of a grade (task 3.8) is decided by the scripted judge: the
 // grade stands unless the learner's reason has "/change" in it, which
 // changes it; for a choice question changed to correct, the key becomes the
@@ -92,6 +95,7 @@ import { join } from "node:path";
 import type { PlannerProposal } from "../../shared/curriculum.ts";
 import { DisputeJudgment } from "../../shared/dispute.ts";
 import { HandoffReply } from "../../shared/handoff.ts";
+import { NotesReply } from "../../shared/notes.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { sentences } from "../../shared/profile.ts";
 import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
@@ -678,6 +682,7 @@ function scriptedReply(request: OneShotRequest<unknown>): FakeReply {
   if (request.schema === HelpJudgment) return scriptedJudgment(request);
   if (request.schema === DisputeJudgment) return scriptedDispute(request);
   if (request.schema === HandoffReply) return scriptedHandoff(request);
+  if (request.schema === NotesReply) return scriptedNotes(request);
   const answer =
     /<answer>\n([\s\S]*)\n<\/answer>/.exec(request.prompt)?.[1] ?? "";
   if (answer.includes("/fail")) {
@@ -691,6 +696,34 @@ function scriptedReply(request: OneShotRequest<unknown>): FakeReply {
         },
       }
     : { output: { verdict: "correct" } };
+}
+
+function scriptedNotes(request: OneShotRequest<unknown>): FakeReply {
+  // The request has already escaped the instructions for inclusion in HTML.
+  const instructions =
+    /<instructions>\n([\s\S]*?)\n<\/instructions>$/.exec(request.prompt)?.[1] ||
+    "None";
+  return {
+    output: {
+      html: String.raw`<!doctype html>
+<html lang="en"><head><title>Scripted unit notes</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { background: #303446; color: #c6d0f5; font: 17px/1.6 system-ui, sans-serif; }
+main { max-width: 38em; margin: 3em auto; padding: 0 1em; }
+figure { margin: 1em 0; color: #ca9ee6; }
+svg { display: block; width: 10em; }
+@media print { body { background: white; color: black; } figure { color: black; } }
+</style></head><body><main><h1>Scripted unit notes</h1>
+<p>Instructions: ${instructions}</p>
+<p>One square on each side gives <span class="math-inline">a^2 + b^2</span>.</p>
+<div class="math-display">\frac{a^2+b^2}{c^2}=1</div>
+<figure><svg viewBox="0 0 100 70" role="img" aria-label="A right triangle">
+<path d="M10 60H90L10 10Z" fill="none" stroke="currentColor" stroke-width="2"/>
+<path d="M10 50H20V60" fill="none" stroke="currentColor"/>
+</svg><figcaption>A right triangle</figcaption></figure>
+</main></body></html>`,
+    },
+  };
 }
 
 /**

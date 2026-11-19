@@ -1219,7 +1219,8 @@ details.why summary:hover {
 }
 .cu-m {
   display: flex;
-  gap: 1.3em;
+  flex-wrap: wrap;
+  gap: 0.2em 1.3em;
   align-items: baseline;
   color: var(--faint);
   font-size: 0.86em;
@@ -1868,4 +1869,98 @@ button.dn:hover {
   color: var(--faint);
   font-size: 0.9em;
   white-space: nowrap;
+}
+
+/* ---- Unit notes, piece 17 ---- */
+.nt-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 0.6em;
+}
+.nt-row .field {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+}
+.nt-row .btn {
+  flex: none;
+}
+.nt-state {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2em 1em;
+  margin-top: 0.4em;
+}
+.nt-aside {
+  color: var(--faint);
+}
+.cu-m > .nt-form,
+.cu-m > .nt-state,
+.cu-m > [role="alert"] {
+  flex-basis: 100%;
+}
+.cu-m > .nt-form {
+  max-width: 34em;
+}
+.nt-form > .textbtn {
+  margin-top: 0.3em;
+}
+.nr {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+.nr-top {
+  display: grid;
+  gap: 0.2em;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  color: var(--soft);
+  font-size: 0.9em;
+  max-height: 50dvh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.nr-top .qa-path {
+  margin: 0;
+}
+.nr-instructions {
+  white-space: pre-wrap;
+}
+.nr-again {
+  margin: 0.8em 0 0.3em;
+  max-width: calc(var(--measure) + 48px);
+}
+.nr-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--base);
+}
+.nr-writing {
+  opacity: 0.5;
+}
+@media (max-width: 700px) {
+  .nr > .nl {
+    flex-wrap: wrap;
+    gap: 8px 20px;
+  }
+  .nr .crumbs {
+    flex-wrap: wrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 480px) {
+  .nt-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .nt-row .field {
+    width: 100%;
+  }
+  .nr-again .qa-foot {
+    flex-wrap: wrap;
+  }
 }

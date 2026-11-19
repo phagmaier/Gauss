@@ -17,6 +17,7 @@ import { createHandoffWriter } from "./engine/handoff.ts";
 import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
 import { createMathCheck } from "./engine/math-check.ts";
+import { createNotes } from "./engine/notes.ts";
 import { createPackageInstaller, projectPython } from "./engine/packages.ts";
 import { startSandbox } from "./engine/sandbox.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
@@ -44,6 +45,8 @@ export async function serve(options: {
   disputeBackend: TutorBackend;
   /** Writes handoff notes and finds misconceptions (task 5.7). */
   handoffBackend: TutorBackend;
+  /** Writes the learner's standalone unit notes. */
+  notesBackend: TutorBackend;
   dataRootPath: string;
   port: number;
   /** Keeps the record's history in git (task 2.25). */
@@ -60,6 +63,7 @@ export async function serve(options: {
     judgePrompt,
     disputePrompt,
     handoffPrompt,
+    notesPrompt,
   ] = await Promise.all([
     prompt("planner.md"),
     prompt("unit-planner.md"),
@@ -68,6 +72,7 @@ export async function serve(options: {
     prompt("help-judge.md"),
     prompt("dispute-judge.md"),
     prompt("handoff.md"),
+    prompt("notes.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
   // The engine's commands run in it (task 3.2); it says once if it cannot,
@@ -137,12 +142,21 @@ export async function serve(options: {
       systemPrompt: disputePrompt,
     }),
   });
+  const notes = createNotes({
+    dataRoot,
+    backend: options.notesBackend,
+    systemPrompt: notesPrompt,
+    ready: (courseId, unitId) =>
+      units.get(courseId, unitId)?.settleNotesContext(),
+    backup,
+  });
   const api = getRequestListener(
     createApp({
       dataRoot,
       intakes,
       units,
       disputes,
+      notes,
       openFile: systemOpener(),
       backup,
     }).fetch,
@@ -168,7 +182,12 @@ export async function serve(options: {
 
   async function shutDown(): Promise<void> {
     server.closeAllConnections();
-    await Promise.allSettled([intakes.close(), units.close(), vite.close()]);
+    await Promise.allSettled([
+      intakes.close(),
+      units.close(),
+      notes.close(),
+      vite.close(),
+    ]);
     await Promise.allSettled([backup.settled(), sandbox.close()]);
     server.close();
     process.exit(0);

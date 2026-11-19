@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Hello, PageEvent, UnitOpened } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
+import { NotesSource, NotesView } from "../../shared/notes.ts";
 import type {
   ChoiceQuestion,
   CodeQuestion,
@@ -29,6 +30,7 @@ import { createDisputes } from "../engine/disputes.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
+import { createNotes } from "../engine/notes.ts";
 import {
   createPackageInstaller,
   type PackageInstaller,
@@ -89,6 +91,7 @@ function setUp(
   installer?: PackageInstaller,
   /** The dispute judge's replies, in order, on a backend of its own. */
   rulings: FakeReply[] = [],
+  notesReplies: FakeReply[] = [],
 ) {
   const backend = createFakeBackend(script, replies);
   const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
@@ -128,17 +131,29 @@ function setUp(
     commit: (message: string) => void commits.push(message),
     settled: async () => {},
   };
+  const notesBackend = createFakeBackend([], notesReplies);
+  const notes = createNotes({
+    dataRoot,
+    backend: notesBackend,
+    systemPrompt: "Write only on this unit's work.",
+    ready: (courseId, unitId) =>
+      units.get(courseId, unitId)?.settleNotesContext(),
+    backup,
+  });
   const app = createApp({
     dataRoot,
     intakes,
     units,
     disputes,
+    notes,
     openFile,
     backup,
   });
   return {
     backend,
     disputeBackend,
+    notesBackend,
+    notes,
     dataRoot,
     intakes,
     units,
@@ -823,6 +838,277 @@ async function unitState() {
   const { tutorSessionId: _, ...rest } = position;
   return rest;
 }
+
+test("a finished unit writes only on request, retries a failure and replaces its notes", async () => {
+  const first =
+    "<!doctype html><html><head><title>First notes</title></head><body><h1>The images of a basis</h1><script>stop()</script></body></html>";
+  const second =
+    "<!doctype html><html><head><title>New notes</title></head><body><h1>Basis recap</h1></body></html>";
+  const setup = setUp(
+    [
+      [{ text: "A map is fixed by a basis." }],
+      [{ text: "Write a vector as a sum of scalar multiples of the basis." }],
+      [{ call: "ask_question", input: QUESTION }],
+      [{ text: "Knowing one image does not fix the map." }],
+      [{ text: "The images of the basis are the columns." }],
+    ],
+    [],
+    undefined,
+    [],
+    [
+      { fail: "The reply was cut off." },
+      { output: { html: first } },
+      { output: { html: second } },
+    ],
+  );
+  const notes = `${UNIT}/notes`;
+  await approvedCourse();
+  try {
+    await openUnit(setup);
+    expect((await post(setup.app, notes, {})).status).toBe(409);
+    expect(
+      (
+        await post(setup.app, `${UNIT}/messages`, {
+          text: "What makes the basis enough?",
+        })
+      ).status,
+    ).toBe(202);
+    await settle(setup);
+    expect((await post(setup.app, `${UNIT}/ready`)).status).toBe(202);
+    await settle(setup);
+    const question = setup.units
+      .get(COURSE, "vectors")
+      ?.events()
+      .findLast((event) => event.type === "question")?.question;
+    expect(
+      (
+        await post(setup.app, `${UNIT}/answers`, {
+          kind: "choice",
+          questionId: question?.id,
+          choice: "B",
+          confidence: "90",
+        })
+      ).status,
+    ).toBe(202);
+    await settle(setup);
+    expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
+    expect((await post(setup.app, `${UNIT}/next-segment`)).status).toBe(202);
+    await settle(setup);
+    expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
+    expect((await post(setup.app, `${UNIT}/finish`)).status).toBe(200);
+    expect(setup.units.get(COURSE, "vectors")?.events().at(-1)).toMatchObject({
+      type: "unit_closed",
+    });
+    await setup.dataRoot.writeHandoff(
+      COURSE,
+      "vectors",
+      "The vector decomposition made it click.",
+      {
+        writtenAt: NOW,
+        through: { session: 1, events: 1 },
+      },
+    );
+    await setup.dataRoot.appendMisconceptions(COURSE, [
+      {
+        recordedAt: NOW,
+        unit: "vectors",
+        objective: "basis-image",
+        believed: "One point fixes the map.",
+        actually: "Use the full basis.",
+        where: { in: "discussion" },
+      },
+      {
+        recordedAt: NOW,
+        unit: "eigen",
+        objective: "basis-image",
+        believed: "A different unit's discussion.",
+        actually: "Do not include.",
+        where: { in: "discussion" },
+      },
+    ]);
+    expect(setup.notesBackend.oneShots).toEqual([]);
+    const status = await setup.app.request(notes);
+    expect(NotesView.parse(await status.json())).toEqual({
+      courseTitle: FIRST.title,
+      unitTitle: "Vectors and linear maps",
+    });
+    expect(await setup.dataRoot.readNotes(COURSE, "vectors")).toBeUndefined();
+
+    const readStatus = async () =>
+      NotesView.parse(await (await setup.app.request(notes)).json());
+    const instructions = "Use an example from the discussion.";
+    const attempt = await post(setup.app, notes, { instructions });
+    expect(attempt.status).toBe(202);
+    expect(NotesView.parse(await attempt.json()).attempt).toEqual({
+      state: "writing",
+      instructions,
+    });
+    await expect
+      .poll(async () => (await readStatus()).attempt)
+      .toEqual({
+        state: "failed",
+        instructions,
+        error: "The reply was cut off.",
+      });
+    expect((await setup.app.request(`${notes}/html`)).status).toBe(404);
+    const request = setup.notesBackend.oneShots[0];
+    for (const sent of [
+      "Describe a linear map by what it does to a basis.",
+      "Read the columns of a matrix as the images of a basis.",
+      "A map is fixed by a basis.",
+      "What makes the basis enough?",
+      "Knowing one image does not fix the map.",
+      QUESTION.prompt,
+      '"correction": "The images of a basis"',
+      "The vector decomposition made it click.",
+      "One point fixes the map.",
+      `<instructions>\n${instructions}\n</instructions>`,
+    ])
+      expect(request?.prompt).toContain(sent);
+    expect(request?.prompt).not.toContain("A different unit's discussion.");
+    expect(request?.prompt).not.toContain(
+      "Find the directions a map only stretches",
+    );
+
+    const turns = setup.backend.received.length;
+    expect((await post(setup.app, notes, { instructions })).status).toBe(202);
+    const path = join(dir, "courses", COURSE, "notes", "vectors.html");
+    await expect
+      .poll(async () => (await readStatus()).saved)
+      .toMatchObject({ instructions, path });
+    expect(setup.notesBackend.oneShots[1]?.prompt).toBe(request?.prompt);
+    expect(setup.backend.received).toHaveLength(turns);
+    const saved = await readFile(path, "utf8");
+    expect(saved).toContain("The images of a basis");
+    expect(saved).not.toContain("<script>");
+    const frame = await setup.app.request(`${notes}/html`, {
+      headers: { "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "same-origin" },
+    });
+    expect(await frame.text()).toBe(saved);
+    expect(Object.fromEntries(frame.headers)).toMatchObject({
+      "content-type": "text/html; charset=utf-8",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+      "cross-origin-resource-policy": "same-origin",
+      "x-dns-prefetch-control": "off",
+      "cache-control": "no-store",
+    });
+    const policy = frame.headers
+      .get("Content-Security-Policy")
+      ?.split(";")
+      .map((s) => s.trim());
+    expect(policy).toEqual(
+      expect.arrayContaining([
+        "sandbox",
+        "script-src 'none'",
+        "frame-ancestors 'self'",
+      ]),
+    );
+    expect(
+      (await setup.app.request(`${notes}/html`)).headers.get("Content-Type"),
+    ).toBe("text/plain; charset=utf-8");
+    expect((await post(setup.app, `${notes}/open`, {})).status).toBe(200);
+    expect(setup.openFile).toHaveBeenCalledWith(path);
+
+    expect(
+      (await post(setup.app, notes, { instructions: "Make it shorter." }))
+        .status,
+    ).toBe(202);
+    await expect
+      .poll(async () => (await readStatus()).saved?.instructions)
+      .toBe("Make it shorter.");
+    expect(await readFile(path, "utf8")).toContain("Basis recap");
+    const source = NotesSource.parse(
+      JSON.parse(await readFile(join(dirname(path), "vectors.json"), "utf8")),
+    );
+    expect(source).toMatchObject({
+      instructions: "Make it shorter.",
+      html: second,
+    });
+    expect(
+      setup.commits.filter(
+        (message) => message === `${COURSE}: notes of unit vectors`,
+      ),
+    ).toHaveLength(2);
+  } finally {
+    await setup.units.close();
+    await setup.notes.close();
+  }
+});
+
+test("a unit tested out of whole can write notes without instructions or another tutor turn", async () => {
+  const second = {
+    ...QUESTION,
+    objective: "matrix-columns",
+    prompt: "What does a column describe?",
+  };
+  const setup = setUp(
+    [
+      [{ call: "ask_question", input: QUESTION }],
+      [{ call: "ask_question", input: second }],
+      [{ text: "You passed both objectives on the test." }],
+    ],
+    [],
+    undefined,
+    [],
+    [
+      {
+        output: {
+          html: "<!doctype html><html><head><title>Test recap</title></head><body><h1>Test recap</h1></body></html>",
+        },
+      },
+    ],
+  );
+  await approvedCourse();
+  try {
+    expect((await post(setup.app, `${UNIT}/test-out`)).status).toBe(200);
+    for (let n = 0; n < 2; n++) {
+      await settle(setup);
+      const question = setup.units
+        .get(COURSE, "vectors")
+        ?.events()
+        .findLast((e) => e.type === "question")?.question;
+      expect(
+        (
+          await post(setup.app, `${UNIT}/answers`, {
+            kind: "choice",
+            questionId: question?.id,
+            choice: "A",
+            confidence: "90",
+          })
+        ).status,
+      ).toBe(202);
+    }
+    await settle(setup);
+    expect(
+      (
+        await post(setup.app, `${UNIT}/test-out/skip`, {
+          objectives: ["basis-image", "matrix-columns"],
+        })
+      ).status,
+    ).toBe(202);
+    expect((await setup.dataRoot.readState(COURSE)).testedOut?.vectors).toBe(
+      true,
+    );
+    expect(setup.notesBackend.oneShots).toEqual([]);
+    const turns = setup.backend.received.length;
+    expect((await post(setup.app, `${UNIT}/notes`, {})).status).toBe(202);
+    await expect
+      .poll(
+        async () =>
+          (await setup.dataRoot.readNotes(COURSE, "vectors"))?.instructions,
+      )
+      .toBe("");
+    const request = setup.notesBackend.oneShots[0]?.prompt;
+    expect(request).toContain('"testedOut": true');
+    expect(request).toContain(second.prompt);
+    expect(request).toContain("<instructions>\n\n</instructions>");
+    expect(setup.backend.received).toHaveLength(turns);
+  } finally {
+    await setup.units.close();
+    await setup.notes.close();
+  }
+});
 
 test("opening a unit marks its course opened, and the unit's event stream replays its thread with ids", async () => {
   const setup = setUp([[{ text: "A map is fixed by a basis." }]]);

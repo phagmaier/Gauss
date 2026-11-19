@@ -16,6 +16,12 @@ test.each([
   ],
   ["/courses/linear-algebra/units/vectors/more", { view: "library" }],
   [
+    "/courses/linear-algebra/units/vectors/notes",
+    { view: "notes", courseId: "linear-algebra", unitId: "vectors" },
+  ],
+  ["/courses/linear-algebra/units/vectors/notes/html", { view: "library" }],
+  ["/courses/linear-algebra/units/%E0%A4/notes", { view: "library" }],
+  [
     "/courses/linear-algebra/what-i-know",
     { view: "known", courseId: "linear-algebra" },
   ],
@@ -46,5 +52,11 @@ test("the paths the page makes lead back to their views", () => {
     view: "unit",
     courseId: "linear-algebra",
     unitId: "a b/c",
+  });
+  expect(paths.notes("a/b", "x y")).toBe("/courses/a%2Fb/units/x%20y/notes");
+  expect(parseRoute(paths.notes("a/b", "x y"))).toEqual({
+    view: "notes",
+    courseId: "a/b",
+    unitId: "x y",
   });
 });

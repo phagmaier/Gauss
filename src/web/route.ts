@@ -1,6 +1,6 @@
 // Which view the address shows: the library, the learner profile, an
-// intake, a course, a course's "What I know", or a unit's session. The page moves between them without
-// reloading, and the browser's Back works.
+// intake, a course, its "What I know", a unit's session or its notes.
+// The page moves between them without reloading, and the browser's Back works.
 
 import { useEffect, useState } from "react";
 
@@ -10,7 +10,8 @@ export type Route =
   | { view: "intake"; intakeId: string }
   | { view: "course"; courseId: string }
   | { view: "known"; courseId: string }
-  | { view: "unit"; courseId: string; unitId: string };
+  | { view: "unit"; courseId: string; unitId: string }
+  | { view: "notes"; courseId: string; unitId: string };
 
 export const paths = {
   library: "/",
@@ -20,6 +21,8 @@ export const paths = {
   known: (id: string) => `/courses/${encodeURIComponent(id)}/what-i-know`,
   unit: (courseId: string, unitId: string) =>
     `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}`,
+  notes: (courseId: string, unitId: string) =>
+    `${paths.unit(courseId, unitId)}/notes`,
 };
 
 /** Any address that names no view shows the library. */
@@ -45,10 +48,12 @@ export function parseRoute(pathname: string): Route {
     kind === "courses" &&
     name !== undefined &&
     units === "units" &&
-    unitName !== undefined &&
-    beyond.length === 0
+    unitName !== undefined
   ) {
-    return { view: "unit", courseId: name, unitId: unitName };
+    if (beyond.length === 0)
+      return { view: "unit", courseId: name, unitId: unitName };
+    if (beyond.length === 1 && beyond[0] === "notes")
+      return { view: "notes", courseId: name, unitId: unitName };
   }
   return { view: "library" };
 }

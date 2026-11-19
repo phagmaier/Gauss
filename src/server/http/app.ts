@@ -24,6 +24,7 @@ import {
   type UnitOpened,
 } from "../../shared/events.ts";
 import type { CourseWithProgress, Library } from "../../shared/library.ts";
+import { NotesPost } from "../../shared/notes.ts";
 import { PackagesAnswer } from "../../shared/packages.ts";
 import {
   ProfilePost,
@@ -36,6 +37,8 @@ import { fileProblem, workspaceFile } from "../engine/code-run.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
+import type { Notes } from "../engine/notes.ts";
+import { STANDALONE_HTML_POLICY } from "../engine/standalone-html.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { FileOpener } from "../open-file.ts";
 import type { Backup } from "../record/backup.ts";
@@ -48,13 +51,14 @@ export function createApp(options: {
   intakes: Intakes;
   units: UnitChats;
   disputes: Disputes;
+  notes: Notes;
   /** "Open" on a code question's card; the system's opener, or a stub in tests. */
   openFile: FileOpener;
   /** Commits the record once the profile is saved; none if not given. */
   backup?: Backup;
   heartbeatMs?: number;
 }) {
-  const { dataRoot, intakes, units, disputes, openFile } = options;
+  const { dataRoot, intakes, units, disputes, notes, openFile } = options;
   const heartbeatMs = options.heartbeatMs ?? 20_000;
   const app = new Hono();
   app.use("/api/*", localOnly);
@@ -330,6 +334,60 @@ export function createApp(options: {
   // --- Unit chats: opening a unit starts it or picks it up where it was ----
 
   const unitPath = "/api/courses/:id/units/:unit";
+
+  // Notes belong to the record, not to an open chat. Starting a write
+  // returns immediately; the view can leave and come back while it runs.
+  const notesPath = `${unitPath}/notes`;
+  app.get(notesPath, async (c) => {
+    c.header("Cache-Control", "no-store");
+    const found = await notes.view(c.req.param("id"), c.req.param("unit"));
+    return found.ok
+      ? c.json(found.view)
+      : c.json({ error: found.error }, found.status);
+  });
+
+  app.post(notesPath, async (c) => {
+    const body = await readBody(c, NotesPost);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const started = await notes.start(
+      c.req.param("id"),
+      c.req.param("unit"),
+      body.data.instructions ?? "",
+    );
+    return started.ok
+      ? c.json(started.view, 202)
+      : c.json({ error: started.error }, started.status);
+  });
+
+  app.get(`${notesPath}/html`, async (c) => {
+    const { id, unit } = c.req.param();
+    const found = await notes.view(id, unit);
+    if (!found.ok || found.view.saved === undefined) {
+      return c.json({ error: "No saved notes for this unit." }, 404);
+    }
+    const html = await dataRoot.readNotesHtml(id, unit);
+    if (html === undefined)
+      return c.json({ error: "No saved notes for this unit." }, 404);
+    const inFrame =
+      c.req.header("Sec-Fetch-Dest") === "iframe" &&
+      c.req.header("Sec-Fetch-Site") === "same-origin";
+    return c.body(html, 200, {
+      ...ARTIFACT_TEXT_HEADERS,
+      ...(inFrame ? { "Content-Type": "text/html; charset=utf-8" } : {}),
+      "Content-Security-Policy": `sandbox; ${STANDALONE_HTML_POLICY}; frame-ancestors 'self'`,
+    });
+  });
+
+  app.post(`${notesPath}/open`, async (c) => {
+    const found = await notes.view(c.req.param("id"), c.req.param("unit"));
+    if (!found.ok || found.view.saved === undefined) {
+      return c.json({ error: "No saved notes for this unit." }, 404);
+    }
+    const opened = await openFile(found.view.saved.path);
+    return opened.ok
+      ? c.json({ ok: true })
+      : c.json({ error: opened.error }, 502);
+  });
 
   app.post(`${unitPath}/open`, async (c) => {
     const courseId = c.req.param("id");
