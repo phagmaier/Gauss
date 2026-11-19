@@ -42,6 +42,7 @@ export interface Notes {
     courseId: string,
     unitId: string,
     instructions: string,
+    expectedRevision: string | undefined,
   ): Promise<Result>;
   close(): Promise<void>;
 }
@@ -51,9 +52,15 @@ export function createNotes(options: NotesOptions): Notes {
   const backup = options.backup ?? noBackup;
   const now = options.now ?? (() => new Date());
   const attempts = new Map<string, NotesAttempt>();
+  const starting = new Set<string>();
   const jobs = new Set<Promise<void>>();
   const stop = new AbortController();
   const missing = { ok: false, status: 404, error: "No such unit." } as const;
+  const busy = {
+    ok: false,
+    status: 409,
+    error: "A write cannot start now.",
+  } as const;
 
   async function locate(
     courseId: string,
@@ -131,13 +138,13 @@ export function createNotes(options: NotesOptions): Notes {
       courseId: string,
       unitId: string,
       instructions: string,
+      expectedRevision: string | undefined,
     ): Promise<Result> {
       const unit = await locate(courseId, unitId);
       if (unit === undefined) return missing;
-      const [state, evidence, previous] = await Promise.all([
+      const [state, evidence] = await Promise.all([
         dataRoot.readState(courseId),
         dataRoot.readEvidence(courseId),
-        view(courseId, unit, undefined),
       ]);
       const position = Object.hasOwn(state.units, unitId)
         ? state.units[unitId]
@@ -150,23 +157,43 @@ export function createNotes(options: NotesOptions): Notes {
         };
       }
       const key = `${courseId}/${unitId}`;
-      if (attempts.get(key)?.state === "writing" || stop.signal.aborted) {
-        return { ok: false, status: 409, error: "A write cannot start now." };
+      if (
+        starting.has(key) ||
+        attempts.get(key)?.state === "writing" ||
+        stop.signal.aborted
+      ) {
+        return busy;
       }
-      const attempt = { state: "writing", instructions } as const;
-      attempts.set(key, attempt);
-      const job = write(courseId, unit, instructions)
-        .then(() => void attempts.delete(key))
-        .catch((error: unknown) => {
-          attempts.set(key, {
-            state: "failed",
-            instructions,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        })
-        .finally(() => void jobs.delete(job));
-      jobs.add(job);
-      return { ok: true, view: { ...previous, attempt } };
+      // Reserve the unit before reading its current revision. A concurrent
+      // request must not publish between that check and claiming the job.
+      starting.add(key);
+      try {
+        const previous = await view(courseId, unit, undefined);
+        if (stop.signal.aborted) return busy;
+        if (previous.saved?.revision !== expectedRevision) {
+          return {
+            ok: false,
+            status: 409,
+            error: "The saved notes changed. Review them before writing again.",
+          };
+        }
+        const attempt = { state: "writing", instructions } as const;
+        attempts.set(key, attempt);
+        const job = write(courseId, unit, instructions)
+          .then(() => void attempts.delete(key))
+          .catch((error: unknown) => {
+            attempts.set(key, {
+              state: "failed",
+              instructions,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          })
+          .finally(() => void jobs.delete(job));
+        jobs.add(job);
+        return { ok: true, view: { ...previous, attempt } };
+      } finally {
+        starting.delete(key);
+      }
     },
     async close() {
       stop.abort();
@@ -260,6 +287,7 @@ function unitEvents(
   answers: ReadonlyMap<string, AnswerEvidence>,
 ): PageEvent[] {
   const kept: PageEvent[] = [];
+  const foreignQuestions = new Set<string>();
   let foreign = false;
   let turnFrom = 0;
   for (const event of events) {
@@ -270,16 +298,22 @@ function unitEvents(
       case "question":
         foreign = event.question.assessment?.from !== undefined;
         if (foreign) {
+          foreignQuestions.add(event.question.id);
           // The tutor can introduce the next question before posting it.
           kept.splice(turnFrom, kept.length - turnFrom);
           continue;
         }
         if (!answers.has(event.question.id)) continue;
         break;
+      case "detour":
+        // Reopening a unit replays its phase and assessment, then its detour,
+        // without reposting the question that opened the detour.
+        foreign = foreignQuestions.has(event.questionId);
+        if (foreign || !answers.has(event.questionId)) continue;
+        break;
       case "graded":
       case "question_withdrawn":
       case "disputed":
-      case "detour":
         if (!answers.has(event.questionId)) continue;
         break;
       case "assessment":

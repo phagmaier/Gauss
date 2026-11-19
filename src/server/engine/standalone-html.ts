@@ -386,9 +386,24 @@ function proseMath(
   // is not a delimiter (e.g. "$5 and $10"). Literal dollars use \$.
   const delimiters =
     /\\\$|\$\$((?:\\[\s\S]|[^\\$]|\$(?!\$))+)\$\$|(?<!\$)\$(?![\s$])((?:\\[^\n]|[^\\$\n])+)(?<!\s)\$(?![\d$])/g;
+  const priceProse =
+    /^\d+(?:[.,]\d+)*(?:\s*(?:[.,](?!\d)|[;:!?()[\]–—])|\s+\p{L}{2})/u;
   const parts: ElementContent[] = [];
   let end = 0;
-  for (const match of text.value.matchAll(delimiters)) {
+  for (
+    let match = delimiters.exec(text.value);
+    match !== null;
+    match = delimiters.exec(text.value)
+  ) {
+    // If a price opens a span of prose and its closing dollar also opens
+    // a complete formula, leave the price in the text and take the formula.
+    if (match[2] !== undefined && priceProse.test(match[2])) {
+      const after = delimiters.lastIndex;
+      delimiters.lastIndex = after - 1;
+      const next = delimiters.exec(text.value);
+      if (next?.index === after - 1) match = next;
+      else delimiters.lastIndex = after;
+    }
     const [found, display, inline] = match;
     if (match.index > end) {
       parts.push({ type: "text", value: text.value.slice(end, match.index) });

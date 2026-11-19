@@ -13,6 +13,7 @@
 // in src/shared/. Work that reads a file and writes it back, and every
 // append, runs through withFileLock, so it lands in the order called.
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -35,7 +36,11 @@ import {
 import { HandoffMark } from "../../shared/handoff.ts";
 import type { StoredCourse } from "../../shared/library.ts";
 import { Misconception } from "../../shared/misconception.ts";
-import { type NotesSaved, NotesSource } from "../../shared/notes.ts";
+import {
+  type NotesSaved,
+  NotesSource,
+  PendingNotes,
+} from "../../shared/notes.ts";
 import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
@@ -118,8 +123,8 @@ export interface DataRoot {
    * read is not lost unseen.
    */
   writeProfile(text: string, was: string | undefined): Promise<void>;
-  /** Runs a backup's staging only with any interrupted profile approval resolved. */
-  withConsistentApproval<T>(work: () => Promise<T>): Promise<T>;
+  /** Stages a backup only after resolving interrupted multi-file writes. */
+  withConsistentSnapshot<T>(work: () => Promise<T>): Promise<T>;
   /**
    * Stores the tutor's proposal as the course's draft curriculum, with the
    * profile it proposes, replacing any earlier draft, its style note as
@@ -321,6 +326,7 @@ export function openDataRoot(options: {
   const courses = join(options.path, "courses");
   const profileFile = join(options.path, "profile.md");
   const pendingFile = join(options.path, ".profile-approval.json");
+  const pendingNotesFile = join(options.path, ".notes-write.json");
   const now = options.now ?? (() => new Date());
 
   async function readCourse(id: string): Promise<StoredCourse | undefined> {
@@ -406,6 +412,34 @@ export function openDataRoot(options: {
   async function clearPendingApproval(): Promise<void> {
     await rm(pendingFile, { force: true });
     // Don't let an old journal reappear after a subsequent profile edit.
+    await syncFolder(options.path);
+  }
+
+  function withConsistentNotes<T>(work: () => Promise<T>): Promise<T> {
+    return withFileLock(pendingNotesFile, async () => {
+      const pending = await readJson(pendingNotesFile, PendingNotes);
+      if (pending !== undefined) await recoverNotes(pending);
+      return work();
+    });
+  }
+
+  /** The HTML rename commits the revision, even if its following sync failed. */
+  async function recoverNotes({
+    courseId,
+    unitId,
+    source,
+  }: PendingNotes): Promise<boolean> {
+    const base = notesPath(courseId, unitId);
+    const html = await readText(`${base}.html`);
+    const published =
+      html?.endsWith(notesRevisionMarker(source.revision)) === true;
+    if (published) await writeJson(`${base}.json`, NotesSource, source);
+    await clearPendingNotes();
+    return published;
+  }
+
+  async function clearPendingNotes(): Promise<void> {
+    await rm(pendingNotesFile, { force: true });
     await syncFolder(options.path);
   }
 
@@ -541,7 +575,8 @@ export function openDataRoot(options: {
       await withConsistentApproval(() => replaceProfile(text, was));
     },
 
-    withConsistentApproval,
+    withConsistentSnapshot: (work) =>
+      withConsistentApproval(() => withConsistentNotes(work)),
 
     async saveProposal(id, proposal) {
       const { title, units, style, background, profile } =
@@ -807,7 +842,7 @@ export function openDataRoot(options: {
     async readNotes(id, unitId) {
       const base = notesPath(id, unitId);
       const path = `${base}.html`;
-      return withFileLock(base, async () => {
+      return withConsistentNotes(async () => {
         try {
           if (!(await stat(path)).isFile()) return undefined;
         } catch (error) {
@@ -821,34 +856,45 @@ export function openDataRoot(options: {
           path,
           instructions: source.instructions,
           writtenAt: source.writtenAt,
+          revision: source.revision ?? source.writtenAt,
         };
       });
     },
 
     async readNotesHtml(id, unitId) {
-      try {
-        return await readFile(`${notesPath(id, unitId)}.html`, "utf8");
-      } catch (error) {
-        if (hasCode(error, "ENOENT")) return undefined;
-        throw error;
-      }
+      return withConsistentNotes(async () => {
+        try {
+          return await readFile(`${notesPath(id, unitId)}.html`, "utf8");
+        } catch (error) {
+          if (hasCode(error, "ENOENT")) return undefined;
+          throw error;
+        }
+      });
     },
 
     async writeNotes(id, unitId, html, source) {
       const base = notesPath(id, unitId);
-      await withFileLock(base, async () => {
+      await withConsistentNotes(async () => {
         const folder = courseFile(id, "notes");
-        await mkdir(folder, { recursive: true });
-        const sourceFile = `${base}.json`;
-        const before = await readJson(sourceFile, NotesSource);
-        await writeJson(sourceFile, NotesSource, source);
+        if ((await mkdir(folder, { recursive: true })) !== undefined) {
+          await syncFolder(join(folder, ".."));
+        }
+        const revision = randomUUID();
+        const pending = {
+          courseId: id,
+          unitId,
+          source: { ...source, revision },
+        };
+        await writeJson(pendingNotesFile, PendingNotes, pending);
         try {
-          await writeFileAtomic(`${base}.html`, html);
+          await writeFileAtomic(
+            `${base}.html`,
+            html + notesRevisionMarker(revision),
+          );
+          await writeJson(`${base}.json`, NotesSource, pending.source);
+          await clearPendingNotes();
         } catch (error) {
-          // A rejected replacement must leave the earlier page and its instructions together.
-          if (before === undefined) await rm(sourceFile, { force: true });
-          else await writeJson(sourceFile, NotesSource, before);
-          throw error;
+          if (!(await recoverNotes(pending))) throw error;
         }
       });
     },
@@ -924,6 +970,10 @@ export function openDataRoot(options: {
       );
     },
   };
+}
+
+function notesRevisionMarker(revision: string): string {
+  return `\n<!-- Gauss notes revision: ${revision} -->`;
 }
 
 const SessionNumber = z.number().int().positive();

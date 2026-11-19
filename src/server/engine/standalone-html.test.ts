@@ -57,12 +57,38 @@ test("draws dollar-delimited math in prose without changing prices, code, or SVG
     <p>That is $\frac{1}{2}$ of the bar.</p>
     <p>$$\frac{1}{2}=\frac{2}{4}$$</p>
     <p>Prices were $5 and $10; the fee was \$1.</p>
+    <p>A ticket costs $5; let ($x$) be the number of tickets.</p>
+    <p>A discount of $10.50; the total is [$n-10.50$].</p>
+    <p>A ticket costs $5 ($x$ tickets).</p>
+    <p>Numeric expressions such as $5$, $5 + 2$, and $5x$ are not prices.</p>
+    <p>The values are $5.5x$($y$ is separate).</p>
     <pre><code>Example $x$</code></pre>
     <svg viewBox="0 0 20 20"><text x="1" y="9">$x$</text></svg>
   </main>`);
   expect(html).toMatch(/That is <span class="katex">.*?<mfrac>/s);
   expect(html).toMatch(/<span class="katex-display">.*?<mfrac>/s);
   expect(html).toContain("Prices were $5 and $10; the fee was $1.");
+  expect(html).toContain('costs $5; let (<span class="katex">');
+  expect(html).toContain(
+    'discount of $10.50; the total is [<span class="katex">',
+  );
+  expect(html).toContain('costs $5 (<span class="katex">');
+  expect(
+    [...html.matchAll(/<annotation[^>]*>(.*?)<\/annotation>/g)].map(
+      (m) => m[1],
+    ),
+  ).toEqual([
+    "\\frac{1}{2}",
+    "\\frac{1}{2}=\\frac{2}{4}",
+    "x",
+    "n-10.50",
+    "x",
+    "5",
+    "5 + 2",
+    "5x",
+    "5.5x",
+    "y",
+  ]);
   expect(html).toContain("<code>Example $x$</code>");
   expect(html).toContain('<text x="1" y="9">$x$</text>');
 });

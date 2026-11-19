@@ -27,10 +27,11 @@ function useNotes({ courseId, unitId }: UnitAddress): NotesControl {
   const [readProblem, setReadProblem] = useState<string>();
   const [writeProblem, setWriteProblem] = useState<string>();
   const [starting, setStarting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const writing = view?.attempt?.state === "writing";
-    if (view !== undefined && !writing) return;
+    if (view !== undefined && !writing && !refreshing) return;
     const controller = new AbortController();
     const { signal } = controller;
     async function read() {
@@ -39,6 +40,7 @@ function useNotes({ courseId, unitId }: UnitAddress): NotesControl {
         onFailure: setReadProblem,
       });
       if (answer === undefined || signal.aborted) return;
+      setRefreshing(false);
       if (answer.ok) {
         setReadProblem(undefined);
         setView(answer.data);
@@ -52,16 +54,21 @@ function useNotes({ courseId, unitId }: UnitAddress): NotesControl {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [api, view]);
+  }, [api, view, refreshing]);
 
   async function write(instructions: string): Promise<boolean> {
-    if (starting || view?.attempt?.state === "writing") return false;
+    if (starting || refreshing || view?.attempt?.state === "writing")
+      return false;
     setStarting(true);
     setWriteProblem(undefined);
-    const answer = await postFor(api, NotesView, { instructions });
+    const answer = await postFor(api, NotesView, {
+      instructions,
+      expectedRevision: view?.saved?.revision,
+    });
     setStarting(false);
     if (!answer.ok) {
       setWriteProblem(answer.error);
+      if (answer.status === 409) setRefreshing(true);
       return false;
     }
     setReadProblem(undefined);
@@ -73,7 +80,7 @@ function useNotes({ courseId, unitId }: UnitAddress): NotesControl {
     api,
     to,
     view,
-    starting,
+    starting: starting || refreshing,
     write,
     problem: writeProblem ?? readProblem,
   };
@@ -317,10 +324,11 @@ export function NotesReader(props: UnitAddress) {
   const { courseId, unitId } = props;
   const notes = useNotes(props);
   const { api, view } = notes;
-  const [again, setAgain] = useState(false);
+  const [editingRevision, setEditingRevision] = useState<string>();
   const [opening, setOpening] = useState(false);
   const [openProblem, setOpenProblem] = useState<string>();
   const saved = view?.saved;
+  const again = saved !== undefined && editingRevision === saved.revision;
   const writing = view?.attempt?.state === "writing";
   const trail = [
     { label: "Library", to: paths.library },
@@ -354,7 +362,7 @@ export function NotesReader(props: UnitAddress) {
                 <button
                   type="button"
                   className="btn sm"
-                  onClick={() => setAgain(true)}
+                  onClick={() => setEditingRevision(saved.revision)}
                 >
                   Write again
                 </button>
@@ -401,10 +409,10 @@ export function NotesReader(props: UnitAddress) {
           <InstructionsForm
             again
             starting={notes.starting}
-            onCancel={() => setAgain(false)}
+            onCancel={() => setEditingRevision(undefined)}
             onWrite={async (instructions) => {
               const ok = await notes.write(instructions);
-              if (ok) setAgain(false);
+              if (ok) setEditingRevision(undefined);
               return ok;
             }}
           />
@@ -424,7 +432,7 @@ export function NotesReader(props: UnitAddress) {
       {saved === undefined ? null : (
         <iframe
           className={writing ? "nr-frame nr-writing" : "nr-frame"}
-          src={`${api}/html?revision=${encodeURIComponent(saved.writtenAt)}`}
+          src={`${api}/html?revision=${encodeURIComponent(saved.revision)}`}
           sandbox=""
           title={`Notes on ${view?.unitTitle ?? "this unit"}`}
         />

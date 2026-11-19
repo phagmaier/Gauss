@@ -528,6 +528,66 @@ describe("proposals and approval", () => {
   });
 });
 
+test.each(["before rename", "after rename", "sync failed"])(
+  "keeps the published notes and their source together when a rewrite stops: %s",
+  async (stop) => {
+    const root = openDataRoot({ path: dir });
+    const { id } = await root.createCourse({ title: "Notes course" });
+    const writtenAt = "2026-11-19T09:00:00.000Z";
+    const oldHtml = "<p>Old notes</p>";
+    await root.writeNotes(id, "vectors", oldHtml, {
+      html: oldHtml,
+      instructions: "Old instructions",
+      writtenAt,
+    });
+    const path = join(dir, "courses", id, "notes", "vectors.html");
+    const code = `
+      import fs from "node:fs/promises";
+      import { syncBuiltinESMExports } from "node:module";
+      import { dirname } from "node:path";
+      import { openDataRoot } from ${JSON.stringify(new URL("./data-root.ts", import.meta.url).href)};
+      const [dir, id, path, stop, writtenAt] = process.argv.slice(1);
+      const { open, rename } = fs;
+      let renamed = false;
+      fs.rename = async (from, to) => {
+        if (to === path && stop === "before rename") process.exit(73);
+        await rename(from, to);
+        if (to === path) {
+          if (stop === "after rename") process.exit(73);
+          renamed = true;
+        }
+      };
+      fs.open = async (pathToOpen, flags, ...args) => {
+        if (renamed && pathToOpen === dirname(path) && flags === "r") {
+          renamed = false;
+          throw new Error("Injected directory sync failure");
+        }
+        return open(pathToOpen, flags, ...args);
+      };
+      syncBuiltinESMExports();
+      const html = "<p>New notes</p>";
+      await openDataRoot({ path: dir }).writeNotes(id, "vectors", html, {
+        html, instructions: "New instructions", writtenAt,
+      });
+    `;
+    const child = spawn(
+      process.execPath,
+      ["--input-type=module", "--eval", code, dir, id, path, stop, writtenAt],
+      { stdio: ["ignore", "ignore", "inherit"] },
+    );
+    const exit = await once(child, "exit");
+    const version = stop === "before rename" ? "Old" : "New";
+    const after = openDataRoot({ path: dir });
+    expect(await after.readNotesHtml(id, "vectors")).toContain(
+      `${version} notes`,
+    );
+    expect((await after.readNotes(id, "vectors"))?.instructions).toBe(
+      `${version} instructions`,
+    );
+    expect(exit).toEqual([stop === "sync failed" ? 0 : 73, null]);
+  },
+);
+
 // A process that stops while writing a file must not leave it half written.
 // A child process rewrites curriculum.json under a file size limit smaller
 // than the new version, so the kernel stops the write partway (Node turns

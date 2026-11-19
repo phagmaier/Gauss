@@ -79,6 +79,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
   .git/, .gitignore               the record's history: commits after each segment close, unit end, approval, handoff note, an assessment that recorded answers, and a profile saved on its page
   profile.md                      the learner profile: plain text that holds across courses, at most 2,000 characters; written by an approval that proposes it, or the Profile page
   .profile-approval.json          recovery journal present only during a curriculum approval that changes the profile, or until recovery
+  .notes-write.json               recovery journal present only during publication of unit notes, or until recovery
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
   cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
@@ -602,9 +603,12 @@ one tested out of whole. The writer is a one-shot on Sonnet 5.5 by default,
 outside the chat queue. It reads the unit's goal and plan, the whole transcript
 with other units' assessment work left out, missed answers with their
 corrections, the handoff note, the unit's misconceptions and optional
-instructions. The plan is not evidence that a topic was taught. A rewrite
-leaves the previous file available until it succeeds; the backup takes
-the previous revision before it is replaced.
+instructions. The plan is not evidence that a topic was taught. The first
+write requires no saved notes; a rewrite names the revision it replaces.
+Stale requests do not call the writer. The backup takes the previous revision
+before it is replaced. Renaming the new HTML commits the revision: the record
+uses its revision marker to settle an interrupted write before serving or
+backing up the HTML and its matching source.
 
 `engine/standalone-html.ts` finishes the authored document for direct
 opening from disk. It allows static HTML and SVG, rejects web addresses

@@ -1314,12 +1314,32 @@ test("a finished unit writes only on request, retries a failure and replaces its
     expect(setup.openFile).toHaveBeenCalledWith(path);
 
     expect(
-      (await post(setup.app, notes, { instructions: "Make it shorter." }))
+      (await post(setup.app, notes, { instructions: "Stale first write." }))
         .status,
+    ).toBe(409);
+    const expectedRevision = (await readStatus()).saved?.revision;
+    expect(expectedRevision).toBeDefined();
+
+    expect(
+      (
+        await post(setup.app, notes, {
+          instructions: "Make it shorter.",
+          expectedRevision,
+        })
+      ).status,
     ).toBe(202);
     await expect
       .poll(async () => (await readStatus()).saved?.instructions)
       .toBe("Make it shorter.");
+    expect(
+      (
+        await post(setup.app, notes, {
+          instructions: "Stale rewrite.",
+          expectedRevision,
+        })
+      ).status,
+    ).toBe(409);
+    expect(setup.notesBackend.oneShots).toHaveLength(3);
     expect(await readFile(path, "utf8")).toContain("Basis recap");
     const source = NotesSource.parse(
       JSON.parse(await readFile(join(dirname(path), "vectors.json"), "utf8")),
@@ -1409,6 +1429,67 @@ test("a unit tested out of whole can write notes without instructions or another
     expect(setup.backend.received).toHaveLength(turns);
   } finally {
     await setup.units.close();
+    await setup.notes.close();
+  }
+});
+
+test("the notes writer excludes another unit's detour discussion after a restart", async () => {
+  const setup = setUp([], [], undefined, [], [{ fail: "Capture the request" }]);
+  await approvedCourse();
+  const { dataRoot } = setup;
+  await dataRoot.appendEvidence(COURSE, {
+    kind: "override",
+    recordedAt: NOW,
+    objectives: ["basis-image", "matrix-columns"],
+  });
+  const phase = { type: "phase", phase: "closed", segment: 1 } as const;
+  const gate = {
+    type: "assessment",
+    mode: "gate",
+    stage: "on",
+    count: 1,
+  } as const;
+  const detour = { type: "detour", questionId: "foreign", number: 3 } as const;
+  await dataRoot.appendTranscript(COURSE, "vectors", 1, [
+    { type: "session", startedAt: CREATED },
+    { type: "tutor_text", text: "The basis images are the columns." },
+    phase,
+    gate,
+    { type: "turn_start" },
+    {
+      type: "question",
+      question: {
+        kind: "math",
+        id: detour.questionId,
+        number: detour.number,
+        prompt: "Which eigenvalue belongs to this vector?",
+        assessment: { of: 1, from: { number: 2, title: "Eigenvectors" } },
+      },
+    },
+    { type: "turn_end", outcome: "done" },
+    detour,
+  ]);
+  await dataRoot.appendTranscript(COURSE, "vectors", 2, [
+    { type: "session", startedAt: NOW },
+    phase,
+    gate,
+    detour,
+    { type: "learner", text: "Why is that eigenvalue negative?" },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "A negative eigenvalue reverses direction." },
+    { type: "turn_end", outcome: "done" },
+    { type: "assessment_end", mode: "gate", skipped: true, statuses: {} },
+    { type: "unit_closed", status: "overridden" },
+  ]);
+  try {
+    expect((await post(setup.app, `${UNIT}/notes`, {})).status).toBe(202);
+    await expect.poll(() => setup.notesBackend.oneShots.length).toBe(1);
+    const prompt = setup.notesBackend.oneShots[0]?.prompt;
+    expect(prompt).toContain("The basis images are the columns.");
+    expect(prompt).not.toContain("Which eigenvalue belongs to this vector?");
+    expect(prompt).not.toContain("Why is that eigenvalue negative?");
+    expect(prompt).not.toContain("A negative eigenvalue reverses direction.");
+  } finally {
     await setup.notes.close();
   }
 });

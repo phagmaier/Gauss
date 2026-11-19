@@ -381,6 +381,7 @@ export function createApp(options: {
       c.req.param("id"),
       c.req.param("unit"),
       body.data.instructions ?? "",
+      body.data.expectedRevision,
     );
     return started.ok
       ? c.json(started.view, 202)
