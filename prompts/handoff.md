@@ -35,30 +35,44 @@ objectives and a few of other units'. A miss in either has a detour too.
 
 Write the unit's whole note, in place of the one before: keep what still
 matters from the note before, add what the stretch shows, and drop what
-the stretch has made out of date. About 250 words, and no more than 300,
-however long the unit has run. It says:
+the stretch has made out of date. At most 250 words however long the unit
+has run: count them before you reply. A segment the stretch does not touch
+keeps a line or two from the note before, its examples and anything still
+open about it, so that the note does not grow with the unit.
 
-- **What was taught, and with which examples**: each segment taught, the
-  examples, cases and aids the tutor used, and the exercises tried, so a
-  new tutor can build on them without repeating them.
+Every sentence must say what the next tutor cannot get elsewhere. The app
+gives it where the unit stands and every objective's status, and, when it
+asks a question, the questions asked before on its objective. So never
+restate the unit or which segments are taught or still to come, and never
+report a question, an answer, whether it was right, how sure the learner
+was, or how a review, the gate or the test went: "the gate went cleanly",
+"answered fully" and "got 9/16" all say what the app already holds. Use
+them only to say what went wrong or what clicked. The note says:
+
+- **What was taught, and with which examples**: the examples, cases and
+  aids the tutor used, and the exercises it offered, tried or not, so a
+  new tutor can build on them without asking any of them again. An
+  objective the test before the unit passed, and the learner skipped, was
+  tested, not taught: never list it as taught.
 - **What the learner found hard or asked for**: the questions they asked,
-  the objectives they missed and what went wrong, and anything they asked
-  the tutor to do differently (slower, more pictures, fewer words).
+  what went wrong when they missed, and anything they asked the tutor to
+  do differently (slower, more pictures, fewer words).
 - **What made an idea click**: the example, the picture or the wording
   after which they had it, as the stretch shows it: their answers improve
-  after it, or they say it in their own words. Only what the stretch
-  shows; if nothing clearly did, say nothing about it.
+  after it, or they say it in their own words. If nothing clearly did,
+  leave this out.
 - **What was left open**: a question the learner asked that was not
   answered, a confusion a detour did not clear, an objective they moved on
-  from without passing.
+  from without passing, something the tutor said it would come back to.
+  Not what the plan has still to teach.
 
 Write for the next tutor, about "the learner", in plain sentences grouped
 by segment or by idea; short headings or a list are fine. Name objectives
 by what they are about, giving the id in quotes where that helps. Math is
-LaTeX between dollar signs, `$x^2$`. Leave out what the app already
-records: scores, how many questions were asked, which answers were right.
-Say only what the stretch or the note before shows; do not guess at what
-the learner knows.
+LaTeX between dollar signs, `$x^2$`. Say only what the stretch or the
+note before shows, and write what happened, never about the stretch
+itself: no "the stretch does not show", "not shown" or "unknown whether";
+what you cannot tell, leave out. Do not guess at what the learner knows.
 
 ## Misconceptions
 
@@ -73,16 +87,20 @@ one recorded that shows again is not listed again:
   of $\sin(x^2)$ is $\cos(2x)$." The learner reads it in their record, so
   make it a claim they would recognise, not a description of their
   answer.
-- `actually`: what is so, and briefly why, in a sentence or two.
+- `actually`: what is so, and briefly why, in a sentence or two. Work out
+  again any number you put in it from the stretch's figures: the learner
+  reads it as the correction.
 - `detour`: the number of the detour it showed in, as the stretch's markers
   number them ("Detour 2 opens ..."). Leave it out when it showed outside a
   detour, as in the answer to a question on intuition in the discussion.
 
 Not every miss is a misconception. A slip in arithmetic, a misread
 question, a guess, or "I don't know" with nothing wrong said is not one;
-nor is something the learner had not been taught. A confident wrong
-answer, which the stretch names as one, is the likeliest sign of one, but
-only if the answer or the learner's words show what they believed. One
+nor is not knowing what had not been taught. A wrong belief the learner
+brought with them is one, as the reasoning of an answer in the test
+before the unit can show. A confident wrong answer, which the stretch
+names as one, is the likeliest sign of one, but only if the answer or the
+learner's words show what they believed. One
 belief that showed several times is one misconception. When the stretch
 shows none, give an empty list: an invented misconception is worse than a
 missed one, since the learner sees it in their record and later tutors

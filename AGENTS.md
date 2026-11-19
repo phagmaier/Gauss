@@ -162,7 +162,7 @@ mise activated, or `mise exec -- <command>`.
 
 | Variable | Effect |
 | --- | --- |
-| `GAUSS_CLAUDE_MODEL` | The model of every session and one-shot call. Unset: the learner's Claude Code default for sessions, Sonnet 5.5 for grading, dispute judging and unit notes, Haiku 5.5 for help judging and handoff notes |
+| `GAUSS_CLAUDE_MODEL` | The model of every session and one-shot call. Unset: the learner's Claude Code default for sessions, Sonnet 5.5 for grading, dispute judging, handoff notes and unit notes, Haiku 5.5 for help judging |
 | `GAUSS_DATA_ROOT` | The folder that holds the courses; `~/gauss` when unset. Point it at a scratch folder for trial runs |
 | `GAUSS_PORT` | The port |
 | `GAUSS_BACKUP` | The data root's git history: `off` turns it off under `pnpm dev`, `on` turns it on under `pnpm dev:fake` |

@@ -29,7 +29,7 @@ checks through task 2.29, is `git show a42a409:docs/decisions.md`.
 | Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept | Changing code questions or how their tests run |
 | Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides; how they are built; the judge's set and model | Building or changing disputes or `dispute-judge.md` |
 | Mastery loop | Stage 5's design: assessments in the unit's thread, retained and slipping, review, the gate, testing out, handoff notes and misconceptions, the profile, notes and export | Working a stage 5 task; touching assessments, status or the record's notes |
-| Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`; the writing rules | Revising any prompt |
+| Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`, `handoff.md`, `notes.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
 | Page behaviour | Rendering, performance, the pinned question, dimming, keys, retries | Touching `src/web/` |
 | HTTP and event stream | Route rules, security, intake addressing | Adding or changing a route |
@@ -1506,8 +1506,15 @@ built until its task is done; `architecture.md` says what is.
 - **Review and gate questions are told to probe a recorded
   misconception without naming it** (`tutor.md`, the agent's): a lead-in
   that named it would be teaching in an assessment.
-- **The call runs on Haiku 5.5** until task 5.13 compares it with Sonnet
-  5.5 on the same stretches (the plan's).
+- **The call runs on Sonnet 5.5** (task 5.13, the agent's): the ten
+  stretches of a two-unit course were written by both, with each revision
+  of `handoff.md`. Haiku put wrong counts in a correction the learner reads
+  in two of three runs on one stretch ("1,000 have the disease" for 1 in
+  1,000 of 100,000, so 17% for 2%), listed objectives the test passed as
+  taught, and placed a fix in a detour that came in a later segment.
+  Sonnet made none of these, but its notes ran about 280 to 380 words
+  against the 250 asked. Haiku kept nearer the length; it was dropped for
+  the errors, which the learner sees in "What I know".
 
 **Profile, notes and export**
 
@@ -1746,6 +1753,75 @@ seeded chain-rule unit twice, with prompt fixes between runs.
   (the other two graded with `unittest` or plain asserts); one first code
   question again had no lead-in.
 
+Revised for stage 5 (task 5.13), from one course of two units on Sonnet
+5.5 on a scratch data root (intake, a Start fresh after a closed segment,
+a gate, a review with two detours, a test before the second unit, a style
+change, a second gate, both units' notes), then a third unit added to a
+copy of that record for a review and a test on the revised prompts. The
+agent's choices:
+
+- **Wrong keys are common enough to name**: three of about 28 math keys
+  were wrong (3/36 for 2/36, 1/12 for 1/18, 0.269 for 0.187), each a case
+  miscounted or a step skipped; the tutor saw two of them only in the
+  detour, telling the learner to dispute. `tutor.md` now has it solve the
+  question again from its prompt before calling, listing cases for a
+  count. Not seen after the change, in seven questions: too few to say it
+  works. Nothing in the engine checks a key's arithmetic.
+- **Assessment lead-ins name only where the question comes from.** Lead-ins
+  named the concept ("a question on joint probability", which tells the
+  learner which denominator) or what was different ("with the 'given'
+  event written differently"). Said as "only that a question follows, or
+  which unit it comes from", the next review's three lead-ins did that.
+- **"Unlike those listed" is defined by the pattern, not the numbers.**
+  With the list in the header, Sonnet still asked the same template with a
+  new suit or new figures: "an X or a Y, find P(X)" four times across a
+  check, a gate, a segment going over it again and the next unit's gate
+  (one identical to one listed), and "here are two values, explain why
+  they differ" four times; the second question after a miss kept the
+  missed template too. It also asked, in a gate, the exercise its teaching
+  had offered, which it knew from the handoff note. Told to change what
+  the question gives or asks, and to avoid the note's examples, the
+  review's second question moved from one die to two, and the "explain
+  why they differ" objective came as a choice question; the rule then got
+  "keep the kind of question the objective calls for", which was not run.
+- **The word after the test names skills, not answers**: Sonnet, like
+  Haiku in 5.6, said what single answers did ("you tended to read the
+  answer off P(B given A)"). Told never to say what an answer did, the
+  next test's word named each skill shown or not shown.
+- **Choices carry no letters of their own** (from 5.6's Haiku run); no
+  choice in the Sonnet runs had one, before or after.
+- **Seen and left**: feedback on a confident correct answer ran three or
+  four sentences again; the gate's and review's lead-ins were sometimes
+  missing; a style change asked for by the learner kept every other
+  sentence word for word and said so after the card, not before the call;
+  a slipping objective did not lead the tutor to propose a curriculum
+  change, rightly, since nothing was missing. A detour promised "we'll come
+  back to it in a later segment", which the plan did hold.
+
+**`handoff.md`** (task 5.13): every note, on both models, reported what the
+app already gives the next tutor (where the unit stands, answers, how the
+gate went), wrote about the stretch itself ("whether it was tried is not
+known"), and listed under "open" what the plan had still to teach. The
+prompt now says what the next tutor is given and forbids restating it,
+with examples; defines open as excluding the plan; says a tested objective
+was not taught; and asks the writer to work again any number in a
+correction. Sonnet then stopped listing tested objectives as taught and
+kept its corrections right, but still reported some results and ran over
+the word cap ("Mastery loop"). A belief shown in a test answer's
+reasoning is a misconception: both models recorded them, and the prompt
+had said that something not yet taught is not one.
+
+**`notes.md`** (task 5.13): Sonnet followed the learner's instructions
+(an exam box first; a worked medical-test table first, the tested part a
+line each) and gave the misses most of the room. It copied a wrong key
+into the notes as the correct value ("≈ 0.269"); told to work every value
+again, it gave 0.187 and said the recorded key differed. A figure's labels
+ran past its `viewBox`, and its boxes did not show the amounts compared;
+told to size the box from about 0.6 × the font size per character and
+to draw compared amounts to scale, the next figure was a bar chart to
+scale with its labels inside. It wrote "where I went wrong" in the
+learner's voice; the prompt now asks for "you".
+
 **`unit-planner.md`**: one idea per objective, tested by "could a learner
 know one part and not the other", up to eight objectives rather than
 joining two. Of the wordings tried, the test with examples helped; a rule
@@ -1760,7 +1836,15 @@ objectives as "Write a function that ...". One was "Compute" with a list
 for its result, which the symbolic check would compare in any order
 (`tutor.md` now says a list whose order matters is not a math question),
 and one named its implementation ("using zip"); neither is addressed in
-`unit-planner.md`.
+`unit-planner.md`. **A setting is not a skill** (task 5.13): on a goal
+naming "dice and card problems" Sonnet planned one objective for each,
+and one each for Bayes' rule "with given rates" and in "a medical-test
+problem", so checks asked the same skill twice and assessments had less
+room to vary it. Told that a setting is its own objective only when it
+needs something the others do not, and to join objectives that differ
+only in setting, the one planning run after it still split a spam filter
+from a witness report, though it folded the screening test into another
+objective. Not settled.
 
 **`planner.md`**: questions in rounds of at most two, counting every
 question in a message (the first run asked three under "Two quick
@@ -1782,7 +1866,13 @@ says you took an intro statistics course"; its proposal kept the profile
 word for word and put this course's facts in the background note. Once,
 told to go ahead, it said "I've proposed a three-unit course" without
 calling `propose_curriculum`, and posted the card when asked; no earlier
-run was recorded doing that.
+run was recorded doing that; `planner.md` now forbids it. In task 5.13
+(Sonnet, two intakes, the same profile) it asked nothing the profile
+answered and kept the profile word for word; it posted both proposals
+with no text before the card, which the prompt asks for (left). The list
+of what the app does now includes review, the gate, testing out, notes
+and the transcript; asked "will I get any review, or notes?", the planner
+described each as built.
 
 **Writing rules for the page**: `$...$` inline and `$$` for display; a
 dollar sign that is not math must be `\$`, since "it costs $5 and $10" reads
@@ -2130,3 +2220,14 @@ will close.
 - Untried on a real model: a learner who keeps asking in a detour, or
   presses "Ready for another question" at once; idle closing and resuming
   on Claude end to end.
+- A misconception the handoff writer finds in a test answer's reasoning
+  is recorded with no detour, so "What I know" says it was found "in the
+  discussion" (`what-i-know.ts`); the record has no place for the test.
+- One notes call on Sonnet 5.5 took longer than the writer's three-minute
+  limit (task 5.13) on a unit of five segments; the next two, on both
+  units, took 20 and 30 seconds. Cause unknown; pressing write again
+  retries.
+- A tutor's wrong key stays in the record unless the learner disputes it:
+  an "I don't know" answer is never disputed, and its key went into the
+  first notes as the right value (task 5.13). `notes.md` asks the writer
+  to work values again.

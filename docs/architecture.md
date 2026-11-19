@@ -625,7 +625,7 @@ the test before a unit lets the learner skip what they know.
   before, then the mark moves to the stretch's end, and a backup commit is
   asked for. A failed call, a reply out of shape or one past
   `HANDOFF_TIME_LIMIT_MS` records nothing, so the next call reads its
-  stretch too. It runs on Claude Haiku 5.5 (`HANDOFF_MODEL`).
+  stretch too. It runs on Claude Sonnet 5.5 (`HANDOFF_MODEL`).
 - **Who reads them.** The chat holds the unit's note and the course's
   misconceptions, read when it opens and again when an assessment is
   offered, with what its own calls write. A new session's first turn gets

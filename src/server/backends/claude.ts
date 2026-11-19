@@ -89,11 +89,11 @@ export const JUDGE_MODEL = "claude-haiku-5-5";
 export const DISPUTE_MODEL = "claude-sonnet-5-5";
 
 /**
- * The handoff writer's model (task 5.7; docs/decisions.md, "Mastery
- * loop"): Haiku 5.5 until task 5.13 compares it with Sonnet 5.5 on the
- * same stretches.
+ * The handoff writer's model (task 5.13; docs/decisions.md, "Mastery
+ * loop"). On the same stretches Haiku 5.5 put wrong counts in the
+ * corrections the learner reads, and listed tested objectives as taught.
  */
-export const HANDOFF_MODEL = "claude-haiku-5-5";
+export const HANDOFF_MODEL = "claude-sonnet-5-5";
 
 /** The notes writer's model: the learner keeps the document. */
 export const NOTES_MODEL = "claude-sonnet-5-5";

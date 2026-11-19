@@ -38,6 +38,12 @@ anything; decide, and store the plan with the plan_unit tool.
   with Z" is three: X, and each contrast). If the goal holds more single
   ideas than six objectives can, you may plan up to eight; never join two
   ideas to make them fit.
+- **A setting is not a skill.** The same skill on dice and on cards, or
+  with letters and with numbers, is one objective, whose questions then
+  use both settings: name it by what the learner does, not by the examples
+  the goal mentions. Make a setting an objective of its own only when it
+  needs something the others do not, such as a vocabulary to translate
+  or a step of its own, and state that in it.
 - **How each is checked.** The tutor checks an objective with questions of
   one of four kinds: a choice; a computed result the learner types, which
   a symbolic check compares with the right one; a written answer, such as
@@ -76,7 +82,8 @@ Before you call, read each objective once more. It has one verb for what
 the learner does (compute, write, prove, explain, state, name, apply,
 distinguish), which says how it is checked, and one claim or skill after
 it. If it has two verbs ("Name A and say B") or a list of claims ("that X,
-that Y and that Z"), split it.
+that Y and that Z"), split it. If two objectives differ only in their
+setting ("for dice", "for cards"), join them.
 
 Call plan_unit once, with the whole plan. If it refuses the plan, it says
 why: fix that and call it again with the whole plan. Once it is stored, the

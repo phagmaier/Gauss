@@ -40,74 +40,7 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.13 Prompts for the stage
-
-- Status: todo
-- Depends on: 5.2 to 5.12
-- Why: each prompt above was drafted to make its task's checks pass; how
-  well the tutor examines, and what the handoff and notes writers keep,
-  shows only on a model whose judgment is the point.
-- Do: one course of two units on Sonnet 5.5 and a scratch data root, run
-  through a review, a detour in it, a test, a gate, Start fresh after a
-  closed segment, and a unit's notes. Read the session logs and the
-  record, and revise `tutor.md` (assessments, style and curriculum
-  proposals), `handoff.md`, `notes.md`, `planner.md` and
-  `unit-planner.md` for what they show: review and gate questions that
-  are on their objective and unlike those listed; no teaching in an
-  assessment; a handoff note from which the fresh session picks up
-  without asking the learner what was covered; misconceptions true to
-  their detours, and none invented; notes that are a page designed for their unit, with
-  figures that explain and math the engine can draw, that hold what was
-  taught and nothing that was not, give their room to what the learner missed, name
-  what made an idea click as the sessions show it, and follow the
-  learner's instructions without dropping the rest. Run the handoff writer on the same stretches on
-  Haiku 5.5 and Sonnet 5.5 and keep the cheaper if it holds up.
-- From 5.4's Haiku run: feedback in a review was two sentences of working,
-  and a lead-in named what the question would use ("one on the limit
-  definition with a square root"), which `tutor.md` does not forbid in a
-  review. 5.5's Haiku gate did the same ("a power rule question with a
-  different exponent"), and posted a math question with a wrong key: the
-  limit of $2x^3 - x + 4$ at $-1$ given as 7, its feedback working
-  "$-2 + 1 + 4 = 7$". Nothing checks a key's arithmetic.
-- From 5.7's Haiku run (a fractions unit: a confident miss, a message in
-  the detour, moving on, Start fresh): the note ran about 280 words,
-  opened by restating the unit and its objectives, and once said "the
-  stretch does not show", the writer's own word; its one misconception
-  was true to the detour and stated as the claim held. The fresh session
-  picked up from the note without asking what was covered and offered the
-  detour's sum again, but told the learner to "tell me" when ready for the
-  next segment, which they start with a button. To run the writer on the
-  same stretches, a request can be rebuilt from a unit's transcripts with
-  `since`, `readStretch` and `handoffRequest` in `engine/handoff.ts`.
-- From 5.6's Haiku test: no lead-ins and nothing said between questions,
-  as asked; but the second question after an unsure answer was the same
-  problem with new numbers, not the objective asked another way; the word
-  on the test went over single answers ("you reduced 36/84 to 3/7"),
-  which its header forbids; and a choice question's choices carried
-  letters of their own ("A. 3/8 is larger"), which the shuffle then put
-  beside other letters. `tutor.md` says nothing against the last.
-- From 5.8: `planner.md` still promises "no review of earlier units in
-  later sittings, no notes", which stage 5 makes false. Its profile lines
-  were seen in one Haiku 5.5 intake (`decisions.md`, "Prompts"), which
-  asked nothing the profile answered and kept it word for word; see
-  whether a planner changes it only for what the learner said, and keeps
-  this course's facts out of it. That intake once said it had proposed
-  without calling `propose_curriculum`; nothing in `planner.md` forbids
-  it.
-- From 5.11's Haiku run (asked for shorter explanations): the proposal kept
-  the unchanged sentence word for word and the replies after Apply were
-  short; but its text before the card said "I've proposed a style change"
-  before the call was made, and its text after the card said so again.
-- From 5.12's Haiku run (asked for a unit on related rates before
-  optimisation): the proposal kept every other unit as it was and put the
-  new one between the two, building on the unit taught; after Apply the
-  tutor named the new order from its header. Untried: a change the tutor
-  proposes by itself from slipping objectives or a detour, which
-  `tutor.md` asks for.
-- Done when: the findings and the model choice are in `decisions.md`,
-  "Prompts" and "Mastery loop"; `mise run check` passes, and the
-  scripted backend's tests with it, since it reads the headers; the
-  graders' and judges' sets are re-run only if their prompts changed.
+Every task of the stage is done; the user's check is next.
 
 ## Stage 4: sources (built after stage 5)
 
