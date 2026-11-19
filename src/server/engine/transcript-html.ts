@@ -6,10 +6,26 @@ import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
+import {
+  assessmentCard,
+  assessmentEndMarker,
+  assessmentMarker,
+  type ResultRow,
+  testResultCard,
+} from "../../shared/assessment-view.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import { displayMathLines } from "../../shared/display-math-lines.ts";
-import { countedVerdict } from "../../shared/dispute.ts";
+import {
+  AFTER_DISPUTE,
+  type FirstGrade,
+  firstGradeFeedback,
+  outcomeHead,
+  standing,
+  verdictWord,
+} from "../../shared/dispute-view.ts";
+import { htmlAsText } from "../../shared/html-as-text.ts";
 import { requirement } from "../../shared/packages.ts";
+import type { Plan } from "../../shared/plan.ts";
 import {
   CHOICE_LETTERS,
   type ChoiceLetter,
@@ -24,16 +40,23 @@ import {
 import type { Transcript } from "../record/data-root.ts";
 import { embeddedKatexCss, STANDALONE_HTML_POLICY } from "./standalone-html.ts";
 
-const markdown = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkMath)
-  .use(displayMathLines)
-  .use(remarkRehype) // Drops raw HTML; only Markdown-generated elements go on.
-  .use(inertReferences)
-  .use(rehypeKatex, { trust: false, maxExpand: 200, maxSize: 25 })
-  .use(rehypeStringify)
-  .freeze();
+function markdownProcessor(keepLiteralHtml: boolean) {
+  const processor = unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkMath)
+    .use(displayMathLines);
+  if (keepLiteralHtml) processor.use(htmlAsText);
+  return processor
+    .use(remarkRehype) // Drops raw HTML, including any not converted to text.
+    .use(inertReferences)
+    .use(rehypeKatex, { trust: false, maxExpand: 200, maxSize: 25 })
+    .use(rehypeStringify)
+    .freeze();
+}
+
+const markdown = markdownProcessor(false);
+const learnerMarkdown = markdownProcessor(true);
 
 function inertReferences() {
   return (tree: Root) => {
@@ -140,7 +163,7 @@ export function renderTranscript(
     while (at < thread.items.length) {
       const item = thread.items[at];
       if (item === undefined || item.key >= session.end) break;
-      html.push(renderItem(item, objectives));
+      html.push(renderItem(item, plan, objectives));
       at += 1;
     }
     if (session.closed !== null) {
@@ -165,15 +188,10 @@ const phase = {
   check: "Check",
   closed: "Done",
 };
-const assessment = { review: "Review", gate: "Unit gate", "test-out": "Test" };
-const grade = {
-  correct: "Correct",
-  incorrect: "Not quite",
-  unknown: "Did not know",
-};
 
 function renderItem(
   item: Item,
+  plan: Plan | undefined,
   objectives: ReadonlyMap<string, string>,
 ): string {
   switch (item.kind) {
@@ -200,18 +218,21 @@ function renderItem(
         "Detour",
         `Working through question ${item.number}. Nothing here is graded or counts as help.`,
       );
-    case "assessment":
-      return marker(
-        assessment[item.mode],
-        item.stage === "skipped"
-          ? "Skipped."
-          : `${item.stage === "offered" ? "Offered: " : ""}${item.count} ${item.count === 1 ? "objective" : "objectives"}.`,
-      );
-    case "assessment_end":
-      return marker(
-        `${assessment[item.mode]} ${item.skipped ? "skipped" : "ended"}`,
-        "",
-      );
+    case "assessment": {
+      if (item.stage === "offered") {
+        const card = assessmentCard(item);
+        return marker(
+          card.title,
+          `Offered: ${card.questions}. ${card.says.join(" ")}`,
+        );
+      }
+      const { name, says } = assessmentMarker(item);
+      return marker(name, says);
+    }
+    case "assessment_end": {
+      const { name, says } = assessmentEndMarker(item);
+      return marker(name, says);
+    }
     case "question":
       return renderQuestion(item);
     case "answered-below":
@@ -240,13 +261,12 @@ function renderItem(
       return `<div class="card"><p><b>Packages requested</b>: ${escapeHtml(item.packages.map(requirement).join(", "))}. ${state}.</p>${item.output === undefined ? "" : `<pre>${escapeHtml(item.output)}</pre>`}</div>`;
     }
     case "test_result": {
-      const skipped =
-        item.skipped === undefined
-          ? ""
-          : item.skipped.length === 0
-            ? "<p>Learn the whole unit.</p>"
-            : "<p>Skipped the objectives that passed.</p>";
-      return `<div class="card"><b>Test result</b><ul>${item.objectives.map(({ objective, passed }) => `<li>${prose(objectives.get(objective) ?? objective)} ${passed ? "Passed" : "Not passed"}</li>`).join("")}</ul>${skipped}</div>`;
+      const card = testResultCard(plan, item);
+      const segments =
+        card.answered === undefined && card.segments !== null
+          ? `<p>${escapeHtml(card.segmentsSay)}</p>${resultRows(card.segments, true)}`
+          : "";
+      return `<div class="card"><p><b>Test result</b> ${escapeHtml(card.says.text)}</p>${resultRows(card.objectives)}${segments}${optionalParagraph(card.answered)}${optionalParagraph(card.startsAt)}</div>`;
     }
     case "unit_end": {
       const rows = Object.entries(item.objectives).map(
@@ -275,6 +295,14 @@ function renderItem(
   }
 }
 
+function resultRows(rows: readonly ResultRow[], plain = false): string {
+  return `<ul>${rows.map(({ text, word, why }) => `<li>${plain ? escapeHtml(text) : prose(text, true)} — ${escapeHtml(word.text)}${why === undefined ? "" : `: ${prose(why, true)}`}</li>`).join("")}</ul>`;
+}
+
+function optionalParagraph(text: string | undefined): string {
+  return text === undefined ? "" : `<p>${escapeHtml(text)}</p>`;
+}
+
 function marker(label: string, detail: string): string {
   return `<p class="marker"><b>${escapeHtml(label)}</b>${detail === "" ? "" : ` ${escapeHtml(detail)}`}</p>`;
 }
@@ -288,9 +316,19 @@ function renderQuestion({
   grading,
   gradingFailed,
 }: QuestionItem): string {
-  const ruling = dispute?.outcome;
-  const verdict =
-    graded === undefined ? undefined : countedVerdict(graded.verdict, dispute);
+  const first: FirstGrade | undefined =
+    graded === undefined
+      ? undefined
+      : {
+          kind: question.kind,
+          verdict: graded.verdict,
+          key: graded.correctChoice,
+          expected: graded.expected,
+          flaw: graded.flaw,
+          dispute,
+        };
+  const now = first === undefined ? undefined : standing(first);
+  const verdict = now?.verdict;
   const status =
     verdict === undefined
       ? withdrawn
@@ -302,17 +340,17 @@ function renderQuestion({
             : waiting !== undefined
               ? "Waiting"
               : "Unanswered"
-      : grade[verdict];
+      : verdictWord(verdict).text;
   const head = question.assessment;
   const number =
     head === undefined || head.objective !== undefined
       ? `${question.number}`
       : `${question.number} of ${head.of}`;
-  const key = ruling?.key ?? graded?.correctChoice;
-  const expected = ruling?.expected ?? graded?.expected;
+  const key = now?.key;
+  const expected = now?.expected;
   const answer = graded?.answer ?? grading ?? waiting;
   const html = [
-    `<div class="card question"><div class="question-head"><b>Question ${number}</b> <strong class="${verdict ?? ""}">${status}</strong>${verdict !== graded?.verdict ? " after your dispute" : ""}${graded?.assisted ? " · With help" : ""}</div>`,
+    `<div class="card question"><div class="question-head"><b>Question ${number}</b> <strong class="${verdict ?? ""}">${status}</strong>${now?.changed ? ` ${AFTER_DISPUTE}` : ""}${graded?.assisted ? " · With help" : ""}</div>`,
   ];
   if (head?.objective !== undefined)
     html.push(`<p class="meta">Objective ${head.objective} of ${head.of}</p>`);
@@ -343,7 +381,7 @@ function renderQuestion({
         said = math(answer.expression);
         break;
       case "written":
-        said = prose(answer.text);
+        said = String(learnerMarkdown.processSync(answer.text));
         break;
       case "code":
         said = answer.files
@@ -367,7 +405,9 @@ function renderQuestion({
       (answer.kind === "choice" || answer.kind === "math") &&
       answer.reasoning
     ) {
-      html.push(`<div><b>Reasoning</b>${prose(answer.reasoning)}</div>`);
+      html.push(
+        `<div><b>Reasoning</b>${String(learnerMarkdown.processSync(answer.reasoning))}</div>`,
+      );
     }
   }
   if (verdict !== undefined && verdict !== "correct") {
@@ -382,18 +422,45 @@ function renderQuestion({
         `<div class="answer"><b>Correct answer</b><div>${right}</div></div>`,
       );
   }
-  if (gradingFailed !== undefined)
+  // Test diagnostics can include the hidden tests, even in old transcripts.
+  if (question.kind === "code") {
+    if (gradingFailed !== undefined)
+      html.push("<p>The code could not be graded.</p>");
+    if (graded?.verdict === "correct") html.push("<p>Tests passed.</p>");
+    else if (graded?.verdict === "incorrect")
+      html.push("<p>Tests did not pass.</p>");
+  } else if (gradingFailed !== undefined) {
     html.push(`<p>The grading failed: ${escapeHtml(gradingFailed)}</p>`);
-  if (graded?.output !== undefined)
-    html.push(`<pre>${escapeHtml(graded.output)}</pre>`);
-  if (graded?.flaw !== undefined && verdict === graded.verdict)
-    html.push(`<div><b>The first flaw</b>${prose(graded.flaw)}</div>`);
-  if (dispute !== undefined)
+  }
+  if (first?.flaw !== undefined && !now?.changed)
+    html.push(`<div><b>The first flaw</b>${prose(first.flaw)}</div>`);
+  if (first !== undefined && dispute !== undefined) {
+    if (now?.corrected)
+      html.push(
+        `<div><b>First graded</b> ${renderFirstGrade(first, question)}</div>`,
+      );
     html.push(
-      `<div><b>Dispute</b>${prose(dispute.reason)}<b>Decision</b>${prose(dispute.outcome.reason)}</div>`,
+      `<div><b>Your dispute</b><p>${escapeHtml(dispute.reason)}</p><b>Outcome</b> ${outcomeHead(first)} ${prose(dispute.outcome.reason, true)}</div>`,
     );
+  }
   html.push("</div>");
   return html.join("\n");
+}
+
+function renderFirstGrade(
+  first: FirstGrade,
+  question: QuestionItem["question"],
+): string {
+  const feedback = firstGradeFeedback(first);
+  const detail =
+    "flaw" in feedback
+      ? prose(feedback.flaw, true)
+      : "key" in feedback
+        ? choiceText(question, feedback.key)
+        : "expected" in feedback
+          ? math(feedback.expected)
+          : "";
+  return detail === "" ? feedback.label : `${feedback.label} ${detail}`;
 }
 
 function choiceText(

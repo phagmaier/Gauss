@@ -7,6 +7,7 @@
 // The view is drawn in WhatIKnow.tsx from what the server derives
 // (src/server/record/what-i-know.ts).
 
+import { standing, verdictWord } from "../shared/dispute-view.ts";
 import type { Assessment } from "../shared/evidence.ts";
 import { isOpen } from "../shared/misconception.ts";
 import {
@@ -21,7 +22,6 @@ import type {
   ShownMisconception,
   WhatIKnow,
 } from "../shared/what-i-know.ts";
-import { standing, verdictWord } from "./dispute.ts";
 import { unitNumbers } from "./units.ts";
 
 /** A word and the class that colours it. */

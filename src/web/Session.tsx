@@ -34,6 +34,13 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import {
+  assessmentCard,
+  assessmentEndMarker,
+  assessmentMarker,
+  type ResultRow,
+  testResultCard,
+} from "../shared/assessment-view.ts";
+import {
   Hello,
   PageEvent,
   type SkipTestedPost,
@@ -64,10 +71,7 @@ import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
 import {
-  assessmentCard,
   assessmentDetourStep,
-  assessmentEndMarker,
-  assessmentMarker,
   type ClosingCardRow,
   closingCard,
   detourSays,
@@ -83,10 +87,8 @@ import {
   type Placement,
   phaseMarker,
   placement,
-  type ResultRow,
   SKIP_GATE_ASKS,
   skipLabel,
-  testResultCard,
   whereInUnit,
 } from "./session.ts";
 
@@ -1171,7 +1173,10 @@ function TestResult(props: {
           {props.notes}
         </div>
         {card.startsAt === undefined ? null : (
-          <div className="ph-note">{card.startsAt}</div>
+          <div className="ph-note">
+            {card.startsAt} The outline, at the top right, shows what is
+            skipped.
+          </div>
         )}
       </>
     );

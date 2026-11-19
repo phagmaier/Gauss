@@ -9,6 +9,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { Root, RootContent } from "hast";
+import rehypeParse from "rehype-parse";
+import { unified } from "unified";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Hello, PageEvent, UnitOpened } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -857,7 +860,16 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
     { type: "assessment_end", mode: "test-out", skipped: true, statuses: {} },
     {
       type: "test_result",
-      objectives: [{ objective: "basis-image", passed: false, answers: [] }],
+      objectives: [
+        {
+          objective: "basis-image",
+          passed: false,
+          answers: [
+            { verdict: "correct", confidence: "50", assisted: false },
+            { verdict: "incorrect", confidence: "75", assisted: false },
+          ],
+        },
+      ],
     },
     { type: "test_answered", skipped: [] },
     { type: "phase", phase: "teach", segment: 0 },
@@ -930,6 +942,27 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
     { type: "assessment", mode: "review", stage: "offered", count: 1 },
     { type: "assessment", mode: "review", stage: "on", count: 1 },
     {
+      type: "question",
+      question: {
+        kind: "written",
+        id: "q2",
+        number: 2,
+        prompt: "Write an example of a matrix in markup.",
+      },
+    },
+    {
+      type: "graded",
+      questionId: "q2",
+      answer: {
+        kind: "written",
+        questionId: "q2",
+        text: "<div>Identity matrix</div>\n\nUse List<T>.\n\n<script>literal learner text</script>",
+        confidence: "90",
+      },
+      verdict: "correct",
+      assisted: false,
+    },
+    {
       type: "assessment_end",
       mode: "review",
       skipped: false,
@@ -941,26 +974,36 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
       type: "question",
       question: {
         kind: "code",
-        id: "q2",
-        number: 2,
+        id: "q3",
+        number: 3,
         prompt: "Write a matrix-vector multiplication.",
         files: ["apply.py"],
       },
     },
     {
       type: "graded",
-      questionId: "q2",
+      questionId: "q3",
       answer: {
         kind: "code",
-        questionId: "q2",
+        questionId: "q3",
         confidence: "75",
         files: [{ path: "apply.py", content: "snapshot source is not shown" }],
       },
-      verdict: "correct",
-      output: "2 passed",
+      verdict: "incorrect",
+      output: [
+        "def test_boundary():",
+        ">       assert apply(1729) == 'private boundary value'",
+        "FAILED test_hidden.py::test_boundary",
+        "Exit status 1.",
+      ].join("\n"),
       assisted: false,
     },
-    { type: "assessment_end", mode: "gate", skipped: false, statuses: {} },
+    {
+      type: "assessment_end",
+      mode: "gate",
+      skipped: false,
+      statuses: { "basis-image": "slipping" },
+    },
     {
       type: "unit_end",
       passed: true,
@@ -994,7 +1037,8 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
   expect(before).toContain("examples/map.py");
   expect(before).toContain("What about &lt;one vector&gt;?");
   expect(before).toContain("Test result");
-  expect(before).toContain("Learn the whole unit.");
+  expect.soft(before).toContain("Right once, 50% sure, then missed");
+  expect.soft(before).toContain("Teaching the whole unit.");
   expect(before).toContain("Packages requested</b>: numpy&gt;=2. Not now.");
   expect(before).toContain("Stopped.");
   expect(before).toMatch(
@@ -1005,8 +1049,24 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
   );
   expect(after).toContain(`datetime="${second}"`);
   expect(after).toMatch(
-    /Fresh start[\s\S]*Review[\s\S]*Unit gate[\s\S]*Question 2[\s\S]*75% sure[\s\S]*2 passed[\s\S]*Unit finished/,
+    /Fresh start[\s\S]*Review[\s\S]*Unit gate[\s\S]*Question 3[\s\S]*75% sure[\s\S]*Unit finished/,
   );
+  expect(after).toContain("One retained. Back to segment 1, in its check.");
+  expect(after).toContain("One slipping.");
+  function textOf(node: Root | RootContent): string {
+    if (node.type === "text") return node.value;
+    return node.type === "root" || node.type === "element"
+      ? node.children.map(textOf).join("\n")
+      : "";
+  }
+  const visible = textOf(
+    unified().use(rehypeParse, { fragment: true }).parse(after),
+  );
+  expect(visible).toContain("<div>Identity matrix</div>");
+  expect(visible).toContain("List<T>");
+  expect(visible).toContain("<script>literal learner text</script>");
+  expect.soft(after).toContain("Tests did not pass.");
+  expect.soft(after).not.toMatch(/1729|private boundary value|test_hidden\.py/);
   expect(after).not.toContain(">Check<");
   expect(after).not.toContain("Correct answer");
   expect(html).toContain("data:font/woff2;base64,");
@@ -1019,6 +1079,67 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
   expect((await app.request(`http://gauss.example.com${path}`)).status).toBe(
     403,
   );
+});
+
+test("an export keeps the first grade beside a correction from a later sitting", async () => {
+  const { app, dataRoot } = setUp([]);
+  await approvedCourse();
+  const second = "2026-11-16T13:00:00.000Z";
+  await dataRoot.appendTranscript(COURSE, "vectors", 1, [
+    { type: "session", startedAt: "2026-11-15T12:00:00.000Z" },
+    {
+      type: "question",
+      question: {
+        kind: "choice",
+        id: "rounding",
+        number: 1,
+        prompt: "Which way should this boundary round?",
+        choices: ["Round down", "Round up"],
+      },
+    },
+    {
+      type: "graded",
+      questionId: "rounding",
+      answer: {
+        kind: "choice",
+        questionId: "rounding",
+        choice: "B",
+        confidence: "90",
+      },
+      verdict: "incorrect",
+      correctChoice: "A",
+      assisted: false,
+    },
+    { type: "detour", questionId: "rounding", number: 1 },
+  ]);
+  await dataRoot.appendTranscript(COURSE, "vectors", 2, [
+    { type: "session", startedAt: second },
+    {
+      type: "disputed",
+      questionId: "rounding",
+      dispute: {
+        recordedAt: second,
+        reason: "The boundary rounds up.",
+        outcome: {
+          verdict: "correct",
+          reason: "The boundary is included in the upper interval.",
+          key: "B",
+        },
+      },
+    },
+  ]);
+
+  const response = await app.request(`${UNIT}/transcript`);
+  expect(response.status).toBe(200);
+  const html = await response.text();
+  const [, firstSitting = "", secondSitting = ""] = html.split(
+    '<section class="session">',
+  );
+  expect(firstSitting).toMatch(
+    /Correct<\/strong> after your dispute[\s\S]*First graded[\s\S]*Not quite, by the key A\. Round down[\s\S]*Changed to Correct\.[\s\S]*Detour/,
+  );
+  expect(secondSitting).toContain(`datetime="${second}"`);
+  expect(secondSitting).not.toContain("Round down");
 });
 
 test("a finished unit writes only on request, retries a failure and replaces its notes", async () => {

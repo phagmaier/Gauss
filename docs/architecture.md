@@ -258,9 +258,12 @@ also before it reaches the backend.
   including for a finished unit. The read-only route waits for pending
   transcript writes but does not open a chat or wait for a tutor turn.
   The document replays the page events through `src/shared/timeline.ts`
-  and groups the result under the dates of the sittings. It embeds KaTeX
-  styles and fonts, leaves out raw Markdown HTML and link targets, names
-  artifacts without embedding them, and reads no private grading material.
+  and groups them by sitting. The live thread and the export share assessment
+  summaries and dispute feedback, including the first grade after a
+  correction. The file embeds KaTeX styles and fonts, names artifacts without
+  embedding them, and keeps link labels but not targets. Raw tutor HTML is
+  dropped; literal HTML in learner answers is escaped as text. Exported code
+  cards give the recorded test result, not the raw test output or diagnostics.
 
 ### Phases
 

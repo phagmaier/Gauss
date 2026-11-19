@@ -7,6 +7,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { assessmentEndMarker } from "../../shared/assessment-view.ts";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence } from "../../shared/evidence.ts";
@@ -16,7 +17,6 @@ import type { UnitPosition } from "../../shared/state.ts";
 import { emptyTimeline, reduce, type Timeline } from "../../shared/timeline.ts";
 import {
   assessmentDetourStep,
-  assessmentEndMarker,
   nextStep,
   openQuestion,
 } from "../../web/session.ts";

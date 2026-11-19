@@ -1,18 +1,10 @@
-// What a disputed answer shows (task 3.8, piece 13), on the session's graded
-// card and on an answer in "What I know": the verdict it now counts with,
-// marked when a dispute changed it; the right choice or expected answer as
-// the dispute left it; the first grade kept beside the outcome once the
-// dispute changed something; and the words around what the answer was
-// graded by. Drawn by Dispute.tsx and the two views.
+// The first grade, standing after a dispute, and feedback shown on graded cards
+// in the live thread, What I know, and the transcript export.
 
-import {
-  countedVerdict,
-  type GradedBy,
-  type ShownDispute,
-} from "../shared/dispute.ts";
-import type { ChoiceLetter, Verdict } from "../shared/question.ts";
+import { countedVerdict, type GradedBy, type ShownDispute } from "./dispute.ts";
+import type { ChoiceLetter, Verdict } from "./question.ts";
 
-/** An answer as both views have it: its first grade and its dispute. */
+/** A public grade and its dispute, without the private grading material. */
 export interface Disputed {
   /** The first grade. */
   verdict: Verdict;
@@ -21,6 +13,35 @@ export interface Disputed {
   /** The expected expression, for a math question. */
   expected?: string | undefined;
   dispute?: ShownDispute | undefined;
+}
+
+/** The first grade, as the record beside the outcome names it. */
+export interface FirstGrade extends Disputed {
+  kind: "choice" | "math" | "written" | "code";
+  flaw?: string | undefined;
+}
+
+/** The first verdict and the public feedback that went with it. */
+export function firstGradeFeedback(
+  first: FirstGrade,
+):
+  | { label: string; flaw: string }
+  | { label: string; key: ChoiceLetter }
+  | { label: string; expected: string }
+  | { label: string } {
+  const verdict = verdictWord(first.verdict).text;
+  if (first.flaw !== undefined)
+    return { label: `${verdict}:`, flaw: first.flaw };
+  if (first.kind === "choice" && first.key !== undefined)
+    return { label: `${verdict}, by the key`, key: first.key };
+  if (first.kind === "math" && first.expected !== undefined)
+    return {
+      label: `${verdict}, by the expected answer`,
+      expected: first.expected,
+    };
+  return {
+    label: first.kind === "code" ? `${verdict}, by the tests` : verdict,
+  };
 }
 
 /** What the answer shows, as its dispute left it. */

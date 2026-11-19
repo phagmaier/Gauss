@@ -11,6 +11,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { testResultCard } from "../../shared/assessment-view.ts";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence } from "../../shared/evidence.ts";
@@ -26,7 +27,6 @@ import {
   finishedByTest,
   nextStep,
   outline,
-  testResultCard,
   whereInUnit,
 } from "../../web/session.ts";
 import type { EngineTurn, SessionOptions } from "../backends/backend.ts";
@@ -664,7 +664,7 @@ test("a partial result skips nothing while its card waits, across a restart too;
   expect(testResultCard(DERIVATIVE_PLAN, resultOf(timeline))).toMatchObject({
     answered: "Skipping what you passed.",
     startsAt:
-      "Teaching starts at segment 2, which leaves out what you passed in it. The outline, at the top right, shows what is skipped.",
+      "Teaching starts at segment 2, which leaves out what you passed in it.",
   });
 
   // The check asks only the objective taught.

@@ -11,40 +11,11 @@ import Markdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { displayMathLines, type MdNode } from "../shared/display-math-lines.ts";
+import { displayMathLines } from "../shared/display-math-lines.ts";
+import { htmlAsText } from "../shared/html-as-text.ts";
 import { CHOICE_LETTERS, type ChoiceLetter } from "../shared/question.ts";
 
-/** Where a block of raw HTML can stand, as opposed to HTML inside a line. */
-const BLOCK_PARENTS = new Set(["root", "blockquote", "listItem"]);
-
-/**
- * A block of raw HTML is shown as its text in a paragraph of its own, spaced
- * like the blocks around it. Left alone, it is text between them.
- */
-function htmlBlocksAsText() {
-  return (tree: MdNode) => {
-    const visit = (node: MdNode): void => {
-      if (node.children === undefined) return;
-      node.children = node.children.map((child) =>
-        child.type === "html" && BLOCK_PARENTS.has(node.type)
-          ? {
-              type: "paragraph",
-              children: [{ type: "text", value: child.value ?? "" }],
-            }
-          : child,
-      );
-      node.children.forEach(visit);
-    };
-    visit(tree);
-  };
-}
-
-const remarkPlugins = [
-  remarkGfm,
-  remarkMath,
-  displayMathLines,
-  htmlBlocksAsText,
-];
+const remarkPlugins = [remarkGfm, remarkMath, displayMathLines, htmlAsText];
 // Frappé's red, as `.no` uses for a miss.
 const rehypePlugins: [typeof rehypeKatex, { errorColor: string }][] = [
   [rehypeKatex, { errorColor: "#e78284" }],

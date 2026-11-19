@@ -1572,6 +1572,9 @@ built until its task is done; `architecture.md` says what is.
   sessions' page events so that it reads as the thread does, with the
   tutor's Markdown rendered on the server and its math written as the
   notes' is.
+  Code-test diagnostics can include hidden assertions or expected values;
+  the export uses the recorded verdict for its test summary rather than
+  trying to redact free-form output, including from old transcripts.
 - **Style and curriculum changes are cards the tutor asks for**
   (`propose_style`, `amend_curriculum`), answered as a package request
   is. A started or finished unit cannot be dropped by a change.

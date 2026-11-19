@@ -13,16 +13,18 @@ import {
   type GradedBy as GradedByShape,
   ShownDispute,
 } from "../shared/dispute.ts";
-import { type Answer, getJson, postFor } from "./api.ts";
 import {
   AFTER_DISPUTE,
   DECIDED_BY,
   type Disputed,
+  type FirstGrade,
+  firstGradeFeedback,
   gradedByHeading,
   outcomeHead,
   standing,
   verdictWord,
-} from "./dispute.ts";
+} from "../shared/dispute-view.ts";
+import { type Answer, getJson, postFor } from "./api.ts";
 import { ChoiceLabel, InlineProse, MathText, Prose } from "./prose.tsx";
 
 /** The course's dispute routes. */
@@ -40,13 +42,6 @@ export function disputeApi(courseId: string): DisputeApi {
     raise: (questionId, reason) =>
       postFor(`${answer(questionId)}/dispute`, ShownDispute, { reason }),
   };
-}
-
-/** The first grade, as the record beside the outcome names it. */
-export interface FirstGrade extends Disputed {
-  kind: "choice" | "math" | "written" | "code";
-  /** The grader's flaw, if it named one. */
-  flaw?: string | undefined;
 }
 
 type Form =
@@ -232,34 +227,20 @@ function DisputeRecord(props: {
   );
 }
 
-/** "Not quite: the flaw", "Not quite, by the key C. …", "Correct, by the tests". */
 function FirstGraded(props: { first: FirstGrade; choices: readonly string[] }) {
-  const { first, choices } = props;
-  const word = verdictWord(first.verdict).text;
-  if (first.flaw !== undefined) {
-    return (
-      <span className="qa-flaw">
-        {word}: <InlineProse text={first.flaw} />
-      </span>
-    );
-  }
-  if (first.kind === "choice" && first.key !== undefined) {
-    return (
-      <span className="qa-flaw">
-        {word}, by the key <ChoiceLabel choices={choices} letter={first.key} />
-      </span>
-    );
-  }
-  if (first.kind === "math" && first.expected !== undefined) {
-    return (
-      <span className="qa-flaw">
-        {word}, by the expected answer <MathText source={first.expected} />
-      </span>
-    );
-  }
+  const feedback = firstGradeFeedback(props.first);
+  const detail =
+    "flaw" in feedback ? (
+      <InlineProse text={feedback.flaw} />
+    ) : "key" in feedback ? (
+      <ChoiceLabel choices={props.choices} letter={feedback.key} />
+    ) : "expected" in feedback ? (
+      <MathText source={feedback.expected} />
+    ) : null;
   return (
     <span className="qa-flaw">
-      {first.kind === "code" ? `${word}, by the tests` : word}
+      {feedback.label}
+      {detail === null ? null : <> {detail}</>}
     </span>
   );
 }

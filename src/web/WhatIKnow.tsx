@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Calibration } from "../shared/calibration.ts";
+import { AFTER_DISPUTE } from "../shared/dispute-view.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import {
   WhatIKnow as Known,
@@ -25,7 +26,6 @@ import {
 import { getJson } from "./api.ts";
 import { calibrationRows, hasCalibration } from "./calibration.ts";
 import { type DisputeApi, DisputePart, disputeApi } from "./Dispute.tsx";
-import { AFTER_DISPUTE } from "./dispute.ts";
 import { Link, TopLine } from "./Frame.tsx";
 import { ChoiceLabel, InlineProse, MathText, Prose } from "./prose.tsx";
 import { CodeOutput, FileNames } from "./QuestionCard.tsx";

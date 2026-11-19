@@ -1,4 +1,9 @@
 import { expect, test } from "vitest";
+import {
+  assessmentCard,
+  assessmentEndMarker,
+  assessmentMarker,
+} from "../shared/assessment-view.ts";
 import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
 import type { CourseWithProgress } from "../shared/library.ts";
@@ -14,9 +19,6 @@ import {
   type Timeline,
 } from "../shared/timeline.ts";
 import {
-  assessmentCard,
-  assessmentEndMarker,
-  assessmentMarker,
   closingCard,
   divided,
   helpNotice,

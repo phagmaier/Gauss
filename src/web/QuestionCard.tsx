@@ -30,6 +30,7 @@
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ShownDispute } from "../shared/dispute.ts";
+import { standing } from "../shared/dispute-view.ts";
 import {
   type AnswerPost,
   type AnswerSubmission,
@@ -43,7 +44,6 @@ import {
 } from "../shared/question.ts";
 import type { Graded, QuestionItem } from "../shared/timeline.ts";
 import { type DisputeApi, DisputePart, VerdictNow } from "./Dispute.tsx";
-import { standing } from "./dispute.ts";
 import { CopyPath } from "./Frame.tsx";
 import {
   AnswerPreview,
