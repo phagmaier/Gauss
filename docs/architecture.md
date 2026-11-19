@@ -51,7 +51,7 @@ Gauss/
       sources/          (stage 4) ingestion, quote verification
     web/                React app: library, intake, course, session, "what I know"
   pytools/              sandbox_exec.py (Linux workload filter), mathcheck.py; (stage 4) convert.py
-  scripts/              dev-fake.ts (no model); grade-set.ts, judge-set.ts and decide-set.ts with their sets (real model)
+  scripts/              dev-fake.ts (no model); faults.ts (injects faults, runs the tests); grade-set.ts, judge-set.ts and decide-set.ts with their sets (real model)
   mise.toml             pinned node, pnpm, python, uv
 ```
 

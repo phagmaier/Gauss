@@ -54,8 +54,8 @@ starting a plan task, editing files, or committing.
 6. Commit the task's changes and the document updates together as one
    commit. The message starts with the task id (`2.13: transcripts`); its
    body says what was checked and how (the commands and their results,
-   browser and real-model runs, faults injected into the code) and what
-   was not checked. Do not commit if the "done when" check failed; leave
+   browser and real-model runs, faults injected into the code with
+   `scripts/faults.ts`) and what was not checked. Do not commit if the "done when" check failed; leave
    the task `in progress` and report why.
 7. Report what you checked and what you could not check, then stop. Start
    the next task only if the user asked for more than one.
@@ -148,7 +148,7 @@ mise activated, or `mise exec -- <command>`.
 | Install the pinned runtimes | `mise install` |
 | Install dependencies | `mise run setup` |
 | Lint, type-check and both test suites | `mise run check` |
-| Lint and format check | `pnpm lint` |
+| Lint and format check (a warning fails it too) | `pnpm lint` |
 | Apply formatting and safe fixes | `pnpm format` |
 | Type-check | `pnpm typecheck` |
 | Test, TypeScript | `pnpm test` (`pnpm test:watch` while working) |
@@ -158,6 +158,7 @@ mise activated, or `mise exec -- <command>`.
 | Grade the grader's hand-graded set (real model) | `node scripts/grade-set.ts --runs 2` (`--model`, `--prompt`, `--only`) |
 | Judge the help judge's hand-judged set (real model) | `node scripts/judge-set.ts --runs 2` (same options) |
 | Decide the dispute judge's hand-judged set (real model) | `node scripts/decide-set.ts --runs 2` (same options) |
+| Check that tests catch injected faults (its header gives the file format; each fault reruns the tests, so set a long enough timeout) | `node scripts/faults.ts <faults file>`; `--restore` puts back a file a killed run left with a fault |
 
 | Variable | Effect |
 | --- | --- |

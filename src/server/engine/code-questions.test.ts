@@ -40,9 +40,6 @@ import { type Sandbox, startSandbox } from "./sandbox.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 
-/** Room for a few runs of pytest, each under a second here. */
-const RUNS_MS = 20_000;
-
 let sandbox: Extract<Sandbox, { available: true }>;
 let runner: CodeRunner;
 beforeAll(async () => {
@@ -230,293 +227,257 @@ async function known(root: ReturnType<typeof openDataRoot>) {
   return { status: objective?.status, entry, line: answerLine(entry) };
 }
 
-test(
-  "a code question is posted once its tests fail on the starter and pass on the solution, and the card names the file by its full path",
-  async () => {
-    const { backend, chat, workspace } = await setUp([TEACH, ask(CODE)]);
+test("a code question is posted once its tests fail on the starter and pass on the solution, and the card names the file by its full path", async () => {
+  const { backend, chat, workspace } = await setUp([TEACH, ask(CODE)]);
 
-    expect(chat.events()).toContainEqual({
-      type: "file_written",
-      path: "bpe.py",
-    });
-    expect(chat.events()).toContainEqual({
-      type: "question",
-      question: {
-        kind: "code",
-        id: openQuestionId(chat),
-        number: 1,
-        prompt: PROMPT,
-        files: [join(workspace, "bpe.py")],
-      },
-    });
-    expect(backend.calls.at(-1)?.result).toMatchObject({ status: "done" });
-  },
-  RUNS_MS,
-);
-
-test(
-  "a passing run is recorded correct, with the files as run and the output's end, for the tutor and 'What I know'",
-  async () => {
-    const { backend, root, chat, workspace } = await setUp([
-      TEACH,
-      ask(CODE),
-      FEEDBACK,
-    ]);
-    await edit(workspace, SOLUTION);
-
-    await runTests(chat, "90");
-
-    const questionId = openQuestionId(chat);
-    const answer = {
+  expect(chat.events()).toContainEqual({
+    type: "file_written",
+    path: "bpe.py",
+  });
+  expect(chat.events()).toContainEqual({
+    type: "question",
+    question: {
       kind: "code",
-      questionId,
-      confidence: "90",
-      files: [{ path: "bpe.py", content: SOLUTION }],
-    };
-    expect(chat.events()).toContainEqual({
-      type: "grading",
-      questionId,
-      answer,
-    });
-    const graded = chat.events().find((e) => e.type === "graded");
-    expect(graded).toMatchObject({
-      questionId,
-      verdict: "correct",
-      answer,
-      assisted: false,
-    });
-    const output = graded?.type === "graded" ? graded.output : undefined;
-    expect(output).toMatch(/^2 passed in /m);
-    const [entry] = await root.readEvidence(COURSE);
-    expect(entry).toEqual({
-      kind: "answer",
-      recordedAt: NOW,
-      objective: "count-pairs",
-      question: QUESTION,
-      answer,
-      assisted: false,
-      verdict: "correct",
-      output,
-    });
-    // No model graded it.
-    expect(backend.oneShots).toEqual([]);
-    const turn = answerTurn(backend);
-    expect(turn).toContain(
-      "The learner ran the tests, at 90% confidence, on their files as they were then:\n\n" +
-        `bpe.py:\n\`\`\`\n${SOLUTION.trimEnd()}\n\`\`\`\n\n` +
-        "The tests passed: correct. The end of their output:",
-    );
-
-    // Passed at 90%; "What I know" names the file, never the tests.
-    const { status, entry: shown, line } = await known(root);
-    expect(status).toBe("passed");
-    expect(shown.question).toEqual({
-      kind: "code",
+      id: openQuestionId(chat),
+      number: 1,
       prompt: PROMPT,
-      files: ["bpe.py"],
-    });
-    expect(shown.output).toBe(output);
-    expect(line.verdict.text).toBe("Correct");
-  },
-  RUNS_MS,
-);
+      files: [join(workspace, "bpe.py")],
+    },
+  });
+  expect(backend.calls.at(-1)?.result).toMatchObject({ status: "done" });
+});
 
-test(
-  "a failing run is a miss that opens a detour, its output's end saying which test failed",
-  async () => {
-    const { backend, root, chat, workspace } = await setUp([
-      TEACH,
-      ask(CODE),
-      [{ text: "Ties keep the first pair." }],
-    ]);
-    await edit(workspace, LAST_OF_TIED);
+test("a passing run is recorded correct, with the files as run and the output's end, for the tutor and 'What I know'", async () => {
+  const { backend, root, chat, workspace } = await setUp([
+    TEACH,
+    ask(CODE),
+    FEEDBACK,
+  ]);
+  await edit(workspace, SOLUTION);
 
-    await runTests(chat);
+  await runTests(chat, "90");
 
-    const questionId = openQuestionId(chat);
-    expect(chat.events()).toContainEqual({
-      type: "detour",
-      questionId,
-      number: 1,
-    });
-    const [entry] = await root.readEvidence(COURSE);
-    expect(entry).toMatchObject({
-      verdict: "incorrect",
-      answer: { files: [{ path: "bpe.py", content: LAST_OF_TIED }] },
-    });
-    expect(entry).not.toHaveProperty("flaw");
-    const output = entry?.kind === "answer" ? (entry.output ?? "") : "";
-    expect(output).toContain("FAILED test_bpe.py::test_tie_takes_the_first");
-    expect(output.split("\n").at(-1)).toBe("Exit status 1.");
-    const turn = answerTurn(backend);
-    expect(turn).toContain(
-      "The tests failed: incorrect. The end of their output:",
-    );
-    expect(turn).toContain("FAILED test_bpe.py::test_tie_takes_the_first");
-    expect(turn).toContain("The miss opens a detour");
-    expect(turn).toContain(
-      "from the end of the tests' output and the files they ran",
-    );
-    expect((await known(root)).line.verdict.text).toBe("Not quite");
-  },
-  RUNS_MS,
-);
+  const questionId = openQuestionId(chat);
+  const answer = {
+    kind: "code",
+    questionId,
+    confidence: "90",
+    files: [{ path: "bpe.py", content: SOLUTION }],
+  };
+  expect(chat.events()).toContainEqual({
+    type: "grading",
+    questionId,
+    answer,
+  });
+  const graded = chat.events().find((e) => e.type === "graded");
+  expect(graded).toMatchObject({
+    questionId,
+    verdict: "correct",
+    answer,
+    assisted: false,
+  });
+  const output = graded?.type === "graded" ? graded.output : undefined;
+  expect(output).toMatch(/^2 passed in /m);
+  const [entry] = await root.readEvidence(COURSE);
+  expect(entry).toEqual({
+    kind: "answer",
+    recordedAt: NOW,
+    objective: "count-pairs",
+    question: QUESTION,
+    answer,
+    assisted: false,
+    verdict: "correct",
+    output,
+  });
+  // No model graded it.
+  expect(backend.oneShots).toEqual([]);
+  const turn = answerTurn(backend);
+  expect(turn).toContain(
+    "The learner ran the tests, at 90% confidence, on their files as they were then:\n\n" +
+      `bpe.py:\n\`\`\`\n${SOLUTION.trimEnd()}\n\`\`\`\n\n` +
+      "The tests passed: correct. The end of their output:",
+  );
 
-test(
-  "a file changed after it was submitted leaves the record as it was: the tests ran on the file as sent",
-  async () => {
-    const { root, chat, workspace } = await setUp([TEACH, ask(CODE), FEEDBACK]);
-    await edit(workspace, SOLUTION);
+  // Passed at 90%; "What I know" names the file, never the tests.
+  const { status, entry: shown, line } = await known(root);
+  expect(status).toBe("passed");
+  expect(shown.question).toEqual({
+    kind: "code",
+    prompt: PROMPT,
+    files: ["bpe.py"],
+  });
+  expect(shown.output).toBe(output);
+  expect(line.verdict.text).toBe("Correct");
+});
 
-    const result = await chat.answer({
-      kind: "code",
-      questionId: openQuestionId(chat),
-      confidence: "50",
-    });
-    expect(result).toEqual({ ok: true });
-    // Changed while the tests run, and again once they have.
-    await edit(workspace, STARTER);
-    await chat.settled();
-    await edit(workspace, LAST_OF_TIED);
+test("a failing run is a miss that opens a detour, its output's end saying which test failed", async () => {
+  const { backend, root, chat, workspace } = await setUp([
+    TEACH,
+    ask(CODE),
+    [{ text: "Ties keep the first pair." }],
+  ]);
+  await edit(workspace, LAST_OF_TIED);
 
-    const [entry] = await root.readEvidence(COURSE);
-    expect(entry).toMatchObject({
-      verdict: "correct",
-      answer: { files: [{ path: "bpe.py", content: SOLUTION }] },
-    });
-  },
-  RUNS_MS,
-);
+  await runTests(chat);
 
-test(
-  "a question whose tests pass on the starter is refused with the reason, and the tutor posts another in the same turn",
-  async () => {
-    const { backend, chat } = await setUp([
-      TEACH,
-      [
-        // The "starter" already solves it.
-        ...ask(CODE, SOLUTION),
-        ...ask(CODE),
-      ],
-    ]);
+  const questionId = openQuestionId(chat);
+  expect(chat.events()).toContainEqual({
+    type: "detour",
+    questionId,
+    number: 1,
+  });
+  const [entry] = await root.readEvidence(COURSE);
+  expect(entry).toMatchObject({
+    verdict: "incorrect",
+    answer: { files: [{ path: "bpe.py", content: LAST_OF_TIED }] },
+  });
+  expect(entry).not.toHaveProperty("flaw");
+  const output = entry?.kind === "answer" ? (entry.output ?? "") : "";
+  expect(output).toContain("FAILED test_bpe.py::test_tie_takes_the_first");
+  expect(output.split("\n").at(-1)).toBe("Exit status 1.");
+  const turn = answerTurn(backend);
+  expect(turn).toContain(
+    "The tests failed: incorrect. The end of their output:",
+  );
+  expect(turn).toContain("FAILED test_bpe.py::test_tie_takes_the_first");
+  expect(turn).toContain("The miss opens a detour");
+  expect(turn).toContain(
+    "from the end of the tests' output and the files they ran",
+  );
+  expect((await known(root)).line.verdict.text).toBe("Not quite");
+});
 
-    const [refused, posted] = backend.calls.filter(
-      (c) => c.name === "ask_question",
-    );
-    expect(refused?.result.status).toBe("refused");
-    expect(refused?.result.text).toContain(
-      "The tests pass on the starter files in the workspace, so they cannot tell right code from wrong",
-    );
-    expect(posted?.result).toMatchObject({ status: "done" });
-    expect(chat.events().filter((e) => e.type === "question")).toHaveLength(1);
-  },
-  RUNS_MS,
-);
+test("a file changed after it was submitted leaves the record as it was: the tests ran on the file as sent", async () => {
+  const { root, chat, workspace } = await setUp([TEACH, ask(CODE), FEEDBACK]);
+  await edit(workspace, SOLUTION);
 
-test(
-  "a question whose tests fail on the solution is refused, with the end of their output",
-  async () => {
-    const { backend, chat } = await setUp([
-      TEACH,
-      ask({ ...CODE, solution: [{ path: "bpe.py", content: LAST_OF_TIED }] }),
-    ]);
+  const result = await chat.answer({
+    kind: "code",
+    questionId: openQuestionId(chat),
+    confidence: "50",
+  });
+  expect(result).toEqual({ ok: true });
+  // Changed while the tests run, and again once they have.
+  await edit(workspace, STARTER);
+  await chat.settled();
+  await edit(workspace, LAST_OF_TIED);
 
-    const call = backend.calls.find((c) => c.name === "ask_question");
-    expect(call?.result.status).toBe("refused");
-    expect(call?.result.text).toContain("The tests fail on your solution");
-    expect(call?.result.text).toContain(
-      "FAILED test_bpe.py::test_tie_takes_the_first",
-    );
-    expect(chat.events().some((e) => e.type === "question")).toBe(false);
-  },
-  RUNS_MS,
-);
+  const [entry] = await root.readEvidence(COURSE);
+  expect(entry).toMatchObject({
+    verdict: "correct",
+    answer: { files: [{ path: "bpe.py", content: SOLUTION }] },
+  });
+});
 
-test(
-  "a run past its time limit fails its grading, to be run again; past it again on the same files, it is a miss",
-  async () => {
-    const quick = createCodeRunner({ sandbox, timeLimitMs: 1500 });
-    const { root, chat, workspace } = await setUp(
-      [TEACH, ask(CODE), [{ text: "The loop never ends." }]],
-      quick,
-    );
-    const LOOPS = "def most_common_pair(ids):\n    while True:\n        pass\n";
-    await edit(workspace, LOOPS);
+test("a question whose tests pass on the starter is refused with the reason, and the tutor posts another in the same turn", async () => {
+  const { backend, chat } = await setUp([
+    TEACH,
+    [
+      // The "starter" already solves it.
+      ...ask(CODE, SOLUTION),
+      ...ask(CODE),
+    ],
+  ]);
 
-    await runTests(chat);
+  const [refused, posted] = backend.calls.filter(
+    (c) => c.name === "ask_question",
+  );
+  expect(refused?.result.status).toBe("refused");
+  expect(refused?.result.text).toContain(
+    "The tests pass on the starter files in the workspace, so they cannot tell right code from wrong",
+  );
+  expect(posted?.result).toMatchObject({ status: "done" });
+  expect(chat.events().filter((e) => e.type === "question")).toHaveLength(1);
+});
 
-    const questionId = openQuestionId(chat);
-    expect(chat.events().at(-1)).toEqual({
-      type: "grading_failed",
-      questionId,
-      error:
-        "The tests ran past their time limit and were stopped. Your files are kept as you ran them. Run them again; if they run past it again, the answer is graded as a miss.",
-    });
-    expect(await root.readEvidence(COURSE)).toEqual([]);
-    // Fixing the file now changes nothing: the answer was sent.
-    await edit(workspace, SOLUTION);
+test("a question whose tests fail on the solution is refused, with the end of their output", async () => {
+  const { backend, chat } = await setUp([
+    TEACH,
+    ask({ ...CODE, solution: [{ path: "bpe.py", content: LAST_OF_TIED }] }),
+  ]);
 
-    expect(await chat.gradeAgain()).toEqual({ ok: true });
-    await chat.settled();
+  const call = backend.calls.find((c) => c.name === "ask_question");
+  expect(call?.result.status).toBe("refused");
+  expect(call?.result.text).toContain("The tests fail on your solution");
+  expect(call?.result.text).toContain(
+    "FAILED test_bpe.py::test_tie_takes_the_first",
+  );
+  expect(chat.events().some((e) => e.type === "question")).toBe(false);
+});
 
-    const [entry] = await root.readEvidence(COURSE);
-    expect(entry).toMatchObject({
-      verdict: "incorrect",
-      answer: { files: [{ path: "bpe.py", content: LOOPS }] },
-    });
-    const output = entry?.kind === "answer" ? (entry.output ?? "") : "";
-    expect(output.split("\n").at(-1)).toBe(
-      "Stopped after 2 seconds, the time limit of the tests.",
-    );
-    expect(chat.events()).toContainEqual({
-      type: "detour",
-      questionId,
-      number: 1,
-    });
-  },
-  RUNS_MS,
-);
+test("a run past its time limit fails its grading, to be run again; past it again on the same files, it is a miss", async () => {
+  const quick = createCodeRunner({ sandbox, timeLimitMs: 1500 });
+  const { root, chat, workspace } = await setUp(
+    [TEACH, ask(CODE), [{ text: "The loop never ends." }]],
+    quick,
+  );
+  const LOOPS = "def most_common_pair(ids):\n    while True:\n        pass\n";
+  await edit(workspace, LOOPS);
 
-test(
-  "'Run the tests' with a file gone from the workspace is refused, nothing recorded, and runs once it is back",
-  async () => {
-    const { root, chat, workspace } = await setUp([TEACH, ask(CODE), FEEDBACK]);
-    await rm(join(workspace, "bpe.py"));
+  await runTests(chat);
 
-    const refused = await chat.answer({
-      kind: "code",
-      questionId: openQuestionId(chat),
-      confidence: "50",
-    });
+  const questionId = openQuestionId(chat);
+  expect(chat.events().at(-1)).toEqual({
+    type: "grading_failed",
+    questionId,
+    error:
+      "The tests ran past their time limit and were stopped. Your files are kept as you ran them. Run them again; if they run past it again, the answer is graded as a miss.",
+  });
+  expect(await root.readEvidence(COURSE)).toEqual([]);
+  // Fixing the file now changes nothing: the answer was sent.
+  await edit(workspace, SOLUTION);
 
-    expect(refused).toEqual({
-      ok: false,
-      status: 409,
-      error: `"bpe.py" is not in the workspace. Nothing was run or recorded: put it right at ${join(workspace, "bpe.py")} and run the tests again, or answer "I don't know".`,
-    });
-    expect(chat.events().some((e) => e.type === "grading")).toBe(false);
-    await edit(workspace, SOLUTION);
-    await runTests(chat);
-    expect(await root.readEvidence(COURSE)).toMatchObject([
-      { verdict: "correct" },
-    ]);
-  },
-  RUNS_MS,
-);
+  expect(await chat.gradeAgain()).toEqual({ ok: true });
+  await chat.settled();
 
-test(
-  "without the sandbox a code question is refused, saying to ask another kind",
-  async () => {
-    const { backend } = await setUp([TEACH, ask(CODE)], noCodeRunner);
+  const [entry] = await root.readEvidence(COURSE);
+  expect(entry).toMatchObject({
+    verdict: "incorrect",
+    answer: { files: [{ path: "bpe.py", content: LOOPS }] },
+  });
+  const output = entry?.kind === "answer" ? (entry.output ?? "") : "";
+  expect(output.split("\n").at(-1)).toBe(
+    "Stopped after 2 seconds, the time limit of the tests.",
+  );
+  expect(chat.events()).toContainEqual({
+    type: "detour",
+    questionId,
+    number: 1,
+  });
+});
 
-    const call = backend.calls.find((c) => c.name === "ask_question");
-    expect(call?.result).toEqual({
-      status: "refused",
-      text: "Code questions need the sandbox that runs their tests, and it does not run here. Ask another kind of question.",
-    });
-  },
-  RUNS_MS,
-);
+test("'Run the tests' with a file gone from the workspace is refused, nothing recorded, and runs once it is back", async () => {
+  const { root, chat, workspace } = await setUp([TEACH, ask(CODE), FEEDBACK]);
+  await rm(join(workspace, "bpe.py"));
+
+  const refused = await chat.answer({
+    kind: "code",
+    questionId: openQuestionId(chat),
+    confidence: "50",
+  });
+
+  expect(refused).toEqual({
+    ok: false,
+    status: 409,
+    error: `"bpe.py" is not in the workspace. Nothing was run or recorded: put it right at ${join(workspace, "bpe.py")} and run the tests again, or answer "I don't know".`,
+  });
+  expect(chat.events().some((e) => e.type === "grading")).toBe(false);
+  await edit(workspace, SOLUTION);
+  await runTests(chat);
+  expect(await root.readEvidence(COURSE)).toMatchObject([
+    { verdict: "correct" },
+  ]);
+});
+
+test("without the sandbox a code question is refused, saying to ask another kind", async () => {
+  const { backend } = await setUp([TEACH, ask(CODE)], noCodeRunner);
+
+  const call = backend.calls.find((c) => c.name === "ask_question");
+  expect(call?.result).toEqual({
+    status: "refused",
+    text: "Code questions need the sandbox that runs their tests, and it does not run here. Ask another kind of question.",
+  });
+});
 
 test("Stop cancels code preflight without publishing the question", async () => {
   await seedCourse();
@@ -550,90 +511,81 @@ test("Stop cancels code preflight without publishing the question", async () => 
   }
 });
 
-test(
-  "an open code question cannot accept a new submission without a sandbox",
-  async () => {
-    const old = await setUp([TEACH, ask(CODE)]);
-    const questionId = openQuestionId(old.chat);
-    await old.units.close();
-    const { chat, root, units } = await openChat([], noCodeRunner);
-    try {
-      expect(
-        await chat.answer({ kind: "code", questionId, confidence: "90" }),
-      ).toMatchObject({ ok: false, error: expect.stringContaining("sandbox") });
-      expect(
-        (await root.readState(COURSE)).units.bpe?.openQuestion?.answer,
-      ).toBeUndefined();
-      expect(await chat.override()).toEqual({ ok: true });
-      expect(await root.readEvidence(COURSE)).toEqual([
-        { kind: "override", recordedAt: NOW, objectives: ["count-pairs"] },
-      ]);
-    } finally {
-      await units.close();
-    }
-  },
-  RUNS_MS,
-);
+test("an open code question cannot accept a new submission without a sandbox", async () => {
+  const old = await setUp([TEACH, ask(CODE)]);
+  const questionId = openQuestionId(old.chat);
+  await old.units.close();
+  const { chat, root, units } = await openChat([], noCodeRunner);
+  try {
+    expect(
+      await chat.answer({ kind: "code", questionId, confidence: "90" }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("sandbox") });
+    expect(
+      (await root.readState(COURSE)).units.bpe?.openQuestion?.answer,
+    ).toBeUndefined();
+    expect(await chat.override()).toEqual({ ok: true });
+    expect(await root.readEvidence(COURSE)).toEqual([
+      { kind: "override", recordedAt: NOW, objectives: ["count-pairs"] },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
 
-test(
-  "shutdown stops grading; an infrastructure failure after reopen allows moving on",
-  async () => {
-    const started = Promise.withResolvers<AbortSignal | undefined>();
-    const lateMiss = {
-      result: "failed",
-      exitCode: 1,
-      output: "Assertion failed.",
-    } as const;
-    const held = Promise.withResolvers<typeof lateMiss>();
-    const old = await setUp([TEACH, ask(CODE)], {
-      ...runner,
-      run(_question, _files, _workspace, signal) {
-        signal?.addEventListener("abort", () => held.resolve(lateMiss), {
-          once: true,
-        });
-        started.resolve(signal);
-        return held.promise;
-      },
-    });
-    const questionId = openQuestionId(old.chat);
-    const submission = { kind: "code", questionId, confidence: "90" } as const;
-    expect(await old.chat.answer(submission)).toEqual({ ok: true });
-    const signal = await started.promise;
-    const closed = old.units.close();
-    try {
-      expect(signal?.aborted).toBe(true);
-      await closed;
-      expect(await old.root.readEvidence(COURSE)).toEqual([]);
-      expect(
-        (await old.root.readState(COURSE)).units.bpe?.openQuestion?.answer,
-      ).toMatchObject(submission);
-    } finally {
-      held.resolve(lateMiss);
-      await closed;
-    }
-
-    const { chat, root, units } = await openChat([], noCodeRunner);
-    try {
-      expect(chat.events().at(-1)).toMatchObject({
-        type: "grading_failed",
-        questionId,
-        error: expect.stringContaining("sandbox"),
+test("shutdown stops grading; an infrastructure failure after reopen allows moving on", async () => {
+  const started = Promise.withResolvers<AbortSignal | undefined>();
+  const lateMiss = {
+    result: "failed",
+    exitCode: 1,
+    output: "Assertion failed.",
+  } as const;
+  const held = Promise.withResolvers<typeof lateMiss>();
+  const old = await setUp([TEACH, ask(CODE)], {
+    ...runner,
+    run(_question, _files, _workspace, signal) {
+      signal?.addEventListener("abort", () => held.resolve(lateMiss), {
+        once: true,
       });
-      const page = chat
-        .events()
-        .reduce(
-          (state, event, index) =>
-            reduce(state, { type: "event", index, event }),
-          emptyTimeline,
-        );
-      expect(nextStep(page)).toBe("move-on");
-      expect(await chat.override()).toEqual({ ok: true });
-      expect(await root.readEvidence(COURSE)).toEqual([
-        { kind: "override", recordedAt: NOW, objectives: ["count-pairs"] },
-      ]);
-    } finally {
-      await units.close();
-    }
-  },
-  RUNS_MS,
-);
+      started.resolve(signal);
+      return held.promise;
+    },
+  });
+  const questionId = openQuestionId(old.chat);
+  const submission = { kind: "code", questionId, confidence: "90" } as const;
+  expect(await old.chat.answer(submission)).toEqual({ ok: true });
+  const signal = await started.promise;
+  const closed = old.units.close();
+  try {
+    expect(signal?.aborted).toBe(true);
+    await closed;
+    expect(await old.root.readEvidence(COURSE)).toEqual([]);
+    expect(
+      (await old.root.readState(COURSE)).units.bpe?.openQuestion?.answer,
+    ).toMatchObject(submission);
+  } finally {
+    held.resolve(lateMiss);
+    await closed;
+  }
+
+  const { chat, root, units } = await openChat([], noCodeRunner);
+  try {
+    expect(chat.events().at(-1)).toMatchObject({
+      type: "grading_failed",
+      questionId,
+      error: expect.stringContaining("sandbox"),
+    });
+    const page = chat
+      .events()
+      .reduce(
+        (state, event, index) => reduce(state, { type: "event", index, event }),
+        emptyTimeline,
+      );
+    expect(nextStep(page)).toBe("move-on");
+    expect(await chat.override()).toEqual({ ok: true });
+    expect(await root.readEvidence(COURSE)).toEqual([
+      { kind: "override", recordedAt: NOW, objectives: ["count-pairs"] },
+    ]);
+  } finally {
+    await units.close();
+  }
+});

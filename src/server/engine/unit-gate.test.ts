@@ -56,8 +56,6 @@ const YESTERDAY = "2026-11-17T12:00:00.000Z";
 /** Within the hour before NOW: review and the gate leave such an answer's objective alone. */
 const LATELY = "2026-11-18T11:30:00.000Z";
 const COURSE = "calculus";
-/** A test with many turns writes and flushes the record at each; see unit-review.test.ts. */
-const MANY_TURNS_MS = 15_000;
 
 const CURRICULUM: CurriculumProposal = {
   title: "Calculus",
@@ -466,203 +464,194 @@ test.each(["override", "gate"] as const)(
     expect(replay(chat).finished).toBe("overridden");
     await after.units.close();
   },
-  MANY_TURNS_MS,
 );
 
-test(
-  "after moving on before the gate, the closing card after it offers its steps on what the gate left not passed alone, and moving on from them finishes the unit",
-  async () => {
-    await makeCourse({ limitsAt: LATELY });
-    const setup = setUp();
-    const chat = await open(setup);
-    await step(chat.ready(), chat);
-    await step(chat.override(), chat);
-    await step(chat.finishUnit(), chat);
-    await step(chat.startAssessment(), chat);
-    await answer(chat, "B");
-    await step(chat.anotherQuestion(), chat);
-    await answer(chat, "A");
+test("after moving on before the gate, the closing card after it offers its steps on what the gate left not passed alone, and moving on from them finishes the unit", async () => {
+  await makeCourse({ limitsAt: LATELY });
+  const setup = setUp();
+  const chat = await open(setup);
+  await step(chat.ready(), chat);
+  await step(chat.override(), chat);
+  await step(chat.finishUnit(), chat);
+  await step(chat.startAssessment(), chat);
+  await answer(chat, "B");
+  await step(chat.anotherQuestion(), chat);
+  await answer(chat, "A");
 
-    expect(since(chat, "unit_end")).toEqual([
-      {
-        type: "unit_end",
-        passed: false,
-        objectives: { slope: "slipping", "power-rule": "overridden" },
-        gate: { goOver: ["slope"], others: [] },
-      },
-    ]);
-    expect(
-      closingCard(PLANS.derivative as Plan, cardOf(replay(chat))),
-    ).toMatchObject({
-      verdict: { text: "Two not passed" },
-      steps: true,
-      again: "Go over it again",
-    });
-    await step(Promise.resolve(chat.say("What now?")), chat);
-    expect(sent(setup.backend).at(-1)).toContain(
-      'Message from the learner. The gate is over: "slope" slipping (passed before, now missed, so it must pass again). ' +
-        "The learner now sees the unit's closing card, with each objective's status as it stands. Do not go back over the gate unless the learner asks. " +
-        "The segment is closed, and it was the unit's last. The unit's gate left \"slope\" not passed. The learner chooses whether to go over them again or to move on without them.",
-    );
+  expect(since(chat, "unit_end")).toEqual([
+    {
+      type: "unit_end",
+      passed: false,
+      objectives: { slope: "slipping", "power-rule": "overridden" },
+      gate: { goOver: ["slope"], others: [] },
+    },
+  ]);
+  expect(
+    closingCard(PLANS.derivative as Plan, cardOf(replay(chat))),
+  ).toMatchObject({
+    verdict: { text: "Two not passed" },
+    steps: true,
+    again: "Go over it again",
+  });
+  await step(Promise.resolve(chat.say("What now?")), chat);
+  expect(sent(setup.backend).at(-1)).toContain(
+    'Message from the learner. The gate is over: "slope" slipping (passed before, now missed, so it must pass again). ' +
+      "The learner now sees the unit's closing card, with each objective's status as it stands. Do not go back over the gate unless the learner asks. " +
+      "The segment is closed, and it was the unit's last. The unit's gate left \"slope\" not passed. The learner chooses whether to go over them again or to move on without them.",
+  );
 
-    await step(chat.finishUnit(), chat);
+  await step(chat.finishUnit(), chat);
 
-    expect((await reload().readEvidence(COURSE)).at(-1)).toEqual({
-      kind: "override",
-      recordedAt: NOW,
-      objectives: ["slope"],
-      moveOnId: expect.any(String),
-    });
-    expect(chat.events().slice(-2)).toEqual([
-      {
-        type: "unit_status",
-        unit: "overridden",
-        objectives: { slope: "overridden", "power-rule": "overridden" },
-      },
-      { type: "unit_closed", status: "overridden" },
-    ]);
-    expect(await positionOf()).toBeUndefined();
-    expect(cardOf(replay(chat)).stepTaken).toBe("moved-on");
-  },
-  MANY_TURNS_MS,
-);
+  expect((await reload().readEvidence(COURSE)).at(-1)).toEqual({
+    kind: "override",
+    recordedAt: NOW,
+    objectives: ["slope"],
+    moveOnId: expect.any(String),
+  });
+  expect(chat.events().slice(-2)).toEqual([
+    {
+      type: "unit_status",
+      unit: "overridden",
+      objectives: { slope: "overridden", "power-rule": "overridden" },
+    },
+    { type: "unit_closed", status: "overridden" },
+  ]);
+  expect(await positionOf()).toBeUndefined();
+  expect(cardOf(replay(chat)).stepTaken).toBe("moved-on");
+});
 
 // --- The gate and its end ----------------------------------------------------
 
-test(
-  "a gate answered right retains its objectives, and the closing card after it lists the other units' objectives it asked and finishes the unit",
-  async () => {
-    await makeCourse();
-    const setup = setUp();
-    const chat = await open(setup);
-    await toGate(chat);
+test("a gate answered right retains its objectives, and the closing card after it lists the other units' objectives it asked and finishes the unit", async () => {
+  await makeCourse();
+  const setup = setUp();
+  const chat = await open(setup);
+  await toGate(chat);
 
-    await step(chat.startAssessment(), chat);
+  await step(chat.startAssessment(), chat);
 
-    expect(sent(setup.backend)[2]).toBe(
-      '[Unit 2 of 2, "The derivative"; segment 2 of 2, "Powers", on "power-rule". Phase: closed. ' +
-        "The unit's gate is under way, and the unit ends after it. " +
-        "The learner started the unit's gate: 4 questions, 2 on this unit's objectives and 2 on other units', one on each objective they passed, and one more after a miss. " +
-        'In this gate, question 1, "slope": not asked yet; question 2, "power-rule": not asked yet; question 3, "limit-value": not asked yet; question 4, "one-sided": not asked yet. ' +
-        'Allowed now: a lead-in of one sentence, then a question on "slope" with ask_question, unlike the ones asked before. ' +
-        '"slope" is an objective of this unit: Read a derivative as a tangent\'s slope. ' +
-        "No teaching in a gate: before the question, no reminder of the idea, rule or method, and no example. Posting ends your turn.\n" +
-        "Questions asked before:\n" +
-        'Asked on "slope" before, the oldest first:\n' +
-        '- "Seeded question on slope."]',
-    );
-    expect(lastQuestion(chat)).toMatchObject({
-      number: 1,
-      assessment: { of: 4 },
-    });
-    const during = replay(chat);
-    expect(
-      whereInUnit(
-        PLANS.derivative as Plan,
-        during.position,
-        during.finished,
-        during.assessment,
-      ),
-    ).toEqual({
-      label: "Unit gate",
-      ticks: ["past", "past"],
-    });
-    const marker = during.items.findLast((i) => i.kind === "assessment");
-    if (marker?.kind !== "assessment") throw new Error("No marker.");
-    expect(assessmentMarker(marker)).toEqual({
-      name: "Unit gate",
-      says: "Four questions: two on this unit and two from unit 1. Nothing is taught first; each answer is recorded.",
-    });
+  expect(sent(setup.backend)[2]).toBe(
+    '[Unit 2 of 2, "The derivative"; segment 2 of 2, "Powers", on "power-rule". Phase: closed. ' +
+      "The unit's gate is under way, and the unit ends after it. " +
+      "The learner started the unit's gate: 4 questions, 2 on this unit's objectives and 2 on other units', one on each objective they passed, and one more after a miss. " +
+      'In this gate, question 1, "slope": not asked yet; question 2, "power-rule": not asked yet; question 3, "limit-value": not asked yet; question 4, "one-sided": not asked yet. ' +
+      'Allowed now: a lead-in of one sentence, then a question on "slope" with ask_question, unlike the ones asked before. ' +
+      '"slope" is an objective of this unit: Read a derivative as a tangent\'s slope. ' +
+      "No teaching in a gate: before the question, no reminder of the idea, rule or method, and no example. Posting ends your turn.\n" +
+      "Questions asked before:\n" +
+      'Asked on "slope" before, the oldest first:\n' +
+      '- "Seeded question on slope."]',
+  );
+  expect(lastQuestion(chat)).toMatchObject({
+    number: 1,
+    assessment: { of: 4 },
+  });
+  const during = replay(chat);
+  expect(
+    whereInUnit(
+      PLANS.derivative as Plan,
+      during.position,
+      during.finished,
+      during.assessment,
+    ),
+  ).toEqual({
+    label: "Unit gate",
+    ticks: ["past", "past"],
+  });
+  const marker = during.items.findLast((i) => i.kind === "assessment");
+  if (marker?.kind !== "assessment") throw new Error("No marker.");
+  expect(assessmentMarker(marker)).toEqual({
+    name: "Unit gate",
+    says: "Four questions: two on this unit and two from unit 1. Nothing is taught first; each answer is recorded.",
+  });
 
-    await answer(chat, "A");
-    await answer(chat, "A");
-    expect(lastQuestion(chat)).toMatchObject({
-      number: 3,
-      assessment: { of: 4, from: LIMITS },
-    });
-    await answer(chat, "A");
-    await answer(chat, "A");
+  await answer(chat, "A");
+  await answer(chat, "A");
+  expect(lastQuestion(chat)).toMatchObject({
+    number: 3,
+    assessment: { of: 4, from: LIMITS },
+  });
+  await answer(chat, "A");
+  await answer(chat, "A");
 
-    expect(since(chat, "assessment_end")).toEqual([
-      {
-        type: "assessment_end",
-        mode: "gate",
-        skipped: false,
-        statuses: {
-          slope: "retained",
-          "power-rule": "retained",
-          "limit-value": "retained",
-          "one-sided": "retained",
-        },
+  expect(since(chat, "assessment_end")).toEqual([
+    {
+      type: "assessment_end",
+      mode: "gate",
+      skipped: false,
+      statuses: {
+        slope: "retained",
+        "power-rule": "retained",
+        "limit-value": "retained",
+        "one-sided": "retained",
       },
-      {
-        type: "unit_end",
-        passed: true,
-        objectives: { slope: "retained", "power-rule": "retained" },
-        gate: {
-          goOver: [],
-          others: [
-            {
-              objective: "limit-value",
-              statement: "Find a limit's value from a graph or a table.",
-              unit: LIMITS,
-              status: "retained",
-            },
-            {
-              objective: "one-sided",
-              statement: "Tell a one-sided limit from a two-sided one.",
-              unit: LIMITS,
-              status: "retained",
-            },
-          ],
-        },
+    },
+    {
+      type: "unit_end",
+      passed: true,
+      objectives: { slope: "retained", "power-rule": "retained" },
+      gate: {
+        goOver: [],
+        others: [
+          {
+            objective: "limit-value",
+            statement: "Find a limit's value from a graph or a table.",
+            unit: LIMITS,
+            status: "retained",
+          },
+          {
+            objective: "one-sided",
+            statement: "Tell a one-sided limit from a two-sided one.",
+            unit: LIMITS,
+            status: "retained",
+          },
+        ],
       },
-      {
-        type: "unit_status",
-        unit: "passed",
-        objectives: { slope: "retained", "power-rule": "retained" },
-      },
-      { type: "unit_closed", status: "passed" },
-    ]);
-    expect(await positionOf()).toBeUndefined();
-    const evidence = await reload().readEvidence(COURSE);
-    expect(
-      evidence
-        .slice(4)
-        .map((e) => (e.kind === "answer" ? [e.objective, e.assessment] : e)),
-    ).toEqual([
-      ["slope", { mode: "gate", unit: "derivative" }],
-      ["power-rule", { mode: "gate", unit: "derivative" }],
-      ["limit-value", { mode: "gate", unit: "derivative" }],
-      ["one-sided", { mode: "gate", unit: "derivative" }],
-    ]);
-    // The last feedback ends the gate, and nothing more is sent.
-    expect(sent(setup.backend)).toHaveLength(10);
+    },
+    {
+      type: "unit_status",
+      unit: "passed",
+      objectives: { slope: "retained", "power-rule": "retained" },
+    },
+    { type: "unit_closed", status: "passed" },
+  ]);
+  expect(await positionOf()).toBeUndefined();
+  const evidence = await reload().readEvidence(COURSE);
+  expect(
+    evidence
+      .slice(4)
+      .map((e) => (e.kind === "answer" ? [e.objective, e.assessment] : e)),
+  ).toEqual([
+    ["slope", { mode: "gate", unit: "derivative" }],
+    ["power-rule", { mode: "gate", unit: "derivative" }],
+    ["limit-value", { mode: "gate", unit: "derivative" }],
+    ["one-sided", { mode: "gate", unit: "derivative" }],
+  ]);
+  // The last feedback ends the gate, and nothing more is sent.
+  expect(sent(setup.backend)).toHaveLength(10);
 
-    const timeline = replay(chat);
-    const end = timeline.items.findLast((i) => i.kind === "assessment_end");
-    if (end?.kind !== "assessment_end") throw new Error("No end marker.");
-    expect(assessmentEndMarker(end)).toEqual({
-      name: "Gate over",
-      says: "All four retained.",
-    });
-    const card = closingCard(PLANS.derivative as Plan, cardOf(timeline));
-    expect(card).toMatchObject({
-      verdict: { text: "Passed" },
-      steps: false,
-      others: [
-        {
-          id: "limit-value",
-          word: { text: "Retained" },
-          why: "Unit 1: Limits",
-        },
-        { id: "one-sided", word: { text: "Retained" }, why: "Unit 1: Limits" },
-      ],
-    });
-    expect(nextStep(timeline)).toBeNull();
-  },
-  MANY_TURNS_MS,
-);
+  const timeline = replay(chat);
+  const end = timeline.items.findLast((i) => i.kind === "assessment_end");
+  if (end?.kind !== "assessment_end") throw new Error("No end marker.");
+  expect(assessmentEndMarker(end)).toEqual({
+    name: "Gate over",
+    says: "All four retained.",
+  });
+  const card = closingCard(PLANS.derivative as Plan, cardOf(timeline));
+  expect(card).toMatchObject({
+    verdict: { text: "Passed" },
+    steps: false,
+    others: [
+      {
+        id: "limit-value",
+        word: { text: "Retained" },
+        why: "Unit 1: Limits",
+      },
+      { id: "one-sided", word: { text: "Retained" }, why: "Unit 1: Limits" },
+    ],
+  });
+  expect(nextStep(timeline)).toBeNull();
+});
 
 test("skipping the gate on its card finishes the unit with what passed passed and nothing retained, and sends the tutor nothing", async () => {
   await makeCourse();
@@ -703,55 +692,51 @@ test("skipping the gate on its card finishes the unit with what passed passed an
   );
 });
 
-test(
-  "a gate skipped with another unit's question open lists it at its unchanged status, including on a reopened closing card",
-  async () => {
-    const root = await makeCourse();
-    // The other unit's objective was already slipping before this gate.
-    await root.appendEvidence(COURSE, {
-      ...correct("limit-value", YESTERDAY),
-      answer: {
-        kind: "choice",
-        questionId: "old-limit-miss",
-        choice: "B",
-        confidence: "90",
-      },
-      verdict: "incorrect",
-      assessment: { mode: "review", unit: "derivative" },
-    });
-    const before = setUp();
-    const first = await open(before);
-    await toGate(first);
-    await step(first.startAssessment(), first);
-    await answer(first, "B"); // Miss slope, then get its re-ask right.
-    await step(first.anotherQuestion(), first);
-    await answer(first, "A");
-    await answer(first, "A"); // Power rule.
-    expect(lastQuestion(first).assessment?.from).toEqual(LIMITS);
-    const evidence = await reload().readEvidence(COURSE);
-    const expected = [
-      expect.objectContaining({
-        objective: "limit-value",
-        status: "slipping",
-        unanswered: true,
-      }),
-    ];
+test("a gate skipped with another unit's question open lists it at its unchanged status, including on a reopened closing card", async () => {
+  const root = await makeCourse();
+  // The other unit's objective was already slipping before this gate.
+  await root.appendEvidence(COURSE, {
+    ...correct("limit-value", YESTERDAY),
+    answer: {
+      kind: "choice",
+      questionId: "old-limit-miss",
+      choice: "B",
+      confidence: "90",
+    },
+    verdict: "incorrect",
+    assessment: { mode: "review", unit: "derivative" },
+  });
+  const before = setUp();
+  const first = await open(before);
+  await toGate(first);
+  await step(first.startAssessment(), first);
+  await answer(first, "B"); // Miss slope, then get its re-ask right.
+  await step(first.anotherQuestion(), first);
+  await answer(first, "A");
+  await answer(first, "A"); // Power rule.
+  expect(lastQuestion(first).assessment?.from).toEqual(LIMITS);
+  const evidence = await reload().readEvidence(COURSE);
+  const expected = [
+    expect.objectContaining({
+      objective: "limit-value",
+      status: "slipping",
+      unanswered: true,
+    }),
+  ];
 
-    await step(first.skipAssessment(), first);
-    expect(cardOf(replay(first)).gate?.others).toEqual(expected);
-    expect(
-      closingCard(PLANS.derivative as Plan, cardOf(replay(first))).others,
-    ).toMatchObject([{ why: "Unit 1: Limits. Not answered in the gate." }]);
-    expect(await reload().readEvidence(COURSE)).toEqual(evidence);
-    await before.units.close();
+  await step(first.skipAssessment(), first);
+  expect(cardOf(replay(first)).gate?.others).toEqual(expected);
+  expect(
+    closingCard(PLANS.derivative as Plan, cardOf(replay(first))).others,
+  ).toMatchObject([{ why: "Unit 1: Limits. Not answered in the gate." }]);
+  expect(await reload().readEvidence(COURSE)).toEqual(evidence);
+  await before.units.close();
 
-    const after = setUp();
-    const chat = await open(after);
-    expect(ofType(chat, "unit_end").at(-1)?.gate?.others).toEqual(expected);
-    await after.units.close();
-  },
-  MANY_TURNS_MS,
-);
+  const after = setUp();
+  const chat = await open(after);
+  expect(ofType(chat, "unit_end").at(-1)?.gate?.others).toEqual(expected);
+  await after.units.close();
+});
 
 test("a finished unit reopened without the gate's skip in the transcript does not offer the withdrawn question again", async () => {
   await makeCourse();
@@ -785,173 +770,165 @@ test("a finished unit reopened without the gate's skip in the transcript does no
   await after.units.close();
 });
 
-test(
-  "a miss on the unit's own objective: its detour and a second question, the closing card listing it with the two steps, kept across a restart, and going over it again closes the unit with no second gate",
-  async () => {
-    // Unit 1's objectives were answered within the hour: the gate asks the
-    // unit's own two alone.
-    await makeCourse({ limitsAt: LATELY });
-    const before = setUp();
-    const first = await open(before);
-    await toGate(first);
-    expect(ofType(first, "assessment")).toEqual([
-      { ...GATE_OFFERED, count: 2, own: 2, from: [] },
-    ]);
-    await step(first.startAssessment(), first);
+test("a miss on the unit's own objective: its detour and a second question, the closing card listing it with the two steps, kept across a restart, and going over it again closes the unit with no second gate", async () => {
+  // Unit 1's objectives were answered within the hour: the gate asks the
+  // unit's own two alone.
+  await makeCourse({ limitsAt: LATELY });
+  const before = setUp();
+  const first = await open(before);
+  await toGate(first);
+  expect(ofType(first, "assessment")).toEqual([
+    { ...GATE_OFFERED, count: 2, own: 2, from: [] },
+  ]);
+  await step(first.startAssessment(), first);
 
-    await answer(first, "B");
-    expect(sent(before.backend).at(-1)).toContain(
-      'The miss opens a detour, a pause in the gate: no question is posted until the learner presses "Ready for another question"',
-    );
-    expect(nextStep(replay(first))).toBe("assessment-detour");
-    expect(assessmentDetourStep(replay(first))).toEqual({
-      label: "Ready for another question",
-      skip: true,
-    });
-    await step(first.anotherQuestion(), first);
-    expect(lastQuestion(first)).toMatchObject({
-      number: 1,
-      assessment: { of: 2, second: true },
-    });
-    await answer(first, "A");
-    await answer(first, "A");
+  await answer(first, "B");
+  expect(sent(before.backend).at(-1)).toContain(
+    'The miss opens a detour, a pause in the gate: no question is posted until the learner presses "Ready for another question"',
+  );
+  expect(nextStep(replay(first))).toBe("assessment-detour");
+  expect(assessmentDetourStep(replay(first))).toEqual({
+    label: "Ready for another question",
+    skip: true,
+  });
+  await step(first.anotherQuestion(), first);
+  expect(lastQuestion(first)).toMatchObject({
+    number: 1,
+    assessment: { of: 2, second: true },
+  });
+  await answer(first, "A");
+  await answer(first, "A");
 
-    // Missed, then right once: slipping, which is not passed.
-    expect(since(first, "assessment_end")).toEqual([
-      {
-        type: "assessment_end",
-        mode: "gate",
-        skipped: false,
-        statuses: { slope: "slipping", "power-rule": "retained" },
-      },
-      {
-        type: "unit_end",
-        passed: false,
-        objectives: { slope: "slipping", "power-rule": "retained" },
-        gate: { goOver: ["slope"], others: [] },
-      },
-    ]);
-    expect(await positionOf()).toEqual({
-      segment: 1,
-      phase: "closed",
-      gated: true,
-    });
-    expect(
-      closingCard(PLANS.derivative as Plan, cardOf(replay(first))),
-    ).toMatchObject({
-      verdict: { text: "One not passed" },
-      steps: true,
-      again: "Go over it again",
-    });
-    await before.units.close();
+  // Missed, then right once: slipping, which is not passed.
+  expect(since(first, "assessment_end")).toEqual([
+    {
+      type: "assessment_end",
+      mode: "gate",
+      skipped: false,
+      statuses: { slope: "slipping", "power-rule": "retained" },
+    },
+    {
+      type: "unit_end",
+      passed: false,
+      objectives: { slope: "slipping", "power-rule": "retained" },
+      gate: { goOver: ["slope"], others: [] },
+    },
+  ]);
+  expect(await positionOf()).toEqual({
+    segment: 1,
+    phase: "closed",
+    gated: true,
+  });
+  expect(
+    closingCard(PLANS.derivative as Plan, cardOf(replay(first))),
+  ).toMatchObject({
+    verdict: { text: "One not passed" },
+    steps: true,
+    again: "Go over it again",
+  });
+  await before.units.close();
 
-    const after = setUp();
-    const chat = await open(after);
-    // The card is shown again, and no second gate offered.
-    expect(since(chat, "session").slice(3)).toEqual([
-      { type: "phase", segment: 1, phase: "closed" },
-      {
-        type: "unit_end",
-        passed: false,
-        objectives: { slope: "slipping", "power-rule": "retained" },
-        gate: { goOver: ["slope"], others: [] },
-      },
-    ]);
-    expect(sent(after.backend)).toEqual([]);
+  const after = setUp();
+  const chat = await open(after);
+  // The card is shown again, and no second gate offered.
+  expect(since(chat, "session").slice(3)).toEqual([
+    { type: "phase", segment: 1, phase: "closed" },
+    {
+      type: "unit_end",
+      passed: false,
+      objectives: { slope: "slipping", "power-rule": "retained" },
+      gate: { goOver: ["slope"], others: [] },
+    },
+  ]);
+  expect(sent(after.backend)).toEqual([]);
 
-    await step(chat.goOverAgain(), chat);
-    expect(sent(after.backend)[0]).toMatch(
-      /^\[Unit 2 of 2, "The derivative"; a segment after the plan's 2, going over "slope" again\. Phase: teach\./,
-    );
-    expect(await positionOf()).toEqual({
-      segment: 2,
-      phase: "discuss",
-      again: ["slope"],
-      gated: true,
-    });
-    await step(chat.ready(), chat);
-    // With the gate's right answer since the miss, one more passes it.
-    await answer(chat, "A");
+  await step(chat.goOverAgain(), chat);
+  expect(sent(after.backend)[0]).toMatch(
+    /^\[Unit 2 of 2, "The derivative"; a segment after the plan's 2, going over "slope" again\. Phase: teach\./,
+  );
+  expect(await positionOf()).toEqual({
+    segment: 2,
+    phase: "discuss",
+    again: ["slope"],
+    gated: true,
+  });
+  await step(chat.ready(), chat);
+  // With the gate's right answer since the miss, one more passes it.
+  await answer(chat, "A");
 
-    expect(since(chat, "unit_end")).toEqual([
-      {
-        type: "unit_end",
-        passed: true,
-        objectives: { slope: "retained", "power-rule": "retained" },
-        gate: { goOver: [], others: [] },
-      },
-      {
-        type: "unit_status",
-        unit: "passed",
-        objectives: { slope: "retained", "power-rule": "retained" },
-      },
-      { type: "unit_closed", status: "passed" },
-    ]);
-    expect(
-      ofType(chat, "assessment").filter((e) => e.stage === "offered"),
-    ).toHaveLength(1);
-    expect(await positionOf()).toBeUndefined();
-  },
-  MANY_TURNS_MS,
-);
-
-test(
-  "a miss on another unit's objective leaves it slipping and that unit finished, and the closing card lists it under the unit's own",
-  async () => {
-    await makeCourse();
-    const setup = setUp();
-    const limits = await open(setup, "limits");
-    const chat = await open(setup);
-    await toGate(chat);
-    await step(chat.startAssessment(), chat);
-
-    await answer(chat, "A");
-    await answer(chat, "A");
-    await answer(chat, "B"); // limit-value
-    await step(chat.anotherQuestion(), chat);
-    await answer(chat, "A");
-    await answer(chat, "A");
-
-    expect(since(chat, "unit_end")).toEqual([
-      {
-        type: "unit_end",
-        passed: true,
-        objectives: { slope: "retained", "power-rule": "retained" },
-        gate: {
-          goOver: [],
-          others: [
-            expect.objectContaining({
-              objective: "limit-value",
-              status: "slipping",
-            }),
-            expect.objectContaining({
-              objective: "one-sided",
-              status: "retained",
-            }),
-          ],
-        },
-      },
-      expect.objectContaining({ type: "unit_status", unit: "passed" }),
-      { type: "unit_closed", status: "passed" },
-    ]);
-    // Unit 1's open chat learned the answers: it stays finished.
-    expect(ofType(limits, "unit_status").at(-1)).toEqual({
+  expect(since(chat, "unit_end")).toEqual([
+    {
+      type: "unit_end",
+      passed: true,
+      objectives: { slope: "retained", "power-rule": "retained" },
+      gate: { goOver: [], others: [] },
+    },
+    {
       type: "unit_status",
       unit: "passed",
-      objectives: { "limit-value": "slipping", "one-sided": "retained" },
-    });
-    expect(
-      objectiveStatus(await reload().readEvidence(COURSE), "limit-value"),
-    ).toBe("slipping");
-    expect(
-      closingCard(PLANS.derivative as Plan, cardOf(replay(chat))).others[0],
-    ).toMatchObject({
-      word: { text: "Slipping" },
-      why: "Unit 1: Limits. Missed in the gate: review comes back to it first.",
-    });
-  },
-  MANY_TURNS_MS,
-);
+      objectives: { slope: "retained", "power-rule": "retained" },
+    },
+    { type: "unit_closed", status: "passed" },
+  ]);
+  expect(
+    ofType(chat, "assessment").filter((e) => e.stage === "offered"),
+  ).toHaveLength(1);
+  expect(await positionOf()).toBeUndefined();
+});
+
+test("a miss on another unit's objective leaves it slipping and that unit finished, and the closing card lists it under the unit's own", async () => {
+  await makeCourse();
+  const setup = setUp();
+  const limits = await open(setup, "limits");
+  const chat = await open(setup);
+  await toGate(chat);
+  await step(chat.startAssessment(), chat);
+
+  await answer(chat, "A");
+  await answer(chat, "A");
+  await answer(chat, "B"); // limit-value
+  await step(chat.anotherQuestion(), chat);
+  await answer(chat, "A");
+  await answer(chat, "A");
+
+  expect(since(chat, "unit_end")).toEqual([
+    {
+      type: "unit_end",
+      passed: true,
+      objectives: { slope: "retained", "power-rule": "retained" },
+      gate: {
+        goOver: [],
+        others: [
+          expect.objectContaining({
+            objective: "limit-value",
+            status: "slipping",
+          }),
+          expect.objectContaining({
+            objective: "one-sided",
+            status: "retained",
+          }),
+        ],
+      },
+    },
+    expect.objectContaining({ type: "unit_status", unit: "passed" }),
+    { type: "unit_closed", status: "passed" },
+  ]);
+  // Unit 1's open chat learned the answers: it stays finished.
+  expect(ofType(limits, "unit_status").at(-1)).toEqual({
+    type: "unit_status",
+    unit: "passed",
+    objectives: { "limit-value": "slipping", "one-sided": "retained" },
+  });
+  expect(
+    objectiveStatus(await reload().readEvidence(COURSE), "limit-value"),
+  ).toBe("slipping");
+  expect(
+    closingCard(PLANS.derivative as Plan, cardOf(replay(chat))).others[0],
+  ).toMatchObject({
+    word: { text: "Slipping" },
+    why: "Unit 1: Limits. Missed in the gate: review comes back to it first.",
+  });
+});
 
 // --- Restarts ----------------------------------------------------------------
 

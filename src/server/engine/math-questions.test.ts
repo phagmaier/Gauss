@@ -39,9 +39,6 @@ import { type Sandbox, startSandbox } from "./sandbox.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 
-/** Room for two or three runs of the check, each a second or so. */
-const CHECKED_MS = 20_000;
-
 let sandbox: Extract<Sandbox, { available: true }>;
 let check: MathCheck;
 beforeAll(async () => {
@@ -207,155 +204,143 @@ async function known(root: ReturnType<typeof openDataRoot>) {
   return { status: objective?.status, entry, line: answerLine(entry) };
 }
 
-test(
-  "an answer equal to the expected expression is graded correct by the check alone, and the tutor and 'What I know' have the expression",
-  async () => {
-    const { backend, root, chat } = await setUp([TEACH, ask(MATH), FEEDBACK]);
-    expect(chat.events()).toContainEqual({
-      type: "question",
+test("an answer equal to the expected expression is graded correct by the check alone, and the tutor and 'What I know' have the expression", async () => {
+  const { backend, root, chat } = await setUp([TEACH, ask(MATH), FEEDBACK]);
+  expect(chat.events()).toContainEqual({
+    type: "question",
+    question: {
+      kind: "math",
+      id: openQuestionId(chat),
+      number: 1,
+      prompt: PROMPT,
+    },
+  });
+
+  await answerWith(chat, "5(2x+1)^4 \\cdot 2", {
+    reasoning: "Power rule, times the inside's 2.",
+  });
+
+  const questionId = openQuestionId(chat);
+  const answer = {
+    kind: "math",
+    questionId,
+    expression: "5(2x+1)^4 \\cdot 2",
+    confidence: "75",
+    reasoning: "Power rule, times the inside's 2.",
+  };
+  expect(chat.events()).toContainEqual({
+    type: "grading",
+    questionId,
+    answer,
+  });
+  expect(chat.events()).toContainEqual({
+    type: "graded",
+    questionId,
+    verdict: "correct",
+    answer,
+    expected: EXPECTED,
+    assisted: false,
+  });
+  expect(await root.readEvidence(COURSE)).toEqual([
+    {
+      kind: "answer",
+      recordedAt: NOW,
+      objective: "chain-power",
       question: {
         kind: "math",
-        id: openQuestionId(chat),
-        number: 1,
         prompt: PROMPT,
+        expected: EXPECTED,
+        mathGrading: "symbolic",
       },
-    });
-
-    await answerWith(chat, "5(2x+1)^4 \\cdot 2", {
-      reasoning: "Power rule, times the inside's 2.",
-    });
-
-    const questionId = openQuestionId(chat);
-    const answer = {
-      kind: "math",
-      questionId,
-      expression: "5(2x+1)^4 \\cdot 2",
-      confidence: "75",
-      reasoning: "Power rule, times the inside's 2.",
-    };
-    expect(chat.events()).toContainEqual({
-      type: "grading",
-      questionId,
       answer,
-    });
-    expect(chat.events()).toContainEqual({
+      assisted: false,
+      verdict: "correct",
+    },
+  ]);
+  // No model graded it.
+  expect(backend.oneShots).toEqual([]);
+  expect(answerTurn(backend)).toContain(
+    "The learner's answer, at 75% confidence: 5(2x+1)^4 \\cdot 2\n" +
+      "Their reasoning: Power rule, times the inside's 2.\n" +
+      "The symbolic check found it equal to the expected answer, 10(2x+1)^4: correct.",
+  );
+
+  // A correct answer below 90% does not pass alone; the expected answer
+  // is shown with the question, but not as a correction.
+  const { status, entry, line } = await known(root);
+  expect(status).toBe("attempted");
+  expect(entry.question).toEqual({
+    kind: "math",
+    prompt: PROMPT,
+    expected: EXPECTED,
+    mathGrading: "symbolic",
+  });
+  expect(line.expected).toBeUndefined();
+  expect(line.gradedBy).toBeUndefined();
+});
+
+test("an answer not equal to it is a miss that opens a detour, with the expected answer shown on the card and in 'What I know'", async () => {
+  const { backend, root, chat } = await setUp([
+    TEACH,
+    ask(MATH),
+    [{ text: "The inside contributes a factor of 2." }],
+  ]);
+
+  await answerWith(chat, "5(2x+1)^4");
+
+  const questionId = openQuestionId(chat);
+  expect(chat.events()).toContainEqual(
+    expect.objectContaining({
       type: "graded",
       questionId,
-      verdict: "correct",
-      answer,
+      verdict: "incorrect",
       expected: EXPECTED,
-      assisted: false,
-    });
-    expect(await root.readEvidence(COURSE)).toEqual([
-      {
-        kind: "answer",
-        recordedAt: NOW,
-        objective: "chain-power",
-        question: {
-          kind: "math",
-          prompt: PROMPT,
-          expected: EXPECTED,
-          mathGrading: "symbolic",
-        },
-        answer,
-        assisted: false,
-        verdict: "correct",
-      },
-    ]);
-    // No model graded it.
-    expect(backend.oneShots).toEqual([]);
-    expect(answerTurn(backend)).toContain(
-      "The learner's answer, at 75% confidence: 5(2x+1)^4 \\cdot 2\n" +
-        "Their reasoning: Power rule, times the inside's 2.\n" +
-        "The symbolic check found it equal to the expected answer, 10(2x+1)^4: correct.",
-    );
+    }),
+  );
+  expect(chat.events()).toContainEqual({
+    type: "detour",
+    questionId,
+    number: 1,
+  });
+  const [entry] = await root.readEvidence(COURSE);
+  expect(entry).toMatchObject({ verdict: "incorrect" });
+  expect(entry).not.toHaveProperty("flaw");
+  expect(entry).not.toHaveProperty("unsettled");
+  expect(backend.oneShots).toEqual([]);
+  const turn = answerTurn(backend);
+  expect(turn).toContain(
+    "The symbolic check found it not equal to the expected answer, 10(2x+1)^4: incorrect.",
+  );
+  expect(turn).toContain("The miss opens a detour");
+  expect(turn).toContain(
+    "from the answer they gave, or, if that does not show it",
+  );
 
-    // A correct answer below 90% does not pass alone; the expected answer
-    // is shown with the question, but not as a correction.
-    const { status, entry, line } = await known(root);
-    expect(status).toBe("attempted");
-    expect(entry.question).toEqual({
-      kind: "math",
-      prompt: PROMPT,
-      expected: EXPECTED,
-      mathGrading: "symbolic",
-    });
-    expect(line.expected).toBeUndefined();
-    expect(line.gradedBy).toBeUndefined();
-  },
-  CHECKED_MS,
-);
+  const { status, line } = await known(root);
+  expect(status).toBe("attempted");
+  expect(line.verdict.text).toBe("Not quite");
+  expect(line.expected).toBe(EXPECTED);
+});
 
-test(
-  "an answer not equal to it is a miss that opens a detour, with the expected answer shown on the card and in 'What I know'",
-  async () => {
-    const { backend, root, chat } = await setUp([
-      TEACH,
-      ask(MATH),
-      [{ text: "The inside contributes a factor of 2." }],
-    ]);
+test("an expected expression the check cannot read is refused when posted, with its reason, and the tutor posts another in the same turn", async () => {
+  const unreadable = { ...MATH, expected: "\\frac{dh}{dx} = 10(2x+1)^4" };
+  const { backend, chat } = await setUp([
+    TEACH,
+    [
+      { call: "ask_question", input: unreadable },
+      { call: "ask_question", input: MATH },
+    ],
+  ]);
 
-    await answerWith(chat, "5(2x+1)^4");
-
-    const questionId = openQuestionId(chat);
-    expect(chat.events()).toContainEqual(
-      expect.objectContaining({
-        type: "graded",
-        questionId,
-        verdict: "incorrect",
-        expected: EXPECTED,
-      }),
-    );
-    expect(chat.events()).toContainEqual({
-      type: "detour",
-      questionId,
-      number: 1,
-    });
-    const [entry] = await root.readEvidence(COURSE);
-    expect(entry).toMatchObject({ verdict: "incorrect" });
-    expect(entry).not.toHaveProperty("flaw");
-    expect(entry).not.toHaveProperty("unsettled");
-    expect(backend.oneShots).toEqual([]);
-    const turn = answerTurn(backend);
-    expect(turn).toContain(
-      "The symbolic check found it not equal to the expected answer, 10(2x+1)^4: incorrect.",
-    );
-    expect(turn).toContain("The miss opens a detour");
-    expect(turn).toContain(
-      "from the answer they gave, or, if that does not show it",
-    );
-
-    const { status, line } = await known(root);
-    expect(status).toBe("attempted");
-    expect(line.verdict.text).toBe("Not quite");
-    expect(line.expected).toBe(EXPECTED);
-  },
-  CHECKED_MS,
-);
-
-test(
-  "an expected expression the check cannot read is refused when posted, with its reason, and the tutor posts another in the same turn",
-  async () => {
-    const unreadable = { ...MATH, expected: "\\frac{dh}{dx} = 10(2x+1)^4" };
-    const { backend, chat } = await setUp([
-      TEACH,
-      [
-        { call: "ask_question", input: unreadable },
-        { call: "ask_question", input: MATH },
-      ],
-    ]);
-
-    const [refused, posted] = backend.calls;
-    expect(refused?.result.status).toBe("refused");
-    expect(refused?.result.text).toContain(
-      "The symbolic check cannot read the expected answer: derivative notation is not understood: give the derivative itself.",
-    );
-    expect(posted?.result).toMatchObject({ status: "done", endTurn: true });
-    const questions = chat.events().filter((e) => e.type === "question");
-    expect(questions).toHaveLength(1);
-  },
-  CHECKED_MS,
-);
+  const [refused, posted] = backend.calls;
+  expect(refused?.result.status).toBe("refused");
+  expect(refused?.result.text).toContain(
+    "The symbolic check cannot read the expected answer: derivative notation is not understood: give the derivative itself.",
+  );
+  expect(posted?.result).toMatchObject({ status: "done", endTurn: true });
+  const questions = chat.events().filter((e) => e.type === "question");
+  expect(questions).toHaveLength(1);
+});
 
 test("Stop during held math preflight neither stores nor posts the question", async () => {
   const reading = Promise.withResolvers<string>();
@@ -388,69 +373,65 @@ test("Stop during held math preflight neither stores nor posts the question", as
   await units.close();
 });
 
-test(
-  "an answer the check cannot read goes to the grader with a rubric made from the expression, and the evidence keeps why and the flaw",
-  async () => {
-    const { backend, root, chat } = await setUp(
-      [TEACH, ask(MATH), [{ text: "Detour." }]],
-      {
-        replies: [
-          {
-            output: {
-              verdict: "incorrect",
-              flaw: "The factor of 2 from the inside is missing.",
-            },
+test("an answer the check cannot read goes to the grader with a rubric made from the expression, and the evidence keeps why and the flaw", async () => {
+  const { backend, root, chat } = await setUp(
+    [TEACH, ask(MATH), [{ text: "Detour." }]],
+    {
+      replies: [
+        {
+          output: {
+            verdict: "incorrect",
+            flaw: "The factor of 2 from the inside is missing.",
           },
-        ],
-      },
-    );
+        },
+      ],
+    },
+  );
 
-    await answerWith(chat, "5(2x+1)^4 \\times \\oops");
+  await answerWith(chat, "5(2x+1)^4 \\times \\oops");
 
-    // The grader saw the question, the rubric made from the expression and
-    // the answer, and nothing else.
-    const [request] = backend.oneShots;
-    expect(request?.prompt).toContain(`<question>\n${PROMPT}\n</question>`);
-    expect(request?.prompt).toContain(
-      "Correct if the answer is mathematically equal to the expected answer, $10(2x+1)^4$, in any form the question allows",
-    );
-    expect(request?.prompt).toContain(
-      "<answer>\n5(2x+1)^4 \\times \\oops\n</answer>",
-    );
+  // The grader saw the question, the rubric made from the expression and
+  // the answer, and nothing else.
+  const [request] = backend.oneShots;
+  expect(request?.prompt).toContain(`<question>\n${PROMPT}\n</question>`);
+  expect(request?.prompt).toContain(
+    "Correct if the answer is mathematically equal to the expected answer, $10(2x+1)^4$, in any form the question allows",
+  );
+  expect(request?.prompt).toContain(
+    "<answer>\n5(2x+1)^4 \\times \\oops\n</answer>",
+  );
 
-    const unsettled = {
-      result: "unparsable",
-      reason: "\\oops is not understood",
-    };
-    const [entry] = await root.readEvidence(COURSE);
-    expect(entry).toMatchObject({
+  const unsettled = {
+    result: "unparsable",
+    reason: "\\oops is not understood",
+  };
+  const [entry] = await root.readEvidence(COURSE);
+  expect(entry).toMatchObject({
+    verdict: "incorrect",
+    flaw: "The factor of 2 from the inside is missing.",
+    unsettled,
+  });
+  expect(chat.events()).toContainEqual(
+    expect.objectContaining({
+      type: "graded",
       verdict: "incorrect",
-      flaw: "The factor of 2 from the inside is missing.",
+      expected: EXPECTED,
       unsettled,
-    });
-    expect(chat.events()).toContainEqual(
-      expect.objectContaining({
-        type: "graded",
-        verdict: "incorrect",
-        expected: EXPECTED,
-        unsettled,
-        flaw: "The factor of 2 from the inside is missing.",
-      }),
-    );
-    expect(answerTurn(backend)).toContain(
-      "The symbolic check could not read it (\\oops is not understood), so the grader, " +
-        "which saw only the question, the expected answer, 10(2x+1)^4, and this answer, " +
-        "graded it incorrect. The flaw it found: The factor of 2 from the inside is missing.",
-    );
+      flaw: "The factor of 2 from the inside is missing.",
+    }),
+  );
+  expect(answerTurn(backend)).toContain(
+    "The symbolic check could not read it (\\oops is not understood), so the grader, " +
+      "which saw only the question, the expected answer, 10(2x+1)^4, and this answer, " +
+      "graded it incorrect. The flaw it found: The factor of 2 from the inside is missing.",
+  );
 
-    const { line } = await known(root);
-    expect(line.expected).toBe(EXPECTED);
-    expect(line.gradedBy).toBe(
-      "The grader, since the symbolic check could not read the answer (\\oops is not understood).",
-    );
-  },
-  CHECKED_MS,
-);
+  const { line } = await known(root);
+  expect(line.expected).toBe(EXPECTED);
+  expect(line.gradedBy).toBe(
+    "The grader, since the symbolic check could not read the answer (\\oops is not understood).",
+  );
+});
 
 test.each([
   {
@@ -539,54 +520,50 @@ test("with no symbolic check, a symbolic math question is refused when posted", 
   );
 });
 
-test(
-  "a math answer kept across a restart onto a server with no symbolic check is graded by the grader, not left waiting",
-  async () => {
-    const first = await setUp([TEACH, ask(MATH)]);
-    const questionId = openQuestionId(first.chat);
-    await first.units.close();
-    // The server stopped while the answer was being graded: it is kept on
-    // the open question (state.json).
-    const state = await first.root.readState(COURSE);
-    const position = state.units.chain;
-    if (position?.openQuestion === undefined) throw new Error("no question");
-    const kept = {
-      kind: "math",
-      questionId,
-      expression: "10(2x+1)^4",
-      confidence: "90",
-    } as const;
-    await writeFile(
-      join(dir, "courses", COURSE, "state.json"),
-      JSON.stringify({
-        units: {
-          chain: {
-            ...position,
-            openQuestion: { ...position.openQuestion, answer: kept },
-          },
+test("a math answer kept across a restart onto a server with no symbolic check is graded by the grader, not left waiting", async () => {
+  const first = await setUp([TEACH, ask(MATH)]);
+  const questionId = openQuestionId(first.chat);
+  await first.units.close();
+  // The server stopped while the answer was being graded: it is kept on
+  // the open question (state.json).
+  const state = await first.root.readState(COURSE);
+  const position = state.units.chain;
+  if (position?.openQuestion === undefined) throw new Error("no question");
+  const kept = {
+    kind: "math",
+    questionId,
+    expression: "10(2x+1)^4",
+    confidence: "90",
+  } as const;
+  await writeFile(
+    join(dir, "courses", COURSE, "state.json"),
+    JSON.stringify({
+      units: {
+        chain: {
+          ...position,
+          openQuestion: { ...position.openQuestion, answer: kept },
         },
-      }),
-    );
+      },
+    }),
+  );
 
-    const restarted = await start([FEEDBACK], {
-      mathCheck: null,
-      replies: [{ output: { verdict: "correct" } }],
-    });
+  const restarted = await start([FEEDBACK], {
+    mathCheck: null,
+    replies: [{ output: { verdict: "correct" } }],
+  });
 
-    expect(restarted.backend.oneShots).toHaveLength(1);
-    expect(await restarted.root.readEvidence(COURSE)).toEqual([
-      expect.objectContaining({
-        answer: kept,
-        verdict: "correct",
-        unsettled: {
-          result: "failed",
-          reason: "the symbolic check is not available",
-        },
-      }),
-    ]);
-    expect(
-      (await restarted.root.readState(COURSE)).units.chain?.openQuestion,
-    ).toBeUndefined();
-  },
-  CHECKED_MS,
-);
+  expect(restarted.backend.oneShots).toHaveLength(1);
+  expect(await restarted.root.readEvidence(COURSE)).toEqual([
+    expect.objectContaining({
+      answer: kept,
+      verdict: "correct",
+      unsettled: {
+        result: "failed",
+        reason: "the symbolic check is not available",
+      },
+    }),
+  ]);
+  expect(
+    (await restarted.root.readState(COURSE)).units.chain?.openQuestion,
+  ).toBeUndefined();
+});

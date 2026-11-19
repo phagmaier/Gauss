@@ -179,6 +179,10 @@ The brief states the result; this is who decided and why.
   not built.
 - **Biome excludes Markdown and `docs/`**: version 2.6 would rewrite every
   table in the documents.
+- **A lint warning fails the check** (`biome check --error-on-warnings`):
+  one false warning stood in every run for weeks, and a new one beside it
+  was easy to miss. A false warning gets a `biome-ignore` comment saying
+  why, as `styles.css` has for `.box-note p`.
 - **`@types/node`** is pinned to major 24, the runtime's.
 - **pnpm**: a release must be a day old to install; pnpm 12 fails an install
   whose dependency needs a build script until it is named under
@@ -1965,9 +1969,13 @@ the agent would build them and accepted so, but for the notes
 - **The fake backend matches the real one where tests depend on it**: a
   stopped one-shot fails whatever reply comes, as Claude's does; kept
   sessions are shared between backends, so a test's restart resumes.
-- **The scripted whole-unit test has a 15-second limit**: it writes and
-  flushes the record after every step of a unit, takes 2 to 5 seconds, and
-  timed out now and then at Vitest's 5-second default.
+- **Tests have a 20-second limit** (`vitest.config.ts`), not Vitest's
+  5-second default: tests that write and flush the record at every step,
+  or run the sandbox, take 1 to 3 seconds alone, and under the full
+  parallel run they went past 5 seconds now and then (in tasks 2.14,
+  3.16, 5.3, 5.4, 5.5a and 5.7), each time costing a rerun of the whole
+  check. The per-file limits they had are gone. Every record write calls
+  `sync()`, which may be what slows them under load; not measured.
 - **Real-model runs**: use a scratch data root, and store a unit's plan in
   the seed when planning is not what is checked, so no planning call is
   spent.

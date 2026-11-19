@@ -13,4 +13,5 @@ __pycache__/
 .env
 .env.*
 .playwright-mcp/
+.faults/
 .DS_Store

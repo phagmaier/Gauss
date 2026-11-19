@@ -56,12 +56,6 @@ const NOW = "2026-11-18T12:00:00.000Z";
 const YESTERDAY = "2026-11-17T12:00:00.000Z";
 const HOUR = 60 * 60 * 1000;
 const COURSE = "calculus";
-/**
- * The time a test with many turns may take: each writes and flushes the
- * record, and under a full parallel run these took over Vitest's 5-second
- * default now and then, while they take about 2.5 seconds alone.
- */
-const MANY_TURNS_MS = 15_000;
 
 const CURRICULUM: CurriculumProposal = {
   title: "Calculus",
@@ -683,94 +677,90 @@ test("each objective gets one question; a correct answer gets feedback alone, th
   expect(nextStep(timeline)).toBe("ready");
 });
 
-test(
-  "a miss opens a detour; once the learner ends it the objective is asked once more, and after that the review moves on whatever the answer, which unit 1's open chat learns",
-  async () => {
-    await makeCourse();
-    const setup = setUp();
-    const limits = await open(setup, "limits");
-    const chat = await open(setup);
-    await step(chat.startAssessment(), chat);
+test("a miss opens a detour; once the learner ends it the objective is asked once more, and after that the review moves on whatever the answer, which unit 1's open chat learns", async () => {
+  await makeCourse();
+  const setup = setUp();
+  const limits = await open(setup, "limits");
+  const chat = await open(setup);
+  await step(chat.startAssessment(), chat);
 
-    await answer(chat, "B");
-    expect(ofType(chat, "detour")).toHaveLength(1);
-    expect(sent(setup.backend)[1]).toContain(
-      'The miss opens a detour, a pause in the review: no question is posted until the learner presses "Ready for another question", and nothing said in it is graded.',
-    );
-    expect(sent(setup.backend)[1]).toContain(
-      'When they press it, one more question on "limit-value" follows. You may suggest pressing "Ready for another question" once the confusion seems cleared.]',
-    );
-    expect(nextStep(replay(chat))).toBe("assessment-detour");
-    expect(assessmentDetourStep(replay(chat))).toEqual({
-      label: "Ready for another question",
-      skip: true,
-    });
-    // Unit 1's chat, open with its own record, learns the miss.
-    expect(ofType(limits, "unit_status").at(-1)).toMatchObject({
-      objectives: { "limit-value": "slipping", "one-sided": "passed" },
-    });
+  await answer(chat, "B");
+  expect(ofType(chat, "detour")).toHaveLength(1);
+  expect(sent(setup.backend)[1]).toContain(
+    'The miss opens a detour, a pause in the review: no question is posted until the learner presses "Ready for another question", and nothing said in it is graded.',
+  );
+  expect(sent(setup.backend)[1]).toContain(
+    'When they press it, one more question on "limit-value" follows. You may suggest pressing "Ready for another question" once the confusion seems cleared.]',
+  );
+  expect(nextStep(replay(chat))).toBe("assessment-detour");
+  expect(assessmentDetourStep(replay(chat))).toEqual({
+    label: "Ready for another question",
+    skip: true,
+  });
+  // Unit 1's chat, open with its own record, learns the miss.
+  expect(ofType(limits, "unit_status").at(-1)).toMatchObject({
+    objectives: { "limit-value": "slipping", "one-sided": "passed" },
+  });
 
-    await step(chat.anotherQuestion(), chat);
-    expect(sent(setup.backend)[2]).toContain(
-      'The learner pressed "Ready for another question": the detour after question 1 is over, and the review goes on. ' +
-        'In this review, question 1, "limit-value": missed, so one more question follows the detour; question 2, "one-sided": not asked yet. ' +
-        'Allowed now: a lead-in of one sentence, then a question on "limit-value" with ask_question, unlike the ones asked before, and unlike the one just missed: ask about the same idea another way.',
-    );
-    expect(lastQuestion(chat)).toMatchObject({
-      number: 1,
-      assessment: { of: 2, second: true },
-    });
+  await step(chat.anotherQuestion(), chat);
+  expect(sent(setup.backend)[2]).toContain(
+    'The learner pressed "Ready for another question": the detour after question 1 is over, and the review goes on. ' +
+      'In this review, question 1, "limit-value": missed, so one more question follows the detour; question 2, "one-sided": not asked yet. ' +
+      'Allowed now: a lead-in of one sentence, then a question on "limit-value" with ask_question, unlike the ones asked before, and unlike the one just missed: ask about the same idea another way.',
+  );
+  expect(lastQuestion(chat)).toMatchObject({
+    number: 1,
+    assessment: { of: 2, second: true },
+  });
 
-    await answer(chat, "B");
-    expect(sent(setup.backend)[3]).toContain(
-      'Nothing more is asked on "limit-value": when they press it, the review moves on to its next objective.',
-    );
-    expect(assessmentDetourStep(replay(chat))).toEqual({
-      label: "Go on with the review",
-      skip: true,
-    });
+  await answer(chat, "B");
+  expect(sent(setup.backend)[3]).toContain(
+    'Nothing more is asked on "limit-value": when they press it, the review moves on to its next objective.',
+  );
+  expect(assessmentDetourStep(replay(chat))).toEqual({
+    label: "Go on with the review",
+    skip: true,
+  });
 
-    await step(chat.anotherQuestion(), chat);
-    expect(sent(setup.backend)[4]).toContain(
-      'The learner pressed "Go on with the review": the detour after question 1 is over, and the review goes on.',
-    );
-    expect(lastQuestion(chat)).toMatchObject({ number: 2 });
-    expect(lastQuestion(chat).assessment?.second).toBeUndefined();
+  await step(chat.anotherQuestion(), chat);
+  expect(sent(setup.backend)[4]).toContain(
+    'The learner pressed "Go on with the review": the detour after question 1 is over, and the review goes on.',
+  );
+  expect(lastQuestion(chat)).toMatchObject({ number: 2 });
+  expect(lastQuestion(chat).assessment?.second).toBeUndefined();
 
-    // The last objective: a miss, its second question, and a second miss.
-    await answer(chat, "B");
-    expect(assessmentDetourStep(replay(chat))).toEqual({
-      label: "Ready for another question",
-      skip: true,
-    });
-    await step(chat.anotherQuestion(), chat);
-    expect(lastQuestion(chat)).toMatchObject({
-      number: 2,
-      assessment: { of: 2, second: true },
-    });
-    await answer(chat, "B");
-    expect(sent(setup.backend).at(-1)).toContain(
-      'Nothing more is asked on "one-sided": when they press it, the review ends.',
-    );
-    expect(assessmentDetourStep(replay(chat))).toEqual({
-      label: "Finish the review",
-      skip: false,
-    });
-    await step(chat.anotherQuestion(), chat);
-    expect(ofType(chat, "assessment_end")).toEqual([
-      {
-        type: "assessment_end",
-        mode: "review",
-        skipped: false,
-        statuses: { "limit-value": "slipping", "one-sided": "slipping" },
-      },
-    ]);
-    // Two questions on each objective, and no third.
-    expect(ofType(chat, "question")).toHaveLength(4);
-    expect(nextStep(replay(chat))).toBe("ready");
-  },
-  MANY_TURNS_MS,
-);
+  // The last objective: a miss, its second question, and a second miss.
+  await answer(chat, "B");
+  expect(assessmentDetourStep(replay(chat))).toEqual({
+    label: "Ready for another question",
+    skip: true,
+  });
+  await step(chat.anotherQuestion(), chat);
+  expect(lastQuestion(chat)).toMatchObject({
+    number: 2,
+    assessment: { of: 2, second: true },
+  });
+  await answer(chat, "B");
+  expect(sent(setup.backend).at(-1)).toContain(
+    'Nothing more is asked on "one-sided": when they press it, the review ends.',
+  );
+  expect(assessmentDetourStep(replay(chat))).toEqual({
+    label: "Finish the review",
+    skip: false,
+  });
+  await step(chat.anotherQuestion(), chat);
+  expect(ofType(chat, "assessment_end")).toEqual([
+    {
+      type: "assessment_end",
+      mode: "review",
+      skipped: false,
+      statuses: { "limit-value": "slipping", "one-sided": "slipping" },
+    },
+  ]);
+  // Two questions on each objective, and no third.
+  expect(ofType(chat, "question")).toHaveLength(4);
+  expect(nextStep(replay(chat))).toBe("ready");
+});
 
 test("a dispute that overturns the first miss on another unit's objective counts in the review: no second question follows, and the review's thread and tutor are told", async () => {
   await makeCourse();
@@ -811,46 +801,42 @@ test("a dispute that overturns the first miss on another unit's objective counts
   expect(lastQuestion(chat).assessment?.second).toBeUndefined();
 });
 
-test(
-  "answers other units' chats record on its objectives while its card waits count in the review's end",
-  async () => {
-    await makeCourse();
-    const setup = setUp();
-    const derivative = await open(setup);
-    expect(ofType(derivative, "assessment")).toEqual([OFFERED]);
-    // Two hours on, unit 3 opens in a new sitting and gets a card on the same
-    // objectives, while unit 2's still waits.
-    clock = new Date(clock.getTime() + 2 * HOUR);
-    const integral = await open(setup, "integral");
-    expect(ofType(integral, "assessment")).toEqual([OFFERED]);
-    await step(integral.startAssessment(), integral);
-    await answer(integral, "B");
-    await step(integral.anotherQuestion(), integral);
-    await answer(integral, "B");
-    await step(integral.anotherQuestion(), integral);
-    await answer(integral, "A");
-    expect(ofType(integral, "assessment_end")).toHaveLength(1);
+test("answers other units' chats record on its objectives while its card waits count in the review's end", async () => {
+  await makeCourse();
+  const setup = setUp();
+  const derivative = await open(setup);
+  expect(ofType(derivative, "assessment")).toEqual([OFFERED]);
+  // Two hours on, unit 3 opens in a new sitting and gets a card on the same
+  // objectives, while unit 2's still waits.
+  clock = new Date(clock.getTime() + 2 * HOUR);
+  const integral = await open(setup, "integral");
+  expect(ofType(integral, "assessment")).toEqual([OFFERED]);
+  await step(integral.startAssessment(), integral);
+  await answer(integral, "B");
+  await step(integral.anotherQuestion(), integral);
+  await answer(integral, "B");
+  await step(integral.anotherQuestion(), integral);
+  await answer(integral, "A");
+  expect(ofType(integral, "assessment_end")).toHaveLength(1);
 
-    await step(derivative.startAssessment(), derivative);
-    await answer(derivative, "A");
-    await answer(derivative, "A");
+  await step(derivative.startAssessment(), derivative);
+  await answer(derivative, "A");
+  await answer(derivative, "A");
 
-    // "limit-value" was passed, then missed twice in unit 3's review, so it
-    // slipped; one correct answer since does not pass it again. "one-sided"
-    // was passed, and answered correctly in both reviews.
-    expect(ofType(derivative, "assessment_end")).toEqual([
-      {
-        type: "assessment_end",
-        mode: "review",
-        skipped: false,
-        statuses: { "limit-value": "slipping", "one-sided": "retained" },
-      },
-    ]);
-    const log = await reload().readEvidence(COURSE);
-    expect(objectiveStatus(log, "limit-value")).toBe("slipping");
-  },
-  MANY_TURNS_MS,
-);
+  // "limit-value" was passed, then missed twice in unit 3's review, so it
+  // slipped; one correct answer since does not pass it again. "one-sided"
+  // was passed, and answered correctly in both reviews.
+  expect(ofType(derivative, "assessment_end")).toEqual([
+    {
+      type: "assessment_end",
+      mode: "review",
+      skipped: false,
+      statuses: { "limit-value": "slipping", "one-sided": "retained" },
+    },
+  ]);
+  const log = await reload().readEvidence(COURSE);
+  expect(objectiveStatus(log, "limit-value")).toBe("slipping");
+});
 
 test("Skip review with a question open withdraws it with nothing recorded, and the tutor is told in its next header", async () => {
   await makeCourse();

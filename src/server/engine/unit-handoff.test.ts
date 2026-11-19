@@ -49,8 +49,6 @@ afterEach(async () => {
 const NOW = "2026-11-18T12:00:00.000Z";
 const YESTERDAY = "2026-11-17T12:00:00.000Z";
 const COURSE = "calculus";
-/** Many turns, each writing and flushing the record (unit-review.test.ts). */
-const MANY_TURNS_MS = 15_000;
 
 const CURRICULUM: CurriculumProposal = {
   title: "Calculus",
@@ -294,226 +292,209 @@ async function step(action: Promise<unknown>, chat: UnitChat) {
   await chat.settled();
 }
 
-test(
-  "the writer is called as each segment closes and as the unit finishes, each time on the stretch since the call before, and its note replaces the one before",
-  async () => {
-    await makeCourse();
-    const setup = setUp(
-      writer({
-        1: [
-          {
-            objective: "limit-value",
-            believed: "A limit is the value at the point.",
-            actually: "It is where the values head.",
-            detour: 1,
-          },
-        ],
-      }),
-    );
-    const chat = await open(setup);
-    expect(setup.handoffBackend.oneShots).toHaveLength(0);
+test("the writer is called as each segment closes and as the unit finishes, each time on the stretch since the call before, and its note replaces the one before", async () => {
+  await makeCourse();
+  const setup = setUp(
+    writer({
+      1: [
+        {
+          objective: "limit-value",
+          believed: "A limit is the value at the point.",
+          actually: "It is where the values head.",
+          detour: 1,
+        },
+      ],
+    }),
+  );
+  const chat = await open(setup);
+  expect(setup.handoffBackend.oneShots).toHaveLength(0);
 
-    // Segment 1: a message, a confident miss and its detour, then two correct answers.
-    await step(
-      Promise.resolve(chat.say("Is it the value at the point?")),
-      chat,
-    );
-    await step(chat.ready(), chat);
-    await answer(chat, "B", "90");
-    const missed = ofType(chat, "question").at(-1)?.question;
-    await step(Promise.resolve(chat.say("I thought it was f(2).")), chat);
-    await step(chat.anotherQuestion(), chat);
-    await answer(chat, "A", "75");
-    expect(setup.handoffBackend.oneShots).toHaveLength(0);
-    await answer(chat, "A", "75");
-    expect(ofType(chat, "phase").at(-1)).toMatchObject({ phase: "closed" });
+  // Segment 1: a message, a confident miss and its detour, then two correct answers.
+  await step(Promise.resolve(chat.say("Is it the value at the point?")), chat);
+  await step(chat.ready(), chat);
+  await answer(chat, "B", "90");
+  const missed = ofType(chat, "question").at(-1)?.question;
+  await step(Promise.resolve(chat.say("I thought it was f(2).")), chat);
+  await step(chat.anotherQuestion(), chat);
+  await answer(chat, "A", "75");
+  expect(setup.handoffBackend.oneShots).toHaveLength(0);
+  await answer(chat, "A", "75");
+  expect(ofType(chat, "phase").at(-1)).toMatchObject({ phase: "closed" });
 
-    const [first] = asked(setup.handoffBackend);
-    expect(setup.handoffBackend.oneShots).toHaveLength(1);
-    expect(setup.handoffBackend.oneShots[0]?.systemPrompt).toBe("Handoff.");
-    expect(first).toContain("The unit has no note yet: this is its first.");
-    const one = stretchOf(first);
-    expect(one).toContain('Tutor:\nTeaching "Values".');
-    expect(one).toContain("Learner:\nIs it the value at the point?");
-    expect(one).toContain(
-      "[The learner's answer to question 1:]\nB. Wrong\nGraded wrong, at 90% sure: a confident wrong answer.\nThe right choice: A. Right",
-    );
-    expect(one).toContain(
-      '[Detour 1 opens, after the miss on question 1, on "limit-value".]',
-    );
-    expect(one).toContain("Learner:\nI thought it was f(2).");
-    expect(one.endsWith('[Segment 1, "Values": closed.]')).toBe(true);
-    expect(await reload().readHandoff(COURSE, "limits")).toMatchObject({
-      note: "Note 1.",
-    });
-    expect(await reload().readMisconceptions(COURSE)).toEqual([
-      {
-        recordedAt: NOW,
-        unit: "limits",
-        objective: "limit-value",
-        believed: "A limit is the value at the point.",
-        actually: "It is where the values head.",
-        where: { in: "detour", questionId: missed?.id, number: 1 },
-      },
-    ]);
+  const [first] = asked(setup.handoffBackend);
+  expect(setup.handoffBackend.oneShots).toHaveLength(1);
+  expect(setup.handoffBackend.oneShots[0]?.systemPrompt).toBe("Handoff.");
+  expect(first).toContain("The unit has no note yet: this is its first.");
+  const one = stretchOf(first);
+  expect(one).toContain('Tutor:\nTeaching "Values".');
+  expect(one).toContain("Learner:\nIs it the value at the point?");
+  expect(one).toContain(
+    "[The learner's answer to question 1:]\nB. Wrong\nGraded wrong, at 90% sure: a confident wrong answer.\nThe right choice: A. Right",
+  );
+  expect(one).toContain(
+    '[Detour 1 opens, after the miss on question 1, on "limit-value".]',
+  );
+  expect(one).toContain("Learner:\nI thought it was f(2).");
+  expect(one.endsWith('[Segment 1, "Values": closed.]')).toBe(true);
+  expect(await reload().readHandoff(COURSE, "limits")).toMatchObject({
+    note: "Note 1.",
+  });
+  expect(await reload().readMisconceptions(COURSE)).toEqual([
+    {
+      recordedAt: NOW,
+      unit: "limits",
+      objective: "limit-value",
+      believed: "A limit is the value at the point.",
+      actually: "It is where the values head.",
+      where: { in: "detour", questionId: missed?.id, number: 1 },
+    },
+  ]);
 
-    // Segment 2, passed at once; the gate is offered, and the second call
-    // reads only segment 2, with the first note before it.
-    await step(chat.nextSegment(), chat);
-    await step(chat.ready(), chat);
-    await answer(chat, "A", "90");
-    expect(ofType(chat, "assessment").at(-1)).toMatchObject({
-      mode: "gate",
-      stage: "offered",
-    });
-    const second = asked(setup.handoffBackend)[1];
-    expect(setup.handoffBackend.oneShots).toHaveLength(2);
-    expect(second).toContain("<note_before>\nNote 1.\n</note_before>");
-    // What the first call found is given, so it is not recorded twice.
-    expect(second).toContain(
-      '<recorded_misconceptions>\n- On "limit-value": believed "A limit is the value at the point."; what is so: "It is where the values head."\n</recorded_misconceptions>',
-    );
-    const two = stretchOf(second);
-    expect(two).toContain('Tutor:\nTeaching "Sides".');
-    expect(two).not.toContain('Teaching "Values"');
-    expect(two).not.toContain("Is it the value at the point?");
+  // Segment 2, passed at once; the gate is offered, and the second call
+  // reads only segment 2, with the first note before it.
+  await step(chat.nextSegment(), chat);
+  await step(chat.ready(), chat);
+  await answer(chat, "A", "90");
+  expect(ofType(chat, "assessment").at(-1)).toMatchObject({
+    mode: "gate",
+    stage: "offered",
+  });
+  const second = asked(setup.handoffBackend)[1];
+  expect(setup.handoffBackend.oneShots).toHaveLength(2);
+  expect(second).toContain("<note_before>\nNote 1.\n</note_before>");
+  // What the first call found is given, so it is not recorded twice.
+  expect(second).toContain(
+    '<recorded_misconceptions>\n- On "limit-value": believed "A limit is the value at the point."; what is so: "It is where the values head."\n</recorded_misconceptions>',
+  );
+  const two = stretchOf(second);
+  expect(two).toContain('Tutor:\nTeaching "Sides".');
+  expect(two).not.toContain('Teaching "Values"');
+  expect(two).not.toContain("Is it the value at the point?");
 
-    // The gate, answered; the unit finishes, and the third call reads the gate.
-    await step(chat.startAssessment(), chat);
-    await answer(chat, "A", "90");
-    await answer(chat, "A", "90");
-    expect(ofType(chat, "unit_closed")).toEqual([
-      { type: "unit_closed", status: "passed" },
-    ]);
-    const third = asked(setup.handoffBackend)[2];
-    expect(setup.handoffBackend.oneShots).toHaveLength(3);
-    expect(third).toContain("<note_before>\nNote 2.\n</note_before>");
-    const three = stretchOf(third);
-    expect(three).toContain(
-      "[The unit's gate begins: questions without teaching, 2 objectives.]",
-    );
-    expect(three).toContain("[The unit is finished.]");
-    expect(three).not.toContain('Teaching "Sides"');
+  // The gate, answered; the unit finishes, and the third call reads the gate.
+  await step(chat.startAssessment(), chat);
+  await answer(chat, "A", "90");
+  await answer(chat, "A", "90");
+  expect(ofType(chat, "unit_closed")).toEqual([
+    { type: "unit_closed", status: "passed" },
+  ]);
+  const third = asked(setup.handoffBackend)[2];
+  expect(setup.handoffBackend.oneShots).toHaveLength(3);
+  expect(third).toContain("<note_before>\nNote 2.\n</note_before>");
+  const three = stretchOf(third);
+  expect(three).toContain(
+    "[The unit's gate begins: questions without teaching, 2 objectives.]",
+  );
+  expect(three).toContain("[The unit is finished.]");
+  expect(three).not.toContain('Teaching "Sides"');
 
-    const folder = join(dir, "courses", COURSE, "units", "limits");
-    expect(await readFile(join(folder, "handoff.md"), "utf8")).toBe(
-      "Note 3.\n",
-    );
-    const mark = await reload().readHandoff(COURSE, "limits");
-    expect(mark?.mark?.writtenAt).toBe(NOW);
-    // Nothing more was found, so the first misconception is still the only one.
-    expect(await reload().readMisconceptions(COURSE)).toHaveLength(1);
-    await chat.close();
-  },
-  MANY_TURNS_MS,
-);
+  const folder = join(dir, "courses", COURSE, "units", "limits");
+  expect(await readFile(join(folder, "handoff.md"), "utf8")).toBe("Note 3.\n");
+  const mark = await reload().readHandoff(COURSE, "limits");
+  expect(mark?.mark?.writtenAt).toBe(NOW);
+  // Nothing more was found, so the first misconception is still the only one.
+  expect(await reload().readMisconceptions(COURSE)).toHaveLength(1);
+  await chat.close();
+});
 
-test(
-  "moving on closes a segment and calls the writer; a failed call records nothing, and the next reads both stretches",
-  async () => {
-    await makeCourse();
-    const setup = setUp([
-      { fail: "The writer failed." },
-      { output: { note: "Both segments.", misconceptions: [] } },
-    ]);
-    const chat = await open(setup);
-    await step(Promise.resolve(chat.say("A first question.")), chat);
-    await step(chat.override(), chat);
-    expect(setup.handoffBackend.oneShots).toHaveLength(1);
-    expect(await reload().readHandoff(COURSE, "limits")).toBeUndefined();
-    expect(await reload().readMisconceptions(COURSE)).toEqual([]);
+test("moving on closes a segment and calls the writer; a failed call records nothing, and the next reads both stretches", async () => {
+  await makeCourse();
+  const setup = setUp([
+    { fail: "The writer failed." },
+    { output: { note: "Both segments.", misconceptions: [] } },
+  ]);
+  const chat = await open(setup);
+  await step(Promise.resolve(chat.say("A first question.")), chat);
+  await step(chat.override(), chat);
+  expect(setup.handoffBackend.oneShots).toHaveLength(1);
+  expect(await reload().readHandoff(COURSE, "limits")).toBeUndefined();
+  expect(await reload().readMisconceptions(COURSE)).toEqual([]);
 
-    await step(chat.nextSegment(), chat);
-    await step(chat.ready(), chat);
-    await answer(chat, "A", "90");
-    expect(setup.handoffBackend.oneShots).toHaveLength(2);
-    const second = asked(setup.handoffBackend)[1];
-    expect(second).toContain("The unit has no note yet: this is its first.");
-    const both = stretchOf(second);
-    expect(both).toContain('Teaching "Values"');
-    expect(both).toContain("Learner:\nA first question.");
-    expect(both).toContain(
-      '[The learner moved on without the check, leaving "limit-value" not passed.]',
-    );
-    expect(both).toContain('Teaching "Sides"');
-    expect(await reload().readHandoff(COURSE, "limits")).toMatchObject({
-      note: "Both segments.",
-    });
-    await chat.close();
-  },
-  MANY_TURNS_MS,
-);
+  await step(chat.nextSegment(), chat);
+  await step(chat.ready(), chat);
+  await answer(chat, "A", "90");
+  expect(setup.handoffBackend.oneShots).toHaveLength(2);
+  const second = asked(setup.handoffBackend)[1];
+  expect(second).toContain("The unit has no note yet: this is its first.");
+  const both = stretchOf(second);
+  expect(both).toContain('Teaching "Values"');
+  expect(both).toContain("Learner:\nA first question.");
+  expect(both).toContain(
+    '[The learner moved on without the check, leaving "limit-value" not passed.]',
+  );
+  expect(both).toContain('Teaching "Sides"');
+  expect(await reload().readHandoff(COURSE, "limits")).toMatchObject({
+    note: "Both segments.",
+  });
+  await chat.close();
+});
 
-test(
-  "a fresh session's first turn carries the unit's handoff note and its open misconceptions, and 'What I know' shows each under its objective",
-  async () => {
-    const root = await makeCourse();
-    const setup = setUp(
-      writer({
-        1: [
-          {
-            objective: "limit-value",
-            believed: "Values at the point decide the limit.",
-            actually: "Nearby values do.",
-          },
-          {
-            objective: "one-sided",
-            believed: "A limit has one side only.",
-            actually: "It has two.",
-          },
-        ],
-      }),
-    );
-    const chat = await open(setup);
-    await step(chat.ready(), chat);
-    await answer(chat, "A", "90");
-    expect(setup.handoffBackend.oneShots).toHaveLength(1);
+test("a fresh session's first turn carries the unit's handoff note and its open misconceptions, and 'What I know' shows each under its objective", async () => {
+  const root = await makeCourse();
+  const setup = setUp(
+    writer({
+      1: [
+        {
+          objective: "limit-value",
+          believed: "Values at the point decide the limit.",
+          actually: "Nearby values do.",
+        },
+        {
+          objective: "one-sided",
+          believed: "A limit has one side only.",
+          actually: "It has two.",
+        },
+      ],
+    }),
+  );
+  const chat = await open(setup);
+  await step(chat.ready(), chat);
+  await answer(chat, "A", "90");
+  expect(setup.handoffBackend.oneShots).toHaveLength(1);
 
-    await step(chat.startFresh(), chat);
-    const first = setup.backend.received.at(-1)?.text ?? "";
-    expect(first).toContain(JOINED_NOTE);
-    expect(first).toContain(
-      "\nThis unit's handoff note, written from the earlier conversation as its segments closed:\n<handoff_note>\nNote 1.\n</handoff_note>\n\n" +
-        "Misconceptions found on this unit's objectives and not yet cleared:\n" +
-        '- On "one-sided": the learner believed "A limit has one side only."; what is so: "It has two.".',
-    );
-    // "limit-value" passed, so its misconception is cleared and not named.
-    expect(first).not.toContain("Values at the point decide the limit.");
-    // Said once: the turn after it carries no note.
-    await step(Promise.resolve(chat.say("Hello again.")), chat);
-    expect(setup.backend.received.at(-1)?.text).not.toContain("<handoff_note>");
+  await step(chat.startFresh(), chat);
+  const first = setup.backend.received.at(-1)?.text ?? "";
+  expect(first).toContain(JOINED_NOTE);
+  expect(first).toContain(
+    "\nThis unit's handoff note, written from the earlier conversation as its segments closed:\n<handoff_note>\nNote 1.\n</handoff_note>\n\n" +
+      "Misconceptions found on this unit's objectives and not yet cleared:\n" +
+      '- On "one-sided": the learner believed "A limit has one side only."; what is so: "It has two.".',
+  );
+  // "limit-value" passed, so its misconception is cleared and not named.
+  expect(first).not.toContain("Values at the point decide the limit.");
+  // Said once: the turn after it carries no note.
+  await step(Promise.resolve(chat.say("Hello again.")), chat);
+  expect(setup.backend.received.at(-1)?.text).not.toContain("<handoff_note>");
 
-    const stored = await root.readCourse(COURSE);
-    const view = whatIKnow(
-      CURRICULUM.title,
-      stored?.curriculum ?? { approval: { status: "draft" }, units: [] },
-      await root.readState(COURSE),
-      await root.readEvidence(COURSE),
-      await root.readMisconceptions(COURSE),
-    );
-    const objectives = view.units[0]?.objectives ?? [];
-    expect(
-      objectives.map((o) => ({
-        id: o.id,
-        status: o.status,
-        believed: o.misconceptions.map((m) => m.believed),
-      })),
-    ).toEqual([
-      {
-        id: "limit-value",
-        status: "passed",
-        believed: ["Values at the point decide the limit."],
-      },
-      {
-        id: "one-sided",
-        status: "not-started",
-        believed: ["A limit has one side only."],
-      },
-    ]);
-    await chat.close();
-  },
-  MANY_TURNS_MS,
-);
+  const stored = await root.readCourse(COURSE);
+  const view = whatIKnow(
+    CURRICULUM.title,
+    stored?.curriculum ?? { approval: { status: "draft" }, units: [] },
+    await root.readState(COURSE),
+    await root.readEvidence(COURSE),
+    await root.readMisconceptions(COURSE),
+  );
+  const objectives = view.units[0]?.objectives ?? [];
+  expect(
+    objectives.map((o) => ({
+      id: o.id,
+      status: o.status,
+      believed: o.misconceptions.map((m) => m.believed),
+    })),
+  ).toEqual([
+    {
+      id: "limit-value",
+      status: "passed",
+      believed: ["Values at the point decide the limit."],
+    },
+    {
+      id: "one-sided",
+      status: "not-started",
+      believed: ["A limit has one side only."],
+    },
+  ]);
+  await chat.close();
+});
 
 test("a later unit's planning turn and its tutor's system prompt read its prerequisites' last notes and the open misconceptions on other units' objectives", async () => {
   // Unit 1's "limit-value" passed and "one-sided" missed; unit 3 is no prerequisite.
@@ -573,34 +554,30 @@ test("a unit with no earlier notes or open misconceptions gets no such section",
   await chat.close();
 });
 
-test(
-  "a review's question turn names the misconceptions recorded on its objective, open or not, and one with none names nothing",
-  async () => {
-    // Unit 1's objectives passed yesterday, so review is due on both.
-    const root = await makeCourse();
-    await root.appendEvidence(COURSE, answered("limit-value", "correct"));
-    await root.appendEvidence(COURSE, answered("one-sided", "correct"));
-    await root.appendMisconceptions(COURSE, [
-      misconception("limit-value", "The value at the point decides."),
-    ]);
-    const setup = setUp();
-    const chat = await open(setup, "derivative");
-    expect(ofType(chat, "assessment").at(-1)).toMatchObject({
-      mode: "review",
-      stage: "offered",
-    });
-    await step(chat.startAssessment(), chat);
-    const firstAsk = setup.backend.received.at(-1)?.text ?? "";
-    expect(firstAsk).toContain('a question on "limit-value" with ask_question');
-    expect(firstAsk).toContain(
-      '\nMisconceptions recorded on "limit-value", the oldest first; ask so that the answer shows whether each still holds, without naming it:\n' +
-        '- On "limit-value": the learner believed "The value at the point decides."; what is so: "What is so about limit-value.". Cleared since.]',
-    );
-    await answer(chat, "A", "90");
-    const secondAsk = setup.backend.received.at(-1)?.text ?? "";
-    expect(secondAsk).toContain('a question on "one-sided" with ask_question');
-    expect(secondAsk).not.toContain("Misconceptions recorded");
-    await chat.close();
-  },
-  MANY_TURNS_MS,
-);
+test("a review's question turn names the misconceptions recorded on its objective, open or not, and one with none names nothing", async () => {
+  // Unit 1's objectives passed yesterday, so review is due on both.
+  const root = await makeCourse();
+  await root.appendEvidence(COURSE, answered("limit-value", "correct"));
+  await root.appendEvidence(COURSE, answered("one-sided", "correct"));
+  await root.appendMisconceptions(COURSE, [
+    misconception("limit-value", "The value at the point decides."),
+  ]);
+  const setup = setUp();
+  const chat = await open(setup, "derivative");
+  expect(ofType(chat, "assessment").at(-1)).toMatchObject({
+    mode: "review",
+    stage: "offered",
+  });
+  await step(chat.startAssessment(), chat);
+  const firstAsk = setup.backend.received.at(-1)?.text ?? "";
+  expect(firstAsk).toContain('a question on "limit-value" with ask_question');
+  expect(firstAsk).toContain(
+    '\nMisconceptions recorded on "limit-value", the oldest first; ask so that the answer shows whether each still holds, without naming it:\n' +
+      '- On "limit-value": the learner believed "The value at the point decides."; what is so: "What is so about limit-value.". Cleared since.]',
+  );
+  await answer(chat, "A", "90");
+  const secondAsk = setup.backend.received.at(-1)?.text ?? "";
+  expect(secondAsk).toContain('a question on "one-sided" with ask_question');
+  expect(secondAsk).not.toContain("Misconceptions recorded");
+  await chat.close();
+});

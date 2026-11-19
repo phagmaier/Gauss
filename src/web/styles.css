@@ -353,6 +353,7 @@ button:focus-visible {
   max-width: calc(var(--measure) + 36px);
   margin: 0 auto 8px;
 }
+/* biome-ignore lint/style/noDescendingSpecificity: .box-note sits under the message box, never in .prose, so .prose li > p never reaches it */
 .box-note p {
   margin: 0;
   padding: 0 18px;

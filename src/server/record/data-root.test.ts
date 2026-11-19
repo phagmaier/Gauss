@@ -540,7 +540,7 @@ test("a reload after a crash mid-write finds the old file whole, and the write t
 
   expect(whole).toEqual({ code: 0, stderr: "" });
   expect((await reloaded.readCourse(id))?.curriculum).toEqual(large);
-}, 20_000);
+});
 
 // Task 2.2: a unit's plan in curriculum.json, the position of each unit in
 // progress in state.json, and the evidence log.
