@@ -114,6 +114,7 @@ import type {
   DisputeEvidence,
   OverrideEvidence,
 } from "../../shared/evidence.ts";
+import type { Misconception } from "../../shared/misconception.ts";
 import type {
   PackageCompletion,
   PackageReceipt,
@@ -180,6 +181,12 @@ import {
 } from "./code-run.ts";
 import type { ChatResult, Timer } from "./conversation.ts";
 import { type Grader, gradeChoice, gradeMath } from "./grading.ts";
+import {
+  createHandoffs,
+  type Handoffs,
+  type HandoffWriter,
+  readEarlier,
+} from "./handoff.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 import { type MathCheck, noMathCheck } from "./math-check.ts";
 import {
@@ -376,6 +383,11 @@ interface ChatOptions {
   codeRunner?: CodeRunner;
   /** Judges the tutor's replies to messages sent while a question is open. */
   judge: HelpJudge;
+  /**
+   * Writes the unit's handoff note and finds misconceptions when a segment
+   * closes or the unit finishes (task 5.7). None if not given.
+   */
+  handoff?: HandoffWriter;
   /**
    * The clock for the dates in the evidence and the open question, and for
    * when a session starts.
@@ -772,6 +784,12 @@ interface Running {
   agents: UnitAgents;
   /** Said once, in the next turn's header. */
   notes: string[];
+  /**
+   * The unit's handoff note and the course's misconceptions (task 5.7),
+   * read when the chat opens, with what this unit's calls write since; the
+   * misconceptions are read again when an assessment is offered.
+   */
+  handoff: { note: string | undefined; misconceptions: Misconception[] };
   /** Blocks new questions from when feedback is queued until it ends. */
   feedback?: { number: number; started: boolean } | undefined;
   /**
@@ -799,6 +817,8 @@ function createUnitChat(
   let running: Running | undefined;
   /** The agents of the last load, so closing the chat closes them while it loads too. */
   let agents: UnitAgents | undefined;
+  /** The handoff writer's calls on this unit, once it has loaded. */
+  let handoffs: Handoffs | undefined;
   let loading: Promise<void> | undefined;
   let failed = false;
   /** Shutdown leaves unjudged replies and their waiting answer for reopening. */
@@ -857,6 +877,7 @@ function createUnitChat(
         now,
         ...(options.backup === undefined ? {} : { backup: options.backup }),
         testOut,
+        handoff: () => handoffs?.request(),
       });
       const context: UnitContext = {
         courseTitle: stored.course.title,
@@ -864,13 +885,54 @@ function createUnitChat(
         unitId,
         plan,
       };
-      const notes = {
-        style: await dataRoot.readStyle(courseId),
-        background: await dataRoot.readBackground(courseId),
-      };
+      const [style, background, handoffNote, misconceptions, evidence] =
+        await Promise.all([
+          dataRoot.readStyle(courseId),
+          dataRoot.readBackground(courseId),
+          dataRoot.readHandoff(courseId, unitId),
+          dataRoot.readMisconceptions(courseId),
+          dataRoot.readEvidence(courseId),
+        ]);
+      const earlier = await readEarlier(
+        dataRoot,
+        courseId,
+        units,
+        unitId,
+        evidence,
+        misconceptions,
+      );
+      if (options.handoff !== undefined && handoffs === undefined) {
+        handoffs = createHandoffs({
+          writer: options.handoff,
+          dataRoot,
+          courseId,
+          unitId,
+          context: () => running?.context ?? context,
+          flushed: log.flushed,
+          now,
+          ...(options.backup === undefined ? {} : { backup: options.backup }),
+          written(note, found) {
+            const kept = running?.handoff;
+            if (kept === undefined) return;
+            kept.note = note;
+            // A read for an assessment offered meanwhile can hold them already.
+            const held = new Set(
+              kept.misconceptions.map((m) => JSON.stringify(m)),
+            );
+            kept.misconceptions.push(
+              ...found.filter((m) => !held.has(JSON.stringify(m))),
+            );
+          },
+        });
+      }
       const loaded = createUnitAgents({
         backend: options.backend,
-        systemPrompt: tutorSystemPrompt(options.systemPrompt, context, notes),
+        systemPrompt: tutorSystemPrompt(
+          options.systemPrompt,
+          context,
+          { style, background },
+          earlier,
+        ),
         tools: [
           askQuestionTool(questionBoard),
           showArtifactTool(artifactShelf),
@@ -892,7 +954,13 @@ function createUnitChat(
         ...(options.timer === undefined ? {} : { timer: options.timer }),
       });
       agents = loaded;
-      const r: Running = { context, record, agents: loaded, notes: [] };
+      const r: Running = {
+        context,
+        record,
+        agents: loaded,
+        notes: [],
+        handoff: { note: handoffNote?.note, misconceptions },
+      };
       if (record.reopened) {
         // A unit under way resumes its tutor's conversation with its first
         // turn. One that cannot be found, or was never kept, gives way to a
@@ -1217,6 +1285,8 @@ function createUnitChat(
       ...(record.position.testOut?.stage === "result"
         ? { test: shownByTest(r) }
         : {}),
+      misconceptions: r.handoff.misconceptions,
+      ...(r.handoff.note === undefined ? {} : { handoffNote: r.handoff.note }),
     };
   }
 
@@ -1515,11 +1585,14 @@ function createUnitChat(
     offering = true;
     try {
       const at = now();
-      const [stored, log] = await Promise.all([
+      const [stored, log, misconceptions] = await Promise.all([
         dataRoot.readCourse(courseId),
         dataRoot.readEvidence(courseId),
+        dataRoot.readMisconceptions(courseId),
       ]);
       const units = stored?.curriculum?.units ?? r.context.units;
+      // Other units' calls write misconceptions on the objectives it asks.
+      r.handoff.misconceptions = misconceptions;
       const objectives = pickForReview(units, log, {
         at,
         count: REVIEW_COUNT,
@@ -2001,10 +2074,12 @@ function createUnitChat(
    * not. Nothing is sent to the tutor. Runs inside `exclusive`.
    */
   async function offerGate(r: Running, tell?: () => void): Promise<boolean> {
-    const [stored, evidence] = await Promise.all([
+    const [stored, evidence, misconceptions] = await Promise.all([
       dataRoot.readCourse(courseId),
       dataRoot.readEvidence(courseId),
+      dataRoot.readMisconceptions(courseId),
     ]);
+    r.handoff.misconceptions = misconceptions;
     const units = stored?.curriculum?.units ?? r.context.units;
     const objectives = pickForGate(units, unitId, evidence, now());
     if (objectives.length === 0) return false;
@@ -3064,13 +3139,14 @@ function createUnitChat(
       // A message held behind the skip of a card is sent from the queue.
       await exclusive(async () => {});
       await running?.agents.settled();
+      await handoffs?.settled();
       await log.flushed();
     },
     async close() {
       closing = true;
       const posting = codePosting;
       posting?.stop.abort();
-      await Promise.all([agents?.close(), posting?.done]);
+      await Promise.all([agents?.close(), posting?.done, handoffs?.close()]);
       // An install under way is not waited for. Reopening reconciles its
       // journal before the course workspace can be used again.
       await log.flushed();

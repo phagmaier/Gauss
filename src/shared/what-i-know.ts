@@ -11,13 +11,16 @@
 // output the answer keeps. A disputed answer carries its dispute (task
 // 3.8): the answer keeps its first grade, and the dispute the outcome it
 // now counts with; what it was graded by is asked for only to dispute it
-// (`GradedBy` in dispute.ts).
+// (`GradedBy` in dispute.ts). An objective carries the misconceptions found
+// on it (task 5.7), each open while the objective is not passed, which the
+// page derives from its status (`isOpen` in misconception.ts).
 
 import { z } from "zod";
 import { Calibration } from "./calibration.ts";
 import { Slug, Timestamp } from "./course.ts";
 import { ShownDispute } from "./dispute.ts";
 import { Assessment } from "./evidence.ts";
+import { Misconception } from "./misconception.ts";
 import { Objective } from "./plan.ts";
 import {
   AnswerSubmission,
@@ -68,11 +71,17 @@ export const ShownEvidence = z.discriminatedUnion("kind", [
 ]);
 export type ShownEvidence = z.infer<typeof ShownEvidence>;
 
+/** A misconception under the objective it bears on. */
+export const ShownMisconception = Misconception.omit({ objective: true });
+export type ShownMisconception = z.infer<typeof ShownMisconception>;
+
 export const KnownObjective = Objective.extend({
   /** With each disputed answer counted by its dispute's verdict. */
   status: ObjectiveStatus,
   /** In log order, the order it was recorded in, whatever its timestamps say. */
   evidence: z.array(ShownEvidence),
+  /** In the order they were found. */
+  misconceptions: z.array(ShownMisconception),
 });
 export type KnownObjective = z.infer<typeof KnownObjective>;
 

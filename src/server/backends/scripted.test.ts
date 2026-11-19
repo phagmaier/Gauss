@@ -8,6 +8,7 @@ import { CHOICE_LETTERS } from "../../shared/question.ts";
 import { type CodeRunner, createCodeRunner } from "../engine/code-run.ts";
 import { createDisputeJudge } from "../engine/dispute-judge.ts";
 import { createGrader } from "../engine/grading.ts";
+import { createHandoffWriter } from "../engine/handoff.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
 import { createMathCheck, type MathCheck } from "../engine/math-check.ts";
@@ -83,6 +84,7 @@ function setUp(
     planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
+    handoff: createHandoffWriter({ backend, systemPrompt: "Handoff." }),
     // As the server has it where the sandbox runs (serve.ts).
     ...(given.mathCheck === undefined
       ? {}
@@ -110,7 +112,7 @@ async function approvedCourse(dataRoot: ReturnType<typeof openDataRoot>) {
 const WHOLE_UNIT_MS = 15_000;
 
 test(
-  "a unit not yet planned runs to its end: planned, each segment taught, checked and closed, a written answer graded, and its gate taken",
+  "a unit not yet planned runs to its end: planned, each segment taught, checked and closed, a written answer graded, its gate taken, and a handoff note written at each close",
   async () => {
     const { dataRoot, units } = setUp();
     await approvedCourse(dataRoot);
@@ -250,6 +252,24 @@ test(
       derivative: { status: "not-started" },
     });
     expect(chat.events().at(-1)).not.toMatchObject({ type: "unit_failed" });
+    // A call as each segment closed and as the unit finished after its gate,
+    // each note numbered on from the one before; the written miss's detour
+    // found as a misconception on its objective.
+    expect(await dataRoot.readHandoff(COURSE, "limits")).toMatchObject({
+      note: expect.stringMatching(/^\*\*Scripted note 3\.\*\* /),
+    });
+    const detour = chat.events().find((e) => e.type === "detour");
+    expect(await dataRoot.readMisconceptions(COURSE)).toEqual([
+      expect.objectContaining({
+        unit: "limits",
+        objective: "limits-proof",
+        where: {
+          in: "detour",
+          questionId: detour?.type === "detour" ? detour.questionId : "",
+          number: detour?.type === "detour" ? detour.number : 0,
+        },
+      }),
+    ]);
   },
   WHOLE_UNIT_MS,
 );

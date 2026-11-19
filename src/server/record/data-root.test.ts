@@ -1230,3 +1230,68 @@ describe("artifacts (task 3.6)", () => {
     expect(await root.readArtifact(id, file)).toBeUndefined();
   });
 });
+
+describe("handoff notes and misconceptions (task 5.7)", () => {
+  const mark = (events: number) => ({
+    writtenAt: "2026-11-18T10:00:00.000Z",
+    through: { session: 2, events },
+  });
+  const found = (believed: string) => ({
+    recordedAt: "2026-11-18T10:00:00.000Z",
+    unit: "eigen",
+    objective: "eigenvalue",
+    believed,
+    actually: "So.",
+    where: { in: "discussion" as const },
+  });
+
+  test("a unit's note is replaced whole by the next, with how far it reads, and reads back after a restart", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    expect(await root.readHandoff(id, "eigen")).toBeUndefined();
+
+    await root.writeHandoff(id, "eigen", "First note.", mark(3));
+    await root.writeHandoff(id, "eigen", "  Second note.\n", mark(7));
+
+    const folder = join(dir, "courses", id, "units", "eigen");
+    expect(await readFile(join(folder, "handoff.md"), "utf8")).toBe(
+      "Second note.\n",
+    );
+    expect(await openDataRoot({ path: dir }).readHandoff(id, "eigen")).toEqual({
+      note: "Second note.",
+      mark: mark(7),
+    });
+    expect(await root.readHandoff(id, "vectors")).toBeUndefined();
+  });
+
+  test("a note whose mark a crash kept from being written reads with none, so the next call reads the whole thread", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    const folder = join(dir, "courses", id, "units", "eigen");
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "handoff.md"), "A note.\n");
+
+    expect(await root.readHandoff(id, "eigen")).toEqual({
+      note: "A note.",
+      mark: undefined,
+    });
+  });
+
+  test("misconceptions are appended, read back oldest first, and refused out of shape", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    expect(await root.readMisconceptions(id)).toEqual([]);
+
+    await root.appendMisconceptions(id, [found("One."), found("Two.")]);
+    await root.appendMisconceptions(id, []);
+    await root.appendMisconceptions(id, [found("Three.")]);
+
+    expect(
+      (await openDataRoot({ path: dir }).readMisconceptions(id)).map(
+        (m) => m.believed,
+      ),
+    ).toEqual(["One.", "Two.", "Three."]);
+    await expect(root.appendMisconceptions(id, [found("")])).rejects.toThrow();
+    expect(await root.readMisconceptions(id)).toHaveLength(3);
+  });
+});

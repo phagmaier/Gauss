@@ -1469,6 +1469,41 @@ built until its task is done; `architecture.md` says what is.
 - **The unit's own note goes into a new session's first turn**, not the
   system prompt, which is sent with every request: a change to it at
   each close would cost the running session its cache.
+- **The stretch is read from the transcripts on disk, from a mark kept
+  beside the note** (`handoff.json`; task 5.7, the agent's), once the
+  thread's events are written. The mark moves only with a note written,
+  so a failed call leaves its stretch to the next, and a restart reads the
+  same lines. Rejected: a marker event in the thread, which the page and
+  the export would have to skip, and the chat's events in memory, whose
+  text pieces are joined differently from the file's lines.
+- **One call at a time per unit; a close while one runs gets one more
+  after it** (the agent's): the last segment's close and the unit's end
+  can come seconds apart, and the second needs the first's note. A stretch
+  with nothing said or answered gets no call.
+- **Detours are numbered in the request**, and the reply names one by its
+  number, which the engine turns into the question's id (the agent's):
+  question numbers restart in each check and assessment, and an id is
+  easy to miscopy. A misconception naming an objective not given or a
+  detour the stretch lacks is dropped alone, not the whole call.
+- **The writer is given the misconceptions recorded on its objectives**
+  (the agent's), so a belief shown again in a later stretch is not
+  recorded twice; the note alone need not name every one.
+- **Open means not passed**: slipping and overridden ones are open too, as
+  piece 18 draws a misconception open under "Not passed yet" (the
+  agent's).
+- **Misconceptions are appended before the note is written** (the
+  agent's): a crash between the two leaves the mark where it was, and the
+  next call, which reads the stretch again, may record them twice. The
+  other order would lose them.
+- **Prerequisites are the direct ones** (the agent's): their notes say how
+  the ideas this unit builds on were taught. The chat reads the course's
+  misconceptions again when an assessment is offered, since other units'
+  calls write on the objectives it asks.
+- **Review and gate questions are told to probe a recorded
+  misconception without naming it** (`tutor.md`, the agent's): a lead-in
+  that named it would be teaching in an assessment.
+- **The call runs on Haiku 5.5** until task 5.13 compares it with Sonnet
+  5.5 on the same stretches (the plan's).
 
 **Profile, notes and export**
 

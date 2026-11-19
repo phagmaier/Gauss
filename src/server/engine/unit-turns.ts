@@ -12,6 +12,7 @@ import type {
   DisputeEvidence,
   EvidenceEntry,
 } from "../../shared/evidence.ts";
+import type { Misconception } from "../../shared/misconception.ts";
 import {
   type PackageSpec,
   type PackagesOutcome,
@@ -27,6 +28,12 @@ import {
   type ObjectiveCheck,
   segmentOf,
 } from "./check-rules.ts";
+import {
+  type EarlierUnits,
+  earlierText,
+  misconceptionLine,
+  named,
+} from "./handoff.ts";
 
 /** The unit being taught, as the course record has it. */
 export interface UnitContext {
@@ -49,15 +56,19 @@ export interface CourseNotes {
 /**
  * The tutor's system prompt: `prompts/tutor.md`, then the course and the
  * unit's plan, then the course's background note, or a line saying none was
- * recorded, then its style note, or the default style when it has none. A
+ * recorded, then what earlier units showed (task 5.7), when they showed
+ * anything, then its style note, or the default style when it has none. A
  * session keeps the prompt it started with (task 0.4), so the position is in
- * every turn's header instead.
+ * every turn's header instead, and the unit's own handoff note goes into a
+ * new session's first turn.
  */
 export function tutorSystemPrompt(
   tutor: string,
   context: UnitContext,
   notes: CourseNotes,
+  earlier: EarlierUnits = { notes: [], misconceptions: [] },
 ): string {
+  const shown = earlierText(earlier);
   const { style, background } = notes;
   const { units, plan } = context;
   const at = units.findIndex((u) => u.id === context.unitId);
@@ -88,6 +99,7 @@ export function tutorSystemPrompt(
         "learner knows from what they ask and answer."
       : `What the learner told the planner when the course was made: ${background.trim()}`,
     "",
+    ...(shown === undefined ? [] : ["# Earlier units", "", shown, ""]),
     "# This course's style",
     "",
     style === undefined || style.trim() === ""
@@ -127,6 +139,14 @@ export interface Where {
   assessment?: RunWhere;
   /** Once the test before the unit is over and its result waits: what it showed. */
   test?: readonly TestShown[];
+  /**
+   * The course's misconceptions as the chat holds them (task 5.7): a new
+   * session's first turn names the unit's open ones, and a review's or a
+   * gate's question turn those on its objective.
+   */
+  misconceptions?: readonly Misconception[];
+  /** The unit's handoff note, for a new session's first turn. */
+  handoffNote?: string;
 }
 
 /** An assessment offered or under way (task 5.4), with where it stands. */
@@ -749,8 +769,28 @@ function runAllowed(where: Where): string | undefined {
     `ones asked before${unlike}. ${aboutObjective(where, next)} No teaching ` +
     `in a ${name}: before the question, no reminder of the idea, rule or ` +
     "method, and no example. Posting ends your turn." +
-    askedBefore(where, [next.objective])
+    askedBefore(where, [next.objective]) +
+    recordedOn(where, next.objective)
   );
+}
+
+/**
+ * For a review's or a gate's question (task 5.7): the misconceptions
+ * recorded on its objective, open or not, from a new line; none when it has
+ * none. Each is on one line that ends in a full stop, so none ends in a "]".
+ */
+function recordedOn(where: Where, objective: string): string {
+  const on = named(
+    (where.misconceptions ?? []).filter((m) => m.objective === objective),
+    where.context.units,
+    where.evidence,
+  );
+  if (on.length === 0) return "";
+  return [
+    "",
+    `Misconceptions recorded on "${objective}", the oldest first; ask so that the answer shows whether each still holds, without naming it:`,
+    ...on.map((m) => misconceptionLine(m, { open: true })),
+  ].join("\n");
 }
 
 /** "one question", or "9 questions". */
@@ -927,7 +967,46 @@ function turn(
     ...request,
     allowedNow,
   ].join(" ");
-  return body === undefined ? `[${header}]` : `[${header}]\n${body}`;
+  const handoff = where.notes.includes(JOINED_NOTE)
+    ? handoffBlock(where)
+    : undefined;
+  const after = [handoff, body].filter((part) => part !== undefined);
+  return after.length === 0
+    ? `[${header}]`
+    : `[${header}]\n${after.join("\n\n")}`;
+}
+
+/**
+ * For a new session's first turn (task 5.7): the unit's handoff note and its
+ * open misconceptions, after the header; none when it has neither.
+ */
+function handoffBlock(where: Where): string | undefined {
+  const { plan, units } = where.context;
+  const own = new Set(plan.objectives.map((o) => o.id));
+  const open = named(
+    (where.misconceptions ?? []).filter((m) => own.has(m.objective)),
+    units,
+    where.evidence,
+  ).filter((m) => m.open);
+  const note = where.handoffNote?.trim();
+  if (note === undefined && open.length === 0) return undefined;
+  return [
+    ...(note === undefined
+      ? []
+      : [
+          "This unit's handoff note, written from the earlier conversation as its segments closed:",
+          "<handoff_note>",
+          note,
+          "</handoff_note>",
+        ]),
+    ...(open.length === 0
+      ? []
+      : [
+          ...(note === undefined ? [] : [""]),
+          "Misconceptions found on this unit's objectives and not yet cleared:",
+          ...open.map((m) => misconceptionLine(m)),
+        ]),
+  ].join("\n");
 }
 
 function describe(where: Where): string {

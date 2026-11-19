@@ -88,6 +88,13 @@ export const JUDGE_MODEL = "claude-haiku-5-5";
  */
 export const DISPUTE_MODEL = "claude-sonnet-5-5";
 
+/**
+ * The handoff writer's model (task 5.7; docs/decisions.md, "Mastery
+ * loop"): Haiku 5.5 until task 5.13 compares it with Sonnet 5.5 on the
+ * same stretches.
+ */
+export const HANDOFF_MODEL = "claude-haiku-5-5";
+
 export function createClaudeBackend(
   backendOptions: ClaudeBackendOptions = {},
 ): TutorBackend {

@@ -40,63 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.7 Handoff notes and the misconception record
-
-- Status: todo
-- Depends on: 5.4
-- Why: a new tutor session knows the position and the evidence but
-  nothing of how the unit was taught, and what a detour uncovers is lost
-  once its conversation is. A session's end is no event the engine sees
-  (the server stops, or an hour passes), so the note is written when a
-  segment closes.
-- Do: a one-shot call, the handoff writer (`prompts/handoff.md`, its
-  reply's schema in `src/shared/`), when a segment closes, by passing or
-  by moving on, and when a unit finishes; outside the chat's queue, as
-  the help judge runs. It reads the unit's thread since the call before
-  (the tutor's text, the learner's messages, the questions with their
-  answers, confidence and grades), the note before and the unit's
-  objectives. `scriptedReply` in `scripted.ts` answers the new request.
-  - It writes the unit's handoff note, whole, in place of the one before
-    (`units/<unit-id>/handoff.md`), within about 250 words: what was
-    taught and with which examples, what the learner found hard or asked
-    for, what made an idea click (the example or the wording after which
-    they had it), and what was left open.
-  - It writes the misconceptions it finds, appended to
-    `misconceptions.jsonl` (schema in `src/shared/`): the objective, what
-    the learner believed, what is so, and where it showed (a detour's
-    question by id, or the discussion, where the intuition question is).
-    A confident wrong answer is named as one in what it reads.
-  - A call that fails records nothing, and the next one covers its
-    stretch. A misconception is open while its objective is not passed,
-    which is derived, not stored. The call runs on Haiku 5.5 until 5.13
-    has compared.
-  - Read by a new tutor session's first turn, with the note that it is
-    new: the unit's handoff note and its open misconceptions.
-  - Read by the tutor's system prompt and the unit planner's turn, as
-    they stand when the chat opens or the unit is planned: the last
-    handoff notes of the unit's prerequisites, and the open
-    misconceptions on other units' objectives.
-  - Read by the turn that asks for a review or gate question: the
-    misconceptions recorded on its objective, open or not.
-    - Shown in "What I know", under the objective and above its answers,
-    as piece 18 has it: what the learner believed, what is so, where it
-    showed, and "Open" or "Cleared".
-- Done when: fake-backend tests cover: a call at a segment's close and at
-  the unit's end with the stretch it is given; a note replacing the one
-  before; misconceptions appended, and open or not by the objective's
-  status; a failed call, and the next one covering both stretches; a
-  fresh start's first turn carrying the note; the planner's turn and the
-  system prompt of a later unit; the review turn naming a misconception.
-  `mise run check` passes; on `pnpm dev:fake` a detour's misconception
-  shows in "What I know" after its segment closes, and the browser is
-  closed before the server stops; one short run on Haiku 5.5 with a
-  detour, then Start fresh, the note and the misconception read by eye.
-- Note: the turn that asks for a review or gate question is `runAllowed`
-  in `unit-turns.ts`. The tutor's system prompt is sent with every
-  request, and a change to it costs the session's cache. So what changes while a unit
-  runs (its own note and misconceptions) goes into a new session's first
-  turn, never into the system prompt.
-
 ### 5.8 The learner profile
 
 - Status: todo
@@ -147,7 +90,8 @@ a detour, a unit gate, generated notes and an exported transcript.
     since the notes are kept), outside the chat's queue. It is given the
     unit's goal and plan, the tutor's teaching and the discussion from
     the transcripts, the questions missed with their right answers, the
-    handoff note and the unit's misconceptions, and the learner's
+    handoff note and the unit's misconceptions (`readHandoff` and
+    `readMisconceptions` in `record/data-root.ts`), and the learner's
     instructions between tags. It writes one whole HTML document within
     a size limit: its own layout and styles, figures as inline SVG, and
     math as TeX in elements the engine draws. No script, and no address
@@ -326,6 +270,16 @@ a detour, a unit gate, generated notes and an exported transcript.
   different exponent"), and posted a math question with a wrong key: the
   limit of $2x^3 - x + 4$ at $-1$ given as 7, its feedback working
   "$-2 + 1 + 4 = 7$". Nothing checks a key's arithmetic.
+- From 5.7's Haiku run (a fractions unit: a confident miss, a message in
+  the detour, moving on, Start fresh): the note ran about 280 words,
+  opened by restating the unit and its objectives, and once said "the
+  stretch does not show", the writer's own word; its one misconception
+  was true to the detour and stated as the claim held. The fresh session
+  picked up from the note without asking what was covered and offered the
+  detour's sum again, but told the learner to "tell me" when ready for the
+  next segment, which they start with a button. To run the writer on the
+  same stretches, a request can be rebuilt from a unit's transcripts with
+  `since`, `readStretch` and `handoffRequest` in `engine/handoff.ts`.
 - From 5.6's Haiku test: no lead-ins and nothing said between questions,
   as asked; but the second question after an unsure answer was the same
   problem with new numbers, not the objective asked another way; the word

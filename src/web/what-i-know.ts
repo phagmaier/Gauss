@@ -2,11 +2,13 @@
 // objectives by status, the units not started, each objective's and unit's
 // status word, and what one answer in its evidence says beside its question
 // and answer, with the verdict and key a dispute left (task 3.8; dispute.ts)
-// and the assessment it was given in (piece 16).
+// and the assessment it was given in (piece 16); and what a misconception
+// found on the objective says above its answers (piece 18).
 // The view is drawn in WhatIKnow.tsx from what the server derives
 // (src/server/record/what-i-know.ts).
 
 import type { Assessment } from "../shared/evidence.ts";
+import { isOpen } from "../shared/misconception.ts";
 import {
   type ChoiceLetter,
   confidenceLabel,
@@ -14,7 +16,11 @@ import {
   type Verdict,
 } from "../shared/question.ts";
 import type { ObjectiveStatus, UnitStatus } from "../shared/status.ts";
-import type { ShownEvidence, WhatIKnow } from "../shared/what-i-know.ts";
+import type {
+  ShownEvidence,
+  ShownMisconception,
+  WhatIKnow,
+} from "../shared/what-i-know.ts";
 import { standing, verdictWord } from "./dispute.ts";
 import { unitNumbers } from "./units.ts";
 
@@ -176,6 +182,47 @@ function givenIn(
         ? "Testing out"
         : "Testing out, so not counted as a miss";
   }
+}
+
+/** What a misconception's head says (piece 18). */
+export interface MisconceptionHead {
+  /** Open while its objective is not passed; cleared once it has. */
+  open: boolean;
+  state: "Open" | "Cleared";
+  /** "Found 17 November 2026, in the detour after question 3". */
+  found: string;
+}
+
+/**
+ * @param status the status of the objective it sits under
+ * @param unit the id of that objective's unit, and the number of a unit by
+ *   its id, to name another unit whose thread showed it
+ */
+export function misconceptionHead(
+  misconception: ShownMisconception,
+  status: ObjectiveStatus,
+  unit: { id: string; number: (unitId: string) => number | undefined },
+): MisconceptionHead {
+  const open = isOpen(status);
+  const { where } = misconception;
+  const place =
+    where.in === "detour"
+      ? `in the detour after question ${where.number}`
+      : "in the discussion";
+  const other =
+    misconception.unit === unit.id
+      ? undefined
+      : unit.number(misconception.unit);
+  const day = new Date(misconception.recordedAt).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  return {
+    open,
+    state: open ? "Open" : "Cleared",
+    found: `Found ${day}, ${other === undefined ? "" : `in unit ${other}, `}${place}`,
+  };
 }
 
 /**

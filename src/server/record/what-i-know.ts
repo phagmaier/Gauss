@@ -4,10 +4,12 @@
 // asked, never stored (architecture.md section 3): statuses by
 // objectiveStatus and unitStatus, as the course view's progress has them;
 // with the course's calibration (task 2.29). A disputed answer is shown
-// with its dispute, and counts with its verdict (task 3.8).
+// with its dispute, and counts with its verdict (task 3.8). Each objective
+// has the misconceptions found on it (task 5.7).
 
 import type { Curriculum } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
+import type { Misconception } from "../../shared/misconception.ts";
 import type { Question } from "../../shared/question.ts";
 import type { State } from "../../shared/state.ts";
 import type {
@@ -32,6 +34,7 @@ export function whatIKnow(
   curriculum: Curriculum,
   state: State,
   evidence: readonly EvidenceEntry[],
+  misconceptions: readonly Misconception[] = [],
 ): WhatIKnow {
   const units = curriculum.units.map((unit, i): KnownUnit => {
     // The unit's own entry only, as in progress.ts.
@@ -50,6 +53,10 @@ export function whatIKnow(
                 ...objective,
                 status: objectiveStatus(evidence, objective.id),
                 evidence: evidenceOn(evidence, objective.id),
+                misconceptions: misconceptions.flatMap(
+                  ({ objective: on, ...shown }) =>
+                    on === objective.id ? [shown] : [],
+                ),
               }),
             );
     return {

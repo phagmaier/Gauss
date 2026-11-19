@@ -5,15 +5,17 @@ import {
   createClaudeBackend,
   DISPUTE_MODEL,
   GRADER_MODEL,
+  HANDOFF_MODEL,
   JUDGE_MODEL,
 } from "./backends/claude.ts";
 import { resolveDataRoot } from "./record/data-root.ts";
 import { serve } from "./serve.ts";
 
 // GAUSS_CLAUDE_MODEL picks a cheap model for development runs (AGENTS.md),
-// for every session, the grader's and the judges' included. Left unset, the
-// sessions use the learner's Claude Code default, and the grader, the help
-// judge and the dispute judge their own models (tasks 2.9, 2.21 and 3.8).
+// for every session, the grader's, the judges' and the handoff writer's
+// included. Left unset, the sessions use the learner's Claude Code default,
+// and the grader, the help judge, the dispute judge and the handoff writer
+// their own models (tasks 2.9, 2.21, 3.8 and 5.7).
 const model = process.env.GAUSS_CLAUDE_MODEL;
 
 await serve({
@@ -21,6 +23,7 @@ await serve({
   graderBackend: createClaudeBackend({ model: model ?? GRADER_MODEL }),
   judgeBackend: createClaudeBackend({ model: model ?? JUDGE_MODEL }),
   disputeBackend: createClaudeBackend({ model: model ?? DISPUTE_MODEL }),
+  handoffBackend: createClaudeBackend({ model: model ?? HANDOFF_MODEL }),
   // GAUSS_DATA_ROOT moves the course record away from ~/gauss (AGENTS.md).
   dataRootPath: resolveDataRoot(),
   port: Number(process.env.GAUSS_PORT ?? 4320),

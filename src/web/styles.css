@@ -1778,3 +1778,21 @@ button.dn:hover {
   color: var(--faint);
   font-weight: 400;
 }
+/* a misconception under its objective, above its answers (piece 18): ruled in peach while open, grey once cleared */
+.mc {
+  margin: 0.7em 0 0;
+  padding: 0.1em 0 0.1em 1em;
+  border-left: 2px solid var(--peach);
+  display: grid;
+  gap: 0.2em;
+}
+.mc.shut {
+  border-left-color: var(--surface1);
+}
+.mc .q-count b {
+  font-weight: 600;
+  color: var(--peach);
+}
+.mc.shut .q-count b {
+  color: var(--soft);
+}

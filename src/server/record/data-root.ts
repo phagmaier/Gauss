@@ -4,7 +4,8 @@
 // style note and background note, reads those notes, stores the plans of
 // their units, keeps the position of each unit in progress in state.json,
 // appends to and reads the evidence log, appends a dispute once per answer,
-// appends to and reads the units' session transcripts, and stores and reads the artifacts the tutor shows.
+// appends to and reads the units' session transcripts, stores and reads the artifacts the tutor shows,
+// and writes and reads each unit's handoff note and the misconception log (task 5.7).
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -28,7 +29,9 @@ import {
   EvidenceEntry,
   OverrideEvidence,
 } from "../../shared/evidence.ts";
+import { HandoffMark } from "../../shared/handoff.ts";
 import type { StoredCourse } from "../../shared/library.ts";
+import { Misconception } from "../../shared/misconception.ts";
 import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
@@ -197,6 +200,33 @@ export interface DataRoot {
    * name, or the name cannot be an artifact's.
    */
   readArtifact(id: string, file: string): Promise<string | undefined>;
+  /**
+   * The unit's handoff note, `units/<unit id>/handoff.md`, trimmed, with how
+   * much of the thread it covers (`handoff.json`); undefined when the unit
+   * has no note. A note without its mark, which a crash between the two
+   * writes leaves, has none, and the next call reads the whole thread.
+   */
+  readHandoff(
+    id: string,
+    unitId: string,
+  ): Promise<{ note: string; mark: HandoffMark | undefined } | undefined>;
+  /**
+   * Writes the unit's handoff note whole, in place of the one before, then
+   * how much of the thread it covers.
+   */
+  writeHandoff(
+    id: string,
+    unitId: string,
+    note: string,
+    mark: HandoffMark,
+  ): Promise<void>;
+  /** Appends the misconceptions to misconceptions.jsonl in one write. */
+  appendMisconceptions(
+    id: string,
+    entries: readonly Misconception[],
+  ): Promise<void>;
+  /** The misconception log, oldest first, without a last line a crash cut short. */
+  readMisconceptions(id: string): Promise<Misconception[]>;
 }
 
 /**
@@ -273,6 +303,11 @@ export function openDataRoot(options: {
       if (hasCode(error, "ENOENT")) return undefined;
       throw error;
     }
+  }
+
+  /** A unit's folder under the course's `units/`, which need not exist yet. */
+  function unitFolder(id: string, unitId: string): string {
+    return courseFile(id, join("units", Slug.parse(unitId)));
   }
 
   /** A file in the course's folder, which need not exist yet. */
@@ -605,6 +640,49 @@ export function openDataRoot(options: {
         if (hasCode(error, "ENOENT")) return undefined;
         throw error;
       }
+    },
+
+    async readHandoff(id, unitId) {
+      const folder = unitFolder(id, unitId);
+      await existingCourse(id);
+      let note: string;
+      try {
+        note = (await readFile(join(folder, "handoff.md"), "utf8")).trim();
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return undefined;
+        throw error;
+      }
+      if (note === "") return undefined;
+      return {
+        note,
+        mark: await readJson(join(folder, "handoff.json"), HandoffMark),
+      };
+    },
+
+    async writeHandoff(id, unitId, note, mark) {
+      const checked = HandoffMark.parse(mark);
+      const folder = unitFolder(id, unitId);
+      await existingCourse(id);
+      await withFileLock(folder, async () => {
+        await mkdir(folder, { recursive: true });
+        await writeFileAtomic(join(folder, "handoff.md"), `${note.trim()}\n`);
+        await writeJson(join(folder, "handoff.json"), HandoffMark, checked);
+      });
+    },
+
+    async appendMisconceptions(id, entries) {
+      const checked = entries.map((entry) => Misconception.parse(entry));
+      const path = courseFile(id, "misconceptions.jsonl");
+      await withFileLock(path, async () => {
+        await existingCourse(id);
+        await appendJsonLines(path, checked);
+      });
+    },
+
+    async readMisconceptions(id) {
+      const path = courseFile(id, "misconceptions.jsonl");
+      await existingCourse(id);
+      return readJsonLines(path, Misconception);
     },
 
     async readTranscripts(id, unitId) {

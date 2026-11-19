@@ -8,6 +8,7 @@ import type {
 import {
   answerLine,
   knownSummary,
+  misconceptionHead,
   objectiveMark,
   outputLines,
   recordedOn,
@@ -35,6 +36,7 @@ const view = (...units: (Status[] | null)[]): WhatIKnow => ({
         statement: `Do part ${j + 1}.`,
         status,
         evidence: [],
+        misconceptions: [],
       })) ?? null,
   })),
   calibration: { levels: [], unknown: 0 },
@@ -527,5 +529,55 @@ test("an entry's date is the day and the time it was recorded, in local time", (
   expect(recordedOn(AT)).toBe("14 November 2026, 10:05");
   expect(recordedOn(new Date(2026, 0, 3, 21, 40).toISOString())).toBe(
     "3 January 2026, 21:40",
+  );
+});
+
+test.each([
+  { status: "passed", state: "Cleared" },
+  { status: "retained", state: "Cleared" },
+  { status: "slipping", state: "Open" },
+  { status: "attempted", state: "Open" },
+  { status: "overridden", state: "Open" },
+  { status: "not-started", state: "Open" },
+] as const)(
+  "a misconception on an objective $status is $state (piece 18)",
+  ({ status, state }) => {
+    const head = misconceptionHead(
+      {
+        recordedAt: AT,
+        unit: "unit-1",
+        believed: "Believed.",
+        actually: "So.",
+        where: { in: "discussion" },
+      },
+      status,
+      { id: "unit-1", number: () => 1 },
+    );
+    expect(head).toEqual({
+      open: state === "Open",
+      state,
+      found: "Found 14 November 2026, in the discussion",
+    });
+  },
+);
+
+test("a misconception says where it showed: the detour after its question, and another unit's thread by its number", () => {
+  const found = (unit: string) =>
+    misconceptionHead(
+      {
+        recordedAt: AT,
+        unit,
+        believed: "Believed.",
+        actually: "So.",
+        where: { in: "detour", questionId: "q-3", number: 3 },
+      },
+      "attempted",
+      { id: "unit-1", number: (id) => (id === "unit-3" ? 3 : undefined) },
+    ).found;
+  expect(found("unit-1")).toBe(
+    "Found 14 November 2026, in the detour after question 3",
+  );
+  expect(found("unit-3")).toBe(
+    "Found 14 November 2026, in unit 3, in the detour after question 3",
   );
 });

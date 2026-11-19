@@ -37,14 +37,14 @@ the reason for using one language.
 ```
 Gauss/
   docs/                 brief.md, architecture.md, decisions.md, plan.md; prototype/ (the page mocks)
-  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md; later handoff.md, notes.md
+  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md, handoff.md; later notes.md
   src/
     shared/             zod schemas: record files, questions, events, route bodies
     server/
       main.ts, serve.ts the real server's start, and the wiring it shares with the dev server
       open-file.ts      the system's opener, for "Open" on a code question's files
       record/           read/write course files; derive status, progress, "what I know"; the backup
-      engine/           the chats, phase and check rules, turn texts, grading, help-judge and dispute dispatch, the sandbox for commands
+      engine/           the chats, phase and check rules, turn texts, grading, help-judge and dispute dispatch, the handoff writer, the sandbox for commands
       tools/            teaching tool definitions (transport-free functions)
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
@@ -74,7 +74,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
 
 ```
 <data root>/
-  .git/, .gitignore               the record's history: commits after each segment close, unit end, approval, and an assessment that recorded answers
+  .git/, .gitignore               the record's history: commits after each segment close, unit end, approval, handoff note, and an assessment that recorded answers
   profile.md                      (stage 5) learner profile: free text the learner approves
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
   cache/package-uv/               uv's install cache; outside the record and its history
@@ -85,8 +85,9 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts
     state.json                    a position for each unit in progress
     evidence.jsonl                append-only: answers (with the assessment each was given in), grades, confidence, overrides, disputes with their outcomes
-    misconceptions.jsonl          (stage 5) append-only: findings from detours and discussions
-    units/<unit-id>/handoff.md    (stage 5) the unit's handoff note, rewritten when a segment closes
+    misconceptions.jsonl          append-only: what the handoff writer found the learner believed, from detours and discussions
+    units/<unit-id>/handoff.md    the unit's handoff note, rewritten whole when a segment closes or the unit finishes
+    units/<unit-id>/handoff.json  how far into the unit's transcripts that note reads
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
     sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
@@ -97,7 +98,8 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
 ```
 
 The shapes are the schemas in `src/shared/`: `course.ts`, `curriculum.ts`
-(a unit's plan in `plan.ts`), `state.ts`, `evidence.ts`. A course id is its
+(a unit's plan in `plan.ts`), `state.ts`, `evidence.ts`, `misconception.ts`,
+and `handoff.ts` for `handoff.json`. A course id is its
 folder's name, made from its title; unit and objective ids are slugs, and
 objective ids are unique in the course, because the evidence names an
 objective by its id alone. A curriculum is a draft until the learner
@@ -117,7 +119,9 @@ version: a field added later must be optional.
   status". A disputed answer counts with its dispute's verdict, where the
   answer stands in the log; its own line keeps the first grade
   (`record/disputes.ts`, which status, the check rules and calibration
-  read the log through).
+  read the log through). A misconception is open while its objective is
+  not passed, slipping and overridden ones included (`isOpen` in
+  `src/shared/misconception.ts`).
 - **`state.json`** holds a position for each unit in progress, not one
   current unit: several units can be in progress at once. A position
   holds the segment, the phase, where the check began (`checkFrom`), the
@@ -149,8 +153,8 @@ version: a field added later must be optional.
   on the first start if it is not one, with a `.gitignore` that keeps
   `courses/` and `profile.md`, the learner's files in workspaces with
   them, and leaves out `.venv/` and Python's caches. The engine asks for a commit once a
-  segment's close, a unit's end, an approval or the end of an assessment
-  that recorded answers is written; commits run in
+  segment's close, a unit's end, an approval, a handoff note or the end of
+  an assessment that recorded answers is written; commits run in
   the background, one at a time, by "Gauss", and a failure is logged and
   never fails the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off
   for `pnpm dev:fake` unless `=on`; tests pass it in.
@@ -181,7 +185,8 @@ also before it reaches the backend.
 - **Unit planning** (`engine/unit-planning.ts`). A unit without a plan is
   planned when it is opened, in a session of its own: one turn with the
   background note, the curriculum and the status of every objective planned
-  so far, the `plan_unit` tool, then it closes. A session that ends without
+  so far, and what earlier units showed (section 4, "Handoff notes"), the
+  `plan_unit` tool, then it closes. A session that ends without
   a plan is tried once more, told why; then the unit reports that it could
   not be planned.
 - **The unit chat** (`engine/unit-chat.ts`), one per unit, kept in memory
@@ -213,7 +218,9 @@ also before it reaches the backend.
   the backend cannot find (a deleted file, or Claude Code's 30-day sweep)
   falls back the same way, but sends nothing until the learner acts. Either
   way the new session's system prompt is the seed from the record (section
-  9), its first header says it is new, and the page shows a "Fresh start"
+  9), its first header says it is new and is followed by the unit's
+  handoff note and the open misconceptions on its objectives (below,
+  "Handoff notes"), and the page shows a "Fresh start"
   marker and dims the conversation before it, except a card that still
   waits (an open question, the closing card). A resume that fails another
   way fails that turn, and the next turn tries again.
@@ -365,7 +372,11 @@ that allows a question adds a separate “Questions asked before” section to
 the header: the latest six recorded prompts for each objective it may ask
 about. This gives a new tutor session examples to avoid repeating. In an
 assessment the header also names the objective's unit and statement, which
-the tutor's plan lacks when it is another unit's. The scripted backend
+the tutor's plan lacks when it is another unit's, and in a review or a gate,
+after the questions asked before, the misconceptions recorded on the
+objective, each one line, open or cleared. A new session's first turn
+carries the unit's handoff note and open misconceptions after the header,
+before its body. The scripted backend
 reads the instructions before that section, and of the section only how
 many questions it lists, to number its next question past them, never the
 recorded prompts. Header wording lives in `engine/unit-turns.ts` for unit
@@ -510,6 +521,47 @@ the test before a unit lets the learner skip what they know.
   passed stays passed either way, and the gate leaves out a pass resting
   on a test answer.
 
+### Handoff notes and misconceptions
+
+`engine/handoff.ts`; why, `decisions.md`, "Mastery loop".
+
+- **When.** The unit's record asks for a call once a segment's close
+  (by passing or by moving on) or the unit's end is written, where it asks
+  for a backup commit. The calls run outside the chat's queue, one at a
+  time per unit (`createHandoffs`): a close while one runs is read by one
+  more call after it. Closing the chat stops a call, which records
+  nothing. A stretch with no tutor text, learner message or answer (a unit
+  that finishes as its last segment closes) gets no call.
+- **What it reads.** The unit's transcripts on disk, once the thread's
+  events so far are written, from the mark in `handoff.json` on
+  (`since`): written out by `readStretch` with the tutor's text joined,
+  the learner's messages, each question with its answer, reasoning,
+  confidence and grade (a confident wrong answer named as one), detours
+  numbered in order, and the thread's markers; at most `STRETCH_LIMIT`
+  characters, its start left out beyond that. With it, the unit, its
+  objectives and those of other units that the stretch's questions asked,
+  the note before, and the misconceptions recorded on those objectives
+  (`handoffRequest`).
+- **What it writes.** `HandoffReply` (`src/shared/handoff.ts`): the note,
+  whole, and the misconceptions found, each naming an objective given and,
+  if it showed in a detour, the detour's number, which the engine turns
+  into its question's id and number; one naming anything else is left
+  out. The misconceptions are appended, then the note replaces the one
+  before, then the mark moves to the stretch's end, and a backup commit is
+  asked for. A failed call, a reply out of shape or one past
+  `HANDOFF_TIME_LIMIT_MS` records nothing, so the next call reads its
+  stretch too. It runs on Claude Haiku 5.5 (`HANDOFF_MODEL`).
+- **Who reads them.** The chat holds the unit's note and the course's
+  misconceptions, read when it opens and again when an assessment is
+  offered, with what its own calls write. A new session's first turn gets
+  the note and the open misconceptions on the unit's objectives; a
+  review's or a gate's question turn, those on its objective, open or not.
+  The tutor's system prompt and the unit's planning turn get, as the
+  record stands when the chat opens or the unit is planned, the last notes
+  of the unit's direct prerequisites and the open misconceptions on other
+  units' objectives (`readEarlier`), in a section left out when it is
+  empty. "What I know" shows each under its objective.
+
 ## 5. Teaching tools
 
 Defined once as plain functions over the record and engine
@@ -570,8 +622,8 @@ with sources (stage 4).
   The reply is `HelpJudgment`: a reason, never shown, then clarification or
   help. A reply out of shape, a failed request or one past two minutes
   counts as help. It runs on Claude Haiku 5.5 (`JUDGE_MODEL`).
-- `GAUSS_CLAUDE_MODEL`, when set, replaces the grader's and the judges'
-  models. Each was chosen on a hand-made set: re-run
+- `GAUSS_CLAUDE_MODEL`, when set, replaces the grader's, the judges' and
+  the handoff writer's models. Each was chosen on a hand-made set: re-run
   `node scripts/grade-set.ts --runs 2` when `grader.md`, `WrittenGrade` or
   `GRADER_MODEL` changes, `node scripts/judge-set.ts --runs 2` when
   `help-judge.md`, `HelpJudgment` or `JUDGE_MODEL` changes, and
@@ -796,19 +848,20 @@ Kept as files in `prompts/`, each revised against real runs.
 - `tutor.md` is the start of the tutor's system prompt, which
   `engine/unit-turns.ts` assembles: `tutor.md`, the course's units with
   their goals, the unit taught and its plan, "# The learner" with
-  `background.md` (or a line saying none was recorded), then `style.md` (or
-  a line saying to use `tutor.md`'s default style). Stage 5 adds the
-  profile, the handoff notes of the unit's prerequisites and the open
-  misconceptions on other units' objectives; the unit's own handoff note
-  goes into a new session's first turn.
+  `background.md` (or a line saying none was recorded), "# Earlier units"
+  when it has anything (the last handoff notes of the unit's
+  prerequisites and the open misconceptions on other units' objectives),
+  then `style.md` (or a line saying to use `tutor.md`'s default style).
+  The unit's own handoff note goes into a new session's first turn
+  (section 4, "Handoff notes"). Task 5.8 adds the profile.
 - `planner.md` drives the intake: its questions, asking to go ahead, and the
   proposal with its style and background notes.
 - `unit-planner.md` drives a unit's planning session.
 - `grader.md`, `help-judge.md` and `dispute-judge.md` are the one-shot
-  calls of section 6.
-- Later (stage 5): `handoff.md` for the call that writes handoff notes and
-  finds misconceptions, and `notes.md` for unit notes. Assessments get a
+  calls of section 6; `handoff.md` is the one-shot call that writes
+  handoff notes and finds misconceptions (section 4). Assessments have a
   section of `tutor.md`, not a prompt of their own.
+- Later (stage 5): `notes.md` for unit notes.
 
 Model text is Markdown with `$` math: `$...$` inline, `$$` for display,
 `\$` for a dollar sign; no `\(...\)`, HTML or images (section 10). Every
@@ -842,7 +895,10 @@ no automated tests.
   confidence, help, the assessment it was given in, grade with the
   grader's flaw, the right choice or expected answer of a question missed,
   why the grader graded a math answer, a code answer's files as run and
-  its tests' output, date) and overrides; a rubric or a code question's tests and frozen
+  its tests' output, date) and overrides, and above it each misconception
+  found on it (piece 18): what the learner believed, what is so, where it
+  showed, ruled in peach and "Open" while the objective is not passed, grey
+  and "Cleared" once it is; a rubric or a code question's tests and frozen
   inputs only while that answer is disputed. Each graded answer has
   "Dispute this grade" (piece 13; `src/web/Dispute.tsx`), and a disputed
   one shows the verdict it now counts with, marked "after your dispute"

@@ -1538,8 +1538,23 @@ async function courseWithEvidence() {
   return id;
 }
 
-test("what I know sends each planned unit's objectives with their status and evidence, in log order, without rubrics", async () => {
+test("what I know sends each planned unit's objectives with their status and evidence, in log order, without rubrics, and the misconceptions found on each", async () => {
   const id = await courseWithEvidence();
+  // Found in a detour on one objective, and in the discussion on another
+  // unit's, which no planned unit has and is not shown.
+  const misconception = {
+    recordedAt: "2026-11-14T10:20:00.000Z",
+    unit: "vectors",
+    objective: "matrix-columns",
+    believed: "A matrix's second column is its second row.",
+    actually:
+      "The columns run down: the second column is the second entry of each row.",
+    where: { in: "detour", questionId: "q2", number: 2 },
+  } as const;
+  await openDataRoot({ path: dir }).appendMisconceptions(id, [
+    misconception,
+    { ...misconception, objective: "dropped", where: { in: "discussion" } },
+  ]);
   const { app } = setUp([]);
 
   const response = await app.request(`/api/courses/${id}/what-i-know`);
@@ -1565,6 +1580,7 @@ test("what I know sends each planned unit's objectives with their status and evi
             // without help, one in a review; the answer with help counts
             // for nothing.
             status: "retained",
+            misconceptions: [],
             evidence: [
               {
                 kind: "answer",
@@ -1626,6 +1642,16 @@ test("what I know sends each planned unit's objectives with their status and evi
             id: "matrix-columns",
             statement: "Read a matrix's columns.",
             status: "overridden",
+            misconceptions: [
+              {
+                recordedAt: "2026-11-14T10:20:00.000Z",
+                unit: "vectors",
+                believed: "A matrix's second column is its second row.",
+                actually:
+                  "The columns run down: the second column is the second entry of each row.",
+                where: { in: "detour", questionId: "q2", number: 2 },
+              },
+            ],
             evidence: [
               {
                 kind: "answer",
@@ -1648,6 +1674,7 @@ test("what I know sends each planned unit's objectives with their status and evi
             id: "span",
             statement: "Say what the span of two vectors is.",
             status: "attempted",
+            misconceptions: [],
             evidence: [
               {
                 kind: "answer",
@@ -1676,6 +1703,7 @@ test("what I know sends each planned unit's objectives with their status and evi
             statement: "Find the rank of a matrix.",
             status: "not-started",
             evidence: [],
+            misconceptions: [],
           },
         ],
       },

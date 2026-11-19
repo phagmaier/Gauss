@@ -13,6 +13,7 @@ import { createCodeRunner } from "./engine/code-run.ts";
 import { createDisputeJudge } from "./engine/dispute-judge.ts";
 import { createDisputes } from "./engine/disputes.ts";
 import { createGrader } from "./engine/grading.ts";
+import { createHandoffWriter } from "./engine/handoff.ts";
 import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
 import { createMathCheck } from "./engine/math-check.ts";
@@ -41,6 +42,8 @@ export async function serve(options: {
   judgeBackend: TutorBackend;
   /** Decides disputes of answers' grades (task 3.8). */
   disputeBackend: TutorBackend;
+  /** Writes handoff notes and finds misconceptions (task 5.7). */
+  handoffBackend: TutorBackend;
   dataRootPath: string;
   port: number;
   /** Keeps the record's history in git (task 2.25). */
@@ -56,6 +59,7 @@ export async function serve(options: {
     graderPrompt,
     judgePrompt,
     disputePrompt,
+    handoffPrompt,
   ] = await Promise.all([
     prompt("planner.md"),
     prompt("unit-planner.md"),
@@ -63,6 +67,7 @@ export async function serve(options: {
     prompt("grader.md"),
     prompt("help-judge.md"),
     prompt("dispute-judge.md"),
+    prompt("handoff.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
   // The engine's commands run in it (task 3.2); it says once if it cannot,
@@ -101,6 +106,10 @@ export async function serve(options: {
     judge: createHelpJudge({
       backend: options.judgeBackend,
       systemPrompt: judgePrompt,
+    }),
+    handoff: createHandoffWriter({
+      backend: options.handoffBackend,
+      systemPrompt: handoffPrompt,
     }),
     mathCheck: createMathCheck({ sandbox }),
     codeRunner: createCodeRunner({ sandbox }),

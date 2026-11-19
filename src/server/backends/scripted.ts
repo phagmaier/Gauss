@@ -62,6 +62,13 @@
 // "/hold" keeps its reply open, so an answer sent meanwhile waits for the
 // judging, which comes once the reply is stopped.
 //
+// The handoff writer (task 5.7), called when a segment closes or a unit
+// finishes, writes a note that counts what it read, numbered on from the
+// note before, and finds one misconception for each detour in its stretch,
+// on the detour's objective. "/nohandoff" in a learner's message in the
+// stretch fails the call, which records nothing: the next one reads that
+// stretch too.
+//
 // A dispute of a grade (task 3.8) is decided by the scripted judge: the
 // grade stands unless the learner's reason has "/change" in it, which
 // changes it; for a choice question changed to correct, the key becomes the
@@ -81,6 +88,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import { DisputeJudgment } from "../../shared/dispute.ts";
+import { HandoffReply } from "../../shared/handoff.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
 import { QUESTION_HISTORY_START } from "../engine/unit-turns.ts";
@@ -611,6 +619,7 @@ function codeQuestion(
 function scriptedReply(request: OneShotRequest<unknown>): FakeReply {
   if (request.schema === HelpJudgment) return scriptedJudgment(request);
   if (request.schema === DisputeJudgment) return scriptedDispute(request);
+  if (request.schema === HandoffReply) return scriptedHandoff(request);
   const answer =
     /<answer>\n([\s\S]*)\n<\/answer>/.exec(request.prompt)?.[1] ?? "";
   if (answer.includes("/fail")) {
@@ -657,6 +666,44 @@ function scriptedDispute(request: OneShotRequest<unknown>): FakeReply {
       ...(choices === undefined
         ? {}
         : { key: !change ? key : verdict === "correct" ? picked : other }),
+    },
+  };
+}
+
+/**
+ * The handoff writer's call: a note numbered on from the one before, which
+ * counts what it read, and a misconception for each detour it read.
+ */
+function scriptedHandoff(request: OneShotRequest<unknown>): FakeReply {
+  const stretch =
+    /<stretch>\n([\s\S]*)\n<\/stretch>$/.exec(request.prompt)?.[1] ?? "";
+  if (stretch.includes("/nohandoff")) {
+    return { fail: "The scripted handoff writer was told to fail." };
+  }
+  const before = /<note_before>\n[\s\S]*?Scripted note (\d+)\b/.exec(
+    request.prompt,
+  )?.[1];
+  const number = before === undefined ? 1 : Number(before) + 1;
+  const count = (pattern: RegExp) => (stretch.match(pattern) ?? []).length;
+  const detours = [
+    ...stretch.matchAll(
+      /^\[Detour (\d+) opens, after the miss on question (\d+), on "([^"]+)"\.\]$/gm,
+    ),
+  ];
+  return {
+    output: {
+      note:
+        `**Scripted note ${number}.** Since the note before, it read ` +
+        `${count(/^Tutor:$/gm)} of the tutor's replies, ` +
+        `${count(/^Learner:$/gm)} of the learner's messages, ` +
+        `${count(/^\[The learner's answer to /gm)} answers and ` +
+        `${detours.length} detours.`,
+      misconceptions: detours.map(([, detour, question, objective]) => ({
+        objective,
+        believed: `Scripted: what the answer to question ${question} showed, that $a^2 + b^2 = c$.`,
+        actually: "Scripted: it is $a^2 + b^2 = c^2$.",
+        detour: Number(detour),
+      })),
     },
   };
 }

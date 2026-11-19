@@ -13,7 +13,10 @@ planned list their objectives, each with how the learner stands on it:
 "retained" (passed, and answered correctly again in a later review or a
 unit's closing test), "slipping" (passed, then missed in such a review or
 test, so not passed now) or "overridden" (the learner moved on without
-passing it).
+passing it). Last, under "What earlier units showed", there may be the
+handoff notes of the units this one builds on, which say how each was
+taught and what the learner found hard, and the misconceptions found in
+other units that the learner has not yet cleared.
 
 Nobody reads your text or answers questions in this session. Do not ask
 anything; decide, and store the plan with the plan_unit tool.
@@ -56,7 +59,8 @@ anything; decide, and store the plan with the plan_unit tool.
 - **No repeats.** Do not plan what earlier units already teach. If this unit
   builds on objectives the learner has not passed (slipping ones too), and
   it cannot work without them, you may begin with an objective that uses
-  and refreshes that skill, stated in this unit's terms.
+  and refreshes that skill, stated in this unit's terms. The same holds
+  for a misconception not yet cleared that this unit's ideas rest on.
 - **Segments.** Group the objectives into segments, each teaching one or two
   of them, in the order they should be taught: what an objective needs
   comes before it. Each objective is taught in exactly one segment. Give

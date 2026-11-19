@@ -3,7 +3,9 @@
 // prompts/unit-planner.md, before the tutor's session starts. The session
 // gets one turn holding the course's background note (task 2.22) and its
 // curriculum, with how the learner stands on each objective planned so far,
-// and stores the plan through plan_unit; then it closes. A session that ends
+// and what earlier units showed (task 5.7): the last handoff notes of the
+// unit's prerequisites and the open misconceptions on other units'
+// objectives. It stores the plan through plan_unit; then it closes. A session that ends
 // without a plan is tried once more, in a new session told why; after that
 // the failure is the caller's to report to the learner.
 
@@ -16,6 +18,7 @@ import type { DataRoot } from "../record/data-root.ts";
 import { objectiveStatus } from "../record/status.ts";
 import { planUnitTool } from "../tools/plan-unit.ts";
 import type { TeachingTool } from "../tools/tool.ts";
+import { type EarlierUnits, earlierText, readEarlier } from "./handoff.ts";
 
 export type PlanningResult =
   | { ok: true; plan: Plan }
@@ -75,9 +78,20 @@ export function createUnitPlanner(options: {
     }
     if (unit.plan !== undefined) return { ok: true, plan: unit.plan };
 
-    const evidence = await dataRoot.readEvidence(courseId);
-    const background = await dataRoot.readBackground(courseId);
+    const [evidence, background, misconceptions] = await Promise.all([
+      dataRoot.readEvidence(courseId),
+      dataRoot.readBackground(courseId),
+      dataRoot.readMisconceptions(courseId),
+    ]);
     const context = planningContext(stored, curriculum, unit, evidence);
+    const earlier = await readEarlier(
+      dataRoot,
+      courseId,
+      curriculum.units,
+      unitId,
+      evidence,
+      misconceptions,
+    );
     let problem: string | undefined;
     for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
       const outcome = await runSession(
@@ -86,6 +100,7 @@ export function createUnitPlanner(options: {
         planningTurn(stored, curriculum, unit, {
           context,
           background,
+          earlier,
           earlierProblem: problem,
         }),
       );
@@ -218,10 +233,12 @@ function planningTurn(
     context: string;
     /** The course's background note; a course from before task 2.22 has none. */
     background: string | undefined;
+    earlier: EarlierUnits;
     earlierProblem: string | undefined;
   },
 ): string {
   const { context, background, earlierProblem } = given;
+  const earlier = earlierText(given.earlier);
   const at = curriculum.units.indexOf(unit) + 1;
   const retry =
     earlierProblem === undefined
@@ -235,7 +252,10 @@ function planningTurn(
     `${backgroundSection(background)}\n\n` +
     "The curriculum, in order, as JSON. Units already planned list their " +
     "objectives, each with how the learner stands on it.\n" +
-    context
+    context +
+    (earlier === undefined
+      ? ""
+      : `\n\n# What earlier units showed\n\n${earlier}`)
   );
 }
 

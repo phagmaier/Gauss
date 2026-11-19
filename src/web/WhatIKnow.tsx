@@ -4,7 +4,9 @@
 // the answer (or "I don't know" and where the learner got stuck), how sure,
 // help, the grade with a written answer's flaw, and the date; an override is
 // a line of its own, and an answer given in a review, a gate or a test says
-// so (piece 16). Its words are in what-i-know.ts. Under the summary, the
+// so (piece 16). Above an objective's answers, the misconceptions found on
+// it, each "Open" until the objective passes (piece 18; task 5.7). Its words
+// are in what-i-know.ts. Under the summary, the
 // course's calibration (task 2.29), its words in calibration.ts. Each
 // graded answer can be disputed here (task 3.8, Dispute.tsx); once its
 // outcome is in, the view is loaded again, since statuses and calibration
@@ -12,11 +14,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Calibration } from "../shared/calibration.ts";
+import type { ObjectiveStatus } from "../shared/status.ts";
 import {
   WhatIKnow as Known,
   type KnownObjective,
   type KnownUnit,
   type ShownEvidence,
+  type ShownMisconception,
 } from "../shared/what-i-know.ts";
 import { getJson } from "./api.ts";
 import { calibrationRows, hasCalibration } from "./calibration.ts";
@@ -29,6 +33,7 @@ import { paths } from "./route.ts";
 import {
   answerLine,
   knownSummary,
+  misconceptionHead,
   objectiveMark,
   recordedOn,
   unitWord,
@@ -133,6 +138,7 @@ function UnitSection(
         {props.objectives.map((objective) => (
           <ObjectiveItem
             key={objective.id}
+            unitId={unit.id}
             objective={objective}
             disputes={props.disputes}
             onDisputed={props.onDisputed}
@@ -144,7 +150,9 @@ function UnitSection(
   );
 }
 
-function ObjectiveItem(props: { objective: KnownObjective } & Disputing) {
+function ObjectiveItem(
+  props: { unitId: string; objective: KnownObjective } & Disputing,
+) {
   const { objective } = props;
   const mark = objectiveMark(objective.status);
   return (
@@ -155,6 +163,14 @@ function ObjectiveItem(props: { objective: KnownObjective } & Disputing) {
         </span>
         <span className={`wk-s ${mark.className}`}>{mark.text}</span>
       </div>
+      {objective.misconceptions.map((misconception) => (
+        <MisconceptionEntry
+          key={`${misconception.recordedAt} ${misconception.believed}`}
+          misconception={misconception}
+          status={objective.status}
+          unit={{ id: props.unitId, number: props.unitNumber }}
+        />
+      ))}
       {objective.evidence.length === 0 ? (
         <p className="wk-none">Nothing answered yet.</p>
       ) : (
@@ -181,6 +197,37 @@ function ObjectiveItem(props: { objective: KnownObjective } & Disputing) {
         </ol>
       )}
     </li>
+  );
+}
+
+/** A misconception found on the objective: what the learner believed, and what is so. */
+function MisconceptionEntry(props: {
+  misconception: ShownMisconception;
+  status: ObjectiveStatus;
+  unit: { id: string; number: (unitId: string) => number | undefined };
+}) {
+  const { misconception } = props;
+  const head = misconceptionHead(misconception, props.status, props.unit);
+  return (
+    <div className={head.open ? "mc" : "mc shut"}>
+      <div className="q-count">
+        <b>Misconception</b>
+        <span>{head.state}</span>
+        <span>{head.found}</span>
+      </div>
+      <div className="qa-line">
+        <span className="k">You believed</span>
+        <span className="qa-flaw">
+          <InlineProse text={misconception.believed} />
+        </span>
+      </div>
+      <div className="qa-line">
+        <span className="k">What is so</span>
+        <span className="qa-flaw">
+          <InlineProse text={misconception.actually} />
+        </span>
+      </div>
+    </div>
   );
 }
 

@@ -101,9 +101,10 @@ export function createApp(options: {
         409,
       );
     }
-    const [state, evidence] = await Promise.all([
+    const [state, evidence, misconceptions] = await Promise.all([
       dataRoot.readState(stored.id),
       dataRoot.readEvidence(stored.id),
+      dataRoot.readMisconceptions(stored.id),
     ]);
     return c.json(
       whatIKnow(
@@ -111,6 +112,7 @@ export function createApp(options: {
         curriculum,
         state,
         evidence,
+        misconceptions,
       ) satisfies WhatIKnow,
     );
   });

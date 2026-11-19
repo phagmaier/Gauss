@@ -13,7 +13,7 @@
 // carries the id kept last, whatever position the chat gives.
 //
 // Once a segment's close or the unit's end is written, the backup is asked
-// for a commit (task 2.25).
+// for a commit (task 2.25), and the handoff writer for a note (task 5.7).
 //
 // An assessment (task 5.4) is kept in the position too, from when its card is
 // offered until it ends or is skipped; while it is under way, an answer is
@@ -250,6 +250,8 @@ export async function openUnitRecord(options: {
   backup?: Backup;
   /** A unit with no position starts with its test due (task 5.6) instead of its teaching. */
   testOut?: boolean;
+  /** Asks for a handoff note once a segment closes or the unit ends; nothing if not given. */
+  handoff?: () => void;
 }): Promise<UnitRecord> {
   const { dataRoot, courseId, unit, plan, emit, now } = options;
   const backup = options.backup ?? noBackup;
@@ -326,6 +328,7 @@ export async function openUnitRecord(options: {
             ? `segment ${next.segment + 1} of ${unitId}`
             : `the segment going over ${unitId}'s objectives again`;
         backup.commit(`${courseId}: ${segment} closed`);
+        options.handoff?.();
       }
     }
   }
@@ -456,6 +459,7 @@ export async function openUnitRecord(options: {
     emit(status());
     emit({ type: "unit_closed", status: how });
     backup.commit(`${courseId}: unit ${unitId} finished, ${how}`);
+    options.handoff?.();
   }
 
   function keepCompletion(completion: PackageCompletion, tell = true): void {
