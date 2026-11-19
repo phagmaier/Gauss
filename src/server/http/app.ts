@@ -1,8 +1,8 @@
 // HTTP routes: the library and the intake chat that starts a course (plan
 // task 1.5), the unit chats (task 2.6), "What I know" with the course's
 // calibration (tasks 2.26 and 2.29), the artifacts the tutor shows (task
-// 3.6), disputes of recorded answers' grades (task 3.8), and "Open" on a
-// code question's files (task 3.22). Each chat has an event stream from the
+// 3.6), disputes of recorded answers' grades (task 3.8), "Open" on a code
+// question's files (task 3.22), and the learner profile (task 5.8). Each chat has an event stream from the
 // server to the page, and a POST for each thing the learner does in it. Only
 // Gauss's own page may use any of them.
 
@@ -25,6 +25,11 @@ import {
 } from "../../shared/events.ts";
 import type { CourseWithProgress, Library } from "../../shared/library.ts";
 import { PackagesAnswer } from "../../shared/packages.ts";
+import {
+  ProfilePost,
+  type ProfileSaved,
+  type ProfileView,
+} from "../../shared/profile.ts";
 import { AnswerPost, OpenFilePost } from "../../shared/question.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
@@ -33,8 +38,9 @@ import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { FileOpener } from "../open-file.ts";
-import type { DataRoot } from "../record/data-root.ts";
-import { withProgress } from "../record/progress.ts";
+import type { Backup } from "../record/backup.ts";
+import { type DataRoot, ProfileChanged } from "../record/data-root.ts";
+import { finishedCourses, withProgress } from "../record/progress.ts";
 import { whatIKnow } from "../record/what-i-know.ts";
 
 export function createApp(options: {
@@ -44,6 +50,8 @@ export function createApp(options: {
   disputes: Disputes;
   /** "Open" on a code question's card; the system's opener, or a stub in tests. */
   openFile: FileOpener;
+  /** Commits the record once the profile is saved; none if not given. */
+  backup?: Backup;
   heartbeatMs?: number;
 }) {
   const { dataRoot, intakes, units, disputes, openFile } = options;
@@ -216,10 +224,14 @@ export function createApp(options: {
         409,
       );
     }
-    // A draft proposed before style notes existed (task 2.10) has none, and
-    // one proposed before background notes (task 2.22) has no background.
+    // A draft proposed before style notes existed (task 2.10) has none, one
+    // proposed before background notes (task 2.22) has no background, and
+    // one proposed before profiles (task 5.8) no profile. Its card compares
+    // the profile with profile.md as it is now.
     const style = await dataRoot.readStyle(stored.id);
     const background = await dataRoot.readBackground(stored.id);
+    const { profile } = curriculum.approval;
+    const profileWas = await dataRoot.readProfile();
     const intake = intakes.review({
       id: stored.id,
       proposal: {
@@ -227,9 +239,44 @@ export function createApp(options: {
         units: curriculum.units,
         ...(style === undefined ? {} : { style }),
         ...(background === undefined ? {} : { background }),
+        ...(profile === undefined ? {} : { profile }),
+        ...(profile === undefined || profileWas === undefined
+          ? {}
+          : { profileWas }),
       },
     });
     return c.json({ intakeId: intake.id } satisfies IntakeStarted);
+  });
+
+  // --- The learner profile (task 5.8), with the finished courses a new
+  // course's planner is given beside it ------------------------------------
+
+  app.get("/api/profile", async (c) => {
+    const [text, finished] = await Promise.all([
+      dataRoot.readProfile(),
+      finishedCourses(dataRoot),
+    ]);
+    return c.json({
+      ...(text === undefined ? {} : { text }),
+      finished,
+    } satisfies ProfileView);
+  });
+
+  // Saved only over the text the page loaded, so that an approval meanwhile
+  // is not written over unseen.
+  app.post("/api/profile", async (c) => {
+    const body = await readBody(c, ProfilePost);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    try {
+      await dataRoot.writeProfile(body.data.text, body.data.was);
+    } catch (error) {
+      if (error instanceof ProfileChanged) {
+        return c.json({ error: PROFILE_CHANGED }, 409);
+      }
+      throw error;
+    }
+    options.backup?.commit("profile saved");
+    return c.json({ text: body.data.text } satisfies ProfileSaved);
   });
 
   // --- Intakes: "New course" starts one; its first proposal makes the course
@@ -457,6 +504,12 @@ export function createApp(options: {
 
   return app;
 }
+
+/** A save refused because the profile changed after the page loaded it. */
+const PROFILE_CHANGED =
+  "Your profile was changed since this page loaded it, by a curriculum " +
+  "you approved or in another tab. Copy your text, reload the page, and " +
+  "edit the saved profile.";
 
 /**
  * An artifact's policy. `sandbox` without `allow-same-origin` gives it an

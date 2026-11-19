@@ -885,14 +885,21 @@ function createUnitChat(
         unitId,
         plan,
       };
-      const [style, background, handoffNote, misconceptions, evidence] =
-        await Promise.all([
-          dataRoot.readStyle(courseId),
-          dataRoot.readBackground(courseId),
-          dataRoot.readHandoff(courseId, unitId),
-          dataRoot.readMisconceptions(courseId),
-          dataRoot.readEvidence(courseId),
-        ]);
+      const [
+        style,
+        background,
+        profile,
+        handoffNote,
+        misconceptions,
+        evidence,
+      ] = await Promise.all([
+        dataRoot.readStyle(courseId),
+        dataRoot.readBackground(courseId),
+        dataRoot.readProfile(),
+        dataRoot.readHandoff(courseId, unitId),
+        dataRoot.readMisconceptions(courseId),
+        dataRoot.readEvidence(courseId),
+      ]);
       const earlier = await readEarlier(
         dataRoot,
         courseId,
@@ -930,7 +937,7 @@ function createUnitChat(
         systemPrompt: tutorSystemPrompt(
           options.systemPrompt,
           context,
-          { style, background },
+          { style, background, profile },
           earlier,
         ),
         tools: [

@@ -1,6 +1,7 @@
 import {
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
   rm,
   symlink,
@@ -70,7 +71,12 @@ const FIRST = {
   style: "Short explanations, a picture before the algebra.",
   background: "The learner can multiply matrices, and wants to follow PCA.",
 };
-const REVISED = { ...FIRST, units: FIRST.units.slice(0, 1) };
+/** FIRST as the planner proposes it, with the learner profile (task 5.8). */
+const PROPOSED = {
+  ...FIRST,
+  profile: "Works as a data analyst. Likes a picture before the algebra.",
+};
+const REVISED = { ...PROPOSED, units: FIRST.units.slice(0, 1) };
 
 /** The tutor's reply to the learner's first message, where it cannot propose (task 2.22). */
 const OPENING: FakeTurn = [
@@ -117,8 +123,29 @@ function setUp(
   });
   // Never the system's opener: a test must not open the learner's editor.
   const openFile = vi.fn<FileOpener>(async () => ({ ok: true }));
-  const app = createApp({ dataRoot, intakes, units, disputes, openFile });
-  return { backend, disputeBackend, dataRoot, intakes, units, app, openFile };
+  const commits: string[] = [];
+  const backup = {
+    commit: (message: string) => void commits.push(message),
+    settled: async () => {},
+  };
+  const app = createApp({
+    dataRoot,
+    intakes,
+    units,
+    disputes,
+    openFile,
+    backup,
+  });
+  return {
+    backend,
+    disputeBackend,
+    dataRoot,
+    intakes,
+    units,
+    app,
+    openFile,
+    commits,
+  };
 }
 
 type App = ReturnType<typeof createApp>;
@@ -197,7 +224,7 @@ async function readFrames(response: Response, count: number) {
 test("a new course starts as an intake, and its first proposal puts it in the library as a draft", async () => {
   const setup = setUp([
     OPENING,
-    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: PROPOSED }],
   ]);
   const { app } = setup;
 
@@ -236,7 +263,7 @@ test("a new course starts as an intake, and its first proposal puts it in the li
 test("an intake's event stream says hello, replays its log with ids, then sends live events", async () => {
   const setup = setUp([
     [{ text: "What do you know already?" }],
-    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: PROPOSED }],
   ]);
   const intakeId = await startIntake(setup.app);
   await say(setup, intakeId, ASK);
@@ -308,7 +335,7 @@ test("a reconnecting page gets only what it missed, unless the log is another on
 test("approval names the revision shown; a replaced or unknown one is refused, and approval ends the intake", async () => {
   const setup = setUp([
     OPENING,
-    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: PROPOSED }],
     [{ call: "propose_curriculum", input: REVISED }],
   ]);
   const { app } = setup;
@@ -347,7 +374,7 @@ test("approval names the revision shown; a replaced or unknown one is refused, a
 test("approval is refused while the tutor is writing, and stopping the tutor's turn allows it", async () => {
   const setup = setUp([
     OPENING,
-    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: PROPOSED }],
     [{ text: "Let me reconsider" }, { hold: true }],
   ]);
   const { app } = setup;
@@ -412,7 +439,7 @@ test("malformed bodies are refused with a reason, and nothing reaches the tutor"
 test("a course outlives the server, and an intake in progress does not", async () => {
   const before = setUp([
     OPENING,
-    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: PROPOSED }],
   ]);
   const intakeId = await startIntake(before.app);
   await opened(before, intakeId);
@@ -443,7 +470,7 @@ test("a course outlives the server, and an intake in progress does not", async (
 test("a draft opens for review in its running intake, or after a restart in a new one that starts from it with its notes", async () => {
   const before = setUp([
     OPENING,
-    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: PROPOSED }],
   ]);
   const intakeId = await startIntake(before.app);
   await opened(before, intakeId);
@@ -454,6 +481,9 @@ test("a draft opens for review in its running intake, or after a restart in a ne
   expect(await running.json()).toEqual({ intakeId });
   await before.intakes.close();
 
+  // The reopened card compares the draft's profile with the profile as it
+  // is now, which was written meanwhile.
+  await writeFile(join(dir, "profile.md"), "Written on the Profile page.\n");
   const after = setUp([]);
   const reopened = await post(after.app, review);
   expect(reopened.status).toBe(200);
@@ -469,7 +499,8 @@ test("a draft opens for review in its running intake, or after a restart in a ne
       type: "curriculum_proposed",
       courseId: "linear-algebra-for-pca",
       revision: 1,
-      ...FIRST,
+      ...PROPOSED,
+      profileWas: "Written on the Profile page.",
     },
   ]);
   await stream.close();
@@ -478,6 +509,7 @@ test("a draft opens for review in its running intake, or after a restart in a ne
     (await post(after.app, `/api/intakes/${newId}/approval`, { revision: 1 }))
       .status,
   ).toBe(200);
+  expect(await after.dataRoot.readProfile()).toBe(PROPOSED.profile);
   const approved = await post(after.app, review);
   expect(approved.status).toBe(409);
   expect(await approved.json()).toEqual({
@@ -488,16 +520,21 @@ test("a draft opens for review in its running intake, or after a restart in a ne
   );
 });
 
-test("a draft stored before style and background notes existed reopens without them, and can be approved", async () => {
+test("a draft stored before style and background notes and profiles existed reopens without them, and can be approved, leaving the profile alone", async () => {
   const before = setUp([
     OPENING,
-    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: PROPOSED }],
   ]);
   await opened(before, await startIntake(before.app));
   await before.intakes.close();
   const course = join(dir, "courses", "linear-algebra-for-pca");
   await rm(join(course, "style.md"));
   await rm(join(course, "background.md"));
+  const stored = join(course, "curriculum.json");
+  const draft = JSON.parse(await readFile(stored, "utf8"));
+  draft.approval = { status: "draft" };
+  await writeFile(stored, JSON.stringify(draft));
+  await writeFile(join(dir, "profile.md"), "Written on the Profile page.\n");
 
   const after = setUp([]);
   const reopened = await post(
@@ -521,12 +558,15 @@ test("a draft stored before style and background notes existed reopens without t
     revision: 1,
   });
   expect(approval.status).toBe(200);
+  expect(await after.dataRoot.readProfile()).toBe(
+    "Written on the Profile page.",
+  );
 });
 
 test("review keeps the same intake during approval and when its record read is stale", async () => {
   const setup = setUp([
     OPENING,
-    [{ call: "propose_curriculum", input: FIRST }],
+    [{ call: "propose_curriculum", input: PROPOSED }],
   ]);
   const { app, dataRoot, intakes } = setup;
   const intakeId = await startIntake(app);
@@ -617,6 +657,77 @@ test("requests from other sites and other host names are refused", async () => {
   ).toEqual([403, 403, 403, 403]);
   expect(setup.backend.received).toEqual([]);
   expect(setup.intakes.get(intakeId)?.events()).toEqual([]);
+});
+
+// --- The learner profile (task 5.8) ------------------------------------------
+
+test("the profile route reads the profile with the finished courses, and saves over the text it read with a backup commit, refusing a text too long or empty and a stale one", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  /** An approved course of one unit; finished when the learner moved on from it. */
+  const course = async (title: string, finished: boolean) => {
+    const { id } = await root.createCourse({ title });
+    const one = { ...FIRST, title, units: FIRST.units.slice(0, 1) };
+    await root.saveProposal(id, one);
+    await root.approveCurriculum(id, one);
+    await root.storePlan(id, "vectors", {
+      objectives: [{ id: `${id}-maps`, statement: "Describe a map." }],
+      segments: [{ title: "Maps", objectives: [`${id}-maps`] }],
+    });
+    if (finished) {
+      await root.appendEvidence(id, {
+        kind: "override",
+        recordedAt: NOW,
+        objectives: [`${id}-maps`],
+      });
+    }
+  };
+  await course("Python for data work", true);
+  await course("Calculus I", false);
+  const draft = await root.createCourse({ title: "Topology" });
+  await root.saveProposal(draft.id, { ...FIRST, title: "Topology" });
+  const { app, commits } = setUp([]);
+  const read = async () => (await app.request("/api/profile")).json();
+  const finished = [
+    { id: "python-for-data-work", title: "Python for data work", oneOff: true },
+  ];
+
+  expect(await read()).toEqual({ finished });
+
+  const saved = await post(app, "/api/profile", {
+    text: "  Works as a nurse.\n",
+  });
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toEqual({ text: "Works as a nurse." });
+  expect(await read()).toEqual({ text: "Works as a nurse.", finished });
+  expect(commits).toEqual(["profile saved"]);
+
+  const was = "Works as a nurse.";
+  const full = "x".repeat(2000);
+  const refused = [
+    [
+      { text: `${full}y`, was },
+      400,
+      "The profile is longer than 2,000 characters.",
+    ],
+    [{ text: " \n ", was }, 400, "The profile is empty."],
+    [
+      { text: "Works as a pharmacist." },
+      409,
+      "Your profile was changed since this page loaded it, by a curriculum you approved or in another tab. Copy your text, reload the page, and edit the saved profile.",
+    ],
+  ] as const;
+  for (const [body, status, error] of refused) {
+    const response = await post(app, "/api/profile", body);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error });
+  }
+  expect(await read()).toEqual({ text: was, finished });
+  expect(commits).toEqual(["profile saved"]);
+
+  expect((await post(app, "/api/profile", { text: full, was })).status).toBe(
+    200,
+  );
+  expect(await root.readProfile()).toBe(full);
 });
 
 // --- Unit chats ----------------------------------------------------------------

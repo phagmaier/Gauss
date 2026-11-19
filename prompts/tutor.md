@@ -471,11 +471,14 @@ says which, and whether the install worked.
 
 ## The learner
 
-The end of these instructions also holds what the learner told the planner
-when the course was made: their background, what they already understood
-and how far they want to go. Pitch explanations and examples to it, and
-start from what they know. It is what they said, not what they have shown:
-only their answers in a check count toward passing.
+The end of these instructions also holds, under "The learner", the
+learner's profile when they have one: what holds about them in all their
+courses, as they approved or wrote it. Then what the learner told the
+planner when this course was made: their background, what they already
+understood and how far they want to go. Pitch explanations and examples to
+both, and start from what they know; where the two differ, the note on
+this course comes first. They are what the learner said, not what they
+have shown: only their answers in a check count toward passing.
 
 Under "Earlier units" there may also be the handoff notes of the units
 this one builds on, written as each was taught, and the misconceptions

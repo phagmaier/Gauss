@@ -40,39 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.8 The learner profile
-
-- Status: todo
-- Depends on: stage 3
-- Why: each intake asks for the learner's background again, and what
-  holds across courses (what they know, how they like to be taught) has
-  no place to live.
-- Do: laid out as piece 18 shows: `profile.md` in the data
-  root, plain text of at most 2,000 characters. The planner is given it, with
-  the titles of the finished courses (derived from the record, not kept
-  in the file), and is told not to ask what it already answers.
-  `propose_curriculum` takes the profile's whole text, changed or not;
-  the proposal card shows it as a section, marked "New" or "Changed",
-  with each new sentence marked and each dropped one listed under the
-  text (compared sentence by sentence, with no new dependency); approval
-  writes it with the rest, and refuses with the reason if `profile.md`
-  changed since the proposal was made. A Profile page, reached from the
-  library's top line, shows the text and lets the learner edit it, with
-  the finished courses listed under it. The tutor's and
-  the unit planner's prompts get it under "The learner", before the
-  course's background note. `planner.md` gets the lines the planner
-  needs: what belongs in the profile (what holds across courses) and
-  what in the background note (this course). The scripted backend
-  proposes one.
-- Done when: tests cover: the planner's turn with a profile and without;
-  a proposal's profile shown, revised and written on approval; an
-  approval refused after the file changed; the page's route reading and
-  saving it, with the length limit; the tutor's system prompt with it.
-  `mise run check` passes; on `pnpm dev:fake` a second intake's card
-  shows a changed profile, it is approved and then edited on the page,
-  and the browser is closed before the server stops; one short intake
-  on Haiku 5.5 with a profile, which is not asked what it answers.
-
 ### 5.9 Unit notes
 
 - Status: todo
@@ -287,6 +254,14 @@ a detour, a unit gate, generated notes and an exported transcript.
   which its header forbids; and a choice question's choices carried
   letters of their own ("A. 3/8 is larger"), which the shuffle then put
   beside other letters. `tutor.md` says nothing against the last.
+- From 5.8: `planner.md` still promises "no review of earlier units in
+  later sittings, no notes", which stage 5 makes false. Its profile lines
+  were seen in one Haiku 5.5 intake (`decisions.md`, "Prompts"), which
+  asked nothing the profile answered and kept it word for word; see
+  whether a planner changes it only for what the learner said, and keeps
+  this course's facts out of it. That intake once said it had proposed
+  without calling `propose_curriculum`; nothing in `planner.md` forbids
+  it.
 - Done when: the findings and the model choice are in `decisions.md`,
   "Prompts" and "Mastery loop"; `mise run check` passes, and the
   scripted backend's tests with it, since it reads the headers; the

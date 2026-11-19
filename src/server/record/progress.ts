@@ -1,8 +1,9 @@
 // Where each unit of a course stands, as the library routes send it to the
 // page (task 2.12): its status, derived from the evidence and its position,
 // the segment of a unit in progress, and counts of retained and slipping
-// objectives in a finished unit. Derived when asked, never stored
-// (architecture.md section 3).
+// objectives in a finished unit; and which courses are finished, which a
+// new course's planner is given with the learner profile (task 5.8).
+// Derived when asked, never stored (architecture.md section 3).
 
 import type { Curriculum } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -11,7 +12,9 @@ import type {
   StoredCourse,
   UnitProgress,
 } from "../../shared/library.ts";
+import type { FinishedCourse } from "../../shared/profile.ts";
 import type { State } from "../../shared/state.ts";
+import { isFinished } from "../../shared/status.ts";
 import type { DataRoot } from "./data-root.ts";
 import { objectiveStatus, unitStatusFromObjectives } from "./status.ts";
 
@@ -70,4 +73,38 @@ export async function withProgress(
     ...stored,
     progress: courseProgress(stored.curriculum, state, evidence),
   };
+}
+
+/**
+ * The courses whose approved curriculum has every unit finished, most
+ * recently opened first. A course whose state or evidence cannot be read is
+ * left out: where it stands is not known.
+ */
+export async function finishedCourses(
+  dataRoot: DataRoot,
+): Promise<FinishedCourse[]> {
+  const found = await Promise.all(
+    (await dataRoot.listCourses()).map(async (stored) => {
+      const { curriculum } = stored;
+      if (curriculum?.approval.status !== "approved") return undefined;
+      const { progress } = await withProgress(dataRoot, stored).catch(() => ({
+        progress: undefined,
+      }));
+      if (progress === undefined) return undefined;
+      const done = curriculum.units.every((unit) => {
+        const status = Object.hasOwn(progress, unit.id)
+          ? progress[unit.id]?.status
+          : undefined;
+        return status !== undefined && isFinished(status);
+      });
+      return done
+        ? {
+            id: stored.id,
+            title: stored.course.title,
+            oneOff: curriculum.units.length === 1,
+          }
+        : undefined;
+    }),
+  );
+  return found.filter((course) => course !== undefined);
 }

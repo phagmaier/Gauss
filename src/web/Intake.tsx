@@ -2,9 +2,12 @@
 // Thread layout, fed by the intake's event stream. Each proposal is a card
 // in the thread with Approve on it; pushing back is replying, and a revision
 // arrives as a new card with what changed marked while the one before shrinks
-// to a line. The diagram opens in the side pane.
+// to a line. The diagram opens in the side pane. The card's last section is
+// the learner profile approval would save (18-profile.html), compared
+// sentence by sentence with the profile it would replace.
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -13,6 +16,7 @@ import {
   useState,
 } from "react";
 import { Hello, PageEvent } from "../shared/events.ts";
+import { compareProfiles } from "../shared/profile.ts";
 import { post } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Diagram, UnitList } from "./Curriculum.tsx";
@@ -93,6 +97,11 @@ export function Intake(props: { intakeId: string }) {
     approvedProposal?.kind === "proposal"
       ? approvedProposal.units[0]
       : undefined;
+  // Approval wrote the profile only if the card proposed a change to it.
+  const profileSaved =
+    approvedProposal?.kind === "proposal" &&
+    approvedProposal.profile !== undefined &&
+    profileStanding(approvedProposal) !== "same";
   return (
     <div className={diagramOpen ? "th has-top has-pane" : "th has-top"}>
       <TopLine
@@ -160,7 +169,8 @@ export function Intake(props: { intakeId: string }) {
           {approved === null ? null : (
             <>
               <p className="ph-note">
-                Approved. The course is in your library.
+                Approved. The course is in your library
+                {profileSaved ? ", and your profile is saved" : ""}.
               </p>
               <div className="pf-act">
                 {firstUnit === undefined ? null : (
@@ -181,6 +191,15 @@ export function Intake(props: { intakeId: string }) {
                 >
                   Open the course
                 </button>
+                {profileSaved ? (
+                  <button
+                    type="button"
+                    className="textbtn"
+                    onClick={() => navigate(paths.profile)}
+                  >
+                    Open your profile
+                  </button>
+                ) : null}
               </div>
             </>
           )}
@@ -287,6 +306,7 @@ function ProposalCard(props: {
             "Nothing was recorded, so the tutor starts from your answers."}
         </p>
       </section>
+      <ProfileSection proposal={proposal} />
       {error === undefined ? null : <p className="qa-error">{error}</p>}
       <div className="qa-foot">
         <button
@@ -311,6 +331,81 @@ function ProposalCard(props: {
         )}
       </div>
     </div>
+  );
+}
+
+/** How a proposal's profile stands against the one it would replace. */
+function profileStanding(proposal: Proposal): "new" | "changed" | "same" {
+  const { profile, profileWas } = proposal;
+  if (profileWas === undefined) return "new";
+  return profile !== undefined && compareProfiles(profileWas, profile).changed
+    ? "changed"
+    : "same";
+}
+
+/**
+ * "What I would remember about you" (piece 18): the whole text approval would
+ * save, always shown, since it reaches every later course. A first profile is
+ * "New"; a changed one marks each new sentence and lists each dropped one.
+ */
+function ProfileSection(props: { proposal: Proposal }) {
+  const { profile, profileWas } = props.proposal;
+  const label = "What I would remember about you";
+  const head = (tag: string | undefined, more = "") => (
+    <div className="cs-h">
+      <span>{label}</span>
+      <span className="for">in every course{more}</span>
+      {tag === undefined ? null : <span className="chg">{tag}</span>}
+    </div>
+  );
+  if (profile === undefined) {
+    // A draft proposed before profiles existed: approving leaves it alone.
+    return (
+      <section className="cs" aria-label={label}>
+        {head(undefined)}
+        <p className="cs-t">
+          No profile was proposed with this curriculum, so approving it leaves
+          your profile as it is.
+        </p>
+      </section>
+    );
+  }
+  const standing = profileStanding(props.proposal);
+  if (standing !== "changed" || profileWas === undefined) {
+    return (
+      <section className="cs" aria-label={label}>
+        {standing === "new" ? head("New") : head(undefined, ", not changed")}
+        <p className="cs-t">{profile}</p>
+      </section>
+    );
+  }
+  const { sentences, dropped } = compareProfiles(profileWas, profile);
+  return (
+    <section className="cs" aria-label={label}>
+      {head("Changed")}
+      <p className="cs-t">
+        {sentences.map((s, i) => (
+          // Sentences can repeat, so their place is their key.
+          // biome-ignore lint/suspicious/noArrayIndexKey: see above
+          <Fragment key={i}>
+            {i === 0 ? null : " "}
+            {s.added ? <ins>{s.text}</ins> : s.text}
+          </Fragment>
+        ))}
+      </p>
+      {dropped.length === 0 ? null : (
+        <p className="cs-gone">
+          Dropped:{" "}
+          {dropped.map((s, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: as above
+            <Fragment key={i}>
+              {i === 0 ? null : " "}
+              <s>{s}</s>
+            </Fragment>
+          ))}
+        </p>
+      )}
+    </section>
   );
 }
 

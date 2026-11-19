@@ -1,6 +1,7 @@
 // The library (docs/prototype/06-library.html): one plain list of courses,
 // most recently opened first, with the finished ones grouped at the bottom,
-// and "New course" at the right of the top line. Every row opens its course
+// and "Profile" (18-profile.html) and "New course" at the right of the top
+// line. Every row opens its course
 // view (task 2.28), whose card continues a unit in progress and whose
 // "Review the curriculum" reviews a draft. Calibration is per course, on
 // its "What I know" (task 2.29).
@@ -57,14 +58,23 @@ export function Library() {
         trail={[]}
         here="Library"
         action={
-          <button
-            type="button"
-            className="btn sm"
-            disabled={opening}
-            onClick={() => void newCourse()}
-          >
-            New course
-          </button>
+          <span className="nl-acts">
+            <button
+              type="button"
+              className="textbtn"
+              onClick={() => navigate(paths.profile)}
+            >
+              Profile
+            </button>
+            <button
+              type="button"
+              className="btn sm"
+              disabled={opening}
+              onClick={() => void newCourse()}
+            >
+              New course
+            </button>
+          </span>
         }
       />
       <div className="pg-scroll">

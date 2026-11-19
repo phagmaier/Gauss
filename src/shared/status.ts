@@ -35,3 +35,8 @@ export const UnitStatus = z.enum([
   "overridden",
 ]);
 export type UnitStatus = z.infer<typeof UnitStatus>;
+
+/** Whether the unit is finished: passed, or overridden. */
+export function isFinished(status: UnitStatus): boolean {
+  return status === "passed" || status === "overridden";
+}

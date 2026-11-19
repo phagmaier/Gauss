@@ -1,11 +1,12 @@
-// Which view the address shows: the library, an intake, a course, a course's
-// "What I know", or a unit's session. The page moves between them without
+// Which view the address shows: the library, the learner profile, an
+// intake, a course, a course's "What I know", or a unit's session. The page moves between them without
 // reloading, and the browser's Back works.
 
 import { useEffect, useState } from "react";
 
 export type Route =
   | { view: "library" }
+  | { view: "profile" }
   | { view: "intake"; intakeId: string }
   | { view: "course"; courseId: string }
   | { view: "known"; courseId: string }
@@ -13,6 +14,7 @@ export type Route =
 
 export const paths = {
   library: "/",
+  profile: "/profile",
   intake: (id: string) => `/intakes/${encodeURIComponent(id)}`,
   course: (id: string) => `/courses/${encodeURIComponent(id)}`,
   known: (id: string) => `/courses/${encodeURIComponent(id)}/what-i-know`,
@@ -24,6 +26,7 @@ export const paths = {
 export function parseRoute(pathname: string): Route {
   const [kind, id, ...rest] = pathname.split("/").filter((p) => p !== "");
   const name = id === undefined ? undefined : decoded(id);
+  if (kind === "profile" && id === undefined) return { view: "profile" };
   if (name !== undefined && rest.length === 0) {
     if (kind === "intakes") return { view: "intake", intakeId: name };
     if (kind === "courses") return { view: "course", courseId: name };

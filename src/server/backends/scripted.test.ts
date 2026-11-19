@@ -727,6 +727,39 @@ test("an intake asks first, proposes a curriculum titled from the learner's firs
   );
 });
 
+test("the scripted planner proposes a profile of its own sentence and what was asked for, and later keeps the profile given but for what was asked for", async () => {
+  const { dataRoot, intakes } = setUp();
+  /** An intake to its first proposal, as the learner starts it. */
+  const proposed = async (ask: string) => {
+    const intake = intakes.start();
+    intake.say(ask);
+    await intake.settled();
+    intake.say("Go ahead.");
+    await intake.settled();
+    return {
+      intake,
+      card: intake.events().find((e) => e.type === "curriculum_proposed"),
+    };
+  };
+  const OWN = "Scripted: a learner of the scripted backend.";
+
+  const first = await proposed("Topology for analysts");
+  expect(first.card).toMatchObject({
+    profile: `${OWN} Scripted: asked last for "Topology for analysts".`,
+  });
+  expect(first.card).not.toHaveProperty("profileWas");
+  expect(await first.intake.approve(1)).toEqual({ ok: true });
+  // The learner adds a sentence on the Profile page.
+  const saved = await dataRoot.readProfile();
+  await dataRoot.writeProfile(`${saved} Prefers proofs.`, saved);
+
+  const second = await proposed("Measure theory");
+  expect(second.card).toMatchObject({
+    profile: `${OWN} Prefers proofs. Scripted: asked last for "Measure theory".`,
+    profileWas: `${OWN} Scripted: asked last for "Topology for analysts". Prefers proofs.`,
+  });
+});
+
 test("/one-off proposes a course of one unit", async () => {
   const { dataRoot, intakes } = setUp();
   const intake = intakes.start();

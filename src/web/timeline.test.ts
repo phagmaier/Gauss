@@ -276,6 +276,24 @@ test("each proposal is a card, a revision marks what changed since the one befor
   expect(state.reopened).toBe(false);
 });
 
+test("a proposal's card holds the profile it would save and the one it would replace", () => {
+  const state = play([
+    {
+      ...proposed(1, [VECTORS], SHORT, KNOWS),
+      profile: "Works as an analyst. Likes pictures.",
+      profileWas: "Works as an analyst.",
+    },
+  ]);
+
+  expect(state.items).toMatchObject([
+    {
+      kind: "proposal",
+      profile: "Works as an analyst. Likes pictures.",
+      profileWas: "Works as an analyst.",
+    },
+  ]);
+});
+
 test("a draft reopened after a restart is marked, and its proposal is the first card", () => {
   const state = play([
     { type: "draft_reopened" },

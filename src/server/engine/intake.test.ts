@@ -84,6 +84,8 @@ const FIRST = {
     "Short explanations, each starting from a picture in two dimensions. Checks are mostly small computations by hand. One new idea per segment.",
   background:
     "The learner multiplies matrices with ease, but eigenvectors never clicked. They want enough linear algebra to follow PCA.",
+  profile:
+    "Works as a data analyst and writes Python every day. Likes a picture before the algebra.",
 };
 
 // The learner asked for a shorter start: the first two units are merged into
@@ -103,6 +105,8 @@ const REVISED = {
     "Short explanations, each starting from a picture in two dimensions. Checks ask you to predict and explain more than to compute.",
   background:
     "The learner multiplies matrices with ease and knows what a linear map is, but eigenvectors never clicked. They want enough linear algebra to follow PCA.",
+  profile:
+    "Works as a data analyst and writes Python every day. Can multiply matrices, but has had no linear algebra beyond that. Likes a picture before the algebra.",
 };
 
 /** The tutor's reply to the learner's first message, where it cannot propose (task 2.22). */
@@ -192,7 +196,7 @@ test("nothing can be proposed in reply to the learner's first message: the tool 
   const turn = backend.received[0]?.text ?? "";
   expect(turn).toMatch(/^\[Start of the intake\./);
   expect(turn).toContain("propose_curriculum is refused in this turn.");
-  expect(turn.endsWith(`]\n${ASK}`)).toBe(true);
+  expect(turn.endsWith(`</about_the_learner>\n\n${ASK}`)).toBe(true);
   expect(backend.calls[0]?.result).toEqual({
     status: "refused",
     text: expect.stringMatching(
@@ -309,7 +313,7 @@ test("a reply to a proposal is a change request, and the revision replaces the d
   const turn = backend.received[2]?.text ?? "";
   expect(turn).toMatch(/^\[Message from the learner about proposal 1,/);
   expect(turn).toContain(
-    "call propose_curriculum with the whole revised curriculum, its style note and its background note.]",
+    "call propose_curriculum with the whole revised curriculum, its style note, its background note and the learner's profile.]",
   );
   expect(turn).toMatch(
     /\nI can already multiply matrices\. Can the start be shorter\?$/,
@@ -322,6 +326,7 @@ test("a reply to a proposal is a change request, and the revision replaces the d
     units: REVISED.units,
     style: REVISED.style,
     background: REVISED.background,
+    profile: REVISED.profile,
   });
   const courses = await reload().listCourses();
   expect(courses).toHaveLength(1);
@@ -469,7 +474,8 @@ test("a revision saved only in part cannot be approved through the card before i
   });
   expect(
     (await reload().readCourse("linear-algebra-for-pca"))?.curriculum?.approval,
-  ).toEqual({ status: "draft" });
+  ).toEqual({ status: "draft", profile: REVISED.profile });
+  expect(await reload().readProfile()).toBeUndefined();
 
   intake.say("Please try that again.");
   await intake.settled();
@@ -481,6 +487,188 @@ test("a revision saved only in part cannot be approved through the card before i
   expect(await reload().readStyle("linear-algebra-for-pca")).toBe(
     REVISED.style,
   );
+});
+
+describe("the learner profile (task 5.8)", () => {
+  const KEPT =
+    "Works as a data analyst and writes Python every day. Prefers proofs to pictures.";
+
+  /** A course of one unit, approved, which the learner moved on from: finished. */
+  async function finishedCourse(title: string, finished = true) {
+    const root = reload();
+    const { id } = await root.createCourse({ title });
+    const proposal = {
+      title,
+      units: [
+        {
+          id: "basics",
+          title: "Basics",
+          goal: "Use the basics in a small example.",
+          prerequisites: [],
+        },
+      ],
+      style: FIRST.style,
+      background: FIRST.background,
+    };
+    await root.saveProposal(id, proposal);
+    await root.approveCurriculum(id, proposal);
+    const objective = `${id}-idea`;
+    await root.storePlan(id, "basics", {
+      objectives: [{ id: objective, statement: "State the idea." }],
+      segments: [{ title: "The idea", objectives: [objective] }],
+    });
+    if (finished) {
+      await root.appendEvidence(id, {
+        kind: "override",
+        recordedAt: APPROVED_AT,
+        objectives: [objective],
+      });
+    }
+  }
+
+  test("the planner's first turn gives it the profile and the finished courses, or says there are none; a later turn gives the profile again only once it has changed", async () => {
+    const none = setUp([OPENING]);
+    none.intake.say(ASK);
+    await none.intake.settled();
+    expect(none.backend.received[0]?.text).toMatch(
+      /^\[Start of the intake\. .* Before their message comes what Gauss keeps about the learner across their courses, in <about_the_learner>\.\]\n<about_the_learner>\nThey have no profile yet\.\nThey have finished no course yet\.\n<\/about_the_learner>\n\nLinear algebra/,
+    );
+
+    await reload().writeProfile(KEPT, undefined);
+    await finishedCourse("Python for data work");
+    await finishedCourse("Calculus I", false);
+    const { backend, intake } = setUp([
+      OPENING,
+      [{ text: "Noted." }],
+      [{ text: "Noted again." }],
+      [{ text: "And again." }],
+    ]);
+    await opened(intake);
+
+    expect(backend.received[0]?.text).toContain(
+      `]\n<about_the_learner>\nTheir profile:\n<profile>\n${KEPT}\n</profile>\n` +
+        'The courses they have finished: "Python for data work".\n' +
+        `</about_the_learner>\n\n${ASK}`,
+    );
+    expect(backend.received[1]?.text).toBe(
+      `[Message from the learner. Allowed now: reply, or propose a curriculum with propose_curriculum.]\n${ANSWER}`,
+    );
+
+    // Edited on the Profile page during the intake.
+    await reload().writeProfile(`${KEPT} Likes short sittings.`, KEPT);
+    intake.say("Shorter units, please.");
+    await intake.settled();
+    intake.say("And fewer of them.");
+    await intake.settled();
+
+    expect(backend.received[2]?.text).toContain(
+      "]\n<about_the_learner>\nTheir profile changed since you were given it. " +
+        "It now reads as follows; propose from this text.\n" +
+        `<profile>\n${KEPT} Likes short sittings.\n</profile>\n</about_the_learner>\n\n` +
+        "Shorter units, please.",
+    );
+    expect(backend.received[3]?.text).toBe(
+      "[Message from the learner. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nAnd fewer of them.",
+    );
+  });
+
+  test("each proposal's profile is shown with the profile it would replace, and approval writes the latest with the curriculum", async () => {
+    await reload().writeProfile(KEPT, undefined);
+    const { intake } = setUp([
+      OPENING,
+      [{ call: "propose_curriculum", input: FIRST }],
+      [{ call: "propose_curriculum", input: REVISED }],
+    ]);
+    await opened(intake);
+    intake.say("Shorter, please.");
+    await intake.settled();
+
+    expect(
+      proposals(intake).map(({ profile, profileWas }) => ({
+        profile,
+        profileWas,
+      })),
+    ).toEqual([
+      { profile: FIRST.profile, profileWas: KEPT },
+      { profile: REVISED.profile, profileWas: KEPT },
+    ]);
+    // Nothing is written to it before approval.
+    expect(await reload().readProfile()).toBe(KEPT);
+    expect(
+      (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
+        ?.approval,
+    ).toEqual({ status: "draft", profile: REVISED.profile });
+
+    expect(await intake.approve(2)).toEqual({ ok: true });
+    expect(await reload().readProfile()).toBe(REVISED.profile);
+    expect(
+      (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
+        ?.approval,
+    ).toEqual({ status: "approved", approvedAt: APPROVED_AT });
+  });
+
+  test("an approval whose curriculum failed to save, after its profile was written, can be tried again", async () => {
+    const { intake } = setUp([
+      OPENING,
+      [{ call: "propose_curriculum", input: FIRST }],
+    ]);
+    await opened(intake);
+
+    disk.refuses = "curriculum.json";
+    await expect(intake.approve(1)).rejects.toThrow(/ENOSPC/);
+    disk.refuses = undefined;
+    expect(await reload().readProfile()).toBe(FIRST.profile);
+    expect(
+      (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
+        ?.approval.status,
+    ).toBe("draft");
+
+    expect(await intake.approve(1)).toEqual({ ok: true });
+    expect(
+      (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
+        ?.approval.status,
+    ).toBe("approved");
+  });
+
+  test("approval is refused with the reason, writing nothing, once profile.md changed since the proposal; a proposal made from the changed profile can be approved", async () => {
+    const commits: string[] = [];
+    const { backend, intake } = setUp(
+      [
+        OPENING,
+        [{ call: "propose_curriculum", input: FIRST }],
+        [{ call: "propose_curriculum", input: REVISED }],
+      ],
+      { commit: (message) => commits.push(message), settled: async () => {} },
+    );
+    await opened(intake);
+    await reload().writeProfile(KEPT, undefined);
+
+    expect(await intake.approve(1)).toEqual({
+      ok: false,
+      status: 409,
+      error:
+        "Your profile was changed after this proposal was made, so approving it would replace that change unseen. Ask the tutor to propose again: it will be given your profile as it is now.",
+    });
+    expect(await reload().readProfile()).toBe(KEPT);
+    expect(
+      (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
+        ?.approval.status,
+    ).toBe("draft");
+    expect(intake.events().at(-1)?.type).not.toBe("curriculum_approved");
+    expect(commits).toEqual([]);
+
+    intake.say("Please propose it again.");
+    await intake.settled();
+    expect(backend.received[2]?.text).toContain(
+      `<profile>\n${KEPT}\n</profile>`,
+    );
+    expect(proposals(intake).at(-1)).toMatchObject({
+      revision: 2,
+      profileWas: KEPT,
+    });
+    expect(await intake.approve(2)).toEqual({ ok: true });
+    expect(await reload().readProfile()).toBe(REVISED.profile);
+  });
 });
 
 describe("a draft reopened for review, its first conversation lost in a restart", () => {
@@ -536,9 +724,11 @@ describe("a draft reopened for review, its first conversation lost in a restart"
     expect(turn).toMatch(/^\[The learner is reviewing proposal 1,/);
     expect(turn).toContain(JSON.stringify(FIRST));
     expect(turn).toContain(
-      "call propose_curriculum with the whole revised curriculum, its style note and its background note (writing any note it lacks),",
+      "call propose_curriculum with the whole revised curriculum, its style note, its background note and the learner's profile (writing any it lacks),",
     );
-    expect(turn.endsWith("]\nCan the start be shorter?")).toBe(true);
+    expect(
+      turn.endsWith("</about_the_learner>\n\nCan the start be shorter?"),
+    ).toBe(true);
     expect(proposals(intake).at(-1)).toMatchObject({
       courseId: "linear-algebra-for-pca",
       revision: 2,
@@ -595,7 +785,7 @@ describe("a draft reopened for review, its first conversation lost in a restart"
           expect.stringContaining(JSON.stringify(FIRST)),
         ]);
         expect(fake.received[0]?.text).toMatch(
-          /\]\nPlease shorten the start\.$/,
+          /<\/about_the_learner>\n\nPlease shorten the start\.$/,
         );
         expect(proposals(intake).at(-1)).toMatchObject({
           revision: 2,
@@ -731,7 +921,9 @@ describe("an intake left idle (task 2.15)", () => {
     expect(turn).toContain(FIRST.units[2]?.goal);
     expect(turn).toContain(FIRST.style);
     expect(turn).toContain(FIRST.background);
-    expect(turn.endsWith("]\nIs the start too long?")).toBe(true);
+    expect(
+      turn.endsWith("</about_the_learner>\n\nIs the start too long?"),
+    ).toBe(true);
 
     // Told once.
     intake.say("Good.");
@@ -767,7 +959,10 @@ describe("an intake left idle (task 2.15)", () => {
       "[This conversation is new: the one before it with the learner was lost, so you have not seen it. " +
         'What was said in it, oldest first, as JSON (the "planner" messages are your replies):\n' +
         `[{"from":"learner","text":${JSON.stringify(ASK)}},{"from":"planner","text":"What do you know already?"}] ` +
-        "Their new message follows. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nMatrices, a little.",
+        "Their new message follows. Allowed now: reply, or propose a curriculum with propose_curriculum. " +
+        "Before their message comes what Gauss keeps about the learner across their courses, in <about_the_learner>.]\n" +
+        "<about_the_learner>\nThey have no profile yet.\nThey have finished no course yet.\n</about_the_learner>\n\n" +
+        "Matrices, a little.",
     );
     expect(backend.received[2]?.text).toBe(
       "[Message from the learner. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nAnd I want to read PCA papers.",

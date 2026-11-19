@@ -358,6 +358,10 @@ describe("proposals and approval", () => {
       part: "background note, none shown",
       shown: { ...PROPOSAL, background: undefined },
     },
+    {
+      part: "profile",
+      shown: { ...PROPOSAL, profile: "Works as a nurse." },
+    },
   ])(
     "approval is refused, changing nothing, when the stored draft differs from the one shown in its $part",
     async ({ part, shown }) => {
@@ -377,6 +381,7 @@ describe("proposals and approval", () => {
       expect((await root.readCourse(id))?.curriculum?.approval).toEqual({
         status: "draft",
       });
+      expect(await root.readProfile()).toBeUndefined();
     },
   );
 

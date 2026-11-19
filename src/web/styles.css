@@ -1797,3 +1797,75 @@ button.dn:hover {
 .mc.shut .q-count b {
   color: var(--soft);
 }
+/* The learner profile (piece 18): its section of the proposal card, where a new sentence is marked and a dropped one listed under the text */
+.cs ins {
+  text-decoration: none;
+  background: color-mix(in srgb, var(--yellow) 24%, transparent);
+  border-radius: 3px;
+  padding: 0.1em 0.12em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.cs .cs-gone {
+  color: var(--faint);
+  font-size: 0.88em;
+  margin: 0.5em 0 0;
+}
+.cs .cs-gone s {
+  text-decoration-color: var(--overlay0);
+}
+.cs-h .for {
+  color: var(--faint);
+}
+/* the Profile page */
+.nl-acts {
+  display: flex;
+  gap: 1.3em;
+  align-items: baseline;
+}
+.pg-lead {
+  margin: 0.4em 0 0;
+  color: var(--soft);
+  max-width: 34em;
+}
+.pr-text {
+  min-height: 11em;
+  resize: vertical;
+  margin-top: 1.6em;
+}
+.pr-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 0.7em;
+  font-size: 0.9em;
+  color: var(--soft);
+}
+.pr-foot .over {
+  color: var(--red);
+}
+.pr-note {
+  color: var(--faint);
+}
+.pr-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.96em;
+}
+.pr-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.2em;
+  padding: 0.45em 0;
+  border-top: 1px solid var(--surface0);
+}
+.pr-item:first-child {
+  border-top: 0;
+}
+.pr-kind {
+  color: var(--faint);
+  font-size: 0.9em;
+  white-space: nowrap;
+}

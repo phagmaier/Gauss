@@ -143,6 +143,7 @@ export async function serve(options: {
       units,
       disputes,
       openFile: systemOpener(),
+      backup,
     }).fetch,
   );
 

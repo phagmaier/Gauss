@@ -11,7 +11,7 @@
 
 import type { StoredUnit } from "../shared/curriculum.ts";
 import type { CourseWithProgress, UnitProgress } from "../shared/library.ts";
-import type { UnitStatus } from "../shared/status.ts";
+import { isFinished } from "../shared/status.ts";
 
 type Progress = CourseWithProgress["progress"];
 
@@ -66,10 +66,6 @@ export function progressOf(progress: Progress, unitId: string): UnitProgress {
     (Object.hasOwn(progress, unitId) ? progress[unitId] : undefined) ??
     NOT_STARTED
   );
-}
-
-export function isFinished(status: UnitStatus): boolean {
-  return status === "passed" || status === "overridden";
 }
 
 /** The approved curriculum's units; none for a draft or no curriculum. */

@@ -321,6 +321,10 @@ export const PageEvent = z.discriminatedUnion("type", [
     style: z.string().optional(),
     /** The background note; a draft stored before task 2.22 has none. */
     background: z.string().optional(),
+    /** The learner profile approval would write; a draft stored before task 5.8 has none. */
+    profile: z.string().optional(),
+    /** The profile it would replace, as it was when proposed; none when there was no profile. */
+    profileWas: z.string().optional(),
   }),
   /** The learner approved a revision of the curriculum. The intake is over. */
   z.object({

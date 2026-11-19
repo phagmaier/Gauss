@@ -10,10 +10,9 @@ import type { AssessmentMode } from "../shared/evidence.ts";
 import type { CourseWithProgress } from "../shared/library.ts";
 import { firstTaught, type Plan, skipping } from "../shared/plan.ts";
 import { confidenceLabel } from "../shared/question.ts";
-import type { ObjectiveStatus } from "../shared/status.ts";
+import { isFinished, type ObjectiveStatus } from "../shared/status.ts";
 import {
   AGAIN,
-  isFinished,
   type Mark,
   type Numbered,
   nextInOrder,

@@ -72,6 +72,9 @@ const RULES_PLAN: Plan = {
   ],
 };
 
+const PROFILE =
+  "Works as a nurse and computes doses every day. Likes a worked example first.";
+
 async function course(approved = true): Promise<string> {
   const { id } = await root.createCourse({ title: PROPOSAL.title });
   await root.saveProposal(id, PROPOSAL);
@@ -191,8 +194,9 @@ describe("the session's one turn", () => {
       /^\[Plan unit 2 of 2 of the course "Calculus I": "Differentiation rules" \(id "rules"\)\. Allowed now: plan_unit/,
     );
     expect(text).toContain(
-      `]\nWhat the learner told the planner when the course was made:\n${PROPOSAL.background}\n\nThe curriculum, in order`,
+      `]\n# The learner\n\nWhat the learner told the planner when the course was made:\n${PROPOSAL.background}\n\nThe curriculum, in order`,
     );
+    expect(text).not.toContain("profile");
     expect(intro).toMatch(/with how the learner stands on it/);
     expect(JSON.parse(json ?? "")).toEqual({
       course: "Calculus I",
@@ -221,9 +225,31 @@ describe("the session's one turn", () => {
 
     const text = fake.received[0]?.text ?? "";
     expect(text).toContain(
-      "]\nNo background note was recorded for this course: nothing is known about the learner beyond their record.\n\nThe curriculum, in order",
+      "]\n# The learner\n\nNo background note was recorded for this course: nothing is known about the learner beyond their record.\n\nThe curriculum, in order",
     );
     expect(text).not.toContain("What the learner told");
+  });
+
+  // Task 5.8: the profile holds across courses, so it comes before this course's note.
+  test("gives the learner profile under the learner, before the background note or the line saying there is none", async () => {
+    const id = await course();
+    await root.writeProfile(PROFILE, undefined);
+    const { fake, planner } = setUp([
+      [{ call: "plan_unit", input: DERIVATIVE_PLAN }],
+      [{ call: "plan_unit", input: RULES_PLAN }],
+    ]);
+    const profile = `]\n# The learner\n\nThe learner's profile, which holds across their courses:\n<learner_profile>\n${PROFILE}\n</learner_profile>\n\n`;
+
+    await planner.plan(id, "derivative");
+    await rm(join(dir, "courses", id, "background.md"));
+    await planner.plan(id, "rules");
+
+    expect(fake.received[0]?.text).toContain(
+      `${profile}What the learner told the planner when the course was made:\n${PROPOSAL.background}\n\nThe curriculum, in order`,
+    );
+    expect(fake.received[1]?.text).toContain(
+      `${profile}No background note was recorded for this course.\n\nThe curriculum, in order`,
+    );
   });
 });
 

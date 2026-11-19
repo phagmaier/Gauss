@@ -3,6 +3,9 @@ import { parseRoute, paths } from "./route.ts";
 
 test.each([
   ["/", { view: "library" }],
+  ["/profile", { view: "profile" }],
+  ["/profile/", { view: "profile" }],
+  ["/profile/more", { view: "library" }],
   ["/intakes/3eb7af09", { view: "intake", intakeId: "3eb7af09" }],
   ["/courses/linear-algebra/", { view: "course", courseId: "linear-algebra" }],
   ["/courses", { view: "library" }],

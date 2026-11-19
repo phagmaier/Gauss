@@ -1516,6 +1516,30 @@ built until its task is done; `architecture.md` says what is.
   finished courses is derived from the record, not kept in the file.
   Nothing is written to it without the learner seeing it, as with the
   style note.
+- **The planner gets the profile in its turns, not its system prompt**
+  (the agent's): a session's first turn has it with the finished courses,
+  and a later turn has it again once `profile.md` changed, so an edit on
+  the Profile page during an intake reaches the planner. A system prompt
+  is fixed when the session starts.
+- **Nothing written unseen means a check at each write** (the agent's):
+  a card compares its profile with `profile.md` as it was when the
+  proposal was made (or the draft reopened), and approval refuses if the
+  file is no longer that text; a save on the Profile page names the text
+  it loaded, the same way. A file that already holds the new text passes,
+  since writing it loses nothing. Approval writes the profile before the
+  approved curriculum, since a crash between the two would otherwise lose
+  the proposed profile with the draft; an approval tried again after the
+  curriculum failed to save then finds its own profile there.
+- **A draft's proposed profile is kept in its `curriculum.json`**, on the
+  draft's approval field (the agent's), so a draft reopened after a
+  restart can still be approved with it, and approval leaves no copy in
+  the course's folder. A per-course `profile.md` beside `style.md` was
+  dropped: after approval it would be a stale double of the real one.
+- **Sentences are compared whole** (`compareProfiles`, the agent's): cut
+  after `.`, `?` or `!` and a space, and at line breaks, spacing ignored.
+  A reworded sentence shows as one new and one dropped, so `planner.md`
+  and the tool's description ask the planner to keep unchanged sentences
+  word for word.
 - **Notes are written when the learner asks** (the user's): a finished
   unit offers them, with a box for instructions of the learner's own.
   What they hold is `notes.md`'s standard: what the unit taught, more
@@ -1710,7 +1734,15 @@ language's tools were tried in the sandbox. The style note is 1 to 800 character
 section (the mocks' notes run under 300; the cap stops a lecture posing as
 a note). The background note is required too, and in the third person,
 since the unit planner and the tutor read it as a description of someone
-else; it holds only what the learner said.
+else; it holds only what the learner said. The profile's lines (task 5.8,
+one intake on Haiku 5.5, with a profile naming the learner's work, the
+mathematics they took and how they like to be taught): it asked only where
+Bayes' rule stopped making sense and how far to go, saying "Your profile
+says you took an intro statistics course"; its proposal kept the profile
+word for word and put this course's facts in the background note. Once,
+told to go ahead, it said "I've proposed a three-unit course" without
+calling `propose_curriculum`, and posted the card when asked; no earlier
+run was recorded doing that.
 
 **Writing rules for the page**: `$...$` inline and `$$` for display; a
 dollar sign that is not math must be `\$`, since "it costs $5 and $10" reads
@@ -1854,7 +1886,9 @@ the agent would build them and accepted so, but for the notes
   each new sentence and lists each dropped one, since the text reaches
   every later course. The Profile page is reached from the library's top
   line: what the text is for, the text in one box with its length against
-  the limit and Save, and the finished courses a planner is given.
+  the limit and Save, and the finished courses a planner is given. Built
+  without the mock's dates ("Last changed", when each course finished):
+  the record keeps neither (the agent's).
 - **A misconception sits under its objective in "What I know"**, above
   the answers (piece 18): what the learner believed, what is so, and
   where it showed. It is ruled in peach and says "Open" while the

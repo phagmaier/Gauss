@@ -1,8 +1,8 @@
 // Planning a unit when it starts (brief.md, "How a course runs"; task 2.5).
 // A unit without a plan is planned in a backend session of its own, with
 // prompts/unit-planner.md, before the tutor's session starts. The session
-// gets one turn holding the course's background note (task 2.22) and its
-// curriculum, with how the learner stands on each objective planned so far,
+// gets one turn holding the learner profile (task 5.8), the course's
+// background note (task 2.22) and its curriculum, with how the learner stands on each objective planned so far,
 // and what earlier units showed (task 5.7): the last handoff notes of the
 // unit's prerequisites and the open misconceptions on other units'
 // objectives. It stores the plan through plan_unit; then it closes. A session that ends
@@ -78,9 +78,10 @@ export function createUnitPlanner(options: {
     }
     if (unit.plan !== undefined) return { ok: true, plan: unit.plan };
 
-    const [evidence, background, misconceptions] = await Promise.all([
+    const [evidence, background, profile, misconceptions] = await Promise.all([
       dataRoot.readEvidence(courseId),
       dataRoot.readBackground(courseId),
+      dataRoot.readProfile(),
       dataRoot.readMisconceptions(courseId),
     ]);
     const context = planningContext(stored, curriculum, unit, evidence);
@@ -100,6 +101,7 @@ export function createUnitPlanner(options: {
         planningTurn(stored, curriculum, unit, {
           context,
           background,
+          profile,
           earlier,
           earlierProblem: problem,
         }),
@@ -233,11 +235,13 @@ function planningTurn(
     context: string;
     /** The course's background note; a course from before task 2.22 has none. */
     background: string | undefined;
+    /** The learner profile (task 5.8); none until one is approved or written. */
+    profile: string | undefined;
     earlier: EarlierUnits;
     earlierProblem: string | undefined;
   },
 ): string {
-  const { context, background, earlierProblem } = given;
+  const { context, background, profile, earlierProblem } = given;
   const earlier = earlierText(given.earlier);
   const at = curriculum.units.indexOf(unit) + 1;
   const retry =
@@ -249,7 +253,7 @@ function planningTurn(
     `"${stored.course.title}": "${unit.title}" (id "${unit.id}"). Allowed ` +
     "now: plan_unit, once the plan is ready. Nobody reads your text or " +
     `answers questions here.${retry}]\n` +
-    `${backgroundSection(background)}\n\n` +
+    `# The learner\n\n${learnerSection(profile, background)}\n\n` +
     "The curriculum, in order, as JSON. Units already planned list their " +
     "objectives, each with how the learner stands on it.\n" +
     context +
@@ -259,10 +263,27 @@ function planningTurn(
   );
 }
 
-/** The course's background note (task 2.22), or a line saying none was recorded. */
-function backgroundSection(background: string | undefined): string {
-  return background === undefined || background.trim() === ""
-    ? "No background note was recorded for this course: nothing is known " +
-        "about the learner beyond their record."
-    : `What the learner told the planner when the course was made:\n${background.trim()}`;
+/**
+ * The learner profile (task 5.8), when there is one, then the course's
+ * background note (task 2.22), or a line saying none was recorded.
+ */
+function learnerSection(
+  profile: string | undefined,
+  background: string | undefined,
+): string {
+  const kept = profile?.trim();
+  return [
+    ...(kept === undefined || kept === ""
+      ? []
+      : [
+          "The learner's profile, which holds across their courses:\n" +
+            `<learner_profile>\n${kept}\n</learner_profile>`,
+        ]),
+    background === undefined || background.trim() === ""
+      ? kept === undefined || kept === ""
+        ? "No background note was recorded for this course: nothing is " +
+          "known about the learner beyond their record."
+        : "No background note was recorded for this course."
+      : `What the learner told the planner when the course was made:\n${background.trim()}`,
+  ].join("\n\n");
 }

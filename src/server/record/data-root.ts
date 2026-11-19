@@ -5,7 +5,9 @@
 // their units, keeps the position of each unit in progress in state.json,
 // appends to and reads the evidence log, appends a dispute once per answer,
 // appends to and reads the units' session transcripts, stores and reads the artifacts the tutor shows,
-// and writes and reads each unit's handoff note and the misconception log (task 5.7).
+// writes and reads each unit's handoff note and the misconception log (task 5.7),
+// and reads and writes the learner profile, writing it too when a curriculum
+// that proposes one is approved (task 5.8).
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -34,6 +36,7 @@ import type { StoredCourse } from "../../shared/library.ts";
 import { Misconception } from "../../shared/misconception.ts";
 import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
+import { LearnerProfile } from "../../shared/profile.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { writeFileAtomic, writeFileNew } from "./atomic-write.ts";
 import { disputable } from "./disputes.ts";
@@ -101,11 +104,23 @@ export interface DataRoot {
    */
   readBackground(id: string): Promise<string | undefined>;
   /**
-   * Stores the tutor's proposal as the course's draft curriculum, replacing
-   * any earlier draft, its style note as style.md, its background note as
-   * background.md, and its title as the course's title. Refused, changing
-   * nothing, once the curriculum is approved, so the approved notes are the
-   * ones approval found.
+   * The learner profile, profile.md in the data root, trimmed; undefined
+   * when there is none or it is blank.
+   */
+  readProfile(): Promise<string | undefined>;
+  /**
+   * Writes the learner profile whole, if profile.md still holds `was`
+   * (undefined: no profile) or holds this text already. Otherwise it throws
+   * ProfileChanged and writes nothing, so a change made since `was` was
+   * read is not lost unseen.
+   */
+  writeProfile(text: string, was: string | undefined): Promise<void>;
+  /**
+   * Stores the tutor's proposal as the course's draft curriculum, with the
+   * profile it proposes, replacing any earlier draft, its style note as
+   * style.md, its background note as background.md, and its title as the
+   * course's title. Refused, changing nothing, once the curriculum is
+   * approved, so the approved notes are the ones approval found.
    */
   saveProposal(
     id: string,
@@ -113,9 +128,12 @@ export interface DataRoot {
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
   /**
    * Approves the draft curriculum, at the clock's time, if the record holds
-   * exactly the proposal shown: its title, units, style note and background
-   * note. Otherwise it throws DraftMismatch and changes nothing, so a draft
-   * whose save stopped partway is never approved unseen.
+   * exactly the proposal shown: its title, units, style note, background
+   * note and profile. Otherwise it throws DraftMismatch and changes nothing,
+   * so a draft whose save stopped partway is never approved unseen. A shown
+   * profile is written first, as writeProfile writes it, expecting
+   * `shown.profileWas`: when profile.md changed since, it throws
+   * ProfileChanged and changes nothing.
    */
   approveCurriculum(
     id: string,
@@ -243,10 +261,6 @@ export interface Transcript {
   unreadable: string[];
 }
 
-/**
- * Approval was refused because the stored draft is not the proposal the
- * learner saw: saving a later one stopped partway, or the files were edited.
- */
 /** A dispute the record refuses (`appendDispute`), with the route's status. */
 export class DisputeRefused extends Error {
   readonly status: 404 | 409;
@@ -257,12 +271,27 @@ export class DisputeRefused extends Error {
   }
 }
 
+/**
+ * Approval was refused because the stored draft is not the proposal the
+ * learner saw: saving a later one stopped partway, or the files were edited.
+ */
 export class DraftMismatch extends Error {
   constructor(id: string, parts: readonly string[]) {
     super(
       `The stored draft of "${id}" is not the proposal shown; they differ in ${parts.join(" and ")}.`,
     );
     this.name = "DraftMismatch";
+  }
+}
+
+/**
+ * profile.md is not the text a write expected to replace: the learner saved
+ * it on the Profile page, or an approval wrote it, since that text was read.
+ */
+export class ProfileChanged extends Error {
+  constructor() {
+    super("The learner profile changed since it was read.");
+    this.name = "ProfileChanged";
   }
 }
 
@@ -275,6 +304,7 @@ export function openDataRoot(options: {
   now?: () => Date;
 }): DataRoot {
   const courses = join(options.path, "courses");
+  const profileFile = join(options.path, "profile.md");
   const now = options.now ?? (() => new Date());
 
   async function readCourse(id: string): Promise<StoredCourse | undefined> {
@@ -296,13 +326,24 @@ export function openDataRoot(options: {
   }
 
   /** A note in the course's folder, trimmed; undefined if there is none or it is blank. */
-  async function readNote(id: string, note: Note): Promise<string | undefined> {
-    try {
-      return (await readFile(courseFile(id, note), "utf8")).trim() || undefined;
-    } catch (error) {
-      if (hasCode(error, "ENOENT")) return undefined;
-      throw error;
-    }
+  function readNote(id: string, note: Note): Promise<string | undefined> {
+    return readText(courseFile(id, note));
+  }
+
+  /**
+   * Writes the profile if it still holds `was`, or holds the new text
+   * already (an approval whose curriculum failed to save, tried again), so
+   * no change is lost; the caller holds its lock.
+   */
+  async function replaceProfile(
+    text: string,
+    was: string | undefined,
+  ): Promise<void> {
+    const checked = LearnerProfile.parse(text);
+    const current = await readText(profileFile);
+    if (current === checked) return;
+    if (current !== (was?.trim() || undefined)) throw new ProfileChanged();
+    await writeFileAtomic(profileFile, `${checked}\n`);
   }
 
   /** A unit's folder under the course's `units/`, which need not exist yet. */
@@ -421,8 +462,14 @@ export function openDataRoot(options: {
       return readNote(id, "background.md");
     },
 
+    readProfile: () => readText(profileFile),
+
+    async writeProfile(text, was) {
+      await withFileLock(profileFile, () => replaceProfile(text, was));
+    },
+
     async saveProposal(id, proposal) {
-      const { title, units, style, background } =
+      const { title, units, style, background, profile } =
         CurriculumProposal.parse(proposal);
       const path = courseFile(id, "curriculum.json");
       return withFileLock(path, async () => {
@@ -433,7 +480,10 @@ export function openDataRoot(options: {
           );
         }
         const curriculum: Curriculum = {
-          approval: { status: "draft" },
+          approval: {
+            status: "draft",
+            ...(profile === undefined ? {} : { profile }),
+          },
           units,
         };
         await writeJson(path, Curriculum, curriculum);
@@ -473,7 +523,16 @@ export function openDataRoot(options: {
         if ((await readNote(id, "background.md")) !== shown.background) {
           differ.push("background note");
         }
+        const { approval } = stored.curriculum;
+        if (approval.profile !== shown.profile) differ.push("profile");
         if (differ.length > 0) throw new DraftMismatch(id, differ);
+        // The profile first: a curriculum approved without it would lose it.
+        const { profile } = shown;
+        if (profile !== undefined) {
+          await withFileLock(profileFile, () =>
+            replaceProfile(profile, shown.profileWas),
+          );
+        }
         const curriculum: Curriculum = {
           ...stored.curriculum,
           approval: { status: "approved", approvedAt: now().toISOString() },
@@ -781,6 +840,16 @@ async function makeFolder(parent: string, base: string): Promise<Slug> {
     } catch (error) {
       if (!hasCode(error, "EEXIST")) throw error;
     }
+  }
+}
+
+/** A text file's contents, trimmed; undefined if there is no file or it is blank. */
+async function readText(path: string): Promise<string | undefined> {
+  try {
+    return (await readFile(path, "utf8")).trim() || undefined;
+  } catch (error) {
+    if (hasCode(error, "ENOENT")) return undefined;
+    throw error;
   }
 }
 

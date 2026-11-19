@@ -45,17 +45,22 @@ export interface UnitContext {
 }
 
 /**
- * The course's notes, kept with its curriculum. A course approved before
- * style notes (task 2.10) or background notes (task 2.22) existed lacks them.
+ * The course's notes, kept with its curriculum, and the learner profile
+ * (task 5.8), kept across courses. A course approved before style notes
+ * (task 2.10) or background notes (task 2.22) existed lacks them; there is
+ * no profile until a curriculum that proposes one is approved, or the
+ * learner writes one.
  */
 export interface CourseNotes {
   style: string | undefined;
   background: string | undefined;
+  profile?: string | undefined;
 }
 
 /**
  * The tutor's system prompt: `prompts/tutor.md`, then the course and the
- * unit's plan, then the course's background note, or a line saying none was
+ * unit's plan, then under "The learner" the learner profile, when there is
+ * one, and the course's background note, or a line saying none was
  * recorded, then what earlier units showed (task 5.7), when they showed
  * anything, then its style note, or the default style when it has none. A
  * session keeps the prompt it started with (task 0.4), so the position is in
@@ -70,6 +75,7 @@ export function tutorSystemPrompt(
 ): string {
   const shown = earlierText(earlier);
   const { style, background } = notes;
+  const profile = notes.profile?.trim() || undefined;
   const { units, plan } = context;
   const at = units.findIndex((u) => u.id === context.unitId);
   const unit = units[at];
@@ -94,6 +100,15 @@ export function tutorSystemPrompt(
     "",
     "# The learner",
     "",
+    ...(profile === undefined
+      ? []
+      : [
+          "The learner's profile, which holds across their courses:",
+          "<learner_profile>",
+          profile,
+          "</learner_profile>",
+          "",
+        ]),
     background === undefined || background.trim() === ""
       ? "No background note was recorded for this course: learn what the " +
         "learner knows from what they ask and answer."

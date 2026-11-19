@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { Course, Slug, Timestamp } from "./course.ts";
 import { Plan } from "./plan.ts";
+import { LearnerProfile } from "./profile.ts";
 
 export const Unit = z.object({
   id: Slug.describe(
@@ -137,8 +138,15 @@ function checkObjectiveIds(units: StoredUnit[], ctx: Context): void {
 }
 
 export const CurriculumApproval = z.discriminatedUnion("status", [
-  /** Proposed by the tutor and awaiting the learner's review. */
-  z.object({ status: z.literal("draft") }),
+  /**
+   * Proposed by the tutor and awaiting the learner's review, with the learner
+   * profile approving it would write to the data root's profile.md (task
+   * 5.8). A draft proposed before profiles existed has none.
+   */
+  z.object({
+    status: z.literal("draft"),
+    profile: LearnerProfile.optional(),
+  }),
   /** Approved by the learner, so its units can start. */
   z.object({ status: z.literal("approved"), approvedAt: Timestamp }),
 ]);
@@ -188,9 +196,10 @@ export const BackgroundNote = z
 export type BackgroundNote = z.infer<typeof BackgroundNote>;
 
 /**
- * What the tutor sends with propose_curriculum (task 1.4): the course's
- * title, its units, its style note (task 2.10) and its background note
- * (task 2.22). Stored as a draft until the learner approves it.
+ * A proposal as a draft stores it: the course's title, its units, its style
+ * note (task 2.10), its background note (task 2.22) and the learner profile
+ * (task 5.8), which a draft proposed before profiles existed lacks. Stored
+ * as a draft until the learner approves it.
  */
 export const CurriculumProposal = z.object({
   title: Course.shape.title.describe(
@@ -199,18 +208,35 @@ export const CurriculumProposal = z.object({
   units: Units,
   style: StyleNote,
   background: BackgroundNote,
+  profile: LearnerProfile.optional(),
 });
 export type CurriculumProposal = z.infer<typeof CurriculumProposal>;
+
+/** What the tutor sends with propose_curriculum (task 1.4): a proposal with the profile's whole text. */
+export const PlannerProposal = CurriculumProposal.extend({
+  profile: LearnerProfile,
+});
+export type PlannerProposal = z.infer<typeof PlannerProposal>;
 
 /**
  * A proposal as its card shows it: as the tutor sent it, or as a reopened
  * draft was read back. A draft stored before style notes existed (task
- * 2.10) has none, and one stored before background notes (task 2.22) has no
- * background note.
+ * 2.10) has none, one stored before background notes (task 2.22) has no
+ * background note, and one stored before profiles (task 5.8) no profile.
  */
-export type ShownProposal = Omit<CurriculumProposal, "style" | "background"> & {
+export type ShownProposal = Omit<
+  CurriculumProposal,
+  "style" | "background" | "profile"
+> & {
   style?: string;
   background?: string;
+  profile?: string | undefined;
+  /**
+   * The profile the card compares `profile` with, and approval expects to
+   * replace: profile.md as it was when the proposal was made or the draft
+   * reopened; none when there was no profile.
+   */
+  profileWas?: string | undefined;
 };
 
 /** One prerequisite entry: `units[at].prerequisites[slot]`. */

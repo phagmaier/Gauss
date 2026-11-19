@@ -486,6 +486,32 @@ test("the background and style notes approved with the curriculum end the system
   expect(prompt).not.toContain("default style above");
 });
 
+// Task 5.8: what holds across courses comes before this course's note.
+test("the learner profile, when there is one, is under the learner before the background note", async () => {
+  const setup = setUp([TEACH]);
+  await makeCourse();
+  const profile =
+    "Works as a nurse and computes doses every day.\nLikes a worked example first.";
+  await reload().writeProfile(profile, undefined);
+
+  await open(setup);
+
+  expect(setup.backend.sessions[0]?.systemPrompt).toContain(
+    [
+      "# The learner",
+      "",
+      "The learner's profile, which holds across their courses:",
+      "<learner_profile>",
+      profile,
+      "</learner_profile>",
+      "",
+      `What the learner told the planner when the course was made: ${CURRICULUM.background}`,
+      "",
+      "# This course's style",
+    ].join("\n"),
+  );
+});
+
 test("stopping the teaching turn opens the discussion, and a message sent during it reaches the tutor as a discussion turn", async () => {
   const setup = setUp([
     [{ text: "A long lecture" }, { hold: true }, { text: "never written" }],

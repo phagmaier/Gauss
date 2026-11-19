@@ -213,6 +213,10 @@ export type Item =
       background: string | undefined;
       /** The background note differs from the revision before's. */
       backgroundChanged: boolean;
+      /** The learner profile approval would write; a draft from before task 5.8 has none. */
+      profile: string | undefined;
+      /** The profile it would replace; none when there was no profile. */
+      profileWas: string | undefined;
     }
   | { kind: "note"; key: number; text: string };
 
@@ -730,6 +734,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             backgroundChanged:
               previous !== undefined &&
               previous.background !== event.background,
+            profile: event.profile,
+            profileWas: event.profileWas,
           },
         ],
         tutorOpen: false,

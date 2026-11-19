@@ -18,6 +18,12 @@
 // cannot be found then gives way to a new session, which is given the latest
 // proposal, as a reopened draft's is, or before any proposal what was said
 // so far (task 2.22a).
+//
+// Each session's first turn gives the planner the learner profile and the
+// titles of the courses the learner has finished (task 5.8); a later turn
+// gives it the profile again when profile.md has changed since. Every
+// proposal carries the profile's whole text, and its card compares it with
+// profile.md as it was then, which approval expects to replace.
 
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
@@ -25,7 +31,12 @@ import type { ShownProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
-import { type DataRoot, DraftMismatch } from "../record/data-root.ts";
+import {
+  type DataRoot,
+  DraftMismatch,
+  ProfileChanged,
+} from "../record/data-root.ts";
+import { finishedCourses } from "../record/progress.ts";
 import { proposeCurriculumTool } from "../tools/propose-curriculum.ts";
 import {
   type ChatResult,
@@ -57,8 +68,9 @@ export interface Intake {
 }
 
 /**
- * A stored draft whose intake is gone, to be reviewed again. A draft stored
- * before style notes existed (task 2.10) has none.
+ * A stored draft whose intake is gone, to be reviewed again, with the
+ * profile it is compared with: profile.md as it is when it is reopened. A
+ * draft stored before style notes existed (task 2.10) has none.
  */
 export interface StoredDraft {
   id: Slug;
@@ -91,6 +103,8 @@ export function createIntake(options: {
    * after the turn before it has ended.
    */
   let opening = false;
+  /** The profile the running session was last given; none before its first turn. */
+  let told: { profile: string | undefined } | undefined;
 
   const proposeCurriculum = proposeCurriculumTool({
     async propose(proposal) {
@@ -101,21 +115,48 @@ export function createIntake(options: {
       if (courseId === undefined) {
         courseId = (await dataRoot.createCourse({ title: proposal.title })).id;
       }
+      const profileWas = await dataRoot.readProfile();
       await dataRoot.saveProposal(courseId, proposal);
       latest += 1;
-      shown = proposal;
-      log.emit({
-        type: "curriculum_proposed",
-        courseId,
-        revision: latest,
-        title: proposal.title,
-        units: proposal.units,
-        style: proposal.style,
-        background: proposal.background,
-      });
+      shown = { ...proposal, profileWas };
+      emitProposal(courseId, shown);
       return { revision: latest };
     },
   });
+
+  function emitProposal(id: Slug, proposal: ShownProposal): void {
+    const { profile, profileWas } = proposal;
+    log.emit({
+      type: "curriculum_proposed",
+      courseId: id,
+      revision: latest,
+      title: proposal.title,
+      units: proposal.units,
+      ...(proposal.style === undefined ? {} : { style: proposal.style }),
+      ...(proposal.background === undefined
+        ? {}
+        : { background: proposal.background }),
+      ...(profile === undefined ? {} : { profile }),
+      ...(profile === undefined || profileWas === undefined
+        ? {}
+        : { profileWas }),
+    });
+  }
+
+  /**
+   * What the session is given about the learner beyond this course: all of
+   * it in its first turn, and after that the profile when it has changed.
+   */
+  async function aboutTheLearner(first: boolean): Promise<string | undefined> {
+    const profile = await dataRoot.readProfile();
+    const changed = told !== undefined && told.profile !== profile;
+    told = { profile };
+    if (first) {
+      const finished = (await finishedCourses(dataRoot)).map((c) => c.title);
+      return learnerBlock({ profile, finished });
+    }
+    return changed ? changedProfileBlock(profile) : undefined;
+  }
 
   const tools = [proposeCurriculum];
   const tutor = createConversation({
@@ -136,6 +177,7 @@ export function createIntake(options: {
         }),
       lost(learnerId) {
         lost = true;
+        told = undefined;
         log.emit({
           type: "fresh_start",
           reason: "not-resumed",
@@ -152,12 +194,7 @@ export function createIntake(options: {
     latest = 1;
     shown = draft.proposal;
     log.emit({ type: "draft_reopened" });
-    log.emit({
-      type: "curriculum_proposed",
-      courseId,
-      revision: latest,
-      ...draft.proposal,
-    });
+    emitProposal(courseId, draft.proposal);
   }
 
   return {
@@ -175,18 +212,22 @@ export function createIntake(options: {
       tutor.send({
         learnerId: id,
         // Composed when sent, since a lost session is found then.
-        text() {
+        async text() {
           opening = false;
+          const first = lost || !tutor.started();
+          const learner = await aboutTheLearner(first);
           if (lost) {
             lost = false;
             return shown === undefined
-              ? lostTurn(text, conversationBefore(log.events(), id))
-              : reviewTurn(text, shown, latest);
+              ? lostTurn(text, conversationBefore(log.events(), id), learner)
+              : reviewTurn(text, shown, latest, learner);
           }
-          if (tutor.started()) return messageTurn(text, about);
-          if (draft !== undefined) return reviewTurn(text, draft.proposal, 1);
+          if (tutor.started()) return messageTurn(text, about, learner);
+          if (draft !== undefined) {
+            return reviewTurn(text, draft.proposal, 1, learner);
+          }
           opening = true;
-          return openingTurn(text);
+          return openingTurn(text, learner);
         },
       });
       return { ok: true };
@@ -224,6 +265,9 @@ export function createIntake(options: {
         if (error instanceof DraftMismatch) {
           return { ok: false, status: 409, error: DRAFT_MISMATCH };
         }
+        if (error instanceof ProfileChanged) {
+          return { ok: false, status: 409, error: PROFILE_CHANGED };
+        }
         throw error;
       }
       log.emit({ type: "curriculum_approved", courseId, revision });
@@ -251,6 +295,12 @@ const FIRST_TURN =
 const DRAFT_MISMATCH =
   "The curriculum on record is not the one on this card: saving the " +
   "tutor's last change did not finish. Ask the tutor to propose it again.";
+
+/** profile.md changed after the card's proposal was made. */
+const PROFILE_CHANGED =
+  "Your profile was changed after this proposal was made, so approving " +
+  "it would replace that change unseen. Ask the tutor to propose again: " +
+  "it will be given your profile as it is now.";
 
 /**
  * The intakes started since the server did, by id. An intake stays after it
@@ -297,15 +347,70 @@ export function createIntakes(options: {
   };
 }
 
-// --- Turns: a header saying what is allowed now, then the learner's text ---
+// --- Turns: a header saying what is allowed now, then what Gauss keeps
+// about the learner when the turn gives it, then the learner's text ---
 
-function openingTurn(text: string): string {
-  return (
-    "[Start of the intake. The app has asked the learner what they want to " +
-    "learn and what they already know; their answer follows. Allowed now: " +
-    "ask what you still need to know, at most two questions, or say what " +
-    "you would propose and ask whether to go ahead. propose_curriculum is " +
-    `refused in this turn.]\n${text}`
+/** What the planner is given about the learner beyond this course (task 5.8). */
+interface Known {
+  profile: string | undefined;
+  /** The titles of the courses the learner has finished. */
+  finished: readonly string[];
+}
+
+/** Said in a header whose turn gives the planner what Gauss keeps about the learner. */
+const ABOUT =
+  "Before their message comes what Gauss keeps about the learner across " +
+  "their courses, in <about_the_learner>.";
+
+/** For a session's first turn: the learner profile and the courses finished. */
+function learnerBlock(known: Known): string {
+  const { profile, finished } = known;
+  return [
+    "<about_the_learner>",
+    profile === undefined
+      ? "They have no profile yet."
+      : `Their profile:\n<profile>\n${profile}\n</profile>`,
+    finished.length === 0
+      ? "They have finished no course yet."
+      : `The courses they have finished: ${finished.map((t) => JSON.stringify(t)).join(", ")}.`,
+    "</about_the_learner>",
+  ].join("\n");
+}
+
+/** For a later turn, once profile.md has changed since the session was given it. */
+function changedProfileBlock(profile: string | undefined): string {
+  return [
+    "<about_the_learner>",
+    profile === undefined
+      ? "Their profile was removed since you were given it: they have none now."
+      : "Their profile changed since you were given it. It now reads as " +
+        "follows; propose from this text.\n" +
+        `<profile>\n${profile}\n</profile>`,
+    "</about_the_learner>",
+  ].join("\n");
+}
+
+/** A turn: the header, then the block about the learner if there is one, then their text. */
+function withLearner(
+  header: string,
+  learner: string | undefined,
+  text: string,
+): string {
+  return learner === undefined
+    ? `[${header}]\n${text}`
+    : `[${header} ${ABOUT}]\n${learner}\n\n${text}`;
+}
+
+function openingTurn(text: string, learner: string | undefined): string {
+  return withLearner(
+    "Start of the intake. The app has asked the learner what they want to " +
+      "learn and what they already know. Allowed now: ask what you still " +
+      "need to know and neither their answer nor what Gauss keeps about " +
+      "them tells you, at most two questions, or say what you would " +
+      "propose and ask whether to go ahead. propose_curriculum is refused " +
+      "in this turn.",
+    learner,
+    text,
   );
 }
 
@@ -314,16 +419,20 @@ function reviewTurn(
   text: string,
   draft: ShownProposal,
   revision: number,
+  learner: string | undefined,
 ): string {
-  return (
-    `[The learner is reviewing proposal ${revision}, a curriculum proposed in an ` +
-    "earlier conversation that was not kept:\n" +
-    `${JSON.stringify(draft)}\n` +
-    "They have not approved it; their message follows. Allowed now: answer " +
-    "them; if they ask for changes, call propose_curriculum with the whole " +
-    "revised curriculum, its style note and its background note (writing " +
-    "any note it lacks), keeping the ids of the units you keep.]\n" +
-    text
+  const { profileWas: _, ...proposal } = draft;
+  return withLearner(
+    `The learner is reviewing proposal ${revision}, a curriculum proposed in an ` +
+      "earlier conversation that was not kept:\n" +
+      `${JSON.stringify(proposal)}\n` +
+      "They have not approved it. Allowed now: answer them; if they ask " +
+      "for changes, call propose_curriculum with the whole revised " +
+      "curriculum, its style note, its background note and the learner's " +
+      "profile (writing any it lacks), keeping the ids of the units you " +
+      "keep.",
+    learner,
+    text,
   );
 }
 
@@ -373,26 +482,36 @@ function conversationBefore(
  * new session never saw. A session is lost only after one was started for
  * an earlier message, so there is always something said before.
  */
-function lostTurn(text: string, said: readonly Said[]): string {
-  return (
-    "[This conversation is new: the one before it with the learner was " +
-    "lost, so you have not seen it. What was said in it, oldest first, as " +
-    'JSON (the "planner" messages are your replies):\n' +
-    // Followed by a space: "]\n" is where the header ends.
-    `${JSON.stringify(said)} ` +
-    "Their new message follows. Allowed now: reply, or propose a " +
-    `curriculum with propose_curriculum.]\n${text}`
+function lostTurn(
+  text: string,
+  said: readonly Said[],
+  learner: string | undefined,
+): string {
+  return withLearner(
+    "This conversation is new: the one before it with the learner was " +
+      "lost, so you have not seen it. What was said in it, oldest first, as " +
+      'JSON (the "planner" messages are your replies):\n' +
+      // Followed by a space: "]\n" is where the header ends.
+      `${JSON.stringify(said)} ` +
+      "Their new message follows. Allowed now: reply, or propose a " +
+      "curriculum with propose_curriculum.",
+    learner,
+    text,
   );
 }
 
-function messageTurn(text: string, proposal: number): string {
+function messageTurn(
+  text: string,
+  proposal: number,
+  learner: string | undefined,
+): string {
   const header =
     proposal === 0
-      ? "[Message from the learner. Allowed now: reply, or propose a " +
-        "curriculum with propose_curriculum.]"
-      : `[Message from the learner about proposal ${proposal}, which they ` +
+      ? "Message from the learner. Allowed now: reply, or propose a " +
+        "curriculum with propose_curriculum."
+      : `Message from the learner about proposal ${proposal}, which they ` +
         "have not approved. Allowed now: answer them; if they ask for " +
         "changes, call propose_curriculum with the whole revised curriculum, " +
-        "its style note and its background note.]";
-  return `${header}\n${text}`;
+        "its style note, its background note and the learner's profile.";
+  return withLearner(header, learner, text);
 }

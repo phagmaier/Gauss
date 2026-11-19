@@ -49,7 +49,7 @@ Gauss/
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
       sources/          (stage 4) ingestion, quote verification
-    web/                React app: library, intake, course, session, "what I know"
+    web/                React app: library, profile, intake, course, session, "what I know"
   pytools/              sandbox_exec.py (Linux workload filter), mathcheck.py; (stage 4) convert.py
   scripts/              dev-fake.ts (no model); faults.ts (injects faults, runs the tests); grade-set.ts, judge-set.ts and decide-set.ts with their sets (real model)
   mise.toml             pinned node, pnpm, python, uv
@@ -74,15 +74,15 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
 
 ```
 <data root>/
-  .git/, .gitignore               the record's history: commits after each segment close, unit end, approval, handoff note, and an assessment that recorded answers
-  profile.md                      (stage 5) learner profile: free text the learner approves
+  .git/, .gitignore               the record's history: commits after each segment close, unit end, approval, handoff note, an assessment that recorded answers, and a profile saved on its page
+  profile.md                      the learner profile: plain text that holds across courses, at most 2,000 characters; written by an approval that proposes it, or the Profile page
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
   cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
     course.json                   title, backend, settings, dates, when each unit was last opened, when review was last offered
     style.md                      the course's style note, proposed and approved with the curriculum
     background.md                 the background note: what the learner told the planner, approved with the curriculum
-    curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts
+    curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts; a draft's proposed profile
     state.json                    a position for each unit in progress
     evidence.jsonl                append-only: answers (with the assessment each was given in), grades, confidence, overrides, disputes with their outcomes
     misconceptions.jsonl          append-only: what the handoff writer found the learner believed, from detours and discussions
@@ -99,7 +99,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
 
 The shapes are the schemas in `src/shared/`: `course.ts`, `curriculum.ts`
 (a unit's plan in `plan.ts`), `state.ts`, `evidence.ts`, `misconception.ts`,
-and `handoff.ts` for `handoff.json`. A course id is its
+`handoff.ts` for `handoff.json`, and `profile.ts` for `profile.md`. A course id is its
 folder's name, made from its title; unit and objective ids are slugs, and
 objective ids are unique in the course, because the evidence names an
 objective by its id alone. A curriculum is a draft until the learner
@@ -113,8 +113,11 @@ version: a field added later must be optional.
   progress; where a course stands and whether it is a one-off (a course
   of one unit); each unit's progress for the library, with how many of a
   finished unit's objectives are retained and slipping
-  (`record/progress.ts`); and "what I know" with its calibration counts
-  (`record/what-i-know.ts`, `record/calibration.ts`). The rules for passing
+  (`record/progress.ts`), and which courses are finished, every unit of
+  an approved curriculum passed or overridden (`finishedCourses`), which
+  a new course's planner is given beside the profile; and "what I know"
+  with its calibration counts (`record/what-i-know.ts`,
+  `record/calibration.ts`). The rules for passing
   and help are in section 4; the reasons in `decisions.md`, "Objective
   status". A disputed answer counts with its dispute's verdict, where the
   answer stands in the log; its own line keeps the first grade
@@ -154,7 +157,8 @@ version: a field added later must be optional.
   `courses/` and `profile.md`, the learner's files in workspaces with
   them, and leaves out `.venv/` and Python's caches. The engine asks for a commit once a
   segment's close, a unit's end, an approval, a handoff note or the end of
-  an assessment that recorded answers is written; commits run in
+  an assessment that recorded answers is written, and the profile route
+  once the Profile page's save is; commits run in
   the background, one at a time, by "Gauss", and a failure is logged and
   never fails the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off
   for `pnpm dev:fake` unless `=on`; tests pass it in.
@@ -174,18 +178,27 @@ also before it reaches the backend.
   opening question, so the session starts with the learner's answer.
   `propose_curriculum` is refused in the turn that delivers the learner's
   first message, so the learner answers the planner once before a card
-  appears. The first proposal creates the course; each proposal replaces the
-  draft with its style note and background note, and a reply to one is a
-  change request. Approval is refused while a turn is queued or running,
-  and names the proposal the card shows; the record refuses it
-  (`DraftMismatch`) unless the files on disk are that proposal. Approval
-  ends the intake and closes its session; the planner is not told. Intakes are kept in memory: a restart
+  appears. Each session's first turn gives the planner, in
+  `<about_the_learner>` after the header, the learner profile and the
+  titles of the finished courses; a later turn gives the profile again
+  once `profile.md` has changed since. The first proposal creates the
+  course; each proposal replaces the draft with its style note, background
+  note and the profile's whole text, and a reply to one is a change
+  request. A card compares its profile with `profile.md` as it was when
+  the proposal was made, or when a draft was reopened. Approval is refused
+  while a turn is queued or running, and names the proposal the card
+  shows; the record refuses it (`DraftMismatch`) unless the files on disk
+  are that proposal, and (`ProfileChanged`) if `profile.md` is no longer
+  the profile the card compared with. It writes the profile before the
+  approved curriculum. Approval ends the intake and closes its session;
+  the planner is not told. Intakes are kept in memory: a restart
   loses one in progress, and its draft is reviewed in a new intake that
   starts from the stored draft (`POST /api/courses/<id>/review`).
 - **Unit planning** (`engine/unit-planning.ts`). A unit without a plan is
-  planned when it is opened, in a session of its own: one turn with the
-  background note, the curriculum and the status of every objective planned
-  so far, and what earlier units showed (section 4, "Handoff notes"), the
+  planned when it is opened, in a session of its own: one turn with "#
+  The learner" (the profile, when there is one, then the background
+  note), the curriculum and the status of every objective planned so far,
+  and what earlier units showed (section 4, "Handoff notes"), the
   `plan_unit` tool, then it closes. A session that ends without
   a plan is tried once more, told why; then the unit reports that it could
   not be planned.
@@ -570,7 +583,7 @@ tool server, for Codex an MCP server.
 
 | Tool | Effect |
 | --- | --- |
-| `propose_curriculum` | Stores a draft curriculum with its style note and background note and shows them for review; approval covers all three. Refused in the intake's first turn |
+| `propose_curriculum` | Stores a draft curriculum with its style note, background note and the learner profile's whole text, and shows them for review; approval covers all four. Refused in the intake's first turn |
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session |
 | `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
@@ -848,14 +861,17 @@ Kept as files in `prompts/`, each revised against real runs.
 - `tutor.md` is the start of the tutor's system prompt, which
   `engine/unit-turns.ts` assembles: `tutor.md`, the course's units with
   their goals, the unit taught and its plan, "# The learner" with
-  `background.md` (or a line saying none was recorded), "# Earlier units"
+  `profile.md` when there is one, then `background.md` (or a line saying
+  none was recorded), "# Earlier units"
   when it has anything (the last handoff notes of the unit's
   prerequisites and the open misconceptions on other units' objectives),
   then `style.md` (or a line saying to use `tutor.md`'s default style).
   The unit's own handoff note goes into a new session's first turn
-  (section 4, "Handoff notes"). Task 5.8 adds the profile.
+  (section 4, "Handoff notes").
 - `planner.md` drives the intake: its questions, asking to go ahead, and the
-  proposal with its style and background notes.
+  proposal with its style and background notes and the learner profile,
+  with what belongs in the profile (what holds in any course) and what in
+  the background note (this course).
 - `unit-planner.md` drives a unit's planning session.
 - `grader.md`, `help-judge.md` and `dispute-judge.md` are the one-shot
   calls of section 6; `handoff.md` is the one-shot call that writes
@@ -871,15 +887,24 @@ prompt that writes for the page must say so.
 
 `src/web/`, React built by Vite. Each view's logic sits in a tested pure
 module beside it (`session.ts`, `timeline.ts`, `progress.ts`, `library.ts`,
-`what-i-know.ts`, `diagram.ts`, `route.ts`); the components themselves have
-no automated tests.
+`what-i-know.ts`, `diagram.ts`, `route.ts`, `profile.ts`); the components
+themselves have no automated tests.
 
 - **Library** (`/`): every course and one-off, with where it stands, a tick
   per unit, and when it was last opened; finished courses grouped at the
-  bottom. Every row opens its course view.
+  bottom. Every row opens its course view. "Profile" and "New course" are
+  at the right of the top line.
 - **Intake** (`/intakes/<id>`): the conversation, with each proposal as a
   card (units, "How I would teach it", "What the tutor will know about
-  you", the diagram, Approve); a revision marks what changed.
+  you", "What I would remember about you", the diagram, Approve); a
+  revision marks what changed. The last section is the profile approval
+  would save, marked "New" when there was none, "not changed", or
+  "Changed" with each new sentence marked and each dropped one listed
+  under the text (`compareProfiles` in `src/shared/profile.ts`).
+- **Profile** (`/profile`, piece 18): what the profile is for, its text in
+  one box with its length against the limit, "Undo my changes" and Save,
+  then the finished courses a new planner is given. A save names the text
+  the page loaded and is refused if the profile changed since.
 - **Course** (`/courses/<id>`): a card at the top that leads to the unit in
   progress most recently opened, or else the next unit in order (the first
   not started whose prerequisites are finished); the unit list with each
@@ -987,8 +1012,11 @@ The look and layout were settled with static mocks in `docs/prototype/`
 `src/web/styles.css`); the picks are in `decisions.md`, "Page design".
 
 **Routes** (`src/server/http/app.ts`; bodies are schemas in `src/shared/`,
-mainly `events.ts`, `library.ts` and `what-i-know.ts`):
+mainly `events.ts`, `library.ts`, `what-i-know.ts` and `profile.ts`):
 
+- `GET /api/profile` (the text and the finished courses) and `POST
+  /api/profile` with the new text and the one it replaces (409 if that is
+  no longer the profile).
 - `GET /api/courses`, `GET /api/courses/<id>` (with each unit's progress),
   `GET /api/courses/<id>/what-i-know`, `GET
   /api/courses/<id>/artifacts/<file>`, `POST /api/courses/<id>/review`

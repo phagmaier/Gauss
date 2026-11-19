@@ -11,7 +11,10 @@
 //   2.22), and proposes four units in reply to the next, titled from the
 //   first message, with that reply as the background note. "/one-off" in
 //   either message proposes one unit. Later messages are answered in text;
-//   "/revise" proposes a revision with one unit fewer.
+//   "/revise" proposes a revision with one unit fewer. Its learner profile
+//   (task 5.8) is the one it was given, with its sentence saying what was
+//   asked for last replaced by one for this course, and a first sentence
+//   of its own when there was none.
 // - A unit's planning (plan_unit): two segments of one objective each. The
 //   first objective is checked by choice questions, and every second
 //   question on it is a math question (task 3.5) when the session has the
@@ -86,10 +89,11 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { CurriculumProposal } from "../../shared/curriculum.ts";
+import type { PlannerProposal } from "../../shared/curriculum.ts";
 import { DisputeJudgment } from "../../shared/dispute.ts";
 import { HandoffReply } from "../../shared/handoff.ts";
 import type { Plan } from "../../shared/plan.ts";
+import { sentences } from "../../shared/profile.ts";
 import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
 import { QUESTION_HISTORY_START } from "../engine/unit-turns.ts";
 import { sandboxPython } from "../sandbox-command.ts";
@@ -203,11 +207,50 @@ const STYLE = "Scripted: a short explanation, then one question at a time.";
  */
 const firstMessages = new WeakMap<TeachingTool, string>();
 
+/** The profile each intake's planner was last given, by its tool; none when it had none. */
+const profiles = new WeakMap<TeachingTool, { text: string | undefined }>();
+
+/** The sentence of a scripted profile that says what was asked for last. */
+const ASKED_LAST = "Scripted: asked last for ";
+
+/** The profile proposed: the one given, with what was asked for last said anew. */
+function scriptedProfile(given: string | undefined, title: string): string {
+  const kept = sentences(given ?? "").filter((s) => !s.startsWith(ASKED_LAST));
+  return [
+    ...(kept.length === 0
+      ? ["Scripted: a learner of the scripted backend."]
+      : kept),
+    `${ASKED_LAST}${JSON.stringify(title)}.`,
+  ].join(" ");
+}
+
+/**
+ * The body without the block about the learner that a first turn, or one
+ * after the profile changed, puts before the learner's text; and the
+ * profile the block gives, if it gives one.
+ */
+function learnerPart(body: string): {
+  text: string;
+  profile?: { text: string | undefined };
+} {
+  const open = "<about_the_learner>\n";
+  const close = "\n</about_the_learner>\n\n";
+  const end = body.indexOf(close);
+  if (!body.startsWith(open) || end === -1) return { text: body };
+  const block = body.slice(open.length, end);
+  const given = /<profile>\n([\s\S]*)\n<\/profile>/.exec(block)?.[1];
+  return {
+    text: body.slice(end + close.length),
+    profile: { text: given },
+  };
+}
+
 function proposal(
   title: string,
   kind: "first" | "revised" | "one-off",
   background: string,
-): CurriculumProposal {
+  profile: string,
+): PlannerProposal {
   const unit = (id: string, name: string, prerequisites: string[]) => ({
     id,
     title: name,
@@ -220,6 +263,7 @@ function proposal(
       units: [unit("basics", "The basics", [])],
       style: STYLE,
       background,
+      profile,
     };
   }
   const units =
@@ -235,10 +279,16 @@ function proposal(
           unit("methods", "Methods", ["basics"]),
           unit("synthesis", "Putting it together", ["methods"]),
         ];
-  return { title, units, style: STYLE, background };
+  return { title, units, style: STYLE, background, profile };
 }
 
-function intake(header: string, body: string, tool: TeachingTool): FakeStep[] {
+function intake(
+  header: string,
+  turnBody: string,
+  tool: TeachingTool,
+): FakeStep[] {
+  const { text: body, profile: given } = learnerPart(turnBody);
+  if (given !== undefined) profiles.set(tool, given);
   /** The text, without the commands, on one line and short. */
   const plain = (text: string) =>
     text
@@ -249,7 +299,15 @@ function intake(header: string, body: string, tool: TeachingTool): FakeStep[] {
   const background = `Scripted. The learner said: ${plain(body) || "nothing"}`;
   const propose = (kind: "first" | "revised" | "one-off", title: string) => [
     { text: "Here is a scripted curriculum." },
-    { call: "propose_curriculum", input: proposal(title, kind, background) },
+    {
+      call: "propose_curriculum",
+      input: proposal(
+        title,
+        kind,
+        background,
+        scriptedProfile(profiles.get(tool)?.text, title),
+      ),
+    },
   ];
   if (header.startsWith("[Start of the intake")) {
     firstMessages.set(tool, body);

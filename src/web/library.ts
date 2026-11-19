@@ -4,13 +4,8 @@
 // the server sends with each course (progress.ts).
 
 import type { CourseWithProgress } from "../shared/library.ts";
-import {
-  isFinished,
-  lead,
-  type Mark,
-  progressOf,
-  whereInProgress,
-} from "./progress.ts";
+import { isFinished } from "../shared/status.ts";
+import { lead, type Mark, progressOf, whereInProgress } from "./progress.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 
