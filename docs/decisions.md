@@ -1612,9 +1612,10 @@ built until its task is done; `architecture.md` says what is.
 - **The tutor sees prerequisites in its unit list** (the agent's): it
   must send the whole list back with `amend_curriculum`, and a unit
   whose prerequisites it could not see would come back changed.
-- **The change card uses the intake card's unit list and diagram**, with
-  "New" for an added unit beside "Changed" (the agent's), and dropped
-  units listed as the profile's dropped sentences are; no piece draws it.
+- **The change card uses the intake card's list and diagram** (the
+  agent's), instead of a new piece. A move compares the order of units
+  that stay, so merely inserting or dropping a unit does not mark its
+  neighbours as moved.
 
 ## Prompts
 

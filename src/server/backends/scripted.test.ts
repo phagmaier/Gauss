@@ -1047,7 +1047,7 @@ test("/style proposes the course's note with a sentence on shorter explanations 
   });
 });
 
-test("/amend proposes the course's units with a practice unit added that builds on the unit taught, and Apply adds it", async () => {
+test("/amend adds practice to the latest curriculum, including after an intervening reply", async () => {
   const { dataRoot, units } = setUp();
   await approvedCourse(dataRoot);
   const opened = await units.open(COURSE, "limits");
@@ -1078,6 +1078,25 @@ test("/amend proposes the course's units with a practice unit added that builds 
   expect(
     (await dataRoot.readCourse(COURSE))?.curriculum?.units.map((u) => u.id),
   ).toEqual(["limits", "derivative", "practice-3"]);
+
+  expect(chat.say("Let's keep going.")).toEqual({ ok: true });
+  await chat.settled();
+  expect(chat.say("/amend")).toEqual({ ok: true });
+  await chat.settled();
+  const next = chat
+    .events()
+    .findLast((e) => e.type === "curriculum_change_proposed");
+  if (next?.type !== "curriculum_change_proposed") throw new Error("no card");
+  expect(next.was).toEqual([...CURRICULUM.units, practice]);
+  expect(next.units).toEqual([
+    ...CURRICULUM.units,
+    practice,
+    { ...practice, id: "practice-4", title: "Practice 4" },
+  ]);
+  expect(await chat.applyCurriculum(next.proposalId)).toEqual({ ok: true });
+  expect(
+    (await dataRoot.readCourse(COURSE))?.curriculum?.units.map((u) => u.id),
+  ).toEqual(["limits", "derivative", "practice-3", "practice-4"]);
 });
 
 test('the scripted dispute judge keeps a grade unless the reason has "/change", changes it both ways with the key following, and fails on "/fail"', async () => {

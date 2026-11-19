@@ -108,7 +108,6 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { Slug } from "../../shared/course.ts";
-import type { StoredUnit } from "../../shared/curriculum.ts";
 import {
   type CurriculumChange,
   type CurriculumDecision,
@@ -530,9 +529,14 @@ export function createUnitChats(options: ChatOptions): UnitChats {
               void other.learnStyle(note);
             }
           },
-          recurriculum: (units) => {
+          recurriculum: () => {
             for (const other of othersIn(courseId, unitId)) {
-              void other.learnCurriculum(units);
+              void other.learnCurriculum().catch((error: unknown) => {
+                console.error(
+                  "The chat could not refresh its curriculum:",
+                  error,
+                );
+              });
             }
           },
         });
@@ -863,11 +867,10 @@ interface OpenableChat extends UnitChat {
    */
   learnStyle(note: string): Promise<void>;
   /**
-   * Takes in a curriculum change the learner applied in another unit's
-   * chat: the tutor's next session starts with its units, and its next
-   * header gives them.
+   * Refreshes the course's curriculum after an Apply in another unit,
+   * notifying the page and telling the tutor in its next header.
    */
-  learnCurriculum(units: readonly StoredUnit[]): Promise<void>;
+  learnCurriculum(): Promise<void>;
 }
 
 /** The chat once its unit is planned and its record read. */
@@ -909,7 +912,7 @@ function createUnitChat(
     /** Tells the chats of the course's other open units a style note the learner applied. */
     restyle?: (note: string) => void;
     /** Tells the chats of the course's other open units a curriculum the learner applied. */
-    recurriculum?: (units: readonly StoredUnit[]) => void;
+    recurriculum?: () => void;
   },
 ): OpenableChat {
   const { dataRoot, planner, courseId, unitId } = options;
@@ -979,6 +982,11 @@ function createUnitChat(
         unit: { ...storedUnit, plan },
         plan,
         emit: log.emit,
+        recoveredCurriculumChange: async (decision) => {
+          if (running !== undefined) {
+            await publishCurriculumDecision(running, decision);
+          }
+        },
         packagePreview,
         savingPackage: (id) =>
           install?.requestId === id || pendingInstall?.request.id === id,
@@ -2726,6 +2734,26 @@ function createUnitChat(
     return { type: "curriculum_change_answered", proposalId, outcome };
   }
 
+  async function refreshCurriculum(r: Running) {
+    const stored = await dataRoot.readCourse(courseId);
+    const units = stored?.curriculum?.units ?? r.context.units;
+    r.context = { ...r.context, units };
+    return units;
+  }
+
+  async function publishCurriculumDecision(
+    r: Running,
+    decision: CurriculumDecision,
+  ) {
+    if (decision.outcome === "applied") {
+      await refreshCurriculum(r);
+      options.recurriculum?.();
+      options.backup?.commit(`${courseId}: curriculum changed`);
+      log.emit({ type: "curriculum_changed" });
+    }
+    log.emit(changeAnsweredEvent(decision));
+  }
+
   function answerCurriculum(
     proposalId: string,
     outcome: CurriculumDecision["outcome"],
@@ -2747,14 +2775,7 @@ function createUnitChat(
             `This change can no longer be applied. ${error.message}`,
           );
         }
-        if (decision.outcome === "applied") {
-          const stored = await dataRoot.readCourse(courseId);
-          const units = stored?.curriculum?.units ?? r.context.units;
-          r.context = { ...r.context, units };
-          options.recurriculum?.(units);
-          options.backup?.commit(`${courseId}: curriculum changed`);
-        }
-        log.emit(changeAnsweredEvent(decision));
+        await publishCurriculumDecision(r, decision);
         return { ok: true };
       },
       { whileWriting: true },
@@ -3486,12 +3507,13 @@ function createUnitChat(
         }
       });
     },
-    async learnCurriculum(units) {
+    async learnCurriculum() {
+      log.emit({ type: "curriculum_changed" });
       await loading;
       await exclusive(async () => {
         const r = running;
         if (r === undefined) return;
-        r.context = { ...r.context, units };
+        const units = await refreshCurriculum(r);
         if (r.record.finished === undefined) {
           r.notes.push(curriculumNote("changed", units));
         }

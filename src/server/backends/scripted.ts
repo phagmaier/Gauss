@@ -57,9 +57,8 @@
 //   sentence dropped when it has more than one and a sentence on shorter
 //   explanations added. The engine refuses it while a question is open.
 // - Curriculum (task 5.12): a message with "/amend" in it proposes the
-//   course's units, as the session's system prompt lists them, with a
-//   practice unit added at the end that builds on the unit taught. The
-//   engine refuses it while a question is open.
+//   course's latest units, with a practice unit added at the end that
+//   builds on the unit taught. The engine refuses it while a question is open.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -100,7 +99,7 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { PlannerProposal } from "../../shared/curriculum.ts";
+import type { PlannerProposal, Unit } from "../../shared/curriculum.ts";
 import { DisputeJudgment } from "../../shared/dispute.ts";
 import { HandoffReply } from "../../shared/handoff.ts";
 import { NotesReply } from "../../shared/notes.ts";
@@ -167,6 +166,9 @@ export function scriptedPlan(unitId: string): Plan {
 function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   const { header, body } = parts(turn.text);
   const has = (tool: string) => session.tools.some((t) => t.name === tool);
+  const course = has("amend_curriculum")
+    ? listedCourse(session, header)
+    : undefined;
   if (/(^|\s)\/hold\b/.test(body)) {
     return [
       { text: "Holding this turn open until you stop it." },
@@ -190,7 +192,7 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     tools ? (coding ? "code" : "math") : "none",
     session.cwd,
     courseStyle(session.systemPrompt),
-    courseUnits(session.systemPrompt),
+    course,
   );
 }
 
@@ -370,8 +372,8 @@ function teaching(
   cwd: string | undefined,
   /** The course's style note, as the session's system prompt has it. */
   style: string,
-  /** The course's units and the one taught, as the system prompt has them. */
-  course: ListedCourse,
+  /** The latest course units and the one taught. */
+  course: ListedCourse | undefined,
 ): FakeStep[] {
   // A review can be under way in any phase, teach too: what it allows comes
   // before the phase.
@@ -469,9 +471,11 @@ function teaching(
       },
     ];
   }
-  if (/(^|\s)\/amend\b/.test(body)) {
+  if (course !== undefined && /(^|\s)\/amend\b/.test(body)) {
     const { units, taught } = course;
-    const n = units.length + 1;
+    let n = units.length + 1;
+    const ids = new Set(units.map((unit) => unit.id));
+    while (ids.has(`practice-${n}`)) n += 1;
     return [
       { text: "Scripted: a change to the course's units." },
       {
@@ -531,24 +535,35 @@ function courseStyle(systemPrompt: string): string {
     : text;
 }
 
-/** A unit as the system prompt lists it (tutorSystemPrompt). */
-interface ListedUnit {
-  id: string;
-  title: string;
-  goal: string;
-  prerequisites: string[];
-}
-
-/** The course's units as the system prompt lists them, and the one taught. */
 interface ListedCourse {
-  units: ListedUnit[];
+  units: Unit[];
   taught: string | undefined;
 }
 
-/** The course's units and the unit taught; none when it lists none. */
-function courseUnits(systemPrompt: string): ListedCourse {
-  const units: ListedUnit[] = [];
-  for (const line of systemPrompt.split("\n")) {
+/** Each tutor session starts with its prompt and learns revisions from headers. */
+const listedUnits = new WeakMap<SessionOptions, Unit[]>();
+
+function listedCourse(session: SessionOptions, header: string): ListedCourse {
+  const open = "\n<curriculum>\n";
+  const end = header.lastIndexOf("\n</curriculum>\n");
+  const start = end === -1 ? -1 : header.lastIndexOf(open, end);
+  let units = listedUnits.get(session);
+  if (start !== -1 || units === undefined) {
+    units = parseUnitLines(
+      start === -1
+        ? session.systemPrompt
+        : header.slice(start + open.length, end),
+    );
+    listedUnits.set(session, units);
+  }
+  const at = Number(/^\[Unit (\d+) of /.exec(header)?.[1]);
+  return { units, taught: units[at - 1]?.id };
+}
+
+/** Reads the numbered unit lines from a prompt or a curriculum update. */
+function parseUnitLines(text: string): Unit[] {
+  const units: Unit[] = [];
+  for (const line of text.split("\n")) {
     const unit =
       /^\d+\. (.*) \(id "([^"]+)"\): (.*?)(?: Builds on ((?:"[^"]+"(?:, )?)+)\.)?$/.exec(
         line,
@@ -563,8 +578,7 @@ function courseUnits(systemPrompt: string): ListedCourse {
       ),
     });
   }
-  const at = Number(/^You teach unit (\d+),/m.exec(systemPrompt)?.[1]);
-  return { units, taught: units[at - 1]?.id };
+  return units;
 }
 
 /** Shows the scripted artifact, with a line before it. */

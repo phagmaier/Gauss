@@ -82,25 +82,40 @@ export function sameUnits(
   );
 }
 
+type UnitChangeMark = "New" | "Changed" | "Moved" | "Changed, moved";
+
 /**
- * What a change does, unit by unit, as its card marks it: each new unit and
- * each changed one by id, and the units it drops, in their order before.
+ * Marks new units, edits and changes in the relative order of kept units.
+ * Dropped units are listed in their old order.
  */
 export function compareUnits(
   was: readonly Unit[],
   units: readonly Unit[],
-): { marks: Map<string, "New" | "Changed">; dropped: Unit[] } {
-  const before = new Set(was.map((u) => u.id));
+): {
+  marks: Map<string, UnitChangeMark>;
+  dropped: Unit[];
+} {
   const after = new Set(units.map((u) => u.id));
-  return {
-    marks: new Map(
-      [...changedUnits(units, was)].map((id) => [
-        id,
-        before.has(id) ? "Changed" : "New",
-      ]),
-    ),
-    dropped: was.filter((u) => !after.has(u.id)),
-  };
+  const ranks = new Map<string, number>();
+  const dropped: Unit[] = [];
+  for (const unit of was) {
+    if (after.has(unit.id)) ranks.set(unit.id, ranks.size);
+    else dropped.push(unit);
+  }
+  const edited = changedUnits(units, was);
+  const marks = new Map<string, UnitChangeMark>();
+  let nextRank = 0;
+  for (const { id } of units) {
+    const oldRank = ranks.get(id);
+    if (oldRank === undefined) {
+      marks.set(id, "New");
+      continue;
+    }
+    const moved = oldRank !== nextRank++;
+    if (edited.has(id)) marks.set(id, moved ? "Changed, moved" : "Changed");
+    else if (moved) marks.set(id, "Moved");
+  }
+  return { marks, dropped };
 }
 
 /**

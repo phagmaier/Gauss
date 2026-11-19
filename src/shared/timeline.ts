@@ -274,6 +274,8 @@ export interface Timeline {
   /** The intake started from a stored draft, its conversation lost. */
   reopened: boolean;
   // A unit chat's own (tasks 2.6 to 2.8):
+  /** The index of the latest live curriculum update, or -1. */
+  curriculumChangedAt: number;
   /** A session has begun: the unit's thread was read, and what follows is in it. */
   inSession: boolean;
   /** The unit's plan, once it is known. */
@@ -302,6 +304,7 @@ export const emptyTimeline: Timeline = {
   chatId: null,
   last: -1,
   openedThrough: -1,
+  curriculumChangedAt: -1,
   shown: null,
   items: [],
   busy: false,
@@ -682,6 +685,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         tutorOpen: false,
       };
     }
+    case "curriculum_changed":
+      return { ...next, curriculumChangedAt: index };
     case "curriculum_change_answered":
       return {
         ...next,

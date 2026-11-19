@@ -952,14 +952,26 @@ export function openDataRoot(options: {
             throw new Error("That proposed curriculum change is not waiting.");
           }
         }
+        // A later move can still carry a proposal that recovery removed,
+        // even if another Apply has changed the curriculum since.
+        let position = checked;
+        const waiting = checked?.curriculumChange;
+        if (
+          checked !== null &&
+          waiting !== undefined &&
+          answers.some((d) => d.proposalId === waiting.id)
+        ) {
+          const { curriculumChange: _, ...rest } = checked;
+          position = rest;
+        }
         const state: State = {
           ...before,
           units:
-            checked === null
+            position === null
               ? Object.fromEntries(
                   Object.entries(before.units).filter(([key]) => key !== unit),
                 )
-              : { ...before.units, [unit]: checked },
+              : { ...before.units, [unit]: position },
         };
         if (checked === null && testedOut === true) {
           state.testedOut = { ...before.testedOut, [unit]: true };

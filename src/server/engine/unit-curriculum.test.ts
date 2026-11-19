@@ -409,13 +409,8 @@ test("a card waiting across a restart shows again and can be applied, the plans 
   ]);
 });
 
-test("an Apply a restart cut short after writing curriculum.json is recorded as applied when the unit reopens, and the tutor is told", async () => {
-  const first = await server([[{ text: "Teaching." }, amend()]]);
-  const before = await first.open();
-  const id = proposalId(before.events());
-  await first.units.close();
-
-  // The process stopped between the two writes of an Apply.
+/** The disk state after Apply publishes the curriculum, before saving its decision. */
+async function publishCurriculumWithoutDecision() {
   const file = join(dir, "courses", COURSE, "curriculum.json");
   const curriculum = JSON.parse(await readFile(file, "utf8"));
   await writeFile(
@@ -430,6 +425,14 @@ test("an Apply a restart cut short after writing curriculum.json is recorded as 
       ],
     }),
   );
+}
+
+test("an Apply a restart cut short after writing curriculum.json is recorded as applied when the unit reopens, and the tutor is told", async () => {
+  const first = await server([[{ text: "Teaching." }, amend()]]);
+  const before = await first.open();
+  const id = proposalId(before.events());
+  await first.units.close();
+  await publishCurriculumWithoutDecision();
 
   const second = await server([[{ text: "A reply." }]]);
   const chat = await second.open();
@@ -449,6 +452,33 @@ test("an Apply a restart cut short after writing curriculum.json is recorded as 
   );
 });
 
+test("a unit move after a cut-short Apply publishes the recovered decision and teaches from the new curriculum", async () => {
+  const { backend, commits, open } = await server([
+    [{ text: "Teaching loops." }, amend()],
+    [{ text: "Teaching sets." }],
+    [{ text: "Starting the check." }],
+  ]);
+  const loops = await open();
+  const sets = await open("sets");
+  const id = proposalId(loops.events());
+  await publishCurriculumWithoutDecision();
+
+  expect(await loops.ready()).toEqual({ ok: true });
+  await loops.settled();
+  await sets.settled();
+  expect(loops.events()).toContainEqual({
+    type: "curriculum_change_answered",
+    proposalId: id,
+    outcome: "applied",
+  });
+  expect(sets.events()).toContainEqual({ type: "curriculum_changed" });
+  expect(commits).toContain(`${COURSE}: curriculum changed`);
+  const header = backend.received.at(-1)?.text ?? "";
+  expect(header).toMatch(/^\[Unit 1 of 4, "Loops"/);
+  expect(header).toContain(ADDED_LINE);
+  expect(header).toContain("The learner applied the curriculum change");
+});
+
 test("another unit open when a change is applied is told the units in its next header, and its next session lists them", async () => {
   const { backend, open } = await server([
     [{ text: "Teaching loops." }, amend()],
@@ -463,6 +493,7 @@ test("another unit open when a change is applied is told the units in its next h
     ok: true,
   });
   await sets.settled();
+  expect(sets.events()).toContainEqual({ type: "curriculum_changed" });
   expect(sets.say("Go on.")).toEqual({ ok: true });
   await sets.settled();
   const header = backend.received.at(-1)?.text ?? "";

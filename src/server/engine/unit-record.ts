@@ -282,6 +282,8 @@ export async function openUnitRecord(options: {
   unit: StoredUnit;
   plan: Plan;
   emit: (event: PageEvent) => void;
+  /** Publishes an Apply finished by a later position write in this chat. */
+  recoveredCurriculumChange: (decision: CurriculumDecision) => Promise<void>;
   packagePreview: (request: PackageRequest) => PackageCompletion["preview"];
   /** An install that started keeps its card until the real outcome arrives. */
   savingPackage: (requestId: string) => boolean;
@@ -346,6 +348,28 @@ export async function openUnitRecord(options: {
       : answersInRun(allEvidence, position.assessment, unitId);
   let sessionId = position.tutorSessionId;
 
+  /** Saves a move and notices an Apply recovered before or during the write. */
+  async function savePosition(
+    next: UnitPosition | null,
+    outcome?: Parameters<DataRoot["writePosition"]>[3],
+  ) {
+    const waiting = position.curriculumChange;
+    const saved = await dataRoot.writePosition(courseId, unitId, next, outcome);
+    const current = saved.units[unitId];
+    if (next !== null) position = next;
+    if (waiting !== undefined && current?.curriculumChange?.id !== waiting.id) {
+      if (next !== null && current !== undefined) position = current;
+      pendingCurriculum = decisionsForUnit(saved.curriculumDecisions);
+      const recovered = pendingCurriculum.find(
+        (d) => d.proposalId === waiting.id && d.outcome === "applied",
+      );
+      if (recovered !== undefined) {
+        await options.recoveredCurriculumChange(recovered);
+      }
+    }
+    return saved;
+  }
+
   async function move(given: UnitPosition, tell?: () => void): Promise<void> {
     const {
       tutorSessionId: _,
@@ -376,18 +400,8 @@ export async function openUnitRecord(options: {
         ? {}
         : { gateUnanswered: position.gateUnanswered }),
     };
-    const saved = await dataRoot.writePosition(courseId, unitId, next);
     const was = position;
-    position = next;
-    // An Apply a failed write left half done was completed by this write.
-    if (
-      next.curriculumChange !== undefined &&
-      saved.units[unitId]?.curriculumChange === undefined
-    ) {
-      const { curriculumChange: _____, ...settled } = next;
-      position = settled;
-      pendingCurriculum = decisionsForUnit(saved.curriculumDecisions);
-    }
+    await savePosition(next);
     tell?.();
     if (was.segment !== next.segment || was.phase !== next.phase) {
       emit(phaseEvent(next));
@@ -520,10 +534,7 @@ export async function openUnitRecord(options: {
             preview: options.packagePreview(packageRequest),
             outcome: "withdrawn",
           };
-    await dataRoot.writePosition(courseId, unitId, null, {
-      completion,
-      testedOut: byTest,
-    });
+    const saved = await savePosition(null, { completion, testedOut: byTest });
     finished = how;
     testedOut = byTest;
     position = closed;
@@ -539,7 +550,12 @@ export async function openUnitRecord(options: {
         outcome: "withdrawn",
       });
     }
-    if (curriculumChange !== undefined) {
+    if (
+      curriculumChange !== undefined &&
+      !decisionsForUnit(saved.curriculumDecisions).some(
+        (d) => d.proposalId === curriculumChange.id && d.outcome === "applied",
+      )
+    ) {
       emit({
         type: "curriculum_change_answered",
         proposalId: curriculumChange.id,
@@ -634,8 +650,7 @@ export async function openUnitRecord(options: {
     async keepPackageRequest(request, tell) {
       if (finished !== undefined) return;
       const next = { ...position, packageRequest: request };
-      await dataRoot.writePosition(courseId, unitId, next);
-      position = next;
+      await savePosition(next);
       tell();
     },
 
@@ -654,11 +669,10 @@ export async function openUnitRecord(options: {
         // The unit ended during the install. Replace its withdrawal with
         // the install's result, but do not give the finished unit a position.
         if (completed[id]?.outcome !== "withdrawn") return false;
-        await dataRoot.writePosition(courseId, unitId, null, { completion });
+        await savePosition(null, { completion });
       } else {
         if (packageRequest?.id !== id) return false;
-        await dataRoot.writePosition(courseId, unitId, next, { completion });
-        position = next;
+        await savePosition(next, { completion });
       }
       keepCompletion(completion);
       return true;
@@ -667,16 +681,14 @@ export async function openUnitRecord(options: {
     async keepStyleProposal(proposal, tell) {
       if (finished !== undefined) return;
       const next = { ...position, styleProposal: proposal };
-      await dataRoot.writePosition(courseId, unitId, next);
-      position = next;
+      await savePosition(next);
       tell();
     },
 
     async keepCurriculumChange(change, tell) {
       if (finished !== undefined) return;
       const next = { ...position, curriculumChange: change };
-      await dataRoot.writePosition(courseId, unitId, next);
-      position = next;
+      await savePosition(next);
       tell();
     },
 
@@ -685,10 +697,7 @@ export async function openUnitRecord(options: {
       if (finished !== undefined || styleProposal?.id !== decision.proposalId) {
         throw new Error("That proposed style note is not waiting.");
       }
-      const saved = await dataRoot.writePosition(courseId, unitId, next, {
-        style: { decision },
-      });
-      position = saved.units[unitId] ?? next;
+      const saved = await savePosition(next, { style: { decision } });
       pendingStyle = decisionsForUnit(saved.styleDecisions);
       const recorded = pendingStyle.find(
         (d) => d.proposalId === decision.proposalId,
@@ -722,9 +731,7 @@ export async function openUnitRecord(options: {
     },
 
     async deliverDecisions({ style, curriculum }) {
-      const saved = await dataRoot.writePosition(
-        courseId,
-        unitId,
+      const saved = await savePosition(
         finished === undefined ? position : null,
         {
           ...(style.length === 0 ? {} : { style: { delivered: style } }),

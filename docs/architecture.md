@@ -368,12 +368,12 @@ The rules:
   each kept unit with its plan, then the decision to `state.json`, under
   the snapshot lock, and asks for a backup. A curriculum that holds a
   waiting change's units commits it: reading or writing the state records
-  such a change as applied, so an Apply cut short between the two writes
-  is completed. The decision goes in the tutor's next header with the
-  units as they now are; other open unit chats are told the units in
-  theirs, and every session started after Apply has them in its prompt.
-  The page reads the course's details again after an Apply, and the
-  course view reads the curriculum when it opens.
+  such a change as applied. A later position write in the proposing chat
+  publishes a recovered Apply as it would an ordinary one. The decision
+  goes in the tutor's next header with the units as they now are; other
+  open unit chats get the revised list in theirs, and new sessions have
+  it in their prompt. A live notice tells every open unit page of the
+  course to refetch its details; the course view reads them when it opens.
 - **Detours.** The detour is kept in the position, so a restart reopens it.
   Its first turn takes the feedback's place: the right answer and why, then
   where the confusion is (from the choice picked, the grader's flaw, the
@@ -1037,11 +1037,12 @@ themselves have no automated tests.
   intake card marks a changed profile, with Apply and "Keep the current
   one"; then the answer. A proposed curriculum change's card
   (`CurriculumCard.tsx`) gives the line on why and the units as they
-  would be, each new one marked "New" and each edited one "Changed", the
-  dropped ones listed under them, "Show the diagram", which opens the
-  proposed curriculum's diagram in the side pane, and Apply and "Keep the
-  current one"; then the answer. The thread also has
-  the detour marker and "Ready for another question", and the closing card.
+  would be, with additions, edits and moves marked in the list and
+  diagram. It lists dropped units below the list. "Show the diagram"
+  opens the proposed diagram in the side pane. Apply and "Keep the
+  current one" decide the proposal, and the card records the decision.
+  The thread also has the detour marker, "Ready for another question" and
+  the closing card.
   Review (piece 15) is a card in the thread, with how many questions,
   Skip and "Start the review", which holds the unit's own control until
   it is answered and becomes a marker once started or skipped; a review

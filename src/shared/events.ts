@@ -180,6 +180,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     proposalId: z.string(),
     outcome: CurriculumChangeOutcome,
   }),
+  /** Live notice to refetch the course's details after a curriculum Apply. */
+  z.object({ type: z.literal("curriculum_changed") }),
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),
   /**

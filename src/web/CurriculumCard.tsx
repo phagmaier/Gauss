@@ -1,5 +1,5 @@
 // The card of the tutor's proposed curriculum change (task 5.12): why, the
-// units as they would be with each new and changed one marked and the
+// units as they would be with new, edited and moved units marked and the
 // dropped ones listed, the diagram in the side pane, Apply and "Keep the
 // current one"; once answered, a record of the answer. Built from the
 // intake card's parts and the style card's foot, since no piece draws it
@@ -96,8 +96,8 @@ export function CurriculumCard(props: {
       <div className="qa-prompt">{item.why}</div>
       {units}
       <p className="qa-aside">
-        Nothing changes until you apply it. A unit you have started keeps its
-        place and its progress.
+        Nothing changes until you apply it. Units you have started keep their
+        plans and progress.
       </p>
       <div className="qa-foot">
         {diagram}

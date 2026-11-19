@@ -138,16 +138,10 @@ export function Session(props: { courseId: string; unitId: string }) {
   );
   const disputes = useMemo(() => disputeApi(courseId), [courseId]);
 
-  // Changes to the curriculum applied in this chat: each one reads the
-  // course's details again, since it changes the unit's place in it.
-  const applied = timeline.items.filter(
-    (i) => i.kind === "curriculum" && !i.historical && i.outcome === "applied",
-  ).length;
-
   // The course's details name the unit and the one to start next. A failure to
   // load them is asked again until the server answers, so it never leaves
   // the page thinking the course is empty.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: read again once a change is applied
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch on Apply or after reopening
   useEffect(() => {
     const stop = new AbortController();
     void getJsonUntilAnswered(
@@ -165,7 +159,7 @@ export function Session(props: { courseId: string; unitId: string }) {
       else setCourseProblem({ error: answer.error, retrying: false });
     });
     return () => stop.abort();
-  }, [courseId, applied]);
+  }, [courseId, attempt, timeline.curriculumChangedAt]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new attempt opens the unit again
   useEffect(() => {
