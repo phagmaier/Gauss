@@ -126,8 +126,11 @@ export interface UnitAgents {
 
 export function createUnitAgents(options: {
   backend: TutorBackend;
-  /** The tutor's whole system prompt. */
-  systemPrompt: string;
+  /**
+   * The tutor's whole system prompt, read whenever a session starts or
+   * resumes, so one started after the style note changed gets the new one.
+   */
+  systemPrompt: () => string;
   tools: TeachingTool[];
   /** The course's workspace, where the tutor's sessions run and are kept. */
   cwd: string;
@@ -158,7 +161,7 @@ export function createUnitAgents(options: {
 
   async function startNew(): Promise<TutorSession> {
     const session = await backend.startSession({
-      systemPrompt,
+      systemPrompt: systemPrompt(),
       tools,
       cwd,
       ...workspace,
@@ -181,7 +184,7 @@ export function createUnitAgents(options: {
         async resume(id) {
           try {
             return await backend.startSession({
-              systemPrompt,
+              systemPrompt: systemPrompt(),
               tools,
               cwd,
               ...workspace,

@@ -138,7 +138,9 @@ export function createTranscribedLog(options: {
             // The current chat alone can grant approval or offer a save retry.
             if (event.type === "packages_save_failed") continue;
             log.emit(
-              event.type === "artifact" || event.type === "packages_requested"
+              event.type === "artifact" ||
+                event.type === "packages_requested" ||
+                event.type === "style_proposed"
                 ? { ...event, historical: true }
                 : event,
             );

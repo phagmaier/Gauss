@@ -79,8 +79,11 @@ export function sentences(text: string): string[] {
     .filter((s) => s !== "");
 }
 
-/** A proposed profile against the one it would replace, sentence by sentence. */
-export interface ProfileChange {
+/**
+ * A proposed text against the one it would replace, sentence by sentence:
+ * a profile on the intake's card, a style note on its card (task 5.11).
+ */
+export interface SentenceChange {
   /** The proposed text's sentences, in order; `added` when the one before lacks it. */
   sentences: { text: string; added: boolean }[];
   /** The sentences of the one before that the proposed text lacks, in order. */
@@ -93,7 +96,7 @@ export interface ProfileChange {
  * Compares the two texts sentence by sentence. A sentence counts as kept as
  * often as it is in both; spacing within it is ignored.
  */
-export function compareProfiles(was: string, now: string): ProfileChange {
+export function compareSentences(was: string, now: string): SentenceChange {
   const before = sentences(was);
   const after = sentences(now);
   const unmatched = (list: readonly string[]) => {

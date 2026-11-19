@@ -40,31 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.11 Style changes
-
-- Status: todo
-- Depends on: stage 3
-- Why: the brief lets the learner change the style by saying so, and the
-  tutor suggest a change, but nothing can write `style.md` after
-  approval.
-- Do: `propose_style` takes the whole revised note and a line on why.
-  It shows a card in the thread with the changes marked, Apply and "Keep
-  the current one", kept in the position as a package request is, and
-  does not end the turn. Refused while a question is open or another
-  proposal waits. Apply writes `style.md` and asks for a backup commit.
-  The tutor is told the answer in its next header, with the new note's
-  text, since a running session keeps the system prompt it was opened
-  with. `tutor.md` gets the lines: when the learner asks for a change,
-  propose the note that makes it; a change the tutor wants is proposed
-  the same way; never teach to a note the learner has not applied. The
-  scripted backend proposes one on "/style".
-- Done when: fake-backend tests cover a proposal applied (the file, the
-  header, the system prompt of a session started after it) and kept,
-  the refusals, and a restart with a card waiting. `mise run check`
-  passes; on `pnpm dev:fake` a proposal is applied and one kept, and the
-  browser is closed before the server stops; one short run on Haiku 5.5
-  where the learner asks for shorter explanations and applies the card.
-
 ### 5.12 Curriculum changes
 
 - Status: todo
@@ -91,6 +66,11 @@ a detour, a unit gate, generated notes and an exported transcript.
   added from a session and started from the course view, and the
   browser is closed before the server stops; one short run on Haiku 5.5
   where the learner asks for a unit and applies the card.
+- From 5.11: one proposal waits per course, checked by
+  `CourseWorkspace.propose` in `unit-chat.ts` against `styleProposal` in
+  each position; a waiting curriculum change must count there too, both
+  ways. The style card's parts (`StyleCard.tsx`, `ChangedText.tsx`) and
+  its answer told in the next header are the pattern to reuse.
 
 ### 5.13 Prompts for the stage
 
@@ -146,6 +126,10 @@ a detour, a unit gate, generated notes and an exported transcript.
   this course's facts out of it. That intake once said it had proposed
   without calling `propose_curriculum`; nothing in `planner.md` forbids
   it.
+- From 5.11's Haiku run (asked for shorter explanations): the proposal kept
+  the unchanged sentence word for word and the replies after Apply were
+  short; but its text before the card said "I've proposed a style change"
+  before the call was made, and its text after the card said so again.
 - Done when: the findings and the model choice are in `decisions.md`,
   "Prompts" and "Mastery loop"; `mise run check` passes, and the
   scripted backend's tests with it, since it reads the headers; the

@@ -410,6 +410,7 @@ test("starting a unit plans it, sends segment 1's teaching turn, and the end of 
   expect(setup.backend.sessions[1]?.tools.map((t) => t.name)).toEqual([
     "ask_question",
     "show_artifact",
+    "propose_style",
   ]);
   expect(setup.backend.received[1]?.text).toBe(
     '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: teach. Start of the segment. Allowed now: teach the segment\'s objectives in this turn, within the length the style sets, then stop; the learner can ask anything next. No questions yet: ask_question is refused until the learner presses "ready".]\n' +

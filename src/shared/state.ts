@@ -10,6 +10,7 @@ import { Slug, Timestamp } from "./course.ts";
 import { AssessmentMode, OverrideEvidence } from "./evidence.ts";
 import { PackageCompletion, PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question } from "./question.ts";
+import { StyleProposal } from "./style.ts";
 
 /** A segment's phases, in order (architecture.md section 4, "Phases"). */
 export const Phase = z.enum(["teach", "discuss", "check", "closed"]);
@@ -190,6 +191,12 @@ export const UnitPosition = z
      * across the unit's moves, as the session's id is.
      */
     packageRequest: PackageRequest.optional(),
+    /**
+     * The tutor's proposed change to the course's style note, from when it
+     * proposes it until the learner answers it (task 5.11). Kept across the
+     * unit's moves, as a package request is.
+     */
+    styleProposal: StyleProposal.optional(),
   })
   .refine((p) => (p.phase === "check") === (p.checkFrom !== undefined), {
     message:

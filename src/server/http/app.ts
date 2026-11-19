@@ -32,6 +32,7 @@ import {
   type ProfileView,
 } from "../../shared/profile.ts";
 import { AnswerPost, OpenFilePost } from "../../shared/question.ts";
+import { StyleAnswer } from "../../shared/style.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
@@ -522,6 +523,25 @@ export function createApp(options: {
       const body = await readBody(c, PackagesAnswer);
       if (!body.ok) return c.json({ error: body.error }, 400);
       return reply(c, await chat.retryPackageSave(body.data.requestId), 200);
+    }),
+  );
+
+  // The card of the tutor's proposed style note (task 5.11).
+  app.post(
+    `${unitPath}/style/apply`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, StyleAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.applyStyle(body.data.proposalId), 200);
+    }),
+  );
+
+  app.post(
+    `${unitPath}/style/keep`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, StyleAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.keepStyle(body.data.proposalId), 200);
     }),
   );
 

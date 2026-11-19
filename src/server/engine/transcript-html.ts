@@ -260,6 +260,18 @@ function renderItem(
             : "No decision recorded";
       return `<div class="card"><p><b>Packages requested</b>: ${escapeHtml(item.packages.map(requirement).join(", "))}. ${state}.</p>${item.output === undefined ? "" : `<pre>${escapeHtml(item.output)}</pre>`}</div>`;
     }
+    case "style": {
+      const outcome = {
+        applied: "Applied",
+        kept: "Kept the current one",
+        withdrawn: "Not applied: the unit ended first",
+      };
+      const state =
+        item.outcome === undefined
+          ? "No decision recorded"
+          : outcome[item.outcome];
+      return `<div class="card"><p><b>Style change proposed</b>: ${escapeHtml(item.why)} ${state}.</p><p>${escapeHtml(item.note)}</p></div>`;
+    }
     case "test_result": {
       const card = testResultCard(plan, item);
       const segments =

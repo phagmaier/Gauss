@@ -1028,6 +1028,25 @@ test("/packages asks to install the names after it, pytest if none; the turn wit
   });
 });
 
+test("/style proposes the course's note with a sentence on shorter explanations added", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const { chat } = opened;
+  await chat.settled();
+
+  expect(chat.say("Shorter, please. /style")).toEqual({ ok: true });
+  await chat.settled();
+  expect(chat.events().findLast((e) => e.type === "style_proposed")).toEqual({
+    type: "style_proposed",
+    proposalId: expect.any(String),
+    note: "Short. Explanations run shorter: one worked example and two or three short paragraphs.",
+    was: "Short.",
+    why: "You asked for shorter explanations.",
+  });
+});
+
 test('the scripted dispute judge keeps a grade unless the reason has "/change", changes it both ways with the key following, and fails on "/fail"', async () => {
   const judge = createDisputeJudge({
     backend: createScriptedBackend(),

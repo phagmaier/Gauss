@@ -7,7 +7,6 @@
 // sentence by sentence with the profile it would replace.
 
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -16,9 +15,10 @@ import {
   useState,
 } from "react";
 import { Hello, PageEvent } from "../shared/events.ts";
-import { compareProfiles } from "../shared/profile.ts";
+import { compareSentences } from "../shared/profile.ts";
 import { emptyTimeline, type Item, reduce } from "../shared/timeline.ts";
 import { post } from "./api.ts";
+import { ChangedText } from "./ChangedText.tsx";
 import { Composer } from "./Composer.tsx";
 import { Diagram, UnitList } from "./Curriculum.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
@@ -102,7 +102,7 @@ export function Intake(props: { intakeId: string }) {
     approvedProposal.profile !== undefined &&
     (approvedProposal.profileWas === null ||
       (approvedProposal.profileWas !== undefined &&
-        compareProfiles(approvedProposal.profileWas, approvedProposal.profile)
+        compareSentences(approvedProposal.profileWas, approvedProposal.profile)
           .changed));
   return (
     <div className={diagramOpen ? "th has-top has-pane" : "th has-top"}>
@@ -376,7 +376,7 @@ function ProfileSection(props: { proposal: Proposal }) {
     );
   }
   const change =
-    profileWas === null ? undefined : compareProfiles(profileWas, profile);
+    profileWas === null ? undefined : compareSentences(profileWas, profile);
   if (!change?.changed) {
     return (
       <section className="cs" aria-label={label}>
@@ -385,32 +385,10 @@ function ProfileSection(props: { proposal: Proposal }) {
       </section>
     );
   }
-  const { sentences, dropped } = change;
   return (
     <section className="cs" aria-label={label}>
       {head("Changed")}
-      <p className="cs-t">
-        {sentences.map((s, i) => (
-          // Sentences can repeat, so their place is their key.
-          // biome-ignore lint/suspicious/noArrayIndexKey: see above
-          <Fragment key={i}>
-            {i === 0 ? null : " "}
-            {s.added ? <ins>{s.text}</ins> : s.text}
-          </Fragment>
-        ))}
-      </p>
-      {dropped.length === 0 ? null : (
-        <p className="cs-gone">
-          Dropped:{" "}
-          {dropped.map((s, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: as above
-            <Fragment key={i}>
-              {i === 0 ? null : " "}
-              <s>{s}</s>
-            </Fragment>
-          ))}
-        </p>
-      )}
+      <ChangedText change={change} />
     </section>
   );
 }

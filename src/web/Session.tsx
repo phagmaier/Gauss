@@ -70,6 +70,7 @@ import { PackagesCard } from "./PackagesCard.tsx";
 import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
+import { StyleCard } from "./StyleCard.tsx";
 import {
   assessmentDetourStep,
   type ClosingCardRow,
@@ -407,6 +408,12 @@ export function Session(props: { courseId: string; unitId: string }) {
                       }
                       onRetrySaving={(requestId) =>
                         post(path("packages/retry-saving"), { requestId })
+                      }
+                      onApplyStyle={(proposalId) =>
+                        post(path("style/apply"), { proposalId })
+                      }
+                      onKeepStyle={(proposalId) =>
+                        post(path("style/keep"), { proposalId })
                       }
                       onAgain={() => act("go-over-again")}
                       onFinish={() => act("finish")}
@@ -760,6 +767,8 @@ function ThreadItem(props: {
   onInstall(requestId: string): Promise<string | undefined>;
   onNotNow(requestId: string): Promise<string | undefined>;
   onRetrySaving(requestId: string): Promise<string | undefined>;
+  onApplyStyle(proposalId: string): Promise<string | undefined>;
+  onKeepStyle(proposalId: string): Promise<string | undefined>;
   onAgain(): void;
   onFinish(): void;
   /** This is the card of the assessment offered now, whose Start and Skip can be pressed. */
@@ -818,6 +827,14 @@ function ThreadItem(props: {
           onInstall={() => props.onInstall(item.requestId)}
           onNotNow={() => props.onNotNow(item.requestId)}
           onRetrySaving={() => props.onRetrySaving(item.requestId)}
+        />
+      );
+    case "style":
+      return (
+        <StyleCard
+          item={item}
+          onApply={() => props.onApplyStyle(item.proposalId)}
+          onKeep={() => props.onKeepStyle(item.proposalId)}
         />
       );
     case "judgment": {

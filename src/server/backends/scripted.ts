@@ -52,6 +52,10 @@
 //   the names that follow it on its line, `pytest` if none, which the
 //   engine refuses while a question is open; Install really installs them,
 //   from PyPI. The turn with the learner's answer says how it ended.
+// - Style (task 5.11): a message with "/style" in it proposes a style note:
+//   the course's own, as the session's system prompt has it, with its last
+//   sentence dropped when it has more than one and a sentence on shorter
+//   explanations added. The engine refuses it while a question is open.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -181,6 +185,7 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     body,
     tools ? (coding ? "code" : "math") : "none",
     session.cwd,
+    courseStyle(session.systemPrompt),
   );
 }
 
@@ -358,6 +363,8 @@ function teaching(
   kinds: Checked,
   /** The session's folder, the course's workspace. */
   cwd: string | undefined,
+  /** The course's style note, as the session's system prompt has it. */
+  style: string,
 ): FakeStep[] {
   // A review can be under way in any phase, teach too: what it allows comes
   // before the phase.
@@ -441,6 +448,20 @@ function teaching(
       },
     ];
   }
+  if (/(^|\s)\/style\b/.test(body)) {
+    const kept = sentences(style);
+    if (kept.length > 1) kept.pop();
+    return [
+      { text: "Scripted: a change to how this course is taught." },
+      {
+        call: "propose_style",
+        input: {
+          note: [...kept, SHORTER].join(" "),
+          why: "You asked for shorter explanations.",
+        },
+      },
+    ];
+  }
   if (
     header.includes("The learner answered your request to install packages")
   ) {
@@ -463,6 +484,22 @@ function teaching(
           : `A scripted reply to "${body.trim().slice(0, 200)}".`,
     },
   ];
+}
+
+/** The sentence the scripted tutor's style proposal adds. */
+const SHORTER =
+  "Explanations run shorter: one worked example and two or three short paragraphs.";
+
+/** The style section the system prompt ends with (tutorSystemPrompt), or none. */
+function courseStyle(systemPrompt: string): string {
+  const at = systemPrompt.lastIndexOf("# This course's style\n");
+  const text =
+    at === -1
+      ? ""
+      : systemPrompt.slice(at).split("\n").slice(2).join("\n").trim();
+  return text.startsWith("This course has no style note of its own")
+    ? ""
+    : text;
 }
 
 /** Shows the scripted artifact, with a line before it. */

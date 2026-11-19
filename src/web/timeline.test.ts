@@ -1335,6 +1335,35 @@ test("a package request is one card in the tutor's reply, which installs and is 
   });
 });
 
+test("a style proposal is one card: replayed from a transcript it cannot be answered, said again live it can, and its answer marks it", () => {
+  const proposed: PageEvent = {
+    type: "style_proposed",
+    proposalId: "s1",
+    note: "Short. Shorter still.",
+    was: "Short.",
+    why: "You asked.",
+  };
+  const card = {
+    kind: "style",
+    key: 0,
+    proposalId: "s1",
+    note: "Short. Shorter still.",
+    was: "Short.",
+    why: "You asked.",
+  };
+  const replayed = play([{ ...proposed, historical: true }]);
+  expect(replayed.items).toEqual([{ ...card, historical: true }]);
+
+  const live = play([proposed], { ...replayed, last: -1 });
+  expect(live.items).toEqual([card]);
+
+  const applied = play(
+    [{ type: "style_answered", proposalId: "s1", outcome: "applied" }],
+    { ...live, last: -1 },
+  );
+  expect(applied.items).toEqual([{ ...card, outcome: "applied" }]);
+});
+
 test("a review's card becomes its marker when started; a restart that says the card or the review again adds nothing, and one that lost the start shows the marker", () => {
   const offered: PageEvent = {
     type: "assessment",

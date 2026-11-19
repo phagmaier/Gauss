@@ -26,6 +26,7 @@ import {
   CurriculumProposal,
   PendingProfileApproval,
   type ShownProposal,
+  StyleNote,
 } from "../../shared/curriculum.ts";
 import { PageEvent, SESSION_GAP_MS } from "../../shared/events.ts";
 import {
@@ -105,6 +106,8 @@ export interface DataRoot {
    * blank.
    */
   readStyle(id: string): Promise<string | undefined>;
+  /** Replaces the approved course's style note with one the learner applied (task 5.11). */
+  writeStyle(id: string, note: string): Promise<void>;
   /**
    * The course's background note, background.md, trimmed, or undefined when
    * it has none (a course proposed before background notes existed, task
@@ -562,6 +565,19 @@ export function openDataRoot(options: {
     async readStyle(id) {
       await existingCourse(id);
       return readNote(id, "style.md");
+    },
+
+    async writeStyle(id, note) {
+      const stored = await existingCourse(id);
+      if (stored.curriculum?.approval.status !== "approved") {
+        throw new Error(
+          `The curriculum of "${id}" is not approved, so its style note is changed by proposing it again.`,
+        );
+      }
+      await writeFileAtomic(
+        courseFile(id, "style.md"),
+        `${StyleNote.parse(note)}\n`,
+      );
     },
 
     async readBackground(id) {

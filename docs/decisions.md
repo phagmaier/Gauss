@@ -1578,6 +1578,22 @@ built until its task is done; `architecture.md` says what is.
 - **Style and curriculum changes are cards the tutor asks for**
   (`propose_style`, `amend_curriculum`), answered as a package request
   is. A started or finished unit cannot be dropped by a change.
+- **The tutor is told a style answer in its next header, not a turn of its
+  own** (the plan's): nothing waits on the tutor's reply, unlike a package
+  install. An applied note's text goes in the header because a running
+  session keeps its system prompt; the prompt is rebuilt for every session
+  started or resumed after it, and the course's other open unit chats are
+  told too (the agent's), so no tutor teaches to the old note.
+- **Refused while a question of the unit is open, not of the course** (the
+  agent's): the card would sit beside the question in that thread; a
+  question in another unit has nothing to do with it. One proposal waits
+  per course, checked in the course's queue, so two units cannot each
+  propose a different note.
+- **Apply writes `style.md` before the position** (the agent's): a stop
+  between them shows the card again, and applying it again writes the
+  same note, so no journal is needed. A card whose answer the transcript
+  lost says "No longer waiting" rather than guess it from `style.md`,
+  which a later proposal may have changed.
 
 ## Prompts
 
@@ -1895,8 +1911,11 @@ the agent would build them and accepted so, but for the notes
   the answers (piece 18): what the learner believed, what is so, and
   where it showed. It is ruled in peach and says "Open" while the
   objective is not passed, and is grey and "Cleared" once it has.
-- Not designed yet: a light theme, the source reader, the cards for style
-  and curriculum changes, settings, narrow screens.
+- The style change card was built without a mock (the agent's): the
+  intake card's style section with the profile's sentence marks
+  (`ChangedText.tsx`) and the package card's foot.
+- Not designed yet: a light theme, the source reader, the card for
+  curriculum changes, settings, narrow screens.
 
 ## Page behaviour
 

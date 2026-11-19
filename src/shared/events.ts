@@ -20,6 +20,7 @@ import {
 } from "./question.ts";
 import { Phase } from "./state.ts";
 import { ObjectiveStatus, UnitStatus } from "./status.ts";
+import { StyleOutcome } from "./style.ts";
 
 /**
  * How long a unit is quiet before the next thing that happens starts a new
@@ -136,6 +137,27 @@ export const PageEvent = z.discriminatedUnion("type", [
     requestId: z.string(),
     outcome: PackagesOutcome,
     output: z.string().optional(),
+  }),
+  /**
+   * The tutor proposed a change to the course's style note (task 5.11): the
+   * whole note it would apply, the one it would replace and why. Sent again
+   * when the chat opens with the proposal still waiting.
+   */
+  z.object({
+    type: z.literal("style_proposed"),
+    proposalId: z.string(),
+    note: z.string(),
+    /** The note it would replace; none for a course without one. */
+    was: z.string().optional(),
+    why: z.string(),
+    /** A card replayed from a transcript cannot be answered by itself. */
+    historical: z.literal(true).optional(),
+  }),
+  /** The proposal is answered: applied, kept, or withdrawn as the unit ended. */
+  z.object({
+    type: z.literal("style_answered"),
+    proposalId: z.string(),
+    outcome: StyleOutcome,
   }),
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),

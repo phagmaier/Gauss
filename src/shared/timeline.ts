@@ -21,6 +21,7 @@ import type {
 } from "./question.ts";
 import type { Phase } from "./state.ts";
 import type { ObjectiveStatus } from "./status.ts";
+import type { StyleOutcome } from "./style.ts";
 
 export type Graded = Extract<PageEvent, { type: "graded" }>;
 
@@ -158,6 +159,20 @@ export interface PackagesItem {
   output?: string;
 }
 
+/** The tutor's proposed style note (task 5.11), and its answer. */
+export interface StyleItem {
+  kind: "style";
+  key: number;
+  proposalId: string;
+  note: string;
+  /** The note it would replace; none for a course without one. */
+  was?: string;
+  why: string;
+  /** Replayed from a transcript: only the current chat can offer the answer. */
+  historical?: true;
+  outcome?: StyleOutcome;
+}
+
 export type Item =
   | { kind: "learner"; key: number; id?: string; text: string }
   | { kind: "tutor"; key: number; text: string }
@@ -165,6 +180,7 @@ export type Item =
   | { kind: "file"; key: number; path: string }
   | ArtifactItem
   | PackagesItem
+  | StyleItem
   | QuestionItem
   | JudgmentItem
   /** A phase of a segment began, or the chat opened in it. */
@@ -295,6 +311,17 @@ function withRequest(
 ): Item[] {
   return items.map((item) =>
     item.kind === "packages" && item.requestId === id ? change(item) : item,
+  );
+}
+
+/** Changes the style proposal with this id, and leaves every other item as it is. */
+function withProposal(
+  items: Item[],
+  id: string,
+  change: (item: StyleItem) => StyleItem,
+): Item[] {
+  return items.map((item) =>
+    item.kind === "style" && item.proposalId === id ? change(item) : item,
   );
 }
 
@@ -559,6 +586,44 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             ...(event.output === undefined ? {} : { output: event.output }),
           }),
         ),
+      };
+    case "style_proposed": {
+      // The reopened unit sends the waiting proposal again: keep the card
+      // where it was. Only the live notice lets it be answered.
+      const card = {
+        proposalId: event.proposalId,
+        note: event.note,
+        ...(event.was === undefined ? {} : { was: event.was }),
+        why: event.why,
+        ...(event.historical ? { historical: true as const } : {}),
+      };
+      if (
+        state.items.some(
+          (i) => i.kind === "style" && i.proposalId === event.proposalId,
+        )
+      ) {
+        return {
+          ...next,
+          items: withProposal(
+            state.items,
+            event.proposalId,
+            ({ historical: __, ...item }) => ({ ...item, ...card }),
+          ),
+        };
+      }
+      return {
+        ...next,
+        items: [...state.items, { kind: "style", key: index, ...card }],
+        tutorOpen: false,
+      };
+    }
+    case "style_answered":
+      return {
+        ...next,
+        items: withProposal(state.items, event.proposalId, (item) => ({
+          ...item,
+          outcome: event.outcome,
+        })),
       };
     case "question":
       // A unit opened again, after a failure or a restart, posts its open

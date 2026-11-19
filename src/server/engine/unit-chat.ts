@@ -141,6 +141,7 @@ import type {
   UnitPosition,
 } from "../../shared/state.ts";
 import { hasPassed } from "../../shared/status.ts";
+import type { StyleProposal } from "../../shared/style.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
@@ -151,6 +152,7 @@ import {
   installPackagesTool,
   type PackageDesk,
 } from "../tools/install-packages.ts";
+import { proposeStyleTool, type StyleDesk } from "../tools/propose-style.ts";
 import {
   type ArtifactShelf,
   showArtifactTool,
@@ -232,6 +234,7 @@ import {
   runEndNote,
   runName,
   runTurn,
+  styleNote,
   teachTurn,
   testAnsweredNote,
   testEndTurn,
@@ -273,6 +276,13 @@ export interface UnitChat {
   declinePackages(requestId: string): Promise<ChatResult>;
   /** Saves an install's original result without running its command again. */
   retryPackageSave(requestId: string): Promise<ChatResult>;
+  /**
+   * Apply on the card of the tutor's proposed style note: style.md is
+   * replaced, and the tutor is told in its next header.
+   */
+  applyStyle(proposalId: string): Promise<ChatResult>;
+  /** "Keep the current one" on the card of the tutor's proposed style note. */
+  keepStyle(proposalId: string): Promise<ChatResult>;
   /** The learner moves on without the check, which is recorded. */
   override(): Promise<ChatResult>;
   /** Start on the card of the assessment offered: the tutor is asked for its first question. */
@@ -484,6 +494,14 @@ export function createUnitChats(options: ChatOptions): UnitChats {
           tell: (unit, entry) => {
             void chats.get(key(courseId, unit))?.learnAnswer(entry);
           },
+          restyle: (note) => {
+            for (const [at, other] of chats) {
+              const [course, unit] = JSON.parse(at) as [string, string];
+              if (course === courseId && unit !== unitId) {
+                void other.learnStyle(note);
+              }
+            }
+          },
         });
         chats.set(key(courseId, unitId), chat);
       }
@@ -516,6 +534,11 @@ interface CourseWorkspace {
    * or a request waits in a unit of the course.
    */
   request<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
+  /**
+   * Runs `work`, which makes a style proposal, unless a proposal waits in a
+   * unit of the course.
+   */
+  propose<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
   /**
    * Closes the workspace to the tutors' changes and to questions while an
    * install runs, unless a question is open or a change is under way; the
@@ -724,6 +747,22 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
         return work();
       });
     },
+    propose<T>(work: () => Promise<T>): Promise<T | { refused: string }> {
+      return exclusive(async () => {
+        const state = await dataRoot.readState(courseId);
+        const waiting = Object.values(state.units).some(
+          (p) => p.styleProposal !== undefined,
+        );
+        if (waiting) {
+          return {
+            refused:
+              "A proposed style note already waits for the learner's answer. " +
+              "Wait for it: a header says how they answered.",
+          };
+        }
+        return work();
+      });
+    },
     beginInstall(owner) {
       return exclusive(async () => {
         if (installing !== undefined) {
@@ -778,6 +817,11 @@ interface OpenableChat extends UnitChat {
    * assessment recorded, if the unit's record read when it opened lacks it.
    */
   learnAnswer(entry: AnswerEvidence): Promise<void>;
+  /**
+   * Takes in a style note the learner applied in another unit's chat: the
+   * tutor's next session starts with it, and its next header gives it.
+   */
+  learnStyle(note: string): Promise<void>;
 }
 
 /** The chat once its unit is planned and its record read. */
@@ -811,6 +855,8 @@ function createUnitChat(
     workspace: CourseWorkspace;
     /** Tells the chat of another unit, if it is open, an answer on its objective. */
     tell?: (unitId: Slug, entry: AnswerEvidence) => void;
+    /** Tells the chats of the course's other open units a style note the learner applied. */
+    restyle?: (note: string) => void;
   },
 ): OpenableChat {
   const { dataRoot, planner, courseId, unitId } = options;
@@ -840,6 +886,11 @@ function createUnitChat(
   let install: { requestId: string; done: Promise<void> } | undefined;
   /** The install ran, but its result still needs to be written to state.json. */
   let pendingInstall: PackageReceipt["completion"] | undefined;
+  /**
+   * The course's style note as the tutor's system prompt gives it: read when
+   * the unit loads, and replaced when the learner applies a new one.
+   */
+  let style: string | undefined;
   /** The code questions whose kept answer's tests have run past their limit once. */
   const timedOut = new Set<string>();
   const code = options.codeRunner ?? noCodeRunner;
@@ -890,7 +941,7 @@ function createUnitChat(
         plan,
       };
       const [
-        style,
+        readStyle,
         background,
         profile,
         handoffNote,
@@ -912,6 +963,7 @@ function createUnitChat(
         evidence,
         misconceptions,
       );
+      style = readStyle;
       if (options.handoff !== undefined && handoffs === undefined) {
         handoffs = createHandoffs({
           writer: options.handoff,
@@ -938,18 +990,21 @@ function createUnitChat(
       }
       const loaded = createUnitAgents({
         backend: options.backend,
-        systemPrompt: tutorSystemPrompt(
-          options.systemPrompt,
-          context,
-          { style, background, profile },
-          earlier,
-        ),
+        // A session started after a new style note is applied starts with it.
+        systemPrompt: () =>
+          tutorSystemPrompt(
+            options.systemPrompt,
+            context,
+            { style, background, profile },
+            earlier,
+          ),
         tools: [
           askQuestionTool(questionBoard),
           showArtifactTool(artifactShelf),
           ...(options.installer === undefined
             ? []
             : [installPackagesTool(packageDesk)]),
+          proposeStyleTool(styleDesk),
         ],
         cwd: workspace,
         ...(options.workspaceTools === true
@@ -1011,6 +1066,9 @@ function createUnitChat(
         pendingInstall === undefined
       ) {
         log.emit(requestedEvent(position.packageRequest));
+      }
+      if (position.styleProposal !== undefined) {
+        log.emit(proposedEvent(position.styleProposal));
       }
       // A detour waits on the learner, as an open question does.
       if (position.detour !== undefined) log.emit(detourEvent(position.detour));
@@ -1568,8 +1626,8 @@ function createUnitChat(
   /**
    * Offers review on a card, if it is due (docs/decisions.md, "Mastery
    * loop", "Review"): the unit is not finished, nothing waits on the learner
-   * (no open question, detour, package request or closing card) or the
-   * tutor (no turn queued or running), the pick
+   * (no open question, detour, package request, style proposal or closing
+   * card) or the tutor (no turn queued or running), the pick
    * over the whole course is not empty, and the course was offered none
    * within the hour. The caller knows that a sitting begins: the chat is
    * new, or has been quiet. Nothing is sent to the tutor. A failure is
@@ -1587,6 +1645,7 @@ function createUnitChat(
       position.openQuestion !== undefined ||
       position.detour !== undefined ||
       position.packageRequest !== undefined ||
+      position.styleProposal !== undefined ||
       pendingInstall !== undefined ||
       position.testOut?.stage === "result" ||
       (position.phase === "closed" && isLastSegment(r.context.plan, position))
@@ -2406,6 +2465,68 @@ function createUnitChat(
       }),
   };
 
+  // Not while a question of the unit is open, where the card would sit
+  // beside the question; one proposal waits in a course at a time.
+  const styleDesk: StyleDesk = {
+    propose: ({ note, why }) =>
+      exclusive(async () => {
+        const r = running;
+        if (r === undefined) return { refused: "The unit is not open." };
+        if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
+        const open = r.record.position.openQuestion;
+        if (open !== undefined) {
+          return {
+            refused:
+              `Question ${open.number} is open: propose a change to the ` +
+              "style once its answer is graded.",
+          };
+        }
+        // Read once no other proposal waits, so an Apply in another unit
+        // has written style.md before this one compares with it.
+        return options.workspace.propose(async () => {
+          const current = await dataRoot.readStyle(courseId);
+          if (note === current) {
+            return {
+              refused: "That is the current style note: nothing would change.",
+            };
+          }
+          const proposal: StyleProposal = {
+            id: randomUUID(),
+            note,
+            ...(current === undefined ? {} : { was: current }),
+            why,
+            proposedAt: now().toISOString(),
+          };
+          await r.record.keepStyleProposal(proposal, () =>
+            log.emit(proposedEvent(proposal)),
+          );
+          return { proposed: true as const };
+        });
+      }),
+  };
+
+  /** The card that presents a proposed style note. */
+  function proposedEvent(proposal: StyleProposal): PageEvent {
+    return {
+      type: "style_proposed",
+      proposalId: proposal.id,
+      note: proposal.note,
+      ...(proposal.was === undefined ? {} : { was: proposal.was }),
+      why: proposal.why,
+    };
+  }
+
+  /** The proposal that waits, if it is this one, or why not. */
+  function waitingProposal(
+    r: Running,
+    proposalId: string,
+  ): StyleProposal | string {
+    const proposal = r.record.position.styleProposal;
+    return proposal?.id === proposalId
+      ? proposal
+      : "That proposed style note is not waiting.";
+  }
+
   // Not while a question of the course is open: the install closes the
   // workspace, which an open question has closed already.
   const packageDesk: PackageDesk = {
@@ -2920,6 +3041,44 @@ function createUnitChat(
         return { ok: true };
       }),
 
+    applyStyle: (proposalId) =>
+      act(
+        async (r) => {
+          const proposal = waitingProposal(r, proposalId);
+          if (typeof proposal === "string") return refused(proposal);
+          // Written before the position: a restart between the two shows the
+          // card again, and applying it again writes the same note.
+          await dataRoot.writeStyle(courseId, proposal.note);
+          style = proposal.note;
+          await r.record.answerStyleProposal(proposalId, () =>
+            log.emit({
+              type: "style_answered",
+              proposalId,
+              outcome: "applied",
+            }),
+          );
+          r.notes.push(styleNote("applied", proposal.note));
+          options.restyle?.(proposal.note);
+          options.backup?.commit(`${courseId}: style note changed`);
+          return { ok: true };
+        },
+        { whileWriting: true },
+      ),
+
+    keepStyle: (proposalId) =>
+      act(
+        async (r) => {
+          const proposal = waitingProposal(r, proposalId);
+          if (typeof proposal === "string") return refused(proposal);
+          await r.record.answerStyleProposal(proposalId, () =>
+            log.emit({ type: "style_answered", proposalId, outcome: "kept" }),
+          );
+          r.notes.push(styleNote("kept", proposal.note));
+          return { ok: true };
+        },
+        { whileWriting: true },
+      ),
+
     override: () =>
       act(async (r) => {
         const waits = runWaits(r);
@@ -3114,6 +3273,16 @@ function createUnitChat(
         const override = await r.record.dispute(entry);
         await disputeKept(r, entry);
         return { override };
+      });
+    },
+    async learnStyle(note) {
+      await loading;
+      await exclusive(async () => {
+        style = note;
+        const r = running;
+        if (r !== undefined && r.record.finished === undefined) {
+          r.notes.push(styleNote("changed", note));
+        }
       });
     },
     async learnAnswer(entry) {

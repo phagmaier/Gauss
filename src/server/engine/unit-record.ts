@@ -65,6 +65,7 @@ import type {
   UnitPosition,
 } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
+import type { StyleProposal } from "../../shared/style.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { disputesIn } from "../record/disputes.ts";
@@ -146,6 +147,16 @@ export interface UnitRecord {
   keepPackageRequest(request: PackageRequest, tell: () => void): Promise<void>;
   /** Saves and shows the completion, removing the matching pending request. */
   completePackageRequest(completion: PackageCompletion): Promise<boolean>;
+  /**
+   * Writes the tutor's proposed style note into the position. It is kept
+   * across moves, as a package request is.
+   */
+  keepStyleProposal(proposal: StyleProposal, tell: () => void): Promise<void>;
+  /**
+   * Takes the proposal with this id out of the position once the learner
+   * has answered it, then calls `tell`. False if it is not the one waiting.
+   */
+  answerStyleProposal(id: string, tell: () => void): Promise<boolean>;
   /** Starts the segment's check: this check is the evidence from here on. */
   startCheck(): Promise<void>;
   /**
@@ -222,7 +233,10 @@ export interface UnitRecord {
    * The caller tells the page once its gate or finish is saved.
    */
   moveOn(objectives: readonly string[]): Promise<void>;
-  /** Removes the position and keeps any full test-out finish, then shows it. */
+  /**
+   * Removes the position and keeps any full test-out finish, then shows it.
+   * A style proposal still waiting is withdrawn.
+   */
   finish(
     status: "passed" | "overridden",
     outcome?: { tell?: (() => void) | undefined; testedOut?: boolean },
@@ -299,13 +313,21 @@ export async function openUnitRecord(options: {
   let sessionId = position.tutorSessionId;
 
   async function move(given: UnitPosition, tell?: () => void): Promise<void> {
-    const { tutorSessionId: _, packageRequest: __, ...rest } = given;
+    const {
+      tutorSessionId: _,
+      packageRequest: __,
+      styleProposal: ___,
+      ...rest
+    } = given;
     const next: UnitPosition = {
       ...rest,
       ...(sessionId === undefined ? {} : { tutorSessionId: sessionId }),
       ...(position.packageRequest === undefined
         ? {}
         : { packageRequest: position.packageRequest }),
+      ...(position.styleProposal === undefined
+        ? {}
+        : { styleProposal: position.styleProposal }),
       // The gate is offered once, whatever position the chat gives.
       ...(position.gated === true ? { gated: true as const } : {}),
       // What the learner chose to skip holds until the unit finishes.
@@ -436,7 +458,12 @@ export async function openUnitRecord(options: {
       testedOut?: boolean;
     } = {},
   ): Promise<void> {
-    const { packageRequest, pendingMoveOn: _, ...closed } = position;
+    const {
+      packageRequest,
+      styleProposal,
+      pendingMoveOn: _,
+      ...closed
+    } = position;
     const completion: PackageCompletion | undefined =
       packageRequest === undefined
         ? undefined
@@ -457,6 +484,13 @@ export async function openUnitRecord(options: {
       keepCompletion(completion, !options.savingPackage(completion.request.id));
     }
     emit(status());
+    if (styleProposal !== undefined) {
+      emit({
+        type: "style_answered",
+        proposalId: styleProposal.id,
+        outcome: "withdrawn",
+      });
+    }
     emit({ type: "unit_closed", status: how });
     backup.commit(`${courseId}: unit ${unitId} finished, ${how}`);
     options.handoff?.();
@@ -566,6 +600,23 @@ export async function openUnitRecord(options: {
         position = next;
       }
       keepCompletion(completion);
+      return true;
+    },
+
+    async keepStyleProposal(proposal, tell) {
+      if (finished !== undefined) return;
+      const next = { ...position, styleProposal: proposal };
+      await dataRoot.writePosition(courseId, unitId, next);
+      position = next;
+      tell();
+    },
+
+    async answerStyleProposal(id, tell) {
+      const { styleProposal, ...next } = position;
+      if (finished !== undefined || styleProposal?.id !== id) return false;
+      await dataRoot.writePosition(courseId, unitId, next);
+      position = next;
+      tell();
       return true;
     },
 

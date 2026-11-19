@@ -955,6 +955,37 @@ export function packagesTurn(where: Where): string {
   return turn(where, "The learner answered your request to install packages.");
 }
 
+/**
+ * The note that tells the tutor how the learner answered its proposed style
+ * note (task 5.11), with the note's text once applied, since a running
+ * session keeps the system prompt it was opened with.
+ */
+export function styleNote(
+  outcome: "applied" | "kept" | "changed",
+  note: string,
+): string {
+  const text = `\n<style_note>\n${note.trim()}\n</style_note>\n`;
+  switch (outcome) {
+    case "applied":
+      return (
+        "The learner applied the style note you proposed. It replaces the one " +
+        `at the end of your instructions; teach to it from now on:${text}`
+      );
+    case "changed":
+      return (
+        "The learner applied a new style note for this course in another " +
+        "unit. It replaces the one at the end of your instructions; teach to " +
+        `it from now on:${text}`
+      );
+    case "kept":
+      return (
+        'The learner chose "Keep the current one": the style note you ' +
+        "proposed is not applied. Go on teaching to the current note, and do " +
+        "not propose the same change again unless the learner asks for it."
+      );
+  }
+}
+
 /** The note for the first turn of a session that joins a unit under way. */
 export const JOINED_NOTE =
   "This conversation is new: the earlier conversation in this unit is not available to you, so do not refer to it.";
@@ -975,11 +1006,19 @@ function turn(
           `Your request to install ${waiting.packages.map((p) => requirement(p)).join(", ")} ` +
             "waits for the learner's answer: the packages are not installed yet.",
         ];
+  const proposal =
+    where.position.styleProposal === undefined || where.finished !== undefined
+      ? []
+      : [
+          "Your proposed style note waits for the learner's answer: teach to " +
+            "the current one until a header says they applied it.",
+        ];
   const header = [
     describe(where),
     event,
     ...where.notes,
     ...request,
+    ...proposal,
     allowedNow,
   ].join(" ");
   const handoff = where.notes.includes(JOINED_NOTE)

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { compareProfiles, sentences } from "./profile.ts";
+import { compareSentences, sentences } from "./profile.ts";
 
 describe("sentences", () => {
   test("cut after a sentence's end that a space follows, a closing quote or bracket going with it, and at every line break", () => {
@@ -19,7 +19,7 @@ describe("sentences", () => {
   });
 });
 
-describe("compareProfiles", () => {
+describe("compareSentences", () => {
   // Piece 18's example (docs/prototype/18-profile.html): two sentences new,
   // one dropped, the rest kept.
   const WAS =
@@ -32,7 +32,7 @@ describe("compareProfiles", () => {
     "Would rather be asked to predict and explain than to compute by hand.";
 
   test("marks each new sentence and lists each dropped one, in order", () => {
-    expect(compareProfiles(WAS, NOW)).toEqual({
+    expect(compareSentences(WAS, NOW)).toEqual({
       sentences: [
         {
           text: "Works as a data analyst and writes Python every day.",
@@ -61,18 +61,18 @@ describe("compareProfiles", () => {
   });
 
   test("is not changed by spacing or line breaks between sentences, and is by their order", () => {
-    const spaced = compareProfiles("One.  Two.", "One.\nTwo. ");
+    const spaced = compareSentences("One.  Two.", "One.\nTwo. ");
     expect(spaced.changed).toBe(false);
     expect(spaced.dropped).toEqual([]);
     expect(spaced.sentences.every((s) => !s.added)).toBe(true);
 
-    const reordered = compareProfiles("One. Two.", "Two. One.");
+    const reordered = compareSentences("One. Two.", "Two. One.");
     expect(reordered).toMatchObject({ dropped: [], changed: true });
     expect(reordered.sentences.every((s) => !s.added)).toBe(true);
   });
 
   test("counts a repeated sentence as often as it is there", () => {
-    expect(compareProfiles("Same. Same.", "Same. Other.")).toEqual({
+    expect(compareSentences("Same. Same.", "Same. Other.")).toEqual({
       sentences: [
         { text: "Same.", added: false },
         { text: "Other.", added: true },

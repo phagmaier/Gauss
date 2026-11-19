@@ -84,7 +84,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
   cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
     course.json                   title, backend, settings, dates, when each unit was last opened, when review was last offered
-    style.md                      the course's style note, proposed and approved with the curriculum
+    style.md                      the course's style note, proposed and approved with the curriculum; replaced when the learner applies a tutor's proposed change
     background.md                 the background note: what the learner told the planner, approved with the curriculum
     curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts; a draft's profile and its original comparison
     state.json                    a position for each unit in progress
@@ -231,8 +231,11 @@ also before it reaches the backend.
   `workspace/`, made when a unit first opens, or the data root's
   `intake/`); the tutor's id is in the unit's position.
   Opening a unit only asks the backend whether the session is still there
-  (`hasSession`); the first turn resumes it. The system prompt is sent
-  afresh on every request, so a resumed session gets the current prompt.
+  (`hasSession`); the first turn resumes it. The system prompt is built
+  when a session starts or resumes, from the record as it is then (the
+  style note last applied), and sent afresh on every request, so a resumed
+  session gets the current prompt; a running session keeps the one it
+  started with.
 - **Idle sessions.** A kept session is closed after ten minutes (`IDLE_MS`)
   with no turn queued or running and nothing waiting to send it a turn (a
   grading); the next turn resumes it.
@@ -323,7 +326,9 @@ The rules:
   `show_artifact` is refused while a question of its unit is open or its
   unit is finished;
   `install_packages` while a question of the course is open or another
-  request of the course waits. A refusal does not
+  request of the course waits; `propose_style` while a question of its unit
+  is open, another proposal of the course waits, or the note is the
+  current one. A refusal does not
   end the turn; a posted question does.
 - **Feedback, then the next question.** The turn after a graded correct
   answer is for feedback alone; no tool may be called in it, and
@@ -333,6 +338,20 @@ The rules:
   (`nextQuestionTurn` in `unit-turns.ts`). That turn is skipped if a
   reply to a learner message has posted a question meanwhile, or the
   learner pressed Stop.
+- **Style changes** (`StyleDesk` in `unit-chat.ts`). `propose_style` keeps
+  the whole proposed note, the note it would replace and why in the unit's
+  position (`styleProposal`), shows its card, and lets the turn go on; each
+  header says it waits until it is answered, and a restart shows the card
+  again. One proposal waits in a course at a time. Apply writes
+  `style.md`, then takes the proposal out of the position, and asks for a
+  backup commit; "Keep the current one" only takes it out. Either is taken
+  while the tutor writes. The tutor is told the answer in its next header,
+  with an applied note's text, since a running session keeps its system
+  prompt; the chats of the course's other open units are told the new note
+  in theirs, and every session started after it has it in its prompt. A
+  proposal still waiting when its unit finishes is withdrawn. A card the
+  transcript holds without its answer, and no longer waiting, says so
+  rather than guess the answer.
 - **Detours.** The detour is kept in the position, so a restart reopens it.
   Its first turn takes the feedback's place: the right answer and why, then
   where the confusion is (from the choice picked, the grader's flaw, the
@@ -480,8 +499,8 @@ the test before a unit lets the learner skip what they know.
 - **Review is offered on a card** when a unit not finished is opened in a
   new sitting (the chat is new, or `quiet()` in `engine/transcript.ts`:
   nothing has happened for `SESSION_GAP_MS`), and nothing waits on the
-  learner or the tutor: no open question, detour, package request, closing
-  card, or turn queued. It asks about `pickForReview`'s three over the
+  learner or the tutor: no open question, detour, package request, style
+  proposal, closing card, or turn queued. It asks about `pickForReview`'s three over the
   whole course (`record/review.ts`: passed, retained and slipping
   objectives not answered within the hour, slipping first); none when that
   is empty. `course.json` keeps when review was last offered, and no card
@@ -632,7 +651,7 @@ tool server, for Codex an MCP server.
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Refused while a question of the course is open or another request waits. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
-| `propose_style` | (stage 5) Proposes a change to `style.md`; applied only after the learner confirms |
+| `propose_style` | Proposes the whole revised style note with a line on why (`StyleInput` in `src/shared/style.ts`), shown on a card; Apply writes `style.md`. Refused while a question of the unit is open, while another proposal of the course waits, and for the current note. Does not end the turn |
 
 The learner starts segments and the engine closes them, so there is no tool
 for either; detours are opened by the engine and ended by the learner.
@@ -907,7 +926,8 @@ Kept as files in `prompts/`, each revised against real runs.
   none was recorded), "# Earlier units"
   when it has anything (the last handoff notes of the unit's
   prerequisites and the open misconceptions on other units' objectives),
-  then `style.md` (or a line saying to use `tutor.md`'s default style).
+  then `style.md` (or a line saying to use `tutor.md`'s default style), as
+  it stands when the session starts or resumes.
   The unit's own handoff note goes into a new session's first turn
   (section 4, "Handoff notes").
 - `planner.md` drives the intake: its questions, asking to go ahead, and the
@@ -989,7 +1009,11 @@ themselves have no automated tests.
   and folder under a closed "Show the command"; then the outcome, with
   the output's end under "Show the output", open only when the install
   failed. If saving fails, the
-  card offers Retry saving without another install. The thread also has
+  card offers Retry saving without another install. A proposed style
+  note's card (`StyleCard.tsx`) gives the tutor's line on why and the
+  whole note, each new sentence marked and each dropped one listed as the
+  intake card marks a changed profile, with Apply and "Keep the current
+  one"; then the answer. The thread also has
   the detour marker and "Ready for another question", and the closing card.
   Review (piece 15) is a card in the thread, with how many questions,
   Skip and "Start the review", which holds the unit's own control until
