@@ -22,7 +22,10 @@
 // evidence kept here is on the plan's objectives, those of the assessment,
 // and those of every answer given in this unit's thread. Once the unit's
 // gate (task 5.5) is offered, the position says so until the unit
-// finishes, since it is offered once.
+// finishes, since it is offered once. A unit opened for its test (task 5.6)
+// starts with the test due; a miss in the test opens no detour, and once it
+// ends the position keeps its result waiting, then what the learner chose
+// to skip, until the unit finishes.
 //
 // A dispute of one of the unit's answers (task 3.8) is written here when the
 // unit's chat is open, so it lands in order with the chat's own writes; one
@@ -160,11 +163,18 @@ export interface UnitRecord {
    */
   startAssessment(tell: (run: AssessmentRun) => void): Promise<AssessmentRun>;
   /**
+   * Starts the test that is due, over every objective of the plan, under
+   * way at once: its answers are the evidence from here on. `tell` tells the
+   * page, once it is written.
+   */
+  startTest(tell: (run: AssessmentRun) => void): Promise<AssessmentRun>;
+  /**
    * Ends the assessment, every objective asked or skipped: takes it out of
    * the position with its detour, withdraws its open question with nothing
    * recorded, and tells the page what it did to the record. The statuses
    * come from the evidence read again: other units' chats write on its
-   * objectives too, while its card waits and while it runs.
+   * objectives too, while its card waits and while it runs. A test's
+   * result then waits in the position.
    */
   endAssessment(skipped: boolean): Promise<{
     run: AssessmentRun;
@@ -233,6 +243,8 @@ export async function openUnitRecord(options: {
   now: () => Date;
   /** Commits the record once a segment closes or the unit ends; none if not given. */
   backup?: Backup;
+  /** A unit with no position starts with its test due (task 5.6) instead of its teaching. */
+  testOut?: boolean;
 }): Promise<UnitRecord> {
   const { dataRoot, courseId, unit, plan, emit, now } = options;
   const backup = options.backup ?? noBackup;
@@ -260,9 +272,11 @@ export async function openUnitRecord(options: {
       : undefined;
   let position: UnitPosition =
     stored ??
-    (finished === undefined
-      ? { segment: 0, phase: "teach" }
-      : { segment: plan.segments.length - 1, phase: "closed" });
+    (finished !== undefined
+      ? { segment: plan.segments.length - 1, phase: "closed" }
+      : options.testOut === true
+        ? { segment: 0, phase: "teach", testOut: { stage: "due" } }
+        : { segment: 0, phase: "teach" });
   if (stored === undefined && finished === undefined) {
     await dataRoot.writePosition(courseId, unitId, position);
   }
@@ -283,6 +297,10 @@ export async function openUnitRecord(options: {
         : { packageRequest: position.packageRequest }),
       // The gate is offered once, whatever position the chat gives.
       ...(position.gated === true ? { gated: true as const } : {}),
+      // What the learner chose to skip holds until the unit finishes.
+      ...(position.testOut?.stage === "skip" && rest.testOut === undefined
+        ? { testOut: position.testOut }
+        : {}),
       ...(position.gateUnanswered === undefined
         ? {}
         : { gateUnanswered: position.gateUnanswered }),
@@ -380,8 +398,9 @@ export async function openUnitRecord(options: {
     entry: AnswerEvidence,
   ): Promise<Answered> {
     const { openQuestion: _, ...rest } = position;
+    // A miss in the test before the unit opens no detour: it means "teach me this".
     const detour: Detour | undefined =
-      entry.verdict === "correct"
+      entry.verdict === "correct" || entry.assessment?.mode === "test-out"
         ? undefined
         : {
             questionId: question.id,
@@ -542,6 +561,26 @@ export async function openUnitRecord(options: {
       return run;
     },
 
+    async startTest(tell) {
+      if (position.testOut?.stage !== "due") {
+        throw new Error("No test is due.");
+      }
+      const from = (await dataRoot.readEvidence(courseId)).length;
+      const run: AssessmentRun = {
+        mode: "test-out",
+        stage: "on",
+        objectives: plan.objectives.map((o) => ({
+          unit: unitId,
+          objective: o.id,
+        })),
+        from,
+      };
+      const { testOut: _, ...rest } = position;
+      await move({ ...rest, assessment: run }, () => tell(run));
+      runAnswers = [];
+      return run;
+    },
+
     async offerAssessment(run, log, tell) {
       readAgain(log, { ...position, assessment: run });
       const { pendingMoveOn: _, ...rest } = position;
@@ -580,7 +619,11 @@ export async function openUnitRecord(options: {
         answered.map((id) => [id, objectiveStatus(evidence, id)]),
       );
       await move(
-        gateUnanswered === undefined ? rest : { ...rest, gateUnanswered },
+        run.mode === "test-out"
+          ? { ...rest, testOut: { stage: "result" } }
+          : gateUnanswered === undefined
+            ? rest
+            : { ...rest, gateUnanswered },
         () =>
           emit({
             type: "assessment_end",
@@ -787,17 +830,20 @@ export function assessmentEvent(
 
 /** A `phase` event: the segment's phase began, or the chat opened in it. */
 export function phaseEvent(position: UnitPosition): PageEvent {
+  const { testOut } = position;
   return {
     type: "phase",
     segment: position.segment,
     phase: position.phase,
     ...(position.again === undefined ? {} : { again: position.again }),
+    ...(testOut?.stage === "skip" ? { skipping: testOut.passed } : {}),
   };
 }
 
 /**
  * A position read back from state.json fits the unit's plan: a segment of
- * the plan, or the one after it that goes over objectives of the plan.
+ * the plan, or the one after it that goes over objectives of the plan, and
+ * skipping only objectives of the plan.
  */
 function checkPosition(plan: Plan, position: UnitPosition): void {
   const ids = new Set(plan.objectives.map((o) => o.id));
@@ -809,6 +855,12 @@ function checkPosition(plan: Plan, position: UnitPosition): void {
   if (!fits) {
     throw new Error(
       `state.json puts the unit at segment ${position.segment + 1}, which its plan does not have.`,
+    );
+  }
+  const { testOut } = position;
+  if (testOut?.stage === "skip" && !testOut.passed.every((id) => ids.has(id))) {
+    throw new Error(
+      "state.json has the unit skip objectives its plan does not have.",
     );
   }
 }

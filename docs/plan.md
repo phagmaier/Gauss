@@ -40,65 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.6 Testing out of a unit
-
-- Status: todo
-- Depends on: 5.4
-- Why: the brief's replacement for the baseline quiz: a learner who knows
-  a unit's material should not sit through it.
-- Do: "Test out" beside Start on a unit not started, laid out as piece
-  16 shows: on the unit's row and under the card's "Start unit N". It
-  asks once before it starts, saying what the test is and that
-  what is passed can then be skipped; Start teaches the unit as before.
-  It opens the unit, which is planned as any unit is (objectives exist
-  only then), and starts an assessment over all its objectives in place
-  of the teaching turn; a review that is due is offered first.
-    - Its rules differ from 5.4's: no feedback turn and no detour; the turn
-    that brings a grade asks for the next question. A graded card shows
-    its verdict and the right answer as in a check, and a question's
-    head says which objective it is on. A correct answer at
-    90% or 100% passes the objective and ends its questions; a correct
-    answer below that gets a second question; a miss ends its questions.
-  - When it ends, or the learner presses "Start learning instead", the
-    tutor says in a few sentences what the test showed, and a result
-    card names what was passed and what that would skip: a row per
-    objective with why, then each segment as skipped, taught in part or
-    taught. Nothing is
-    skipped until the learner answers it: one step skips what was
-    passed, the other has the whole unit taught, and what was passed
-    stays passed either way. With every objective passed, the first
-    step finishes the unit, with no gate.
-  - Skipping: teaching starts at the first segment with an objective not
-    passed. A segment whose objectives all passed is skipped, and one
-    with a passed objective teaches and checks only the other, the tutor
-    told what the learner showed. Which objectives a segment leaves out
-    is fixed when it starts and kept in the position, as `again` is. The
-    page shows the skipped segments as skipped, in the outline and in
-    the top line's ticks.
-  - `tutor.md`'s section covers the test; the scripted backend and the
-    seed reach one.
-- Done when: fake-backend tests cover: every objective passed and the
-  unit finished untaught once the learner agrees, and taught in full when
-  they choose that; a partial result, with a segment skipped and a
-  segment of two objectives teaching one; nothing skipped while the
-  result card waits, across a restart too; a second question after an
-  unsure correct answer; a miss with no detour, after which one
-  confident correct answer in the segment's check passes; "Start
-  learning instead" partway; a restart in the test; the unit's gate
-  later leaving out what the test passed. `mise run check` passes; on
-  `pnpm dev:fake` a unit is tested out of in part and its first taught
-  segment starts, and the browser is closed before the server stops;
-  one short run on Haiku 5.5 through a test.
-- Note: `engine/assessment-rules.ts` has review's rules alone; the test's
-  (no feedback, no detour, a second question after an unsure correct
-  answer) go there by mode, and the chat's feedback and detour branches
-  (`tellGrade`, `anotherQuestion`) follow them. The unit's end goes
-  through `gateOrFinish` in `unit-chat.ts`, which offers the gate
-  whenever `pickForGate` has anything, other units' objectives included:
-  a unit the test passed whole must finish without it. The gate already
-  leaves out a pass resting on a test answer (`tested` in
-  `record/status.ts`); this task's tests see it end to end.
-
 ### 5.7 Handoff notes and the misconception record
 
 - Status: todo
@@ -385,6 +326,13 @@ a detour, a unit gate, generated notes and an exported transcript.
   different exponent"), and posted a math question with a wrong key: the
   limit of $2x^3 - x + 4$ at $-1$ given as 7, its feedback working
   "$-2 + 1 + 4 = 7$". Nothing checks a key's arithmetic.
+- From 5.6's Haiku test: no lead-ins and nothing said between questions,
+  as asked; but the second question after an unsure answer was the same
+  problem with new numbers, not the objective asked another way; the word
+  on the test went over single answers ("you reduced 36/84 to 3/7"),
+  which its header forbids; and a choice question's choices carried
+  letters of their own ("A. 3/8 is larger"), which the shuffle then put
+  beside other letters. `tutor.md` says nothing against the last.
 - Done when: the findings and the model choice are in `decisions.md`,
   "Prompts" and "Mastery loop"; `mise run check` passes, and the
   scripted backend's tests with it, since it reads the headers; the

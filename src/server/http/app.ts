@@ -294,6 +294,18 @@ export function createApp(options: {
       : c.json({ error: opened.error }, opened.status);
   });
 
+  // Opens a unit not started with its test before it is taught (task 5.6),
+  // as opening it does otherwise; refused once the unit has started.
+  app.post(`${unitPath}/test-out`, async (c) => {
+    const courseId = c.req.param("id");
+    const unitId = c.req.param("unit");
+    const last = (units.get(courseId, unitId)?.events().length ?? 0) - 1;
+    const opened = await units.open(courseId, unitId, { testOut: true });
+    return opened.ok
+      ? c.json({ ok: true, chatId: opened.chat.id, last } satisfies UnitOpened)
+      : c.json({ error: opened.error }, opened.status);
+  });
+
   /** Runs the handler with the open chat of the unit the path names, or answers 404. */
   function withUnit(
     handler: (c: Context, chat: UnitChat) => Response | Promise<Response>,
@@ -387,6 +399,17 @@ export function createApp(options: {
   app.post(
     `${unitPath}/assessment/skip`,
     withUnit(async (c, chat) => reply(c, await chat.skipAssessment(), 200)),
+  );
+
+  // The test's result card: skip what it passed, or have the whole unit taught.
+  app.post(
+    `${unitPath}/test-out/skip`,
+    withUnit(async (c, chat) => reply(c, await chat.skipTested(), 202)),
+  );
+
+  app.post(
+    `${unitPath}/test-out/whole`,
+    withUnit(async (c, chat) => reply(c, await chat.teachWhole(), 202)),
   );
 
   // Moving on sends the tutor nothing until the learner's next step.

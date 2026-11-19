@@ -91,11 +91,12 @@ export type AssessedObjective = z.infer<typeof AssessedObjective>;
 /**
  * A run of questions without teaching, asked by the unit's tutor in the
  * unit's thread (docs/decisions.md, "Mastery loop"): review at the start of
- * a sitting, or the unit's gate once its last segment has closed. It is
+ * a sitting, the unit's gate once its last segment has closed, or the test
+ * before the unit is taught, which is under way as soon as it starts. It is
  * kept beside the phase, which it leaves alone, so a restart reopens it;
- * once it ends, the unit goes on where it was, or after a gate comes to
- * its end. While it is under way, the position's open question and detour
- * are its own.
+ * once it ends, the unit goes on where it was, after a gate comes to its
+ * end, and after a test waits on its result card. While it is under way,
+ * the position's open question and detour are its own.
  */
 export const AssessmentRun = z
   .object({
@@ -117,6 +118,27 @@ export const AssessmentRun = z
     path: ["from"],
   });
 export type AssessmentRun = z.infer<typeof AssessmentRun>;
+
+/**
+ * The test before the unit is taught (docs/decisions.md, "Mastery loop",
+ * "Testing out"), beside the run it is while under way: chosen and not
+ * started yet, over with its result card waiting, or what the learner chose
+ * to skip once they answered it.
+ */
+export const TestOut = z.discriminatedUnion("stage", [
+  /** Chosen before the unit started; it starts once a review offered first ends. */
+  z.object({ stage: z.literal("due") }),
+  /** Over: its result card waits for the learner, and nothing is skipped until they answer it. */
+  z.object({ stage: z.literal("result") }),
+  /**
+   * The learner chose to skip what it passed: these objectives, as they
+   * stood then. A segment with every objective among them is skipped, and
+   * one with some teaches and checks only the rest (`skipping` in plan.ts).
+   * Kept until the unit finishes.
+   */
+  z.object({ stage: z.literal("skip"), passed: z.array(Slug).min(1) }),
+]);
+export type TestOut = z.infer<typeof TestOut>;
 
 export const UnitPosition = z
   .object({
@@ -154,6 +176,8 @@ export const UnitPosition = z
      * kept until the unit finishes, across going over objectives again.
      */
     gated: z.literal(true).optional(),
+    /** The test before the unit is taught, outside the run it is while under way. */
+    testOut: TestOut.optional(),
     /** Another unit's objective with an open question withdrawn when the gate was skipped. */
     gateUnanswered: Slug.optional(),
     /** A closing-card override whose gate or finish has not been saved yet. */
@@ -194,6 +218,29 @@ export const UnitPosition = z
       message:
         "An assessment is offered only while no question is open and no detour.",
       path: ["assessment"],
+    },
+  )
+  .refine(
+    (p) =>
+      p.testOut === undefined ||
+      p.testOut.stage === "skip" ||
+      (p.segment === 0 && p.phase === "teach" && p.again === undefined),
+    {
+      message:
+        "A test is due, or its result waits, only before the unit's first segment is taught.",
+      path: ["testOut"],
+    },
+  )
+  .refine(
+    (p) =>
+      p.testOut?.stage !== "result" ||
+      (p.assessment === undefined &&
+        p.openQuestion === undefined &&
+        p.detour === undefined),
+    {
+      message:
+        "A test's result waits only once no assessment, question or detour is open.",
+      path: ["testOut"],
     },
   );
 export type UnitPosition = z.infer<typeof UnitPosition>;

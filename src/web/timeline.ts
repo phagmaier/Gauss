@@ -2,14 +2,15 @@
 // a replay after a reload or a reconnect gives the same thread. A unit chat's
 // log starts with the unit's earlier sessions (task 2.13), and its own
 // opening repeats where the unit stands: a phase, an open question or a
-// closing card the thread already shows is not shown twice. When the tutor's
+// closing card the thread already shows is not shown twice, nor is the test's
+// result card (task 5.6). When the tutor's
 // conversation is replaced by a new one (task 2.14), a marker says so, and
 // the thread before it is shown as earlier conversations.
 
 import type { Slug } from "../shared/course.ts";
 import type { Unit } from "../shared/curriculum.ts";
 import type { ShownDispute } from "../shared/dispute.ts";
-import type { PageEvent } from "../shared/events.ts";
+import type { PageEvent, TestShown } from "../shared/events.ts";
 import type { AssessmentMode } from "../shared/evidence.ts";
 import type { PackageSpec, PackagesOutcome } from "../shared/packages.ts";
 import type { Plan } from "../shared/plan.ts";
@@ -58,6 +59,8 @@ export interface Position {
   phase: Phase;
   /** For a segment after the plan's last: the objectives it goes over again. */
   again?: string[];
+  /** The objectives the test before the unit passed, which the learner chose to skip. */
+  skipping?: string[];
 }
 
 /** The closing card at a unit's end (task 2.1, piece 10; after the gate, piece 16). */
@@ -121,6 +124,16 @@ export interface AssessmentEndItem {
   at: Position | null;
 }
 
+/** The test's result card (task 5.6, piece 16), and the learner's answer to it. */
+export interface TestResultItem {
+  kind: "test_result";
+  key: number;
+  /** Each of the unit's objectives, in the plan's order. */
+  objectives: TestShown[];
+  /** Once answered: the objectives the learner chose to skip, none for the whole unit taught. */
+  skipped?: string[];
+}
+
 /** An artifact the tutor showed, by its file in the course's artifacts/ (task 3.6, piece 5). */
 export interface ArtifactItem {
   kind: "artifact";
@@ -160,6 +173,7 @@ export type Item =
   | UnitEndItem
   | AssessmentItem
   | AssessmentEndItem
+  | TestResultItem
   /** Where a question was posted that was answered further down (task 2.18). */
   | { kind: "answered-below"; key: number; number: number }
   /** A detour began after the miss on this question (task 2.20). */
@@ -242,6 +256,8 @@ export interface Timeline {
     stage: "offered" | "on";
     count: number;
   } | null;
+  /** The test's result card waits for the learner's answer: the unit's own steps wait for it. */
+  testWaits: boolean;
   /** The unit is finished, and how. */
   finished: "passed" | "overridden" | null;
 }
@@ -264,6 +280,7 @@ export const emptyTimeline: Timeline = {
   position: null,
   detour: null,
   assessment: null,
+  testWaits: false,
   finished: null,
 };
 
@@ -737,6 +754,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         segment: event.segment,
         phase: event.phase,
         ...(event.again === undefined ? {} : { again: event.again }),
+        ...(event.skipping === undefined ? {} : { skipping: event.skipping }),
       };
       // A chat that opens in the phase the thread is in, as a unit reopened
       // after a restart does, begins nothing new. A detour or an assessment
@@ -761,6 +779,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         position,
         detour: null,
         assessment: null,
+        // A result card whose answer the thread lost is answered by now.
+        testWaits: false,
         tutorOpen: false,
       };
     }
@@ -845,6 +865,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         detour: null,
         tutorOpen: false,
       };
+      // A test leaves no marker: the tutor's word on it and its result card follow.
+      if (event.mode === "test-out") return { ...settled, items };
       // Skipped on its card: the card becomes the marker that says so.
       if (card?.kind === "assessment" && card.stage === "offered") {
         return {
@@ -887,6 +909,50 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         tutorOpen: false,
       };
     }
+    case "test_result": {
+      // The card waiting is shown again, as it stands: by a chat that
+      // opened at it, or with what a dispute changed.
+      const at = state.items.findLastIndex((i) => i.kind === "test_result");
+      const card = state.items[at];
+      if (card?.kind === "test_result" && card.skipped === undefined) {
+        return {
+          ...next,
+          testWaits: true,
+          items: state.items.with(at, {
+            ...card,
+            objectives: event.objectives,
+          }),
+        };
+      }
+      return {
+        ...next,
+        testWaits: true,
+        items: [
+          ...state.items,
+          { kind: "test_result", key: index, objectives: event.objectives },
+        ],
+        tutorOpen: false,
+      };
+    }
+    case "test_answered": {
+      const at = state.items.findLastIndex((i) => i.kind === "test_result");
+      const card = state.items[at];
+      const { skipped } = event;
+      const { skipping: _, ...rest } = state.position ?? {
+        segment: 0,
+        phase: "teach" as const,
+      };
+      return {
+        ...next,
+        testWaits: false,
+        position:
+          skipped.length === 0 ? rest : { ...rest, skipping: [...skipped] },
+        items:
+          card?.kind === "test_result"
+            ? state.items.with(at, { ...card, skipped: [...skipped] })
+            : state.items,
+      };
+    }
     case "moved_on":
       return { ...next, items: stepFromCard(state.items, "moved-on") };
     case "unit_closed":
@@ -899,6 +965,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         finished: event.status,
         assessment: null,
         detour: null,
+        testWaits: false,
       };
     case "unit_failed":
       return {

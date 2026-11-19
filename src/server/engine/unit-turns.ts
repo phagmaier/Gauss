@@ -5,6 +5,7 @@
 // details follow it. Pure, so the wording is tested without a chat.
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
+import type { TestShown } from "../../shared/events.ts";
 import type {
   AnswerEvidence,
   AssessmentMode,
@@ -16,7 +17,7 @@ import {
   type PackagesOutcome,
   requirement,
 } from "../../shared/packages.ts";
-import type { Plan } from "../../shared/plan.ts";
+import { type Plan, skipping } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, confidenceLabel } from "../../shared/question.ts";
 import type { AssessmentRun, UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
@@ -124,6 +125,8 @@ export interface Where {
   evidence: readonly EvidenceEntry[];
   /** An assessment offered or under way, with where it stands. */
   assessment?: RunWhere;
+  /** Once the test before the unit is over and its result waits: what it showed. */
+  test?: readonly TestShown[];
 }
 
 /** An assessment offered or under way (task 5.4), with where it stands. */
@@ -148,12 +151,22 @@ export function teachTurn(where: Where, cutOff: boolean): string {
   const lead = segment.again
     ? "Teach these objectives again, another way, starting from what went wrong:"
     : "Teach these objectives:";
+  const { leftOut } = segment;
+  const them = leftOut.length === 1 ? "it" : "them";
   return turn(
     where,
     event,
     [
       lead,
       ...segment.objectives.map((id) => `- "${id}": ${statement.get(id)}`),
+      ...(leftOut.length === 0
+        ? []
+        : [
+            "",
+            `Leave out ${quoted(leftOut)}: the learner passed ${them} in the ` +
+              `test before the unit and chose to skip ${them}. Build on ${them} ` +
+              `where that helps, but do not teach ${them}; the check does not ask about ${them}.`,
+          ]),
     ].join("\n"),
   );
 }
@@ -200,9 +213,12 @@ export function answerTurn(
     lines.push(...question.choices.map((c, i) => `${CHOICE_LETTERS[i]}. ${c}`));
   }
   lines.push("");
+  const testing = entry.assessment?.mode === "test-out";
   if (answer.kind === "unknown") {
     lines.push(
-      `The learner answered "I don't know", which counts as a miss.` +
+      (testing
+        ? `The learner answered "I don't know".`
+        : `The learner answered "I don't know", which counts as a miss.`) +
         (question.kind === "choice"
           ? ` The correct choice is ${question.answer}.`
           : question.kind === "math"
@@ -270,17 +286,25 @@ export function answerTurn(
     lines.join("\n"),
     where.finished !== undefined
       ? undefined
-      : entry.assessment !== undefined
-        ? !running
+      : testing
+        ? // The turn that brings a test's grade asks for its next question,
+          // or, after its last, for what it showed.
+          running
           ? undefined
-          : opens
-            ? runDetourOpening(where, entry)
-            : runFeedbackAllowed(where)
-        : where.position.phase !== "check"
-          ? undefined
-          : opens
-            ? detourOpening(where, entry)
-            : feedbackAllowed(where),
+          : where.test === undefined
+            ? undefined
+            : `That was the test's last question, and the test is over. ${testSummaryAllowed(where.test)}`
+        : entry.assessment !== undefined
+          ? !running
+            ? undefined
+            : opens
+              ? runDetourOpening(where, entry)
+              : runFeedbackAllowed(where)
+          : where.position.phase !== "check"
+            ? undefined
+            : opens
+              ? detourOpening(where, entry)
+              : feedbackAllowed(where),
   );
 }
 
@@ -432,8 +456,14 @@ export function runTurn(
         run?.mode === "gate"
           ? `The learner started the unit's gate: ${questions(count)}, ${gateSplit(where)}, ` +
             "one on each objective they passed, and one more after a miss."
-          : `The learner started the ${name}: ${questions(count)} ` +
-            "on objectives they passed before, one on each, and one more after a miss.";
+          : run?.mode === "test-out"
+            ? "The learner chose to test out of this unit before it is taught: a " +
+              `question on each of its ${count === 1 ? "one objective" : `${count} objectives`}, and a second at once ` +
+              "after a correct answer that does not pass alone (below 90%, or " +
+              "with help). Nothing is explained, and nothing is said between " +
+              "questions, until it ends."
+            : `The learner started the ${name}: ${questions(count)} ` +
+              "on objectives they passed before, one on each, and one more after a miss.";
       break;
     case "reopened":
       said = `The ${name} goes on where it was.`;
@@ -487,10 +517,94 @@ export function checkGoesOnTurn(where: Where): string {
   return turn(where, "The check goes on.");
 }
 
+/**
+ * The turn that asks what the test before the unit showed, when no answer
+ * ended it: the learner pressed "Start learning instead", with question
+ * `withdrawn` open or none; or a restart cut the tutor's word on it off.
+ */
+export function testEndTurn(
+  where: Where,
+  ended: { stopped: true; withdrawn: number | undefined } | { stopped: false },
+): string {
+  const event = ended.stopped
+    ? 'The learner pressed "Start learning instead", which ends the test' +
+      (ended.withdrawn === undefined
+        ? "."
+        : `; question ${ended.withdrawn} was withdrawn, with nothing recorded.`)
+    : "The test before the unit is over, and a restart came before you said what it showed.";
+  return turn(
+    where,
+    event,
+    undefined,
+    where.test === undefined ? undefined : testSummaryAllowed(where.test),
+  );
+}
+
+/** What the turn that ends the test allows: a few sentences on what it showed. */
+function testSummaryAllowed(test: readonly TestShown[]): string {
+  return (
+    `What it showed: ${test.map(testLine).join("; ")}. Allowed now, as ` +
+    "text, with no tool: say in a few sentences what the test showed, what " +
+    "the learner has and what it did not show, which is where you would " +
+    "teach. No teaching yet, and no going over single answers. The learner " +
+    "then sees a card with what passed and what skipping it would skip, and " +
+    "chooses: to skip what passed, or to be taught the whole unit. Do not " +
+    "press them either way."
+  );
+}
+
+/** One objective of the test, for the tutor: whether it passed, and on what answers. */
+function testLine(shown: TestShown): string {
+  const answers = shown.answers.map((a) =>
+    a.verdict === "unknown"
+      ? `"I don't know"`
+      : `${a.verdict} at ${confidenceLabel(a.confidence ?? "under-50")}${a.assisted ? " with help" : ""}`,
+  );
+  const on =
+    answers.length === 0
+      ? "not asked"
+      : answers.length === 1
+        ? (answers[0] ?? "")
+        : answers.join(", then ");
+  return `"${shown.objective}" ${shown.passed ? "passed" : "not passed"} (${on})`;
+}
+
+/**
+ * The note for the turn after the learner answered the test's result card:
+ * they skip what it passed, which leaves `skippedSegments` out and starts
+ * at `first`; or they have the whole unit taught, with `passed` passed.
+ */
+export function testAnsweredNote(
+  answered:
+    | { skip: true; passed: readonly string[]; plan: Plan; first: number }
+    | { skip: false; passed: readonly string[] },
+): string {
+  if (!answered.skip) {
+    return answered.passed.length === 0
+      ? "The test passed nothing, so the unit is taught as planned, from its first segment."
+      : `The learner chose to be taught the whole unit, though the test passed ${quoted(answered.passed)}: ` +
+          "teach every segment as planned. What passed stays passed, and the check asks each objective at least once.";
+  }
+  const { plan, passed, first } = answered;
+  const skipped = skipping(plan, passed).flatMap((s, i) =>
+    s.teaches.length === 0 ? [i + 1] : [],
+  );
+  const segments =
+    skipped.length === 0
+      ? "No segment is skipped whole"
+      : `${skipped.length === 1 ? "Segment" : "Segments"} ${listed(skipped.map(String))} ${skipped.length === 1 ? "is" : "are"} skipped`;
+  return (
+    `The learner chose to skip what the test passed: ${quoted(passed)}. ` +
+    `${segments}, and teaching starts at segment ${first + 1}. A segment ` +
+    "that has an objective they passed teaches and checks only the other."
+  );
+}
+
 /** Where the assessment's objectives stand, for the tutor. */
 function runStanding(where: Where): string {
   const { assessment } = where;
   if (assessment === undefined) return "";
+  if (assessment.run.mode === "test-out") return testStanding(assessment);
   return assessment.run.objectives
     .map(({ objective }, i) => {
       const standing = assessment.standing[i];
@@ -503,6 +617,28 @@ function runStanding(where: Where): string {
               ? "missed, then asked once more"
               : "answered correctly";
       return `question ${i + 1}, "${objective}": ${said}`;
+    })
+    .join("; ");
+}
+
+/** Where the test's objectives stand, for the tutor. */
+function testStanding(assessment: RunWhere): string {
+  return assessment.run.objectives
+    .map(({ objective }, i) => {
+      const standing = assessment.standing[i];
+      const said =
+        standing === undefined || standing.state === "unasked"
+          ? "not asked yet"
+          : standing.state === "again"
+            ? "answered correctly, which does not pass alone, so a second question follows"
+            : standing.asked >= 2
+              ? standing.missed
+                ? "asked twice, the second missed"
+                : "answered correctly twice"
+              : standing.missed
+                ? "missed"
+                : "answered correctly";
+      return `"${objective}": ${said}`;
     })
     .join("; ");
 }
@@ -590,6 +726,18 @@ function runAllowed(where: Where): string | undefined {
     return (
       `In this ${name}, ${standing}. Every objective has been asked, and ` +
       `the ${name} is ending. Allowed now: reply to the learner. No more questions.`
+    );
+  }
+  if (run.mode === "test-out") {
+    const again = next.second
+      ? ", and unlike the one just answered: the same objective asked another way"
+      : "";
+    return (
+      `In this test, ${standing}. Allowed now: a question on ` +
+      `"${next.objective}" with ask_question, unlike the ones asked ` +
+      `before${again}, and nothing else: no lead-in, no word on any answer, ` +
+      `no teaching. ${aboutObjective(where, next)} Posting ends your turn.` +
+      askedBefore(where, [next.objective])
     );
   }
   const unlike = next.second
@@ -798,16 +946,27 @@ function describe(where: Where): string {
       : `${unit}. The unit is finished: the learner moved on without passing ${quoted(movedOn)}.${since}`;
   }
   const segment = segmentOf(context.plan, position);
+  const leaving =
+    segment.leftOut.length === 0
+      ? ""
+      : ` (leaving out ${quoted(segment.leftOut)}, passed in the test before the unit)`;
   const which = segment.again
     ? `a segment after the plan's ${context.plan.segments.length}, going over ${quoted(segment.objectives)} again`
     : `segment ${position.segment + 1} of ${context.plan.segments.length}, ` +
-      `"${segment.title}", on ${quoted(segment.objectives)}`;
+      `"${segment.title}", on ${quoted(segment.objectives)}${leaving}`;
+  const stage = position.testOut?.stage;
   const run =
-    where.assessment?.run.stage !== "on"
-      ? ""
-      : where.assessment.run.mode === "gate"
+    where.assessment?.run.stage === "on"
+      ? where.assessment.run.mode === "gate"
         ? " The unit's gate is under way, and the unit ends after it."
-        : ` A ${runName(where.assessment.run.mode)} is under way, and the segment waits until it ends.`;
+        : where.assessment.run.mode === "test-out"
+          ? " The learner is testing out of the unit before it is taught, and the teaching waits until the test ends."
+          : ` A ${runName(where.assessment.run.mode)} is under way, and the segment waits until it ends.`
+      : stage === "result"
+        ? " The test before the unit is over, and its result card waits for the learner, who chooses to skip what it passed or to be taught the whole unit; the teaching waits until they do."
+        : stage === "due"
+          ? " The learner chose to test out of the unit before it is taught, and the test starts once nothing else waits."
+          : "";
   return `${unit}; ${which}. Phase: ${position.phase}.${run}`;
 }
 
@@ -815,6 +974,14 @@ function allowed(where: Where): string {
   const { position, context } = where;
   if (where.finished !== undefined) {
     return "Allowed now: reply to the learner. No teaching tools.";
+  }
+  const stage = position.testOut?.stage;
+  if (stage === "result" || stage === "due") {
+    return (
+      "Allowed now: reply to the learner, without teaching and without " +
+      "pressing them either way. No teaching tools until " +
+      (stage === "result" ? "they answer the card." : "the test starts.")
+    );
   }
   switch (position.phase) {
     case "teach":
@@ -1005,8 +1172,12 @@ function fenced(text: string): string {
 
 /** "a", or "a" and "b", or "a", "b" and "c". */
 export function quoted(ids: readonly string[]): string {
-  const q = ids.map((id) => `"${id}"`);
-  return q.length <= 1
-    ? (q[0] ?? "")
-    : `${q.slice(0, -1).join(", ")} and ${q.at(-1)}`;
+  return listed(ids.map((id) => `"${id}"`));
+}
+
+/** a, or a and b, or a, b and c. */
+function listed(items: readonly string[]): string {
+  return items.length <= 1
+    ? (items[0] ?? "")
+    : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }

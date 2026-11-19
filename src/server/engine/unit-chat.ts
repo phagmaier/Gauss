@@ -77,6 +77,14 @@
 // is skipped the unit goes on where it was; when the gate does, it comes
 // to its end. An answer on another unit's objective is told to that unit's
 // chat if it is open.
+// The test before a unit (task 5.6) is the third: chosen on the course view
+// for a unit not started, it opens the unit, planned as any is, and runs
+// over all its objectives in place of the teaching turn, after a review
+// that is due. It has no feedback and no detour. When it ends, or the
+// learner stops it, the tutor says what it showed and a result card waits:
+// skipping what passed starts the teaching at the first segment with an
+// objective not passed, leaving out the passed ones, and with all passed
+// finishes the unit with no gate; the other step teaches the whole unit.
 // The engine composes every turn's header (unit-turns.ts) and writes the
 // unit's position to state.json after every change, before the page is told,
 // so a restart reopens the unit where it was. The chat's events are its
@@ -111,6 +119,7 @@ import type {
   PackageReceipt,
   PackageRequest,
 } from "../../shared/packages.ts";
+import { firstTaught } from "../../shared/plan.ts";
 import {
   type AnswerPost,
   type AnswerSubmission,
@@ -130,11 +139,12 @@ import type {
   State,
   UnitPosition,
 } from "../../shared/state.ts";
+import { hasPassed } from "../../shared/status.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { pickForGate, pickForReview } from "../record/review.ts";
-import { objectiveStatus } from "../record/status.ts";
+import { objectiveStatus, unitStatus } from "../record/status.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import {
   installPackagesTool,
@@ -144,9 +154,15 @@ import {
   type ArtifactShelf,
   showArtifactTool,
 } from "../tools/show-artifact.ts";
-import { nextInRun, type RunStep, runObjective } from "./assessment-rules.ts";
+import {
+  nextInRun,
+  type RunStep,
+  runObjective,
+  testShowed,
+} from "./assessment-rules.ts";
 import {
   isLastSegment,
+  nextSegment,
   notPassed,
   type ObjectiveCheck,
   objectiveCheck,
@@ -210,6 +226,8 @@ import {
   runName,
   runTurn,
   teachTurn,
+  testAnsweredNote,
+  testEndTurn,
   tutorSystemPrompt,
   type UnitContext,
   type Where,
@@ -259,6 +277,14 @@ export interface UnitChat {
   skipAssessment(): Promise<ChatResult>;
   /** The learner starts the next segment, once this one is closed. */
   nextSegment(): Promise<ChatResult>;
+  /**
+   * At the test's result card: skips what it passed, so teaching starts at
+   * the first segment with an objective not passed; with every objective
+   * passed, finishes the unit.
+   */
+  skipTested(): Promise<ChatResult>;
+  /** At the test's result card: the whole unit is taught, from its first segment. */
+  teachWhole(): Promise<ChatResult>;
   /**
    * At the unit's end, with objectives not passed: one more segment, after
    * the plan's last, on them.
@@ -316,8 +342,14 @@ export interface UnitChats {
    * Opens the unit, marking it and its course opened: its chat if it is
    * open, or a new one, which starts the unit or picks it up where
    * state.json has it. Opening a unit whose planning failed tries again.
+   * `testOut` starts a unit not started with its test (task 5.6), and is
+   * refused for one started or finished.
    */
-  open(courseId: string, unitId: string): Promise<OpenResult>;
+  open(
+    courseId: string,
+    unitId: string,
+    options?: { testOut?: boolean },
+  ): Promise<OpenResult>;
   get(courseId: string, unitId: string): UnitChat | undefined;
   /** Closes the tutor session of every chat. */
   close(): Promise<void>;
@@ -387,10 +419,11 @@ export function createUnitChats(options: ChatOptions): UnitChats {
   }
 
   return {
-    async open(courseId, unitId) {
+    async open(courseId, unitId, opening = {}) {
       const stored = await dataRoot.readCourse(courseId);
       const curriculum = stored?.curriculum ?? undefined;
-      if (!curriculum?.units.some((u) => u.id === unitId)) {
+      const unit = curriculum?.units.find((u) => u.id === unitId);
+      if (curriculum === undefined || unit === undefined) {
         return {
           ok: false,
           status: 404,
@@ -404,6 +437,23 @@ export function createUnitChats(options: ChatOptions): UnitChats {
           error:
             "The curriculum is not approved yet, so its units cannot start.",
         };
+      }
+      if (opening.testOut === true) {
+        const [state, evidence] = await Promise.all([
+          dataRoot.readState(courseId),
+          dataRoot.readEvidence(courseId),
+        ]);
+        if (
+          Object.hasOwn(state.units, unitId) ||
+          unitStatus(unit, evidence, undefined) !== "not-started"
+        ) {
+          return {
+            ok: false,
+            status: 409,
+            error:
+              "This unit has started, so it can no longer be tested out of.",
+          };
+        }
       }
       await dataRoot.markOpened(courseId, unitId);
       // Looked up after the awaits and kept at once, so two opens of one
@@ -421,7 +471,7 @@ export function createUnitChats(options: ChatOptions): UnitChats {
         });
         chats.set(key(courseId, unitId), chat);
       }
-      chat.open();
+      chat.open(opening.testOut === true);
       return { ok: true, chat };
     },
     get: (courseId, unitId) => chats.get(key(courseId, unitId)),
@@ -704,9 +754,10 @@ interface OpenableChat extends UnitChat {
   /**
    * Loads the unit, unless it is loaded or loading; again after a failure.
    * A unit loaded already that has been quiet for a sitting's gap can be
-   * offered review.
+   * offered review. `testOut`: a unit with no position yet starts with its
+   * test, kept until a load writes its position.
    */
-  open(): void;
+  open(testOut?: boolean): void;
   /**
    * Takes in an answer on one of the unit's objectives that another unit's
    * assessment recorded, if the unit's record read when it opened lacks it.
@@ -760,6 +811,8 @@ function createUnitChat(
    * kept: a message sent meanwhile waits for the card, which it skips.
    */
   let offering = false;
+  /** The learner chose to test out of the unit, before its position was written. */
+  let testWanted = false;
   /** The course's workspace, where the tutor works and packages go. */
   let folder: string | undefined;
   /** The install that runs, by its request's id; `settled` waits for it. */
@@ -806,7 +859,10 @@ function createUnitChat(
           install?.requestId === id || pendingInstall?.request.id === id,
         now,
         ...(options.backup === undefined ? {} : { backup: options.backup }),
+        testOut: testWanted,
       });
+      // Its position is written now, with the test due if it was chosen.
+      testWanted = false;
       const context: UnitContext = {
         courseTitle: stored.course.title,
         units,
@@ -887,7 +943,7 @@ function createUnitChat(
             // question: the question is closed with the answer recorded, as
             // recording it would have gone on to do.
             const answered = await record.closeAnswered();
-            if (answered !== undefined) tellGrade(r, answered);
+            if (answered !== undefined) await tellGrade(r, answered);
           } else if (open.judging !== undefined) {
             // The replies a restart kept from the judge cannot be judged
             // now, so they count as help (task 2.21), and an answer kept
@@ -913,11 +969,25 @@ function createUnitChat(
       }
       // A new sitting can open with review; the chat is new.
       await exclusive(() => offerReview(r));
+      const test = record.position.testOut?.stage;
       if (record.position.assessment !== undefined) {
-        // The unit's steps wait for it, and a teaching turn is sent once it
-        // ends. One reopened under way with nothing open asks on.
+        // The unit's steps wait for it, and a teaching turn, or the test
+        // due, is sent once it ends. One reopened under way with nothing
+        // open asks on.
         if (record.position.assessment.stage === "on") {
           await exclusive(() => goOnInRun(r));
+        }
+      } else if (test === "due") {
+        // The test goes in place of the teaching turn.
+        await exclusive(() => startTest(r));
+      } else if (test === "result") {
+        // The result card waits on the learner. If a restart cut off the
+        // tutor's word on the test, before the card was shown, it is asked
+        // for again, and the card follows it.
+        if (log.events().some((e) => e.type === "test_result")) {
+          showTestResult(r);
+        } else {
+          sendTestSummary(r, () => testEndTurn(where(r), { stopped: false }));
         }
       } else if (position.phase === "teach") {
         // A teaching turn that a restart cut off is sent again.
@@ -1056,6 +1126,11 @@ function createUnitChat(
     const { position, finished } = r.record;
     // An assessment's answers are its own rules', read when it next moves.
     if (finished !== undefined || position.assessment !== undefined) return;
+    // The test's result card shows what passed as it now stands.
+    if (position.testOut?.stage === "result") {
+      showTestResult(r);
+      return;
+    }
     if (
       position.phase === "check" &&
       position.openQuestion === undefined &&
@@ -1132,6 +1207,9 @@ function createUnitChat(
       ...(record.position.assessment === undefined
         ? {}
         : { assessment: runWhere(r, record.position.assessment) }),
+      ...(record.position.testOut?.stage === "result"
+        ? { test: shownByTest(r) }
+        : {}),
     };
   }
 
@@ -1175,17 +1253,22 @@ function createUnitChat(
    * follows it: the learner asks for the next question. A Stop after
    * `stops` cancels that next question.
    */
-  function tellGrade(
+  async function tellGrade(
     r: Running,
-    { question, entry }: Answered,
+    answered: Answered,
     stops = stopCount,
-  ): void {
+  ): Promise<void> {
+    const { question, entry } = answered;
     const { number } = question;
-    const feedback = { number, started: false };
-    r.feedback = feedback;
     // An answer in an assessment goes on by the assessment's rules.
     const run = entry.assessment === undefined ? undefined : runOn(r);
     const count = r.record.runAnswers.length;
+    if (run?.mode === "test-out") {
+      await tellTestGrade(r, run, answered, stops);
+      return;
+    }
+    const feedback = { number, started: false };
+    r.feedback = feedback;
     r.agents.send({
       text: () => {
         feedback.started = true;
@@ -1248,6 +1331,69 @@ function createUnitChat(
 
   // --- Assessments (task 5.4) --------------------------------------------------
 
+  /**
+   * Sends the tutor the grade of a test's answer in the turn that asks for
+   * the test's next question (task 5.6): no feedback, and no detour after a
+   * miss. After its last question the test ends, and the turn asks what it
+   * showed instead. A Stop after `stops` cancels the turn, as it cancels a
+   * check's next question. Runs inside `exclusive`.
+   */
+  async function tellTestGrade(
+    r: Running,
+    run: AssessmentRun,
+    { question, entry }: Answered,
+    stops: number,
+  ): Promise<void> {
+    const { number } = question;
+    if (nextOf(r, run) === undefined) {
+      await r.record.endAssessment(false);
+      sendTestSummary(r, () => answerTurn(where(r), entry, number));
+      return;
+    }
+    const count = r.record.runAnswers.length;
+    r.agents.send({
+      skip: () => stopCount !== stops || !waitingInRun(r, run, count),
+      text: () => answerTurn(where(r), entry, number),
+    });
+  }
+
+  /** Starts the test that is due, in place of the teaching turn. Runs inside `exclusive`. */
+  async function startTest(r: Running): Promise<void> {
+    const stops = stopCount;
+    await r.record.startTest((run) => showRun(r, run));
+    askInRun(r, { after: "start" }, stops);
+  }
+
+  /** What the test before the unit showed on each objective, as it stands now. */
+  function shownByTest(r: Running) {
+    return testShowed(
+      r.context.plan.objectives.map((o) => o.id),
+      r.record.evidence,
+      unitId,
+    );
+  }
+
+  /** Shows the test's result card, as it stands now: again if one is shown. */
+  function showTestResult(r: Running): void {
+    log.emit({ type: "test_result", objectives: shownByTest(r) });
+  }
+
+  /**
+   * Sends the turn that asks the tutor what the test showed, and shows the
+   * result card once it ends, however it ends, while the result waits.
+   */
+  function sendTestSummary(r: Running, text: () => string): void {
+    r.agents.send({
+      text,
+      ended: () =>
+        exclusive(async () => {
+          if (r.record.position.testOut?.stage === "result") {
+            showTestResult(r);
+          }
+        }),
+    });
+  }
+
   /** The assessment under way, if one is. */
   function runOn(r: Running): AssessmentRun | undefined {
     const run = r.record.position.assessment;
@@ -1265,7 +1411,7 @@ function createUnitChat(
     return {
       run,
       standing: run.objectives.map(({ objective }) =>
-        runObjective(objective, runAnswers, evidence),
+        runObjective(objective, runAnswers, evidence, run.mode),
       ),
       next: run.stage === "on" ? nextOf(r, run) : undefined,
     };
@@ -1354,6 +1500,7 @@ function createUnitChat(
       position.detour !== undefined ||
       position.packageRequest !== undefined ||
       pendingInstall !== undefined ||
+      position.testOut?.stage === "result" ||
       (position.phase === "closed" && isLastSegment(r.context.plan, position))
     ) {
       return;
@@ -1390,12 +1537,24 @@ function createUnitChat(
   /**
    * Ends the assessment: every objective asked, or skipped. The tutor is
    * told in its next header if it was asking. After the gate the unit comes
-   * to its end; after a review it goes on where it stood: a teaching turn
-   * that waited is sent, and a check takes up again. Runs inside
-   * `exclusive`.
+   * to its end; after a test, the tutor is asked what it showed, and its
+   * result card follows; after a review the unit goes on where it stood: a
+   * test that waited starts, a teaching turn that waited is sent, and a
+   * check takes up again. Runs inside `exclusive`.
    */
   async function endRun(r: Running, skipped: boolean): Promise<void> {
     const { run, withdrawn, statuses } = await r.record.endAssessment(skipped);
+    if (run.mode === "test-out") {
+      sendTestSummary(r, () =>
+        testEndTurn(
+          where(r),
+          skipped
+            ? { stopped: true, withdrawn: withdrawn?.number }
+            : { stopped: false },
+        ),
+      );
+      return;
+    }
     if (run.stage === "on") {
       r.notes.push(
         runEndNote(
@@ -1411,7 +1570,9 @@ function createUnitChat(
       return;
     }
     const { position } = r.record;
-    if (position.phase === "teach") {
+    if (position.testOut?.stage === "due") {
+      await startTest(r);
+    } else if (position.phase === "teach") {
       sendTeaching(r, r.record.reopened);
     } else if (
       position.phase === "check" &&
@@ -1431,9 +1592,15 @@ function createUnitChat(
     }
   }
 
-  /** Why the unit's own steps wait while an assessment is offered or under way. */
+  /**
+   * Why the unit's own steps wait while an assessment is offered or under
+   * way, or the test's result card waits.
+   */
   function runWaits(r: Running): ChatResult | undefined {
     const run = r.record.position.assessment;
+    if (r.record.position.testOut?.stage === "result") {
+      return refused("Answer the test's result card first.");
+    }
     if (run === undefined) return undefined;
     const name = runName(run.mode);
     return refused(
@@ -1454,13 +1621,16 @@ function createUnitChat(
     const second = r.record.runAnswers.some(
       (a) => a.objective === open.objective && a.answer.questionId !== open.id,
     );
-    const unit = run.objectives.find(
+    const place = run.objectives.findIndex(
       (o) => o.objective === open.objective,
-    )?.unit;
+    );
+    const unit = run.objectives[place]?.unit;
     const at = r.context.units.findIndex((u) => u.id === unit);
     const other = r.context.units[at];
     return {
       of: run.objectives.length,
+      // A test's questions are counted, so its head names the objective.
+      ...(run.mode === "test-out" ? { objective: place + 1 } : {}),
       ...(second ? { second: true as const } : {}),
       ...(unit === unitId || other === undefined
         ? {}
@@ -1541,7 +1711,7 @@ function createUnitChat(
     if (owner !== undefined && owner !== unitId) {
       options.tell?.(owner, answered.entry);
     }
-    tellGrade(r, answered, stops);
+    await tellGrade(r, answered, stops);
   }
 
   /**
@@ -1957,6 +2127,15 @@ function createUnitChat(
               refused: started ? feedbackOnly(number) : feedbackPending(number),
             };
           }
+          const test = position.testOut?.stage;
+          if (run === undefined && (test === "result" || test === "due")) {
+            return {
+              refused:
+                test === "result"
+                  ? "The test is over, and its result card waits for the learner: no question is posted until they answer it. Reply to the learner without one."
+                  : "The test has not started yet: no question is posted until it does. Reply to the learner without one.",
+            };
+          }
           if (run === undefined && position.phase !== "check") {
             return { refused: outOfPhase(position.phase) };
           }
@@ -2097,7 +2276,14 @@ function createUnitChat(
         refused: `The ${name} asks about "${next.objective}" now, and about no other objective: post the question on it.`,
       };
     }
-    return { number: next.index + 1 };
+    // A test counts its questions, one or two on each objective; the others
+    // number a question by its objective's place.
+    return {
+      number:
+        run.mode === "test-out"
+          ? r.record.runAnswers.length + 1
+          : next.index + 1,
+    };
   }
 
   // Not while a question of the unit is open, answered or not: an aid could
@@ -2337,6 +2523,19 @@ function createUnitChat(
     );
   }
 
+  /** Why the test's result card cannot be answered now, if it cannot. */
+  function answersResult(r: Running): ChatResult | undefined {
+    if (r.record.position.testOut?.stage === "result") return undefined;
+    return refused("No test result waits for an answer.");
+  }
+
+  /** The plan's objectives passed now, in its order. */
+  function passedNow(r: Running): string[] {
+    return r.context.plan.objectives
+      .map((o) => o.id)
+      .filter((id) => hasPassed(objectiveStatus(r.record.evidence, id)));
+  }
+
   /** A review's card waits for the learner's Start or Skip. */
   function reviewOffered(r: Running): boolean {
     const run = r.record.position.assessment;
@@ -2348,7 +2547,7 @@ function createUnitChat(
     events: log.events,
     subscribe: log.subscribe,
 
-    open() {
+    open(testOut = false) {
       const r = running;
       if (r !== undefined) {
         // Opened again after a quiet hour: a new sitting, which can open
@@ -2356,7 +2555,16 @@ function createUnitChat(
         if (log.quiet()) void exclusive(() => offerReview(r));
         return;
       }
-      if (loading !== undefined && !failed) return;
+      if (loading !== undefined && !failed) {
+        // The load under way writes the unit's position: a test chosen
+        // meanwhile joins it, and the session page's own open after "Start
+        // the test" leaves it chosen.
+        if (testOut) testWanted = true;
+        return;
+      }
+      // A new load starts the unit as this open asks: a test chosen for one
+      // that failed is not kept for a later Start.
+      testWanted = testOut;
       failed = false;
       loading = load();
     },
@@ -2695,14 +2903,62 @@ function createUnitChat(
       act(async (r) => {
         const waits = runWaits(r);
         if (waits !== undefined) return waits;
-        const { phase, segment } = r.record.position;
+        const { position } = r.record;
+        const { phase } = position;
         if (phase !== "closed") return refused(NOT_NOW.next[phase]);
-        if (isLastSegment(r.context.plan, r.record.position)) {
+        // Skipping what the test passed passes over the segments it leaves
+        // nothing to teach.
+        const next = nextSegment(r.context.plan, position);
+        if (next === undefined) {
           return refused(
             "This was the unit's last segment: go over the objectives not passed again, or move on without them.",
           );
         }
-        await r.record.move({ segment: segment + 1, phase: "teach" });
+        await r.record.move({ segment: next, phase: "teach" });
+        sendTeaching(r, false);
+        return { ok: true };
+      }),
+
+    skipTested: () =>
+      act(async (r) => {
+        const waits = answersResult(r);
+        if (waits !== undefined) return waits;
+        const { plan } = r.context;
+        const passed = passedNow(r);
+        if (passed.length === 0) {
+          return refused(
+            "The test passed nothing to skip: the unit is taught from its first segment.",
+          );
+        }
+        const first = firstTaught(plan, passed);
+        const tell = () => log.emit({ type: "test_answered", skipped: passed });
+        if (first === undefined) {
+          // Every objective passed: the unit is finished, with no gate.
+          await r.record.finish("passed", tell);
+          return { ok: true };
+        }
+        await r.record.move(
+          {
+            segment: first,
+            phase: "teach",
+            testOut: { stage: "skip", passed },
+          },
+          tell,
+        );
+        r.notes.push(testAnsweredNote({ skip: true, passed, plan, first }));
+        sendTeaching(r, false);
+        return { ok: true };
+      }),
+
+    teachWhole: () =>
+      act(async (r) => {
+        const waits = answersResult(r);
+        if (waits !== undefined) return waits;
+        const passed = passedNow(r);
+        await r.record.move({ segment: 0, phase: "teach" }, () =>
+          log.emit({ type: "test_answered", skipped: [] }),
+        );
+        r.notes.push(testAnsweredNote({ skip: false, passed }));
         sendTeaching(r, false);
         return { ok: true };
       }),
@@ -2771,9 +3027,12 @@ function createUnitChat(
       await exclusive(async () => {
         const r = running;
         if (r === undefined || !r.record.learnAnswer(entry)) return;
-        // A closing card that waits shows the statuses as they now are.
+        // A closing card that waits shows the statuses as they now are, and
+        // so does the test's result card.
         const { position, finished } = r.record;
-        if (
+        if (finished === undefined && position.testOut?.stage === "result") {
+          showTestResult(r);
+        } else if (
           finished === undefined &&
           position.assessment === undefined &&
           position.phase === "closed" &&

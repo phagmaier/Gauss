@@ -1408,7 +1408,7 @@ built until its task is done; `architecture.md` says what is.
 - **"Passed by testing out"** is read as an unassisted correct test answer
   among those since the objective's last miss (`tested` in `status.ts`,
   as `cold` is for retained), so a pass resting partly on an unsure test
-  answer is left out too (the agent's; 5.6 may refine it).
+  answer is left out too (the agent's; "Testing out" below).
 - **Other units, not only earlier ones**: the pick is review's over every
   other unit, and several units can be in progress, so the page says
   "other units" where piece 16 said "earlier". The hour rule applies to
@@ -1427,6 +1427,31 @@ built until its task is done; `architecture.md` says what is.
   the whole unit taught anyway; what was passed stays passed.
 - **A segment is skipped whole or taught in part**; the plan is not
   rewritten, so the outline still shows what the unit holds.
+- **What is skipped is fixed when the learner answers the result card**
+  (task 5.6, the agent's): the objectives passed then, kept in the
+  position (`testOut`), from which each segment's part follows with the
+  plan alone. The breakdown had it fixed as each segment starts; but which
+  segment is the last, the outline and the page's next step would then
+  need the evidence. The cost: a passed objective missed in another unit's
+  review before its segment starts is skipped all the same, and the
+  closing card offers it as one not passed.
+- **The test's state lives beside its run, not in it** (the agent's): due
+  until it starts, since a review offered first holds the position's
+  assessment; its result waiting once it ends. Its answers are found by
+  mode and unit, as a unit is tested once, before it starts.
+- **A correct answer with help gets a second question too** (the agent's):
+  like an unsure one, it does not pass alone. "Start learning instead" is
+  the assessment's Skip, refused while an answer is kept for grading.
+- **The test's questions are counted, not numbered by objective** (the
+  agent's, from piece 16): an objective can have two, so the head names
+  its objective's place ("Objective 2 of 5") instead.
+- **The tutor's word comes before the card** (piece 16): the card is shown
+  once that turn ends, however it ends; a restart before it was shown asks
+  again. The test leaves no end marker: the card is one.
+- **The gate's rule for a pass resting on the test stands** (5.5's
+  `tested`): after the whole unit is taught, an objective the test passed
+  and its check asked again is still left out of the gate, the test's
+  answer having been cold already. Unchanged by 5.6, open to change.
 
 **Handoff notes and misconceptions**
 
@@ -1958,6 +1983,10 @@ will close.
 - Sandboxed commands and artifact scripts have no resource budgets for
   peak disk, memory or CPU use. The command deadline and output cap do
   not supply those budgets.
+- The test before a unit: the course view's card ticks a skipped segment
+  as done, not hollow as the session's top line does; and while a review
+  offered first holds the test, the top line reads "Segment 1" and the
+  review's card says the unit goes on where it was.
 - The help judge sees one exchange at a time (above).
 - The grader's grading of math answers the symbolic check does not settle
   has no hand-graded set: the grade set holds written answers only.

@@ -15,8 +15,12 @@ import type { UnitStatus } from "../shared/status.ts";
 
 type Progress = CourseWithProgress["progress"];
 
-/** How a mark is drawn, a segment's or a unit's tick: done, in progress, or still to come. */
-export type Mark = "past" | "now" | "";
+/**
+ * How a mark is drawn, a segment's or a unit's tick: done, in progress, or
+ * still to come; or, for a segment, skipped since the test before the unit
+ * passed its objectives.
+ */
+export type Mark = "past" | "now" | "skip" | "";
 
 /** The name of the segment after the plan's last, as the server gives it. */
 export const AGAIN = "Going over again";

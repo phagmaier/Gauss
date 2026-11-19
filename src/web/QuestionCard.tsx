@@ -821,11 +821,23 @@ function GradedCard(props: {
 /**
  * A question card's head: its number, and in an assessment which of how
  * many, "second question" after a miss, and the unit of another unit's
- * objective (piece 15). What follows it, the verdict or the state, comes
- * between.
+ * objective (piece 15); in a test, which objective it is on (piece 16).
+ * What follows it, the verdict or the state, comes between.
  */
 function QuestionHead(props: { question: QuestionView; children?: ReactNode }) {
   const { number, assessment } = props.question;
+  if (assessment?.objective !== undefined) {
+    return (
+      <div className="q-count">
+        {`Question ${number}`}
+        {props.children}
+        <span className="q-from">
+          Objective {assessment.objective} of {assessment.of}
+          {assessment.second === true ? ", second question" : ""}
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="q-count">
       {assessment === undefined

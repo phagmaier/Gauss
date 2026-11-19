@@ -13,7 +13,7 @@
 // with its dispute's verdict (task 3.8).
 
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
-import type { Plan } from "../../shared/plan.ts";
+import { firstTaught, type Plan, skipping } from "../../shared/plan.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import { hasPassed } from "../../shared/status.ts";
 import { countedAnswers } from "../record/disputes.ts";
@@ -74,7 +74,13 @@ export function objectiveCheck(
 /** The segment a position is in: one of the plan's, or the one going over the rest again. */
 export interface SegmentView {
   title: string;
+  /** What it teaches and checks. */
   objectives: readonly string[];
+  /**
+   * Its objectives that the test before the unit passed and the learner
+   * chose to skip: it neither teaches nor checks them.
+   */
+  leftOut: readonly string[];
   /** A segment after the plan's last, on objectives that did not pass. */
   again: boolean;
 }
@@ -83,7 +89,12 @@ export const AGAIN_TITLE = "Going over again";
 
 export function segmentOf(plan: Plan, position: UnitPosition): SegmentView {
   if (position.again !== undefined) {
-    return { title: AGAIN_TITLE, objectives: position.again, again: true };
+    return {
+      title: AGAIN_TITLE,
+      objectives: position.again,
+      leftOut: [],
+      again: true,
+    };
   }
   const segment = plan.segments[position.segment];
   if (segment === undefined) {
@@ -91,12 +102,38 @@ export function segmentOf(plan: Plan, position: UnitPosition): SegmentView {
       `The unit has no segment ${position.segment + 1} in its plan.`,
     );
   }
-  return { ...segment, again: false };
+  const left = skipping(plan, skipped(position))[position.segment];
+  return {
+    title: segment.title,
+    objectives: left?.teaches ?? segment.objectives,
+    leftOut: left?.leftOut ?? [],
+    again: false,
+  };
 }
 
-/** Whether the position's segment is the unit's last: the plan's, or one after it. */
+/** The objectives the learner chose to skip once the test before the unit passed them. */
+export function skipped(position: UnitPosition): readonly string[] {
+  return position.testOut?.stage === "skip" ? position.testOut.passed : [];
+}
+
+/**
+ * The index of the plan's next segment to teach after the position's, the
+ * ones skipping leaves nothing to teach passed over; undefined after the
+ * last, and in the segment that goes over objectives again.
+ */
+export function nextSegment(
+  plan: Plan,
+  position: UnitPosition,
+): number | undefined {
+  return firstTaught(plan, skipped(position), position.segment + 1);
+}
+
+/**
+ * Whether the position's segment is the unit's last: the plan's, one after
+ * it, or one that only skipped segments follow.
+ */
 export function isLastSegment(plan: Plan, position: UnitPosition): boolean {
-  return position.segment >= plan.segments.length - 1;
+  return nextSegment(plan, position) === undefined;
 }
 
 /** The plan's objectives that have not passed (slipping ones too), in the plan's order. */

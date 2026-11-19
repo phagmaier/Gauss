@@ -295,6 +295,50 @@ test.each<[string, PageEvent[], ReturnType<typeof nextStep>]>([
     [planned, phase(3, "closed", ["chain-rule"])],
     null,
   ],
+  // Skipping what the test passed: segments 2 and 3 are skipped, and
+  // segment 1 is the last taught.
+  [
+    "the last segment taught closed, the ones after it skipped",
+    [
+      planned,
+      {
+        type: "phase",
+        segment: 0,
+        phase: "closed",
+        skipping: ["product-rule", "chain-rule"],
+      },
+    ],
+    null,
+  ],
+  [
+    "a segment closed with a taught one after the skipped",
+    [
+      planned,
+      {
+        type: "phase",
+        segment: 0,
+        phase: "closed",
+        skipping: ["product-rule"],
+      },
+    ],
+    "next-segment",
+  ],
+  [
+    "the test's result card waiting",
+    [
+      planned,
+      phase(0, "teach"),
+      {
+        type: "test_result",
+        objectives: [
+          { objective: "power-rule", passed: false, answers: [] },
+          { objective: "product-rule", passed: false, answers: [] },
+          { objective: "chain-rule", passed: false, answers: [] },
+        ],
+      },
+    ],
+    null,
+  ],
   [
     "a unit passed at its closing card",
     [

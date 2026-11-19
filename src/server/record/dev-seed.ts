@@ -44,8 +44,10 @@ const DAY = 24 * 60 * 60 * 1000;
  *   both its objectives, and the second missed later in unit 3's review,
  *   so one is retained and one slipping; unit 2 overridden, units 3 and 5
  *   in progress (5 opened last, 3 in its second segment), 4 and 6 not
- *   started. Every answer is a day old or more, so opening a unit not
- *   finished offers review (task 5.4), on objectives of other units too.
+ *   started, so either can be tested out of (task 5.6). Every answer is a
+ *   day old or more, so opening a unit not finished offers review (task
+ *   5.4), on objectives of other units too, before a test as before
+ *   teaching.
  *   The scripted plan has two segments, so unit 3's check closes it, and
  *   its gate (task 5.5) asks unit 1's objectives too, unless a review in
  *   the hour before has answered them.

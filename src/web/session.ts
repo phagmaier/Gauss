@@ -2,11 +2,14 @@
 // 10-unit-end.html) says about where a unit stands, derived from its thread
 // (timeline.ts): the position in the top line and the outline, the one
 // next-step control, the open question and the lines between messages, the
-// closing card, and the unit's place in its course.
+// closing card, the test's result card (16-test-out-and-gate.html), and the
+// unit's place in its course.
 
+import type { TestShown } from "../shared/events.ts";
 import type { AssessmentMode } from "../shared/evidence.ts";
 import type { CourseWithProgress } from "../shared/library.ts";
-import type { Plan } from "../shared/plan.ts";
+import { firstTaught, type Plan, skipping } from "../shared/plan.ts";
+import { confidenceLabel } from "../shared/question.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import {
   AGAIN,
@@ -25,32 +28,62 @@ import {
   offersSteps,
   type Position,
   type QuestionItem,
+  type TestResultItem,
   type Timeline,
   type UnitEndItem,
 } from "./timeline.ts";
 
 type Finished = Timeline["finished"];
 
+/** Whether each of the plan's segments is skipped, since the learner skips what the test passed. */
+function skippedSegments(plan: Plan, position: Position | null): boolean[] {
+  return skipping(plan, position?.skipping ?? []).map(
+    (s) => s.teaches.length === 0,
+  );
+}
+
 /**
  * The position in the top line: "Segment 2 of 5", "Going over again",
+ * "Testing out" while the test before the unit runs or its result waits,
  * "Unit gate" while the gate is under way, or "Finished", with one tick per
- * segment of the plan. Null until the unit is open.
+ * segment of the plan, a hollow one for a segment skipped. Null until the
+ * unit is open.
  */
 export function whereInUnit(
   plan: Plan,
   position: Position | null,
   finished: Finished,
   assessment: Timeline["assessment"] = null,
+  testWaits = false,
 ): { label: string; ticks: Mark[] } | null {
   const count = plan.segments.length;
+  const skipped = skippedSegments(plan, position);
+  const marked = (ticks: Mark[]) =>
+    ticks.map((mark, i) => (skipped[i] === true ? "skip" : mark));
   if (finished !== null) {
-    return { label: "Finished", ticks: Array(count).fill("past") };
+    return { label: "Finished", ticks: marked(Array(count).fill("past")) };
   }
   if (assessment?.mode === "gate" && assessment.stage === "on") {
-    return { label: "Unit gate", ticks: Array(count).fill("past") };
+    return { label: "Unit gate", ticks: marked(Array(count).fill("past")) };
   }
   if (position === null) return null;
-  return segmentStand(count, position.segment, position.again !== undefined);
+  if (testWaits || assessment?.mode === "test-out") {
+    return { label: "Testing out", ticks: Array(count).fill("") };
+  }
+  const stand = segmentStand(
+    count,
+    position.segment,
+    position.again !== undefined,
+  );
+  return { ...stand, ticks: marked(stand.ticks) };
+}
+
+/** A segment as the unit's outline lists it, with a line under it when the test changed it. */
+export interface OutlineSegment {
+  title: string;
+  state: Mark;
+  /** "Skipped: passed in the test", or what a segment taught in part still teaches. */
+  note?: string;
 }
 
 /** The unit's segments as its outline lists them. */
@@ -58,13 +91,29 @@ export function outline(
   plan: Plan,
   position: Position | null,
   finished: Finished,
-): { title: string; state: Mark }[] {
+): OutlineSegment[] {
   const again = finished === null && position?.again !== undefined;
   const at = finished !== null || again ? Infinity : (position?.segment ?? -1);
-  const segments = plan.segments.map((s, i) => ({
-    title: s.title,
-    state: (i < at ? "past" : i === at ? "now" : "") as Mark,
-  }));
+  const left = skipping(plan, position?.skipping ?? []);
+  const statement = new Map(plan.objectives.map((o) => [o.id, o.statement]));
+  const segments = plan.segments.map((s, i): OutlineSegment => {
+    const teaches = left[i]?.teaches ?? s.objectives;
+    if (teaches.length === 0) {
+      return {
+        title: s.title,
+        state: "skip",
+        note: "Skipped: passed in the test",
+      };
+    }
+    const state: Mark = i < at ? "past" : i === at ? "now" : "";
+    return teaches.length < s.objectives.length
+      ? {
+          title: s.title,
+          state,
+          note: `Only: ${teaches.map((id) => statement.get(id) ?? id).join(" ")}`,
+        }
+      : { title: s.title, state };
+  });
   return again ? [...segments, { title: AGAIN, state: "now" }] : segments;
 }
 
@@ -73,7 +122,8 @@ export function outline(
  * reached (mock 3): "ready" in the discussion, moving on in the check, and
  * in a detour asking for another question or moving on (task 2.20), the
  * next segment once one closes, and the way out of a finished unit. None in
- * teach, while an answer waits for its grade (moving on is refused then),
+ * teach (the test's result card waits only there, and holds its own steps),
+ * while an answer waits for its grade (moving on is refused then),
  * or at the closing card, whose foot holds the steps. While an assessment
  * is under way (piece 15), its skip, and in its detour the step that ends
  * it; none while its card waits, which holds Start and Skip.
@@ -127,7 +177,10 @@ export function nextStep(timeline: Timeline): NextStep {
         : null;
     }
     case "closed":
-      return position.segment >= plan.segments.length - 1
+      // Skipped segments do not count: after the last taught, the unit ends.
+      return position.again !== undefined ||
+        firstTaught(plan, position.skipping ?? [], position.segment + 1) ===
+          undefined
         ? null
         : "next-segment";
   }
@@ -406,6 +459,12 @@ export function assessmentMarker(item: AssessmentItem): {
 } {
   const title = runTitle(item.mode);
   const gate = item.mode === "gate";
+  if (item.mode === "test-out") {
+    return {
+      name: title,
+      says: "Questions on this unit's objectives, before anything is taught. Nothing is explained until it ends; each answer is recorded.",
+    };
+  }
   if (item.stage === "skipped") {
     return {
       name: `${title} skipped`,
@@ -525,12 +584,166 @@ export function assessmentDetourStep(timeline: Timeline): {
     : { label: `Go on with the ${title}`, skip: true };
 }
 
-/** "Skip review" or "Skip the gate", beside an assessment's question or detour. */
+/** "Skip review", "Skip the gate", or the test's "Start learning instead", beside an assessment's question or detour. */
 export function skipLabel(timeline: Timeline): string {
   const mode = timeline.assessment?.mode ?? "review";
   return mode === "gate"
     ? "Skip the gate"
-    : `Skip ${runTitle(mode).toLowerCase()}`;
+    : mode === "test-out"
+      ? "Start learning instead"
+      : `Skip ${runTitle(mode).toLowerCase()}`;
+}
+
+// --- The test's result card (piece 16) -----------------------------------------
+
+/** A row of the result card: an objective or a segment, its word, and why. */
+export interface ResultRow {
+  key: string;
+  text: string;
+  word: { text: string; className: string };
+  why?: string;
+}
+
+export interface TestResultCard {
+  /** "Two of five passed", "All three passed", "None passed". */
+  says: { text: string; className: "ok" | "dk" };
+  /** A row for each objective: passed or not, and why. */
+  objectives: ResultRow[];
+  /** What skipping would do to each segment; none when nothing passed. */
+  segments: ResultRow[] | null;
+  /** The heading over the segments. */
+  segmentsSay: string;
+  /** The steps' labels: the one that skips, and the one that teaches the whole unit. */
+  skip: string;
+  whole: string;
+  /** Once answered, the line the card shrinks to. */
+  answered?: string;
+  /** Once answered by skipping some: where teaching starts. */
+  startsAt?: string;
+}
+
+/** Why an objective passed or did not, from the test's answers on it (piece 16). */
+function testWhy(shown: TestShown): string {
+  const [first, second] = shown.answers;
+  const sure = (a: TestShown["answers"][number]) =>
+    `${confidenceLabel(a.confidence ?? "under-50")} sure${a.assisted ? ", with help" : ""}`;
+  const missed = (a: TestShown["answers"][number]) =>
+    a.verdict === "unknown" ? "did not know" : "missed";
+  if (first === undefined) return "Not asked";
+  if (first.verdict !== "correct") return capital(missed(first));
+  if (second === undefined) {
+    return shown.passed
+      ? `Right, ${sure(first)}`
+      : `Right once, ${sure(first)}; its second question was not asked`;
+  }
+  if (second.verdict === "correct") {
+    // "Right twice, 50% and 75% sure", as piece 16 has it.
+    return first.assisted || second.assisted
+      ? `Right twice, ${sure(first)} and ${sure(second)}`
+      : `Right twice, ${confidenceLabel(first.confidence ?? "under-50")} and ${sure(second)}`;
+  }
+  return `Right once, ${sure(first)}, then ${missed(second)}`;
+}
+
+export function testResultCard(
+  plan: Plan,
+  item: Pick<TestResultItem, "objectives" | "skipped">,
+): TestResultCard {
+  const shown = new Map(item.objectives.map((o) => [o.objective, o]));
+  const passed = plan.objectives
+    .map((o) => o.id)
+    .filter((id) => shown.get(id)?.passed === true);
+  const total = plan.objectives.length;
+  const got = passed.length;
+  const all = got === total;
+  const says = {
+    text: all
+      ? total === 1
+        ? "Passed"
+        : `All ${word(total)} passed`
+      : got === 0
+        ? "None passed"
+        : `${capital(word(got))} of ${word(total)} passed`,
+    className: all ? ("ok" as const) : ("dk" as const),
+  };
+  const objectives = plan.objectives.map((o): ResultRow => {
+    const row = shown.get(o.id);
+    const ok = row?.passed === true;
+    return {
+      key: o.id,
+      text: o.statement,
+      word: ok
+        ? { text: "Passed", className: "pass" }
+        : { text: "Not passed", className: "miss" },
+      why: row === undefined ? "Not asked" : testWhy(row),
+    };
+  });
+  const statement = new Map(plan.objectives.map((o) => [o.id, o.statement]));
+  const segments =
+    got === 0
+      ? null
+      : skipping(plan, passed).map((left, i): ResultRow => {
+          const text = `${i + 1}. ${plan.segments[i]?.title ?? ""}`;
+          if (left.teaches.length === 0) {
+            return {
+              key: String(i),
+              text,
+              word: { text: "Skipped", className: "skip" },
+            };
+          }
+          return left.leftOut.length === 0
+            ? { key: String(i), text, word: { text: "Taught", className: "" } }
+            : {
+                key: String(i),
+                text,
+                word: { text: "Taught in part", className: "" },
+                why: `Only: ${left.teaches.map((id) => statement.get(id) ?? id).join(" ")}`,
+              };
+        });
+  const card: TestResultCard = {
+    says,
+    objectives,
+    segments,
+    segmentsSay: all
+      ? "If you finish the unit here"
+      : "If you skip what you passed",
+    skip: all ? "Finish the unit" : "Skip what I passed",
+    whole:
+      got === 0
+        ? "Start the unit"
+        : all
+          ? "Teach me the unit anyway"
+          : "Teach me the whole unit",
+  };
+  const { skipped } = item;
+  if (skipped === undefined) return card;
+  if (skipped.length === 0)
+    return { ...card, answered: "Teaching the whole unit." };
+  const first = firstTaught(plan, skipped);
+  if (first === undefined)
+    return { ...card, answered: "Finished without teaching." };
+  const part = (skipping(plan, skipped)[first]?.leftOut.length ?? 0) > 0;
+  return {
+    ...card,
+    answered: "Skipping what you passed.",
+    startsAt:
+      `Teaching starts at segment ${first + 1}` +
+      (part ? ", which leaves out what you passed in it" : "") +
+      ". The outline, at the top right, shows what is skipped.",
+  };
+}
+
+/** The unit was finished by skipping what the test passed, every objective of it. */
+export function finishedByTest(timeline: Timeline): boolean {
+  const card = timeline.items.findLast((i) => i.kind === "test_result");
+  const { plan } = timeline;
+  return (
+    card?.kind === "test_result" &&
+    plan !== null &&
+    card.skipped !== undefined &&
+    card.skipped.length > 0 &&
+    firstTaught(plan, card.skipped) === undefined
+  );
 }
 
 // --- The closing card ----------------------------------------------------------

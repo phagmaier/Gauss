@@ -332,6 +332,105 @@ test("in a review, unit 2's scripted tutor asks about unit 1's objective, number
   });
 });
 
+test(
+  "testing out of unit 1, the scripted tutor asks each objective with no feedback between, says what the test showed, and teaching starts at the segment not passed",
+  async () => {
+    const { dataRoot, units } = setUp();
+    await approvedCourse(dataRoot);
+    const opened = await units.open(COURSE, "limits", { testOut: true });
+    if (!opened.ok) throw new Error(opened.error);
+    const chat = opened.chat;
+    await chat.settled();
+    const posted = () => {
+      const event = chat.events().findLast((e) => e.type === "question");
+      if (event?.type !== "question") throw new Error("No question posted.");
+      return event.question;
+    };
+
+    const first = posted();
+    if (first.kind !== "choice") throw new Error("Not a choice question.");
+    expect(first).toMatchObject({
+      number: 1,
+      prompt: expect.stringContaining('Choice question 1 on "limits-idea"'),
+      assessment: { of: 2, objective: 1 },
+    });
+    expect(
+      await chat.answer({
+        kind: "choice",
+        questionId: first.id,
+        choice: CHOICE_LETTERS[first.choices.indexOf("$2$")] ?? "A",
+        confidence: "90",
+      }),
+    ).toEqual({ ok: true });
+    await chat.settled();
+    // No feedback: the grade's turn posts the next question.
+    expect(
+      chat
+        .events()
+        .some((e) => e.type === "tutor_text" && e.text.includes("feedback")),
+    ).toBe(false);
+    const second = posted();
+    expect(second).toMatchObject({
+      number: 2,
+      kind: "written",
+      assessment: { of: 2, objective: 2 },
+    });
+    expect(
+      await chat.answer({
+        kind: "written",
+        questionId: second.id,
+        text: "This is wrong, I think.",
+        confidence: "50",
+      }),
+    ).toEqual({ ok: true });
+    await chat.settled();
+
+    expect(chat.events().slice(-3)).toEqual([
+      {
+        type: "tutor_text",
+        text: "**Scripted word on the test:** you passed 1 of its 2 objectives. The card below says what that would skip; you choose.",
+      },
+      { type: "turn_end", outcome: "done" },
+      {
+        type: "test_result",
+        objectives: [
+          {
+            objective: "limits-idea",
+            passed: true,
+            answers: [
+              { verdict: "correct", confidence: "90", assisted: false },
+            ],
+          },
+          {
+            objective: "limits-proof",
+            passed: false,
+            answers: [
+              { verdict: "incorrect", confidence: "50", assisted: false },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(await chat.skipTested()).toEqual({ ok: true });
+    await chat.settled();
+    expect((await dataRoot.readState(COURSE)).units.limits).toMatchObject({
+      segment: 1,
+      phase: "discuss",
+      testOut: { stage: "skip", passed: ["limits-idea"] },
+    });
+    expect(chat.events()).toContainEqual(
+      expect.objectContaining({
+        type: "tutor_text",
+        text: expect.stringContaining(
+          '**Scripted teaching.** Unit 1 of 2, "Limits"; segment 2 of 2, "Why it holds", on "limits-proof"',
+        ),
+      }),
+    );
+  },
+  WHOLE_UNIT_MS,
+);
+
 test("question history is not interpreted as a scripted tutor instruction", async () => {
   const { dataRoot, units } = setUp();
   await approvedCourse(dataRoot);

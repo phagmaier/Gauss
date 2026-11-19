@@ -113,3 +113,42 @@ export const Plan = z
     });
   });
 export type Plan = z.infer<typeof Plan>;
+
+/**
+ * What a segment of the plan is once the learner skips what the test before
+ * the unit passed (docs/decisions.md, "Mastery loop", "Testing out"): the
+ * objectives it still teaches and checks, and those it leaves out. A segment
+ * that teaches none is skipped.
+ */
+export interface SegmentLeft {
+  teaches: string[];
+  leftOut: string[];
+}
+
+/** Each of the plan's segments, in order, once the objectives `passed` are skipped. */
+export function skipping(
+  plan: Pick<Plan, "segments">,
+  passed: readonly string[],
+): SegmentLeft[] {
+  const skipped = new Set(passed);
+  return plan.segments.map((segment) => ({
+    teaches: segment.objectives.filter((id) => !skipped.has(id)),
+    leftOut: segment.objectives.filter((id) => skipped.has(id)),
+  }));
+}
+
+/**
+ * The index of the first segment taught from `from` on, the segments that
+ * skipping `passed` leaves nothing to teach passed over; undefined when
+ * none is left.
+ */
+export function firstTaught(
+  plan: Pick<Plan, "segments">,
+  passed: readonly string[],
+  from = 0,
+): number | undefined {
+  const at = skipping(plan, passed).findIndex(
+    (s, i) => i >= from && s.teaches.length > 0,
+  );
+  return at === -1 ? undefined : at;
+}

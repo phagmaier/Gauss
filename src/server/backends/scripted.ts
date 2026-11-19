@@ -29,8 +29,11 @@
 //   task 2.16a), opens the detour a miss starts with a reply that repeats
 //   where an "I don't know" got stuck (the learner then asks for another
 //   question, task 2.20), posts a question when the header allows one, in a
-//   check or a review (task 5.4), teaches in the teach phase, and otherwise
-//   replies in text, which after a fresh start says where the unit stands.
+//   check or an assessment (task 5.4), teaches in the teach phase, and
+//   otherwise replies in text, which after a fresh start says where the unit
+//   stands. In the test before a unit (task 5.6), the turn with an answer's
+//   grade posts the next question with no feedback, and the turn that ends
+//   the test says in a line what it showed.
 //   Its questions on an objective are numbered past those the header lists
 //   as asked before, so none repeats one, whichever unit's thread asked it.
 //   A choice question asks for a sum, and the right choice is that sum; the
@@ -317,25 +320,38 @@ function teaching(
       },
     ];
   }
-  if (answered !== undefined) {
-    return [{ text: `Scripted feedback on question ${answered}.` }];
-  }
-  // A question is allowed: after "ready", after feedback, or in a reply.
+  // A question is allowed: after "ready", after feedback, in a reply, or in
+  // the test with the grade of the answer before.
   const objective = /a question on "([^"]+)" with ask_question/.exec(
     header,
   )?.[1];
+  if (header.includes("What it showed: ")) {
+    const passed = (header.match(/" passed \(/g) ?? []).length;
+    const asked = (header.match(/" (not )?passed \(/g) ?? []).length;
+    return [
+      {
+        text:
+          `**Scripted word on the test:** you passed ${passed} of its ${asked} ` +
+          "objectives. The card below says what that would skip; you choose.",
+      },
+    ];
+  }
+  if (answered !== undefined && objective === undefined) {
+    return [{ text: `Scripted feedback on question ${answered}.` }];
+  }
   if (objective !== undefined) {
     const number = askedBefore(history, objective) + 1;
     if (kinds === "code" && !objective.endsWith(WRITTEN)) {
       return codeQuestion(objective, number, cwd);
     }
-    return [
-      { text: "Scripted lead-in to a question." },
-      {
-        call: "ask_question",
-        input: question(objective, number, kinds === "math"),
-      },
-    ];
+    const posting: FakeStep = {
+      call: "ask_question",
+      input: question(objective, number, kinds === "math"),
+    };
+    // A test's question comes with no lead-in.
+    return header.includes("no lead-in")
+      ? [posting]
+      : [{ text: "Scripted lead-in to a question." }, posting];
   }
   if (/(^|\s)\/artifact\b/.test(body)) {
     return [...showArtifact(), { text: "Scripted: that was the aid." }];

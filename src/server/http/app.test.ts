@@ -1197,6 +1197,79 @@ test("review's card is answered through its routes: Start asks for the first que
   expect(setup.backend.received).toHaveLength(1);
 });
 
+test("testing out goes through its routes: test-out opens a unit not started with its test, and is refused once it has started; the result card's steps are refused when no result waits", async () => {
+  const setup = setUp([
+    [{ call: "ask_question", input: QUESTION }],
+    [
+      {
+        call: "ask_question",
+        input: { ...QUESTION, objective: "matrix-columns" },
+      },
+    ],
+    [{ text: "You have the first; the second is where I would teach." }],
+    [{ text: "Matrices, then." }],
+  ]);
+  await approvedCourse();
+  const chat = () => setup.units.get(COURSE, "vectors");
+  const answerLast = async (choice: "A" | "B") => {
+    const posted = chat()
+      ?.events()
+      .findLast((e) => e.type === "question");
+    if (posted?.type !== "question") throw new Error("No question.");
+    const answered = await post(setup.app, `${UNIT}/answers`, {
+      kind: "choice",
+      questionId: posted.question.id,
+      choice,
+      confidence: "90",
+    });
+    expect(answered.status).toBe(202);
+    await settle(setup);
+  };
+  expect((await post(setup.app, `${UNIT}/test-out/skip`)).status).toBe(404);
+
+  const opened = await post(setup.app, `${UNIT}/test-out`);
+  expect(opened.status).toBe(200);
+  expect(await opened.json()).toEqual({
+    ok: true,
+    chatId: chat()?.id,
+    last: -1,
+  });
+  await settle(setup);
+  expect(await unitState()).toMatchObject({
+    assessment: { mode: "test-out", stage: "on" },
+    openQuestion: { objective: "basis-image" },
+  });
+  await answerLast("A");
+  await answerLast("B");
+  expect(await unitState()).toEqual({
+    segment: 0,
+    phase: "teach",
+    testOut: { stage: "result" },
+  });
+
+  const skipped = await post(setup.app, `${UNIT}/test-out/skip`);
+  expect(skipped.status).toBe(202);
+  await settle(setup);
+  expect(await unitState()).toEqual({
+    segment: 1,
+    phase: "discuss",
+    testOut: { stage: "skip", passed: ["basis-image"] },
+  });
+  for (const route of ["test-out/skip", "test-out/whole"]) {
+    const refused = await post(setup.app, `${UNIT}/${route}`);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({
+      error: "No test result waits for an answer.",
+    });
+  }
+  const again = await post(setup.app, `${UNIT}/test-out`);
+  expect(again.status).toBe(409);
+  expect(await again.json()).toEqual({
+    error: "This unit has started, so it can no longer be tested out of.",
+  });
+  expect(setup.backend.received).toHaveLength(4);
+});
+
 test("at the unit's end, going over again and finishing without the rest go through their routes", async () => {
   const setup = setUp([
     [{ text: "A map is fixed by a basis." }],

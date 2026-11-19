@@ -441,12 +441,15 @@ export function postedQuestion({
 
 /**
  * Where a question of an assessment stands in it, for its card's head
- * (piece 15): its `number` is its objective's place among the `of` it asks
- * about.
+ * (piece 15): in a review or a gate its `number` is its objective's place
+ * among the `of` it asks about; in a test (piece 16) the number counts the
+ * test's questions, and `objective` gives its objective's place.
  */
 export const AssessmentHead = z.object({
   of: z.number().int().positive(),
-  /** The second question on its objective, after a miss. */
+  /** In a test: its objective's place among the `of`, from 1. */
+  objective: z.number().int().positive().optional(),
+  /** The second question on its objective: after a miss, or in a test after a correct answer that does not pass alone. */
   second: z.literal(true).optional(),
   /** The unit whose objective it is, when that is another unit. */
   from: z

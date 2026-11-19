@@ -1733,3 +1733,48 @@ button.dn:hover {
   margin-left: auto;
   text-align: right;
 }
+
+/* ---- Testing out, settled in piece 16 ---- */
+/* "Test out" under the card's Start */
+.cn-go {
+  display: grid;
+  justify-items: center;
+  gap: 0.45em;
+}
+.cn-ask {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--surface0);
+  margin-top: 0.7em;
+  padding-top: 0.7em;
+  font-size: 0.9em;
+  color: var(--soft);
+}
+/* what a test is, said before it starts: a sentence too long for the buttons' line */
+.confirm .says {
+  flex: 1 1 100%;
+}
+.confirm .says > span {
+  display: block;
+  max-width: 34em;
+}
+.ue-rows .st.skip {
+  color: var(--faint);
+}
+/* a segment the test let the learner skip: in the top line's ticks and in the outline */
+.ticks .skip {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--surface1);
+}
+.uo-list .skip .uo-t {
+  text-decoration: line-through;
+  text-decoration-color: var(--overlay0);
+}
+.uo-list .skip i {
+  border-style: dashed;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside the diagram */
+.uo-list small {
+  display: block;
+  color: var(--faint);
+  font-weight: 400;
+}

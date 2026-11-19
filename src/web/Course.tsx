@@ -5,11 +5,13 @@
 // objective with the answers behind it (task 2.26). The card at the top
 // leads to the unit in progress, or else to the next one. Any unit can be
 // started; one whose prerequisites are not finished asks once first (task
-// 2.12). Notes join in stage 5 and sources in stage 4.
+// 2.12). "Test out" beside Start, and under the card's "Start unit N", asks
+// once, saying what the test is, then opens the unit with its test (task
+// 5.6, piece 16). Notes join in stage 5 and sources in stage 4.
 
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { StoredUnit } from "../shared/curriculum.ts";
-import { IntakeStarted } from "../shared/events.ts";
+import { IntakeStarted, UnitOpened } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
 import { getJson, postFor } from "./api.ts";
 import { Diagram, UnitList } from "./Curriculum.tsx";
@@ -32,8 +34,11 @@ export function Course(props: { courseId: string }) {
   const [problem, setProblem] = useState<string>();
   const [diagramOpen, setDiagramOpen] = useState(false);
   const [selected, setSelected] = useState<string>();
-  /** The unit whose Start asks first, its prerequisites not finished. */
-  const [asking, setAsking] = useState<string>();
+  /**
+   * The unit that asks before it opens: Start, its prerequisites not
+   * finished, or "Test out", from its row or from the card.
+   */
+  const [asking, setAsking] = useState<Asking>();
   const closeDiagram = useCallback(() => {
     setDiagramOpen(false);
     setSelected(undefined);
@@ -65,6 +70,64 @@ export function Course(props: { courseId: string }) {
   const toUnit = (unit: StoredUnit) => navigate(paths.unit(courseId, unit.id));
   const leadsTo = stored == null ? null : lead(stored);
 
+  /** Opens the unit with its test, then follows it to its session. */
+  async function testOut(unit: StoredUnit) {
+    const answer = await postFor(
+      `/api/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unit.id)}/test-out`,
+      UnitOpened,
+    );
+    setAsking(undefined);
+    if (answer.ok) toUnit(unit);
+    else setProblem(answer.error);
+  }
+
+  /** What a unit asks before it opens: Start anyway, or Start the test. */
+  function confirm(course: CourseWithProgress, unit: StoredUnit) {
+    const waits = unfinishedPrerequisites(course, unit);
+    const builds =
+      waits.length === 0
+        ? ""
+        : `This builds on ${unitNumbers(waits)}, not finished yet. `;
+    return asking?.kind === "test" ? (
+      <span className="confirm">
+        <span className="says">
+          <span>
+            {builds}
+            {TEST_IS}
+          </span>
+        </span>
+        <button
+          type="button"
+          className="textbtn"
+          onClick={() => void testOut(unit)}
+        >
+          Start the test
+        </button>
+        <button
+          type="button"
+          className="textbtn"
+          onClick={() => setAsking(undefined)}
+        >
+          Cancel
+        </button>
+      </span>
+    ) : (
+      <span className="confirm">
+        <span>{builds.trimEnd()}</span>
+        <button type="button" className="textbtn" onClick={() => toUnit(unit)}>
+          Start anyway
+        </button>
+        <button
+          type="button"
+          className="textbtn"
+          onClick={() => setAsking(undefined)}
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
+
   /** What the learner can do with a unit of an approved course, under its goal. */
   function unitAction(course: CourseWithProgress, unit: StoredUnit) {
     switch (progressOf(course.progress, unit.id).status) {
@@ -75,18 +138,27 @@ export function Course(props: { courseId: string }) {
           </Link>
         );
       case "not-started":
-        return asking === unit.id ? null : (
-          <button
-            type="button"
-            className="textbtn"
-            onClick={() =>
-              unfinishedPrerequisites(course, unit).length === 0
-                ? toUnit(unit)
-                : setAsking(unit.id)
-            }
-          >
-            Start
-          </button>
+        return asking?.unit === unit.id && asking.card !== true ? null : (
+          <>
+            <button
+              type="button"
+              className="textbtn"
+              onClick={() =>
+                unfinishedPrerequisites(course, unit).length === 0
+                  ? toUnit(unit)
+                  : setAsking({ unit: unit.id, kind: "start" })
+              }
+            >
+              Start
+            </button>
+            <button
+              type="button"
+              className="textbtn"
+              onClick={() => setAsking({ unit: unit.id, kind: "test" })}
+            >
+              Test out
+            </button>
+          </>
         );
       default:
         // A finished unit opens to how it finished; its notes join in stage 5.
@@ -130,6 +202,16 @@ export function Course(props: { courseId: string }) {
                 <LeadCard
                   lead={leadsTo}
                   onGo={toUnit}
+                  onTestOut={(unit) =>
+                    setAsking({ unit: unit.id, kind: "test", card: true })
+                  }
+                  asking={
+                    leadsTo.kind !== "in-progress" &&
+                    asking?.card === true &&
+                    asking.unit === leadsTo.unit.id
+                      ? confirm(stored, leadsTo.unit)
+                      : null
+                  }
                   unitPath={(unit) => paths.unit(courseId, unit.id)}
                 />
               )}
@@ -165,31 +247,9 @@ export function Course(props: { courseId: string }) {
                       mark={(unit) => unitMark(stored, unit)}
                       action={(unit) => unitAction(stored, unit)}
                       after={(unit) =>
-                        asking === unit.id ? (
-                          <span className="confirm">
-                            <span>
-                              This builds on{" "}
-                              {unitNumbers(
-                                unfinishedPrerequisites(stored, unit),
-                              )}
-                              , not finished yet.
-                            </span>
-                            <button
-                              type="button"
-                              className="textbtn"
-                              onClick={() => toUnit(unit)}
-                            >
-                              Start anyway
-                            </button>
-                            <button
-                              type="button"
-                              className="textbtn"
-                              onClick={() => setAsking(undefined)}
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : null
+                        asking?.unit === unit.id && asking.card !== true
+                          ? confirm(stored, unit)
+                          : null
                       }
                     />
                   )}
@@ -227,6 +287,19 @@ export function Course(props: { courseId: string }) {
   );
 }
 
+/** A unit that asks before it opens, from its row or, for "Test out", from the card. */
+interface Asking {
+  unit: string;
+  kind: "start" | "test";
+  card?: boolean;
+}
+
+/** What "Test out" says before the test starts (piece 16). */
+const TEST_IS =
+  "A test on this unit's objectives before anything is taught, with no " +
+  "explanations until it ends. It skips nothing by itself: you see what " +
+  "you passed, and then you choose.";
+
 function whereItStands(stored: CourseWithProgress): string {
   const { curriculum } = stored;
   if (curriculum === null) return "No curriculum was proposed.";
@@ -244,6 +317,10 @@ function whereItStands(stored: CourseWithProgress): string {
 function LeadCard(props: {
   lead: Lead;
   onGo(unit: StoredUnit): void;
+  /** "Test out", under "Start unit N" of a unit not started. */
+  onTestOut(unit: StoredUnit): void;
+  /** What "Test out" asks, under the card, while it asks. */
+  asking: ReactNode;
   unitPath(unit: StoredUnit): string;
 }) {
   const { lead } = props;
@@ -276,13 +353,27 @@ function LeadCard(props: {
           </div>
         )}
       </div>
-      <button
-        type="button"
-        className="btn"
-        onClick={() => props.onGo(lead.unit)}
-      >
-        {now ? "Continue" : `Start unit ${lead.number}`}
-      </button>
+      <div className="cn-go">
+        <button
+          type="button"
+          className="btn"
+          onClick={() => props.onGo(lead.unit)}
+        >
+          {now ? "Continue" : `Start unit ${lead.number}`}
+        </button>
+        {now || props.asking !== null ? null : (
+          <button
+            type="button"
+            className="textbtn"
+            onClick={() => props.onTestOut(lead.unit)}
+          >
+            Test out
+          </button>
+        )}
+      </div>
+      {props.asking === null ? null : (
+        <div className="cn-ask">{props.asking}</div>
+      )}
       {now
         ? lead.others.map((other) => (
             <div key={other.unit.id} className="cn-also">

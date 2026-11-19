@@ -125,6 +125,8 @@ version: a field added later must be optional.
   judge), an open detour, an assessment offered or under way (beside the
   phase; while it is under way the open question and the detour are its
   own), whether the unit's gate has been offered (`gated`, kept until the
+  unit finishes), the test before the unit (`testOut`: due, its result
+  waiting, or the objectives the learner chose to skip, kept until the
   unit finishes), the extra segment that goes over objectives again, the
   tutor's session id, and the tutor's request to install packages while
   it waits for the learner. Completed package cards are
@@ -189,9 +191,10 @@ also before it reaches the backend.
   keeps the position and evidence and writes each change before the page
   hears of it, and `engine/unit-agents.ts`, which runs the tutor, the grader
   and the help judge. Opening a unit not in progress plans it if needed,
-  writes its position (segment 1, teach) and sends the teaching turn;
-  opening one in progress picks it up where `state.json` has it. Either can
-  first offer review, which holds the teaching turn ("Assessments" below).
+  writes its position (segment 1, teach) and sends the teaching turn, or
+  opened for its test, starts the test in its place; opening one in
+  progress picks it up where `state.json` has it. Either can first offer
+  review, which holds the teaching turn or the test ("Assessments" below).
   Opening a unit marks it opened in `course.json`. A unit reopened in teach
   is taught again.
 - **Kept sessions and resume.** A tutor's session and an intake's are kept
@@ -237,7 +240,7 @@ another question. The check's next question is the detour's re-check.
 | detour to check | the learner presses "Ready for another question" | the engine asks the tutor for the next question |
 | check to closed | the feedback on the answer that leaves every objective done ends | automatic, also when the feedback is stopped or fails |
 | discuss, check or detour to closed | the learner moves on | an override of the segment's objectives; an open question is withdrawn |
-| closed to the next segment's teach | the learner starts it | none after the unit's last segment |
+| closed to the next segment's teach | the learner starts it | none after the unit's last segment; segments the test let the learner skip are passed over |
 | last segment closed to the unit's end | automatic | the closing card when objectives did not pass; when every one passed, the gate's card ("Assessments") |
 | unit's end to one more segment | the learner goes over the objectives not passed | a segment after the plan's last, on those objectives, kept in the position |
 | unit's end to the gate | the learner moves on without them | an override of the objectives not passed; the gate's card |
@@ -332,11 +335,11 @@ The rules:
   progress is told the outcome in its next header (`disputeNote` in
   `unit-turns.ts`).
 - **The learner's steps wait for the tutor**: "ready", moving on, the next
-  segment, "another question", Start fresh, an assessment's Start and Skip
-  and the closing card's steps are refused while the tutor is writing;
-  Stop is always there. The unit's own steps also wait for an assessment
-  offered or under way. Answers and
-  messages are taken at any time.
+  segment, "another question", Start fresh, an assessment's Start and Skip,
+  the test's result card's steps and the closing card's steps are refused
+  while the tutor is writing; Stop is always there. The unit's own steps
+  also wait for an assessment offered or under way, and for the test's
+  result card. Answers and messages are taken at any time.
 - **Moving on sends the tutor nothing.** The next turn's header says the
   learner moved on, and which question was withdrawn.
 - **A finished unit is not started again.** Opening one shows it finished;
@@ -403,8 +406,8 @@ tab.
 
 An assessment is a run of questions without teaching, asked by the unit's
 tutor in the unit's thread over objectives the engine picks (`decisions.md`,
-"Mastery loop"). Review opens a sitting and the unit gate closes a unit;
-testing out of a unit (stage 5) is to come on the same parts.
+"Mastery loop"). Review opens a sitting, the unit gate closes a unit, and
+the test before a unit lets the learner skip what they know.
 
 - **Kept in the position**, beside the phase, which it leaves alone
   (`AssessmentRun` in `state.ts`): its mode, its objectives with their
@@ -421,13 +424,14 @@ testing out of a unit (stage 5) is to come on the same parts.
   objective is told to that unit's chat if it is open, and a dispute of it
   to both chats (section 6).
 - **Its rules** (`engine/assessment-rules.ts`): each objective gets one
-  question, in order; `ask_question` is refused on any other objective. A
-  correct answer gets a feedback turn, then the next objective's question
-  in a turn of its own. A miss opens a detour as in a check; when the
-  learner ends it, the objective is asked once more, and after that the
-  assessment moves on whatever the answer: a second miss has its detour,
-  and no third question follows. A question's number is its objective's
-  place in the assessment.
+  question, in order; `ask_question` is refused on any other objective. In
+  a review and a gate, a correct answer gets a feedback turn, then the
+  next objective's question in a turn of its own. A miss opens a detour as
+  in a check; when the learner ends it, the objective is asked once more,
+  and after that the assessment moves on whatever the answer: a second
+  miss has its detour, and no third question follows. A question's number
+  is its objective's place in the assessment. The test's rules are its
+  own (below).
 - **Review is offered on a card** when a unit not finished is opened in a
   new sitting (the chat is new, or `quiet()` in `engine/transcript.ts`:
   nothing has happened for `SESSION_GAP_MS`), and nothing waits on the
@@ -472,6 +476,36 @@ testing out of a unit (stage 5) is to come on the same parts.
   not what the learner moved on from before it, and the unit finishes
   when that is nothing. `gated` in the position keeps the gate from being
   offered again, across going over objectives again and restarts.
+- **The test before a unit** is chosen on the course view for a unit not
+  started (`POST .../test-out`, refused for one started or finished). The
+  unit opens and is planned as any unit is; its position is written with
+  the test due, which starts in place of the teaching turn, after a review
+  that is due, on every objective of the plan in its order. It has no
+  feedback turn and no detour: the turn that brings a grade asks for the
+  next question, numbered on from the test's questions, whose head names
+  its objective's place. A correct answer that passes its objective alone
+  (at 90% or 100%, without help) ends its questions; any other correct
+  answer gets a second question at once; a miss ends them, and as the
+  status rules have it counts as no miss afterwards. When it ends, or the
+  learner presses "Start learning instead" (Skip, refused while an answer
+  is kept for grading), the tutor is asked to say in a few sentences what
+  it showed, given each objective's outcome, and once that turn ends the
+  result card is shown (`test_result`): each objective passed or not, with
+  its answers. The position keeps the result waiting, so a restart shows
+  the card again (and asks the tutor again first if the card was never
+  shown); a dispute or another unit's answer shows it again as it stands.
+  Nothing is skipped until the learner answers it (`test-out/skip`,
+  `test-out/whole`): skipping fixes the objectives passed then in the
+  position, and teaching starts at the first segment with one not passed
+  (`skipping` in `src/shared/plan.ts`). A segment whose objectives all
+  passed is skipped, now and when the next segment starts, and one with a
+  passed objective teaches and checks only the other (`segmentOf` in
+  `check-rules.ts`), its teaching turn told what was left out; the unit's
+  last segment is the last one taught. With every objective passed,
+  skipping finishes the unit, with no gate. The other step teaches the
+  whole unit as planned, whose checks ask a passed objective once. What
+  passed stays passed either way, and the gate leaves out a pass resting
+  on a test answer.
 
 ## 5. Teaching tools
 
@@ -795,8 +829,10 @@ no automated tests.
   not started whose prerequisites are finished); the unit list with each
   unit's status (under a finished unit's word, how many of its objectives
   are retained, in teal, and how many slipping, in peach, if any), Start
-  (which asks first when a prerequisite is not finished) or Continue; the
-  diagram in the side pane; "What I know".
+  (which asks first when a prerequisite is not finished) or Continue, and
+  beside Start, and under the card's "Start unit N", "Test out", which
+  asks once, saying what the test is, then opens the unit with its test;
+  the diagram in the side pane; "What I know".
 - **What I know** (`/courses/<id>/what-i-know`): each started unit's
   objectives with their status ("Retained" in teal, "Slipping" in peach)
   and, under each, its evidence in log order (question, answer,
@@ -843,7 +879,20 @@ no automated tests.
   runs the top line reads "Unit gate". The closing card after it has a
   section, "Also asked, from other units", of those objectives with their
   units and statuses. Only the closing card standing at the thread's end,
-  with no phase or assessment after it, offers its steps.
+  with no phase or assessment after it, offers its steps. The test (piece
+  16) is a marker, then question cards whose head reads "Objective 2 of 5",
+  and "second question" after an unsure correct answer, with "Start
+  learning instead" as the control; the top line reads "Testing out" with
+  empty ticks while it runs and its result waits. Its result card has a
+  row per objective with why ("Right, 90% sure", "Right once, 50% sure,
+  then missed"), then what skipping would do to each segment (skipped,
+  taught in part with what it still teaches, taught), and "Teach me the
+  whole unit" and "Skip what I passed" ("Finish the unit" when everything
+  passed; "Start the unit" alone when nothing did); once answered it is
+  one line, with where teaching starts. Skipped segments stay in the
+  outline, struck through with "Skipped: passed in the test", one taught
+  in part says what it still teaches, and the top line's ticks for them
+  are hollow.
   The top line shows the unit's position and its outline has Start fresh.
   A math question is answered in a one-line field whose expression is shown as
   math beneath it as it is typed (piece 2). A code question's card names
@@ -901,8 +950,11 @@ mainly `events.ts`, `library.ts` and `what-i-know.ts`):
   `packages/install`, `packages/not-now` and `packages/retry-saving`
   (with the request's id),
   `override`, `next-segment`, `go-over-again`, `finish`, `start-fresh`,
-  `interrupt`, `assessment/start` and `assessment/skip`. A unit not opened
-  since the server started answers 404 on all but `open`.
+  `interrupt`, `assessment/start` and `assessment/skip` (which is the
+  test's "Start learning instead"), `test-out/skip` and `test-out/whole`.
+  `test-out` opens a unit not started with its test, in place of `open`.
+  A unit not opened since the server started answers 404 on all but
+  `open` and `test-out`.
 - An event stream replays its chat's log with ids `<log id>.<index>`, so a
   page that reconnects gets only what it missed. It starts with `hello`,
   outside the log: the chat's id and the index of the log's last event,

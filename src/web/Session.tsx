@@ -9,7 +9,10 @@
 // artifact the tutor shows opens in the side pane, and its reference in the
 // thread opens and closes it (05-side-pane.html). Review is offered on a card
 // in the thread, which becomes a marker once started or skipped, and its
-// questions carry their place in it (15-review.html).
+// questions carry their place in it (15-review.html). The test before a unit
+// is a marker and its questions, then the tutor's word on it and its result
+// card, whose steps skip what passed or teach the whole unit; the outline
+// and the top line show the segments skipped (16-test-out-and-gate.html).
 //
 // Opening the view opens the unit on the server, which starts it or picks it
 // up, then follows its event stream. A unit chat lives in the server's
@@ -51,17 +54,21 @@ import {
   closingCard,
   detourSays,
   divided,
+  finishedByTest,
   helpNotice,
   judgmentSays,
   lastCard,
   nextStep,
+  type OutlineSegment,
   openQuestion,
   outline,
   type Placement,
   phaseMarker,
   placement,
+  type ResultRow,
   SKIP_GATE_ASKS,
   skipLabel,
+  testResultCard,
   whereInUnit,
 } from "./session.ts";
 import {
@@ -72,6 +79,7 @@ import {
   type Item,
   reduce,
   standingCard,
+  type TestResultItem,
   type Timeline,
   type UnitEndItem,
 } from "./timeline.ts";
@@ -236,12 +244,17 @@ export function Session(props: { courseId: string; unitId: string }) {
           timeline.position,
           timeline.finished,
           timeline.assessment,
+          timeline.testWaits,
         );
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
   // The closing card whose steps can be taken, if one stands.
   const standing = standingCard(timeline.items);
+  // The test's result card whose steps can be taken, if it waits.
+  const result = timeline.testWaits
+    ? timeline.items.findLast((i) => i.kind === "test_result")
+    : undefined;
   const asked = openQuestion(timeline);
   // Hidden until shown again, or until another question is posted (task 3.21).
   const hidden = asked !== undefined && asked.key === hiddenKey;
@@ -379,6 +392,9 @@ export function Session(props: { courseId: string; unitId: string }) {
                       }
                       onStartAssessment={() => act("assessment/start")}
                       onSkipAssessment={() => act("assessment/skip")}
+                      answers={item === result}
+                      onSkipTested={() => act("test-out/skip")}
+                      onTeachWhole={() => act("test-out/whole")}
                       confirmingSkip={confirming === "skip-gate"}
                       onConfirmSkip={(asking) =>
                         setConfirming(asking ? "skip-gate" : undefined)
@@ -587,7 +603,7 @@ function Outline(props: {
   courseTitle: string;
   /** Unknown until the course's details are loaded. */
   place: Placement | undefined;
-  segments: { title: string; state: string }[];
+  segments: OutlineSegment[];
   canStartFresh: boolean;
   /** The tutor is writing, so starting fresh waits. */
   busy: boolean;
@@ -620,7 +636,14 @@ function Outline(props: {
             aria-current={segment.state === "now" ? "step" : undefined}
           >
             <i />
-            {segment.title}
+            <span>
+              <span className="uo-t">{segment.title}</span>
+              {segment.note === undefined ? null : (
+                <small>
+                  <InlineProse text={segment.note} />
+                </small>
+              )}
+            </span>
           </li>
         ))}
       </ol>
@@ -704,6 +727,10 @@ function ThreadItem(props: {
   /** "Skip the gate" asks before it skips. */
   confirmingSkip: boolean;
   onConfirmSkip(asking: boolean): void;
+  /** This is the test's result card that waits, whose steps can be taken. */
+  answers: boolean;
+  onSkipTested(): void;
+  onTeachWhole(): void;
   onCourse(): void;
   onNext: (() => void) | undefined;
 }) {
@@ -803,6 +830,18 @@ function ThreadItem(props: {
         </div>
       );
     }
+    case "test_result":
+      return props.plan === null ? null : (
+        <TestResult
+          item={item}
+          plan={props.plan}
+          place={props.place}
+          live={props.answers}
+          busy={props.busy}
+          onSkip={props.onSkipTested}
+          onWhole={props.onTeachWhole}
+        />
+      );
     case "assessment_end": {
       const marker = assessmentEndMarker(item);
       return (
@@ -1046,6 +1085,123 @@ function ClosingCard(props: {
       )}
       {foot}
     </div>
+  );
+}
+
+/**
+ * The test's result card (piece 16): a row per objective with why, then
+ * what skipping would do to each segment, and the two steps. Once answered,
+ * one line, and where teaching starts.
+ */
+function TestResult(props: {
+  item: TestResultItem;
+  plan: Plan;
+  place: Placement | undefined;
+  /** It waits, and its steps can be taken. */
+  live: boolean;
+  busy: boolean;
+  onSkip(): void;
+  onWhole(): void;
+}) {
+  const { place } = props;
+  const card = testResultCard(props.plan, props.item);
+  const title =
+    place === undefined ? "" : `Unit ${place.number}: ${place.title}`;
+  const head = (
+    <div className="q-count">
+      <b>Test finished</b>
+      <span className={card.says.className}>{card.says.text}</span>
+    </div>
+  );
+  if (card.answered !== undefined) {
+    return (
+      <>
+        <div className="qa-card done">
+          {head}
+          <div className="qa-line">
+            <span>{title}</span>
+            <span className="c">{card.answered}</span>
+          </div>
+        </div>
+        {card.startsAt === undefined ? null : (
+          <div className="ph-note">{card.startsAt}</div>
+        )}
+      </>
+    );
+  }
+  return (
+    <div className={props.live ? "qa-card ue live" : "qa-card ue"}>
+      {head}
+      <div className="qa-prompt">{title}</div>
+      <ResultRows rows={card.objectives} />
+      {card.segments === null ? null : (
+        <div className="ue-sec">
+          <div className="cs-h">
+            <span>{card.segmentsSay}</span>
+          </div>
+          {/* A segment's title is plain text, as in the outline: "1. Values" is no list. */}
+          <ResultRows rows={card.segments} plain />
+        </div>
+      )}
+      {card.segments === null ? null : (
+        <p className="as-says">What you passed stays passed either way.</p>
+      )}
+      {!props.live ? null : card.segments === null ? (
+        <div className="qa-foot">
+          <span className="qa-aside">
+            Nothing to skip: the unit is taught from its first segment.
+          </span>
+          <button
+            type="button"
+            className="btn"
+            disabled={props.busy}
+            onClick={props.onWhole}
+          >
+            {card.whole}
+          </button>
+        </div>
+      ) : (
+        <div className="qa-foot">
+          <button
+            type="button"
+            className="textbtn"
+            disabled={props.busy}
+            onClick={props.onWhole}
+          >
+            {card.whole}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={props.busy}
+            onClick={props.onSkip}
+          >
+            {card.skip}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The result card's rows: an objective or a segment, its word, and why. */
+function ResultRows(props: { rows: ResultRow[]; plain?: boolean }) {
+  return (
+    <ol className="ue-rows">
+      {props.rows.map((row) => (
+        <li key={row.key}>
+          <span>
+            {props.plain === true ? row.text : <InlineProse text={row.text} />}
+          </span>
+          <span className={`st ${row.word.className}`}>{row.word.text}</span>
+          {row.why === undefined ? null : (
+            <small>
+              <InlineProse text={row.why} />
+            </small>
+          )}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -1307,7 +1463,9 @@ function NextStepControl(props: {
         card?.stepTaken === "moved-on" && plan !== null
           ? closingCard(plan, card).movedOn
           : finished === "passed"
-            ? "This unit is finished: every objective passed."
+            ? finishedByTest(props.timeline)
+              ? "This unit is finished: you passed every objective in the test, and nothing was taught. It has no gate."
+              : "This unit is finished: every objective passed."
             : "This unit is finished. It is recorded as overridden: you moved on without passing every objective.";
       return (
         <>

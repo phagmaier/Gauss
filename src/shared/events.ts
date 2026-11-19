@@ -12,6 +12,7 @@ import { Plan } from "./plan.ts";
 import {
   AnswerSubmission,
   ChoiceLetter,
+  Confidence,
   GradedAnswer,
   QuestionView,
   Unsettled,
@@ -29,6 +30,25 @@ export const SESSION_GAP_MS = 60 * 60 * 1000;
 
 /** A segment by its index in the unit's plan, from 0, as in state.json. */
 const SegmentIndex = z.number().int().nonnegative();
+
+/**
+ * What the test before a unit showed on one of its objectives (piece 16):
+ * whether it passed, and the test's answers on it, in order, as they count
+ * (a disputed one with its dispute's verdict).
+ */
+export const TestShown = z.object({
+  objective: Slug,
+  passed: z.boolean(),
+  answers: z.array(
+    z.object({
+      verdict: Verdict,
+      /** None for "I don't know". */
+      confidence: Confidence.optional(),
+      assisted: z.boolean(),
+    }),
+  ),
+});
+export type TestShown = z.infer<typeof TestShown>;
 
 /**
  * One entry in a chat's event log. The log is replayed to every page that
@@ -250,7 +270,9 @@ export const PageEvent = z.discriminatedUnion("type", [
   /**
    * The assessment ended, every objective asked, or the learner skipped it,
    * on its card or partway, which withdraws a question still open with
-   * nothing recorded. The unit goes on where it was.
+   * nothing recorded. The unit goes on where it was; after the gate comes
+   * its closing card, and after a test, ended by "Start learning instead"
+   * when skipped, the tutor's word on it and its result card.
    */
   z.object({
     type: z.literal("assessment_end"),
@@ -260,6 +282,21 @@ export const PageEvent = z.discriminatedUnion("type", [
     statuses: z.record(Slug, ObjectiveStatus),
     withdrawnQuestionId: z.string().optional(),
   }),
+  /**
+   * The test before the unit is over, or the learner ended it with "Start
+   * learning instead" (piece 16): its result card, a row for each of the
+   * unit's objectives in the plan's order. Nothing is skipped until the
+   * learner answers it. Sent again, as it stands, when the chat opens with
+   * it waiting, and when a dispute changes what passed.
+   */
+  z.object({ type: z.literal("test_result"), objectives: z.array(TestShown) }),
+  /**
+   * The learner answered the test's result card: `skipped`, the objectives
+   * it passed, which they chose to skip, or none for the whole unit taught.
+   * With every objective skipped the unit finishes, and "unit_closed"
+   * follows; otherwise the segment teaching starts at.
+   */
+  z.object({ type: z.literal("test_answered"), skipped: z.array(Slug) }),
   /** A question left open by the transcript, but no longer open or answered in the record. */
   z.object({
     type: z.literal("question_withdrawn"),
@@ -311,6 +348,12 @@ export const PageEvent = z.discriminatedUnion("type", [
     phase: Phase,
     /** For a segment after the plan's last: the objectives it goes over again. */
     again: z.array(Slug).optional(),
+    /**
+     * The objectives the test before the unit passed, which the learner
+     * chose to skip: segments with every objective among them are skipped,
+     * and one with some teaches only the rest.
+     */
+    skipping: z.array(Slug).optional(),
   }),
   /**
    * How each objective of the unit and the unit stand, derived from the
