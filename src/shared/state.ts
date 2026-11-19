@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
-import { AssessmentMode } from "./evidence.ts";
+import { AssessmentMode, OverrideEvidence } from "./evidence.ts";
 import { PackageCompletion, PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question } from "./question.ts";
 
@@ -154,6 +154,10 @@ export const UnitPosition = z
      * kept until the unit finishes, across going over objectives again.
      */
     gated: z.literal(true).optional(),
+    /** Another unit's objective with an open question withdrawn when the gate was skipped. */
+    gateUnanswered: Slug.optional(),
+    /** A closing-card override whose gate or finish has not been saved yet. */
+    pendingMoveOn: OverrideEvidence.required({ moveOnId: true }).optional(),
     /** The tutor's session on the backend, once the backend has reported it. */
     tutorSessionId: z.string().min(1).optional(),
     /**

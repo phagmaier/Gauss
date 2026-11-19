@@ -1374,20 +1374,18 @@ built until its task is done; `architecture.md` says what is.
   a review's answer goes to both chats: through the objective's unit
   alone, an overturned first miss still brought a second question.
 - **The page pins only a question of what is under way** (the agent's): a
-  review's question while a review runs, the check's otherwise, and every
-  phase the chat says clears the assessment, which it says again after
-  the phase if one stands. A withdrawal is in the transcript only, which
-  can lose its last lines, so a restart after a lost skip pinned the
-  withdrawn question and showed "Skip review" or "Move on". Rejected for
-  now: an event saying on reopening which question is open, sturdier but
-  a new event for a crash's edge.
+  review's question while a review runs, the check's otherwise. The
+  transcript can lose its last lines, so reopening also reconciles its
+  questions with the position and evidence. Clearing the assessment
+  alone would still leave an unanswered question active in the thread.
 
 **The gate**
 
 - **Offered on a card, not started by itself**: it is the long one (the
   unit's objectives and three others), and an answer is colder the next
-  day. Skipping it is the brief's bypass, and leaves what was passed
-  passed. No record of the skip is kept beyond that.
+  day. Skipping it is the brief's bypass, and records no mastery. If a
+  question from another unit was already shown, the closing card lists it
+  at its current status even though no answer was recorded.
 - **It asks only what is passed**: not the objectives the learner just
   moved on without, and not those the test passed, which were cold when
   asked. A miss on the unit's own objective goes to the closing card as

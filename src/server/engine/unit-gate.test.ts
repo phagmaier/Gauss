@@ -21,6 +21,7 @@ import {
   closingCard,
   lastCard,
   nextStep,
+  openQuestion,
   whereInUnit,
 } from "../../web/session.ts";
 import { emptyTimeline, reduce, type Timeline } from "../../web/timeline.ts";
@@ -190,11 +191,11 @@ function tutor() {
   };
 }
 
-function setUp() {
+function setUp(record: (root: DataRoot) => DataRoot = (root) => root) {
   const script = tutor();
   const backend = createFakeBackend((turn) => script(turn), [], { kept });
   const clock = new Date(NOW);
-  const dataRoot = openDataRoot({ path: dir, now: () => clock });
+  const dataRoot = record(openDataRoot({ path: dir, now: () => clock }));
   const units = createUnitChats({
     backend,
     systemPrompt: "Tutor.",
@@ -399,6 +400,7 @@ test("moving on from the closing card without the objectives not passed records 
     kind: "override",
     recordedAt: NOW,
     objectives: ["power-rule"],
+    moveOnId: expect.any(String),
   });
   expect(since(chat, "unit_end").slice(1)).toEqual([
     {
@@ -417,6 +419,55 @@ test("moving on from the closing card without the objectives not passed records 
   expect(cardOf(timeline).stepTaken).toBe("moved-on");
   expect(nextStep(timeline)).toBeNull();
 });
+
+test.each(["override", "gate"] as const)(
+  "restarting after a closing-card move-on interrupted at the %s write offers the gate and records the override once",
+  async (at) => {
+    await makeCourse();
+    let interrupt = false;
+    const before = setUp((root) => ({
+      ...root,
+      appendEvidence(...args) {
+        if (interrupt && at === "override" && args[1].kind === "override") {
+          return Promise.reject(new Error("Interrupted write."));
+        }
+        return root.appendEvidence(...args);
+      },
+      writePosition(...args) {
+        if (
+          interrupt &&
+          at === "gate" &&
+          args[2]?.assessment?.mode === "gate"
+        ) {
+          return Promise.reject(new Error("Interrupted write."));
+        }
+        return root.writePosition(...args);
+      },
+    }));
+    const first = await open(before);
+    await step(first.override(), first);
+    const beforeMove = (await reload().readEvidence(COURSE)).length;
+    interrupt = true;
+    await expect(first.finishUnit()).rejects.toThrow("Interrupted write.");
+    await before.units.close();
+
+    const after = setUp();
+    const chat = await open(after);
+    expect(ofType(chat, "assessment")).toEqual([
+      { ...GATE_OFFERED, count: 3, own: 1 },
+    ]);
+    const timeline = replay(chat);
+    expect(timeline.assessment?.stage).toBe("offered");
+    expect(cardOf(timeline).stepTaken).toBe("moved-on");
+    expect((await reload().readEvidence(COURSE)).slice(beforeMove)).toEqual([
+      expect.objectContaining({ kind: "override", objectives: ["power-rule"] }),
+    ]);
+    await step(chat.skipAssessment(), chat);
+    expect(replay(chat).finished).toBe("overridden");
+    await after.units.close();
+  },
+  MANY_TURNS_MS,
+);
 
 test(
   "after moving on before the gate, the closing card after it offers its steps on what the gate left not passed alone, and moving on from them finishes the unit",
@@ -460,6 +511,7 @@ test(
       kind: "override",
       recordedAt: NOW,
       objectives: ["slope"],
+      moveOnId: expect.any(String),
     });
     expect(chat.events().slice(-2)).toEqual([
       {
@@ -649,6 +701,88 @@ test("skipping the gate on its card finishes the unit with what passed passed an
   expect(closingCard(PLANS.derivative as Plan, cardOf(timeline))).toMatchObject(
     { verdict: { text: "Passed" }, steps: false, others: [] },
   );
+});
+
+test(
+  "a gate skipped with another unit's question open lists it at its unchanged status, including on a reopened closing card",
+  async () => {
+    const root = await makeCourse();
+    // The other unit's objective was already slipping before this gate.
+    await root.appendEvidence(COURSE, {
+      ...correct("limit-value", YESTERDAY),
+      answer: {
+        kind: "choice",
+        questionId: "old-limit-miss",
+        choice: "B",
+        confidence: "90",
+      },
+      verdict: "incorrect",
+      assessment: { mode: "review", unit: "derivative" },
+    });
+    const before = setUp();
+    const first = await open(before);
+    await toGate(first);
+    await step(first.startAssessment(), first);
+    await answer(first, "B"); // Miss slope, then get its re-ask right.
+    await step(first.anotherQuestion(), first);
+    await answer(first, "A");
+    await answer(first, "A"); // Power rule.
+    expect(lastQuestion(first).assessment?.from).toEqual(LIMITS);
+    const evidence = await reload().readEvidence(COURSE);
+    const expected = [
+      expect.objectContaining({
+        objective: "limit-value",
+        status: "slipping",
+        unanswered: true,
+      }),
+    ];
+
+    await step(first.skipAssessment(), first);
+    expect(cardOf(replay(first)).gate?.others).toEqual(expected);
+    expect(
+      closingCard(PLANS.derivative as Plan, cardOf(replay(first))).others,
+    ).toMatchObject([{ why: "Unit 1: Limits. Not answered in the gate." }]);
+    expect(await reload().readEvidence(COURSE)).toEqual(evidence);
+    await before.units.close();
+
+    const after = setUp();
+    const chat = await open(after);
+    expect(ofType(chat, "unit_end").at(-1)?.gate?.others).toEqual(expected);
+    await after.units.close();
+  },
+  MANY_TURNS_MS,
+);
+
+test("a finished unit reopened without the gate's skip in the transcript does not offer the withdrawn question again", async () => {
+  await makeCourse();
+  let loseTail = false;
+  const before = setUp((root) => ({
+    ...root,
+    async appendTranscript(...args) {
+      if (!loseTail) await root.appendTranscript(...args);
+    },
+  }));
+  const first = await open(before);
+  await toGate(first);
+  await step(first.startAssessment(), first);
+  const withdrawn = lastQuestion(first);
+  loseTail = true;
+  await step(first.skipAssessment(), first);
+  await before.units.close();
+
+  const after = setUp();
+  const timeline = replay(await open(after));
+  expect(timeline.finished).toBe("passed");
+  expect(timeline.assessment).toBeNull();
+  expect(openQuestion(timeline)).toBeUndefined();
+  expect(timeline.items).toContainEqual(
+    expect.objectContaining({
+      kind: "question",
+      question: withdrawn,
+      withdrawn: true,
+    }),
+  );
+  await after.units.close();
 });
 
 test(

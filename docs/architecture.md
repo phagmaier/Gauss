@@ -345,6 +345,11 @@ The rules:
   page hears of it; an answer is appended to the evidence before its
   question is closed, so a crash between the two leaves the question open
   with its answer kept.
+  Reopening reconciles transcript questions with the position and evidence:
+  a lost grade is restored, and a question no longer open with no answer
+  is shown as withdrawn. Moving on from the closing card keeps a pending
+  override in the position until the gate or finish is saved. If interrupted,
+  reopening completes the move-on without recording the override twice.
 
 ### Turn protocol
 
@@ -461,8 +466,9 @@ testing out of a unit (stage 5) is to come on the same parts.
   message leaves it waiting. Its rules are review's. When it ends or is
   skipped (on the card or partway, with an open question withdrawn), the
   closing card comes again (`closeAfterGate`), with the other units'
-  objectives the gate asked and their statuses; its two steps then cover
-  only what the gate left not passed (`toGoOver` in `check-rules.ts`),
+  objectives the gate asked and their statuses, including one whose open
+  question was withdrawn without an answer. Its two steps cover only
+  what the gate left not passed (`toGoOver` in `check-rules.ts`),
   not what the learner moved on from before it, and the unit finishes
   when that is nothing. `gated` in the position keeps the gate from being
   offered again, across going over objectives again and restarts.

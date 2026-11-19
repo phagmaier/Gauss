@@ -35,6 +35,7 @@
 // them out. Its changes are not safe to run concurrently: the chat makes them
 // only from inside its queue. Reading is safe at any time.
 
+import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
@@ -205,12 +206,12 @@ export interface UnitRecord {
     withdrawn: OpenQuestion | undefined;
   }>;
   /**
-   * At the unit's end, the learner moves on without these objectives:
-   * records an override of them, and tells the page.
+   * Keeps and records the closing-card override, or resumes a pending one.
+   * The caller tells the page once its gate or finish is saved.
    */
   moveOn(objectives: readonly string[]): Promise<void>;
-  /** Ends the unit and takes it out of state.json, passed or overridden. */
-  finish(status: "passed" | "overridden"): Promise<void>;
+  /** Ends the unit and takes it out of state.json, then calls `tell` before showing it finished. */
+  finish(status: "passed" | "overridden", tell?: () => void): Promise<void>;
 }
 
 /**
@@ -250,7 +251,7 @@ export async function openUnitRecord(options: {
   const allEvidence = await dataRoot.readEvidence(courseId);
   const evidence = concerning(
     allEvidence,
-    objectivesKept(plan, stored?.assessment, allEvidence, unitId),
+    objectivesKept(plan, allEvidence, unitId, stored),
   );
   const before = unitStatus(unit, evidence, undefined);
   let finished: "passed" | "overridden" | undefined =
@@ -282,6 +283,9 @@ export async function openUnitRecord(options: {
         : { packageRequest: position.packageRequest }),
       // The gate is offered once, whatever position the chat gives.
       ...(position.gated === true ? { gated: true as const } : {}),
+      ...(position.gateUnanswered === undefined
+        ? {}
+        : { gateUnanswered: position.gateUnanswered }),
     };
     await dataRoot.writePosition(courseId, unitId, next);
     const was = position;
@@ -304,11 +308,11 @@ export async function openUnitRecord(options: {
    * read now. An assessment can ask about other units' objectives, which
    * their own chats, and other units' assessments, write on too.
    */
-  function readAgain(log: readonly EvidenceEntry[], run: AssessmentRun): void {
+  function readAgain(log: readonly EvidenceEntry[], at = position): void {
     evidence.splice(
       0,
       evidence.length,
-      ...concerning(log, objectivesKept(plan, run, log, unitId)),
+      ...concerning(log, objectivesKept(plan, log, unitId, at)),
     );
   }
 
@@ -391,8 +395,11 @@ export async function openUnitRecord(options: {
     return { question, entry };
   }
 
-  async function finish(how: "passed" | "overridden"): Promise<void> {
-    const { packageRequest, ...closed } = position;
+  async function finish(
+    how: "passed" | "overridden",
+    tell?: () => void,
+  ): Promise<void> {
+    const { packageRequest, pendingMoveOn: _, ...closed } = position;
     const completion: PackageCompletion | undefined =
       packageRequest === undefined
         ? undefined
@@ -404,6 +411,7 @@ export async function openUnitRecord(options: {
     await dataRoot.writePosition(courseId, unitId, null, completion);
     finished = how;
     position = closed;
+    tell?.();
     if (completion !== undefined) {
       keepCompletion(completion, !options.savingPackage(completion.request.id));
     }
@@ -535,10 +543,11 @@ export async function openUnitRecord(options: {
     },
 
     async offerAssessment(run, log, tell) {
-      readAgain(log, run);
+      readAgain(log, { ...position, assessment: run });
+      const { pendingMoveOn: _, ...rest } = position;
       await move(
         {
-          ...position,
+          ...rest,
           assessment: run,
           ...(run.mode === "gate" ? { gated: true as const } : {}),
         },
@@ -551,8 +560,16 @@ export async function openUnitRecord(options: {
       if (run === undefined)
         throw new Error("No assessment is offered or under way.");
       const answered = answeredInRun(run, runAnswers);
-      readAgain(await dataRoot.readEvidence(courseId), run);
+      readAgain(await dataRoot.readEvidence(courseId));
       const withdrawn = position.openQuestion;
+      const gateUnanswered =
+        run.mode === "gate" &&
+        withdrawn !== undefined &&
+        run.objectives.some(
+          (o) => o.unit !== unitId && o.objective === withdrawn.objective,
+        )
+          ? withdrawn.objective
+          : undefined;
       const {
         assessment: _,
         openQuestion: __,
@@ -562,16 +579,18 @@ export async function openUnitRecord(options: {
       const statuses = Object.fromEntries(
         answered.map((id) => [id, objectiveStatus(evidence, id)]),
       );
-      await move(rest, () =>
-        emit({
-          type: "assessment_end",
-          mode: run.mode,
-          skipped,
-          statuses,
-          ...(withdrawn === undefined
-            ? {}
-            : { withdrawnQuestionId: withdrawn.id }),
-        }),
+      await move(
+        gateUnanswered === undefined ? rest : { ...rest, gateUnanswered },
+        () =>
+          emit({
+            type: "assessment_end",
+            mode: run.mode,
+            skipped,
+            statuses,
+            ...(withdrawn === undefined
+              ? {}
+              : { withdrawnQuestionId: withdrawn.id }),
+          }),
       );
       runAnswers = [];
       if (answered.length > 0) {
@@ -653,13 +672,29 @@ export async function openUnitRecord(options: {
     },
 
     async moveOn(objectives) {
-      await append({
-        kind: "override",
-        recordedAt: now().toISOString(),
-        objectives: [...objectives],
-      });
+      let entry = position.pendingMoveOn;
+      if (entry === undefined) {
+        entry = {
+          kind: "override",
+          recordedAt: now().toISOString(),
+          objectives: [...objectives],
+          moveOnId: randomUUID(),
+        };
+        await move({ ...position, pendingMoveOn: entry });
+        await append(entry);
+      } else {
+        const id = entry.moveOnId;
+        if (!evidence.some((e) => e.kind === "override" && e.moveOnId === id)) {
+          // The append may have reached disk before its failure was reported.
+          const log = await dataRoot.readEvidence(courseId);
+          if (log.some((e) => e.kind === "override" && e.moveOnId === id)) {
+            readAgain(log);
+          } else {
+            await append(entry);
+          }
+        }
+      }
       emit(status());
-      emit({ type: "moved_on", objectives: [...objectives] });
     },
 
     finish,
@@ -779,18 +814,20 @@ function checkPosition(plan: Plan, position: UnitPosition): void {
 }
 
 /**
- * The objectives whose evidence the unit keeps: its plan's, its
- * assessment's, and those of every answer given in its thread, some of which
- * can be another unit's.
+ * The objectives whose evidence the unit keeps: its plan's, its assessment's,
+ * and those of every answer and withdrawn gate question in its thread.
  */
 function objectivesKept(
   plan: Plan,
-  run: AssessmentRun | undefined,
   log: readonly EvidenceEntry[],
   unitId: string,
+  position?: Pick<UnitPosition, "assessment" | "gateUnanswered">,
 ): Set<string> {
   const ids = new Set(plan.objectives.map((o) => o.id));
-  for (const { objective } of run?.objectives ?? []) ids.add(objective);
+  for (const { objective } of position?.assessment?.objectives ?? []) {
+    ids.add(objective);
+  }
+  if (position?.gateUnanswered !== undefined) ids.add(position.gateUnanswered);
   for (const entry of log) {
     if (entry.kind === "answer" && entry.assessment?.unit === unitId) {
       ids.add(entry.objective);

@@ -851,7 +851,7 @@ function createUnitChat(
         if (!resumes) fallBack(r);
       }
       running = r;
-      restoreGrades(record);
+      restoreQuestions(record);
       restoreDisputes(r);
       restorePackages(record.packageCompletions);
       if (pendingInstall !== undefined) showSaveFailure(pendingInstall);
@@ -962,23 +962,33 @@ function createUnitChat(
   }
 
   /**
-   * Shows the grade of each question that the earlier sessions' thread left
-   * open and the evidence has the answer to. Its `graded` line was lost
-   * after the answer was recorded: the machine stopped, or the line could
-   * not be written. The question still open is closed by `load`.
+   * Reconciles questions left open by the thread: restore a lost grade
+   * from the evidence, or mark the question withdrawn if the position no
+   * longer holds it. The question still open is handled by `load`.
    */
-  function restoreGrades(record: UnitRecord): void {
+  function restoreQuestions(record: UnitRecord): void {
     const posted = new Set<string>();
-    const graded = new Set<string>();
+    const settled = new Set<string>();
     for (const event of log.events()) {
       if (event.type === "question") posted.add(event.question.id);
-      else if (event.type === "graded") graded.add(event.questionId);
+      else if (event.type === "graded" || event.type === "question_withdrawn") {
+        settled.add(event.questionId);
+      } else if (
+        (event.type === "assessment_end" || event.type === "overridden") &&
+        event.withdrawnQuestionId !== undefined
+      ) {
+        settled.add(event.withdrawnQuestionId);
+      }
     }
     const open = record.position.openQuestion?.id;
     for (const id of posted) {
-      if (id === open || graded.has(id)) continue;
+      if (id === open || settled.has(id)) continue;
       const entry = record.recordedAnswer(id);
-      if (entry !== undefined) log.emit(gradedEvent(entry));
+      log.emit(
+        entry === undefined
+          ? { type: "question_withdrawn", questionId: id }
+          : gradedEvent(entry),
+      );
     }
   }
 
@@ -1763,6 +1773,11 @@ function createUnitChat(
    * objectives of it not passed. Runs inside `exclusive`.
    */
   async function endUnit(r: Running, closedNow = false): Promise<void> {
+    const pending = r.record.position.pendingMoveOn;
+    if (pending !== undefined) {
+      await moveOnAtEnd(r, pending.objectives);
+      return;
+    }
     if (r.record.position.gated === true) {
       await closeAfterGate(r);
       return;
@@ -1781,13 +1796,17 @@ function createUnitChat(
   }
 
   /**
-   * Every objective has passed or been moved on from, and the gate has not
-   * been offered: offers it, or finishes the unit when it has nothing to
-   * ask, as a unit finished before the gate existed, with a closing card
-   * unless one is `shown` already. Runs inside `exclusive`.
+   * Offers the gate if it is due and has something to ask; otherwise
+   * finishes the unit. `shown` means a closing card already stands.
+   * `tell` acknowledges a move-on before the new card or finish is shown.
+   * Runs inside `exclusive`.
    */
-  async function gateOrFinish(r: Running, shown: boolean): Promise<void> {
-    if (await offerGate(r)) return;
+  async function gateOrFinish(
+    r: Running,
+    shown: boolean,
+    tell?: () => void,
+  ): Promise<void> {
+    if (r.record.position.gated !== true && (await offerGate(r, tell))) return;
     const passed = notPassed(r.context.plan, r.record.evidence).length === 0;
     if (passed && !shown) {
       log.emit({
@@ -1796,7 +1815,7 @@ function createUnitChat(
         objectives: r.record.objectiveStatuses(),
       });
     }
-    await r.record.finish(passed ? "passed" : "overridden");
+    await r.record.finish(passed ? "passed" : "overridden", tell);
   }
 
   /**
@@ -1804,7 +1823,7 @@ function createUnitChat(
    * (`pickForGate`, from the course as it stands now); false if it has
    * not. Nothing is sent to the tutor. Runs inside `exclusive`.
    */
-  async function offerGate(r: Running): Promise<boolean> {
+  async function offerGate(r: Running, tell?: () => void): Promise<boolean> {
     const [stored, evidence] = await Promise.all([
       dataRoot.readCourse(courseId),
       dataRoot.readEvidence(courseId),
@@ -1814,7 +1833,10 @@ function createUnitChat(
     if (objectives.length === 0) return false;
     r.context = { ...r.context, units };
     const run: AssessmentRun = { mode: "gate", stage: "offered", objectives };
-    await r.record.offerAssessment(run, evidence, () => showRun(r, run));
+    await r.record.offerAssessment(run, evidence, () => {
+      tell?.();
+      showRun(r, run);
+    });
     return true;
   }
 
@@ -1842,8 +1864,8 @@ function createUnitChat(
 
   /**
    * The other units' objectives the unit's gate asked, in its order, each
-   * with its unit and its status now: those of the answers given in the
-   * gate that are not this unit's.
+   * with its unit and its status now. Includes a question shown before a
+   * skip even when no answer was recorded.
    */
   function gateOthers(r: Running) {
     const { plan, units } = r.context;
@@ -1860,6 +1882,12 @@ function createUnitChat(
         asked.push(entry.objective);
       }
     }
+    const withdrawn = r.record.position.gateUnanswered;
+    const unanswered =
+      withdrawn !== undefined && !asked.includes(withdrawn)
+        ? withdrawn
+        : undefined;
+    if (unanswered !== undefined) asked.push(unanswered);
     return asked.flatMap((objective) => {
       const at = units.findIndex((u) =>
         u.plan?.objectives.some((o) => o.id === objective),
@@ -1875,6 +1903,7 @@ function createUnitChat(
           statement,
           unit: { number: at + 1, title: unit.title },
           status: objectiveStatus(r.record.evidence, objective),
+          ...(objective === unanswered ? { unanswered: true as const } : {}),
         },
       ];
     });
@@ -2297,6 +2326,17 @@ function createUnitChat(
     return rest.length > 0 ? rest : "Every objective has passed.";
   }
 
+  /** Completes a new or interrupted move-on, telling the page once it can advance. */
+  async function moveOnAtEnd(
+    r: Running,
+    objectives: readonly string[],
+  ): Promise<void> {
+    await r.record.moveOn(objectives);
+    await gateOrFinish(r, true, () =>
+      log.emit({ type: "moved_on", objectives: [...objectives] }),
+    );
+  }
+
   /** A review's card waits for the learner's Start or Skip. */
   function reviewOffered(r: Running): boolean {
     const run = r.record.position.assessment;
@@ -2671,6 +2711,11 @@ function createUnitChat(
       act(async (r) => {
         const waits = runWaits(r);
         if (waits !== undefined) return waits;
+        if (r.record.position.pendingMoveOn !== undefined) {
+          return refused(
+            "Choose Move on again to finish the step already started.",
+          );
+        }
         const again = atUnitEnd(r);
         if (typeof again === "string") return refused(again);
         await r.record.move({
@@ -2686,15 +2731,10 @@ function createUnitChat(
       act(async (r) => {
         const waits = runWaits(r);
         if (waits !== undefined) return waits;
-        const objectives = atUnitEnd(r);
+        const objectives =
+          r.record.position.pendingMoveOn?.objectives ?? atUnitEnd(r);
         if (typeof objectives === "string") return refused(objectives);
-        await r.record.moveOn(objectives);
-        // Before the gate, its card comes next.
-        if (r.record.position.gated === true) {
-          await r.record.finish("overridden");
-        } else {
-          await gateOrFinish(r, true);
-        }
+        await moveOnAtEnd(r, objectives);
         return { ok: true };
       }),
 

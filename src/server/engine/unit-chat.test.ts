@@ -2447,6 +2447,7 @@ test("moving on without the objectives not passed records them as overridden, an
     kind: "override",
     recordedAt: NOW,
     objectives: ["difference-quotient"],
+    moveOnId: expect.any(String),
   });
   expect(chat.events().slice(-3, -1)).toEqual([
     shortStatus("in-progress", "overridden", "passed"),

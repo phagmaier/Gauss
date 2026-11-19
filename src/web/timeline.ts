@@ -558,6 +558,14 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ],
         tutorOpen: false,
       };
+    case "question_withdrawn":
+      return {
+        ...next,
+        items: withQuestion(state.items, event.questionId, (item) => ({
+          ...item,
+          withdrawn: true,
+        })),
+      };
     case "answer_waiting":
       return {
         ...next,
@@ -889,6 +897,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             ? stepFromCard(state.items, "moved-on")
             : state.items,
         finished: event.status,
+        assessment: null,
+        detour: null,
       };
     case "unit_failed":
       return {

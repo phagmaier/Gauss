@@ -260,6 +260,11 @@ export const PageEvent = z.discriminatedUnion("type", [
     statuses: z.record(Slug, ObjectiveStatus),
     withdrawnQuestionId: z.string().optional(),
   }),
+  /** A question left open by the transcript, but no longer open or answered in the record. */
+  z.object({
+    type: z.literal("question_withdrawn"),
+    questionId: z.string(),
+  }),
   /**
    * The intake starts from a stored draft, because the conversation that
    * proposed it was lost in a restart. Its proposal follows as revision 1.
@@ -352,6 +357,8 @@ export const PageEvent = z.discriminatedUnion("type", [
               title: z.string(),
             }),
             status: ObjectiveStatus,
+            /** A question was shown for this objective, but none was answered. */
+            unanswered: z.literal(true).optional(),
           }),
         ),
       })

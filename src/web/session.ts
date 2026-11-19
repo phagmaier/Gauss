@@ -616,16 +616,18 @@ export function closingCard(
   const rows = plan.objectives.map((o) =>
     cardRow(o.id, o.statement, card.objectives[o.id] ?? "not-started"),
   );
-  // Another unit's row names it, and says what a slip there means.
+  // Another unit's row names it and distinguishes a skip from a miss.
   const others = (card.gate?.others ?? []).map((o) => {
     const row = cardRow(o.objective, o.statement, o.status);
     const unit = `Unit ${o.unit.number}: ${o.unit.title}`;
     return {
       ...row,
       why:
-        o.status === "slipping"
-          ? `${unit}. Missed in the gate: review comes back to it first.`
-          : unit,
+        o.unanswered === true
+          ? `${unit}. Not answered in the gate.`
+          : o.status === "slipping"
+            ? `${unit}. Missed in the gate: review comes back to it first.`
+            : unit,
     };
   });
   const total = rows.length;
