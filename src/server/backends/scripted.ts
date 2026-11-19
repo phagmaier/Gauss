@@ -56,6 +56,10 @@
 //   the course's own, as the session's system prompt has it, with its last
 //   sentence dropped when it has more than one and a sentence on shorter
 //   explanations added. The engine refuses it while a question is open.
+// - Curriculum (task 5.12): a message with "/amend" in it proposes the
+//   course's units, as the session's system prompt lists them, with a
+//   practice unit added at the end that builds on the unit taught. The
+//   engine refuses it while a question is open.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -186,6 +190,7 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     tools ? (coding ? "code" : "math") : "none",
     session.cwd,
     courseStyle(session.systemPrompt),
+    courseUnits(session.systemPrompt),
   );
 }
 
@@ -365,6 +370,8 @@ function teaching(
   cwd: string | undefined,
   /** The course's style note, as the session's system prompt has it. */
   style: string,
+  /** The course's units and the one taught, as the system prompt has them. */
+  course: ListedCourse,
 ): FakeStep[] {
   // A review can be under way in any phase, teach too: what it allows comes
   // before the phase.
@@ -462,6 +469,28 @@ function teaching(
       },
     ];
   }
+  if (/(^|\s)\/amend\b/.test(body)) {
+    const { units, taught } = course;
+    const n = units.length + 1;
+    return [
+      { text: "Scripted: a change to the course's units." },
+      {
+        call: "amend_curriculum",
+        input: {
+          units: [
+            ...units,
+            {
+              id: `practice-${n}`,
+              title: `Practice ${n}`,
+              goal: "Practise what the course has covered so far.",
+              prerequisites: taught === undefined ? [] : [taught],
+            },
+          ],
+          why: "You asked for more practice.",
+        },
+      },
+    ];
+  }
   if (
     header.includes("The learner answered your request to install packages")
   ) {
@@ -500,6 +529,42 @@ function courseStyle(systemPrompt: string): string {
   return text.startsWith("This course has no style note of its own")
     ? ""
     : text;
+}
+
+/** A unit as the system prompt lists it (tutorSystemPrompt). */
+interface ListedUnit {
+  id: string;
+  title: string;
+  goal: string;
+  prerequisites: string[];
+}
+
+/** The course's units as the system prompt lists them, and the one taught. */
+interface ListedCourse {
+  units: ListedUnit[];
+  taught: string | undefined;
+}
+
+/** The course's units and the unit taught; none when it lists none. */
+function courseUnits(systemPrompt: string): ListedCourse {
+  const units: ListedUnit[] = [];
+  for (const line of systemPrompt.split("\n")) {
+    const unit =
+      /^\d+\. (.*) \(id "([^"]+)"\): (.*?)(?: Builds on ((?:"[^"]+"(?:, )?)+)\.)?$/.exec(
+        line,
+      );
+    if (unit === null) continue;
+    units.push({
+      id: unit[2] ?? "",
+      title: unit[1] ?? "",
+      goal: unit[3] ?? "",
+      prerequisites: [...(unit[4] ?? "").matchAll(/"([^"]+)"/g)].map(
+        (m) => m[1] ?? "",
+      ),
+    });
+  }
+  const at = Number(/^You teach unit (\d+),/m.exec(systemPrompt)?.[1]);
+  return { units, taught: units[at - 1]?.id };
 }
 
 /** Shows the scripted artifact, with a line before it. */

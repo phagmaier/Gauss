@@ -94,8 +94,8 @@ function linePath(e: DiagramEdge): string {
 
 export function Diagram(props: {
   units: Unit[];
-  /** Units whose node says "Changed". */
-  changed?: Set<string>;
+  /** Units whose node carries a word, such as "Changed", by id. */
+  marks?: ReadonlyMap<string, string>;
   /** Where each unit stands, by its id: its node's class, and the word under its title. */
   standing?: (unitId: string) => { state: string; text: string };
   selected?: string | undefined;
@@ -120,12 +120,12 @@ export function Diagram(props: {
         ))}
       </svg>
       {nodes.map((n) => {
-        const changed = props.changed?.has(n.unit.id) === true;
+        const mark = props.marks?.get(n.unit.id);
         const standing = props.standing?.(n.unit.id);
         const className = [
           "dn",
           standing?.state,
-          changed ? "chg" : undefined,
+          mark === undefined ? undefined : "chg",
           props.selected === n.unit.id ? "sel" : undefined,
         ]
           .filter(Boolean)
@@ -134,7 +134,7 @@ export function Diagram(props: {
           left: `${n.x - 23}%`,
           top: n.row * PITCH,
         };
-        const text = changed ? "Changed" : standing?.text;
+        const text = mark ?? standing?.text;
         const content = (
           <>
             <b>{n.index + 1}</b>

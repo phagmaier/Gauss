@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { Slug, Timestamp } from "./course.ts";
+import { CurriculumChange, CurriculumDecision } from "./curriculum-change.ts";
 import { AssessmentMode, OverrideEvidence } from "./evidence.ts";
 import { PackageCompletion, PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question } from "./question.ts";
@@ -197,6 +198,12 @@ export const UnitPosition = z
      * unit's moves, as a package request is.
      */
     styleProposal: StyleProposal.optional(),
+    /**
+     * The tutor's proposed change to the course's curriculum, from when it
+     * proposes it until the learner answers it (task 5.12). Kept across the
+     * unit's moves, as a style proposal is.
+     */
+    curriculumChange: CurriculumChange.optional(),
   })
   .refine((p) => (p.phase === "check") === (p.checkFrom !== undefined), {
     message:
@@ -270,5 +277,7 @@ export const State = z.object({
   styleDecisions: z.record(Slug, z.array(StyleDecision)).optional(),
   /** Original style.md bytes as text, or null if absent, during an Apply. */
   styleRollback: z.object({ was: z.string().nullable() }).optional(),
+  /** Answers to curriculum changes not yet delivered to the tutor, by unit id, in order. */
+  curriculumDecisions: z.record(Slug, z.array(CurriculumDecision)).optional(),
 });
 export type State = z.infer<typeof State>;

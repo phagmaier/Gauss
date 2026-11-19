@@ -411,6 +411,7 @@ test("starting a unit plans it, sends segment 1's teaching turn, and the end of 
     "ask_question",
     "show_artifact",
     "propose_style",
+    "amend_curriculum",
   ]);
   expect(setup.backend.received[1]?.text).toBe(
     '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: teach. Start of the segment. Allowed now: teach the segment\'s objectives in this turn, within the length the style sets, then stop; the learner can ask anything next. No questions yet: ask_question is refused until the learner presses "ready".]\n' +
@@ -439,7 +440,7 @@ test("the tutor's system prompt holds tutor.md, the course, the unit's plan and,
       'The course is "Derivatives from scratch". Its units, in order:',
       "",
       '1. The derivative (id "derivative"): Compute a derivative from its definition.',
-      '2. Rules of differentiation (id "rules"): Differentiate sums, products and quotients.',
+      '2. Rules of differentiation (id "rules"): Differentiate sums, products and quotients. Builds on "derivative".',
       "",
       'You teach unit 1, "The derivative". Its goal: Compute a derivative from its definition.',
       "",

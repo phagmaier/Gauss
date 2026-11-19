@@ -14,6 +14,7 @@ import {
   testResultCard,
 } from "../../shared/assessment-view.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
+import { compareUnits } from "../../shared/curriculum-change.ts";
 import { displayMathLines } from "../../shared/display-math-lines.ts";
 import {
   AFTER_DISPUTE,
@@ -271,6 +272,29 @@ function renderItem(
           ? "No decision recorded"
           : outcome[item.outcome];
       return `<div class="card"><p><b>Style change proposed</b>: ${escapeHtml(item.why)} ${state}.</p><p>${escapeHtml(item.note)}</p></div>`;
+    }
+    case "curriculum": {
+      const outcome = {
+        applied: "Applied",
+        kept: "Kept the current one",
+        withdrawn: "Not applied: the unit ended first",
+      };
+      const state =
+        item.outcome === undefined
+          ? "No decision recorded"
+          : outcome[item.outcome];
+      const { marks, dropped } = compareUnits(item.was, item.units);
+      const rows = item.units
+        .map((unit) => {
+          const mark = marks.get(unit.id);
+          return `<li>${escapeHtml(unit.title)}${mark === undefined ? "" : ` (${mark})`}: ${escapeHtml(unit.goal)}</li>`;
+        })
+        .join("");
+      const gone =
+        dropped.length === 0
+          ? ""
+          : `<p>Dropped: ${escapeHtml(dropped.map((u) => u.title).join(", "))}</p>`;
+      return `<div class="card"><p><b>Curriculum change proposed</b>: ${escapeHtml(item.why)} ${state}.</p><ol>${rows}</ol>${gone}</div>`;
     }
     case "test_result": {
       const card = testResultCard(plan, item);

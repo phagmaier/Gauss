@@ -86,7 +86,7 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
     course.json                   title, backend, settings, dates, when each unit was last opened, when review was last offered
     style.md                      the course's style note, proposed and approved with the curriculum; replaced when the learner applies a tutor's proposed change
     background.md                 the background note: what the learner told the planner, approved with the curriculum
-    curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts; a draft's profile and its original comparison
+    curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts; a draft's profile and its original comparison; replaced, each kept unit with its plan, when the learner applies a tutor's proposed change
     state.json                    a position for each unit in progress
     evidence.jsonl                append-only: answers (with the assessment each was given in), grades, confidence, overrides, disputes with their outcomes
     misconceptions.jsonl          append-only: what the handoff writer found the learner believed, from detours and discussions
@@ -141,9 +141,11 @@ version: a field added later must be optional.
   unit finishes), the test before the unit (`testOut`: due, its result
   waiting, or the objectives the learner chose to skip, kept until the
   unit finishes), the extra segment that goes over objectives again, the
-  tutor's session id, and the tutor's request to install packages while
-  it waits for the learner. Completed package cards and units finished
-  by testing out are kept separately from positions in the same file.
+  tutor's session id, and the tutor's request to install packages, its
+  proposed style note and its proposed curriculum change while each waits
+  for the learner. Completed package cards, units finished by testing
+  out, and the learner's style and curriculum answers not yet told to the
+  tutor are kept separately from positions in the same file.
   Their outcomes survive even if a transcript line is lost. Before
   the first unit exposes the workspace, the course rolls back an
   interrupted install or saves its committed receipt without rerunning uv.
@@ -233,9 +235,9 @@ also before it reaches the backend.
   Opening a unit only asks the backend whether the session is still there
   (`hasSession`); the first turn resumes it. The system prompt is built
   when a session starts or resumes, from the record as it is then (the
-  style note last applied), and sent afresh on every request, so a resumed
-  session gets the current prompt; a running session keeps the one it
-  started with.
+  style note and curriculum last applied), and sent afresh on every
+  request, so a resumed session gets the current prompt; a running
+  session keeps the one it started with.
 - **Idle sessions.** A kept session is closed after ten minutes (`IDLE_MS`)
   with no turn queued or running and nothing waiting to send it a turn (a
   grading); the next turn resumes it.
@@ -326,10 +328,10 @@ The rules:
   `show_artifact` is refused while a question of its unit is open or its
   unit is finished;
   `install_packages` while a question of the course is open or another
-  request of the course waits; `propose_style` in feedback-only turns,
-  while a question of its unit is open, while another proposal of the
-  course waits, or for the current note. A refusal does not end the turn;
-  a posted question does.
+  request of the course waits; `propose_style` and `amend_curriculum` in
+  feedback-only turns, while a question of its unit is open, while
+  another proposal of the course waits, or for a change to nothing. A
+  refusal does not end the turn; a posted question does.
 - **Feedback, then the next question.** The turn after a graded correct
   answer is for feedback alone; no tool may be called in it, and
   questions are refused from when it is queued until it ends. When it
@@ -353,6 +355,25 @@ The rules:
   it in its prompt. A proposal still waiting when its unit finishes is
   withdrawn. If the transcript lost the decision and the record no longer
   holds it, the card says "No longer waiting" rather than guess.
+- **Curriculum changes** (`CurriculumDesk` in `unit-chat.ts`).
+  `amend_curriculum` works as `propose_style` does, with the same
+  proposal and feedback rules: the whole proposed unit list, the list it
+  would replace and why are kept in the position (`curriculumChange`), its
+  card shows, each header says it waits, a restart shows the card again,
+  and the unit finishing withdraws it. One proposal of either kind waits
+  in a course. It is refused if it changes nothing, or drops a unit that
+  has started (it has a plan, a position, or was tested out of; a changed
+  id drops the unit), and checked again on Apply (`droppedStarted` in
+  `src/shared/curriculum-change.ts`). Apply writes `curriculum.json`,
+  each kept unit with its plan, then the decision to `state.json`, under
+  the snapshot lock, and asks for a backup. A curriculum that holds a
+  waiting change's units commits it: reading or writing the state records
+  such a change as applied, so an Apply cut short between the two writes
+  is completed. The decision goes in the tutor's next header with the
+  units as they now are; other open unit chats are told the units in
+  theirs, and every session started after Apply has them in its prompt.
+  The page reads the course's details again after an Apply, and the
+  course view reads the curriculum when it opens.
 - **Detours.** The detour is kept in the position, so a restart reopens it.
   Its first turn takes the feedback's place: the right answer and why, then
   where the confusion is (from the choice picked, the grader's flaw, the
@@ -648,7 +669,7 @@ tool server, for Codex an MCP server.
 | `propose_curriculum` | Stores a draft curriculum with its style note, background note and the learner profile's whole text, and shows them for review; approval covers all four. Refused in the intake's first turn |
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session |
 | `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
-| `amend_curriculum` | (stage 5) Proposes a change; applied only after the learner confirms |
+| `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. Uses the proposal and feedback rules in section 4. Does not end the turn |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Refused while a question of the course is open or another request waits. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
@@ -922,7 +943,7 @@ Kept as files in `prompts/`, each revised against real runs.
 
 - `tutor.md` is the start of the tutor's system prompt, which
   `engine/unit-turns.ts` assembles: `tutor.md`, the course's units with
-  their goals, the unit taught and its plan, "# The learner" with
+  their goals and prerequisites, the unit taught and its plan, "# The learner" with
   `profile.md` when there is one, then `background.md` (or a line saying
   none was recorded), "# Earlier units"
   when it has anything (the last handoff notes of the unit's
@@ -1014,7 +1035,12 @@ themselves have no automated tests.
   note's card (`StyleCard.tsx`) gives the tutor's line on why and the
   whole note, each new sentence marked and each dropped one listed as the
   intake card marks a changed profile, with Apply and "Keep the current
-  one"; then the answer. The thread also has
+  one"; then the answer. A proposed curriculum change's card
+  (`CurriculumCard.tsx`) gives the line on why and the units as they
+  would be, each new one marked "New" and each edited one "Changed", the
+  dropped ones listed under them, "Show the diagram", which opens the
+  proposed curriculum's diagram in the side pane, and Apply and "Keep the
+  current one"; then the answer. The thread also has
   the detour marker and "Ready for another question", and the closing card.
   Review (piece 15) is a card in the thread, with how many questions,
   Skip and "Start the review", which holds the unit's own control until
@@ -1110,7 +1136,8 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
 - Under `/api/courses/<id>/units/<unit>/`: `open` first, then `events`,
   `messages`, `ready`, `answers`, `grade-again`, `another-question`,
   `packages/install`, `packages/not-now` and `packages/retry-saving`
-  (with the request's id),
+  (with the request's id), `style/apply`, `style/keep`,
+  `curriculum/apply` and `curriculum/keep` (with the proposal's id),
   `override`, `next-segment`, `go-over-again`, `finish`, `start-fresh`,
   `interrupt`, `assessment/start` and `assessment/skip` (which is the
   test's "Start learning instead"), `test-out/skip` and `test-out/whole`.

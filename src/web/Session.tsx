@@ -52,6 +52,7 @@ import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
 import {
   type ArtifactItem,
   type AssessmentItem,
+  type CurriculumItem,
   conversations,
   emptyTimeline,
   type Item,
@@ -63,6 +64,7 @@ import {
 } from "../shared/timeline.ts";
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer } from "./Composer.tsx";
+import { Diagram } from "./Curriculum.tsx";
 import { type DisputeApi, disputeApi } from "./Dispute.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
@@ -119,8 +121,8 @@ export function Session(props: { courseId: string; unitId: string }) {
   const [confirming, setConfirming] = useState<
     "move-on" | "finish" | "skip-gate"
   >();
-  /** The artifact open in the side pane. */
-  const [pane, setPane] = useState<ArtifactItem>();
+  /** The artifact, or the proposed curriculum's diagram, open in the side pane. */
+  const [pane, setPane] = useState<ArtifactItem | CurriculumItem>();
   /** The open question the learner hid, by its key. */
   const [hiddenKey, setHiddenKey] = useState<number>();
   const hideButton = useRef<HTMLButtonElement>(null);
@@ -134,9 +136,16 @@ export function Session(props: { courseId: string; unitId: string }) {
   );
   const disputes = useMemo(() => disputeApi(courseId), [courseId]);
 
+  // Changes to the curriculum applied in this chat: each one reads the
+  // course's details again, since it changes the unit's place in it.
+  const applied = timeline.items.filter(
+    (i) => i.kind === "curriculum" && !i.historical && i.outcome === "applied",
+  ).length;
+
   // The course's details name the unit and the one to start next. A failure to
   // load them is asked again until the server answers, so it never leaves
   // the page thinking the course is empty.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read again once a change is applied
   useEffect(() => {
     const stop = new AbortController();
     void getJsonUntilAnswered(
@@ -154,7 +163,7 @@ export function Session(props: { courseId: string; unitId: string }) {
       else setCourseProblem({ error: answer.error, retrying: false });
     });
     return () => stop.abort();
-  }, [courseId]);
+  }, [courseId, applied]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new attempt opens the unit again
   useEffect(() => {
@@ -383,11 +392,16 @@ export function Session(props: { courseId: string; unitId: string }) {
                       // By file, which names one artifact of the course
                       // across restarts, where keys are numbered afresh.
                       showing={
-                        item.kind === "artifact" && pane?.file === item.file
+                        item.kind === "artifact" &&
+                        pane?.kind === "artifact" &&
+                        pane.file === item.file
                       }
                       onArtifact={(artifact) =>
                         setPane(
-                          pane?.file === artifact.file ? undefined : artifact,
+                          pane?.kind === "artifact" &&
+                            pane.file === artifact.file
+                            ? undefined
+                            : artifact,
                         )
                       }
                       asked={item.key === asked?.key ? askedAt : undefined}
@@ -414,6 +428,25 @@ export function Session(props: { courseId: string; unitId: string }) {
                       }
                       onKeepStyle={(proposalId) =>
                         post(path("style/keep"), { proposalId })
+                      }
+                      diagramOpen={
+                        item.kind === "curriculum" &&
+                        pane?.kind === "curriculum" &&
+                        pane.proposalId === item.proposalId
+                      }
+                      onDiagram={(change) =>
+                        setPane(
+                          pane?.kind === "curriculum" &&
+                            pane.proposalId === change.proposalId
+                            ? undefined
+                            : change,
+                        )
+                      }
+                      onApplyCurriculum={(proposalId) =>
+                        post(path("curriculum/apply"), { proposalId })
+                      }
+                      onKeepCurriculum={(proposalId) =>
+                        post(path("curriculum/keep"), { proposalId })
                       }
                       onAgain={() => act("go-over-again")}
                       onFinish={() => act("finish")}
@@ -549,7 +582,7 @@ export function Session(props: { courseId: string; unitId: string }) {
           onStop={() => void act("interrupt")}
         />
       </div>
-      {pane === undefined ? null : (
+      {pane === undefined ? null : pane.kind === "artifact" ? (
         <SidePane
           title={pane.title}
           subtitle="From the tutor"
@@ -563,6 +596,17 @@ export function Session(props: { courseId: string; unitId: string }) {
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"
             title={pane.title}
+          />
+        </SidePane>
+      ) : (
+        <SidePane
+          title="Curriculum"
+          subtitle="As the proposed change would make it"
+          onClose={closePane}
+        >
+          <Diagram
+            units={pane.units}
+            marks={compareUnits(pane.was, pane.units).marks}
           />
         </SidePane>
       )}
@@ -769,6 +813,12 @@ function ThreadItem(props: {
   onRetrySaving(requestId: string): Promise<string | undefined>;
   onApplyStyle(proposalId: string): Promise<string | undefined>;
   onKeepStyle(proposalId: string): Promise<string | undefined>;
+  /** This is the curriculum change whose diagram the side pane shows. */
+  diagramOpen: boolean;
+  /** Opens the change's diagram in the side pane, or closes it if it is showing. */
+  onDiagram(change: CurriculumItem): void;
+  onApplyCurriculum(proposalId: string): Promise<string | undefined>;
+  onKeepCurriculum(proposalId: string): Promise<string | undefined>;
   onAgain(): void;
   onFinish(): void;
   /** This is the card of the assessment offered now, whose Start and Skip can be pressed. */
@@ -835,6 +885,16 @@ function ThreadItem(props: {
           item={item}
           onApply={() => props.onApplyStyle(item.proposalId)}
           onKeep={() => props.onKeepStyle(item.proposalId)}
+        />
+      );
+    case "curriculum":
+      return (
+        <CurriculumCard
+          item={item}
+          diagramOpen={props.diagramOpen}
+          onToggleDiagram={() => props.onDiagram(item)}
+          onApply={() => props.onApplyCurriculum(item.proposalId)}
+          onKeep={() => props.onKeepCurriculum(item.proposalId)}
         />
       );
     case "judgment": {

@@ -140,7 +140,8 @@ export function createTranscribedLog(options: {
             log.emit(
               event.type === "artifact" ||
                 event.type === "packages_requested" ||
-                event.type === "style_proposed"
+                event.type === "style_proposed" ||
+                event.type === "curriculum_change_proposed"
                 ? { ...event, historical: true }
                 : event,
             );

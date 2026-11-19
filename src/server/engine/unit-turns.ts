@@ -4,7 +4,7 @@
 // the turn, and what is allowed now; the learner's text or the event's
 // details follow it. Pure, so the wording is tested without a chat.
 
-import type { StoredUnit } from "../../shared/curriculum.ts";
+import type { StoredUnit, Unit } from "../../shared/curriculum.ts";
 import type { TestShown } from "../../shared/events.ts";
 import type {
   AnswerEvidence,
@@ -87,7 +87,7 @@ export function tutorSystemPrompt(
     "",
     `The course is "${context.courseTitle}". Its units, in order:`,
     "",
-    ...units.map((u, i) => `${i + 1}. ${u.title} (id "${u.id}"): ${u.goal}`),
+    ...unitLines(units),
     "",
     `You teach unit ${at + 1}, "${unit?.title}". Its goal: ${unit?.goal}`,
     "",
@@ -991,6 +991,50 @@ export function styleNote(
   }
 }
 
+/**
+ * The note that tells the tutor how the learner answered its proposed
+ * curriculum change (task 5.12), with the units as they now are once one is
+ * applied, since a running session keeps the system prompt it was opened
+ * with.
+ */
+export function curriculumNote(
+  outcome: "applied" | "kept" | "changed",
+  units: readonly Unit[],
+): string {
+  const list = `\n<curriculum>\n${unitLines(units).join("\n")}\n</curriculum>\n`;
+  switch (outcome) {
+    case "applied":
+      return (
+        "The learner applied the curriculum change you proposed. The " +
+        "course's units are now these, in order; they replace the list in " +
+        `your instructions:${list}`
+      );
+    case "changed":
+      return (
+        "The learner applied a change to this course's curriculum in " +
+        "another unit. The course's units are now these, in order; they " +
+        `replace the list in your instructions:${list}`
+      );
+    case "kept":
+      return (
+        'The learner chose "Keep the current one": the curriculum change you ' +
+        "proposed is not applied, and the units are as they were. Do not " +
+        "propose the same change again unless the learner asks for it."
+      );
+  }
+}
+
+/** The course's units, one line each, as the tutor's instructions list them. */
+function unitLines(units: readonly Unit[]): string[] {
+  return units.map((u, i) => {
+    const builds =
+      u.prerequisites.length === 0
+        ? ""
+        : ` Builds on ${u.prerequisites.map((id) => `"${id}"`).join(", ")}.`;
+    return `${i + 1}. ${u.title} (id "${u.id}"): ${u.goal}${builds}`;
+  });
+}
+
 /** The note for the first turn of a session that joins a unit under way. */
 export const JOINED_NOTE =
   "This conversation is new: the earlier conversation in this unit is not available to you, so do not refer to it.";
@@ -1018,12 +1062,21 @@ function turn(
           "Your proposed style note waits for the learner's answer: teach to " +
             "the current one until a header says they applied it.",
         ];
+  const change =
+    where.position.curriculumChange === undefined ||
+    where.finished !== undefined
+      ? []
+      : [
+          "Your proposed curriculum change waits for the learner's answer: " +
+            "the curriculum is as it was until a header says they applied it.",
+        ];
   const header = [
     describe(where),
     event,
     ...where.notes,
     ...request,
     ...proposal,
+    ...change,
     allowedNow,
   ].join(" ");
   const handoff = where.notes.includes(JOINED_NOTE)

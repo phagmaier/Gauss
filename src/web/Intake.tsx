@@ -238,7 +238,10 @@ export function Intake(props: { intakeId: string }) {
           subtitle="How the units build on each other"
           onClose={closeDiagram}
         >
-          <Diagram units={latest.units} changed={latest.changed} />
+          <Diagram
+            units={latest.units}
+            marks={new Map([...latest.changed].map((id) => [id, "Changed"]))}
+          />
         </SidePane>
       ) : null}
     </div>

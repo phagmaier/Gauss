@@ -98,6 +98,8 @@ export interface UnitRecord {
   readonly packageCompletions: readonly PackageCompletion[];
   /** The learner's style decisions not yet delivered to the tutor. */
   readonly pendingStyleDecisions: readonly StyleDecision[];
+  /** The learner's curriculum decisions not yet delivered to the tutor. */
+  readonly pendingCurriculumDecisions: readonly CurriculumDecision[];
   /** Set once the unit is finished and taken out of state.json. */
   readonly finished: "passed" | "overridden" | undefined;
   /** The learner skipped every segment and finished at the test's result. */
@@ -157,7 +159,10 @@ export interface UnitRecord {
   /** Commits the learner's decision and takes the matching proposal out of the position. */
   answerStyleProposal(decision: StyleDecision): Promise<StyleDecision>;
   /** Marks only the decisions that were in a completed turn's header. */
-  deliverStyleDecisions(decisions: readonly StyleDecision[]): Promise<void>;
+  deliverDecisions(sent: {
+    style: readonly StyleDecision[];
+    curriculum: readonly CurriculumDecision[];
+  }): Promise<void>;
   /** Starts the segment's check: this check is the evidence from here on. */
   startCheck(): Promise<void>;
   /**
@@ -278,12 +283,14 @@ export async function openUnitRecord(options: {
     packageCompletions = {},
     testedOut: tests,
     styleDecisions = {},
+    curriculumDecisions = {},
   } = await dataRoot.readState(courseId);
   const completed = Object.hasOwn(packageCompletions, unitId)
     ? (packageCompletions[unitId] ?? {})
     : {};
   let pendingStyle = decisionsForUnit(styleDecisions);
-  function decisionsForUnit(byUnit: Record<Slug, StyleDecision[]> | undefined) {
+  let pendingCurriculum = decisionsForUnit(curriculumDecisions);
+  function decisionsForUnit<T>(byUnit: Record<Slug, T[]> | undefined): T[] {
     return Object.hasOwn(byUnit ?? {}, unitId) ? (byUnit?.[unitId] ?? []) : [];
   }
   const stored = Object.hasOwn(positions, unitId)
@@ -323,6 +330,7 @@ export async function openUnitRecord(options: {
       tutorSessionId: _,
       packageRequest: __,
       styleProposal: ___,
+      curriculumChange: ____,
       ...rest
     } = given;
     const next: UnitPosition = {
@@ -334,6 +342,9 @@ export async function openUnitRecord(options: {
       ...(position.styleProposal === undefined
         ? {}
         : { styleProposal: position.styleProposal }),
+      ...(position.curriculumChange === undefined
+        ? {}
+        : { curriculumChange: position.curriculumChange }),
       // The gate is offered once, whatever position the chat gives.
       ...(position.gated === true ? { gated: true as const } : {}),
       // What the learner chose to skip holds until the unit finishes.
@@ -344,9 +355,18 @@ export async function openUnitRecord(options: {
         ? {}
         : { gateUnanswered: position.gateUnanswered }),
     };
-    await dataRoot.writePosition(courseId, unitId, next);
+    const saved = await dataRoot.writePosition(courseId, unitId, next);
     const was = position;
     position = next;
+    // An Apply a failed write left half done was completed by this write.
+    if (
+      next.curriculumChange !== undefined &&
+      saved.units[unitId]?.curriculumChange === undefined
+    ) {
+      const { curriculumChange: _____, ...settled } = next;
+      position = settled;
+      pendingCurriculum = decisionsForUnit(saved.curriculumDecisions);
+    }
     tell?.();
     if (was.segment !== next.segment || was.phase !== next.phase) {
       emit(phaseEvent(next));
@@ -467,6 +487,7 @@ export async function openUnitRecord(options: {
     const {
       packageRequest,
       styleProposal,
+      curriculumChange,
       pendingMoveOn: _,
       ...closed
     } = position;
@@ -497,6 +518,13 @@ export async function openUnitRecord(options: {
         outcome: "withdrawn",
       });
     }
+    if (curriculumChange !== undefined) {
+      emit({
+        type: "curriculum_change_answered",
+        proposalId: curriculumChange.id,
+        outcome: "withdrawn",
+      });
+    }
     emit({ type: "unit_closed", status: how });
     backup.commit(`${courseId}: unit ${unitId} finished, ${how}`);
     options.handoff?.();
@@ -523,6 +551,9 @@ export async function openUnitRecord(options: {
     },
     get pendingStyleDecisions() {
       return pendingStyle;
+    },
+    get pendingCurriculumDecisions() {
+      return pendingCurriculum;
     },
     get finished() {
       return finished;
@@ -620,6 +651,14 @@ export async function openUnitRecord(options: {
       tell();
     },
 
+    async keepCurriculumChange(change, tell) {
+      if (finished !== undefined) return;
+      const next = { ...position, curriculumChange: change };
+      await dataRoot.writePosition(courseId, unitId, next);
+      position = next;
+      tell();
+    },
+
     async answerStyleProposal(decision) {
       const { styleProposal, ...next } = position;
       if (finished !== undefined || styleProposal?.id !== decision.proposalId) {
@@ -639,14 +678,42 @@ export async function openUnitRecord(options: {
       return recorded;
     },
 
-    async deliverStyleDecisions(delivered) {
+    async answerCurriculumChange(decision) {
+      const { curriculumChange, ...next } = position;
+      if (
+        finished !== undefined ||
+        curriculumChange?.id !== decision.proposalId
+      ) {
+        throw new Error("That proposed curriculum change is not waiting.");
+      }
+      const saved = await dataRoot.writePosition(courseId, unitId, next, {
+        curriculum: { decision },
+      });
+      position = saved.units[unitId] ?? next;
+      pendingCurriculum = decisionsForUnit(saved.curriculumDecisions);
+      const recorded = pendingCurriculum.find(
+        (d) => d.proposalId === decision.proposalId,
+      );
+      if (recorded === undefined) {
+        throw new Error("The curriculum decision was not recorded.");
+      }
+      return recorded;
+    },
+
+    async deliverDecisions({ style, curriculum }) {
       const saved = await dataRoot.writePosition(
         courseId,
         unitId,
         finished === undefined ? position : null,
-        { style: { delivered } },
+        {
+          ...(style.length === 0 ? {} : { style: { delivered: style } }),
+          ...(curriculum.length === 0
+            ? {}
+            : { curriculum: { delivered: curriculum } }),
+        },
       );
       pendingStyle = decisionsForUnit(saved.styleDecisions);
+      pendingCurriculum = decisionsForUnit(saved.curriculumDecisions);
     },
 
     async startCheck() {

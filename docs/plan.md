@@ -40,38 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.12 Curriculum changes
-
-- Status: todo
-- Depends on: 5.11
-- Why: the brief's changes mid-course (a remedial unit, a unit the
-  learner asks for); a course's units cannot change after approval
-  today.
-- Do: `amend_curriculum` takes the whole unit list, as
-  `propose_curriculum` does, and a line on why. Refused, with the
-  reason, if it drops a unit that is started or finished, changes such a
-  unit's id, or breaks the curriculum's own rules (prerequisites, ids);
-  and while a question is open or another proposal waits. It shows a
-  card in the thread, built from the intake card's parts: the units with
-  what changed marked, the diagram, Apply and "Keep the current one".
-  Apply writes `curriculum.json`, keeping every kept unit's plan, and
-  asks for a backup commit; the course view and the diagram follow. The
-  tutor is told the answer in its next header. `tutor.md` gets the
-  lines: propose a change when the learner asks for one, or when
-  slipping objectives or a detour show a missing prerequisite; say why.
-  The scripted backend proposes one on "/amend".
-- Done when: fake-backend tests cover a unit added and applied, one
-  kept, each refusal, plans surviving a change, and a restart with a
-  card waiting. `mise run check` passes; on `pnpm dev:fake` a unit is
-  added from a session and started from the course view, and the
-  browser is closed before the server stops; one short run on Haiku 5.5
-  where the learner asks for a unit and applies the card.
-- From 5.11: one proposal waits per course, checked by
-  `CourseWorkspace.propose` in `unit-chat.ts` against `styleProposal` in
-  each position; a waiting curriculum change must count there too, both
-  ways. The style card's parts (`StyleCard.tsx`, `ChangedText.tsx`) and
-  its answer told in the next header are the pattern to reuse.
-
 ### 5.13 Prompts for the stage
 
 - Status: todo
@@ -130,6 +98,12 @@ a detour, a unit gate, generated notes and an exported transcript.
   the unchanged sentence word for word and the replies after Apply were
   short; but its text before the card said "I've proposed a style change"
   before the call was made, and its text after the card said so again.
+- From 5.12's Haiku run (asked for a unit on related rates before
+  optimisation): the proposal kept every other unit as it was and put the
+  new one between the two, building on the unit taught; after Apply the
+  tutor named the new order from its header. Untried: a change the tutor
+  proposes by itself from slipping objectives or a detour, which
+  `tutor.md` asks for.
 - Done when: the findings and the model choice are in `decisions.md`,
   "Prompts" and "Mastery loop"; `mise run check` passes, and the
   scripted backend's tests with it, since it reads the headers; the

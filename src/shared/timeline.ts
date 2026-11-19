@@ -9,6 +9,7 @@
 
 import type { Slug } from "./course.ts";
 import { changedUnits, type Unit } from "./curriculum.ts";
+import type { CurriculumChangeOutcome } from "./curriculum-change.ts";
 import type { ShownDispute } from "./dispute.ts";
 import type { PageEvent, TestShown } from "./events.ts";
 import type { AssessmentMode } from "./evidence.ts";
@@ -173,6 +174,21 @@ export interface StyleItem {
   outcome?: StyleOutcome;
 }
 
+/** The tutor's proposed curriculum change (task 5.12), and its answer. */
+export interface CurriculumItem {
+  kind: "curriculum";
+  key: number;
+  proposalId: string;
+  /** The units as they would be. */
+  units: Unit[];
+  /** The units it would replace. */
+  was: Unit[];
+  why: string;
+  /** Replayed from a transcript: only the current chat can offer the answer. */
+  historical?: true;
+  outcome?: CurriculumChangeOutcome;
+}
+
 export type Item =
   | { kind: "learner"; key: number; id?: string; text: string }
   | { kind: "tutor"; key: number; text: string }
@@ -181,6 +197,7 @@ export type Item =
   | ArtifactItem
   | PackagesItem
   | StyleItem
+  | CurriculumItem
   | QuestionItem
   | JudgmentItem
   /** A phase of a segment began, or the chat opened in it. */
@@ -322,6 +339,17 @@ function withProposal(
 ): Item[] {
   return items.map((item) =>
     item.kind === "style" && item.proposalId === id ? change(item) : item,
+  );
+}
+
+/** Changes the curriculum change with this id, and leaves every other item as it is. */
+function withChange(
+  items: Item[],
+  id: string,
+  change: (item: CurriculumItem) => CurriculumItem,
+): Item[] {
+  return items.map((item) =>
+    item.kind === "curriculum" && item.proposalId === id ? change(item) : item,
   );
 }
 
@@ -621,6 +649,43 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       return {
         ...next,
         items: withProposal(state.items, event.proposalId, (item) => ({
+          ...item,
+          outcome: event.outcome,
+        })),
+      };
+    case "curriculum_change_proposed": {
+      // As a style proposal: a reopened unit sends a waiting one again.
+      const card = {
+        proposalId: event.proposalId,
+        units: event.units,
+        was: event.was,
+        why: event.why,
+        ...(event.historical ? { historical: true as const } : {}),
+      };
+      if (
+        state.items.some(
+          (i) => i.kind === "curriculum" && i.proposalId === event.proposalId,
+        )
+      ) {
+        return {
+          ...next,
+          items: withChange(
+            state.items,
+            event.proposalId,
+            ({ historical: __, ...item }) => ({ ...item, ...card }),
+          ),
+        };
+      }
+      return {
+        ...next,
+        items: [...state.items, { kind: "curriculum", key: index, ...card }],
+        tutorOpen: false,
+      };
+    }
+    case "curriculum_change_answered":
+      return {
+        ...next,
+        items: withChange(state.items, event.proposalId, (item) => ({
           ...item,
           outcome: event.outcome,
         })),

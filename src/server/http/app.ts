@@ -545,6 +545,25 @@ export function createApp(options: {
     }),
   );
 
+  // The card of the tutor's proposed curriculum change (task 5.12).
+  app.post(
+    `${unitPath}/curriculum/apply`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, CurriculumChangeAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.applyCurriculum(body.data.proposalId), 200);
+    }),
+  );
+
+  app.post(
+    `${unitPath}/curriculum/keep`,
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, CurriculumChangeAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.keepCurriculum(body.data.proposalId), 200);
+    }),
+  );
+
   // An assessment's card (task 5.4): Start asks the tutor for its first
   // question; Skip, on the card or partway, ends it.
   app.post(

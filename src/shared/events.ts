@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ArtifactFile } from "./artifact.ts";
 import { Slug, Timestamp } from "./course.ts";
 import { Unit } from "./curriculum.ts";
+import { CurriculumChangeOutcome } from "./curriculum-change.ts";
 import { ShownDispute } from "./dispute.ts";
 import { AssessmentMode } from "./evidence.ts";
 import { PackageSpec, PackagesOutcome } from "./packages.ts";
@@ -158,6 +159,26 @@ export const PageEvent = z.discriminatedUnion("type", [
     type: z.literal("style_answered"),
     proposalId: z.string(),
     outcome: StyleOutcome,
+  }),
+  /**
+   * The tutor proposed a change to the course's curriculum (task 5.12): the
+   * whole unit list it would apply, the one it would replace and why. Sent
+   * again when the chat opens with the proposal still waiting.
+   */
+  z.object({
+    type: z.literal("curriculum_change_proposed"),
+    proposalId: z.string(),
+    units: z.array(Unit),
+    was: z.array(Unit),
+    why: z.string(),
+    /** A card replayed from a transcript cannot be answered by itself. */
+    historical: z.literal(true).optional(),
+  }),
+  /** The proposed change is answered: applied, kept, or withdrawn as the unit ended. */
+  z.object({
+    type: z.literal("curriculum_change_answered"),
+    proposalId: z.string(),
+    outcome: CurriculumChangeOutcome,
   }),
   /** The tutor posted a question. */
   z.object({ type: z.literal("question"), question: QuestionView }),

@@ -108,6 +108,14 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { Slug } from "../../shared/course.ts";
+import type { StoredUnit } from "../../shared/curriculum.ts";
+import {
+  type CurriculumChange,
+  type CurriculumDecision,
+  droppedStarted,
+  sameUnits,
+  withoutPlan,
+} from "../../shared/curriculum-change.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type {
   AnswerEvidence,
@@ -147,6 +155,10 @@ import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { pickForGate, pickForReview } from "../record/review.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
+import {
+  amendCurriculumTool,
+  type CurriculumDesk,
+} from "../tools/amend-curriculum.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import {
   installPackagesTool,
@@ -219,6 +231,7 @@ import {
   answerTurn,
   checkGoesOnTurn,
   checkText,
+  curriculumNote,
   detourButton,
   disputeNote,
   freshTurn,
@@ -283,6 +296,14 @@ export interface UnitChat {
   applyStyle(proposalId: string): Promise<ChatResult>;
   /** "Keep the current one" on the card of the tutor's proposed style note. */
   keepStyle(proposalId: string): Promise<ChatResult>;
+  /**
+   * Apply on the card of the tutor's proposed curriculum change:
+   * curriculum.json is replaced, each kept unit keeping its plan, and the
+   * tutor is told in its next header.
+   */
+  applyCurriculum(proposalId: string): Promise<ChatResult>;
+  /** "Keep the current one" on the card of the tutor's proposed curriculum change. */
+  keepCurriculum(proposalId: string): Promise<ChatResult>;
   /** The learner moves on without the check, which is recorded. */
   override(): Promise<ChatResult>;
   /** Start on the card of the assessment offered: the tutor is asked for its first question. */
@@ -449,6 +470,16 @@ export function createUnitChats(options: ChatOptions): UnitChats {
     return guard;
   }
 
+  /** The open chats of the course's other units. */
+  function othersIn(courseId: string, unitId: string): OpenableChat[] {
+    return [...chats]
+      .filter(([at]) => {
+        const [course, unit] = JSON.parse(at) as [string, string];
+        return course === courseId && unit !== unitId;
+      })
+      .map(([, chat]) => chat);
+  }
+
   return {
     async open(courseId, unitId, opening = {}) {
       const stored = await dataRoot.readCourse(courseId);
@@ -495,11 +526,13 @@ export function createUnitChats(options: ChatOptions): UnitChats {
             void chats.get(key(courseId, unit))?.learnAnswer(entry);
           },
           restyle: (note) => {
-            for (const [at, other] of chats) {
-              const [course, unit] = JSON.parse(at) as [string, string];
-              if (course === courseId && unit !== unitId) {
-                void other.learnStyle(note);
-              }
+            for (const other of othersIn(courseId, unitId)) {
+              void other.learnStyle(note);
+            }
+          },
+          recurriculum: (units) => {
+            for (const other of othersIn(courseId, unitId)) {
+              void other.learnCurriculum(units);
             }
           },
         });
@@ -535,10 +568,12 @@ interface CourseWorkspace {
    */
   request<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
   /**
-   * Runs `work`, which makes a style proposal, unless a proposal waits in a
-   * unit of the course.
+   * Runs `work`, which makes a style or curriculum proposal, with the state
+   * as read, unless a proposal of either kind waits in a unit of the course.
    */
-  propose<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
+  propose<T>(
+    work: (state: State) => Promise<T>,
+  ): Promise<T | { refused: string }>;
   /**
    * Closes the workspace to the tutors' changes and to questions while an
    * install runs, unless a question is open or a change is under way; the
@@ -747,20 +782,25 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
         return work();
       });
     },
-    propose<T>(work: () => Promise<T>): Promise<T | { refused: string }> {
+    propose<T>(
+      work: (state: State) => Promise<T>,
+    ): Promise<T | { refused: string }> {
       return exclusive(async () => {
         const state = await dataRoot.readState(courseId);
-        const waiting = Object.values(state.units).some(
-          (p) => p.styleProposal !== undefined,
-        );
-        if (waiting) {
+        const positions = Object.values(state.units);
+        const what = positions.some((p) => p.styleProposal !== undefined)
+          ? "A proposed style note"
+          : positions.some((p) => p.curriculumChange !== undefined)
+            ? "A proposed curriculum change"
+            : undefined;
+        if (what !== undefined) {
           return {
             refused:
-              "A proposed style note already waits for the learner's answer. " +
+              `${what} already waits for the learner's answer. ` +
               "Wait for it: a header says how they answered.",
           };
         }
-        return work();
+        return work(state);
       });
     },
     beginInstall(owner) {
@@ -822,6 +862,12 @@ interface OpenableChat extends UnitChat {
    * tutor's next session starts with it, and its next header gives it.
    */
   learnStyle(note: string): Promise<void>;
+  /**
+   * Takes in a curriculum change the learner applied in another unit's
+   * chat: the tutor's next session starts with its units, and its next
+   * header gives them.
+   */
+  learnCurriculum(units: readonly StoredUnit[]): Promise<void>;
 }
 
 /** The chat once its unit is planned and its record read. */
@@ -833,7 +879,10 @@ interface Running {
   /** Said once, in the next turn's header. */
   notes: string[];
   /** Decisions in the current turn's header, if it got as far as composing one. */
-  styleInHeader?: readonly StyleDecision[];
+  inHeader?: {
+    style: readonly StyleDecision[];
+    curriculum: readonly CurriculumDecision[];
+  };
   /**
    * The unit's handoff note and the course's misconceptions (task 5.7),
    * read when the chat opens, with what this unit's calls write since; the
@@ -859,6 +908,8 @@ function createUnitChat(
     tell?: (unitId: Slug, entry: AnswerEvidence) => void;
     /** Tells the chats of the course's other open units a style note the learner applied. */
     restyle?: (note: string) => void;
+    /** Tells the chats of the course's other open units a curriculum the learner applied. */
+    recurriculum?: (units: readonly StoredUnit[]) => void;
   },
 ): OpenableChat {
   const { dataRoot, planner, courseId, unitId } = options;
@@ -992,11 +1043,12 @@ function createUnitChat(
       }
       const loaded = createUnitAgents({
         backend: options.backend,
-        // A session started after a new style note is applied starts with it.
+        // A session started after a new style note or curriculum is applied
+        // starts with it.
         systemPrompt: () =>
           tutorSystemPrompt(
             options.systemPrompt,
-            context,
+            running?.context ?? context,
             { style, background, profile },
             earlier,
           ),
@@ -1007,6 +1059,7 @@ function createUnitChat(
             ? []
             : [installPackagesTool(packageDesk)]),
           proposeStyleTool(styleDesk),
+          amendCurriculumTool(curriculumDesk),
         ],
         cwd: workspace,
         ...(options.workspaceTools === true
@@ -1017,10 +1070,10 @@ function createUnitChat(
         // Only a turn calls it, once `r` is set.
         lost: (learnerId) => fallBack(r, learnerId),
         async turnEnded(outcome) {
-          const sent = r.styleInHeader;
-          delete r.styleInHeader;
+          const sent = r.inHeader;
+          delete r.inHeader;
           if (outcome === "done" && sent !== undefined) {
-            await exclusive(() => record.deliverStyleDecisions(sent));
+            await exclusive(() => record.deliverDecisions(sent));
           }
         },
         judge: options.judge,
@@ -1048,17 +1101,23 @@ function createUnitChat(
       restoreQuestions(record);
       restoreDisputes(r);
       restorePackages(record.packageCompletions);
+      const shown = (type: PageEvent["type"], proposalId: string) =>
+        log
+          .events()
+          .some(
+            (event) =>
+              event.type === type &&
+              "proposalId" in event &&
+              event.proposalId === proposalId,
+          );
       for (const decision of record.pendingStyleDecisions) {
-        if (
-          !log
-            .events()
-            .some(
-              (event) =>
-                event.type === "style_answered" &&
-                event.proposalId === decision.proposalId,
-            )
-        ) {
+        if (!shown("style_answered", decision.proposalId)) {
           log.emit(styleAnsweredEvent(decision));
+        }
+      }
+      for (const decision of record.pendingCurriculumDecisions) {
+        if (!shown("curriculum_change_answered", decision.proposalId)) {
+          log.emit(changeAnsweredEvent(decision));
         }
       }
       if (pendingInstall !== undefined) showSaveFailure(pendingInstall);
@@ -1091,6 +1150,9 @@ function createUnitChat(
       }
       if (position.styleProposal !== undefined) {
         log.emit(proposedEvent(position.styleProposal));
+      }
+      if (position.curriculumChange !== undefined) {
+        log.emit(changeProposedEvent(position.curriculumChange));
       }
       // A detour waits on the learner, as an open question does.
       if (position.detour !== undefined) log.emit(detourEvent(position.detour));
@@ -1354,8 +1416,9 @@ function createUnitChat(
     r.notes = [];
     const { record } = r;
     const decisions = record.pendingStyleDecisions;
-    if (decisions.length > 0) {
-      r.styleInHeader = decisions;
+    const answers = record.pendingCurriculumDecisions;
+    if (decisions.length > 0 || answers.length > 0) {
+      r.inHeader = { style: decisions, curriculum: answers };
       for (const decision of decisions) {
         notes.push(
           decision.outcome === "applied"
@@ -1365,6 +1428,10 @@ function createUnitChat(
               )
             : styleNote("kept", ""),
         );
+      }
+      // An applied change is told with the units as they now are.
+      for (const answer of answers) {
+        notes.push(curriculumNote(answer.outcome, r.context.units));
       }
     }
     return {
@@ -1662,8 +1729,8 @@ function createUnitChat(
   /**
    * Offers review on a card, if it is due (docs/decisions.md, "Mastery
    * loop", "Review"): the unit is not finished, nothing waits on the learner
-   * (no open question, detour, package request, style proposal or closing
-   * card) or the tutor (no turn queued or running), the pick
+   * (no open question, detour, package request, style or curriculum
+   * proposal or closing card) or the tutor (no turn queued or running), the pick
    * over the whole course is not empty, and the course was offered none
    * within the hour. The caller knows that a sitting begins: the chat is
    * new, or has been quiet. Nothing is sent to the tutor. A failure is
@@ -1682,6 +1749,7 @@ function createUnitChat(
       position.detour !== undefined ||
       position.packageRequest !== undefined ||
       position.styleProposal !== undefined ||
+      position.curriculumChange !== undefined ||
       pendingInstall !== undefined ||
       position.testOut?.stage === "result" ||
       (position.phase === "closed" && isLastSegment(r.context.plan, position))
@@ -3105,6 +3173,8 @@ function createUnitChat(
 
     applyStyle: (proposalId) => answerStyle(proposalId, "applied"),
     keepStyle: (proposalId) => answerStyle(proposalId, "kept"),
+    applyCurriculum: (proposalId) => answerCurriculum(proposalId, "applied"),
+    keepCurriculum: (proposalId) => answerCurriculum(proposalId, "kept"),
 
     override: () =>
       act(async (r) => {
@@ -3309,6 +3379,17 @@ function createUnitChat(
         const r = running;
         if (r !== undefined && r.record.finished === undefined) {
           r.notes.push(styleNote("changed", note));
+        }
+      });
+    },
+    async learnCurriculum(units) {
+      await loading;
+      await exclusive(async () => {
+        const r = running;
+        if (r === undefined) return;
+        r.context = { ...r.context, units };
+        if (r.record.finished === undefined) {
+          r.notes.push(curriculumNote("changed", units));
         }
       });
     },

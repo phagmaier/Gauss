@@ -1595,6 +1595,26 @@ built until its task is done; `architecture.md` says what is.
   backup staging cannot interleave with these writes. An undelivered
   decision stays in state until a tutor turn carrying it completes, so
   restart or an interrupted reply cannot lose it.
+- **A curriculum change commits by curriculum.json, rolling forward**
+  (the agent's): unlike the style note, the file that changes is itself
+  the proof. A change must differ from the curriculum it replaces, so a
+  curriculum holding a waiting change's units means its Apply wrote the
+  file; reading or writing the state then records the decision. This
+  needs no undo record, and Keep after a cut-short Apply finds the change
+  applied rather than restoring the old units over a unit started since.
+- **"Started" is a plan, a position or a test-out** (the agent's): a
+  plan is stored when a unit first opens, so it marks a unit started
+  before any evidence exists, and the evidence names its objectives
+  through that plan. The rule is checked when proposed and again on
+  Apply, since another unit can start in between. A started unit's title,
+  goal and prerequisites may change; a new unit can be made its
+  prerequisite, which is how a remedial unit goes in.
+- **The tutor sees prerequisites in its unit list** (the agent's): it
+  must send the whole list back with `amend_curriculum`, and a unit
+  whose prerequisites it could not see would come back changed.
+- **The change card uses the intake card's unit list and diagram**, with
+  "New" for an added unit beside "Changed" (the agent's), and dropped
+  units listed as the profile's dropped sentences are; no piece draws it.
 
 ## Prompts
 

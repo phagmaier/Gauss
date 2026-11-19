@@ -7,7 +7,8 @@
 // appends to and reads the units' session transcripts, stores and reads the artifacts the tutor shows,
 // writes and reads each unit's handoff note and the misconception log (task 5.7),
 // and reads and writes the learner profile, writing it too when a curriculum
-// that proposes one is approved (task 5.8).
+// that proposes one is approved (task 5.8), and applies the changes to an
+// approved curriculum that the learner accepts (task 5.12).
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -26,7 +27,15 @@ import {
   CurriculumProposal,
   PendingProfileApproval,
   type ShownProposal,
+  type Unit,
 } from "../../shared/curriculum.ts";
+import {
+  type CurriculumChange,
+  CurriculumDecision,
+  droppedStarted,
+  sameUnits,
+  withPlans,
+} from "../../shared/curriculum-change.ts";
 import { PageEvent, SESSION_GAP_MS } from "../../shared/events.ts";
 import {
   DisputeEvidence,
@@ -159,13 +168,20 @@ export interface DataRoot {
     unitId: string,
     plan: Plan,
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
-  /** Where each unit in progress stands; no units when none is. */
+  /**
+   * Where each unit in progress stands; no units when none is. A change to
+   * the curriculum whose Apply wrote curriculum.json but not this file is
+   * recorded as applied first.
+   */
   readState(id: string): Promise<State>;
   /**
    * Sets the unit's position in state.json, or with null takes the unit out
    * (it is no longer in progress), and returns the state as written. The
    * test-out finish and any package completion are saved in the same write.
-   * A style decision can be recorded with the position, or marked delivered.
+   * A style or curriculum decision can be recorded with the position, or
+   * marked delivered. An applied curriculum decision writes curriculum.json
+   * first, with each kept unit's plan, and throws CurriculumChangeRefused
+   * if the change would now drop a unit that has started.
    * Writes land in the order they were called, each on the one before.
    */
   writePosition(
@@ -178,6 +194,9 @@ export interface DataRoot {
       style?:
         | { decision: StyleDecision }
         | { delivered: readonly StyleDecision[] };
+      curriculum?:
+        | { decision: CurriculumDecision }
+        | { delivered: readonly CurriculumDecision[] };
     },
   ): Promise<State>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
@@ -309,6 +328,14 @@ export class DraftMismatch extends Error {
   }
 }
 
+/** An Apply the curriculum's own rules refuse now; nothing was written. */
+export class CurriculumChangeRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CurriculumChangeRefused";
+  }
+}
+
 /**
  * profile.md is not the text a write expected to replace: the learner saved
  * it on the Profile page, or an approval wrote it, since that text was read.
@@ -412,6 +439,71 @@ export function openDataRoot(options: {
       if (
         !recovered.styleDecisions?.[unit]?.some(
           (d) => d.proposalId === decision.proposalId,
+        )
+      ) {
+        throw error;
+      }
+      return recovered;
+    }
+    return after;
+  }
+
+  /**
+   * Completes an Apply that wrote curriculum.json but not state.json: a
+   * waiting change the curriculum already holds was applied, since a change
+   * must differ from the curriculum it would replace. Holds the state lock.
+   */
+  async function recoverCurriculum(
+    path: string,
+    state: State,
+    curriculum: Curriculum | null,
+  ): Promise<State> {
+    const settled = settleApplied(state, curriculum?.units);
+    if (settled !== state) await writeJson(path, State, settled);
+    return settled;
+  }
+
+  /**
+   * Writes the changed curriculum, each kept unit with its plan, then the
+   * state with the decision; curriculum.json holding the change commits it.
+   * Holds the state, curriculum and snapshot locks.
+   */
+  async function applyCurriculum(
+    id: string,
+    path: string,
+    after: State,
+    unit: Slug,
+    change: CurriculumChange,
+  ): Promise<State> {
+    const file = courseFile(id, "curriculum.json");
+    const current = (await readCourse(id))?.curriculum;
+    if (current?.approval.status !== "approved") {
+      throw new Error(`The curriculum of "${id}" is not approved.`);
+    }
+    const refusal = droppedStarted(current.units, change.units, after);
+    if (refusal !== undefined) throw new CurriculumChangeRefused(refusal);
+    const parsed = Curriculum.safeParse({
+      ...current,
+      units: withPlans(current.units, change.units),
+    });
+    if (!parsed.success) {
+      throw new CurriculumChangeRefused(
+        parsed.error.issues.map((issue) => issue.message).join("\n"),
+      );
+    }
+    try {
+      await writeJson(file, Curriculum, parsed.data);
+      await writeJson(path, State, after);
+    } catch (error) {
+      // An atomic write can report a directory sync error after renaming.
+      const recovered = await recoverCurriculum(
+        path,
+        await readStateFile(path),
+        (await readCourse(id))?.curriculum ?? null,
+      );
+      if (
+        !decisionsOf(recovered.curriculumDecisions, unit).some(
+          (d) => d.proposalId === change.id,
         )
       ) {
         throw error;
@@ -793,14 +885,22 @@ export function openDataRoot(options: {
     async readState(id) {
       const path = courseFile(id, "state.json");
       await existingCourse(id);
-      return readStateFile(path);
+      const state = await readStateFile(path);
+      if (!changeWaits(state)) return state;
+      return withFileLock(path, async () =>
+        recoverCurriculum(
+          path,
+          await readStateFile(path),
+          (await existingCourse(id)).curriculum,
+        ),
+      );
     },
 
     async writePosition(
       id,
       unitId,
       position,
-      { completion, testedOut, style } = {},
+      { completion, testedOut, style, curriculum } = {},
     ) {
       const unit = Slug.parse(unitId);
       // Checked and copied now, so a later change to the caller's object
@@ -814,22 +914,42 @@ export function openDataRoot(options: {
         style !== undefined && "decision" in style
           ? StyleDecision.parse(style.decision)
           : undefined;
+      const answer =
+        curriculum !== undefined && "decision" in curriculum
+          ? CurriculumDecision.parse(curriculum.decision)
+          : undefined;
       const path = courseFile(id, "state.json");
       return withFileLock(path, async () => {
         const stored = await existingCourse(id);
-        const before = await recoverStyle(id, path);
-        const decisions = Object.hasOwn(before.styleDecisions ?? {}, unit)
-          ? (before.styleDecisions?.[unit] ?? [])
-          : [];
+        const before = await recoverCurriculum(
+          path,
+          await recoverStyle(id, path),
+          stored.curriculum,
+        );
+        const decisions = decisionsOf(before.styleDecisions, unit);
+        const answers = decisionsOf(before.curriculumDecisions, unit);
+        if (
+          (decision !== undefined || answer !== undefined) &&
+          stored.curriculum?.approval.status !== "approved"
+        ) {
+          throw new Error(`The curriculum of "${id}" is not approved.`);
+        }
         if (decision !== undefined) {
-          if (stored.curriculum?.approval.status !== "approved") {
-            throw new Error(`The curriculum of "${id}" is not approved.`);
-          }
           if (decisions.some((d) => d.proposalId === decision.proposalId)) {
             return before;
           }
           if (before.units[unit]?.styleProposal?.id !== decision.proposalId) {
             throw new Error("That proposed style note is not waiting.");
+          }
+        }
+        const change = before.units[unit]?.curriculumChange;
+        if (answer !== undefined) {
+          // Answered already, or applied before a restart cut the write short.
+          if (answers.some((d) => d.proposalId === answer.proposalId)) {
+            return before;
+          }
+          if (change?.id !== answer.proposalId) {
+            throw new Error("That proposed curriculum change is not waiting.");
           }
         }
         const state: State = {
@@ -855,30 +975,48 @@ export function openDataRoot(options: {
           };
         }
         if (style !== undefined) {
-          const remaining =
+          const pending = withDecisions(
+            before.styleDecisions,
+            unit,
             decision !== undefined
               ? [...decisions, decision]
               : "delivered" in style
-                ? decisions.filter(
-                    (d) =>
-                      !style.delivered.some(
-                        (sent) => sent.proposalId === d.proposalId,
-                      ),
-                  )
-                : decisions;
-          const pending = { ...before.styleDecisions };
-          if (remaining.length === 0) delete pending[unit];
-          else pending[unit] = remaining;
-          if (Object.keys(pending).length === 0) delete state.styleDecisions;
+                ? undelivered(decisions, style.delivered)
+                : decisions,
+          );
+          if (pending === undefined) delete state.styleDecisions;
           else state.styleDecisions = pending;
+        }
+        if (curriculum !== undefined) {
+          const pending = withDecisions(
+            before.curriculumDecisions,
+            unit,
+            answer !== undefined
+              ? [...answers, answer]
+              : "delivered" in curriculum
+                ? undelivered(answers, curriculum.delivered)
+                : answers,
+          );
+          if (pending === undefined) delete state.curriculumDecisions;
+          else state.curriculumDecisions = pending;
         }
         if (decision?.outcome === "applied") {
           return withFileLock(courses, () =>
             applyStyle(id, path, before, state, unit, decision),
           );
         }
-        await writeJson(path, State, state);
-        return state;
+        if (answer?.outcome === "applied" && change !== undefined) {
+          return withCurriculumLock(courseFile(id, "curriculum.json"), () =>
+            withFileLock(courses, () =>
+              applyCurriculum(id, path, state, unit, change),
+            ),
+          );
+        }
+        // A position the caller kept from before an Apply was recovered
+        // must not bring its change back.
+        const settled = settleApplied(state, stored.curriculum?.units);
+        await writeJson(path, State, settled);
+        return settled;
       });
     },
 

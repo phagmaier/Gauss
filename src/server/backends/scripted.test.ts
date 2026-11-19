@@ -1047,6 +1047,39 @@ test("/style proposes the course's note with a sentence on shorter explanations 
   });
 });
 
+test("/amend proposes the course's units with a practice unit added that builds on the unit taught, and Apply adds it", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const { chat } = opened;
+  await chat.settled();
+
+  expect(chat.say("More practice, please. /amend")).toEqual({ ok: true });
+  await chat.settled();
+  const practice = {
+    id: "practice-3",
+    title: "Practice 3",
+    goal: "Practise what the course has covered so far.",
+    prerequisites: ["limits"],
+  };
+  const card = chat
+    .events()
+    .findLast((e) => e.type === "curriculum_change_proposed");
+  expect(card).toEqual({
+    type: "curriculum_change_proposed",
+    proposalId: expect.any(String),
+    units: [...CURRICULUM.units, practice],
+    was: CURRICULUM.units,
+    why: "You asked for more practice.",
+  });
+  if (card?.type !== "curriculum_change_proposed") throw new Error("no card");
+  expect(await chat.applyCurriculum(card.proposalId)).toEqual({ ok: true });
+  expect(
+    (await dataRoot.readCourse(COURSE))?.curriculum?.units.map((u) => u.id),
+  ).toEqual(["limits", "derivative", "practice-3"]);
+});
+
 test('the scripted dispute judge keeps a grade unless the reason has "/change", changes it both ways with the key following, and fails on "/fail"', async () => {
   const judge = createDisputeJudge({
     backend: createScriptedBackend(),

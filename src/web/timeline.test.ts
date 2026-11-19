@@ -1364,6 +1364,38 @@ test("a style proposal is one card: replayed from a transcript it cannot be answ
   expect(applied.items).toEqual([{ ...card, outcome: "applied" }]);
 });
 
+test("a curriculum change is one card, as a style proposal is, and a style answer with its id does not mark it", () => {
+  const unit = { id: "a", title: "A", goal: "Do A.", prerequisites: [] };
+  const added = { id: "b", title: "B", goal: "Do B.", prerequisites: ["a"] };
+  const proposed: PageEvent = {
+    type: "curriculum_change_proposed",
+    proposalId: "c1",
+    units: [unit, added],
+    was: [unit],
+    why: "You asked.",
+  };
+  const card = {
+    kind: "curriculum",
+    key: 0,
+    proposalId: "c1",
+    units: [unit, added],
+    was: [unit],
+    why: "You asked.",
+  };
+  const replayed = play([{ ...proposed, historical: true }]);
+  const live = play([proposed], { ...replayed, last: -1 });
+  expect(live.items).toEqual([card]);
+
+  const answered = play(
+    [
+      { type: "curriculum_change_answered", proposalId: "c1", outcome: "kept" },
+      { type: "style_answered", proposalId: "c1", outcome: "applied" },
+    ],
+    { ...live, last: -1 },
+  );
+  expect(answered.items).toEqual([{ ...card, outcome: "kept" }]);
+});
+
 test("a review's card becomes its marker when started; a restart that says the card or the review again adds nothing, and one that lost the start shows the marker", () => {
   const offered: PageEvent = {
     type: "assessment",

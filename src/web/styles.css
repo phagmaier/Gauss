@@ -1807,12 +1807,14 @@ button.dn:hover {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-.cs .cs-gone {
+.cs .cs-gone,
+.cp > .cs-gone {
   color: var(--faint);
   font-size: 0.88em;
   margin: 0.5em 0 0;
 }
-.cs .cs-gone s {
+.cs .cs-gone s,
+.cp > .cs-gone s {
   text-decoration-color: var(--overlay0);
 }
 .cs-h .for {
