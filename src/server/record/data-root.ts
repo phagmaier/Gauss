@@ -132,15 +132,18 @@ export interface DataRoot {
   readState(id: string): Promise<State>;
   /**
    * Sets the unit's position in state.json, or with null takes the unit out
-   * (it is no longer in progress), and returns the state as written. A package
-   * completion is saved in the same write. Writes land in the order they were
-   * called, each on the one before.
+   * (it is no longer in progress), and returns the state as written. The
+   * test-out finish and any package completion are saved in the same write.
+   * Writes land in the order they were called, each on the one before.
    */
   writePosition(
     id: string,
     unitId: string,
     position: UnitPosition | null,
-    completion?: PackageCompletion,
+    outcome?: {
+      completion?: PackageCompletion | undefined;
+      testedOut?: boolean;
+    },
   ): Promise<State>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
   appendEvidence(id: string, entry: EvidenceEntry): Promise<void>;
@@ -486,7 +489,7 @@ export function openDataRoot(options: {
       return (await readJson(path, State)) ?? { units: {} };
     },
 
-    async writePosition(id, unitId, position, completion) {
+    async writePosition(id, unitId, position, { completion, testedOut } = {}) {
       const unit = Slug.parse(unitId);
       // Checked and copied now, so a later change to the caller's object
       // cannot reach a write still waiting its turn.
@@ -508,6 +511,9 @@ export function openDataRoot(options: {
                 )
               : { ...before.units, [unit]: checked },
         };
+        if (checked === null && testedOut === true) {
+          state.testedOut = { ...before.testedOut, [unit]: true };
+        }
         if (completed !== undefined) {
           const completions = before.packageCompletions ?? {};
           const forUnit = Object.hasOwn(completions, unit)

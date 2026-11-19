@@ -20,6 +20,7 @@ import {
   type IntakeStarted,
   LearnerMessage,
   type PageEvent,
+  SkipTestedPost,
   type UnitOpened,
 } from "../../shared/events.ts";
 import type { CourseWithProgress, Library } from "../../shared/library.ts";
@@ -404,7 +405,11 @@ export function createApp(options: {
   // The test's result card: skip what it passed, or have the whole unit taught.
   app.post(
     `${unitPath}/test-out/skip`,
-    withUnit(async (c, chat) => reply(c, await chat.skipTested(), 202)),
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, SkipTestedPost);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.skipTested(body.data.objectives), 202);
+    }),
   );
 
   app.post(

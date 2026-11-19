@@ -735,14 +735,13 @@ export function testResultCard(
 
 /** The unit was finished by skipping what the test passed, every objective of it. */
 export function finishedByTest(timeline: Timeline): boolean {
-  const card = timeline.items.findLast((i) => i.kind === "test_result");
-  const { plan } = timeline;
+  const { finished, plan, position } = timeline;
+  const skipped = position?.skipping;
   return (
-    card?.kind === "test_result" &&
+    finished !== null &&
     plan !== null &&
-    card.skipped !== undefined &&
-    card.skipped.length > 0 &&
-    firstTaught(plan, card.skipped) === undefined
+    skipped !== undefined &&
+    firstTaught(plan, skipped) === undefined
   );
 }
 

@@ -1367,7 +1367,7 @@ test("a saved receipt whose cleanup failed cannot obstruct a different install a
     .spyOn(root, "writePosition")
     .mockImplementation(async (...args) => {
       const saved = await writePosition(...args);
-      if (args[3]?.request.id === id) {
+      if (args[3]?.completion?.request.id === id) {
         await rename(journal, behind);
         await writeFile(journal, "blocks journal cleanup");
       }

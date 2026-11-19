@@ -282,7 +282,7 @@ export interface UnitChat {
    * the first segment with an objective not passed; with every objective
    * passed, finishes the unit.
    */
-  skipTested(): Promise<ChatResult>;
+  skipTested(shown: readonly string[]): Promise<ChatResult>;
   /** At the test's result card: the whole unit is taught, from its first segment. */
   teachWhole(): Promise<ChatResult>;
   /**
@@ -404,6 +404,11 @@ interface ChatOptions {
 
 export function createUnitChats(options: ChatOptions): UnitChats {
   const { dataRoot } = options;
+  const testStarted = {
+    ok: false,
+    status: 409,
+    error: "This unit has started, so it can no longer be tested out of.",
+  } as const;
   const chats = new Map<string, OpenableChat>();
   const key = (courseId: string, unitId: string) =>
     JSON.stringify([courseId, unitId]);
@@ -447,12 +452,7 @@ export function createUnitChats(options: ChatOptions): UnitChats {
           Object.hasOwn(state.units, unitId) ||
           unitStatus(unit, evidence, undefined) !== "not-started"
         ) {
-          return {
-            ok: false,
-            status: 409,
-            error:
-              "This unit has started, so it can no longer be tested out of.",
-          };
+          return testStarted;
         }
       }
       await dataRoot.markOpened(courseId, unitId);
@@ -471,7 +471,7 @@ export function createUnitChats(options: ChatOptions): UnitChats {
         });
         chats.set(key(courseId, unitId), chat);
       }
-      chat.open(opening.testOut === true);
+      if (!chat.open(opening.testOut === true)) return testStarted;
       return { ok: true, chat };
     },
     get: (courseId, unitId) => chats.get(key(courseId, unitId)),
@@ -580,7 +580,7 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
       return;
     }
     try {
-      await dataRoot.writePosition(courseId, unitId, next, completion);
+      await dataRoot.writePosition(courseId, unitId, next, { completion });
     } catch (error) {
       console.error("An install could not be recorded:", error);
       pending = receipt;
@@ -752,12 +752,11 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
 
 interface OpenableChat extends UnitChat {
   /**
-   * Loads the unit, unless it is loaded or loading; again after a failure.
-   * A unit loaded already that has been quiet for a sitting's gap can be
-   * offered review. `testOut`: a unit with no position yet starts with its
-   * test, kept until a load writes its position.
+   * Loads the unit, or picks up its existing chat. The first open fixes
+   * whether to start with a test; a later test request is refused, even
+   * while the first is still loading. A failed load can be tried again.
    */
-  open(testOut?: boolean): void;
+  open(testOut?: boolean): boolean;
   /**
    * Takes in an answer on one of the unit's objectives that another unit's
    * assessment recorded, if the unit's record read when it opened lacks it.
@@ -811,8 +810,6 @@ function createUnitChat(
    * kept: a message sent meanwhile waits for the card, which it skips.
    */
   let offering = false;
-  /** The learner chose to test out of the unit, before its position was written. */
-  let testWanted = false;
   /** The course's workspace, where the tutor works and packages go. */
   let folder: string | undefined;
   /** The install that runs, by its request's id; `settled` waits for it. */
@@ -828,7 +825,7 @@ function createUnitChat(
 
   // --- Opening ---------------------------------------------------------------
 
-  async function load(): Promise<void> {
+  async function load(testOut: boolean): Promise<void> {
     try {
       const workspace = await dataRoot.workspaceFolder(courseId);
       const pending = await options.workspace.prepare(workspace);
@@ -859,10 +856,8 @@ function createUnitChat(
           install?.requestId === id || pendingInstall?.request.id === id,
         now,
         ...(options.backup === undefined ? {} : { backup: options.backup }),
-        testOut: testWanted,
+        testOut,
       });
-      // Its position is written now, with the test due if it was chosen.
-      testWanted = false;
       const context: UnitContext = {
         courseTitle: stored.course.title,
         units,
@@ -913,6 +908,15 @@ function createUnitChat(
       if (pendingInstall !== undefined) showSaveFailure(pendingInstall);
       log.emit(record.status());
       if (record.finished !== undefined) {
+        if (
+          record.testedOut &&
+          !log.events().some((event) => event.type === "test_answered")
+        ) {
+          log.emit({
+            type: "test_answered",
+            skipped: plan.objectives.map((o) => o.id),
+          });
+        }
         log.emit({ type: "unit_closed", status: record.finished });
         return;
       }
@@ -981,6 +985,9 @@ function createUnitChat(
         // The test goes in place of the teaching turn.
         await exclusive(() => startTest(r));
       } else if (test === "result") {
+        // Closing a saved answer above can end the test and schedule its
+        // summary. Only recover a result that was already waiting on disk.
+        if (position.testOut?.stage !== "result") return;
         // The result card waits on the learner. If a restart cut off the
         // tutor's word on the test, before the card was shown, it is asked
         // for again, and the card follows it.
@@ -1985,7 +1992,7 @@ function createUnitChat(
         objectives: r.record.objectiveStatuses(),
       });
     }
-    await r.record.finish(passed ? "passed" : "overridden", tell);
+    await r.record.finish(passed ? "passed" : "overridden", { tell });
   }
 
   /**
@@ -2550,23 +2557,16 @@ function createUnitChat(
     open(testOut = false) {
       const r = running;
       if (r !== undefined) {
+        if (testOut) return false;
         // Opened again after a quiet hour: a new sitting, which can open
         // with review.
         if (log.quiet()) void exclusive(() => offerReview(r));
-        return;
+        return true;
       }
-      if (loading !== undefined && !failed) {
-        // The load under way writes the unit's position: a test chosen
-        // meanwhile joins it, and the session page's own open after "Start
-        // the test" leaves it chosen.
-        if (testOut) testWanted = true;
-        return;
-      }
-      // A new load starts the unit as this open asks: a test chosen for one
-      // that failed is not kept for a later Start.
-      testWanted = testOut;
+      if (loading !== undefined && !failed) return !testOut;
       failed = false;
-      loading = load();
+      loading = load(testOut);
+      return true;
     },
 
     say(text) {
@@ -2919,12 +2919,20 @@ function createUnitChat(
         return { ok: true };
       }),
 
-    skipTested: () =>
+    skipTested: (shown) =>
       act(async (r) => {
         const waits = answersResult(r);
         if (waits !== undefined) return waits;
         const { plan } = r.context;
         const passed = passedNow(r);
+        if (
+          passed.length !== shown.length ||
+          passed.some((id, i) => id !== shown[i])
+        ) {
+          return refused(
+            "The test result changed. Review the card and choose again.",
+          );
+        }
         if (passed.length === 0) {
           return refused(
             "The test passed nothing to skip: the unit is taught from its first segment.",
@@ -2934,7 +2942,7 @@ function createUnitChat(
         const tell = () => log.emit({ type: "test_answered", skipped: passed });
         if (first === undefined) {
           // Every objective passed: the unit is finished, with no gate.
-          await r.record.finish("passed", tell);
+          await r.record.finish("passed", { tell, testedOut: true });
           return { ok: true };
         }
         await r.record.move(

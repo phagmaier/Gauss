@@ -129,9 +129,9 @@ version: a field added later must be optional.
   waiting, or the objectives the learner chose to skip, kept until the
   unit finishes), the extra segment that goes over objectives again, the
   tutor's session id, and the tutor's request to install packages while
-  it waits for the learner. Completed package cards are
-  kept separately from positions in the same file, so their outcomes
-  survive even if a transcript line is lost or a unit finishes. Before
+  it waits for the learner. Completed package cards and units finished
+  by testing out are kept separately from positions in the same file.
+  Their outcomes survive even if a transcript line is lost. Before
   the first unit exposes the workspace, the course rolls back an
   interrupted install or saves its committed receipt without rerunning uv.
   The journal is kept until the result is saved. Changes are written
@@ -477,11 +477,12 @@ the test before a unit lets the learner skip what they know.
   when that is nothing. `gated` in the position keeps the gate from being
   offered again, across going over objectives again and restarts.
 - **The test before a unit** is chosen on the course view for a unit not
-  started (`POST .../test-out`, refused for one started or finished). The
-  unit opens and is planned as any unit is; its position is written with
-  the test due, which starts in place of the teaching turn, after a review
-  that is due, on every objective of the plan in its order. It has no
-  feedback turn and no detour: the turn that brings a grade asks for the
+  started (`POST .../test-out`, refused if another open has already
+  started loading the unit). The unit is planned as any unit is; its
+  position is written with the test due, which starts in place of the
+  teaching turn, after a review that is due, on every objective of the
+  plan in its order. It has no feedback turn and no detour: the turn that
+  brings a grade asks for the
   next question, numbered on from the test's questions, whose head names
   its objective's place. A correct answer that passes its objective alone
   (at 90% or 100%, without help) ends its questions; any other correct
@@ -495,12 +496,14 @@ the test before a unit lets the learner skip what they know.
   the card again (and asks the tutor again first if the card was never
   shown); a dispute or another unit's answer shows it again as it stands.
   Nothing is skipped until the learner answers it (`test-out/skip`,
-  `test-out/whole`): skipping fixes the objectives passed then in the
-  position, and teaching starts at the first segment with one not passed
-  (`skipping` in `src/shared/plan.ts`). A segment whose objectives all
-  passed is skipped, now and when the next segment starts, and one with a
-  passed objective teaches and checks only the other (`segmentOf` in
-  `check-rules.ts`), its teaching turn told what was left out; the unit's
+  `test-out/whole`): a skip request must match the objectives shown on
+  the learner's card; if they changed, the learner must choose again.
+  Accepting the skip fixes those objectives in the position, and teaching
+  starts at the first segment with one not passed (`skipping` in
+  `src/shared/plan.ts`). A segment whose objectives all passed is skipped,
+  now and when the next segment starts. A segment with a passed objective
+  teaches and checks only the other (`segmentOf` in `check-rules.ts`), its
+  teaching turn told what was left out; the unit's
   last segment is the last one taught. With every objective passed,
   skipping finishes the unit, with no gate. The other step teaches the
   whole unit as planned, whose checks ask a passed objective once. What

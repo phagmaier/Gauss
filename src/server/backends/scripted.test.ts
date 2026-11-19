@@ -412,7 +412,7 @@ test(
       },
     ]);
 
-    expect(await chat.skipTested()).toEqual({ ok: true });
+    expect(await chat.skipTested(["limits-idea"])).toEqual({ ok: true });
     await chat.settled();
     expect((await dataRoot.readState(COURSE)).units.limits).toMatchObject({
       segment: 1,

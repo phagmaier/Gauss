@@ -97,6 +97,8 @@ export interface UnitRecord {
   readonly packageCompletions: readonly PackageCompletion[];
   /** Set once the unit is finished and taken out of state.json. */
   readonly finished: "passed" | "overridden" | undefined;
+  /** The learner skipped every segment and finished at the test's result. */
+  readonly testedOut: boolean;
   /** The unit had a position in state.json when it was opened: it was under way. */
   readonly reopened: boolean;
   /** The unit's status and each objective's, as `unit_status` tells the page. */
@@ -220,8 +222,11 @@ export interface UnitRecord {
    * The caller tells the page once its gate or finish is saved.
    */
   moveOn(objectives: readonly string[]): Promise<void>;
-  /** Ends the unit and takes it out of state.json, then calls `tell` before showing it finished. */
-  finish(status: "passed" | "overridden", tell?: () => void): Promise<void>;
+  /** Removes the position and keeps any full test-out finish, then shows it. */
+  finish(
+    status: "passed" | "overridden",
+    outcome?: { tell?: (() => void) | undefined; testedOut?: boolean },
+  ): Promise<void>;
 }
 
 /**
@@ -251,8 +256,11 @@ export async function openUnitRecord(options: {
   const unitId = unit.id;
   // The unit's own entry only: an id such as "constructor" is also the name
   // of a property every object inherits.
-  const { units: positions, packageCompletions = {} } =
-    await dataRoot.readState(courseId);
+  const {
+    units: positions,
+    packageCompletions = {},
+    testedOut: tests,
+  } = await dataRoot.readState(courseId);
   const completed = Object.hasOwn(packageCompletions, unitId)
     ? (packageCompletions[unitId] ?? {})
     : {};
@@ -270,6 +278,7 @@ export async function openUnitRecord(options: {
     stored === undefined && (before === "passed" || before === "overridden")
       ? before
       : undefined;
+  let testedOut = finished !== undefined && tests?.[unitId] === true;
   let position: UnitPosition =
     stored ??
     (finished !== undefined
@@ -416,7 +425,13 @@ export async function openUnitRecord(options: {
 
   async function finish(
     how: "passed" | "overridden",
-    tell?: () => void,
+    {
+      tell,
+      testedOut: byTest = false,
+    }: {
+      tell?: (() => void) | undefined;
+      testedOut?: boolean;
+    } = {},
   ): Promise<void> {
     const { packageRequest, pendingMoveOn: _, ...closed } = position;
     const completion: PackageCompletion | undefined =
@@ -427,8 +442,12 @@ export async function openUnitRecord(options: {
             preview: options.packagePreview(packageRequest),
             outcome: "withdrawn",
           };
-    await dataRoot.writePosition(courseId, unitId, null, completion);
+    await dataRoot.writePosition(courseId, unitId, null, {
+      completion,
+      testedOut: byTest,
+    });
     finished = how;
+    testedOut = byTest;
     position = closed;
     tell?.();
     if (completion !== undefined) {
@@ -460,6 +479,9 @@ export async function openUnitRecord(options: {
     },
     get finished() {
       return finished;
+    },
+    get testedOut() {
+      return testedOut;
     },
     reopened: stored !== undefined,
     status,
@@ -533,10 +555,10 @@ export async function openUnitRecord(options: {
         // The unit ended during the install. Replace its withdrawal with
         // the install's result, but do not give the finished unit a position.
         if (completed[id]?.outcome !== "withdrawn") return false;
-        await dataRoot.writePosition(courseId, unitId, null, completion);
+        await dataRoot.writePosition(courseId, unitId, null, { completion });
       } else {
         if (packageRequest?.id !== id) return false;
-        await dataRoot.writePosition(courseId, unitId, next, completion);
+        await dataRoot.writePosition(courseId, unitId, next, { completion });
         position = next;
       }
       keepCompletion(completion);

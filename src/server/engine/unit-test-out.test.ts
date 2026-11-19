@@ -7,7 +7,7 @@
 // gate later leaving out what the test passed. The fake backend's tutor does
 // what each header allows.
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -199,10 +199,10 @@ function tutor(quiet: (text: string) => boolean = () => false) {
   };
 }
 
-function setUp(script = tutor(), at = NOW) {
+function setUp(script = tutor(), at = NOW, root?: DataRoot) {
   const backend = createFakeBackend(script, [], { kept });
   const clock = new Date(at);
-  const dataRoot = openDataRoot({ path: dir, now: () => clock });
+  const dataRoot = root ?? openDataRoot({ path: dir, now: () => clock });
   const units = createUnitChats({
     backend,
     systemPrompt: "Tutor.",
@@ -457,7 +457,7 @@ test(
     });
 
     const turns = sent(setup.backend).length;
-    await step(chat.skipTested(), chat);
+    await step(chat.skipTested(["slope", "power-rule", "chain-rule"]), chat);
 
     expect(chat.events().slice(-3)).toEqual([
       {
@@ -494,6 +494,31 @@ test(
       label: "Finished",
       ticks: ["skip", "skip"],
     });
+
+    // The record finished the unit, but a crash lost the transcript's last
+    // batch. The finished unit still shows what the learner skipped.
+    await setup.units.close();
+    const [transcript] = await reload().readTranscripts(COURSE, "derivative");
+    const events = transcript?.events ?? [];
+    const cut = events.findIndex((e) => e.type === "test_answered");
+    expect(cut).toBeGreaterThan(0);
+    await writeFile(
+      join(dir, "courses", COURSE, "sessions", "derivative.1.jsonl"),
+      events
+        .slice(0, cut)
+        .map((e) => `${JSON.stringify(e)}\n`)
+        .join(""),
+    );
+    const restarted = setUp();
+    const reopened = replay(await open(restarted));
+    expect(testResultCard(DERIVATIVE_PLAN, resultOf(reopened)).answered).toBe(
+      "Finished without teaching.",
+    );
+    expect(finishedByTest(reopened)).toBe(true);
+    expect(
+      whereInUnit(DERIVATIVE_PLAN, reopened.position, reopened.finished),
+    ).toEqual({ label: "Finished", ticks: ["skip", "skip"] });
+    expect(sent(restarted.backend)).toEqual([]);
   },
   MANY_TURNS_MS,
 );
@@ -616,7 +641,7 @@ test(
     );
     expect(await positionOf()).toMatchObject({ testOut: { stage: "result" } });
 
-    await step(chat.skipTested(), chat);
+    await step(chat.skipTested(["slope", "power-rule"]), chat);
 
     expect(await positionOf()).toEqual({
       segment: 1,
@@ -681,7 +706,7 @@ test(
     await answer(chat, "A", "90");
     await answer(chat, "A", "100");
     await answer(chat, "B", "75");
-    await step(chat.skipTested(), chat);
+    await step(chat.skipTested(["slope", "power-rule"]), chat);
     await step(chat.ready(), chat);
 
     // The last segment taught closes, every objective passed: the gate's card.
@@ -718,7 +743,7 @@ test(
     await answer(chat, "B", "90");
     await answer(chat, "A", "100");
     await answer(chat, "B", "90");
-    await step(chat.skipTested(), chat);
+    await step(chat.skipTested(["power-rule"]), chat);
     expect(await positionOf()).toEqual({
       segment: 0,
       phase: "discuss",
@@ -758,7 +783,7 @@ test(
     await answer(chat, "B", "90");
     await answer(chat, "A", "100");
     await answer(chat, "A", "90");
-    await step(chat.skipTested(), chat);
+    await step(chat.skipTested(["power-rule", "chain-rule"]), chat);
     expect(await positionOf()).toMatchObject({ segment: 0, phase: "discuss" });
     expect(
       whereInUnit(DERIVATIVE_PLAN, replay(chat).position, null)?.ticks,
@@ -834,7 +859,7 @@ test(
     ).toEqual(["Right twice, 75% and 50% sure", "Did not know", "Missed"]);
 
     // Segment 1 is skipped; segment 2 is taught whole.
-    await step(chat.skipTested(), chat);
+    await step(chat.skipTested(["slope"]), chat);
     expect(await positionOf()).toMatchObject({ segment: 1, phase: "discuss" });
     await step(chat.ready(), chat);
     expect(lastQuestion(chat)).toMatchObject({ number: 1 });
@@ -915,7 +940,7 @@ test(
     );
     expect(card.objectives[1]?.why).toBe("Not asked");
 
-    expect(await chat.skipTested()).toEqual({
+    expect(await chat.skipTested([])).toEqual({
       ok: false,
       status: 409,
       error:
@@ -968,6 +993,44 @@ test(
     });
     await answer(after, "A", "90");
     expect(await positionOf()).toMatchObject({ testOut: { stage: "result" } });
+  },
+  MANY_TURNS_MS,
+);
+
+test(
+  "a restart after saving the last test answer but before closing its question summarizes once",
+  async () => {
+    await makeCourse();
+    const first = setUp();
+    const before = await testOut(first);
+    await answer(before, "A");
+    await answer(before, "A");
+    await first.units.close();
+    const root = reload();
+    const pending = (await root.readState(COURSE)).units.derivative
+      ?.openQuestion;
+    if (pending === undefined) throw new Error("No last question.");
+    await root.appendEvidence(COURSE, {
+      ...correct("chain-rule", NOW),
+      question: pending.question,
+      answer: {
+        kind: "choice",
+        questionId: pending.id,
+        choice: "A",
+        confidence: "90",
+      },
+      assessment: { mode: "test-out", unit: "derivative" },
+    });
+
+    const restarted = setUp();
+    const chat = await open(restarted);
+    expect(sent(restarted.backend)).toHaveLength(1);
+    expect(ofType(chat, "test_result")).toHaveLength(1);
+    expect(ofType(chat, "test_result")[0]?.objectives).toMatchObject([
+      { objective: "slope", passed: true },
+      { objective: "power-rule", passed: true },
+      { objective: "chain-rule", passed: true },
+    ]);
   },
   MANY_TURNS_MS,
 );
@@ -1067,6 +1130,35 @@ test("a unit started or finished is not tested out of", async () => {
   expect(await positionOf()).toEqual({ segment: 0, phase: "discuss" });
 });
 
+test("Test out cannot join a plain Start before its position is written", async () => {
+  const root = await makeCourse();
+  const writing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const setup = setUp(tutor(), NOW, {
+    ...root,
+    async writePosition(...args) {
+      writing.resolve();
+      await release.promise;
+      return root.writePosition(...args);
+    },
+  });
+  const started = await setup.units.open(COURSE, "derivative");
+  if (!started.ok) throw new Error(started.error);
+  await writing.promise;
+  try {
+    const conflicting = await setup.units.open(COURSE, "derivative", {
+      testOut: true,
+    });
+    expect(conflicting).toMatchObject({ ok: false, status: 409 });
+  } finally {
+    release.resolve();
+    await started.chat.settled();
+    await setup.units.close();
+  }
+  expect(ofType(started.chat, "assessment")).toEqual([]);
+  expect(await positionOf()).toMatchObject({ phase: "discuss" });
+});
+
 test(
   "a dispute while the result card waits shows it again with what passed now",
   async () => {
@@ -1103,6 +1195,14 @@ test(
     expect(testResultCard(DERIVATIVE_PLAN, resultOf(timeline)).skip).toBe(
       "Finish the unit",
     );
+    // A tab still showing the original card must not finish the unit.
+    expect(await chat.skipTested(["slope", "power-rule"])).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    expect(await positionOf()).toMatchObject({ testOut: { stage: "result" } });
+    await step(chat.skipTested(["slope", "power-rule", "chain-rule"]), chat);
+    expect(await positionOf()).toBeUndefined();
   },
   MANY_TURNS_MS,
 );

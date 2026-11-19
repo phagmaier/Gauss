@@ -455,6 +455,10 @@ export type Hello = z.infer<typeof Hello>;
 export const UnitOpened = Hello.extend({ ok: z.literal(true) });
 export type UnitOpened = z.infer<typeof UnitOpened>;
 
+/** The objectives the result card offered to skip, in plan order. */
+export const SkipTestedPost = z.object({ objectives: z.array(Slug).min(1) });
+export type SkipTestedPost = z.infer<typeof SkipTestedPost>;
+
 /** A message the learner typed in the message box. */
 export const LearnerMessage = z.object({
   text: z.string().trim().min(1).max(20_000),

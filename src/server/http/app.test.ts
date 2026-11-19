@@ -1247,7 +1247,13 @@ test("testing out goes through its routes: test-out opens a unit not started wit
     testOut: { stage: "result" },
   });
 
-  const skipped = await post(setup.app, `${UNIT}/test-out/skip`);
+  const skip = { objectives: ["basis-image"] };
+  const stale = await post(setup.app, `${UNIT}/test-out/skip`, {
+    objectives: ["basis-image", "matrix-columns"],
+  });
+  expect(stale.status).toBe(409);
+  expect((await post(setup.app, `${UNIT}/test-out/skip`)).status).toBe(400);
+  const skipped = await post(setup.app, `${UNIT}/test-out/skip`, skip);
   expect(skipped.status).toBe(202);
   await settle(setup);
   expect(await unitState()).toEqual({
@@ -1256,7 +1262,11 @@ test("testing out goes through its routes: test-out opens a unit not started wit
     testOut: { stage: "skip", passed: ["basis-image"] },
   });
   for (const route of ["test-out/skip", "test-out/whole"]) {
-    const refused = await post(setup.app, `${UNIT}/${route}`);
+    const refused = await post(
+      setup.app,
+      `${UNIT}/${route}`,
+      route.endsWith("/skip") ? skip : undefined,
+    );
     expect(refused.status).toBe(409);
     expect(await refused.json()).toEqual({
       error: "No test result waits for an answer.",

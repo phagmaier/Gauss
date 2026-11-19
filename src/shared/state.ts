@@ -253,6 +253,8 @@ function asking(p: { phase: Phase; assessment?: AssessmentRun | undefined }) {
 export const State = z.object({
   /** The units in progress, by id. */
   units: z.record(Slug, UnitPosition),
+  /** Units finished without teaching after the learner accepted a full pass. */
+  testedOut: z.record(Slug, z.literal(true)).optional(),
   /** Terminal package cards, by unit id and request id, including finished units. */
   packageCompletions: z
     .record(Slug, z.record(z.string().min(1), PackageCompletion))

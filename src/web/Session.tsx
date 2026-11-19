@@ -33,7 +33,12 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
-import { Hello, PageEvent, UnitOpened } from "../shared/events.ts";
+import {
+  Hello,
+  PageEvent,
+  type SkipTestedPost,
+  UnitOpened,
+} from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
@@ -393,7 +398,11 @@ export function Session(props: { courseId: string; unitId: string }) {
                       onStartAssessment={() => act("assessment/start")}
                       onSkipAssessment={() => act("assessment/skip")}
                       answers={item === result}
-                      onSkipTested={() => act("test-out/skip")}
+                      onSkipTested={(objectives) =>
+                        act("test-out/skip", {
+                          objectives,
+                        } satisfies SkipTestedPost)
+                      }
                       onTeachWhole={() => act("test-out/whole")}
                       confirmingSkip={confirming === "skip-gate"}
                       onConfirmSkip={(asking) =>
@@ -729,7 +738,7 @@ function ThreadItem(props: {
   onConfirmSkip(asking: boolean): void;
   /** This is the test's result card that waits, whose steps can be taken. */
   answers: boolean;
-  onSkipTested(): void;
+  onSkipTested(objectives: string[]): void;
   onTeachWhole(): void;
   onCourse(): void;
   onNext: (() => void) | undefined;
@@ -1100,7 +1109,7 @@ function TestResult(props: {
   /** It waits, and its steps can be taken. */
   live: boolean;
   busy: boolean;
-  onSkip(): void;
+  onSkip(objectives: string[]): void;
   onWhole(): void;
 }) {
   const { place } = props;
@@ -1174,7 +1183,13 @@ function TestResult(props: {
             type="button"
             className="btn"
             disabled={props.busy}
-            onClick={props.onSkip}
+            onClick={() =>
+              props.onSkip(
+                props.item.objectives
+                  .filter((o) => o.passed)
+                  .map((o) => o.objective),
+              )
+            }
           >
             {card.skip}
           </button>
