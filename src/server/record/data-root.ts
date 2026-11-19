@@ -1252,6 +1252,75 @@ function noCourse(id: string): string {
   return `There is no course "${id}".`;
 }
 
+/** The unit's decisions not yet delivered; its own entry only. */
+function decisionsOf<T>(
+  byUnit: Record<string, T[]> | undefined,
+  unit: string,
+): T[] {
+  return byUnit !== undefined && Object.hasOwn(byUnit, unit)
+    ? (byUnit[unit] ?? [])
+    : [];
+}
+
+/** The decisions by unit with this unit's replaced; undefined once none is left. */
+function withDecisions<T>(
+  byUnit: Record<string, T[]> | undefined,
+  unit: string,
+  remaining: T[],
+): Record<string, T[]> | undefined {
+  const next = { ...byUnit };
+  if (remaining.length === 0) delete next[unit];
+  else next[unit] = remaining;
+  return Object.keys(next).length === 0 ? undefined : next;
+}
+
+function undelivered<T extends { proposalId: string }>(
+  decisions: readonly T[],
+  delivered: readonly T[],
+): T[] {
+  return decisions.filter(
+    (d) => !delivered.some((sent) => sent.proposalId === d.proposalId),
+  );
+}
+
+/** Whether a curriculum change waits in a unit of the course. */
+function changeWaits(state: State): boolean {
+  return Object.values(state.units).some(
+    (p) => p.curriculumChange !== undefined,
+  );
+}
+
+/**
+ * The state with each waiting change that `units` already hold taken out of
+ * its position and recorded as applied, unless it is recorded already; the
+ * same object when there is none.
+ */
+function settleApplied(
+  state: State,
+  units: readonly Unit[] | undefined,
+): State {
+  if (units === undefined || !changeWaits(state)) return state;
+  let next = state;
+  for (const [unit, position] of Object.entries(state.units)) {
+    const change = position.curriculumChange;
+    if (change === undefined || !sameUnits(units, change.units)) continue;
+    const { curriculumChange: _, ...rest } = position;
+    const answers = decisionsOf(next.curriculumDecisions, unit);
+    const recorded = answers.some((d) => d.proposalId === change.id);
+    next = {
+      ...next,
+      units: { ...next.units, [unit]: rest },
+      curriculumDecisions: recorded
+        ? (next.curriculumDecisions ?? {})
+        : {
+            ...next.curriculumDecisions,
+            [unit]: [...answers, { proposalId: change.id, outcome: "applied" }],
+          },
+    };
+  }
+  return next;
+}
+
 /** The number an artifact's file name starts with; 0 for any other file. */
 function artifactNumber(name: string): number {
   return ArtifactFile.safeParse(name).success ? Number.parseInt(name, 10) : 0;

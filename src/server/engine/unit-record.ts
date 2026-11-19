@@ -41,6 +41,10 @@
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
+import type {
+  CurriculumChange,
+  CurriculumDecision,
+} from "../../shared/curriculum-change.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type {
   AnswerEvidence,
@@ -158,6 +162,23 @@ export interface UnitRecord {
   keepStyleProposal(proposal: StyleProposal, tell: () => void): Promise<void>;
   /** Commits the learner's decision and takes the matching proposal out of the position. */
   answerStyleProposal(decision: StyleDecision): Promise<StyleDecision>;
+  /**
+   * Writes the tutor's proposed curriculum change into the position. It is
+   * kept across moves, as a style proposal is.
+   */
+  keepCurriculumChange(
+    change: CurriculumChange,
+    tell: () => void,
+  ): Promise<void>;
+  /**
+   * Commits the learner's decision, with an applied one curriculum.json, and
+   * takes the matching change out of the position. Resolves to the decision
+   * recorded: "applied" if an Apply a restart cut short already wrote it.
+   * Throws CurriculumChangeRefused if the change can no longer be applied.
+   */
+  answerCurriculumChange(
+    decision: CurriculumDecision,
+  ): Promise<CurriculumDecision>;
   /** Marks only the decisions that were in a completed turn's header. */
   deliverDecisions(sent: {
     style: readonly StyleDecision[];

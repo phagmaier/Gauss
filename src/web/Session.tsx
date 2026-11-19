@@ -40,6 +40,7 @@ import {
   type ResultRow,
   testResultCard,
 } from "../shared/assessment-view.ts";
+import { compareUnits } from "../shared/curriculum-change.ts";
 import {
   Hello,
   PageEvent,
@@ -65,6 +66,7 @@ import {
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Diagram } from "./Curriculum.tsx";
+import { CurriculumCard } from "./CurriculumCard.tsx";
 import { type DisputeApi, disputeApi } from "./Dispute.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";

@@ -152,7 +152,7 @@ import { hasPassed } from "../../shared/status.ts";
 import type { StyleDecision, StyleProposal } from "../../shared/style.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
-import type { DataRoot } from "../record/data-root.ts";
+import { CurriculumChangeRefused, type DataRoot } from "../record/data-root.ts";
 import { pickForGate, pickForReview } from "../record/review.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
 import {
@@ -2651,6 +2651,110 @@ function createUnitChat(
           options.backup?.commit(`${courseId}: style note changed`);
         }
         log.emit(styleAnsweredEvent(decision));
+        return { ok: true };
+      },
+      { whileWriting: true },
+    );
+  }
+
+  // As the style desk: not while a question of the unit is open, nor in a
+  // feedback-only turn; one proposal of either kind waits in a course.
+  const curriculumDesk: CurriculumDesk = {
+    propose: ({ units, why }) =>
+      exclusive(async () => {
+        const r = running;
+        if (r === undefined) return { refused: "The unit is not open." };
+        if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
+        if (r.feedback?.started === true) {
+          return {
+            refused:
+              "This turn is for feedback only. Propose a curriculum change in a later reply.",
+          };
+        }
+        const open = r.record.position.openQuestion;
+        if (open !== undefined) {
+          return {
+            refused:
+              `Question ${open.number} is open: propose a change to the ` +
+              "curriculum once its answer is graded.",
+          };
+        }
+        // Read once no other proposal waits, so an Apply in another unit
+        // has written curriculum.json before this one compares with it.
+        return options.workspace.propose(async (state) => {
+          const current = (await dataRoot.readCourse(courseId))?.curriculum;
+          if (current === null || current === undefined) {
+            return { refused: "The course has no curriculum." };
+          }
+          if (sameUnits(current.units, units)) {
+            return {
+              refused: "That is the current curriculum: nothing would change.",
+            };
+          }
+          const dropped = droppedStarted(current.units, units, state);
+          if (dropped !== undefined) return { refused: dropped };
+          const change: CurriculumChange = {
+            id: randomUUID(),
+            units,
+            was: current.units.map(withoutPlan),
+            why,
+            proposedAt: now().toISOString(),
+          };
+          await r.record.keepCurriculumChange(change, () =>
+            log.emit(changeProposedEvent(change)),
+          );
+          return { proposed: true as const };
+        });
+      }),
+  };
+
+  /** The card that presents a proposed curriculum change. */
+  function changeProposedEvent(change: CurriculumChange): PageEvent {
+    return {
+      type: "curriculum_change_proposed",
+      proposalId: change.id,
+      units: change.units,
+      was: change.was,
+      why: change.why,
+    };
+  }
+
+  function changeAnsweredEvent({
+    proposalId,
+    outcome,
+  }: CurriculumDecision): PageEvent {
+    return { type: "curriculum_change_answered", proposalId, outcome };
+  }
+
+  function answerCurriculum(
+    proposalId: string,
+    outcome: CurriculumDecision["outcome"],
+  ) {
+    return act(
+      async (r) => {
+        if (r.record.position.curriculumChange?.id !== proposalId) {
+          return refused("That proposed curriculum change is not waiting.");
+        }
+        let decision: CurriculumDecision;
+        try {
+          decision = await r.record.answerCurriculumChange({
+            proposalId,
+            outcome,
+          });
+        } catch (error) {
+          if (!(error instanceof CurriculumChangeRefused)) throw error;
+          return refused(
+            `This change can no longer be applied. ${error.message}`,
+          );
+        }
+        if (decision.outcome === "applied") {
+          const stored = await dataRoot.readCourse(courseId);
+          const units = stored?.curriculum?.units ?? r.context.units;
+          r.context = { ...r.context, units };
+          options.recurriculum?.(units);
+          options.backup?.commit(`${courseId}: curriculum changed`);
+        }
+        log.emit(changeAnsweredEvent(decision));
         return { ok: true };
       },
       { whileWriting: true },

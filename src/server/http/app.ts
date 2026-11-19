@@ -9,6 +9,7 @@
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { z } from "zod";
+import { CurriculumChangeAnswer } from "../../shared/curriculum-change.ts";
 import {
   DisputePost,
   type GradedBy,
