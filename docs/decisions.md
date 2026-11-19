@@ -1589,11 +1589,12 @@ built until its task is done; `architecture.md` says what is.
   question in another unit has nothing to do with it. One proposal waits
   per course, checked in the course's queue, so two units cannot each
   propose a different note.
-- **Apply writes `style.md` before the position** (the agent's): a stop
-  between them shows the card again, and applying it again writes the
-  same note, so no journal is needed. A card whose answer the transcript
-  lost says "No longer waiting" rather than guess it from `style.md`,
-  which a later proposal may have changed.
+- **The position and style file commit together** (the agent's): writing
+  the file first alone let Keep accept a changed note after a failed
+  Apply. The state keeps an undo record until it can commit the decision;
+  backup staging cannot interleave with these writes. An undelivered
+  decision stays in state until a tutor turn carrying it completes, so
+  restart or an interrupted reply cannot lose it.
 
 ## Prompts
 

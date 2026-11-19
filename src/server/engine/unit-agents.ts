@@ -33,6 +33,7 @@ import {
   type EventLog,
   type Timer,
   type Turn,
+  type TurnOutcome,
 } from "./conversation.ts";
 import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
 
@@ -148,6 +149,8 @@ export function createUnitAgents(options: {
    * Called before the turn's text is composed.
    */
   lost: (learnerId?: string) => void;
+  /** Called before a turn's own end work, to acknowledge notices it delivered. */
+  turnEnded?: (outcome: TurnOutcome) => Promise<void> | void;
   judge: HelpJudge;
   log: EventLog;
   /** The chat's queue. */
@@ -250,7 +253,22 @@ export function createUnitAgents(options: {
     },
 
     send(turn) {
-      if (!closed) tutor.send(turn);
+      if (closed) return;
+      const { turnEnded } = options;
+      if (turnEnded === undefined) {
+        tutor.send(turn);
+        return;
+      }
+      tutor.send({
+        ...turn,
+        async ended(outcome, reply) {
+          try {
+            await turnEnded(outcome);
+          } finally {
+            await turn.ended?.(outcome, reply);
+          }
+        },
+      });
     },
     busy: () => tutor.busy(),
     interrupt: () => tutor.interrupt(),

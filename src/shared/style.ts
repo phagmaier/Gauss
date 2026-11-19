@@ -53,3 +53,10 @@ export type StyleOutcome = z.infer<typeof StyleOutcome>;
 /** The learner's answer to a proposal, as the page posts it. */
 export const StyleAnswer = z.object({ proposalId: z.string().min(1) });
 export type StyleAnswer = z.infer<typeof StyleAnswer>;
+
+/** A learner's answer, kept until it has reached the tutor. */
+export const StyleDecision = z.discriminatedUnion("outcome", [
+  StyleAnswer.extend({ outcome: z.literal("applied"), note: StyleNote }),
+  StyleAnswer.extend({ outcome: z.literal("kept") }),
+]);
+export type StyleDecision = z.infer<typeof StyleDecision>;

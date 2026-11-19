@@ -961,7 +961,7 @@ export function packagesTurn(where: Where): string {
  * session keeps the system prompt it was opened with.
  */
 export function styleNote(
-  outcome: "applied" | "kept" | "changed",
+  outcome: "applied" | "kept" | "changed" | "superseded",
   note: string,
 ): string {
   const text = `\n<style_note>\n${note.trim()}\n</style_note>\n`;
@@ -976,6 +976,11 @@ export function styleNote(
         "The learner applied a new style note for this course in another " +
         "unit. It replaces the one at the end of your instructions; teach to " +
         `it from now on:${text}`
+      );
+    case "superseded":
+      return (
+        "The learner applied the style note you proposed, shown here. " +
+        `It has since been replaced; do not teach to this older note:${text}`
       );
     case "kept":
       return (

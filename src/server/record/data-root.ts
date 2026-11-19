@@ -26,7 +26,6 @@ import {
   CurriculumProposal,
   PendingProfileApproval,
   type ShownProposal,
-  StyleNote,
 } from "../../shared/curriculum.ts";
 import { PageEvent, SESSION_GAP_MS } from "../../shared/events.ts";
 import {
@@ -46,6 +45,7 @@ import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
+import { StyleDecision } from "../../shared/style.ts";
 import { syncFolder, writeFileAtomic, writeFileNew } from "./atomic-write.ts";
 import { disputable } from "./disputes.ts";
 import { withFileLock } from "./file-lock.ts";
@@ -106,8 +106,6 @@ export interface DataRoot {
    * blank.
    */
   readStyle(id: string): Promise<string | undefined>;
-  /** Replaces the approved course's style note with one the learner applied (task 5.11). */
-  writeStyle(id: string, note: string): Promise<void>;
   /**
    * The course's background note, background.md, trimmed, or undefined when
    * it has none (a course proposed before background notes existed, task
@@ -126,7 +124,7 @@ export interface DataRoot {
    * read is not lost unseen.
    */
   writeProfile(text: string, was: string | undefined): Promise<void>;
-  /** Stages a backup only after resolving interrupted multi-file writes. */
+  /** Stages a backup outside the record's multi-file writes. */
   withConsistentSnapshot<T>(work: () => Promise<T>): Promise<T>;
   /**
    * Stores the tutor's proposal as the course's draft curriculum, with the
@@ -167,6 +165,7 @@ export interface DataRoot {
    * Sets the unit's position in state.json, or with null takes the unit out
    * (it is no longer in progress), and returns the state as written. The
    * test-out finish and any package completion are saved in the same write.
+   * A style decision can be recorded with the position, or marked delivered.
    * Writes land in the order they were called, each on the one before.
    */
   writePosition(
@@ -176,6 +175,9 @@ export interface DataRoot {
     outcome?: {
       completion?: PackageCompletion | undefined;
       testedOut?: boolean;
+      style?:
+        | { decision: StyleDecision }
+        | { delivered: readonly StyleDecision[] };
     },
   ): Promise<State>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
@@ -353,6 +355,70 @@ export function openDataRoot(options: {
   /** A note in the course's folder, trimmed; undefined if there is none or it is blank. */
   function readNote(id: string, note: Note): Promise<string | undefined> {
     return readText(courseFile(id, note));
+  }
+
+  async function readStateFile(path: string): Promise<State> {
+    return (await readJson(path, State)) ?? { units: {} };
+  }
+
+  /** Reads state under its lock and resolves any interrupted Apply. */
+  async function recoverStyle(id: string, path: string): Promise<State> {
+    const state = await readStateFile(path);
+    return state.styleRollback === undefined
+      ? state
+      : withFileLock(courses, () => undoStyle(id, path, state));
+  }
+
+  /** Restores an uncommitted Apply. Holds the state and snapshot locks. */
+  async function undoStyle(
+    id: string,
+    path: string,
+    stored: State,
+  ): Promise<State> {
+    const { styleRollback, ...state } = stored;
+    if (styleRollback === undefined) return stored;
+    const file = courseFile(id, "style.md");
+    const current = await readFileText(file);
+    if (styleRollback.was === null) {
+      if (current !== undefined) {
+        await rm(file);
+        await syncFolder(join(courses, id));
+      }
+    } else if (current !== styleRollback.was) {
+      await writeFileAtomic(file, styleRollback.was);
+    }
+    await writeJson(path, State, state);
+    return state;
+  }
+
+  /** Publishes the note and decision with an undo record. Holds both locks. */
+  async function applyStyle(
+    id: string,
+    path: string,
+    before: State,
+    after: State,
+    unit: Slug,
+    decision: Extract<StyleDecision, { outcome: "applied" }>,
+  ): Promise<State> {
+    const file = courseFile(id, "style.md");
+    const was = (await readFileText(file)) ?? null;
+    await writeJson(path, State, { ...before, styleRollback: { was } });
+    try {
+      await writeFileAtomic(file, `${decision.note}\n`);
+      await writeJson(path, State, after);
+    } catch (error) {
+      const recovered = await undoStyle(id, path, await readStateFile(path));
+      // An atomic write can report a directory sync error after renaming.
+      if (
+        !recovered.styleDecisions?.[unit]?.some(
+          (d) => d.proposalId === decision.proposalId,
+        )
+      ) {
+        throw error;
+      }
+      return recovered;
+    }
+    return after;
   }
 
   /**
@@ -564,20 +630,11 @@ export function openDataRoot(options: {
 
     async readStyle(id) {
       await existingCourse(id);
-      return readNote(id, "style.md");
-    },
-
-    async writeStyle(id, note) {
-      const stored = await existingCourse(id);
-      if (stored.curriculum?.approval.status !== "approved") {
-        throw new Error(
-          `The curriculum of "${id}" is not approved, so its style note is changed by proposing it again.`,
-        );
-      }
-      await writeFileAtomic(
-        courseFile(id, "style.md"),
-        `${StyleNote.parse(note)}\n`,
-      );
+      const path = courseFile(id, "state.json");
+      return withFileLock(path, async () => {
+        await recoverStyle(id, path);
+        return readNote(id, "style.md");
+      });
     },
 
     async readBackground(id) {
@@ -592,7 +649,9 @@ export function openDataRoot(options: {
     },
 
     withConsistentSnapshot: (work) =>
-      withConsistentApproval(() => withConsistentNotes(work)),
+      withConsistentApproval(() =>
+        withConsistentNotes(() => withFileLock(courses, work)),
+      ),
 
     async saveProposal(id, proposal) {
       const { title, units, style, background, profile } =
@@ -734,10 +793,15 @@ export function openDataRoot(options: {
     async readState(id) {
       const path = courseFile(id, "state.json");
       await existingCourse(id);
-      return (await readJson(path, State)) ?? { units: {} };
+      return readStateFile(path);
     },
 
-    async writePosition(id, unitId, position, { completion, testedOut } = {}) {
+    async writePosition(
+      id,
+      unitId,
+      position,
+      { completion, testedOut, style } = {},
+    ) {
       const unit = Slug.parse(unitId);
       // Checked and copied now, so a later change to the caller's object
       // cannot reach a write still waiting its turn.
@@ -746,10 +810,28 @@ export function openDataRoot(options: {
         completion === undefined
           ? undefined
           : PackageCompletion.parse(completion);
+      const decision =
+        style !== undefined && "decision" in style
+          ? StyleDecision.parse(style.decision)
+          : undefined;
       const path = courseFile(id, "state.json");
       return withFileLock(path, async () => {
-        await existingCourse(id);
-        const before = (await readJson(path, State)) ?? { units: {} };
+        const stored = await existingCourse(id);
+        const before = await recoverStyle(id, path);
+        const decisions = Object.hasOwn(before.styleDecisions ?? {}, unit)
+          ? (before.styleDecisions?.[unit] ?? [])
+          : [];
+        if (decision !== undefined) {
+          if (stored.curriculum?.approval.status !== "approved") {
+            throw new Error(`The curriculum of "${id}" is not approved.`);
+          }
+          if (decisions.some((d) => d.proposalId === decision.proposalId)) {
+            return before;
+          }
+          if (before.units[unit]?.styleProposal?.id !== decision.proposalId) {
+            throw new Error("That proposed style note is not waiting.");
+          }
+        }
         const state: State = {
           ...before,
           units:
@@ -771,6 +853,29 @@ export function openDataRoot(options: {
             ...completions,
             [unit]: { ...forUnit, [completed.request.id]: completed },
           };
+        }
+        if (style !== undefined) {
+          const remaining =
+            decision !== undefined
+              ? [...decisions, decision]
+              : "delivered" in style
+                ? decisions.filter(
+                    (d) =>
+                      !style.delivered.some(
+                        (sent) => sent.proposalId === d.proposalId,
+                      ),
+                  )
+                : decisions;
+          const pending = { ...before.styleDecisions };
+          if (remaining.length === 0) delete pending[unit];
+          else pending[unit] = remaining;
+          if (Object.keys(pending).length === 0) delete state.styleDecisions;
+          else state.styleDecisions = pending;
+        }
+        if (decision?.outcome === "applied") {
+          return withFileLock(courses, () =>
+            applyStyle(id, path, before, state, unit, decision),
+          );
         }
         await writeJson(path, State, state);
         return state;
@@ -1063,8 +1168,13 @@ async function makeFolder(parent: string, base: string): Promise<Slug> {
 
 /** A text file's contents, trimmed; undefined if there is no file or it is blank. */
 async function readText(path: string): Promise<string | undefined> {
+  return (await readFileText(path))?.trim() || undefined;
+}
+
+/** The file's contents as written; undefined if there is no file. */
+async function readFileText(path: string): Promise<string | undefined> {
   try {
-    return (await readFile(path, "utf8")).trim() || undefined;
+    return await readFile(path, "utf8");
   } catch (error) {
     if (hasCode(error, "ENOENT")) return undefined;
     throw error;

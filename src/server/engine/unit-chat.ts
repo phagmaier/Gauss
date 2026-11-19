@@ -141,7 +141,7 @@ import type {
   UnitPosition,
 } from "../../shared/state.ts";
 import { hasPassed } from "../../shared/status.ts";
-import type { StyleProposal } from "../../shared/style.ts";
+import type { StyleDecision, StyleProposal } from "../../shared/style.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
@@ -832,6 +832,8 @@ interface Running {
   agents: UnitAgents;
   /** Said once, in the next turn's header. */
   notes: string[];
+  /** Decisions in the current turn's header, if it got as far as composing one. */
+  styleInHeader?: readonly StyleDecision[];
   /**
    * The unit's handoff note and the course's misconceptions (task 5.7),
    * read when the chat opens, with what this unit's calls write since; the
@@ -1014,6 +1016,13 @@ function createUnitChat(
         keep: (id) => exclusive(() => record.keepSession(id)),
         // Only a turn calls it, once `r` is set.
         lost: (learnerId) => fallBack(r, learnerId),
+        async turnEnded(outcome) {
+          const sent = r.styleInHeader;
+          delete r.styleInHeader;
+          if (outcome === "done" && sent !== undefined) {
+            await exclusive(() => record.deliverStyleDecisions(sent));
+          }
+        },
         judge: options.judge,
         log,
         exclusive,
@@ -1039,6 +1048,19 @@ function createUnitChat(
       restoreQuestions(record);
       restoreDisputes(r);
       restorePackages(record.packageCompletions);
+      for (const decision of record.pendingStyleDecisions) {
+        if (
+          !log
+            .events()
+            .some(
+              (event) =>
+                event.type === "style_answered" &&
+                event.proposalId === decision.proposalId,
+            )
+        ) {
+          log.emit(styleAnsweredEvent(decision));
+        }
+      }
       if (pendingInstall !== undefined) showSaveFailure(pendingInstall);
       log.emit(record.status());
       if (record.finished !== undefined) {
@@ -1331,6 +1353,20 @@ function createUnitChat(
     const notes = r.notes;
     r.notes = [];
     const { record } = r;
+    const decisions = record.pendingStyleDecisions;
+    if (decisions.length > 0) {
+      r.styleInHeader = decisions;
+      for (const decision of decisions) {
+        notes.push(
+          decision.outcome === "applied"
+            ? styleNote(
+                decision.note === style ? "applied" : "superseded",
+                decision.note,
+              )
+            : styleNote("kept", ""),
+        );
+      }
+    }
     return {
       context: r.context,
       position: record.position,
@@ -2473,6 +2509,12 @@ function createUnitChat(
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
         if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
+        if (r.feedback?.started === true) {
+          return {
+            refused:
+              "This turn is for feedback only. Propose a style change in a later reply.",
+          };
+        }
         const open = r.record.position.openQuestion;
         if (open !== undefined) {
           return {
@@ -2516,15 +2558,35 @@ function createUnitChat(
     };
   }
 
-  /** The proposal that waits, if it is this one, or why not. */
-  function waitingProposal(
-    r: Running,
-    proposalId: string,
-  ): StyleProposal | string {
-    const proposal = r.record.position.styleProposal;
-    return proposal?.id === proposalId
-      ? proposal
-      : "That proposed style note is not waiting.";
+  function styleAnsweredEvent({
+    proposalId,
+    outcome,
+  }: StyleDecision): PageEvent {
+    return { type: "style_answered", proposalId, outcome };
+  }
+
+  function answerStyle(proposalId: string, outcome: StyleDecision["outcome"]) {
+    return act(
+      async (r) => {
+        const proposal = r.record.position.styleProposal;
+        if (proposal?.id !== proposalId) {
+          return refused("That proposed style note is not waiting.");
+        }
+        const decision = await r.record.answerStyleProposal(
+          outcome === "applied"
+            ? { proposalId, outcome, note: proposal.note }
+            : { proposalId, outcome },
+        );
+        if (decision.outcome === "applied") {
+          style = decision.note;
+          options.restyle?.(decision.note);
+          options.backup?.commit(`${courseId}: style note changed`);
+        }
+        log.emit(styleAnsweredEvent(decision));
+        return { ok: true };
+      },
+      { whileWriting: true },
+    );
   }
 
   // Not while a question of the course is open: the install closes the
@@ -3041,43 +3103,8 @@ function createUnitChat(
         return { ok: true };
       }),
 
-    applyStyle: (proposalId) =>
-      act(
-        async (r) => {
-          const proposal = waitingProposal(r, proposalId);
-          if (typeof proposal === "string") return refused(proposal);
-          // Written before the position: a restart between the two shows the
-          // card again, and applying it again writes the same note.
-          await dataRoot.writeStyle(courseId, proposal.note);
-          style = proposal.note;
-          await r.record.answerStyleProposal(proposalId, () =>
-            log.emit({
-              type: "style_answered",
-              proposalId,
-              outcome: "applied",
-            }),
-          );
-          r.notes.push(styleNote("applied", proposal.note));
-          options.restyle?.(proposal.note);
-          options.backup?.commit(`${courseId}: style note changed`);
-          return { ok: true };
-        },
-        { whileWriting: true },
-      ),
-
-    keepStyle: (proposalId) =>
-      act(
-        async (r) => {
-          const proposal = waitingProposal(r, proposalId);
-          if (typeof proposal === "string") return refused(proposal);
-          await r.record.answerStyleProposal(proposalId, () =>
-            log.emit({ type: "style_answered", proposalId, outcome: "kept" }),
-          );
-          r.notes.push(styleNote("kept", proposal.note));
-          return { ok: true };
-        },
-        { whileWriting: true },
-      ),
+    applyStyle: (proposalId) => answerStyle(proposalId, "applied"),
+    keepStyle: (proposalId) => answerStyle(proposalId, "kept"),
 
     override: () =>
       act(async (r) => {

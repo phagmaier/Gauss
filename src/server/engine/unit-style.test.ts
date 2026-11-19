@@ -3,7 +3,15 @@
 // the learner's Apply and "Keep the current one", the refusals and a
 // restart with the card waiting.
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  rmdir,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -64,7 +72,7 @@ const propose = (note = NOTE) => ({
 const STYLE_SECTION = (note: string) => `# This course's style\n\n${note}\n`;
 
 /** A server's unit chats on the record in `dir`; no unit is opened yet. */
-async function server(script: FakeTurn[]) {
+async function server(script: FakeTurn[], kept?: Set<string>) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   if ((await root.readCourse(COURSE)) === undefined) {
     const { id } = await root.createCourse({ title: CURRICULUM.title });
@@ -76,7 +84,11 @@ async function server(script: FakeTurn[]) {
       segments: [{ title: "Sets", objectives: ["set-count"] }],
     });
   }
-  const backend = createFakeBackend(script);
+  const backend = createFakeBackend(
+    script,
+    [],
+    kept === undefined ? {} : { kept },
+  );
   const commits: string[] = [];
   const units = createUnitChats({
     backend,
@@ -232,6 +244,133 @@ test('"Keep the current one" leaves style.md as it was, and the tutor is told in
   expect(await chat.startFresh()).toEqual({ ok: true });
   await chat.settled();
   expect(backend.sessions.at(-1)?.systemPrompt).toContain(STYLE_SECTION(STYLE));
+});
+
+test("if the position cannot be saved, Apply leaves the old note and Keep still means Keep", async () => {
+  const { open, commits } = await server([[propose()]]);
+  const chat = await open();
+  const id = proposalId(chat.events());
+  const state = join(dir, "courses", COURSE, "state.json");
+  const saved = `${state}.saved`;
+  await rename(state, saved);
+  await mkdir(state);
+  try {
+    await expect(chat.applyStyle(id)).rejects.toThrow();
+    expect(await styleFile()).toBe(`${STYLE}\n`);
+  } finally {
+    await rmdir(state);
+    await rename(saved, state);
+  }
+  expect(await chat.keepStyle(id)).toEqual({ ok: true });
+  expect(await styleFile()).toBe(`${STYLE}\n`);
+  expect(commits).not.toContain(`${COURSE}: style note changed`);
+});
+
+test.each([`${STYLE}\n\n`, null])(
+  "reopening rolls back an interrupted Apply before teaching or answering the card (old file: %j)",
+  async (was) => {
+    const first = await server([[propose()]]);
+    const course = join(dir, "courses", COURSE);
+    const style = join(course, "style.md");
+    if (was === null) await rm(style);
+    else await writeFile(style, was);
+    const before = await first.open();
+    const id = proposalId(before.events());
+    await first.units.close();
+
+    // A process stopped after replacing style.md but before committing the decision.
+    const state = await first.root.readState(COURSE);
+    await writeFile(
+      join(course, "state.json"),
+      JSON.stringify({ ...state, styleRollback: { was } }),
+    );
+    await writeFile(style, `${NOTE}\n`);
+    const second = await server([[{ text: "Replied." }]]);
+    const chat = await second.open();
+    expect(await second.root.readStyle(COURSE)).toBe(
+      was === null ? undefined : STYLE,
+    );
+    expect(await chat.keepStyle(id)).toEqual({ ok: true });
+    expect(chat.say("Go on.")).toEqual({ ok: true });
+    await chat.settled();
+    expect(second.backend.sessions.at(-1)?.systemPrompt).not.toContain(NOTE);
+    if (was === null) {
+      await expect(styleFile()).rejects.toMatchObject({ code: "ENOENT" });
+    } else {
+      expect(await styleFile()).toBe(was);
+    }
+    await second.units.close();
+  },
+);
+
+test.each(["applied", "kept"] as const)(
+  "a decision that was %s is delivered to the resumed tutor, even if its first reply fails",
+  async (outcome) => {
+    const kept = new Set<string>();
+    const first = await server([[propose()]], kept);
+    const before = await first.open();
+    const id = proposalId(before.events());
+    const answer = outcome === "applied" ? before.applyStyle : before.keepStyle;
+    expect(await answer(id)).toEqual({ ok: true });
+    await first.units.close();
+
+    const second = await server([], kept);
+    const reopened = await second.open();
+    expect(reopened.say("Go on.")).toEqual({ ok: true });
+    await reopened.settled();
+    expect(second.backend.sessions.at(-1)?.resumeId).toBe(first.backend.ids[0]);
+    expect(reopened.events().at(-1)).toMatchObject({
+      type: "turn_end",
+      outcome: "error",
+    });
+    await second.units.close();
+
+    const third = await server(
+      [[{ text: "Reply." }], [{ text: "Next reply." }]],
+      kept,
+    );
+    const chat = await third.open();
+    const decision =
+      outcome === "applied"
+        ? "The learner applied the style note you proposed"
+        : 'The learner chose "Keep the current one"';
+    expect(chat.say("Try again.")).toEqual({ ok: true });
+    await chat.settled();
+    expect(third.backend.received[0]?.text).toContain(decision);
+    if (outcome === "applied") {
+      expect(third.backend.received[0]?.text).toContain(
+        `<style_note>\n${NOTE}\n</style_note>`,
+      );
+    }
+    expect(chat.say("And now?")).toEqual({ ok: true });
+    await chat.settled();
+    expect(third.backend.received[1]?.text).not.toContain(decision);
+    await third.units.close();
+  },
+);
+
+test("a tutor cannot post a style card in its feedback-only turn", async () => {
+  const { backend, open } = await server([
+    [{ text: "Teaching." }],
+    [{ call: "ask_question", input: CHOICE }],
+    [{ text: "Correct." }, propose()],
+  ]);
+  const chat = await open();
+  expect(await chat.ready()).toEqual({ ok: true });
+  await chat.settled();
+  const event = chat.events().findLast((e) => e.type === "question");
+  if (event?.type !== "question") throw new Error("no question");
+  expect(
+    await chat.answer({
+      kind: "choice",
+      questionId: event.question.id,
+      choice: "A",
+      confidence: "90",
+    }),
+  ).toEqual({ ok: true });
+  await chat.settled();
+  expect(backend.calls.at(-1)?.result).toMatchObject({ status: "refused" });
+  expect(chat.events().some((e) => e.type === "style_proposed")).toBe(false);
 });
 
 test("a proposal is refused while a question of the unit is open, and when it is the current note", async () => {

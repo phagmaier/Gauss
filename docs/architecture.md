@@ -326,10 +326,10 @@ The rules:
   `show_artifact` is refused while a question of its unit is open or its
   unit is finished;
   `install_packages` while a question of the course is open or another
-  request of the course waits; `propose_style` while a question of its unit
-  is open, another proposal of the course waits, or the note is the
-  current one. A refusal does not
-  end the turn; a posted question does.
+  request of the course waits; `propose_style` in feedback-only turns,
+  while a question of its unit is open, while another proposal of the
+  course waits, or for the current note. A refusal does not end the turn;
+  a posted question does.
 - **Feedback, then the next question.** The turn after a graded correct
   answer is for feedback alone; no tool may be called in it, and
   questions are refused from when it is queued until it ends. When it
@@ -342,16 +342,17 @@ The rules:
   the whole proposed note, the note it would replace and why in the unit's
   position (`styleProposal`), shows its card, and lets the turn go on; each
   header says it waits until it is answered, and a restart shows the card
-  again. One proposal waits in a course at a time. Apply writes
-  `style.md`, then takes the proposal out of the position, and asks for a
-  backup commit; "Keep the current one" only takes it out. Either is taken
-  while the tutor writes. The tutor is told the answer in its next header,
-  with an applied note's text, since a running session keeps its system
-  prompt; the chats of the course's other open units are told the new note
-  in theirs, and every session started after it has it in its prompt. A
-  proposal still waiting when its unit finishes is withdrawn. A card the
-  transcript holds without its answer, and no longer waiting, says so
-  rather than guess the answer.
+  again. One proposal waits in a course at a time. Apply commits the new
+  `style.md` and the decision together before asking for a backup. An
+  interrupted Apply restores the old file and leaves the proposal waiting.
+  "Keep the current one" records a decision without changing the file.
+  Either is taken while the tutor writes. The decision goes in the tutor's
+  next header, with an applied note's text, and stays in the record until
+  a turn carrying it completes. Other open unit chats are told the new
+  note in their next headers, and every session started after Apply has
+  it in its prompt. A proposal still waiting when its unit finishes is
+  withdrawn. If the transcript lost the decision and the record no longer
+  holds it, the card says "No longer waiting" rather than guess.
 - **Detours.** The detour is kept in the position, so a restart reopens it.
   Its first turn takes the feedback's place: the right answer and why, then
   where the confusion is (from the choice picked, the grader's flaw, the
@@ -651,7 +652,7 @@ tool server, for Codex an MCP server.
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Refused while a question of the course is open or another request waits. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
-| `propose_style` | Proposes the whole revised style note with a line on why (`StyleInput` in `src/shared/style.ts`), shown on a card; Apply writes `style.md`. Refused while a question of the unit is open, while another proposal of the course waits, and for the current note. Does not end the turn |
+| `propose_style` | Proposes the whole revised style note with a line on why (`StyleInput` in `src/shared/style.ts`), shown on a card; Apply writes `style.md`. Uses the proposal and feedback rules in section 4. Does not end the turn |
 
 The learner starts segments and the engine closes them, so there is no tool
 for either; detours are opened by the engine and ended by the learner.

@@ -10,7 +10,7 @@ import { Slug, Timestamp } from "./course.ts";
 import { AssessmentMode, OverrideEvidence } from "./evidence.ts";
 import { PackageCompletion, PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question } from "./question.ts";
-import { StyleProposal } from "./style.ts";
+import { StyleDecision, StyleProposal } from "./style.ts";
 
 /** A segment's phases, in order (architecture.md section 4, "Phases"). */
 export const Phase = z.enum(["teach", "discuss", "check", "closed"]);
@@ -266,5 +266,9 @@ export const State = z.object({
   packageCompletions: z
     .record(Slug, z.record(z.string().min(1), PackageCompletion))
     .optional(),
+  /** Answers not yet delivered to the tutor, by unit id, in order. */
+  styleDecisions: z.record(Slug, z.array(StyleDecision)).optional(),
+  /** Original style.md bytes as text, or null if absent, during an Apply. */
+  styleRollback: z.object({ was: z.string().nullable() }).optional(),
 });
 export type State = z.infer<typeof State>;

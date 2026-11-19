@@ -65,7 +65,7 @@ import type {
   UnitPosition,
 } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
-import type { StyleProposal } from "../../shared/style.ts";
+import type { StyleDecision, StyleProposal } from "../../shared/style.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { disputesIn } from "../record/disputes.ts";
@@ -96,6 +96,8 @@ export interface UnitRecord {
   readonly runAnswers: readonly AnswerEvidence[];
   /** Completed package cards, kept even after the unit's position is removed. */
   readonly packageCompletions: readonly PackageCompletion[];
+  /** The learner's style decisions not yet delivered to the tutor. */
+  readonly pendingStyleDecisions: readonly StyleDecision[];
   /** Set once the unit is finished and taken out of state.json. */
   readonly finished: "passed" | "overridden" | undefined;
   /** The learner skipped every segment and finished at the test's result. */
@@ -152,11 +154,10 @@ export interface UnitRecord {
    * across moves, as a package request is.
    */
   keepStyleProposal(proposal: StyleProposal, tell: () => void): Promise<void>;
-  /**
-   * Takes the proposal with this id out of the position once the learner
-   * has answered it, then calls `tell`. False if it is not the one waiting.
-   */
-  answerStyleProposal(id: string, tell: () => void): Promise<boolean>;
+  /** Commits the learner's decision and takes the matching proposal out of the position. */
+  answerStyleProposal(decision: StyleDecision): Promise<StyleDecision>;
+  /** Marks only the decisions that were in a completed turn's header. */
+  deliverStyleDecisions(decisions: readonly StyleDecision[]): Promise<void>;
   /** Starts the segment's check: this check is the evidence from here on. */
   startCheck(): Promise<void>;
   /**
@@ -276,10 +277,15 @@ export async function openUnitRecord(options: {
     units: positions,
     packageCompletions = {},
     testedOut: tests,
+    styleDecisions = {},
   } = await dataRoot.readState(courseId);
   const completed = Object.hasOwn(packageCompletions, unitId)
     ? (packageCompletions[unitId] ?? {})
     : {};
+  let pendingStyle = decisionsForUnit(styleDecisions);
+  function decisionsForUnit(byUnit: Record<Slug, StyleDecision[]> | undefined) {
+    return Object.hasOwn(byUnit ?? {}, unitId) ? (byUnit?.[unitId] ?? []) : [];
+  }
   const stored = Object.hasOwn(positions, unitId)
     ? positions[unitId]
     : undefined;
@@ -515,6 +521,9 @@ export async function openUnitRecord(options: {
     get packageCompletions() {
       return Object.values(completed);
     },
+    get pendingStyleDecisions() {
+      return pendingStyle;
+    },
     get finished() {
       return finished;
     },
@@ -611,13 +620,33 @@ export async function openUnitRecord(options: {
       tell();
     },
 
-    async answerStyleProposal(id, tell) {
+    async answerStyleProposal(decision) {
       const { styleProposal, ...next } = position;
-      if (finished !== undefined || styleProposal?.id !== id) return false;
-      await dataRoot.writePosition(courseId, unitId, next);
-      position = next;
-      tell();
-      return true;
+      if (finished !== undefined || styleProposal?.id !== decision.proposalId) {
+        throw new Error("That proposed style note is not waiting.");
+      }
+      const saved = await dataRoot.writePosition(courseId, unitId, next, {
+        style: { decision },
+      });
+      position = saved.units[unitId] ?? next;
+      pendingStyle = decisionsForUnit(saved.styleDecisions);
+      const recorded = pendingStyle.find(
+        (d) => d.proposalId === decision.proposalId,
+      );
+      if (recorded === undefined) {
+        throw new Error("The style decision was not recorded.");
+      }
+      return recorded;
+    },
+
+    async deliverStyleDecisions(delivered) {
+      const saved = await dataRoot.writePosition(
+        courseId,
+        unitId,
+        finished === undefined ? position : null,
+        { style: { delivered } },
+      );
+      pendingStyle = decisionsForUnit(saved.styleDecisions);
     },
 
     async startCheck() {
