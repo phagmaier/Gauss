@@ -21,7 +21,9 @@
 //   question on the first objective is a code question (task 3.7), where
 //   the sandbox runs: the tutor writes its starter file,
 //   `exercise_<objective>_<n>.py` in the workspace, whose `times(x)`
-//   returns 0, and the tests pass once it returns n times x.
+//   returns 0, and the tests pass once it returns n times x. It never
+//   writes over a file there: n goes on past one, such as the draft a
+//   skipped question left.
 // - A unit's tutor (ask_question): gives feedback alone on a graded answer
 //   (the engine then asks for the next question, or closes the segment,
 //   task 2.16a), opens the detour a miss starts with a reply that repeats
@@ -72,6 +74,8 @@
 // fail another way: the unit opens, and every message fails to resume its
 // tutor, until the learner starts fresh.
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import { DisputeJudgment } from "../../shared/dispute.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -157,6 +161,7 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     history,
     body,
     tools ? (coding ? "code" : "math") : "none",
+    session.cwd,
   );
 }
 
@@ -278,6 +283,8 @@ function teaching(
   history: string,
   body: string,
   kinds: Checked,
+  /** The session's folder, the course's workspace. */
+  cwd: string | undefined,
 ): FakeStep[] {
   // A review can be under way in any phase, teach too: what it allows comes
   // before the phase.
@@ -320,7 +327,7 @@ function teaching(
   if (objective !== undefined) {
     const number = askedBefore(history, objective) + 1;
     if (kinds === "code" && !objective.endsWith(WRITTEN)) {
-      return codeQuestion(objective, number);
+      return codeQuestion(objective, number, cwd);
     }
     return [
       { text: "Scripted lead-in to a question." },
@@ -524,13 +531,25 @@ function question(objective: string, number: number, math: boolean): unknown {
 }
 
 /**
- * The objective's code question `number`: the tutor writes the starter file,
+ * The objective's code question `number`, or the first after it whose
+ * starter file is not in the workspace: the tutor writes the starter file,
  * whose function returns 0, then posts the question, whose tests pass once
  * it returns `number` times x. Plain Python, so no package is needed.
  */
-function codeQuestion(objective: string, number: number): FakeStep[] {
-  // The objective in the name: units share the course's workspace.
-  const module = `exercise_${objective.replaceAll("-", "_")}_${number}`;
+function codeQuestion(
+  objective: string,
+  first: number,
+  cwd: string | undefined,
+): FakeStep[] {
+  // The objective in the name: units share the course's workspace. A file
+  // there already, the learner's draft of a question withdrawn unanswered,
+  // which no history lists, is never written over.
+  const stem = `exercise_${objective.replaceAll("-", "_")}`;
+  let number = first;
+  while (cwd !== undefined && existsSync(join(cwd, `${stem}_${number}.py`))) {
+    number += 1;
+  }
+  const module = `${stem}_${number}`;
   const file = `${module}.py`;
   const test = `test_${module}.py`;
   return [

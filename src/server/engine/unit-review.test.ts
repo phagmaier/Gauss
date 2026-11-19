@@ -3,7 +3,7 @@
 // questions and their detours, the end, restarts, and the unit going on.
 // The fake backend's tutor does what each header allows.
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -17,6 +17,7 @@ import {
   assessmentDetourStep,
   assessmentEndMarker,
   nextStep,
+  openQuestion,
 } from "../../web/session.ts";
 import { emptyTimeline, reduce, type Timeline } from "../../web/timeline.ts";
 import type { EngineTurn } from "../backends/backend.ts";
@@ -29,6 +30,8 @@ import {
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { objectiveStatus } from "../record/status.ts";
 import { givenOrder } from "./choice-order.ts";
+import type { DisputeJudge } from "./dispute-judge.ts";
+import { createDisputes } from "./disputes.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
@@ -53,6 +56,12 @@ const NOW = "2026-11-18T12:00:00.000Z";
 const YESTERDAY = "2026-11-17T12:00:00.000Z";
 const HOUR = 60 * 60 * 1000;
 const COURSE = "calculus";
+/**
+ * The time a test with many turns may take: each writes and flushes the
+ * record, and under a full parallel run these took over Vitest's 5-second
+ * default now and then, while they take about 2.5 seconds alone.
+ */
+const MANY_TURNS_MS = 15_000;
 
 const CURRICULUM: CurriculumProposal = {
   title: "Calculus",
@@ -208,11 +217,13 @@ function setUp(
     | ReturnType<typeof tutor>
     | ((turn: EngineTurn) => FakeStep[]) = tutor(),
   replies: FakeReply[] = [],
+  /** Wraps the chats' data root, to hold one of its calls. */
+  wrap: (root: DataRoot) => DataRoot = (root) => root,
 ) {
   const backend = createFakeBackend((turn) => script(turn), replies, {
     kept,
   });
-  const dataRoot = openDataRoot({ path: dir, now: () => clock });
+  const dataRoot = wrap(openDataRoot({ path: dir, now: () => clock }));
   const units = createUnitChats({
     backend,
     systemPrompt: "Tutor.",
@@ -287,6 +298,24 @@ async function answer(
 async function step(action: Promise<unknown>, chat: UnitChat) {
   expect(await action).toEqual({ ok: true });
   await chat.settled();
+}
+
+/**
+ * Loses the unit's transcript from its first line of the type on, as a
+ * crash can lose its last lines (engine/transcript.ts).
+ */
+async function loseTranscriptFrom(
+  type: PageEvent["type"],
+  unit = "derivative",
+) {
+  const folder = join(dir, "courses", COURSE, "sessions");
+  const files = (await readdir(folder)).filter((f) => f.startsWith(`${unit}.`));
+  expect(files).toHaveLength(1);
+  const path = join(folder, files[0] ?? "");
+  const lines = (await readFile(path, "utf8")).split("\n").filter(Boolean);
+  const from = lines.findIndex((line) => line.includes(`"type":"${type}"`));
+  expect(from).toBeGreaterThan(0);
+  await writeFile(path, `${lines.slice(0, from).join("\n")}\n`);
 }
 
 /** The thread the page builds from the chat's events. */
@@ -654,90 +683,174 @@ test("each objective gets one question; a correct answer gets feedback alone, th
   expect(nextStep(timeline)).toBe("ready");
 });
 
-test("a miss opens a detour; once the learner ends it the objective is asked once more, and after that the review moves on whatever the answer, which unit 1's open chat learns", async () => {
+test(
+  "a miss opens a detour; once the learner ends it the objective is asked once more, and after that the review moves on whatever the answer, which unit 1's open chat learns",
+  async () => {
+    await makeCourse();
+    const setup = setUp();
+    const limits = await open(setup, "limits");
+    const chat = await open(setup);
+    await step(chat.startAssessment(), chat);
+
+    await answer(chat, "B");
+    expect(ofType(chat, "detour")).toHaveLength(1);
+    expect(sent(setup.backend)[1]).toContain(
+      'The miss opens a detour, a pause in the review: no question is posted until the learner presses "Ready for another question", and nothing said in it is graded.',
+    );
+    expect(sent(setup.backend)[1]).toContain(
+      'When they press it, one more question on "limit-value" follows. You may suggest pressing "Ready for another question" once the confusion seems cleared.]',
+    );
+    expect(nextStep(replay(chat))).toBe("assessment-detour");
+    expect(assessmentDetourStep(replay(chat))).toEqual({
+      label: "Ready for another question",
+      skip: true,
+    });
+    // Unit 1's chat, open with its own record, learns the miss.
+    expect(ofType(limits, "unit_status").at(-1)).toMatchObject({
+      objectives: { "limit-value": "slipping", "one-sided": "passed" },
+    });
+
+    await step(chat.anotherQuestion(), chat);
+    expect(sent(setup.backend)[2]).toContain(
+      'The learner pressed "Ready for another question": the detour after question 1 is over, and the review goes on. ' +
+        'In this review, question 1, "limit-value": missed, so one more question follows the detour; question 2, "one-sided": not asked yet. ' +
+        'Allowed now: a lead-in of one sentence, then a question on "limit-value" with ask_question, unlike the ones asked before, and unlike the one just missed: ask about the same idea another way.',
+    );
+    expect(lastQuestion(chat)).toMatchObject({
+      number: 1,
+      assessment: { of: 2, second: true },
+    });
+
+    await answer(chat, "B");
+    expect(sent(setup.backend)[3]).toContain(
+      'Nothing more is asked on "limit-value": when they press it, the review moves on to its next objective.',
+    );
+    expect(assessmentDetourStep(replay(chat))).toEqual({
+      label: "Go on with the review",
+      skip: true,
+    });
+
+    await step(chat.anotherQuestion(), chat);
+    expect(sent(setup.backend)[4]).toContain(
+      'The learner pressed "Go on with the review": the detour after question 1 is over, and the review goes on.',
+    );
+    expect(lastQuestion(chat)).toMatchObject({ number: 2 });
+    expect(lastQuestion(chat).assessment?.second).toBeUndefined();
+
+    // The last objective: a miss, its second question, and a second miss.
+    await answer(chat, "B");
+    expect(assessmentDetourStep(replay(chat))).toEqual({
+      label: "Ready for another question",
+      skip: true,
+    });
+    await step(chat.anotherQuestion(), chat);
+    expect(lastQuestion(chat)).toMatchObject({
+      number: 2,
+      assessment: { of: 2, second: true },
+    });
+    await answer(chat, "B");
+    expect(sent(setup.backend).at(-1)).toContain(
+      'Nothing more is asked on "one-sided": when they press it, the review ends.',
+    );
+    expect(assessmentDetourStep(replay(chat))).toEqual({
+      label: "Finish the review",
+      skip: false,
+    });
+    await step(chat.anotherQuestion(), chat);
+    expect(ofType(chat, "assessment_end")).toEqual([
+      {
+        type: "assessment_end",
+        mode: "review",
+        skipped: false,
+        statuses: { "limit-value": "slipping", "one-sided": "slipping" },
+      },
+    ]);
+    // Two questions on each objective, and no third.
+    expect(ofType(chat, "question")).toHaveLength(4);
+    expect(nextStep(replay(chat))).toBe("ready");
+  },
+  MANY_TURNS_MS,
+);
+
+test("a dispute that overturns the first miss on another unit's objective counts in the review: no second question follows, and the review's thread and tutor are told", async () => {
   await makeCourse();
   const setup = setUp();
-  const limits = await open(setup, "limits");
+  const overturning: DisputeJudge = {
+    decide: async () => ({
+      ok: true,
+      outcome: { verdict: "correct", reason: "The answer is right." },
+    }),
+  };
+  const disputes = createDisputes({
+    dataRoot: setup.dataRoot,
+    judge: overturning,
+    units: setup.units,
+    now: () => clock,
+  });
+  // Unit 1's chat is open too, so the dispute is recorded through it.
+  await open(setup, "limits");
   const chat = await open(setup);
   await step(chat.startAssessment(), chat);
-
+  const missed = lastQuestion(chat);
   await answer(chat, "B");
-  expect(ofType(chat, "detour")).toHaveLength(1);
-  expect(sent(setup.backend)[1]).toContain(
-    'The miss opens a detour, a pause in the review: no question is posted until the learner presses "Ready for another question", and nothing said in it is graded.',
-  );
-  expect(sent(setup.backend)[1]).toContain(
-    'When they press it, one more question on "limit-value" follows. You may suggest pressing "Ready for another question" once the confusion seems cleared.]',
-  );
-  expect(nextStep(replay(chat))).toBe("assessment-detour");
-  expect(assessmentDetourStep(replay(chat))).toEqual({
-    label: "Ready for another question",
-    skip: true,
-  });
-  // Unit 1's chat, open with its own record, learns the miss.
-  expect(ofType(limits, "unit_status").at(-1)).toMatchObject({
-    objectives: { "limit-value": "slipping", "one-sided": "passed" },
-  });
+
+  expect(
+    await disputes.raise(COURSE, missed.id, "B is the same as A."),
+  ).toMatchObject({ ok: true });
+  await chat.settled();
+  expect(ofType(chat, "disputed")).toMatchObject([{ questionId: missed.id }]);
 
   await step(chat.anotherQuestion(), chat);
-  expect(sent(setup.backend)[2]).toContain(
-    'The learner pressed "Ready for another question": the detour after question 1 is over, and the review goes on. ' +
-      'In this review, question 1, "limit-value": missed, so one more question follows the detour; question 2, "one-sided": not asked yet. ' +
-      'Allowed now: a lead-in of one sentence, then a question on "limit-value" with ask_question, unlike the ones asked before, and unlike the one just missed: ask about the same idea another way.',
+  expect(sent(setup.backend).at(-1)).toContain(
+    'The learner disputed the grade of their answer to a question on "limit-value"',
   );
-  expect(lastQuestion(chat)).toMatchObject({
-    number: 1,
-    assessment: { of: 2, second: true },
-  });
-
-  await answer(chat, "B");
-  expect(sent(setup.backend)[3]).toContain(
-    'Nothing more is asked on "limit-value": when they press it, the review moves on to its next objective.',
-  );
-  expect(assessmentDetourStep(replay(chat))).toEqual({
-    label: "Go on with the review",
-    skip: true,
-  });
-
-  await step(chat.anotherQuestion(), chat);
-  expect(sent(setup.backend)[4]).toContain(
-    'The learner pressed "Go on with the review": the detour after question 1 is over, and the review goes on.',
+  expect(sent(setup.backend).at(-1)).toContain(
+    'question 1, "limit-value": answered correctly; question 2, "one-sided": not asked yet. Allowed now: a lead-in of one sentence, then a question on "one-sided"',
   );
   expect(lastQuestion(chat)).toMatchObject({ number: 2 });
   expect(lastQuestion(chat).assessment?.second).toBeUndefined();
-
-  // The last objective: a miss, its second question, and a second miss.
-  await answer(chat, "B");
-  expect(assessmentDetourStep(replay(chat))).toEqual({
-    label: "Ready for another question",
-    skip: true,
-  });
-  await step(chat.anotherQuestion(), chat);
-  expect(lastQuestion(chat)).toMatchObject({
-    number: 2,
-    assessment: { of: 2, second: true },
-  });
-  await answer(chat, "B");
-  expect(sent(setup.backend).at(-1)).toContain(
-    'Nothing more is asked on "one-sided": when they press it, the review ends.',
-  );
-  expect(assessmentDetourStep(replay(chat))).toEqual({
-    label: "Finish the review",
-    skip: false,
-  });
-  await step(chat.anotherQuestion(), chat);
-  expect(ofType(chat, "assessment_end")).toEqual([
-    {
-      type: "assessment_end",
-      mode: "review",
-      skipped: false,
-      statuses: { "limit-value": "slipping", "one-sided": "slipping" },
-    },
-  ]);
-  // Two questions on each objective, and no third.
-  expect(ofType(chat, "question")).toHaveLength(4);
-  expect(nextStep(replay(chat))).toBe("ready");
 });
+
+test(
+  "answers other units' chats record on its objectives while its card waits count in the review's end",
+  async () => {
+    await makeCourse();
+    const setup = setUp();
+    const derivative = await open(setup);
+    expect(ofType(derivative, "assessment")).toEqual([OFFERED]);
+    // Two hours on, unit 3 opens in a new sitting and gets a card on the same
+    // objectives, while unit 2's still waits.
+    clock = new Date(clock.getTime() + 2 * HOUR);
+    const integral = await open(setup, "integral");
+    expect(ofType(integral, "assessment")).toEqual([OFFERED]);
+    await step(integral.startAssessment(), integral);
+    await answer(integral, "B");
+    await step(integral.anotherQuestion(), integral);
+    await answer(integral, "B");
+    await step(integral.anotherQuestion(), integral);
+    await answer(integral, "A");
+    expect(ofType(integral, "assessment_end")).toHaveLength(1);
+
+    await step(derivative.startAssessment(), derivative);
+    await answer(derivative, "A");
+    await answer(derivative, "A");
+
+    // "limit-value" was passed, then missed twice in unit 3's review, so it
+    // slipped; one correct answer since does not pass it again. "one-sided"
+    // was passed, and answered correctly in both reviews.
+    expect(ofType(derivative, "assessment_end")).toEqual([
+      {
+        type: "assessment_end",
+        mode: "review",
+        skipped: false,
+        statuses: { "limit-value": "slipping", "one-sided": "retained" },
+      },
+    ]);
+    const log = await reload().readEvidence(COURSE);
+    expect(objectiveStatus(log, "limit-value")).toBe("slipping");
+  },
+  MANY_TURNS_MS,
+);
 
 test("Skip review with a question open withdraws it with nothing recorded, and the tutor is told in its next header", async () => {
   await makeCourse();
@@ -811,6 +924,45 @@ test("a message sent while the card waits skips it; the teaching that waited goe
   );
 });
 
+test("a message sent while the card is being offered waits for the card and skips it; the teaching that waited goes first, then the message", async () => {
+  await makeCourse();
+  let reached = () => {};
+  const atStamp = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  // The offer is held as it stamps the course, before its card is kept.
+  const setup = setUp(tutor(), [], (root) => ({
+    ...root,
+    async markReviewOffered(courseId, at) {
+      reached();
+      await held;
+      return root.markReviewOffered(courseId, at);
+    },
+  }));
+  const opened = await setup.units.open(COURSE, "derivative");
+  if (!opened.ok) throw new Error(opened.error);
+  const chat = opened.chat;
+  await atStamp;
+
+  expect(chat.say("Can we start learning?")).toEqual({ ok: true });
+  release();
+  await chat.settled();
+
+  expect(ofType(chat, "assessment_end")).toEqual([
+    { type: "assessment_end", mode: "review", skipped: true, statuses: {} },
+  ]);
+  expect(sent(setup.backend)).toHaveLength(2);
+  expect(sent(setup.backend)[0]).toContain("Allowed now: teach");
+  expect(sent(setup.backend)[1]).toMatch(
+    /Message from the learner\..*\]\nCan we start learning\?$/s,
+  );
+  expect(nextStep(replay(chat))).toBe("ready");
+});
+
 // --- Restarts --------------------------------------------------------------
 
 test("a restart at the card shows it again and sends nothing; one in the middle shows the open question with its head, and one with nothing open asks on", async () => {
@@ -858,6 +1010,58 @@ test("a restart at the card shows it again and sends nothing; one in the middle 
   );
   await answer(reopened, "A");
   expect(ofType(reopened, "assessment_end")).toHaveLength(1);
+});
+
+test("a restart after the thread lost a skipped review's end and the phase after it shows the unit's control, with nothing pinned", async () => {
+  await makeCourse();
+  const first = setUp();
+  const before = await open(first);
+  await step(before.startAssessment(), before);
+  const withdrawn = lastQuestion(before);
+  // The teaching that waited follows, and the discussion opens.
+  await step(before.skipAssessment(), before);
+  expect(ofType(before, "phase").at(-1)).toMatchObject({ phase: "discuss" });
+  await first.units.close();
+  await loseTranscriptFrom("assessment_end");
+
+  const second = setUp();
+  const timeline = replay(await open(second));
+
+  expect(timeline.assessment).toBeNull();
+  expect(openQuestion(timeline)).toBeUndefined();
+  expect(timeline.items).toContainEqual(
+    expect.objectContaining({ kind: "question", question: withdrawn }),
+  );
+  expect(nextStep(timeline)).toBe("ready");
+});
+
+test("a restart after the thread lost the end of a review skipped in a check does not take its withdrawn question for the check's", async () => {
+  await makeCourse();
+  await reload().writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "check",
+    checkFrom: 2,
+  });
+  const base = tutor();
+  // The check's question does not come before the server stops.
+  const first = setUp((turn) =>
+    turn.text.includes("The check goes on.")
+      ? [{ text: "One moment." }]
+      : base(turn),
+  );
+  const before = await open(first);
+  await step(before.startAssessment(), before);
+  await step(before.skipAssessment(), before);
+  expect((await positionOf())?.openQuestion).toBeUndefined();
+  await first.units.close();
+  await loseTranscriptFrom("assessment_end");
+
+  const second = setUp();
+  const timeline = replay(await open(second));
+
+  expect(timeline.position?.phase).toBe("check");
+  expect(timeline.assessment).toBeNull();
+  expect(openQuestion(timeline)).toBeUndefined();
 });
 
 // --- The unit going on -----------------------------------------------------

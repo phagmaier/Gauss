@@ -103,8 +103,9 @@ export interface UnitRecord {
    * Records the dispute of one of the unit's answers, with an override of
    * its objective if the unit is finished and the dispute takes its pass,
    * and tells the page. Throws DisputeRefused if the record refuses it.
+   * Resolves to the override written with it, if there is one.
    */
-  dispute(entry: DisputeEvidence): Promise<void>;
+  dispute(entry: DisputeEvidence): Promise<OverrideEvidence | undefined>;
   /**
    * Keeps a dispute written to the record without this unit, with the
    * override written with it, and tells the page; nothing if it is kept
@@ -153,7 +154,9 @@ export interface UnitRecord {
   /**
    * Ends the assessment, every objective asked or skipped: takes it out of
    * the position with its detour, withdraws its open question with nothing
-   * recorded, and tells the page what it did to the record.
+   * recorded, and tells the page what it did to the record. The statuses
+   * come from the evidence read again: other units' chats write on its
+   * objectives too, while its card waits and while it runs.
    */
   endAssessment(skipped: boolean): Promise<{
     run: AssessmentRun;
@@ -284,6 +287,19 @@ export async function openUnitRecord(options: {
         backup.commit(`${courseId}: ${segment} closed`);
       }
     }
+  }
+
+  /**
+   * Takes the evidence the unit keeps from `log`, the course's evidence as
+   * read now. An assessment can ask about other units' objectives, which
+   * their own chats, and other units' assessments, write on too.
+   */
+  function readAgain(log: readonly EvidenceEntry[], run: AssessmentRun): void {
+    evidence.splice(
+      0,
+      evidence.length,
+      ...concerning(log, objectivesKept(plan, run, log, unitId)),
+    );
   }
 
   async function append(entry: EvidenceEntry): Promise<void> {
@@ -439,6 +455,7 @@ export async function openUnitRecord(options: {
           : undefined;
       await dataRoot.appendDispute(courseId, entry, override);
       keepDispute(entry, override);
+      return override;
     },
 
     learnDispute(entry, override) {
@@ -520,12 +537,7 @@ export async function openUnitRecord(options: {
     },
 
     async offerAssessment(run, log) {
-      // An assessment can ask about other units' objectives.
-      evidence.splice(
-        0,
-        evidence.length,
-        ...concerning(log, objectivesKept(plan, run, log, unitId)),
-      );
+      readAgain(log, run);
       await move({ ...position, assessment: run }, () =>
         emit(assessmentEvent(run)),
       );
@@ -536,6 +548,7 @@ export async function openUnitRecord(options: {
       if (run === undefined)
         throw new Error("No assessment is offered or under way.");
       const answered = answeredInRun(run, runAnswers);
+      readAgain(await dataRoot.readEvidence(courseId), run);
       const withdrawn = position.openQuestion;
       const {
         assessment: _,

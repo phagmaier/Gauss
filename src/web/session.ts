@@ -132,18 +132,21 @@ export function lastCard(timeline: Timeline): UnitEndItem | undefined {
 // --- The thread ----------------------------------------------------------------
 
 /**
- * The question that still waits on the learner, in a check: one being
- * answered, or an answer sent and not yet graded. The page keeps it above
- * the message box until it is graded or withdrawn (task 2.18).
+ * The question that still waits on the learner, in a check or an
+ * assessment under way: one being answered, or an answer sent and not yet
+ * graded. The page keeps it above the message box until it is graded or
+ * withdrawn (task 2.18). Only a question of what is under way counts: an
+ * assessment's own while one is (its questions carry their head), and the
+ * check's otherwise, so an assessment's question whose withdrawal the thread
+ * lost is not taken for the check's.
  */
 export function openQuestion(timeline: Timeline): QuestionItem | undefined {
-  if (
-    timeline.position?.phase !== "check" &&
-    timeline.assessment?.stage !== "on"
-  ) {
-    return undefined;
-  }
-  const open = timeline.items.findLast((i) => i.kind === "question");
+  const inRun = timeline.assessment?.stage === "on";
+  if (!inRun && timeline.position?.phase !== "check") return undefined;
+  const open = timeline.items.findLast(
+    (i) =>
+      i.kind === "question" && (i.question.assessment !== undefined) === inRun,
+  );
   return open?.kind === "question" &&
     open.graded === undefined &&
     open.withdrawn !== true

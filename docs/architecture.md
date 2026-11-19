@@ -408,8 +408,10 @@ testing out of a unit (stage 5) are to come on the same parts.
   open question or detour, or, with nothing open, the turn that asks for
   its next question. The unit's record keeps the evidence on its plan's
   objectives, on its assessment's, and on those of every answer given in
-  its thread; an answer on another unit's objective is told to that unit's
-  chat if it is open.
+  its thread, and reads it again when the assessment ends, since other
+  units' chats write on those objectives too. An answer on another unit's
+  objective is told to that unit's chat if it is open, and a dispute of it
+  to both chats (section 6).
 - **Its rules** (`engine/assessment-rules.ts`): each objective gets one
   question, in order; `ask_question` is refused on any other objective. A
   correct answer gets a feedback turn, then the next objective's question
@@ -431,7 +433,8 @@ testing out of a unit (stage 5) are to come on the same parts.
   the tutor nothing; a teaching turn that is due and the unit's own steps
   ("ready", moving on, the next segment, the closing card's steps) wait
   until it is answered. Start asks the tutor for the first question. A
-  message sent while the card waits skips it.
+  message sent while the card waits, or while it is being offered, skips
+  it.
 - **"Skip review"** ends it on the card or partway, withdrawing an open
   question with nothing recorded; it is refused while an answer is kept
   for grading, as moving on is. When it ends or is skipped, the page is
@@ -567,8 +570,11 @@ with sources (stage 4).
   corrected choice key or expected expression, which shows wherever the
   first one did. It is written through the unit's chat when that is open,
   in its queue; otherwise directly, and the chat shows it, and tells the
-  tutor, when it opens. The record refuses a second dispute of an answer
-  as it appends (`appendDispute` in `record/data-root.ts`).
+  tutor, when it opens. An answer given in another unit's assessment is
+  that unit's too: its chat, if open, learns the dispute, so the
+  assessment goes on with the corrected verdict and its tutor is told. The
+  record refuses a second dispute of an answer as it appends
+  (`appendDispute` in `record/data-root.ts`).
 - **The dispute judge** (`engine/dispute-judge.ts`) is a one-shot request:
   `dispute-judge.md`, and a message holding the question as the learner saw
   it with its choices, how it was graded and what graded it (the key; the
@@ -780,7 +786,9 @@ no automated tests.
 - **Session** (`/courses/<id>/units/<unit>`): the thread with rendered
   Markdown and math; phase markers; one next-step control where the thread
   has reached; the open question pinned above the message box until it is
-  graded or withdrawn, then moved to where it was answered, with Hide,
+  graded or withdrawn (only a question of what is under way: a review's
+  while it runs, the check's otherwise), then moved to where it was
+  answered, with Hide,
   which shrinks it to one line with Show until the next question; the help
   notice above the message box and the judge's call under each reply; a
   line for each file the tutor writes with its file tools, once a reply,

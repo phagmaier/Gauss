@@ -1355,7 +1355,10 @@ built until its task is done; `architecture.md` says what is.
   what the review did.
 - **A message on the card skips it, and the teaching goes first** (the
   agent's): the card holds the teaching turn, so the turn the learner's
-  message brings is sent after it, as a message during teaching is.
+  message brings is sent after it, as a message during teaching is. One
+  sent while the card is being offered (`offering` in `unit-chat.ts`)
+  waits for it in the queue and skips it too: decided outside the queue,
+  it reached the tutor while the card stood and the teaching waited.
 - **Skip is refused while an answer is kept for grading**, as moving on
   is: withdrawing it would drop an answer the learner sent (the agent's).
 - **The header gives another unit's objective with its unit and
@@ -1363,7 +1366,21 @@ built until its task is done; `architecture.md` says what is.
   prompt is not changed mid-session (the agent's).
 - **An answer on another unit's objective is told to that unit's chat**,
   if it is open: its record is read once, and with a stale one a unit
-  could finish passed with an objective slipping (the agent's).
+  could finish passed with an objective slipping (the agent's). The other
+  way, the reviewing unit's record reads the evidence again when the
+  review ends, for the statuses it reports: the objective's own check, or
+  another unit's review left on its card, can have answered meanwhile,
+  and the end said retained where the record said attempted. A dispute of
+  a review's answer goes to both chats: through the objective's unit
+  alone, an overturned first miss still brought a second question.
+- **The page pins only a question of what is under way** (the agent's): a
+  review's question while a review runs, the check's otherwise, and every
+  phase the chat says clears the assessment, which it says again after
+  the phase if one stands. A withdrawal is in the transcript only, which
+  can lose its last lines, so a restart after a lost skip pinned the
+  withdrawn question and showed "Skip review" or "Move on". Rejected for
+  now: an event saying on reopening which question is open, sturdier but
+  a new event for a crash's edge.
 
 **The gate**
 
@@ -1858,7 +1875,9 @@ the agent would build them and accepted so, but for the notes
   before** (task 5.4): numbered from the check's "(n asked)", a review or
   a segment going over objectives again repeated a check's "question 1",
   which counts as the same problem. Its code files carry the objective in
-  their names, since units share the workspace.
+  their names, since units share the workspace, and it never writes over
+  a file there: a question withdrawn unanswered is in no history, so the
+  next one got its number and replaced the learner's draft.
 - **Close the browser before stopping a server.** A session page left open
   from one run kept asking to open its unit, and a real-backend scratch
   server started later on the same port, with a course of the same id,
@@ -1931,11 +1950,10 @@ will close.
   `tutor.md` forbids it (seen once, task 3.19). The posting check could
   refuse a question whose test files are in the workspace.
 - Opening a unit with a long history draws its whole thread once.
-- A dispute of an answer given in one unit's review, on another unit's
-  objective, is recorded through the objective's unit: the review's thread
-  shows the outcome on the card from the route's answer, but its tutor is
-  not told, and its event stream does not send it.
 - Keys go to the message box, not the pinned card, after sending a message.
+- After a dispute overturns the miss a detour opened on, the detour's
+  control still reads "Ready for another question", though pressing it goes
+  on as the corrected verdict has it: to the next objective, or the end.
 - No limit on refused `plan_unit` calls within one planning turn.
 - The fake backend's `hasSession` ignores the folder.
 - Temporary files left by a crash during an atomic write are never cleaned

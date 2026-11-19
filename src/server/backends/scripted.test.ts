@@ -68,11 +68,15 @@ function setUp(
     mathCheck?: MathCheck;
     codeRunner?: CodeRunner;
     installer?: PackageInstaller;
+    /** The clock of the record and the chats; the real one if not given. */
+    now?: () => Date;
   } = {},
 ) {
   const backend = createScriptedBackend();
-  const dataRoot = openDataRoot({ path: dir });
+  const clock = given.now === undefined ? {} : { now: given.now };
+  const dataRoot = openDataRoot({ path: dir, ...clock });
   const units = createUnitChats({
+    ...clock,
     backend,
     systemPrompt: "Tutor.",
     dataRoot,
@@ -467,6 +471,90 @@ test(
         verdict: "correct",
         output: "Scripted: all 4 checks passed.",
       });
+    } finally {
+      await sandbox.close();
+    }
+  },
+  WHOLE_UNIT_MS,
+);
+
+test(
+  "in a code course, a review's code exercise skipped with a draft in its file is not written over: the next review's exercise has a file of its own",
+  async () => {
+    const sandbox = await startSandbox({ log: () => {} });
+    if (!sandbox.available) {
+      throw new Error(`This test needs the sandbox: ${sandbox.reason}`);
+    }
+    try {
+      let clock = new Date("2026-11-18T12:00:00.000Z");
+      const given = {
+        codeRunner: createCodeRunner({ sandbox }),
+        now: () => clock,
+      };
+      const first = setUp(given);
+      const { dataRoot } = first;
+      const coding = { ...CURRICULUM, title: "Python code" };
+      const { id } = await dataRoot.createCourse({ title: coding.title });
+      await dataRoot.saveProposal(id, coding);
+      await dataRoot.approveCurriculum(id, coding);
+      await dataRoot.storePlan(id, "limits", scriptedPlan("limits"));
+      // Passed long before, at 90%: review is due on it.
+      await dataRoot.appendEvidence(id, {
+        kind: "answer",
+        recordedAt: "2026-11-01T10:00:00.000Z",
+        objective: "limits-idea",
+        question: {
+          kind: "choice",
+          prompt: 'Choice question 1 on "limits-idea": what is $1 + 1$?',
+          choices: ["$2$", "$3$", "$1$"],
+          answer: "A",
+        },
+        answer: {
+          kind: "choice",
+          questionId: "earlier",
+          choice: "A",
+          confidence: "90",
+        },
+        assisted: false,
+        verdict: "correct",
+      });
+      const workspace = await dataRoot.workspaceFolder(id);
+      const review = async (units: typeof first.units) => {
+        const opened = await units.open(id, "derivative");
+        if (!opened.ok) throw new Error(opened.error);
+        const chat = opened.chat;
+        await chat.settled();
+        expect(await chat.startAssessment()).toEqual({ ok: true });
+        await chat.settled();
+        const open = (await dataRoot.readState(id)).units.derivative
+          ?.openQuestion;
+        if (open === undefined) throw new Error("No question is open.");
+        return { chat, question: open.question };
+      };
+
+      const before = await review(first.units);
+      expect(before.question).toMatchObject({
+        kind: "code",
+        files: ["exercise_limits_idea_2.py"],
+      });
+      const draft = "def times(x):\n    return x  # not done yet\n";
+      await writeFile(join(workspace, "exercise_limits_idea_2.py"), draft);
+      expect(await before.chat.skipAssessment()).toEqual({ ok: true });
+      await before.chat.settled();
+      await first.units.close();
+
+      // Two hours on, the next sitting reviews the same objective.
+      clock = new Date(clock.getTime() + 2 * 60 * 60 * 1000);
+      const second = setUp(given);
+      const after = await review(second.units);
+      expect(after.question).toMatchObject({
+        kind: "code",
+        files: ["exercise_limits_idea_3.py"],
+      });
+      expect(
+        await readFile(join(workspace, "exercise_limits_idea_2.py"), "utf8"),
+      ).toBe(draft);
+      await second.units.close();
     } finally {
       await sandbox.close();
     }

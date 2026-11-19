@@ -698,7 +698,9 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       // A chat that opens in the phase the thread is in, as a unit reopened
       // after a restart does, begins nothing new. A detour or an assessment
       // still open is said again after the phase, so one whose end the
-      // thread lost ends.
+      // thread lost ends, whether the phase is the thread's or a later one.
+      // An assessment leaves the phase alone, so no phase comes while one
+      // is offered or under way.
       if (
         state.position?.segment === position.segment &&
         state.position.phase === position.phase
@@ -715,6 +717,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         items: [...items, { kind: "phase", key: index, ...position }],
         position,
         detour: null,
+        assessment: null,
         tutorOpen: false,
       };
     }

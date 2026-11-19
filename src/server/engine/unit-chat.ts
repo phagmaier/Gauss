@@ -269,13 +269,18 @@ export interface UnitChat {
   /**
    * Records the dispute of one of the unit's answers, once the unit is open,
    * and tells the page and, in a unit in progress, the tutor's next header.
-   * False if the unit could not be opened, so nothing was recorded. Throws
-   * DisputeRefused if the record refuses it.
+   * Resolves to the override recorded with it, if any; false if the unit
+   * could not be opened, so nothing was recorded. Throws DisputeRefused if
+   * the record refuses it.
    */
-  recordDispute(entry: DisputeEvidence): Promise<boolean>;
+  recordDispute(
+    entry: DisputeEvidence,
+  ): Promise<false | { override: OverrideEvidence | undefined }>;
   /**
    * Takes in a dispute recorded without the chat, with the override recorded
-   * with it, if the unit's record read when it opened did not have it.
+   * with it, if the unit's record read when it opened did not have it: of an
+   * answer on one of the unit's objectives, or one given in its assessment
+   * on another unit's.
    */
   learnDispute(
     entry: DisputeEvidence,
@@ -739,6 +744,11 @@ function createUnitChat(
   let closing = false;
   /** A Stop cancels automatic next-question turns, including ones still queued. */
   let stopCount = 0;
+  /**
+   * Set while review is being offered, from the checks until its card is
+   * kept: a message sent meanwhile waits for the card, which it skips.
+   */
+  let offering = false;
   /** The course's workspace, where the tutor works and packages go. */
   let folder: string | undefined;
   /** The install that runs, by its request's id; `settled` waits for it. */
@@ -1317,6 +1327,7 @@ function createUnitChat(
     ) {
       return;
     }
+    offering = true;
     try {
       const at = now();
       const [stored, log] = await Promise.all([
@@ -1338,6 +1349,8 @@ function createUnitChat(
       );
     } catch (error) {
       console.error("Review could not be offered:", error);
+    } finally {
+      offering = false;
     }
   }
 
@@ -2198,12 +2211,13 @@ function createUnitChat(
             return exclusive(() => replyEnded(r, asked, reply));
           },
         });
-      if (r.record.position.assessment?.stage !== "offered") {
+      if (!offering && r.record.position.assessment?.stage !== "offered") {
         send();
         return { ok: true };
       }
-      // A message sent while the card waits skips it: the learner has gone
-      // on. A teaching turn that waited goes first, as it would have.
+      // A message sent while the card waits, or while it is being offered,
+      // skips it: the learner has gone on. A teaching turn that waited goes
+      // first, as it would have.
       void exclusive(async () => {
         try {
           if (r.record.position.assessment?.stage === "offered") {
@@ -2547,9 +2561,9 @@ function createUnitChat(
       return exclusive(async () => {
         const r = running;
         if (r === undefined) return false;
-        await r.record.dispute(entry);
+        const override = await r.record.dispute(entry);
         await disputeKept(r, entry);
-        return true;
+        return { override };
       });
     },
     async learnAnswer(entry) {

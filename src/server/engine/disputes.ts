@@ -10,6 +10,7 @@
 // written here, and the chat learns it when it opens.
 
 import type { Slug } from "../../shared/course.ts";
+import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { GradedBy } from "../../shared/dispute.ts";
 import type {
   AnswerEvidence,
@@ -140,7 +141,9 @@ export function createDisputes(options: {
   /**
    * Records the dispute through the chat of the answer's unit if it is open,
    * or else here. A chat that opened meanwhile, and read the evidence before
-   * the dispute was written, then learns it.
+   * the dispute was written, then learns it. An answer given in another
+   * unit's assessment is that unit's too: its chat learns the dispute, so
+   * the assessment goes on with the corrected verdict and its tutor is told.
    */
   async function record(
     courseId: Slug,
@@ -152,9 +155,30 @@ export function createDisputes(options: {
       u.plan?.objectives.some((o) => o.id === answer.objective),
     );
     const chat = unit === undefined ? undefined : units.get(courseId, unit.id);
-    if (chat !== undefined && (await chat.recordDispute(dispute))) return;
-    // The unit's chat is not open, and only a chat writes the unit's
-    // position, so the position read here stands while this is written.
+    const recorded =
+      chat === undefined ? false : await chat.recordDispute(dispute);
+    const override =
+      recorded === false
+        ? await recordHere(courseId, unit, dispute, answer.objective)
+        : recorded.override;
+    const asker = answer.assessment?.unit;
+    if (asker !== undefined && asker !== unit?.id) {
+      await units.get(courseId, asker)?.learnDispute(dispute, override);
+    }
+  }
+
+  /**
+   * Records the dispute without the chat of the answer's unit, which is not
+   * open, and resolves to the override recorded with it, if any.
+   */
+  async function recordHere(
+    courseId: Slug,
+    unit: StoredUnit | undefined,
+    dispute: DisputeEvidence,
+    objective: string,
+  ): Promise<OverrideEvidence | undefined> {
+    // Only a chat writes the unit's position, so the position read here
+    // stands while this is written.
     let override: OverrideEvidence | undefined;
     if (unit?.plan !== undefined) {
       const [state, evidence] = await Promise.all([
@@ -166,11 +190,11 @@ export function createDisputes(options: {
         : undefined;
       const status = unitStatus(unit, evidence, position);
       const finished = status === "passed" || status === "overridden";
-      if (finished && takesPass(evidence, dispute, answer.objective)) {
+      if (finished && takesPass(evidence, dispute, objective)) {
         override = {
           kind: "override",
           recordedAt: dispute.recordedAt,
-          objectives: [answer.objective],
+          objectives: [objective],
         };
       }
     }
@@ -178,6 +202,7 @@ export function createDisputes(options: {
     if (unit !== undefined) {
       await units.get(courseId, unit.id)?.learnDispute(dispute, override);
     }
+    return override;
   }
 }
 
