@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { Timestamp } from "./course.ts";
 
-/** A note is about 250 words; this cap only stops one that runs away. */
+/** A note aims for about 250 words; only the character ceiling is enforced. */
 export const HANDOFF_NOTE_LIMIT = 4000;
 
 export const HandoffReply = z.object({
@@ -18,7 +18,7 @@ export const HandoffReply = z.object({
     .min(1)
     .max(HANDOFF_NOTE_LIMIT)
     .describe(
-      "The unit's handoff note, whole, in place of the one before: about 250 words, for a tutor who has not seen the conversation.",
+      "The unit's handoff note, whole, in place of the one before. Aim for about 250 words and keep what helps the next tutor pick up the teaching.",
     ),
   misconceptions: z
     .array(

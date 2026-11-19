@@ -631,6 +631,10 @@ the test before a unit lets the learner skip what they know.
   offered, with what its own calls write. A new session's first turn gets
   the note and the open misconceptions on the unit's objectives; a
   review's or a gate's question turn, those on its objective, open or not.
+  For a question on another unit's objective, that turn also gets the
+  assessed unit's handoff note if it exists, even when it is not a
+  prerequisite. The chat reads those notes when the assessment starts
+  or resumes so the tutor can avoid reusing teaching examples.
   The tutor's system prompt and the unit's planning turn get, as the
   record stands when the chat opens or the unit is planned, the last notes
   of the unit's direct prerequisites and the open misconceptions on other

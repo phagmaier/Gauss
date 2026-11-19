@@ -35,10 +35,11 @@ objectives and a few of other units'. A miss in either has a detour too.
 
 Write the unit's whole note, in place of the one before: keep what still
 matters from the note before, add what the stretch shows, and drop what
-the stretch has made out of date. At most 250 words however long the unit
-has run: count them before you reply. A segment the stretch does not touch
-keeps a line or two from the note before, its examples and anything still
-open about it, so that the note does not grow with the unit.
+the stretch has made out of date. Aim for about 250 words. To shorten
+the note, combine related points and compress routine examples before
+dropping anything still open or useful for picking up the teaching.
+For segments this stretch does not touch, keep only what still helps:
+especially unresolved confusion and examples the next tutor might reuse.
 
 Every sentence must say what the next tutor cannot get elsewhere. The app
 gives it where the unit stands and every objective's status, and, when it

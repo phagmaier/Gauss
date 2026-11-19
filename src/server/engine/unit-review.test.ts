@@ -580,6 +580,24 @@ test("Start marks the thread and asks the tutor for the first question, on anoth
   });
 });
 
+test("review supplies the handoff note of the unit it is asking about, even when that unit is not a prerequisite", async () => {
+  const root = await makeCourse();
+  await root.appendEvidence(COURSE, correct("area", YESTERDAY));
+  const mark = { writtenAt: YESTERDAY, through: { session: 1, events: 1 } };
+  const example = "Ungraded: compare the signed areas of two triangles.";
+  await root.writeHandoff(COURSE, "integral", example, mark);
+  const setup = setUp();
+  const chat = await open(setup, "derivative");
+
+  await step(chat.startAssessment(), chat);
+  expect(sent(setup.backend).at(-1)).not.toContain(example);
+  await answer(chat, "A");
+  await answer(chat, "A");
+
+  expect(lastQuestion(chat).assessment?.from?.title).toBe("The integral");
+  expect(sent(setup.backend).at(-1)).toContain(example);
+});
+
 test("the tutor may ask only about the objective the review asks next", async () => {
   await makeCourse();
   const script = tutor();
@@ -989,11 +1007,18 @@ test("a restart at the card shows it again and sends nothing; one in the middle 
   if (position === undefined) throw new Error("No position.");
   const { openQuestion: _, ...asked } = position;
   await reload().writePosition(COURSE, "derivative", asked);
+  const example =
+    "Ungraded: mark the left- and right-hand limits on a step graph.";
+  await reload().writeHandoff(COURSE, "limits", example, {
+    writtenAt: NOW,
+    through: { session: 1, events: 1 },
+  });
   const fourth = setUp();
   const reopened = await open(fourth);
   expect(sent(fourth.backend)[0]).toContain(
     'The review goes on where it was. In this review, question 1, "limit-value": answered correctly; question 2, "one-sided": not asked yet. Allowed now: a lead-in of one sentence, then a question on "one-sided" with ask_question',
   );
+  expect(sent(fourth.backend)[0]).toContain(example);
   await answer(reopened, "A");
   expect(ofType(reopened, "assessment_end")).toHaveLength(1);
 });

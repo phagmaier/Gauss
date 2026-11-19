@@ -1806,10 +1806,13 @@ prompt now says what the next tutor is given and forbids restating it,
 with examples; defines open as excluding the plan; says a tested objective
 was not taught; and asks the writer to work again any number in a
 correction. Sonnet then stopped listing tested objectives as taught and
-kept its corrections right, but still reported some results and ran over
-the word cap ("Mastery loop"). A belief shown in a test answer's
-reasoning is a misconception: both models recorded them, and the prompt
-had said that something not yet taught is not one.
+kept its corrections right, but still reported some results and ran long
+("Mastery loop"). About 250 words is a target, not a reason to cut off
+useful context or reject the reply and lose its misconceptions; the
+schema's character ceiling still guards runaway replies. A belief
+shown in a test answer's reasoning is a misconception: both models
+recorded them, and the prompt had said that something not yet taught
+is not one.
 
 **`notes.md`** (task 5.13): Sonnet followed the learner's instructions
 (an exam box first; a worked medical-test table first, the tested part a
@@ -1821,6 +1824,12 @@ told to size the box from about 0.6 × the font size per character and
 to draw compared amounts to scale, the next figure was a bar chart to
 scale with its labels inside. It wrote "where I went wrong" in the
 learner's voice; the prompt now asks for "you".
+Recomputing values did not catch a false generalization in the rewritten
+conditional-probability notes: they claimed unequal marginals rule out
+equal reverse conditionals, which fails for disjoint events. The writer
+now checks assumptions and boundary cases and states the rule positively
+even in quick-reference boxes: two drafts qualified the equality rule
+but turned the denominator rule into a false "never use the full space".
 
 **`unit-planner.md`**: one idea per objective, tested by "could a learner
 know one part and not the other", up to eight objectives rather than

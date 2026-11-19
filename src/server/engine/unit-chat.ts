@@ -892,6 +892,8 @@ interface Running {
    * misconceptions are read again when an assessment is offered.
    */
   handoff: { note: string | undefined; misconceptions: Misconception[] };
+  /** The other units' handoff notes, read when an assessment starts or resumes. */
+  assessmentHandoffs: ReadonlyMap<string, string> | undefined;
   /** Blocks new questions from when feedback is queued until it ends. */
   feedback?: { number: number; started: boolean } | undefined;
   /**
@@ -1007,6 +1009,7 @@ function createUnitChat(
         profile,
         handoffNote,
         misconceptions,
+        assessmentHandoffs,
         evidence,
       ] = await Promise.all([
         dataRoot.readStyle(courseId),
@@ -1014,6 +1017,9 @@ function createUnitChat(
         dataRoot.readProfile(),
         dataRoot.readHandoff(courseId, unitId),
         dataRoot.readMisconceptions(courseId),
+        record.position.assessment?.stage === "on"
+          ? readAssessmentHandoffs(record.position.assessment)
+          : undefined,
         dataRoot.readEvidence(courseId),
       ]);
       const earlier = await readEarlier(
@@ -1096,6 +1102,7 @@ function createUnitChat(
         agents: loaded,
         notes: [],
         handoff: { note: handoffNote?.note, misconceptions },
+        assessmentHandoffs,
       };
       if (record.reopened) {
         // A unit under way resumes its tutor's conversation with its first
@@ -1665,13 +1672,36 @@ function createUnitChat(
   /** Where the assessment stands, for the tutor's header. */
   function runWhere(r: Running, run: AssessmentRun): RunWhere {
     const { runAnswers, evidence } = r.record;
+    const next = run.stage === "on" ? nextOf(r, run) : undefined;
+    const sourceHandoff =
+      next === undefined ? undefined : r.assessmentHandoffs?.get(next.unit);
     return {
       run,
       standing: run.objectives.map(({ objective }) =>
         runObjective(objective, runAnswers, evidence, run.mode),
       ),
-      next: run.stage === "on" ? nextOf(r, run) : undefined,
+      next,
+      ...(sourceHandoff === undefined ? {} : { sourceHandoff }),
     };
+  }
+
+  async function readAssessmentHandoffs(
+    run: AssessmentRun,
+  ): Promise<ReadonlyMap<string, string> | undefined> {
+    if (run.mode === "test-out") return undefined;
+    const sources = new Set<string>();
+    for (const { unit } of run.objectives) {
+      if (unit !== unitId) sources.add(unit);
+    }
+    if (sources.size === 0) return undefined;
+    const notes = new Map<string, string>();
+    await Promise.all(
+      Array.from(sources, async (source) => {
+        const handoff = await dataRoot.readHandoff(courseId, source);
+        if (handoff !== undefined) notes.set(source, handoff.note);
+      }),
+    );
+    return notes;
   }
 
   /** The question the assessment asks next; none once it has asked all it will. */
@@ -1806,6 +1836,7 @@ function createUnitChat(
    */
   async function endRun(r: Running, skipped: boolean): Promise<void> {
     const { run, withdrawn, statuses } = await r.record.endAssessment(skipped);
+    r.assessmentHandoffs = undefined;
     if (run.mode === "test-out") {
       sendTestSummary(r, () =>
         testEndTurn(
@@ -3340,6 +3371,7 @@ function createUnitChat(
           );
         }
         const stops = stopCount;
+        r.assessmentHandoffs = await readAssessmentHandoffs(offered);
         await r.record.startAssessment((run) => showRun(r, run));
         askInRun(r, { after: "start" }, stops);
         return { ok: true };

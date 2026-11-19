@@ -696,6 +696,11 @@ test("skipping the gate on its card finishes the unit with what passed passed an
 
 test("a gate skipped with another unit's question open lists it at its unchanged status, including on a reopened closing card", async () => {
   const root = await makeCourse();
+  const example = "Ungraded: estimate the limit from a table of temperatures.";
+  await root.writeHandoff(COURSE, "limits", example, {
+    writtenAt: YESTERDAY,
+    through: { session: 1, events: 1 },
+  });
   // The other unit's objective was already slipping before this gate.
   await root.appendEvidence(COURSE, {
     ...correct("limit-value", YESTERDAY),
@@ -712,11 +717,13 @@ test("a gate skipped with another unit's question open lists it at its unchanged
   const first = await open(before);
   await toGate(first);
   await step(first.startAssessment(), first);
+  expect(sent(before.backend).at(-1)).not.toContain(example);
   await answer(first, "B"); // Miss slope, then get its re-ask right.
   await step(first.anotherQuestion(), first);
   await answer(first, "A");
   await answer(first, "A"); // Power rule.
   expect(lastQuestion(first).assessment?.from).toEqual(LIMITS);
+  expect(sent(before.backend).at(-1)).toContain(example);
   const evidence = await reload().readEvidence(COURSE);
   const expected = [
     expect.objectContaining({
