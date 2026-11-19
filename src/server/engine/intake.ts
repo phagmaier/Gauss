@@ -69,8 +69,8 @@ export interface Intake {
 
 /**
  * A stored draft whose intake is gone, to be reviewed again, with the
- * profile it is compared with: profile.md as it is when it is reopened. A
- * draft stored before style notes existed (task 2.10) has none.
+ * profile it was originally compared with. A draft stored before style
+ * notes existed (task 2.10) has none.
  */
 export interface StoredDraft {
   id: Slug;
@@ -104,7 +104,7 @@ export function createIntake(options: {
    */
   let opening = false;
   /** The profile the running session was last given; none before its first turn. */
-  let told: { profile: string | undefined } | undefined;
+  let told: string | undefined;
 
   const proposeCurriculum = proposeCurriculumTool({
     async propose(proposal) {
@@ -115,10 +115,11 @@ export function createIntake(options: {
       if (courseId === undefined) {
         courseId = (await dataRoot.createCourse({ title: proposal.title })).id;
       }
-      const profileWas = await dataRoot.readProfile();
-      await dataRoot.saveProposal(courseId, proposal);
+      const profileWas = (await dataRoot.readProfile()) ?? null;
+      const card = { ...proposal, profileWas };
+      await dataRoot.saveProposal(courseId, card);
       latest += 1;
-      shown = { ...proposal, profileWas };
+      shown = card;
       emitProposal(courseId, shown);
       return { revision: latest };
     },
@@ -147,15 +148,15 @@ export function createIntake(options: {
    * What the session is given about the learner beyond this course: all of
    * it in its first turn, and after that the profile when it has changed.
    */
-  async function aboutTheLearner(first: boolean): Promise<string | undefined> {
-    const profile = await dataRoot.readProfile();
-    const changed = told !== undefined && told.profile !== profile;
-    told = { profile };
+  async function aboutTheLearner(
+    first: boolean,
+    profile: string | undefined,
+  ): Promise<string | undefined> {
     if (first) {
       const finished = (await finishedCourses(dataRoot)).map((c) => c.title);
       return learnerBlock({ profile, finished });
     }
-    return changed ? changedProfileBlock(profile) : undefined;
+    return told === profile ? undefined : changedProfileBlock(profile);
   }
 
   const tools = [proposeCurriculum];
@@ -209,15 +210,18 @@ export function createIntake(options: {
       const about = latest;
       const id = randomUUID();
       log.emit({ type: "learner", id, text });
+      let profile: string | undefined;
       tutor.send({
         learnerId: id,
         // Composed when sent, since a lost session is found then.
         async text() {
           opening = false;
-          const first = lost || !tutor.started();
-          const learner = await aboutTheLearner(first);
+          profile = await dataRoot.readProfile();
+          const learner = await aboutTheLearner(
+            lost || !tutor.started(),
+            profile,
+          );
           if (lost) {
-            lost = false;
             return shown === undefined
               ? lostTurn(text, conversationBefore(log.events(), id), learner)
               : reviewTurn(text, shown, latest, learner);
@@ -228,6 +232,10 @@ export function createIntake(options: {
           }
           opening = true;
           return openingTurn(text, learner);
+        },
+        sent() {
+          told = profile;
+          lost = false;
         },
       });
       return { ok: true };
@@ -266,7 +274,14 @@ export function createIntake(options: {
           return { ok: false, status: 409, error: DRAFT_MISMATCH };
         }
         if (error instanceof ProfileChanged) {
-          return { ok: false, status: 409, error: PROFILE_CHANGED };
+          return {
+            ok: false,
+            status: 409,
+            error:
+              shown.profileWas === undefined
+                ? PROFILE_UNKNOWN
+                : PROFILE_CHANGED,
+          };
         }
         throw error;
       }
@@ -301,6 +316,10 @@ const PROFILE_CHANGED =
   "Your profile was changed after this proposal was made, so approving " +
   "it would replace that change unseen. Ask the tutor to propose again: " +
   "it will be given your profile as it is now.";
+
+const PROFILE_UNKNOWN =
+  "This draft did not keep the profile from when it was proposed. Ask " +
+  "the tutor to propose again before approving.";
 
 /**
  * The intakes started since the server did, by id. An intake stays after it

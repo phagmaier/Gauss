@@ -226,12 +226,11 @@ export function createApp(options: {
     }
     // A draft proposed before style notes existed (task 2.10) has none, one
     // proposed before background notes (task 2.22) has no background, and
-    // one proposed before profiles (task 5.8) no profile. Its card compares
-    // the profile with profile.md as it is now.
+    // one proposed before profiles (task 5.8) no profile. The comparison
+    // stays the one made with the proposal, even after a restart.
     const style = await dataRoot.readStyle(stored.id);
     const background = await dataRoot.readBackground(stored.id);
-    const { profile } = curriculum.approval;
-    const profileWas = await dataRoot.readProfile();
+    const { profile, profileWas } = curriculum.approval;
     const intake = intakes.review({
       id: stored.id,
       proposal: {

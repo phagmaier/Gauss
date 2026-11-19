@@ -79,6 +79,7 @@ export async function serve(options: {
   const backup = options.backup
     ? await startBackup({
         path: dataRootPath,
+        stageSnapshot: dataRoot.withConsistentApproval,
         log: (line) => process.stdout.write(`${line}\n`),
       })
     : noBackup;

@@ -215,8 +215,8 @@ export type Item =
       backgroundChanged: boolean;
       /** The learner profile approval would write; a draft from before task 5.8 has none. */
       profile: string | undefined;
-      /** The profile it would replace; none when there was no profile. */
-      profileWas: string | undefined;
+      /** Original comparison: null for no profile, undefined if not recorded. */
+      profileWas: string | null | undefined;
     }
   | { kind: "note"; key: number; text: string };
 

@@ -137,16 +137,15 @@ function checkObjectiveIds(units: StoredUnit[], ctx: Context): void {
   });
 }
 
+const DraftApproval = z.object({
+  status: z.literal("draft"),
+  profile: LearnerProfile.optional(),
+  /** The comparison at proposal time: null for no profile, absent on older drafts. */
+  profileWas: z.string().nullable().optional(),
+});
+
 export const CurriculumApproval = z.discriminatedUnion("status", [
-  /**
-   * Proposed by the tutor and awaiting the learner's review, with the learner
-   * profile approving it would write to the data root's profile.md (task
-   * 5.8). A draft proposed before profiles existed has none.
-   */
-  z.object({
-    status: z.literal("draft"),
-    profile: LearnerProfile.optional(),
-  }),
+  DraftApproval,
   /** Approved by the learner, so its units can start. */
   z.object({ status: z.literal("approved"), approvedAt: Timestamp }),
 ]);
@@ -157,6 +156,14 @@ export const Curriculum = z.object({
   units: StoredUnits,
 });
 export type Curriculum = z.infer<typeof Curriculum>;
+
+/** Enough to restore a draft if approval stops before publishing its profile. */
+export const PendingProfileApproval = z.object({
+  courseId: Slug,
+  draft: DraftApproval.extend({ profile: LearnerProfile }),
+  approvedAt: Timestamp,
+});
+export type PendingProfileApproval = z.infer<typeof PendingProfileApproval>;
 
 /**
  * A course's style note (brief.md, "Teaching style"): how the tutor will
@@ -233,10 +240,10 @@ export type ShownProposal = Omit<
   profile?: string | undefined;
   /**
    * The profile the card compares `profile` with, and approval expects to
-   * replace: profile.md as it was when the proposal was made or the draft
-   * reopened; none when there was no profile.
+   * replace: profile.md as it was when the proposal was made. Null when
+   * there was no profile; absent when an older draft did not record it.
    */
-  profileWas?: string | undefined;
+  profileWas?: string | null | undefined;
 };
 
 /** One prerequisite entry: `units[at].prerequisites[slot]`. */

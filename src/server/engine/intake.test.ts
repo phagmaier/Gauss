@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -327,6 +327,7 @@ test("a reply to a proposal is a change request, and the revision replaces the d
     style: REVISED.style,
     background: REVISED.background,
     profile: REVISED.profile,
+    profileWas: null,
   });
   const courses = await reload().listCourses();
   expect(courses).toHaveLength(1);
@@ -474,7 +475,7 @@ test("a revision saved only in part cannot be approved through the card before i
   });
   expect(
     (await reload().readCourse("linear-algebra-for-pca"))?.curriculum?.approval,
-  ).toEqual({ status: "draft", profile: REVISED.profile });
+  ).toEqual({ status: "draft", profile: REVISED.profile, profileWas: null });
   expect(await reload().readProfile()).toBeUndefined();
 
   intake.say("Please try that again.");
@@ -537,6 +538,7 @@ describe("the learner profile (task 5.8)", () => {
     await reload().writeProfile(KEPT, undefined);
     await finishedCourse("Python for data work");
     await finishedCourse("Calculus I", false);
+    await writeFile(join(dir, "courses", "calculus-i", "course.json"), "{");
     const { backend, intake } = setUp([
       OPENING,
       [{ text: "Noted." }],
@@ -597,7 +599,7 @@ describe("the learner profile (task 5.8)", () => {
     expect(
       (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
         ?.approval,
-    ).toEqual({ status: "draft", profile: REVISED.profile });
+    ).toEqual({ status: "draft", profile: REVISED.profile, profileWas: KEPT });
 
     expect(await intake.approve(2)).toEqual({ ok: true });
     expect(await reload().readProfile()).toBe(REVISED.profile);
@@ -607,27 +609,72 @@ describe("the learner profile (task 5.8)", () => {
     ).toEqual({ status: "approved", approvedAt: APPROVED_AT });
   });
 
-  test("an approval whose curriculum failed to save, after its profile was written, can be tried again", async () => {
-    const { intake } = setUp([
-      OPENING,
-      [{ call: "propose_curriculum", input: FIRST }],
-    ]);
-    await opened(intake);
+  test.each(["curriculum.json", "profile.md"])(
+    "a failed approval leaves both records unchanged and can be tried again (%s)",
+    async (file) => {
+      await reload().writeProfile(KEPT, undefined);
+      const { intake } = setUp([
+        OPENING,
+        [{ call: "propose_curriculum", input: FIRST }],
+      ]);
+      await opened(intake);
 
-    disk.refuses = "curriculum.json";
-    await expect(intake.approve(1)).rejects.toThrow(/ENOSPC/);
-    disk.refuses = undefined;
-    expect(await reload().readProfile()).toBe(FIRST.profile);
-    expect(
-      (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
-        ?.approval.status,
-    ).toBe("draft");
+      disk.refuses = file;
+      await expect(intake.approve(1)).rejects.toThrow(/ENOSPC/);
+      disk.refuses = undefined;
+      expect(await reload().readProfile()).toBe(KEPT);
+      expect(
+        (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
+          ?.approval.status,
+      ).toBe("draft");
 
-    expect(await intake.approve(1)).toEqual({ ok: true });
-    expect(
-      (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
-        ?.approval.status,
-    ).toBe("approved");
+      expect(await intake.approve(1)).toEqual({ ok: true });
+      expect(await reload().readProfile()).toBe(FIRST.profile);
+      expect(
+        (await reload().readCourse("linear-algebra-for-pca"))?.curriculum
+          ?.approval.status,
+      ).toBe("approved");
+    },
+  );
+
+  test("a profile edit still reaches the planner after Stop during turn composition", async () => {
+    const root = reload();
+    const backend = createFakeBackend([OPENING, [{ text: "Noted." }]]);
+    const intake = createIntake({
+      backend,
+      dataRoot: root,
+      systemPrompt: "You are a test planner.",
+    });
+    await root.writeProfile(KEPT, undefined);
+    intake.say(ASK);
+    await intake.settled();
+    const edited = `${KEPT} Likes short sittings.`;
+    await root.writeProfile(edited, KEPT);
+
+    const reading = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const read = root.readProfile;
+    vi.spyOn(root, "readProfile").mockImplementationOnce(async () => {
+      reading.resolve();
+      await resume.promise;
+      return read();
+    });
+    intake.say("Stop this message.");
+    await reading.promise;
+    try {
+      await intake.interrupt();
+    } finally {
+      resume.resolve();
+      await intake.settled();
+    }
+    expect(intake.events().at(-1)).toMatchObject({ outcome: "interrupted" });
+    intake.say("Please continue.");
+    await intake.settled();
+    expect(backend.received[1]?.text).toContain(
+      `<profile>\n${edited}\n</profile>`,
+    );
+    expect(backend.received[1]?.text).toContain("Please continue.");
+    await intake.close();
   });
 
   test("approval is refused with the reason, writing nothing, once profile.md changed since the proposal; a proposal made from the changed profile can be approved", async () => {
@@ -672,7 +719,10 @@ describe("the learner profile (task 5.8)", () => {
 });
 
 describe("a draft reopened for review, its first conversation lost in a restart", () => {
-  const DRAFT = { id: "linear-algebra-for-pca", proposal: FIRST };
+  const DRAFT = {
+    id: "linear-algebra-for-pca",
+    proposal: { ...FIRST, profileWas: null },
+  };
 
   function reopen(script: FakeTurn[]) {
     const backend = createFakeBackend(script);
@@ -712,6 +762,7 @@ describe("a draft reopened for review, its first conversation lost in a restart"
         courseId: "linear-algebra-for-pca",
         revision: 1,
         ...FIRST,
+        profileWas: null,
       },
     ]);
     expect(intake.courseId()).toBe("linear-algebra-for-pca");

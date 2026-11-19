@@ -40,7 +40,8 @@ export function Profile() {
     setSaving(false);
     if (answer.ok) {
       setSaved(answer.data.text);
-      setText(answer.data.text);
+      // The response saves the submitted text, not edits made while waiting.
+      setText((current) => (current === text ? answer.data.text : current));
       setJustSaved(true);
       setProblem(undefined);
     } else setProblem(answer.error);

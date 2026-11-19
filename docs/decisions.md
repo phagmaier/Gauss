@@ -1521,20 +1521,15 @@ built until its task is done; `architecture.md` says what is.
   and a later turn has it again once `profile.md` changed, so an edit on
   the Profile page during an intake reaches the planner. A system prompt
   is fixed when the session starts.
-- **Nothing written unseen means a check at each write** (the agent's):
-  a card compares its profile with `profile.md` as it was when the
-  proposal was made (or the draft reopened), and approval refuses if the
-  file is no longer that text; a save on the Profile page names the text
-  it loaded, the same way. A file that already holds the new text passes,
-  since writing it loses nothing. Approval writes the profile before the
-  approved curriculum, since a crash between the two would otherwise lose
-  the proposed profile with the draft; an approval tried again after the
-  curriculum failed to save then finds its own profile there.
-- **A draft's proposed profile is kept in its `curriculum.json`**, on the
-  draft's approval field (the agent's), so a draft reopened after a
-  restart can still be approved with it, and approval leaves no copy in
-  the course's folder. A per-course `profile.md` beside `style.md` was
-  dropped: after approval it would be a stale double of the real one.
+- **Keep the profile comparison with the draft** (the agent's): reopening
+  must not let an old proposal replace a later profile edit. An older
+  profile-bearing draft with no comparison must be proposed again. The
+  Profile page checks what its save replaces too, and a save response
+  does not replace edits typed since it was sent.
+- **Journal the draft and publish the profile last** (the agent's):
+  two atomic file writes do not make one approval. Writing the profile
+  first leaked it to other courses when the curriculum write failed;
+  the journal lets the record restore the draft instead.
 - **Sentences are compared whole** (`compareProfiles`, the agent's): cut
   after `.`, `?` or `!` and a space, and at line breaks, spacing ignored.
   A reworded sentence shows as one new and one dropped, so `planner.md`

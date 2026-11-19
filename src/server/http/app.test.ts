@@ -481,10 +481,9 @@ test("a draft opens for review in its running intake, or after a restart in a ne
   expect(await running.json()).toEqual({ intakeId });
   await before.intakes.close();
 
-  // The reopened card compares the draft's profile with the profile as it
-  // is now, which was written meanwhile.
+  // A profile edit during a restart must not change the old card's baseline.
   await writeFile(join(dir, "profile.md"), "Written on the Profile page.\n");
-  const after = setUp([]);
+  const after = setUp([[{ call: "propose_curriculum", input: PROPOSED }]]);
   const reopened = await post(after.app, review);
   expect(reopened.status).toBe(200);
   const { intakeId: newId } = (await reopened.json()) as { intakeId: string };
@@ -500,23 +499,58 @@ test("a draft opens for review in its running intake, or after a restart in a ne
       courseId: "linear-algebra-for-pca",
       revision: 1,
       ...PROPOSED,
-      profileWas: "Written on the Profile page.",
+      profileWas: null,
     },
   ]);
   await stream.close();
 
+  const stale = await post(after.app, `/api/intakes/${newId}/approval`, {
+    revision: 1,
+  });
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toEqual({
+    error: expect.stringContaining("changed after this proposal was made"),
+  });
+  expect(await after.dataRoot.readProfile()).toBe(
+    "Written on the Profile page.",
+  );
   expect(
-    (await post(after.app, `/api/intakes/${newId}/approval`, { revision: 1 }))
+    (await after.dataRoot.readCourse("linear-algebra-for-pca"))?.curriculum
+      ?.approval.status,
+  ).toBe("draft");
+  expect((await post(after.app, review)).status).toBe(200);
+  await say(after, newId, "Please propose again.");
+  expect(after.backend.received[0]?.text).toContain(
+    "<profile>\nWritten on the Profile page.\n</profile>",
+  );
+  expect(
+    (await post(after.app, `/api/intakes/${newId}/approval`, { revision: 2 }))
       .status,
   ).toBe(200);
   expect(await after.dataRoot.readProfile()).toBe(PROPOSED.profile);
-  const approved = await post(after.app, review);
-  expect(approved.status).toBe(409);
-  expect(await approved.json()).toEqual({
-    error: "The curriculum is approved; there is nothing to review.",
-  });
+  expect((await post(after.app, review)).status).toBe(409);
   expect((await post(after.app, "/api/courses/no-course/review")).status).toBe(
     404,
+  );
+});
+
+test("a draft whose profile has no original comparison must be proposed again", async () => {
+  const { app, dataRoot } = setUp([]);
+  const { id } = await dataRoot.createCourse({ title: PROPOSED.title });
+  await dataRoot.saveProposal(id, PROPOSED);
+  const opened = await post(app, `/api/courses/${id}/review`);
+  expect(opened.status).toBe(200);
+  const { intakeId } = (await opened.json()) as { intakeId: string };
+  const refused = await post(app, `/api/intakes/${intakeId}/approval`, {
+    revision: 1,
+  });
+  expect(refused.status).toBe(409);
+  expect(await refused.json()).toEqual({
+    error: expect.stringContaining("did not keep the profile"),
+  });
+  expect(await dataRoot.readProfile()).toBeUndefined();
+  expect((await dataRoot.readCourse(id))?.curriculum?.approval.status).toBe(
+    "draft",
   );
 });
 
@@ -685,6 +719,7 @@ test("the profile route reads the profile with the finished courses, and saves o
   await course("Calculus I", false);
   const draft = await root.createCourse({ title: "Topology" });
   await root.saveProposal(draft.id, { ...FIRST, title: "Topology" });
+  await writeFile(join(dir, "courses", draft.id, "course.json"), "{");
   const { app, commits } = setUp([]);
   const read = async () => (await app.request("/api/profile")).json();
   const finished = [

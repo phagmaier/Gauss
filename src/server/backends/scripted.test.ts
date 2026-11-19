@@ -747,7 +747,7 @@ test("the scripted planner proposes a profile of its own sentence and what was a
   expect(first.card).toMatchObject({
     profile: `${OWN} Scripted: asked last for "Topology for analysts".`,
   });
-  expect(first.card).not.toHaveProperty("profileWas");
+  expect(first.card).toHaveProperty("profileWas", null);
   expect(await first.intake.approve(1)).toEqual({ ok: true });
   // The learner adds a sentence on the Profile page.
   const saved = await dataRoot.readProfile();

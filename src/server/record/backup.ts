@@ -74,6 +74,8 @@ export async function startBackup(options: {
   path: string;
   /** Where the backup's lines go: that it runs, or why it does not. */
   log: (line: string) => void;
+  /** Holds the record's approval lock while staging a snapshot. */
+  stageSnapshot?: (stage: () => Promise<void>) => Promise<void>;
   /** The git to run; `git` on the path unless given. */
   git?: string;
 }): Promise<Backup> {
@@ -105,11 +107,16 @@ export async function startBackup(options: {
   }
 
   let queue = Promise.resolve();
+  const stage = async () => {
+    await run(["add", "--all"]);
+  };
   const backup: Backup = {
     commit(message) {
       queue = queue
         .then(async () => {
-          await run(["add", "--all"]);
+          await (options.stageSnapshot === undefined
+            ? stage()
+            : options.stageSnapshot(stage));
           if ((await run(["status", "--porcelain"])).trim() === "") return;
           await run([...AS_GAUSS, "commit", "--quiet", "--message", message]);
         })

@@ -13,7 +13,7 @@
 // in src/shared/. Work that reads a file and writes it back, and every
 // append, runs through withFileLock, so it lands in the order called.
 
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -23,6 +23,7 @@ import { Course, Slug } from "../../shared/course.ts";
 import {
   Curriculum,
   CurriculumProposal,
+  PendingProfileApproval,
   type ShownProposal,
 } from "../../shared/curriculum.ts";
 import { PageEvent, SESSION_GAP_MS } from "../../shared/events.ts";
@@ -38,7 +39,7 @@ import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
-import { writeFileAtomic, writeFileNew } from "./atomic-write.ts";
+import { syncFolder, writeFileAtomic, writeFileNew } from "./atomic-write.ts";
 import { disputable } from "./disputes.ts";
 import { withFileLock } from "./file-lock.ts";
 import {
@@ -61,9 +62,10 @@ export interface DataRoot {
   createCourse(input: { title: string }): Promise<StoredCourse>;
   /**
    * Every course, most recently opened first. A folder without course.json
-   * (a creation that stopped partway) is left out.
+   * (a creation that stopped partway) is left out. With skipUnreadable,
+   * a course whose files cannot be read is left out as well.
    */
-  listCourses(): Promise<StoredCourse[]>;
+  listCourses(options?: { skipUnreadable?: boolean }): Promise<StoredCourse[]>;
   /** One course, or undefined when no course has that id. */
   readCourse(id: string): Promise<StoredCourse | undefined>;
   /**
@@ -115,6 +117,8 @@ export interface DataRoot {
    * read is not lost unseen.
    */
   writeProfile(text: string, was: string | undefined): Promise<void>;
+  /** Runs a backup's staging only with any interrupted profile approval resolved. */
+  withConsistentApproval<T>(work: () => Promise<T>): Promise<T>;
   /**
    * Stores the tutor's proposal as the course's draft curriculum, with the
    * profile it proposes, replacing any earlier draft, its style note as
@@ -124,16 +128,15 @@ export interface DataRoot {
    */
   saveProposal(
     id: string,
-    proposal: CurriculumProposal,
+    proposal: CurriculumProposal & Pick<ShownProposal, "profileWas">,
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
   /**
    * Approves the draft curriculum, at the clock's time, if the record holds
    * exactly the proposal shown: its title, units, style note, background
    * note and profile. Otherwise it throws DraftMismatch and changes nothing,
-   * so a draft whose save stopped partway is never approved unseen. A shown
-   * profile is written first, as writeProfile writes it, expecting
-   * `shown.profileWas`: when profile.md changed since, it throws
-   * ProfileChanged and changes nothing.
+   * so a draft whose save stopped partway is never approved unseen. A profile
+   * approval also requires its original comparison to match profile.md. If
+   * publishing the profile stops, the curriculum is restored to a draft.
    */
   approveCurriculum(
     id: string,
@@ -305,6 +308,7 @@ export function openDataRoot(options: {
 }): DataRoot {
   const courses = join(options.path, "courses");
   const profileFile = join(options.path, "profile.md");
+  const pendingFile = join(options.path, ".profile-approval.json");
   const now = options.now ?? (() => new Date());
 
   async function readCourse(id: string): Promise<StoredCourse | undefined> {
@@ -331,9 +335,8 @@ export function openDataRoot(options: {
   }
 
   /**
-   * Writes the profile if it still holds `was`, or holds the new text
-   * already (an approval whose curriculum failed to save, tried again), so
-   * no change is lost; the caller holds its lock.
+   * Writes a hand edit if the profile still holds `was`, or holds the new
+   * text already, so no unseen change is lost; the caller holds its lock.
    */
   async function replaceProfile(
     text: string,
@@ -344,6 +347,77 @@ export function openDataRoot(options: {
     if (current === checked) return;
     if (current !== (was?.trim() || undefined)) throw new ProfileChanged();
     await writeFileAtomic(profileFile, `${checked}\n`);
+  }
+
+  /** The profile lock is always acquired before any curriculum lock. */
+  function withConsistentApproval<T>(work: () => Promise<T>): Promise<T> {
+    return withFileLock(profileFile, async () => {
+      const pending = await readJson(pendingFile, PendingProfileApproval);
+      if (pending !== undefined) {
+        const path = courseFile(pending.courseId, "curriculum.json");
+        await withFileLock(path, () => recoverApproval(path, pending));
+      }
+      return work();
+    });
+  }
+
+  function withCurriculumLock<T>(
+    path: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    return withConsistentApproval(() => withFileLock(path, work));
+  }
+
+  /** With both locks held, restore an approval only if it never published. */
+  async function recoverApproval(
+    path: string,
+    pending: PendingProfileApproval,
+  ): Promise<boolean> {
+    const curriculum = await readJson(path, Curriculum);
+    let published = false;
+    if (
+      curriculum?.approval.status === "approved" &&
+      curriculum.approval.approvedAt === pending.approvedAt
+    ) {
+      published = (await readText(profileFile)) === pending.draft.profile;
+      if (!published) {
+        await writeJson(path, Curriculum, {
+          ...curriculum,
+          approval: pending.draft,
+        });
+      }
+    }
+    await clearPendingApproval();
+    return published;
+  }
+
+  async function clearPendingApproval(): Promise<void> {
+    await rm(pendingFile, { force: true });
+    // Don't let an old journal reappear after a subsequent profile edit.
+    await syncFolder(options.path);
+  }
+
+  async function listCourses(skipUnreadable: boolean): Promise<StoredCourse[]> {
+    let entries: string[];
+    try {
+      entries = (await readdir(courses, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+    } catch (error) {
+      if (hasCode(error, "ENOENT")) return [];
+      throw error;
+    }
+    const read = skipUnreadable
+      ? (id: string) => readCourse(id).catch(() => undefined)
+      : readCourse;
+    const found = await Promise.all(entries.map(read));
+    return found
+      .filter((entry) => entry !== undefined)
+      .sort(
+        (a, b) =>
+          Date.parse(b.course.lastOpenedAt) -
+            Date.parse(a.course.lastOpenedAt) || a.id.localeCompare(b.id),
+      );
   }
 
   /** A unit's folder under the course's `units/`, which need not exist yet. */
@@ -373,27 +447,10 @@ export function openDataRoot(options: {
       return { id, course, curriculum: null };
     },
 
-    async listCourses() {
-      let entries: string[];
-      try {
-        entries = (await readdir(courses, { withFileTypes: true }))
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => entry.name);
-      } catch (error) {
-        if (hasCode(error, "ENOENT")) return [];
-        throw error;
-      }
-      const found = await Promise.all(entries.map(readCourse));
-      return found
-        .filter((entry) => entry !== undefined)
-        .sort(
-          (a, b) =>
-            Date.parse(b.course.lastOpenedAt) -
-              Date.parse(a.course.lastOpenedAt) || a.id.localeCompare(b.id),
-        );
-    },
+    listCourses: ({ skipUnreadable = false } = {}) =>
+      withConsistentApproval(() => listCourses(skipUnreadable)),
 
-    readCourse,
+    readCourse: (id) => withConsistentApproval(() => readCourse(id)),
 
     async workspaceFolder(id) {
       const folder = resolve(courseFile(id, "workspace"));
@@ -462,17 +519,19 @@ export function openDataRoot(options: {
       return readNote(id, "background.md");
     },
 
-    readProfile: () => readText(profileFile),
+    readProfile: () => withConsistentApproval(() => readText(profileFile)),
 
     async writeProfile(text, was) {
-      await withFileLock(profileFile, () => replaceProfile(text, was));
+      await withConsistentApproval(() => replaceProfile(text, was));
     },
+
+    withConsistentApproval,
 
     async saveProposal(id, proposal) {
       const { title, units, style, background, profile } =
         CurriculumProposal.parse(proposal);
       const path = courseFile(id, "curriculum.json");
-      return withFileLock(path, async () => {
+      return withCurriculumLock(path, async () => {
         const stored = await existingCourse(id);
         if (stored.curriculum?.approval.status === "approved") {
           throw new Error(
@@ -483,6 +542,9 @@ export function openDataRoot(options: {
           approval: {
             status: "draft",
             ...(profile === undefined ? {} : { profile }),
+            ...(proposal.profileWas === undefined
+              ? {}
+              : { profileWas: proposal.profileWas }),
           },
           units,
         };
@@ -502,16 +564,16 @@ export function openDataRoot(options: {
 
     async approveCurriculum(id, shown) {
       const path = courseFile(id, "curriculum.json");
-      return withFileLock(path, async () => {
+      return withCurriculumLock(path, async () => {
         const stored = await existingCourse(id);
         if (stored.curriculum === null) {
           throw new Error(`"${id}" has no curriculum to approve.`);
         }
-        if (stored.curriculum.approval.status === "approved") {
+        const { approval } = stored.curriculum;
+        if (approval.status === "approved") {
           throw new Error(`The curriculum of "${id}" is already approved.`);
         }
-        // saveProposal writes four files in turn, so one that failed or
-        // stopped partway can leave a draft no card has shown.
+        // A partly saved proposal must not approve changes the card never showed.
         const differ: string[] = [];
         if (stored.course.title !== shown.title) differ.push("title");
         if (!isDeepStrictEqual(stored.curriculum.units, shown.units)) {
@@ -523,29 +585,54 @@ export function openDataRoot(options: {
         if ((await readNote(id, "background.md")) !== shown.background) {
           differ.push("background note");
         }
-        const { approval } = stored.curriculum;
-        if (approval.profile !== shown.profile) differ.push("profile");
-        if (differ.length > 0) throw new DraftMismatch(id, differ);
-        // The profile first: a curriculum approved without it would lose it.
-        const { profile } = shown;
-        if (profile !== undefined) {
-          await withFileLock(profileFile, () =>
-            replaceProfile(profile, shown.profileWas),
-          );
+        const { profile, profileWas } = approval;
+        if (profile !== shown.profile || profileWas !== shown.profileWas) {
+          differ.push("profile");
         }
+        if (differ.length > 0) throw new DraftMismatch(id, differ);
+
+        const approvedAt = now().toISOString();
         const curriculum: Curriculum = {
           ...stored.curriculum,
-          approval: { status: "approved", approvedAt: now().toISOString() },
+          approval: { status: "approved", approvedAt },
         };
-        await writeJson(path, Curriculum, curriculum);
-        return { ...stored, curriculum };
+        const next = { ...stored, curriculum };
+        if (profile === undefined) {
+          await writeJson(path, Curriculum, curriculum);
+          return next;
+        }
+        const current = (await readText(profileFile)) ?? null;
+        if (profileWas === undefined || current !== profileWas) {
+          throw new ProfileChanged();
+        }
+        if (current === profile) {
+          await writeJson(path, Curriculum, curriculum);
+          return next;
+        }
+
+        // The journal is durable before either write; publishing the profile
+        // last commits the pair. A crash before cleanup is recovered on access.
+        const pending = {
+          courseId: stored.id,
+          approvedAt,
+          draft: { ...approval, profile },
+        };
+        await writeJson(pendingFile, PendingProfileApproval, pending);
+        try {
+          await writeJson(path, Curriculum, curriculum);
+          await writeFileAtomic(profileFile, `${profile}\n`);
+          await clearPendingApproval();
+        } catch (error) {
+          if (!(await recoverApproval(path, pending))) throw error;
+        }
+        return next;
       });
     },
 
     async storePlan(id, unitId, plan) {
       const checked = Plan.parse(plan);
       const path = courseFile(id, "curriculum.json");
-      return withFileLock(path, async () => {
+      return withCurriculumLock(path, async () => {
         const stored = await existingCourse(id);
         const { curriculum } = stored;
         if (curriculum?.approval.status !== "approved") {

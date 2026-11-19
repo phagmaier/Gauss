@@ -76,13 +76,14 @@ or `~/gauss/`; only `main.ts` reads the environment, and the record module
 <data root>/
   .git/, .gitignore               the record's history: commits after each segment close, unit end, approval, handoff note, an assessment that recorded answers, and a profile saved on its page
   profile.md                      the learner profile: plain text that holds across courses, at most 2,000 characters; written by an approval that proposes it, or the Profile page
+  .profile-approval.json          recovery journal present only during a curriculum approval that changes the profile, or until recovery
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
   cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
     course.json                   title, backend, settings, dates, when each unit was last opened, when review was last offered
     style.md                      the course's style note, proposed and approved with the curriculum
     background.md                 the background note: what the learner told the planner, approved with the curriculum
-    curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts; a draft's proposed profile
+    curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts; a draft's profile and its original comparison
     state.json                    a position for each unit in progress
     evidence.jsonl                append-only: answers (with the assessment each was given in), grades, confidence, overrides, disputes with their outcomes
     misconceptions.jsonl          append-only: what the handoff writer found the learner believed, from detours and discussions
@@ -114,12 +115,12 @@ version: a field added later must be optional.
   of one unit); each unit's progress for the library, with how many of a
   finished unit's objectives are retained and slipping
   (`record/progress.ts`), and which courses are finished, every unit of
-  an approved curriculum passed or overridden (`finishedCourses`), which
-  a new course's planner is given beside the profile; and "what I know"
-  with its calibration counts (`record/what-i-know.ts`,
-  `record/calibration.ts`). The rules for passing
-  and help are in section 4; the reasons in `decisions.md`, "Objective
-  status". A disputed answer counts with its dispute's verdict, where the
+  an approved curriculum passed or overridden, omitting unreadable records
+  (`finishedCourses`), a list for new planners and the Profile page;
+  and "what I know" with its calibration counts (`record/what-i-know.ts`,
+  `record/calibration.ts`). The rules for passing and help are in
+  section 4; the reasons in `decisions.md`, "Objective status". A
+  disputed answer counts with its dispute's verdict, where the
   answer stands in the log; its own line keeps the first grade
   (`record/disputes.ts`, which status, the check rules and calibration
   read the log through). A misconception is open while its objective is
@@ -180,20 +181,25 @@ also before it reaches the backend.
   first message, so the learner answers the planner once before a card
   appears. Each session's first turn gives the planner, in
   `<about_the_learner>` after the header, the learner profile and the
-  titles of the finished courses; a later turn gives the profile again
-  once `profile.md` has changed since. The first proposal creates the
-  course; each proposal replaces the draft with its style note, background
-  note and the profile's whole text, and a reply to one is a change
-  request. A card compares its profile with `profile.md` as it was when
-  the proposal was made, or when a draft was reopened. Approval is refused
-  while a turn is queued or running, and names the proposal the card
-  shows; the record refuses it (`DraftMismatch`) unless the files on disk
-  are that proposal, and (`ProfileChanged`) if `profile.md` is no longer
-  the profile the card compared with. It writes the profile before the
-  approved curriculum. Approval ends the intake and closes its session;
-  the planner is not told. Intakes are kept in memory: a restart
-  loses one in progress, and its draft is reviewed in a new intake that
-  starts from the stored draft (`POST /api/courses/<id>/review`).
+  titles of the finished courses; later turns give the profile again if
+  it has changed since the last turn sent to the backend. The first
+  proposal creates the course; each proposal replaces the draft with its
+  style note, background note and the profile's whole text, and a reply
+  to one is a change request. A card compares its profile with `profile.md`
+  as it was when the proposal was made, even after reopening a draft.
+  Approval is refused while a turn is queued or running; it checks that
+  the files still match the card (`DraftMismatch`) and the profile still
+  matches the original comparison (`ProfileChanged`). A draft that
+  proposes a profile but has no saved comparison must be proposed again.
+  A profile-changing approval journals the draft before writing the
+  approved curriculum and publishes the profile last. If interrupted
+  before publication, recovery restores the draft; if publication
+  completed, both changes stand. Reads, further writes to either file
+  and backup staging resolve an interrupted approval before proceeding.
+  Approval ends the intake and closes its session; the planner is not
+  told. Intakes are kept in memory: a restart loses one in progress, and
+  its draft is reviewed in a new intake from the stored draft
+  (`POST /api/courses/<id>/review`).
 - **Unit planning** (`engine/unit-planning.ts`). A unit without a plan is
   planned when it is opened, in a session of its own: one turn with "#
   The learner" (the profile, when there is one, then the background

@@ -97,11 +97,13 @@ export function Intake(props: { intakeId: string }) {
     approvedProposal?.kind === "proposal"
       ? approvedProposal.units[0]
       : undefined;
-  // Approval wrote the profile only if the card proposed a change to it.
   const profileSaved =
     approvedProposal?.kind === "proposal" &&
     approvedProposal.profile !== undefined &&
-    profileStanding(approvedProposal) !== "same";
+    (approvedProposal.profileWas === null ||
+      (approvedProposal.profileWas !== undefined &&
+        compareProfiles(approvedProposal.profileWas, approvedProposal.profile)
+          .changed));
   return (
     <div className={diagramOpen ? "th has-top has-pane" : "th has-top"}>
       <TopLine
@@ -334,15 +336,6 @@ function ProposalCard(props: {
   );
 }
 
-/** How a proposal's profile stands against the one it would replace. */
-function profileStanding(proposal: Proposal): "new" | "changed" | "same" {
-  const { profile, profileWas } = proposal;
-  if (profileWas === undefined) return "new";
-  return profile !== undefined && compareProfiles(profileWas, profile).changed
-    ? "changed"
-    : "same";
-}
-
 /**
  * "What I would remember about you" (piece 18): the whole text approval would
  * save, always shown, since it reaches every later course. A first profile is
@@ -370,16 +363,29 @@ function ProfileSection(props: { proposal: Proposal }) {
       </section>
     );
   }
-  const standing = profileStanding(props.proposal);
-  if (standing !== "changed" || profileWas === undefined) {
+  if (profileWas === undefined) {
     return (
       <section className="cs" aria-label={label}>
-        {standing === "new" ? head("New") : head(undefined, ", not changed")}
+        {head(undefined)}
+        <p className="cs-t">{profile}</p>
+        <p className="cs-gone">
+          This draft did not keep the profile it was compared with. Ask the
+          tutor to propose again before approving.
+        </p>
+      </section>
+    );
+  }
+  const change =
+    profileWas === null ? undefined : compareProfiles(profileWas, profile);
+  if (!change?.changed) {
+    return (
+      <section className="cs" aria-label={label}>
+        {profileWas === null ? head("New") : head(undefined, ", not changed")}
         <p className="cs-t">{profile}</p>
       </section>
     );
   }
-  const { sentences, dropped } = compareProfiles(profileWas, profile);
+  const { sentences, dropped } = change;
   return (
     <section className="cs" aria-label={label}>
       {head("Changed")}

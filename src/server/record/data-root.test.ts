@@ -457,6 +457,61 @@ describe("proposals and approval", () => {
     expect((await root.readCourse(id))?.curriculum).toEqual(curriculum);
   });
 
+  test.each([false, true])(
+    "restart recovers both records after an abrupt exit (profile published: %s)",
+    async (published) => {
+      const root = openDataRoot({ path: dir });
+      const { id } = await root.createCourse({ title: PROPOSAL.title });
+      const profileWas = "Prefers proofs.";
+      const card = { ...PROPOSAL, profileWas, profile: "Prefers pictures." };
+      await root.writeProfile(profileWas, undefined);
+      await root.saveProposal(id, card);
+
+      const code = `
+        import fs from "node:fs/promises";
+        import { syncBuiltinESMExports } from "node:module";
+        import { join } from "node:path";
+        import { openDataRoot } from ${JSON.stringify(new URL("./data-root.ts", import.meta.url).href)};
+        const [dir, id, card, published] = process.argv.slice(1);
+        const rename = fs.rename;
+        fs.rename = async (from, to) => {
+          if (to !== join(dir, "profile.md")) return rename(from, to);
+          if (published === "true") await rename(from, to);
+          process.exit(73);
+        };
+        syncBuiltinESMExports();
+        await openDataRoot({ path: dir }).approveCurriculum(id, JSON.parse(card));
+      `;
+      const child = spawn(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          code,
+          dir,
+          id,
+          JSON.stringify(card),
+          String(published),
+        ],
+        { stdio: ["ignore", "ignore", "inherit"] },
+      );
+      expect(await once(child, "exit")).toEqual([73, null]);
+
+      // The first course read after restarting must not expose half an approval.
+      const after = openDataRoot({ path: dir });
+      expect((await after.readCourse(id))?.curriculum?.approval.status).toBe(
+        published ? "approved" : "draft",
+      );
+      expect(await after.readProfile()).toBe(
+        published ? card.profile : profileWas,
+      );
+      if (!published) {
+        await after.approveCurriculum(id, card);
+        expect(await after.readProfile()).toBe(card.profile);
+      }
+    },
+  );
+
   test("approval needs a course with a draft", async () => {
     const root = openDataRoot({ path: dir });
     const { id } = await root.createCourse({ title: "Linear algebra" });

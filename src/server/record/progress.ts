@@ -77,14 +77,15 @@ export async function withProgress(
 
 /**
  * The courses whose approved curriculum has every unit finished, most
- * recently opened first. A course whose state or evidence cannot be read is
- * left out: where it stands is not known.
+ * recently opened first. Unreadable courses are left out: where they stand
+ * is not known.
  */
 export async function finishedCourses(
   dataRoot: DataRoot,
 ): Promise<FinishedCourse[]> {
+  const courses = await dataRoot.listCourses({ skipUnreadable: true });
   const found = await Promise.all(
-    (await dataRoot.listCourses()).map(async (stored) => {
+    courses.map(async (stored) => {
       const { curriculum } = stored;
       if (curriculum?.approval.status !== "approved") return undefined;
       const { progress } = await withProgress(dataRoot, stored).catch(() => ({

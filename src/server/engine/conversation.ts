@@ -72,6 +72,8 @@ export interface Turn {
    * stand then, and the chat can note what the tutor received when.
    */
   text: string | (() => string | Promise<string>);
+  /** Runs just before dispatch, only if the turn is sent to the backend. */
+  sent?(): void;
   /**
    * Asked when the turn's time comes, after the turns before it: true if it
    * is no longer wanted. A skipped turn is not started: nothing is sent, the
@@ -295,6 +297,7 @@ export function createConversation(options: {
       // From here a Stop goes to the backend. Setting this, sending, and the
       // backend clearing its flag happen without a pause between them, so a
       // Stop lands either before (seen above) or after (seen by the backend).
+      turn.sent?.();
       current.sentTo = tutor;
       begun = true;
       // The thread shows each file once a reply, however often it is written.
