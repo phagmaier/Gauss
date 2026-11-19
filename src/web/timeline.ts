@@ -60,14 +60,19 @@ export interface Position {
   again?: string[];
 }
 
-/** The closing card at a unit's end (task 2.1, piece 10). */
+/** The closing card at a unit's end (task 2.1, piece 10; after the gate, piece 16). */
 export interface UnitEndItem {
   kind: "unit_end";
   key: number;
   /** Every objective passed. */
   passed: boolean;
   objectives: Record<string, ObjectiveStatus>;
-  /** The step taken from a card whose objectives did not all pass, once taken. */
+  /**
+   * Set on the card after the unit's gate: what its steps cover, and the
+   * other units' objectives the gate asked.
+   */
+  gate?: Extract<PageEvent, { type: "unit_end" }>["gate"];
+  /** The step taken from a card that offers its steps, once taken. */
   stepTaken?: "again" | "moved-on";
 }
 
@@ -97,6 +102,9 @@ export interface AssessmentItem {
   mode: AssessmentMode;
   /** How many objectives it asks about. */
   count: number;
+  /** For a gate: how many are the unit's own, and the numbers of the units the rest come from. */
+  own?: number;
+  from?: number[];
   /** "offered": the card waits; "on": started; "skipped": skipped on the card. */
   stage: "offered" | "on" | "skipped";
 }
@@ -282,21 +290,48 @@ function withQuestion(
 }
 
 /**
- * A closing card is in the thread with no phase begun since: a `unit_end`
- * now is that card shown again, by a chat that opened at it.
+ * A closing card is in the thread with no phase begun since, and no gate
+ * offered: a `unit_end` now is that card shown again, by a chat that opened
+ * at it.
  */
 function cardStanding(items: Item[]): boolean {
   const card = items.findLastIndex((i) => i.kind === "unit_end");
-  return card >= 0 && items.findLastIndex((i) => i.kind === "phase") < card;
+  return (
+    card >= 0 &&
+    items.findLastIndex(
+      (i) =>
+        i.kind === "phase" ||
+        i.kind === "assessment" ||
+        i.kind === "assessment_end",
+    ) < card
+  );
 }
 
-/** Records the step taken from the last closing card, if none was taken yet. */
+/**
+ * The closing card standing at the end of the thread, the one whose steps
+ * can be taken: none once a phase has begun or an assessment been offered
+ * after it.
+ */
+export function standingCard(items: Item[]): UnitEndItem | undefined {
+  if (!cardStanding(items)) return undefined;
+  const card = items.findLast((i) => i.kind === "unit_end");
+  return card?.kind === "unit_end" ? card : undefined;
+}
+
+/** Whether the closing card offers its two steps: going over again, or moving on. */
+export function offersSteps(
+  card: Pick<UnitEndItem, "passed" | "gate">,
+): boolean {
+  return card.gate === undefined ? !card.passed : card.gate.goOver.length > 0;
+}
+
+/** Records the step taken from the last closing card, if it offers its steps and none was taken yet. */
 function stepFromCard(items: Item[], stepTaken: "again" | "moved-on"): Item[] {
   const at = items.findLastIndex((i) => i.kind === "unit_end");
   const card = items[at];
   if (
     card?.kind !== "unit_end" ||
-    card.passed ||
+    !offersSteps(card) ||
     card.stepTaken !== undefined
   ) {
     return items;
@@ -742,6 +777,10 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       return { ...next, detour: null };
     case "assessment": {
       const run = { mode: event.mode, stage: event.stage, count: event.count };
+      const split = {
+        ...(event.own === undefined ? {} : { own: event.own }),
+        ...(event.from === undefined ? {} : { from: event.from }),
+      };
       const at = state.items.findLastIndex((i) => i.kind === "assessment");
       const card = state.items[at];
       // A chat that opens with the assessment the thread shows, one not
@@ -774,6 +813,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             key: index,
             mode: event.mode,
             count: event.count,
+            ...split,
             stage: event.stage,
           },
         ],
@@ -824,30 +864,23 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       // with the statuses a dispute changed (task 3.8).
       const at = state.items.findLastIndex((i) => i.kind === "unit_end");
       const card = state.items[at];
+      const shown = {
+        passed: event.passed,
+        objectives: event.objectives,
+        ...(event.gate === undefined ? {} : { gate: event.gate }),
+      };
       if (cardStanding(state.items) && card?.kind === "unit_end") {
-        return {
-          ...next,
-          items: state.items.with(at, {
-            ...card,
-            passed: event.passed,
-            objectives: event.objectives,
-          }),
-        };
+        const { gate: _, ...was } = card;
+        return { ...next, items: state.items.with(at, { ...was, ...shown }) };
       }
       return {
         ...next,
-        items: [
-          ...state.items,
-          {
-            kind: "unit_end",
-            key: index,
-            passed: event.passed,
-            objectives: event.objectives,
-          },
-        ],
+        items: [...state.items, { kind: "unit_end", key: index, ...shown }],
         tutorOpen: false,
       };
     }
+    case "moved_on":
+      return { ...next, items: stepFromCard(state.items, "moved-on") };
     case "unit_closed":
       return {
         ...next,

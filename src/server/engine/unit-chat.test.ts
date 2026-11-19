@@ -313,6 +313,20 @@ function since(chat: UnitChat, type: PageEvent["type"]): PageEvent[] {
   return events.slice(Math.max(at, 0));
 }
 
+/**
+ * Skips the unit's gate, offered on its card once the last segment closed
+ * with every objective passed or moved on from (task 5.5), which brings the
+ * closing card after it.
+ */
+async function skipGate(chat: UnitChat): Promise<void> {
+  expect(chat.events().findLast((e) => e.type === "assessment")).toMatchObject({
+    mode: "gate",
+    stage: "offered",
+  });
+  expect(await chat.skipAssessment()).toEqual({ ok: true });
+  await chat.settled();
+}
+
 /** Waits for an event of this type after the first `from` events. */
 function waitFor(
   chat: UnitChat,
@@ -1263,7 +1277,7 @@ test("the learner can also move on from the discussion, without pressing ready",
   expect(await reload().readEvidence(COURSE)).toHaveLength(1);
 });
 
-test("the learner starts each next segment, and the unit closes passed with its last segment when every objective passed", async () => {
+test("the learner starts each next segment, and once the last closes with every objective passed the unit's gate is offered; skipped, the unit closes passed", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
@@ -1306,6 +1320,18 @@ test("the learner starts each next segment, and the unit closes passed with its 
     [1, "check"],
     [1, "closed"],
   ]);
+  expect(since(chat, "phase")).toEqual([
+    { type: "phase", segment: 1, phase: "closed" },
+    {
+      type: "assessment",
+      mode: "gate",
+      stage: "offered",
+      count: 3,
+      own: 3,
+      from: [],
+    },
+  ]);
+  await skipGate(chat);
   expect(since(chat, "unit_end")).toEqual([
     {
       type: "unit_end",
@@ -1315,6 +1341,7 @@ test("the learner starts each next segment, and the unit closes passed with its 
         "secant-slope": "passed",
         "derivative-limit": "passed",
       },
+      gate: { goOver: [], others: [] },
     },
     status("passed", "passed", "passed", "passed"),
     { type: "unit_closed", status: "passed" },
@@ -2306,7 +2333,7 @@ test("replies a restart kept from the judge count as help when the unit reopens,
   ]);
 });
 
-test("a unit not passed waits on its closing card; going over again teaches one more segment on what did not pass, and passing it closes the unit", async () => {
+test("a unit not passed waits on its closing card; going over again teaches one more segment on what did not pass, and passing it brings the gate", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
@@ -2369,11 +2396,24 @@ test("a unit not passed waits on its closing card; going over again teaches one 
   await answer(chat, "B");
 
   expect(closedSegments(chat)).toEqual([0, 1]);
+  expect(since(chat, "phase")).toEqual([
+    { type: "phase", segment: 1, phase: "closed", again: ["secant-slope"] },
+    {
+      type: "assessment",
+      mode: "gate",
+      stage: "offered",
+      count: 2,
+      own: 2,
+      from: [],
+    },
+  ]);
+  await skipGate(chat);
   expect(since(chat, "unit_end")).toEqual([
     {
       type: "unit_end",
       passed: true,
       objectives: { "difference-quotient": "passed", "secant-slope": "passed" },
+      gate: { goOver: [], others: [] },
     },
     shortStatus("passed", "passed", "passed"),
     { type: "unit_closed", status: "passed" },
@@ -2381,7 +2421,7 @@ test("a unit not passed waits on its closing card; going over again teaches one 
   expect(await position()).toEqual({});
 });
 
-test("moving on without the objectives not passed records them as overridden and closes the unit", async () => {
+test("moving on without the objectives not passed records them as overridden, and the unit closes after its gate", async () => {
   const setup = setUp([
     TEACH,
     ask(Q_QUOTIENT),
@@ -2408,6 +2448,11 @@ test("moving on without the objectives not passed records them as overridden and
     recordedAt: NOW,
     objectives: ["difference-quotient"],
   });
+  expect(chat.events().slice(-3, -1)).toEqual([
+    shortStatus("in-progress", "overridden", "passed"),
+    { type: "moved_on", objectives: ["difference-quotient"] },
+  ]);
+  await skipGate(chat);
   expect(chat.events().slice(-2)).toEqual([
     shortStatus("overridden", "overridden", "passed"),
     { type: "unit_closed", status: "overridden" },
@@ -2429,9 +2474,9 @@ test.each([
     error: "The unit has not reached its end.",
   },
   {
-    name: "when every objective passed",
+    name: "while the gate's card waits, every objective passed",
     plan: SHORT,
-    error: "The unit is finished.",
+    error: "Start or skip the gate first.",
   },
 ])(
   "going over again and moving on without them are refused $name",
@@ -2468,6 +2513,7 @@ test("a unit finished before a restart opens finished, and is not started again"
   await toCheck(first);
   await answer(first, "A");
   await answer(first, "B");
+  await skipGate(first);
   await before.units.close();
 
   const after = setUp([]);
@@ -2501,6 +2547,7 @@ test("a finished unit missed since in another unit's review stays finished, and 
   await toCheck(first);
   await answer(first, "A");
   await answer(first, "B");
+  await skipGate(first);
   await before.units.close();
   // A later unit's review: the quotient answered right, the secant missed.
   const reviewed = (
@@ -4819,6 +4866,9 @@ test("the backup commits once a segment's close is written, and once the unit's 
   expect(commits).toEqual([]);
 
   await answer(chat, "B");
+  // The gate's card commits nothing; skipped, it finishes the unit.
+  expect(commits).toHaveLength(1);
+  await skipGate(chat);
 
   expect(closedSegments(chat)).toEqual([0]);
   expect(commits).toEqual([
@@ -4855,6 +4905,7 @@ test("moving on commits the segment's close, and moving on from the closing card
   expect(await chat.override()).toEqual({ ok: true });
   await chat.settled();
   expect(await chat.finishUnit()).toEqual({ ok: true });
+  await skipGate(chat);
 
   expect(commits.map((c) => c.message)).toEqual([
     `${COURSE}: segment 1 of derivative closed`,
@@ -4875,6 +4926,7 @@ test("with the backup on a real repository, the commits hold the record's files 
   await toCheck(chat);
   await answer(chat, "A");
   await answer(chat, "B");
+  await skipGate(chat);
   await backup.settled();
 
   expect(gitLog("log", "--format=%s").split("\n")).toEqual([
@@ -4912,6 +4964,7 @@ test("when the backup's commits fail, the unit goes on and closes as it would wi
   await toCheck(chat);
   await answer(chat, "A");
   await answer(chat, "B");
+  await skipGate(chat);
   await backup.settled();
 
   expect(chat.events().at(-1)).toEqual({

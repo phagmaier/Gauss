@@ -8,7 +8,7 @@ import type { EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { ChoiceLetter, Confidence } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
-import { emptyTimeline, reduce } from "../../web/timeline.ts";
+import { emptyTimeline, reduce, standingCard } from "../../web/timeline.ts";
 import {
   createFakeBackend,
   type FakeReply,
@@ -503,7 +503,7 @@ test("a dispute raised while the unit's chat is not open is shown on its card, a
   );
 });
 
-test("at the unit's closing card, an overturned miss that leaves every objective passed shows the card again and finishes the unit", async () => {
+test("at the unit's closing card, an overturned miss that leaves every objective passed shows the card again, then the unit's gate, after which the unit finishes", async () => {
   await makeCourse();
   await reload().appendEvidence(
     COURSE,
@@ -523,13 +523,24 @@ test("at the unit's closing card, an overturned miss that leaves every objective
     true,
   );
 
-  const end = chat.events().slice(-3);
-  expect(end).toEqual<PageEvent[]>([
+  expect(chat.events().slice(-2)).toEqual<PageEvent[]>([
     {
       type: "unit_end",
       passed: true,
       objectives: { quotient: "passed", limit: "passed" },
     },
+    {
+      type: "assessment",
+      mode: "gate",
+      stage: "offered",
+      count: 2,
+      own: 2,
+      from: [],
+    },
+  ]);
+  expect(await chat.skipAssessment()).toEqual({ ok: true });
+  await chat.settled();
+  expect(chat.events().slice(-2)).toEqual<PageEvent[]>([
     {
       type: "unit_status",
       unit: "passed",
@@ -538,7 +549,8 @@ test("at the unit's closing card, an overturned miss that leaves every objective
     { type: "unit_closed", status: "passed" },
   ]);
   expect((await reload().readState(COURSE)).units).toEqual({});
-  // The page shows one closing card, as it stands now.
+  // The page shows the card as the dispute left it, no longer live, then
+  // the gate's, then the card after the gate.
   const timeline = chat
     .events()
     .reduce(
@@ -546,8 +558,11 @@ test("at the unit's closing card, an overturned miss that leaves every objective
       reduce(emptyTimeline, { type: "hello", chatId: chat.id }),
     );
   const cards = timeline.items.filter((i) => i.kind === "unit_end");
-  expect(cards).toHaveLength(1);
-  expect(cards[0]).toMatchObject({ passed: true });
+  expect(cards).toMatchObject([
+    { passed: true },
+    { passed: true, gate: { goOver: [] } },
+  ]);
+  expect(standingCard(timeline.items)).toBe(cards[1]);
 });
 
 test("what an answer was graded by: the key, the expected expression with the grader's rubric when the check left it, the rubric, or the tests with their command", () => {

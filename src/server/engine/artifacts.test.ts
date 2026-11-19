@@ -248,6 +248,9 @@ test("a finished unit can still reply but cannot store a new artifact", async ()
     }),
   ).toEqual({ ok: true });
   await chat.settled();
+  // The unit's gate, skipped, finishes it.
+  expect(await chat.skipAssessment()).toEqual({ ok: true });
+  await chat.settled();
   expect(chat.events()).toContainEqual({
     type: "unit_closed",
     status: "passed",

@@ -106,6 +106,11 @@ export interface Where {
   notPassed: readonly string[];
   /** Those of them that are slipping: passed, then missed in a review or a gate. */
   slipping: readonly string[];
+  /**
+   * At the unit's end, the objectives the closing card's steps cover: those
+   * not passed, or after the gate those it left not passed.
+   */
+  goOver: readonly string[];
   /** Set once the unit is finished and no longer in progress. */
   finished?: "passed" | "overridden";
   /** A graded answer's feedback is queued behind earlier learner messages. */
@@ -424,8 +429,11 @@ export function runTurn(
   switch (event.after) {
     case "start":
       said =
-        `The learner started the ${name}: ${count === 1 ? "one question" : `${count} questions`} ` +
-        "on objectives they passed before, one on each, and one more after a miss.";
+        run?.mode === "gate"
+          ? `The learner started the unit's gate: ${questions(count)}, ${gateSplit(where)}, ` +
+            "one on each objective they passed, and one more after a miss."
+          : `The learner started the ${name}: ${questions(count)} ` +
+            "on objectives they passed before, one on each, and one more after a miss.";
       break;
     case "reopened":
       said = `The ${name} goes on where it was.`;
@@ -453,7 +461,10 @@ export function runEndNote(
     | { skipped: false; statuses: Record<string, ObjectiveStatus> },
 ): string {
   const name = runName(mode);
-  const goesOn = `The unit goes on where it stood before the ${name}.`;
+  const goesOn =
+    mode === "gate"
+      ? "The learner now sees the unit's closing card, with each objective's status as it stands."
+      : `The unit goes on where it stood before the ${name}.`;
   if (ended.skipped) {
     const withdrawn =
       ended.withdrawn === undefined
@@ -545,8 +556,16 @@ function runAllowed(where: Where): string | undefined {
   const name = runName(run.mode);
   if (run.stage === "offered") {
     const count = run.objectives.length;
+    if (run.mode === "gate") {
+      return (
+        `The unit's gate, ${questions(count)}, ${gateSplit(where)}, is ` +
+        "offered to the learner on a card, which they start or skip, now or " +
+        "in a later sitting; the unit ends after it. Allowed now: reply to " +
+        "the learner. No teaching tools."
+      );
+    }
     return (
-      `A ${name} of ${count === 1 ? "one question" : `${count} questions`} is ` +
+      `A ${name} of ${questions(count)} is ` +
       "offered to the learner on a card, which they start or skip; the unit " +
       "waits until they do. Allowed now: reply to the learner. No teaching tools."
     );
@@ -584,6 +603,21 @@ function runAllowed(where: Where): string | undefined {
     "method, and no example. Posting ends your turn." +
     askedBefore(where, [next.objective])
   );
+}
+
+/** "one question", or "9 questions". */
+function questions(count: number): string {
+  return count === 1 ? "one question" : `${count} questions`;
+}
+
+/** How a gate's questions divide between this unit's objectives and other units'. */
+function gateSplit(where: Where): string {
+  const objectives = where.assessment?.run.objectives ?? [];
+  const own = objectives.filter((o) => o.unit === where.context.unitId).length;
+  const others = objectives.length - own;
+  if (others === 0) return "all on this unit's objectives";
+  if (own === 0) return "all on other units' objectives";
+  return `${own} on this unit's objectives and ${others} on other units'`;
 }
 
 /** The turn after a correct answer in an assessment: feedback alone, briefly. */
@@ -769,9 +803,11 @@ function describe(where: Where): string {
     : `segment ${position.segment + 1} of ${context.plan.segments.length}, ` +
       `"${segment.title}", on ${quoted(segment.objectives)}`;
   const run =
-    where.assessment?.run.stage === "on"
-      ? ` A ${runName(where.assessment.run.mode)} is under way, and the segment waits until it ends.`
-      : "";
+    where.assessment?.run.stage !== "on"
+      ? ""
+      : where.assessment.run.mode === "gate"
+        ? " The unit's gate is under way, and the unit ends after it."
+        : ` A ${runName(where.assessment.run.mode)} is under way, and the segment waits until it ends.`;
   return `${unit}; ${which}. Phase: ${position.phase}.${run}`;
 }
 
@@ -828,10 +864,12 @@ function allowed(where: Where): string {
     }
     case "closed":
       return isLastSegment(context.plan, position)
-        ? "The segment is closed, and it was the unit's last. Not passed: " +
-            `${quoted(where.notPassed)}. The learner chooses whether to go ` +
-            "over them again or to move on without them. Allowed now: reply " +
-            "to the learner. No teaching tools."
+        ? "The segment is closed, and it was the unit's last. " +
+            (position.gated === true
+              ? `The unit's gate left ${quoted(where.goOver)} not passed.`
+              : `Not passed: ${quoted(where.goOver)}.`) +
+            " The learner chooses whether to go over them again or to move " +
+            "on without them. Allowed now: reply to the learner. No teaching tools."
         : "The segment is closed; the learner starts the next one when they " +
             "choose. Allowed now: reply to the learner. No teaching tools " +
             "until the next segment starts.";

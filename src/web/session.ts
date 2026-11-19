@@ -17,32 +17,37 @@ import {
   progressOf,
   segmentStand,
 } from "./progress.ts";
-import type {
-  AssessmentEndItem,
-  AssessmentItem,
-  Item,
-  JudgmentItem,
-  Position,
-  QuestionItem,
-  Timeline,
-  UnitEndItem,
+import {
+  type AssessmentEndItem,
+  type AssessmentItem,
+  type Item,
+  type JudgmentItem,
+  offersSteps,
+  type Position,
+  type QuestionItem,
+  type Timeline,
+  type UnitEndItem,
 } from "./timeline.ts";
 
 type Finished = Timeline["finished"];
 
 /**
- * The position in the top line: "Segment 2 of 5", "Going over again" or
- * "Finished", with one tick per segment of the plan. Null until the unit is
- * open.
+ * The position in the top line: "Segment 2 of 5", "Going over again",
+ * "Unit gate" while the gate is under way, or "Finished", with one tick per
+ * segment of the plan. Null until the unit is open.
  */
 export function whereInUnit(
   plan: Plan,
   position: Position | null,
   finished: Finished,
+  assessment: Timeline["assessment"] = null,
 ): { label: string; ticks: Mark[] } | null {
   const count = plan.segments.length;
   if (finished !== null) {
     return { label: "Finished", ticks: Array(count).fill("past") };
+  }
+  if (assessment?.mode === "gate" && assessment.stage === "on") {
+    return { label: "Unit gate", ticks: Array(count).fill("past") };
   }
   if (position === null) return null;
   return segmentStand(count, position.segment, position.again !== undefined);
@@ -88,8 +93,13 @@ export function nextStep(timeline: Timeline): NextStep {
   const { position, plan, finished } = timeline;
   if (timeline.failed !== null) return "try-again";
   if (finished !== null) {
+    // A card that finished the unit holds the way out; one moved on from does not.
     const card = lastCard(timeline);
-    return card?.passed === true ? null : "leave";
+    return card !== undefined &&
+      card.stepTaken === undefined &&
+      !offersSteps(card)
+      ? null
+      : "leave";
   }
   if (position === null || plan === null) return null;
   const run = timeline.assessment;
@@ -316,16 +326,64 @@ function runTitle(mode: AssessmentMode): string {
   return mode === "review" ? "Review" : mode === "gate" ? "Gate" : "Test";
 }
 
+/** "unit 2", or "units 1 and 2", or "other units" when the numbers are not known. */
+function unitsNamed(from: readonly number[] | undefined): string {
+  if (from === undefined || from.length === 0) return "other units";
+  const names = from.map(String);
+  return from.length === 1
+    ? `unit ${names[0]}`
+    : `units ${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+/** The gate's questions: how many on the unit's own objectives, and how many on other units'. */
+function gateSplit(item: Pick<AssessmentItem, "count" | "own">): {
+  own: number;
+  others: number;
+} {
+  const own = item.own ?? item.count;
+  return { own, others: item.count - own };
+}
+
 /** What an assessment's card says while it waits for Start or Skip. */
-export function assessmentCard(item: Pick<AssessmentItem, "mode" | "count">): {
+export function assessmentCard(
+  item: Pick<AssessmentItem, "mode" | "count" | "own" | "from">,
+): {
   title: string;
   questions: string;
   says: string[];
   start: string;
+  skip: string;
 } {
+  const questions = item.count === 1 ? "1 question" : `${item.count} questions`;
+  if (item.mode === "gate") {
+    const { own, others } = gateSplit(item);
+    const mine =
+      own === 1
+        ? "the one objective you passed in this unit that no review has confirmed"
+        : `each of the ${word(own)} objectives you passed in this unit that no review has confirmed`;
+    const theirs = `${word(others)} on objectives of ${unitsNamed(item.from)}`;
+    const asks =
+      own === 0
+        ? `${capital(word(others))} questions on objectives of ${unitsNamed(item.from)}`
+        : others === 0
+          ? `A question on ${mine}`
+          : `A question on ${mine}, and ${theirs}`;
+    return {
+      title: "Unit gate",
+      questions,
+      says: [
+        `${asks}, with nothing taught first. A right answer marks its ` +
+          "objective retained; a miss is worked through, as in a check.",
+        "It waits here, if you would rather take it in another sitting, " +
+          "when the answers say more.",
+      ],
+      start: "Start the gate",
+      skip: "Skip the gate",
+    };
+  }
   return {
     title: runTitle(item.mode),
-    questions: item.count === 1 ? "1 question" : `${item.count} questions`,
+    questions,
     says: [
       "Questions on objectives you passed in earlier sittings, to see what " +
         "has stayed. Nothing is taught first, and a right answer marks its " +
@@ -333,8 +391,13 @@ export function assessmentCard(item: Pick<AssessmentItem, "mode" | "count">): {
       "The unit goes on afterwards, where you left it.",
     ],
     start: "Start the review",
+    skip: "Skip",
   };
 }
+
+/** What "Skip the gate" asks before it skips, on the gate's card or in it. */
+export const SKIP_GATE_ASKS =
+  "The gate is offered once. What you passed stays passed, and nothing more is marked retained.";
 
 /** The marker a card leaves once started, or skipped on the card. */
 export function assessmentMarker(item: AssessmentItem): {
@@ -342,13 +405,32 @@ export function assessmentMarker(item: AssessmentItem): {
   says: string;
 } {
   const title = runTitle(item.mode);
+  const gate = item.mode === "gate";
   if (item.stage === "skipped") {
-    return { name: `${title} skipped`, says: "The unit goes on where it was." };
+    return {
+      name: `${title} skipped`,
+      says: gate
+        ? "What you passed stays passed. Nothing more is marked retained."
+        : "The unit goes on where it was.",
+    };
   }
   const count =
     item.count === 1
       ? "One question"
       : `${capital(word(item.count))} questions`;
+  if (gate) {
+    const { own, others } = gateSplit(item);
+    const split =
+      own === 0 || others === 0
+        ? own === 0
+          ? ` on objectives of ${unitsNamed(item.from)}`
+          : " on this unit"
+        : `: ${word(own)} on this unit and ${word(others)} from ${unitsNamed(item.from)}`;
+    return {
+      name: "Unit gate",
+      says: `${count}${split}. Nothing is taught first; each answer is recorded.`,
+    };
+  }
   return {
     name: title,
     says: `${count} on objectives you passed before. Nothing is taught first; each answer is recorded.`,
@@ -364,15 +446,20 @@ export function assessmentEndMarker(item: AssessmentEndItem): {
   says: string;
 } {
   const title = runTitle(item.mode);
-  const where = goesOn(item.at);
+  const gate = item.mode === "gate";
+  // After the gate, the closing card says where the unit stands.
+  const where = gate ? "" : ` ${goesOn(item.at)}`;
   const statuses = Object.values(item.statuses);
   if (item.skipped) {
     return {
       name: `${title} skipped`,
-      says:
-        statuses.length === 0
-          ? where
-          : `What you answered is recorded. ${where}`,
+      says: gate
+        ? statuses.length === 0
+          ? "What you passed stays passed. Nothing more is marked retained."
+          : "What you answered is recorded, and what you passed stays passed."
+        : statuses.length === 0
+          ? where.trimStart()
+          : `What you answered is recorded.${where}`,
     };
   }
   const counts: [number, string][] = [
@@ -392,7 +479,7 @@ export function assessmentEndMarker(item: AssessmentEndItem): {
     parts.length === 1 && only !== undefined && only[0] > 1
       ? `All ${word(only[0])} ${only[1]}.`
       : `${capital(parts.map(([n, what]) => `${word(n)} ${what}`).join(", "))}.`;
-  return { name: `${title} over`, says: `${said} ${where}` };
+  return { name: `${title} over`, says: `${said}${where}` };
 }
 
 /** Where the unit goes on after an assessment, from the phase it was in. */
@@ -438,9 +525,12 @@ export function assessmentDetourStep(timeline: Timeline): {
     : { label: `Go on with the ${title}`, skip: true };
 }
 
-/** "Skip review", beside an assessment's question or detour. */
+/** "Skip review" or "Skip the gate", beside an assessment's question or detour. */
 export function skipLabel(timeline: Timeline): string {
-  return `Skip ${runTitle(timeline.assessment?.mode ?? "review").toLowerCase()}`;
+  const mode = timeline.assessment?.mode ?? "review";
+  return mode === "gate"
+    ? "Skip the gate"
+    : `Skip ${runTitle(mode).toLowerCase()}`;
 }
 
 // --- The closing card ----------------------------------------------------------
@@ -487,35 +577,56 @@ function rowWord(status: ObjectiveStatus): { text: string; className: string } {
   }
 }
 
+export interface ClosingCardRow {
+  id: string;
+  statement: string;
+  passed: boolean;
+  word: { text: string; className: string };
+  why?: string;
+}
+
 export interface ClosingCard {
   verdict: { text: string; className: "ok" | "warn" };
   /** "Five of seven objectives passed." Retained ones are passed; slipping ones are not. */
   summary: string;
   /** One row per objective, in the plan's order. */
-  rows: {
-    id: string;
-    statement: string;
-    passed: boolean;
-    word: { text: string; className: string };
-    why?: string;
-  }[];
+  rows: ClosingCardRow[];
+  /** After the gate: a row per objective of another unit it asked, in its order. */
+  others: ClosingCardRow[];
   notPassed: number;
+  /** It offers its two steps: going over again, or moving on without them. */
+  steps: boolean;
   /** The label of the step that goes over the objectives not passed again. */
   again: string;
   /** The note once the learner has moved on without them. */
   movedOn: string;
 }
 
+function cardRow(id: string, statement: string, status: ObjectiveStatus) {
+  const row = { id, statement, word: rowWord(status) };
+  return status === "passed" || status === "retained"
+    ? { ...row, passed: true }
+    : { ...row, passed: false, why: WHY[status] };
+}
+
 export function closingCard(
   plan: Plan,
-  card: Pick<UnitEndItem, "passed" | "objectives" | "stepTaken">,
+  card: Pick<UnitEndItem, "passed" | "objectives" | "stepTaken" | "gate">,
 ): ClosingCard {
-  const rows = plan.objectives.map((o) => {
-    const status = card.objectives[o.id] ?? "not-started";
-    const row = { id: o.id, statement: o.statement, word: rowWord(status) };
-    return status === "passed" || status === "retained"
-      ? { ...row, passed: true }
-      : { ...row, passed: false, why: WHY[status] };
+  const rows = plan.objectives.map((o) =>
+    cardRow(o.id, o.statement, card.objectives[o.id] ?? "not-started"),
+  );
+  // Another unit's row names it, and says what a slip there means.
+  const others = (card.gate?.others ?? []).map((o) => {
+    const row = cardRow(o.objective, o.statement, o.status);
+    const unit = `Unit ${o.unit.number}: ${o.unit.title}`;
+    return {
+      ...row,
+      why:
+        o.status === "slipping"
+          ? `${unit}. Missed in the gate: review comes back to it first.`
+          : unit,
+    };
   });
   const total = rows.length;
   const missed = rows.filter((r) => !r.passed).length;
@@ -535,19 +646,26 @@ export function closingCard(
     summary = `${capital(word(passed))} of ${word(total)} objectives passed.`;
   }
 
+  const steps = offersSteps(card);
   const verdict: ClosingCard["verdict"] = card.passed
     ? { text: "Passed", className: "ok" }
-    : card.stepTaken === "moved-on"
+    : card.stepTaken === "moved-on" || !steps
       ? { text: "Overridden", className: "warn" }
       : { text: `${capital(word(missed))} not passed`, className: "warn" };
+  // After the gate, the steps cover what it left not passed.
+  const toGoOver = card.gate?.goOver.length ?? missed;
 
   return {
     verdict,
     summary,
     rows,
+    others,
     notPassed: missed,
+    steps,
     again:
-      missed === 1 ? "Go over it again" : `Go over the ${word(missed)} again`,
+      toGoOver === 1
+        ? "Go over it again"
+        : `Go over the ${word(toGoOver)} again`,
     movedOn:
       "You moved on. The unit is recorded as overridden, and " +
       (total === 1

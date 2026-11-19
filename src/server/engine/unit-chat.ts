@@ -35,10 +35,17 @@
 //   evidence;
 // - closed to the next segment's teach: the learner starts it.
 //
-// When the unit's last segment closes, the unit ends: passed and out of
-// state.json when every objective passed; otherwise the learner goes over
-// the rest again in one more segment, or moves on without them, which
-// records them as overridden and closes the unit.
+// When the unit's last segment closes, the unit ends, in three steps (task
+// 5.5): with objectives not passed, the closing card, where the learner
+// goes over them again in one more segment, or moves on without them, which
+// records them as overridden; then the unit's gate, offered once on a card,
+// an assessment over its objectives passed and not yet retained and a few
+// of other units' (`pickForGate`), which the learner starts or skips; last,
+// the closing card again, with the statuses as they now are. If the gate
+// left objectives of the unit not passed, it offers the same two steps, and
+// going over them again brings no second gate; otherwise the unit is
+// finished and out of state.json. A unit whose gate has nothing to ask
+// finishes without it.
 //
 // A tool called out of phase is refused with a reason the tutor can act on;
 // so are the tutor's file writes and commands while a question is open
@@ -63,11 +70,13 @@
 // which it leaves alone: review, offered on a card when a unit not finished
 // is opened in a new sitting with nothing waiting on the learner, at most
 // once an hour in a course, on what `pickForReview` picks over the whole
-// course. Its rules are assessment-rules.ts's. While it is offered or under
-// way the unit's own steps and a teaching turn that waits hold; a message
-// sent while the card waits skips it. When it ends or is skipped the unit
-// goes on where it was. An answer on another unit's objective is told to
-// that unit's chat if it is open.
+// course; or the unit's gate, above. Its rules are assessment-rules.ts's.
+// While it is offered or under way the unit's own steps and a teaching turn
+// that waits hold; a message sent while a review's card waits skips it, and
+// one sent while the gate's waits leaves it waiting. When a review ends or
+// is skipped the unit goes on where it was; when the gate does, it comes
+// to its end. An answer on another unit's objective is told to that unit's
+// chat if it is open.
 // The engine composes every turn's header (unit-turns.ts) and writes the
 // unit's position to state.json after every change, before the page is told,
 // so a restart reopens the unit where it was. The chat's events are its
@@ -124,7 +133,8 @@ import type {
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
-import { pickForReview } from "../record/review.ts";
+import { pickForGate, pickForReview } from "../record/review.ts";
+import { objectiveStatus } from "../record/status.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import {
   installPackagesTool,
@@ -142,6 +152,7 @@ import {
   objectiveCheck,
   segmentOf,
   slipping,
+  toGoOver,
 } from "./check-rules.ts";
 import { type ChoiceOrder, randomOrder, reorder } from "./choice-order.ts";
 import {
@@ -853,7 +864,7 @@ function createUnitChat(
       log.emit(phaseEvent(position));
       // An assessment offered or under way says so before its question.
       if (position.assessment !== undefined) {
-        log.emit(assessmentEvent(position.assessment));
+        showRun(r, position.assessment);
       }
       // A request waits on the learner, as an open question does.
       if (
@@ -1097,6 +1108,11 @@ function createUnitChat(
       checks: checks(r),
       notPassed: notPassed(r.context.plan, record.evidence),
       slipping: slipping(r.context.plan, record.evidence),
+      goOver: toGoOver(
+        r.context.plan,
+        record.evidence,
+        record.position.gated === true,
+      ),
       ...(record.finished === undefined ? {} : { finished: record.finished }),
       ...(r.feedback !== undefined && !r.feedback.started
         ? { feedbackPending: r.feedback.number }
@@ -1228,6 +1244,11 @@ function createUnitChat(
     return run?.stage === "on" ? run : undefined;
   }
 
+  /** Tells the page of the assessment: its card offered, or it began, or the chat opened with it. */
+  function showRun(r: Running, run: AssessmentRun): void {
+    log.emit(assessmentEvent(run, unitId, r.context.units));
+  }
+
   /** Where the assessment stands, for the tutor's header. */
   function runWhere(r: Running, run: AssessmentRun): RunWhere {
     const { runAnswers, evidence } = r.record;
@@ -1343,10 +1364,12 @@ function createUnitChat(
       if (objectives.length === 0) return;
       if (!(await dataRoot.markReviewOffered(courseId, at))) return;
       r.context = { ...r.context, units };
-      await r.record.offerAssessment(
-        { mode: "review", stage: "offered", objectives },
-        log,
-      );
+      const run: AssessmentRun = {
+        mode: "review",
+        stage: "offered",
+        objectives,
+      };
+      await r.record.offerAssessment(run, log, () => showRun(r, run));
     } catch (error) {
       console.error("Review could not be offered:", error);
     } finally {
@@ -1356,9 +1379,10 @@ function createUnitChat(
 
   /**
    * Ends the assessment: every objective asked, or skipped. The tutor is
-   * told in its next header if it was asking, and the unit goes on where it
-   * stood: a teaching turn that waited is sent, and a check takes up again.
-   * Runs inside `exclusive`.
+   * told in its next header if it was asking. After the gate the unit comes
+   * to its end; after a review it goes on where it stood: a teaching turn
+   * that waited is sent, and a check takes up again. Runs inside
+   * `exclusive`.
    */
   async function endRun(r: Running, skipped: boolean): Promise<void> {
     const { run, withdrawn, statuses } = await r.record.endAssessment(skipped);
@@ -1371,6 +1395,10 @@ function createUnitChat(
             : { skipped: false, statuses },
         ),
       );
+    }
+    if (run.mode === "gate") {
+      await endUnit(r);
+      return;
     }
     const { position } = r.record;
     if (position.phase === "teach") {
@@ -1480,7 +1508,9 @@ function createUnitChat(
   async function closeSegment(r: Running): Promise<void> {
     const { checkFrom: _, ...rest } = r.record.position;
     await r.record.move({ ...rest, phase: "closed" });
-    if (isLastSegment(r.context.plan, r.record.position)) await endUnit(r);
+    if (isLastSegment(r.context.plan, r.record.position)) {
+      await endUnit(r, true);
+    }
   }
 
   /**
@@ -1724,17 +1754,130 @@ function createUnitChat(
   }
 
   /**
-   * The last segment has closed: shows the closing card, and closes the unit
-   * at once if every objective passed. Runs inside `exclusive`.
+   * The last segment has closed (`closedNow`), or the unit's end is shown
+   * again with the statuses as they now are. Before the gate: the closing
+   * card while objectives are not passed; once every one has passed, the
+   * gate's card, or the unit's finish if it has nothing to ask, after the
+   * card shown again if one stands. After the gate: the closing card with
+   * what the gate asked, which finishes the unit unless the gate left
+   * objectives of it not passed. Runs inside `exclusive`.
    */
-  async function endUnit(r: Running): Promise<void> {
+  async function endUnit(r: Running, closedNow = false): Promise<void> {
+    if (r.record.position.gated === true) {
+      await closeAfterGate(r);
+      return;
+    }
     const passed = notPassed(r.context.plan, r.record.evidence).length === 0;
+    // Every objective passed as the last segment closed: the gate's card,
+    // or the finish, comes with no closing card before it.
+    if (!passed || !closedNow) {
+      log.emit({
+        type: "unit_end",
+        passed,
+        objectives: r.record.objectiveStatuses(),
+      });
+    }
+    if (passed) await gateOrFinish(r, !closedNow);
+  }
+
+  /**
+   * Every objective has passed or been moved on from, and the gate has not
+   * been offered: offers it, or finishes the unit when it has nothing to
+   * ask, as a unit finished before the gate existed, with a closing card
+   * unless one is `shown` already. Runs inside `exclusive`.
+   */
+  async function gateOrFinish(r: Running, shown: boolean): Promise<void> {
+    if (await offerGate(r)) return;
+    const passed = notPassed(r.context.plan, r.record.evidence).length === 0;
+    if (passed && !shown) {
+      log.emit({
+        type: "unit_end",
+        passed,
+        objectives: r.record.objectiveStatuses(),
+      });
+    }
+    await r.record.finish(passed ? "passed" : "overridden");
+  }
+
+  /**
+   * Offers the unit's gate on a card, if it has anything to ask
+   * (`pickForGate`, from the course as it stands now); false if it has
+   * not. Nothing is sent to the tutor. Runs inside `exclusive`.
+   */
+  async function offerGate(r: Running): Promise<boolean> {
+    const [stored, evidence] = await Promise.all([
+      dataRoot.readCourse(courseId),
+      dataRoot.readEvidence(courseId),
+    ]);
+    const units = stored?.curriculum?.units ?? r.context.units;
+    const objectives = pickForGate(units, unitId, evidence, now());
+    if (objectives.length === 0) return false;
+    r.context = { ...r.context, units };
+    const run: AssessmentRun = { mode: "gate", stage: "offered", objectives };
+    await r.record.offerAssessment(run, evidence, () => showRun(r, run));
+    return true;
+  }
+
+  /**
+   * The closing card after the gate, or after it was skipped: each
+   * objective's status, and the other units' objectives the gate asked,
+   * with theirs. The unit finishes unless the gate left objectives of it
+   * not passed, which the card's steps then cover. Runs inside `exclusive`.
+   */
+  async function closeAfterGate(r: Running): Promise<void> {
+    const { plan } = r.context;
+    const { evidence } = r.record;
+    const goOver = toGoOver(plan, evidence, true);
+    const passed = notPassed(plan, evidence).length === 0;
     log.emit({
       type: "unit_end",
       passed,
       objectives: r.record.objectiveStatuses(),
+      gate: { goOver, others: gateOthers(r) },
     });
-    if (passed) await r.record.finish("passed");
+    if (goOver.length === 0) {
+      await r.record.finish(passed ? "passed" : "overridden");
+    }
+  }
+
+  /**
+   * The other units' objectives the unit's gate asked, in its order, each
+   * with its unit and its status now: those of the answers given in the
+   * gate that are not this unit's.
+   */
+  function gateOthers(r: Running) {
+    const { plan, units } = r.context;
+    const own = new Set(plan.objectives.map((o) => o.id));
+    const asked: string[] = [];
+    for (const entry of r.record.evidence) {
+      if (
+        entry.kind === "answer" &&
+        entry.assessment?.mode === "gate" &&
+        entry.assessment.unit === unitId &&
+        !own.has(entry.objective) &&
+        !asked.includes(entry.objective)
+      ) {
+        asked.push(entry.objective);
+      }
+    }
+    return asked.flatMap((objective) => {
+      const at = units.findIndex((u) =>
+        u.plan?.objectives.some((o) => o.id === objective),
+      );
+      const unit = units[at];
+      const statement = unit?.plan?.objectives.find(
+        (o) => o.id === objective,
+      )?.statement;
+      if (unit === undefined || statement === undefined) return [];
+      return [
+        {
+          objective,
+          statement,
+          unit: { number: at + 1, title: unit.title },
+          status: objectiveStatus(r.record.evidence, objective),
+        },
+      ];
+    });
   }
 
   function segmentObjectives(r: Running): readonly string[] {
@@ -2137,7 +2280,11 @@ function createUnitChat(
     };
   }
 
-  /** At the unit's end with objectives not passed: those objectives, or why not. */
+  /**
+   * At the unit's end, the objectives the closing card's steps cover: those
+   * not passed, or after the gate those it left not passed. Or why there
+   * are none.
+   */
   function atUnitEnd(r: Running): string[] | string {
     const { position, evidence } = r.record;
     if (
@@ -2146,8 +2293,14 @@ function createUnitChat(
     ) {
       return "The unit has not reached its end.";
     }
-    const rest = notPassed(r.context.plan, evidence);
+    const rest = toGoOver(r.context.plan, evidence, position.gated === true);
     return rest.length > 0 ? rest : "Every objective has passed.";
+  }
+
+  /** A review's card waits for the learner's Start or Skip. */
+  function reviewOffered(r: Running): boolean {
+    const run = r.record.position.assessment;
+    return run?.stage === "offered" && run.mode === "review";
   }
 
   const chat: OpenableChat = {
@@ -2211,18 +2364,17 @@ function createUnitChat(
             return exclusive(() => replyEnded(r, asked, reply));
           },
         });
-      if (!offering && r.record.position.assessment?.stage !== "offered") {
+      if (!offering && !reviewOffered(r)) {
         send();
         return { ok: true };
       }
-      // A message sent while the card waits, or while it is being offered,
-      // skips it: the learner has gone on. A teaching turn that waited goes
-      // first, as it would have.
+      // A message sent while a review's card waits, or while it is being
+      // offered, skips it: the learner has gone on. A teaching turn that
+      // waited goes first, as it would have. The gate's card is offered once,
+      // and skipped only when the learner says so: it waits.
       void exclusive(async () => {
         try {
-          if (r.record.position.assessment?.stage === "offered") {
-            await endRun(r, true);
-          }
+          if (reviewOffered(r)) await endRun(r, true);
         } finally {
           send();
         }
@@ -2456,7 +2608,9 @@ function createUnitChat(
         const { objectives, withdrawn } = await r.record.overrideSegment();
         // Told with the next turn, so moving on costs no reply.
         r.notes.push(overrideNote(objectives, withdrawn?.number));
-        if (isLastSegment(r.context.plan, r.record.position)) await endUnit(r);
+        if (isLastSegment(r.context.plan, r.record.position)) {
+          await endUnit(r, true);
+        }
         return { ok: true };
       }),
 
@@ -2471,7 +2625,7 @@ function createUnitChat(
           );
         }
         const stops = stopCount;
-        await r.record.startAssessment();
+        await r.record.startAssessment((run) => showRun(r, run));
         askInRun(r, { after: "start" }, stops);
         return { ok: true };
       }),
@@ -2534,7 +2688,13 @@ function createUnitChat(
         if (waits !== undefined) return waits;
         const objectives = atUnitEnd(r);
         if (typeof objectives === "string") return refused(objectives);
-        await r.record.finish("overridden", objectives);
+        await r.record.moveOn(objectives);
+        // Before the gate, its card comes next.
+        if (r.record.position.gated === true) {
+          await r.record.finish("overridden");
+        } else {
+          await gateOrFinish(r, true);
+        }
         return { ok: true };
       }),
 

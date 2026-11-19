@@ -124,9 +124,10 @@ version: a field added later must be optional.
   open question (with its kept answer and the exchanges awaiting the help
   judge), an open detour, an assessment offered or under way (beside the
   phase; while it is under way the open question and the detour are its
-  own), the extra segment that goes over objectives again, the tutor's
-  session id, and the tutor's request to install packages while it waits
-  for the learner. Completed package cards are
+  own), whether the unit's gate has been offered (`gated`, kept until the
+  unit finishes), the extra segment that goes over objectives again, the
+  tutor's session id, and the tutor's request to install packages while
+  it waits for the learner. Completed package cards are
   kept separately from positions in the same file, so their outcomes
   survive even if a transcript line is lost or a unit finishes. Before
   the first unit exposes the workspace, the course rolls back an
@@ -237,9 +238,10 @@ another question. The check's next question is the detour's re-check.
 | check to closed | the feedback on the answer that leaves every objective done ends | automatic, also when the feedback is stopped or fails |
 | discuss, check or detour to closed | the learner moves on | an override of the segment's objectives; an open question is withdrawn |
 | closed to the next segment's teach | the learner starts it | none after the unit's last segment |
-| last segment closed to the unit's end | automatic | the closing card; when every objective passed, the unit is passed and leaves `state.json` |
+| last segment closed to the unit's end | automatic | the closing card when objectives did not pass; when every one passed, the gate's card ("Assessments") |
 | unit's end to one more segment | the learner goes over the objectives not passed | a segment after the plan's last, on those objectives, kept in the position |
-| unit's end to finished | the learner moves on without them | an override of the objectives not passed; the unit leaves `state.json` |
+| unit's end to the gate | the learner moves on without them | an override of the objectives not passed; the gate's card |
+| the gate to finished | it ends or is skipped | the closing card again, with the other units' objectives it asked; the unit leaves `state.json` unless the gate left objectives of it not passed, which the card offers to go over again (with no second gate) or to move on without |
 
 The rules:
 
@@ -322,8 +324,9 @@ The rules:
   decide next, they decide with the corrected verdict: ending a detour
   closes the segment if nothing is left to ask, a check with no question
   open, no detour and no feedback to come closes if nothing is left, and
-  the closing card is shown again with the statuses as they now are (the
-  unit finishes if every objective passed). A dispute that takes the pass
+  the closing card is shown again with the statuses as they now are (with
+  every objective passed, the gate's card follows, or the unit finishes
+  when it has nothing to ask). A dispute that takes the pass
   from an objective of a finished unit records that objective as
   overridden with it, so the unit stays finished. The tutor of a unit in
   progress is told the outcome in its next header (`disputeNote` in
@@ -395,8 +398,8 @@ tab.
 
 An assessment is a run of questions without teaching, asked by the unit's
 tutor in the unit's thread over objectives the engine picks (`decisions.md`,
-"Mastery loop"). Review, which opens a sitting, is built; the unit gate and
-testing out of a unit (stage 5) are to come on the same parts.
+"Mastery loop"). Review opens a sitting and the unit gate closes a unit;
+testing out of a unit (stage 5) is to come on the same parts.
 
 - **Kept in the position**, beside the phase, which it leaves alone
   (`AssessmentRun` in `state.ts`): its mode, its objectives with their
@@ -443,6 +446,26 @@ testing out of a unit (stage 5) are to come on the same parts.
   with a turn asking for its question (or closes if nothing is left), and
   the discussion and a closed segment send nothing. The tutor that asked is
   told in its next header (`runEndNote` in `unit-turns.ts`).
+- **The gate** (`endUnit` and what follows it in `unit-chat.ts`) is offered
+  once per unit, on a card, when its last segment has closed and every
+  objective has passed or been moved on from at the closing card. It asks
+  `pickForGate`'s objectives (`record/review.ts`): the unit's own that are
+  passed and not retained, leaving out those whose pass rests on an answer
+  given while testing out, in the plan's order; then up to three of other
+  units' by review's pick. With nothing to ask there is no card, and the
+  unit finishes. With every objective passed as the segment closed, the
+  card comes with no closing card before it; one standing (a dispute or
+  another unit's answer passed the rest) is shown again with the statuses
+  as they are. The card says how many questions and on what, holds the
+  unit's steps, sends the tutor nothing, and waits across sittings: a
+  message leaves it waiting. Its rules are review's. When it ends or is
+  skipped (on the card or partway, with an open question withdrawn), the
+  closing card comes again (`closeAfterGate`), with the other units'
+  objectives the gate asked and their statuses; its two steps then cover
+  only what the gate left not passed (`toGoOver` in `check-rules.ts`),
+  not what the learner moved on from before it, and the unit finishes
+  when that is nothing. `gated` in the position keeps the gate from being
+  offered again, across going over objectives again and restarts.
 
 ## 5. Teaching tools
 
@@ -807,7 +830,14 @@ no automated tests.
   beside its question or detour, whose control after a second miss reads
   "Go on with the review", or "Finish the review" at the last; its end is
   a marker with how many objectives are retained and slipping and where
-  the unit goes on.
+  the unit goes on. The gate (piece 16) is the same parts: its card names
+  the unit and says how many questions are on its objectives and how many
+  on which other units', with "Skip the gate", which asks once before it
+  skips there and beside its questions, and "Start the gate"; while it
+  runs the top line reads "Unit gate". The closing card after it has a
+  section, "Also asked, from other units", of those objectives with their
+  units and statuses. Only the closing card standing at the thread's end,
+  with no phase or assessment after it, offers its steps.
   The top line shows the unit's position and its outline has Start fresh.
   A math question is answered in a one-line field whose expression is shown as
   math beneath it as it is typed (piece 2). A code question's card names

@@ -5,7 +5,9 @@ import type { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import {
+  assessmentCard,
   assessmentEndMarker,
+  assessmentMarker,
   closingCard,
   divided,
   helpNotice,
@@ -15,6 +17,7 @@ import {
   outline,
   phaseMarker,
   placement,
+  skipLabel,
   whereInUnit,
 } from "./session.ts";
 import {
@@ -23,6 +26,7 @@ import {
   type JudgmentItem,
   type Position,
   reduce,
+  standingCard,
   type Timeline,
 } from "./timeline.ts";
 
@@ -979,4 +983,138 @@ test.each<[string, Record<string, ObjectiveStatus>, string]>([
   const marker = state.items.at(-1);
   if (marker?.kind !== "assessment_end") throw new Error("No end marker.");
   expect(assessmentEndMarker(marker)).toEqual({ name: "Review over", says });
+});
+
+// --- The gate (piece 16) ------------------------------------------------------
+
+test.each<[string, { count: number; own: number; from: number[] }, string]>([
+  [
+    "on the unit's own objectives and two other units'",
+    { count: 9, own: 6, from: [1, 2] },
+    "A question on each of the six objectives you passed in this unit that no review has confirmed, and three on objectives of units 1 and 2, with nothing taught first.",
+  ],
+  [
+    "on one objective of the unit's own",
+    { count: 1, own: 1, from: [] },
+    "A question on the one objective you passed in this unit that no review has confirmed, with nothing taught first.",
+  ],
+  [
+    "on other units' objectives alone",
+    { count: 3, own: 0, from: [1, 2, 4] },
+    "Three questions on objectives of units 1, 2 and 4, with nothing taught first.",
+  ],
+])("the gate's card says what it asks, %s", (_, split, first) => {
+  const card = assessmentCard({ mode: "gate", ...split });
+  expect(card.says[0]).toBe(
+    `${first} A right answer marks its objective retained; a miss is worked through, as in a check.`,
+  );
+  expect(card).toMatchObject({
+    title: "Unit gate",
+    start: "Start the gate",
+    skip: "Skip the gate",
+  });
+});
+
+test("the gate's marker, its skip partway, and its skip control say gate, and where the unit goes on is left to the closing card", () => {
+  const gate: PageEvent = {
+    type: "assessment",
+    mode: "gate",
+    stage: "offered",
+    count: 3,
+    own: 2,
+    from: [1],
+  };
+  const started = play([
+    planned,
+    phase(2, "closed"),
+    gate,
+    { ...gate, stage: "on" },
+  ]);
+  const marker = started.items.at(-1);
+  if (marker?.kind !== "assessment") throw new Error("No marker.");
+  expect(assessmentMarker(marker)).toEqual({
+    name: "Unit gate",
+    says: "Three questions: two on this unit and one from unit 1. Nothing is taught first; each answer is recorded.",
+  });
+  expect(skipLabel(started)).toBe("Skip the gate");
+
+  const skipped = play([
+    planned,
+    phase(2, "closed"),
+    { ...gate, stage: "on" },
+    {
+      type: "assessment_end",
+      mode: "gate",
+      skipped: true,
+      statuses: { "power-rule": "retained" },
+    },
+  ]);
+  const end = skipped.items.at(-1);
+  if (end?.kind !== "assessment_end") throw new Error("No end marker.");
+  expect(assessmentEndMarker(end)).toEqual({
+    name: "Gate skipped",
+    says: "What you answered is recorded, and what you passed stays passed.",
+  });
+});
+
+test("the card after a gate that left nothing to go over finishes the unit as it stands: overridden with its own foot, not moved on from", () => {
+  const first = {
+    "power-rule": "passed",
+    "product-rule": "passed",
+    "chain-rule": "overridden",
+  } as const;
+  const after = {
+    "power-rule": "retained",
+    "product-rule": "retained",
+    "chain-rule": "overridden",
+  } as const;
+  const state = play([
+    planned,
+    phase(2, "closed"),
+    { type: "unit_end", passed: false, objectives: first },
+    { type: "moved_on", objectives: ["chain-rule"] },
+    {
+      type: "assessment",
+      mode: "gate",
+      stage: "offered",
+      count: 2,
+      own: 2,
+      from: [],
+    },
+    {
+      type: "assessment",
+      mode: "gate",
+      stage: "on",
+      count: 2,
+      own: 2,
+      from: [],
+    },
+    {
+      type: "assessment_end",
+      mode: "gate",
+      skipped: false,
+      statuses: { "power-rule": "retained", "product-rule": "retained" },
+    },
+    {
+      type: "unit_end",
+      passed: false,
+      objectives: after,
+      gate: { goOver: [], others: [] },
+    },
+    { type: "unit_closed", status: "overridden" },
+  ]);
+  const cards = state.items.filter((i) => i.kind === "unit_end");
+  // The card before the gate was moved on from; the one after it stands.
+  expect(cards).toMatchObject([
+    { objectives: first, stepTaken: "moved-on" },
+    { objectives: after },
+  ]);
+  const last = standingCard(state.items);
+  if (last === undefined) throw new Error("No card stands.");
+  expect(last.stepTaken).toBeUndefined();
+  expect(closingCard(PLAN, last)).toMatchObject({
+    verdict: { text: "Overridden" },
+    steps: false,
+  });
+  expect(nextStep(state)).toBeNull();
 });

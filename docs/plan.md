@@ -40,53 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.5 The unit gate
-
-- Status: todo
-- Depends on: 5.4
-- Why: the check that closes a unit, and with review the only source of
-  retained (brief, "Mastery and evidence").
-- Do: the unit's end, in three steps:
-  - First, as now: the last segment closes, and with objectives not
-    passed the closing card offers to go over them again or to move on
-    without them, which records the override.
-    - Then the gate's card, once per unit and kept in the position, as
-    piece 16 shows: how many questions and on what, that it waits for
-    another sitting, Start and "Skip the gate", which asks once before
-    it skips, on the card and in the gate, since the gate is offered
-    once. The gate is an assessment
-    (5.4) over the unit's objectives that are passed and not yet
-    retained, leaving out those passed by testing out, and up to three
-    from the course's other units by 5.3's pick. A unit with nothing to ask gets no card. "Skip the
-    gate", on the card or in the gate, goes to the last step; what was
-    passed stays passed, not retained.
-    - Last, the closing card with the statuses as they now are, and under
-    them the other units' objectives the gate asked, with theirs. If the
-    gate left objectives of the unit not passed, it offers the same two
-    steps, and going over them again does not bring a second gate.
-    Otherwise the unit is finished, as it is today.
-  - `tutor.md`'s section on assessments covers the gate; the scripted
-    backend and the seed reach one.
-- Done when: fake-backend tests cover: the card after the last segment
-  when everything passed, and after moving on without the rest; a gate
-  answered correctly leaving its objectives retained and the unit
-  finished; a skip finishing the unit with nothing retained; a miss on
-  the unit's own objective (detour, second question, the closing card
-  listing it, going over it again, no second gate); a miss on another
-  unit's objective leaving it slipping and that unit finished; a restart
-  at the card and in the gate; no card when nothing can be asked. `mise
-  run check` passes; on `pnpm dev:fake` a second unit is closed through
-  its gate with an objective of the first in it, and the browser is
-  closed before the server stops; one short run on Haiku 5.5 through a
-  gate.
-- Note: the gate is an `AssessmentRun` of mode "gate" (`state.ts`); 5.4's
-  run, rules, turns and page parts take a mode, but their wording is
-  review's: the card (`assessmentCard` in `src/web/session.ts`), the
-  start turn (`runTurn` in `unit-turns.ts`) and the end note. `offerReview`
-  in `unit-chat.ts` refuses at the closing card and leaves the unit's steps
-  waiting while a run exists; the gate comes at that card, so its offer
-  and the steps after it need their own path.
-
 ### 5.6 Testing out of a unit
 
 - Status: todo
@@ -139,7 +92,12 @@ a detour, a unit gate, generated notes and an exported transcript.
 - Note: `engine/assessment-rules.ts` has review's rules alone; the test's
   (no feedback, no detour, a second question after an unsure correct
   answer) go there by mode, and the chat's feedback and detour branches
-  (`tellGrade`, `anotherQuestion`) follow them.
+  (`tellGrade`, `anotherQuestion`) follow them. The unit's end goes
+  through `gateOrFinish` in `unit-chat.ts`, which offers the gate
+  whenever `pickForGate` has anything, other units' objectives included:
+  a unit the test passed whole must finish without it. The gate already
+  leaves out a pass resting on a test answer (`tested` in
+  `record/status.ts`); this task's tests see it end to end.
 
 ### 5.7 Handoff notes and the misconception record
 
@@ -299,7 +257,10 @@ a detour, a unit gate, generated notes and an exported transcript.
   its math and figure shown, and the browser is closed before the server
   stops; one run on Haiku 5.5 to see the flow (5.13 reads notes written
   by Sonnet).
-- Note: rehype-parse and rehype-stringify are new direct dependencies
+- Note: a unit finishes at the closing card after its gate
+  (`closeAfterGate` in `unit-chat.ts`), or at `gateOrFinish`'s when it
+  has none to offer; "Write notes" goes there.
+  rehype-parse and rehype-stringify are new direct dependencies
   (unified and rehype-katex are installed; rehype-katex 7 was seen to
   read the two classes). Look each up with context7, and name them in
   the report and in `architecture.md` section 2. The notes have no
@@ -420,7 +381,10 @@ a detour, a unit gate, generated notes and an exported transcript.
 - From 5.4's Haiku run: feedback in a review was two sentences of working,
   and a lead-in named what the question would use ("one on the limit
   definition with a square root"), which `tutor.md` does not forbid in a
-  review.
+  review. 5.5's Haiku gate did the same ("a power rule question with a
+  different exponent"), and posted a math question with a wrong key: the
+  limit of $2x^3 - x + 4$ at $-1$ given as 7, its feedback working
+  "$-2 + 1 + 4 = 7$". Nothing checks a key's arithmetic.
 - Done when: the findings and the model choice are in `decisions.md`,
   "Prompts" and "Mastery loop"; `mise run check` passes, and the
   scripted backend's tests with it, since it reads the headers; the

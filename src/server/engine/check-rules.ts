@@ -118,3 +118,19 @@ export function slipping(
     .map((o) => o.id)
     .filter((id) => objectiveStatus(evidence, id) === "slipping");
 }
+
+/**
+ * At the unit's end, the objectives the closing card's two steps cover:
+ * before the unit's gate, those not passed; after it, those not passed that
+ * the learner has not moved on from, which the gate left not passed.
+ */
+export function toGoOver(
+  plan: Plan,
+  evidence: readonly EvidenceEntry[],
+  afterGate: boolean,
+): string[] {
+  const rest = notPassed(plan, evidence);
+  return afterGate
+    ? rest.filter((id) => objectiveStatus(evidence, id) !== "overridden")
+    : rest;
+}

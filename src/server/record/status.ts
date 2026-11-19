@@ -50,6 +50,12 @@ interface ObjectiveStanding {
   status: ObjectiveStatus;
   /** Index in CONFIDENCE_LEVELS of the least confident unassisted correct answer since the last miss, or Infinity if none. */
   lowestConfidence: number;
+  /**
+   * One of the unassisted correct answers since the last miss was given
+   * while testing out: the unit's gate leaves the objective out, since that
+   * answer was cold when given (docs/decisions.md, "Mastery loop").
+   */
+  tested: boolean;
 }
 
 /** Derives standings for a batch of objectives in one pass over the counted log. */
@@ -62,6 +68,7 @@ export function objectiveStandings(
     result.set(id, {
       status: statusOf(standing),
       lowestConfidence: standing.lowestConfidence,
+      tested: standing.tested,
     });
   }
   return result;
@@ -76,6 +83,7 @@ interface Standing {
   problems: Set<string>;
   confident: boolean;
   cold: boolean;
+  tested: boolean;
   lowestConfidence: number;
 }
 
@@ -93,6 +101,7 @@ function collectStandings(
       problems: new Set(),
       confident: false,
       cold: false,
+      tested: false,
       lowestConfidence: Infinity,
     });
   }
@@ -120,12 +129,14 @@ function collectStandings(
       standing.problems.clear();
       standing.confident = false;
       standing.cold = false;
+      standing.tested = false;
       standing.lowestConfidence = Infinity;
     } else if (!entry.assisted) {
       if (standing.problems.size < 2) {
         standing.problems.add(problemOf(entry.question));
       }
       standing.cold ||= cold;
+      standing.tested ||= mode === "test-out";
       const { answer } = entry;
       standing.confident ||=
         answer.kind !== "unknown" && isConfident(answer.confidence);

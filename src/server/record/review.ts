@@ -1,7 +1,6 @@
-// Which objectives review asks about (docs/decisions.md, "Mastery loop",
-// "Review"). Pure: the caller reads the record, and decides when review is
-// offered and what it leaves out; the gate takes its other units'
-// objectives from here too.
+// Which objectives review and the unit gate ask about (docs/decisions.md,
+// "Mastery loop", "Review" and "The gate"). Pure: the caller reads the
+// record, and decides when each is offered.
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import { SESSION_GAP_MS } from "../../shared/events.ts";
@@ -84,4 +83,38 @@ export function pickForReview(
     )
     .slice(0, options.count)
     .map((c) => c.pick);
+}
+
+/** How many objectives of the course's other units a unit's gate asks about, at most. */
+export const GATE_OTHERS = 3;
+
+/**
+ * What the unit's gate asks about at `at`, in its order: each objective of
+ * the unit's plan that is passed and not yet retained, leaving out those
+ * whose pass rests on an answer given while testing out, in the plan's
+ * order; then up to GATE_OTHERS of the course's other units', as review
+ * picks them. Empty when there is nothing to ask.
+ */
+export function pickForGate(
+  units: readonly StoredUnit[],
+  unitId: string,
+  evidence: readonly EvidenceEntry[],
+  at: Date,
+): ReviewPick[] {
+  const own = (units.find((u) => u.id === unitId)?.plan?.objectives ?? []).map(
+    (o) => o.id,
+  );
+  const standings = objectiveStandings(evidence, own);
+  const asked = own.filter((id) => {
+    const standing = standings.get(id);
+    return standing?.status === "passed" && !standing.tested;
+  });
+  return [
+    ...asked.map((objective) => ({ unit: unitId, objective })),
+    ...pickForReview(units, evidence, {
+      at,
+      count: GATE_OTHERS,
+      leaveOut: own,
+    }),
+  ];
 }

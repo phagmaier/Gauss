@@ -3,7 +3,7 @@ import type { StoredUnit } from "../../shared/curriculum.ts";
 import { SESSION_GAP_MS } from "../../shared/events.ts";
 import { type AssessmentMode, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Confidence } from "../../shared/question.ts";
-import { pickForReview } from "./review.ts";
+import { pickForGate, pickForReview } from "./review.ts";
 
 // Every expected pick below was worked out by hand from the rules in
 // docs/decisions.md, "Mastery loop" ("Review"), and the statuses from
@@ -297,6 +297,108 @@ describe("the count and the objectives left out", () => {
     expect(pick(evidence, { count: 2, leaveOut: ["d-one"] })).toEqual([
       "d-two",
       "l-two",
+    ]);
+  });
+});
+
+describe("what the unit gate asks", () => {
+  const gate = (evidence: EvidenceEntry[], unitId = "derivatives") =>
+    pickForGate(UNITS, unitId, evidence, AT).map(
+      (p) => `${p.unit}/${p.objective}`,
+    );
+
+  test("the unit's objectives passed and not yet retained, in its plan's order, then up to three of other units' by review's pick", () => {
+    const evidence = [
+      // Own: d-three passed by two answers at 75%, d-one passed at 90%
+      // minutes ago (the hour does not apply to the unit's own), d-two
+      // retained by a review's answer.
+      right("d-three"),
+      right("d-three"),
+      pass("d-one", ago(5 * MINUTE)),
+      right("d-two", { confidence: "90", in: "review" }),
+      // Others, as review picks them: l-two slipping, then l-one passed at
+      // 75% before l-three passed at 90%; the integrals have no plan.
+      pass("l-one"),
+      right("l-one"),
+      pass("l-two"),
+      wrong("l-two", { in: "review" }),
+      pass("l-three"),
+    ];
+    expect(gate(evidence)).toEqual([
+      "derivatives/d-one",
+      "derivatives/d-three",
+      "limits/l-two",
+      "limits/l-one",
+      "limits/l-three",
+    ]);
+  });
+
+  test("not an objective of the unit slipping, overridden or not passed, nor one whose pass rests on an answer given while testing out", () => {
+    const evidence = [
+      // d-one passed by the test's confident answer; d-two slipping; d-three
+      // overridden; nothing else in the course passed.
+      right("d-one", { confidence: "90", in: "test-out" }),
+      pass("d-two"),
+      wrong("d-two", { in: "gate" }),
+      EvidenceEntry.parse({
+        kind: "override",
+        recordedAt: ago(3 * HOUR),
+        objectives: ["d-three"],
+      }),
+    ];
+    expect(gate(evidence)).toEqual([]);
+  });
+
+  test("an objective missed in its test and passed after it is asked, and so is one missed since its test's answer; one whose pass rests partly on that answer is not", () => {
+    const evidence = [
+      // d-one: missed in the test, which is no miss, then passed in a check.
+      wrong("d-one", { in: "test-out" }),
+      pass("d-one"),
+      // d-two: the test's unsure answer and a check's: the pass rests on both.
+      right("d-two", { in: "test-out" }),
+      right("d-two"),
+      // d-three: the test's answer, then a check's miss and two answers that
+      // pass it again.
+      right("d-three", { confidence: "90", in: "test-out" }),
+      wrong("d-three"),
+      right("d-three"),
+      right("d-three"),
+    ];
+    expect(gate(evidence)).toEqual([
+      "derivatives/d-one",
+      "derivatives/d-three",
+    ]);
+  });
+
+  test("other units' objectives answered within the hour are left out, and three at most are asked", () => {
+    const units = [...UNITS.slice(0, 2), unit("integrals", ["i-one"])];
+    const asked = (lOneAt: string) =>
+      pickForGate(
+        units,
+        "derivatives",
+        [
+          pass("d-one"),
+          pass("l-one", lOneAt),
+          pass("l-two"),
+          pass("l-three"),
+          pass("i-one"),
+        ],
+        AT,
+      ).map((p) => p.objective);
+    // l-one answered within the hour: the other three, standing equal, in
+    // the course's order.
+    expect(asked(ago(30 * MINUTE))).toEqual([
+      "d-one",
+      "l-two",
+      "l-three",
+      "i-one",
+    ]);
+    // All four eligible: the first three.
+    expect(asked(ago(3 * HOUR))).toEqual([
+      "d-one",
+      "l-one",
+      "l-two",
+      "l-three",
     ]);
   });
 });

@@ -589,6 +589,9 @@ test("a request still waiting when the unit ends is withdrawn, and its card says
     confidence: "90",
   });
   await chat.settled();
+  // The unit's gate, skipped, finishes it.
+  expect(await chat.skipAssessment()).toEqual({ ok: true });
+  await chat.settled();
 
   const events = chat.events();
   const withdrawn = events.findIndex(
@@ -998,6 +1001,9 @@ test("a finished unit recovers its withdrawn package card even when both transcr
       confidence: "90",
     }),
   ).toEqual({ ok: true });
+  await first.chat.settled();
+  // The unit's gate, skipped, finishes it.
+  expect(await first.chat.skipAssessment()).toEqual({ ok: true });
   await first.chat.settled();
   const withdrawn = cards(first.chat.events());
   expect(withdrawn).toEqual([

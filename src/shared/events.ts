@@ -230,11 +230,11 @@ export const PageEvent = z.discriminatedUnion("type", [
    */
   z.object({ type: z.literal("detour_end") }),
   /**
-   * An assessment (docs/decisions.md, "Mastery loop"; piece 15): "offered",
-   * its card, with Start and Skip; "on", the learner started it, and its
-   * questions follow, each with an `assessment` head. Sent again when the
-   * chat opens with one offered or under way. The unit's own steps wait
-   * until it ends.
+   * An assessment (docs/decisions.md, "Mastery loop"; pieces 15 and 16):
+   * "offered", its card, with Start and Skip; "on", the learner started it,
+   * and its questions follow, each with an `assessment` head. Sent again
+   * when the chat opens with one offered or under way. The unit's own steps
+   * wait until it ends.
    */
   z.object({
     type: z.literal("assessment"),
@@ -242,6 +242,10 @@ export const PageEvent = z.discriminatedUnion("type", [
     stage: z.enum(["offered", "on"]),
     /** How many objectives it asks about: a question on each, and one more after a miss. */
     count: z.number().int().positive(),
+    /** For a gate: how many of them are this unit's own. */
+    own: z.number().int().nonnegative().optional(),
+    /** For a gate: the numbers, in the course, of the other units the rest come from, in order. */
+    from: z.array(z.number().int().positive()).optional(),
   }),
   /**
    * The assessment ended, every objective asked, or the learner skipped it,
@@ -313,18 +317,53 @@ export const PageEvent = z.discriminatedUnion("type", [
     objectives: z.record(Slug, ObjectiveStatus),
   }),
   /**
-   * The unit's last segment has closed: the closing card (task 2.1, piece
-   * 10). When every objective passed, "unit_closed" follows at once. When
-   * some did not, the learner goes over them again, which starts a segment
-   * after the plan's last, or moves on without them. At this point an
-   * objective "attempted" reached the check's limit, and one "overridden"
-   * was moved on from without its check.
+   * The closing card at the unit's end (task 2.1, piece 10; task 5.5, piece
+   * 16). Before the unit's gate it comes when objectives did not pass: the
+   * learner goes over them again, which starts a segment after the plan's
+   * last, or moves on without them; once every objective has passed, or
+   * been moved on from, the gate's card comes instead. Shown again as it
+   * stands, with every objective passed, when a dispute or another unit's
+   * answer passes the rest. After the gate it comes with `gate`; without a
+   * gate to offer, with every objective passed, "unit_closed" follows at
+   * once. An objective "attempted" here reached the check's old limit, and
+   * one "overridden" was moved on from without its check.
    */
   z.object({
     type: z.literal("unit_end"),
     passed: z.boolean(),
     objectives: z.record(Slug, ObjectiveStatus),
+    /**
+     * Set on the card after the unit's gate, or after it was skipped (piece
+     * 16). Its steps then cover `goOver`, the unit's objectives the gate
+     * left not passed, and not every objective not passed: those the
+     * learner moved on from before the gate stay as they are. With
+     * `goOver` empty the unit finishes, and "unit_closed" follows.
+     */
+    gate: z
+      .object({
+        goOver: z.array(Slug),
+        /** The other units' objectives the gate asked, in its order, with their statuses now. */
+        others: z.array(
+          z.object({
+            objective: Slug,
+            statement: z.string(),
+            unit: z.object({
+              number: z.number().int().positive(),
+              title: z.string(),
+            }),
+            status: ObjectiveStatus,
+          }),
+        ),
+      })
+      .optional(),
   }),
+  /**
+   * At the closing card the learner moved on without the objectives its
+   * steps cover, recorded as an override of them. Before the unit's gate,
+   * the gate's card follows, or "unit_closed" when it has nothing to ask;
+   * after it, "unit_closed".
+   */
+  z.object({ type: z.literal("moved_on"), objectives: z.array(Slug) }),
   /** The unit is finished and no longer in progress. */
   z.object({
     type: z.literal("unit_closed"),

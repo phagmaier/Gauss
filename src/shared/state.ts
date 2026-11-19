@@ -91,9 +91,11 @@ export type AssessedObjective = z.infer<typeof AssessedObjective>;
 /**
  * A run of questions without teaching, asked by the unit's tutor in the
  * unit's thread (docs/decisions.md, "Mastery loop"): review at the start of
- * a sitting. It is kept beside the phase, which it leaves alone, so a
- * restart reopens it and the unit goes on where it was once it ends. While
- * it is under way, the position's open question and detour are its own.
+ * a sitting, or the unit's gate once its last segment has closed. It is
+ * kept beside the phase, which it leaves alone, so a restart reopens it;
+ * once it ends, the unit goes on where it was, or after a gate comes to
+ * its end. While it is under way, the position's open question and detour
+ * are its own.
  */
 export const AssessmentRun = z
   .object({
@@ -147,6 +149,11 @@ export const UnitPosition = z
     detour: Detour.optional(),
     /** An assessment offered or under way, until it ends or is skipped. */
     assessment: AssessmentRun.optional(),
+    /**
+     * Set once the unit's gate has been offered, since it is offered once:
+     * kept until the unit finishes, across going over objectives again.
+     */
+    gated: z.literal(true).optional(),
     /** The tutor's session on the backend, once the backend has reported it. */
     tutorSessionId: z.string().min(1).optional(),
     /**

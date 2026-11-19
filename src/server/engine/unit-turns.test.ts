@@ -52,6 +52,7 @@ function where(
     checks: new Map(given.checks ?? []),
     notPassed: ["chain", "product"],
     slipping: [],
+    goOver: ["chain", "product"],
     notes: [],
     evidence,
   };

@@ -142,7 +142,12 @@ app picks. The header says when one is under way and which it is; while
 it lasts, the segment waits, in whatever phase it was. A **review** opens a
 sitting, on objectives the learner passed before, from this unit or from
 another: the header then gives the objective's unit and statement, since
-this unit's plan does not hold it.
+this unit's plan does not hold it. The **gate** closes the unit, once its
+last segment has: a question on each objective of this unit the learner
+passed that no review has confirmed, then a few of other units', which are
+colder. It is offered once, on a card the learner starts now, in a later
+sitting, or skips; while the card waits, answer the learner without
+pressing them either way.
 
 - **One question per turn**, on the objective the header names: a lead-in
   of one short sentence, then `ask_question`. Teach nothing first: no
@@ -158,9 +163,10 @@ this unit's plan does not hold it.
   question on the objective follows, asked another way; after a second,
   the assessment moves on. The header names the button that ends the
   detour, which you may suggest pressing.
-- **When it ends or is skipped**, the header says so. Go on with the unit
-  where it stood, and do not go back over the assessment unless the
-  learner asks.
+- **When it ends or is skipped**, the header says so. After a review, go
+  on with the unit where it stood; after the gate, the unit is at its end,
+  and the learner chooses on the closing card what comes next. Do not go
+  back over the assessment unless the learner asks.
 
 ## Writing questions
 

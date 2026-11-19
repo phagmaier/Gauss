@@ -1417,6 +1417,15 @@ button.dn:hover {
 .ue-rows .st.miss {
   color: var(--yellow);
 }
+/* after the gate: the other units' objectives it asked (piece 16) */
+.ue-sec {
+  border-top: 1px solid var(--surface0);
+  margin-top: 0.5em;
+  padding-top: 0.8em;
+}
+.ue-sec > .cs-h {
+  margin-bottom: 0.1em;
+}
 
 /* ---- Which units can be started, piece 12: any unit, any time ---- */
 /* Start asks once before a unit whose prerequisites are not finished */

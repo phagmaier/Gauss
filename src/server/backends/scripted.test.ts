@@ -110,7 +110,7 @@ async function approvedCourse(dataRoot: ReturnType<typeof openDataRoot>) {
 const WHOLE_UNIT_MS = 15_000;
 
 test(
-  "a unit not yet planned runs to its end: planned, each segment taught, checked and closed, a written answer graded",
+  "a unit not yet planned runs to its end: planned, each segment taught, checked and closed, a written answer graded, and its gate taken",
   async () => {
     const { dataRoot, units } = setUp();
     await approvedCourse(dataRoot);
@@ -183,6 +183,42 @@ test(
       }
     }
 
+    // The last segment's close offers the unit's gate (task 5.5), which the
+    // scripted tutor asks: a question on each objective, answered right.
+    expect(await position()).toMatchObject({
+      phase: "closed",
+      assessment: { mode: "gate", stage: "offered" },
+    });
+    expect(await chat.startAssessment()).toEqual({ ok: true });
+    await chat.settled();
+    let asked = 0;
+    for (
+      let at = await position();
+      at?.assessment?.stage === "on";
+      at = await position()
+    ) {
+      const open = await openQuestion();
+      prompts.push(open.question.prompt);
+      asked += 1;
+      expect(
+        open.question.kind === "choice"
+          ? await chat.answer({
+              kind: "choice",
+              questionId: open.id,
+              choice: open.question.answer,
+              confidence: "90",
+            })
+          : await chat.answer({
+              kind: "written",
+              questionId: open.id,
+              text: "Because it is so.",
+              confidence: "90",
+            }),
+      ).toEqual({ ok: true });
+      await chat.settled();
+    }
+    expect(asked).toBe(plan?.objectives.length);
+
     // Both kinds of question were asked, and no question twice.
     expect(kinds).toEqual(new Set(["choice", "written"]));
     expect(new Set(prompts).size).toBe(prompts.length);
@@ -204,12 +240,13 @@ test(
     expect(verdicts.filter((v) => v === "correct")).toHaveLength(
       verdicts.length - 1,
     );
-    // Every objective passed, so the unit is finished and out of state.json.
+    // Every objective passed, and the gate retained them: the unit is
+    // finished and out of state.json.
     expect(await position()).toBeUndefined();
     const course = await dataRoot.readCourse(COURSE);
     if (course === undefined) throw new Error("The course is gone.");
     expect((await withProgress(dataRoot, course)).progress).toEqual({
-      limits: { status: "passed", retained: 0, slipping: 0 },
+      limits: { status: "passed", retained: 2, slipping: 0 },
       derivative: { status: "not-started" },
     });
     expect(chat.events().at(-1)).not.toMatchObject({ type: "unit_failed" });

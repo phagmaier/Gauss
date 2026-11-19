@@ -46,10 +46,14 @@ const DAY = 24 * 60 * 60 * 1000;
  *   in progress (5 opened last, 3 in its second segment), 4 and 6 not
  *   started. Every answer is a day old or more, so opening a unit not
  *   finished offers review (task 5.4), on objectives of other units too.
+ *   The scripted plan has two segments, so unit 3's check closes it, and
+ *   its gate (task 5.5) asks unit 1's objectives too, unless a review in
+ *   the hour before has answered them.
  * - "Linear algebra for PCA", three units, approved and not started.
  * - "Probability", two units, finished: one passed, one overridden.
  * - "Topology", a draft awaiting review.
- * - "What is a group?", a one-off in progress, in its second segment.
+ * - "What is a group?", a one-off in progress, in its second and last
+ *   segment: its gate asks its own objectives alone.
  * - "The pigeonhole principle", a one-off, passed.
  *
  * @param plan the plan of a unit that has started; it must have at least two

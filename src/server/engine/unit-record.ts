@@ -20,7 +20,9 @@
 // recorded with its mode and this unit, and the position's open question and
 // detour are its own. It can ask about another unit's objectives, so the
 // evidence kept here is on the plan's objectives, those of the assessment,
-// and those of every answer given in this unit's thread.
+// and those of every answer given in this unit's thread. Once the unit's
+// gate (task 5.5) is offered, the position says so until the unit
+// finishes, since it is offered once.
 //
 // A dispute of one of the unit's answers (task 3.8) is written here when the
 // unit's chat is open, so it lands in order with the chat's own writes; one
@@ -141,16 +143,21 @@ export interface UnitRecord {
   /** Starts the segment's check: this check is the evidence from here on. */
   startCheck(): Promise<void>;
   /**
-   * Offers the assessment on its card: it is kept in the position, and the
-   * evidence on its objectives is taken from `log`, the course's evidence
-   * as read now.
+   * Offers the assessment on its card: it is kept in the position, a gate
+   * with the mark that it was offered, and the evidence on its objectives
+   * is taken from `log`, the course's evidence as read now. `tell` tells the
+   * page, once it is written.
    */
   offerAssessment(
     run: AssessmentRun,
     log: readonly EvidenceEntry[],
+    tell: () => void,
   ): Promise<void>;
-  /** Starts the assessment offered: its answers are the evidence from here on. */
-  startAssessment(): Promise<AssessmentRun>;
+  /**
+   * Starts the assessment offered: its answers are the evidence from here
+   * on. `tell` tells the page, once it is written.
+   */
+  startAssessment(tell: (run: AssessmentRun) => void): Promise<AssessmentRun>;
   /**
    * Ends the assessment, every objective asked or skipped: takes it out of
    * the position with its detour, withdraws its open question with nothing
@@ -198,11 +205,12 @@ export interface UnitRecord {
     withdrawn: OpenQuestion | undefined;
   }>;
   /**
-   * Ends the unit and takes it out of state.json: passed, or overridden,
-   * after recording an override of the objectives not passed.
+   * At the unit's end, the learner moves on without these objectives:
+   * records an override of them, and tells the page.
    */
-  finish(status: "passed"): Promise<void>;
-  finish(status: "overridden", objectives: readonly string[]): Promise<void>;
+  moveOn(objectives: readonly string[]): Promise<void>;
+  /** Ends the unit and takes it out of state.json, passed or overridden. */
+  finish(status: "passed" | "overridden"): Promise<void>;
 }
 
 /**
@@ -272,6 +280,8 @@ export async function openUnitRecord(options: {
       ...(position.packageRequest === undefined
         ? {}
         : { packageRequest: position.packageRequest }),
+      // The gate is offered once, whatever position the chat gives.
+      ...(position.gated === true ? { gated: true as const } : {}),
     };
     await dataRoot.writePosition(courseId, unitId, next);
     const was = position;
@@ -381,17 +391,7 @@ export async function openUnitRecord(options: {
     return { question, entry };
   }
 
-  async function finish(
-    how: "passed" | "overridden",
-    objectives: readonly string[] = [],
-  ): Promise<void> {
-    if (how === "overridden") {
-      await append({
-        kind: "override",
-        recordedAt: now().toISOString(),
-        objectives: [...objectives],
-      });
-    }
+  async function finish(how: "passed" | "overridden"): Promise<void> {
     const { packageRequest, ...closed } = position;
     const completion: PackageCompletion | undefined =
       packageRequest === undefined
@@ -522,24 +522,27 @@ export async function openUnitRecord(options: {
       checkAnswers = [];
     },
 
-    async startAssessment() {
+    async startAssessment(tell) {
       const offered = position.assessment;
       if (offered?.stage !== "offered") {
         throw new Error("No assessment is offered.");
       }
       const from = (await dataRoot.readEvidence(courseId)).length;
       const run: AssessmentRun = { ...offered, stage: "on", from };
-      await move({ ...position, assessment: run }, () =>
-        emit(assessmentEvent(run)),
-      );
+      await move({ ...position, assessment: run }, () => tell(run));
       runAnswers = [];
       return run;
     },
 
-    async offerAssessment(run, log) {
+    async offerAssessment(run, log, tell) {
       readAgain(log, run);
-      await move({ ...position, assessment: run }, () =>
-        emit(assessmentEvent(run)),
+      await move(
+        {
+          ...position,
+          assessment: run,
+          ...(run.mode === "gate" ? { gated: true as const } : {}),
+        },
+        tell,
       );
     },
 
@@ -649,6 +652,16 @@ export async function openUnitRecord(options: {
       return { objectives, withdrawn };
     },
 
+    async moveOn(objectives) {
+      await append({
+        kind: "override",
+        recordedAt: now().toISOString(),
+        objectives: [...objectives],
+      });
+      emit(status());
+      emit({ type: "moved_on", objectives: [...objectives] });
+    },
+
     finish,
   };
 }
@@ -708,13 +721,32 @@ export function detourEvent(detour: Detour): PageEvent {
   };
 }
 
-/** An `assessment` event: its card offered, or it began, or the chat opened with it. */
-export function assessmentEvent(run: AssessmentRun): PageEvent {
-  return {
-    type: "assessment",
+/**
+ * An `assessment` event: its card offered, or it began, or the chat opened
+ * with it. A gate's says how many of its objectives are the unit's own, and
+ * from which of the course's `units` the rest come.
+ */
+export function assessmentEvent(
+  run: AssessmentRun,
+  unitId: string,
+  units: readonly { id: string }[],
+): PageEvent {
+  const event = {
+    type: "assessment" as const,
     mode: run.mode,
     stage: run.stage,
     count: run.objectives.length,
+  };
+  if (run.mode !== "gate") return event;
+  const others = run.objectives.filter((o) => o.unit !== unitId);
+  const from = new Set(
+    others.map((o) => units.findIndex((u) => u.id === o.unit) + 1),
+  );
+  from.delete(0);
+  return {
+    ...event,
+    own: run.objectives.length - others.length,
+    from: [...from].sort((a, b) => a - b),
   };
 }
 

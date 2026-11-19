@@ -47,6 +47,7 @@ import {
   assessmentDetourStep,
   assessmentEndMarker,
   assessmentMarker,
+  type ClosingCardRow,
   closingCard,
   detourSays,
   divided,
@@ -59,6 +60,7 @@ import {
   type Placement,
   phaseMarker,
   placement,
+  SKIP_GATE_ASKS,
   skipLabel,
   whereInUnit,
 } from "./session.ts";
@@ -69,6 +71,7 @@ import {
   emptyTimeline,
   type Item,
   reduce,
+  standingCard,
   type Timeline,
   type UnitEndItem,
 } from "./timeline.ts";
@@ -96,7 +99,9 @@ export function Session(props: { courseId: string; unitId: string }) {
   /** Each new value opens the unit again and follows its new chat. */
   const [attempt, setAttempt] = useState(0);
   const [outlineOpen, setOutlineOpen] = useState(false);
-  const [confirming, setConfirming] = useState<"move-on" | "finish">();
+  const [confirming, setConfirming] = useState<
+    "move-on" | "finish" | "skip-gate"
+  >();
   /** The artifact open in the side pane. */
   const [pane, setPane] = useState<ArtifactItem>();
   /** The open question the learner hid, by its key. */
@@ -226,10 +231,17 @@ export function Session(props: { courseId: string; unitId: string }) {
   const where =
     plan === null
       ? null
-      : whereInUnit(plan, timeline.position, timeline.finished);
+      : whereInUnit(
+          plan,
+          timeline.position,
+          timeline.finished,
+          timeline.assessment,
+        );
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
+  // The closing card whose steps can be taken, if one stands.
+  const standing = standingCard(timeline.items);
   const asked = openQuestion(timeline);
   // Hidden until shown again, or until another question is posted (task 3.21).
   const hidden = asked !== undefined && asked.key === hiddenKey;
@@ -248,8 +260,12 @@ export function Session(props: { courseId: string; unitId: string }) {
       timeline={timeline}
       busy={busy}
       confirming={confirming === "move-on"}
+      confirmingSkip={confirming === "skip-gate"}
       place={place}
       onConfirm={(asking) => setConfirming(asking ? "move-on" : undefined)}
+      onConfirmSkip={(asking) =>
+        setConfirming(asking ? "skip-gate" : undefined)
+      }
       onAct={(route) => void act(route)}
       onCourse={toCourse}
       onNext={toNext}
@@ -324,7 +340,7 @@ export function Session(props: { courseId: string; unitId: string }) {
                       plan={plan}
                       place={place}
                       busy={busy}
-                      current={item === lastCard(timeline)}
+                      current={item === standing}
                       // By file, which names one artifact of the course
                       // across restarts, where keys are numbered afresh.
                       showing={
@@ -363,6 +379,10 @@ export function Session(props: { courseId: string; unitId: string }) {
                       }
                       onStartAssessment={() => act("assessment/start")}
                       onSkipAssessment={() => act("assessment/skip")}
+                      confirmingSkip={confirming === "skip-gate"}
+                      onConfirmSkip={(asking) =>
+                        setConfirming(asking ? "skip-gate" : undefined)
+                      }
                       onCourse={toCourse}
                       onNext={toNext}
                     />
@@ -656,7 +676,7 @@ function ThreadItem(props: {
   plan: Plan | null;
   place: Placement | undefined;
   busy: boolean;
-  /** The last closing card, the only one whose steps can be taken. */
+  /** The closing card standing at the thread's end, the only one whose steps can be taken. */
   current: boolean;
   /** This is the artifact the side pane shows. */
   showing: boolean;
@@ -681,6 +701,9 @@ function ThreadItem(props: {
   offered: boolean;
   onStartAssessment(): void;
   onSkipAssessment(): void;
+  /** "Skip the gate" asks before it skips. */
+  confirmingSkip: boolean;
+  onConfirmSkip(asking: boolean): void;
   onCourse(): void;
   onNext: (() => void) | undefined;
 }) {
@@ -761,8 +784,11 @@ function ThreadItem(props: {
         return (
           <AssessmentCard
             item={item}
+            title={props.place?.title}
             live={props.offered}
             busy={props.busy}
+            confirmingSkip={props.confirmingSkip}
+            onConfirmSkip={props.onConfirmSkip}
             onStart={props.onStartAssessment}
             onSkip={props.onSkipAssessment}
           />
@@ -932,7 +958,7 @@ function ClosingCard(props: {
     );
   }
   let foot: ReactNode;
-  if (card.passed) {
+  if (!view.steps) {
     foot = (
       <div className="qa-foot">
         {place === undefined || place.next === null ? (
@@ -1009,19 +1035,34 @@ function ClosingCard(props: {
     <div className="qa-card ue live">
       {head}
       <div className="qa-prompt">{title}</div>
-      <ol className="ue-rows">
-        {view.rows.map((row) => (
-          <li key={row.id}>
-            <span>
-              <InlineProse text={row.statement} />
-            </span>
-            <span className={`st ${row.word.className}`}>{row.word.text}</span>
-            {row.why === undefined ? null : <small>{row.why}</small>}
-          </li>
-        ))}
-      </ol>
+      <CardRows rows={view.rows} />
+      {view.others.length === 0 ? null : (
+        <div className="ue-sec">
+          <div className="cs-h">
+            <span>Also asked, from other units</span>
+          </div>
+          <CardRows rows={view.others} />
+        </div>
+      )}
       {foot}
     </div>
+  );
+}
+
+/** A closing card's rows: each objective with its status, and why when it did not pass. */
+function CardRows(props: { rows: ClosingCardRow[] }) {
+  return (
+    <ol className="ue-rows">
+      {props.rows.map((row) => (
+        <li key={row.id}>
+          <span>
+            <InlineProse text={row.statement} />
+          </span>
+          <span className={`st ${row.word.className}`}>{row.word.text}</span>
+          {row.why === undefined ? null : <small>{row.why}</small>}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -1032,24 +1073,52 @@ function ClosingCard(props: {
  */
 function AssessmentCard(props: {
   item: AssessmentItem;
+  /** The unit's title, which the gate's card names. */
+  title: string | undefined;
   live: boolean;
   busy: boolean;
+  confirmingSkip: boolean;
+  onConfirmSkip(asking: boolean): void;
   onStart(): void;
   onSkip(): void;
 }) {
   const card = assessmentCard(props.item);
+  const gate = props.item.mode === "gate";
   return (
     <div className={props.live ? "qa-card as live" : "qa-card as"}>
       <div className="q-count">
         <b>{card.title}</b>
         {card.questions}
       </div>
+      {gate && props.title !== undefined ? (
+        <div className="qa-prompt">{props.title}</div>
+      ) : null}
       {card.says.map((line) => (
         <p key={line} className="as-says">
           {line}
         </p>
       ))}
-      {props.live ? (
+      {!props.live ? null : gate ? (
+        // The gate is offered once, so skipping it asks first.
+        <div className="qa-foot">
+          <SkipGate
+            busy={props.busy}
+            confirming={props.confirmingSkip}
+            onConfirm={props.onConfirmSkip}
+            onSkip={props.onSkip}
+          />
+          {props.confirmingSkip ? null : (
+            <button
+              type="button"
+              className="btn"
+              disabled={props.busy}
+              onClick={props.onStart}
+            >
+              {card.start}
+            </button>
+          )}
+        </div>
+      ) : (
         <div className="qa-foot">
           <button
             type="button"
@@ -1057,7 +1126,7 @@ function AssessmentCard(props: {
             disabled={props.busy}
             onClick={props.onSkip}
           >
-            Skip
+            {card.skip}
           </button>
           <button
             type="button"
@@ -1068,8 +1137,46 @@ function AssessmentCard(props: {
             {card.start}
           </button>
         </div>
-      ) : null}
+      )}
     </div>
+  );
+}
+
+/** "Skip the gate", which asks once before it skips, on its card and in it. */
+function SkipGate(props: {
+  busy: boolean;
+  confirming: boolean;
+  onConfirm(asking: boolean): void;
+  onSkip(): void;
+}) {
+  return props.confirming ? (
+    <span className="confirm">
+      <span>{SKIP_GATE_ASKS}</span>
+      <button
+        type="button"
+        className="textbtn"
+        disabled={props.busy}
+        onClick={props.onSkip}
+      >
+        Skip the gate
+      </button>
+      <button
+        type="button"
+        className="textbtn"
+        onClick={() => props.onConfirm(false)}
+      >
+        Stay
+      </button>
+    </span>
+  ) : (
+    <button
+      type="button"
+      className="textbtn"
+      disabled={props.busy}
+      onClick={() => props.onConfirm(true)}
+    >
+      Skip the gate
+    </button>
   );
 }
 
@@ -1079,14 +1186,35 @@ function NextStepControl(props: {
   timeline: Timeline;
   busy: boolean;
   confirming: boolean;
+  /** "Skip the gate" asks before it skips. */
+  confirmingSkip: boolean;
   /** Unknown until the course's details are loaded. */
   place: Placement | undefined;
   onConfirm(asking: boolean): void;
+  onConfirmSkip(asking: boolean): void;
   onAct(route: string): void;
   onCourse(): void;
   onNext: (() => void) | undefined;
 }) {
   const { step, busy } = props;
+  const gate = props.timeline.assessment?.mode === "gate";
+  const skip = gate ? (
+    <SkipGate
+      busy={busy}
+      confirming={props.confirmingSkip}
+      onConfirm={props.onConfirmSkip}
+      onSkip={() => props.onAct("assessment/skip")}
+    />
+  ) : (
+    <button
+      type="button"
+      className="textbtn"
+      disabled={busy}
+      onClick={() => props.onAct("assessment/skip")}
+    >
+      {skipLabel(props.timeline)}
+    </button>
+  );
   const next = props.place?.next ?? null;
   switch (step) {
     case null:
@@ -1128,40 +1256,22 @@ function NextStepControl(props: {
         </div>
       );
     case "assessment":
-      return (
-        <div className="pf-act">
-          <button
-            type="button"
-            className="textbtn"
-            disabled={busy}
-            onClick={() => props.onAct("assessment/skip")}
-          >
-            {skipLabel(props.timeline)}
-          </button>
-        </div>
-      );
+      return <div className="pf-act">{skip}</div>;
     case "assessment-detour": {
-      const { label, skip } = assessmentDetourStep(props.timeline);
+      const step = assessmentDetourStep(props.timeline);
       return (
         <div className="pf-act">
-          <button
-            type="button"
-            className="btn sm"
-            disabled={busy}
-            onClick={() => props.onAct("another-question")}
-          >
-            {label}
-          </button>
-          {skip ? (
+          {props.confirmingSkip ? null : (
             <button
               type="button"
-              className="textbtn"
+              className="btn sm"
               disabled={busy}
-              onClick={() => props.onAct("assessment/skip")}
+              onClick={() => props.onAct("another-question")}
             >
-              {skipLabel(props.timeline)}
+              {step.label}
             </button>
-          ) : null}
+          )}
+          {step.skip ? skip : null}
         </div>
       );
     }

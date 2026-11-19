@@ -1394,6 +1394,28 @@ built until its task is done; `architecture.md` says what is.
   an objective not passed, by the steps that exist.
 - **No `close_unit` tool**: the engine ends a unit as it closes a segment
   ("Session engine": the learner starts, the engine closes).
+- **No closing card before it when every objective passed** (task 5.5, the
+  agent's, from piece 16): the card comes when objectives did not pass.
+  One standing when a dispute or another unit's answer passes the rest is
+  shown again first, as passed; left as it was, it offered steps the
+  engine refused while the gate waited.
+- **A message leaves its card waiting**, where it skips review's (the
+  agent's): the gate is offered once and its skip asks first, so a
+  question to the tutor must not throw it away.
+- **After it, the closing card's steps cover only what it left not
+  passed** (the agent's): what the learner moved on from at the card
+  before it was declined once already, and offering it again would make
+  them move on twice. So moving on in the segment that goes over the rest
+  again finishes the unit.
+- **"Passed by testing out"** is read as an unassisted correct test answer
+  among those since the objective's last miss (`tested` in `status.ts`,
+  as `cold` is for retained), so a pass resting partly on an unsure test
+  answer is left out too (the agent's; 5.6 may refine it).
+- **Other units, not only earlier ones**: the pick is review's over every
+  other unit, and several units can be in progress, so the page says
+  "other units" where piece 16 said "earlier". The hour rule applies to
+  them and not to the unit's own, which were passed minutes before by
+  design (the agent's).
 
 **Testing out**
 
