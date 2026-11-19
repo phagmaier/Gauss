@@ -17,13 +17,13 @@ import {
 } from "react";
 import { Hello, PageEvent } from "../shared/events.ts";
 import { compareProfiles } from "../shared/profile.ts";
+import { emptyTimeline, type Item, reduce } from "../shared/timeline.ts";
 import { post } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { Diagram, UnitList } from "./Curriculum.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
-import { emptyTimeline, type Item, reduce } from "./timeline.ts";
 
 /** Asked by the page itself; the tutor's session starts with the answer. */
 const OPENING_QUESTION =

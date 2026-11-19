@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { requirement } from "../shared/packages.ts";
-import type { PackagesItem } from "./timeline.ts";
+import type { PackagesItem } from "../shared/timeline.ts";
 
 /** A command as a shell would read it: a word with a space or a quote quoted. */
 export function commandLine(words: readonly string[]): string {

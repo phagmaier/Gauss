@@ -40,37 +40,6 @@ cheat sheets (stage 6).
 tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
-### 5.10 Transcript export
-
-- Status: todo
-- Depends on: 5.9
-- Why: the brief's "every session can be exported as a document".
-- Do: a route that answers with one standalone HTML document of a unit's
-  whole thread, each session under its date: the tutor's text, the
-  learner's messages, each question with its answer, confidence, grade
-  and, on a miss, the right answer, the markers (phases, detours,
-  review, the gate, a fresh start), artifacts by their titles, and the
-  files the tutor wrote. Transcripts hold no grading material, so
-  neither does the document. It is built from the sessions' page events
-  with the thread logic the page uses (`src/web/timeline.ts` is pure;
-  move what both sides need to `src/shared/`). The tutor's Markdown is
-  rendered on the server (unified with remark-parse, remark-gfm,
-  remark-math, remark-rehype, rehype-katex and rehype-stringify; raw
-  HTML in the text is dropped), and KaTeX's styles and fonts are written
-  into the file by 5.9's step, so the document has no script and loads
-  nothing. It carries the page's colours, is set in the reader's own
-  font, and prints in dark text on white, as piece 17 shows.
-  "Export transcript" in the unit's outline downloads it, in a finished
-  unit too.
-- Done when: tests cover the Markdown's rendering (math drawn, a table,
-  raw HTML and a script dropped, no address to load in the output); a
-  transcript holding each kind of event against the document's parts,
-  two sessions, a fresh start, and the route.
-  `mise run check` passes; on `pnpm dev:fake` the exported file of a
-  unit with math, a missed question and a detour opens from the folder
-  and reads as the thread does, and the browser is closed before the
-  server stops.
-
 ### 5.11 Style changes
 
 - Status: todo

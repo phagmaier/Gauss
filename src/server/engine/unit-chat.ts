@@ -332,6 +332,8 @@ export interface UnitChat {
   ): Promise<void>;
   /** Lets the notes writer read the latest transcript and handoff without entering the chat queue. */
   settleNotesContext(): Promise<void>;
+  /** Waits for transcript writes, not for the tutor's turn or handoff. */
+  flushTranscript(): Promise<void>;
   /** Resolves once the chat has opened and every turn sent so far has finished. */
   settled(): Promise<void>;
   close(): Promise<void>;
@@ -3146,6 +3148,7 @@ function createUnitChat(
       await handoffs?.settled();
       await log.flushed();
     },
+    flushTranscript: log.flushed,
     async settled() {
       await loading;
       await install?.done;

@@ -42,6 +42,18 @@ import {
 import { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
+import {
+  type ArtifactItem,
+  type AssessmentItem,
+  conversations,
+  emptyTimeline,
+  type Item,
+  reduce,
+  standingCard,
+  type TestResultItem,
+  type Timeline,
+  type UnitEndItem,
+} from "../shared/timeline.ts";
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { type DisputeApi, disputeApi } from "./Dispute.tsx";
@@ -77,18 +89,6 @@ import {
   testResultCard,
   whereInUnit,
 } from "./session.ts";
-import {
-  type ArtifactItem,
-  type AssessmentItem,
-  conversations,
-  emptyTimeline,
-  type Item,
-  reduce,
-  standingCard,
-  type TestResultItem,
-  type Timeline,
-  type UnitEndItem,
-} from "./timeline.ts";
 
 const enc = encodeURIComponent;
 
@@ -327,6 +327,7 @@ export function Session(props: { courseId: string; unitId: string }) {
                   courseId={courseId}
                   courseTitle={courseTitle}
                   place={place}
+                  transcriptUrl={path("transcript")}
                   segments={outline(plan, timeline.position, timeline.finished)}
                   // A unit that is open and not finished has a tutor to replace.
                   canStartFresh={
@@ -632,6 +633,7 @@ function Outline(props: {
   courseTitle: string;
   /** Unknown until the course's details are loaded. */
   place: Placement | undefined;
+  transcriptUrl: string;
   segments: OutlineSegment[];
   canStartFresh: boolean;
   /** The tutor is writing, so starting fresh waits. */
@@ -676,6 +678,14 @@ function Outline(props: {
           </li>
         ))}
       </ol>
+      <div className="uo-fresh">
+        <a className="textbtn" href={props.transcriptUrl}>
+          Export transcript
+        </a>
+        <p>
+          This unit's whole conversation as one document, to keep or to print.
+        </p>
+      </div>
       {props.canStartFresh ? (
         <div className="uo-fresh">
           {asking ? (

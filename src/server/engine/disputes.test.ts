@@ -8,7 +8,7 @@ import type { EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { ChoiceLetter, Confidence } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
-import { emptyTimeline, reduce, standingCard } from "../../web/timeline.ts";
+import { emptyTimeline, reduce, standingCard } from "../../shared/timeline.ts";
 import {
   createFakeBackend,
   type FakeReply,

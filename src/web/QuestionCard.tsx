@@ -41,6 +41,7 @@ import {
   type QuestionView,
   type WrittenAnswer,
 } from "../shared/question.ts";
+import type { Graded, QuestionItem } from "../shared/timeline.ts";
 import { type DisputeApi, DisputePart, VerdictNow } from "./Dispute.tsx";
 import { standing } from "./dispute.ts";
 import { CopyPath } from "./Frame.tsx";
@@ -52,7 +53,6 @@ import {
   MathText,
   Prose,
 } from "./prose.tsx";
-import type { Graded, QuestionItem } from "./timeline.ts";
 import { outputLines, unsettledLine } from "./what-i-know.ts";
 
 type ChoiceView = Extract<QuestionView, { kind: "choice" }>;

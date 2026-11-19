@@ -57,9 +57,10 @@ Gauss/
 
 Dependencies, kept few: `@anthropic-ai/claude-agent-sdk`, `zod` (the SDK's
 tool helper requires it), Hono with `@hono/node-server`, React with Vite,
-KaTeX, react-markdown with remark-gfm, remark-math and rehype-katex; unified,
-rehype-parse and rehype-stringify for standalone documents, with `@types/hast`
-for the document tree; Vitest and Biome; `@anthropic-ai/sandbox-runtime`,
+KaTeX, react-markdown with remark-gfm, remark-math and rehype-katex; unified
+with rehype-parse and rehype-stringify for standalone documents, plus
+remark-parse and remark-rehype for transcript Markdown and `@types/hast`
+for document trees; Vitest and Biome; `@anthropic-ai/sandbox-runtime`,
 the runtime developed for Claude Code's sandbox. It runs the engine's
 commands and on Linux needs `bwrap`, `socat` and `rg` on the machine. Python side:
 SymPy, with `antlr4-python3-runtime` 4.11 for its LaTeX parser, and a PDF
@@ -253,6 +254,13 @@ also before it reaches the backend.
   chat's log starts with its earlier sessions' transcripts, so the thread
   survives restarts; the page marks each later session, and does not show
   twice what the reopened chat repeats. Intakes have no transcripts.
+  **Export transcript** in the outline downloads the unit's recorded thread,
+  including for a finished unit. The read-only route waits for pending
+  transcript writes but does not open a chat or wait for a tutor turn.
+  The document replays the page events through `src/shared/timeline.ts`
+  and groups the result under the dates of the sittings. It embeds KaTeX
+  styles and fonts, leaves out raw Markdown HTML and link targets, names
+  artifacts without embedding them, and reads no private grading material.
 
 ### Phases
 

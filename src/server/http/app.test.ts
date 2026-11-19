@@ -18,7 +18,7 @@ import type {
   CodeQuestion,
   WrittenQuestion,
 } from "../../shared/question.ts";
-import { emptyTimeline, reduce } from "../../web/timeline.ts";
+import { emptyTimeline, reduce } from "../../shared/timeline.ts";
 import {
   createFakeBackend,
   type FakeReply,
@@ -838,6 +838,188 @@ async function unitState() {
   const { tutorSessionId: _, ...rest } = position;
   return rest;
 }
+
+test("downloads the recorded thread of a finished unit without opening a chat", async () => {
+  const { app, dataRoot, units } = setUp([]);
+  await approvedCourse();
+  const first = "2026-11-15T12:00:00.000Z";
+  const second = "2026-11-16T13:00:00.000Z";
+  const question = {
+    kind: "choice" as const,
+    id: "q1",
+    number: 1,
+    prompt: QUESTION.prompt,
+    choices: QUESTION.choices,
+  };
+  await dataRoot.appendTranscript(COURSE, "vectors", 1, [
+    { type: "session", startedAt: first },
+    { type: "assessment", mode: "test-out", stage: "on", count: 2 },
+    { type: "assessment_end", mode: "test-out", skipped: true, statuses: {} },
+    {
+      type: "test_result",
+      objectives: [{ objective: "basis-image", passed: false, answers: [] }],
+    },
+    { type: "test_answered", skipped: [] },
+    { type: "phase", phase: "teach", segment: 0 },
+    { type: "turn_start" },
+    {
+      type: "tutor_text",
+      text: [
+        "A basis of $\\mathbb{R}^2$",
+        "$$A = \\begin{pmatrix}1 & 0 \\\\ 0 & 1\\end{pmatrix}$$",
+        "",
+        "| Input | Image |",
+        "| --- | --- |",
+        "| $e_1$ | **First column** |",
+        "",
+        '<script>alert("not included")</script>',
+        "",
+        '<img src="https://example.invalid/raw.png">',
+        "",
+        "![Matrix sketch](https://example.invalid/sketch.png) " +
+          "[Further reading](https://example.invalid/reading)",
+      ].join("\n"),
+    },
+    { type: "artifact", title: "Basis & image", file: "1-basis.html" },
+    { type: "file_written", path: "examples/map.py" },
+    { type: "turn_end", outcome: "done" },
+    { type: "phase", phase: "discuss", segment: 0 },
+    { type: "learner", text: "What about <one vector>?" },
+    {
+      type: "packages_requested",
+      requestId: "packages",
+      packages: [{ name: "numpy", version: ">=2" }],
+      commands: [["uv", "add", "numpy>=2"]],
+      folder: "/workspace",
+    },
+    { type: "packages_answered", requestId: "packages", outcome: "declined" },
+    { type: "turn_start" },
+    { type: "turn_end", outcome: "interrupted" },
+    { type: "phase", phase: "check", segment: 0 },
+    { type: "question", question },
+    { type: "learner", id: "clarify", text: "Does the order matter?" },
+    { type: "tutor_text", text: "Read the columns from left to right." },
+    { type: "judging", learnerId: "clarify", number: 1 },
+    {
+      type: "judged",
+      learnerId: "clarify",
+      number: 1,
+      verdict: "clarification",
+    },
+    {
+      type: "graded",
+      questionId: "q1",
+      answer: {
+        kind: "choice",
+        questionId: "q1",
+        choice: "B",
+        confidence: "90",
+      },
+      verdict: "incorrect",
+      correctChoice: "A",
+      assisted: false,
+    },
+    { type: "detour", questionId: "q1", number: 1 },
+    { type: "tutor_text", text: "Knowing one image does not fix the map." },
+    { type: "detour_end" },
+  ]);
+  await dataRoot.appendTranscript(COURSE, "vectors", 2, [
+    { type: "session", startedAt: second },
+    { type: "fresh_start", reason: "learner" },
+    { type: "phase", phase: "check", segment: 0 }, // Reopened in the same phase.
+    { type: "assessment", mode: "review", stage: "offered", count: 1 },
+    { type: "assessment", mode: "review", stage: "on", count: 1 },
+    {
+      type: "assessment_end",
+      mode: "review",
+      skipped: false,
+      statuses: { "basis-image": "retained" },
+    },
+    { type: "assessment", mode: "gate", stage: "offered", count: 1 },
+    { type: "assessment", mode: "gate", stage: "on", count: 1 },
+    {
+      type: "question",
+      question: {
+        kind: "code",
+        id: "q2",
+        number: 2,
+        prompt: "Write a matrix-vector multiplication.",
+        files: ["apply.py"],
+      },
+    },
+    {
+      type: "graded",
+      questionId: "q2",
+      answer: {
+        kind: "code",
+        questionId: "q2",
+        confidence: "75",
+        files: [{ path: "apply.py", content: "snapshot source is not shown" }],
+      },
+      verdict: "correct",
+      output: "2 passed",
+      assisted: false,
+    },
+    { type: "assessment_end", mode: "gate", skipped: false, statuses: {} },
+    {
+      type: "unit_end",
+      passed: true,
+      objectives: { "basis-image": "retained" },
+    },
+    { type: "unit_closed", status: "passed" },
+  ]);
+
+  const path = `${UNIT}/transcript`;
+  const response = await app.request(path);
+  expect(response.status).toBe(200);
+  expect(Object.fromEntries(response.headers)).toMatchObject({
+    "content-type": "text/html; charset=utf-8",
+    "content-disposition": 'attachment; filename="vectors-transcript.html"',
+    "cache-control": "no-store",
+  });
+  expect(units.get(COURSE, "vectors")).toBeUndefined();
+  const html = await response.text();
+  expect(html).toContain("<h1>Vectors and linear maps</h1>");
+  expect(html).toContain("Linear algebra for PCA");
+  const sittings = html.split(/<section class="session">/);
+  expect(sittings).toHaveLength(3);
+  const [, before = "", after = ""] = sittings;
+  expect(before).toContain(`datetime="${first}"`);
+  expect(before).toContain('class="katex-display"');
+  expect(before).toContain("<th>Input</th>");
+  expect(before).toContain("<strong>First column</strong>");
+  expect(before).toContain("Matrix sketch");
+  expect(before).toContain("Further reading");
+  expect(before).toContain("Basis &amp; image");
+  expect(before).toContain("examples/map.py");
+  expect(before).toContain("What about &lt;one vector&gt;?");
+  expect(before).toContain("Test result");
+  expect(before).toContain("Learn the whole unit.");
+  expect(before).toContain("Packages requested</b>: numpy&gt;=2. Not now.");
+  expect(before).toContain("Stopped.");
+  expect(before).toMatch(
+    /Question 1 was answered further down[\s\S]*Does the order matter\?[\s\S]*clarification, not help[\s\S]*Your answer/,
+  );
+  expect(before).toMatch(
+    /Not quite[\s\S]*Your answer[\s\S]*B\. The image of one vector[\s\S]*90% sure[\s\S]*Correct answer[\s\S]*A\. The images of a basis[\s\S]*Detour[\s\S]*Knowing one image/,
+  );
+  expect(after).toContain(`datetime="${second}"`);
+  expect(after).toMatch(
+    /Fresh start[\s\S]*Review[\s\S]*Unit gate[\s\S]*Question 2[\s\S]*75% sure[\s\S]*2 passed[\s\S]*Unit finished/,
+  );
+  expect(after).not.toContain(">Check<");
+  expect(after).not.toContain("Correct answer");
+  expect(html).toContain("data:font/woff2;base64,");
+  expect(html).not.toMatch(
+    /<script\b|<img\b|(?:href|src)=|example\.invalid|snapshot source|1-basis\.html/,
+  );
+  expect(
+    (await app.request(path.replace("/vectors/", "/missing/"))).status,
+  ).toBe(404);
+  expect((await app.request(`http://gauss.example.com${path}`)).status).toBe(
+    403,
+  );
+});
 
 test("a finished unit writes only on request, retries a failure and replaces its notes", async () => {
   const first =

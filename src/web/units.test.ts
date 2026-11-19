@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import type { Unit } from "../shared/curriculum.ts";
-import { buildsOn, changedUnits } from "./units.ts";
+import { changedUnits, type Unit } from "../shared/curriculum.ts";
+import { buildsOn } from "./units.ts";
 
 const unit = (id: string, prerequisites: string[] = []): Unit => ({
   id,

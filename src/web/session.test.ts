@@ -5,6 +5,15 @@ import type { CourseWithProgress } from "../shared/library.ts";
 import type { Plan } from "../shared/plan.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import {
+  emptyTimeline,
+  type Item,
+  type JudgmentItem,
+  type Position,
+  reduce,
+  standingCard,
+  type Timeline,
+} from "../shared/timeline.ts";
+import {
   assessmentCard,
   assessmentEndMarker,
   assessmentMarker,
@@ -20,15 +29,6 @@ import {
   skipLabel,
   whereInUnit,
 } from "./session.ts";
-import {
-  emptyTimeline,
-  type Item,
-  type JudgmentItem,
-  type Position,
-  reduce,
-  standingCard,
-  type Timeline,
-} from "./timeline.ts";
 
 const PLAN: Plan = {
   objectives: [

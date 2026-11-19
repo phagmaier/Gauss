@@ -7,7 +7,7 @@ import {
   emptyTimeline,
   reduce,
   type Timeline,
-} from "./timeline.ts";
+} from "../shared/timeline.ts";
 
 const QUESTION = {
   kind: "choice" as const,

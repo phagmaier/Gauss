@@ -17,18 +17,18 @@ import type { AnswerEvidence } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { Confidence } from "../../shared/question.ts";
 import {
+  emptyTimeline,
+  reduce,
+  type TestResultItem,
+  type Timeline,
+} from "../../shared/timeline.ts";
+import {
   finishedByTest,
   nextStep,
   outline,
   testResultCard,
   whereInUnit,
 } from "../../web/session.ts";
-import {
-  emptyTimeline,
-  reduce,
-  type TestResultItem,
-  type Timeline,
-} from "../../web/timeline.ts";
 import type { EngineTurn, SessionOptions } from "../backends/backend.ts";
 import {
   createFakeBackend,

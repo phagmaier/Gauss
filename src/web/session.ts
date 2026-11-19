@@ -12,14 +12,6 @@ import { firstTaught, type Plan, skipping } from "../shared/plan.ts";
 import { confidenceLabel } from "../shared/question.ts";
 import { isFinished, type ObjectiveStatus } from "../shared/status.ts";
 import {
-  AGAIN,
-  type Mark,
-  type Numbered,
-  nextInOrder,
-  progressOf,
-  segmentStand,
-} from "./progress.ts";
-import {
   type AssessmentEndItem,
   type AssessmentItem,
   type Item,
@@ -30,7 +22,15 @@ import {
   type TestResultItem,
   type Timeline,
   type UnitEndItem,
-} from "./timeline.ts";
+} from "../shared/timeline.ts";
+import {
+  AGAIN,
+  type Mark,
+  type Numbered,
+  nextInOrder,
+  progressOf,
+  segmentStand,
+} from "./progress.ts";
 
 type Finished = Timeline["finished"];
 

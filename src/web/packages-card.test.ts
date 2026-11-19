@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
+import type { PackagesItem } from "../shared/timeline.ts";
 import { commandLine, PackagesCard } from "./PackagesCard.tsx";
-import type { PackagesItem } from "./timeline.ts";
 
 test("a command is shown as a shell would read it: plain words as they are, others quoted", () => {
   expect(

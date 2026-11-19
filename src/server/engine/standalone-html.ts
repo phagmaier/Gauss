@@ -418,7 +418,7 @@ function proseMath(
 
 let katexCss: string | undefined;
 
-function embeddedKatexCss(): string {
+export function embeddedKatexCss(): string {
   if (katexCss !== undefined) return katexCss;
   const file = createRequire(import.meta.url).resolve(
     "katex/dist/katex.min.css",
@@ -437,7 +437,7 @@ function embeddedKatexCss(): string {
     /@import\b|\burl\s*\((?!data:font\/woff2;base64,)/i.test(embedded)
   ) {
     throw new Error(
-      "Could not package the installed KaTeX fonts for offline notes.",
+      "Could not package the installed KaTeX fonts for an offline document.",
     );
   }
   katexCss = embedded;

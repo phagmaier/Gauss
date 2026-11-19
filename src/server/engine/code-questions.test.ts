@@ -20,8 +20,8 @@ import {
 } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";
+import { emptyTimeline, reduce } from "../../shared/timeline.ts";
 import { nextStep } from "../../web/session.ts";
-import { emptyTimeline, reduce } from "../../web/timeline.ts";
 import { answerLine } from "../../web/what-i-know.ts";
 import {
   createFakeBackend,

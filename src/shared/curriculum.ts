@@ -39,6 +39,35 @@ export const Unit = z.object({
 export type Unit = z.infer<typeof Unit>;
 
 /**
+ * The ids of the units a revision changed: new ones, and those whose title,
+ * goal or prerequisites differ from the unit with the same id before. Units
+ * are matched by id, which the tutor is asked to keep.
+ */
+export function changedUnits(
+  units: readonly Unit[],
+  previous: readonly Unit[] | undefined,
+): Set<string> {
+  if (previous === undefined) return new Set();
+  const before = new Map(previous.map((u) => [u.id, u]));
+  const same = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length &&
+    [...a].sort().join("\n") === [...b].sort().join("\n");
+  return new Set(
+    units
+      .filter((u) => {
+        const was = before.get(u.id);
+        return (
+          was === undefined ||
+          was.title !== u.title ||
+          was.goal !== u.goal ||
+          !same(was.prerequisites, u.prerequisites)
+        );
+      })
+      .map((u) => u.id),
+  );
+}
+
+/**
  * A unit as curriculum.json keeps it: as proposed, plus its plan once it has
  * started. The plan is optional so that units not yet started, and every file
  * written before plans existed, still parse.

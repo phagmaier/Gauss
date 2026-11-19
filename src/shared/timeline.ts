@@ -7,21 +7,20 @@
 // conversation is replaced by a new one (task 2.14), a marker says so, and
 // the thread before it is shown as earlier conversations.
 
-import type { Slug } from "../shared/course.ts";
-import type { Unit } from "../shared/curriculum.ts";
-import type { ShownDispute } from "../shared/dispute.ts";
-import type { PageEvent, TestShown } from "../shared/events.ts";
-import type { AssessmentMode } from "../shared/evidence.ts";
-import type { PackageSpec, PackagesOutcome } from "../shared/packages.ts";
-import type { Plan } from "../shared/plan.ts";
+import type { Slug } from "./course.ts";
+import { changedUnits, type Unit } from "./curriculum.ts";
+import type { ShownDispute } from "./dispute.ts";
+import type { PageEvent, TestShown } from "./events.ts";
+import type { AssessmentMode } from "./evidence.ts";
+import type { PackageSpec, PackagesOutcome } from "./packages.ts";
+import type { Plan } from "./plan.ts";
 import type {
   AnswerSubmission,
   GradedAnswer,
   QuestionView,
-} from "../shared/question.ts";
-import type { Phase } from "../shared/state.ts";
-import type { ObjectiveStatus } from "../shared/status.ts";
-import { changedUnits } from "./units.ts";
+} from "./question.ts";
+import type { Phase } from "./state.ts";
+import type { ObjectiveStatus } from "./status.ts";
 
 export type Graded = Extract<PageEvent, { type: "graded" }>;
 

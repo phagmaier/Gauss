@@ -13,6 +13,7 @@ import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { Confidence } from "../../shared/question.ts";
+import { emptyTimeline, reduce, type Timeline } from "../../shared/timeline.ts";
 import {
   assessmentCard,
   assessmentDetourStep,
@@ -24,7 +25,6 @@ import {
   openQuestion,
   whereInUnit,
 } from "../../web/session.ts";
-import { emptyTimeline, reduce, type Timeline } from "../../web/timeline.ts";
 import type { EngineTurn } from "../backends/backend.ts";
 import {
   createFakeBackend,

@@ -18,13 +18,13 @@ import type { Plan } from "../../shared/plan.ts";
 import type { ChoiceLetter, Confidence } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
-import { nextStep } from "../../web/session.ts";
 import {
   conversations,
   emptyTimeline,
   reduce,
   type Timeline,
-} from "../../web/timeline.ts";
+} from "../../shared/timeline.ts";
+import { nextStep } from "../../web/session.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import {
   createFakeBackend,

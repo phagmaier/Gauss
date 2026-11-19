@@ -39,6 +39,7 @@ import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { Notes } from "../engine/notes.ts";
 import { STANDALONE_HTML_POLICY } from "../engine/standalone-html.ts";
+import { renderTranscript } from "../engine/transcript-html.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { FileOpener } from "../open-file.ts";
 import type { Backup } from "../record/backup.ts";
@@ -334,6 +335,33 @@ export function createApp(options: {
   // --- Unit chats: opening a unit starts it or picks it up where it was ----
 
   const unitPath = "/api/courses/:id/units/:unit";
+
+  app.get(`${unitPath}/transcript`, async (c) => {
+    const { id, unit } = c.req.param();
+    const stored = await dataRoot.readCourse(id);
+    const curriculum = stored?.curriculum;
+    if (stored === undefined || curriculum == null) {
+      return c.json({ error: "No such unit." }, 404);
+    }
+    const number = curriculum.units.findIndex((entry) => entry.id === unit) + 1;
+    const entry = curriculum.units[number - 1];
+    if (entry === undefined) return c.json({ error: "No such unit." }, 404);
+    if (curriculum.approval.status !== "approved") {
+      return c.json({ error: "The curriculum is not approved yet." }, 409);
+    }
+    await units.get(id, unit)?.flushTranscript();
+    const sessions = await dataRoot.readTranscripts(id, entry.id);
+    return c.html(
+      renderTranscript(stored.course.title, entry, number, sessions),
+      200,
+      {
+        ...ARTIFACT_TEXT_HEADERS,
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${entry.id}-transcript.html"`,
+        "Content-Security-Policy": `sandbox; ${STANDALONE_HTML_POLICY}; frame-ancestors 'none'`,
+      },
+    );
+  });
 
   // Notes belong to the record, not to an open chat. Starting a write
   // returns immediately; the view can leave and come back while it runs.

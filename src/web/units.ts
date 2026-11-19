@@ -1,5 +1,4 @@
-// How the page describes units: what each builds on, by its number in the
-// list, and what a revision of the curriculum changed.
+// How the page describes a unit's prerequisites by their numbers in the list.
 
 import type { Unit } from "../shared/curriculum.ts";
 
@@ -19,33 +18,4 @@ export function unitNumbers(numbers: readonly number[]): string {
   return rest.length === 0
     ? `unit ${last}`
     : `units ${rest.join(", ")} and ${last}`;
-}
-
-/**
- * The ids of the units a revision changed: new ones, and those whose title,
- * goal or prerequisites differ from the unit with the same id before. Units
- * are matched by id, which the tutor is asked to keep.
- */
-export function changedUnits(
-  units: readonly Unit[],
-  previous: readonly Unit[] | undefined,
-): Set<string> {
-  if (previous === undefined) return new Set();
-  const before = new Map(previous.map((u) => [u.id, u]));
-  const same = (a: readonly string[], b: readonly string[]) =>
-    a.length === b.length &&
-    [...a].sort().join("\n") === [...b].sort().join("\n");
-  return new Set(
-    units
-      .filter((u) => {
-        const was = before.get(u.id);
-        return (
-          was === undefined ||
-          was.title !== u.title ||
-          was.goal !== u.goal ||
-          !same(was.prerequisites, u.prerequisites)
-        );
-      })
-      .map((u) => u.id),
-  );
 }
