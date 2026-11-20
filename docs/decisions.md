@@ -228,6 +228,25 @@ The brief states the result; this is who decided and why.
     it, unsure grades held back and half credit, several questions on
     one card, a recall target with an FSRS-like schedule, rewriting
     objectives within a unit, and "marked as known" counting as passed.
+- **2026-11-19, the end of the stage 5 check** (unit 2 of a course on
+  coding agent harnesses: review at a later sitting, skipped checks,
+  detours, the gate, notes and the exported transcript). The check
+  passed. The user decided:
+  - review is offered on its card only when something is due, and only
+    between segments, with a "Review now" button in the course view
+    (5.25). They had asked for review on request only, and took the
+    agent's recommendation over it: a mode one has to open tends not to
+    be opened (2026-11-17), and 5.19's intervals alone stop a card after
+    an hour away;
+  - "Move on without the check" offered in the discussion too (5.26), and
+    the closing card saying that the gate comes next (5.27);
+  - from the agent's reading of the transcript: math questions only for
+    mathematical results, and no echo of the app's markers by the tutor
+    (5.28);
+  - later, in stage 6: self-test on a scope and kinds of question the
+    learner picks (optional), and teaching instructions the learner can
+    add to or edit, the app's rules fixed and the original kept to revert
+    to.
 
 ## Toolchain
 

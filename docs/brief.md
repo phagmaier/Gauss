@@ -68,9 +68,9 @@ acceptance cases because together they exercise every grading and content path:
    when the unit starts, using the record as it stands then. Before a unit
    is taught, the learner can choose to test out of it by taking its gate;
    they are shown what they passed and confirm before any of it is
-   skipped. Each sitting opens with the offer of a few review questions on
-   objectives passed in earlier sittings, which the learner starts or
-   skips.
+   skipped. When objectives are due for review, a few review questions on
+   them are offered between segments, which the learner starts or skips;
+   the learner can also start a review from the course.
 4. **Unit close.** The unit is marked passed or overridden, a handoff note
    is written, and the learner is offered notes on the unit.
 
@@ -129,8 +129,7 @@ phase.
   passed holds its segment open until it passes or the learner overrides.
   Passing is short-term evidence, given minutes after the teaching.
 - **Retained**: confirmed by a correct answer after time has passed. Evidence
-  for this comes from two places: the unit gate and the review questions
-  that open each sitting (below).
+  for this comes from two places: the unit gate and review (below).
 - **Slipping**: an objective that had passed and was then missed, in review
   or a gate, until it passes again.
 - **Unit gate**: the check that closes a unit. It covers the unit's own
@@ -177,15 +176,16 @@ Formal proof checking (Lean or similar) is out of scope.
 ## Assessment modes
 
 One mechanism, different selections of objectives: segment check, unit gate,
-testing out of a unit (its gate, taken before it is taught), review questions
-at the start of each sitting, and on-demand self-test.
+testing out of a unit (its gate, taken before it is taught), review of
+what is due, and on-demand self-test.
 
 - **Review** picks objectives passed in earlier sittings: slipping ones
   first, then the ones most overdue. An objective is due again some time
   after its last correct answer, and that time grows with each correct
   answer it gets in a review or a gate. It asks fresh questions each
-  time. Every sitting offers it on a card, and the learner starts it or
-  skips it; nobody is made to review.
+  time. When something is due, a sitting offers it on a card between
+  segments, never between a segment's teaching and its check, and the
+  course view starts it on request; nobody is made to review.
 - **A miss in review or the gate** starts a detour, then one more question
   on the objective.
 - **Testing out** is the learner's choice, confirmed before it starts. It
@@ -265,16 +265,17 @@ the stage 0 spike), though its documentation does not address SDK use on one.
 First version: one course end to end on the Claude backend. Intake,
 curriculum approval and diagram, unit sessions with the three-phase rhythm,
 structured questions with confidence, evidence record, the "what I know" view
-and calibration, unit gates, testing out of a unit, review questions at the
-start of each sitting, detours, source ingestion with verified quotes,
-artifacts, workspace, transcripts, unit notes, library view, backup.
+and calibration, unit gates, testing out of a unit, review of what is due,
+detours, source ingestion with verified quotes, artifacts, workspace,
+transcripts, unit notes, library view, backup.
 
-Later: Codex backend, on-demand self-test, cheat sheets, handwritten-work
-photos; starred messages for the notes, if the generated notes miss what the
-learner wants kept.
+Later: Codex backend, on-demand self-test on a scope the learner picks,
+cheat sheets, handwritten-work photos; starred messages for the notes, if
+the generated notes miss what the learner wants kept; teaching
+instructions the learner can add to or edit.
 
 ## Dropped
 
 Course finals (unit gates and review cover the same ground), the optional
-baseline quiz (replaced by testing out of a unit), and an opt-in review mode
-(replaced by review questions at the start of each sitting).
+baseline quiz (replaced by testing out of a unit), and a review mode the
+learner has to open (review is offered when something is due).

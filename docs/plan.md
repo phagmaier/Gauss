@@ -19,39 +19,21 @@ user's choice; the numbers are kept because code and documents use them.
 - Stage 3, checked grading and aids: passed on 2026-11-18. The user's
   notes from the check added tasks 3.19 to 3.22 (`decisions.md`, "Product
   decisions").
+- Stage 5, mastery loop: passed on 2026-11-19. The user's notes from the
+  check, and the comparisons with LearnHarness and DeepTutor the same day,
+  added tasks 5.14 to 5.28 (`decisions.md`, "Product decisions").
 
-Still to observe from stage 2: an objective passed by two unsure correct
-answers. The stage 3 check did not show one.
+## Stage 5: follow-ups from the check (built before stage 4)
 
-## Stage 5: mastery loop (built before stage 4)
-
-The scope is `architecture.md` section 12's: review questions, the unit
-gate, testing out of a unit, retained and slipping status, handoff notes,
-the misconception record, the learner profile, unit notes, transcript
-export, and style and curriculum changes. The choices behind this
-breakdown are in `decisions.md`, "Mastery loop": the agent's, but for the
-user's picks of 2026-11-18 ("Product decisions"), which the tasks below
-follow. The stage's views are laid out in the mocks, pieces 15 to 18 of
-`docs/prototype/` (`decisions.md`, "Page design"): a task that names a
-piece builds what it shows. Not in this stage: sources and web access (4.0), self-test and
-cheat sheets (stage 6).
-
-**User check:** one course runs from intake to a closed second unit: a unit
-tested out of or started, review questions at the start of a later sitting,
-a detour, a unit gate, generated notes and an exported transcript.
-
-Every task of the stage is done; the user's check is under way. The
-user's notes from it, discussed on 2026-11-19, add tasks
-5.14 to 5.18; the comparison with LearnHarness the same day adds 5.19,
-5.20 and directions for 5.17's mocks, and the comparison with DeepTutor
-adds 5.21 to 5.24, more directions for 5.17 and two items for 4.0
-(`decisions.md`, "Product decisions"). They wait until the check is
-over.
+The tasks the stage's check and the two comparisons added. The stage's
+views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`
+(`decisions.md`, "Page design"); 5.17 makes new ones. Not in this stage:
+sources and web access (4.0), self-test and cheat sheets (stage 6).
 
 ### 5.14 Vague written answers
 
 - Status: todo
-- Depends on: the user's stage 5 check
+- Depends on: nothing
 - The user's decision (2026-11-19): a written answer that is mostly right
   but vague stays a miss. No grade held back for follow-up questions: a
   question aimed at the vague part tells the learner what was missing,
@@ -72,7 +54,7 @@ over.
 ### 5.15 Working on written and code answers
 
 - Status: todo
-- Depends on: the user's stage 5 check
+- Depends on: nothing
 - The user's decision (2026-11-19): written and code answers get the
   optional field that choice and math answers have, so the learner's
   thinking stays apart from what is graded. A false start written into a
@@ -92,7 +74,7 @@ over.
 ### 5.16 Large courses planned in stretches
 
 - Status: todo
-- Depends on: the user's stage 5 check
+- Depends on: nothing
 - The user's decision (2026-11-19, the course shape the agent's, which
   the user left to it): a large topic ("Calculus 1 to 3") is one course,
   planned in stretches, not split into courses. Review and the gate pick
@@ -116,9 +98,9 @@ over.
 ### 5.17 Page redesign: break it down
 
 - Status: todo
-- Depends on: the user's stage 5 check. The comparisons with two other
-  open-source tutoring projects, LearnHarness and DeepTutor, are done;
-  their directions are below
+- Depends on: nothing. The comparisons with two other open-source
+  tutoring projects, LearnHarness and DeepTutor, are done; their
+  directions are below
 - To be broken down with the user, starting from new mocks in
   `docs/prototype/`. What it must answer, from the user's notes of
   2026-11-19, with the directions the user chose from the two
@@ -177,7 +159,7 @@ over.
 ### 5.18 Deleting a course
 
 - Status: todo
-- Depends on: the user's stage 5 check
+- Depends on: nothing
 - The user's decision (2026-11-19): a course or a draft can be deleted
   from its course page; there is no archive. A draft asks a plain
   confirmation; a course with any evidence asks the learner to type its
@@ -197,7 +179,7 @@ over.
 ### 5.19 Review picks the most overdue
 
 - Status: todo
-- Depends on: the user's stage 5 check
+- Depends on: nothing
 - The user's decision (2026-11-19, from the LearnHarness comparison):
   review asks first about the objectives most overdue. Today
   `pickForReview` (`src/server/record/review.ts`) ranks by status, then
@@ -222,7 +204,7 @@ over.
 ### 5.20 An aid's errors reach the tutor
 
 - Status: todo
-- Depends on: the user's stage 5 check
+- Depends on: nothing
 - The user's decision (2026-11-19, from the LearnHarness comparison):
   when an artifact's script fails, the side pane says so and offers a
   button that sends the error's text to the tutor as the learner's
@@ -239,7 +221,7 @@ over.
 ### 5.21 "I don't know" with a wrong key
 
 - Status: todo
-- Depends on: the user's stage 5 check
+- Depends on: nothing
 - The user's decision (2026-11-19, from the DeepTutor comparison): an
   "I don't know" answer's card offers "The answer shown is wrong",
   decided by the dispute judge as a dispute is, once per answer. The
@@ -267,7 +249,7 @@ over.
 ### 5.22 Misconceptions in the learner's words
 
 - Status: todo
-- Depends on: the user's stage 5 check
+- Depends on: nothing
 - The user's decision (2026-11-19, from the DeepTutor comparison): each
   misconception carries the learner's words that showed it, quoted by
   the handoff writer; the engine checks them against the stretch it sent
@@ -324,6 +306,86 @@ over.
   `pnpm dev:fake` the library and the course view show them for a
   seeded course with objectives due.
 
+### 5.25 Review when due, between segments, or on request
+
+- Status: todo
+- Depends on: 5.19, which says when an objective is due, and 5.24, which
+  places the due count
+- The user's decision (2026-11-19, from the stage 5 check; the agent's
+  recommendation): in the check, the review card came when the unit was
+  reopened three hours after segment 1's teaching, and sat between that
+  teaching and its check. Today the card is offered whenever a unit not
+  finished is opened after `SESSION_GAP_MS` (an hour) away
+  (`decisions.md`, "Mastery loop", "Review"). Instead:
+  - the card is offered only when an objective of the course is due by
+    5.19's rule;
+  - only between segments: a sitting that opens mid-segment holds the
+    card until that segment closes, and it never stands between a
+    segment's teaching and its check;
+  - a "Review now" button beside 5.24's due count, in the course view,
+    starts a review when something is due. Review runs in a unit's
+    thread; which unit's, when the course has several open, is the task's
+    to settle.
+  The user had first asked for review on request only; they took the
+  card, rarer, because a mode one has to open tends not to be opened
+  (their own finding of 2026-11-17).
+- Done when: tests on hand-made evidence logs show no card when nothing is
+  due, and a card held mid-segment offered once the segment closes; on
+  `pnpm dev:fake`, "Review now" starts a review from the course view.
+  `architecture.md` section 4 and `decisions.md`, "Review", change with
+  it.
+
+### 5.26 Moving on from the discussion
+
+- Status: todo
+- Depends on: nothing
+- The user's decision (2026-11-19, from the stage 5 check): the
+  discussion offers "Move on without the check" beside "I'm ready for the
+  check", with the same confirmation. Today the page offers it only once
+  the check has started (`NextStepControl` in `src/web/Session.tsx`), so a
+  skip costs a tutor turn writing a question that is then withdrawn, as
+  in segments 3 and 4 of the check's transcript. The server already
+  allows it; `decisions.md`, "Moving on is allowed from the discussion on
+  the server", says the page does not, and changes with it.
+- Done when: on `pnpm dev:fake`, moving on from the discussion records the
+  override and offers the next segment, with no question posted.
+
+### 5.27 The closing card says the gate comes next
+
+- Status: todo
+- Depends on: nothing
+- The user's decision (2026-11-19, from the stage 5 check): before the
+  gate, the closing card's "Move on without them" read as skipping the
+  unit gate. It does not skip it: the gate follows when `pickForGate` has
+  anything to ask, and has its own "Skip the gate". When a gate follows,
+  the step reads "Go on to the unit gate", and its confirmation says that
+  the objectives not passed stay overridden and that the gate comes next;
+  "Go over the four again" stays beside it. Without a gate to follow, the
+  text stays as it is. The page needs to know before the step whether a
+  gate follows; how is the task's to settle.
+- Done when: tests show the card's step and confirmation with a gate to
+  follow and without; on `pnpm dev:fake`, a unit with skipped segments
+  shows them.
+
+### 5.28 Math only for math, and no echo of the app's markers
+
+- Status: todo
+- Depends on: nothing
+- From the agent's reading of the check's transcript, accepted by the
+  user (2026-11-19). Two rules in `prompts/tutor.md`:
+  - a math question only for a mathematical result. Gate question 6 asked
+    for two `tool_use_id` values as one: the math box set them as LaTeX
+    ("toolu" with "A7" as a subscript), the learner's prose answer lost
+    its spaces, and the miss, on format with the reasoning right, made a
+    retained objective slipping. A value read off a text (an id, a name,
+    a field) is a choice question;
+  - do not restate what the app's markers say. After each skipped check
+    the tutor repeated the override marker ("Moving on without the check
+    is fine; that one is recorded…"), three times in one unit.
+- Done when: a short real-model run (Haiku) on an objective about reading
+  ids off an API response posts a choice question, and the teaching turn
+  after a skipped check does not mention the override.
+
 ## Stage 4: sources (built after stage 5)
 
 ### 4.0 Break down the stage
@@ -377,7 +439,14 @@ quotes, and one unit taught from a paper.
 Codex backend (`decisions.md`, "Codex"), self-test, cheat sheets, photo
 input; starred messages for the notes, if the generated notes miss what the
 learner wants kept; a model chosen in the app's settings, which the user
-wants eventually (2026-11-19). Each is planned when chosen.
+wants eventually (2026-11-19); teaching instructions the learner can add
+to or edit (below). Each is planned when chosen.
+
+Self-test, as the user described it on 2026-11-19 (optional, after
+everything else): the learner picks the scope (a segment, a unit, the
+course, or a random mix of what they have passed) and the kinds of
+question. They found "playground" the wrong name; the brief's term is
+self-test.
 
 For self-test, LearnHarness's practice prompt
 (`src/agent/prompts/practice/10-doctrine.md` in that project) is input:
@@ -385,3 +454,11 @@ mix objectives rather than ask several problems on one in a row; a retry
 after feedback is a fresh problem; before posing, fix the model solution
 and look for a shortcut that skips the target; give the smallest hint
 that unblocks, one per request.
+
+Teaching instructions the learner can change (the user's request,
+2026-11-19): add to or edit the tutor's instructions on how it teaches,
+app-wide, beyond a course's style note. What the app relies on stays
+fixed (the tools, the assessment and help rules, the question formats);
+the shipped prompt is kept, and the learner can revert to it. Where the
+line between fixed and editable falls in `prompts/tutor.md` is for that
+task.
