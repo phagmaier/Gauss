@@ -241,6 +241,8 @@ The brief states the result; this is who decided and why.
   - from the agent's reading of the transcript: math questions only for
     mathematical results, and no echo of the app's markers by the tutor
     (5.28);
+  - `tutor.md` cut hard, as a task of its own (5.29): at 596 lines it
+    goes to the tutor in every session;
   - later, in stage 6: self-test on a scope and kinds of question the
     learner picks (optional), and teaching instructions the learner can
     add to or edit, the app's rules fixed and the original kept to revert
