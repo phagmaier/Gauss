@@ -253,76 +253,76 @@ function drawDiagram(props: DiagramProps, layout: Layout) {
         </p>
       )}
       <div className="dg" style={{ height }}>
-      <svg
-        viewBox={`0 0 100 ${height}`}
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        {[...edges.filter((e) => !touches(e)), ...edges.filter(touches)].map(
-          (e) => (
-            <path
-              key={`${e.from.unit.id}>${e.to.unit.id}`}
-              className={touches(e) ? "on" : undefined}
-              vectorEffect="non-scaling-stroke"
-              d={linePath(e)}
-            />
-          ),
-        )}
-      </svg>
-      {nodes.map((n) => {
-        const mark = props.marks?.get(n.unit.id);
-        const standing = props.standing?.(n.unit.id);
-        const className = [
-          "dn",
-          standing?.state,
-          mark === undefined ? undefined : "chg",
-          props.selected === n.unit.id ? "sel" : undefined,
-        ]
-          .filter(Boolean)
-          .join(" ");
-        const style: CSSProperties = {
-          left: `${n.x - NODE_WIDTH / 2}%`,
-          top: n.row * PITCH,
-        };
-        const text = mark ?? standing?.text;
-        const form = mark === undefined ? standing?.form : undefined;
-        const content = (
-          <>
-            <b>{n.index + 1}</b>
-            <span className="t">{n.unit.title}</span>
-            {text || form !== undefined ? (
-              <small>
-                {form === undefined ? null : <StatusForm {...form} />}
-                {text}
-              </small>
-            ) : null}
-          </>
-        );
-        const { onSelect } = props;
-        return onSelect === undefined ? (
-          <div
-            key={n.unit.id}
-            data-unit={n.unit.id}
-            className={className}
-            style={style}
-            title={n.unit.title}
-          >
-            {content}
-          </div>
-        ) : (
-          <button
-            key={n.unit.id}
-            data-unit={n.unit.id}
-            type="button"
-            className={className}
-            style={style}
-            title={n.unit.title}
-            onClick={() => onSelect(n.unit.id)}
-          >
-            {content}
-          </button>
-        );
-      })}
+        <svg
+          viewBox={`0 0 100 ${height}`}
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          {[...edges.filter((e) => !touches(e)), ...edges.filter(touches)].map(
+            (e) => (
+              <path
+                key={`${e.from.unit.id}>${e.to.unit.id}`}
+                className={touches(e) ? "on" : undefined}
+                vectorEffect="non-scaling-stroke"
+                d={linePath(e)}
+              />
+            ),
+          )}
+        </svg>
+        {nodes.map((n) => {
+          const mark = props.marks?.get(n.unit.id);
+          const standing = props.standing?.(n.unit.id);
+          const className = [
+            "dn",
+            standing?.state,
+            mark === undefined ? undefined : "chg",
+            props.selected === n.unit.id ? "sel" : undefined,
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const style: CSSProperties = {
+            left: `${n.x - NODE_WIDTH / 2}%`,
+            top: n.row * PITCH,
+          };
+          const text = mark ?? standing?.text;
+          const form = mark === undefined ? standing?.form : undefined;
+          const content = (
+            <>
+              <b>{n.index + 1}</b>
+              <span className="t">{n.unit.title}</span>
+              {text || form !== undefined ? (
+                <small>
+                  {form === undefined ? null : <StatusForm {...form} />}
+                  {text}
+                </small>
+              ) : null}
+            </>
+          );
+          const { onSelect } = props;
+          return onSelect === undefined ? (
+            <div
+              key={n.unit.id}
+              data-unit={n.unit.id}
+              className={className}
+              style={style}
+              title={n.unit.title}
+            >
+              {content}
+            </div>
+          ) : (
+            <button
+              key={n.unit.id}
+              data-unit={n.unit.id}
+              type="button"
+              className={className}
+              style={style}
+              title={n.unit.title}
+              onClick={() => onSelect(n.unit.id)}
+            >
+              {content}
+            </button>
+          );
+        })}
       </div>
     </>
   );
