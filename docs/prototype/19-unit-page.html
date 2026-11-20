@@ -1,0 +1,270 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 5.17, piece 19: the unit page in the
+  redesign's look (look.css).
+  SETTLED 2026-11-19: the user took the bar's defaults, CMU Serif for
+  reading and Plex Mono capitals for labels, and changed nothing else.
+  Rejected: CMU Concrete and Plex Sans for reading, Plex Sans capitals.
+
+  What it answers, from the user's notes of 2026-11-19:
+  - The look: Catppuccin Frappé through named colour roles; labels in Plex
+    Mono capitals; titles, the tutor's text and a question's prompt in CMU
+    Serif, so that inline math reads as part of the sentence; the controls
+    in Plex Sans; the accent only on the next step and "you are here".
+  - The top line no longer mixes units and segments: the path ends in
+    "Unit 3" and the unit's title; the position is "Segment 3 of 5" with
+    the segment's own title, and opens the outline; "Course map" opens the
+    curriculum diagram in the side pane with this unit marked.
+  - The outline lists the unit's segments, numbered, each with its
+    objectives and their status forms; a segment picked there scrolls the
+    thread to its heading and lights it briefly.
+  - Where each segment starts, a heading in the thread: a rule, "Segment N
+    of M", its title, its objectives in small text. Under it, teach,
+    discuss and check are hairlines with a small label.
+  - A graded card's verdict is one line under a hairline, the verdict word
+    coloured and the rest neutral.
+  - Selecting text in the tutor's text offers "Quote", which puts the
+    passage in the message box as a quote.
+  - In the gate, "Skip the gate" partway asks with a text of its own.
+
+  The bar at the bottom left switches the theme, the reading type and the
+  label type, to compare, and the moment shown. Keys: O the outline, M the
+  course map, Esc closes, H hides the bar.
+
+  Everything is simulated. The message box, the check and the questions do
+  nothing.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 19: the unit page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-concrete.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="look.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="pop"></div>
+<button type="button" class="qpop" id="qpop" hidden><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 4h4v4H5c0 1.3.7 2 2 2v2c-2.6 0-4-1.6-4-4.2V4zm6 0h4v4h-2c0 1.3.7 2 2 2v2c-2.6 0-4-1.6-4-4.2V4z"/></svg>Quote</button>
+<div id="bar"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Calculus I';
+const UNIT = {n: 3, of: 8, title: 'Differentiation rules'};
+// segment status: past, now, todo. Objective status: pass, kept, slip, att, not, now, over.
+const SEGS = [
+  {t: 'Power and sum rules', objs: [['Differentiate a polynomial term by term', 'pass'], ['Use the power rule for any real exponent', 'pass']]},
+  {t: 'Product and quotient rules', objs: [['Differentiate a product of two functions', 'pass'], ['Differentiate a quotient of two functions', 'pass']]},
+  {t: 'The chain rule', objs: [['Differentiate a composition with the chain rule', 'now'], ['Pick out the inner and the outer function', 'not']]},
+  {t: 'Implicit differentiation', objs: [['Differentiate an equation in x and y implicitly', 'not']]},
+  {t: 'Derivatives of inverse functions', objs: [['Find the derivative of an inverse from the original', 'not']]},
+];
+const UNITS = [   // the course map: number, title, status, prerequisites, row, column
+  [1, 'Limits', 'kept', [], 0, 0], [2, 'The derivative', 'pass', [1], 1, 0], [3, 'Differentiation rules', 'now', [2], 2, 0],
+  [5, 'The integral', 'not', [2], 2, 1], [4, 'Optimisation', 'not', [3], 3, 0], [6, 'The fundamental theorem', 'not', [3, 5], 3, 1],
+  [7, 'Related rates', 'not', [4], 4, 0], [8, 'Series', 'not', [6], 4, 1],
+];
+const WORD = {pass: 'Passed', kept: 'Retained', slip: 'Slipping', att: 'Not passed yet', not: 'Not started', now: 'In progress', over: 'Overridden'};
+
+/* ---------------- state ---------------- */
+const st = {moment: 'discuss', outline: false, map: false, mapForm: 'diagram', skipAsk: false,
+  theme: 'frappe', read: 'serif', label: 'mono'};
+const $ = s => document.querySelector(s);
+const app = $('#app'), pop = $('#pop'), qpop = $('#qpop');
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false});
+const SEND = '<svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const MAP = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="1.5" width="5" height="3.5" rx="1"/><rect x="9.5" y="6.25" width="5" height="3.5" rx="1"/><rect x="1.5" y="11" width="5" height="3.5" rx="1"/><path d="M4 5v6M6.5 3.25h3v3"/></svg>';
+const CHEV = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5"/></svg>';
+const sg = s => `<i class="sg ${s}" aria-hidden="true"></i>`;
+const gate = () => st.moment === 'gate';
+const segState = i => gate() ? 'past' : i < 2 ? 'past' : i === 2 ? 'now' : 'todo';
+const objState = s => gate() ? 'pass' : s;
+
+/* ---------------- the thread ---------------- */
+function segHead(i) {
+  const s = SEGS[i];
+  return `<section class="seg" id="seg-${i}"><div class="lbl">Segment ${i + 1} of ${SEGS.length}</div>
+    <h2 class="title">${s.t}</h2>
+    <ul class="seg-objs">${s.objs.map(([o, x]) => `<li>${sg(objState(x))}<span>${o}</span></li>`).join('')}</ul></section>`;
+}
+const ph = (k, note = '') => `<div class="ph"><span class="lbl">${k}</span>${note ? `<span class="note">${note}</span>` : ''}</div>`;
+const tutor = html => `<div class="tutor read">${html}</div>`;
+function graded({n, of, head = '', prompt, answer, verdict}) {
+  return `<div class="card"><div class="card-h"><span class="lbl">Question ${n} of ${of}</span>${head ? `<span class="r">${head}</span>` : ''}</div>
+    <p class="prompt">${prompt}</p><div class="ans"><span class="k">Your answer</span><span>${answer}</span></div>
+    <div class="verdict">${verdict}<button class="link act" type="button">Dispute this grade</button></div></div>`;
+}
+const SEG1 = segHead(0) + ph('Teach') + tutor(String.raw`<p>A polynomial is a sum of powers, and the derivative goes through a sum one term at a time: $\frac{d}{dx}x^n = nx^{n-1}$ for each, constants carried along.</p>`)
+  + ph('Check') + graded({n: 1, of: 1, prompt: String.raw`Differentiate $p(x) = 4x^3 - 2x + 7$.`, answer: String.raw`$12x^2 - 2$`,
+    verdict: '<b class="ok">Correct</b><span class="dot">·</span><span>90% sure</span>'});
+const SEG2 = segHead(1) + ph('Teach') + tutor(String.raw`<p>In a product each factor takes its turn being differentiated while the other waits: $(fg)' = f'g + fg'$. A quotient is the same idea with a sign and a square: $\left(\frac{f}{g}\right)' = \frac{f'g - fg'}{g^2}$.</p>`)
+  + ph('Check')
+  + graded({n: 1, of: 2, prompt: String.raw`Differentiate $q(x) = \dfrac{x^2}{\sin x}$.`, answer: String.raw`$\dfrac{2x\sin x + x^2\cos x}{\sin^2 x}$`,
+    verdict: String.raw`<b class="no">Incorrect</b><span class="dot">·</span><span>70% sure</span><span class="dot">·</span><span>Expected $\dfrac{2x\sin x - x^2\cos x}{\sin^2 x}$</span>`})
+  + tutor(String.raw`<p>Everything is right but the sign in the middle, and the sign is the whole of the quotient rule. The numerator's derivative comes <em>first</em> and is the one that adds: $f'g$, then minus $fg'$. Swap them and you differentiate $\frac{g}{f}$ upside down.</p>`)
+  + graded({n: 2, of: 2, prompt: String.raw`Which is the derivative of $x^3 e^x$?`, answer: String.raw`B. $3x^2e^x + x^3e^x$`,
+    verdict: '<b class="ok">Correct</b><span class="dot">·</span><span>90% sure</span>'});
+const LESSON = String.raw`<p>Most functions you meet are built by feeding one function into another. Take $h(x) = \sin(x^2)$: first square $x$, then take the sine of the result. The <strong>chain rule</strong> says how fast $h$ changes, given how fast each step changes:</p>
+$$\frac{d}{dx}\,f\bigl(g(x)\bigr) = f'\bigl(g(x)\bigr)\cdot g'(x).$$
+<p>Read it from the outside in. Differentiate the outer function and leave its input alone, then multiply by the derivative of the inner function. For $\sin(x^2)$ the outer derivative is $\cos(x^2)$ and the inner one is $2x$, so $h'(x) = 2x\cos(x^2)$.</p>
+<p>The same move works however deep the nesting goes: each layer contributes one factor, and you peel them from the outside.</p>`;
+const DISCUSS = ph('Discuss', 'Ask anything. Nothing here is graded.')
+  + `<div class="you"><blockquote>Differentiate the outer function and leave its input alone</blockquote>Leave it alone how? Doesn't the input change too?</div>`
+  + tutor(String.raw`<p>It does, and that change is the second factor. "Leave it alone" means: when you differentiate $\sin$, write $\cos$ of <em>the same input</em>, $\cos(x^2)$, not $\cos(x)$ and not $\cos(2x)$. The sine never sees $x$; it sees $x^2$, so its rate is measured there. How fast $x^2$ itself moves, $2x$, is the factor you multiply by.</p><p>You have the idea. When you are ready, I have one question to check it.</p>`)
+  + `<div class="step"><button class="btn" type="button">I'm ready for the check</button></div>`;
+const SEG3 = segHead(2) + ph('Teach') + tutor(LESSON) + DISCUSS;
+
+function gateTail() {
+  const confirm = st.skipAsk
+    ? `<div class="confirm"><div class="says"><p>Skip the rest of the gate? Your 2 answers so far count, and the open question is dropped. Nothing more is marked retained, and the gate is not offered again.</p>
+        <p>To stop for now instead, just leave: the gate waits, and picks up at this question when you come back.</p></div>
+        <button class="btn sm quiet" type="button" data-act="skip-no">Skip the rest of the gate</button><button class="link" type="button" data-act="skip-no">Keep going</button></div>`
+    : `<button class="link" type="button" data-act="skip">Skip the gate</button>`;
+  return segHead(3) + ph('Teach') + tutor(String.raw`<p>When $y$ is tied to $x$ by an equation rather than given as a formula, differentiate both sides and let the chain rule handle every $y$.</p>`)
+    + segHead(4) + ph('Teach') + tutor(String.raw`<p>The graph of $f^{-1}$ is the graph of $f$ reflected in $y = x$, so slopes turn into their reciprocals: $(f^{-1})'(y) = 1/f'(x)$.</p>`)
+    + `<section class="seg" id="gate"><div class="lbl">Unit gate</div><h2 class="title">Questions on the whole unit</h2>
+       <ul class="seg-objs"><li>${sg('not').replace('sg ', 'sg gate ')}<span>4 questions on this unit's objectives, 2 on units 1 and 2</span></li></ul></section>`
+    + graded({n: 1, of: 6, prompt: String.raw`Differentiate $\sqrt{1 + x^2}$.`, answer: String.raw`$\dfrac{x}{\sqrt{1+x^2}}$`,
+      verdict: '<b class="ok">Correct</b><span class="dot">·</span><span>90% sure</span>'})
+    + graded({n: 2, of: 6, head: 'From unit 1, Limits', prompt: String.raw`What is $\displaystyle\lim_{x\to 0}\frac{\sin 3x}{x}$?`, answer: '$3$',
+      verdict: '<b class="ok">Correct</b><span class="dot">·</span><span>70% sure</span>'})
+    + `<div class="card live"><div class="card-h"><span class="lbl">Question 3 of 6</span></div>
+        <p class="prompt">If $x^2 + y^2 = 25$, what is $\\dfrac{dy}{dx}$ at the point $(3, 4)$?</p>
+        <div class="opts">${[['A', String.raw`$-\tfrac34$`], ['B', String.raw`$\tfrac34$`], ['C', String.raw`$-\tfrac43$`], ['D', String.raw`$\tfrac{3}{4}x$`]].map(([k, v]) => `<button class="opt" type="button"><kbd>${k}</kbd><span>${v}</span></button>`).join('')}</div>
+        <div class="conf"><span>How sure?</span><span style="display:flex;gap:5px">${['10%', '30%', '50%', '70%', '90%'].map(c => `<button class="chip" type="button">${c}</button>`).join('')}</span></div>
+        <div class="card-foot"><button class="link" type="button">I don't know</button><button class="btn" type="button" disabled>Submit</button></div></div>`
+    + `<div class="step">${confirm}</div>`;
+}
+
+/* ---------------- the top line, the outline, the course map ---------------- */
+function topLine() {
+  const ticks = SEGS.map((_, i) => `<i class="${segState(i) === 'todo' ? '' : segState(i)}"></i>`).join('');
+  const pos = gate() ? `<span class="lbl">Unit gate</span><span class="t">Question 3 of 6</span>`
+    : `<span class="lbl">Segment 3 of ${SEGS.length}</span><span class="t">${SEGS[2].t}</span>`;
+  return `<header class="top"><nav class="path" aria-label="Where this unit sits"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span>
+      <a href="20-course.html">${COURSE}</a><span class="sep">/</span><span class="here"><span class="lbl">Unit ${UNIT.n}</span><span class="t">${UNIT.title}</span></span></nav>
+    <div class="acts"><button class="tb" type="button" data-act="outline" aria-expanded="${st.outline}"><span class="ticks" aria-hidden="true">${ticks}</span>${pos}${CHEV}</button>
+      <button class="tb" type="button" data-act="map" aria-pressed="${st.map}">${MAP}Course map</button></div></header>`;
+}
+function outline() {
+  const rows = SEGS.map((s, i) => {
+    const k = segState(i);
+    const right = k === 'now' ? 'You are here' : k === 'past' ? `${s.objs.length} of ${s.objs.length} passed` : '';
+    const tag = k === 'todo' ? 'div' : 'button type="button"';
+    return `<li><${tag} class="ol-seg ${k}" data-seg="${i}"><span class="n">${i + 1}</span><span class="t">${s.t}</span><span class="r">${right}</span>
+      <ul class="ol-objs">${s.objs.map(([o, x]) => `<li>${sg(objState(x))}<span>${o}</span></li>`).join('')}</ul></${tag.split(' ')[0]}></li>`;
+  }).join('');
+  const g = gate();
+  return `<div class="pop" role="dialog" aria-label="Unit outline"><div class="ol-h"><div class="lbl">Unit ${UNIT.n} of ${UNIT.of} · ${SEGS.length} segments</div><div class="title">${UNIT.title}</div></div>
+    <ol class="ol-list">${rows}<li><${g ? 'button type="button"' : 'div'} class="ol-seg ${g ? 'now' : 'todo'}" data-seg="gate"><span class="n">${sg(g ? 'now' : 'not').replace('sg ', 'sg gate ')}</span><span class="t">Unit gate</span><span class="r">${g ? 'You are here' : 'After segment 5'}</span>
+      <ul class="ol-objs"><li><span>Questions on the whole unit, and on earlier units</span></li></ul></${g ? 'button' : 'div'}></li></ol>
+    <div class="ol-foot"><button class="link" type="button">Export transcript</button><button class="link" type="button">Start fresh</button></div></div>`;
+}
+function courseMap() {
+  const legend = `<div class="legend">${['kept', 'pass', 'now', 'not'].map(k => `<span>${sg(k)}${k === 'now' ? 'You are here' : WORD[k]}</span>`).join('')}</div>`;
+  let body;
+  if (st.mapForm === 'diagram') {
+    const H = 96, h = 56, by = {};
+    UNITS.forEach(u => { by[u[0]] = u; });
+    const x = c => c ? 52 : 0, cx = c => x(c) + 24;
+    const paths = UNITS.flatMap(([n, , , pre, r, c]) => pre.map(p => {
+      const [, , , , pr, pc] = by[p]; const y1 = pr * H + h, y2 = r * H, m = (y1 + y2) / 2;
+      return `<path vector-effect="non-scaling-stroke" d="M${cx(pc)} ${y1} C${cx(pc)} ${m} ${cx(c)} ${m} ${cx(c)} ${y2}"/>`;
+    })).join('');
+    const nodes = UNITS.map(([n, t, s, , r, c]) => `<button type="button" class="dn ${s === 'not' ? 'todo' : ''} ${s === 'now' ? 'here' : ''}" style="left:${x(c)}%;width:48%;top:${r * H}px">
+      <span class="n">${n}</span><span class="t">${t}</span><span class="s">${sg(s)}${s === 'now' ? 'You are here' : WORD[s]}</span></button>`).join('');
+    body = `<div class="dg" style="height:${4 * H + h}px"><svg viewBox="0 0 100 ${4 * H + h}" preserveAspectRatio="none" aria-hidden="true">${paths}</svg>${nodes}</div>`;
+  } else {
+    body = `<ul class="dl">${[...UNITS].sort((a, b) => a[0] - b[0]).map(([n, t, s, pre]) => `<li class="${s === 'now' ? 'here' : s === 'not' ? 'todo' : ''}"><span class="n">${n}</span>${sg(s)}<span class="t">${t}</span><span class="pre">${pre.length ? 'needs ' + pre.join(', ') : ''}</span></li>`).join('')}</ul>`;
+  }
+  return `<aside class="pane-side" aria-label="Course map"><div class="pane-h"><span class="lbl">Course map</span><span class="title">${COURSE}</span>
+    <button class="pane-x" type="button" data-act="map" aria-label="Close">✕</button></div><div class="pane-b">${legend}${body}
+    <p class="proto">The narrow form, a list with prerequisites by number, is what a pane too narrow for distinct lines shows; switch to it in the bar ("Map").</p></div></aside>`;
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  document.documentElement.dataset.read = st.read;
+  document.documentElement.dataset.label = st.label;
+  const thread = SEG1 + SEG2 + (gate() ? gateTail() : SEG3);
+  app.innerHTML = `<div class="th ${st.map ? 'pane' : ''}">${topLine()}
+    <div class="th-scroll" id="scroll"><div class="th-col">${thread}</div></div>
+    <div class="th-foot"><form class="box"><textarea rows="1" id="msg" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND}</button></form></div>
+    ${st.map ? courseMap() : ''}</div>`;
+  pop.innerHTML = st.outline ? outline() : '';
+  math(app); math(pop);
+  const s = $('#scroll'); s.style.scrollBehavior = 'auto'; s.scrollTop = s.scrollHeight; s.style.scrollBehavior = '';
+  bar();
+}
+function setOutline(v) { st.outline = v; pop.innerHTML = v ? outline() : ''; math(pop); $('[data-act=outline]')?.setAttribute('aria-expanded', v); }
+function jump(id) {
+  setOutline(false);
+  const el = document.getElementById(id); if (!el) return;
+  const s = $('#scroll'); s.scrollTo({top: el.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop - 24, behavior: 'smooth'});
+  el.classList.add('flash'); requestAnimationFrame(() => setTimeout(() => el.classList.remove('flash'), 350));
+}
+
+/* ---------------- "Quote" ---------------- */
+function showQuote() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.toString().trim()) { qpop.hidden = true; return; }
+  const a = sel.anchorNode?.parentElement?.closest('.tutor'), f = sel.focusNode?.parentElement?.closest('.tutor');
+  if (!a || !f) { qpop.hidden = true; return; }
+  const r = sel.getRangeAt(0).getBoundingClientRect();
+  qpop.style.left = `${r.left + r.width / 2}px`; qpop.style.top = `${r.top}px`; qpop.hidden = false;
+}
+qpop.addEventListener('mousedown', e => e.preventDefault());
+qpop.addEventListener('click', () => {
+  const text = window.getSelection().toString().trim().replace(/\s+/g, ' ');
+  const box = $('#msg'); const quoted = `> ${text}\n\n`;
+  box.value = box.value ? `${box.value.replace(/\s*$/, '')}\n\n${quoted}` : quoted;
+  box.rows = Math.min(6, box.value.split('\n').length);
+  window.getSelection().removeAllRanges(); qpop.hidden = true; box.focus(); box.setSelectionRange(box.value.length, box.value.length);
+});
+document.addEventListener('mouseup', () => setTimeout(showQuote, 0));
+document.addEventListener('scroll', () => { qpop.hidden = true; }, true);
+
+/* ---------------- input ---------------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-act],[data-seg],[data-bar]');
+  if (t?.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; if (k === 'moment') { st.skipAsk = false; st.outline = false; } render(); return; }
+  if (t?.dataset.seg) { jump(t.dataset.seg === 'gate' ? 'gate' : `seg-${t.dataset.seg}`); return; }
+  const act = t?.dataset.act;
+  if (act === 'outline') { setOutline(!st.outline); return; }
+  if (act === 'map') { st.map = !st.map; st.outline = false; render(); return; }
+  if (act === 'skip') { st.skipAsk = true; render(); return; }
+  if (act === 'skip-no') { st.skipAsk = false; render(); return; }
+  if (st.outline && !e.target.closest('#pop')) setOutline(false);
+});
+app.addEventListener('submit', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+  if (e.target.matches?.('textarea,input')) return;
+  if (e.key === 'Escape') { if (st.outline) setOutline(false); else if (st.map) { st.map = false; render(); } }
+  if (e.key === 'o') setOutline(!st.outline);
+  if (e.key === 'm') { st.map = !st.map; render(); }
+  if (e.key === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- the prototype bar ---------------- */
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, n]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${st[k] === v}">${n}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('moment', 'Moment', [['discuss', 'Segment 3, discussion'], ['gate', 'In the gate']])
+    + grp('read', 'Reading type', [['serif', 'CMU Serif'], ['concrete', 'CMU Concrete'], ['sans', 'Plex Sans (today)']])
+    + grp('label', 'Labels', [['mono', 'Plex Mono caps'], ['sans', 'Plex Sans caps']])
+    + grp('mapForm', 'Map', [['diagram', 'Diagram'], ['list', 'Numbered list']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">O outline · M course map · select tutor text to quote · H hides this</div>';
+}
+render();
+</script>
+</body>
+</html>

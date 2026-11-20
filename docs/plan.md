@@ -26,77 +26,221 @@ user's choice; the numbers are kept because code and documents use them.
 ## Stage 5: follow-ups from the check (built before stage 4)
 
 The tasks the stage's check and the two comparisons added. The stage's
-views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`
-(`decisions.md`, "Page design"); 5.17 makes new ones. Not in this stage:
-sources and web access (4.0), self-test and cheat sheets (stage 6).
+views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`, and
+the redesign in pieces 19 to 21 (`decisions.md`, "Page design"), which
+tasks 5.30 to 5.39 build; 5.30 goes first, since the others are drawn in
+its look. Every view must still read at 30 units: `pnpm dev:fake` seeds
+"Calculus 1 to 3" with thirty, and its scripted planner proposes thirty
+for "/large". Not in this stage: sources and web access (4.0), self-test
+and cheat sheets (stage 6).
 
-### 5.17 Page redesign: break it down
+### 5.30 The redesign's look
 
 - Status: todo
-- Depends on: nothing. The comparisons with two other open-source
-  tutoring projects, LearnHarness and DeepTutor, are done; their
-  directions are below
-- To be broken down with the user, starting from new mocks in
-  `docs/prototype/`. What it must answer, from the user's notes of
-  2026-11-19, with the directions the user chose from the two
-  comparisons the same day:
-  - the app looks amateur; it should look professional and sleek, all
-    over. The mocks keep Catppuccin Frappé and try: a type register of
-    its own for the app's labels (small capitals, a monospace or Plex
-    Mono); a Computer Modern serif for titles, to match the math; the
-    tutor's text and a question's prompt in a serif that matches KaTeX
-    (Latin Modern or CMU Serif), so that inline math reads as part of the
-    sentence, the controls staying sans (DeepTutor sets learning text in
-    a serif, `web/app/layout.tsx` in that project); the
-    accent on fewer things (headings and key terms in the text colour,
-    mauve for the next step and "you are here"); the colours as a small
-    set of named tokens, so that a light theme is cheap later. Once the
-    mocks are accepted, `decisions.md`, "Page design", "Look", changes
-    with them;
-  - an objective's status shown by form as well as colour (filled when
-    passed, ringed when current, outlined when started, faint when not;
-    retained and slipping keep teal and peach and their words), in the
-    outline, the course map and the course view, so that it also reads
-    in a light theme (DeepTutor's `StudyOutline.tsx`);
-  - a graded card's verdict as one line under a hairline, the verdict
-    word coloured and the rest neutral, not a coloured panel;
-  - the course view goes down to objectives: each unit a heading with
-    its count ("2 of 5"), each objective a row with its status word and
-    "Next" on the one to do, so that every row names its level
-    (DeepTutor's path page, `assets/figs/web-dev/mastery-detail.png`);
-  - the unit page's top line and its outline are confusing (segments and
-    units are easily mixed up), and ugly;
-  - where each segment starts, a heading in the thread: a rule, "Segment
-    N of M", its title, and its objectives in small text; under it,
-    lighter phase markers (a hairline with a small label) for teach,
-    discuss and check;
-  - a segment, current or past, picked in the outline jumps to its
-    heading in the thread and highlights it briefly;
-  - the course's whole path is reachable at any time from a unit: a
-    "Course map" button in the unit's top line opens the curriculum
-    diagram in the side pane, the current unit marked;
-  - selecting text in the thread offers "Quote", which puts the passage
-    into the message box as a quote; the learner then asks in the thread
-    as usual. No side thread;
-  - a visible way to ask for a curriculum change from the course view
-    (today one is asked for in a unit's chat, and nothing says so). It
-    also closes a gap: a large course whose last unit finishes before
-    its next stretch is added cannot add it, since a finished unit's
-    tutor has no tools (`decisions.md`, "Product decisions", large
-    courses). Segments stay fixed within a unit: the user agreed,
-    2026-11-19.
-  - every view must still read at 30 units or more: `pnpm dev:fake`
-    seeds "Calculus 1 to 3" with thirty, and its scripted planner
-    proposes thirty for "/large".
-  - "Skip the gate" partway through asks with `SKIP_GATE_ASKS`
-    (`src/web/session.ts`), which is written for the gate's card: it does
-    not say that the answers so far count, that the open question is
-    dropped, or that leaving instead lets the gate resume later. Give it
-    a second text for partway through.
-  - the library grouped by where each course stands (in progress,
-    finished, drafts), so finished courses need no archive: the user
-    chose deleting without archiving (5.18). Each row, and the course
-    view, shows how many objectives are due for review (5.24).
+- Depends on: nothing
+- `src/web/styles.css` takes `docs/prototype/look.css`'s colour roles in
+  place of the palette's names, and its four type registers
+  (`decisions.md`, "Page design", "Look"): the app's labels in Plex Mono
+  capitals; titles, the tutor's text, a question's prompt and its choices
+  in CMU Serif, with KaTeX at 1em; the controls in Plex Sans. The accent
+  only on the next step and "you are here"; headings and key terms in the
+  text colour; the learner's messages on the raised surface. Every view
+  takes it: the library, the course view, the intake and its card, the
+  unit thread and its cards, "What I know", the profile and the notes
+  reader's frame. CMU Serif is served by the app: its four woff2 files
+  (regular, italic, bold, bold italic) and the OFL in `src/web/`, not a
+  CDN and not the 19 MB `computer-modern` package (the agent's choice).
+  Only the roles block names colours. Not here: the status forms (5.31)
+  and the new layouts.
+- Done when: no colour literal in `styles.css` outside the roles block
+  (a grep); `pnpm lint` and `pnpm typecheck` pass; on `pnpm dev:fake`,
+  screenshots of each view above, with a thread holding inline and display
+  math, match piece 19's type and colours.
+
+### 5.31 Status forms
+
+- Status: todo
+- Depends on: 5.30
+- One component draws an objective's or a unit's status as a form
+  (`decisions.md`, "Page design", "Status shows by form as well as
+  colour"), from `ObjectiveStatus` or `UnitStatus`, and "current": the
+  first objective not passed of the segment in progress, and the unit the
+  course view's card leads to. Which one is current is a pure function
+  beside its view, tested. It replaces the coloured words alone in the
+  closing card's rows, "What I know", the course view's unit list and the
+  diagram with its numbered fallback; 5.32, 5.33 and 5.39 use it in their
+  views.
+- Done when: a test of the current pick on hand-made progress (the first
+  objective not passed of the segment in progress; none in a finished
+  unit); on `pnpm dev:fake` each of the seven forms shows in those views,
+  from the seeded courses (Calculus I has retained and slipping,
+  Probability overridden).
+
+### 5.32 Segment headings, phase hairlines, the verdict line
+
+- Status: todo
+- Depends on: 5.31
+- As piece 19. Where each segment starts in the thread, a heading: a rule,
+  "Segment N of M", its title, and its objectives with their forms as they
+  stand now. The extra segment's heading reads "Going over again". Teach,
+  discuss and check become hairlines with a small label. Review, gate and
+  test markers keep their words in the same hairline form (the agent's).
+  A graded card's verdict becomes one line under a hairline, with only the
+  verdict word in colour. The headings are derived in the timeline
+  (`src/shared/timeline.ts`) from the positions on its phase events, so an
+  earlier session's segments get them too. A segment skipped by a test
+  has none. Each heading has an id the outline (5.33) jumps to. To settle
+  in the task: whether a fresh start repeats the heading of the segment it
+  resumes.
+- Done when: timeline tests show one heading per segment entered,
+  including the extra segment and after Start fresh, and none for a
+  skipped one. On `pnpm dev:fake`, a unit's thread shows piece 19's
+  headings, hairlines and verdict lines: correct, incorrect with the
+  expected answer, "I don't know", and disputed.
+
+### 5.33 The unit's top line and outline
+
+- Status: todo
+- Depends on: 5.32
+- As piece 19. The path ends in "Unit N" and the unit's title. The
+  position reads "Segment N of M" with the segment's title and its ticks,
+  or "Unit gate", "Review" or "Testing out" with the question count while
+  one of those runs. The position opens the outline; "Course map" sits
+  beside it, and 5.34 makes it work. The outline lists the segments,
+  numbered, each with its objectives and their forms. The current segment
+  says "You are here", a past one how many passed, and a skipped one is
+  struck through. The gate follows the segments. "Export transcript" and
+  "Start fresh" keep their behaviour. A past or current segment picked
+  there scrolls only the thread's scroller to its heading and lights it
+  briefly, with no smooth scroll or fade under reduced motion.
+- Done when: on `pnpm dev:fake`, a seeded unit with two segments past
+  jumps to each heading and lights it, and the position reads right in a
+  segment, a review, the gate and a test (the scripted backend's commands
+  reach them). Tests cover the position's text where it is computed.
+
+### 5.34 The course map from a unit
+
+- Status: todo
+- Depends on: 5.31, and 5.33 for the button
+- "Course map" opens the curriculum diagram (`Curriculum.tsx`) in the side
+  pane, the unit marked "You are here", with the status forms. When the
+  pane is too narrow for distinct lines, it shows the numbered list of
+  prerequisites, as the course view does. The pane holds one thing: an
+  artifact that opens replaces the map, and the map replaces an artifact.
+  Esc and Close close it. Picking a unit there lights its lines; opening
+  that unit is the course view's job (the agent's).
+- Done when: on `pnpm dev:fake`, the map in a Calculus I unit shows the
+  diagram with the unit marked, the map in a Calculus 1 to 3 unit shows
+  the numbered list with the unit marked, and an artifact from the
+  scripted tutor replaces it.
+
+### 5.35 Quote
+
+- Status: todo
+- Depends on: 5.30
+- As piece 19. Selecting text in the tutor's text or a question's prompt
+  offers "Quote" over the selection. It puts the passage in the message
+  box as a Markdown quote (each line `> `, then a blank line), after any
+  draft, and focuses the box at its end. Math comes back as its LaTeX
+  source between `$`, not KaTeX's doubled text; the source is in KaTeX's
+  MathML annotation. The learner's message shows a quote as a quote:
+  today a learner's message is plain text (`th-you` in `Session.tsx`).
+  The tutor gets the text as sent, and the help judge judges it as any
+  message. No side thread. To settle in the task: how the conversion is
+  tested without a browser.
+- Done when: a test turns a selection across inline and display math into
+  its source. On `pnpm dev:fake`, Quote fills the box, the sent message
+  shows the quote, and the scripted tutor answers it.
+
+### 5.36 Skipping the gate partway
+
+- Status: todo
+- Depends on: nothing
+- `SKIP_GATE_ASKS` (`src/web/session.ts`) is written for the gate's card.
+  Partway, "Skip the gate" asks with a second text, settled in piece 19:
+  "Skip the rest of the gate? Your N answers so far count, and the open
+  question is dropped. Nothing more is marked retained, and the gate is
+  not offered again. To stop for now instead, just leave: the gate waits,
+  and picks up at this question when you come back." Its buttons read
+  "Skip the rest of the gate" and "Keep going". First, check in the engine
+  that leaving mid-gate keeps the open question for the next sitting;
+  `architecture.md` section 4 says only that the card waits across
+  sittings. If the engine does not keep the question, the text says what
+  it does.
+- Done when: a test shows the partway text with the answer count (one
+  answer, and several), and the card's text unchanged; on `pnpm dev:fake`,
+  "Skip the gate" after one gate answer shows it.
+
+### 5.37 The course view down to objectives
+
+- Status: todo
+- Depends on: 5.31
+- As piece 20 (`decisions.md`, "Page design", "The course view is built
+  around the unit list, down to objectives"). The view has the title, a
+  line with the units, the finished units, and the objectives passed in
+  the units started; the place for the due count and "Review now", which
+  5.24 and 5.25 fill; and the card. On a finished course the card reads
+  "Every unit is finished", with "Plan what comes next". Under "Units"
+  is "Change the curriculum"; 5.38 makes both work. Each unit is a heading
+  with "Unit N", its title, "k of n passed" and its form. A started unit
+  lists its objectives with their forms and words, and "Next" in the
+  accent, with the ringed form, marks the first not passed, in plan
+  order, of the unit the card leads to. A unit not started shows its goal,
+  "Its objectives are set when it starts", Start and Test out. A finished
+  unit has Open, and Notes or "Write notes". Only units in progress are
+  open; the others are one line each and open when clicked, staying open
+  while the page lives. The top line has "Course map", the side pane as
+  "Show the diagram" opens it today, and "What I know". The course
+  response gains each started unit's objective statuses (`UnitProgress`
+  in `src/shared/library.ts`), derived, never stored. The objective rows
+  replace the retained and slipping counts under a finished unit.
+- Done when: tests on hand-made progress give the objective statuses and
+  the "Next" pick. On `pnpm dev:fake`, Calculus I and Calculus 1 to 3 read
+  as piece 20 and fold as picked, and Start, Test out and Continue still
+  work.
+
+### 5.38 Planning from the course view
+
+- Status: todo
+- Depends on: 5.37
+- The user's pick (`decisions.md`, "Page design", "A curriculum change is
+  asked for from the course view"). "Change the curriculum", and a
+  finished course's "Plan what comes next", open a planning conversation
+  of the course, run as the intake is. The planner is given the course,
+  its curriculum with each unit's status and its objectives' statuses,
+  the style note (with the later stretches it names), and the profile. It
+  asks, then proposes with the change tool, and the proposal is the
+  curriculum change card (`CurriculumCard.tsx`), with Apply and "Keep the
+  current one". A change's rules hold: a started unit cannot be dropped,
+  and one proposal waits per course. Applying goes back to the course
+  view. This closes the gap in `decisions.md`, "Product decisions", large
+  courses: a finished unit's tutor has no tools. To settle in the task:
+  the prompt (a section of `planner.md` or a file of its own), the chat's
+  route and transcript, whether it is refused while a unit chat of the
+  course is open, how open unit chats hear of an applied change (as they
+  do for a unit tutor's), and the scripted planner for `pnpm dev:fake`.
+  `architecture.md` sections 4 and 10, and `decisions.md`, "Mastery loop",
+  "Style and curriculum changes", change with it.
+- Done when: fake-backend tests show the conversation proposing and
+  applying a change that adds units to a finished course, and refusing
+  what a unit tutor's change refuses. On `pnpm dev:fake`, "Plan what comes
+  next" on a finished seeded course reaches a card and applies it. A short
+  real-model run (Haiku), on a finished course whose style note names the
+  next stretch, proposes that stretch.
+
+### 5.39 The library grouped
+
+- Status: todo
+- Depends on: 5.31
+- As piece 21. Courses are grouped as in progress, drafts (a curriculum
+  not approved) and finished, each group with its count and newest first.
+  A one-off sits in its group, marked "One-off". A row has the title,
+  where it stands, when it was last opened, a status form per unit in
+  place of the ticks, and at its right the place for the due count, which
+  5.24 fills. The top line has Gauss, Profile and New course.
+- Done when: `library.test.ts` shows the grouping, with a draft, a course
+  with nothing started, and a finished one-off. On `pnpm dev:fake`, the
+  seeded library reads as piece 21.
 
 ### 5.18 Deleting a course
 
@@ -233,8 +377,8 @@ sources and web access (4.0), self-test and cheat sheets (stage 6).
 ### 5.24 Reviews due, shown before a unit is opened
 
 - Status: todo
-- Depends on: 5.19, which gives each objective a due time, and 5.17's
-  mocks, which place the count
+- Depends on: 5.19, which gives each objective a due time, and 5.37 and
+  5.39, which make the places for the count (pieces 20 and 21)
 - The user's decision (2026-11-19, from the DeepTutor comparison): each
   course's row in the library, and its course view, show how many of its
   objectives are due for review, derived from the evidence with 5.19's

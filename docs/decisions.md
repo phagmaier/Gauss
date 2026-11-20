@@ -177,9 +177,10 @@ The brief states the result; this is who decided and why.
   mastery, leaves most teaching rules to its prompts, grades choices in
   the browser and sends answer keys to the page; Gauss stays as it is on
   all of those. The user decided:
-  - directions for 5.17's mocks (in the plan): a course map from the
-    unit's top line, segment headings that the outline jumps to, a
-    quieter look within Frappé, and quoting a selected passage;
+  - directions for 5.17's mocks ("Page design", pieces 19 to 21): a
+    course map from the unit's top line, segment headings that the
+    outline jumps to, a quieter look within Frappé, and quoting a
+    selected passage;
   - review ordered by how overdue each objective is (5.19), not full
     FSRS;
   - an aid's script errors sent to the tutor when the learner presses a
@@ -211,7 +212,7 @@ The brief states the result; this is who decided and why.
     channel once 5.20 is done (5.23);
   - the library and the course view show how many objectives are due
     for review, once 5.19 gives due times (5.24);
-  - four more directions for 5.17's mocks (in the plan): a serif that
+  - four more directions for 5.17's mocks ("Page design"): a serif that
     matches KaTeX for the tutor's text, status by form as well as
     colour, a graded card's verdict under a hairline, and a course view
     that goes down to objectives;
@@ -282,7 +283,10 @@ The brief states the result; this is who decided and why.
   the tutor a turn, and the closed-phase header rules out tools. Units
   planned far ahead would be guesses made before anything is known of
   the learner. Rejected: the whole topic planned up front; one course
-  per stretch.
+  per stretch. A course whose last unit finished before its next stretch
+  was added cannot add it until task 5.38 lets it plan from the course
+  view ("Page design", "A curriculum change is asked for from the course
+  view").
 
 ## Toolchain
 
@@ -1688,37 +1692,97 @@ render math.
 ## Page design
 
 Picked by the user from the mocks in `docs/prototype/` (pieces 1 to 18),
-2026-11-13, 2026-11-15, 2026-11-17 and 2026-11-18. Each mock's header
-comment says what was asked and rejected. Pieces 15 to 18 were shown as
-the agent would build them and accepted so, but for the notes ("Product
-decisions"); as built, they are `architecture.md` section 10.
+2026-11-13, 2026-11-15, 2026-11-17 and 2026-11-18, and pieces 19 to 21, the
+redesign, 2026-11-19 (task 5.17). Each mock's header comment says what was
+asked and rejected. Pieces 15 to 18 were shown as the agent would build them
+and accepted so, but for the notes ("Product decisions"); as built, they are
+`architecture.md` section 10. The redesign is built by tasks 5.30 to 5.39;
+until each is done, the app shows what pieces 1 to 18 settled, and the
+entries below say which parts are the redesign's.
 
 - **Thread layout**: one centred column, the tutor's text unframed, the
   learner's messages on the right, one message box at the bottom. Rejected:
   a document with questions in the margin, and lesson and conversation side
   by side.
-- **Look**: Catppuccin Frappé, mauve accent, IBM Plex Sans, dark first;
-  headings take the accent, key terms yellow, the learner's messages a faint
-  accent wash. Rejected: the other flavours and accents, a blackboard look
-  (the user found it the ugliest) and a warm book look.
+- **Look** (the redesign, piece 19; the user found the first look amateur):
+  Catppuccin Frappé, dark first, reached only through named colour roles
+  (`look.css`), so that a theme is one block of values. Mauve marks only the
+  next step and "you are here"; headings and key terms are in the text
+  colour, and the learner's messages sit on the raised surface. Type in four
+  registers: the app's labels in IBM Plex Mono capitals, small and tracked;
+  titles, the tutor's text and a question's prompt and choices in CMU Serif,
+  the Computer Modern KaTeX draws math in, with math at 1em so that it
+  matches the words; the controls in IBM Plex Sans; code in Plex Mono. The
+  user's picks over CMU Concrete or Plex Sans for reading, and Plex Sans
+  capitals for labels. Rejected earlier: the other flavours and accents, a
+  blackboard look (the user found it the ugliest), a warm book look; and
+  the first look's accent headings, yellow key terms and accent-washed
+  messages.
+- **Status shows by form as well as colour** (the redesign, piece 19, from
+  DeepTutor's `StudyOutline.tsx`), so that it reads in a light theme too:
+  passed filled; retained filled in teal; slipping half filled in peach;
+  answered but not passed an outline; overridden hollow with a bar; not
+  started faint and dotted; the current one an accent dot with a ring. A
+  unit takes the same forms. The words stay beside them where there is
+  room ("Retained" in teal, `#81c8be`, and "Slipping" in peach, `#ef9f76`,
+  from piece 16). Shown in the outline, the course map, the course view,
+  the library and the closing card.
 - **A question is a card in the thread**, answered inside the card while the
   message box stays; once graded it shrinks to a record (verdict, answer,
-  confidence, the right answer on a miss). Rejected: the message box turning
-  into the answer box, and a full-screen question.
-- **Phases are marker lines in the thread**, with one next-step control where
-  the conversation has reached; while the tutor writes, Send becomes Stop.
+  confidence, the right answer on a miss), the verdict one line under a
+  hairline, its word coloured and the rest neutral (the redesign, piece
+  19), not a coloured panel. Rejected: the message box turning into the
+  answer box, and a full-screen question.
+- **Each segment starts with a heading in the thread** (the redesign, piece
+  19): a rule, "Segment N of M", its title, and its objectives in small
+  text with their status forms. Teach, discuss and check under it are
+  hairlines with a small label. One next-step control sits where the
+  conversation has reached; while the tutor writes, Send becomes Stop.
   Rejected: a phase strip across the top.
 - **Session navigation is one line across the top**: the path on the left,
-  the position with a tick per segment on the right, opening the unit's
-  outline. Leaving a session never asks. Rejected: a rail always showing the
-  outline.
-- **Artifacts and source passages open in a pane beside the thread**, one at
-  a time. Rejected: inline, and a sheet over the thread.
-- **The library is one plain list**, newest first, finished courses at the
-  bottom. Rejected: leading with where the learner stopped, or with a
-  message box.
-- **The course view is built around the unit list**, the diagram one click
-  away in the side pane. Rejected: built around the diagram.
+  ending in "Unit N" and the unit's title; on the right the position,
+  "Segment N of M" with the segment's title and a tick per segment, which
+  opens the outline, and "Course map" (the redesign, piece 19). Segments
+  and units were easily mixed up when neither was named by kind (the
+  user's note, 2026-11-19). The outline lists the unit's segments,
+  numbered, each with its objectives, then the gate, then "Export
+  transcript" and "Start fresh"; a past or current segment picked there
+  scrolls the thread to its heading and lights it briefly. Leaving a
+  session never asks. Rejected: a rail always showing the outline.
+- **Artifacts, source passages and the course map open in a pane beside
+  the thread**, one at a time. "Course map" shows the curriculum diagram
+  with the unit marked "You are here" (the redesign, piece 19). Rejected:
+  inline, and a sheet over the thread.
+- **Quote**: selecting the tutor's text offers "Quote", which puts the
+  passage in the message box as a quote; the learner asks in the thread as
+  usual (the redesign, piece 19). Rejected: a side thread.
+- **The library is grouped by where each course stands**: in progress,
+  drafts, finished, newest first in each (the redesign, piece 21). A row
+  has a status form per unit in place of the ticks, and how many
+  objectives are due for review when any are. Finished courses need no
+  archive: a course is deleted (task 5.18). Rejected: one plain list with
+  finished courses at the bottom (piece 6), leading with where the learner
+  stopped, or with a message box.
+- **The course view is built around the unit list, down to objectives**
+  (the redesign, piece 20, from DeepTutor's path page): each unit is a
+  heading with "Unit N", how many of its objectives have passed, and its
+  form; each objective is a row with its form and status word, and "Next"
+  marks the one to do. A unit not started shows its goal, since its
+  objectives are written when it first opens. Only units in progress are
+  open; the others are one line each and open when clicked (the user's
+  pick over every unit open, for 30-unit courses). Above the units come
+  the due count with "Review now", then the card. "Course map" and "What I
+  know" are in the top line. Rejected: built around the diagram.
+- **A curriculum change is asked for from the course view** (the user's
+  pick, piece 20): "Change the curriculum" above the units, and on a
+  finished course the card's "Plan what comes next", open a planning
+  conversation of the course, run as the intake is, which ends in the
+  curriculum change card. The pick closes the gap where a finished course
+  could not add its next stretch, since a finished unit's tutor has no
+  tools. Segments stay fixed within a unit (the user, 2026-11-19).
+  Rejected: a request box answered by one planner call, with no questions
+  back; asking in a unit's chat, the only way before, which nothing on the
+  page announced.
 - **The diagram at 30 units** (task 5.16, the agent's choice): lines that
   cross a row sit side by side, in the order they came from, instead of
   all through the gap's middle, where long lines merged into one. If
@@ -1771,9 +1835,10 @@ decisions"); as built, they are `architecture.md` section 10.
   thread, then markers around question cards. "Test out" sits beside Start
   on every unit not started and under the course card's "Start unit N", so
   it is seen before Start is pressed. Skipped segments stay in the outline,
-  struck through, and show as hollow ticks in the top line.
-- **Retained is teal and slipping is peach** (piece 16; Catppuccin's
-  `#81c8be` and `#ef9f76`); passed stays green and not passed yet yellow.
+  struck through, and show as hollow ticks in the top line. "Skip the
+  gate" partway asks with a text of its own: the answers so far count, the
+  open question is dropped, and leaving instead lets the gate pick up
+  later (the redesign, piece 19).
 - **Notes are offered in a section of the closing card** (piece 17), drawn
   quieter than the card's next step; the reader is the writer's page in a
   frame under the top line. What a unit's notes look like is the writer's;
@@ -1788,8 +1853,9 @@ decisions"); as built, they are `architecture.md` section 10.
   (the agent's): the intake card's style section with the profile's
   sentence marks (`ChangedText.tsx`) and the package card's foot; the
   intake card's list and diagram ("Mastery loop").
-- Not designed yet: a light theme, the source reader, settings, narrow
-  screens.
+- Not designed yet: a light theme (`look.css` has a rough Latte only to
+  show that the colour roles and status forms carry over), the source
+  reader, settings, narrow screens.
 
 ## Page behaviour
 
