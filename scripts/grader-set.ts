@@ -1,8 +1,8 @@
-// The grader's hand-graded set (plan task 2.9; the grades and the reasons for
-// them are in docs/decisions.md, "Grader prompt"). Four questions as a tutor
-// would post them, each with its rubric, and written answers whose grades
-// were worked out by hand. `scripts/grade-set.ts` grades them on a real
-// model.
+// The grader's hand-graded set (plan task 2.9; what it showed about the
+// grader's prompt and model is in docs/decisions.md, "Grader prompt"). Four
+// questions as a tutor would post them, each with its rubric, and written
+// answers whose grades were worked out by hand, each saying what it tests.
+// `scripts/grade-set.ts` grades them on a real model.
 //
 // Math is written as the learner and the tutor write it: `$` for inline
 // math and `$$` for display.

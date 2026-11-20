@@ -108,7 +108,9 @@ phase.
 
 ## Teaching style
 
-- A global default style, kept in an editable prompt file.
+- A global default style, kept in a prompt file. Later, the learner can add
+  to or edit the teaching instructions in the app; the rules the app relies
+  on stay fixed, and the original is kept to revert to.
 - A per-course style note in plain text: how long explanations run, the mix of
   question kinds (many small exercises for code, written reconstruction for
   philosophy), and pace. The tutor proposes it at intake and the learner
@@ -154,8 +156,8 @@ phase.
 - **Help**: a message to the tutor while a question is open. A reply that only
   clarifies what the question asks (its wording, its notation, the form of
   answer wanted) is not help; one that points toward the answer is. A
-  separate judging call decides, and the page shows its call. An answer
-  given with help counts toward nothing.
+  separate judging call decides, and the page shows its call. A correct
+  answer given with help counts toward nothing; a wrong one is a miss.
 - **Disputes**: the learner can contest any grade once, giving a reason. A
   separate judging call decides, seeing what the answer was graded by and
   nothing of the conversation; the outcome is recorded with the answer.
@@ -249,8 +251,9 @@ what is due, and on-demand self-test.
 
 - Both subscriptions are used by driving the official harnesses (Claude Agent
   SDK, Codex) behind one adapter, signed in with the learner's own plans.
-- Teaching tools (ask a question, record evidence, show an artifact, update
-  progress) are provided once and shared by both backends.
+- Teaching tools (ask a question, show an artifact, propose a curriculum or
+  style change, install packages) are provided once and shared by both
+  backends.
 - Local web app. TypeScript for server and interface, with small Python helper
   scripts (run through `uv`) for document conversion and symbolic math. The
   language choice was delegated to the agent by the learner.
@@ -270,9 +273,9 @@ detours, source ingestion with verified quotes, artifacts, workspace,
 transcripts, unit notes, library view, backup.
 
 Later: Codex backend, on-demand self-test on a scope the learner picks,
-cheat sheets, handwritten-work photos; starred messages for the notes, if
-the generated notes miss what the learner wants kept; teaching
-instructions the learner can add to or edit.
+cheat sheets, handwritten-work photos, teaching instructions the learner can
+edit; starred messages for the notes, if the generated notes miss what the
+learner wants kept.
 
 ## Dropped
 

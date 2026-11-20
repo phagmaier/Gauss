@@ -15,6 +15,8 @@ Read only what the task needs.
 | [Product brief](docs/brief.md) | Intended behaviour and shared terms | When working on product behaviour or terminology; read the relevant sections |
 | [Architecture](docs/architecture.md) | How the system works now | Sections 1 and 2 for orientation; then the sections the task touches |
 | [Decisions](docs/decisions.md) | Rationale, SDK findings, and known gaps | Follow the index to the relevant sections; don't load the whole file |
+| [Prompts](prompts/) | The model's instructions: tutor, planners, grader, judges, handoff and notes writers | When a task changes what a model is told; the findings behind the wording are in `decisions.md`, "Prompts" |
+| [Mocks](docs/prototype/) | Static page mocks, one per numbered piece; each file's header says what was picked | When a task names a piece, or changes a view's layout |
 
 Use the terms as `brief.md` defines them (course, unit, objective, segment,
 session, evidence, detour). Do not introduce synonyms in code or documents.
@@ -55,8 +57,8 @@ starting a plan task, editing files, or committing.
    commit. The message starts with the task id (`2.13: transcripts`); its
    body says what was checked and how (the commands and their results,
    browser and real-model runs, faults injected into the code with
-   `scripts/faults.ts`) and what was not checked. Do not commit if the "done when" check failed; leave
-   the task `in progress` and report why.
+   `scripts/faults.ts`) and what was not checked. Do not commit if the
+   "done when" check failed; leave the task `in progress` and report why.
 7. Report what you checked and what you could not check, then stop. Start
    the next task only if the user asked for more than one.
 
@@ -132,7 +134,10 @@ its rationale would help a later agent avoid repeating the investigation.
 ## Authorization
 
 - Commit once per finished task, as described above. The user authorized
-  this on 2026-11-13. Never push, and never rewrite existing commits.
+  this on 2026-11-13. Document changes the user agrees to outside a task
+  (decisions from a discussion, tasks from a check) are one commit of
+  their own, the message starting `Plan:`. Never push, and never rewrite
+  existing commits.
 - Do not add a dependency that `architecture.md` section 2 does not list
   without saying why in your report.
 - Leave `docs/brief.md` decisions alone unless the user changes them;

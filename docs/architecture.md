@@ -36,47 +36,59 @@ the reason for using one language.
 
 ```
 Gauss/
-  docs/                 brief.md, architecture.md, decisions.md, plan.md; prototype/ (the page mocks)
+  docs/                 brief.md, architecture.md, decisions.md, plan.md; prototype/ (the page mocks, a file per piece)
   prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md, handoff.md, notes.md
   src/
-    shared/             zod schemas: record files, questions, events, route bodies
+    shared/             zod schemas: record files, questions, events, route bodies; pure helpers both sides use
     server/
       main.ts, serve.ts the real server's start, and the wiring it shares with the dev server
       open-file.ts      the system's opener, for a code question's files and a unit's notes
-      record/           read/write course files; derive status, progress, "what I know"; the backup
+      sandbox-command.ts  wraps a sandboxed command in the Linux workload filter
+      record/           read/write course files; derive status, progress, "what I know"; the backup; the dev server's seed
       engine/           chats and check rules, model calls, document finishing, the sandbox for commands
       tools/            teaching tool definitions (transport-free functions)
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
-      sources/          (stage 4) ingestion, quote verification
     web/                React app: library, profile, intake, course, session, "what I know", notes
-  pytools/              sandbox_exec.py (Linux workload filter), mathcheck.py; (stage 4) convert.py
-  scripts/              dev-fake.ts (no model); faults.ts (injects faults, runs the tests); grade-set.ts, judge-set.ts and decide-set.ts with their sets (real model)
-  mise.toml             pinned node, pnpm, python, uv
+  pytools/              mathcheck.py; sandbox_exec.py (the workload filter) and sandbox_verify.py (a sandboxed command's exit status apart from its output); tests/
+  scripts/              dev-fake.ts (no model); faults.ts (injects faults, runs the tests); grade-set.ts, judge-set.ts and decide-set.ts, which run grader-set.ts, help-set.ts and dispute-set.ts on a real model
+  mise.toml             pinned node, pnpm, python, uv; `mise run setup` and `mise run check`
 ```
 
-Dependencies, kept few: `@anthropic-ai/claude-agent-sdk`, `zod` (the SDK's
-tool helper requires it), Hono with `@hono/node-server`, React with Vite,
-KaTeX, react-markdown with remark-gfm, remark-math and rehype-katex; unified
-with rehype-parse and rehype-stringify for standalone documents, plus
-remark-parse and remark-rehype for transcript Markdown and `@types/hast`
-for document trees; Vitest and Biome; `@anthropic-ai/sandbox-runtime`,
-the runtime developed for Claude Code's sandbox. It runs the engine's
-commands and on Linux needs `bwrap`, `socat` and `rg` on the machine. Python side:
-SymPy, with `antlr4-python3-runtime` 4.11 for its LaTeX parser, and a PDF
-and an EPUB converter chosen in stage 4. The curriculum diagram is laid out
-by the page itself (`src/web/diagram.ts`), not by a diagram library.
+Dependencies, kept few (`package.json`, `pytools/pyproject.toml`):
+
+- Server: `@anthropic-ai/claude-agent-sdk`; `zod` (the SDK's tool helper
+  requires it); `hono` with `@hono/node-server`;
+  `@anthropic-ai/sandbox-runtime`, the runtime developed for Claude
+  Code's sandbox, which runs the engine's commands and on Linux needs
+  `bwrap`, `socat` and `rg` on the machine.
+- Page: `react` and `react-dom`; `react-markdown` with `remark-gfm`,
+  `remark-math`, `rehype-katex` and `katex`.
+- Documents the server writes (unit notes, transcript export): `unified`
+  with `remark-parse`, `remark-rehype`, `rehype-parse` and
+  `rehype-stringify`, beside `remark-gfm`, `remark-math`, `rehype-katex`
+  and `katex`.
+- Development: `typescript`, `vite` with `@vitejs/plugin-react`,
+  `vitest`, `@biomejs/biome`, and the types `@types/node`, `@types/react`,
+  `@types/react-dom` and `@types/hast` (document trees).
+- Python: `sympy`, with `antlr4-python3-runtime` 4.11 for its LaTeX
+  parser; `pytest` for development. Stage 4 adds a PDF and an EPUB
+  converter.
+
+The curriculum diagram is laid out by the page itself
+(`src/web/diagram.ts`), not by a diagram library.
 
 ## 3. Data on disk
 
 Course data lives outside the repository so the code can be published
 without books, transcripts or progress. The data root is `GAUSS_DATA_ROOT`,
-or `~/gauss/`; only `main.ts` reads the environment, and the record module
-(`src/server/record/`) takes the root as an argument.
+or `~/gauss/` (`resolveDataRoot` in `record/data-root.ts`, called by the
+server's start); the rest of the record takes the root as an argument.
+The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
 
 ```
 <data root>/
-  .git/, .gitignore               the record's history: commits after each segment close, unit end, approval, handoff note, an assessment that recorded answers, and a profile saved on its page
+  .git/, .gitignore               the record's history (below, "Backup")
   profile.md                      the learner profile: plain text that holds across courses, at most 2,000 characters; written by an approval that proposes it, or the Profile page
   .profile-approval.json          recovery journal present only during a curriculum approval that changes the profile, or until recovery
   .notes-write.json               recovery journal present only during publication of unit notes, or until recovery
@@ -132,25 +144,14 @@ version: a field added later must be optional.
   not passed, slipping and overridden ones included (`isOpen` in
   `src/shared/misconception.ts`).
 - **`state.json`** holds a position for each unit in progress, not one
-  current unit: several units can be in progress at once. A position
-  holds the segment, the phase, where the check began (`checkFrom`), the
-  open question (with its kept answer and the exchanges awaiting the help
-  judge), an open detour, an assessment offered or under way (beside the
-  phase; while it is under way the open question and the detour are its
-  own), whether the unit's gate has been offered (`gated`, kept until the
-  unit finishes), the test before the unit (`testOut`: due, its result
-  waiting, or the objectives the learner chose to skip, kept until the
-  unit finishes), the extra segment that goes over objectives again, the
-  tutor's session id, and the tutor's request to install packages, its
-  proposed style note and its proposed curriculum change while each waits
-  for the learner. Completed package cards, units finished by testing
-  out, and the learner's style and curriculum answers not yet told to the
-  tutor are kept separately from positions in the same file.
-  Their outcomes survive even if a transcript line is lost. Before
-  the first unit exposes the workspace, the course rolls back an
-  interrupted install or saves its committed receipt without rerunning uv.
-  The journal is kept until the result is saved. Changes are written
-  before the page hears of them.
+  current unit: several units can be in progress at once (`UnitPosition`
+  in `src/shared/state.ts`). Besides positions it keeps the outcomes that
+  must survive a lost transcript line: completed package cards, units
+  finished by testing out, and the learner's style and curriculum answers
+  not yet told to the tutor. Before the first unit exposes the workspace,
+  the course rolls back an interrupted install or saves its committed
+  receipt without rerunning uv; the journal is kept until the result is
+  saved.
 - **Writes.** Every file but the logs is written whole: to a temporary file
   in its folder, flushed, then renamed over it. The logs (evidence,
   misconceptions, transcripts) are appended a line at a time; an entry
@@ -163,13 +164,14 @@ version: a field added later must be optional.
 - **Backup.** The data root is a git repository (`record/backup.ts`), made
   on the first start if it is not one, with a `.gitignore` that keeps
   `courses/` and `profile.md`, the learner's files in workspaces with
-  them, and leaves out `.venv/` and Python's caches. The engine asks for a commit once a
-  segment's close, a unit's end, an approval, a handoff note, unit notes or
-  the end of an assessment that recorded answers is written, and the
-  profile route once the Profile page's save is; commits run in
-  the background, one at a time, by "Gauss", and a failure is logged and
-  never fails the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off
-  for `pnpm dev:fake` unless `=on`; tests pass it in.
+  them, and leaves out `.venv/` and Python's caches. A commit is asked for
+  once a segment's close, a unit's end, an approval, an applied style or
+  curriculum change, a handoff note, unit notes or the end of an
+  assessment that recorded answers is written, once the Profile page's
+  save is, and at each start; commits run in the background, one at a
+  time, by "Gauss", and a failure is logged and never fails the engine.
+  On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for `pnpm dev:fake`
+  unless `=on`; tests pass it in.
 
 ## 4. Session engine
 
@@ -219,9 +221,9 @@ also before it reaches the backend.
   until the server stops. It holds the phase rules, the teaching tools and
   the learner's actions, and owns the unit's one queue, through which every
   change to the unit goes. It coordinates `engine/unit-record.ts`, which
-  keeps the position and evidence and writes each change before the page
-  hears of it, and `engine/unit-agents.ts`, which runs the tutor, the grader
-  and the help judge. Opening a unit not in progress plans it if needed,
+  keeps the position and evidence, and `engine/unit-agents.ts`, which runs
+  the tutor, the grader and the help judge. Opening a unit not in
+  progress plans it if needed,
   writes its position (segment 1, teach) and sends the teaching turn, or
   opened for its test, starts the test in its place; opening one in
   progress picks it up where `state.json` has it. Either can first offer
@@ -297,8 +299,8 @@ The rules:
 - **Passing** (`record/status.ts`). Since its last miss, an objective
   passes with unassisted correct answers to two different questions, at
   any confidence, or with one at 90% or 100% if it was never missed. A
-  miss clears the correct answers before it. An answer given with help
-  counts for nothing and clears nothing. Questions differ when what the
+  miss clears the correct answers before it. A correct answer given with
+  help counts for nothing; a wrong one is a miss. Questions differ when what the
   learner saw differs. An override marks an objective overridden but never
   takes away a pass, and a later answer takes the override's place. The
   log's order decides, not timestamps.
@@ -323,10 +325,9 @@ The rules:
   pending, while a question is open, on an objective not in the segment
   or already done in this check, and once the unit is finished. In an
   assessment it is allowed in any phase, on the objective the assessment
-  asks next only, and refused while its card waits. Its file
-  writes and commands (section 5) are refused while a question is open;
-  `show_artifact` is refused while a question of its unit is open or its
-  unit is finished;
+  asks next only, and refused while its card waits. Its file writes and
+  commands are refused as section 5 says; `show_artifact` is refused
+  while a question of its unit is open or its unit is finished;
   `install_packages` while a question of the course is open or another
   request of the course waits; `propose_style` and `amend_curriculum` in
   feedback-only turns, while a question of its unit is open, while
@@ -521,8 +522,10 @@ the test before a unit lets the learner skip what they know.
 - **Review is offered on a card** when a unit not finished is opened in a
   new sitting (the chat is new, or `quiet()` in `engine/transcript.ts`:
   nothing has happened for `SESSION_GAP_MS`), and nothing waits on the
-  learner or the tutor: no open question, detour, package request, style
-  proposal, closing card, or turn queued. It asks about `pickForReview`'s three over the
+  learner or the tutor: no assessment, open question, detour, package
+  request or install, style or curriculum proposal, test result card,
+  closing card, feedback or other turn to come, and the unit's last
+  segment is not closed. It asks about `pickForReview`'s three over the
   whole course (`record/review.ts`: passed, retained and slipping
   objectives not answered within the hour, slipping first); none when that
   is empty. `course.json` keeps when review was last offered, and no card
@@ -644,8 +647,9 @@ the test before a unit lets the learner skip what they know.
 ### Unit notes
 
 `engine/notes.ts` accepts an explicit request for a finished unit, including
-one tested out of whole. The writer is a one-shot on Sonnet 5.5 by default,
-outside the chat queue. It reads the unit's goal and plan, the whole transcript
+one tested out of whole. The writer is a one-shot on Claude Sonnet 5.5
+(`NOTES_MODEL`), outside the chat queue. It reads the unit's goal and
+plan, the whole transcript
 with other units' assessment work left out, missed answers with their
 corrections, the handoff note, the unit's misconceptions and optional
 instructions. The plan is not evidence that a topic was taught. The first
@@ -672,10 +676,10 @@ tool server, for Codex an MCP server.
 | --- | --- |
 | `propose_curriculum` | Stores a draft curriculum with its style note, background note and the learner profile's whole text, and shows them for review; approval covers all four. Refused in the intake's first turn |
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session |
-| `ask_question` | Posts a question on an objective of the segment, in the check: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
+| `ask_question` | Posts a question on an objective of the segment, in the check, or on the one an assessment asks next: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. Uses the proposal and feedback rules in section 4. Does not end the turn |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
-| `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Refused while a question of the course is open or another request waits. Does not end the turn |
+| `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
 | `propose_style` | Proposes the whole revised style note with a line on why (`StyleInput` in `src/shared/style.ts`), shown on a card; Apply writes `style.md`. Uses the proposal and feedback rules in section 4. Does not end the turn |
 
@@ -722,8 +726,10 @@ with sources (stage 4).
   The reply is `HelpJudgment`: a reason, never shown, then clarification or
   help. A reply out of shape, a failed request or one past two minutes
   counts as help. It runs on Claude Haiku 5.5 (`JUDGE_MODEL`).
-- `GAUSS_CLAUDE_MODEL`, when set, replaces the grader's, the judges' and
-  the handoff writer's models. Each was chosen on a hand-made set: re-run
+- `GAUSS_CLAUDE_MODEL`, when set, replaces every model: the tutor's
+  sessions (otherwise the learner's Claude Code default) and each one-shot
+  call's (`main.ts`). The grader's and the judges' models were each
+  chosen on a hand-made set: re-run
   `node scripts/grade-set.ts --runs 2` when `grader.md`, `WrittenGrade` or
   `GRADER_MODEL` changes, `node scripts/judge-set.ts --runs 2` when
   `help-judge.md`, `HelpJudgment` or `JUDGE_MODEL` changes, and
@@ -740,7 +746,8 @@ with sources (stage 4).
   It runs with the venv's own Python (`pytools/.venv/bin/python -I`), so
   a sandboxed run needs no uv cache. A comparison has an eight-second
   limit; the engine (`engine/math-check.ts`) gives the whole process,
-  including parsing, 12 seconds, in the sandbox with nothing writable:
+  including parsing, 12 seconds, in the sandbox writing only its own
+  `$TMPDIR`:
   it reads the expected expression before posting a question declared
   symbolic, and compares the expressions when grading it. Questions
   declared for the grader, or saved without a policy, skip the check.
@@ -757,7 +764,8 @@ with sources (stage 4).
   without a sandbox; after an infrastructure failure the learner can retry
   a kept answer or move on with an override. Shutdown cancels runs and a kept
   answer is graded when the unit reopens. Each run has 60 seconds. The end of
-  both output streams is evidence. A run past its limit fails the grading;
+  its output, standard error merged into standard output, is evidence. A
+  run past its limit fails the grading;
   past it again on the same files, the answer is a miss.
 - **The engine's commands** (the symbolic check, a code question's tests)
   run text a model or the learner wrote, so each runs through
@@ -899,10 +907,8 @@ backend".
 
 ### Codex (stage 6)
 
-Not built. The stage 0 spike showed it can run on the ChatGPT login with
-teaching tools served over MCP, but the SDK does not stream text, reports
-the thread id only with the first turn, and cannot keep the learner's own
-Codex setup out (`decisions.md`, "Codex").
+Not built. What its SDK can and cannot do, from the stage 0 spike, is in
+`decisions.md`, "Codex".
 
 ## 8. Sources
 
@@ -974,9 +980,11 @@ Thread text is Markdown with `$` math: `$...$` inline, `$$` for display,
 ## 10. Page
 
 `src/web/`, React built by Vite. Each view's logic sits in a tested pure
-module beside it (`session.ts`, `timeline.ts`, `progress.ts`, `library.ts`,
-`what-i-know.ts`, `diagram.ts`, `route.ts`, `profile.ts`); the components
-themselves have no automated tests.
+module beside it (`session.ts`, `progress.ts`, `library.ts`,
+`what-i-know.ts`, `diagram.ts`, `route.ts`, `profile.ts`, `units.ts`,
+`calibration.ts`, `api.ts`; the thread's timeline is
+`src/shared/timeline.ts`). Of the components, only `PackagesCard.tsx` and
+`prose.tsx` have tests.
 
 - **Library** (`/`): every course and one-off, with where it stands, a tick
   per unit, and when it was last opened; finished courses grouped at the
@@ -988,8 +996,8 @@ themselves have no automated tests.
   revision marks what changed. The last section is the profile approval
   would save, marked "New" when there was none, "not changed", or
   "Changed" with each new sentence marked and each dropped one listed
-  under the text (`compareProfiles` in `src/shared/profile.ts`).
-- **Profile** (`/profile`, piece 18): what the profile is for, its text in
+  under the text (`compareSentences` in `src/shared/profile.ts`).
+- **Profile** (`/profile`): what the profile is for, its text in
   one box with its length against the limit, "Undo my changes" and Save,
   then the finished courses a new planner is given. A save names the text
   the page loaded and is refused if the profile changed since.
@@ -1010,11 +1018,11 @@ themselves have no automated tests.
   grader's flaw, the right choice or expected answer of a question missed,
   why the grader graded a math answer, a code answer's files as run and
   its tests' output, date) and overrides, and above it each misconception
-  found on it (piece 18): what the learner believed, what is so, where it
+  found on it: what the learner believed, what is so, where it
   showed, ruled in peach and "Open" while the objective is not passed, grey
   and "Cleared" once it is; a rubric or a code question's tests and frozen
   inputs only while that answer is disputed. Each graded answer has
-  "Dispute this grade" (piece 13; `src/web/Dispute.tsx`), and a disputed
+  "Dispute this grade" (`src/web/Dispute.tsx`), and a disputed
   one shows the verdict it now counts with, marked "after your dispute"
   when changed, with its first grade, the reason and the outcome. Once an
   outcome is in, the view is loaded again. Under the summary, the course's
@@ -1030,8 +1038,8 @@ themselves have no automated tests.
   which shrinks it to one line with Show until the next question; the help
   notice above the message box and the judge's call under each reply; a
   line for each file the tutor writes with its file tools, once a reply,
-  with its path in the workspace (piece 14); a package request's card
-  (piece 14) with its packages, Install and "Not now", and its commands
+  with its path in the workspace; a package request's card
+  with its packages, Install and "Not now", and its commands
   and folder under a closed "Show the command"; then the outcome, with
   the output's end under "Show the output", open only when the install
   failed. If saving fails, the
@@ -1047,7 +1055,7 @@ themselves have no automated tests.
   current one" decide the proposal, and the card records the decision.
   The thread also has the detour marker, "Ready for another question" and
   the closing card.
-  Review (piece 15) is a card in the thread, with how many questions,
+  Review is a card in the thread, with how many questions,
   Skip and "Start the review", which holds the unit's own control until
   it is answered and becomes a marker once started or skipped; a review
   question's head says which of how many it is, "second question" after a
@@ -1055,15 +1063,15 @@ themselves have no automated tests.
   beside its question or detour, whose control after a second miss reads
   "Go on with the review", or "Finish the review" at the last; its end is
   a marker with how many objectives are retained and slipping and where
-  the unit goes on. The gate (piece 16) is the same parts: its card names
+  the unit goes on. The gate is the same parts: its card names
   the unit and says how many questions are on its objectives and how many
   on which other units', with "Skip the gate", which asks once before it
   skips there and beside its questions, and "Start the gate"; while it
   runs the top line reads "Unit gate". The closing card after it has a
   section, "Also asked, from other units", of those objectives with their
   units and statuses. Only the closing card standing at the thread's end,
-  with no phase or assessment after it, offers its steps. The test (piece
-  16) is a marker, then question cards whose head reads "Objective 2 of 5",
+  with no phase or assessment after it, offers its steps. The test
+  is a marker, then question cards whose head reads "Objective 2 of 5",
   and "second question" after an unsure correct answer, with "Start
   learning instead" as the control; the top line reads "Testing out" with
   empty ticks while it runs and its result waits. Its result card has a
@@ -1078,16 +1086,15 @@ themselves have no automated tests.
   are hollow.
   The top line shows the unit's position and its outline has Start fresh.
   A math question is answered in a one-line field whose expression is shown as
-  math beneath it as it is typed (piece 2). A code question's card names
+  math beneath it as it is typed. A code question's card names
   each file to edit by its full path, with "Copy path" and "Open", and says
   the tests are not shown. "Open" has the server open the file in the
   system's default app for it (`xdg-open` on Linux, `open` on macOS),
   outside the sandbox, and leave the app running. Why it could not shows
   under the button, including that a server started outside the desktop
   session has no display to open it on. "Run the tests", with how sure, is
-  the answer, and the graded card shows the end of the tests' output
-  (piece 14). A graded card
-  can be disputed in place, as in "What I know" (piece 13); its outcome
+  the answer, and the graded card shows the end of the tests' output.
+  A graded card can be disputed in place, as in "What I know"; its outcome
   also comes over the event stream (`disputed`), so a dispute raised in
   either view shows in the other. Keys: A to F pick a choice, 1
   to 5 how sure, Enter submits; Enter in the math field submits, or moves
@@ -1096,16 +1103,17 @@ themselves have no automated tests.
   opens the unit again if the stream answers 404 (the chat was lost).
 - **Rendering** (`src/web/prose.tsx`): model text and the learner's answers
   become React elements, never HTML. Raw HTML shows as text, images are
-  never fetched, unsafe links lose their address, KaTeX runs untrusted.
-- **Artifacts** open in the side pane beside the session's thread (piece
-  5), one at a time. A new artifact since the page opened opens at once,
+  never fetched, unsafe links lose their address, and KaTeX runs with its
+  `trust` option off.
+- **Artifacts** open in the side pane beside the session's thread, one at
+  a time. A new artifact since the page opened opens at once,
   even before its event stream connects; restored transcript references
   do not. Esc, Close or the thread reference closes it. Only same-origin
   iframe requests get HTML; a direct URL shows inert text. The frame and
   the response policy sandbox HTML to its own origin with scripts allowed.
   The parent page's `frame-src 'self'` prevents the frame from navigating
   away. WebRTC is not blocked (`decisions.md`, "Confinement").
-- **Notes** (`/courses/<id>/units/<unit>/notes`, piece 17): a finished
+- **Notes** (`/courses/<id>/units/<unit>/notes`): a finished
   unit offers notes on its closing card, or on the result card when it
   tested out of whole. The reader shows the saved HTML in a sandboxed
   frame with no scripts, with its date, instructions and file path above.
@@ -1113,9 +1121,10 @@ themselves have no automated tests.
   after leaving and returning; "Try again" uses the failed attempt's
   instructions, and "Write again" takes new instructions.
 
-The look and layout were settled with static mocks in `docs/prototype/`
-(start at `index.html`; the shared look is `base.css`, copied into
-`src/web/styles.css`); the picks are in `decisions.md`, "Page design".
+The look and layout were settled with static mocks in `docs/prototype/`,
+a file per piece (start at `index.html`; the shared look is `base.css`,
+copied into `src/web/styles.css`); the picks are in `decisions.md`, "Page
+design".
 
 **Routes** (`src/server/http/app.ts`; bodies are schemas in `src/shared/`,
 mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`):
@@ -1129,8 +1138,8 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
   (the intake for a draft).
 - `POST /api/courses/<id>/questions/<question id>/open` with `{ file }`,
   the file's place in the list of an open code question of the course:
-  opens it if it is a plain file in the workspace (502 with the opener's
-  reason when it fails).
+  opens it if it is a plain file in the workspace (409 when it is not;
+  502 with the opener's reason when the opener fails).
 - Under `/api/courses/<id>/answers/<question id>/`, for a recorded answer:
   `GET graded-by` (what graded it, for its dispute), and `POST dispute`
   with the reason, which answers once the outcome is recorded (502 when
@@ -1149,6 +1158,9 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
   `test-out` opens a unit not started with its test, in place of `open`.
   A unit not opened since the server started answers 404 on these chat
   routes except `open` and `test-out`.
+- `GET /api/courses/<id>/units/<unit>/transcript` downloads the unit's
+  recorded thread as one HTML file (section 4, "Sessions and
+  transcripts"); it needs no open chat.
 - Under `/api/courses/<id>/units/<unit>/notes`: `GET` reads metadata and
   the current attempt, `POST` starts a write (202), `GET /html` serves the
   finished document as HTML only to a same-origin iframe (inert text
@@ -1157,10 +1169,12 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
 - An event stream replays its chat's log with ids `<log id>.<index>`, so a
   page that reconnects gets only what it missed. It starts with `hello`,
   outside the log: the chat's id and the index of the log's last event,
-  so the page knows which events happened while it was open. Refusals and failures
-  answer with the reason as `error`.
+  so the page knows which events happened while it was open.
+- A refusal or failure answers with `{ error }`, the reason, and a 4xx or
+  5xx status.
 - The server listens on `127.0.0.1` only, refuses host names other than
-  `localhost`, and refuses a POST whose `Origin` is not its own page.
+  `localhost`, `127.0.0.1` and `[::1]`, and refuses a POST whose `Origin`
+  is not its own page.
 
 ## 11. Testing
 
@@ -1169,9 +1183,9 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
   backend; idle closing runs on a fake timer (`engine/fake-timer.ts`) that
   the test moves on; choice order is fixed with `order: givenOrder`. The
   sandbox's tests, those of math questions, which run the real symbolic
-  check, and those of code questions, which run pytest from
-  `pytools/.venv`, run real commands in it, so they need what it needs and
-  fail where it cannot run.
+  check, and those of code questions, which run pytest with
+  `pytools/.venv` standing in for a workspace's, run real commands in it,
+  so they need what it needs and fail where it cannot run.
 - **Python helpers (pytest via uv)**: equivalent and non-equivalent
   expression pairs worked by hand, and `mathcheck.py` run on the venv's
   own Python; (stage 4) conversion of small fixture files.
@@ -1187,7 +1201,8 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
 ## 12. Build stages
 
 Stage scope is listed here; task status and user checks live in the
-[plan](plan.md).
+[plan](plan.md). Stages 0 to 3 and 5 are finished; stage 4 comes next,
+after the follow-up tasks stage 5's check added.
 
 | Stage | Scope |
 | --- | --- |
@@ -1197,7 +1212,7 @@ Stage scope is listed here; task status and user checks live in the
 | 3. Checked grading and aids | SymPy check, workspace and code tests, installing a course's packages, artifacts pane, disputes, the tutor's built-in tools |
 | 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style and curriculum changes |
 | 4. Sources (after 5) | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting |
-| 6. Later | Codex backend, self-test, cheat sheets, photo input; starred messages for the notes, if the generated notes miss what the learner wants kept |
+| 6. Later | Codex backend; a model chosen in the app's settings; self-test, on a scope the learner picks (a segment, a unit, the course, or a random mix of what they have passed) and the kinds of question they pick; teaching instructions the learner can add to or edit, app-wide, with what the app relies on fixed and the shipped prompt kept to revert to; cheat sheets; photo input; starred messages for the notes, if the generated notes miss what the learner wants kept |
 
 ## 13. Risks
 

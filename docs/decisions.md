@@ -1,38 +1,38 @@
 # Gauss: decisions and findings
 
-Why things are as they are: the user's decisions, the agent's choices and
-the alternatives they beat, what the SDKs and tools were seen to do, and
-the gaps left open. What the system does now is in `architecture.md`; how
-to add to this file is in `AGENTS.md`, "Keeping the documents".
+Why things are as they are: the user's decisions (marked as theirs), the
+agent's choices (open to change) and what they beat, what the SDKs and
+tools were seen to do, and the gaps left open. What the system does now is
+in `architecture.md`; how to add to this file is in `AGENTS.md`, "Keeping
+the documents".
 
-Use the index to read the sections relevant to the task, not the whole
-file. `grep -n '^## ' docs/decisions.md` gives the line numbers. The user's
-decisions are marked as theirs; the rest are the agent's, open to change.
-
-The build journal this file was condensed from, with every task's runs and
-checks through task 2.29, is `git show a42a409:docs/decisions.md`.
+Read the sections the task needs, not the whole file: `grep -n '^## '
+docs/decisions.md` gives their lines. A task id named beside a finding
+leads to the runs behind it, in that task's commit (`git log
+--grep='^3\.10'`); the build journal through task 2.29 is `git show
+a42a409:docs/decisions.md`.
 
 | Section | Holds | Read when |
 | --- | --- | --- |
 | Product decisions | What the user decided, when, and why | Changing what the product does; breaking down a stage |
 | Toolchain | Versions, type-checking, Biome, pnpm and uv settings | Changing tooling or `tsconfig.json` |
 | Claude backend | The Agent SDK on the plan login: environment, isolation, ending turns, Stop, sessions and resume, one-shot calls, thinking | Touching `src/server/backends/` |
-| Confinement | Keeping the tutor's writes in its folder: the option set, what it blocked, the working and temporary folders, the engine's sandbox; artifacts' frame and policy, and WebRTC | Giving the tutor built-in tools (stage 3), web access (stage 4); running commands from the engine; changing artifacts |
+| Confinement | The tutor's built-in tools and their two layers, its working and temporary folders, the engine's sandbox, package installs, the backup of the workspace, unconfined reads; artifacts' frame and policy, and WebRTC | Changing the tutor's tools or the engine's commands; giving web access (stage 4); changing artifacts |
 | Codex | What the Codex SDK can and cannot do | Stage 6 |
 | Record | Ids, writes, the file lock, logs, transcripts on disk, the backup | Touching `src/server/record/` or a record file's schema |
-| Objective status | The passing rule and its history, help, overrides, the question count | Touching `record/status.ts`, `engine/check-rules.ts`, or what counts as help |
+| Objective status | The passing rule, misses, help, overrides, no question limit, the check's start | Touching `record/status.ts`, `engine/check-rules.ts`, or what counts as help |
 | Calibration | What the counts count | Touching calibration, or what confidence or help mean |
-| Session engine | The chats' design choices: phases, the feedback turn, queues, detours, choice order, planning, intake, resume, idle sessions, transcripts | Touching `src/server/engine/` |
+| Session engine | The chats' design choices: phases, the feedback turn, queues, answers, detours, choice order, planning, intake, resume, idle sessions, transcripts | Touching `src/server/engine/` |
 | Grader prompt | The hand-graded set, the grader's model and rules | Changing `grader.md`, `WrittenGrade` or the grader's model; disputes |
 | Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
 | Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits; math questions in the engine and on the page | Changing `mathcheck.py`, math questions, or what they accept |
-| Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept | Changing code questions or how their tests run |
-| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides; how they are built; the judge's set and model | Building or changing disputes or `dispute-judge.md` |
-| Mastery loop | Stage 5's design: assessments in the unit's thread, retained and slipping, review, the gate, testing out, handoff notes and misconceptions, the profile, notes and export | Working a stage 5 task; touching assessments, status or the record's notes |
-| Prompts | Findings behind the wording of `tutor.md`, `planner.md`, `unit-planner.md`, `handoff.md`, `notes.md`; the writing rules | Revising any prompt |
+| Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept, "Open" | Changing code questions or how their tests run |
+| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides; the judge's set and model | Building or changing disputes or `dispute-judge.md` |
+| Mastery loop | Assessments in the unit's thread, retained and slipping, review, the gate, testing out, handoff notes and misconceptions, the profile, notes, the export, style and curriculum changes | Touching assessments, status, handoff notes, the profile, notes, or style and curriculum changes |
+| Prompts | Findings from real runs behind `tutor.md`, `planner.md`, `unit-planner.md`, `handoff.md`, `notes.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
-| Page behaviour | Rendering, performance, the pinned question, dimming, keys, retries | Touching `src/web/` |
-| HTTP and event stream | Route rules, security, intake addressing | Adding or changing a route |
+| Page behaviour | Rendering, performance, the pinned question, dimming, retries, the artifact pane | Touching `src/web/` |
+| HTTP and event stream | Route rules, security, intakes | Adding or changing a route |
 | Dev server and tests | `pnpm dev:fake`, the fake backends, test timing, real-model runs | Running checks; touching `scripted.ts`, `dev-seed.ts`, `serve.ts` |
 | Sources | Splitting sources into sections | Stage 4 |
 | Known gaps | What is known to be wrong or missing and not scheduled | Before calling something a new bug |
@@ -56,13 +56,13 @@ The brief states the result; this is who decided and why.
   and "I don't know" on every question. They later offered to drop the
   percentages; the agent kept them, because they make "confident" (90% or
   100%) concrete and allow calibration.
-- **2026-11-16, the first stage 2 check** (a chain-rule unit). What the
-  record showed: the planner proposed four units for "a short unit" without
-  asking anything; the three-question limit closed segments with
-  objectives not passed, and the tutor said "we'll come back to that
-  skill", which nothing kept; feedback on "I don't know" was followed at
-  once by the next question; asking what a question meant was charged as
-  help; the open card scrolled out of view. The user decided:
+- **2026-11-16, the first stage 2 check** (a chain-rule unit). The record
+  showed four units proposed for "a short unit" with nothing asked;
+  segments closed by the three-question limit with objectives not passed,
+  and a "we'll come back to that skill" that nothing kept; the next
+  question straight after feedback on "I don't know"; asking what a
+  question meant charged as help; the open card scrolled out of view. The
+  user decided:
   - strict by default: an objective is not passed "until the answers seem
     obvious and easy"; override is always open and recorded;
   - every miss starts a detour, which the learner ends; the check pauses
@@ -80,11 +80,11 @@ The brief states the result; this is who decided and why.
   do. It also chose to require a confident answer to pass, which the user
   overturned the next day.
 - **2026-11-17, the stage 2 review.** The check passed on a second try; the
-  user then brought a review of the record of a theology course. It showed
-  an objective answered correctly at 75% and 50%, then missed, then
-  correct at 90%, ending overridden; objectives that each joined an
-  explanation and two contrasts; and teaching that quoted Basil, Lossky
-  and Vatican II from memory. The user decided:
+  user then brought a review of a theology course's record: an objective
+  answered correctly at 75% and 50%, then missed, then correct at 90%,
+  ending overridden; objectives that each joined an explanation and two
+  contrasts; teaching that quoted Basil, Lossky and Vatican II from
+  memory. The user decided:
   - passing: two correct answers in a row to different questions at any
     confidence, or one at 90% or more if the objective was never missed;
   - review questions open each sitting, on by default and skippable,
@@ -114,21 +114,20 @@ The brief states the result; this is who decided and why.
   hidden until it is graded, and a failing run starts a detour followed by
   a different exercise, as a miss does for every other kind ("Page
   design"); and Gauss installs a course's packages once the learner
-  approves a card. The agent had recommended that the learner run the
-  install command themselves; what it chose under the user's pick is in
-  "Confinement".
+  approves a card, where the agent had recommended that the learner run
+  the install command themselves ("Confinement").
 - **2026-11-18, the stage 3 check** (a Python course and a numerical
   solvers course, on Opus 5.5). It passed: code graded by tests, a math
   answer graded symbolically, an artifact and a dispute. The user's notes
   became tasks 3.19 to 3.22: starter files that hold what a question gives
   (Opus had them type given values into the file); the install card's
   command and output shown only on request or failure; a pinned question
-  that can be hidden; and an "Open" button for a code question's files.
-  For "Open" they chose the system's default app over a set command
-  (Ghostty with nvim). They also suggested questions on the learner's
-  intuition before the check. The agent supported it: explaining or
-  predicting exposes a picture a correct computation can hide, for one or
-  two exchanges a segment. The user chose it on by default, with the tutor
+  that can be hidden; and an "Open" button for a code question's files,
+  opening the system's default app rather than a set command (Ghostty
+  with nvim). They also suggested questions on the learner's intuition
+  before the check. The agent supported it: explaining or predicting
+  exposes a picture a correct computation can hide, for one or two
+  exchanges a segment. The user chose it on by default, with the tutor
   judging when; the style note can turn it off.
 - **2026-11-18, the stage 5 designs**, answered when the stage was broken
   down, before any mock. The user decided:
@@ -152,19 +151,18 @@ The brief states the result; this is who decided and why.
   - the brief's wording: a handoff note is written when a segment closes;
     review asks slipping objectives first; a miss while testing out does
     not count afterwards.
-- **2026-11-18, the stage 5 mocks** (pieces 15 to 18). The user looked at
-  all four and accepted them as shown, but for the notes. Piece 17 had
-  drawn a unit's notes as text the engine rendered from the model's
-  Markdown; they turned it down: it "looks like markdown in obsidian",
-  and the notes are HTML so that they "can have visuals and be
-  expressive", a page that "looks nice", "actual html". They added that
-  the notes need not be shown inside the app if that were what held them
-  to plain text: downloading them or opening them in the browser would
-  do. They also picked KaTeX's own output, with its styles and fonts
-  written into the file, for the math of the notes and the exported
-  transcript, over MathML, which the agent had planned and then showed
-  drawing badly. What the agent chose under these is in "Mastery loop"
-  and "Page design".
+- **2026-11-18, the stage 5 mocks** (pieces 15 to 18). The user accepted
+  all four as shown, but for the notes. Piece 17 had drawn a unit's notes
+  as text the engine rendered from the model's Markdown; they turned it
+  down: it "looks like markdown in obsidian", and the notes are HTML so
+  that they "can have visuals and be expressive", a page that "looks
+  nice", "actual html". The notes need not be shown inside the app if
+  that were what held them to plain text: downloading them or opening
+  them in the browser would do. They also picked KaTeX's own output, with
+  its styles and fonts written into the file, for the math of the notes
+  and the exported transcript, over MathML, which the agent had planned
+  and then showed drawing badly. The agent's choices under these are in
+  "Mastery loop" and "Page design".
 - **2026-11-19, notes from the stage 5 check, partway.** No "not
   covered" control on a question. The agent had proposed one that
   withdraws a question with no evidence when it asks what was not taught
@@ -280,50 +278,50 @@ The brief states the result; this is who decided and why.
 ## Claude backend
 
 Observed with Agent SDK 0.3.325, which runs the Claude Code binary bundled
-in its platform package (2.1.325), not the `claude` on the path.
+in its platform package (2.1.325), not the `claude` on the path. The
+options as built are in `architecture.md` section 7.
 
 **Login and environment**
 
-- The SDK uses the plan login when no key is set (`apiKeySource: "none"`).
-  A set `ANTHROPIC_API_KEY` takes precedence: with an invalid one the
+- **A set `ANTHROPIC_API_KEY` beats the plan login**, which the SDK uses
+  when no key is set (`apiKeySource: "none"`): with an invalid key the
   request failed with 401 and did not fall back, so a valid one would be
   billed as API usage. A probe with `ANTHROPIC_BASE_URL` and a bogus
   `ANTHROPIC_AUTH_TOKEN` sent requests to the other server with that
-  token. So the backend gives the SDK no `ANTHROPIC_` variable and no
-  `CLAUDE` one, which also drops the cloud-provider switches
-  (`CLAUDE_CODE_USE_BEDROCK` and the like). The providers' own credentials
-  stay (inert without a switch), and so do proxy variables.
-- Dropping `CLAUDE_CONFIG_DIR` means the SDK's in-process `getSessionInfo`
-  would look under the parent's root while sessions run under the default
-  one. When that variable is inherited, `hasSession` runs a short Node
-  subprocess with the backend's environment; there is no option for the
-  root.
+  token. Hence no `ANTHROPIC_` or `CLAUDE` variable reaches the SDK, which
+  also drops the cloud-provider switches (`CLAUDE_CODE_USE_BEDROCK` and
+  the like). The providers' own credentials stay (inert without a switch),
+  and so do proxy variables.
+- **Dropping `CLAUDE_CONFIG_DIR`** means the SDK's in-process
+  `getSessionInfo` would look under the parent's root while sessions run
+  under the default one. When that variable is inherited, `hasSession` runs
+  a short Node subprocess with the backend's environment; there is no
+  option for the root.
 - A `rate_limit_event` reports the plan's usage windows; `total_cost_usd`
   is a list price, not a charge. Each session made one small Haiku request
   of its own (about 1,300 input tokens).
 
 **Isolation from the learner's own Claude Code**
 
-- `settingSources: []` alone kept out the user's `CLAUDE.md`, the repository's
-  instructions, user skills, MCP servers, plugins and permission mode, but
-  not the auto-memory (the model quoted the memory index), not Claude
-  Code's bundled skills, and not the user's claude.ai connectors, which
-  joined a few seconds in (about 2,500 tokens). Hence `skills: []`,
-  `autoMemoryEnabled: false`, `disableClaudeAiConnectors: true` and
-  `strictMcpConfig: true`. Loading the user's settings would also bring
-  their `bypassPermissions` mode: never load them.
+- `settingSources: []` alone kept out the user's `CLAUDE.md`, the
+  repository's instructions, user skills, MCP servers, plugins and
+  permission mode, but not the auto-memory (the model quoted the memory
+  index), not Claude Code's bundled skills, and not the user's claude.ai
+  connectors, which joined a few seconds in (about 2,500 tokens). Hence
+  `skills: []`, `autoMemoryEnabled: false`, `disableClaudeAiConnectors:
+  true` and `strictMcpConfig: true`. Loading the user's settings would also
+  bring their `bypassPermissions` mode: never load them.
 - **The account's email address reaches every session**, in a
   `session_context` reminder on the first message, built from the login's
   account record. `CLAUDE_CODE_DISABLE_ATTACHMENTS` does not remove it; bare
   mode (`CLAUDE_CODE_SIMPLE`) does, but does not use the plan login. A
   separate configuration folder would need a copy of the login, and
-  refreshing one copy can sign the learner out. It goes only to Anthropic.
-  The tutor's file and shell tools (stage 3) change nothing, by the
-  agent's judgment in task 3.0: the tutor has no web tool and its sandbox
-  no network, so the address can reach only Anthropic, which has it as
-  the account's, or a workspace file the model chose to write it in. Web
-  access (stage 4) would let a request carry it, with anything else in
-  the context; 4.0 has the point. Look again if an SDK adds a switch.
+  refreshing one copy can sign the learner out. With no web tool and no
+  network in the tutor's sandbox, it can reach only Anthropic, which has it
+  as the account's, or a workspace file the model chose to write it in
+  (the agent's judgment, task 3.0). Web access (stage 4) would let a
+  request carry it, with anything else in the context; 4.0 has the point.
+  Look again if an SDK adds a switch.
 
 **Tools and ending a turn**
 
@@ -335,26 +333,22 @@ in its platform package (2.1.325), not the `claude` on the path.
 - **The model does not stop after posting a question.** In four calls it
   went on each time: a sentence, once with a hint, once a second
   `ask_question`. A `PostToolUse` hook returning `continue: false` ended
-  the turn every time, and the session continued normally. The backend
-  stops only when the tool's result set `endTurn`, so a refused call goes
-  back to the model. Not tried: the SDK's `_meta['claude/endTurn']`.
-- With Claude, a tool input that fails its schema is refused by the MCP
-  layer before the tool runs (`MCP error -32602: Input validation error`
-  with the zod issues), so the model gets the schema's messages; write
-  them for the model.
+  the turn every time, and the session continued normally. Not tried: the
+  SDK's `_meta['claude/endTurn']`.
+- A tool input that fails its schema is refused by the MCP layer before
+  the tool runs (`MCP error -32602: Input validation error` with the zod
+  issues), so the model gets the schema's messages; write them for the
+  model.
 
 **Stop**
 
 - `interrupt()` stops a turn before or during its text. It does not cancel
   input the SDK has queued but not started, and the SDK has no public way
-  to. The backend adds a `UserPromptSubmit` hook that stops a cancelled
-  turn when it is picked up, and interrupts again at the response's
-  `message_start` for one that passed the hook; it refuses late tool calls
-  and drains output without showing it. A request can start in the gap
-  after the hook, so Stop does not promise zero tokens. Tested against a
-  simulated SDK boundary, not a live model.
-- Once, after a stop mid-sentence, the next one-sentence reply took 10 to
-  30 seconds. Not seen again, and not investigated.
+  to: hence the `UserPromptSubmit` hook and the second interrupt at the
+  response's `message_start` (`architecture.md` section 7), with late tool
+  calls refused and the output drained unseen. A request can start in the
+  gap after the hook, so Stop does not promise zero tokens. Tested against
+  a simulated SDK boundary, not a live model.
 
 **Sessions and resume**
 
@@ -372,11 +366,9 @@ in its platform package (2.1.325), not the `claude` on the path.
 - A resumed session keeps its first system prompt, unless it is
   `{ type: "custom", prompt, snapshot: false }`, which sends the current
   one; a changed prompt then costs one prompt-cache miss.
-- Kept sessions are files under
-  `~/.claude/projects/<working directory, every character but letters and
-  digits made "-">/<id>.jsonl`; nothing is written in the course folder
-  while the tutor has no built-in tools. Without `title`, Claude Code
-  writes a title of its own, apparently with a small request.
+- Kept sessions are files under `~/.claude/projects/` (the path is in
+  `architecture.md` section 11). Without `title`, Claude Code writes a
+  title of its own, apparently with a small request.
 - `getSessionInfo(id, { dir })` reads one session file with no process, in
   4 to 7 ms: undefined for an unknown id, another folder or a missing
   folder, and it never threw.
@@ -389,12 +381,12 @@ in its platform package (2.1.325), not the `claude` on the path.
 
 **One-shot calls**
 
-- A `query()` with a string prompt, `tools: []`, the isolation options and
-  `outputFormat` (draft-7 JSON Schema from `z.toJSONSchema`) returns
-  `structured_output`; a grading on Haiku took 3.3 seconds. The SDK retries
-  a reply out of shape itself and gives up with
-  `error_max_structured_output_retries`; Gauss does not retry. The reply is
-  checked against the zod schema too, which says more than JSON Schema.
+- A `query()` with a string prompt, `tools: []` and `outputFormat`
+  (draft-7 JSON Schema from `z.toJSONSchema`) returns `structured_output`;
+  a grading on Haiku took 3.3 seconds. The SDK retries a reply out of shape
+  itself and gives up with `error_max_structured_output_retries`; Gauss
+  does not retry. The reply is checked against the zod schema too, which
+  says more than JSON Schema.
 
 **Thinking**
 
@@ -409,194 +401,139 @@ in its platform package (2.1.325), not the `claude` on the path.
 
 ## Confinement
 
-The tutor's option set as built is `workspaceOptions` in
-`backends/claude.ts` (task 3.3): the stage 0 set below, with the course's
-workspace as `dir` and no protected file, since the record lies outside it.
-Observed with throwaway scripts in stage 0, this set, added to the
-isolation options, kept every write inside `dir`:
-
-```ts
-{
-  cwd: dir,
-  tools: ["Read", "Write", "Edit", "Bash"],
-  permissionMode: "dontAsk", // anything not allowed is refused, never prompted
-  allowedTools: [`Edit(/${dir}/**)`, "Bash"], // "Edit(//abs/path/**)" covers Write too
-  disallowedTools: [`Edit(/${protectedFile})`],
-  sandbox: {
-    enabled: true,
-    failIfUnavailable: true, // stop rather than run unconfined
-    autoAllowBashIfSandboxed: true,
-    allowUnsandboxedCommands: false, // the dangerouslyDisableSandbox retry is ignored
-    filesystem: { denyWrite: [protectedFile] },
-  },
-  settings: { permissions: { blockWritesOutsideWorkingDirectories: true } },
-  env: { ...env, CLAUDE_CODE_TMPDIR: `${dir}/.tmp` },
-}
-```
+The tutor's option set is `workspaceOptions` in `backends/claude.ts`;
+what it allows is `architecture.md` section 5. The stage 0 runs that
+settled it kept every write inside the working directory, and also kept
+both layers off one protected file inside it (a `disallowedTools` rule
+`Edit(/<file>)` and the sandbox's `filesystem.denyWrite`); the built set
+needs neither, since the record lies outside the workspace.
 
 - **Two layers are needed.** The sandbox (bubblewrap on Linux) confines
   shell commands and what they start; `Write` and `Edit` run outside it and
   are confined by `blockWritesOutsideWorkingDirectories` and the `Edit`
-  rules. Refused in the run: `Write` outside, shell writes to `/tmp` and
-  the home folder (also with `dangerouslyDisableSandbox`), Python writing
-  outside, and both layers' writes to the protected file. An `Edit` rule
-  with one leading slash is anchored at the working directory; `//` makes
-  it absolute, which `/${dir}` does for an absolute `dir`.
+  allow rule. Refused in stage 0: `Write` outside, shell writes to `/tmp`
+  and the home folder (also with `dangerouslyDisableSandbox`), Python
+  writing outside. An `Edit` rule with one leading slash is anchored at
+  the working directory; `//` makes it absolute, which `/${dir}` does for
+  an absolute `dir`.
 - **`dontAsk` needs an allow rule for `Bash`**, or some sandboxed commands
   are refused as a permission matter with no reason given.
-- **Seen in task 3.3** (Haiku 5.5, the backend as built, a scratch data
-  root): a file written in the workspace; a `Write` of a new file beside
-  the record refused by `blockWritesOutsideWorkingDirectories`, and of
-  `state.json` refused first because Claude Code wants a file read before
-  it is overwritten, while `dontAsk` refuses `Read` outside the working
-  folder (`Glob` and `Grep` not tried); shell writes to `../state.json`,
-  `../evidence.jsonl`, the home folder and `/tmp` failing on a read-only
-  file system; `curl` refused by the proxy (403); `$TMPDIR` the private
-  folder; `python` running in the workspace. The engine's refusal reaches
-  the model as `PreToolUse:Write hook error: <reason>`.
+- **As built** (task 3.3, Haiku 5.5): writes beside the record were refused
+  by both layers, and `curl` by the sandbox's proxy (403). A `Write` over a
+  record file is refused first because Claude Code wants a file read
+  before it is overwritten, and `dontAsk` refuses `Read` outside the
+  working folder (`Glob` and `Grep` not tried). The engine's refusal
+  reaches the model as `PreToolUse:Write hook error: <reason>`.
 - **A session leaves `.claude/.cc-writes/` in its working directory**, an
-  empty folder closed to others (task 3.3; stage 0 also saw a `.tmp/`,
-  from its `CLAUDE_CODE_TMPDIR`). Left there, so the learner sees an empty
-  hidden folder in the workspace (the agent's choice): Claude Code makes it
-  again, it holds nothing, and git keeps no empty folder.
+  empty folder closed to others. Left there (the agent's choice): Claude
+  Code makes it again, it holds nothing, and git keeps no empty folder.
 - **The tutor's working directory is the course's `workspace/`** (task 3.0,
-  the agent's choice), the other way round from closing the record inside
-  the course folder. The folder holds only what the tutor may write, so
-  the record lies outside it and both layers keep it out with no list of
-  paths: the file tools write only where the one `Edit` allow rule says,
-  and sandboxed commands only in the working directory, the allowed paths
-  and Claude Code's temporary folder. Rejected: the course folder as the
-  working directory with each record file denied, since every new record
-  file (stage 5's misconceptions and handoff notes) would need its own
-  rule, and whether a deny stops a command creating a file that does not
-  exist yet was never tried. Artifacts are written by the engine from
-  `show_artifact`'s input, so the tutor needs no second folder. Intakes
-  run in the data root's empty `intake/` folder, so a tool given to them
-  later is confined to nothing of value.
+  the agent's choice), so the record lies outside it and both layers keep
+  it out with no list of paths. Rejected: the course folder as the working
+  directory with each record file denied, since every new record file
+  would need its own rule, and whether a deny stops a command creating a
+  file that does not exist yet was never tried. Artifacts are written by
+  the engine, so the tutor needs no second folder. Intakes run in the data
+  root's empty `intake/` folder, so a tool given to them later is confined
+  to nothing of value.
 - **Every tutor gets the tools**, in every course: one way of running, and
-  a math tutor can check its own expressions with Python. The planner, the
-  unit planner and one-shot calls get none. Only when the engine's sandbox
-  passes its start check (task 3.3, the agent's choice): Claude Code's
-  sandbox needs the same `bwrap`, `socat` and `rg`, and with
-  `failIfUnavailable` a session whose sandbox cannot run would fail at
-  start, so the tutor rather runs without the tools.
+  a math tutor can check its own expressions with Python. The planners and
+  one-shot calls get none. Only when the engine's sandbox passes its start
+  check (the agent's choice): Claude Code's sandbox needs the same `bwrap`,
+  `socat` and `rg`, and with `failIfUnavailable` a session whose sandbox
+  cannot run would fail at start, so the tutor rather runs without them.
 - **`CLAUDE_CODE_TMPDIR` in the course folder is too long.** The sandbox
   leaves Claude Code's per-user temporary folder,
   `<CLAUDE_CODE_TMPDIR or the system's>/claude-<uid>`, writable, and the
   system's one is shared by every Claude Code session of the user. Read in
-  the code of Claude Code 2.1.325 (the binary the SDK bundles; task 3.0):
-  sandboxed commands get that folder as `$TMPDIR` only if its path is at
-  most 44 bytes, for Unix sockets; otherwise `/tmp/claude-<uid>`, the
-  shared one, with a warning. Here
-  `/home/phagmaier/gauss/courses/<id>/.tmp/claude-1000` is at least 48
-  bytes. So the tutor's is a private folder per course under `/tmp`:
-  `/tmp/gauss-<8 hex digits>/claude-1000` is 31 bytes, the digits from the
-  workspace's path. `/tmp` is shared, so the folder is made `0700`, and a
-  session is refused if the one there is a link, another user's, or open
-  to others.
+  Claude Code 2.1.325's code: sandboxed commands get that folder as
+  `$TMPDIR` only if its path is at most 44 bytes, for Unix sockets;
+  otherwise the shared `/tmp/claude-<uid>`, with a warning. A folder in the
+  course is at least 48 bytes, so the tutor's is a private folder per
+  course under `/tmp` (31 bytes), checked because `/tmp` is shared.
 - **The engine runs model-written text in a sandbox too** (task 3.0, the
   agent's choice): a code question's tests and the symbolic check, whose
   SymPy parser evaluates its input. It uses
   `@anthropic-ai/sandbox-runtime`, the runtime Anthropic developed for
-  Claude Code's sandbox (a research preview, version 0.0.x): no network,
-  writes only where the run needs. Rejected: a
-  bubblewrap command line written by hand (Linux only, and each
-  protection the runtime adds would be ours to get right), and running
-  tests through a tutor session, which puts a model between the test and
-  the grade.
-- **The engine's sandbox** (`engine/sandbox.ts`, runtime 0.0.83). The network
-  namespace and proxy refuse direct TCP connections and proxy requests.
-  Without a network section the runtime does not start. A child moved to a
-  session of its own stops at the time limit (the PID namespace), and a
-  server killed with SIGKILL takes its commands with it (`--die-with-parent`).
-  The runtime's unasked writable paths are closed in `configFor`.
+  Claude Code's sandbox (a research preview, version 0.0.x). Rejected: a
+  bubblewrap command line written by hand (Linux only, and each protection
+  the runtime adds would be ours to get right), and running tests through a
+  tutor session, which puts a model between the test and the grade.
+- **The engine's sandbox** (`engine/sandbox.ts`, runtime 0.0.83). The
+  network namespace and proxy refuse direct TCP connections and proxy
+  requests. Without a network section the runtime does not start. A child
+  moved to a session of its own stops at the time limit (the PID
+  namespace), and a server killed with SIGKILL takes its commands with it
+  (`--die-with-parent`). The runtime's unasked writable paths are closed in
+  `configFor`.
 - **Linux only** (the agent's choice). The macOS runtime can leave
-  descendants alive after the direct command exits; the deadline and tutor
-  workspace reservation cannot rely on that exit. Until there is verified
-  process-tree containment, commands and built-in tutor tools stay off on
-  other platforms.
+  descendants alive after the direct command exits; the deadline and the
+  tutor's workspace reservation cannot rely on that exit. Until there is
+  verified process-tree containment, commands and built-in tutor tools stay
+  off on other platforms.
 - **Linux commands need an extra workload filter** (the agent's choice).
   Runtime 0.0.83 blocks `socket(AF_UNIX)` but permits `socketpair`; a
-  datagram endpoint was reconnected to a scratch host socket. Engine and
-  tutor commands therefore use `pytools/sandbox_exec.py` inside the runtime,
-  stacking an inherited seccomp filter before exec. The existing venv Python
-  avoids a compiler or vendored native binary. Startup probes the routes
-  and refuses tools if one remains open; unsupported Linux ABIs fail closed.
-  Since task 3.11 the filter refuses datagram and seqpacket pairs only: uv
-  panicked at start under the first filter (tokio's signal handling makes a
-  stream pair), and asyncio needs one too. A stream pair is connected for
-  good: connecting one end to a host socket fails with `EISCONN` (a test
-  in `sandbox.test.ts`).
-- **Each engine command has its own `$TMPDIR`**, removed when it ends (the
-  agent's choice). The runtime points `TMPDIR` at `/tmp/claude`, shared by
-  every sandboxed command, which the module closes; with no writable
-  temporary folder, Python's `tempfile` falls back to the working folder,
-  and pytest's folders would land in the workspace.
-- **`uv run` fails in the engine's sandbox**: its cache, `~/.cache/uv`, is
+  datagram endpoint was reconnected to a scratch host socket. So commands
+  run `pytools/sandbox_exec.py`, an inherited seccomp filter, inside the
+  runtime (the venv's Python, no compiler or vendored binary), and
+  startup refuses tools if a route stays open. The filter refuses datagram
+  and seqpacket pairs only: uv panicked at start when every pair was
+  refused (tokio's signal handling makes a stream pair), and asyncio needs
+  one too. A stream pair is connected for good: connecting one end to a
+  host socket fails with `EISCONN` (a test in `sandbox.test.ts`).
+- **Each engine command has its own `$TMPDIR`** (the agent's choice). The
+  runtime points `TMPDIR` at `/tmp/claude`, shared by every sandboxed
+  command, which the module closes; with no writable temporary folder,
+  Python's `tempfile` falls back to the working folder, and pytest's
+  folders would land in the workspace.
+- **`uv run` fails in both sandboxes**: its cache, `~/.cache/uv`, is
   read-only there. A venv's own Python runs, and so does `uv run` with
-  `UV_CACHE_DIR` in `$TMPDIR` (seen in task 3.2, with no packages). The
-  same in the tutor's sandbox (task 3.3). So the tutor is told to run
+  `UV_CACHE_DIR` in `$TMPDIR`. So the tutor is told to run
   `.venv/bin/python` (`tutor.md`, "Packages").
 - **Installing packages is the one command with network access** (the
   user's pick, piece 14). The tutor names the packages and the engine
-  builds the command (`engine/packages.ts`): reads are not confined, so
-  tutor code must not run with network access. Python through uv only;
-  add another language's package manager when a course needs it.
-  - Names and version ranges are checked by regular expressions
-    (`src/shared/packages.ts`): no URL, path, option, extra or marker.
-  - The network: `registerCommandNetworkLists` under a random command id,
-    `pypi.org` and `files.pythonhosted.org` exactly (the runtime matches a
-    host whole). Seen: `pypi.org` tunnelled, `example.com` and
-    `github.com` refused with 403, a command given no hosts refused all.
-  - The installer uses an engine-owned uv project outside the workspace
-    (agent's choice). `--no-config` and `--no-sources` did not stop uv
-    reading the workspace project's dependencies; `--no-build` also does
-    not forbid all first-party and editable builds. No workspace
-    manifest, lockfile or environment participates in resolution. The
-    user chose to carry forward earlier roots only from transcripts that
-    record the request, approval and successful install.
-  - The installer parks the old environment without following links,
-    and restores it on failure. uv gets the pinned base Python, no
-    local builds, a fresh environment at the final path (entry-point
-    scripts use that path) and a fresh install-cache location. Copying
-    wheels prevents workspace edits from changing the cache.
-  - A request is kept in the unit's position, one per course.
-    New questions and tutor mutations wait for the course's install; a
-    check it blocked is prompted again if still waiting.
-  - A journal makes rollback and result recovery independent of approval
-    (the agent's choice). uv writes the new environment in place so its
-    entry points keep their paths. Only committing the journal makes that
-    candidate usable; the same marker publishes a request-bound receipt.
-    On failure, the previous environment is restored before the failure
-    receipt can be used. This lets a restart finish either write without
-    treating it as a new approval. If the receipt is saved but cleanup
-    fails, no later install starts until cleanup succeeds.
-  - The tutor's notification is a note in memory. An open question gets
-    no extra tutor turn for an outcome: a normal reply or later feedback
-    carries the note.
-- **The backup keeps the learner's workspace files** (the agent's choice,
-  task 3.11): they are the learner's work, small, and the history undoes
-  a tutor's overwrite. `.venv/`, `__pycache__/` and `.pytest_cache/` are
-  left out; a `.gitignore` Gauss wrote before is brought up to date, one
+  builds the command (`engine/packages.ts`; names checked in
+  `src/shared/packages.ts`): reads are not confined, so tutor code must
+  never run with network access. Python through uv only; add another
+  language's package manager when a course needs it.
+  - The network is `registerCommandNetworkLists` with `pypi.org` and
+    `files.pythonhosted.org` exactly: the runtime matches a host whole.
+    Seen: `pypi.org` tunnelled, `example.com` and `github.com` refused with
+    403, a command given no hosts refused all.
+  - **The installer uses an engine-owned uv project outside the
+    workspace** (the agent's choice): `--no-config` and `--no-sources` did
+    not stop uv reading the workspace project's dependencies, and
+    `--no-build` does not forbid every first-party or editable build.
+    Earlier packages are carried forward only from transcripts that
+    record the request, approval and successful install (the user's
+    choice).
+  - **A journal makes rollback and recovery independent of approval** (the
+    agent's choice): uv writes the new environment at its final path, so
+    its entry points keep their paths, and only committing the journal
+    makes it usable. A restart can then finish either the install or its
+    rollback without treating it as a new approval.
+  - An open question gets no extra tutor turn for an install's outcome: a
+    normal reply or later feedback carries the note.
+- **The backup keeps the learner's workspace files** (the agent's choice):
+  they are the learner's work, small, and the history undoes a tutor's
+  overwrite. A `.gitignore` Gauss wrote before is brought up to date, one
   of the learner's own is left alone.
-- **An open question locks the course's whole workspace**: another unit
-  shares those files, and the help judge sees only the reply's text. The guard reads all persisted positions, not just
-  opened chats. Mutations reserve the workspace until confirmed completion
-  or permission denial, and question posting shares that reservation queue.
-  Missing completion reports keep the course locked even when a session
-  closes: SDK shutdown is asynchronous; restart is the recovery path.
-  Background Bash is refused and SDK backgrounding disabled, so a running
-  command cannot cross question posting (the agent's choice). Reads stay
-  allowed. The feedback turn may write when no question is open in the course.
+- **An open question locks the course's whole workspace** (the agent's
+  choice): another unit shares those files, and the help judge sees only
+  the reply's text. A write or command holds the workspace until its
+  completion or denial is reported, so a missing report keeps the course
+  locked even after the session closes (SDK shutdown is asynchronous); a
+  restart is the way out. Background Bash is refused so a running command
+  cannot cross a question's posting.
 - **Reads are not confined**: sandboxed commands can read most of the
   machine, credential files included, and the engine's commands get the
-  server's environment. The sandbox's network is closed (a `curl` refused,
-  task 3.3), and the tutor has no web tool, so in stage 3 what it reads
-  can reach only Anthropic. `blockReadsOutsideWorkingDirectories`, tried
-  in task 3.3, is off: it hid the home folder from sandboxed commands
-  (`ls ~` empty), where mise installs `python` and `uv`, which were then
-  not found, and it still let a command read `../state.json` with the
-  data root in `/tmp`. Settle reads before the tutor gets web access.
+  server's environment. With no network and no web tool, what the tutor
+  reads can reach only Anthropic. `blockReadsOutsideWorkingDirectories`,
+  tried in task 3.3, is off: it hid the home folder from sandboxed
+  commands (`ls ~` empty), where mise installs `python` and `uv`, which
+  were then not found, and it still let a command read `../state.json`
+  with the data root in `/tmp`. Settle reads before the tutor gets web
+  access.
 - **Artifacts.** The frame and response policy give the aid an opaque
   origin and allow inline scripts. CSP has no `navigate-to`: the parent
   page's `frame-src 'self'` stops an external navigation, but a direct
@@ -612,16 +549,15 @@ isolation options, kept every write inside `dir`:
   tutor reads no text from outside the machine; with unconfined reads it
   is a channel out for a tutor misled by a source or a web page, so 4.0
   settles it. DNS prefetch from an artifact was not tried.
-- **Artifacts in the record.** Stored as the tutor gave them, numbered on
-  from the highest number in `artifacts/`, and given their name by a hard
-  link, so a file there is never replaced. The engine refuses writes when
-  no safe number remains rather than repeating a number (agent's choice).
-  The question guard is per unit, not per course: the help judge sees only
-  that unit's replies, and another unit's tutor can say anything in text too.
+- **Artifacts in the record** are named by a hard link, so a file there is
+  never replaced; the engine refuses a write when no safe number remains
+  rather than repeat one. `show_artifact` is refused while a question of
+  the unit is open, not of the course: the help judge sees only that
+  unit's replies, and another unit's tutor can say anything in text too.
   At most 100 KB: Haiku's two aids were 3.3 and 3.5 KB, and the limit
-  catches a pasted library. A document that names an address on the web
-  (`src`, `href`, CSS `url()`, `@import`) is refused with the address,
-  since nothing would load in the frame and models reach for CDN scripts.
+  catches a pasted library. A document naming an address on the web is
+  refused with the address, since nothing would load in the frame and
+  models reach for CDN scripts.
 - **No KaTeX in artifacts.** The app's KaTeX would need a route for its
   files and exceptions in the policy naming the server's host and port;
   MathML and Unicode text need neither, so the policy loads nothing.
@@ -657,48 +593,43 @@ stage 6.
 
 ## Record
 
-- **Ids.** Course, unit and objective ids are slugs (at most 60
-  characters), so an id can never be a path. A course id is made from the
-  title (cut at a word to 50 characters, `-2` and so on if taken) and is
-  the folder's name, not stored in `course.json`; making the folder claims
+The layout and the rules for writes are `architecture.md` section 3.
+
+- **Ids are slugs** (at most 60 characters), so an id can never be a path.
+  A course id is the folder's name, made from the title (cut at a word to
+  50 characters, `-2` and so on if taken), and making the folder claims
   it. The planner names the units, so a revision keeps their ids and the
-  page can mark what changed. Objective ids are unique in the course
-  (checked on the curriculum), because the evidence names an objective
-  alone.
+  page can mark what changed.
 - **Prerequisites** must name units in the curriculum, once each, with no
   cycle; they need not come earlier in the list. The checks sit on the
   units array, so they travel with that field into `propose_curriculum`'s
   input, and their messages are written for the model.
-- **No schema version.** Only Gauss writes the files; a field added later
-  must be optional, and records are never migrated.
-- **Atomic writes** go to `.<name>.<uuid>.tmp`, are flushed, renamed over
-  the target, and the folder flushed. A crash can leave a temporary file,
-  which nothing reads or cleans up. The crash test runs the write in a
-  child under `ulimit -f`, so the kernel stops it partway every time; a
-  `SIGKILL` landed inside the partial-write window only 10 to 20% of the
-  time.
-- **A damaged file is a loud error** naming the file, since atomic writes
-  cannot make one: it means a hand edit or a bug. Two exceptions: the
-  library lists a course whose `state.json` or evidence cannot be read,
-  with the reason, so one bad course does not hide the others; and a
-  transcript line that cannot be read is left out, since page events change
-  shape over time and the record does not need them.
+- **No schema version**: only Gauss writes the files, so a field added
+  later is optional and records are never migrated.
+- **Atomic writes' crash test** runs the write in a child under `ulimit
+  -f`, so the kernel stops it partway every time; a `SIGKILL` landed inside
+  the partial-write window only 10 to 20% of the time.
+- **A damaged file is a loud error**, since atomic writes cannot make one:
+  it means a hand edit or a bug. The library still lists a course it cannot
+  read, so one bad course does not hide the others, and a transcript line
+  that cannot be read is left out, since page events change shape over
+  time and the record does not need them.
 - **The file lock** (`record/file-lock.ts`) queues work per absolute path,
   in the module, so two `openDataRoot` calls share it; the record takes it
   when called, before its first `await`. Without it, two writes to one file
   each land whole but the later one can finish first. Another process
   writing the root is not covered; only Gauss writes it.
-- **Logs.** Before an append, an unfinished last line is cut away (found by
-  reading back from the end), or the next entry would be glued to it and
-  lost. `appendJsonLine` writes until the whole line is stored, since one
-  write can store fewer bytes than it was given.
+- **Logs.** Before an append, an unfinished last line is cut away, or the
+  next entry would be glued to it and lost. `appendJsonLine` writes until
+  the whole line is stored, since one write can store fewer bytes than it
+  was given.
 - **Positions are read with `Object.hasOwn`**: `constructor` is a valid unit
   id, and `units[id]` found `Object.prototype.constructor`.
 - **A plan teaches each objective in exactly one segment**, so "go over
-  them again" is a segment kept in the position, not in the plan. A
-  segment has a title, for the outline. Planning a unit again is not
-  designed; `storePlan` refuses it. The record does not check a position
-  against the plan; the engine's rules do, before anything is written.
+  them again" is a segment kept in the position, not in the plan. Planning
+  a unit again is not designed; `storePlan` refuses it. The record does not
+  check a position against the plan; the engine's rules do, before
+  anything is written.
 - **When each unit was last opened is in `course.json`**, not `state.json`:
   the engine writes positions from inside each chat's queue, and a second
   writer there could lose an update.
@@ -718,53 +649,48 @@ stage 6.
 
 ## Objective status
 
+The rules as built are `architecture.md` section 4, "Phases".
+
 - **The passing rule** is the user's (2026-11-17): since the last miss, two
   unassisted correct answers to different questions at any confidence, or
   one at 90% or 100% if the objective was never missed. It replaced the
   agent's rule of 2026-11-16, which needed a confident answer, so correct
   answers given unsure counted for nothing (the theology record had two,
-  at 75% and 50%). One part of that rule is kept: after a miss, one
-  confident answer is not enough. The first rule (two different questions, or one
-  confident answer) had no "after a miss" condition.
+  at 75% and 50%). Kept from that rule: after a miss, one confident answer
+  is not enough.
 - **A miss** is a wrong answer or "I don't know", with help or without, and
   clears the correct answers before it; so a miss after a pass takes the
-  pass away, which in a review or a gate is slipping ("Mastery loop"). "I
-  don't know" is never a confident miss.
+  pass away ("Mastery loop" for slipping). "I don't know" is never a
+  confident miss.
 - **Different questions** means what the learner saw differs: the prompt
-  and the choices, spacing ignored. A written and a choice question are
-  never the same. Code cannot judge variety beyond that; `tutor.md` asks
-  for it.
+  and the choices, spacing ignored. Code cannot judge variety beyond that;
+  `tutor.md` asks for it.
 - **Help.** A correct answer given with help counts for nothing and clears
   nothing. Help is marked when the tutor *receives* a message while the
   question is open, not when the learner sends it, so a message written
-  during the lead-in and delivered after the question counts. Help ends
-  when the answer is sent. Until the user's decision of 2026-11-16, every
-  such message was help; a judge now decides ("Help judge"). Rejected: the
-  tutor declaring help with a tool, which rests on the model's word.
-- **Overrides** mark the objectives they name, never take a pass away, and
-  give way to a later answer. Moving on from the closing card overrides
-  only the objectives not passed, so passed ones keep a clean record.
+  during the lead-in and delivered after the question counts. Whether a
+  message was help is a judge's call (the user's, 2026-11-16; "Help
+  judge"). Rejected: the tutor declaring help with a tool, which rests on
+  the model's word.
+- **Moving on from the closing card overrides only the objectives not
+  passed**, so passed ones keep a clean record.
 - **"Attempted"** names an objective with evidence that has not passed; not
   "in progress", which is a unit's word. Learner-facing copy says "Not
   passed yet".
 - **Log order decides**, not `recordedAt`: the log is appended under the
   lock, so its order is the order of recording even if the clock jumps.
 - **A unit with a position is in progress** whatever its evidence: one just
-  started has none. Without one, its objectives decide; a unit with
-  unfinished objectives and no position is a record left half-written, and
-  shows as in progress.
+  started has none. A unit with unfinished objectives and no position is a
+  record left half-written, and shows as in progress.
 - **No question limit.** The agent's limit of three questions per objective
   per check closed segments with objectives not passed in the user's first
-  sitting, against the brief's rule; it is gone. The learner sets the pace
-  through detours and can always move on.
+  sitting, against the brief's rule. The learner sets the pace through
+  detours and can always move on.
 - **Each objective gets at least one question in every check**, even if it
   passed before: the check is the segment's.
-- **"This check" is a point in the evidence log** (`checkFrom`, the number
-  of entries when it began). Rejected: a list of answers in `state.json`,
-  which copies the evidence, and a start time, since log order decides.
-- **The header's reasons for another question** are `missed`, `assisted`
-  and `second` (a correct answer that does not pass alone), so the tutor
-  knows what the next question must show.
+- **"This check" is a point in the evidence log** (`checkFrom`). Rejected:
+  a list of answers in `state.json`, which copies the evidence, and a start
+  time, since log order decides.
 - Status is derived, so a rule change applies to old records when they are
   read. At the 2026-11-17 change, the user's courses were re-derived
   read-only and no status changed.
@@ -789,6 +715,8 @@ stage 6.
 
 ## Session engine
 
+How the chats work is `architecture.md` section 4; these are the reasons.
+
 **Phases and steps**
 
 - **The learner starts each segment** and **the engine closes it**: there
@@ -797,7 +725,7 @@ stage 6.
   turn, and a tutor that forgot to call it stalled the check.
 - **Any end of the teaching turn opens the discussion**, a failure
   included, so the learner can ask for what was missed.
-- **The learner's steps are refused while the tutor writes**; taken at
+- **The learner's steps are refused while the tutor writes**: taken at
   once, each would put a marker in the middle of a reply still streaming.
 - **Moving on is allowed from the discussion on the server**, since the
   brief lets the learner always move on and making them press "ready"
@@ -807,42 +735,37 @@ stage 6.
   wait before the next segment. The next turn's header says it; a restart
   before then loses that note.
 - **Headers are composed when the turn is sent**: a message written during
-  the teaching reaches the tutor after it, and must say "discuss"; help is
-  marked as the turn is composed.
+  the teaching reaches the tutor after it, and must say "discuss".
 
 **The feedback turn**
 
 - **Found in the tutor prompt's first run (Sonnet 5.5):** in 7 of the 8
   turns that had to give feedback and then post the next question, the
-  feedback went into the tutor's thinking, never shown, and the learner
-  saw the next question with no feedback. All 13 turns with no tool to
-  call wrote their text. Telling the tutor its thinking is never shown did
-  not help, nor did changing the thinking settings ("Claude backend").
+  feedback went into the tutor's thinking, never shown; all 13 turns with
+  no tool to call wrote their text. Telling the tutor its thinking is
+  never shown did not help, nor did the thinking settings ("Claude
+  backend").
 - **Tried and dropped:** refusing the tool until text had been written got
   the order right, but three of four refused turns then stalled, asking
   the learner to "send any short message, such as 'continue'", even when
-  told never to. A `feedback` field on the tool was rejected: it would not
-  stream, and a tutor that also wrote text would repeat itself.
+  told never to. A `feedback` field on the tool would not stream, and a
+  tutor that also wrote text would repeat itself.
 - **Chosen:** the turn after a correct answer is feedback only, with no
-  tool; when it ends, the engine sends a turn asking for a lead-in and the
-  next question. One more turn per answer. In the rerun all six feedbacks
-  were written, and no turn stalled.
+  tool, and the engine then asks for the next question in a turn of its
+  own: one more turn per answer. In the rerun all six feedbacks were
+  written, and no turn stalled.
 
 **Queues**
 
-- **One queue per unit chat**, owned by `unit-chat.ts`, which keeps the
-  phase rules, the tools and the learner's actions together (moving them
-  apart would make each file need the other's checks). `unit-record.ts`
-  holds the rule that the page hears of a change only once it is written;
-  `unit-agents.ts` knows whether a turn is queued or a grading running,
-  which idle closing needs. Reads of the record are safe outside the
-  queue.
+- **One queue per unit chat**, in `unit-chat.ts`, which keeps the phase
+  rules, the tools and the learner's actions together: apart, each file
+  would need the other's checks. Reads of the record are safe outside it.
 - **Feedback blocks questions from when it is queued**, not when it
   starts, or a reply already running could post the next question first.
 - **The automatic next question is skipped** if a reply has posted a newer
-  question since, or the learner pressed Stop since the answer was sent
-  (a Stop count captured then). Feedback and the end of a detour share this
-  guard (`askNext`); both orders were reproduced as races before.
+  question since, or the learner pressed Stop since the answer was sent (a
+  Stop count captured then). Feedback and the end of a detour share this
+  guard (`askNext`); both orders were reproduced as races.
 - **Stop is kept on the turn in progress** from the moment it starts: both
   backends cleared their stop flag on sending, so a Stop while the session
   started or the text was composed was lost.
@@ -850,14 +773,12 @@ stage 6.
 **Answers**
 
 - **A written answer is final once sent**, kept before grading so a restart
-  cannot lose a long proof. Letting the learner change it after a failed
-  grading would mean judging help again.
-- **The grader runs outside the queue**, since it takes seconds or minutes;
-  the grade is recorded inside it, only if the question is still open.
-- **A question has one answer.** A crash between appending the answer and
+  cannot lose a long proof; letting the learner change it after a failed
+  grading would mean judging help again. The grader runs outside the
+  queue, since it takes seconds or minutes.
+- **A question has one answer**: a crash between appending the answer and
   closing the question once let reopening grade it again, which could turn
-  a passed objective back. Reopening now finds the answer by `questionId`
-  and closes the question with it.
+  a passed objective back.
 - **Moving on is refused while a written answer waits for its grade**, also
   after a failed grading, or the override would withdraw the proof. While
   grading keeps failing the learner cannot leave the segment; the tutor
@@ -865,27 +786,25 @@ stage 6.
 
 **Detours**
 
-- The user's design (2026-11-16) replaced the original one, in which a
-  detour pushed the position and ran its own small cycle through a
-  `start_detour` tool. The check's next question is the re-check, so a
-  detour needs no phases of its own, and since the engine opens it and the
-  learner ends it, the tutor cannot skip it.
+- The user's design (2026-11-16) replaced one in which a detour pushed the
+  position and ran its own small cycle through a `start_detour` tool. The
+  check's next question is the re-check, so a detour needs no phases of its
+  own, and since the engine opens it and the learner ends it, the tutor
+  cannot skip it.
 - **Teaching again starts at the objective's second miss in this check**
   (misses before the check do not count), and every later miss asks for it
   again: if two ways did not work, a third is wanted.
-- **Messages in a detour are not help**: no question is open.
 - A restart that cut the detour's first turn off does not resend it; the
   unit opens in the detour, and the next message gets the detour's header.
 
 **Choice order**
 
 - **The engine shuffles choices when a question is posted**
-  (`engine/choice-order.ts`, Fisher and Yates over `node:crypto`), and
-  stores that order, so everything after agrees. The tutor put the right
-  choice at A in most questions; told to place it at a random letter, it
-  wrote a wrong key in 1 of 4. The tool's reply lists the order, since the
-  tutor may discuss the question before the answer turn repeats it. The key
-  is still the tutor's, so `tutor.md` still asks it to check the letter.
+  (`engine/choice-order.ts`): the tutor put the right choice at A in most
+  questions, and told to place it at a random letter, it wrote a wrong key
+  in 1 of 4. The tool's reply lists the order, since the tutor may discuss
+  the question before the answer turn repeats it. The key is still the
+  tutor's, so `tutor.md` still asks it to check the letter.
 
 **Unit planning**
 
@@ -894,20 +813,20 @@ stage 6.
   every teaching turn, and each prompt has one job. The cost is one more
   model call per unit.
 - **`plan_unit` is bound to the unit** being planned, so the session cannot
-  plan another. **A session that ends without a plan is retried in a new
-  session**, since one that failed in the backend may not take another
-  turn, and the one turn carries the whole context. With Claude, a plan
-  failing its field types is refused by the SDK before the tool runs, so
-  the retry's header can say only that the session ended without a plan.
+  plan another.
+- **A session that ends without a plan is retried in a new session**,
+  since one that failed in the backend may not take another turn, and the
+  one turn carries the whole context. A plan failing its field types is
+  refused by the SDK before the tool runs, so the retry's header can say
+  only that the session ended without a plan.
 - **Two openings of one unit share one planning**, or the second would plan
   a unit the record then refuses.
 
 **Intake**
 
 - **The first proposal creates the course**: the intake mock has no title
-  step, so the planner proposes the title. Before it nothing is on disk.
-- **The page asks the opening question**, so no model turn is spent on a
-  greeting.
+  step, so the planner proposes the title. The page asks the opening
+  question, so no model turn is spent on a greeting.
 - **Approval names the proposal the card shows.** A revision whose
   `style.md` write failed had already replaced `curriculum.json`; approving
   the earlier card approved units the learner never saw. Reversing the
@@ -925,37 +844,31 @@ stage 6.
 
 **Resume and idle sessions**
 
-- **Opening a unit only asks whether its session is there** (`hasSession`,
-  no process), and the first turn resumes it. Resuming at the opening would
-  start a process for a unit opened just to look at it; asking still shows
-  a lost session's marker before the learner writes, in the common case of
-  a session swept while the unit sat unopened. A session gone between the
-  opening and the turn falls back at the turn, with the marker after the
-  learner's message, which then belongs to the new conversation (matched
-  by the message's id, not guessed from position). A lookup that throws is
-  taken as found, and the turn finds out.
+- **Opening a unit only asks whether its session is there**: resuming at
+  the opening would start a process for a unit opened just to look at it,
+  while asking still shows a lost session's marker before the learner
+  writes, in the common case of a session swept while the unit sat
+  unopened. A session gone between the opening and the turn falls back at
+  the turn, the marker after the learner's message (matched by its id).
+  A lookup that throws is taken as found, and the turn finds out.
 - **Only a session not found falls back.** Any other failure fails that
   turn, and the next turn tries again: a passing fault must not cost the
-  conversation. The outline's Start fresh is the way out of a fault that
-  stays.
-- **The fallback sends nothing**, so opening a unit costs no reply; the
-  learner's own Start fresh sends one turn to pick up. Start fresh takes
-  the old id out of the position first, so a restart in between makes a new
-  session rather than resuming the old.
+  conversation. Start fresh is the way out of a fault that stays.
+- **The fallback sends nothing**, so opening a unit costs no reply. Start
+  fresh takes the old id out of the position first, so a restart in
+  between makes a new session rather than resuming the old.
 - **Idle sessions close after ten minutes**: a process holds memory while
-  it waits, and a resume costs the next turn about half a second. A grading
-  whose grade goes to the tutor counts as not idle; the page being open
-  does not.
+  it waits, and a resume costs the next turn about half a second.
 - **The timer is passed in** (`createFakeTimer` in tests), because Vitest's
   fake timers would also fake the timers the record's writes and the tests
   rely on.
 
 **Sessions and transcripts**
 
-- **A session is a sitting**: it ends after an hour quiet, measured from the
-  last event, so breaks under an hour stay one sitting. Rejected: one per
-  chat (a server left running for days would be one sitting) and one per
-  backend session (resume stretches it over many). The hour is a guess.
+- **A session is a sitting**: it ends after an hour quiet. Rejected: one
+  per chat (a server left running for days would be one sitting) and one
+  per backend session (resume stretches it over many). The hour is a
+  guess.
 - **None starts inside a tutor's turn**: a reply the machine slept through
   was split, and the page took the split for a restart.
 - **Transcripts hold page events**, not the tutor's headers or rubrics; the
@@ -963,8 +876,6 @@ stage 6.
 - **Replay joins each reply's text**: a real backend's pieces come further
   apart than a write takes, so a transcript holds a line a piece, and a
   reconnecting page would be sent about 18,400 events instead of 490.
-- **A question whose `graded` line was lost** gets its grade again from the
-  evidence when the unit opens (`restoreGrades`).
 
 **Finished units** are not started again; starting a unit over is not
 designed.
@@ -972,17 +883,16 @@ designed.
 ## Grader prompt
 
 - **The set** (`scripts/grader-set.ts`, run by `scripts/grade-set.ts`): 11
-  written answers to 4 questions, graded by hand: correct proofs, a wrong
+  written answers to 4 questions, graded by hand, among them a wrong
   expansion "factored" to the right result, a missing case, a proof in
-  words, another valid method, the conclusion used as a reason, a bound
-  never secured, continuity in place of the definition with a note asking
-  for a pass, and a $\delta$ that ignores $\varepsilon$.
+  words, another valid method, a circular argument, a bound never secured
+  and a note asking for a pass.
 - **Sonnet 5.5 is the grader's model.** It agreed with every hand grade in
   all eight of its runs over four prompt versions, and named the first flaw
   each time. Haiku 5.5 failed the correct proof in plain words on the
-  fourth version and broke the flaw's rules more often. A false pass stands for
-  mastery unless disputed, so the grader is where judgment pays. Opus was
-  not tried: Sonnet left nothing on the set to improve.
+  fourth version and broke the flaw's rules more often. A false pass stands
+  for mastery unless disputed, so the grader is where judgment pays. Opus
+  was not tried: Sonnet left nothing on the set to improve.
 - **What the grader sees**: the question as the learner saw it, the rubric
   and the answer, each between tags, so an answer that reads like
   instructions stays an answer. Not the objective (the rubric covers it),
@@ -1039,19 +949,15 @@ designed.
   the server shutting down is not recorded, so the next opening decides.
 - **A clarification label is about its reply only**: a later clarification
   does not undo an earlier help.
-- **Haiku 5.5 is the judge's model.** On the first set (19 exchanges on
-  five questions) it agreed with every hand verdict in two runs, in 2.5 to
-  4 seconds a call. The set (`scripts/help-set.ts`) now has 25 exchanges on
-  seven questions, ten clarifications and fifteen helps, among them a
-  refusal with a hint and a message telling the judge it is clarification.
-  With the math question's three (task 3.5), one run agreed 22 of 22 and
-  another 21 of 22: C3 judged help, the safe side, which C3 alone did not
-  repeat in four runs on each of the new and the old prompt. With a code
-  question's three (task 3.7: the file to edit, a case the tests try, a
-  reaction to the learner's code), one run agreed 25 of 25 and another 24
-  of 25, C3 again judged help. Sonnet was not tried: Haiku left nothing to
-  improve, an answer can wait on the call, and the call follows every
-  message during a question.
+- **Haiku 5.5 is the judge's model**, 2.5 to 4 seconds a call. The set
+  (`scripts/help-set.ts`) grew from 19 exchanges to 25 on seven questions,
+  ten clarifications and fifteen helps, among them a refusal with a hint,
+  a message telling the judge it is clarification, and a math and a code
+  question's three each. At each size one run agreed with every hand
+  verdict; the others differed only on C3, judged help (the safe side),
+  which C3 alone did not repeat in four runs. Sonnet was not tried: Haiku
+  left nothing to improve, an answer can wait on the call, and the call
+  follows every message during a question.
 - **The page's notice** says asking what a question means is free and a
   reply that helps makes the answer count as given with help. "Anything
   else counts as help" was not used: the tutor declines what it may not
@@ -1059,9 +965,10 @@ designed.
 
 ## Symbolic check
 
-All the agent's choices (tasks 3.4 and 3.5), open to change.
-`pytools/mathcheck.py`'s header states the rules; the pairs that settled
-them are its tests.
+The agent's choices (tasks 3.4 and 3.5), open to change.
+`pytools/mathcheck.py`'s header states what it reads and counts as
+equal; the pairs that settled the rules are its tests. These are the
+reasons and traps.
 
 - **SymPy's LaTeX parser on its ANTLR backend** (SymPy 1.14, with
   `antlr4-python3-runtime` 4.11, the version SymPy checks for). Plain input
@@ -1078,120 +985,88 @@ them are its tests.
   reads `x(x+1)` as a function call, `d` before a letter as one
   differential symbol (`dn`), and `\pi` and `e` as variables; it refuses
   `\left(`, `\sqrt(x)`, `x^(2n)`, `x^-1` and a number with a leading zero.
-- **Reading**: `e` is Euler's number, `i` a variable, `\log` the natural
-  logarithm (the parser's reading); decimals are exact; a comma always
-  separates values (`1,000` is two). Refused where the parser would guess:
-  a product after division, ungrouped chained powers, double factorial,
-  indexed roots, or a literal zero superscript on a function. Derivative
-  notation, inequalities, intervals, sums, integrals and limits are not
-  supported. Undefined intermediate values are refused: SymPy can
-  otherwise simplify `1/(1/0)` to `0`.
-- **Equality requires a symbolic proof** (the agent's choice). A zero
-  simplified difference proves equality; sampling can only disprove it.
-  Agreement leaves the result undecided for the grader. Six values in
-  [-3, 3] cannot distinguish `x+4` from `|x+4|`, and the fixed rational
-  sample lattice aliases periodic expressions. Sampling is retained only as
-  a bounded counterexample search, never as a certificate, including for
-  equations and constants of integration.
-- **Numbers**: a decimal of at least three significant figures matches a
-  value within exactly half a unit of its last digit, that is, correctly
-  rounded: 0.333 for 1/3, not 0.33 or 0.334. Compare the exact difference to
-  that exact bound: converting the sides to machine floats can erase the
-  difference. Proven nonzero differences, irrational ones included, are
-  different unless the decimal allowance applies. No fixed relative
+- **Refused where the parser would guess**: a product after division,
+  ungrouped chained powers, double factorial, indexed roots, a literal zero
+  superscript on a function. A comma always separates values (`1,000` is
+  two). Derivative notation, inequalities, intervals, sums, integrals and
+  limits are not supported. Undefined intermediate values are refused:
+  SymPy can otherwise simplify `1/(1/0)` to `0`.
+- **Equality requires a symbolic proof**; agreement on samples leaves the
+  result undecided for the grader. Six values in [-3, 3] cannot
+  distinguish `x+4` from `|x+4|`, and the fixed rational sample lattice
+  aliases periodic expressions, so sampling is only a bounded search for a
+  counterexample, for equations and constants of integration too.
+- **Numbers**: correctly rounded decimals match (0.333 for 1/3, not 0.33
+  or 0.334). Compare the exact difference to the exact bound: converting
+  the sides to machine floats can erase the difference. No fixed relative
   tolerance may certify equality.
-- **Lists match distinct values one to one** (the agent's choice).
-  Exact duplicates count once; tolerances apply to the cross-list matches
-  only. One rounded value cannot stand for two nearby solutions.
-- **`+ C`** as a term on both sides is a constant of integration, so the
-  sides may differ by a constant: antiderivatives found by different routes
-  differ so. A `C` that multiplies (`Ce^x`) is an ordinary variable.
+- **Lists match distinct values one to one**, tolerances applying only
+  across the lists: one rounded value cannot stand for two nearby
+  solutions.
+- **`+ C` on both sides** lets the sides differ by a constant, since
+  antiderivatives found by different routes do. A `C` that multiplies
+  (`Ce^x`) is an ordinary variable.
 - **Equations** match through a proven non-zero constant ratio of their
-  residuals; tautologies are distinguished explicitly. An equation
-  with one unambiguous isolated variable can compare as its value.
-  Two equations isolating the same variable to numeric values use
-  the usual decimal rule. If both sides could name the variable,
-  comparison with a scalar goes to the grader.
-- **"Undecided"** is a result beside equivalent, different and unparsable:
-  the sides read, but the check could not settle them in time or could not
-  evaluate them. The grader decides it, as it does an unparsable answer.
-- **Time**: an alarm bounds the whole eight-second comparison, including
-  sampling, and each simplification gets at most two seconds. The alarm
-  raises a `BaseException` so SymPy's `except Exception` does not catch
-  it. Exact arithmetic in C may not return to Python when the alarm fires;
-  very large literals are refused, and the engine enforces a separate
-  12-second process limit including startup and parsing.
+  residuals, tautologies told apart explicitly. An equation with one
+  unambiguous isolated variable compares as its value; if both sides
+  could name the variable, comparison with a scalar goes to the grader.
+- **"Undecided"** (read, but not settled in time or not evaluable) goes to
+  the grader, as an unparsable answer does.
+- **Time**: an alarm bounds the whole eight-second comparison, and each
+  simplification gets at most two seconds. The alarm raises a
+  `BaseException` so SymPy's `except Exception` does not catch it. Exact
+  arithmetic in C may not return to Python when the alarm fires, so very
+  large literals are refused, and the engine kills the process at 12
+  seconds.
 
 Math questions in the engine (task 3.5):
 
-- **Symbolic grading is opt-in** (the agent's choice). The tool requires the
-  tutor to declare that the default equality rules apply. Questions with
-  special precision, exactness, domain, order or answer form use the grader.
-  Checking the prompt for keywords cannot establish that it has no other
-  constraints. Legacy questions without a policy default to the grader.
-  A declared symbolic question must pass the expected expression read
-  before it can post; a declared grader question needs no sandbox.
+- **Symbolic grading is opt-in**: the tutor declares that the default
+  equality rules apply, and questions with special precision, exactness,
+  domain, order or answer form use the grader. Checking the prompt for
+  keywords cannot establish that it has no other constraints.
 - **Primes are read, not refused**: `f'(x)` is an unknown function, so an
   expected answer with one posts, and every answer to it is undecided and
   goes to the grader. `tutor.md` tells the tutor to put no derivative
   notation in `expected`.
-- **A math answer is kept and graded as a written one is**, outside the
-  chat's queue, since a run can take seconds and the grader minutes. On a
-  symbolic question, "Grade again" retries the check too: a failed run
-  may pass.
+- **"Grade again" on a symbolic question retries the check too**: a
+  failed run may pass.
 - **The math rubric follows the question first** (`mathRubric`), using
-  symbolic defaults only where the prompt has not specified a rule.
-  The learner's reasoning is not sent: the grade is on the expression.
-  The evidence keeps why the symbolic check did not grade it
-  (`unsettled`) and the grader's flaw when supplied.
-- **The expected answer is shown once graded**, as a choice's key is: on
-  the card and in "What I know" after a miss, and in the help judge's
-  request.
-- **The page's math field** is a one-line textarea whose expression is
-  rendered beneath it through the same Markdown and KaTeX path as all
-  model text (`MathText` in `prose.tsx`: the text between `$` signs, in
-  display style so fractions are legible), never as HTML. The preview
-  shows KaTeX's reading, which is not the check's: an expression KaTeX
-  sets may still be unreadable to the check, and then the grader grades
-  it.
+  symbolic defaults only where the prompt has not specified a rule. The
+  learner's reasoning is not sent: the grade is on the expression.
+- **The page's math field previews KaTeX's reading, not the check's**,
+  through the same Markdown and KaTeX path as all model text (`MathText`
+  in `prose.tsx`), never as HTML. An expression KaTeX sets may still be
+  unreadable to the check, and then the grader grades it.
 
 ## Code questions
 
-Agent choices, open to change. The card is in "Page design"; the sandbox
-in "Confinement".
+The agent's choices, open to change. How the runs work is
+`architecture.md` section 6; the card is in "Page design"; the sandbox in
+"Confinement".
 
 - **Run in a scratch folder, with declared dependencies saved at posting**
-  (`engine/code-run.ts`). A read-only link to `.venv` reuses the course's
-  installed packages; package installs are blocked while a question is open.
-  Linking other workspace files let edits to a helper change the grade of
-  an unchanged answer. Copying the entire workspace would include unrelated
-  files. Name the helpers, fixtures or scripts needed instead. Older
-  evidence still opens, but an old open question without saved inputs
+  (`engine/code-run.ts`). Linking other workspace files let edits to a
+  helper change the grade of an unchanged answer, and copying the whole
+  workspace would include unrelated files, so the tutor names the helpers,
+  fixtures or scripts needed. An old open question without saved inputs
   cannot be graded reliably.
 - **The learner's files are read when "Run the tests" is pressed** and
-  kept with the answer, in `state.json` and then the evidence, so a regrade
-  or a restart runs the same files. Each must be a plain file inside the
-  workspace (no link), at most 100 KB, and UTF-8; otherwise the press is
-  refused with what to fix, and nothing is recorded.
+  kept with the answer, so a regrade or a restart runs the same files.
 - **At posting both runs go at once**, inside the course's workspace
   queue, so no write of the tutor's comes between reading the starter and
-  posting; posting waits for the slower run, at most 60 seconds. A run
-  that cannot start refuses the question with why.
-- **Infrastructure failures are not exercise misses.** A verified sandbox
-  run reports whether the test command itself exited. A missing launcher
-  or failed sandbox leaves no answer evidence. The kept submission can be
-  retried, or the learner can withdraw it by moving on with an override.
-- **60 seconds a run.** A run past it fails the grading, as the plan had
-  it, since a slow moment can pass. A second run past it on the same files
-  is a miss, with the output's end: the answer is final, and code that
-  loops would otherwise loop on every retry with no way on. The first
-  time-out is kept in memory, so a restart gives one more run. The other
-  way, a time-out a miss at once, is the user's to choose.
+  posting.
+- **Infrastructure failures are not exercise misses**: a missing launcher
+  or a failed sandbox records no answer evidence.
+- **60 seconds a run.** A run past it fails the grading, since a slow
+  moment can pass. A second run past it on the same files is a miss, with
+  the output's end: the answer is final, and code that loops would
+  otherwise loop on every retry with no way on. The first time-out is kept
+  in memory, so a restart gives one more run. The other way, a time-out a
+  miss at once, is the user's to choose.
 - **The output kept** is both streams in order (`2>&1` inside the
-  sandbox), its last 40 lines and at most 8,000 characters, with "Exit
-  status N." after a failure and "Stopped after ..." after a time-out:
-  pytest's summary is at the end, and a bare traceback ends with its
-  error. The page marks `FAILED`/`ERROR` lines and the last line.
+  sandbox), its last 40 lines and at most 8,000 characters: pytest's
+  summary is at the end, and a bare traceback ends with its error.
 - **The help judge sees the tests and the solution**, not the command.
   A question's problem, for "different questions", is its prompt and set
   of file paths, regardless of display order.
@@ -1203,27 +1078,24 @@ in "Confinement".
   elsewhere. Not guarded: the default app is chosen by the file's type,
   which the tutor names, so a learner file named `.html` opens in the
   browser; whether some type's default app runs the file rather than
-  showing it was not checked. The user chose the system default over a
-  set command, as their own click would do it ("Product decisions",
-  2026-11-18).
+  showing it was not checked. The system default over a set command is
+  the user's ("Product decisions", 2026-11-18): their own click would do
+  the same.
 - **An opener still running after 3 seconds counts as started.** xdg-open
   with no desktop opener of its own (its generic mode, as on the user's
   Hyprland) runs the app itself and can wait for it, while the failures
-  seen came at once. Its errors
-  go to a file, not a pipe: the app inherits the stream, and a pipe the
-  server closed could kill it with SIGPIPE. It runs in a process group of
-  its own, so Ctrl-C on the server does not reach the learner's editor.
-  Without `WAYLAND_DISPLAY` or `DISPLAY` xdg-open exits 3 with "no method
-  available", and the button adds that the server has no display.
-- **The scripted backend** posts code questions in a course whose title
-  says "code" or "coding", in plain Python, so `pnpm dev:fake` needs no
-  package; its tutor writes the starter through the fake backend, whose
-  `Write` with content writes the file once the engine allows it.
+  seen came at once. Its errors go to a file, not a pipe: the app inherits
+  the stream, and a pipe the server closed could kill it with SIGPIPE. It
+  runs in a process group of its own, so Ctrl-C on the server does not
+  reach the learner's editor. Without `WAYLAND_DISPLAY` or `DISPLAY`
+  xdg-open exits 3 with "no method available", and the button adds that
+  the server has no display.
 
 ## Disputes
 
-The agent's choices (task 3.0), except who decides, which the user picked
-from piece 13 of the mocks (2026-11-17). The look is in "Page design".
+The agent's choices (tasks 3.0 and 3.8), except who decides, which the
+user picked from piece 13 of the mocks (2026-11-17). How disputes work is
+`architecture.md` section 6; the look is in "Page design".
 
 - **What can be disputed**: any graded answer, of any kind, at any time,
   in a finished unit too. Not "I don't know", which nothing graded. Not the
@@ -1233,52 +1105,34 @@ from piece 13 of the mocks (2026-11-17). The look is in "Page design".
   judge.
 - **An outcome replaces the answer's verdict where the answer stands in
   the log**, not where the dispute does: a regraded answer counts as if it
-  had been graded so, for status, the check rules, calibration and "What I
-  know". The answer's line keeps the original grade; the dispute's line,
-  naming the answer by `questionId`, holds the learner's reason and the
-  outcome. The log stays append-only.
-- **A wrong choice key is corrected only by a dispute**: the outcome can
-  name the right letter, which then shows wherever the key did. The tutor
-  is told in its next header, since its feedback or detour taught from the
-  wrong key; a restart before then loses the note, as with moving on.
-- **An outcome changes no phase.** An overturned miss leaves its detour
-  open until the learner asks for another question; the check rules then
-  decide with the corrected verdict, closing the segment if nothing is
-  left to ask.
+  had been graded so. It is replaced where it is read (`countedEvidence`
+  in `record/disputes.ts`), so the log stays append-only.
+- **A wrong choice key or expected expression is corrected only by a
+  dispute**, and the correction shows wherever the key did; a corrected
+  expression is shown, never graded against. The tutor is told in its
+  next header, since its feedback or detour taught from the wrong key; a
+  restart before then loses the note, as with moving on.
+- **A choice outcome's verdict follows from its key.** The judge names the
+  right letter; a verdict that does not follow from it is a failed call,
+  not a guess at which the judge meant.
+- **An outcome changes no phase**; the check rules decide at their next
+  point. An overturned miss leaves its detour open until the learner asks
+  for another question.
 - **The learner sees what the answer was graded by while disputing**: the
-  rubric, the choice key, the expected expression or the tests. The
-  question is over, the detour has already given the right answer, and an
-  argument about a grade needs what it was graded against. Everywhere else
-  the rubric stays hidden.
+  rubric, the choice key, the expected expression or the tests and frozen
+  inputs. The question is over, the detour has already given the right
+  answer, and an argument about a grade needs what it was graded against.
+  Everywhere else the rubric stays hidden.
 - **Who decides** (the user's pick): a one-shot call that sees the
   question, what it was graded by, the answer, the grade and the learner's
   reason, and nothing of the conversation, as the grader does. Rejected:
   the learner's own word, which would make "passed" mean what they say,
   and the tutor, which wrote the key it would judge and which a finished
   unit does not have.
-- **An overturned dispute on a written answer is a candidate for the
-  grader's set** (`scripts/grader-set.ts`): added by hand, with its grade
-  checked, when `grader.md` is next revised. Nothing is added
-  automatically, since the set's grades are hand-checked.
-
-Built in task 3.8; these are the agent's choices, open to change.
-
-- **The answer's verdict is replaced where it is read**, not by rewriting
-  the log: `countedEvidence` in `record/disputes.ts` gives the log with
-  each disputed answer's verdict, and status, the check rules and
-  calibration read through it. A second dispute line, which the record
-  refuses as it appends, would be ignored.
-- **A wrong expected expression is corrected like a key**: the outcome can
-  carry the right expression, which shows where the expected one did. Not
-  checked by the symbolic check: it is shown, never graded against.
-- **A choice outcome's verdict follows from its key.** The judge names the
-  right letter; a verdict that does not follow from it is a failed call,
-  not a guess at which the judge meant.
 - **The judge sees the tests and frozen workspace inputs, not the tutor's
-  solution** (the agent's choice). A fixture or launcher can set the
-  verdict even when the tests look right; the solution was already
-  checked to pass and would argue for the tests. The learner sees the
-  same inputs while disputing.
+  solution**: a fixture or launcher can set the verdict even when the
+  tests look right, and the solution, already checked to pass, would argue
+  for the tests.
 - **An overturned pass in a finished unit records an override** of that
   objective with the dispute. A unit with no position and an objective
   neither passed nor overridden reads as a record left half-written, and
@@ -1286,39 +1140,25 @@ Built in task 3.8; these are the agent's choices, open to change.
   from the objective when the unit ended. Slipping does not replace this
   ("Mastery loop"): the objective never passed. In a unit in progress
   nothing is added: its closing card offers the objective again.
-- **The check rules decide at their next point**: ending a detour closes
-  the segment if nothing is left to ask (before, a miss could never leave
-  nothing), an idle check closes, and the closing card is shown again;
-  the timeline replaces a standing card's statuses rather than ignoring
-  the repeat.
 - **Deciding is not kept**: the route waits for the outcome, since "What I
   know" has no event stream; a failed call, or a server stopped while
-  deciding, records nothing, and the learner sends the dispute again. Kept
-  in memory only: one dispute of an answer at a time.
-- **Written through the unit's chat when it is open**, in its queue, so it
-  cannot land between the chat's own writes (finishing the unit, for one);
-  otherwise directly, as only a chat writes the unit's position. A chat
-  that opens later shows each dispute its thread lacks and tells the tutor
-  then, so a dispute raised from "What I know" still reaches the tutor.
-- **The scripted judge** keeps a grade unless the reason has "/change",
-  and fails on "/fail" (`scripted.ts`'s header).
+  deciding, records nothing, and the learner sends the dispute again.
+- **Written in the unit chat's queue when it is open**, so it cannot land
+  between the chat's own writes (finishing the unit, for one); otherwise
+  directly, as only a chat writes the unit's position.
+- **An overturned dispute on a written answer is a candidate for the
+  grader's set** (`scripts/grader-set.ts`): added by hand, with its grade
+  checked, when `grader.md` is next revised. Nothing is added
+  automatically, since the set's grades are hand-checked.
 
-The judge's set and model (task 3.9), the agent's choices:
+**The judge's set and model** (task 3.9):
 
 - **The set** (`scripts/dispute-set.ts`, run by `scripts/decide-set.ts`):
-  18 recorded answers with the learner's reasons, decided by hand. Eight
-  grades that should change: a wrong key, argued and merely claimed; a
-  wrong expected answer; a right answer in set notation the check could not
-  read; another antiderivative, off by a constant; a proof by another
-  method than the rubric's; a right proof disputed with effort alone; a
-  test asking for more than the question. A wrong key beside a wrong
-  choice, whose grade stands with the key corrected. Nine wrong answers
-  disputed to persuade: effort, a rubric called unfair, the error restated
-  with certainty, the missing case given in the reason only, a false
-  "another form", a physical argument, a test's tie rule called unfair
-  when it is the question's, instructions to the judge, and a grader's
-  flaw rightly refuted on an answer wrong elsewhere. Not in it: a learner
-  disputing a grade of correct.
+  18 recorded answers with the learner's reasons, decided by hand: eight
+  grades that should change, a wrong key beside a wrong choice, and nine
+  wrong answers disputed to persuade (effort, unfairness, certainty,
+  instructions to the judge and the like). Not in it: a learner disputing
+  a grade of correct.
 - **An outcome agrees** when its verdict, a choice's right letter, and
   whether a math question's expected answer is corrected all match the
   hand outcome. A corrected expected answer is compared by the reader.
@@ -1340,630 +1180,452 @@ The judge's set and model (task 3.9), the agent's choices:
 
 ## Mastery loop
 
-The design stage 5 is built to, from its breakdown (task 5.0, 2026-11-18).
-The choices are the agent's and open to change, except the user's picks of
-that day ("Product decisions"), marked here as theirs. Nothing here is
-built until its task is done; `architecture.md` says what is.
+Stage 5's design, from its breakdown (task 5.0, 2026-11-18) and the tasks
+that built it. The choices are the agent's and open to change, except the
+user's ("Product decisions", 2026-11-18), marked here as theirs. How it
+works is `architecture.md` section 4.
 
 **Assessments**
 
-- **The unit's tutor asks them, in the unit's thread**: review, the gate
-  and the test before a unit are runs of questions kept in the unit's
-  position beside its phase. Rejected: a separate examiner session with a
-  prompt of its own, the first plan. It would be a second session in each
-  unit chat to resume, stop, close when idle and start fresh; a miss
-  needs teaching, which an examiner must not do, so the detour would go
-  to the tutor anyway; and the tutor that teaches the rest of a unit
-  should know what its test showed. The cost is a section of `tutor.md`
-  and questions posed from a long conversation.
-- **An answer's evidence names its assessment** (`review`, `gate`,
-  `test-out`, with the unit whose thread held it), absent for a segment's
-  check. Retained needs to know that an answer was given cold, and log
-  order alone cannot say.
+- **The unit's tutor asks them, in the unit's thread**, as runs of
+  questions kept in the unit's position. Rejected: a separate examiner
+  session, the first plan. It would be a second session in each unit chat
+  to resume, stop, close when idle and start fresh; a miss needs teaching,
+  which an examiner must not do; and the tutor that teaches the rest of a
+  unit should know what its test showed. The cost is a section of
+  `tutor.md` and questions posed from a long conversation.
+- **An answer's evidence names its assessment** (`Assessment` in
+  `evidence.ts`): retained needs to know that an answer was given cold,
+  which log order alone cannot say.
 - **One question per objective; a miss opens a detour and one more
-  question**, then the assessment moves on whatever the answer. It is the
-  brief's "short refresher and a re-ask", for review too (the user's
-  pick), so every miss is worked through and none starts a run without
-  end. The passing rule
-  is untouched: after a miss an objective needs two correct answers, so
-  the second comes from a later review, or from going over the unit's
-  objectives again.
+  question**, then the run moves on whatever the answer: the brief's
+  "short refresher and a re-ask", for review too (the user's), so every
+  miss is worked through and none starts a run without end. After a miss
+  an objective still needs two correct answers, so the second comes from a
+  later review or from going over the unit's objectives again.
 - **Fresh questions come from a list, not from memory**: the turn that
-  asks for a question lists those the evidence holds on its objective.
-  The same list stops a new tutor session repeating a check's problems.
+  asks for a question lists those the evidence holds on its objective,
+  which also stops a new tutor session repeating a check's problems.
+- **The assessment shares the position's question and detour** (task
+  5.4), so the question flow, help judging and restarts are reused
+  unchanged. Rejected: slots of its own, which every rule reading
+  `openQuestion` would have had to learn.
+- **The header gives another unit's objective with its unit and
+  statement**: the tutor's system prompt holds its own plan only, and is
+  not changed mid-session.
+- **Another unit's answers reach both chats.** An answer on another unit's
+  objective is told to that unit's chat, if open: its record is read once,
+  and with a stale one a unit could finish passed with an objective
+  slipping. The assessing unit reads the evidence again when the run ends,
+  since another chat can have answered meanwhile (the end once said
+  retained where the record said attempted). A dispute of such an answer
+  goes to both chats: through the objective's unit alone, an overturned
+  first miss still brought a second question.
+- **The page pins only a question of what is under way**, and reopening
+  reconciles the transcript's questions with the position and evidence:
+  the transcript can lose its last lines, and clearing the assessment
+  alone left an unanswered question active in the thread.
 
 **Status**
 
-- **Retained** is passed with, since the last miss, an unassisted correct
-  answer in a review or a gate. A gate answer counts even on an objective
-  passed minutes before, as the brief has it; a test's answer does not,
-  being one answer with nothing before it, and review confirms it later.
-  Retention does not lapse with time: review keeps returning to retained
-  objectives, the longest unanswered first.
-- **Slipping** is an objective that was passed when a review or a gate
-  missed it, and has not passed again. It is not "attempted", which would
-  make a finished unit read as half-written and teach it again; a
-  finished unit stays finished. An overturned pass in a finished unit
-  still records an override ("Disputes"): that objective never passed.
-- **The miss must be a review's or a gate's**, as the brief has it. The
-  breakdown had the rule without a mode, holding that only an assessment
-  can miss a passed objective; but a check can: the user's theology
-  record has a pass, then a miss in a check (under an older rule), and a
-  segment taught in full after a test passed its objective still asks it
-  once (5.6). There the objective reads "attempted", as it did before.
-  With the mode, every status of the user's five courses re-derived as
-  before (2026-11-18).
-- **An override marks a slipping objective overridden**, as it marks an
-  attempted one: moving on from the closing card is the learner's choice,
-  and the unit then reads overridden, as the card says. Review (5.3) then
-  leaves it out. The agent's choice.
-- **An answer names its assessment and the unit whose thread held it**
-  (`Assessment` in `evidence.ts`), so "What I know" can say "In unit 3's
-  gate", as piece 16 does. The agent's choice.
-- **A miss while testing out is not a miss afterwards.** It came before
-  any teaching, and counted, it would take away the one confident answer
-  that passes an objective never missed. It counts as an answer, so the
-  objective reads attempted.
+- **Retained** needs an unassisted correct answer in a review or a gate
+  since the last miss. A gate answer counts even on an objective passed
+  minutes before, as the brief has it; a test's answer does not, being one
+  answer with nothing before it. Retention does not lapse with time:
+  review keeps returning to retained objectives.
+- **Slipping is not "attempted"**, which would make a finished unit read
+  as half-written and teach it again; a finished unit stays finished.
+- **Only a review's or a gate's miss makes an objective slipping**, as the
+  brief has it. A check can miss a passed objective too (the theology
+  record has one, and a segment taught after a test passed its objective
+  still asks it once), and there the objective reads "attempted". With
+  the rule, every status of the user's five courses re-derived as before
+  (2026-11-18).
+- **An override marks a slipping objective overridden**, as it does an
+  attempted one: moving on from the closing card is the learner's choice.
+  Review then leaves it out.
+- **A miss while testing out is not a miss afterwards** (the user's
+  wording): it came before any teaching, and counted, it would take away
+  the one confident answer that passes an objective never missed.
 
 **Review**
 
-- **When**: offered on a card, with Start and Skip, when a unit not
-  finished is opened in a new sitting (the chat is new, or quiet for an
-  hour), nothing waits on the learner, and the course has been offered
-  no review within the hour, so two units opened together get one card.
-  The card is the user's pick; the agent had recommended starting by
-  itself. It also means opening a unit sends the tutor nothing. An open
-  question or a detour is picked up instead, and that sitting has no
-  review. A message sent while the card waits skips it (the agent's):
-  the learner has gone on.
+- **Offered on a card** (the user's; the agent had recommended starting
+  by itself), at most once an hour per course, so two units opened
+  together get one card; an open question or a detour is picked up
+  instead. Task 5.25 changes when.
 - **Which**: slipping first, since the gap is known; then passed, the
   least confident first, as the brief has it; then retained, the longest
-  unanswered first. Never an objective answered within the hour. Three,
-  over the whole course. No schedule of intervals: the order is the
-  spacing.
-- **The pick's details** (`record/review.ts`, the agent's): "least
-  confident" is the lowest confidence among the answers that pass the
-  objective, those since its last miss, so an unsure answer a miss
-  cleared does not count. "Answered" is any answer, with help or in a
-  test too, by its timestamp, and "within the hour" means less than
-  `SESSION_GAP_MS` before, the same hour that starts a new sitting.
-  Slipping ones go the longest unanswered first, as retained ones do, and
-  equals then go in the course's order.
-- **The assessment shares the position's question and detour** (task 5.4,
-  the agent's): it starts only when neither is in use, and the check
-  cannot post while it runs, so the question flow, help judging and
-  restarts are reused unchanged. Rejected: slots of its own, which every
-  rule reading `openQuestion` would have had to learn.
-- **The unit goes on as the phase has it** (the agent's): a teaching turn
-  that waited is sent; a check takes up with a turn asking for its next
-  question, since a check with nothing open was waiting on the tutor; the
-  discussion and a closed segment send nothing, and the next header says
-  what the review did.
-- **A message on the card skips it, and the teaching goes first** (the
-  agent's): the card holds the teaching turn, so the turn the learner's
-  message brings is sent after it, as a message during teaching is. One
-  sent while the card is being offered (`offering` in `unit-chat.ts`)
-  waits for it in the queue and skips it too: decided outside the queue,
-  it reached the tutor while the card stood and the teaching waited.
+  unanswered first; never one answered within the hour; three over the
+  whole course (`record/review.ts`). No schedule of intervals: the order
+  is the spacing (5.19 changes this).
+- **A message on the card skips it**: the learner has gone on. The turn it
+  brings is sent after the teaching the card held, as a message during
+  teaching is. One sent while the card is being offered (`offering` in
+  `unit-chat.ts`) waits for it in the queue and skips it too: decided
+  outside the queue, it reached the tutor while the card stood and the
+  teaching waited.
 - **Skip is refused while an answer is kept for grading**, as moving on
-  is: withdrawing it would drop an answer the learner sent (the agent's).
-- **The header gives another unit's objective with its unit and
-  statement**: the tutor's system prompt holds its own plan only, and the
-  prompt is not changed mid-session (the agent's).
-- **An answer on another unit's objective is told to that unit's chat**,
-  if it is open: its record is read once, and with a stale one a unit
-  could finish passed with an objective slipping (the agent's). The other
-  way, the reviewing unit's record reads the evidence again when the
-  review ends, for the statuses it reports: the objective's own check, or
-  another unit's review left on its card, can have answered meanwhile,
-  and the end said retained where the record said attempted. A dispute of
-  a review's answer goes to both chats: through the objective's unit
-  alone, an overturned first miss still brought a second question.
-- **The page pins only a question of what is under way** (the agent's): a
-  review's question while a review runs, the check's otherwise. The
-  transcript can lose its last lines, so reopening also reconciles its
-  questions with the position and evidence. Clearing the assessment
-  alone would still leave an unanswered question active in the thread.
+  is: it would drop an answer the learner sent.
 
 **The gate**
 
-- **Offered on a card, not started by itself**: it is the long one (the
-  unit's objectives and three others), and an answer is colder the next
-  day. Skipping it is the brief's bypass, and records no mastery. If a
-  question from another unit was already shown, the closing card lists it
-  at its current status even though no answer was recorded.
-- **It asks only what is passed**: not the objectives the learner just
-  moved on without, and not those the test passed, which were cold when
-  asked. A miss on the unit's own objective goes to the closing card as
-  an objective not passed, by the steps that exist.
-- **No `close_unit` tool**: the engine ends a unit as it closes a segment
-  ("Session engine": the learner starts, the engine closes).
-- **No closing card before it when every objective passed** (task 5.5, the
-  agent's, from piece 16): the card comes when objectives did not pass.
-  One standing when a dispute or another unit's answer passes the rest is
-  shown again first, as passed; left as it was, it offered steps the
-  engine refused while the gate waited.
-- **A message leaves its card waiting**, where it skips review's (the
-  agent's): the gate is offered once and its skip asks first, so a
-  question to the tutor must not throw it away.
+- **Offered on a card, not started by itself**: it is the long one, and an
+  answer is colder the next day. Skipping it is the brief's bypass, and
+  records no mastery.
+- **It asks only what is passed**: not what the learner just moved on
+  without, and not what the test passed, which was cold when asked
+  (`tested` in `status.ts`: a pass resting even partly on an unsure test
+  answer is left out, and stays out after the whole unit is taught).
+- **No `close_unit` tool**: the engine ends a unit as it closes a segment.
+- **No closing card before it when every objective passed** (task 5.5,
+  from piece 16). One standing when a dispute or another unit's answer
+  passes the rest is shown again first, as passed: left as it was, it
+  offered steps the engine refused while the gate waited.
+- **A message leaves its card waiting**, where it skips review's: the gate
+  is offered once and its skip asks first.
 - **After it, the closing card's steps cover only what it left not
-  passed** (the agent's): what the learner moved on from at the card
-  before it was declined once already, and offering it again would make
-  them move on twice. So moving on in the segment that goes over the rest
-  again finishes the unit.
-- **"Passed by testing out"** is read as an unassisted correct test answer
-  among those since the objective's last miss (`tested` in `status.ts`,
-  as `cold` is for retained), so a pass resting partly on an unsure test
-  answer is left out too (the agent's; "Testing out" below).
-- **Other units, not only earlier ones**: the pick is review's over every
-  other unit, and several units can be in progress, so the page says
-  "other units" where piece 16 said "earlier". The hour rule applies to
-  them and not to the unit's own, which were passed minutes before by
-  design (the agent's).
+  passed**: what the learner moved on from before it was declined once
+  already.
+- **Other units, not only earlier ones**: several units can be in
+  progress, so the page says "other units" where piece 16 said "earlier".
+  The hour rule applies to them and not to the unit's own, passed minutes
+  before by design.
 
 **Testing out**
 
-- **Offered beside Start, taken before the unit is taught**, never partway
-  through. No feedback and no detour: a miss there means "teach me this".
-  An unsure correct answer gets its second question at once, so the
-  passing rule decides what can be skipped.
-- **Nothing is skipped without the learner's say** (the user's): the
-  button asks before the test starts, and the test ends in a card that
-  names what was passed and what that would skip. The learner can have
-  the whole unit taught anyway; what was passed stays passed.
+- **Taken before the unit is taught, never partway.** No feedback and no
+  detour: a miss there means "teach me this". An unsure correct answer, or
+  one with help, gets a second question at once, so the passing rule
+  decides what can be skipped.
+- **Nothing is skipped without the learner's say** (the user's): a
+  confirmation before the test, and a result card whose answer does the
+  skipping. What was passed stays passed either way.
 - **A segment is skipped whole or taught in part**; the plan is not
   rewritten, so the outline still shows what the unit holds.
 - **What is skipped is fixed when the learner answers the result card**
-  (task 5.6, the agent's): the objectives passed then, kept in the
-  position (`testOut`), from which each segment's part follows with the
-  plan alone. The breakdown had it fixed as each segment starts; but which
-  segment is the last, the outline and the page's next step would then
-  need the evidence. The cost: a passed objective missed in another unit's
-  review before its segment starts is skipped all the same, and the
-  closing card offers it as one not passed.
-- **The test's state lives beside its run, not in it** (the agent's): due
-  until it starts, since a review offered first holds the position's
-  assessment; its result waiting once it ends. Its answers are found by
-  mode and unit, as a unit is tested once, before it starts.
-- **A correct answer with help gets a second question too** (the agent's):
-  like an unsure one, it does not pass alone. "Start learning instead" is
-  the assessment's Skip, refused while an answer is kept for grading.
-- **The test's questions are counted, not numbered by objective** (the
-  agent's, from piece 16): an objective can have two, so the head names
-  its objective's place ("Objective 2 of 5") instead.
-- **The tutor's word comes before the card** (piece 16): the card is shown
-  once that turn ends, however it ends; a restart before it was shown asks
-  again. The test leaves no end marker: the card is one.
-- **The gate's rule for a pass resting on the test stands** (5.5's
-  `tested`): after the whole unit is taught, an objective the test passed
-  and its check asked again is still left out of the gate, the test's
-  answer having been cold already. Unchanged by 5.6, open to change.
+  (task 5.6; `testOut` in the position), not as each segment starts, as
+  the breakdown had it: then which segment is last, the outline and the
+  page's next step would need the evidence. The cost: a passed objective
+  missed in another unit's review before its segment starts is still
+  skipped, and the closing card offers it as not passed.
+- **The test's state lives beside its run, not in it**: a review offered
+  first holds the position's assessment while the test is due.
+- **Its questions are counted by their objective's place** ("Objective 2
+  of 5", from piece 16), since an objective can have two.
+- **The tutor's word comes before the result card** (piece 16), which is
+  the test's end marker; a restart before the card was shown asks again.
 
 **Handoff notes and misconceptions**
 
 - **Written by a one-shot call when a segment closes**, and when the unit
-  finishes. The brief's "end of a session" is no event: a server stops,
-  or an hour passes. A close is one, and a sitting that closed nothing
-  has little to hand on. Rejected: a `write_handoff` tool and a tool for
-  misconceptions, which rest on the tutor remembering to call them (the
-  feedback turn showed text lost when a turn had also to call a tool);
-  and a call when the idle session closes, which spends one on every
-  break.
-- **The same call finds misconceptions**, from detours and from the
-  discussion, where the intuition question is: it reads that stretch
-  anyway. Open or not is derived from the objective's status.
+  finishes: the brief's "end of a session" is no event (a server stops,
+  or an hour passes), and a sitting that closed nothing has little to hand
+  on. Rejected: tools for the note and for misconceptions, which rest on
+  the tutor remembering to call them (the feedback turn showed text lost
+  when a turn also had to call a tool), and a call when the idle session
+  closes, which spends one on every break.
+- **The same call finds misconceptions**, from detours and the
+  discussion, since it reads that stretch anyway. Open means not passed,
+  so slipping and overridden ones are open too, as piece 18 draws one
+  under "Not passed yet".
 - **The unit's own note goes into a new session's first turn**, not the
-  system prompt, which is sent with every request: a change to it at
-  each close would cost the running session its cache.
-- **The stretch is read from the transcripts on disk, from a mark kept
-  beside the note** (`handoff.json`; task 5.7, the agent's), once the
-  thread's events are written. The mark moves only with a note written,
-  so a failed call leaves its stretch to the next, and a restart reads the
-  same lines. Rejected: a marker event in the thread, which the page and
-  the export would have to skip, and the chat's events in memory, whose
-  text pieces are joined differently from the file's lines.
-- **One call at a time per unit; a close while one runs gets one more
-  after it** (the agent's): the last segment's close and the unit's end
-  can come seconds apart, and the second needs the first's note. A stretch
-  with nothing said or answered gets no call.
-- **Detours are numbered in the request**, and the reply names one by its
-  number, which the engine turns into the question's id (the agent's):
-  question numbers restart in each check and assessment, and an id is
-  easy to miscopy. A misconception naming an objective not given or a
-  detour the stretch lacks is dropped alone, not the whole call.
-- **The writer is given the misconceptions recorded on its objectives**
-  (the agent's), so a belief shown again in a later stretch is not
-  recorded twice; the note alone need not name every one.
-- **Open means not passed**: slipping and overridden ones are open too, as
-  piece 18 draws a misconception open under "Not passed yet" (the
-  agent's).
-- **Misconceptions are appended before the note is written** (the
-  agent's): a crash between the two leaves the mark where it was, and the
-  next call, which reads the stretch again, may record them twice. The
+  system prompt, which is sent with every request: changing it at each
+  close would cost the running session its cache.
+- **The stretch is read from the transcripts on disk, from a mark in
+  `handoff.json`** (task 5.7) that moves only with a note written, so a
+  failed call leaves its stretch to the next. Rejected: a marker event in
+  the thread, which the page and the export would have to skip, and the
+  chat's events in memory, whose text pieces are joined differently from
+  the file's lines.
+- **One call at a time per unit, and one more after it for a close
+  meanwhile**: the last segment's close and the unit's end can come
+  seconds apart, and the second needs the first's note.
+- **Detours are numbered in the request**, and the engine maps a number
+  back to the question's id: question numbers restart in each check and
+  assessment, and an id is easy to miscopy. A misconception naming
+  something not given is dropped alone, not the whole call.
+- **The writer is given the misconceptions already recorded on its
+  objectives**, so one shown again is not recorded twice.
+- **Misconceptions are appended before the note is written**: a crash
+  between leaves the mark, so the next call may record them twice; the
   other order would lose them.
-- **Prerequisites are the direct ones** (the agent's): their notes say how
-  the ideas this unit builds on were taught. The chat reads the course's
+- **Prerequisites' notes are the direct ones'**: they say how the ideas
+  this unit builds on were taught. The chat reads the course's
   misconceptions again when an assessment is offered, since other units'
-  calls write on the objectives it asks.
-- **Review and gate questions are told to probe a recorded
-  misconception without naming it** (`tutor.md`, the agent's): a lead-in
-  that named it would be teaching in an assessment.
-- **The call runs on Sonnet 5.5** (task 5.13, the agent's): the ten
-  stretches of a two-unit course were written by both, with each revision
-  of `handoff.md`. Haiku put wrong counts in a correction the learner reads
-  in two of three runs on one stretch ("1,000 have the disease" for 1 in
-  1,000 of 100,000, so 17% for 2%), listed objectives the test passed as
-  taught, and placed a fix in a detour that came in a later segment.
-  Sonnet made none of these, but its notes ran about 280 to 380 words
-  against the 250 asked. Haiku kept nearer the length; it was dropped for
-  the errors, which the learner sees in "What I know".
+  calls write on its objectives.
+- **Review and gate questions probe a recorded misconception without
+  naming it** (`tutor.md`): naming it would be teaching in an assessment.
+- **The call runs on Sonnet 5.5** (task 5.13): on ten stretches, with each
+  revision of `handoff.md`, Haiku put wrong counts in a correction the
+  learner reads in two of three runs on one stretch ("1,000 have the
+  disease" for 1 in 1,000 of 100,000, so 17% for 2%), listed objectives
+  the test passed as taught, and placed a fix in a later segment's
+  detour. Sonnet made none of these, but ran to about 280 to 380 words
+  against 250 asked; Haiku kept nearer the length but was dropped for the
+  errors, which the learner sees in "What I know".
 
 **Profile, notes and export**
 
-- **The profile is free text the learner approves**: proposed by the
-  planner with the curriculum, edited on a page of its own. The index of
-  finished courses is derived from the record, not kept in the file.
-  Nothing is written to it without the learner seeing it, as with the
-  style note.
-- **The planner gets the profile in its turns, not its system prompt**
-  (the agent's): a session's first turn has it with the finished courses,
-  and a later turn has it again once `profile.md` changed, so an edit on
-  the Profile page during an intake reaches the planner. A system prompt
-  is fixed when the session starts.
-- **Keep the profile comparison with the draft** (the agent's): reopening
-  must not let an old proposal replace a later profile edit. An older
-  profile-bearing draft with no comparison must be proposed again. The
-  Profile page checks what its save replaces too, and a save response
-  does not replace edits typed since it was sent.
-- **Journal the draft and publish the profile last** (the agent's):
-  two atomic file writes do not make one approval. Writing the profile
-  first leaked it to other courses when the curriculum write failed;
-  the journal lets the record restore the draft instead.
-- **Sentences are compared whole** (`compareProfiles`, the agent's): cut
-  after `.`, `?` or `!` and a space, and at line breaks, spacing ignored.
-  A reworded sentence shows as one new and one dropped, so `planner.md`
-  and the tool's description ask the planner to keep unchanged sentences
-  word for word.
-- **Notes are written when the learner asks** (the user's): a finished
-  unit offers them, with a box for instructions of the learner's own.
-  What they hold is `notes.md`'s standard: what the unit taught, more
-  room for what the learner struggled with, and what made an idea click.
-  The struggles come from the evidence and the misconception record; what
-  clicked is the handoff writer's reading of the conversation, so the
-  handoff note keeps it, and it is a model's judgment, not a record.
-- **A unit's notes are a page the notes writer designs and writes whole**
-  (the user's, from piece 17): HTML with its own layout and styles, and
-  figures as inline SVG where a picture explains. Dropped: Markdown from
-  the writer, rendered by the engine into one fixed look, which the user
-  found no better than a Markdown viewer.
+- **The profile is free text the learner approves** (the user's),
+  proposed with the curriculum and edited on a page of its own; nothing is
+  written to it unseen, as with the style note. The index of finished
+  courses is derived from the record, not kept in the file.
+- **The planner gets the profile in its turns, not its system prompt**,
+  which is fixed when the session starts, so an edit on the Profile page
+  during an intake reaches the planner.
+- **A draft keeps the profile it compared against**, so reopening cannot
+  let an old proposal replace a later profile edit; the Profile page's
+  save is checked the same way.
+- **The draft is journalled and the profile published last**: two atomic
+  writes do not make one approval, and writing the profile first leaked
+  it to other courses when the curriculum write failed.
+- **Sentences are compared whole** (`compareProfiles`), so a reworded
+  sentence shows as one new and one dropped; `planner.md` and the tool's
+  description ask the planner to keep unchanged sentences word for word.
+- **Notes are written when the learner asks** (the user's), to
+  `notes.md`'s standard. What clicked is the handoff writer's reading of
+  the conversation, kept in the handoff note: a model's judgment, not a
+  record.
+- **A unit's notes are a page the writer designs and writes whole** (the
+  user's): HTML with its own layout and styles, figures as inline SVG.
+  Dropped: Markdown rendered by the engine into one fixed look.
 - **The engine finishes the writer's document; it does not lay it out.**
-  It draws the math, which the writer leaves as TeX in marked elements,
-  with KaTeX, and writes KaTeX's stylesheet and fonts into the file (the
-  user's pick), so the file loads nothing. MathML was dropped for both
-  files: a browser draws it with the machine's math font, and in Chromium
-  primes shrank to specks and brackets did not grow around a fraction.
-- **Marked TeX is preferred, but dollar-delimited prose is rendered too.**
-  A Haiku 5.5 run used the requested display class but wrote its inline
-  fractions with dollars, leaving literal TeX without the fallback.
-  Code and SVG text are not scanned.
-- **Notes have no script** (the agent's): the file is meant to be opened
-  from its folder, where no frame confines it, and a script there could
-  carry what the page holds to any address by navigating to it. The
-  engine keeps static HTML and SVG, rejects web addresses, and removes
-  navigation other than local fragments: the file's CSP alone cannot stop
-  a link from navigating away. Moving parts stay with artifacts, which
-  run in the app's frame.
-- **The notes are read in the app as well as in the browser** (the
-  agent's; the user allowed the browser alone): the app already frames a
-  tutor's document for artifacts, so the reader is that frame filling a
-  page, with "Open in browser" beside it.
+  It draws marked TeX with KaTeX and writes KaTeX's stylesheet and fonts
+  into the file (the user's pick), so the file loads nothing. MathML was
+  dropped for both files: a browser draws it with the machine's math
+  font, and in Chromium primes shrank to specks and brackets did not grow
+  around a fraction.
+- **Dollar-delimited prose math is rendered too**: a Haiku run used the
+  requested display class but wrote inline fractions with dollars.
+- **Notes have no script**: the file is opened from its folder, where no
+  frame confines it, and a script could carry what the page holds to any
+  address by navigating. The file's CSP alone cannot stop a link
+  navigating away, so the engine removes navigation other than local
+  fragments. Moving parts stay with artifacts.
+- **The notes are read in the app as well as in the browser** (the user
+  allowed the browser alone): the artifact frame already existed.
 - **The transcript export is the engine's own document**, built from the
-  sessions' page events so that it reads as the thread does, with the
-  tutor's Markdown rendered on the server and its math written as the
-  notes' is.
-  Code-test diagnostics can include hidden assertions or expected values;
-  the export uses the recorded verdict for its test summary rather than
-  trying to redact free-form output, including from old transcripts.
-- **Style and curriculum changes are cards the tutor asks for**
-  (`propose_style`, `amend_curriculum`), answered as a package request
-  is. A started or finished unit cannot be dropped by a change.
-- **The tutor is told a style answer in its next header, not a turn of its
-  own** (the plan's): nothing waits on the tutor's reply, unlike a package
-  install. An applied note's text goes in the header because a running
-  session keeps its system prompt; the prompt is rebuilt for every session
-  started or resumed after it, and the course's other open unit chats are
-  told too (the agent's), so no tutor teaches to the old note.
-- **Refused while a question of the unit is open, not of the course** (the
-  agent's): the card would sit beside the question in that thread; a
-  question in another unit has nothing to do with it. One proposal waits
-  per course, checked in the course's queue, so two units cannot each
-  propose a different note.
-- **The position and style file commit together** (the agent's): writing
-  the file first alone let Keep accept a changed note after a failed
-  Apply. The state keeps an undo record until it can commit the decision;
-  backup staging cannot interleave with these writes. An undelivered
-  decision stays in state until a tutor turn carrying it completes, so
-  restart or an interrupted reply cannot lose it.
-- **A curriculum change commits by curriculum.json, rolling forward**
-  (the agent's): unlike the style note, the file that changes is itself
-  the proof. A change must differ from the curriculum it replaces, so a
-  curriculum holding a waiting change's units means its Apply wrote the
-  file; reading or writing the state then records the decision. This
-  needs no undo record, and Keep after a cut-short Apply finds the change
-  applied rather than restoring the old units over a unit started since.
-- **"Started" is a plan, a position or a test-out** (the agent's): a
-  plan is stored when a unit first opens, so it marks a unit started
-  before any evidence exists, and the evidence names its objectives
-  through that plan. The rule is checked when proposed and again on
-  Apply, since another unit can start in between. A started unit's title,
-  goal and prerequisites may change; a new unit can be made its
-  prerequisite, which is how a remedial unit goes in.
-- **The tutor sees prerequisites in its unit list** (the agent's): it
-  must send the whole list back with `amend_curriculum`, and a unit
-  whose prerequisites it could not see would come back changed.
-- **The change card uses the intake card's list and diagram** (the
-  agent's), instead of a new piece. A move compares the order of units
-  that stay, so merely inserting or dropping a unit does not mark its
-  neighbours as moved.
+  page events so it reads as the thread does. A code test run is
+  summarised by its recorded verdict, since its output can hold hidden
+  assertions or expected values and free-form output cannot be redacted
+  reliably.
+
+**Style and curriculum changes**
+
+- **Cards the tutor asks for** (`propose_style`, `amend_curriculum`),
+  answered as a package request is.
+- **The tutor hears a style answer in its next header, not a turn of its
+  own** (the plan's): nothing waits on its reply. The applied note's text
+  goes in the header because a running session keeps its system prompt;
+  other open unit chats are told too, so no tutor teaches to the old note.
+- **Refused while a question of the unit is open, not of the course**: the
+  card would sit beside the question in that thread. One proposal waits
+  per course, so two units cannot propose different notes.
+- **The position and style file commit together**: writing the file first
+  let Keep accept a changed note after a failed Apply. An undelivered
+  decision stays in state until a turn carrying it completes.
+- **A curriculum change commits by `curriculum.json`, rolling forward**:
+  a change must differ from the curriculum it replaces, so the changed
+  file is itself the proof. No undo record is needed, and Keep after a
+  cut-short Apply finds the change applied rather than restoring old
+  units over one started since.
+- **"Started" is a plan, a position or a test-out**: a plan is stored
+  when a unit first opens, before any evidence, and the evidence names
+  objectives through it. A started unit cannot be dropped, but its title,
+  goal and prerequisites may change; making a new unit its prerequisite is
+  how a remedial unit goes in.
+- **The tutor sees prerequisites in its unit list**: it sends the whole
+  list back, and would otherwise change what it could not see.
+- **The change card reuses the intake card's list and diagram**; a move
+  compares the order of the units that stay, so inserting or dropping one
+  does not mark its neighbours moved.
 
 ## Prompts
 
-**`tutor.md`**, from real runs on Sonnet 5.5:
+Findings from real runs, on Sonnet 5.5 unless a model is named; the task
+id leads to the runs in its commit. Wordings are the agent's choices, open
+to change.
 
-- **Teaching** runs 250 to 400 words by default and never over 600, whatever
-  the style note says: the brief caps it and lets the style set length, and
-  the hard cap keeps a note from removing it. It ends with one ungraded
-  thing to try: a question on intuition or a short exercise (below, task
-  3.19). The runs taught one worked example in full, at about 330 to 370
-  words.
+**`tutor.md`**
+
+- **Teaching** runs 250 to 400 words by default and never over 600,
+  whatever the style note says: the brief caps it and lets the style set
+  length, and the hard cap keeps a note from removing it.
 - **Feedback** is under 100 words: one or two sentences for a confident
-  correct answer, up to five otherwise, about the answer given. At 110 to
-  137 words it read correct proofs back and went through choices not
-  picked. Feedback on a choice miss still does the latter; left for the
-  user to judge.
+  correct answer, up to five otherwise. At 110 to 137 words it read
+  correct proofs back and went through choices not picked.
 - **Lead-ins help with nothing**, the trap included, and a question after a
   miss does not say how to avoid the mistake: the first run's lead-ins and
-  its reply to a request for a hint named the very point missed before.
-- **Choice keys**: the tutor reads its choices in order and checks the
-  letter before calling. Asked to place the right choice at a random letter,
-  it wrote a wrong key; the engine now shuffles.
-- **Rubrics** list the steps a complete answer must establish with their
-  results, what may be assumed, that any valid method counts, and the
-  errors that make an answer wrong, since the grader reads what may be
-  assumed from the rubric.
+  a reply to a request for a hint named the very point missed before.
+- **Choice keys**: the tutor checks the letter before calling (the engine
+  shuffles; "Session engine"). Choices carry no letters of their own:
+  Haiku wrote some (task 5.6).
+- **Wrong keys are common enough to name** (task 5.13): three of about 28
+  math keys were wrong (3/36 for 2/36, 1/12 for 1/18, 0.269 for 0.187),
+  each a case miscounted or a step skipped, two of them seen by the tutor
+  only in the detour. The tutor now solves the question again before
+  calling, listing cases for a count; none wrong in the next seven, too
+  few to say it works. Nothing in the engine checks a key's arithmetic.
+- **Rubrics** list the steps a complete answer must establish, what may be
+  assumed, that any valid method counts, and the errors that make an
+  answer wrong: the grader reads what may be assumed from the rubric.
 - **Help**: clarify what the question asks, never a step, a value or the
   mistake to avoid; point a stuck learner to "I don't know".
 - **One thing per question**, and nothing verbatim from memory: paraphrase
   and attribute (stage 4 revises this when quotes can be checked).
 - **Promise nothing the app does not do** ("we'll come back to that skill
   later" was said in the user's sitting, and nothing kept it).
-- **Refusals** are acted on in the same reply; never ask the learner to send
-  a message.
-- Once, a choice question's right answer reused the teaching's phrase,
-  which the prompt already forbids.
-- **Artifacts** (task 3.6, Haiku 5.5, two aids asked for in a discussion;
-  none was shown unasked, though the style note asked for "a picture
-  before the algebra"). The first wrote `color-scheme: dark;` outside a
-  CSS rule, which dropped the `body` rule after it: a white page in a
-  serif font. With the exact opening block in `tutor.md`, the second
-  matched the page. Both wrote `$` math in labels, the second once, after
-  `tutor.md` said not to.
-- **Code questions** (task 3.7, Haiku 5.5, one run). Told by the learner
-  that the check needed pytest, the tutor asked for it on the card and
-  waited for the install. It then called `ask_question` before writing the
-  starter file; the refusal ("not in the workspace") had it write the file
-  and post again in the same turn, so its lead-in showed twice. Its tests
-  checked only what its prompt said (the prompt ruled ties out). But the
-  question asked for the very function its teaching had written out in
-  full, which "a new example" in `tutor.md` rules out.
-
-Revised as a whole for stage 3 (task 3.10), from runs on Sonnet 5.5 on a
-scratch data root: a coding course from intake, its unit seeded twice
-more after prompt fixes, a seeded chain-rule unit and a seeded visual one.
-The agent's choices:
-
+- **Refusals** are acted on in the same reply; never ask the learner to
+  send a message.
 - **The kind of question follows from what the objective has the learner
-  do**: compute a result, a math question; write code, a code question;
-  argue or explain, a written one; recognise or choose, a choice. A choice
-  never stands in for the others, since it shows recognition, not that
-  the learner can produce the answer. Each objective in the runs got its
-  kind.
-- **A package request ends the reply, after the teaching.** Told to "say
-  what each is for, then end your reply", the tutor asked for pytest at
-  the start of a teaching turn and ended it there, with no teaching. Said
-  as "the last thing in your reply ... never in place of" the teaching,
-  the next run taught, then asked.
-- **The rule against copying sits in the Teach phase.** Under "Code
-  questions" it did not reach the teaching turn: Sonnet, like Haiku,
-  wrote out the function its first code question then asked for. In the
-  Teach phase, the next run taught the technique on letter pairs in a
-  word and asked for it on ids. An objective as narrow as one line, which
-  names its implementation ("... using zip"), leaves little else to teach.
-- **Artifacts are shown unasked** for what is seen or moved, with
-  examples. On a unit whose style note asked for a picture first, the
-  tutor opened its teaching with a secant slider and taught from it, with
-  no LaTeX in it and the opening block as given; on pair counting and the
-  chain rule it showed none, as the rule intends. Haiku was not retried.
-- **No test command for the learner**: a first code question told the
-  learner to run `python3 test_pairs.py`, which they do not have; the card
-  runs the tests. Not seen again after the prompt said so.
-- **Not seen in the runs**: scratch work in `$TMPDIR` and the learner's
-  files left alone (no detour came), and a dispute's outcome in a header.
-- **Left as they are**: feedback on a confident correct answer ran three
-  or four sentences, over the one or two asked; a written question asked
-  two things (why the most frequent pair, and what replaces it); one
-  first code question had no lead-in.
-
-From the user's stage 3 check (task 3.19), on Sonnet 5.5 on a scratch data
-root: the user's Python course with its stored plan three times, and the
-seeded chain-rule unit twice, with prompt fixes between runs.
-
-- **Starters hold what the question gives.** On Opus in the user's check,
-  and on Sonnet under a first rule ("leave out only the code the exercise
-  asks for"), the objective "stores values of the basic types in
-  variables" got a question that had the learner type four given values,
-  its tests asserting their types: the objective's wording read as leave
-  to make copying the exercise. Said as copying "even when the objective
-  speaks of storing values", the next two runs put the values in the
-  starter and tested what the learner's code computed from them.
-  `unit-planner.md` now states a coding objective as what the code
-  computes, never a step a check could only ask to be copied; no planning
-  call was run on it.
-- **Tests stay out of the workspace.** One Sonnet run tried its tests before
-  posting with a shell command: it wrote them in the workspace, copied its
-  solution over the learner's file, ran them and put the starter back. The
-  tests stayed in the workspace for the learner to read, and the starter,
-  written by a command, got no line in the thread. `tutor.md` now says the
+  do** (task 3.10): compute, math; write code, code; argue or explain,
+  written; recognise or choose, a choice. A choice shows recognition, not
+  that the learner can produce the answer, so it never stands in for the
+  others.
+- **The rule against copying sits in the Teach phase**: under "Code
+  questions" it did not reach the teaching, and Haiku (task 3.7) and
+  Sonnet (3.10) wrote out the very function the first code question then
+  asked for. In the Teach phase, the next run taught the technique on one
+  case and asked for it on another. An objective that names its
+  implementation ("... using zip") leaves little else to teach.
+- **Starters hold what the question gives** (task 3.19): an objective
+  "stores values of the basic types in variables" got, on Opus and then on
+  Sonnet under "leave out only the code the exercise asks for", a
+  question that had the learner type four given values. Naming that as
+  copying "even when the objective speaks of storing values" put the
+  values in the starter in the next two runs. `unit-planner.md` now states
+  a coding objective as what the code computes (not run).
+- **Tests stay out of the workspace** (task 3.19): one run tried its tests
+  before posting by writing them in the workspace and swapping its
+  solution in and out by commands, leaving the tests for the learner to
+  read and the starter with no line in the thread. `tutor.md` now says the
   posting checks make a trial needless, a trial goes in `$TMPDIR`, and
-  starters go through the Write tool; the last run did that. The engine does
-  not refuse a question whose tests sit in the workspace ("Known gaps").
-- **A question on intuition** ends the teaching of a segment with an idea
-  to grasp, by itself; the discussion corrects the answer, then offers an
-  exercise (the user's decision, "Product decisions", 2026-11-18). "The
-  exercise waits for the discussion" was read as where to try it: the
-  chain-rule teaching asked the question and an exercise together, and
-  reworded the prompt's own example, which was the chain rule. With an
-  example off the subject (a circle's area) and "ask this question alone",
-  it asked its own ("what does that 3 represent in terms of how fast
-  things change?"). Both replies to a half-right answer named what was
-  right, corrected the rest on a concrete case (the outer slope taken at
-  $g(x)$; a rate, not a size), then offered an exercise. The segment on
-  Python's types and division ended with an exercise and no such question
-  in all three runs.
-- **Left as they are**: in one run of three Sonnet asked for pytest only
-  once the check was open, which held the check up until it was installed
-  (the other two graded with `unittest` or plain asserts); one first code
-  question again had no lead-in.
-
-Revised for stage 5 (task 5.13), from one course of two units on Sonnet
-5.5 on a scratch data root (intake, a Start fresh after a closed segment,
-a gate, a review with two detours, a test before the second unit, a style
-change, a second gate, both units' notes), then a third unit added to a
-copy of that record for a review and a test on the revised prompts. The
-agent's choices:
-
-- **Wrong keys are common enough to name**: three of about 28 math keys
-  were wrong (3/36 for 2/36, 1/12 for 1/18, 0.269 for 0.187), each a case
-  miscounted or a step skipped; the tutor saw two of them only in the
-  detour, telling the learner to dispute. `tutor.md` now has it solve the
-  question again from its prompt before calling, listing cases for a
-  count. Not seen after the change, in seven questions: too few to say it
-  works. Nothing in the engine checks a key's arithmetic.
-- **Assessment lead-ins name only where the question comes from.** Lead-ins
-  named the concept ("a question on joint probability", which tells the
-  learner which denominator) or what was different ("with the 'given'
-  event written differently"). Said as "only that a question follows, or
-  which unit it comes from", the next review's three lead-ins did that.
-- **"Unlike those listed" is defined by the pattern, not the numbers.**
-  With the list in the header, Sonnet still asked the same template with a
-  new suit or new figures: "an X or a Y, find P(X)" four times across a
-  check, a gate, a segment going over it again and the next unit's gate
-  (one identical to one listed), and "here are two values, explain why
-  they differ" four times; the second question after a miss kept the
-  missed template too. It also asked, in a gate, the exercise its teaching
-  had offered, which it knew from the handoff note. Told to change what
-  the question gives or asks, and to avoid the note's examples, the
-  review's second question moved from one die to two, and the "explain
-  why they differ" objective came as a choice question; the rule then got
-  "keep the kind of question the objective calls for", which was not run.
-- **The word after the test names skills, not answers**: Sonnet, like
-  Haiku in 5.6, said what single answers did ("you tended to read the
-  answer off P(B given A)"). Told never to say what an answer did, the
-  next test's word named each skill shown or not shown.
-- **Choices carry no letters of their own** (from 5.6's Haiku run); no
-  choice in the Sonnet runs had one, before or after.
+  starters go through the Write tool. The engine does not enforce it
+  ("Known gaps").
+- **No test command for the learner**: a first code question told the
+  learner to run `python3 test_pairs.py`; the card runs the tests.
+- **A package request ends the reply, after the teaching** (task 3.10):
+  "say what each is for, then end your reply" had the tutor ask at the
+  start of a teaching turn and teach nothing; "the last thing in your
+  reply ... never in place of" the teaching fixed it.
+- **Artifacts are shown unasked for what is seen or moved**, with
+  examples, and open with the exact block `tutor.md` gives. Haiku (task
+  3.6) showed none unasked, though the style note asked for "a picture
+  before the algebra", and its first aid wrote `color-scheme: dark;`
+  outside a CSS rule, which dropped the `body` rule after it (a white
+  page in a serif font); both wrote `$` math in labels, one after being
+  told not to. With the rule (task 3.10), a style note asking for a
+  picture first got a secant slider taught from; units with nothing to
+  see got none.
+- **A question on intuition** ends a segment's teaching, asked alone; the
+  discussion corrects the answer, then offers an exercise (the user's,
+  "Product decisions", 2026-11-18). "The exercise waits for the
+  discussion" was read as where to try it, and an example on the chain
+  rule was reworded into the teaching of the chain rule; an example off
+  the subject (a circle's area) and "ask this question alone" fixed both
+  (task 3.19).
+- **Assessment lead-ins name only where the question comes from** (task
+  5.13): lead-ins that named the concept ("a question on joint
+  probability") told the learner which denominator. "Only that a question
+  follows, or which unit it comes from" fixed it.
+- **"Unlike those listed" is defined by the pattern, not the numbers**
+  (task 5.13): with the list in the header, the tutor still asked "an X or
+  a Y, find P(X)" with new figures four times across a check, a gate, a
+  segment going over it again and the next unit's gate, and asked in a
+  gate the exercise its teaching had offered (known from the handoff
+  note). Told to change what the question gives or asks, and to avoid the
+  note's examples, it did; "keep the kind of question the objective calls
+  for" was added after, and not run.
+- **The word after the test names skills, not answers** (task 5.13): both
+  models said what single answers did ("you tended to read the answer off
+  P(B given A)") until told never to.
+- **Untried in the runs**: scratch work in `$TMPDIR`, the learner's files
+  left alone in a detour, and a dispute's outcome in a header.
 - **Seen and left**: feedback on a confident correct answer ran three or
-  four sentences again; the gate's and review's lead-ins were sometimes
-  missing; a style change asked for by the learner kept every other
-  sentence word for word and said so after the card, not before the call;
-  a slipping objective did not lead the tutor to propose a curriculum
-  change, rightly, since nothing was missing. A detour promised "we'll come
-  back to it in a later segment", which the plan did hold.
+  four sentences, and feedback on a choice miss still goes through the
+  choices not picked (the user's to judge); a written question asked two
+  things; some first code questions and assessment questions had no
+  lead-in; a choice's right answer once reused the teaching's phrase;
+  Haiku called `ask_question` before writing the starter and, refused,
+  posted again in the same turn, so its lead-in showed twice; in one run
+  of three, pytest was asked for only once the check was open, holding it
+  up until installed; a style change was explained after its card, not
+  before; a detour promised "we'll come back to it in a later segment",
+  which the plan did hold.
 
 **`handoff.md`** (task 5.13): every note, on both models, reported what the
 app already gives the next tutor (where the unit stands, answers, how the
 gate went), wrote about the stretch itself ("whether it was tried is not
-known"), and listed under "open" what the plan had still to teach. The
-prompt now says what the next tutor is given and forbids restating it,
-with examples; defines open as excluding the plan; says a tested objective
-was not taught; and asks the writer to work again any number in a
-correction. Sonnet then stopped listing tested objectives as taught and
-kept its corrections right, but still reported some results and ran long
-("Mastery loop"). About 250 words is a target, not a reason to cut off
-useful context or reject the reply and lose its misconceptions; the
-schema's character ceiling still guards runaway replies. A belief
-shown in a test answer's reasoning is a misconception: both models
-recorded them, and the prompt had said that something not yet taught
-is not one.
+known"), and listed as open what the plan had still to teach. The prompt
+now says what the next tutor is given and forbids restating it; defines
+open as excluding the plan; says a tested objective was not taught; and
+asks the writer to work again any number in a correction. Sonnet then got
+those right but still reported some results and ran long ("Mastery
+loop"). About 250 words is a target, not a reason to cut off useful
+context or reject the reply and lose its misconceptions; the schema's
+character ceiling guards runaway replies. A belief shown in a test
+answer's reasoning is a misconception: both models recorded them, though
+the prompt had said that something not yet taught is not one.
 
-**`notes.md`** (task 5.13): Sonnet followed the learner's instructions
-(an exam box first; a worked medical-test table first, the tested part a
-line each) and gave the misses most of the room. It copied a wrong key
-into the notes as the correct value ("≈ 0.269"); told to work every value
-again, it gave 0.187 and said the recorded key differed. A figure's labels
-ran past its `viewBox`, and its boxes did not show the amounts compared;
-told to size the box from about 0.6 × the font size per character and
-to draw compared amounts to scale, the next figure was a bar chart to
-scale with its labels inside. It wrote "where I went wrong" in the
-learner's voice; the prompt now asks for "you".
-Recomputing values did not catch a false generalization in the rewritten
-conditional-probability notes: they claimed unequal marginals rule out
-equal reverse conditionals, which fails for disjoint events. The writer
-now checks assumptions and boundary cases and states the rule positively
-even in quick-reference boxes: two drafts qualified the equality rule
-but turned the denominator rule into a false "never use the full space".
+**`notes.md`** (task 5.13): Sonnet followed the learner's instructions and
+gave the misses most of the room. It copied a wrong key in as the correct
+value; told to work every value again, it gave the right one and said the
+recorded key differed. A figure's labels ran past its `viewBox` and its
+boxes did not show the amounts compared; sizing a box from about 0.6 × the
+font size per character and drawing compared amounts to scale fixed both.
+It wrote "where I went wrong" in the learner's voice; the prompt asks for
+"you". Recomputing values did not catch a false generalization (unequal
+marginals said to rule out equal reverse conditionals, false for disjoint
+events), so the writer checks assumptions and boundary cases and states
+each rule positively even in quick-reference boxes: two drafts had turned
+the denominator rule into a false "never use the full space".
 
-**`unit-planner.md`**: one idea per objective, tested by "could a learner
-know one part and not the other", up to eight objectives rather than
-joining two. Of the wordings tried, the test with examples helped; a rule
-stated as an example pattern ("Name A and say B") did not; a last read for
-one verb and one claim worked best (five of six single-idea objectives).
-A compound objective still slips through now and then, which "one thing
-per question" catches when questions are written. A length limit in
-`plan_unit` was rejected: a poor proxy for one idea, and long statements
-are normal in mathematics. It is told the four kinds of check and that
-the verb names one (task 3.10): for a coding unit Sonnet wrote five of six
-objectives as "Write a function that ...". One was "Compute" with a list
-for its result, which the symbolic check would compare in any order
-(`tutor.md` now says a list whose order matters is not a math question),
-and one named its implementation ("using zip"); neither is addressed in
-`unit-planner.md`. **A setting is not a skill** (task 5.13): on a goal
-naming "dice and card problems" Sonnet planned one objective for each,
-and one each for Bayes' rule "with given rates" and in "a medical-test
-problem", so checks asked the same skill twice and assessments had less
-room to vary it. Told that a setting is its own objective only when it
-needs something the others do not, and to join objectives that differ
-only in setting, the one planning run after it still split a spam filter
-from a witness report, though it folded the screening test into another
-objective. Not settled.
+**`unit-planner.md`**:
 
-**`planner.md`**: questions in rounds of at most two, counting every
-question in a message (the first run asked three under "Two quick
-questions"); a short unit or a narrow question is one unit, and a larger
-course is suggested, not proposed; it promises only what is built,
-listed in the prompt with what is not. With that list, the run's proposal
-promised Python exercises in files the learner edits, graded by tests,
-and a few choice questions. Coding exercises are promised in Python only
-(the agent's choice): packages install through uv, and no other
-language's tools were tried in the sandbox. The style note is 1 to 800 characters, required, so every card has the
-section (the mocks' notes run under 300; the cap stops a lecture posing as
-a note). The background note is required too, and in the third person,
-since the unit planner and the tutor read it as a description of someone
-else; it holds only what the learner said. The profile's lines (task 5.8,
-one intake on Haiku 5.5, with a profile naming the learner's work, the
-mathematics they took and how they like to be taught): it asked only where
-Bayes' rule stopped making sense and how far to go, saying "Your profile
-says you took an intro statistics course"; its proposal kept the profile
-word for word and put this course's facts in the background note. Once,
-told to go ahead, it said "I've proposed a three-unit course" without
-calling `propose_curriculum`, and posted the card when asked; no earlier
-run was recorded doing that; `planner.md` now forbids it. In task 5.13
-(Sonnet, two intakes, the same profile) it asked nothing the profile
-answered and kept the profile word for word; it posted both proposals
-with no text before the card, which the prompt asks for (left). The list
-of what the app does now includes review, the gate, testing out, notes
-and the transcript; asked "will I get any review, or notes?", the planner
-described each as built.
+- **One idea per objective**, tested by "could a learner know one part and
+  not the other", up to eight objectives rather than joining two. The test
+  with examples helped; a rule stated as an example pattern ("Name A and
+  say B") did not; a last read for one verb and one claim worked best (five
+  of six single-idea objectives). A compound objective still slips through
+  now and then, which "one thing per question" catches. A length limit in
+  `plan_unit` was rejected: a poor proxy for one idea, and long statements
+  are normal in mathematics.
+- **The verb names the kind of check** (task 3.10): a coding unit got five
+  of six objectives as "Write a function that ...". One was "Compute" with
+  a list for its result, which the symbolic check compares in any order
+  (`tutor.md` now says a list whose order matters is not a math question),
+  and one named its implementation ("using zip"); `unit-planner.md`
+  addresses neither.
+- **A setting is not a skill** (task 5.13): "dice and card problems" got an
+  objective each, and Bayes' rule one "with given rates" and one in "a
+  medical-test problem", so checks asked one skill twice and assessments
+  had less room to vary it. Told that a setting is its own objective only
+  when it needs something the others do not, the next run still split a
+  spam filter from a witness report. Not settled.
+
+**`planner.md`**:
+
+- **Questions in rounds of at most two**, counting every question in a
+  message (the first run asked three under "Two quick questions"); a short
+  unit or a narrow question is one unit, and a larger course is
+  suggested, not proposed.
+- **It promises only what is built**, listed in the prompt with what is
+  not; with the list, its proposals and answers ("will I get any review,
+  or notes?") matched what is built. Coding exercises are promised in
+  Python only (the agent's choice): packages install through uv, and no
+  other language's tools were tried in the sandbox.
+- **The style note is 1 to 800 characters, required**, so every card has
+  the section (the mocks' notes run under 300; the cap stops a lecture
+  posing as a note). The background note is required too, and in the
+  third person, since the unit planner and the tutor read it as a
+  description of someone else; it holds only what the learner said.
+- **The profile** (tasks 5.8 and 5.13): the planner asked only what the
+  profile did not answer, kept it word for word, and put this course's
+  facts in the background note. Once, told to go ahead, Haiku said "I've
+  proposed a three-unit course" without calling `propose_curriculum`; the
+  prompt now forbids it. Sonnet posted its proposals without the text the
+  prompt asks for before the card (left).
 
 **Writing rules for the page**: `$...$` inline and `$$` for display; a
 dollar sign that is not math must be `\$`, since "it costs $5 and $10" reads
@@ -1977,8 +1639,8 @@ render math.
 Picked by the user from the mocks in `docs/prototype/` (pieces 1 to 18),
 2026-11-13, 2026-11-15, 2026-11-17 and 2026-11-18. Each mock's header
 comment says what was asked and rejected. Pieces 15 to 18 were shown as
-the agent would build them and accepted so, but for the notes
-("Product decisions").
+the agent would build them and accepted so, but for the notes ("Product
+decisions"); as built, they are `architecture.md` section 10.
 
 - **Thread layout**: one centred column, the tutor's text unframed, the
   learner's messages on the right, one message box at the bottom. Rejected:
@@ -2023,102 +1685,53 @@ the agent would build them and accepted so, but for the notes
   finished asks once. Several can be in progress. The course view's card
   leads to the unit in progress most recently opened, or the next in order.
   Rejected: locking units behind prerequisites, and one unit at a time.
-- **A dispute opens the graded card in place**, in the session and on each
-  answer of "What I know": what the answer was graded by, a reason, which
-  is required, and Send. The first grade, the reason and the outcome with
-  the judge's reason then stay with the answer, whose verdict reads the
-  corrected grade, marked "after your dispute". The user was asked only
-  who decides; the layout is the agent's, as shown.
-- **A code question's card names the file to edit by its full path**, with
-  "Copy path" and "Open" (the user's note from the stage 3 check), and
-  says that the tests are not shown; "Run the tests"
-  takes a confidence level and is the answer. The graded card names the
-  file as run and shows the end of the test output. In the detour after a
-  failing run the tutor may run the tests on the learner's fixed file,
-  which records nothing; the next question is a different exercise.
-  Rejected: the tests in the workspace, to run before the run that counts
-  (a pass would show that known tests can be made to pass, and the
-  confidence level would mean little), and a second try at the same
-  exercise (piece 2's design, from before detours; the passing rule
-  counts answers to different questions).
-- **Packages are installed from a card** the tutor asks for: the packages,
-  the command, Install and "Not now". Rejected: the learner running the
-  command in their own terminal from the tutor's instructions. The command
-  and the output are folded away, the output open only after a failed
-  install: the user needs them only when something fails (the user's note
-  from the stage 3 check, task 3.20).
+- **A dispute opens the graded card in place**, in the session and in
+  "What I know" (piece 13). The user was asked only who decides; the
+  layout is the agent's, as shown.
+- **A code question's tests are not shown**, and "Run the tests" with a
+  confidence level is the answer (the user's pick, piece 14); the card
+  names the file to edit by its full path, with "Copy path" and "Open"
+  (the user's note from the stage 3 check). In the detour after a failing
+  run the tutor may run the tests on the learner's fixed file, which
+  records nothing; the next question is a different exercise. Rejected:
+  the tests in the workspace, to run before the run that counts (a pass
+  would show that known tests can be made to pass, and the confidence
+  level would mean little), and a second try at the same exercise (piece
+  2's design, from before detours; the passing rule counts answers to
+  different questions).
+- **Packages are installed from a card** the tutor asks for (the user's
+  pick, piece 14). Rejected: the learner running the command in their own
+  terminal from the tutor's instructions. The command and the output are
+  folded away, the output open only after a failed install: the user needs
+  them only when something fails (their note from the stage 3 check).
 - **The thread has a line for each file the tutor writes** ("The tutor
   wrote `bpe.py`"); the agent's, as shown in piece 14.
 - **Words**: learner-facing copy says "segment", the brief's term; the extra
   segment is "Going over again", not "Review", which names stage 5's review
   questions.
-- **Review is a card, then markers around its questions** (piece 15).
-  The card sits under the sitting's marker: how many questions, what they
-  are, Skip and "Start the review"; while it waits the unit's own control
-  is not offered. Start and Skip turn it into a marker line, which is its
-  record. A question's head counts objectives ("Question 2 of 3"), says
-  "second question" after a miss, and names the unit of another unit's
-  objective. "Skip review" stays beside the question or the detour's
-  control and asks nothing first. After a second miss the control reads
-  "Go on with the review". The closing marker says what the review did
-  ("Two retained, one slipping") and where the unit goes on.
-- **"Test out" is beside Start on every unit not started, and under the
-  card's "Start unit N"** (piece 16), so that it is seen before Start is
-  pressed. It asks once, saying what the test is. The test is a marker
-  and question cards, each saying which objective it is on; a graded card
-  shows its verdict and the right answer as everywhere, and "no feedback"
-  means that the tutor says nothing between questions. "Start learning
-  instead" ends it. The result card has a row per objective with why,
-  then each segment as skipped, taught in part or taught, and the steps
-  "Skip what I passed" and "Teach me the whole unit" ("Finish the unit"
-  when everything passed). Skipped segments stay in the outline, struck
-  through, and in the top line as hollow ticks.
-- **The gate is offered on a card** (piece 16): how many questions and on
-  what, that it waits for another sitting, "Skip the gate", which asks
-  once since the gate is offered once, and "Start the gate". In it
-  everything is as in a review. The closing card after it gives each
-  objective its status as it stands, and under them the other units'
-  objectives the gate asked.
+- **Review, the gate and the test** (pieces 15 and 16) are a card in the
+  thread, then markers around question cards. "Test out" sits beside Start
+  on every unit not started and under the course card's "Start unit N", so
+  it is seen before Start is pressed. Skipped segments stay in the outline,
+  struck through, and show as hollow ticks in the top line.
 - **Retained is teal and slipping is peach** (piece 16; Catppuccin's
   `#81c8be` and `#ef9f76`); passed stays green and not passed yet yellow.
-  Both words are on the closing card and on each objective of "What I
-  know". In the course view a finished unit keeps its word, with "3 of 5
-  retained" and "1 slipping" as lines under it. In "What I know" an
-  answer given in a review, a gate or a test says so on its line, and a
-  miss while testing out says that it is not counted.
-- **Notes are offered in a section of the closing card** (piece 17): a
-  sentence on what they are, one line for the learner's instructions, and
-  "Write notes", drawn quieter than the card's next step. While they are
-  written the section says so; then "Open the notes", or the reason with
-  "Try again". In the course view a finished unit has "Notes" beside
-  "Open", or "Write notes", which opens the same line under the row.
-- **The notes' reader is a page**: the writer's page in a frame under the
-  top line, which has "Open in browser" and "Write again"; above the
-  frame, when the notes were written, with which instructions, and the
-  file's path with "Copy path". What a unit's notes look like is the
-  writer's; `17-notes-example.html` is the kind of page meant.
-- **"Export transcript" is in the unit's outline**, above "Start fresh".
-  The document reads as the thread does, in the page's colours and the
-  reader's own font, names an aid without including it, and prints in
-  dark text on white, as the notes do.
-- **The profile is a section of the proposal card**, under the style
-  note: "What I would remember about you", always shown. A first course
-  marks it "New"; a later one that changes it marks it "Changed", marks
-  each new sentence and lists each dropped one, since the text reaches
-  every later course. The Profile page is reached from the library's top
-  line: what the text is for, the text in one box with its length against
-  the limit and Save, and the finished courses a planner is given. Built
-  without the mock's dates ("Last changed", when each course finished):
-  the record keeps neither (the agent's).
-- **A misconception sits under its objective in "What I know"**, above
-  the answers (piece 18): what the learner believed, what is so, and
-  where it showed. It is ruled in peach and says "Open" while the
-  objective is not passed, and is grey and "Cleared" once it has.
-- The style change card was built without a mock (the agent's): the
-  intake card's style section with the profile's sentence marks
-  (`ChangedText.tsx`) and the package card's foot.
-- Not designed yet: a light theme, the source reader, the card for
-  curriculum changes, settings, narrow screens.
+- **Notes are offered in a section of the closing card** (piece 17), drawn
+  quieter than the card's next step; the reader is the writer's page in a
+  frame under the top line. What a unit's notes look like is the writer's;
+  `17-notes-example.html` is the kind of page meant. The exported
+  transcript and the notes print in dark text on white.
+- **The profile is a section of the proposal card** (piece 18), "What I
+  would remember about you", always shown, with new and dropped sentences
+  marked since the text reaches every later course. The Profile page was
+  built without the mock's dates ("Last changed", when each course
+  finished): the record keeps neither (the agent's).
+- **The style and curriculum change cards were built without a mock**
+  (the agent's): the intake card's style section with the profile's
+  sentence marks (`ChangedText.tsx`) and the package card's foot; the
+  intake card's list and diagram ("Mastery loop").
+- Not designed yet: a light theme, the source reader, settings, narrow
+  screens.
 
 ## Page behaviour
 
@@ -2142,17 +1755,13 @@ the agent would build them and accepted so, but for the notes
   whole thread once (about 3 seconds for 1,200 formulas); folding earlier
   sessions would end that, and is the user's design choice.
 - **The open question is pinned above the message box**, in one place from
-  posting to grade, so its React state, a half-written answer or a picked
-  choice, survives messages sent meanwhile. It is at most half the window
-  high. Once answered after the thread moved on, it moves to where it was
-  answered, leaving a line where it was posted, so the verdict sits above
-  the feedback. Rejected: a sticky card at the top, which covers the
-  teaching being reread. Hide shrinks it to one line, for rereading the
-  teaching (the user's note from the stage 3 check, task 3.21); hidden,
-  the card stays mounted, so its state survives, and its keys are off,
-  since its window-wide shortcuts would otherwise pick, rate and send an
-  answer the learner cannot see. Hidden is kept by the question's key, so
-  the next question shows; a reload shows it again.
+  posting to grade, so its React state (a half-written answer, a picked
+  choice) survives messages sent meanwhile; once answered it moves to
+  where it was answered, so the verdict sits above the feedback. Rejected:
+  a sticky card at the top, which covers the teaching being reread. Hide
+  (the user's note from the stage 3 check) keeps the card mounted with its
+  keys off, since its window-wide shortcuts would otherwise pick, rate and
+  send an answer the learner cannot see.
 - **Dividing lines go between messages, not inside an exchange**: none
   between a lead-in and its question, a question and its feedback, or a
   reply and the judge's line under it.
@@ -2160,8 +1769,6 @@ the agent would build them and accepted so, but for the notes
   cannot be brighter than a dimmed parent; cards that still wait carry
   `live`. A waiting card is not moved under the marker: remounting it would
   lose a half-written answer.
-- **Keys go to the message box after sending a message**, not to the pinned
-  card; "b4" was once sent as a message that way. Not changed.
 - **The course's details are asked again until the server answers**
   (`getJsonUntilAnswered`: doubling waits up to 15 seconds, never after a
   4xx). Until then the unit's place is unknown, never "the last unit": a
@@ -2175,26 +1782,20 @@ the agent would build them and accepted so, but for the notes
   POST, and a draft edited meanwhile survives the send's success.
 - **Biome's descending-specificity rule** flags selectors like `.cs p` after
   `.prose li > p`; give the element its own class.
-- **Only an artifact shown while the page is open opens the pane** (task
-  3.6, the agent's choice): `hello` carries the index of the log's last
-  event, and a replayed artifact is only referred to, so a reload does not
-  reopen old aids. On `pnpm dev:fake` the scripted teaching ends before the
-  page's stream connects, so its first aid is only referred to; `/artifact`
-  shows one live. The pane matches its reference by file, since keys are
-  numbered afresh after a restart. Esc does not reach the page while focus
-  is inside the frame; the close button does.
+- **Only an artifact shown since the page opened the unit opens the pane**
+  (the agent's choice): the `open` response carries the index of the log's
+  last event, and a replayed artifact is only referred to, so a reload
+  does not reopen old aids. The pane matches its reference by file, since
+  keys are numbered afresh after a restart. Esc does not reach the page
+  while focus is inside the frame; the close button does.
 
 ## HTTP and event stream
 
-- **Only Gauss's own page may use the API**: the server listens on
-  `127.0.0.1`, refuses host names other than `localhost` (DNS rebinding)
-  and any POST whose `Origin` is not its own. It drives an agent on the
-  learner's login, and from stage 3 a shell.
-- **Event ids are `<log id>.<index>`**: a reconnecting page gets only what
-  it missed, and a `Last-Event-ID` from another log (a restarted server)
-  replays from the start.
-- **A message is accepted with 202**; the reply comes over the event
-  stream. Refusals and failures carry the reason as `error`.
+- **Only Gauss's own page may use the API** (`127.0.0.1`, `localhost` only
+  against DNS rebinding, a POST's `Origin` checked): the server drives an
+  agent on the learner's login, and a shell.
+- **Event ids are `<log id>.<index>`**, so a `Last-Event-ID` from another
+  log (a restarted server) replays from the start.
 - **An intake has an id of its own** (its log's), since the course exists
   only from the first proposal. A restart ends it, and its routes answer
   404 so the browser's event stream stops retrying. One intake owns a
@@ -2207,36 +1808,33 @@ the agent would build them and accepted so, but for the notes
 
 - **`pnpm dev:fake`** runs the real server's wiring (`serve.ts`) on the
   scripted backend, which is stateless and does what each turn's header
-  allows; a reworded header can break it, and its tests then fail. Port
+  allows; its commands ("/change" for the dispute judge, a code course by
+  its title, `BROKEN_SESSION`, and the rest) are in `scripted.ts`'s
+  header. A reworded header can break it, and its tests then fail. Port
   4330, so a page left open on it never reaches the real server. The data
-  root is never `~/gauss` or a folder inside it. The seed is written through
-  the record's own operations, so a schema change the seed does not follow
-  fails at once. `BROKEN_SESSION` in `scripted.ts` makes a session that
-  cannot be resumed.
-- **The scripted tutor numbers a question past those listed as asked
-  before** (task 5.4): numbered from the check's "(n asked)", a review or
-  a segment going over objectives again repeated a check's "question 1",
-  which counts as the same problem. Its code files carry the objective in
-  their names, since units share the workspace, and it never writes over
-  a file there: a question withdrawn unanswered is in no history, so the
-  next one got its number and replaced the learner's draft.
-- **Close the browser before stopping a server.** A session page left open
-  from one run kept asking to open its unit, and a real-backend scratch
-  server started later on the same port, with a course of the same id,
-  planned and taught that unit on Haiku.
+  root is never `~/gauss` or a folder inside it. The seed is written
+  through the record's own operations, so a schema change the seed does
+  not follow fails at once.
+- **The scripted tutor numbers a question past those the header lists as
+  asked before**: numbered from the check's count, a review or a segment
+  going over objectives again repeated a check's "question 1", which
+  counts as the same problem. Its code files carry the objective in their
+  names, since units share the workspace, and it never writes over a file
+  there: a question withdrawn unanswered is in no history, so the next one
+  got its number and replaced the learner's draft.
 - **The fake backend matches the real one where tests depend on it**: a
   stopped one-shot fails whatever reply comes, as Claude's does; kept
   sessions are shared between backends, so a test's restart resumes.
 - **Tests have a 20-second limit** (`vitest.config.ts`), not Vitest's
   5-second default: tests that write and flush the record at every step,
   or run the sandbox, take 1 to 3 seconds alone, and under the full
-  parallel run they went past 5 seconds now and then (in tasks 2.14,
-  3.16, 5.3, 5.4, 5.5a and 5.7), each time costing a rerun of the whole
-  check. The per-file limits they had are gone. Every record write calls
-  `sync()`, which may be what slows them under load; not measured.
+  parallel run went past 5 seconds now and then, each time costing a rerun
+  of the whole check. Every record write calls `sync()`, which may be what
+  slows them under load; not measured.
 - **Real-model runs**: use a scratch data root, and store a unit's plan in
   the seed when planning is not what is checked, so no planning call is
-  spent.
+  spent. Close the browser before stopping a server (`AGENTS.md`): a page
+  left open once had a later Haiku server plan and teach its unit.
 
 ## Sources
 
@@ -2266,21 +1864,24 @@ section 8.
 
 ## Known gaps
 
-Known and accepted for now; the plan's stage notes hold the ones a stage
-will close.
+Known and accepted for now; the plan's tasks and stage notes hold the ones
+they will close.
 
-- The slow reply after a Stop mid-sentence (10 to 30 seconds), seen once.
+- Once, after a Stop mid-sentence, the next one-sentence reply took 10 to
+  30 seconds. Not seen again, and not investigated.
 - A finished unit opened after a restart starts a new tutor session for any
   message, without the note saying the conversation is new.
 - A restart between an answer and the next question leaves the check
   waiting for a learner message, and a feedback turn cut off is lost.
 - The next-question turn after a failed feedback turn does not say the
   feedback failed.
-- A question withdrawn by an override whose `overridden` transcript line was
-  lost still shows as open, and answering it is refused.
+- A crash between an override's evidence line and its position write
+  (`overrideSegment` in `engine/unit-record.ts`) leaves the segment in its
+  check with the question open, and the objectives read overridden until
+  an answer or a second override. Seen in the code, not reproduced.
 - Stop during an artifact write can still open the aid when the write
-  finishes. A math field's Enter shortcut can submit while an input
-  method is still composing text.
+  finishes. The math field's Enter shortcut can submit while an input
+  method is still composing text (the message box checks for it).
 - Sandboxed commands and artifact scripts have no resource budgets for
   peak disk, memory or CPU use. The command deadline and output cap do
   not supply those budgets.
@@ -2288,7 +1889,7 @@ will close.
   as done, not hollow as the session's top line does; and while a review
   offered first holds the test, the top line reads "Segment 1" and the
   review's card says the unit goes on where it was.
-- The help judge sees one exchange at a time (above).
+- The help judge sees one exchange at a time ("Help judge").
 - The grader's grading of math answers the symbolic check does not settle
   has no hand-graded set: the grade set holds written answers only.
 - Code questions: Copy path can be stale after a data-root move; only
@@ -2299,8 +1900,10 @@ will close.
   tutor left in the workspace, where the learner can read them; only
   `tutor.md` forbids it (seen once, task 3.19). The posting check could
   refuse a question whose test files are in the workspace.
-- Opening a unit with a long history draws its whole thread once.
-- Keys go to the message box, not the pinned card, after sending a message.
+- Opening a unit with a long history draws its whole thread once ("Page
+  behaviour").
+- Keys go to the message box, not the pinned card, after sending a
+  message; "b4" was once sent as a message that way.
 - After a dispute overturns the miss a detour opened on, the detour's
   control still reads "Ready for another question", though pressing it goes
   on as the corrected verdict has it: to the next objective, or the end.
@@ -2318,7 +1921,3 @@ will close.
   limit (task 5.13) on a unit of five segments; the next two, on both
   units, took 20 and 30 seconds. Cause unknown; pressing write again
   retries.
-- A tutor's wrong key stays in the record unless the learner disputes it,
-  and an "I don't know" cannot be disputed until 5.21: its key went into
-  the first notes as the right value (task 5.13). `prompts/notes.md` asks
-  the writer to work values again.

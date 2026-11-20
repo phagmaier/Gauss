@@ -1,10 +1,10 @@
-// The help judge's hand-judged set (plan task 2.21; the verdicts and the
-// reasons for them are in docs/decisions.md, "Help judge"). Seven questions
-// as a tutor would post them, each with its answer key, expected answer,
-// rubric, or tests and solution, and exchanges during them: a message the learner sent while the
-// question was open and the tutor's reply, each judged by hand against the
-// rules in `prompts/help-judge.md`. `scripts/judge-set.ts` judges them on a
-// real model.
+// The help judge's hand-judged set (plan task 2.21; what it showed about the
+// judge is in docs/decisions.md, "Help judge"). Seven questions as a tutor
+// would post them, each with its answer key, expected answer, rubric, or
+// tests and solution, and exchanges during them: a message the learner sent
+// while the question was open and the tutor's reply, each judged by hand
+// against the rules in `prompts/help-judge.md`. `scripts/judge-set.ts`
+// judges them on a real model.
 //
 // Math is written as the learner and the tutor write it: `$` for inline
 // math.
