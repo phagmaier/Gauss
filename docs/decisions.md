@@ -1823,11 +1823,21 @@ redesign's.
   page announced.
 - **The diagram at 30 units** (task 5.16, the agent's choice): lines that
   cross a row sit side by side, in the order they came from, instead of
-  all through the gap's middle, where long lines merged into one. If
-  the pane is too narrow for distinct lines, list prerequisites by unit
-  number instead. This keeps the dependencies readable without panning
-  across a wider diagram. Diagram rows still follow depth, so a unit
-  with no prerequisites late in the list sits at the top.
+  all through the gap's middle, where long lines merged into one. Diagram
+  rows still follow depth, so a unit with no prerequisites late in the
+  list sits at the top.
+- **A crowded diagram shows a unit's long lines only when it is picked**
+  (the user's choice, 2026-11-20). When more than a few lines cross one
+  row, lines between adjacent rows are always drawn, and the lines that
+  skip rows only for the unit picked, in lanes of their own; in a unit's
+  course map that unit starts picked. A diagram with no picking of its
+  own (a proposal's) lets its nodes be picked. The list of prerequisites
+  by number is left for a pane too narrow for one unit's lines. Evidence:
+  in the seeded 30-unit course, 10 of 39 lines skip 4 to 12 rows and
+  bundle through the gap, readable by spacing at 571 px but not by eye.
+  Rejected: listing large courses at every width, which loses the graph;
+  panning and zooming a larger canvas, which keeps the same bundle and
+  costs drag, zoom and keyboard handling.
 - **A course starts in the thread**: intake is a conversation, the proposal
   a card; a revision is a new card with changes marked, the old one shrunk
   to a line. Rejected: the proposal in the side pane, or on a page of its

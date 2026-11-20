@@ -146,6 +146,26 @@ and cheat sheets (stage 6).
   with nothing started, and a finished one-off. On `pnpm dev:fake`, the
   seeded library reads as piece 21.
 
+### 5.40 Long lines for the picked unit
+
+- Status: todo
+- Depends on: nothing
+- The user's choice (`decisions.md`, "Page design", "A crowded diagram
+  shows a unit's long lines only when it is picked"). `layOut`
+  (`src/web/diagram.ts`) finds a crowded layout and routes each unit's
+  row-skipping lines apart from the rest, node positions unchanged; the
+  diagram draws the lines between adjacent rows and the picked unit's,
+  with a line saying so. The course map in a unit starts with the unit
+  picked; the course view with none; the proposal and change diagrams
+  let a node be picked. Its `minWidth`, for the list, is the widest one
+  unit's lines need. A layout that is not crowded draws as today.
+- Done when: tests on hand-made layouts show a crowded one found, a
+  unit's long lines routed apart at the widest spacing, the lines drawn
+  for a pick, and a small layout unchanged. On `pnpm dev:fake`, the map in
+  a Calculus 1 to 3 unit shows the adjacent-row lines and that unit's long
+  ones, and picking another unit shows its own; Calculus I reads as
+  before; a "/large" proposal's diagram lets a unit be picked.
+
 ### 5.18 Deleting a course
 
 - Status: todo
