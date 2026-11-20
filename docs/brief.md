@@ -179,9 +179,11 @@ testing out of a unit (its gate, taken before it is taught), review questions
 at the start of each sitting, and on-demand self-test.
 
 - **Review** picks objectives passed in earlier sittings: slipping ones
-  first, then those passed with the least confidence. It asks fresh
-  questions each time. Every sitting offers it on a card, and the learner
-  starts it or skips it; nobody is made to review.
+  first, then the ones most overdue. An objective is due again some time
+  after its last correct answer, and that time grows with each correct
+  answer it gets in a review or a gate. It asks fresh questions each
+  time. Every sitting offers it on a card, and the learner starts it or
+  skips it; nobody is made to review.
 - **A miss in review or the gate** starts a detour, then one more question
   on the objective.
 - **Testing out** is the learner's choice, confirmed before it starts. It

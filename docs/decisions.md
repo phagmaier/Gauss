@@ -165,6 +165,37 @@ The brief states the result; this is who decided and why.
   transcript, over MathML, which the agent had planned and then showed
   drawing badly. What the agent chose under these is in "Mastery loop"
   and "Page design".
+- **2026-11-19, notes from the stage 5 check, partway.** No "not
+  covered" control on a question. The agent had proposed one that
+  withdraws a question with no evidence when it asks what was not taught
+  or goes beyond its objective. The user dropped it: a miss is not a
+  grade, and its detour teaches what was missing, so an unfair question
+  costs one more question; in an hour of testing every question was fair.
+  "I don't know" with a line on where they got stuck covers it without a
+  confident miss. Revisit if unfair questions show up. The other notes
+  became tasks 5.14 to 5.18 in the plan.
+- **2026-11-19, the comparison with LearnHarness**, an open-source
+  tutoring app (AGPL-3.0: ideas only, no code). It keeps no record of
+  mastery, leaves most teaching rules to its prompts, grades choices in
+  the browser and sends answer keys to the page; Gauss stays as it is on
+  all of those. The user decided:
+  - directions for 5.17's mocks (in the plan): a course map from the
+    unit's top line, segment headings that the outline jumps to, a
+    quieter look within Frappé, and quoting a selected passage;
+  - review ordered by how overdue each objective is (5.19), not full
+    FSRS;
+  - an aid's script errors sent to the tutor when the learner presses a
+    button (5.20);
+  - no separate model to build aids, not even later: the tutor writes
+    them itself (the three made so far were about 2.5 KB each);
+  - a prediction before teaching: not now; revisit after the redesign;
+  - a model chosen in the app's settings, eventually (stage 6);
+  - a desktop app only once everything else is built and working, and
+    not a requirement;
+  - left out: a knowledge graph of what the lessons said, notes import,
+    plugins, API keys and a cost meter, dictation through an outside
+    service, side threads, compaction, and questions to place the learner
+    before planning (the test before a unit does that).
 
 ## Toolchain
 
