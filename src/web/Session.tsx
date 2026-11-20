@@ -10,7 +10,9 @@
 // (10-unit-end.html). "Start fresh" is in the outline, and the conversations
 // before a fresh start stay in the thread, dimmed (11-start-fresh.html). An
 // artifact the tutor shows opens in the side pane, and its reference in the
-// thread opens and closes it (05-side-pane.html). Review is offered on a card
+// thread opens and closes it (05-side-pane.html); "Course map" in the top line
+// opens the curriculum diagram there instead, this unit marked (piece 19).
+// Review is offered on a card
 // in the thread, which becomes a marker once started or skipped, and its
 // questions carry their place in it (15-review.html). The test before a unit
 // is a marker and its questions, then the tutor's word on it and its result
@@ -74,6 +76,7 @@ import { type DisputeApi, disputeApi } from "./Dispute.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
 import { PackagesCard } from "./PackagesCard.tsx";
+import { mapMark } from "./progress.ts";
 import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
@@ -135,8 +138,15 @@ export function Session(props: { courseId: string; unitId: string }) {
   const [confirming, setConfirming] = useState<
     "move-on" | "finish" | "skip-gate"
   >();
-  /** The artifact, or the proposed curriculum's diagram, open in the side pane. */
-  const [pane, setPane] = useState<ArtifactItem | CurriculumItem>();
+  /**
+   * What the side pane shows, one thing at a time: an artifact, a proposed
+   * curriculum's diagram, or the course map.
+   */
+  const [pane, setPane] = useState<
+    ArtifactItem | CurriculumItem | { kind: "map" }
+  >();
+  /** The unit picked on the course map, whose lines are lit. */
+  const [picked, setPicked] = useState<string>();
   /** The open question the learner hid, by its key. */
   const [hiddenKey, setHiddenKey] = useState<number>();
   const hideButton = useRef<HTMLButtonElement>(null);
@@ -397,8 +407,16 @@ export function Session(props: { courseId: string; unitId: string }) {
                 )}
               </PositionButton>
             )}
-            {/* The course map opens in the side pane with plan task 5.34. */}
-            <button type="button" className="nl-pos" disabled>
+            <button
+              type="button"
+              className="nl-pos"
+              aria-pressed={pane?.kind === "map"}
+              disabled={stored?.curriculum == null}
+              onClick={() => {
+                setPicked(undefined);
+                setPane(pane?.kind === "map" ? undefined : { kind: "map" });
+              }}
+            >
               {MAP_ICON}
               Course map
             </button>
@@ -642,7 +660,28 @@ export function Session(props: { courseId: string; unitId: string }) {
           onStop={() => void act("interrupt")}
         />
       </div>
-      {pane === undefined ? null : pane.kind === "artifact" ? (
+      {pane === undefined ? null : pane.kind === "map" ? (
+        stored?.curriculum == null ? null : (
+          <SidePane
+            title="Course map"
+            subtitle={courseTitle}
+            onClose={closePane}
+          >
+            <Diagram
+              units={stored.curriculum.units}
+              standing={(id) => {
+                const unit = stored.curriculum?.units.find((u) => u.id === id);
+                return unit === undefined
+                  ? { state: "todo", text: "" }
+                  : mapMark(stored, unit, unitId);
+              }}
+              selected={picked}
+              onSelect={setPicked}
+              reveal={unitId}
+            />
+          </SidePane>
+        )
+      ) : pane.kind === "artifact" ? (
         <SidePane
           title={pane.title}
           subtitle="From the tutor"

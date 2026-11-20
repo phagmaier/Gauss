@@ -1055,7 +1055,7 @@ take the outline.
   know" apart.
 - **Session** (`/courses/<id>/units/<unit>`): the top line has the path,
   ending in "Unit N" and the unit's title; the position, which opens the
-  outline; and "Course map" (not working yet). On narrow screens the
+  outline; and "Course map". On narrow screens the
   controls move below the path and the outline opens below both. The
   position (`whereInUnit` in `session.ts`) is "Segment N of M" with the
   segment's title, "Going over again", "Review" once a review is started,
@@ -1163,7 +1163,14 @@ take the outline.
 - **Artifacts** open in the side pane beside the session's thread, one at
   a time. A new artifact since the page opened opens at once,
   even before its event stream connects; restored transcript references
-  do not. Esc, Close or the thread reference closes it. Only same-origin
+  do not. Esc, Close or the thread reference closes it. The pane holds one
+  thing: an artifact, a proposed curriculum's diagram, or the course map,
+  each replacing the one before. "Course map" in the top line opens and
+  closes the course's diagram, with its fallback list (as in the course
+  view), each unit's status form and word, and this unit alone in the
+  accent, ringed, "You are here", scrolled into view (`mapMark` in
+  `progress.ts`). Selecting a unit lights its lines; it opens nothing. Only
+  same-origin
   iframe requests get HTML; a direct URL shows inert text. The frame and
   the response policy sandbox HTML to its own origin with scripts allowed.
   The parent page's `frame-src 'self'` prevents the frame from navigating

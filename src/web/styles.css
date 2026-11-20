@@ -1008,7 +1008,8 @@ details.why summary:hover {
   color: var(--ink-3);
 }
 .nl-pos:hover:enabled,
-.nl-pos[aria-expanded="true"] {
+.nl-pos[aria-expanded="true"],
+.nl-pos[aria-pressed="true"] {
   color: var(--ink);
   background: var(--rule);
 }

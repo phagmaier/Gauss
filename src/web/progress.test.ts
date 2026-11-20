@@ -4,6 +4,7 @@ import type { CourseWithProgress, UnitProgress } from "../shared/library.ts";
 import {
   courseSummary,
   lead,
+  mapMark,
   nextInOrder,
   unfinishedPrerequisites,
   unitMark,
@@ -177,6 +178,38 @@ test("with no unit in progress, the next one in order is marked up next, and cur
     "",
     "",
   ]);
+});
+
+test("on a unit's course map, that unit alone is here and current, whatever its status", () => {
+  const marks = (c: CourseWithProgress, here: string) =>
+    UNITS.map((u) => {
+      const { state, form, text } = mapMark(c, u, here);
+      return [state, form.current, text];
+    });
+  // From unit 3, though the card leads to unit 5: unit 5 is another unit in
+  // progress.
+  expect(marks(TWO, "rules")).toEqual([
+    ["pass", false, "Passed"],
+    ["over", false, "Overridden"],
+    ["now", true, "You are here"],
+    ["todo", false, ""],
+    ["att", false, "Segment 1 of 2"],
+    ["todo", false, ""],
+  ]);
+  // From a finished unit, with none in progress: unit 2 is next in order,
+  // but not "Up next" here.
+  expect(marks(course({ limits: PASSED }), "limits")).toEqual([
+    ["now", true, "You are here"],
+    ["todo", false, ""],
+    ["todo", false, ""],
+    ["todo", false, ""],
+    ["todo", false, ""],
+    ["todo", false, ""],
+  ]);
+  expect(mapMark(TWO, UNITS[0] as StoredUnit, "limits").form).toEqual({
+    unit: "passed",
+    current: true,
+  });
 });
 
 test("the card leads to the unit in progress", () => {

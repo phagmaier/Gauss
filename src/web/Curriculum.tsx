@@ -126,6 +126,8 @@ interface DiagramProps {
   selected?: string | undefined;
   /** Makes the nodes buttons that mark their unit. */
   onSelect?: (id: string) => void;
+  /** A unit scrolled into view when the diagram or the list first shows. */
+  reveal?: string;
 }
 
 export function Diagram(props: DiagramProps) {
@@ -145,6 +147,14 @@ export function Diagram(props: DiagramProps) {
     observer.observe(element);
     return () => observer.disconnect();
   }, [minWidth]);
+  const { reveal } = props;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: again once the diagram turns into the list
+  useLayoutEffect(() => {
+    if (reveal === undefined) return;
+    pane.current
+      ?.querySelector(`[data-unit="${CSS.escape(reveal)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [reveal, list]);
 
   return (
     <div className="diagram" ref={pane}>
@@ -179,6 +189,7 @@ function PrerequisiteList({
           return (
             <li
               key={unit.id}
+              data-unit={unit.id}
               className={
                 unit.id === selected ? "diagram-unit sel" : "diagram-unit"
               }
@@ -267,6 +278,7 @@ function drawDiagram(props: DiagramProps, { nodes, edges, rows }: Layout) {
         return onSelect === undefined ? (
           <div
             key={n.unit.id}
+            data-unit={n.unit.id}
             className={className}
             style={style}
             title={n.unit.title}
@@ -276,6 +288,7 @@ function drawDiagram(props: DiagramProps, { nodes, edges, rows }: Layout) {
         ) : (
           <button
             key={n.unit.id}
+            data-unit={n.unit.id}
             type="button"
             className={className}
             style={style}

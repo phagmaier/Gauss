@@ -34,23 +34,6 @@ view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.34 The course map from a unit
-
-- Status: todo
-- Depends on: 5.31
-- The button is in the session's top line, disabled (`Session.tsx`).
-- "Course map" opens the curriculum diagram (`Curriculum.tsx`) in the side
-  pane, the unit marked "You are here", with the status forms. When the
-  pane is too narrow for distinct lines, it shows the numbered list of
-  prerequisites, as the course view does. The pane holds one thing: an
-  artifact that opens replaces the map, and the map replaces an artifact.
-  Esc and Close close it. Picking a unit there lights its lines; opening
-  that unit is the course view's job (the agent's).
-- Done when: on `pnpm dev:fake`, the map in a Calculus I unit shows the
-  diagram with the unit marked, the map in a Calculus 1 to 3 unit shows
-  the numbered list with the unit marked, and an artifact from the
-  scripted tutor replaces it.
-
 ### 5.35 Quote
 
 - Status: todo

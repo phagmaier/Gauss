@@ -202,13 +202,18 @@ function retention(
   };
 }
 
+/**
+ * `current` is the unit drawn in the accent; by default the one the card
+ * leads to.
+ */
 export function unitMark(
   course: CourseWithProgress,
   unit: StoredUnit,
+  current: string | undefined = lead(course)?.unit.id,
 ): UnitMark {
   const progress = progressOf(course.progress, unit.id);
-  const current = lead(course)?.unit.id === unit.id;
-  const form: FormOf = { unit: progress.status, current };
+  const isCurrent = current === unit.id;
+  const form: FormOf = { unit: progress.status, current: isCurrent };
   switch (progress.status) {
     case "passed":
       return {
@@ -228,17 +233,37 @@ export function unitMark(
       };
     case "in-progress":
       return {
-        state: current ? "now" : "att",
+        state: isCurrent ? "now" : "att",
         form,
         text: whereInProgress(unit, progress)?.label ?? "In progress",
         className: "",
       };
     case "not-started":
       // "Up next" only when the card says it too: no unit is in progress.
-      return current
+      return isCurrent
         ? { state: "now", form, text: "Up next", className: "" }
         : { state: "todo", form, text: "", className: "" };
   }
+}
+
+/**
+ * A unit's mark on the course map of a unit's session (piece 19): the unit
+ * open there is the current one, "You are here" whatever its status, and no
+ * other unit is, so nothing else is in the accent or "Up next".
+ */
+export function mapMark(
+  course: CourseWithProgress,
+  unit: StoredUnit,
+  here: string,
+): UnitMark {
+  if (unit.id !== here) return unitMark(course, unit, here);
+  const { status } = progressOf(course.progress, unit.id);
+  return {
+    state: "now",
+    form: { unit: status, current: true },
+    text: "You are here",
+    className: "",
+  };
 }
 
 /** The numbers of the unit's prerequisites that are not finished, in order. */

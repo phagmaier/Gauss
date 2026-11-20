@@ -1786,8 +1786,7 @@ redesign's.
   take two questions. The outline marks the gate taken or skipped, and
   puts it before a going over again that followed it. A part-taught
   segment strikes through the objectives the test skipped. A jump moves
-  focus to the heading so the keyboard goes on from there. "Course map"
-  shows disabled until task 5.34 makes it work.
+  focus to the heading so the keyboard goes on from there.
 - **Artifacts, source passages and the course map open in a pane beside
   the thread**, one at a time. "Course map" shows the curriculum diagram
   with the unit marked "You are here" (the redesign, piece 19). Rejected:
