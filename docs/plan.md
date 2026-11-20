@@ -108,11 +108,10 @@ and cheat sheets (stage 6).
 ### 5.24 Reviews due, shown before a unit is opened
 
 - Status: todo
-- Depends on: 5.19, which gives each objective a due time. In the
-  library the count goes at the right of a row's second line, which the
-  row's grid leaves empty for it (`.lc` in `styles.css`; `.lr .due` in
-  piece 21); in the course view (piece 20) it goes between the line of
-  counts and the card
+- Depends on: nothing. In the library the count goes at the right of a
+  row's second line, which the row's grid leaves empty for it (`.lc` in
+  `styles.css`; `.lr .due` in piece 21); in the course view (piece 20) it
+  goes between the line of counts and the card
 - The user's decision (2026-11-19, from the DeepTutor comparison): each
   course's row in the library, and its course view, show how many of its
   objectives are due for review, derived from the evidence with 5.19's
@@ -132,8 +131,7 @@ and cheat sheets (stage 6).
 ### 5.25 Review when due, between segments, or on request
 
 - Status: todo
-- Depends on: 5.19, which says when an objective is due, and 5.24, which
-  places the due count
+- Depends on: 5.24, which places the due count
 - The user's decision (2026-11-19, from the stage 5 check; the agent's
   recommendation): in the check, the review card came when the unit was
   reopened three hours after segment 1's teaching, and sat between that

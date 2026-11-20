@@ -44,7 +44,9 @@ starting a plan task, editing files, or committing.
 
 1. In `docs/plan.md`, take the first open task marked `todo` whose
    dependencies are done, unless the user names a different one. A task no
-   longer listed in the plan is done. Mark it `in progress`.
+   longer listed in the plan is done. Mark it `in progress`. Uncommitted
+   changes that no task in progress explains are someone's unfinished
+   work: leave them out of your commit and tell the user.
 2. Do that task only. If it turns out to be too large, split it in the plan
    and finish the first part.
 3. Check it against the task's "done when" line with evidence you observed:
@@ -143,8 +145,10 @@ its rationale would help a later agent avoid repeating the investigation.
 - Commit once per finished task, as described above. The user authorized
   this on 2026-11-13. Document changes the user agrees to outside a task
   (decisions from a discussion, tasks from a check) are one commit of
-  their own, the message starting `Plan:`. Never push, and never rewrite
-  existing commits.
+  their own, the message starting `Plan:`. Fixes from a review of a
+  task's commit are committed once checked, as their own commit, the
+  message starting with the task id (`5.18: fix the review's four
+  findings`). Never push, and never rewrite existing commits.
 - Do not add a dependency that `architecture.md` section 2 does not list
   without saying why in your report.
 - Leave `docs/brief.md` decisions alone unless the user changes them;
@@ -186,8 +190,9 @@ mise activated, or `mise exec -- <command>`.
   missing when it starts, and the sandbox's tests fail.
 - `pnpm dev:fake` runs the same server (`src/server/serve.ts`) on the
   scripted backend; the header of `src/server/backends/scripted.ts` says
-  what its tutor does and what `/hold`, `/revise`, `/one-off` and `/fail`
-  in a message do. Its scripted planner asks a question first, so a browser
+  what its tutor does and what the commands in a message (`/hold`,
+  `/fail`, `/broken-aid` and others) make it do. Its scripted planner
+  asks a question first, so a browser
   check takes two messages to reach a proposal card. Its data root is
   `GAUSS_DATA_ROOT`, or `gauss-fake` in the temporary folder, never the
   real one. An empty data root is seeded with courses in each state
