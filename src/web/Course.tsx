@@ -268,14 +268,6 @@ export function Course(props: { courseId: string }) {
                 <>
                   <div className="cv-hrow cv-sec">
                     <h2 className="pg-h">Units</h2>
-                    {approved ? (
-                      <span className="cv-acts">
-                        {/* Planning from the course view comes next (plan task 5.38). */}
-                        <button type="button" className="textbtn" disabled>
-                          Change the curriculum
-                        </button>
-                      </span>
-                    ) : null}
                   </div>
                   {draft ? (
                     <UnitList units={curriculum.units} selected={selected} />

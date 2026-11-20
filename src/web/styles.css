@@ -1827,12 +1827,6 @@ button.dn:hover {
 }
 
 /* ---- What I know (task 2.26): each objective with the answers behind it ---- */
-/* the course view's links beside its Units heading */
-.cv-acts {
-  display: flex;
-  gap: 1.3em;
-  align-items: baseline;
-}
 /* a unit's heading: its number as a label, its title */
 .wk-uh {
   font-size: 21px;

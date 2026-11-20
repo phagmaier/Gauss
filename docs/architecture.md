@@ -1031,9 +1031,9 @@ other units in progress take the outline.
   (`courseCounts` in `progress.ts`). A card leads to the unit in progress
   most recently opened, or else the next unit in order (the first not
   started whose prerequisites are finished); on a finished course it reads
-  "Every unit is finished", with "Plan what comes next", disabled, as is
-  "Change the curriculum" above the units, until planning from the course
-  view is built. Each unit is a heading with "Unit N", its title, "k of n
+  "Every unit is finished", with "Plan what comes next", disabled until
+  planning from the course view is built. Each unit is a heading with
+  "Unit N", its title, "k of n
   passed" once started, and its form, the card's unit in the accent; it
   opens and folds, only units in progress open at first, and the view
   keeps what the learner opened or folded while the course map opens and

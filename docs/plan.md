@@ -37,9 +37,9 @@ and cheat sheets (stage 6).
 ### 5.38 Planning from the course view
 
 - Status: todo
-- Depends on: nothing left; the course view (`Course.tsx`) shows "Change
-  the curriculum" and "Plan what comes next" disabled, for this task to
-  enable
+- Depends on: nothing left. The course view (`Course.tsx`) shows "Plan
+  what comes next" disabled, for this task to enable, and leaves "Change
+  the curriculum" out, for this task to add above the units (mock 20)
 - The user's pick (`decisions.md`, "Page design", "A curriculum change is
   asked for from the course view"). "Change the curriculum", and a
   finished course's "Plan what comes next", open a planning conversation
