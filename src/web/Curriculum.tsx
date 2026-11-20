@@ -4,7 +4,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { Unit } from "../shared/curriculum.ts";
-import { type DiagramEdge, layOut } from "./diagram.ts";
+import { type DiagramEdge, layOut, NODE_WIDTH } from "./diagram.ts";
 import { buildsOn } from "./units.ts";
 
 /** A short word at a unit's right, such as "Changed", and any lines under it. */
@@ -103,6 +103,9 @@ export function Diagram(props: {
   onSelect?: (id: string) => void;
 }) {
   const { nodes, edges, rows } = layOut(props.units);
+  // The selected unit's lines are drawn last, over the others, and lit.
+  const touches = (e: DiagramEdge) =>
+    e.from.unit.id === props.selected || e.to.unit.id === props.selected;
   const height = Math.max(rows - 1, 0) * PITCH + NODE;
   return (
     <div className="dg" style={{ height }}>
@@ -111,13 +114,16 @@ export function Diagram(props: {
         preserveAspectRatio="none"
         aria-hidden="true"
       >
-        {edges.map((e) => (
-          <path
-            key={`${e.from.unit.id}>${e.to.unit.id}`}
-            vectorEffect="non-scaling-stroke"
-            d={linePath(e)}
-          />
-        ))}
+        {[...edges.filter((e) => !touches(e)), ...edges.filter(touches)].map(
+          (e) => (
+            <path
+              key={`${e.from.unit.id}>${e.to.unit.id}`}
+              className={touches(e) ? "on" : undefined}
+              vectorEffect="non-scaling-stroke"
+              d={linePath(e)}
+            />
+          ),
+        )}
       </svg>
       {nodes.map((n) => {
         const mark = props.marks?.get(n.unit.id);
@@ -131,7 +137,7 @@ export function Diagram(props: {
           .filter(Boolean)
           .join(" ");
         const style: CSSProperties = {
-          left: `${n.x - 23}%`,
+          left: `${n.x - NODE_WIDTH / 2}%`,
           top: n.row * PITCH,
         };
         const text = mark ?? standing?.text;

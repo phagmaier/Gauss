@@ -85,7 +85,24 @@ test("the seed gives courses in each state, as the routes would send them", {
         pigeonhole: { status: "passed", retained: 0, slipping: 0 },
       },
     },
+    "calculus-1-to-3": {
+      approval: "approved",
+      progress: expect.objectContaining({
+        functions: { status: "passed", retained: 0, slipping: 0 },
+        derivative: { status: "passed", retained: 0, slipping: 0 },
+        rules: { status: "in-progress", segment: 0 },
+        "green-stokes": { status: "not-started" },
+      }),
+    },
   });
+  // The large course has thirty units, the first four passed and the
+  // fifth in progress.
+  const large = Object.values(byId["calculus-1-to-3"]?.progress ?? {});
+  expect(large.map((p) => p.status)).toEqual([
+    ...Array(4).fill("passed"),
+    "in-progress",
+    ...Array(25).fill("not-started"),
+  ]);
   // Of Calculus I's units in progress, unit 5 was opened last.
   const opened = courses.find((c) => c.id === "calculus-i")?.course
     .unitsOpenedAt;

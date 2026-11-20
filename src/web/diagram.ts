@@ -1,7 +1,9 @@
 // Where the curriculum diagram puts each unit (docs/prototype/07-course.html):
 // in rows, each unit one row below the deepest unit it builds on, at most two
-// to a row, with a line from each unit to the units that build on it. Pure,
-// so the proposal card and the course view draw the same diagram.
+// to a row, with a line from each unit to the units that build on it. Lines
+// that cross a row sit side by side in it, so a large course's long lines do
+// not merge into one. Pure, so the proposal card and the course view draw
+// the same diagram.
 
 import type { Unit } from "../shared/curriculum.ts";
 
@@ -38,15 +40,22 @@ export interface Layout {
   rows: number;
 }
 
-/** Two units side by side fill the width at the size the mock settled. */
+/** Two units side by side fill the width, with a gap between for lines. */
 const PER_ROW = 2;
-const LEFT = 25;
+const LEFT = 24;
 const MIDDLE = 50;
-const RIGHT = 75;
+const RIGHT = 76;
+/** A node's width in percent, as `.dn` in styles.css sets it. */
+export const NODE_WIDTH = 44;
 /** The maximum gap between lines that share a unit, in percent. */
 const SPREAD = 8;
-/** Keep ports clear of the rounded corners of the mock's 46%-wide nodes. */
-const PORT_SPAN = 36;
+/** Keep ports clear of the nodes' rounded corners. */
+const PORT_SPAN = NODE_WIDTH - 10;
+/** The maximum gap between lines that cross a row side by side, in percent. */
+const LANE = 1.5;
+/** The width lines crossing a row may spread over: the gap between a pair less a margin, or a node's place beside a lone unit. */
+const GAP_ROOM = RIGHT - LEFT - NODE_WIDTH - 2;
+const SIDE_ROOM = NODE_WIDTH - 10;
 
 export function layOut(units: readonly Unit[]): Layout {
   const ids = new Set(units.map((u) => u.id));
@@ -100,6 +109,17 @@ export function layOut(units: readonly Unit[]): Layout {
     // that crossed rows passed the row above.
     const pull = (u: Unit) =>
       mean(links.filter((l) => l.to === u.id).map((l) => above(l, row)));
+    // The crossing lines side by side around `centre`, in the order of where
+    // they were in the row above, so they keep their order and none merge.
+    const pass = (centre: number, room: number) => {
+      const order = crossing
+        .map((l) => ({ l, x: above(l, row) }))
+        .sort((a, b) => a.x - b.x);
+      const step = Math.min(LANE, room / Math.max(1, order.length - 1));
+      order.forEach(({ l }, k) => {
+        l.via.push(centre + (k - (order.length - 1) / 2) * step);
+      });
+    };
     const [only] = inRow;
     if (inRow.length === 1 && only !== undefined && crossing.length === 0) {
       xOf.set(only.id, MIDDLE);
@@ -109,7 +129,7 @@ export function layOut(units: readonly Unit[]): Layout {
       const linesFrom = mean(crossing.map((l) => above(l, row)));
       const unitLeft = pull(only) <= linesFrom;
       xOf.set(only.id, unitLeft ? LEFT : RIGHT);
-      for (const l of crossing) l.via.push(unitLeft ? RIGHT : LEFT);
+      pass(unitLeft ? RIGHT : LEFT, SIDE_ROOM);
       continue;
     }
     [...inRow]
@@ -118,7 +138,7 @@ export function layOut(units: readonly Unit[]): Layout {
       .forEach((u, k) => {
         xOf.set(u.id, k === 0 ? LEFT : RIGHT);
       });
-    for (const l of crossing) l.via.push(MIDDLE);
+    pass(MIDDLE, GAP_ROOM);
   }
 
   const nodes = units.flatMap((unit, index) => {

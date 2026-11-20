@@ -37,7 +37,7 @@ export function scratchDataRoot(
 const DAY = 24 * 60 * 60 * 1000;
 
 /**
- * Seeds an empty data root with six courses and returns their ids; a data
+ * Seeds an empty data root with seven courses and returns their ids; a data
  * root that has a course already is left as it is, and nothing is returned.
  *
  * - "Calculus I", six units: unit 1 passed, its gate answered right on
@@ -57,6 +57,9 @@ const DAY = 24 * 60 * 60 * 1000;
  * - "What is a group?", a one-off in progress, in its second and last
  *   segment: its gate asks its own objectives alone.
  * - "The pigeonhole principle", a one-off, passed.
+ * - "Calculus 1 to 3", thirty units, as a large course is once its later
+ *   stretches are added, some building on units far above them: units 1
+ *   to 4 passed, 5 in progress, the rest not started.
  *
  * @param plan the plan of a unit that has started; it must have at least two
  * segments. The dev server passes the scripted backend's, so its tutor can
@@ -88,7 +91,7 @@ export async function seedCourses(options: {
 
   /**
    * Makes one course, proposed that many days ago, and returns its id. Each
-   * course has a clock of its own, so the six are written side by side:
+   * course has a clock of its own, so the seven are written side by side:
    * every write is flushed to disk, which is slow one after another.
    */
   async function course(
@@ -280,6 +283,64 @@ export async function seedCourses(options: {
       async (c) => {
         await c.approve();
         await c.passed("pigeonhole");
+      },
+    ),
+    course(
+      "Calculus 1 to 3",
+      [
+        unit("functions", "Functions and graphs", []),
+        unit("limits", "Limits", ["functions"]),
+        unit("continuity", "Continuity", ["limits"]),
+        unit("derivative", "The derivative", ["limits"]),
+        unit("rules", "Differentiation rules", ["derivative"]),
+        unit("chain-rule", "The chain rule", ["rules"]),
+        unit("implicit", "Implicit differentiation", ["chain-rule"]),
+        unit("related-rates", "Related rates", ["implicit"]),
+        unit("sketching", "Curve sketching", ["rules", "continuity"]),
+        unit("optimisation", "Optimisation", ["sketching"]),
+        unit("integral", "The definite integral", ["limits"]),
+        unit("fundamental", "The fundamental theorem", [
+          "derivative",
+          "integral",
+        ]),
+        unit("substitution", "Substitution", ["fundamental", "chain-rule"]),
+        unit("by-parts", "Integration by parts", ["substitution"]),
+        unit("partial-fractions", "Partial fractions", ["substitution"]),
+        unit("improper", "Improper integrals", [
+          "by-parts",
+          "partial-fractions",
+        ]),
+        unit("areas-volumes", "Areas and volumes", ["fundamental"]),
+        unit("sequences", "Sequences", ["limits"]),
+        unit("series", "Series and convergence", ["sequences", "improper"]),
+        unit("power-series", "Power series", ["series"]),
+        unit("taylor", "Taylor series", ["power-series", "rules"]),
+        unit("vectors", "Vectors and the dot product", []),
+        unit("curves", "Curves in space", ["vectors", "derivative"]),
+        unit("partials", "Partial derivatives", ["derivative"]),
+        unit("gradient", "The gradient", ["partials", "vectors"]),
+        unit("several-optimisation", "Optimisation in several variables", [
+          "gradient",
+          "optimisation",
+        ]),
+        unit("double", "Double integrals", ["fundamental"]),
+        unit("triple", "Triple integrals", ["double"]),
+        unit("line-integrals", "Line integrals", ["curves", "gradient"]),
+        unit("green-stokes", "Green's and Stokes' theorems", [
+          "line-integrals",
+          "double",
+        ]),
+      ],
+      9,
+      async (c) => {
+        await c.approve();
+        const passed = ["functions", "limits", "continuity", "derivative"];
+        for (const [i, id] of passed.entries()) {
+          c.daysAgo(9 - i);
+          await c.passed(id);
+        }
+        c.daysAgo(2);
+        await c.inProgress("rules", 0);
       },
     ),
   ]);

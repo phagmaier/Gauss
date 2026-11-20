@@ -62,6 +62,29 @@ If they have already asked you to propose, that is their agreement.
 - Give each unit a short id of lowercase words joined by hyphens, such as
   "chain-rule".
 
+## A large topic
+
+When what the learner wants needs more than about 15 units, such as
+"Calculus 1 to 3", plan it as one course taught in stretches, and propose
+only the first stretch: at most about 15 units that end at a natural
+point (Calculus 1 alone is one stretch).
+
+- **One course, not several**: reviews and checks reach back only within a
+  course, and a later stretch must review the earlier ones.
+- **Only the first stretch in units**: later units planned now would be
+  guesses made before anything is known of how the learner learns. Do not
+  propose them.
+- **Title the course for the whole topic**, not for its first stretch.
+- **Say what comes after**: each later stretch with what it covers, not
+  only its name ("then Calculus 2, integration techniques and series, and
+  Calculus 3, several variables up to Stokes' theorem"), and that the
+  tutor proposes each next stretch for this course as the one before nears
+  its end, for the learner to approve. Say it in three places: when you
+  ask to go ahead, with the number of units in the first stretch; in your
+  reply that posts the card; and in the style note, which the tutor reads.
+- **The background note keeps how far the learner wants to go**, so the
+  tutor knows there is more to come.
+
 ## How you would teach it
 
 Every proposal carries a style note: how the course will be taught, in two

@@ -268,6 +268,19 @@ The brief states the result; this is who decided and why.
   since "thinking" is the model's own there; and a line in
   `dispute-judge.md` that the reasoning is not graded, so a false start
   in it makes no answer wrong (not tried on a real model).
+- **2026-11-19, large courses planned in stretches** (from the stage 5
+  check). A large topic ("Calculus 1 to 3") is one course, not several:
+  review and the gate pick only within a course, and a later stretch must
+  review the earlier ones (the user's decision). The course's shape was
+  left to the agent, which chose: the planner proposes only the first
+  stretch, about 15 units at most (Calculus 1 alone), titles the course
+  for the whole topic, and names each later stretch with what it covers
+  when asking to go ahead, before the card and in the style note; the
+  tutor offers the next stretch with `amend_curriculum` while teaching the
+  last unit or the one before, when the style note or the background note
+  goes further. Units planned far ahead would be guesses made before
+  anything is known of the learner. Rejected: the whole topic planned up
+  front; one course per stretch.
 
 ## Toolchain
 
@@ -1655,7 +1668,14 @@ the denominator rule into a false "never use the full space".
   facts in the background note. Once, told to go ahead, Haiku said "I've
   proposed a three-unit course" without calling `propose_curriculum`; the
   prompt now forbids it. Sonnet posted its proposals without the text the
-  prompt asks for before the card (left).
+  prompt asks for before the card (left); so did Haiku once in task 5.16.
+- **A large topic in stretches** (task 5.16, two Haiku intakes for
+  "Calculus 1 to 3"): both proposed a first stretch of 14 or 15 units
+  titled for the whole topic, and named the later stretches when asking
+  to go ahead and in the style note. The first named them only as
+  "Calculus 2 and 3" and said nothing of them before the card; the
+  prompt's example of a stretch with what it covers fixed the first. The
+  tutor's offer of the next stretch has not been tried on a real model.
 
 **Writing rules for the page**: `$...$` inline and `$$` for display; a
 dollar sign that is not math must be `\$`, since "it costs $5 and $10" reads
@@ -1698,6 +1718,13 @@ decisions"); as built, they are `architecture.md` section 10.
   message box.
 - **The course view is built around the unit list**, the diagram one click
   away in the side pane. Rejected: built around the diagram.
+- **The diagram at 30 units** (task 5.16, the agent's choice): lines that
+  cross a row sit side by side, in the order they came from, instead of
+  all through the gap's middle, where a large course's long lines merged
+  into one; nodes went from 46% to 44% wide, on columns at 24% and 76%,
+  to widen the gap; a selected unit's lines are lit in the course view.
+  Rows still follow depth, so a unit with no prerequisites late in the
+  list sits at the top.
 - **A course starts in the thread**: intake is a conversation, the proposal
   a card; a revision is a new card with changes marked, the old one shrunk
   to a line. Rejected: the proposal in the side pane, or on a page of its

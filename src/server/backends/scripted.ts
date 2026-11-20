@@ -10,7 +10,8 @@
 //   learner's first message, where the engine refuses a proposal (task
 //   2.22), and proposes four units in reply to the next, titled from the
 //   first message, with that reply as the background note. "/one-off" in
-//   either message proposes one unit. Later messages are answered in text;
+//   either message proposes one unit, and "/large" thirty, for checking
+//   how a large course reads. Later messages are answered in text;
 //   "/revise" proposes a revision with one unit fewer. Its learner profile
 //   (task 5.8) is the one it was given, with its sentence saying what was
 //   asked for last replaced by one for this course, and a first sentence
@@ -263,7 +264,7 @@ function learnerPart(body: string): {
 
 function proposal(
   title: string,
-  kind: "first" | "revised" | "one-off",
+  kind: "first" | "revised" | "one-off" | "large",
   background: string,
   profile: string,
 ): PlannerProposal {
@@ -281,6 +282,18 @@ function proposal(
       background,
       profile,
     };
+  }
+  if (kind === "large") {
+    // Thirty units in a chain; from the tenth, every fifth also builds on
+    // the unit six above it.
+    const part = (n: number) => `part-${n}`;
+    const units = Array.from({ length: 30 }, (_, i) => {
+      const n = i + 1;
+      const builds = n === 1 ? [] : [part(n - 1)];
+      if (n >= 10 && n % 5 === 0) builds.push(part(n - 6));
+      return unit(part(n), `Part ${n} of the course`, builds);
+    });
+    return { title, units, style: STYLE, background, profile };
   }
   const units =
     kind === "first"
@@ -308,12 +321,15 @@ function intake(
   /** The text, without the commands, on one line and short. */
   const plain = (text: string) =>
     text
-      .replace(/\/(one-off|revise)\b/g, "")
+      .replace(/\/(one-off|revise|large)\b/g, "")
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 80);
   const background = `Scripted. The learner said: ${plain(body) || "nothing"}`;
-  const propose = (kind: "first" | "revised" | "one-off", title: string) => [
+  const propose = (
+    kind: "first" | "revised" | "one-off" | "large",
+    title: string,
+  ) => [
     { text: "Here is a scripted curriculum." },
     {
       call: "propose_curriculum",
@@ -341,7 +357,12 @@ function intake(
   // session that lost the conversation before a proposal.
   if (header.includes("reply, or propose")) {
     const first = firstMessages.get(tool) ?? body;
-    const kind = `${first} ${body}`.includes("/one-off") ? "one-off" : "first";
+    const both = `${first} ${body}`;
+    const kind = both.includes("/one-off")
+      ? "one-off"
+      : both.includes("/large")
+        ? "large"
+        : "first";
     return propose(
       kind,
       plain(first) ||

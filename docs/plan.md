@@ -30,30 +30,6 @@ views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`
 (`decisions.md`, "Page design"); 5.17 makes new ones. Not in this stage:
 sources and web access (4.0), self-test and cheat sheets (stage 6).
 
-### 5.16 Large courses planned in stretches
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19, the course shape the agent's, which
-  the user left to it): a large topic ("Calculus 1 to 3") is one course,
-  planned in stretches, not split into courses. Review and the gate pick
-  only within a course, and a later stretch must review the earlier ones;
-  units planned far ahead are guesses made before anything is known of
-  the learner. Calculus 1 alone (about 15 units) is one stretch.
-  - `prompts/planner.md`: when the topic needs more than about 15 units,
-    propose the first stretch, and say in the reply and the style note
-    what comes after and that it is added as the course goes.
-  - `prompts/tutor.md`: as the course nears the end of its planned units
-    and the learner's stated scope goes further, offer the next stretch
-    with `amend_curriculum`.
-  - The curriculum diagram, its proposal card and the course view must
-    still read at 30 units or more; check them with a seeded course of
-    that size and fix what does not.
-- Done when: a short real-model intake (Haiku) for "Calculus 1 to 3"
-  proposes a first stretch and names what follows; a 30-unit course reads
-  in the browser on `pnpm dev:fake`. Record the decision in
-  `decisions.md`, "Product decisions".
-
 ### 5.17 Page redesign: break it down
 
 - Status: todo
@@ -103,8 +79,15 @@ sources and web access (4.0), self-test and cheat sheets (stage 6).
     into the message box as a quote; the learner then asks in the thread
     as usual. No side thread;
   - a visible way to ask for a curriculum change from the course view
-    (today one is asked for in a unit's chat, and nothing says so).
-    Segments stay fixed within a unit: the user agreed, 2026-11-19.
+    (today one is asked for in a unit's chat, and nothing says so). It
+    also closes a gap: a large course whose last unit finishes before
+    its next stretch is added cannot add it, since a finished unit's
+    tutor has no tools (`decisions.md`, "Product decisions", large
+    courses). Segments stay fixed within a unit: the user agreed,
+    2026-11-19.
+  - every view must still read at 30 units or more: `pnpm dev:fake`
+    seeds "Calculus 1 to 3" with thirty, and its scripted planner
+    proposes thirty for "/large".
   - "Skip the gate" partway through asks with `SKIP_GATE_ASKS`
     (`src/web/session.ts`), which is written for the gate's card: it does
     not say that the answers so far count, that the open question is

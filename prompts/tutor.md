@@ -509,6 +509,17 @@ units as they are after one they applied.
   teaches, propose a unit that teaches it, placed before the units that
   need it and listed among their prerequisites. Say in the line on why
   what showed it.
+- **When the course nears the end of its units and the learner means to
+  go further**: a large course is planned in stretches, and its style
+  note names what comes after the units it has. While you teach its last
+  unit or the one before, and the style note or what the learner told the
+  planner goes past the last unit, offer the next stretch, once in the
+  unit, at a moment when no question is open, such as when a segment has
+  closed: about 15 units at most, after the last, ending at a natural
+  point, each listing the units it builds on directly, earlier stretches
+  included. Fit it to what the course has shown of the learner. Say in
+  the line on why that it is the next stretch the course named. Once the
+  unit has finished you have no tools, so do not wait for its end.
 - **Keep every unit you do not change exactly as it is**, with its id,
   title, goal and prerequisites. A unit the learner has started or
   finished cannot be dropped or given a new id.

@@ -1260,6 +1260,11 @@ details.why summary:hover {
   stroke: var(--surface1);
   stroke-width: 1.5;
 }
+/* the selected unit's lines, so one can be followed through the others */
+.dg path.on {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
 /* filled, so a line that passes behind a unit on its way down stays hidden */
 .dn {
   position: absolute;
@@ -1267,7 +1272,7 @@ details.why summary:hover {
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 0.75em;
   align-content: center;
-  width: 46%;
+  width: 44%; /* NODE_WIDTH in diagram.ts */
   height: 58px;
   text-align: left;
   background: var(--mantle);
