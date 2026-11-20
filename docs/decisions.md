@@ -247,6 +247,14 @@ The brief states the result; this is who decided and why.
     learner picks (optional), and teaching instructions the learner can
     add to or edit, the app's rules fixed and the original kept to revert
     to.
+- **2026-11-19, vague written answers** (from the stage 5 check). A
+  written answer that is mostly right but vague stays a miss. No grade is
+  held back for follow-up questions: a question aimed at the vague part
+  tells the learner what was missing, which is help, and pass or fail is
+  what the passing rules read. Instead, a written question names each
+  part its rubric requires, and the detour after a part left out says
+  what was right and what was missing and names no misconception
+  (`tutor.md`; "Prompts").
 
 ## Toolchain
 
@@ -1471,7 +1479,14 @@ to change.
   few to say it works. Nothing in the engine checks a key's arithmetic.
 - **Rubrics** list the steps a complete answer must establish, what may be
   assumed, that any valid method counts, and the errors that make an
-  answer wrong: the grader reads what may be assumed from the rubric.
+  answer wrong: the grader reads what may be assumed from the rubric. A
+  part the rubric requires is one the question names, and a detour after
+  a part left out says what was right and what was missing, naming no
+  misconception (the user's decision, "Product decisions"). On Haiku
+  (task 5.14) the questions named their parts, one with "what work or
+  travel" where the rubric needed both; the detour after an answer that
+  left out travel said what was right and what was missing, and the
+  handoff writer recorded no misconception from it.
 - **Help**: clarify what the question asks, never a step, a value or the
   mistake to avoid; point a stuck learner to "I don't know".
 - **One thing per question**, and nothing verbatim from memory: paraphrase

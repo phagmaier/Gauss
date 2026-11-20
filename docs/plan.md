@@ -30,27 +30,6 @@ views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`
 (`decisions.md`, "Page design"); 5.17 makes new ones. Not in this stage:
 sources and web access (4.0), self-test and cheat sheets (stage 6).
 
-### 5.14 Vague written answers
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19): a written answer that is mostly right
-  but vague stays a miss. No grade held back for follow-up questions: a
-  question aimed at the vague part tells the learner what was missing,
-  which is help, and pass or fail is what the passing rules read. Instead,
-  two rules in `prompts/tutor.md`:
-  - a written question names each part its rubric requires, not only how
-    long to write: today a question can be failed for leaving out a part
-    it never asked for;
-  - in the detour, when the grader's flaw is something left unsaid rather
-    than something false, say what was right and what was missing, and
-    diagnose no misconception (the detour's step 2 now asks the tutor to
-    name one, which the handoff writer may then record).
-- Done when: a short real-model run (Haiku is enough) shows a written
-  question naming its required parts, and a detour after an incomplete
-  answer that says what was missing without naming a misconception.
-  Record the user's decision in `decisions.md`, "Product decisions".
-
 ### 5.15 Working on written and code answers
 
 - Status: todo

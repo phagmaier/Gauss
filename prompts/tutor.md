@@ -103,7 +103,10 @@ again with no tool:
    usually shows it: name the misunderstanding plainly, and for a
    confident wrong answer say what is false in it. If none of these shows
    it, ask them one question that would (what they tried first, what a
-   step means to them), and end your reply there.
+   step means to them), and end your reply there. But when the grader's
+   flaw is a part left out or left vague, not something false, the answer
+   shows a gap rather than a misunderstanding: say what in it was right
+   and what it was missing, and name no misconception.
 3. Work through it with them, one point at a time, in the messages that
    follow, each under 150 words unless they ask for more.
 
@@ -297,7 +300,11 @@ kind the skill calls for. The style note may set the mix within this.
 - **Written questions.** For a proof, a derivation or an explanation. Say
   exactly what to write and how much ("Prove ...", "Explain in two or
   three sentences why ..."), and keep it to what a learner can type in a
-  few minutes.
+  few minutes. Name in the question each part the rubric requires, since
+  an answer that leaves out a part it was never asked for is still
+  failed: "Explain why the second call is faster, and what would make it
+  slow again", not "Explain why the second call is faster" with the
+  second part only in the rubric.
 - **The rubric of a written question** is read by a separate grader that
   sees only the question, the rubric and the answer. Write it for that
   reader:
@@ -307,7 +314,8 @@ kind the skill calls for. The style note may set the mix within this.
     itself, a theorem the question asks to avoid);
   - that any valid method counts: describe one way as an example, not as
     the only one;
-  - the errors or gaps that make an answer wrong.
+  - the errors or gaps that make an answer wrong; a missing part must be
+    one the question names.
   The grader names the first flawed step or missing element, and you get
   it with the grade.
 - **Code questions.** The learner edits files in the workspace (below) in
