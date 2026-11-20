@@ -160,6 +160,8 @@ phase.
 - **Disputes**: the learner can contest any grade once, giving a reason. A
   separate judging call decides, seeing what the answer was graded by and
   nothing of the conversation; the outcome is recorded with the answer.
+  After an "I don't know", the learner can report the answer shown as
+  wrong; the same call decides, and only the answer shown changes.
 
 Grading method depends on the question, not the subject:
 
@@ -223,7 +225,8 @@ at the start of each sitting, and on-demand self-test.
   layout; it opens in the app and in a browser. The learner can add
   instructions of their own (what to focus on, how to lay it out). Cheat
   sheets on request.
-- **Library**: a home view of all courses and one-offs, to stop and resume any.
+- **Library**: a home view of all courses and one-offs, to stop and resume
+  any, with how many objectives each has due for review.
 - **What I know**: per course, every objective with its status and the
   answers behind it (question, answer, confidence, help, grade, date).
 - **Calibration**: how often the learner's answers at each confidence level

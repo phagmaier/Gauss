@@ -196,6 +196,38 @@ The brief states the result; this is who decided and why.
     plugins, API keys and a cost meter, dictation through an outside
     service, side threads, compaction, and questions to place the learner
     before planning (the test before a unit does that).
+- **2026-11-19, the comparison with DeepTutor**, an open-source study
+  suite (Apache-2.0) whose Mastery Path is the part closest to Gauss. It
+  leaves to its prompt what Gauss enforces (when to teach and when to
+  test, what counts as help), asks no confidence, keeps no misconceptions
+  or handoff notes, and lets the tutor void or re-key its own questions;
+  Gauss stays as it is on all of those. Nothing in it beat a settled
+  decision. The user decided:
+  - an "I don't know" answer's key can be reported wrong, decided by the
+    dispute judge, the miss standing (5.21); not DeepTutor's way, where
+    the tutor that wrote the key decides;
+  - each misconception carries the learner's words that showed it,
+    checked against the thread (5.22), as DeepTutor checks the learner
+    quotes behind its teaching notes;
+  - an aid can put a question into the message box, built on 5.20's
+    channel once 5.20 is done (5.23);
+  - the library and the course view show how many objectives are due
+    for review, once 5.19 gives due times (5.24);
+  - four more directions for 5.17's mocks (in the plan): a serif that
+    matches KaTeX for the tutor's text, status by form as well as
+    colour, a graded card's verdict under a hairline, and a course view
+    that goes down to objectives;
+  - two items for 4.0: quote matching that ignores margin line numbers
+    and line-end hyphens, and a link to a section that claims no quote;
+  - left out: intake questions on a card of options; questions on a
+    source figure, for 4.0; a folding outline rail, reading settings,
+    narrow windows and motion, for the mocks; and DeepTutor's memory
+    layers, learning journal, self-rated practice, flashcards, generated
+    books, video and animation, research and solving agents, embedding
+    search, partners and plugins, probing each objective before teaching
+    it, unsure grades held back and half credit, several questions on
+    one card, a recall target with an FSRS-like schedule, rewriting
+    objectives within a unit, and "marked as known" counting as passed.
 
 ## Toolchain
 
@@ -2267,7 +2299,7 @@ will close.
   limit (task 5.13) on a unit of five segments; the next two, on both
   units, took 20 and 30 seconds. Cause unknown; pressing write again
   retries.
-- A tutor's wrong key stays in the record unless the learner disputes it:
-  an "I don't know" answer is never disputed, and its key went into the
-  first notes as the right value (task 5.13). `notes.md` asks the writer
-  to work values again.
+- A tutor's wrong key stays in the record unless the learner disputes it,
+  and an "I don't know" cannot be disputed until 5.21: its key went into
+  the first notes as the right value (task 5.13). `prompts/notes.md` asks
+  the writer to work values again.
