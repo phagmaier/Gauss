@@ -1,9 +1,17 @@
 // The message box (docs/prototype/01-reading-chat.html): it grows with its
 // text, sends on Enter, and turns into a stop button while the tutor writes.
 // A send owns only the draft it sent, so text typed meanwhile is kept
-// (task 0.8).
+// (task 0.8). A quoted passage goes after the draft (piece 19).
 
-import { useLayoutEffect, useRef, useState } from "react";
+import {
+  type Ref,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { flushSync } from "react-dom";
+import { withQuote } from "../shared/quote.ts";
 
 const SEND_ICON = (
   <svg
@@ -26,12 +34,19 @@ const STOP_ICON = (
   </svg>
 );
 
+/** What the page can do to the message box from outside it. */
+export interface ComposerHandle {
+  /** Puts the passage, as a quote, after the draft, and focuses the box at its end. */
+  quote(passage: string): void;
+}
+
 export function Composer(props: {
   enabled: boolean;
   placeholder: string;
   busy: boolean;
   onSend(text: string): Promise<string | undefined>;
   onStop(): void;
+  ref?: Ref<ComposerHandle>;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -47,6 +62,23 @@ export function Composer(props: {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [text]);
+
+  useImperativeHandle(
+    props.ref,
+    () => ({
+      quote(passage) {
+        const next = withQuote(text, passage);
+        draftRevision.current += 1;
+        flushSync(() => setText(next));
+        const el = box.current;
+        if (el === null) return;
+        el.focus();
+        el.setSelectionRange(next.length, next.length);
+        el.scrollTop = el.scrollHeight;
+      },
+    }),
+    [text],
+  );
 
   async function submit() {
     const message = text.trim();

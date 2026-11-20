@@ -197,7 +197,15 @@ function renderItem(
 ): string {
   switch (item.kind) {
     case "learner":
-      return `<div class="learner" aria-label="Learner">${escapeHtml(item.text)}</div>`;
+      return `<div class="learner" aria-label="Learner">${messageParts(
+        item.text,
+      )
+        .map((part) =>
+          part.quote
+            ? `<blockquote>${String(learnerMarkdown.processSync(part.text))}</blockquote>`
+            : escapeHtml(part.text),
+        )
+        .join("")}</div>`;
     case "tutor":
       return `<div class="tutor" aria-label="Tutor">${prose(item.text)}</div>`;
     case "phase":
@@ -542,6 +550,9 @@ header h1{font-size:2em;line-height:1.15;margin:0 0 .3em;font-weight:600}
 .marker{color:var(--soft);border-left:2px solid var(--line);padding-left:.8em;font-size:.92em;margin:1.45em 0}
 .marker b,.question-head b{color:var(--ink)}
 .learner{width:fit-content;max-width:82%;margin:1.65em 0 1.65em auto;padding:.55em 1em;border-radius:18px 18px 5px 18px;background:color-mix(in srgb,var(--accent) 15%,var(--paper));white-space:pre-wrap}
+.learner blockquote{white-space:normal;margin-block:.15em .5em}
+.learner blockquote p{margin:0 0 .5em}
+.learner blockquote p:last-child{margin-bottom:0}
 .tutor{margin:1em 0}
 .tutor :is(h1,h2,h3,h4,h5,h6){color:var(--accent);font-size:1.2em;line-height:1.3;border:0;padding:0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:1.4em 0;padding:1em 1.2em}

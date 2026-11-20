@@ -55,6 +55,7 @@ import {
 import { CourseWithProgress } from "../shared/library.ts";
 import { currentObjective, type Plan } from "../shared/plan.ts";
 import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
+import { messageParts } from "../shared/quote.ts";
 import {
   type ArtifactItem,
   type AssessmentItem,
@@ -69,7 +70,7 @@ import {
   type UnitEndItem,
 } from "../shared/timeline.ts";
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
-import { Composer } from "./Composer.tsx";
+import { Composer, type ComposerHandle } from "./Composer.tsx";
 import { Diagram } from "./Curriculum.tsx";
 import { CurriculumCard } from "./CurriculumCard.tsx";
 import { type DisputeApi, disputeApi } from "./Dispute.tsx";
@@ -79,6 +80,7 @@ import { PackagesCard } from "./PackagesCard.tsx";
 import { mapMark } from "./progress.ts";
 import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
+import { QuoteOffer } from "./QuoteOffer.tsx";
 import { navigate, paths } from "./route.ts";
 import { StatusForm } from "./StatusForm.tsx";
 import { StyleCard } from "./StyleCard.tsx";
@@ -150,6 +152,7 @@ export function Session(props: { courseId: string; unitId: string }) {
   /** The open question the learner hid, by its key. */
   const [hiddenKey, setHiddenKey] = useState<number>();
   const hideButton = useRef<HTMLButtonElement>(null);
+  const composer = useRef<ComposerHandle>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
@@ -648,6 +651,7 @@ export function Session(props: { courseId: string; unitId: string }) {
           </div>
         )}
         <Composer
+          ref={composer}
           enabled={open && timeline.failed === null}
           busy={busy}
           placeholder="Message the tutor"
@@ -659,6 +663,9 @@ export function Session(props: { courseId: string; unitId: string }) {
           }}
           onStop={() => void act("interrupt")}
         />
+        {open && timeline.failed === null ? (
+          <QuoteOffer onQuote={(passage) => composer.current?.quote(passage)} />
+        ) : null}
       </div>
       {pane === undefined ? null : pane.kind === "map" ? (
         stored?.curriculum == null ? null : (
@@ -1023,7 +1030,7 @@ function ThreadItem(props: {
   const { item } = props;
   switch (item.kind) {
     case "learner":
-      return <div className="th-you">{item.text}</div>;
+      return <LearnerMessage text={item.text} />;
     case "tutor":
       return (
         <div className="th-tutor prose">
@@ -1234,6 +1241,28 @@ function ThreadItem(props: {
       // Only an intake proposes a curriculum.
       return null;
   }
+}
+
+/**
+ * A learner's message: their own text as typed, and a passage they quoted
+ * (piece 19) as a quote, set as the tutor's text was.
+ */
+function LearnerMessage(props: { text: string }) {
+  return (
+    <div className="th-you">
+      {messageParts(props.text).map((part, i) =>
+        part.quote ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a message's parts never move
+          <blockquote key={i} className="th-quote prose">
+            <Prose text={part.text} />
+          </blockquote>
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a message's parts never move
+          <Fragment key={i}>{part.text}</Fragment>
+        ),
+      )}
+    </div>
+  );
 }
 
 /**

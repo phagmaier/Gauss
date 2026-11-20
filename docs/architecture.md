@@ -69,7 +69,8 @@ Dependencies, kept few (`package.json`, `pytools/pyproject.toml`):
   `rehype-stringify`, beside `remark-gfm`, `remark-math`, `rehype-katex`
   and `katex`.
 - Development: `typescript`, `vite` with `@vitejs/plugin-react`,
-  `vitest`, `@biomejs/biome`, and the types `@types/node`, `@types/react`,
+  `vitest`, `happy-dom` (a DOM for the tests of code that reads the
+  page), `@biomejs/biome`, and the types `@types/node`, `@types/react`,
   `@types/react-dom` and `@types/hast` (document trees).
 - Python: `sympy`, with `antlr4-python3-runtime` 4.11 for its LaTeX
   parser; `pytest` for development. Stage 4 adds a PDF and an EPUB
@@ -996,7 +997,8 @@ module beside it (`session.ts`, `progress.ts`, `library.ts`,
 `what-i-know.ts`, `diagram.ts`, `route.ts`, `profile.ts`, `units.ts`,
 `calibration.ts`, `api.ts`; the thread's timeline is
 `src/shared/timeline.ts`). Of the components, only `PackagesCard.tsx` and
-`prose.tsx` have tests.
+`prose.tsx` have tests; `quote.ts`, which reads the page, is tested on
+the HTML `Prose` renders.
 
 An objective's or a unit's status shows as a form beside its word
 (`StatusForm.tsx`; `decisions.md`, "Page design"): in the course view's
@@ -1118,6 +1120,15 @@ take the outline.
   current one" decide the proposal, and the card records the decision.
   The thread also has the detour marker, "Ready for another question" and
   the closing card.
+  Selecting text within one of the tutor's replies or one question's
+  prompt offers "Quote" over it (`QuoteOffer.tsx`, `quote.ts`), which puts
+  the passage after the draft as Markdown quote lines
+  (`src/shared/quote.ts`) and focuses the box at its end. Each formula
+  comes back as its TeX between `$` or `$$`, whole when the selection
+  starts or ends inside it; lists, code and paragraphs keep their
+  Markdown, emphasis does not. A learner's message shows its quoted lines
+  as a quote, set as the tutor's text is, and the rest as typed; so does
+  the exported transcript. The tutor gets the message as sent.
   Review is a card in the thread, with how many questions,
   Skip and "Start the review", which holds the unit's own control until
   it is answered and becomes a marker once started or skipped; a review
@@ -1254,7 +1265,9 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
   sandbox's tests, those of math questions, which run the real symbolic
   check, and those of code questions, which run pytest with
   `pytools/.venv` standing in for a workspace's, run real commands in it,
-  so they need what it needs and fail where it cannot run.
+  so they need what it needs and fail where it cannot run. A test of code
+  that reads the page's DOM, such as a selection's, runs in happy-dom,
+  named in its file's first line (`// @vitest-environment happy-dom`).
 - **Python helpers (pytest via uv)**: equivalent and non-equivalent
   expression pairs worked by hand, and `mathcheck.py` run on the venv's
   own Python; (stage 4) conversion of small fixture files.

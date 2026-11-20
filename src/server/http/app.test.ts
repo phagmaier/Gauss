@@ -896,7 +896,10 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
     { type: "file_written", path: "examples/map.py" },
     { type: "turn_end", outcome: "done" },
     { type: "phase", phase: "discuss", segment: 0 },
-    { type: "learner", text: "What about <one vector>?" },
+    {
+      type: "learner",
+      text: "> The image of $e_1$ is the\n> first column.\n\nWhat about <one vector>?",
+    },
     {
       type: "packages_requested",
       requestId: "packages",
@@ -1035,7 +1038,9 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
   expect(before).toContain("Further reading");
   expect(before).toContain("Basis &amp; image");
   expect(before).toContain("examples/map.py");
-  expect(before).toContain("What about &lt;one vector&gt;?");
+  expect(before).toMatch(
+    /<blockquote><p>The image of <span class="katex">[\s\S]*?e_1<\/annotation>[\s\S]*? is the\nfirst column\.<\/p><\/blockquote>What about &lt;one vector&gt;\?<\/div>/,
+  );
   expect(before).toContain("Test result");
   expect.soft(before).toContain("Right once, 50% sure, then missed");
   expect.soft(before).toContain("Teaching the whole unit.");

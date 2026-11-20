@@ -34,24 +34,6 @@ view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.35 Quote
-
-- Status: todo
-- Depends on: 5.30
-- As piece 19. Selecting text in the tutor's text or a question's prompt
-  offers "Quote" over the selection. It puts the passage in the message
-  box as a Markdown quote (each line `> `, then a blank line), after any
-  draft, and focuses the box at its end. Math comes back as its LaTeX
-  source between `$`, not KaTeX's doubled text; the source is in KaTeX's
-  MathML annotation. The learner's message shows a quote as a quote:
-  today a learner's message is plain text (`th-you` in `Session.tsx`).
-  The tutor gets the text as sent, and the help judge judges it as any
-  message. No side thread. To settle in the task: how the conversion is
-  tested without a browser.
-- Done when: a test turns a selection across inline and display math into
-  its source. On `pnpm dev:fake`, Quote fills the box, the sent message
-  shows the quote, and the scripted tutor answers it.
-
 ### 5.36 Skipping the gate partway
 
 - Status: todo

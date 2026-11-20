@@ -1793,7 +1793,17 @@ redesign's.
   inline, and a sheet over the thread.
 - **Quote**: selecting the tutor's text offers "Quote", which puts the
   passage in the message box as a quote; the learner asks in the thread as
-  usual (the redesign, piece 19). Rejected: a side thread.
+  usual (the redesign, piece 19). Rejected: a side thread. As built (the
+  agent's choices, open to change): a selection is quotable only within
+  one tutor reply or one prompt, so a learner's words are never quoted as
+  the tutor's. Math comes from KaTeX's TeX annotation, since the
+  selection's text has each formula twice; a formula cut by the
+  selection is taken whole, as half a formula has no source. In the
+  learner's message only the quoted lines are read as Markdown; their own
+  text stays as typed, as before. The conversion is tested in happy-dom
+  on the HTML `Prose` renders, with real KaTeX output; rejected: an
+  interface over both the DOM and hast trees, which would not have
+  tested the range's own handling.
 - **The library is grouped by where each course stands**: in progress,
   drafts, finished, newest first in each (the redesign, piece 21). A row
   has a status form per unit in place of the ticks, and how many

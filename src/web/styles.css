@@ -168,14 +168,16 @@ code {
 .katex {
   font-size: 1.05em;
 }
-/* the reading text: the tutor's, a question's prompt and its choices; KaTeX
-   is Computer Modern, so at 1em it matches the serif */
+/* the reading text: the tutor's, a question's prompt and its choices, and a
+   passage the learner quoted; KaTeX is Computer Modern, so at 1em it matches
+   the serif */
 .th-tutor,
 .qa-prompt,
-.opt {
+.opt,
+.th-quote {
   font-family: var(--f-read);
 }
-:is(.th-tutor, .qa-prompt, .opt) .katex {
+:is(.th-tutor, .qa-prompt, .opt, .th-quote) .katex {
   font-size: 1em;
 }
 
@@ -333,6 +335,43 @@ code {
   padding: 0.55em 1em;
   font-size: 16px;
   white-space: pre-wrap;
+}
+/* a passage the learner quoted, in the tutor's type (piece 19) */
+.th-quote {
+  margin: 0.15em 0 0.5em;
+  padding-left: 0.8em;
+  border-left: 2px solid var(--rule-2);
+  color: var(--ink-2);
+  font-size: 17px;
+  line-height: 1.5;
+  white-space: normal;
+}
+/* "Quote", offered over a selection in the tutor's text (piece 19) */
+.qpop {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  transform: translate(-50%, calc(-100% - 8px));
+  background: var(--ink);
+  color: var(--bg);
+  border: 0;
+  border-radius: 8px;
+  padding: 0.32em 0.75em;
+  font-size: 13.5px;
+  font-weight: 500;
+  box-shadow: var(--shadow);
+}
+.qpop::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
 }
 .th-tutor {
   margin: 0 0 1.1em;
