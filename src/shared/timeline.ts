@@ -309,7 +309,7 @@ export interface Timeline {
     stage: "offered" | "on";
     count: number;
   } | null;
-  /** The test's result card waits for the learner's answer: the unit's own steps wait for it. */
+  /** The test has ended; its summary or result card still waits for the learner's choice. */
   testWaits: boolean;
   /** The unit is finished, and how. */
   finished: "passed" | "overridden" | null;
@@ -1072,8 +1072,10 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         detour: null,
         tutorOpen: false,
       };
-      // A test leaves no marker: the tutor's word on it and its result card follow.
-      if (event.mode === "test-out") return { ...settled, items };
+      // A test leaves no marker: keep its position through the tutor's summary and the result card.
+      if (event.mode === "test-out") {
+        return { ...settled, items, testWaits: true };
+      }
       // Skipped on its card: the card becomes the marker that says so.
       if (card?.kind === "assessment" && card.stage === "offered") {
         return {

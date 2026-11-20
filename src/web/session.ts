@@ -53,8 +53,21 @@ type Where = Pick<
   "items" | "position" | "finished" | "assessment" | "testWaits" | "statuses"
 >;
 
-/** The test before the unit runs, or its result waits for the learner. */
+/** The test runs, the tutor summarizes it, or the result waits for the learner. */
 const testing = (t: Where) => t.testWaits || t.assessment?.mode === "test-out";
+
+function latestGateIndex(items: readonly Item[]): number {
+  return items.findLastIndex(
+    (i) => i.kind === "assessment" && i.mode === "gate",
+  );
+}
+
+function latestAgainIndex(items: readonly Item[]): number {
+  return items.findLastIndex(
+    (i) =>
+      i.kind === "phase" && i.heading !== undefined && i.again !== undefined,
+  );
+}
 
 /**
  * Where the assessment under way has got to, as its question's head says
@@ -77,11 +90,10 @@ function assessmentCount(items: readonly Item[]): string | undefined {
 /**
  * The position in the top line (piece 19): "Segment 2 of 5" with the
  * segment's title, "Going over again", "Review" while a review runs,
- * "Unit gate" from its card on, "Testing out" while the test before the
- * unit runs or its result waits, or "Finished"; a review, the gate and the
- * test give the question they are at in place of a title. One tick per
- * segment of the plan, a hollow one for a segment skipped. Null until the
- * unit is open.
+ * "Unit gate" from its card through the decision after it, "Testing out"
+ * through the test's summary and result, or "Finished". An assessment
+ * gives its count while asking questions. One tick per segment of the
+ * plan, a hollow one for a segment skipped. Null until the unit is open.
  */
 export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
   const { position, assessment } = t;
@@ -100,6 +112,12 @@ export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
     return at("Unit gate", marked(Array(count).fill("past")));
   }
   if (position === null) return null;
+  if (
+    position.phase === "closed" &&
+    latestGateIndex(t.items) > latestAgainIndex(t.items)
+  ) {
+    return { label: "Unit gate", ticks: marked(Array(count).fill("past")) };
+  }
   if (testing(t)) {
     const ticks = Array(count).fill("");
     return t.testWaits
@@ -172,15 +190,16 @@ export function outline(plan: Plan, t: Where): UnitOutline {
       i.kind === "phase" && i.heading !== undefined ? [i.heading] : [],
     ),
   );
-  const gateIndex = items.findLastIndex(
-    (i) => i.kind === "assessment" && i.mode === "gate",
-  );
+  const gateIndex = latestGateIndex(items);
   const gateItem = items[gateIndex];
-  const again = items.findLast(
-    (i): i is PhaseItem =>
-      i.kind === "phase" && i.heading !== undefined && i.again !== undefined,
-  );
-  const inAgain = t.finished === null && position?.again !== undefined;
+  const againIndex = latestAgainIndex(items);
+  const again = items[againIndex];
+  const gateBeforeAgain = gateIndex !== -1 && gateIndex < againIndex;
+  const inAgain =
+    t.finished === null &&
+    t.assessment?.mode !== "gate" &&
+    position?.again !== undefined &&
+    (gateIndex === -1 || gateBeforeAgain);
   // Every segment of the plan is behind the unit once it finished, goes
   // over objectives again, or reached its gate; none is reached while the
   // test runs.
@@ -235,21 +254,18 @@ export function outline(plan: Plan, t: Where): UnitOutline {
       ...row(s.objectives, teaches, state, `segment-${i + 1}`),
     };
   });
-  const againIds = inAgain ? position?.again : again?.again;
+  const lastAgain = again?.kind === "phase" ? again : undefined;
+  const againIds = inAgain ? position?.again : lastAgain?.again;
   if (againIds !== undefined) {
     segments.push({
       title: AGAIN,
-      ...row(againIds, againIds, inAgain ? "now" : "past", again?.heading),
+      ...row(againIds, againIds, inAgain ? "now" : "past", lastAgain?.heading),
     });
   }
   return {
     segments,
     gate: gateRow(t, gateItem, plan.segments.length),
-    gateBeforeLast:
-      againIds !== undefined &&
-      gateItem !== undefined &&
-      again !== undefined &&
-      gateIndex < items.indexOf(again),
+    gateBeforeLast: againIds !== undefined && gateBeforeAgain,
   };
 }
 

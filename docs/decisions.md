@@ -1769,7 +1769,7 @@ redesign's.
   Each objective's status word is in the heading for assistive
   technology only (`.sr`), since the mock shows forms alone. Review, gate
   and test markers stay hairlines, not headings.
-- **Session navigation is one line across the top**: the path on the left,
+- **Session navigation sits at the top**: the path on the left,
   ending in "Unit N" and the unit's title; on the right the position,
   "Segment N of M" with the segment's title and a tick per segment, which
   opens the outline, and "Course map" (the redesign, piece 19). Segments
@@ -2052,9 +2052,6 @@ they will close.
   as done, not hollow as the session's top line does; and while a review
   offered first holds the test, the top line reads "Segment 1" and the
   review's card says the unit goes on where it was.
-- The session's top line does not fit a phone's width: at 390 pixels
-  with the side pane open, the segment's title in the position shrinks
-  to nothing and the path is cut off.
 - The help judge sees one exchange at a time ("Help judge").
 - The grader's grading of math answers the symbolic check does not settle
   has no hand-graded set: the grade set holds written answers only.

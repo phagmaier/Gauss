@@ -921,9 +921,10 @@ details.why summary:hover {
   font-size: 13.5px;
 }
 
-/* ---- Navigation, piece 4: one line across the top ---- */
+/* ---- Navigation: the path and the session's controls ---- */
 .th.has-top {
   grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
 }
 .th.has-top .th-col {
   padding-top: 44px;
@@ -937,6 +938,9 @@ details.why summary:hover {
   padding: 9px 14px 9px 18px;
   border-bottom: 1px solid var(--rule);
   font-size: 14px;
+}
+.th.has-top > .nl {
+  position: relative;
 }
 /* the path out: library, course */
 .crumbs {
@@ -1018,6 +1022,35 @@ details.why summary:hover {
   text-overflow: ellipsis;
   color: var(--ink);
 }
+@media (max-width: 900px) {
+  .th.has-top > .nl {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .th.has-top .crumbs a {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nl-tools {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-right: 0;
+  }
+  .nl-pos {
+    gap: 4px;
+    padding-inline: 4px;
+    max-width: 100%;
+  }
+  .nl-pos .ticks {
+    gap: 3px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .nl-pos .ticks i {
+    width: 10px;
+  }
+}
 /* the conversations before a fresh start stay in the thread, dimmed; a card
    that still waits on the learner or on its grade is the unit as it stands,
    whichever conversation posted it, and is not */
@@ -1098,6 +1131,9 @@ details.why summary:hover {
   --ring-gap: var(--raised); /* a current form's ring, on this background */
 }
 @media (max-width: 900px) {
+  .th.has-pane {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .sp {
     position: fixed;
     inset: 0;
@@ -1946,8 +1982,8 @@ button.dn:hover {
    objectives' forms, and the gate; a past or current segment jumps to its
    heading */
 .np {
-  position: fixed;
-  top: 56px;
+  position: absolute;
+  top: calc(100% + 4px);
   right: 14px;
   z-index: 20;
   width: min(380px, calc(100vw - 28px));
@@ -1957,6 +1993,11 @@ button.dn:hover {
   border: 1px solid var(--rule-2);
   border-radius: 12px;
   box-shadow: var(--shadow);
+}
+@media (max-width: 900px) {
+  .np {
+    max-height: min(70dvh, calc(100dvh - 125px));
+  }
 }
 .uo {
   font-size: 14px;

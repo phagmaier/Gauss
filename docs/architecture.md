@@ -1055,15 +1055,17 @@ take the outline.
   know" apart.
 - **Session** (`/courses/<id>/units/<unit>`): the top line has the path,
   ending in "Unit N" and the unit's title; the position, which opens the
-  outline; and "Course map" (not working yet). The position
-  (`whereInUnit` in `session.ts`) is "Segment N of M" with the segment's
-  title, "Going over again", "Review" once a review is started, "Unit
-  gate" from the gate's card on, "Testing out" while the test runs or its
-  result waits, or "Finished", with a tick per segment; a review and the
-  gate add the question they are at ("Question 2 of 4"), a test the
-  objective ("Objective 2 of 3"). The outline (`outline` in `session.ts`)
-  lists the segments, numbered, with their objectives' forms: the current
-  one "You are here", a past one how many of its objectives passed, one
+  outline; and "Course map" (not working yet). On narrow screens the
+  controls move below the path and the outline opens below both. The
+  position (`whereInUnit` in `session.ts`) is "Segment N of M" with the
+  segment's title, "Going over again", "Review" once a review is started,
+  "Unit gate" from its card through the closing decision, "Testing out"
+  through the questions, summary and result, or "Finished", with a tick
+  per segment. While asking questions, a review and the gate show the
+  question ("Question 2 of 4") and a test shows the objective ("Objective
+  2 of 3"). The outline (`outline` in `session.ts`) lists the segments,
+  numbered, with their objectives' forms: the current one "You are here",
+  a past one how many of its objectives passed, one
   the test skipped struck through with "Passed in the test" (in one taught
   in part, the skipped objectives struck through); then "Going over
   again" once the unit has, and the gate, to come, here, taken or

@@ -368,6 +368,48 @@ test("while the test runs no segment is here", () => {
   ]);
 });
 
+test("the test holds the position through its summary and result until the learner chooses what to teach", () => {
+  const summary: PageEvent[] = [
+    planned,
+    { type: "phase", segment: 0, phase: "teach", beforeTest: true },
+    run("test-out", "on", 3),
+    assessed("t1", 1, 3, 1),
+    { type: "assessment_end", mode: "test-out", skipped: false, statuses: {} },
+    { type: "turn_start" },
+    { type: "tutor_text", text: "Here is what you passed." },
+  ];
+  const result: PageEvent[] = [
+    ...summary,
+    { type: "turn_end", outcome: "done" },
+    {
+      type: "test_result",
+      objectives: [{ objective: "power-rule", passed: true, answers: [] }],
+    },
+  ];
+  for (const events of [summary, result]) {
+    const state = play(events);
+    expect(whereInUnit(PLAN, state)).toEqual({
+      label: "Testing out",
+      ticks: ["", "", ""],
+    });
+    expect(outline(PLAN, state).segments.map((s) => s.state)).toEqual([
+      "",
+      "",
+      "",
+    ]);
+  }
+  const teaching = play([
+    ...result,
+    { type: "test_answered", skipped: ["power-rule"] },
+  ]);
+  expect(whereInUnit(PLAN, teaching)).toEqual({
+    label: "Segment 2 of 3",
+    title: "Products",
+    ticks: ["skip", "now", ""],
+  });
+  expect(outline(PLAN, teaching).segments[1]?.says).toBe("You are here");
+});
+
 test("the gate is here from its card on, every segment past; then taken or skipped, and before going over again that followed it; a unit finished with none has no gate", () => {
   const end = [planned, phase(0, "teach"), phase(2, "closed")];
   const offered = play([...end, run("gate", "offered", 2)]);
@@ -415,6 +457,68 @@ test("the gate is here from its card on, every segment past; then taken or skipp
 
   const finished = play([...end, { type: "unit_closed", status: "passed" }]);
   expect(outline(PLAN, finished).gate).toBeNull();
+});
+
+test("a gate offered after going over again is the only row that says you are here", () => {
+  const state = play([
+    planned,
+    phase(2, "closed"),
+    phase(3, "teach", ["chain-rule"]),
+    phase(3, "closed", ["chain-rule"]),
+    run("gate", "offered", 3),
+  ]);
+  const rows = outline(PLAN, state);
+  expect(rows.segments.at(-1)).toMatchObject({
+    title: "Going over again",
+    state: "past",
+    heading: "again-1",
+  });
+  expect(
+    rows.segments.find((segment) => segment.state === "now"),
+  ).toBeUndefined();
+  expect(rows.gate).toEqual({ state: "now", says: "You are here" });
+  expect(rows.gateBeforeLast).toBe(false);
+});
+
+test("the gate keeps the top-line position at its closing card until going over again begins", () => {
+  const atGate: PageEvent[] = [
+    planned,
+    phase(2, "closed"),
+    run("gate", "offered", 3),
+    run("gate", "on", 3),
+    assessed("g3", 3, 3),
+    {
+      type: "assessment_end",
+      mode: "gate",
+      skipped: false,
+      statuses: { "chain-rule": "slipping" },
+    },
+  ];
+  const closing: PageEvent[] = [
+    ...atGate,
+    {
+      type: "unit_end",
+      passed: false,
+      objectives: { "chain-rule": "slipping" },
+      gate: { goOver: ["chain-rule"], others: [] },
+    },
+  ];
+  for (const events of [atGate, closing]) {
+    expect(whereInUnit(PLAN, play(events))).toEqual({
+      label: "Unit gate",
+      ticks: ["past", "past", "past"],
+    });
+  }
+  expect(
+    whereInUnit(PLAN, play([...closing, phase(3, "teach", ["chain-rule"])]))
+      ?.label,
+  ).toBe("Going over again");
+  expect(
+    whereInUnit(
+      PLAN,
+      play([...closing, { type: "unit_closed", status: "overridden" }]),
+    )?.label,
+  ).toBe("Finished");
 });
 
 test("a segment's heading names it by number and title with its objectives as they stand, the extra segment as going over again; only the one given marks the current objective", () => {
