@@ -1740,7 +1740,9 @@ redesign's.
   change): the form sits just before the status word. The current unit is
   the one the course view's card leads to, up next as well as in progress,
   since the accent marks the next step; other units in progress take the
-  outline, and "In progress" in "What I know" its yellow, not the accent.
+  outline and its yellow word, in the course view as in "What I know",
+  not the accent. The gap inside the current form's ring takes the colour
+  of the surface under it (`--ring-gap` in `styles.css`), as the mock does.
   The current objective (`currentObjective` in `src/shared/plan.ts`) is
   none while the segment is closed, between segments or at the unit's
   end: after a move-on the first not passed would be an overridden one.

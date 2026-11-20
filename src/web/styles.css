@@ -1116,6 +1116,7 @@ details.why summary:hover {
   min-width: 0;
   border-left: 1px solid var(--rule);
   background: var(--raised);
+  --ring-gap: var(--raised); /* a current form's ring, on this background */
 }
 @media (max-width: 900px) {
   .sp {
@@ -1291,6 +1292,7 @@ details.why summary:hover {
 }
 .cu-row.sel {
   background: var(--raised);
+  --ring-gap: var(--raised);
 }
 .cu-t {
   font-size: 19px;
@@ -1323,8 +1325,14 @@ details.why summary:hover {
   color: var(--ok);
 }
 .cu-row.now .cu-n,
-.cu-row.now .cu-s {
+.cu-row.now .cu-s,
+.cu-s.now {
   color: var(--accent);
+}
+/* another unit in progress: its word in the colour of its form, the outline */
+.cu-row.att .cu-s,
+.cu-s.att {
+  color: var(--open);
 }
 /* the curriculum diagram: units in rows, a line from each unit to the ones that build on it */
 .dg {
@@ -1357,6 +1365,7 @@ details.why summary:hover {
   height: 58px;
   text-align: left;
   background: var(--bg);
+  --ring-gap: var(--bg);
   border: 1px solid var(--rule-2);
   border-radius: var(--r);
   padding: 0 14px;
@@ -1398,6 +1407,9 @@ button.dn:hover {
 .dn.now small {
   color: var(--accent);
 }
+.dn.att small {
+  color: var(--open);
+}
 .dn.sel {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -1422,6 +1434,7 @@ button.dn:hover {
 }
 .diagram-unit.sel {
   background: var(--rule);
+  --ring-gap: var(--rule);
   border-radius: var(--r);
 }
 .diagram-units .textbtn {
@@ -1857,10 +1870,22 @@ button.dn:hover {
   background: var(--accent);
   border-color: var(--accent);
   box-shadow:
-    0 0 0 3px var(--bg),
+    0 0 0 3px var(--ring-gap, var(--bg)),
     0 0 0 4.5px var(--accent);
   /* room for the ring */
   margin-inline: 4.5px calc(0.5em + 4.5px);
+}
+/* smaller in the diagram's numbered fallback and its nodes, as in the mock */
+.diagram-unit .sg {
+  width: 9px;
+  height: 9px;
+}
+.dn small .sg {
+  width: 8px;
+  height: 8px;
+}
+.dn small .sg.now {
+  margin-inline: 3px calc(0.5em + 3px);
 }
 /* where an answer was given, on its line in "What I know" */
 .wk-in {
