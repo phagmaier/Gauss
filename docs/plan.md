@@ -41,7 +41,7 @@ tested out of or started, review questions at the start of a later sitting,
 a detour, a unit gate, generated notes and an exported transcript.
 
 Every task of the stage is done; the user's check is under way. The
-user's notes from it (`notes.md`), discussed on 2026-11-19, add tasks
+user's notes from it, discussed on 2026-11-19, add tasks
 5.14 to 5.18; the comparison with LearnHarness the same day adds 5.19,
 5.20 and directions for 5.17's mocks (`decisions.md`, "Product
 decisions"). They wait until the check is over.
