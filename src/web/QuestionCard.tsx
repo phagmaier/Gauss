@@ -58,7 +58,7 @@ import { outputLines, unsettledLine } from "./what-i-know.ts";
 
 type ChoiceView = Extract<QuestionView, { kind: "choice" }>;
 
-const reasoningLimitLabel = REASONING_LIMIT.toLocaleString("en-US");
+const LIMIT_LABEL = REASONING_LIMIT.toLocaleString("en-US");
 
 const CONFIDENCE: { value: Confidence; label: string }[] = [
   { value: "under-50", label: "Under 50%" },
@@ -153,6 +153,9 @@ function OpenCard(props: {
   const reasoningHint = useId();
   const thinking = reasoning.trim();
   const reasoningTooLong = thinking.length > REASONING_LIMIT;
+  const stuckHint = useId();
+  const stuckSaid = stuck.trim();
+  const stuckTooLong = stuckSaid.length > REASONING_LIMIT;
 
   /** The answer as it would be sent, or undefined while incomplete or invalid. */
   function answer(): AnswerPost | undefined {
@@ -182,11 +185,11 @@ function OpenCard(props: {
   const ready = answer();
 
   function sendUnknown() {
-    const said = stuck.trim();
+    if (stuckTooLong) return;
     void send({
       kind: "unknown",
       questionId: question.id,
-      ...(said === "" ? {} : { stuck: said }),
+      ...(stuckSaid === "" ? {} : { stuck: stuckSaid }),
     });
   }
 
@@ -346,21 +349,15 @@ function OpenCard(props: {
             <textarea
               className="field reason"
               aria-label="Your thinking"
-              aria-describedby={reasoningHint}
+              aria-describedby={reasoningTooLong ? reasoningHint : undefined}
               aria-invalid={reasoningTooLong}
               value={reasoning}
               onChange={(e) => setReasoning(e.target.value)}
             />
           </details>
-          <p
-            id={reasoningHint}
-            aria-live="polite"
-            className={reasoningTooLong ? "qa-error" : "qa-aside"}
-          >
-            {reasoningTooLong
-              ? `Your thinking is over the ${reasoningLimitLabel}-character limit. Shorten it to submit.`
-              : `Thinking limit: ${reasoningLimitLabel} characters.`}
-          </p>
+          {reasoningTooLong ? (
+            <OverLimit id={reasoningHint} what="Your thinking" to="submit" />
+          ) : null}
         </>
       )}
       {error === undefined ? null : <p className="qa-error">{error}</p>}
@@ -376,6 +373,8 @@ function OpenCard(props: {
             // biome-ignore lint/a11y/noAutofocus: opened by the learner's own click, to type in at once
             autoFocus
             value={stuck}
+            aria-describedby={stuckTooLong ? stuckHint : undefined}
+            aria-invalid={stuckTooLong}
             disabled={sending}
             placeholder="The step or idea where you lost the thread"
             onChange={(e) => setStuck(e.target.value)}
@@ -387,6 +386,9 @@ function OpenCard(props: {
               }
             }}
           />
+          {stuckTooLong ? (
+            <OverLimit id={stuckHint} what="Where you got stuck" to="send it" />
+          ) : null}
           <div className="qa-foot">
             <button
               type="button"
@@ -399,7 +401,7 @@ function OpenCard(props: {
             <button
               type="button"
               className="btn"
-              disabled={sending}
+              disabled={sending || stuckTooLong}
               onClick={sendUnknown}
             >
               Send "I don't know"
@@ -429,6 +431,19 @@ function OpenCard(props: {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Says the learner's words are over the limit, which keeps them from being
+ * sent; the field it describes keeps the draft. Announced when it appears.
+ */
+function OverLimit(props: { id: string; what: string; to: string }) {
+  return (
+    <p id={props.id} role="alert" className="qa-error">
+      {props.what} is over the {LIMIT_LABEL}-character limit. Shorten it to{" "}
+      {props.to}.
+    </p>
   );
 }
 

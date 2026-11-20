@@ -484,10 +484,11 @@ tab.
 3. The learner submits an answer (a choice, an expression typed in the math
    field, a written answer, or "Run the tests" on a code question's files),
    a confidence level and optional reasoning ("Your thinking" on the page),
-   or "I don't know". If the thinking exceeds the field's limit, the page
-   keeps the draft and asks the learner to shorten or clear it before
-   submitting. Nothing grades the reasoning: the grader and the tests see
-   the answer alone. The tutor, the handoff writer, the dispute
+   or "I don't know". The thinking, and where the learner got stuck, have
+   one limit (`REASONING_LIMIT` in `src/shared/question.ts`); over it, the
+   page keeps the draft, says so under the field and will not send it
+   until it is shortened. Nothing grades the reasoning: the grader and the
+   tests see the answer alone. The tutor, the handoff writer, the dispute
    judge, "What I know" and the exported transcript show it.
 4. The engine grades it (section 6) and appends the evidence.
 5. The tutor gets the result as the next turn: feedback, or a detour's

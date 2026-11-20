@@ -489,6 +489,7 @@ export const QuestionView = z.discriminatedUnion("kind", [
 ]);
 export type QuestionView = z.infer<typeof QuestionView>;
 
+/** The most characters of the learner's own words sent with an answer: its reasoning, or where they got stuck. */
 export const REASONING_LIMIT = 10_000;
 
 /**
@@ -565,7 +566,7 @@ const UnknownAnswer = z.object({
   kind: z.literal("unknown"),
   questionId: z.string(),
   /** Where the learner got stuck, in their words; the tutor is given it. */
-  stuck: z.string().trim().min(1).max(10_000).optional(),
+  stuck: z.string().trim().min(1).max(REASONING_LIMIT).optional(),
 });
 
 /** The learner's answer as the record keeps it, or "I don't know". */
