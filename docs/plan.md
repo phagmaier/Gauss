@@ -33,26 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.18 Deleting a course
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19): a course or a draft can be deleted
-  from its course page; there is no archive. A draft asks a plain
-  confirmation; a course with any evidence asks the learner to type its
-  title, and says what goes: progress, notes, transcripts and the
-  workspace's files. The delete removes `courses/<id>/` and asks for a
-  backup commit, so the git history keeps it; the app offers no undo.
-  Refused while a chat of the course is open, the tutor or a grading,
-  judging or notes call of it is running, or a package install is under
-  way. The course leaves the library and "what I know", and the
-  finished-courses list, which is derived, drops it.
-- Done when: tests on a temporary data root show a draft and a course
-  with evidence deleted, the refusal while a unit chat is open, and the
-  backup commit asked for; on `pnpm dev:fake` both deletes work from the
-  page and the library no longer lists them. Record the decision in
-  `decisions.md`, "Product decisions".
-
 ### 5.19 Review picks the most overdue
 
 - Status: todo

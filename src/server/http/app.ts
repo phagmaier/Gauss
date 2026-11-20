@@ -2,10 +2,11 @@
 // task 1.5), the unit chats (task 2.6), "What I know" with the course's
 // calibration (tasks 2.26 and 2.29), the artifacts the tutor shows (task
 // 3.6), disputes of recorded answers' grades (task 3.8), "Open" on a code
-// question's files (task 3.22), the learner profile (task 5.8), and the
-// course's planning conversation (task 5.38). Each chat has an event stream from the
-// server to the page, and a POST for each thing the learner does in it. Only
-// Gauss's own page may use any of them.
+// question's files (task 3.22), the learner profile (task 5.8), the
+// course's planning conversation (task 5.38), and deleting a course (task
+// 5.18). Each chat has an event stream from the server to the page, and a
+// POST for each thing the learner does in it. Only Gauss's own page may use
+// any of them.
 
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -26,7 +27,11 @@ import {
   SkipTestedPost,
   type UnitOpened,
 } from "../../shared/events.ts";
-import type { CourseWithProgress, Library } from "../../shared/library.ts";
+import {
+  type CourseWithProgress,
+  DeleteCourse,
+  type Library,
+} from "../../shared/library.ts";
 import { NotesPost } from "../../shared/notes.ts";
 import { PackagesAnswer } from "../../shared/packages.ts";
 import {
@@ -39,6 +44,7 @@ import { StyleAnswer } from "../../shared/style.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
+import { createCourseDeletion } from "../engine/course-deletion.ts";
 import type {
   CoursePlanning,
   CoursePlannings,
@@ -261,6 +267,23 @@ export function createApp(options: {
       },
     });
     return c.json({ intakeId: intake.id } satisfies IntakeStarted);
+  });
+
+  // Deleting a course or a draft (task 5.18): refused while anything of it
+  // is shown or runs, and with a wrong title where one is asked for.
+  const deletion = createCourseDeletion({
+    dataRoot,
+    holders: [units, plannings, intakes, notes, disputes],
+    ...(options.backup === undefined ? {} : { backup: options.backup }),
+  });
+
+  app.post("/api/courses/:id/delete", async (c) => {
+    const body = await readBody(c, DeleteCourse);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const deleted = await deletion.delete(c.req.param("id"), body.data.title);
+    return deleted.ok
+      ? c.json({ ok: true })
+      : c.json({ error: deleted.error }, deleted.status);
   });
 
   // --- The learner profile (task 5.8), with the finished courses a new

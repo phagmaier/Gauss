@@ -1360,6 +1360,15 @@ a.nl-pos {
   padding-bottom: 0.6em;
   border-bottom: 1px solid var(--rule);
 }
+/* deleting the course, at the foot of the view, apart from everything else */
+.cv-del {
+  margin: 4.5em 0 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+.cv-del-title {
+  flex: 0 1 22em;
+}
 /* each unit a heading that opens and folds; open, its objectives or its goal, and what can be done */
 .cv-units {
   list-style: none;

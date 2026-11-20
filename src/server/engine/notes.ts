@@ -14,6 +14,7 @@ import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { countedAnswers, disputesIn } from "../record/disputes.ts";
 import { unitStatus } from "../record/status.ts";
+import type { CourseHolder } from "./course-deletion.ts";
 import { readStretch } from "./handoff.ts";
 import {
   finishStandaloneHtml,
@@ -36,7 +37,7 @@ type NotesOptions = {
   now?: () => Date;
 };
 
-export interface Notes {
+export interface Notes extends CourseHolder {
   view(courseId: string, unitId: string): Promise<Result>;
   start(
     courseId: string,
@@ -193,6 +194,25 @@ export function createNotes(options: NotesOptions): Notes {
         return { ok: true, view: { ...previous, attempt } };
       } finally {
         starting.delete(key);
+      }
+    },
+    inUse(courseId) {
+      // Keys are `<course>/<unit>`, and a course id has no slash.
+      const prefix = `${courseId}/`;
+      const busy = [
+        ...starting,
+        ...[...attempts]
+          .filter(([, attempt]) => attempt.state === "writing")
+          .map(([key]) => key),
+      ].find((key) => key.startsWith(prefix));
+      return busy === undefined
+        ? undefined
+        : { doing: "notes", unit: busy.slice(prefix.length) };
+    },
+    async forget(courseId) {
+      // Only failed attempts are left: one writing holds the course.
+      for (const key of [...attempts.keys()]) {
+        if (key.startsWith(`${courseId}/`)) attempts.delete(key);
       }
     },
     async close() {

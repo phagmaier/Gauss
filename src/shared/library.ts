@@ -1,5 +1,6 @@
 // A course as the record holds it, and as the library routes send it to the
-// page with where each unit stands (architecture.md section 10).
+// page with where each unit stands (architecture.md section 10); and what
+// deleting one asks (task 5.18).
 
 import { z } from "zod";
 import { Course, Slug } from "./course.ts";
@@ -61,3 +62,21 @@ export type CourseWithProgress = z.infer<typeof CourseWithProgress>;
 /** Every course, most recently opened first. */
 export const Library = z.object({ courses: z.array(CourseWithProgress) });
 export type Library = z.infer<typeof Library>;
+
+/**
+ * Deleting a course (task 5.18) asks the learner to type its title once it
+ * has started, so that progress, transcripts or files would go, or when its
+ * record could not be read to tell; a draft, or a course with no unit
+ * started, asks a plain confirmation.
+ */
+export function deletionAsksTitle(course: CourseWithProgress): boolean {
+  if (course.curriculum?.approval.status !== "approved") return false;
+  return (
+    course.problem !== undefined ||
+    Object.values(course.progress).some((p) => p.status !== "not-started")
+  );
+}
+
+/** The body of a course's deletion: the title typed, when it asks for one. */
+export const DeleteCourse = z.object({ title: z.string().optional() });
+export type DeleteCourse = z.infer<typeof DeleteCourse>;

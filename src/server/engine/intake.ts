@@ -44,6 +44,7 @@ import {
   createEventLog,
   type Timer,
 } from "./conversation.ts";
+import type { CourseHolder } from "./course-deletion.ts";
 
 export interface Intake {
   /** Changes when the server restarts, so a page can tell. */
@@ -64,6 +65,8 @@ export interface Intake {
   interrupt(): Promise<void>;
   /** Resolves once every turn sent so far has finished. */
   settled(): Promise<void>;
+  /** Its page reads the event stream, or the planner writes, or the curriculum is being approved. */
+  inUse(): "review-page" | "review" | undefined;
   close(): Promise<void>;
 }
 
@@ -95,6 +98,8 @@ export function createIntake(options: {
   /** The latest proposal, as its card shows it; approval checks the record against it. */
   let shown: ShownProposal | undefined;
   let approved = false;
+  /** The approval is being written. */
+  let approving = false;
   /** The session to resume was lost: the next turn tells the new one where the intake stands. */
   let lost = false;
   /**
@@ -266,10 +271,12 @@ export function createIntake(options: {
       }
       // Set before writing, so nothing else can start meanwhile.
       approved = true;
+      approving = true;
       try {
         await dataRoot.approveCurriculum(courseId, shown);
       } catch (error) {
         approved = false;
+        approving = false;
         if (error instanceof DraftMismatch) {
           return { ok: false, status: 409, error: DRAFT_MISMATCH };
         }
@@ -285,6 +292,7 @@ export function createIntake(options: {
         }
         throw error;
       }
+      approving = false;
       log.emit({ type: "curriculum_approved", courseId, revision });
       options.backup?.commit(`${courseId}: curriculum approved`);
       await tutor.close();
@@ -292,6 +300,10 @@ export function createIntake(options: {
     },
     interrupt: tutor.interrupt,
     settled: tutor.settled,
+    inUse() {
+      if (log.watched()) return "review-page";
+      return tutor.busy() || approving ? "review" : undefined;
+    },
     close: tutor.close,
   };
 }
@@ -323,9 +335,10 @@ const PROFILE_UNKNOWN =
 
 /**
  * The intakes started since the server did, by id. An intake stays after it
- * ends, so a page can still replay it; none outlives the server.
+ * ends, so a page can still replay it; none outlives the server, and the
+ * intakes of a deleted course go with it.
  */
-export interface Intakes {
+export interface Intakes extends CourseHolder {
   /** Starts an intake; its tutor session starts with the first message. */
   start(): Intake;
   get(id: string): Intake | undefined;
@@ -362,6 +375,19 @@ export function createIntakes(options: {
     },
     async close() {
       await Promise.allSettled([...byId.values()].map((i) => i.close()));
+    },
+    inUse(courseId) {
+      for (const intake of byId.values()) {
+        const doing =
+          intake.courseId() === courseId ? intake.inUse() : undefined;
+        if (doing !== undefined) return { doing };
+      }
+      return undefined;
+    },
+    async forget(courseId) {
+      const gone = [...byId.values()].filter((i) => i.courseId() === courseId);
+      for (const intake of gone) byId.delete(intake.id);
+      await Promise.allSettled(gone.map((intake) => intake.close()));
     },
   };
 }

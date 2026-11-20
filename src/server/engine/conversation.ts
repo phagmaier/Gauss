@@ -27,6 +27,8 @@ export interface EventLog {
   events(): readonly PageEvent[];
   /** Calls the listener with every new event and its index in the log. */
   subscribe(listener: EventListener): () => void;
+  /** Something listens, which is a page reading the log's event stream. */
+  watched(): boolean;
   emit(event: PageEvent): void;
 }
 
@@ -43,6 +45,7 @@ export function createEventLog(): EventLog {
         listeners.delete(listener);
       };
     },
+    watched: () => listeners.size > 0,
     emit(event) {
       log.push(event);
       const index = log.length - 1;

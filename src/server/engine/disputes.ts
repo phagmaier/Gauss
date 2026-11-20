@@ -20,6 +20,7 @@ import type {
 import { type DataRoot, DisputeRefused } from "../record/data-root.ts";
 import { answerTo, disputable } from "../record/disputes.ts";
 import { takesPass, unitStatus } from "../record/status.ts";
+import type { CourseHolder } from "./course-deletion.ts";
 import type { DisputeJudge } from "./dispute-judge.ts";
 import { mathRubric } from "./grading.ts";
 import type { UnitChats } from "./unit-chat.ts";
@@ -28,7 +29,7 @@ export type DisputeResult =
   | { ok: true; dispute: DisputeEvidence }
   | { ok: false; status: 404 | 409 | 502; error: string };
 
-export interface Disputes {
+export interface Disputes extends CourseHolder {
   /**
    * What the recorded answer to the question was graded by, for the learner
    * to dispute it; not for "I don't know", nor for a question not answered.
@@ -136,6 +137,15 @@ export function createDisputes(options: {
         deciding.delete(at);
       }
     },
+    inUse(courseId) {
+      for (const at of deciding) {
+        const [course] = JSON.parse(at) as [string, string];
+        if (course === courseId) return { doing: "dispute" };
+      }
+      return undefined;
+    },
+    // Nothing is kept of a course but the disputes being decided.
+    async forget() {},
   };
 
   /**

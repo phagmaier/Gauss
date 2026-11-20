@@ -1,6 +1,7 @@
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -3038,4 +3039,102 @@ test('"Open" refuses a listed file that is now a link or gone, with why, and pas
   expect(await failed.json()).toEqual({
     error: "xdg-open: no method available (xdg-open exited with status 3).",
   });
+});
+
+// --- Deleting a course (task 5.18) ------------------------------------------
+
+/** The folders under `courses/`, the hidden ones a deletion parks too. */
+async function courseFolders(): Promise<string[]> {
+  return readdir(join(dir, "courses"));
+}
+
+async function libraryIds(app: App): Promise<string[]> {
+  const { courses } = (await (await app.request("/api/courses")).json()) as {
+    courses: { id: string }[];
+  };
+  return courses.map((c) => c.id);
+}
+
+test("a draft is deleted with a plain confirmation, leaves the library, and asks for a backup commit", async () => {
+  const setup = setUp([]);
+  await approvedCourse(true);
+
+  const deleted = await post(setup.app, `/api/courses/${COURSE}/delete`, {});
+
+  expect(deleted.status).toBe(200);
+  expect(await courseFolders()).toEqual([]);
+  expect(await libraryIds(setup.app)).toEqual([]);
+  expect((await setup.app.request(`/api/courses/${COURSE}`)).status).toBe(404);
+  expect(setup.commits).toEqual([`${COURSE}: course deleted`]);
+  const again = await post(setup.app, `/api/courses/${COURSE}/delete`, {});
+  expect(again.status).toBe(404);
+});
+
+test("a course with evidence goes only with its title typed, taking its unit's chat and workspace with it", async () => {
+  const setup = setUp([[{ text: "A map is fixed by a basis." }]]);
+  await approvedCourse();
+  await openUnit(setup);
+  await setup.dataRoot.appendEvidence(COURSE, {
+    kind: "override",
+    recordedAt: NOW,
+    objectives: ["basis-image"],
+  });
+  const path = `/api/courses/${COURSE}/delete`;
+
+  const untyped = await post(setup.app, path, {});
+  const mistyped = await post(setup.app, path, { title: "Linear algebra" });
+  expect([untyped.status, mistyped.status]).toEqual([409, 409]);
+  expect(await mistyped.json()).toEqual({
+    error: "Type the course's title to delete it.",
+  });
+  expect(await libraryIds(setup.app)).toEqual([COURSE]);
+  expect(setup.commits).toEqual([]);
+
+  const typed = await post(setup.app, path, { title: FIRST.title });
+  expect(typed.status).toBe(200);
+  expect(await courseFolders()).toEqual([]);
+  // A new course that takes the id must not find this one's chat.
+  expect(setup.units.get(COURSE, "vectors")).toBeUndefined();
+  expect(setup.commits).toEqual([`${COURSE}: course deleted`]);
+});
+
+test("deleting is refused while the tutor writes in a unit, and while a unit's page is open, saying which", async () => {
+  const setup = setUp([[{ text: "A long lecture" }, { hold: true }]]);
+  await approvedCourse();
+  expect((await post(setup.app, `${UNIT}/open`)).status).toBe(200);
+  const chat = setup.units.get(COURSE, "vectors");
+  // Taught until the hold: the tutor is still writing.
+  const taught = Promise.withResolvers<void>();
+  const unsubscribe = chat?.subscribe((event) => {
+    if (event.type === "tutor_text") taught.resolve();
+  });
+  if (chat?.events().some((e) => e.type === "tutor_text")) taught.resolve();
+  await taught.promise;
+  unsubscribe?.();
+  const path = `/api/courses/${COURSE}/delete`;
+  const body = { title: FIRST.title };
+
+  const writing = await post(setup.app, path, body);
+  expect(writing.status).toBe(409);
+  expect(await writing.json()).toEqual({
+    error:
+      "The tutor is writing in unit 1, Vectors and linear maps. Stop it, or delete the course once it has finished.",
+  });
+
+  await post(setup.app, `${UNIT}/interrupt`);
+  await settle(setup);
+  const stream = await readFrames(await setup.app.request(`${UNIT}/events`), 1);
+  const shown = await post(setup.app, path, body);
+  expect(shown.status).toBe(409);
+  expect(await shown.json()).toEqual({
+    error:
+      "The page of unit 1, Vectors and linear maps, is open. Close it, then delete the course.",
+  });
+  expect(await courseFolders()).toEqual([COURSE]);
+  expect(setup.commits).toEqual([]);
+
+  await stream.close();
+  const closed = await post(setup.app, path, body);
+  expect(closed.status).toBe(200);
+  expect(await courseFolders()).toEqual([]);
 });

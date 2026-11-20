@@ -116,6 +116,8 @@ export interface UnitAgents {
    * A call stopped by `close` is not recorded.
    */
   judge(judging: Judging): void;
+  /** A judging is running. */
+  judging(): boolean;
   /**
    * Resolves once every turn sent and every grading and judging started so
    * far has finished, with the turns they send.
@@ -344,6 +346,8 @@ export function createUnitAgents(options: {
       })();
       judgings.add(work);
     },
+
+    judging: () => judgings.size > 0,
 
     async settled() {
       // A grade sends the tutor a turn; the end of a reply can start a

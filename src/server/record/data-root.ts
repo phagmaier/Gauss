@@ -8,14 +8,15 @@
 // writes and reads each unit's handoff note and the misconception log (task 5.7),
 // and reads and writes the learner profile, writing it too when a curriculum
 // that proposes one is approved (task 5.8), and applies the changes to an
-// approved curriculum that the learner accepts (tasks 5.12 and 5.38).
+// approved curriculum that the learner accepts (tasks 5.12 and 5.38), and
+// deletes a course (task 5.18).
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
 // append, runs through withFileLock, so it lands in the order called.
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -84,6 +85,13 @@ export interface DataRoot {
   listCourses(options?: { skipUnreadable?: boolean }): Promise<StoredCourse[]>;
   /** One course, or undefined when no course has that id. */
   readCourse(id: string): Promise<StoredCourse | undefined>;
+  /**
+   * Removes the course's folder and everything in it (task 5.18): first
+   * renamed out of the library at once, to a hidden name the backup leaves
+   * out, then removed. False when no course has that id. A removal that
+   * fails after the rename is logged with the folder left behind.
+   */
+  deleteCourse(id: string): Promise<boolean>;
   /**
    * The absolute path of the course's workspace (task 3.3): the tutor's
    * working folder, where its sessions run and are kept, and the only one
@@ -691,6 +699,35 @@ export function openDataRoot(options: {
       withConsistentApproval(() => listCourses(skipUnreadable)),
 
     readCourse: (id) => withConsistentApproval(() => readCourse(id)),
+
+    async deleteCourse(id) {
+      if (!Slug.safeParse(id).success) return false;
+      const folder = join(courses, id);
+      // Hidden and ending in .tmp, so the library and the backup skip it.
+      const parked = join(courses, `.${id}.${randomUUID()}.tmp`);
+      // Out of the way of an approval being recovered and a backup staging.
+      const moved = await withConsistentApproval(() =>
+        withFileLock(courses, async () => {
+          try {
+            await rename(folder, parked);
+            return true;
+          } catch (error) {
+            if (hasCode(error, "ENOENT")) return false;
+            throw error;
+          }
+        }),
+      );
+      if (!moved) return false;
+      try {
+        await rm(parked, { recursive: true, force: true });
+      } catch (error) {
+        console.error(
+          `The deleted course "${id}" could not be removed from ${parked}:`,
+          error,
+        );
+      }
+      return true;
+    },
 
     async workspaceFolder(id) {
       const folder = resolve(courseFile(id, "workspace"));

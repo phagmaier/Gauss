@@ -110,6 +110,7 @@ export function createTranscribedLog(options: {
     id: log.id,
     events: log.events,
     subscribe: log.subscribe,
+    watched: log.watched,
 
     emit(event) {
       if (session === undefined || event.type === "curriculum_changed") {

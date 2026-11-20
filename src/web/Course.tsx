@@ -11,14 +11,15 @@
 // opens the unit with its test (task 5.6, piece 16). Finished units offer
 // notes (task 5.9, piece 17). "Change the curriculum" above the units, and
 // a finished course's "Plan what comes next", open the course's planning
-// conversation (task 5.38).
+// conversation (task 5.38). At the foot, a course or a draft can be deleted
+// (task 5.18).
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { StoredUnit } from "../shared/curriculum.ts";
 import { IntakeStarted, UnitOpened } from "../shared/events.ts";
-import { CourseWithProgress } from "../shared/library.ts";
+import { CourseWithProgress, deletionAsksTitle } from "../shared/library.ts";
 import { isFinished } from "../shared/status.ts";
-import { getJson, postFor } from "./api.ts";
+import { getJson, post, postFor } from "./api.ts";
 import { Diagram, UnitList } from "./Curriculum.tsx";
 import { CourseMapButton, Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
@@ -311,6 +312,7 @@ export function Course(props: { courseId: string }) {
                   )}
                 </>
               )}
+              <DeleteOffer key={stored.id} course={stored} />
             </>
           )}
         </div>
@@ -581,6 +583,97 @@ function LeadCard(props: {
             </div>
           ))
         : null}
+    </section>
+  );
+}
+
+/**
+ * "Delete course" at the foot of the view (task 5.18): a plain confirmation
+ * for a draft or a course not started, and the title typed for one that has
+ * started, saying what goes. The server refuses while anything of the
+ * course is open or runs, and says what.
+ */
+function DeleteOffer(props: { course: CourseWithProgress }) {
+  const { course } = props;
+  const [asking, setAsking] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [problem, setProblem] = useState<string>();
+  const [sending, setSending] = useState(false);
+  const typing = deletionAsksTitle(course);
+  const draft = course.curriculum?.approval.status !== "approved";
+  const title = course.course.title;
+
+  async function remove() {
+    setSending(true);
+    const refused = await post(
+      `/api/courses/${encodeURIComponent(course.id)}/delete`,
+      typing ? { title: typed } : {},
+    );
+    setSending(false);
+    if (refused === undefined) navigate(paths.library);
+    else setProblem(refused);
+  }
+
+  function cancel() {
+    setAsking(false);
+    setTyped("");
+    setProblem(undefined);
+  }
+
+  return (
+    <section className="cv-del" aria-label="Delete">
+      {asking ? (
+        <div className="confirm">
+          <span className="says">
+            {typing ? (
+              <>
+                <span>
+                  Deleting the course removes everything in it: your progress,
+                  the unit notes, the transcripts, and the files in its
+                  workspace. The app cannot bring it back.
+                </span>
+                <span>
+                  To delete it, type its title: <b>{title}</b>
+                </span>
+              </>
+            ) : (
+              <span>
+                {draft
+                  ? "Delete this draft? The app cannot bring it back."
+                  : "Delete this course? No unit has started. The app cannot bring it back."}
+              </span>
+            )}
+          </span>
+          {typing ? (
+            <input
+              className="field cv-del-title"
+              aria-label="The course's title"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+            />
+          ) : null}
+          <button
+            type="button"
+            className="btn quiet"
+            disabled={sending || (typing && typed.trim() !== title.trim())}
+            onClick={() => void remove()}
+          >
+            {draft ? "Delete the draft" : "Delete the course"}
+          </button>
+          <button type="button" className="textbtn" onClick={cancel}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="textbtn"
+          onClick={() => setAsking(true)}
+        >
+          {draft ? "Delete this draft" : "Delete this course"}
+        </button>
+      )}
+      {problem === undefined ? null : <p className="qa-error">{problem}</p>}
     </section>
   );
 }

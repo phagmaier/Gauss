@@ -89,6 +89,8 @@ export interface Handoffs {
    * one runs, once more after it. Nothing once closed.
    */
   request(): void;
+  /** A call runs, or one is asked for after it. */
+  running(): boolean;
   /** Resolves once every call asked for so far has ended. */
   settled(): Promise<void>;
   /** Stops the call that runs, which records nothing, and asks for no more. */
@@ -198,6 +200,7 @@ export function createHandoffs(options: {
         current = undefined;
       })();
     },
+    running: () => current !== undefined,
     async settled() {
       while (current !== undefined) await current;
     },

@@ -171,10 +171,24 @@ version: a field added later must be optional.
   once a segment's close, a unit's end, an approval, an applied style or
   curriculum change, a handoff note, unit notes or the end of an
   assessment that recorded answers is written, once the Profile page's
-  save is, and at each start; commits run in the background, one at a
-  time, by "Gauss", and a failure is logged and never fails the engine.
-  On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for `pnpm dev:fake`
-  unless `=on`; tests pass it in.
+  save is, once a course is deleted, and at each start; commits run in the
+  background, one at a time, by "Gauss", and a failure is logged and never
+  fails the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for
+  `pnpm dev:fake` unless `=on`; tests pass it in.
+- **Deleting a course** (`engine/course-deletion.ts`), from its course
+  view, removes `courses/<id>/`: renamed first to a hidden `.tmp` name the
+  library and the backup skip, then removed; then a backup commit is asked
+  for. Once any unit has started, or the record cannot be read, the
+  learner's typed title must match (`deletionAsksTitle` in
+  `src/shared/library.ts`). Refused, saying what, while a page reads one of
+  the course's chats (a unit's session, the curriculum's review, the
+  planning conversation) or anything of it runs: a unit opening, the
+  tutor, a grading, a help judging, a handoff note, an install, a notes
+  write, a dispute, the planner, or an approval or Apply being written.
+  Each part of the engine that keeps something of a course answers
+  `inUse` and `forget` (`CourseHolder`); everything they keep of the
+  course is dropped in the same step as the check, before anything is
+  awaited, and their sessions are closed.
 
 ## 4. Session engine
 
@@ -247,8 +261,9 @@ also before it reaches the backend.
   a plan is tried once more, told why; then the unit reports that it could
   not be planned.
 - **The unit chat** (`engine/unit-chat.ts`), one per unit, kept in memory
-  until the server stops. It holds the phase rules, the teaching tools and
-  the learner's actions, and owns the unit's one queue, through which every
+  until the server stops or its course is deleted. It holds the phase
+  rules, the teaching tools and the learner's actions, and owns the unit's
+  one queue, through which every
   change to the unit goes. It coordinates `engine/unit-record.ts`, which
   keeps the position and evidence, and `engine/unit-agents.ts`, which runs
   the tutor, the grader and the help judge. Opening a unit not in
@@ -1094,7 +1109,11 @@ progress take the outline.
   selecting a unit still scrolls to it. The proposal and curriculum-change
   cards use the same diagram and fallback; when crowded, their nodes can
   be selected too. "Change the curriculum" at the right of the Units
-  heading of an approved course opens its planning conversation.
+  heading of an approved course opens its planning conversation. At the
+  foot, "Delete this course" (or "draft") asks in place: plainly, or with
+  what goes and a box for the title, the button off until the title
+  matches; a refusal shows the server's reason there, and a deletion
+  leads back to the library.
 - **Planning** (`/courses/<id>/planning`): the course's planning
   conversation in the thread's layout, opened or picked up when the view
   loads (`POST /api/courses/<id>/planning`). A heading reads "What comes
@@ -1282,7 +1301,8 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
 - `GET /api/courses`, `GET /api/courses/<id>` (with each unit's progress),
   `GET /api/courses/<id>/what-i-know`, `GET
   /api/courses/<id>/artifacts/<file>`, `POST /api/courses/<id>/review`
-  (the intake for a draft).
+  (the intake for a draft), `POST /api/courses/<id>/delete` with the
+  typed `title` where one is asked (409 with the reason when refused).
 - `POST /api/courses/<id>/questions/<question id>/open` with `{ file }`,
   the file's place in the list of an open code question of the course:
   opens it if it is a plain file in the workspace (409 when it is not;

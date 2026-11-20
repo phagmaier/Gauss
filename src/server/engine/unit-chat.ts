@@ -193,6 +193,7 @@ import {
   readWorkspaceFiles,
 } from "./code-run.ts";
 import type { ChatResult, Timer } from "./conversation.ts";
+import type { CourseHolder, Doing } from "./course-deletion.ts";
 import { type Grader, gradeChoice, gradeMath } from "./grading.ts";
 import {
   createHandoffs,
@@ -366,6 +367,12 @@ export interface UnitChat {
   flushTranscript(): Promise<void>;
   /** Resolves once the chat has opened and every turn sent so far has finished. */
   settled(): Promise<void>;
+  /**
+   * What of the chat is shown or runs now, if anything: its page reading
+   * the event stream, its loading, the tutor, a grading, a judging, a
+   * handoff note, or an install.
+   */
+  inUse(): Doing | undefined;
   close(): Promise<void>;
 }
 
@@ -375,10 +382,10 @@ export type OpenResult =
 
 /**
  * The unit chats opened since the server started, one per unit. A chat
- * stays until the server stops; its tutor's session is closed while idle
- * (task 2.15).
+ * stays until the server stops, or its course is deleted; its tutor's
+ * session is closed while idle (task 2.15).
  */
-export interface UnitChats {
+export interface UnitChats extends CourseHolder {
   /**
    * Opens the unit, marking it and its course opened: its chat if it is
    * open, or a new one, which starts the unit or picks it up where
@@ -512,62 +519,78 @@ export function createUnitChats(options: ChatOptions): UnitChats {
     }
   }
 
+  /** Opens under way, until their chat is kept and opened. */
+  const openings = new Set<{ courseId: string; unitId: string }>();
+
+  async function openChat(
+    courseId: string,
+    unitId: string,
+    opening: { testOut?: boolean },
+  ): Promise<OpenResult> {
+    const stored = await dataRoot.readCourse(courseId);
+    const curriculum = stored?.curriculum ?? undefined;
+    const unit = curriculum?.units.find((u) => u.id === unitId);
+    if (curriculum === undefined || unit === undefined) {
+      return {
+        ok: false,
+        status: 404,
+        error: `There is no unit "${unitId}" in the course "${courseId}".`,
+      };
+    }
+    if (curriculum.approval.status !== "approved") {
+      return {
+        ok: false,
+        status: 409,
+        error: "The curriculum is not approved yet, so its units cannot start.",
+      };
+    }
+    if (opening.testOut === true) {
+      const [state, evidence] = await Promise.all([
+        dataRoot.readState(courseId),
+        dataRoot.readEvidence(courseId),
+      ]);
+      if (
+        Object.hasOwn(state.units, unitId) ||
+        unitStatus(unit, evidence, undefined) !== "not-started"
+      ) {
+        return testStarted;
+      }
+    }
+    await dataRoot.markOpened(courseId, unitId);
+    // Looked up after the awaits and kept at once, so two opens of one
+    // unit share one chat.
+    let chat = chats.get(key(courseId, unitId));
+    if (chat === undefined) {
+      chat = createUnitChat({
+        ...options,
+        courseId,
+        unitId,
+        workspace: workspace(courseId),
+        tell: (unit, entry) => {
+          void chats.get(key(courseId, unit))?.learnAnswer(entry);
+        },
+        restyle: (note) => {
+          for (const other of othersIn(courseId, unitId)) {
+            void other.learnStyle(note);
+          }
+        },
+        recurriculum: () => recurriculum(courseId, unitId),
+      });
+      chats.set(key(courseId, unitId), chat);
+    }
+    if (!chat.open(opening.testOut === true)) return testStarted;
+    return { ok: true, chat };
+  }
+
   return {
     async open(courseId, unitId, opening = {}) {
-      const stored = await dataRoot.readCourse(courseId);
-      const curriculum = stored?.curriculum ?? undefined;
-      const unit = curriculum?.units.find((u) => u.id === unitId);
-      if (curriculum === undefined || unit === undefined) {
-        return {
-          ok: false,
-          status: 404,
-          error: `There is no unit "${unitId}" in the course "${courseId}".`,
-        };
+      const under = { courseId, unitId };
+      openings.add(under);
+      try {
+        return await openChat(courseId, unitId, opening);
+      } finally {
+        openings.delete(under);
       }
-      if (curriculum.approval.status !== "approved") {
-        return {
-          ok: false,
-          status: 409,
-          error:
-            "The curriculum is not approved yet, so its units cannot start.",
-        };
-      }
-      if (opening.testOut === true) {
-        const [state, evidence] = await Promise.all([
-          dataRoot.readState(courseId),
-          dataRoot.readEvidence(courseId),
-        ]);
-        if (
-          Object.hasOwn(state.units, unitId) ||
-          unitStatus(unit, evidence, undefined) !== "not-started"
-        ) {
-          return testStarted;
-        }
-      }
-      await dataRoot.markOpened(courseId, unitId);
-      // Looked up after the awaits and kept at once, so two opens of one
-      // unit share one chat.
-      let chat = chats.get(key(courseId, unitId));
-      if (chat === undefined) {
-        chat = createUnitChat({
-          ...options,
-          courseId,
-          unitId,
-          workspace: workspace(courseId),
-          tell: (unit, entry) => {
-            void chats.get(key(courseId, unit))?.learnAnswer(entry);
-          },
-          restyle: (note) => {
-            for (const other of othersIn(courseId, unitId)) {
-              void other.learnStyle(note);
-            }
-          },
-          recurriculum: () => recurriculum(courseId, unitId),
-        });
-        chats.set(key(courseId, unitId), chat);
-      }
-      if (!chat.open(opening.testOut === true)) return testStarted;
-      return { ok: true, chat };
     },
     get: (courseId, unitId) => chats.get(key(courseId, unitId)),
     courseDesk(courseId) {
@@ -578,6 +601,29 @@ export function createUnitChats(options: ChatOptions): UnitChats {
     },
     async close() {
       await Promise.allSettled([...chats.values()].map((c) => c.close()));
+    },
+    inUse(courseId) {
+      for (const under of openings) {
+        if (under.courseId === courseId) {
+          return { doing: "opening", unit: under.unitId };
+        }
+      }
+      for (const [at, chat] of chats) {
+        const [course, unit] = JSON.parse(at) as [string, string];
+        const doing = course === courseId ? chat.inUse() : undefined;
+        if (doing !== undefined) return { doing, unit };
+      }
+      return undefined;
+    },
+    async forget(courseId) {
+      const gone = othersIn(courseId, undefined);
+      for (const at of [...chats.keys()]) {
+        if ((JSON.parse(at) as [string, string])[0] === courseId) {
+          chats.delete(at);
+        }
+      }
+      courses.delete(courseId);
+      await Promise.allSettled(gone.map((chat) => chat.close()));
     },
   };
 }
@@ -3684,6 +3730,18 @@ function createUnitChat(
       await running?.agents.settled();
       await handoffs?.settled();
       await log.flushed();
+    },
+    inUse() {
+      if (log.watched()) return "unit-page";
+      if (running === undefined) {
+        return loading !== undefined && !failed ? "opening" : undefined;
+      }
+      if (running.agents.busy()) return "tutor";
+      if (running.agents.grading()) return "grading";
+      if (running.agents.judging()) return "judging";
+      if (handoffs?.running()) return "handoff";
+      if (install !== undefined) return "install";
+      return undefined;
     },
     async close() {
       closing = true;

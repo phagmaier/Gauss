@@ -45,6 +45,7 @@ import {
   createEventLog,
   type Timer,
 } from "./conversation.ts";
+import type { CourseHolder } from "./course-deletion.ts";
 import { conversationBefore, type Said } from "./intake.ts";
 import type { CourseDesk, UnitChats } from "./unit-chat.ts";
 
@@ -67,6 +68,8 @@ export interface CoursePlanning {
   interrupt(): Promise<void>;
   /** Resolves once every turn sent so far has finished. */
   settled(): Promise<void>;
+  /** Its page reads the event stream, or the planner writes, or its change is being applied. */
+  inUse(): "planning-page" | "planning" | undefined;
   close(): Promise<void>;
 }
 
@@ -293,6 +296,10 @@ export function createCoursePlanning(
     },
     interrupt: planner.interrupt,
     settled: planner.settled,
+    inUse() {
+      if (log.watched()) return "planning-page";
+      return planner.busy() || status === "applying" ? "planning" : undefined;
+    },
     close: planner.close,
   };
 }
@@ -306,9 +313,10 @@ const OVER =
 
 /**
  * The planning conversations started since the server did, by id. One stays
- * after it ends, so a page can still replay it; none outlives the server.
+ * after it ends, so a page can still replay it; none outlives the server,
+ * and those of a deleted course go with it.
  */
-export interface CoursePlannings {
+export interface CoursePlannings extends CourseHolder {
   /**
    * The course's conversation that has not ended, or a new one; refused for
    * a course with no approved curriculum.
@@ -362,6 +370,20 @@ export function createCoursePlannings(
     },
     async close() {
       await Promise.allSettled([...byId.values()].map((p) => p.close()));
+    },
+    inUse(courseId) {
+      for (const planning of byId.values()) {
+        const doing =
+          planning.courseId === courseId ? planning.inUse() : undefined;
+        if (doing !== undefined) return { doing };
+      }
+      return undefined;
+    },
+    async forget(courseId) {
+      const gone = [...byId.values()].filter((p) => p.courseId === courseId);
+      for (const planning of gone) byId.delete(planning.id);
+      current.delete(courseId);
+      await Promise.allSettled(gone.map((planning) => planning.close()));
     },
   };
 }
