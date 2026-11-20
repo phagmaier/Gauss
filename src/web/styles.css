@@ -1324,8 +1324,33 @@ button.dn:hover {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.sp .dg {
+.sp .diagram {
   margin: 26px 22px;
+}
+/* Both views must measure the same width, even if only one needs a scrollbar. */
+.sv-body:has(> .diagram) {
+  scrollbar-gutter: stable;
+}
+.diagram-units {
+  padding-inline-start: 1.75em;
+}
+.diagram-unit {
+  padding: 0.55em 0.65em;
+  overflow-wrap: anywhere;
+}
+.diagram-unit::marker {
+  color: var(--faint);
+}
+.diagram-unit.sel {
+  background: var(--surface0);
+  border-radius: var(--r);
+}
+.diagram-units .textbtn {
+  padding: 0;
+  text-align: left;
+}
+.diagram-status {
+  margin-inline-start: 0.75em;
 }
 
 /* ---- Starting a course, piece 8: the proposed curriculum is a card in the thread ---- */

@@ -969,9 +969,10 @@ Kept as files in `prompts/`, each revised against real runs.
   with what belongs in the profile (what holds in any course) and what in
   the background note (this course). A topic of more than about 15 units
   is one course planned in stretches: the planner proposes the first, and
-  names what follows in its replies and the style note; the tutor offers
-  each next stretch with `amend_curriculum` while it teaches the last
-  unit or the one before.
+  names what follows before posting the proposal and in the style note.
+  The tutor is instructed to offer each next stretch with
+  `amend_curriculum` in the first teaching turn of the last unit or the
+  one before, before any check starts.
 - `unit-planner.md` drives a unit's planning session.
 - `grader.md`, `help-judge.md` and `dispute-judge.md` are the one-shot
   calls of section 6; `handoff.md` is the one-shot call that writes
@@ -1017,7 +1018,10 @@ module beside it (`session.ts`, `progress.ts`, `library.ts`,
   asks once, saying what the test is, then opens the unit with its test;
   a finished unit offers "Write notes", or "Notes" beside "Open" once
   saved. The diagram opens in the side pane; selecting a unit there lights
-  its lines and scrolls the list to it. "What I know" opens its own page.
+  its lines and scrolls the list to it. If the pane is too narrow to keep
+  the lines apart, it lists prerequisites by unit number; selecting a unit
+  still scrolls to it. The proposal and curriculum-change cards use the
+  same diagram and fallback. "What I know" opens its own page.
 - **What I know** (`/courses/<id>/what-i-know`): each started unit's
   objectives with their status ("Retained" in teal, "Slipping" in peach)
   and, under each, its evidence in log order (question, answer,

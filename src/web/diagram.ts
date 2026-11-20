@@ -38,6 +38,8 @@ export interface Layout {
   nodes: DiagramNode[];
   edges: DiagramEdge[];
   rows: number;
+  /** Pane width in CSS pixels needed for side-by-side lanes to read. */
+  minWidth: number;
 }
 
 /** Two units side by side fill the width, with a gap between for lines. */
@@ -53,6 +55,8 @@ const SPREAD = 8;
 const PORT_SPAN = NODE_WIDTH - 10;
 /** The maximum gap between lines that cross a row side by side, in percent. */
 const LANE = 1.5;
+/** Leave visible space between the 1.5 px paths (2 px when selected). */
+const LANE_PITCH_PX = 3;
 /** The width lines crossing a row may spread over: the gap between a pair less a margin, or a node's place beside a lone unit. */
 const GAP_ROOM = RIGHT - LEFT - NODE_WIDTH - 2;
 const SIDE_ROOM = NODE_WIDTH - 10;
@@ -102,6 +106,7 @@ export function layOut(units: readonly Unit[]): Layout {
       : (link.via.at(-1) ?? MIDDLE);
   const mean = (xs: number[]) =>
     xs.length === 0 ? MIDDLE : xs.reduce((a, b) => a + b, 0) / xs.length;
+  let minWidth = 0;
   for (let row = 0; row < perRow.length; row++) {
     const inRow = units.filter((u) => rowOf.get(u.id) === row);
     const crossing = links.filter((l) => l.top < row && row < l.bottom);
@@ -116,6 +121,9 @@ export function layOut(units: readonly Unit[]): Layout {
         .map((l) => ({ l, x: above(l, row) }))
         .sort((a, b) => a.x - b.x);
       const step = Math.min(LANE, room / Math.max(1, order.length - 1));
+      if (order.length > 1) {
+        minWidth = Math.max(minWidth, (LANE_PITCH_PX * 100) / step);
+      }
       order.forEach(({ l }, k) => {
         l.via.push(centre + (k - (order.length - 1) / 2) * step);
       });
@@ -177,5 +185,5 @@ export function layOut(units: readonly Unit[]): Layout {
     };
   });
 
-  return { nodes, edges, rows: perRow.length };
+  return { nodes, edges, rows: perRow.length, minWidth };
 }

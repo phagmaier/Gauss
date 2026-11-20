@@ -171,7 +171,7 @@ test("lines crossing the rows of a large course stay apart, in the gap, in one o
       unit(`late${k + 1}`, [top[k % 4] ?? "a", "d"]),
     ),
   ];
-  const { nodes, edges, rows } = layOut(units);
+  const { nodes, edges, rows, minWidth } = layOut(units);
   const crossing = (row: number) =>
     edges
       .filter((e) => e.from.row < row && row < e.to.row)
@@ -200,5 +200,8 @@ test("lines crossing the rows of a large course stay apart, in the gap, in one o
       order(both),
     );
   }
-  expect(busiest).toBeGreaterThanOrEqual(8);
+  expect(busiest).toBe(12);
+  // At the busiest row six late units each send two lines past it.
+  // Twelve lines need 33 px at 3 px between centres; 6% of 550 px is 33 px.
+  expect(minWidth).toBe(550);
 });

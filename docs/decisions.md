@@ -276,11 +276,13 @@ The brief states the result; this is who decided and why.
   stretch, about 15 units at most (Calculus 1 alone), titles the course
   for the whole topic, and names each later stretch with what it covers
   when asking to go ahead, before the card and in the style note; the
-  tutor offers the next stretch with `amend_curriculum` while teaching the
-  last unit or the one before, when the style note or the background note
-  goes further. Units planned far ahead would be guesses made before
-  anything is known of the learner. Rejected: the whole topic planned up
-  front; one course per stretch.
+  tutor offers the next stretch with `amend_curriculum` in the first
+  teaching turn of the last unit or the one before, when the style note
+  or the background note goes further. Closing a segment does not send
+  the tutor a turn, and the closed-phase header rules out tools. Units
+  planned far ahead would be guesses made before anything is known of
+  the learner. Rejected: the whole topic planned up front; one course
+  per stretch.
 
 ## Toolchain
 
@@ -1669,12 +1671,11 @@ the denominator rule into a false "never use the full space".
   proposed a three-unit course" without calling `propose_curriculum`; the
   prompt now forbids it. Sonnet posted its proposals without the text the
   prompt asks for before the card (left); so did Haiku once in task 5.16.
-- **A large topic in stretches** (task 5.16, two Haiku intakes for
-  "Calculus 1 to 3"): both proposed a first stretch of 14 or 15 units
-  titled for the whole topic, and named the later stretches when asking
-  to go ahead and in the style note. The first named them only as
-  "Calculus 2 and 3" and said nothing of them before the card; the
-  prompt's example of a stretch with what it covers fixed the first. The
+- **A large topic in stretches** (task 5.16). The posting instructions
+  explicitly exempt the preview of later stretches from the rule not to
+  repeat the notes. In a Haiku intake for "Calculus 1 to 3", the go-ahead
+  reply and style note gave names, topics and timing; the reply that
+  posted the card still gave names and timing but omitted topics. The
   tutor's offer of the next stretch has not been tried on a real model.
 
 **Writing rules for the page**: `$...$` inline and `$$` for display; a
@@ -1720,11 +1721,11 @@ decisions"); as built, they are `architecture.md` section 10.
   away in the side pane. Rejected: built around the diagram.
 - **The diagram at 30 units** (task 5.16, the agent's choice): lines that
   cross a row sit side by side, in the order they came from, instead of
-  all through the gap's middle, where a large course's long lines merged
-  into one; nodes went from 46% to 44% wide, on columns at 24% and 76%,
-  to widen the gap; a selected unit's lines are lit in the course view.
-  Rows still follow depth, so a unit with no prerequisites late in the
-  list sits at the top.
+  all through the gap's middle, where long lines merged into one. If
+  the pane is too narrow for distinct lines, list prerequisites by unit
+  number instead. This keeps the dependencies readable without panning
+  across a wider diagram. Diagram rows still follow depth, so a unit
+  with no prerequisites late in the list sits at the top.
 - **A course starts in the thread**: intake is a conversation, the proposal
   a card; a revision is a new card with changes marked, the old one shrunk
   to a line. Rejected: the proposal in the side pane, or on a page of its

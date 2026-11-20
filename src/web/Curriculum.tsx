@@ -2,9 +2,21 @@
 // and 08-intake.html: the unit list, and the diagram in the side pane. Both
 // are drawn from the units as stored, so they cannot disagree with the record.
 
-import type { CSSProperties, ReactNode } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { Unit } from "../shared/curriculum.ts";
-import { type DiagramEdge, layOut, NODE_WIDTH } from "./diagram.ts";
+import {
+  type DiagramEdge,
+  type Layout,
+  layOut,
+  NODE_WIDTH,
+} from "./diagram.ts";
 import { buildsOn } from "./units.ts";
 
 /** A short word at a unit's right, such as "Changed", and any lines under it. */
@@ -92,7 +104,7 @@ function linePath(e: DiagramEdge): string {
   return d;
 }
 
-export function Diagram(props: {
+interface DiagramProps {
   units: Unit[];
   /** Units whose node carries a word, such as "Changed", by id. */
   marks?: ReadonlyMap<string, string>;
@@ -101,8 +113,87 @@ export function Diagram(props: {
   selected?: string | undefined;
   /** Makes the nodes buttons that mark their unit. */
   onSelect?: (id: string) => void;
-}) {
-  const { nodes, edges, rows } = layOut(props.units);
+}
+
+export function Diagram(props: DiagramProps) {
+  const { units } = props;
+  const layout = useMemo(() => layOut(units), [units]);
+  const pane = useRef<HTMLDivElement>(null);
+  const [list, setList] = useState(false);
+  const { minWidth } = layout;
+  useLayoutEffect(() => {
+    const element = pane.current;
+    if (element === null) return;
+    setList(element.getBoundingClientRect().width < minWidth);
+    if (minWidth === 0) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) setList(entry.contentRect.width < minWidth);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [minWidth]);
+
+  return (
+    <div className="diagram" ref={pane}>
+      {list ? <PrerequisiteList {...props} /> : drawDiagram(props, layout)}
+    </div>
+  );
+}
+
+function PrerequisiteList({
+  units,
+  marks,
+  standing,
+  selected,
+  onSelect,
+}: DiagramProps) {
+  return (
+    <>
+      <p className="qa-aside">
+        The lines are too close together in this pane. Prerequisites are listed
+        by unit number instead.
+      </p>
+      <ol className="diagram-units">
+        {units.map((unit) => {
+          const needs = buildsOn(unit, units);
+          const mark = marks?.get(unit.id);
+          const status = standing?.(unit.id);
+          const label = mark ?? status?.text;
+          return (
+            <li
+              key={unit.id}
+              className={
+                unit.id === selected ? "diagram-unit sel" : "diagram-unit"
+              }
+            >
+              {onSelect === undefined ? (
+                <span>{unit.title}</span>
+              ) : (
+                <button
+                  className="textbtn"
+                  type="button"
+                  onClick={() => onSelect(unit.id)}
+                >
+                  {unit.title}
+                </button>
+              )}
+              {label ? (
+                <span
+                  className={`diagram-status cu-s ${mark ? "chg" : (status?.state ?? "")}`}
+                >
+                  {label}
+                </span>
+              ) : null}
+              {needs === null ? null : <div className="cu-m">{needs}</div>}
+            </li>
+          );
+        })}
+      </ol>
+    </>
+  );
+}
+
+function drawDiagram(props: DiagramProps, { nodes, edges, rows }: Layout) {
   // The selected unit's lines are drawn last, over the others, and lit.
   const touches = (e: DiagramEdge) =>
     e.from.unit.id === props.selected || e.to.unit.id === props.selected;

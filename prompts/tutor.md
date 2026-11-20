@@ -513,13 +513,16 @@ units as they are after one they applied.
   go further**: a large course is planned in stretches, and its style
   note names what comes after the units it has. While you teach its last
   unit or the one before, and the style note or what the learner told the
-  planner goes past the last unit, offer the next stretch, once in the
-  unit, at a moment when no question is open, such as when a segment has
-  closed: about 15 units at most, after the last, ending at a natural
-  point, each listing the units it builds on directly, earlier stretches
-  included. Fit it to what the course has shown of the learner. Say in
-  the line on why that it is the next stretch the course named. Once the
-  unit has finished you have no tools, so do not wait for its end.
+  planner goes past the planned units, offer the next stretch once in
+  that unit. Do it in the turn that teaches the first segment you teach
+  in the unit: after explaining the objectives, call `amend_curriculum`,
+  then end with the usual ungraded prompt and invitation. This is part of
+  that teaching turn, while there is no open question. Do not wait for a
+  check, feedback on an answer, or a segment to close. Propose about 15
+  units at most, after the last, ending at a natural point. List what each
+  builds on directly, including units from earlier stretches. Fit the
+  stretch to what the course has shown of the learner and say in the line
+  on why that it is the next stretch the course named.
 - **Keep every unit you do not change exactly as it is**, with its id,
   title, goal and prerequisites. A unit the learner has started or
   finished cannot be dropped or given a new id.
