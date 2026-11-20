@@ -4,7 +4,6 @@
 
 import {
   type CSSProperties,
-  type ReactNode,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -21,28 +20,17 @@ import {
 import { type FormOf, StatusForm } from "./StatusForm.tsx";
 import { buildsOn } from "./units.ts";
 
-/**
- * A short word at a unit's right, such as "Changed", and any lines under
- * it; with `form`, the unit's status form before the word.
- */
+/** A short word at a unit's right, such as "Changed". */
 export interface UnitMark {
-  form?: FormOf;
   text: string;
   className: string;
-  under?: { text: string; className: string }[];
 }
 
 export function UnitList<U extends Unit>(props: {
   units: U[];
   mark?: (unit: U) => UnitMark | undefined;
-  /** A class for the unit's row, for where it stands (task 2.12). */
-  state?: (unit: U) => string;
   /** The unit marked in the diagram, if any. */
   selected?: string | undefined;
-  /** What the learner can do with a unit, under its goal. */
-  action?: ((unit: U) => ReactNode) | undefined;
-  /** Anything under that line, such as a question before starting. */
-  after?: (unit: U) => ReactNode;
 }) {
   const { units } = props;
   return (
@@ -50,36 +38,24 @@ export function UnitList<U extends Unit>(props: {
       {units.map((unit, i) => {
         const needs = buildsOn(unit, units);
         const mark = props.mark?.(unit);
-        const action = props.action?.(unit);
-        const className = [
-          "cu-row",
-          props.state?.(unit),
-          props.selected === unit.id ? "sel" : undefined,
-        ]
-          .filter(Boolean)
-          .join(" ");
         return (
-          <li key={unit.id} id={`unit-${unit.id}`} className={className}>
+          <li
+            key={unit.id}
+            id={`unit-${unit.id}`}
+            className={props.selected === unit.id ? "cu-row sel" : "cu-row"}
+          >
             <span className="cu-n">{i + 1}</span>
             <div>
               <div className="cu-t">{unit.title}</div>
               <div className="cu-g">{unit.goal}</div>
-              {needs === null && action == null ? null : (
+              {needs === null ? null : (
                 <div className="cu-m">
-                  {needs === null ? null : <span>{needs}</span>}
-                  {action}
+                  <span>{needs}</span>
                 </div>
               )}
-              {props.after?.(unit)}
             </div>
             <span className={`cu-s ${mark?.className ?? ""}`}>
-              {mark?.form === undefined ? null : <StatusForm {...mark.form} />}
               {mark?.text}
-              {mark?.under?.map((line) => (
-                <small key={line.text} className={line.className}>
-                  {line.text}
-                </small>
-              ))}
             </span>
           </li>
         );

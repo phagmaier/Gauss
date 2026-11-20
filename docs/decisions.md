@@ -1740,8 +1740,8 @@ redesign's.
   change): the form sits just before the status word. The current unit is
   the one the course view's card leads to, up next as well as in progress,
   since the accent marks the next step; other units in progress take the
-  outline and its yellow word, in the course view as in "What I know",
-  not the accent. The gap inside the current form's ring takes the colour
+  outline, and in "What I know" its yellow word, not the accent. The gap
+  inside the current form's ring takes the colour
   of the surface under it (`--ring-gap` in `styles.css`), as the mock does.
   The current objective (`currentObjective` in `src/shared/plan.ts`) is
   none while the segment is closed, between segments or at the unit's
@@ -1821,7 +1821,15 @@ redesign's.
   open; the others are one line each and open when clicked (the user's
   pick over every unit open, for 30-unit courses). Above the units come
   the due count with "Review now", then the card. "Course map" and "What I
-  know" are in the top line. Rejected: built around the diagram.
+  know" are in the top line. Rejected: built around the diagram. As built
+  (the agent's choices, open to change): "Next" stands in the place of the
+  status word, which stays for assistive technology, as does a unit's
+  word, since the heading shows only its form. Counts take passed and
+  retained only: a finished unit with a slipping objective reads "1 of 2
+  passed", and the course's line is the units' counts summed, so the two
+  agree. A folded unit's objectives and actions are not drawn, so a
+  30-unit course asks for the notes of open finished units only. A draft
+  keeps the plain list of units and goals: it has no statuses to show.
 - **A curriculum change is asked for from the course view** (the user's
   pick, piece 20): "Change the curriculum" above the units, and on a
   finished course the card's "Plan what comes next", open a planning

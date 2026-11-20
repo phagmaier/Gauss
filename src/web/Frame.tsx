@@ -102,6 +102,44 @@ export function SidePane(props: {
   );
 }
 
+/** The course map's icon: three units and their lines. */
+const MAP_ICON = (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    aria-hidden="true"
+  >
+    <rect x="1.5" y="1.5" width="5" height="3.5" rx="1" />
+    <rect x="9.5" y="6.25" width="5" height="3.5" rx="1" />
+    <rect x="1.5" y="11" width="5" height="3.5" rx="1" />
+    <path d="M4 5v6M6.5 3.25h3v3" />
+  </svg>
+);
+
+/** "Course map" in the top line, which opens the curriculum's diagram in the side pane (piece 19). */
+export function CourseMapButton(props: {
+  open: boolean;
+  disabled: boolean;
+  onToggle(): void;
+}) {
+  return (
+    <button
+      type="button"
+      className="nl-pos"
+      aria-pressed={props.open}
+      disabled={props.disabled}
+      onClick={props.onToggle}
+    >
+      {MAP_ICON}
+      Course map
+    </button>
+  );
+}
+
 export function CopyPath(props: { path: string }) {
   const [copied, setCopied] = useState<"copied" | "failed">();
   return (

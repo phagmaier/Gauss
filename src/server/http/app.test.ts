@@ -2141,7 +2141,16 @@ test("at the unit's end, going over again and finishing without the rest go thro
     (await (await setup.app.request("/api/courses")).json()).courses[0]
       .progress;
   expect(await progress()).toEqual({
-    vectors: { status: "in-progress", segment: 2 },
+    vectors: {
+      status: "in-progress",
+      segment: 2,
+      phase: "discuss",
+      again: ["basis-image", "matrix-columns"],
+      objectives: {
+        "basis-image": "overridden",
+        "matrix-columns": "overridden",
+      },
+    },
     eigen: { status: "not-started" },
   });
 
@@ -2151,7 +2160,13 @@ test("at the unit's end, going over again and finishing without the rest go thro
   expect(await finished.json()).toEqual({ ok: true });
   expect(await unitState()).toBeUndefined();
   expect(await progress()).toEqual({
-    vectors: { status: "overridden", retained: 0, slipping: 0 },
+    vectors: {
+      status: "overridden",
+      objectives: {
+        "basis-image": "overridden",
+        "matrix-columns": "overridden",
+      },
+    },
     eigen: { status: "not-started" },
   });
   const again = await post(setup.app, `${UNIT}/go-over-again`);

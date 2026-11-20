@@ -51,11 +51,43 @@ test("the seed gives courses in each state, as the routes would send them", {
     "calculus-i": {
       approval: "approved",
       progress: {
-        limits: { status: "passed", retained: 2, slipping: 1 },
-        derivative: { status: "overridden", retained: 0, slipping: 0 },
-        rules: { status: "in-progress", segment: 1 },
+        limits: {
+          status: "passed",
+          objectives: {
+            "limits-a": "retained",
+            "limits-b": "slipping",
+            "limits-c": "retained",
+          },
+        },
+        derivative: {
+          status: "overridden",
+          objectives: {
+            "derivative-a": "passed",
+            "derivative-b": "overridden",
+            "derivative-c": "overridden",
+          },
+        },
+        rules: {
+          status: "in-progress",
+          segment: 1,
+          phase: "discuss",
+          objectives: {
+            "rules-a": "passed",
+            "rules-b": "not-started",
+            "rules-c": "not-started",
+          },
+        },
         optimisation: { status: "not-started" },
-        integral: { status: "in-progress", segment: 0 },
+        integral: {
+          status: "in-progress",
+          segment: 0,
+          phase: "discuss",
+          objectives: {
+            "integral-a": "not-started",
+            "integral-b": "not-started",
+            "integral-c": "not-started",
+          },
+        },
         fundamental: { status: "not-started" },
       },
     },
@@ -70,27 +102,37 @@ test("the seed gives courses in each state, as the routes would send them", {
     probability: {
       approval: "approved",
       progress: {
-        events: { status: "passed", retained: 0, slipping: 0 },
-        bayes: { status: "overridden", retained: 0, slipping: 0 },
+        events: expect.objectContaining({ status: "passed" }),
+        bayes: {
+          status: "overridden",
+          objectives: {
+            "bayes-a": "passed",
+            "bayes-b": "overridden",
+            "bayes-c": "overridden",
+          },
+        },
       },
     },
     topology: { approval: "draft", progress: {} },
     "what-is-a-group": {
       approval: "approved",
-      progress: { group: { status: "in-progress", segment: 1 } },
+      progress: {
+        group: expect.objectContaining({
+          status: "in-progress",
+          segment: 1,
+        }),
+      },
     },
     "the-pigeonhole-principle": {
       approval: "approved",
-      progress: {
-        pigeonhole: { status: "passed", retained: 0, slipping: 0 },
-      },
+      progress: { pigeonhole: expect.objectContaining({ status: "passed" }) },
     },
     "calculus-1-to-3": {
       approval: "approved",
       progress: expect.objectContaining({
-        functions: { status: "passed", retained: 0, slipping: 0 },
-        derivative: { status: "passed", retained: 0, slipping: 0 },
-        rules: { status: "in-progress", segment: 0 },
+        functions: expect.objectContaining({ status: "passed" }),
+        derivative: expect.objectContaining({ status: "passed" }),
+        rules: expect.objectContaining({ status: "in-progress", segment: 0 }),
         "green-stokes": { status: "not-started" },
       }),
     },

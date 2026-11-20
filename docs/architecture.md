@@ -130,9 +130,11 @@ version: a field added later must be optional.
   pure functions in `record/status.ts`; a unit's status from its
   objectives', where a unit with a position in `state.json` is in
   progress; where a course stands and whether it is a one-off (a course
-  of one unit); each unit's progress for the library, with how many of a
-  finished unit's objectives are retained and slipping
-  (`record/progress.ts`), and which courses are finished, every unit of
+  of one unit); each unit's progress for the library and the course view,
+  with each started unit's objective statuses and, for a unit in progress,
+  what of its position `currentObjective` reads (`record/progress.ts`,
+  `UnitProgress` in `src/shared/library.ts`), and which courses are
+  finished, every unit of
   an approved curriculum passed or overridden, omitting unreadable records
   (`finishedCourses`), a list for new planners and the Profile page;
   and "what I know" with its calibration counts (`record/what-i-know.ts`,
@@ -1002,10 +1004,10 @@ the HTML `Prose` renders.
 
 An objective's or a unit's status shows as a form beside its word
 (`StatusForm.tsx`; `decisions.md`, "Page design"): in the course view's
-unit list, its diagram and the diagram's numbered fallback, "What I know",
-and the closing card's rows. The current unit, the one the course view's
-card leads to, takes the accent's ringed form; other units in progress
-take the outline.
+unit headings and objective rows, its diagram and the diagram's numbered
+fallback, "What I know", and the closing card's rows. The current unit,
+the one the course view's card leads to, takes the accent's ringed form;
+other units in progress take the outline.
 
 - **Library** (`/`): every course and one-off, with where it stands, a tick
   per unit, and when it was last opened; finished courses grouped at the
@@ -1022,25 +1024,38 @@ take the outline.
   one box with its length against the limit, "Undo my changes" and Save,
   then the finished courses a new planner is given. A save names the text
   the page loaded and is refused if the profile changed since.
-- **Course** (`/courses/<id>`): a card at the top that leads to the unit in
-  progress most recently opened, or else the next unit in order (the first
-  not started whose prerequisites are finished); the unit list with each
-  unit's status form and word, the card's unit in the accent (under a
-  finished unit's word, how many of its objectives are retained, in teal,
-  and how many slipping, in peach, if any), Start
-  (which asks first when a prerequisite is not finished) or Continue, and
-  beside Start, and under the card's "Start unit N", "Test out", which
-  asks once, saying what the test is, then opens the unit with its test;
-  a finished unit offers "Write notes", or "Notes" beside "Open" once
-  saved. The diagram opens in the side pane; selecting a unit there lights
-  its lines and scrolls the list to it. A crowded diagram (more than three
-  lines across one row, `layOut` in `diagram.ts`) draws the lines between
-  adjacent rows, and a unit's row-skipping lines only while it is selected,
-  routed apart from the rest, with a line above saying so. If the pane is
-  too narrow to keep the lines drawn at once apart, it lists prerequisites
-  by unit number; selecting a unit still scrolls to it. The proposal and
-  curriculum-change cards use the same diagram and fallback; when crowded,
-  their nodes can be selected too. "What I know" opens its own page.
+- **Course** (`/courses/<id>`): the top line has "Course map" and "What I
+  know" (a draft has "Review the curriculum" instead of the latter). Under
+  the title, a line counts the units, the finished ones, and the started
+  units' objectives passed (passed or retained) out of how many
+  (`courseCounts` in `progress.ts`). A card leads to the unit in progress
+  most recently opened, or else the next unit in order (the first not
+  started whose prerequisites are finished); on a finished course it reads
+  "Every unit is finished", with "Plan what comes next", disabled, as is
+  "Change the curriculum" above the units, until planning from the course
+  view is built. Each unit is a heading with "Unit N", its title, "k of n
+  passed" once started, and its form, the card's unit in the accent; it
+  opens and folds, only units in progress open at first, and the view
+  keeps what the learner opened or folded while the course map opens and
+  closes (`unitRows`). Open, a started unit lists its objectives with
+  their forms and words, "Next" in the accent with the ringed form on the
+  current objective of the card's unit (`currentObjective` in
+  `src/shared/plan.ts`); a unit not started shows its goal, "Its
+  objectives are set when it starts", Start (which asks first when a
+  prerequisite is not finished) and "Test out"; one in progress has
+  Continue; a finished one has Open and "Write notes", or "Notes" once
+  saved. "Test out", there and under the card's "Start unit N", asks once,
+  saying what the test is, then opens the unit with its test. A draft
+  lists its units with their goals. "Course map" opens the diagram in the
+  side pane; selecting a unit there lights its lines and scrolls the list
+  to it. A crowded diagram (more than three lines across one row, `layOut`
+  in `diagram.ts`) draws the lines between adjacent rows, and a unit's
+  row-skipping lines only while it is selected, routed apart from the
+  rest, with a line above saying so. If the pane is too narrow to keep the
+  lines drawn at once apart, it lists prerequisites by unit number;
+  selecting a unit still scrolls to it. The proposal and curriculum-change
+  cards use the same diagram and fallback; when crowded, their nodes can
+  be selected too.
 - **What I know** (`/courses/<id>/what-i-know`): each started unit's
   objectives with their status ("Retained" in teal, "Slipping" in peach)
   and, under each, its evidence in log order (question, answer,

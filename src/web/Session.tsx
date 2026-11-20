@@ -74,7 +74,7 @@ import { Composer, type ComposerHandle } from "./Composer.tsx";
 import { Diagram } from "./Curriculum.tsx";
 import { CurriculumCard } from "./CurriculumCard.tsx";
 import { type DisputeApi, disputeApi } from "./Dispute.tsx";
-import { Link, SidePane, TopLine } from "./Frame.tsx";
+import { CourseMapButton, Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
 import { PackagesCard } from "./PackagesCard.tsx";
 import { mapMark } from "./progress.ts";
@@ -412,19 +412,14 @@ export function Session(props: { courseId: string; unitId: string }) {
                 )}
               </PositionButton>
             )}
-            <button
-              type="button"
-              className="nl-pos"
-              aria-pressed={pane?.kind === "map"}
+            <CourseMapButton
+              open={pane?.kind === "map"}
               disabled={stored?.curriculum == null}
-              onClick={() => {
+              onToggle={() => {
                 setPicked(undefined);
                 setPane(pane?.kind === "map" ? undefined : { kind: "map" });
               }}
-            >
-              {MAP_ICON}
-              Course map
-            </button>
+            />
           </div>
         }
       />
@@ -791,24 +786,6 @@ function PositionButton(props: {
     </>
   );
 }
-
-/** The course map's icon: three units and their lines. */
-const MAP_ICON = (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 16 16"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    aria-hidden="true"
-  >
-    <rect x="1.5" y="1.5" width="5" height="3.5" rx="1" />
-    <rect x="9.5" y="6.25" width="5" height="3.5" rx="1" />
-    <rect x="1.5" y="11" width="5" height="3.5" rx="1" />
-    <path d="M4 5v6M6.5 3.25h3v3" />
-  </svg>
-);
 
 const CHEVRON = (
   <svg

@@ -34,44 +34,12 @@ view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.37 The course view down to objectives
-
-- Status: todo
-- Depends on: 5.31
-- As piece 20 (`decisions.md`, "Page design", "The course view is built
-  around the unit list, down to objectives"). The view has the title, a
-  line with the units, the finished units, and the objectives passed in
-  the units started; the place for the due count and "Review now", which
-  5.24 and 5.25 fill; and the card. On a finished course the card reads
-  "Every unit is finished", with "Plan what comes next". Under "Units"
-  is "Change the curriculum"; 5.38 makes both work. Each unit is a heading
-  with "Unit N", its title, "k of n passed" and its form. A started unit
-  lists its objectives with their forms and words, and "Next" in the
-  accent, with the ringed form, marks the current objective (5.31) of
-  the unit the card leads to. The course and unit counts include only
-  passed and retained objectives, even when finished. A unit not started
-  shows its goal, "Its objectives are set when it starts", Start and
-  Test out. A finished unit has Open, and Notes or "Write notes". Only
-  units in progress open by default. Manual opening and folding survive
-  opening and closing the course map. The top line has "Course map",
-  which opens the side pane as "Show the diagram" does today, and
-  "What I know". The course response gains each started unit's objective
-  statuses (`UnitProgress` in `src/shared/library.ts`), derived, never
-  stored. The objective rows replace the retained and slipping counts
-  under a finished unit. "Next" is `currentObjective` (`src/shared/plan.ts`),
-  which needs the position's phase, `again` and the test's skip, which
-  `UnitProgress` does not send yet; the forms are `StatusForm.tsx`.
-- Done when: tests on hand-made progress give the objective statuses and
-  show that "Next" stays in the active segment after an earlier override.
-  A finished course with slipping and overridden objectives shows counts
-  consistent with its unit rows. On `pnpm dev:fake`, Calculus I and
-  Calculus 1 to 3 read as piece 20, retain manual folding across map
-  toggles, and Start, Test out and Continue still work.
-
 ### 5.38 Planning from the course view
 
 - Status: todo
-- Depends on: 5.37
+- Depends on: nothing left; the course view (`Course.tsx`) shows "Change
+  the curriculum" and "Plan what comes next" disabled, for this task to
+  enable
 - The user's pick (`decisions.md`, "Page design", "A curriculum change is
   asked for from the course view"). "Change the curriculum", and a
   finished course's "Plan what comes next", open a planning conversation
@@ -246,8 +214,9 @@ and cheat sheets (stage 6).
 ### 5.24 Reviews due, shown before a unit is opened
 
 - Status: todo
-- Depends on: 5.19, which gives each objective a due time, and 5.37 and
-  5.39, which make the places for the count (pieces 20 and 21)
+- Depends on: 5.19, which gives each objective a due time, and 5.39,
+  which makes the library's place for the count (piece 21); in the course
+  view (piece 20) it goes between the line of counts and the card
 - The user's decision (2026-11-19, from the DeepTutor comparison): each
   course's row in the library, and its course view, show how many of its
   objectives are due for review, derived from the evidence with 5.19's

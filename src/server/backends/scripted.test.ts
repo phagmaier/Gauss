@@ -238,7 +238,12 @@ test("a unit not yet planned runs to its end: planned, each segment taught, chec
   const course = await dataRoot.readCourse(COURSE);
   if (course === undefined) throw new Error("The course is gone.");
   expect((await withProgress(dataRoot, course)).progress).toEqual({
-    limits: { status: "passed", retained: 2, slipping: 0 },
+    limits: {
+      status: "passed",
+      objectives: Object.fromEntries(
+        (plan?.objectives ?? []).map((o) => [o.id, "retained"]),
+      ),
+    },
     derivative: { status: "not-started" },
   });
   expect(chat.events().at(-1)).not.toMatchObject({ type: "unit_failed" });

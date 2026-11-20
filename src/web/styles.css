@@ -1051,10 +1051,15 @@ details.why summary:hover {
   color: var(--ink-3);
 }
 .nl-pos:hover:enabled,
+a.nl-pos:hover,
 .nl-pos[aria-expanded="true"],
 .nl-pos[aria-pressed="true"] {
   color: var(--ink);
   background: var(--rule);
+}
+/* a link among the top line's buttons, such as "What I know" */
+a.nl-pos {
+  text-decoration: none;
 }
 .nl-pos:disabled {
   color: var(--ink-4);
@@ -1303,7 +1308,7 @@ details.why summary:hover {
   color: var(--ink-2);
 }
 
-/* ---- The course view, piece 7: the page is the unit list ---- */
+/* ---- The course view, pieces 7 and 20: the title, its counts, the card, the units ---- */
 .cv-title {
   font-size: 40px;
   line-height: 1.15;
@@ -1332,6 +1337,180 @@ details.why summary:hover {
 .pg > .sp {
   grid-column: 2;
   grid-row: 2;
+}
+/* the line of counts under the title */
+.cv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em 1.5em;
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+.cv-meta b {
+  font-weight: 500;
+  color: var(--ink);
+}
+/* the Units heading over the list, ruled off from it */
+.cv-sec {
+  margin: 3em 0 0;
+  padding-bottom: 0.6em;
+  border-bottom: 1px solid var(--rule);
+}
+/* each unit a heading that opens and folds; open, its objectives or its goal, and what can be done */
+.cv-units {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cv-u {
+  /* holds the status words kept for assistive technology (.sr), which would otherwise lengthen the page */
+  position: relative;
+  border-bottom: 1px solid var(--rule);
+  padding: 1.05em 0 1.1em;
+  scroll-margin-top: 24px;
+}
+.cv-u.fold {
+  padding: 0.7em 0 0.75em;
+}
+/* picked in the course map */
+.cv-u.sel {
+  background: var(--raised);
+  --ring-gap: var(--raised);
+  margin: 0 -14px;
+  padding-inline: 14px;
+  border-radius: var(--r);
+}
+.cv-uh {
+  margin: 0;
+  font: inherit;
+}
+.cv-uh button {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+.cv-un {
+  font: 500 11.5px var(--f-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+.cv-u.here .cv-un {
+  color: var(--accent);
+}
+.cv-ut {
+  font-family: var(--f-title);
+  font-weight: 500;
+  font-size: 20px;
+  line-height: 1.25;
+}
+.cv-u.fold .cv-ut {
+  font-size: 18px;
+}
+.cv-u.fold.fin .cv-ut {
+  color: var(--ink-2);
+}
+.cv-uc {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding-left: 1em;
+  font-size: 13px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cv-chev {
+  color: var(--ink-3);
+  transition: transform 0.15s;
+}
+.cv-u:not(.fold) .cv-chev {
+  transform: rotate(90deg);
+}
+.cv-ug {
+  margin: 0.25em 0 0 72px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.cv-obs {
+  list-style: none;
+  margin: 0.6em 0 0 72px;
+  padding: 0;
+}
+.cv-ob {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  column-gap: 0.8em;
+  align-items: baseline;
+  padding: 0.32em 0;
+  font-size: 14.5px;
+}
+.cv-ob.todo > span:nth-child(2) {
+  color: var(--ink-2);
+}
+/* the objective to do next, on the accent's wash */
+.cv-ob.next {
+  position: relative;
+  isolation: isolate;
+  --ring-gap: color-mix(in srgb, var(--accent) 16%, var(--bg));
+}
+.cv-ob.next::before {
+  content: "";
+  position: absolute;
+  inset: 0 -0.8em;
+  z-index: -1;
+  background: var(--wash);
+  border-radius: 6px;
+}
+.cv-os {
+  color: var(--ink-3);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.cv-os.pass {
+  color: var(--ok);
+}
+.cv-os.kept {
+  color: var(--kept);
+}
+.cv-os.slip {
+  color: var(--slip);
+}
+.cv-os.miss {
+  color: var(--open);
+}
+.cv-os.over {
+  color: var(--ink-2);
+}
+.cv-os.next {
+  color: var(--accent);
+  font-weight: 600;
+}
+.cv-ua {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em 1.3em;
+  align-items: baseline;
+  margin: 0.55em 0 0 72px;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+.cv-ua .textbtn {
+  font-size: 1em;
+}
+/* Start asks once before a unit whose prerequisites are not finished */
+.cv-u > .confirm {
+  margin: 0.5em 0 0 72px;
+  font-size: 0.9em;
+  color: var(--ink-2);
 }
 .cu {
   list-style: none;
@@ -1371,9 +1550,6 @@ details.why summary:hover {
   font-size: 13.5px;
   margin-top: 0.3em;
 }
-.cu-m .textbtn {
-  font-size: 1em;
-}
 .cu-s {
   color: var(--ink-3);
   font-size: 13px;
@@ -1383,13 +1559,10 @@ details.why summary:hover {
 .cu-s.pass {
   color: var(--ok);
 }
-.cu-row.now .cu-n,
-.cu-row.now .cu-s,
 .cu-s.now {
   color: var(--accent);
 }
 /* another unit in progress: its word in the colour of its form, the outline */
-.cu-row.att .cu-s,
 .cu-s.att {
   color: var(--open);
 }
@@ -1600,12 +1773,6 @@ button.dn:hover {
 }
 
 /* ---- Which units can be started, piece 12: any unit, any time ---- */
-/* Start asks once before a unit whose prerequisites are not finished */
-.cu-row .confirm {
-  margin-top: 0.5em;
-  font-size: 0.9em;
-  color: var(--ink-2);
-}
 /* a card above the units: the unit in progress, or else the next one */
 .cn {
   display: grid;
@@ -1898,13 +2065,6 @@ button.dn:hover {
 .ue-rows .st.slip {
   color: var(--slip);
 }
-/* a finished unit's row in the course view: how many of its objectives are retained, and how many are slipping */
-/* biome-ignore lint/style/noDescendingSpecificity: the course view's rows are never inside the closing card */
-.cu-s small {
-  display: block;
-  font-size: 0.94em;
-  line-height: 1.45;
-}
 /* ---- Status forms, the redesign's piece 19: a form as well as a colour (StatusForm.tsx) ----
    passed: filled; retained: filled, teal; slipping: half filled, peach; answered but not passed: an
    outline; overridden: hollow with a bar; not started: a faint dotted outline; current: an accent dot
@@ -1961,6 +2121,21 @@ button.dn:hover {
 .diagram-unit .sg {
   width: 9px;
   height: 9px;
+}
+/* in the course view's unit headings and objective rows, as in mock 20 */
+.cv-uc .sg {
+  width: 9px;
+  height: 9px;
+  margin-inline-end: 0;
+}
+.cv-uc .sg.now {
+  margin-inline: 4.5px;
+}
+.cv-ob .sg {
+  width: 9px;
+  height: 9px;
+  margin: 0;
+  transform: translateY(1px);
 }
 .dn small .sg {
   width: 8px;
@@ -2314,12 +2489,12 @@ button.uo-head:focus-visible::after {
 .nt-aside {
   color: var(--ink-3);
 }
-.cu-m > .nt-form,
-.cu-m > .nt-state,
-.cu-m > [role="alert"] {
+.cv-ua > .nt-form,
+.cv-ua > .nt-state,
+.cv-ua > [role="alert"] {
   flex-basis: 100%;
 }
-.cu-m > .nt-form {
+.cv-ua > .nt-form {
   max-width: 34em;
 }
 .nt-form > .textbtn {

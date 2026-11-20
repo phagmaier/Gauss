@@ -52,7 +52,7 @@ const approved = (units: StoredUnit[]): Curriculum => ({
   units,
 });
 
-test("each unit's status, and the segment of each unit with a position", () => {
+test("each unit's status, and the position of each unit with one", () => {
   const curriculum = approved([
     planned("limits", ["limit-law", "squeeze"]),
     planned("derivative", ["definition"]),
@@ -86,11 +86,30 @@ test("each unit's status, and the segment of each unit with a position", () => {
   ];
 
   expect(courseProgress(curriculum, state, evidence)).toEqual({
-    limits: { status: "passed", retained: 0, slipping: 0 },
-    derivative: { status: "overridden", retained: 0, slipping: 0 },
-    rules: { status: "in-progress", segment: 1 },
-    integral: { status: "in-progress", segment: 0 },
-    substitution: { status: "in-progress" },
+    limits: {
+      status: "passed",
+      objectives: { "limit-law": "passed", squeeze: "passed" },
+    },
+    derivative: {
+      status: "overridden",
+      objectives: { definition: "overridden" },
+    },
+    rules: {
+      status: "in-progress",
+      segment: 1,
+      phase: "discuss",
+      objectives: { power: "passed", chain: "not-started" },
+    },
+    integral: {
+      status: "in-progress",
+      segment: 0,
+      phase: "teach",
+      objectives: { riemann: "not-started" },
+    },
+    substitution: {
+      status: "in-progress",
+      objectives: { "reverse-chain": "attempted" },
+    },
     constructor: { status: "not-started" },
   });
 });
@@ -111,50 +130,67 @@ const assessed = (
   });
 };
 
-test("how many of a finished unit's objectives are retained and slipping, and none counted for a unit in progress", () => {
+test("each started unit's objective statuses, and where a unit in progress is: its phase, what it goes over again, what its test skipped", () => {
   const curriculum = approved([
-    planned("limits", ["limit-law", "squeeze", "continuity"]),
-    planned("derivative", ["definition", "rate"]),
-    planned("rules", ["power"]),
+    planned("limits", ["limit-law", "squeeze"]),
+    planned("rules", ["power", "product", "chain"]),
+    planned("integral", ["riemann"]),
+    unplanned("substitution"),
+    planned("optimisation", ["extremum"]),
   ]);
-  const state = { units: { rules: { segment: 0, phase: "check" as const } } };
+  const state = {
+    units: {
+      rules: {
+        segment: 1,
+        phase: "discuss" as const,
+        testOut: { stage: "skip" as const, passed: ["chain"] },
+      },
+      integral: { segment: 1, phase: "teach" as const, again: ["riemann"] },
+      // Just opened: its plan is not written yet.
+      substitution: { segment: 0, phase: "teach" as const },
+    },
+  };
   const evidence = [
-    // Limits: one retained by a review, one slipping after a gate, one passed.
+    // Limits, finished: one retained by a review, one slipping after a gate.
     sure("limit-law", "correct"),
     sure("squeeze", "correct"),
-    sure("continuity", "correct"),
     assessed("limit-law", "correct", "review"),
     assessed("squeeze", "incorrect", "gate"),
-    // The derivative: one retained, one overridden.
-    sure("definition", "correct"),
-    assessed("definition", "correct", "gate"),
+    // The rules: the test passed the chain rule; powers moved on from.
+    sure("chain", "correct"),
     {
       kind: "override" as const,
       recordedAt: "2026-11-15T11:00:00.000Z",
-      objectives: ["rate"],
+      objectives: ["power"],
     },
-    // The rules, in progress: retained, but not counted.
-    sure("power", "correct"),
-    assessed("power", "correct", "review"),
+    sure("riemann", "incorrect"),
   ];
 
   expect(courseProgress(curriculum, state, evidence)).toEqual({
-    limits: { status: "passed", retained: 1, slipping: 1 },
-    derivative: { status: "overridden", retained: 1, slipping: 0 },
-    rules: { status: "in-progress", segment: 0 },
-  });
-});
-
-test("the segment that goes over objectives again is the plan's segment count", () => {
-  const curriculum = approved([planned("limits", ["limit-law", "squeeze"])]);
-  const state = {
-    units: {
-      limits: { segment: 2, phase: "teach" as const, again: ["squeeze"] },
+    limits: {
+      status: "passed",
+      objectives: { "limit-law": "retained", squeeze: "slipping" },
     },
-  };
-
-  expect(courseProgress(curriculum, state, [])).toEqual({
-    limits: { status: "in-progress", segment: 2 },
+    rules: {
+      status: "in-progress",
+      segment: 1,
+      phase: "discuss",
+      skipping: ["chain"],
+      objectives: {
+        power: "overridden",
+        product: "not-started",
+        chain: "passed",
+      },
+    },
+    integral: {
+      status: "in-progress",
+      segment: 1,
+      phase: "teach",
+      again: ["riemann"],
+      objectives: { riemann: "attempted" },
+    },
+    substitution: { status: "in-progress", segment: 0, phase: "teach" },
+    optimisation: { status: "not-started" },
   });
 });
 

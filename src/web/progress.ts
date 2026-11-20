@@ -1,8 +1,9 @@
 // Where a course's units stand, as the course view and the library show it
-// (docs/prototype/07-course.html, 12-unit-order.html; task 2.12): each
-// unit's mark, the card at the top that leads on, and what Start asks first.
-// Derived from the progress the server sends with the course, itself derived
-// from the record (src/server/record/progress.ts).
+// (docs/prototype/20-course.html, 12-unit-order.html; task 2.12): each
+// unit's mark, its objectives with the one to do next, the course's counts,
+// the card at the top that leads on, and what Start asks first. Derived from
+// the progress the server sends with the course, itself derived from the
+// record (src/server/record/progress.ts).
 //
 // Any unit can be started at any time, so several can be in progress. The
 // card leads to the unit in progress most recently opened, or else to the
@@ -11,7 +12,14 @@
 
 import type { StoredUnit } from "../shared/curriculum.ts";
 import type { CourseWithProgress, UnitProgress } from "../shared/library.ts";
-import { isFinished } from "../shared/status.ts";
+import { currentObjective } from "../shared/plan.ts";
+import {
+  hasPassed,
+  isFinished,
+  type ObjectiveStatus,
+  type UnitStatus,
+} from "../shared/status.ts";
+import type { Position } from "../shared/timeline.ts";
 import type { FormOf } from "./StatusForm.tsx";
 
 type Progress = CourseWithProgress["progress"];
@@ -167,39 +175,17 @@ export function lead(course: CourseWithProgress): Lead | null {
 }
 
 /**
- * How a unit's row in the list and its node in the diagram show where it
- * stands: `state` is the class of the row and the node, `form` its status
- * form, `text` the word at the row's right and on the node, `className`
- * that word's own class. The unit the card leads to is the current one,
- * drawn in the accent: the unit in progress most recently opened, or the
- * one up next. `under`, on a finished unit's row only, says under the word
- * how many of its objectives are retained, and how many slipping if any
- * (piece 16).
+ * How a unit's node in the diagram, and its form in the course view's list,
+ * show where it stands: `state` is the node's class, `form` its status form,
+ * `text` the word on the node, `className` that word's own class. The unit
+ * the card leads to is the current one, drawn in the accent: the unit in
+ * progress most recently opened, or the one up next.
  */
 export interface UnitMark {
   state: "pass" | "over" | "now" | "att" | "todo";
   form: FormOf;
   text: string;
   className: string;
-  under?: { text: string; className: string }[];
-}
-
-/** "2 of 3 retained", and "1 slipping" if any are; none when the counts are not sent. */
-function retention(
-  unit: StoredUnit,
-  progress: UnitProgress,
-): Pick<UnitMark, "under"> {
-  const { retained, slipping = 0 } = progress;
-  const total = unit.plan?.objectives.length;
-  if (retained === undefined || total === undefined) return {};
-  return {
-    under: [
-      { text: `${retained} of ${total} retained`, className: "kept" },
-      ...(slipping === 0
-        ? []
-        : [{ text: `${slipping} slipping`, className: "slip" }]),
-    ],
-  };
 }
 
 /**
@@ -216,21 +202,9 @@ export function unitMark(
   const form: FormOf = { unit: progress.status, current: isCurrent };
   switch (progress.status) {
     case "passed":
-      return {
-        state: "pass",
-        form,
-        text: "Passed",
-        className: "pass",
-        ...retention(unit, progress),
-      };
+      return { state: "pass", form, text: "Passed", className: "pass" };
     case "overridden":
-      return {
-        state: "over",
-        form,
-        text: "Overridden",
-        className: "",
-        ...retention(unit, progress),
-      };
+      return { state: "over", form, text: "Overridden", className: "" };
     case "in-progress":
       return {
         state: isCurrent ? "now" : "att",
@@ -279,22 +253,95 @@ export function unfinishedPrerequisites(
     .sort((a, b) => a - b);
 }
 
-/** "8 units, 2 finished.", the line under the course's title. */
-export function courseSummary(course: CourseWithProgress): string {
-  const units = approvedUnits(course);
-  const finished = units.filter((u) =>
-    isFinished(progressOf(course.progress, u.id).status),
-  ).length;
-  if (units.length === 1) {
-    return finished === 1
-      ? "One unit, finished."
-      : "One unit, not finished yet.";
-  }
-  const count =
-    finished === 0
-      ? "none finished yet"
-      : finished === units.length
-        ? "all finished"
-        : `${finished} finished`;
-  return `${units.length} units, ${count}.`;
+/** An objective's row under its unit in the course view (piece 20). */
+export interface ObjectiveRow {
+  id: string;
+  statement: string;
+  status: ObjectiveStatus;
+  /** The objective to do now (`currentObjective` in plan.ts), in the card's unit only. */
+  next: boolean;
+}
+
+/** A unit's entry in the course view's list (piece 20). */
+export interface UnitRow extends Numbered {
+  status: UnitStatus;
+  mark: UnitMark;
+  /** In the plan's order; none for a unit not started, or with no plan yet. */
+  objectives?: ObjectiveRow[];
+  /** How many of its objectives have passed: passed or retained, not slipping. */
+  passed: number;
+  /** Open until the learner folds it: the units in progress. */
+  open: boolean;
+}
+
+/** Where a unit in progress is, as `currentObjective` reads it; none without a position. */
+function positionOf(progress: UnitProgress): Position | undefined {
+  const { segment, phase, again, skipping } = progress;
+  if (segment === undefined || phase === undefined) return undefined;
+  return {
+    segment,
+    phase,
+    ...(again === undefined ? {} : { again }),
+    ...(skipping === undefined ? {} : { skipping }),
+  };
+}
+
+/** Each unit of the approved curriculum, as the course view lists it. */
+export function unitRows(course: CourseWithProgress): UnitRow[] {
+  const leads = lead(course);
+  return approvedUnits(course).map((unit, i) => {
+    const progress = progressOf(course.progress, unit.id);
+    const statuses = progress.objectives;
+    const { plan } = unit;
+    const next =
+      plan !== undefined &&
+      statuses !== undefined &&
+      leads?.kind === "in-progress" &&
+      leads.unit.id === unit.id
+        ? currentObjective(plan, positionOf(progress), statuses)
+        : undefined;
+    const objectives =
+      plan === undefined || statuses === undefined
+        ? undefined
+        : plan.objectives.map((o) => ({
+            id: o.id,
+            statement: o.statement,
+            status:
+              (Object.hasOwn(statuses, o.id) ? statuses[o.id] : undefined) ??
+              "not-started",
+            next: o.id === next,
+          }));
+    return {
+      number: i + 1,
+      unit,
+      status: progress.status,
+      mark: unitMark(course, unit, leads?.unit.id),
+      ...(objectives === undefined ? {} : { objectives }),
+      passed: (objectives ?? []).filter((o) => hasPassed(o.status)).length,
+      open: progress.status === "in-progress",
+    };
+  });
+}
+
+/**
+ * The line under the course's title: how many units, how many finished, and
+ * how many of the started units' objectives have passed, out of how many.
+ * Passed is the units' counts summed: passed or retained, not slipping or
+ * overridden, even in a finished unit.
+ */
+export interface CourseCounts {
+  units: number;
+  finished: number;
+  passed: number;
+  objectives: number;
+}
+
+export function courseCounts(course: CourseWithProgress): CourseCounts {
+  const rows = unitRows(course);
+  return {
+    units: rows.length,
+    finished: rows.filter((r) => isFinished(r.status)).length,
+    passed: rows.reduce((sum, r) => sum + r.passed, 0),
+    objectives: rows.reduce((sum, r) => sum + (r.objectives?.length ?? 0), 0),
+  };
 }

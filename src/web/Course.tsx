@@ -1,47 +1,60 @@
-// The course view (docs/prototype/07-course.html, with 12-unit-order.html's
-// card and Start): the page is the unit list, each unit with where it
-// stands, and "Show the diagram" opens the diagram in the side pane, where
-// clicking a unit marks it in the list; "What I know" beside it opens every
-// objective with the answers behind it (task 2.26). The card at the top
-// leads to the unit in progress, or else to the next one. Any unit can be
-// started; one whose prerequisites are not finished asks once first (task
-// 2.12). "Test out" beside Start, and under the card's "Start unit N", asks
-// once, saying what the test is, then opens the unit with its test (task
-// 5.6, piece 16). Finished units offer notes (task 5.9, piece 17).
+// The course view (docs/prototype/20-course.html, with 12-unit-order.html's
+// card and Start): the title, a line of counts, the card that leads on, and
+// the unit list down to objectives. Each unit is a heading that opens and
+// folds; a started unit lists its objectives, "Next" on the one to do in the
+// card's unit, and a unit not started its goal. "Course map" in the top line
+// opens the diagram in the side pane, where picking a unit scrolls the list
+// to it; "What I know" beside it opens every objective with the answers
+// behind it (task 2.26). Any unit can be started; one whose prerequisites are
+// not finished asks once first (task 2.12). "Test out" beside Start, and
+// under the card's "Start unit N", asks once, saying what the test is, then
+// opens the unit with its test (task 5.6, piece 16). Finished units offer
+// notes (task 5.9, piece 17).
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { StoredUnit } from "../shared/curriculum.ts";
 import { IntakeStarted, UnitOpened } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
+import { isFinished } from "../shared/status.ts";
 import { getJson, postFor } from "./api.ts";
 import { Diagram, UnitList } from "./Curriculum.tsx";
-import { Link, SidePane, TopLine } from "./Frame.tsx";
+import { CourseMapButton, Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
 import {
-  courseSummary,
+  type CourseCounts,
+  courseCounts,
   type Lead,
   lead,
-  progressOf,
+  type UnitRow,
   unfinishedPrerequisites,
   unitMark,
+  unitRows,
 } from "./progress.ts";
+import { InlineProse } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
-import { unitNumbers } from "./units.ts";
+import { StatusForm } from "./StatusForm.tsx";
+import { buildsOn, unitNumbers } from "./units.ts";
+import { objectiveMark, unitWord } from "./what-i-know.ts";
 
 export function Course(props: { courseId: string }) {
   const { courseId } = props;
   // Undefined while loading, null when there is no such course.
   const [stored, setStored] = useState<CourseWithProgress | null>();
   const [problem, setProblem] = useState<string>();
-  const [diagramOpen, setDiagramOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [selected, setSelected] = useState<string>();
+  /**
+   * The units the learner opened or folded, by id; the others are open while
+   * in progress. Held here, so it outlasts the course map opening and closing.
+   */
+  const [folding, setFolding] = useState<Record<string, boolean>>({});
   /**
    * The unit that asks before it opens: Start, its prerequisites not
    * finished, or "Test out", from its row or from the card.
    */
   const [asking, setAsking] = useState<Asking>();
-  const closeDiagram = useCallback(() => {
-    setDiagramOpen(false);
+  const closeMap = useCallback(() => {
+    setMapOpen(false);
     setSelected(undefined);
   }, []);
 
@@ -67,9 +80,12 @@ export function Course(props: { courseId: string }) {
 
   const curriculum = stored?.curriculum ?? null;
   const draft = curriculum?.approval.status === "draft";
+  const approved = curriculum?.approval.status === "approved";
   const title = stored?.course.title ?? (stored === null ? "Not found" : "");
   const toUnit = (unit: StoredUnit) => navigate(paths.unit(courseId, unit.id));
   const leadsTo = stored == null ? null : lead(stored);
+  // An approved course with nothing to lead to has every unit finished.
+  const finished = approved && leadsTo === null;
 
   /** Opens the unit with its test, then follows it to its session. */
   async function testOut(unit: StoredUnit) {
@@ -129,9 +145,10 @@ export function Course(props: { courseId: string }) {
     );
   }
 
-  /** What the learner can do with a unit of an approved course, under its goal. */
-  function unitAction(course: CourseWithProgress, unit: StoredUnit) {
-    switch (progressOf(course.progress, unit.id).status) {
+  /** What the learner can do with a unit of an approved course, under its objectives or goal. */
+  function unitAction(course: CourseWithProgress, row: UnitRow) {
+    const { unit } = row;
+    switch (row.status) {
       case "in-progress":
         return (
           <Link to={paths.unit(courseId, unit.id)} className="textbtn">
@@ -178,21 +195,34 @@ export function Course(props: { courseId: string }) {
         );
     }
   }
+
   return (
-    <div className={diagramOpen ? "pg has-pane" : "pg"}>
+    <div className={mapOpen ? "pg has-pane" : "pg"}>
       <TopLine
         trail={[{ label: "Library", to: paths.library }]}
         here={title}
         action={
-          draft ? (
-            <button
-              type="button"
-              className="btn sm"
-              onClick={() => void review()}
-            >
-              Review the curriculum
-            </button>
-          ) : undefined
+          <div className="nl-tools">
+            {draft ? (
+              <button
+                type="button"
+                className="btn sm"
+                onClick={() => void review()}
+              >
+                Review the curriculum
+              </button>
+            ) : null}
+            <CourseMapButton
+              open={mapOpen}
+              disabled={curriculum === null}
+              onToggle={() => (mapOpen ? closeMap() : setMapOpen(true))}
+            />
+            {approved ? (
+              <Link to={paths.known(courseId)} className="nl-pos">
+                What I know
+              </Link>
+            ) : null}
+          </div>
         }
       />
       <div className="pg-scroll">
@@ -206,8 +236,18 @@ export function Course(props: { courseId: string }) {
           ) : stored === undefined ? null : (
             <>
               <h1 className="cv-title">{title}</h1>
-              <p className="cv-at">{whereItStands(stored)}</p>
-              {leadsTo === null ? null : (
+              {approved ? (
+                <Counts counts={courseCounts(stored)} finished={finished} />
+              ) : (
+                <p className="cv-at">
+                  {draft
+                    ? "The curriculum is waiting for your review."
+                    : "No curriculum was proposed."}
+                </p>
+              )}
+              {finished ? (
+                <FinishedCard />
+              ) : leadsTo === null ? null : (
                 <LeadCard
                   lead={leadsTo}
                   onGo={toUnit}
@@ -226,41 +266,47 @@ export function Course(props: { courseId: string }) {
               )}
               {curriculum === null ? null : (
                 <>
-                  <div className="cv-hrow">
+                  <div className="cv-hrow cv-sec">
                     <h2 className="pg-h">Units</h2>
-                    <span className="cv-acts">
-                      {draft ? null : (
-                        <Link to={paths.known(courseId)} className="textbtn">
-                          What I know
-                        </Link>
-                      )}
-                      <button
-                        type="button"
-                        className="textbtn"
-                        aria-expanded={diagramOpen}
-                        onClick={() =>
-                          diagramOpen ? closeDiagram() : setDiagramOpen(true)
-                        }
-                      >
-                        {diagramOpen ? "Hide the diagram" : "Show the diagram"}
-                      </button>
-                    </span>
+                    {approved ? (
+                      <span className="cv-acts">
+                        {/* Planning from the course view comes next (plan task 5.38). */}
+                        <button type="button" className="textbtn" disabled>
+                          Change the curriculum
+                        </button>
+                      </span>
+                    ) : null}
                   </div>
                   {draft ? (
                     <UnitList units={curriculum.units} selected={selected} />
                   ) : (
-                    <UnitList
-                      units={curriculum.units}
-                      selected={selected}
-                      state={(unit) => unitMark(stored, unit).state}
-                      mark={(unit) => unitMark(stored, unit)}
-                      action={(unit) => unitAction(stored, unit)}
-                      after={(unit) =>
-                        asking?.unit === unit.id && asking.card !== true
-                          ? confirm(stored, unit)
-                          : null
-                      }
-                    />
+                    <ul className="cv-units">
+                      {unitRows(stored).map((row) => {
+                        const open = folding[row.unit.id] ?? row.open;
+                        return (
+                          <UnitEntry
+                            key={row.unit.id}
+                            row={row}
+                            open={open}
+                            selected={selected === row.unit.id}
+                            onToggle={() =>
+                              setFolding((was) => ({
+                                ...was,
+                                [row.unit.id]: !open,
+                              }))
+                            }
+                            buildsOn={buildsOn(row.unit, curriculum.units)}
+                            action={unitAction(stored, row)}
+                            after={
+                              asking?.unit === row.unit.id &&
+                              asking.card !== true
+                                ? confirm(stored, row.unit)
+                                : null
+                            }
+                          />
+                        );
+                      })}
+                    </ul>
                   )}
                 </>
               )}
@@ -268,12 +314,8 @@ export function Course(props: { courseId: string }) {
           )}
         </div>
       </div>
-      {diagramOpen && curriculum !== null ? (
-        <SidePane
-          title="Curriculum"
-          subtitle="How the units build on each other"
-          onClose={closeDiagram}
-        >
+      {mapOpen && curriculum !== null ? (
+        <SidePane title="Course map" subtitle={title} onClose={closeMap}>
           <Diagram
             units={curriculum.units}
             standing={(id) => {
@@ -309,13 +351,154 @@ const TEST_IS =
   "explanations until it ends. It skips nothing by itself: you see what " +
   "you passed, and then you choose.";
 
-function whereItStands(stored: CourseWithProgress): string {
-  const { curriculum } = stored;
-  if (curriculum === null) return "No curriculum was proposed.";
-  if (curriculum.approval.status === "draft") {
-    return "The curriculum is waiting for your review.";
-  }
-  return courseSummary(stored);
+/** The line under the title (piece 20). */
+function Counts(props: { counts: CourseCounts; finished: boolean }) {
+  const { units, finished, passed, objectives } = props.counts;
+  return (
+    <p className="cv-meta">
+      <span>
+        <b>{units}</b> {units === 1 ? "unit" : "units"}
+      </span>
+      <span>
+        <b>{finished}</b> finished
+      </span>
+      {objectives === 0 ? null : (
+        <span>
+          <b>{passed}</b> of {objectives}{" "}
+          {objectives === 1 ? "objective" : "objectives"} passed
+          {props.finished ? "" : " in the units started"}
+        </span>
+      )}
+    </p>
+  );
+}
+
+const CHEVRON = (
+  <svg
+    className="cv-chev"
+    width="11"
+    height="11"
+    viewBox="0 0 12 12"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    aria-hidden="true"
+  >
+    <path d="M4.5 3 7.5 6 4.5 9" />
+  </svg>
+);
+
+/**
+ * A unit in the list (piece 20): a heading that opens and folds it, with
+ * "Unit N", its title, how many of its objectives passed and its form; open,
+ * its objectives, or its goal before it starts, and what can be done with it.
+ */
+function UnitEntry(props: {
+  row: UnitRow;
+  open: boolean;
+  selected: boolean;
+  onToggle(): void;
+  buildsOn: string | null;
+  action: ReactNode;
+  after: ReactNode;
+}) {
+  const { row, open } = props;
+  const { unit, objectives } = row;
+  const className = [
+    "cv-u",
+    open ? undefined : "fold",
+    isFinished(row.status) ? "fin" : undefined,
+    row.mark.state === "now" ? "here" : undefined,
+    props.selected ? "sel" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <li id={`unit-${unit.id}`} className={className}>
+      <h3 className="cv-uh">
+        <button type="button" aria-expanded={open} onClick={props.onToggle}>
+          <span className="cv-un">Unit {row.number}</span>
+          <span className="cv-ut">{unit.title}</span>
+          <span className="cv-uc">
+            {objectives === undefined
+              ? null
+              : `${row.passed} of ${objectives.length} passed`}
+            <StatusForm {...row.mark.form} />
+            <span className="sr">{unitWord(row.status).text}</span>
+            {CHEVRON}
+          </span>
+        </button>
+      </h3>
+      {open ? (
+        <>
+          {objectives === undefined ? (
+            <p className="cv-ug">
+              {unit.goal}
+              {row.status === "not-started"
+                ? " Its objectives are set when it starts."
+                : ""}
+            </p>
+          ) : (
+            <ul className="cv-obs">
+              {objectives.map((o) => {
+                const word = o.next
+                  ? { text: "Next", className: "next" }
+                  : objectiveMark(o.status);
+                return (
+                  <li
+                    key={o.id}
+                    className={
+                      o.next
+                        ? "cv-ob next"
+                        : o.status === "not-started"
+                          ? "cv-ob todo"
+                          : "cv-ob"
+                    }
+                  >
+                    <StatusForm objective={o.status} current={o.next} />
+                    <span>
+                      <InlineProse text={o.statement} />
+                    </span>
+                    <span className={`cv-os ${word.className}`}>
+                      {word.text}
+                      {o.next ? (
+                        <span className="sr">
+                          , {objectiveMark(o.status).text}
+                        </span>
+                      ) : null}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className="cv-ua">
+            {props.buildsOn === null ? null : <span>{props.buildsOn}</span>}
+            {props.action}
+          </div>
+          {props.after}
+        </>
+      ) : null}
+    </li>
+  );
+}
+
+/** The card on a finished course (piece 20). */
+function FinishedCard() {
+  return (
+    <section className="cn" aria-label="Course finished">
+      <div>
+        <div className="cn-k">Course finished</div>
+        <div className="cn-t">Every unit is finished</div>
+      </div>
+      <div className="cn-go">
+        {/* Planning from the course view comes next (plan task 5.38). */}
+        <button type="button" className="btn" disabled>
+          Plan what comes next
+        </button>
+      </div>
+    </section>
+  );
 }
 
 /**

@@ -2,12 +2,13 @@ import { expect, test } from "vitest";
 import type { StoredUnit } from "../shared/curriculum.ts";
 import type { CourseWithProgress, UnitProgress } from "../shared/library.ts";
 import {
-  courseSummary,
+  courseCounts,
   lead,
   mapMark,
   nextInOrder,
   unfinishedPrerequisites,
   unitMark,
+  unitRows,
 } from "./progress.ts";
 
 // Every expected result was worked out by hand from the picks in
@@ -130,24 +131,136 @@ test("each status: how the unit's row and node read, the card's unit current", (
   });
 });
 
-test("a finished unit's word has under it how many of its objectives are retained, and how many slipping", () => {
-  const kept = course({
-    limits: { status: "passed", retained: 1, slipping: 0 },
-    derivative: { status: "overridden", retained: 0, slipping: 0 },
-    rules: { status: "passed", retained: 1, slipping: 2 },
-  });
-  const under = (id: string) =>
-    unitMark(kept, UNITS.find((u) => u.id === id) as StoredUnit).under;
+test("each started unit lists its objectives, and Next marks the card's unit's current one, in its active segment after an earlier override", () => {
+  const rows = (c: CourseWithProgress) =>
+    unitRows(c).map((row) => ({
+      open: row.open,
+      passed: row.passed,
+      objectives: row.objectives?.map((o) => [o.id, o.status, o.next]),
+    }));
+  // Segment 1 moved on from, segment 2 being taught: Next is in segment 2,
+  // not the overridden objective before it.
+  const rules: UnitProgress = {
+    status: "in-progress",
+    segment: 1,
+    phase: "teach",
+    objectives: {
+      "rules-0": "overridden",
+      "rules-1": "not-started",
+      "rules-2": "not-started",
+    },
+  };
+  const progress: Record<string, UnitProgress> = {
+    limits: { status: "passed", objectives: { "limits-0": "retained" } },
+    rules,
+    // In progress, but not the card's unit: no Next.
+    integral: {
+      status: "in-progress",
+      segment: 0,
+      phase: "discuss",
+      objectives: { "integral-0": "attempted", "integral-1": "not-started" },
+    },
+    // Just opened, with no plan yet.
+    fundamental: { status: "in-progress", segment: 0, phase: "teach" },
+  };
+  const opened = {
+    integral: "2026-11-14T09:00:00.000Z",
+    rules: "2026-11-15T08:00:00.000Z",
+  };
 
-  expect(under("limits")).toEqual([
-    { text: "1 of 1 retained", className: "kept" },
+  expect(rows(course(progress, opened))).toEqual([
+    { open: false, passed: 1, objectives: [["limits-0", "retained", false]] },
+    // Not started: no objectives listed, though its plan is written.
+    { open: false, passed: 0, objectives: undefined },
+    {
+      open: true,
+      passed: 0,
+      objectives: [
+        ["rules-0", "overridden", false],
+        ["rules-1", "not-started", true],
+        ["rules-2", "not-started", false],
+      ],
+    },
+    { open: false, passed: 0, objectives: undefined },
+    {
+      open: true,
+      passed: 0,
+      objectives: [
+        ["integral-0", "attempted", false],
+        ["integral-1", "not-started", false],
+      ],
+    },
+    { open: true, passed: 0, objectives: undefined },
   ]);
-  expect(under("derivative")).toEqual([
-    { text: "0 of 1 retained", className: "kept" },
-  ]);
-  expect(under("rules")).toEqual([
-    { text: "1 of 3 retained", className: "kept" },
-    { text: "2 slipping", className: "slip" },
+
+  // Once the segment has closed, nothing is next until the learner starts
+  // the next one.
+  const closed = course(
+    { ...progress, rules: { ...rules, phase: "closed" } },
+    opened,
+  );
+  expect(
+    unitRows(closed)
+      .flatMap((r) => r.objectives ?? [])
+      .filter((o) => o.next),
+  ).toEqual([]);
+  // Going over again: the extra segment's own objectives, past a passed one.
+  const again = course(
+    {
+      ...progress,
+      rules: {
+        status: "in-progress",
+        segment: 3,
+        phase: "check",
+        again: ["rules-0", "rules-2"],
+        objectives: {
+          "rules-0": "passed",
+          "rules-1": "attempted",
+          "rules-2": "attempted",
+        },
+      },
+    },
+    opened,
+  );
+  expect(
+    unitRows(again)
+      .flatMap((r) => r.objectives ?? [])
+      .filter((o) => o.next),
+  ).toMatchObject([{ id: "rules-2", statement: "Do part 3 of rules." }]);
+  // After the test: the first segment teaches two objectives, the test
+  // passed the first and the learner skipped it. Missed in a review since,
+  // it is slipping, but this segment still leaves it out.
+  const tested: CourseWithProgress = {
+    ...course({
+      limits: {
+        status: "in-progress",
+        segment: 0,
+        phase: "teach",
+        skipping: ["limit-law"],
+        objectives: { "limit-law": "slipping", squeeze: "not-started" },
+      },
+    }),
+    curriculum: {
+      approval: { status: "approved", approvedAt: "2026-11-10T10:00:00.000Z" },
+      units: [
+        {
+          ...unit("limits", []),
+          plan: {
+            objectives: [
+              { id: "limit-law", statement: "Use the limit laws." },
+              { id: "squeeze", statement: "Use the squeeze theorem." },
+            ],
+            segments: [
+              { title: "Limits", objectives: ["limit-law", "squeeze"] },
+            ],
+          },
+        },
+      ],
+    },
+  };
+  expect(unitRows(tested)[0]?.objectives?.map((o) => [o.id, o.next])).toEqual([
+    ["limit-law", false],
+    ["squeeze", true],
   ]);
 });
 
@@ -323,18 +436,82 @@ test("Start asks first about the prerequisites not finished, by number", () => {
   expect(unfinishedPrerequisites(TWO, byId("integral"))).toEqual([]);
 });
 
-test("the line under the title counts the finished units", () => {
-  expect(courseSummary(TWO)).toBe("6 units, 2 finished.");
-  expect(courseSummary(course({}))).toBe("6 units, none finished yet.");
-  const done = Object.fromEntries(UNITS.map((u) => [u.id, PASSED]));
-  expect(courseSummary(course(done))).toBe("6 units, all finished.");
-  const oneOff = (progress: Record<string, UnitProgress>) => ({
-    ...course(progress),
+test("a finished course with slipping and overridden objectives counts only passed and retained ones, in the course as in each unit", () => {
+  // Unit 1 passed, its objective slipping since; unit 2 overridden; unit 3
+  // passed, one objective retained, one passed and one slipping; unit 5
+  // overridden, one passed and one overridden. Units 4 and 6 have no plan
+  // here, so only four units are in this course.
+  const units = [UNITS[0], UNITS[1], UNITS[2], UNITS[4]] as StoredUnit[];
+  const finished: CourseWithProgress = {
+    ...course({
+      limits: { status: "passed", objectives: { "limits-0": "slipping" } },
+      derivative: {
+        status: "overridden",
+        objectives: { "derivative-0": "overridden" },
+      },
+      rules: {
+        status: "passed",
+        objectives: {
+          "rules-0": "retained",
+          "rules-1": "passed",
+          "rules-2": "slipping",
+        },
+      },
+      integral: {
+        status: "overridden",
+        objectives: { "integral-0": "passed", "integral-1": "overridden" },
+      },
+    }),
     curriculum: {
       approval: { status: "approved", approvedAt: "2026-11-10T10:00:00.000Z" },
-      units: UNITS.slice(0, 1),
-    } as const,
+      units,
+    },
+  };
+
+  expect(
+    unitRows(finished).map((r) => [r.passed, r.objectives?.length]),
+  ).toEqual([
+    [0, 1],
+    [0, 1],
+    [2, 3],
+    [1, 2],
+  ]);
+  expect(courseCounts(finished)).toEqual({
+    units: 4,
+    finished: 4,
+    passed: 3,
+    objectives: 7,
   });
-  expect(courseSummary(oneOff({}))).toBe("One unit, not finished yet.");
-  expect(courseSummary(oneOff({ limits: PASSED }))).toBe("One unit, finished.");
+  // Finished units fold by default.
+  expect(unitRows(finished).some((r) => r.open)).toBe(false);
+});
+
+test("the course's counts take objectives only from the units started", () => {
+  expect(courseCounts(course({}))).toEqual({
+    units: 6,
+    finished: 0,
+    passed: 0,
+    objectives: 0,
+  });
+  expect(
+    courseCounts(
+      course({
+        limits: { status: "passed", objectives: { "limits-0": "passed" } },
+        derivative: {
+          status: "overridden",
+          objectives: { "derivative-0": "overridden" },
+        },
+        rules: {
+          status: "in-progress",
+          segment: 0,
+          phase: "check",
+          objectives: {
+            "rules-0": "retained",
+            "rules-1": "attempted",
+            "rules-2": "not-started",
+          },
+        },
+      }),
+    ),
+  ).toEqual({ units: 6, finished: 2, passed: 2, objectives: 5 });
 });
