@@ -253,6 +253,28 @@ export function outline(plan: Plan, t: Where): UnitOutline {
   };
 }
 
+/** The gate's row: here from its card on, then taken or skipped; to come while the unit is not finished. */
+function gateRow(
+  t: Where,
+  card: Item | undefined,
+  count: number,
+): UnitOutline["gate"] {
+  if (t.assessment?.mode === "gate") {
+    return { state: "now", says: "You are here" };
+  }
+  if (card?.kind === "assessment") {
+    const ended = t.items.findLast(
+      (i): i is AssessmentEndItem =>
+        i.kind === "assessment_end" && i.mode === "gate",
+    );
+    const skipped = card.stage === "skipped" || ended?.skipped === true;
+    return { state: "past", says: skipped ? "Skipped" : "Taken" };
+  }
+  return t.finished === null
+    ? { state: "", says: `After segment ${count}` }
+    : null;
+}
+
 /**
  * The one control that moves the unit on, at the point the thread has
  * reached (mock 3): "ready" in the discussion, moving on in the check, and
