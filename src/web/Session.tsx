@@ -677,7 +677,7 @@ export function Session(props: { courseId: string; unitId: string }) {
               }}
               selected={picked}
               onSelect={setPicked}
-              reveal={unitId}
+              here={unitId}
             />
           </SidePane>
         )

@@ -1031,10 +1031,14 @@ take the outline.
   asks once, saying what the test is, then opens the unit with its test;
   a finished unit offers "Write notes", or "Notes" beside "Open" once
   saved. The diagram opens in the side pane; selecting a unit there lights
-  its lines and scrolls the list to it. If the pane is too narrow to keep
-  the lines apart, it lists prerequisites by unit number; selecting a unit
-  still scrolls to it. The proposal and curriculum-change cards use the
-  same diagram and fallback. "What I know" opens its own page.
+  its lines and scrolls the list to it. A crowded diagram (more than three
+  lines across one row, `layOut` in `diagram.ts`) draws the lines between
+  adjacent rows, and a unit's row-skipping lines only while it is selected,
+  routed apart from the rest, with a line above saying so. If the pane is
+  too narrow to keep the lines drawn at once apart, it lists prerequisites
+  by unit number; selecting a unit still scrolls to it. The proposal and
+  curriculum-change cards use the same diagram and fallback; when crowded,
+  their nodes can be selected too. "What I know" opens its own page.
 - **What I know** (`/courses/<id>/what-i-know`): each started unit's
   objectives with their status ("Retained" in teal, "Slipping" in peach)
   and, under each, its evidence in log order (question, answer,
@@ -1169,8 +1173,8 @@ take the outline.
   closes the course's diagram, with its fallback list (as in the course
   view), each unit's status form and word, and this unit alone in the
   accent, ringed, "You are here", scrolled into view (`mapMark` in
-  `progress.ts`). Selecting a unit lights its lines; it opens nothing. Only
-  same-origin
+  `progress.ts`); its lines are lit, and in a crowded diagram shown, until
+  another unit is selected, which opens nothing. Only same-origin
   iframe requests get HTML; a direct URL shows inert text. The frame and
   the response policy sandbox HTML to its own origin with scripts allowed.
   The parent page's `frame-src 'self'` prevents the frame from navigating

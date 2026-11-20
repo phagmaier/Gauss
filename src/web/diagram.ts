@@ -2,8 +2,10 @@
 // in rows, each unit one row below the deepest unit it builds on, at most two
 // to a row, with a line from each unit to the units that build on it. Lines
 // that cross a row sit side by side in it, so a large course's long lines do
-// not merge into one. Pure, so the proposal card and the course view draw
-// the same diagram.
+// not merge into one. When too many cross one row, a long line is drawn only
+// for the unit picked, in lanes of its own (docs/decisions.md, "Page
+// design"). Pure, so the proposal card and the course view draw the same
+// diagram.
 
 import type { Unit } from "../shared/curriculum.ts";
 
@@ -36,10 +38,19 @@ export interface DiagramEdge {
 
 export interface Layout {
   nodes: DiagramNode[];
+  /** Every line, each crossing rows in its lane among all of them. */
   edges: DiagramEdge[];
   rows: number;
-  /** Pane width in CSS pixels needed for side-by-side lanes to read. */
+  /**
+   * Pane width in CSS pixels needed for the lines drawn at once to stay
+   * apart: all of them, or in a crowded layout any one unit's long lines.
+   */
   minWidth: number;
+  /**
+   * Set when the layout is crowded: each unit's lines that cross rows, by
+   * its id, routed apart from all other lines.
+   */
+  longLines?: ReadonlyMap<string, DiagramEdge[]>;
 }
 
 /** Two units side by side fill the width, with a gap between for lines. */
@@ -60,6 +71,48 @@ const LANE_PITCH_PX = 3;
 /** The width lines crossing a row may spread over: the gap between a pair less a margin, or a node's place beside a lone unit. */
 const GAP_ROOM = RIGHT - LEFT - NODE_WIDTH - 2;
 const SIDE_ROOM = NODE_WIDTH - 10;
+/** More lines than this crossing one row make a layout crowded. */
+const CROWDED = 3;
+
+/** A line between two units, by id, with where it crosses each row between. */
+interface Link {
+  from: string;
+  to: string;
+  top: number;
+  bottom: number;
+  via: number[];
+}
+
+/**
+ * `n` lines side by side around `centre`, at most `LANE` apart and within
+ * `room`, and the pane width that keeps them visibly apart.
+ */
+function spread(
+  n: number,
+  centre: number,
+  room: number,
+): { xs: number[]; minWidth: number } {
+  const step = Math.min(LANE, room / Math.max(1, n - 1));
+  return {
+    xs: Array.from({ length: n }, (_, k) => centre + (k - (n - 1) / 2) * step),
+    minWidth: n > 1 ? (LANE_PITCH_PX * 100) / step : 0,
+  };
+}
+
+/**
+ * The lines drawn while `picked` is picked: every line, or in a crowded
+ * layout those between adjacent rows and the picked unit's long ones.
+ */
+export function linesShown(
+  layout: Layout,
+  picked: string | undefined,
+): DiagramEdge[] {
+  const { edges, longLines } = layout;
+  if (longLines === undefined) return edges;
+  const short = edges.filter((e) => e.via.length === 0);
+  const long = picked === undefined ? undefined : longLines.get(picked);
+  return long === undefined ? short : [...short, ...long];
+}
 
 export function layOut(units: readonly Unit[]): Layout {
   const ids = new Set(units.map((u) => u.id));
@@ -83,13 +136,13 @@ export function layOut(units: readonly Unit[]): Layout {
   }
 
   // Every line, with the rows it crosses on its way down.
-  const links = units.flatMap((to) =>
+  const links: Link[] = units.flatMap((to) =>
     to.prerequisites.flatMap((from) => {
       const top = rowOf.get(from);
       const bottom = rowOf.get(to.id);
       return top === undefined || bottom === undefined
         ? []
-        : [{ from, to: to.id, top, bottom, via: [] as number[] }];
+        : [{ from, to: to.id, top, bottom, via: [] }];
     }),
   );
 
@@ -100,53 +153,58 @@ export function layOut(units: readonly Unit[]): Layout {
   // Sides go in the order of where things come from above; a stable sort
   // keeps the list order, and the unit before the lines, on a tie.
   const xOf = new Map<string, number>();
-  const above = (link: (typeof links)[number], row: number) =>
+  const above = (link: Link, row: number) =>
     row - 1 === link.top
       ? (xOf.get(link.from) ?? MIDDLE)
       : (link.via.at(-1) ?? MIDDLE);
   const mean = (xs: number[]) =>
     xs.length === 0 ? MIDDLE : xs.reduce((a, b) => a + b, 0) / xs.length;
+  // Lines crossing `row` side by side around `centre`, in the order of where
+  // they were in the row above, so they keep their order and none merge;
+  // gives the pane width they need.
+  const pass = (lines: Link[], row: number, centre: number, room: number) => {
+    const order = lines
+      .map((l) => ({ l, x: above(l, row) }))
+      .sort((a, b) => a.x - b.x);
+    const placed = spread(order.length, centre, room);
+    order.forEach(({ l }, k) => {
+      l.via.push(placed.xs[k] ?? centre);
+    });
+    return placed.minWidth;
+  };
+  /** Where each row lets lines cross it, once its units are placed. */
+  const lanes: { centre: number; room: number }[] = [];
   let minWidth = 0;
+  let busiest = 0;
   for (let row = 0; row < perRow.length; row++) {
     const inRow = units.filter((u) => rowOf.get(u.id) === row);
     const crossing = links.filter((l) => l.top < row && row < l.bottom);
+    busiest = Math.max(busiest, crossing.length);
     // Where a unit's lines come from: the units above, or where a line
     // that crossed rows passed the row above.
     const pull = (u: Unit) =>
       mean(links.filter((l) => l.to === u.id).map((l) => above(l, row)));
-    // The crossing lines side by side around `centre`, in the order of where
-    // they were in the row above, so they keep their order and none merge.
-    const pass = (centre: number, room: number) => {
-      const order = crossing
-        .map((l) => ({ l, x: above(l, row) }))
-        .sort((a, b) => a.x - b.x);
-      const step = Math.min(LANE, room / Math.max(1, order.length - 1));
-      if (order.length > 1) {
-        minWidth = Math.max(minWidth, (LANE_PITCH_PX * 100) / step);
-      }
-      order.forEach(({ l }, k) => {
-        l.via.push(centre + (k - (order.length - 1) / 2) * step);
-      });
-    };
     const [only] = inRow;
     if (inRow.length === 1 && only !== undefined && crossing.length === 0) {
       xOf.set(only.id, MIDDLE);
       continue;
     }
+    let lane = { centre: MIDDLE, room: GAP_ROOM };
     if (inRow.length === 1 && only !== undefined) {
       const linesFrom = mean(crossing.map((l) => above(l, row)));
       const unitLeft = pull(only) <= linesFrom;
       xOf.set(only.id, unitLeft ? LEFT : RIGHT);
-      pass(unitLeft ? RIGHT : LEFT, SIDE_ROOM);
-      continue;
+      lane = { centre: unitLeft ? RIGHT : LEFT, room: SIDE_ROOM };
+    } else {
+      [...inRow]
+        .map((u) => ({ id: u.id, pull: pull(u) }))
+        .sort((a, b) => a.pull - b.pull)
+        .forEach((u, k) => {
+          xOf.set(u.id, k === 0 ? LEFT : RIGHT);
+        });
     }
-    [...inRow]
-      .map((u) => ({ id: u.id, pull: pull(u) }))
-      .sort((a, b) => a.pull - b.pull)
-      .forEach((u, k) => {
-        xOf.set(u.id, k === 0 ? LEFT : RIGHT);
-      });
-    pass(MIDDLE, GAP_ROOM);
+    lanes[row] = lane;
+    minWidth = Math.max(minWidth, pass(crossing, row, lane.centre, lane.room));
   }
 
   const nodes = units.flatMap((unit, index) => {
@@ -185,5 +243,37 @@ export function layOut(units: readonly Unit[]): Layout {
     };
   });
 
-  return { nodes, edges, rows: perRow.length, minWidth };
+  const rows = perRow.length;
+  if (busiest <= CROWDED) return { nodes, edges, rows, minWidth };
+
+  // Crowded: each unit's long lines on their own, through the lanes the rows
+  // leave for lines, with the ports they have among all lines.
+  const edgeOf = new Map(
+    edges.map((e) => [`${e.from.unit.id}>${e.to.unit.id}`, e]),
+  );
+  const longLines = new Map<string, DiagramEdge[]>();
+  let widest = 0;
+  for (const { unit } of nodes) {
+    const own: Link[] = links
+      .filter(
+        (l) => (l.from === unit.id || l.to === unit.id) && l.bottom - l.top > 1,
+      )
+      .map((l) => ({ ...l, via: [] }));
+    if (own.length === 0) continue;
+    for (let row = 1; row < rows; row++) {
+      const lane = lanes[row];
+      const crossing = own.filter((l) => l.top < row && row < l.bottom);
+      if (lane !== undefined) {
+        widest = Math.max(widest, pass(crossing, row, lane.centre, lane.room));
+      }
+    }
+    longLines.set(
+      unit.id,
+      own.flatMap((l) => {
+        const e = edgeOf.get(`${l.from}>${l.to}`);
+        return e === undefined ? [] : [{ ...e, via: l.via }];
+      }),
+    );
+  }
+  return { nodes, edges, rows, minWidth: widest, longLines };
 }

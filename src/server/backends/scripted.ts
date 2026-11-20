@@ -285,12 +285,14 @@ function proposal(
   }
   if (kind === "large") {
     // Thirty units in a chain; from the tenth, every fifth also builds on
-    // the unit six above it.
+    // the unit six above it, and from the eighth, every fourth on unit 2,
+    // so that long lines crowd the diagram as in a course with stretches.
     const part = (n: number) => `part-${n}`;
     const units = Array.from({ length: 30 }, (_, i) => {
       const n = i + 1;
       const builds = n === 1 ? [] : [part(n - 1)];
       if (n >= 10 && n % 5 === 0) builds.push(part(n - 6));
+      if (n >= 8 && n % 4 === 0) builds.push(part(2));
       return unit(part(n), `Part ${n} of the course`, builds);
     });
     return { title, units, style: STYLE, background, profile };

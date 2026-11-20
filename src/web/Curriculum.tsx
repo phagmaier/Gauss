@@ -15,6 +15,7 @@ import {
   type DiagramEdge,
   type Layout,
   layOut,
+  linesShown,
   NODE_WIDTH,
 } from "./diagram.ts";
 import { type FormOf, StatusForm } from "./StatusForm.tsx";
@@ -126,8 +127,11 @@ interface DiagramProps {
   selected?: string | undefined;
   /** Makes the nodes buttons that mark their unit. */
   onSelect?: (id: string) => void;
-  /** A unit scrolled into view when the diagram or the list first shows. */
-  reveal?: string;
+  /**
+   * The unit the learner is in: scrolled into view when the diagram or the
+   * list first shows, its lines shown and lit while no other is picked.
+   */
+  here?: string;
 }
 
 export function Diagram(props: DiagramProps) {
@@ -147,18 +151,29 @@ export function Diagram(props: DiagramProps) {
     observer.observe(element);
     return () => observer.disconnect();
   }, [minWidth]);
-  const { reveal } = props;
+  const { here } = props;
   // biome-ignore lint/correctness/useExhaustiveDependencies: again once the diagram turns into the list
   useLayoutEffect(() => {
-    if (reveal === undefined) return;
+    if (here === undefined) return;
     pane.current
-      ?.querySelector(`[data-unit="${CSS.escape(reveal)}"]`)
+      ?.querySelector(`[data-unit="${CSS.escape(here)}"]`)
       ?.scrollIntoView({ block: "nearest" });
-  }, [reveal, list]);
+  }, [here, list]);
+  // A crowded diagram shows long lines only for the unit picked, so one whose
+  // parent does no picking (a proposal's) picks for itself.
+  const [ownPick, setOwnPick] = useState<string>();
+  const picking =
+    props.onSelect === undefined && layout.longLines !== undefined
+      ? { selected: ownPick, onSelect: setOwnPick }
+      : {};
 
   return (
     <div className="diagram" ref={pane}>
-      {list ? <PrerequisiteList {...props} /> : drawDiagram(props, layout)}
+      {list ? (
+        <PrerequisiteList {...props} />
+      ) : (
+        drawDiagram({ ...props, ...picking }, layout)
+      )}
     </div>
   );
 }
@@ -222,13 +237,22 @@ function PrerequisiteList({
   );
 }
 
-function drawDiagram(props: DiagramProps, { nodes, edges, rows }: Layout) {
-  // The selected unit's lines are drawn last, over the others, and lit.
+function drawDiagram(props: DiagramProps, layout: Layout) {
+  const { nodes, rows } = layout;
+  const picked = props.selected ?? props.here;
+  const edges = linesShown(layout, picked);
+  // The picked unit's lines are drawn last, over the others, and lit.
   const touches = (e: DiagramEdge) =>
-    e.from.unit.id === props.selected || e.to.unit.id === props.selected;
+    e.from.unit.id === picked || e.to.unit.id === picked;
   const height = Math.max(rows - 1, 0) * PITCH + NODE;
   return (
-    <div className="dg" style={{ height }}>
+    <>
+      {layout.longLines === undefined ? null : (
+        <p className="qa-aside">
+          Lines that skip rows show only for the unit you pick.
+        </p>
+      )}
+      <div className="dg" style={{ height }}>
       <svg
         viewBox={`0 0 100 ${height}`}
         preserveAspectRatio="none"
@@ -299,6 +323,7 @@ function drawDiagram(props: DiagramProps, { nodes, edges, rows }: Layout) {
           </button>
         );
       })}
-    </div>
+      </div>
+    </>
   );
 }

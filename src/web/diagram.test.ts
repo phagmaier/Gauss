@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Unit } from "../shared/curriculum.ts";
-import { layOut, NODE_WIDTH } from "./diagram.ts";
+import { layOut, linesShown, NODE_WIDTH } from "./diagram.ts";
 
 const unit = (id: string, prerequisites: string[] = []): Unit => ({
   id,
@@ -105,6 +105,9 @@ test("a line that skips a row passes beside the unit in it, not behind it", () =
     [],
     [],
   ]);
+  // One line crosses a row, so the layout is not crowded: every line shows.
+  expect(layout.longLines).toBeUndefined();
+  expect(linesShown(layout, undefined)).toBe(layout.edges);
 });
 
 test("between two units in a row, a line passes through the gap in the middle", () => {
@@ -153,25 +156,27 @@ test.each([2, 8, 20])(
   },
 );
 
+// Two chains side by side fill rows 0 to 3 in pairs (a, x / b, y / c, z /
+// d, w); eight late units, two to a row on rows 4 to 7, build on d and on
+// a, x, b or y in turn, so their lines cross those rows through the gap,
+// more of them than fit at the widest spacing.
+const TOP = ["a", "x", "b", "y"];
+const LARGE = [
+  unit("a"),
+  unit("x"),
+  unit("b", ["a"]),
+  unit("y", ["x"]),
+  unit("c", ["b"]),
+  unit("z", ["y"]),
+  unit("d", ["c"]),
+  unit("w", ["z"]),
+  ...Array.from({ length: 8 }, (_, k) =>
+    unit(`late${k + 1}`, [TOP[k % 4] ?? "a", "d"]),
+  ),
+];
+
 test("lines crossing the rows of a large course stay apart, in the gap, in one order", () => {
-  // Two chains side by side fill rows 1 to 3 in pairs; eight late units
-  // build on units at the top, so their lines cross those rows through the
-  // gap, more of them than fit at the widest spacing.
-  const top = ["a", "x", "b", "y"];
-  const units = [
-    unit("a"),
-    unit("x"),
-    unit("b", ["a"]),
-    unit("y", ["x"]),
-    unit("c", ["b"]),
-    unit("z", ["y"]),
-    unit("d", ["c"]),
-    unit("w", ["z"]),
-    ...Array.from({ length: 8 }, (_, k) =>
-      unit(`late${k + 1}`, [top[k % 4] ?? "a", "d"]),
-    ),
-  ];
-  const { nodes, edges, rows, minWidth } = layOut(units);
+  const { nodes, edges, rows } = layOut(LARGE);
   const crossing = (row: number) =>
     edges
       .filter((e) => e.from.row < row && row < e.to.row)
@@ -201,7 +206,37 @@ test("lines crossing the rows of a large course stay apart, in the gap, in one o
     );
   }
   expect(busiest).toBe(12);
-  // At the busiest row six late units each send two lines past it.
-  // Twelve lines need 33 px at 3 px between centres; 6% of 550 px is 33 px.
-  expect(minWidth).toBe(550);
+});
+
+test("a crowded layout draws the lines between adjacent rows, and the picked unit's long lines in lanes of their own", () => {
+  // Twelve lines cross row 4 of the large course, so it is crowded.
+  const layout = layOut(LARGE);
+  const named = (edges: { from: { unit: Unit }; to: { unit: Unit } }[]) =>
+    edges.map((e) => `${e.from.unit.id}>${e.to.unit.id}`).sort();
+
+  // With nothing picked, only the eight lines between adjacent rows.
+  const short = [
+    "a>b",
+    "b>c",
+    "c>d",
+    "d>late1",
+    "d>late2",
+    "x>y",
+    "y>z",
+    "z>w",
+  ];
+  expect(named(linesShown(layout, undefined))).toEqual(short.toSorted());
+  // Picking a adds its two long lines, to late1 (row 4) and late5 (row 6).
+  expect(named(linesShown(layout, "a"))).toEqual(
+    [...short, "a>late1", "a>late5"].toSorted(),
+  );
+  // Alone in the gaps of rows 1 to 3 the two sit 1.5% apart, the widest
+  // spacing; a>late5 then crosses rows 4 and 5 alone, in the middle.
+  expect(layout.longLines?.get("a")?.map((e) => e.via)).toEqual([
+    [49.25, 49.25, 49.25],
+    [50.75, 50.75, 50.75, 50, 50],
+  ]);
+  // The widest one unit's lines need: d's six long lines cross row 4 at
+  // 6/5 = 1.2% apart, and 3 px is 1.2% of 250 px.
+  expect(layout.minWidth).toBe(250);
 });
