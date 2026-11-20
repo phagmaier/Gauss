@@ -35,6 +35,8 @@ export const Course = z.object({
     webSearch: z.boolean(),
   }),
   createdAt: Timestamp,
+  /** Identity across slug reuse. Older records use their creation timestamp. */
+  instance: z.uuid().optional(),
   /** The library lists courses by this, newest first. */
   lastOpenedAt: Timestamp,
   /**

@@ -16,6 +16,7 @@ import { unified } from "unified";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Hello, PageEvent, UnitOpened } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
+import { CourseWithProgress } from "../../shared/library.ts";
 import { NotesSource, NotesView } from "../../shared/notes.ts";
 import type {
   ChoiceQuestion,
@@ -2218,10 +2219,16 @@ test("a course whose progress cannot be read is still listed, with the reason, b
   });
   expect(readable).not.toHaveProperty("problem");
   // Opening the course says why.
-  expect(opened.status).toBe(500);
-  expect(((await opened.json()) as { error: string }).error).toContain(
-    "evidence.jsonl, line 1 is not valid JSON.",
-  );
+  expect(opened.status).toBe(200);
+  const course = CourseWithProgress.parse(await opened.json());
+  expect(course.problem).toContain("evidence.jsonl, line 1 is not valid JSON.");
+  const path = `/api/courses/${id}/delete`;
+  const confirmation = deletionBody(course);
+  expect((await post(app, path, confirmation)).status).toBe(409);
+  expect(
+    (await post(app, path, { ...confirmation, title: calculus.title })).status,
+  ).toBe(200);
+  expect(await libraryIds(app)).toEqual([COURSE]);
 });
 
 // --- What I know ---------------------------------------------------------------
@@ -3058,18 +3065,29 @@ async function libraryIds(app: App): Promise<string[]> {
   return courses.map((c) => c.id);
 }
 
+function deletionBody(stored: CourseWithProgress) {
+  return { instance: stored.course.instance ?? stored.course.createdAt };
+}
+
+async function confirmationFor(app: App) {
+  const loaded = await app.request(`/api/courses/${COURSE}`);
+  return deletionBody(CourseWithProgress.parse(await loaded.json()));
+}
+
 test("a draft is deleted with a plain confirmation, leaves the library, and asks for a backup commit", async () => {
   const setup = setUp([]);
   await approvedCourse(true);
 
-  const deleted = await post(setup.app, `/api/courses/${COURSE}/delete`, {});
+  const path = `/api/courses/${COURSE}/delete`;
+  const body = await confirmationFor(setup.app);
+  const deleted = await post(setup.app, path, body);
 
   expect(deleted.status).toBe(200);
   expect(await courseFolders()).toEqual([]);
   expect(await libraryIds(setup.app)).toEqual([]);
   expect((await setup.app.request(`/api/courses/${COURSE}`)).status).toBe(404);
-  expect(setup.commits).toEqual([`${COURSE}: course deleted`]);
-  const again = await post(setup.app, `/api/courses/${COURSE}/delete`, {});
+  expect(setup.commits.at(-1)).toBe(`${COURSE}: course deleted`);
+  const again = await post(setup.app, path, body);
   expect(again.status).toBe(404);
 });
 
@@ -3084,8 +3102,12 @@ test("a course with evidence goes only with its title typed, taking its unit's c
   });
   const path = `/api/courses/${COURSE}/delete`;
 
-  const untyped = await post(setup.app, path, {});
-  const mistyped = await post(setup.app, path, { title: "Linear algebra" });
+  const confirmation = await confirmationFor(setup.app);
+  const untyped = await post(setup.app, path, confirmation);
+  const mistyped = await post(setup.app, path, {
+    ...confirmation,
+    title: "Linear algebra",
+  });
   expect([untyped.status, mistyped.status]).toEqual([409, 409]);
   expect(await mistyped.json()).toEqual({
     error: "Type the course's title to delete it.",
@@ -3093,12 +3115,15 @@ test("a course with evidence goes only with its title typed, taking its unit's c
   expect(await libraryIds(setup.app)).toEqual([COURSE]);
   expect(setup.commits).toEqual([]);
 
-  const typed = await post(setup.app, path, { title: FIRST.title });
+  const typed = await post(setup.app, path, {
+    ...confirmation,
+    title: FIRST.title,
+  });
   expect(typed.status).toBe(200);
   expect(await courseFolders()).toEqual([]);
   // A new course that takes the id must not find this one's chat.
   expect(setup.units.get(COURSE, "vectors")).toBeUndefined();
-  expect(setup.commits).toEqual([`${COURSE}: course deleted`]);
+  expect(setup.commits.at(-1)).toBe(`${COURSE}: course deleted`);
 });
 
 test("deleting is refused while the tutor writes in a unit, and while a unit's page is open, saying which", async () => {
@@ -3115,7 +3140,7 @@ test("deleting is refused while the tutor writes in a unit, and while a unit's p
   await taught.promise;
   unsubscribe?.();
   const path = `/api/courses/${COURSE}/delete`;
-  const body = { title: FIRST.title };
+  const body = { ...(await confirmationFor(setup.app)), title: FIRST.title };
 
   const writing = await post(setup.app, path, body);
   expect(writing.status).toBe(409);
@@ -3141,3 +3166,101 @@ test("deleting is refused while the tutor writes in a unit, and while a unit's p
   expect(closed.status).toBe(200);
   expect(await courseFolders()).toEqual([]);
 });
+
+test("a confirmation from an old tab cannot delete a new draft with the same title and slug", async () => {
+  const { app } = setUp([]);
+  await approvedCourse(true);
+  const path = `/api/courses/${COURSE}/delete`;
+  const old = await confirmationFor(app);
+  expect((await post(app, path, old)).status).toBe(200);
+  await approvedCourse(true);
+
+  expect((await post(app, path, old)).status).toBe(409);
+  expect(await libraryIds(app)).toEqual([COURSE]);
+  expect((await post(app, path, await confirmationFor(app))).status).toBe(200);
+});
+
+test("a draft review already loading holds the course against deletion", async () => {
+  const { app, dataRoot } = setUp([]);
+  await approvedCourse(true);
+  const confirmation = await confirmationFor(app);
+  const loaded = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  const readStyle = dataRoot.readStyle;
+  vi.spyOn(dataRoot, "readStyle").mockImplementationOnce(async (id) => {
+    loaded.resolve();
+    await resume.promise;
+    return readStyle(id);
+  });
+  const review = post(app, `/api/courses/${COURSE}/review`);
+  await loaded.promise;
+  const path = `/api/courses/${COURSE}/delete`;
+
+  let deletion: Response;
+  try {
+    deletion = await post(app, path, confirmation);
+  } finally {
+    resume.resolve();
+    await review;
+  }
+  expect(deletion.status).toBe(409);
+  expect((await review).status).toBe(200);
+  expect((await post(app, path, confirmation)).status).toBe(200);
+});
+
+test("a course being deleted admits no new unit open or second deletion", async () => {
+  const { app, dataRoot, units } = setUp([]);
+  await approvedCourse();
+  const confirmation = await confirmationFor(app);
+  const reached = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  const deleteCourse = dataRoot.deleteCourse;
+  vi.spyOn(dataRoot, "deleteCourse").mockImplementationOnce(async (id) => {
+    reached.resolve();
+    await resume.promise;
+    return deleteCourse(id);
+  });
+  const path = `/api/courses/${COURSE}/delete`;
+  const deletion = post(app, path, confirmation);
+  await reached.promise;
+
+  let statuses: number[];
+  try {
+    statuses = [
+      (await post(app, `${UNIT}/open`)).status,
+      (await post(app, path, confirmation)).status,
+    ];
+  } finally {
+    resume.resolve();
+    await deletion;
+    await units.get(COURSE, "vectors")?.settled();
+  }
+  expect(statuses).toEqual([409, 409]);
+  expect((await deletion).status).toBe(200);
+  expect(await courseFolders()).toEqual([]);
+});
+
+test.each(["evidence outside the current plan", "an incomplete unit open"])(
+  "a course with %s needs a typed title even without current progress",
+  async (reason) => {
+    const { app, dataRoot } = setUp([]);
+    await approvedCourse();
+    if (reason === "evidence outside the current plan") {
+      await dataRoot.appendEvidence(COURSE, {
+        kind: "override",
+        recordedAt: NOW,
+        objectives: ["old-objective"],
+      });
+    } else {
+      await dataRoot.markOpened(COURSE, "vectors");
+      await dataRoot.workspaceFolder(COURSE);
+    }
+    const path = `/api/courses/${COURSE}/delete`;
+    const confirmation = await confirmationFor(app);
+
+    expect((await post(app, path, confirmation)).status).toBe(409);
+    expect(
+      (await post(app, path, { ...confirmation, title: FIRST.title })).status,
+    ).toBe(200);
+  },
+);

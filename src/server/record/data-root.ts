@@ -75,8 +75,11 @@ export function resolveDataRoot(
 }
 
 export interface DataRoot {
-  /** Makes the course's folder and its course.json. The id comes from the title. */
-  createCourse(input: { title: string }): Promise<StoredCourse>;
+  /** Makes the folder, reports its reserved id, then publishes course.json. */
+  createCourse(input: {
+    title: string;
+    reserved?: (id: Slug) => void;
+  }): Promise<StoredCourse>;
   /**
    * Every course, most recently opened first. A folder without course.json
    * (a creation that stopped partway) is left out. With skipUnreadable,
@@ -641,6 +644,12 @@ export function openDataRoot(options: {
     await syncFolder(options.path);
   }
 
+  function withConsistentSnapshot<T>(work: () => Promise<T>): Promise<T> {
+    return withConsistentApproval(() =>
+      withConsistentNotes(() => withFileLock(courses, work)),
+    );
+  }
+
   async function listCourses(skipUnreadable: boolean): Promise<StoredCourse[]> {
     let entries: string[];
     try {
@@ -680,17 +689,19 @@ export function openDataRoot(options: {
   }
 
   return {
-    async createCourse({ title }) {
+    async createCourse({ title, reserved }) {
       const stamp = now().toISOString();
       const course = Course.parse({
         title,
         backend: "claude",
         settings: { webSearch: false },
         createdAt: stamp,
+        instance: randomUUID(),
         lastOpenedAt: stamp,
       });
       await mkdir(courses, { recursive: true });
       const id = await makeFolder(courses, idFromTitle(course.title));
+      reserved?.(id);
       await writeJson(join(courses, id, "course.json"), Course, course);
       return { id, course, curriculum: null };
     },
@@ -705,9 +716,9 @@ export function openDataRoot(options: {
       const folder = join(courses, id);
       // Hidden and ending in .tmp, so the library and the backup skip it.
       const parked = join(courses, `.${id}.${randomUUID()}.tmp`);
-      // Out of the way of an approval being recovered and a backup staging.
-      const moved = await withConsistentApproval(() =>
-        withFileLock(courses, async () => {
+      // Wait for record recovery and backup staging before moving the folder.
+      const moved = await withFileLock(courseFile(id, "state.json"), () =>
+        withConsistentSnapshot(async () => {
           try {
             await rename(folder, parked);
             return true;
@@ -806,10 +817,7 @@ export function openDataRoot(options: {
       await withConsistentApproval(() => replaceProfile(text, was));
     },
 
-    withConsistentSnapshot: (work) =>
-      withConsistentApproval(() =>
-        withConsistentNotes(() => withFileLock(courses, work)),
-      ),
+    withConsistentSnapshot,
 
     async saveProposal(id, proposal) {
       const { title, units, style, background, profile } =

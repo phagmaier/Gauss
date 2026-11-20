@@ -4,7 +4,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { createCourseDeletion } from "../engine/course-deletion.ts";
 import { startBackup } from "./backup.ts";
+import { openDataRoot } from "./data-root.ts";
 
 let dir: string;
 let said: string[];
@@ -175,6 +177,35 @@ describe("starting", () => {
     expect(existsSync(elsewhere)).toBe(false);
     expect(subjects()).toEqual(["Backup started"]);
   });
+});
+
+test("deleting an unsnapshotted course keeps its latest files in backup history", async () => {
+  const dataRoot = openDataRoot({ path: dir });
+  const backup = await startBackup({
+    path: dir,
+    log,
+    stageSnapshot: dataRoot.withConsistentSnapshot,
+  });
+  const { id, course } = await dataRoot.createCourse({ title: "Limits" });
+  await put(`courses/${id}/workspace/example.py`, "print(42)\n");
+  const deletion = createCourseDeletion({ dataRoot, backup, holders: [] });
+
+  expect(
+    await deletion.delete(id, {
+      instance: course.instance ?? course.createdAt,
+    }),
+  ).toEqual({ ok: true });
+  await backup.settled();
+
+  expect(subjects()).toEqual([
+    "limits: course deleted",
+    "limits: before deleting course",
+    "Backup started",
+  ]);
+  expect(git("show", "HEAD^:courses/limits/workspace/example.py")).toBe(
+    "print(42)",
+  );
+  expect(tracked()).toEqual([".gitignore"]);
 });
 
 describe("committing", () => {

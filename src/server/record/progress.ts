@@ -75,7 +75,7 @@ export function courseProgress(
   );
 }
 
-/** The course with its progress, reading state.json and the evidence only when it can have any. */
+/** The course with its progress, or a reason when that part of the record is unreadable. */
 export async function withProgress(
   dataRoot: DataRoot,
   stored: StoredCourse,
@@ -83,14 +83,27 @@ export async function withProgress(
   if (stored.curriculum?.approval.status !== "approved") {
     return { ...stored, progress: {} };
   }
-  const [state, evidence] = await Promise.all([
+  // State reads can recover interrupted writes. Wait for them even if the
+  // evidence read fails, so deletion cannot run ahead of that recovery.
+  const [state, evidence] = await Promise.allSettled([
     dataRoot.readState(stored.id),
     dataRoot.readEvidence(stored.id),
   ]);
-  return {
-    ...stored,
-    progress: courseProgress(stored.curriculum, state, evidence),
-  };
+  try {
+    if (state.status === "rejected") throw state.reason;
+    if (evidence.status === "rejected") throw evidence.reason;
+    return {
+      ...stored,
+      progress: courseProgress(stored.curriculum, state.value, evidence.value),
+      ...(evidence.value.length === 0 ? {} : { hasEvidence: true as const }),
+    };
+  } catch (error) {
+    return {
+      ...stored,
+      progress: {},
+      problem: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 /**
@@ -106,10 +119,8 @@ export async function finishedCourses(
     courses.map(async (stored) => {
       const { curriculum } = stored;
       if (curriculum?.approval.status !== "approved") return undefined;
-      const { progress } = await withProgress(dataRoot, stored).catch(() => ({
-        progress: undefined,
-      }));
-      if (progress === undefined) return undefined;
+      const { progress, problem } = await withProgress(dataRoot, stored);
+      if (problem !== undefined) return undefined;
       const done = curriculum.units.every((unit) => {
         const status = Object.hasOwn(progress, unit.id)
           ? progress[unit.id]?.status

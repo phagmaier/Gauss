@@ -80,6 +80,8 @@ test("a created course is written as course.json and reads back", async () => {
   });
 
   const created = await root.createCourse({ title: "  Calculus I " });
+  const { instance } = created.course;
+  expect(instance).toEqual(expect.any(String));
 
   const expected = {
     id: "calculus-i",
@@ -88,6 +90,7 @@ test("a created course is written as course.json and reads back", async () => {
       backend: "claude",
       settings: { webSearch: false },
       createdAt: "2026-11-15T09:00:00.000Z",
+      instance,
       lastOpenedAt: "2026-11-15T09:00:00.000Z",
     },
     curriculum: null,

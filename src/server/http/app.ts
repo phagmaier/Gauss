@@ -44,7 +44,10 @@ import { StyleAnswer } from "../../shared/style.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
-import { createCourseDeletion } from "../engine/course-deletion.ts";
+import {
+  COURSE_DELETING,
+  createCourseDeletion,
+} from "../engine/course-deletion.ts";
 import type {
   CoursePlanning,
   CoursePlannings,
@@ -89,6 +92,34 @@ export function createApp(options: {
     return c.json({ error: error.message }, 500);
   });
 
+  const deletion = createCourseDeletion({
+    dataRoot,
+    holders: [units, plannings, intakes, notes, disputes],
+    ...(options.backup === undefined ? {} : { backup: options.backup }),
+  });
+
+  app.post("/api/courses/:id/delete", async (c) => {
+    const body = await readBody(c, DeleteCourse);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const deleted = await deletion.delete(c.req.param("id"), body.data);
+    return deleted.ok
+      ? c.json({ ok: true })
+      : c.json({ error: deleted.error }, deleted.status);
+  });
+
+  // Registered after the deletion route, which takes the exclusive hold.
+  app.use("/api/courses/:id/*", async (c, next) => {
+    const courseId = c.req.param("id");
+    if (courseId === undefined) return next();
+    const release = deletion.hold(courseId);
+    if (release === undefined) return c.json({ error: COURSE_DELETING }, 409);
+    try {
+      await next();
+    } finally {
+      release();
+    }
+  });
+
   // --- The library ---------------------------------------------------------
 
   // Each course with where its units stand, derived from the record now. A
@@ -97,14 +128,7 @@ export function createApp(options: {
   app.get("/api/courses", async (c) => {
     const courses = await Promise.all(
       (await dataRoot.listCourses()).map((stored) =>
-        withProgress(dataRoot, stored).catch((error): CourseWithProgress => {
-          console.error(error);
-          return {
-            ...stored,
-            progress: {},
-            problem: error instanceof Error ? error.message : String(error),
-          };
-        }),
+        withProgress(dataRoot, stored),
       ),
     );
     return c.json({ courses } satisfies Library);
@@ -269,23 +293,6 @@ export function createApp(options: {
     return c.json({ intakeId: intake.id } satisfies IntakeStarted);
   });
 
-  // Deleting a course or a draft (task 5.18): refused while anything of it
-  // is shown or runs, and with a wrong title where one is asked for.
-  const deletion = createCourseDeletion({
-    dataRoot,
-    holders: [units, plannings, intakes, notes, disputes],
-    ...(options.backup === undefined ? {} : { backup: options.backup }),
-  });
-
-  app.post("/api/courses/:id/delete", async (c) => {
-    const body = await readBody(c, DeleteCourse);
-    if (!body.ok) return c.json({ error: body.error }, 400);
-    const deleted = await deletion.delete(c.req.param("id"), body.data.title);
-    return deleted.ok
-      ? c.json({ ok: true })
-      : c.json({ error: deleted.error }, deleted.status);
-  });
-
   // --- The learner profile (task 5.8), with the finished courses a new
   // course's planner is given beside it ------------------------------------
 
@@ -323,44 +330,44 @@ export function createApp(options: {
     c.json({ intakeId: intakes.start().id } satisfies IntakeStarted, 201),
   );
 
-  /** Runs the handler with the intake the path names, or answers 404. */
-  function withIntake(
-    handler: (c: Context, intake: Intake) => Response | Promise<Response>,
+  /** Resolves the intake after the request body (if any) has arrived. */
+  async function withIntake(
+    c: Context,
+    handler: (intake: Intake) => Response | Promise<Response>,
   ) {
-    return (c: Context) => {
-      const intake = intakes.get(c.req.param("id") ?? "");
-      return intake === undefined
-        ? c.json({ error: "No such intake." }, 404)
-        : handler(c, intake);
-    };
+    const intake = intakes.get(c.req.param("id") ?? "");
+    if (intake === undefined) return c.json({ error: "No such intake." }, 404);
+    const courseId = intake.courseId();
+    if (courseId === undefined) return handler(intake);
+    const release = deletion.hold(courseId);
+    if (release === undefined) return c.json({ error: COURSE_DELETING }, 409);
+    try {
+      return await handler(intake);
+    } finally {
+      release();
+    }
   }
 
-  app.get(
-    "/api/intakes/:id/events",
-    withIntake((c, intake) => streamLog(c, intake, heartbeatMs)),
+  app.get("/api/intakes/:id/events", (c) =>
+    withIntake(c, (intake) => streamLog(c, intake, heartbeatMs)),
   );
 
-  app.post(
-    "/api/intakes/:id/messages",
-    withIntake(async (c, intake) => {
-      const body = await readBody(c, LearnerMessage);
-      if (!body.ok) return c.json({ error: body.error }, 400);
-      return reply(c, intake.say(body.data.text), 202);
-    }),
-  );
+  app.post("/api/intakes/:id/messages", async (c) => {
+    const body = await readBody(c, LearnerMessage);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    return withIntake(c, (intake) => reply(c, intake.say(body.data.text), 202));
+  });
 
-  app.post(
-    "/api/intakes/:id/approval",
-    withIntake(async (c, intake) => {
-      const body = await readBody(c, Approval);
-      if (!body.ok) return c.json({ error: body.error }, 400);
-      return reply(c, await intake.approve(body.data.revision), 200);
-    }),
-  );
+  app.post("/api/intakes/:id/approval", async (c) => {
+    const body = await readBody(c, Approval);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    return withIntake(c, async (intake) =>
+      reply(c, await intake.approve(body.data.revision), 200),
+    );
+  });
 
-  app.post(
-    "/api/intakes/:id/interrupt",
-    withIntake(async (c, intake) => {
+  app.post("/api/intakes/:id/interrupt", (c) =>
+    withIntake(c, async (intake) => {
       await intake.interrupt();
       return c.json({ ok: true });
     }),

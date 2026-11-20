@@ -94,6 +94,8 @@ export function createIntake(options: {
   const { backend, systemPrompt, dataRoot, draft } = options;
   const log = createEventLog();
   let courseId: Slug | undefined;
+  /** The first proposal has reserved the id but not published the course yet. */
+  let reservedCourseId: Slug | undefined;
   let latest = 0;
   /** The latest proposal, as its card shows it; approval checks the record against it. */
   let shown: ShownProposal | undefined;
@@ -118,7 +120,17 @@ export function createIntake(options: {
       }
       if (opening) return { refused: FIRST_TURN };
       if (courseId === undefined) {
-        courseId = (await dataRoot.createCourse({ title: proposal.title })).id;
+        try {
+          const created = await dataRoot.createCourse({
+            title: proposal.title,
+            reserved: (id) => {
+              reservedCourseId = id;
+            },
+          });
+          courseId = created.id;
+        } finally {
+          reservedCourseId = undefined;
+        }
       }
       const profileWas = (await dataRoot.readProfile()) ?? null;
       const card = { ...proposal, profileWas };
@@ -207,7 +219,7 @@ export function createIntake(options: {
     id: log.id,
     events: log.events,
     subscribe: log.subscribe,
-    courseId: () => courseId,
+    courseId: () => courseId ?? reservedCourseId,
     say(text) {
       if (approved) {
         return { ok: false, status: 409, error: INTAKE_OVER };

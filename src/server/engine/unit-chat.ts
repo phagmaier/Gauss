@@ -1396,6 +1396,8 @@ function createUnitChat(
         agents = undefined;
         await unused.close();
       }
+    } finally {
+      loading = undefined;
     }
   }
 
@@ -3194,7 +3196,7 @@ function createUnitChat(
         if (log.quiet()) void exclusive(() => offerReview(r));
         return true;
       }
-      if (loading !== undefined && !failed) return !testOut;
+      if (loading !== undefined) return !testOut;
       failed = false;
       loading = load(testOut);
       return true;
@@ -3733,14 +3735,13 @@ function createUnitChat(
     },
     inUse() {
       if (log.watched()) return "unit-page";
-      if (running === undefined) {
-        return loading !== undefined && !failed ? "opening" : undefined;
-      }
-      if (running.agents.busy()) return "tutor";
-      if (running.agents.grading()) return "grading";
-      if (running.agents.judging()) return "judging";
+      if (loading !== undefined) return "opening";
+      if (running?.agents.busy()) return "tutor";
+      if (running?.agents.grading()) return "grading";
+      if (running?.agents.judging()) return "judging";
       if (handoffs?.running()) return "handoff";
       if (install !== undefined) return "install";
+      if (exclusive.busy()) return "unit-action";
       return undefined;
     },
     async close() {
@@ -3873,9 +3874,16 @@ const NOT_NOW = {
 /** Runs work one piece at a time, in the order given. */
 function createSerial() {
   let tail: Promise<unknown> = Promise.resolve();
-  return <T>(work: () => Promise<T>): Promise<T> => {
+  let pending = 0;
+  function release() {
+    pending -= 1;
+  }
+  function run<T>(work: () => Promise<T>): Promise<T> {
+    pending += 1;
     const result = tail.then(work);
-    tail = result.catch(() => {});
+    tail = result.then(release, release);
     return result;
-  };
+  }
+  run.busy = () => pending > 0;
+  return run;
 }

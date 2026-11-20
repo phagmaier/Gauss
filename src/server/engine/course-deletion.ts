@@ -5,14 +5,17 @@
 //
 // Refused while anything of the course runs, or a page shows one of its
 // chats: a chat left behind would write into a course that is gone, or into
-// a new one that takes its id. Otherwise the engine lets go of the course at
-// once, before anything is awaited, so nothing of it starts in between;
-// then its folder goes, its sessions are closed, and a backup commit is
-// asked for.
+// a new one that takes its id. Requests hold the course until their work
+// is registered with a holder or done. Deletion excludes new requests,
+// closes the idle sessions, snapshots the final record, and removes it.
 
 import type { Slug } from "../../shared/course.ts";
-import type { StoredCourse } from "../../shared/library.ts";
-import { deletionAsksTitle } from "../../shared/library.ts";
+import {
+  courseInstance,
+  type DeleteCourse,
+  deletionAsksTitle,
+  type StoredCourse,
+} from "../../shared/library.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { withProgress } from "../record/progress.ts";
@@ -28,6 +31,8 @@ export type Doing =
   | "judging"
   | "handoff"
   | "install"
+  /** A unit has work running or queued outside an agent turn. */
+  | "unit-action"
   /** A unit's notes are being written. */
   | "notes"
   | "dispute"
@@ -62,57 +67,93 @@ export type Deleted =
   | { ok: false; status: 404 | 409; error: string };
 
 export interface CourseDeletion {
-  /** Deletes the course, with the title the learner typed, if they did. */
-  delete(courseId: string, title: string | undefined): Promise<Deleted>;
+  /** Holds a request until it finishes, or refuses while deletion is underway. */
+  hold(courseId: string): (() => void) | undefined;
+  delete(courseId: string, confirmation: DeleteCourse): Promise<Deleted>;
 }
 
 export function createCourseDeletion(options: {
   dataRoot: DataRoot;
   holders: readonly CourseHolder[];
-  /** Commits the record once the course is gone; none if not given. */
+  /** Snapshots the final record and commits the deletion; none if not given. */
   backup?: Backup;
 }): CourseDeletion {
   const { dataRoot, holders } = options;
   const backup = options.backup ?? noBackup;
+  // No entry when idle; a positive request count when held; zero when deleting.
+  const active = new Map<string, number>();
   return {
-    async delete(courseId, title) {
-      const stored = await dataRoot.readCourse(courseId);
-      if (stored === undefined) {
-        return { ok: false, status: 404, error: "No such course." };
-      }
-      const course = await withProgress(dataRoot, stored).catch(
-        (error: unknown) => ({
-          ...stored,
-          progress: {},
-          problem: error instanceof Error ? error.message : String(error),
-        }),
-      );
-      if (
-        deletionAsksTitle(course) &&
-        title?.trim() !== stored.course.title.trim()
-      ) {
+    hold(courseId) {
+      const count = active.get(courseId);
+      if (count === 0) return undefined;
+      active.set(courseId, (count ?? 0) + 1);
+      return () => {
+        const left = (active.get(courseId) ?? 1) - 1;
+        if (left === 0) active.delete(courseId);
+        else active.set(courseId, left);
+      };
+    },
+    async delete(courseId, confirmation) {
+      const count = active.get(courseId);
+      if (count !== undefined) {
         return {
           ok: false,
           status: 409,
-          error: "Type the course's title to delete it.",
+          error:
+            count === 0
+              ? COURSE_DELETING
+              : "A request for this course is still running. Wait for it to finish, then delete the course.",
         };
       }
-      for (const holder of holders) {
-        const use = holder.inUse(stored.id);
-        if (use !== undefined) {
-          return { ok: false, status: 409, error: refusal(stored, use) };
+      active.set(courseId, 0);
+      try {
+        const stored = await dataRoot.readCourse(courseId);
+        if (stored === undefined) return missing;
+        if (confirmation.instance !== courseInstance(stored.course)) {
+          return {
+            ok: false,
+            status: 409,
+            error:
+              "This course has been replaced. Reload the page before deleting it.",
+          };
         }
+        for (const holder of holders) {
+          const use = holder.inUse(stored.id);
+          if (use !== undefined) {
+            return { ok: false, status: 409, error: refusal(stored, use) };
+          }
+        }
+        const course = await withProgress(dataRoot, stored);
+        if (
+          deletionAsksTitle(course) &&
+          confirmation.title?.trim() !== stored.course.title
+        ) {
+          return {
+            ok: false,
+            status: 409,
+            error:
+              confirmation.title === undefined
+                ? "Reload the course, then type its title to delete it."
+                : "Type the course's title to delete it.",
+          };
+        }
+        await Promise.allSettled(
+          holders.map((holder) => holder.forget(stored.id)),
+        );
+        backup.commit(`${stored.id}: before deleting course`);
+        await backup.settled();
+        if (!(await dataRoot.deleteCourse(stored.id))) return missing;
+        backup.commit(`${stored.id}: course deleted`);
+        return { ok: true };
+      } finally {
+        active.delete(courseId);
       }
-      const forgotten = Promise.allSettled(
-        holders.map((holder) => holder.forget(stored.id)),
-      );
-      await dataRoot.deleteCourse(stored.id);
-      await forgotten;
-      backup.commit(`${stored.id}: course deleted`);
-      return { ok: true };
     },
   };
 }
+
+export const COURSE_DELETING = "This course is being deleted.";
+const missing = { ok: false, status: 404, error: "No such course." } as const;
 
 /** Why the course cannot be deleted now, and what the learner can do. */
 function refusal(stored: StoredCourse, use: CourseUse): string {
@@ -135,6 +176,8 @@ function refusal(stored: StoredCourse, use: CourseUse): string {
       return `The tutor is writing in ${unit}. Stop it, or ${later.toLowerCase()}`;
     case "grading":
       return `An answer in ${inner} is being graded. ${later}`;
+    case "unit-action":
+      return `Work in ${inner} is still running. ${later}`;
     case "judging":
       return `The tutor's reply in ${inner} is being judged for help. ${later}`;
     case "handoff":

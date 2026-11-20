@@ -294,23 +294,18 @@ The brief states the result; this is who decided and why.
   title to be typed, saying what goes. Refused while a chat of the course
   is open or anything of it runs. As built (the agent's choices, open to
   change):
-  - the title is asked once any unit has started, which takes in every
-    course with evidence and also a unit taught with nothing answered yet,
-    whose transcripts and workspace would go too; and for a course whose
-    record cannot be read. An approved course with no unit started asks
-    plainly;
+  - an approved course asks for its title if it has evidence or a unit
+    has opened, including a failed opening that may have left a
+    transcript or workspace, or if its progress cannot be read;
   - "open" is a page reading the chat's event stream: a unit's session,
     the curriculum's review, or the planning conversation. Chats stay in
     memory for the whole server run, so refusing every chat ever opened
     would refuse any course used since the start. The page's own course
     view holds no chat;
-  - what the engine keeps of the course (unit chats, the course's
-    workspace guard, intakes, the planning conversation, failed notes
-    attempts) is dropped before the folder goes, in the same step as the
-    check, so a new course that takes the id starts clean;
-  - the folder is renamed to a hidden `.tmp` name first, which the library
-    and the backup skip, then removed, so the library never shows half a
-    course while a large workspace is removed.
+  - the record is snapshotted before deletion: a new draft or edits in
+    the workspace may not have triggered a commit yet. The folder is
+    renamed out of the library before it is removed, so the library
+    never shows a half-deleted course.
 
 ## Toolchain
 
@@ -2213,11 +2208,6 @@ they will close.
   limit (task 5.13) on a unit of five segments; the next two, on both
   units, took 20 and 30 seconds. Cause unknown; pressing write again
   retries.
-- Deleting a course: a request that read the course just before it was
-  deleted (opening a unit, a dispute, a notes write, opening planning) can
-  go on and fail with an error, or start a model call that has nowhere to
-  write; only a unit opening under way refuses the deletion. A course whose
-  progress cannot be read shows only the error in its course view, so it
-  cannot be deleted from the page, though the route allows it. The tutor
-  sessions Claude Code keeps for the course's workspace, outside the data
-  root, stay until its own sweep ("Claude backend").
+- Deleting a course does not remove the tutor sessions Claude Code keeps
+  for the course's workspace, outside the data root. They stay until its
+  own sweep ("Claude backend").

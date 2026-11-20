@@ -49,12 +49,9 @@ export const CourseWithProgress = StoredCourse.extend({
    * `problem` is set.
    */
   progress: z.record(Slug, UnitProgress),
-  /**
-   * Set only in the list of every course, when the course's state.json or
-   * evidence could not be read: the reason. The course is listed all the
-   * same, so one record that cannot be read does not hide the others. Asked
-   * for alone, such a course is an error with this reason.
-   */
+  /** Set when the course has recorded evidence, even outside its current plan. */
+  hasEvidence: z.literal(true).optional(),
+  /** Why state or evidence could not be read, when progress is unavailable. */
   problem: z.string().optional(),
 });
 export type CourseWithProgress = z.infer<typeof CourseWithProgress>;
@@ -73,10 +70,20 @@ export function deletionAsksTitle(course: CourseWithProgress): boolean {
   if (course.curriculum?.approval.status !== "approved") return false;
   return (
     course.problem !== undefined ||
+    course.hasEvidence === true ||
+    Object.keys(course.course.unitsOpenedAt ?? {}).length > 0 ||
     Object.values(course.progress).some((p) => p.status !== "not-started")
   );
 }
 
-/** The body of a course's deletion: the title typed, when it asks for one. */
-export const DeleteCourse = z.object({ title: z.string().optional() });
+/** A confirmation targets the course shown, not a replacement at the same slug. */
+export function courseInstance(course: Course): string {
+  return course.instance ?? course.createdAt;
+}
+
+/** The course instance and the title typed, when asked for. */
+export const DeleteCourse = z.object({
+  instance: z.string().min(1),
+  title: z.string().optional(),
+});
 export type DeleteCourse = z.infer<typeof DeleteCourse>;

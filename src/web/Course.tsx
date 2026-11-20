@@ -17,7 +17,11 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { StoredUnit } from "../shared/curriculum.ts";
 import { IntakeStarted, UnitOpened } from "../shared/events.ts";
-import { CourseWithProgress, deletionAsksTitle } from "../shared/library.ts";
+import {
+  CourseWithProgress,
+  courseInstance,
+  deletionAsksTitle,
+} from "../shared/library.ts";
 import { isFinished } from "../shared/status.ts";
 import { getJson, post, postFor } from "./api.ts";
 import { Diagram, UnitList } from "./Curriculum.tsx";
@@ -81,12 +85,15 @@ export function Course(props: { courseId: string }) {
     else setProblem(answer.error);
   }
 
-  const curriculum = stored?.curriculum ?? null;
+  const unreadable = stored?.problem;
+  const curriculum =
+    unreadable === undefined ? (stored?.curriculum ?? null) : null;
   const draft = curriculum?.approval.status === "draft";
   const approved = curriculum?.approval.status === "approved";
   const title = stored?.course.title ?? (stored === null ? "Not found" : "");
   const toUnit = (unit: StoredUnit) => navigate(paths.unit(courseId, unit.id));
-  const leadsTo = stored == null ? null : lead(stored);
+  const leadsTo =
+    stored == null || unreadable !== undefined ? null : lead(stored);
   // An approved course with nothing to lead to has every unit finished.
   const finished = approved && leadsTo === null;
 
@@ -239,7 +246,9 @@ export function Course(props: { courseId: string }) {
           ) : stored === undefined ? null : (
             <>
               <h1 className="cv-title">{title}</h1>
-              {approved ? (
+              {unreadable !== undefined ? (
+                <p className="ph-note">{unreadable}</p>
+              ) : approved ? (
                 <Counts counts={courseCounts(stored)} finished={finished} />
               ) : (
                 <p className="cv-at">
@@ -607,7 +616,10 @@ function DeleteOffer(props: { course: CourseWithProgress }) {
     setSending(true);
     const refused = await post(
       `/api/courses/${encodeURIComponent(course.id)}/delete`,
-      typing ? { title: typed } : {},
+      {
+        instance: courseInstance(course.course),
+        ...(typing ? { title: typed } : {}),
+      },
     );
     setSending(false);
     if (refused === undefined) navigate(paths.library);
