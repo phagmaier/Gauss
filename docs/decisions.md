@@ -1778,7 +1778,16 @@ redesign's.
   numbered, each with its objectives, then the gate, then "Export
   transcript" and "Start fresh"; a past or current segment picked there
   scrolls the thread to its heading and lights it briefly. Leaving a
-  session never asks. Rejected: a rail always showing the outline.
+  session never asks. Rejected: a rail always showing the outline. As
+  built (the agent's choices, open to change): "Review" shows only once a
+  review is started, since its card waits inside a segment; "Unit gate"
+  shows from the gate's card on, when every segment is behind. A test
+  shows "Objective k of n", not a question count, since one objective can
+  take two questions. The outline marks the gate taken or skipped, and
+  puts it before a going over again that followed it. A part-taught
+  segment strikes through the objectives the test skipped. A jump moves
+  focus to the heading so the keyboard goes on from there. "Course map"
+  shows disabled until task 5.34 makes it work.
 - **Artifacts, source passages and the course map open in a pane beside
   the thread**, one at a time. "Course map" shows the curriculum diagram
   with the unit marked "You are here" (the redesign, piece 19). Rejected:
@@ -2043,6 +2052,9 @@ they will close.
   as done, not hollow as the session's top line does; and while a review
   offered first holds the test, the top line reads "Segment 1" and the
   review's card says the unit goes on where it was.
+- The session's top line does not fit a phone's width: at 390 pixels
+  with the side pane open, the segment's title in the position shrinks
+  to nothing and the path is cut off.
 - The help judge sees one exchange at a time ("Help judge").
 - The grader's grading of math answers the symbolic check does not settle
   has no hand-graded set: the grade set holds written answers only.

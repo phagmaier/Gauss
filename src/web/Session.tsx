@@ -1,6 +1,7 @@
 // A unit's session (plan task 2.11): its chat in the Thread layout, as the
-// mocks settled it. The top line has the path out and the position in the
-// unit, which opens the outline (docs/prototype/04-session-nav.html). Each
+// mocks settled it. The top line has the path out, ending in the unit, and
+// the position in the unit, which opens the outline (19-unit-page.html), whose
+// segments jump to their headings in the thread. Each
 // segment begins with a heading, and each phase begun is a hairline under
 // it (19-unit-page.html); the one next-step control sits where the thread
 // has reached (03-phases.html). A question is a card in the thread
@@ -89,7 +90,6 @@ import {
   judgmentSays,
   lastCard,
   nextStep,
-  type OutlineSegment,
   openQuestion,
   outline,
   type Placement,
@@ -99,6 +99,7 @@ import {
   SKIP_GATE_ASKS,
   segmentHeading,
   skipLabel,
+  type UnitOutline,
   whereInUnit,
 } from "./session.ts";
 import { objectiveMark } from "./what-i-know.ts";
@@ -107,6 +108,9 @@ const enc = encodeURIComponent;
 
 /** How long to wait before opening a unit again once its chat is lost. */
 const RETRY_MS = 1000;
+
+/** How long a heading the outline jumped to stays lit before it fades. */
+const LIT_MS = 900;
 
 export function Session(props: { courseId: string; unitId: string }) {
   const { courseId, unitId } = props;
@@ -126,6 +130,8 @@ export function Session(props: { courseId: string; unitId: string }) {
   /** Each new value opens the unit again and follows its new chat. */
   const [attempt, setAttempt] = useState(0);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  /** The heading the outline last jumped to, lit for a moment; a new object each jump. */
+  const [lit, setLit] = useState<{ id: string }>();
   const [confirming, setConfirming] = useState<
     "move-on" | "finish" | "skip-gate"
   >();
@@ -238,6 +244,36 @@ export function Session(props: { courseId: string; unitId: string }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the unit moves on
   useEffect(() => setConfirming(undefined), [timeline.position]);
 
+  useEffect(() => {
+    if (lit === undefined) return;
+    const off = setTimeout(() => setLit(undefined), LIT_MS);
+    return () => clearTimeout(off);
+  }, [lit]);
+
+  /**
+   * Scrolls the thread, and only the thread, to a segment's heading and
+   * lights it; with no smooth scroll under reduced motion, where the light
+   * goes out with no fade (styles.css).
+   */
+  const jump = useCallback((id: string) => {
+    setOutlineOpen(false);
+    const el = scroller.current;
+    const target = document.getElementById(id);
+    if (el === null || target === null) return;
+    pinned.current = false;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollTo({
+      top:
+        target.getBoundingClientRect().top -
+        el.getBoundingClientRect().top +
+        el.scrollTop -
+        24,
+      behavior: still ? "instant" : "smooth",
+    });
+    target.focus({ preventScroll: true });
+    setLit({ id });
+  }, []);
+
   /** Posts the learner's step; a refusal is shown under the thread. */
   async function act(route: string, body?: unknown) {
     const why = await post(path(route), body);
@@ -256,16 +292,7 @@ export function Session(props: { courseId: string; unitId: string }) {
   const toCourse = () => navigate(paths.course(courseId));
 
   const { plan, busy } = timeline;
-  const where =
-    plan === null
-      ? null
-      : whereInUnit(
-          plan,
-          timeline.position,
-          timeline.finished,
-          timeline.assessment,
-          timeline.testWaits,
-        );
+  const where = plan === null ? null : whereInUnit(plan, timeline);
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
@@ -336,37 +363,46 @@ export function Session(props: { courseId: string; unitId: string }) {
           { label: "Library", to: paths.library },
           { label: courseTitle, to: paths.course(courseId) },
         ]}
+        hereLabel={place === undefined ? undefined : `Unit ${place.number}`}
         here={place?.title ?? ""}
         action={
-          where === null ? undefined : (
-            <PositionButton
-              label={where.label}
-              ticks={where.ticks}
-              open={outlineOpen}
-              onToggle={setOutlineOpen}
-            >
-              {plan === null ? null : (
-                <Outline
-                  courseId={courseId}
-                  courseTitle={courseTitle}
-                  place={place}
-                  transcriptUrl={path("transcript")}
-                  segments={outline(plan, timeline.position, timeline.finished)}
-                  // A unit that is open and not finished has a tutor to replace.
-                  canStartFresh={
-                    timeline.position !== null &&
-                    timeline.finished === null &&
-                    timeline.failed === null
-                  }
-                  busy={busy}
-                  onStartFresh={async () => {
-                    await act("start-fresh");
-                    setOutlineOpen(false);
-                  }}
-                />
-              )}
-            </PositionButton>
-          )
+          <div className="nl-tools">
+            {where === null ? null : (
+              <PositionButton
+                label={where.label}
+                title={where.title}
+                ticks={where.ticks}
+                open={outlineOpen}
+                onToggle={setOutlineOpen}
+              >
+                {plan === null ? null : (
+                  <Outline
+                    place={place}
+                    count={plan.segments.length}
+                    transcriptUrl={path("transcript")}
+                    outline={outline(plan, timeline)}
+                    // A unit that is open and not finished has a tutor to replace.
+                    canStartFresh={
+                      timeline.position !== null &&
+                      timeline.finished === null &&
+                      timeline.failed === null
+                    }
+                    busy={busy}
+                    onJump={jump}
+                    onStartFresh={async () => {
+                      await act("start-fresh");
+                      setOutlineOpen(false);
+                    }}
+                  />
+                )}
+              </PositionButton>
+            )}
+            {/* The course map opens in the side pane with plan task 5.34. */}
+            <button type="button" className="nl-pos" disabled>
+              {MAP_ICON}
+              Course map
+            </button>
+          </div>
         }
       />
       <div
@@ -404,6 +440,11 @@ export function Session(props: { courseId: string; unitId: string }) {
                           : undefined
                       }
                       plan={plan}
+                      lit={
+                        item.kind === "phase" &&
+                        item.heading !== undefined &&
+                        item.heading === lit?.id
+                      }
                       place={place}
                       busy={busy}
                       current={item === standing}
@@ -636,6 +677,7 @@ export function Session(props: { courseId: string; unitId: string }) {
 /** The position in the top line, which opens the unit's outline. */
 function PositionButton(props: {
   label: string;
+  title: string | undefined;
   ticks: string[];
   open: boolean;
   onToggle(open: boolean): void;
@@ -685,7 +727,13 @@ function PositionButton(props: {
             <i key={i} className={mark} />
           ))}
         </span>
-        {props.label}
+        <span className="nl-k">{props.label}</span>
+        {props.title === undefined ? null : (
+          <span className="nl-t">
+            <InlineProse text={props.title} />
+          </span>
+        )}
+        {CHEVRON}
       </button>
       {open ? (
         <div className="np" role="dialog" aria-label="Unit outline" ref={panel}>
@@ -696,94 +744,174 @@ function PositionButton(props: {
   );
 }
 
+/** The course map's icon: three units and their lines. */
+const MAP_ICON = (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    aria-hidden="true"
+  >
+    <rect x="1.5" y="1.5" width="5" height="3.5" rx="1" />
+    <rect x="9.5" y="6.25" width="5" height="3.5" rx="1" />
+    <rect x="1.5" y="11" width="5" height="3.5" rx="1" />
+    <path d="M4 5v6M6.5 3.25h3v3" />
+  </svg>
+);
+
+const CHEVRON = (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 12 12"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    aria-hidden="true"
+  >
+    <path d="M3 4.5 6 7.5 9 4.5" />
+  </svg>
+);
+
 /**
- * The unit's outline (mock 4): the path out, the unit, and its segments,
- * then "Start fresh" (mock 11), which asks once.
+ * The unit's outline (piece 19): the unit, its segments numbered with their
+ * objectives' forms, going over again and the gate where they fall, then
+ * "Export transcript" and "Start fresh" (mock 11), which asks once. A past
+ * or current segment with a heading in the thread jumps to it.
  */
 function Outline(props: {
-  courseId: string;
-  courseTitle: string;
   /** Unknown until the course's details are loaded. */
   place: Placement | undefined;
+  /** How many segments the plan has. */
+  count: number;
   transcriptUrl: string;
-  segments: OutlineSegment[];
+  outline: UnitOutline;
   canStartFresh: boolean;
   /** The tutor is writing, so starting fresh waits. */
   busy: boolean;
+  onJump(id: string): void;
   onStartFresh(): Promise<void>;
 }) {
   const { place } = props;
   const [asking, setAsking] = useState(false);
+  const { gate } = props.outline;
+  const gateRow =
+    gate === null ? null : (
+      <li
+        key="gate"
+        className={`uo-seg ${gate.state || "todo"}`}
+        aria-current={gate.state === "now" ? "step" : undefined}
+      >
+        <div className="uo-head">
+          <span className="uo-n">
+            <i
+              className={`sg gate ${gate.state === "now" ? "now" : gate.state === "past" ? "pass" : "not"}`}
+              aria-hidden="true"
+            />
+          </span>
+          <span className="uo-t">Unit gate</span>
+          <span className="uo-r">{gate.says}</span>
+        </div>
+        <p className="uo-objs">Questions on this unit, and on other units</p>
+      </li>
+    );
+  const rows = props.outline.segments.map((segment, i) => {
+    const head = (
+      <>
+        <span className="uo-n">{segment.number}</span>
+        <span className="uo-t">
+          <InlineProse text={segment.title} />
+        </span>
+        {segment.says === undefined ? null : (
+          <span className="uo-r">{segment.says}</span>
+        )}
+      </>
+    );
+    const { heading } = segment;
+    return (
+      <li
+        // The plan's segments in order, then the one that goes over again.
+        // biome-ignore lint/suspicious/noArrayIndexKey: see above
+        key={i}
+        className={`uo-seg ${segment.state || "todo"}`}
+        aria-current={segment.state === "now" ? "step" : undefined}
+      >
+        {heading === undefined ? (
+          <div className="uo-head">{head}</div>
+        ) : (
+          <button
+            type="button"
+            className="uo-head"
+            onClick={() => props.onJump(heading)}
+          >
+            {head}
+          </button>
+        )}
+        <ul className="uo-objs">
+          {segment.objectives.map((o) => (
+            <li key={o.id} className={o.skipped ? "skip" : undefined}>
+              <StatusForm objective={o.status} current={o.current} />
+              <span>
+                <InlineProse text={o.statement} />
+                <span className="sr">
+                  , {objectiveMark(o.status).text}
+                  {o.skipped ? ", skipped" : ""}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </li>
+    );
+  });
+  // Going over again that followed the gate comes after it.
+  const ordered = props.outline.gateBeforeLast
+    ? [...rows.slice(0, -1), gateRow, ...rows.slice(-1)]
+    : [...rows, gateRow];
   return (
     <div className="uo">
-      <nav className="crumbs" aria-label="Where this session sits">
-        <Link to={paths.library}>Library</Link>
-        <span>/</span>
-        <Link to={paths.course(props.courseId)}>{props.courseTitle}</Link>
-      </nav>
       {place === undefined ? null : (
         <div className="uo-unit">
           <span>
-            Unit {place.number} of {place.count}
+            Unit {place.number} of {place.count} · {props.count}{" "}
+            {props.count === 1 ? "segment" : "segments"}
           </span>
           <b>{place.title}</b>
         </div>
       )}
-      <ol className="uo-list">
-        {props.segments.map((segment, i) => (
-          <li
-            // The plan's segments in order, then the one that goes over again.
-            // biome-ignore lint/suspicious/noArrayIndexKey: see above
-            key={i}
-            className={segment.state}
-            aria-current={segment.state === "now" ? "step" : undefined}
-          >
-            <i />
-            <span>
-              <span className="uo-t">{segment.title}</span>
-              {segment.note === undefined ? null : (
-                <small>
-                  <InlineProse text={segment.note} />
-                </small>
-              )}
-            </span>
-          </li>
-        ))}
-      </ol>
-      <div className="uo-fresh">
-        <a className="textbtn" href={props.transcriptUrl}>
-          Export transcript
-        </a>
-        <p>
-          This unit's whole conversation as one document, to keep or to print.
-        </p>
-      </div>
-      {props.canStartFresh ? (
-        <div className="uo-fresh">
-          {asking ? (
-            <span className="confirm">
-              <span>The tutor will not remember this conversation.</span>
-              <button
-                type="button"
-                className="textbtn"
-                disabled={props.busy}
-                onClick={() => {
-                  setAsking(false);
-                  void props.onStartFresh();
-                }}
-              >
-                Start fresh
-              </button>
-              <button
-                type="button"
-                className="textbtn"
-                onClick={() => setAsking(false)}
-              >
-                Cancel
-              </button>
-            </span>
-          ) : (
-            <>
+      <ol className="uo-list">{ordered}</ol>
+      <div className="uo-foot">
+        {asking ? (
+          <span className="confirm">
+            <span>The tutor will not remember this conversation.</span>
+            <button
+              type="button"
+              className="textbtn"
+              disabled={props.busy}
+              onClick={() => {
+                setAsking(false);
+                void props.onStartFresh();
+              }}
+            >
+              Start fresh
+            </button>
+            <button
+              type="button"
+              className="textbtn"
+              onClick={() => setAsking(false)}
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <>
+            <a className="textbtn" href={props.transcriptUrl}>
+              Export transcript
+            </a>
+            {props.canStartFresh ? (
               <button
                 type="button"
                 className="textbtn"
@@ -792,14 +920,10 @@ function Outline(props: {
               >
                 Start fresh
               </button>
-              <p>
-                A new conversation with the tutor, from your progress. This one
-                stays above.
-              </p>
-            </>
-          )}
-        </div>
-      ) : null}
+            ) : null}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -808,6 +932,8 @@ function ThreadItem(props: {
   item: Item;
   /** The heading of the segment this phase begins, if it begins one. */
   heading: SegmentHeading | undefined;
+  /** The heading is the one the outline just jumped to. */
+  lit: boolean;
   plan: Plan | null;
   place: Placement | undefined;
   busy: boolean;
@@ -1011,7 +1137,7 @@ function ThreadItem(props: {
       return (
         <>
           {props.heading === undefined ? null : (
-            <SegmentHead heading={props.heading} />
+            <SegmentHead heading={props.heading} lit={props.lit} />
           )}
           <div className="pf-mark">
             <span>
@@ -1075,10 +1201,15 @@ function ThreadItem(props: {
  * Where a segment begins (piece 19): a rule, "Segment N of M", its title,
  * and its objectives with their forms as they stand now.
  */
-function SegmentHead(props: { heading: SegmentHeading }) {
+function SegmentHead(props: { heading: SegmentHeading; lit: boolean }) {
   const { heading } = props;
   return (
-    <section className="seg" id={heading.id}>
+    // Focused when the outline jumps here, so the keyboard goes on from it.
+    <section
+      className={props.lit ? "seg lit" : "seg"}
+      id={heading.id}
+      tabIndex={-1}
+    >
       {heading.label === undefined ? null : (
         <div className="seg-k">{heading.label}</div>
       )}

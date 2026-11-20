@@ -133,6 +133,8 @@ code {
 .cn-t span,
 .wk-uh span,
 .uo-unit span,
+.crumbs-k,
+.nl-k,
 .lc-title small,
 .seg-k {
   font: 500 11px / 1.3 var(--f-label);
@@ -976,108 +978,45 @@ details.why summary:hover {
   background: var(--accent);
 }
 
-/* the position in the unit; opens the outline */
+/* the position in the unit, which opens the outline, and the course map */
+.nl-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: -0.4em;
+  min-width: 0;
+}
 .nl-pos {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.6em;
+  height: 34px;
   background: none;
   border: 0;
   border-radius: 8px;
-  padding: 0.2em 0.6em;
-  margin-right: -0.5em;
+  padding: 0 0.7em;
   color: var(--ink-2);
   white-space: nowrap;
+  min-width: 0;
 }
-.nl-pos:hover,
+.nl-pos svg {
+  flex: none;
+  color: var(--ink-3);
+}
+.nl-pos:hover:enabled,
 .nl-pos[aria-expanded="true"] {
   color: var(--ink);
   background: var(--rule);
 }
-/* the unit's outline: the path out, the unit, and its segments */
-.np {
-  position: fixed;
-  top: 54px;
-  right: 14px;
-  z-index: 20;
-  width: 300px;
-  background: var(--raised);
-  border: 1px solid var(--rule-2);
-  border-radius: 12px;
-  padding: 18px 20px 20px;
-  box-shadow: var(--shadow);
+.nl-pos:disabled {
+  color: var(--ink-4);
+  cursor: default;
 }
-.uo {
-  font-size: 14px;
-  line-height: 1.45;
-}
-.uo-unit {
-  margin: 1.6em 0 1em;
-}
-.uo-unit span {
-  display: block;
-}
-.uo-unit b {
-  display: block;
-  font-size: 21px;
-  line-height: 1.2;
-  margin-top: 0.3em;
-}
-.uo-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.7em;
-  color: var(--ink-3);
-}
-/* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside .prose */
-.uo-list li {
-  display: grid;
-  grid-template-columns: 9px 1fr;
-  gap: 0.85em;
-  align-items: start;
-}
-.uo-list i {
-  width: 9px;
-  height: 9px;
-  margin-top: 0.42em;
-  border-radius: 50%;
-  border: 1.5px solid var(--rule-2);
-}
-.uo-list .past {
-  color: var(--ink-2);
-}
-.uo-list .past i {
-  background: var(--ink-3);
-  border-color: var(--ink-3);
-}
-.uo-list .now {
+.nl-t {
+  max-width: 16em;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--ink);
-  font-weight: 500;
-}
-.uo-list .now i {
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow:
-    0 0 0 2px var(--raised),
-    0 0 0 3.5px var(--accent);
-}
-
-/* ---- Starting fresh, piece 11: in the unit's outline ---- */
-.uo-fresh {
-  margin-top: 1.4em;
-  padding-top: 1em;
-  border-top: 1px solid var(--rule);
-}
-/* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside .prose */
-.uo-fresh p {
-  margin: 0.3em 0 0;
-  color: var(--ink-3);
-  font-size: 0.92em;
-}
-.uo-fresh .confirm {
-  margin-top: 0.5em;
 }
 /* the conversations before a fresh start stay in the thread, dimmed; a card
    that still waits on the learner or on its grade is the unit as it stands,
@@ -2003,18 +1942,173 @@ button.dn:hover {
   background: none;
   box-shadow: inset 0 0 0 1px var(--rule-2);
 }
-.uo-list .skip .uo-t {
+/* the unit's outline (piece 19): the unit, its segments numbered with their
+   objectives' forms, and the gate; a past or current segment jumps to its
+   heading */
+.np {
+  position: fixed;
+  top: 56px;
+  right: 14px;
+  z-index: 20;
+  width: min(380px, calc(100vw - 28px));
+  max-height: calc(100dvh - 72px);
+  overflow: auto;
+  background: var(--raised);
+  border: 1px solid var(--rule-2);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.uo {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.uo-unit {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside a confirmation */
+.uo-unit span {
+  display: block;
+}
+.uo-unit b {
+  display: block;
+  font-size: 21px;
+  line-height: 1.2;
+  margin-top: 0.3em;
+}
+.uo-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+}
+.uo-seg {
+  position: relative;
+  border-radius: 8px;
+  padding: 9px 10px 10px;
+}
+.uo-head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+/* the whole row is the button's */
+button.uo-head::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+}
+button.uo-head:focus-visible {
+  outline: none;
+}
+button.uo-head:focus-visible::after {
+  outline: 2px solid var(--accent);
+}
+.uo-seg:has(> button.uo-head:hover) {
+  background: var(--rule);
+}
+.uo-n {
+  font: 500 12px / 1.9 var(--f-label);
+  color: var(--ink-3);
+  text-align: right;
+}
+.uo-t {
+  font-weight: 500;
+  color: var(--ink);
+}
+.uo-r {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.uo-seg.now {
+  background: var(--wash);
+  --ring-gap: color-mix(in srgb, var(--accent) 16%, var(--raised));
+}
+.uo-seg.now .uo-n,
+.uo-seg.now .uo-r {
+  color: var(--accent);
+}
+.uo-seg.todo .uo-t {
+  color: var(--ink-2);
+  font-weight: 400;
+}
+.uo-seg.skip .uo-t,
+.uo-objs .skip > span {
   text-decoration: line-through;
   text-decoration-color: var(--ink-3);
 }
-.uo-list .skip i {
-  border-style: dashed;
+.uo-objs {
+  list-style: none;
+  margin: 0.3em 0 0;
+  padding: 0 0 0 32px;
+  display: grid;
+  gap: 0.2em;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside .prose */
+.uo-objs li {
+  display: flex;
+  align-items: baseline;
+}
+.uo-objs .skip {
+  color: var(--ink-3);
 }
 /* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside the diagram */
-.uo-list small {
-  display: block;
-  color: var(--ink-3);
-  font-weight: 400;
+.uo-objs .sg {
+  width: 8px;
+  height: 8px;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside the diagram */
+.uo-objs .sg.now {
+  box-shadow:
+    0 0 0 2px var(--ring-gap),
+    0 0 0 3.5px var(--accent);
+  margin-inline: 3.5px calc(0.5em + 3.5px);
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the outline is never inside the diagram */
+.uo-n .sg {
+  margin: 0;
+}
+.sg.gate {
+  border-radius: 2px;
+}
+.uo-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6em 1.4em;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--rule);
+}
+/* a heading the outline jumped to lights, then fades; with no fade under
+   reduced motion */
+.seg {
+  scroll-margin-top: 24px;
+  border-radius: 2px;
+  transition:
+    background-color 1.4s ease,
+    box-shadow 1.4s ease;
+}
+.seg:focus {
+  outline: none;
+}
+.seg.lit {
+  background: var(--wash);
+  box-shadow: 0 0 0 14px var(--wash);
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .seg {
+    transition: none;
+  }
 }
 /* a misconception under its objective, above its answers (piece 18): ruled in peach while open, grey once cleared */
 .mc {

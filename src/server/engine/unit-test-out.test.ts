@@ -412,9 +412,7 @@ test("a unit not started is planned, then tested: a question on each objective, 
   const waiting = replay(chat);
   expect(waiting.testWaits).toBe(true);
   expect(nextStep(waiting)).toBeNull();
-  expect(
-    whereInUnit(DERIVATIVE_PLAN, waiting.position, null, null, true),
-  ).toEqual({
+  expect(whereInUnit(DERIVATIVE_PLAN, waiting)).toEqual({
     label: "Testing out",
     ticks: ["", ""],
   });
@@ -480,7 +478,7 @@ test("a unit not started is planned, then tested: a question on each objective, 
   );
   expect(finishedByTest(done)).toBe(true);
   expect(nextStep(done)).toBe("leave");
-  expect(whereInUnit(DERIVATIVE_PLAN, done.position, done.finished)).toEqual({
+  expect(whereInUnit(DERIVATIVE_PLAN, done)).toEqual({
     label: "Finished",
     ticks: ["skip", "skip"],
   });
@@ -505,9 +503,10 @@ test("a unit not started is planned, then tested: a question on each objective, 
     "Finished without teaching.",
   );
   expect(finishedByTest(reopened)).toBe(true);
-  expect(
-    whereInUnit(DERIVATIVE_PLAN, reopened.position, reopened.finished),
-  ).toEqual({ label: "Finished", ticks: ["skip", "skip"] });
+  expect(whereInUnit(DERIVATIVE_PLAN, reopened)).toEqual({
+    label: "Finished",
+    ticks: ["skip", "skip"],
+  });
   expect(sent(restarted.backend)).toEqual([]);
 });
 
@@ -689,16 +688,26 @@ test("a partial result skips nothing while its card waits, across a restart too;
       "Build on it where that helps, but do not teach it; the check does not ask about it.",
   );
   const timeline = replay(chat);
-  expect(outline(DERIVATIVE_PLAN, timeline.position, null)).toEqual([
-    { title: "Slopes", state: "skip", note: "Skipped: passed in the test" },
+  expect(outline(DERIVATIVE_PLAN, timeline).segments).toMatchObject([
+    {
+      title: "Slopes",
+      state: "skip",
+      says: "Passed in the test",
+      objectives: [{ id: "slope", skipped: true }],
+    },
     {
       title: "Rules",
       state: "now",
-      note: "Only: Differentiate a composite function.",
+      heading: "segment-2",
+      objectives: [
+        { id: "power-rule", skipped: true, current: false },
+        { id: "chain-rule", skipped: false, current: true },
+      ],
     },
   ]);
-  expect(whereInUnit(DERIVATIVE_PLAN, timeline.position, null)).toEqual({
+  expect(whereInUnit(DERIVATIVE_PLAN, timeline)).toEqual({
     label: "Segment 2 of 2",
+    title: "Rules",
     ticks: ["skip", "now"],
   });
   expect(testResultCard(DERIVATIVE_PLAN, resultOf(timeline))).toMatchObject({
@@ -793,9 +802,10 @@ test("a skipped last segment: the unit's end comes when the segment before it cl
   await answer(chat, "A", "90");
   await step(chat.skipTested(["power-rule", "chain-rule"]), chat);
   expect(await positionOf()).toMatchObject({ segment: 0, phase: "discuss" });
-  expect(
-    whereInUnit(DERIVATIVE_PLAN, replay(chat).position, null)?.ticks,
-  ).toEqual(["now", "skip"]);
+  expect(whereInUnit(DERIVATIVE_PLAN, replay(chat))?.ticks).toEqual([
+    "now",
+    "skip",
+  ]);
   await step(chat.ready(), chat);
   await answer(chat, "A", "90");
 

@@ -34,37 +34,11 @@ view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.33 The unit's top line and outline
-
-- Status: todo
-- Depends on: 5.32
-- As piece 19. The path ends in "Unit N" and the unit's title. The
-  position reads "Segment N of M" with the segment's title and its ticks,
-  or "Unit gate", "Review" or "Testing out" with the question count while
-  one of those runs. The position opens the outline; "Course map" sits
-  beside it, and 5.34 makes it work. The outline lists the segments,
-  numbered, each with its objectives and their forms. The current segment
-  says "You are here", a past one how many passed, and a skipped one is
-  struck through. The gate follows the segments. "Export transcript" and
-  "Start fresh" keep their behaviour. A past or current segment picked
-  there scrolls only the thread's scroller to its heading and lights it
-  briefly, with no smooth scroll or fade under reduced motion. The
-  headings' ids are on the timeline's phase items (`PhaseItem` in
-  `src/shared/timeline.ts`): `segment-N`, and `again-N` for each time the
-  unit goes over objectives again, of which the outline's "Going over
-  again" jumps to the latest. The seeded units have no thread before
-  their current segment, so their past segments have no headings: the
-  done-when check needs the seed to write their transcripts, or a unit
-  taken through two segments on the scripted backend.
-- Done when: on `pnpm dev:fake`, a seeded unit with two segments past
-  jumps to each heading and lights it, and the position reads right in a
-  segment, a review, the gate and a test (the scripted backend's commands
-  reach them). Tests cover the position's text where it is computed.
-
 ### 5.34 The course map from a unit
 
 - Status: todo
-- Depends on: 5.31, and 5.33 for the button
+- Depends on: 5.31
+- The button is in the session's top line, disabled (`Session.tsx`).
 - "Course map" opens the curriculum diagram (`Curriculum.tsx`) in the side
   pane, the unit marked "You are here", with the status forms. When the
   pane is too narrow for distinct lines, it shows the numbered list of

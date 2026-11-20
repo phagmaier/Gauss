@@ -29,6 +29,8 @@ export function Link(props: {
 export function TopLine(props: {
   trail: { label: string; to: string }[];
   here: string;
+  /** A label before `here`, such as "Unit 3" before the unit's title. */
+  hereLabel?: string | undefined;
   /** The page's main action at the right, or in a session the position. */
   action?: ReactNode;
 }) {
@@ -41,6 +43,9 @@ export function TopLine(props: {
             <span>/</span>
           </Fragment>
         ))}
+        {props.hereLabel === undefined ? null : (
+          <span className="crumbs-k">{props.hereLabel}</span>
+        )}
         <b>{props.here}</b>
       </nav>
       {props.action}

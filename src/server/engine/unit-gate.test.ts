@@ -549,15 +549,9 @@ test("a gate answered right retains its objectives, and the closing card after i
     assessment: { of: 4 },
   });
   const during = replay(chat);
-  expect(
-    whereInUnit(
-      PLANS.derivative as Plan,
-      during.position,
-      during.finished,
-      during.assessment,
-    ),
-  ).toEqual({
+  expect(whereInUnit(PLANS.derivative as Plan, during)).toEqual({
     label: "Unit gate",
+    title: "Question 1 of 4",
     ticks: ["past", "past"],
   });
   const marker = during.items.findLast((i) => i.kind === "assessment");

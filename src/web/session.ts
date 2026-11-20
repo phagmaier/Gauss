@@ -1,5 +1,5 @@
-// What the session view (docs/prototype/03-phases.html, 04-session-nav.html,
-// 10-unit-end.html) says about where a unit stands, derived from its thread
+// What the session view (docs/prototype/03-phases.html, 10-unit-end.html,
+// 19-unit-page.html) says about where a unit stands, derived from its thread
 // (timeline.ts): the position in the top line and the outline, the one
 // next-step control, the open question and the lines between messages, the
 // closing card, the test's result card (16-test-out-and-gate.html), and the
@@ -8,9 +8,19 @@
 import { assessmentTitle } from "../shared/assessment-view.ts";
 import { capital, word } from "../shared/display-words.ts";
 import type { CourseWithProgress } from "../shared/library.ts";
-import { firstTaught, type Plan, skipping } from "../shared/plan.ts";
-import { isFinished, type ObjectiveStatus } from "../shared/status.ts";
 import {
+  currentObjective,
+  firstTaught,
+  type Plan,
+  skipping,
+} from "../shared/plan.ts";
+import {
+  hasPassed,
+  isFinished,
+  type ObjectiveStatus,
+} from "../shared/status.ts";
+import {
+  type AssessmentEndItem,
   type Item,
   type JudgmentItem,
   offersSteps,
@@ -27,9 +37,8 @@ import {
   nextInOrder,
   progressOf,
   segmentStand,
+  type WhereInUnit,
 } from "./progress.ts";
-
-type Finished = Timeline["finished"];
 
 /** Whether each of the plan's segments is skipped, since the learner skips what the test passed. */
 function skippedSegments(plan: Plan, position: Position | null): boolean[] {
@@ -38,79 +47,210 @@ function skippedSegments(plan: Plan, position: Position | null): boolean[] {
   );
 }
 
+/** What the position and the outline read from the thread. */
+type Where = Pick<
+  Timeline,
+  "items" | "position" | "finished" | "assessment" | "testWaits" | "statuses"
+>;
+
+/** The test before the unit runs, or its result waits for the learner. */
+const testing = (t: Where) => t.testWaits || t.assessment?.mode === "test-out";
+
 /**
- * The position in the top line: "Segment 2 of 5", "Going over again",
- * "Testing out" while the test before the unit runs or its result waits,
- * "Unit gate" while the gate is under way, or "Finished", with one tick per
+ * Where the assessment under way has got to, as its question's head says
+ * it: "Question 2 of 4" in a review or a gate, "Objective 2 of 3" in a
+ * test, whose questions on one objective can be two. None before its first
+ * question.
+ */
+function assessmentCount(items: readonly Item[]): string | undefined {
+  const from = items.findLastIndex((i) => i.kind === "assessment");
+  const asked = items
+    .slice(from + 1)
+    .findLast((i): i is QuestionItem => i.kind === "question");
+  const head = asked?.question.assessment;
+  if (asked === undefined || head === undefined) return undefined;
+  return head.objective === undefined
+    ? `Question ${asked.question.number} of ${head.of}`
+    : `Objective ${head.objective} of ${head.of}`;
+}
+
+/**
+ * The position in the top line (piece 19): "Segment 2 of 5" with the
+ * segment's title, "Going over again", "Review" while a review runs,
+ * "Unit gate" from its card on, "Testing out" while the test before the
+ * unit runs or its result waits, or "Finished"; a review, the gate and the
+ * test give the question they are at in place of a title. One tick per
  * segment of the plan, a hollow one for a segment skipped. Null until the
  * unit is open.
  */
-export function whereInUnit(
-  plan: Plan,
-  position: Position | null,
-  finished: Finished,
-  assessment: Timeline["assessment"] = null,
-  testWaits = false,
-): { label: string; ticks: Mark[] } | null {
+export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
+  const { position, assessment } = t;
   const count = plan.segments.length;
   const skipped = skippedSegments(plan, position);
   const marked = (ticks: Mark[]) =>
     ticks.map((mark, i) => (skipped[i] === true ? "skip" : mark));
-  if (finished !== null) {
+  const at = (label: string, ticks: Mark[]): WhereInUnit => {
+    const title = assessmentCount(t.items);
+    return title === undefined ? { label, ticks } : { label, title, ticks };
+  };
+  if (t.finished !== null) {
     return { label: "Finished", ticks: marked(Array(count).fill("past")) };
   }
-  if (assessment?.mode === "gate" && assessment.stage === "on") {
-    return { label: "Unit gate", ticks: marked(Array(count).fill("past")) };
+  if (assessment?.mode === "gate") {
+    return at("Unit gate", marked(Array(count).fill("past")));
   }
   if (position === null) return null;
-  if (testWaits || assessment?.mode === "test-out") {
-    return { label: "Testing out", ticks: Array(count).fill("") };
+  if (testing(t)) {
+    const ticks = Array(count).fill("");
+    return t.testWaits
+      ? { label: "Testing out", ticks }
+      : at("Testing out", ticks);
   }
   const stand = segmentStand(
     count,
     position.segment,
     position.again !== undefined,
   );
-  return { ...stand, ticks: marked(stand.ticks) };
+  const ticks = marked(stand.ticks);
+  if (assessment?.mode === "review" && assessment.stage === "on") {
+    return at(assessmentTitle("review"), ticks);
+  }
+  const title =
+    position.again === undefined
+      ? plan.segments[position.segment]?.title
+      : undefined;
+  return title === undefined
+    ? { label: stand.label, ticks }
+    : { label: stand.label, title, ticks };
 }
 
-/** A segment as the unit's outline lists it, with a line under it when the test changed it. */
+/** An objective as the outline lists it under its segment. */
+export interface OutlineObjective {
+  id: string;
+  statement: string;
+  status: ObjectiveStatus;
+  /** The objective to do now (`currentObjective` in plan.ts): the accent's ringed form. */
+  current: boolean;
+  /** Passed in the test before the unit, and skipped. */
+  skipped: boolean;
+}
+
+/** A segment as the unit's outline lists it (piece 19). */
 export interface OutlineSegment {
+  /** Its number in the plan; none for going over again. */
+  number?: number;
   title: string;
+  /** Done, here, skipped by the test, or still to come. */
   state: Mark;
-  /** "Skipped: passed in the test", or what a segment taught in part still teaches. */
-  note?: string;
+  /** At its right: "You are here", how many passed, or why skipped. */
+  says?: string;
+  /** The id of its heading in the thread, for a past or current segment the thread has one for. */
+  heading?: string;
+  objectives: OutlineObjective[];
 }
 
-/** The unit's segments as its outline lists them. */
-export function outline(
-  plan: Plan,
-  position: Position | null,
-  finished: Finished,
-): OutlineSegment[] {
-  const again = finished === null && position?.again !== undefined;
-  const at = finished !== null || again ? Infinity : (position?.segment ?? -1);
-  const left = skipping(plan, position?.skipping ?? []);
+/** The unit's outline: its segments, and the gate where it falls. */
+export interface UnitOutline {
+  segments: OutlineSegment[];
+  /** None for a unit that finished with no gate in its thread. */
+  gate: { state: Mark; says: string } | null;
+  /** The gate comes before the last row, going over again, which followed it. */
+  gateBeforeLast: boolean;
+}
+
+/**
+ * The unit's outline: the plan's segments, numbered, with their objectives
+ * as they stand, then going over again once the unit has, and the gate.
+ * While the test before the unit runs, no segment is here yet; once the
+ * gate's card is offered, every segment is past.
+ */
+export function outline(plan: Plan, t: Where): UnitOutline {
+  const { position, statuses, items } = t;
   const statement = new Map(plan.objectives.map((o) => [o.id, o.statement]));
+  const headings = new Set(
+    items.flatMap((i) =>
+      i.kind === "phase" && i.heading !== undefined ? [i.heading] : [],
+    ),
+  );
+  const gateIndex = items.findLastIndex(
+    (i) => i.kind === "assessment" && i.mode === "gate",
+  );
+  const gateItem = items[gateIndex];
+  const again = items.findLast(
+    (i): i is PhaseItem =>
+      i.kind === "phase" && i.heading !== undefined && i.again !== undefined,
+  );
+  const inAgain = t.finished === null && position?.again !== undefined;
+  // Every segment of the plan is behind the unit once it finished, goes
+  // over objectives again, or reached its gate; none is reached while the
+  // test runs.
+  const at =
+    t.finished !== null || inAgain || gateItem !== undefined
+      ? Infinity
+      : testing(t)
+        ? -1
+        : (position?.segment ?? -1);
+  const current = currentObjective(plan, position, statuses);
+  const left = skipping(plan, position?.skipping ?? []);
+  const row = (
+    ids: readonly string[],
+    teaches: readonly string[],
+    state: Mark,
+    heading: string | undefined,
+  ) => {
+    const objectives = ids.map(
+      (id): OutlineObjective => ({
+        id,
+        statement: statement.get(id) ?? id,
+        status: statuses[id] ?? "not-started",
+        current: state === "now" && id === current,
+        skipped: !teaches.includes(id),
+      }),
+    );
+    const passed = objectives.filter((o) => hasPassed(o.status)).length;
+    const says =
+      state === "now"
+        ? "You are here"
+        : state === "past"
+          ? `${passed} of ${ids.length} passed`
+          : state === "skip"
+            ? "Passed in the test"
+            : undefined;
+    return {
+      state,
+      ...(says === undefined ? {} : { says }),
+      ...(heading !== undefined && headings.has(heading) && state !== ""
+        ? { heading }
+        : {}),
+      objectives,
+    };
+  };
   const segments = plan.segments.map((s, i): OutlineSegment => {
     const teaches = left[i]?.teaches ?? s.objectives;
-    if (teaches.length === 0) {
-      return {
-        title: s.title,
-        state: "skip",
-        note: "Skipped: passed in the test",
-      };
-    }
-    const state: Mark = i < at ? "past" : i === at ? "now" : "";
-    return teaches.length < s.objectives.length
-      ? {
-          title: s.title,
-          state,
-          note: `Only: ${teaches.map((id) => statement.get(id) ?? id).join(" ")}`,
-        }
-      : { title: s.title, state };
+    const state: Mark =
+      teaches.length === 0 ? "skip" : i < at ? "past" : i === at ? "now" : "";
+    return {
+      number: i + 1,
+      title: s.title,
+      ...row(s.objectives, teaches, state, `segment-${i + 1}`),
+    };
   });
-  return again ? [...segments, { title: AGAIN, state: "now" }] : segments;
+  const againIds = inAgain ? position?.again : again?.again;
+  if (againIds !== undefined) {
+    segments.push({
+      title: AGAIN,
+      ...row(againIds, againIds, inAgain ? "now" : "past", again?.heading),
+    });
+  }
+  return {
+    segments,
+    gate: gateRow(t, gateItem, plan.segments.length),
+    gateBeforeLast:
+      againIds !== undefined &&
+      gateItem !== undefined &&
+      again !== undefined &&
+      gateIndex < items.indexOf(again),
+  };
 }
 
 /**

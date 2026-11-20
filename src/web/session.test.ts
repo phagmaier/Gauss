@@ -18,6 +18,7 @@ import {
   standingCard,
   type Timeline,
 } from "../shared/timeline.ts";
+import type { WhereInUnit } from "./progress.ts";
 import {
   closingCard,
   divided,
@@ -66,71 +67,354 @@ const phase = (
 
 // --- The top line and the outline ------------------------------------------
 
-test.each<
-  [
-    string,
-    Position | null,
-    Timeline["finished"],
-    ReturnType<typeof whereInUnit>,
-  ]
->([
+/** A question of an assessment: in a review or a gate its number is its objective's place, in a test `objective` is. */
+const assessed = (
+  id: string,
+  number: number,
+  of: number,
+  objective?: number,
+): PageEvent => ({
+  type: "question",
+  question: {
+    kind: "written",
+    id,
+    number,
+    prompt: "Why?",
+    assessment: objective === undefined ? { of } : { of, objective },
+  },
+});
+const run = (
+  mode: "review" | "gate" | "test-out",
+  stage: "offered" | "on",
+  count: number,
+): PageEvent => ({ type: "assessment", mode, stage, count });
+
+test.each<[string, PageEvent[], WhereInUnit | null]>([
   [
     "the first segment",
-    { segment: 0, phase: "teach" },
-    null,
-    { label: "Segment 1 of 3", ticks: ["now", "", ""] },
+    [planned, phase(0, "teach")],
+    { label: "Segment 1 of 3", title: "Powers", ticks: ["now", "", ""] },
   ],
   [
     "a middle segment, closed",
-    { segment: 1, phase: "closed" },
-    null,
-    { label: "Segment 2 of 3", ticks: ["past", "now", ""] },
+    [planned, phase(1, "closed")],
+    { label: "Segment 2 of 3", title: "Products", ticks: ["past", "now", ""] },
   ],
   [
     "the segment that goes over objectives again",
-    { segment: 3, phase: "discuss", again: ["chain-rule"] },
-    null,
+    [planned, phase(3, "discuss", ["chain-rule"])],
     { label: "Going over again", ticks: ["past", "past", "now"] },
   ],
   [
     "a finished unit",
-    { segment: 2, phase: "closed" },
-    "passed",
+    [planned, phase(2, "closed"), { type: "unit_closed", status: "passed" }],
     { label: "Finished", ticks: ["past", "past", "past"] },
   ],
   [
     "a finished unit opened again, with no position",
-    null,
-    "overridden",
+    [planned, { type: "unit_closed", status: "overridden" }],
     { label: "Finished", ticks: ["past", "past", "past"] },
   ],
-])("the top line for %s", (_, position, finished, expected) => {
-  expect(whereInUnit(PLAN, position, finished)).toEqual(expected);
+  [
+    "a review offered: the segment still",
+    [planned, phase(1, "discuss"), run("review", "offered", 3)],
+    { label: "Segment 2 of 3", title: "Products", ticks: ["past", "now", ""] },
+  ],
+  [
+    "a review started, before its first question",
+    [planned, phase(1, "discuss"), run("review", "on", 3)],
+    { label: "Review", ticks: ["past", "now", ""] },
+  ],
+  [
+    "the gate started, before its first question, after a review's",
+    [
+      planned,
+      phase(0, "teach"),
+      run("review", "on", 2),
+      assessed("r1", 2, 2),
+      { type: "assessment_end", mode: "review", skipped: false, statuses: {} },
+      phase(2, "closed"),
+      run("gate", "on", 4),
+    ],
+    { label: "Unit gate", ticks: ["past", "past", "past"] },
+  ],
+  [
+    "a review at its second question, after an earlier review's third",
+    [
+      planned,
+      phase(0, "teach"),
+      run("review", "on", 3),
+      assessed("r1", 3, 3),
+      { type: "assessment_end", mode: "review", skipped: false, statuses: {} },
+      phase(1, "discuss"),
+      run("review", "on", 4),
+      assessed("r2", 1, 4),
+      assessed("r3", 2, 4),
+    ],
+    { label: "Review", title: "Question 2 of 4", ticks: ["past", "now", ""] },
+  ],
+  [
+    "the gate at its first question",
+    [
+      planned,
+      phase(2, "closed"),
+      run("gate", "offered", 4),
+      run("gate", "on", 4),
+      assessed("g1", 1, 4),
+    ],
+    {
+      label: "Unit gate",
+      title: "Question 1 of 4",
+      ticks: ["past", "past", "past"],
+    },
+  ],
+  [
+    "a test at its third question, the second on its objective",
+    [
+      planned,
+      phase(0, "teach"),
+      run("test-out", "on", 3),
+      assessed("t1", 1, 3, 1),
+      assessed("t2", 2, 3, 2),
+      assessed("t3", 3, 3, 2),
+    ],
+    { label: "Testing out", title: "Objective 2 of 3", ticks: ["", "", ""] },
+  ],
+  [
+    "a test's result waiting",
+    [
+      planned,
+      phase(0, "teach"),
+      run("test-out", "on", 3),
+      assessed("t1", 1, 3, 1),
+      {
+        type: "assessment_end",
+        mode: "test-out",
+        skipped: false,
+        statuses: {},
+      },
+      {
+        type: "test_result",
+        objectives: [
+          { objective: "power-rule", passed: true, answers: [] },
+          { objective: "product-rule", passed: false, answers: [] },
+          { objective: "chain-rule", passed: false, answers: [] },
+        ],
+      },
+    ],
+    { label: "Testing out", ticks: ["", "", ""] },
+  ],
+])("the top line in %s", (_, events, expected) => {
+  expect(whereInUnit(PLAN, play(events))).toEqual(expected);
 });
 
 test("before the unit is open the top line says nothing", () => {
-  expect(whereInUnit(PLAN, null, null)).toBeNull();
+  expect(whereInUnit(PLAN, play([planned]))).toBeNull();
 });
 
-test("the outline marks the segments done and the one in progress, and adds the segment that goes over objectives again", () => {
-  expect(outline(PLAN, { segment: 1, phase: "check" }, null)).toEqual([
-    { title: "Powers", state: "past" },
-    { title: "Products", state: "now" },
-    { title: "The chain rule", state: "" },
+const statusOf = (objectives: Record<string, ObjectiveStatus>): PageEvent => ({
+  type: "unit_status",
+  unit: "in-progress",
+  objectives,
+});
+
+test("the outline numbers the segments with their objectives as they stand: a past one with how many passed, the current one as here with its objective ringed, and each one the thread has a heading for to jump to", () => {
+  const state = play([
+    planned,
+    phase(0, "teach"),
+    phase(0, "check"),
+    statusOf({ "power-rule": "retained" }),
+    phase(1, "teach"),
+    phase(1, "check"),
   ]);
-  expect(
-    outline(PLAN, { segment: 3, phase: "teach", again: ["chain-rule"] }, null),
-  ).toEqual([
-    { title: "Powers", state: "past" },
-    { title: "Products", state: "past" },
-    { title: "The chain rule", state: "past" },
-    { title: "Going over again", state: "now" },
+  expect(outline(PLAN, state)).toEqual({
+    segments: [
+      {
+        number: 1,
+        title: "Powers",
+        state: "past",
+        says: "1 of 1 passed",
+        heading: "segment-1",
+        objectives: [
+          {
+            id: "power-rule",
+            statement: "Differentiate a power of x.",
+            status: "retained",
+            current: false,
+            skipped: false,
+          },
+        ],
+      },
+      {
+        number: 2,
+        title: "Products",
+        state: "now",
+        says: "You are here",
+        heading: "segment-2",
+        objectives: [
+          {
+            id: "product-rule",
+            statement: "Apply the product rule.",
+            status: "not-started",
+            current: true,
+            skipped: false,
+          },
+        ],
+      },
+      {
+        number: 3,
+        title: "The chain rule",
+        state: "",
+        objectives: [
+          {
+            id: "chain-rule",
+            statement: "Apply the chain rule.",
+            status: "not-started",
+            current: false,
+            skipped: false,
+          },
+        ],
+      },
+    ],
+    gate: { state: "", says: "After segment 3" },
+    gateBeforeLast: false,
+  });
+});
+
+test("a past segment the thread does not reach, as in a unit opened in its second segment, has nothing to jump to", () => {
+  const state = play([
+    planned,
+    statusOf({ "power-rule": "attempted" }),
+    phase(1, "discuss"),
   ]);
-  expect(outline(PLAN, null, "passed")).toEqual([
-    { title: "Powers", state: "past" },
-    { title: "Products", state: "past" },
-    { title: "The chain rule", state: "past" },
+  const [first, second] = outline(PLAN, state).segments;
+  expect(first).toMatchObject({ state: "past", says: "0 of 1 passed" });
+  expect(first?.heading).toBeUndefined();
+  expect(second).toMatchObject({ state: "now", heading: "segment-2" });
+});
+
+test("going over again follows the plan's segments and jumps to the latest time", () => {
+  const state = play([
+    planned,
+    phase(0, "teach"),
+    phase(1, "teach"),
+    phase(2, "teach"),
+    phase(2, "closed"),
+    phase(3, "teach", ["power-rule", "chain-rule"]),
+    phase(3, "closed", ["power-rule", "chain-rule"]),
+    phase(3, "teach", ["chain-rule"]),
   ]);
+  const { segments } = outline(PLAN, state);
+  expect(segments.map((s) => [s.state, s.heading])).toEqual([
+    ["past", "segment-1"],
+    ["past", "segment-2"],
+    ["past", "segment-3"],
+    ["now", "again-2"],
+  ]);
+  expect(segments[3]).toMatchObject({
+    title: "Going over again",
+    says: "You are here",
+    objectives: [{ id: "chain-rule", current: true }],
+  });
+  expect(segments[3]?.number).toBeUndefined();
+  // Ringed only where the unit is, not in the segment that first taught it.
+  expect(segments[2]?.objectives).toMatchObject([
+    { id: "chain-rule", current: false },
+  ]);
+});
+
+test("a segment the test skipped is marked skipped, as is a skipped objective of one taught in part", () => {
+  const plan: Plan = {
+    objectives: PLAN.objectives,
+    segments: [
+      { title: "Powers", objectives: ["power-rule"] },
+      { title: "Rules", objectives: ["product-rule", "chain-rule"] },
+    ],
+  };
+  const skipping = ["power-rule", "product-rule"];
+  const state = play([
+    { type: "unit_plan", plan },
+    statusOf({ "power-rule": "passed", "product-rule": "passed" }),
+    { type: "phase", segment: 1, phase: "teach", skipping },
+  ]);
+  const [first, second] = outline(plan, state).segments;
+  expect(first).toMatchObject({
+    state: "skip",
+    says: "Passed in the test",
+    objectives: [{ id: "power-rule", skipped: true }],
+  });
+  expect(first?.heading).toBeUndefined();
+  expect(second).toMatchObject({
+    state: "now",
+    heading: "segment-2",
+    objectives: [
+      { id: "product-rule", skipped: true, current: false },
+      { id: "chain-rule", skipped: false, current: true },
+    ],
+  });
+});
+
+test("while the test runs no segment is here", () => {
+  const state = play([
+    planned,
+    phase(0, "teach"),
+    run("test-out", "on", 3),
+    assessed("t1", 1, 3, 1),
+  ]);
+  expect(outline(PLAN, state).segments.map((s) => s.state)).toEqual([
+    "",
+    "",
+    "",
+  ]);
+});
+
+test("the gate is here from its card on, every segment past; then taken or skipped, and before going over again that followed it; a unit finished with none has no gate", () => {
+  const end = [planned, phase(0, "teach"), phase(2, "closed")];
+  const offered = play([...end, run("gate", "offered", 2)]);
+  expect(outline(PLAN, offered).gate).toEqual({
+    state: "now",
+    says: "You are here",
+  });
+  expect(outline(PLAN, offered).segments.map((s) => s.state)).toEqual([
+    "past",
+    "past",
+    "past",
+  ]);
+
+  const taken = [
+    ...end,
+    run("gate", "offered", 2),
+    run("gate", "on", 2),
+    {
+      type: "assessment_end",
+      mode: "gate",
+      skipped: false,
+      statuses: {},
+    } satisfies PageEvent,
+  ];
+  expect(outline(PLAN, play(taken)).gate).toEqual({
+    state: "past",
+    says: "Taken",
+  });
+  const againAfter = outline(
+    PLAN,
+    play([...taken, phase(3, "teach", ["chain-rule"])]),
+  );
+  expect(againAfter.segments.at(-1)).toMatchObject({ state: "now" });
+  expect(againAfter.gateBeforeLast).toBe(true);
+
+  const skippedOnCard = play([
+    ...end,
+    run("gate", "offered", 2),
+    { type: "assessment_end", mode: "gate", skipped: true, statuses: {} },
+  ]);
+  expect(outline(PLAN, skippedOnCard).gate).toEqual({
+    state: "past",
+    says: "Skipped",
+  });
+
+  const finished = play([...end, { type: "unit_closed", status: "passed" }]);
+  expect(outline(PLAN, finished).gate).toBeNull();
 });
 
 test("a segment's heading names it by number and title with its objectives as they stand, the extra segment as going over again; only the one given marks the current objective", () => {

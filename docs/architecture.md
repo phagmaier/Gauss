@@ -1053,7 +1053,25 @@ take the outline.
   calibration shows, for each
   confidence level, how many unassisted answers were correct, "I don't
   know" apart.
-- **Session** (`/courses/<id>/units/<unit>`): the thread with rendered
+- **Session** (`/courses/<id>/units/<unit>`): the top line has the path,
+  ending in "Unit N" and the unit's title; the position, which opens the
+  outline; and "Course map" (not working yet). The position
+  (`whereInUnit` in `session.ts`) is "Segment N of M" with the segment's
+  title, "Going over again", "Review" once a review is started, "Unit
+  gate" from the gate's card on, "Testing out" while the test runs or its
+  result waits, or "Finished", with a tick per segment; a review and the
+  gate add the question they are at ("Question 2 of 4"), a test the
+  objective ("Objective 2 of 3"). The outline (`outline` in `session.ts`)
+  lists the segments, numbered, with their objectives' forms: the current
+  one "You are here", a past one how many of its objectives passed, one
+  the test skipped struck through with "Passed in the test" (in one taught
+  in part, the skipped objectives struck through); then "Going over
+  again" once the unit has, and the gate, to come, here, taken or
+  skipped. A past or current segment with a heading in the thread scrolls
+  only the thread to it, focuses it and lights it briefly; no smooth
+  scroll or fade under reduced motion. "Going over again" jumps to the
+  latest time. The outline ends with "Export transcript" and "Start
+  fresh". The thread renders
   Markdown and math; a heading where each segment begins, with "Segment N
   of M" (or "Going over again" for the extra segment), its title and its
   objectives' status forms as they stand now, the current objective
@@ -1112,18 +1130,14 @@ take the outline.
   with no phase or assessment after it, offers its steps. The test
   is a marker, then question cards whose head reads "Objective 2 of 5",
   and "second question" after an unsure correct answer, with "Start
-  learning instead" as the control; the top line reads "Testing out" with
-  empty ticks while it runs and its result waits. Its result card has a
+  learning instead" as the control. Its result card has a
   row per objective with why ("Right, 90% sure", "Right once, 50% sure,
   then missed"), then what skipping would do to each segment (skipped,
   taught in part with what it still teaches, taught), and "Teach me the
   whole unit" and "Skip what I passed" ("Finish the unit" when everything
   passed; "Start the unit" alone when nothing did); once answered it is
-  one line, with where teaching starts. Skipped segments stay in the
-  outline, struck through with "Skipped: passed in the test", one taught
-  in part says what it still teaches, and the top line's ticks for them
-  are hollow.
-  The top line shows the unit's position and its outline has Start fresh.
+  one line, with where teaching starts. A skipped segment's tick in the
+  top line is hollow.
   A math question is answered in a one-line field whose expression is shown as
   math beneath it as it is typed. A code question's card names
   each file to edit by its full path, with "Copy path" and "Open", and says
