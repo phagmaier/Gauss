@@ -34,34 +34,15 @@ view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.31 Status forms
-
-- Status: todo
-- Depends on: 5.30
-- One component draws an objective's or a unit's status as a form
-  (`decisions.md`, "Page design", "Status shows by form as well as
-  colour"), from `ObjectiveStatus` or `UnitStatus`, and "current". The
-  session and course view use the same pure rule: the first objective
-  not passed among those the active segment teaches, in segment order.
-  This respects what testing out skipped and uses the extra segment's
-  own objectives; no active segment means no current objective. The
-  current unit is the one the course view's card leads to. The form
-  accompanies the status words in the closing card's rows, "What I know",
-  the course view's unit list and the diagram with its numbered fallback;
-  5.32, 5.33 and 5.39 use it in their views.
-- Done when: tests on hand-made progress pick from the active segment,
-  not an earlier overridden objective or one skipped by testing out,
-  and pick none in a finished unit. On `pnpm dev:fake` each of the seven
-  forms shows in those views, from the seeded courses (Calculus I has
-  retained and slipping, Probability overridden).
-
 ### 5.32 Segment headings, phase hairlines, the verdict line
 
 - Status: todo
 - Depends on: 5.31
 - As piece 19. Where each segment starts in the thread, a heading: a rule,
   "Segment N of M", its title, and its objectives with their forms as they
-  stand now. The extra segment's heading reads "Going over again". Teach,
+  stand now (`StatusForm.tsx`, the current one by `currentObjective` in
+  `src/shared/plan.ts` from the timeline's position). The extra segment's
+  heading reads "Going over again". Teach,
   discuss and check become hairlines with a small label. Review, gate and
   test markers keep their words in the same hairline form (the agent's).
   A graded card's verdict becomes one line under a hairline, with only the
@@ -172,7 +153,9 @@ and cheat sheets (stage 6).
   "What I know". The course response gains each started unit's objective
   statuses (`UnitProgress` in `src/shared/library.ts`), derived, never
   stored. The objective rows replace the retained and slipping counts
-  under a finished unit.
+  under a finished unit. "Next" is `currentObjective` (`src/shared/plan.ts`),
+  which needs the position's phase, `again` and the test's skip, which
+  `UnitProgress` does not send yet; the forms are `StatusForm.tsx`.
 - Done when: tests on hand-made progress give the objective statuses and
   show that "Next" stays in the active segment after an earlier override.
   A finished course with slipping and overridden objectives shows counts

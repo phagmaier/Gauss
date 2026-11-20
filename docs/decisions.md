@@ -1736,7 +1736,14 @@ redesign's.
   unit takes the same forms. The words stay beside them where there is
   room ("Retained" in teal, `#81c8be`, and "Slipping" in peach, `#ef9f76`,
   from piece 16). Shown in the outline, the course map, the course view,
-  the library and the closing card.
+  the library and the closing card. As built (the agent's choices, open to
+  change): the form sits just before the status word. The current unit is
+  the one the course view's card leads to, up next as well as in progress,
+  since the accent marks the next step; other units in progress take the
+  outline, and "In progress" in "What I know" its yellow, not the accent.
+  The current objective (`currentObjective` in `src/shared/plan.ts`) is
+  none while the segment is closed, between segments or at the unit's
+  end: after a move-on the first not passed would be an overridden one.
 - **A question is a card in the thread**, answered inside the card while the
   message box stays; once graded it shrinks to a record (verdict, answer,
   confidence, the right answer on a miss), the verdict one line under a

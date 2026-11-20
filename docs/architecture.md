@@ -993,6 +993,13 @@ module beside it (`session.ts`, `progress.ts`, `library.ts`,
 `src/shared/timeline.ts`). Of the components, only `PackagesCard.tsx` and
 `prose.tsx` have tests.
 
+An objective's or a unit's status shows as a form beside its word
+(`StatusForm.tsx`; `decisions.md`, "Page design"): in the course view's
+unit list, its diagram and the diagram's numbered fallback, "What I know",
+and the closing card's rows. The current unit, the one the course view's
+card leads to, takes the accent's ringed form; other units in progress
+take the outline.
+
 - **Library** (`/`): every course and one-off, with where it stands, a tick
   per unit, and when it was last opened; finished courses grouped at the
   bottom. Every row opens its course view. "Profile" and "New course" are
@@ -1011,8 +1018,9 @@ module beside it (`session.ts`, `progress.ts`, `library.ts`,
 - **Course** (`/courses/<id>`): a card at the top that leads to the unit in
   progress most recently opened, or else the next unit in order (the first
   not started whose prerequisites are finished); the unit list with each
-  unit's status (under a finished unit's word, how many of its objectives
-  are retained, in teal, and how many slipping, in peach, if any), Start
+  unit's status form and word, the card's unit in the accent (under a
+  finished unit's word, how many of its objectives are retained, in teal,
+  and how many slipping, in peach, if any), Start
   (which asks first when a prerequisite is not finished) or Continue, and
   beside Start, and under the card's "Start unit N", "Test out", which
   asks once, saying what the test is, then opens the unit with its test;

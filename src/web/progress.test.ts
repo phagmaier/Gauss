@@ -88,26 +88,44 @@ const TWO = course(
   { rules: "2026-11-14T09:00:00.000Z", integral: "2026-11-15T08:00:00.000Z" },
 );
 
-test("each status: how the unit's row and node read", () => {
+test("each status: how the unit's row and node read, the card's unit current", () => {
+  const form = (unit: UnitProgress["status"], current = false) => ({
+    unit,
+    current,
+  });
   expect(UNITS.map((u) => unitMark(TWO, u))).toEqual([
-    { state: "pass", text: "Passed", className: "pass" },
-    { state: "over", text: "Overridden", className: "" },
-    { state: "now", text: "Segment 3 of 3", className: "" },
-    { state: "todo", text: "", className: "" },
-    { state: "now", text: "Segment 1 of 2", className: "" },
-    { state: "todo", text: "", className: "" },
+    { state: "pass", form: form("passed"), text: "Passed", className: "pass" },
+    {
+      state: "over",
+      form: form("overridden"),
+      text: "Overridden",
+      className: "",
+    },
+    // Unit 3 is in progress, but the card leads to unit 5, opened last.
+    {
+      state: "att",
+      form: form("in-progress"),
+      text: "Segment 3 of 3",
+      className: "",
+    },
+    { state: "todo", form: form("not-started"), text: "", className: "" },
+    {
+      state: "now",
+      form: form("in-progress", true),
+      text: "Segment 1 of 2",
+      className: "",
+    },
+    { state: "todo", form: form("not-started"), text: "", className: "" },
   ]);
   // Going over again, and a unit in progress whose position is gone.
   const odd = course({ rules: at(3), integral: at() });
-  expect(unitMark(odd, UNITS[2] as StoredUnit)).toEqual({
+  expect(unitMark(odd, UNITS[2] as StoredUnit)).toMatchObject({
     state: "now",
     text: "Going over again",
-    className: "",
   });
-  expect(unitMark(odd, UNITS[4] as StoredUnit)).toEqual({
-    state: "now",
+  expect(unitMark(odd, UNITS[4] as StoredUnit)).toMatchObject({
+    state: "att",
     text: "In progress",
-    className: "",
   });
 });
 
@@ -132,7 +150,7 @@ test("a finished unit's word has under it how many of its objectives are retaine
   ]);
 });
 
-test("with no unit in progress, the next one in order is marked up next", () => {
+test("with no unit in progress, the next one in order is marked up next, and current", () => {
   // A course just approved sends no progress for its units.
   expect(UNITS.map((u) => unitMark(course({}), u).text)).toEqual([
     "Up next",
@@ -142,7 +160,12 @@ test("with no unit in progress, the next one in order is marked up next", () => 
     "",
     "",
   ]);
-  expect(unitMark(course({}), UNITS[0] as StoredUnit).className).toBe("next");
+  expect(unitMark(course({}), UNITS[0] as StoredUnit)).toEqual({
+    state: "now",
+    form: { unit: "not-started", current: true },
+    text: "Up next",
+    className: "",
+  });
   // With unit 3 in progress, unit 5 could start, but the card leads to unit
   // 3, so nothing is marked up next.
   const busy = course({ limits: PASSED, derivative: PASSED, rules: at(0) });

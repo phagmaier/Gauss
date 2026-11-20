@@ -44,7 +44,11 @@ export function objectiveMark(status: ObjectiveStatus): Word {
   return STATUS_WORDS[status];
 }
 
-/** A unit's status beside its heading, in the course view's words. */
+/**
+ * A unit's status beside its heading, in the course view's words. A unit in
+ * progress takes the colour of its form, the outline of an objective not
+ * passed yet: the accent marks only the current unit, in the course view.
+ */
 export function unitWord(status: UnitStatus): Word {
   switch (status) {
     case "passed":
@@ -52,7 +56,7 @@ export function unitWord(status: UnitStatus): Word {
     case "overridden":
       return { text: "Overridden", className: "over" };
     case "in-progress":
-      return { text: "In progress", className: "now" };
+      return { text: "In progress", className: "miss" };
     case "not-started":
       return { text: "Not started", className: "" };
   }

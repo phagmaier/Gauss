@@ -452,6 +452,7 @@ function rowWord(status: ObjectiveStatus): { text: string; className: string } {
 export interface ClosingCardRow {
   id: string;
   statement: string;
+  status: ObjectiveStatus;
   passed: boolean;
   word: { text: string; className: string };
   why?: string;
@@ -475,7 +476,7 @@ export interface ClosingCard {
 }
 
 function cardRow(id: string, statement: string, status: ObjectiveStatus) {
-  const row = { id, statement, word: rowWord(status) };
+  const row = { id, statement, status, word: rowWord(status) };
   return status === "passed" || status === "retained"
     ? { ...row, passed: true }
     : { ...row, passed: false, why: WHY[status] };

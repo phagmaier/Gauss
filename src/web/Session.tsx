@@ -74,6 +74,7 @@ import { PackagesCard } from "./PackagesCard.tsx";
 import { InlineProse, Prose } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { navigate, paths } from "./route.ts";
+import { StatusForm } from "./StatusForm.tsx";
 import { StyleCard } from "./StyleCard.tsx";
 import {
   assessmentDetourStep,
@@ -1346,7 +1347,10 @@ function CardRows(props: { rows: ClosingCardRow[] }) {
           <span>
             <InlineProse text={row.statement} />
           </span>
-          <span className={`st ${row.word.className}`}>{row.word.text}</span>
+          <span className={`st ${row.word.className}`}>
+            <StatusForm objective={row.status} />
+            {row.word.text}
+          </span>
           {row.why === undefined ? null : <small>{row.why}</small>}
         </li>
       ))}

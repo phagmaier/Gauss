@@ -755,12 +755,14 @@ test("a closing card when some did not pass says why for each, and how many", ()
     {
       id: "power-rule",
       statement: "Differentiate a power of x.",
+      status: "passed",
       passed: true,
       word: { text: "Passed", className: "pass" },
     },
     {
       id: "product-rule",
       statement: "Apply the product rule.",
+      status: "attempted",
       passed: false,
       word: { text: "Not passed", className: "miss" },
       why: "Its check ended before it passed",
@@ -768,6 +770,7 @@ test("a closing card when some did not pass says why for each, and how many", ()
     {
       id: "chain-rule",
       statement: "Apply the chain rule.",
+      status: "overridden",
       passed: false,
       word: { text: "Not passed", className: "miss" },
       why: "You moved on before it passed",
@@ -796,18 +799,21 @@ test("a closing card counts a retained objective as passed, and a slipping one a
     {
       id: "power-rule",
       statement: "Differentiate a power of x.",
+      status: "retained",
       passed: true,
       word: { text: "Retained", className: "kept" },
     },
     {
       id: "product-rule",
       statement: "Apply the product rule.",
+      status: "passed",
       passed: true,
       word: { text: "Passed", className: "pass" },
     },
     {
       id: "chain-rule",
       statement: "Apply the chain rule.",
+      status: "slipping",
       passed: false,
       word: { text: "Slipping", className: "slip" },
       why: "It passed, then was missed in a review or a gate",

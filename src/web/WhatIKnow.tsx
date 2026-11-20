@@ -30,6 +30,7 @@ import { Link, TopLine } from "./Frame.tsx";
 import { ChoiceLabel, InlineProse, MathText, Prose } from "./prose.tsx";
 import { CodeOutput, FileNames, Thinking } from "./QuestionCard.tsx";
 import { paths } from "./route.ts";
+import { StatusForm } from "./StatusForm.tsx";
 import {
   answerLine,
   knownSummary,
@@ -132,7 +133,10 @@ function UnitSection(
         <h2 className="wk-uh" id={headingId}>
           <span>Unit {unit.number}</span> {unit.title}
         </h2>
-        <span className={`wk-s ${word.className}`}>{word.text}</span>
+        <span className={`wk-s ${word.className}`}>
+          <StatusForm unit={unit.status} />
+          {word.text}
+        </span>
       </div>
       <ol className="wk-objs">
         {props.objectives.map((objective) => (
@@ -161,7 +165,10 @@ function ObjectiveItem(
         <span className="wk-stmt">
           <InlineProse text={objective.statement} />
         </span>
-        <span className={`wk-s ${mark.className}`}>{mark.text}</span>
+        <span className={`wk-s ${mark.className}`}>
+          <StatusForm objective={objective.status} />
+          {mark.text}
+        </span>
       </div>
       {objective.misconceptions.map((misconception) => (
         <MisconceptionEntry

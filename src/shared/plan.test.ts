@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { Plan } from "./plan.ts";
+import { currentObjective, Plan } from "./plan.ts";
+import type { ObjectiveStatus } from "./status.ts";
 
 // A hand-written plan for a unit on the derivative: three objectives taught
 // in two segments, the second covering two of them.
@@ -137,5 +138,91 @@ describe("rejects", () => {
         message: expect.stringMatching(message),
       }),
     ]);
+  });
+});
+
+describe("the current objective", () => {
+  // A unit of three segments; the second teaches its objectives in another
+  // order than the plan lists them, and the segment's order is the one taught.
+  const UNIT = {
+    segments: [
+      { title: "Limits", objectives: ["limit-laws", "squeeze"] },
+      { title: "Continuity", objectives: ["continuity-ivt", "continuity-def"] },
+      { title: "Asymptotes", objectives: ["asymptote"] },
+    ],
+  };
+  type Statuses = Record<string, ObjectiveStatus>;
+
+  test("is the first not passed in the active segment, past an earlier override", () => {
+    // The learner moved on from "squeeze" in the first segment.
+    const moved: Statuses = { "limit-laws": "passed", squeeze: "overridden" };
+    expect(currentObjective(UNIT, { segment: 1, phase: "teach" }, moved)).toBe(
+      "continuity-ivt",
+    );
+    expect(
+      currentObjective(
+        UNIT,
+        { segment: 1, phase: "check" },
+        { ...moved, "continuity-ivt": "retained" },
+      ),
+    ).toBe("continuity-def");
+    // Slipping is not passed.
+    expect(
+      currentObjective(
+        UNIT,
+        { segment: 1, phase: "discuss" },
+        { ...moved, "continuity-ivt": "slipping", "continuity-def": "passed" },
+      ),
+    ).toBe("continuity-ivt");
+  });
+
+  test("leaves out what the learner skipped after testing out", () => {
+    // "continuity-ivt" passed in the test and was skipped; a review has
+    // missed it since, so it is slipping, but its segment no longer teaches it.
+    expect(
+      currentObjective(
+        UNIT,
+        { segment: 1, phase: "teach", skipping: ["continuity-ivt"] },
+        { "continuity-ivt": "slipping" },
+      ),
+    ).toBe("continuity-def");
+  });
+
+  test("in the segment that goes over objectives again, is among its own", () => {
+    const left: Statuses = {
+      "limit-laws": "passed",
+      squeeze: "overridden",
+      "continuity-ivt": "passed",
+      "continuity-def": "attempted",
+      asymptote: "attempted",
+    };
+    expect(
+      currentObjective(
+        UNIT,
+        { segment: 3, phase: "teach", again: ["continuity-def", "asymptote"] },
+        left,
+      ),
+    ).toBe("continuity-def");
+  });
+
+  test("is none with no active segment, or nothing left in it", () => {
+    // A finished unit has no position.
+    expect(currentObjective(UNIT, null, {})).toBeUndefined();
+    // Between segments: the first closed, by moving on, and the next not started.
+    expect(
+      currentObjective(
+        UNIT,
+        { segment: 0, phase: "closed" },
+        { "limit-laws": "passed", squeeze: "overridden" },
+      ),
+    ).toBeUndefined();
+    // The check's last pass, before the segment closes.
+    expect(
+      currentObjective(
+        UNIT,
+        { segment: 2, phase: "check" },
+        { asymptote: "passed" },
+      ),
+    ).toBeUndefined();
   });
 });

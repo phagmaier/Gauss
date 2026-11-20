@@ -123,7 +123,7 @@ test("each status of an objective and of a unit has its word", () => {
   ).toEqual([
     { text: "Passed", className: "pass" },
     { text: "Overridden", className: "over" },
-    { text: "In progress", className: "now" },
+    { text: "In progress", className: "miss" },
     { text: "Not started", className: "" },
   ]);
 });

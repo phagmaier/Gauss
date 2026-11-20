@@ -12,6 +12,7 @@
 import type { StoredUnit } from "../shared/curriculum.ts";
 import type { CourseWithProgress, UnitProgress } from "../shared/library.ts";
 import { isFinished } from "../shared/status.ts";
+import type { FormOf } from "./StatusForm.tsx";
 
 type Progress = CourseWithProgress["progress"];
 
@@ -167,13 +168,17 @@ export function lead(course: CourseWithProgress): Lead | null {
 
 /**
  * How a unit's row in the list and its node in the diagram show where it
- * stands: `state` is the class of the row and the node, `text` the word at
- * the row's right and on the node, `className` that word's own class.
- * `under`, on a finished unit's row only, says under the word how many of
- * its objectives are retained, and how many slipping if any (piece 16).
+ * stands: `state` is the class of the row and the node, `form` its status
+ * form, `text` the word at the row's right and on the node, `className`
+ * that word's own class. The unit the card leads to is the current one,
+ * drawn in the accent: the unit in progress most recently opened, or the
+ * one up next. `under`, on a finished unit's row only, says under the word
+ * how many of its objectives are retained, and how many slipping if any
+ * (piece 16).
  */
 export interface UnitMark {
-  state: "pass" | "over" | "now" | "todo";
+  state: "pass" | "over" | "now" | "att" | "todo";
+  form: FormOf;
   text: string;
   className: string;
   under?: { text: string; className: string }[];
@@ -202,10 +207,13 @@ export function unitMark(
   unit: StoredUnit,
 ): UnitMark {
   const progress = progressOf(course.progress, unit.id);
+  const current = lead(course)?.unit.id === unit.id;
+  const form: FormOf = { unit: progress.status, current };
   switch (progress.status) {
     case "passed":
       return {
         state: "pass",
+        form,
         text: "Passed",
         className: "pass",
         ...retention(unit, progress),
@@ -213,23 +221,23 @@ export function unitMark(
     case "overridden":
       return {
         state: "over",
+        form,
         text: "Overridden",
         className: "",
         ...retention(unit, progress),
       };
     case "in-progress":
       return {
-        state: "now",
+        state: current ? "now" : "att",
+        form,
         text: whereInProgress(unit, progress)?.label ?? "In progress",
         className: "",
       };
-    case "not-started": {
+    case "not-started":
       // "Up next" only when the card says it too: no unit is in progress.
-      const next = lead(course);
-      return next?.kind === "up-next" && next.unit.id === unit.id
-        ? { state: "todo", text: "Up next", className: "next" }
-        : { state: "todo", text: "", className: "" };
-    }
+      return current
+        ? { state: "now", form, text: "Up next", className: "" }
+        : { state: "todo", form, text: "", className: "" };
   }
 }
 

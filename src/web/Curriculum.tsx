@@ -17,10 +17,15 @@ import {
   layOut,
   NODE_WIDTH,
 } from "./diagram.ts";
+import { type FormOf, StatusForm } from "./StatusForm.tsx";
 import { buildsOn } from "./units.ts";
 
-/** A short word at a unit's right, such as "Changed", and any lines under it. */
+/**
+ * A short word at a unit's right, such as "Changed", and any lines under
+ * it; with `form`, the unit's status form before the word.
+ */
 export interface UnitMark {
+  form?: FormOf;
   text: string;
   className: string;
   under?: { text: string; className: string }[];
@@ -67,6 +72,7 @@ export function UnitList<U extends Unit>(props: {
               {props.after?.(unit)}
             </div>
             <span className={`cu-s ${mark?.className ?? ""}`}>
+              {mark?.form === undefined ? null : <StatusForm {...mark.form} />}
               {mark?.text}
               {mark?.under?.map((line) => (
                 <small key={line.text} className={line.className}>
@@ -108,8 +114,15 @@ interface DiagramProps {
   units: Unit[];
   /** Units whose node carries a word, such as "Changed", by id. */
   marks?: ReadonlyMap<string, string>;
-  /** Where each unit stands, by its id: its node's class, and the word under its title. */
-  standing?: (unitId: string) => { state: string; text: string };
+  /**
+   * Where each unit stands, by its id: its node's class, its status form,
+   * and the word under its title.
+   */
+  standing?: (unitId: string) => {
+    state: string;
+    text: string;
+    form?: FormOf;
+  };
   selected?: string | undefined;
   /** Makes the nodes buttons that mark their unit. */
   onSelect?: (id: string) => void;
@@ -159,6 +172,10 @@ function PrerequisiteList({
           const mark = marks?.get(unit.id);
           const status = standing?.(unit.id);
           const label = mark ?? status?.text;
+          const form =
+            mark === undefined && status?.form !== undefined ? (
+              <StatusForm {...status.form} />
+            ) : null;
           return (
             <li
               key={unit.id}
@@ -166,6 +183,7 @@ function PrerequisiteList({
                 unit.id === selected ? "diagram-unit sel" : "diagram-unit"
               }
             >
+              {form}
               {onSelect === undefined ? (
                 <span>{unit.title}</span>
               ) : (
@@ -232,11 +250,17 @@ function drawDiagram(props: DiagramProps, { nodes, edges, rows }: Layout) {
           top: n.row * PITCH,
         };
         const text = mark ?? standing?.text;
+        const form = mark === undefined ? standing?.form : undefined;
         const content = (
           <>
             <b>{n.index + 1}</b>
             <span className="t">{n.unit.title}</span>
-            {text ? <small>{text}</small> : null}
+            {text || form !== undefined ? (
+              <small>
+                {form === undefined ? null : <StatusForm {...form} />}
+                {text}
+              </small>
+            ) : null}
           </>
         );
         const { onSelect } = props;

@@ -1534,9 +1534,6 @@ button.dn:hover {
   font-size: 0.9em;
   color: var(--ink-2);
 }
-.cu-s.next {
-  color: var(--ink-2);
-}
 /* a card above the units: the unit in progress, or else the next one */
 .cn {
   display: grid;
@@ -1619,9 +1616,6 @@ button.dn:hover {
 }
 .wk-s.miss {
   color: var(--open);
-}
-.wk-s.now {
-  color: var(--accent);
 }
 .wk-s.over {
   color: var(--ink-2);
@@ -1815,6 +1809,58 @@ button.dn:hover {
   display: block;
   font-size: 0.94em;
   line-height: 1.45;
+}
+/* ---- Status forms, the redesign's piece 19: a form as well as a colour (StatusForm.tsx) ----
+   passed: filled; retained: filled, teal; slipping: half filled, peach; answered but not passed: an
+   outline; overridden: hollow with a bar; not started: a faint dotted outline; current: an accent dot
+   with a ring. A unit takes the same forms. It sits before the status word. */
+.sg {
+  flex: none;
+  display: inline-block;
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-3);
+  margin-inline-end: 0.5em;
+  vertical-align: -0.03em;
+}
+.sg.not {
+  border-style: dotted;
+  border-color: var(--ink-4);
+}
+.sg.att {
+  border-color: var(--open);
+}
+.sg.pass {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.sg.kept {
+  background: var(--kept);
+  border-color: var(--kept);
+}
+.sg.slip {
+  border-color: var(--slip);
+  background: linear-gradient(to top, var(--slip) 50%, transparent 50%);
+}
+.sg.over::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: calc(50% - 0.75px);
+  height: 1.5px;
+  background: var(--ink-3);
+}
+.sg.now {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 0 4.5px var(--accent);
+  /* room for the ring */
+  margin-inline: 4.5px calc(0.5em + 4.5px);
 }
 /* where an answer was given, on its line in "What I know" */
 .wk-in {
