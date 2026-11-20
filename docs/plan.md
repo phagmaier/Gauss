@@ -34,23 +34,6 @@ view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.36 Skipping the gate partway
-
-- Status: todo
-- Depends on: nothing
-- `SKIP_GATE_ASKS` (`src/web/session.ts`) is written for the gate's card.
-  Partway, "Skip the gate" asks with a second text, settled in piece 19:
-  "Skip the rest of the gate? Your N answers so far count. Any open
-  question is dropped. Nothing more is marked retained, and the gate
-  is not offered again. To stop for now instead, just leave: the gate
-  picks up where you left off when you come back." Its buttons read
-  "Skip the rest of the gate" and "Keep going". The wording covers an
-  open question and a detour: the engine restores whichever was waiting
-  (`architecture.md` section 4, "Assessments").
-- Done when: a test shows the partway text with the answer count (one
-  answer, and several), and the card's text unchanged; on `pnpm dev:fake`,
-  "Skip the gate" after one gate answer and during a detour shows it.
-
 ### 5.37 The course view down to objectives
 
 - Status: todo

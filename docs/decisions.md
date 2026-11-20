@@ -1897,7 +1897,8 @@ redesign's.
   struck through, and show as hollow ticks in the top line. "Skip the
   gate" partway asks with a text of its own: the answers so far count,
   any open question is dropped, and leaving instead lets the gate pick
-  up where the learner left off (the redesign, piece 19).
+  up where the learner left off (the redesign, piece 19). Before the
+  first answer the count is left out, not "no answers" (the agent's).
 - **Notes are offered in a section of the closing card** (piece 17), drawn
   quieter than the card's next step; the reader is the writer's page in a
   frame under the top line. What a unit's notes look like is the writer's;

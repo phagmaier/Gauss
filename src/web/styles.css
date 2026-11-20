@@ -2002,12 +2002,14 @@ button.dn:hover {
   font-size: 14px;
   color: var(--ink-2);
 }
-/* what a test is, said before it starts: a sentence too long for the buttons' line */
+/* what a step says before it is taken, too long for the buttons' line: a
+   sentence, or a few in paragraphs */
 .confirm .says {
   flex: 1 1 100%;
+  display: grid;
+  gap: 0.4em;
 }
 .confirm .says > span {
-  display: block;
   max-width: 34em;
 }
 .ue-rows .st.skip {

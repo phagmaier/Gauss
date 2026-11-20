@@ -586,9 +586,52 @@ export function detourSays(number: number): string {
 
 // --- Assessments (piece 15) ---------------------------------------------------
 
-/** What "Skip the gate" asks before it skips, on the gate's card or in it. */
-export const SKIP_GATE_ASKS =
-  "The gate is offered once. What you passed stays passed, and nothing more is marked retained.";
+/** What "Skip the gate" asks before it skips: what it says, and its two buttons. */
+export interface SkipGateAsks {
+  says: string[];
+  skip: string;
+  stay: string;
+}
+
+/** What "Skip the gate" asks on the gate's card. */
+export const SKIP_GATE_ASKS: SkipGateAsks = {
+  says: [
+    "The gate is offered once. What you passed stays passed, and nothing more is marked retained.",
+  ],
+  skip: "Skip the gate",
+  stay: "Stay",
+};
+
+/**
+ * What "Skip the gate" asks once the gate has started (piece 19), with the
+ * answers given in it so far. Leaving instead keeps the open question or
+ * detour for the next sitting.
+ */
+export function skipGatePartway(timeline: Timeline): SkipGateAsks {
+  const at = timeline.items.findLastIndex((i) => i.kind === "assessment");
+  const answers = timeline.items
+    .slice(at + 1)
+    .filter(
+      (i) =>
+        i.kind === "question" &&
+        i.question.assessment !== undefined &&
+        i.graded !== undefined,
+    ).length;
+  const count =
+    answers === 0
+      ? ""
+      : answers === 1
+        ? " Your one answer so far counts."
+        : ` Your ${word(answers)} answers so far count.`;
+  return {
+    says: [
+      `Skip the rest of the gate?${count} Any open question is dropped. Nothing more is marked retained, and the gate is not offered again.`,
+      "To stop for now instead, just leave: the gate picks up where you left off when you come back.",
+    ],
+    skip: "Skip the rest of the gate",
+    stay: "Keep going",
+  };
+}
 
 /**
  * What ends a detour in an assessment: another question on its objective

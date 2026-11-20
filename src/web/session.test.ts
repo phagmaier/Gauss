@@ -28,7 +28,9 @@ import {
   openQuestion,
   outline,
   placement,
+  SKIP_GATE_ASKS,
   segmentHeading,
+  skipGatePartway,
   skipLabel,
   whereInUnit,
 } from "./session.ts";
@@ -1540,6 +1542,74 @@ test("the gate's marker, its skip partway, and its skip control say gate, and wh
     name: "Gate skipped",
     says: "What you answered is recorded, and what you passed stays passed.",
   });
+});
+
+test("skipping the gate partway counts the gate's answers so far, and the card's text is its own", () => {
+  const answered = (
+    id: string,
+    verdict: "correct" | "incorrect",
+  ): PageEvent => {
+    const answer = {
+      kind: "written" as const,
+      questionId: id,
+      text: "Because.",
+      confidence: "75" as const,
+    };
+    return { type: "graded", questionId: id, verdict, answer, assisted: false };
+  };
+  // An answer in the last segment's check is not one of the gate's.
+  const before: PageEvent[] = [
+    planned,
+    phase(2, "check"),
+    { type: "question", question: WRITTEN },
+    answered("q2", "correct"),
+    phase(2, "closed"),
+    { type: "unit_end", passed: true, objectives: {} },
+    run("gate", "offered", 3),
+  ];
+  expect(SKIP_GATE_ASKS).toEqual({
+    says: [
+      "The gate is offered once. What you passed stays passed, and nothing more is marked retained.",
+    ],
+    skip: "Skip the gate",
+    stay: "Stay",
+  });
+  const leave =
+    "To stop for now instead, just leave: the gate picks up where you left off when you come back.";
+  const rest =
+    "Any open question is dropped. Nothing more is marked retained, and the gate is not offered again.";
+
+  const one = play([
+    ...before,
+    run("gate", "on", 3),
+    assessed("g1", 1, 3),
+    answered("g1", "correct"),
+    assessed("g2", 2, 3),
+  ]);
+  expect(nextStep(one)).toBe("assessment");
+  expect(skipGatePartway(one)).toEqual({
+    says: [
+      `Skip the rest of the gate? Your one answer so far counts. ${rest}`,
+      leave,
+    ],
+    skip: "Skip the rest of the gate",
+    stay: "Keep going",
+  });
+
+  const detour = play([
+    ...before,
+    run("gate", "on", 3),
+    assessed("g1", 1, 3),
+    answered("g1", "correct"),
+    assessed("g2", 2, 3),
+    answered("g2", "incorrect"),
+    { type: "detour", questionId: "g2", number: 2 },
+  ]);
+  expect(nextStep(detour)).toBe("assessment-detour");
+  expect(skipGatePartway(detour).says).toEqual([
+    `Skip the rest of the gate? Your two answers so far count. ${rest}`,
+    leave,
+  ]);
 });
 
 test("the card after a gate that left nothing to go over finishes the unit as it stands: overridden with its own foot, not moved on from", () => {

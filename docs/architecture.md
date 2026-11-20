@@ -1140,7 +1140,9 @@ take the outline.
   the unit goes on. The gate is the same parts: its card names
   the unit and says how many questions are on its objectives and how many
   on which other units', with "Skip the gate", which asks once before it
-  skips there and beside its questions, and "Start the gate"; while it
+  skips there and beside its questions (partway, with the answers given so
+  far and that leaving instead keeps the gate for the next sitting,
+  `skipGatePartway` in `src/web/session.ts`), and "Start the gate"; while it
   runs the top line reads "Unit gate". The closing card after it has a
   section, "Also asked, from other units", of those objectives with their
   units and statuses. Only the closing card standing at the thread's end,

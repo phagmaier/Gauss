@@ -102,7 +102,9 @@ import {
   placement,
   type SegmentHeading,
   SKIP_GATE_ASKS,
+  type SkipGateAsks,
   segmentHeading,
+  skipGatePartway,
   skipLabel,
   type UnitOutline,
   whereInUnit,
@@ -1650,6 +1652,7 @@ function AssessmentCard(props: {
         // The gate is offered once, so skipping it asks first.
         <div className="qa-foot">
           <SkipGate
+            asks={SKIP_GATE_ASKS}
             busy={props.busy}
             confirming={props.confirmingSkip}
             onConfirm={props.onConfirmSkip}
@@ -1690,8 +1693,9 @@ function AssessmentCard(props: {
   );
 }
 
-/** "Skip the gate", which asks once before it skips, on its card and in it. */
+/** "Skip the gate", which asks once before it skips: on its card, or partway with its own text. */
 function SkipGate(props: {
+  asks: SkipGateAsks;
   busy: boolean;
   confirming: boolean;
   onConfirm(asking: boolean): void;
@@ -1699,21 +1703,25 @@ function SkipGate(props: {
 }) {
   return props.confirming ? (
     <span className="confirm">
-      <span>{SKIP_GATE_ASKS}</span>
+      <span className="says">
+        {props.asks.says.map((line) => (
+          <span key={line}>{line}</span>
+        ))}
+      </span>
       <button
         type="button"
         className="textbtn"
         disabled={props.busy}
         onClick={props.onSkip}
       >
-        Skip the gate
+        {props.asks.skip}
       </button>
       <button
         type="button"
         className="textbtn"
         onClick={() => props.onConfirm(false)}
       >
-        Stay
+        {props.asks.stay}
       </button>
     </span>
   ) : (
@@ -1748,6 +1756,7 @@ function NextStepControl(props: {
   const gate = props.timeline.assessment?.mode === "gate";
   const skip = gate ? (
     <SkipGate
+      asks={skipGatePartway(props.timeline)}
       busy={busy}
       confirming={props.confirmingSkip}
       onConfirm={props.onConfirmSkip}
