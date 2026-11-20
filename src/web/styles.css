@@ -962,8 +962,12 @@ details.why summary:hover {
 
 /* ---- Navigation: the path and the session's controls ---- */
 .th.has-top {
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Leave room to scroll the thread even when the pinned controls are tall. */
+  grid-template-rows: max-content minmax(min(15dvh, 6rem), 1fr) minmax(0, auto);
   grid-template-columns: minmax(0, 1fr);
+}
+.th.has-top > .th-foot {
+  overflow: auto;
 }
 .th.has-top .th-col {
   padding-top: 44px;

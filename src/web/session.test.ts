@@ -1557,9 +1557,20 @@ test("skipping the gate partway counts the gate's answers so far, and the card's
     };
     return { type: "graded", questionId: id, verdict, answer, assisted: false };
   };
-  // An answer in the last segment's check is not one of the gate's.
+  // Neither the review nor the last segment's check counts toward the gate.
   const before: PageEvent[] = [
     planned,
+    phase(2, "discuss"),
+    run("review", "offered", 1),
+    run("review", "on", 1),
+    assessed("r1", 1, 1),
+    answered("r1", "correct"),
+    {
+      type: "assessment_end",
+      mode: "review",
+      skipped: false,
+      statuses: { "power-rule": "retained" },
+    },
     phase(2, "check"),
     { type: "question", question: WRITTEN },
     answered("q2", "correct"),

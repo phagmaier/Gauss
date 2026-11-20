@@ -1100,10 +1100,12 @@ take the outline.
   graded or withdrawn (only a question of what is under way: a review's
   while it runs, the check's otherwise), then moved to where it was
   answered, with Hide,
-  which shrinks it to one line with Show until the next question; the help
-  notice above the message box and the judge's call under each reply; a
-  line for each file the tutor writes with its file tools, once a reply,
-  with its path in the workspace; a package request's card
+  which shrinks it to one line with Show until the next question. When
+  these controls are tall, they scroll separately so the thread stays
+  visible. The thread shows the help notice above the message box and
+  the judge's call under each reply; a line for each file the tutor
+  writes with its file tools, once a reply, with its path in the
+  workspace; a package request's card
   with its packages, Install and "Not now", and its commands
   and folder under a closed "Show the command"; then the outcome, with
   the output's end under "Show the output", open only when the install
