@@ -204,8 +204,8 @@ export interface DataRoot {
    * its plan: a change applied from the course's planning conversation (task
    * 5.38), which no unit's position holds. Throws CurriculumChangeRefused,
    * writing nothing, if it would drop a unit that has started or breaks the
-   * curriculum's rules. A curriculum that has these units already is left
-   * as it is, so an Apply whose write reported an error can be repeated.
+   * curriculum's rules. The write counts as applied if the curriculum on
+   * disk already has these units, including after an error following rename.
    */
   changeCurriculum(id: string, units: readonly Unit[]): Promise<void>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
@@ -1078,7 +1078,18 @@ export function openDataRoot(options: {
             const current = (await readCourse(id))?.curriculum;
             const changed = changedCurriculum(id, current, state, units);
             if (current != null && sameUnits(current.units, units)) return;
-            await writeJson(file, Curriculum, changed);
+            try {
+              await writeJson(file, Curriculum, changed);
+            } catch (error) {
+              // A directory sync can fail after the rename published the change.
+              const published = (await readCourse(id))?.curriculum;
+              if (
+                published?.approval.status !== "approved" ||
+                !sameUnits(published.units, units)
+              ) {
+                throw error;
+              }
+            }
           }),
         );
       });

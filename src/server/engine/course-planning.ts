@@ -21,12 +21,13 @@
 // its waiting proposal, and nothing has changed. It has no transcript. Its
 // session is kept in the intakes' folder, so that it can be closed while
 // idle and resumed (task 2.15); one that cannot be found gives way to a new
-// session, which is given what was said so far.
+// session, which is given the earlier messages and proposals with their outcomes.
 
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
 import {
   type CurriculumChange,
+  type CurriculumChangeOutcome,
   droppedStarted,
   sameUnits,
   withoutPlan,
@@ -95,7 +96,7 @@ export function createCoursePlanning(
   let waiting: CurriculumChange | undefined;
   /** The learner kept the current curriculum since the planner's last turn was sent. */
   let kept = false;
-  let applied = false;
+  let status: "open" | "applying" | "applied" = "open";
   /** The session to resume was lost: the next turn tells the new one what was said. */
   let lost = false;
   /** The course as the running session was last given it; none before its first turn. */
@@ -103,7 +104,8 @@ export function createCoursePlanning(
 
   const amend = planCurriculumChangeTool({
     async propose({ units, why }) {
-      if (applied) return { refused: OVER };
+      const refused = notOpen();
+      if (refused !== undefined) return { refused: refused.error };
       return desk.propose(async (state) => {
         const current = (await dataRoot.readCourse(courseId))?.curriculum;
         if (current?.approval.status !== "approved") {
@@ -170,8 +172,18 @@ export function createCoursePlanning(
     log,
   });
 
+  function notOpen() {
+    if (status === "open") return undefined;
+    return {
+      ok: false,
+      status: 409,
+      error: status === "applying" ? APPLYING : OVER,
+    } as const;
+  }
+
   function notWaiting(proposalId: string): ChatResult | undefined {
-    if (applied) return { ok: false, status: 409, error: OVER };
+    const refused = notOpen();
+    if (refused !== undefined) return refused;
     if (waiting?.id !== proposalId) {
       return {
         ok: false,
@@ -187,9 +199,10 @@ export function createCoursePlanning(
     courseId,
     events: log.events,
     subscribe: log.subscribe,
-    ended: () => applied,
+    ended: () => status === "applied",
     say(text) {
-      if (applied) return { ok: false, status: 409, error: OVER };
+      const refused = notOpen();
+      if (refused !== undefined) return refused;
       const id = randomUUID();
       log.emit({ type: "learner", id, text });
       let given: string | undefined;
@@ -203,10 +216,11 @@ export function createCoursePlanning(
           answered = kept;
           const changed = told === course.text ? undefined : course.text;
           if (lost) {
+            const events = log.events();
             return lostTurn(
               text,
-              conversationBefore(log.events(), id),
-              waiting,
+              conversationBefore(events, id),
+              previousProposals(events),
               course.text,
             );
           }
@@ -235,12 +249,13 @@ export function createCoursePlanning(
       }
       const change = waiting;
       if (change === undefined) return { ok: false, status: 409, error: OVER };
-      // Set before writing, so nothing else can start meanwhile.
-      applied = true;
+      // Block new work without letting open() create a second conversation
+      // before the write succeeds.
+      status = "applying";
       try {
         await dataRoot.changeCurriculum(courseId, change.units);
       } catch (error) {
-        applied = false;
+        status = "open";
         if (error instanceof CurriculumChangeRefused) {
           return {
             ok: false,
@@ -250,6 +265,7 @@ export function createCoursePlanning(
         }
         throw error;
       }
+      status = "applied";
       waiting = undefined;
       desk.answered();
       desk.applied();
@@ -280,6 +296,8 @@ export function createCoursePlanning(
     close: planner.close,
   };
 }
+
+const APPLYING = "Wait until the curriculum change has been applied.";
 
 /** Said once a change is applied. */
 const OVER =
@@ -444,6 +462,11 @@ const ALLOWED =
   "Allowed now: reply, asking what you need to know (at most two " +
   "questions), or propose a change with amend_curriculum.";
 
+const WAITING =
+  "Your last proposal waits on its card: they have not applied it. " +
+  "Allowed now: answer them; if they ask for changes, call " +
+  "amend_curriculum with the whole revised list, which replaces it.";
+
 /** The page's opening question, which the learner's first message answers. */
 function openingTurn(text: string, finished: boolean, course: string): string {
   return withCourse(
@@ -477,37 +500,57 @@ function messageTurn(
     ...(course === undefined
       ? []
       : ["The course or their profile changed since you were given them."]),
-    waits
-      ? "Your last proposal waits on its card: they have not applied it. " +
-        "Allowed now: answer them; if they ask for changes, call " +
-        "amend_curriculum with the whole revised list, which replaces it."
-      : ALLOWED,
+    waits ? WAITING : ALLOWED,
   ].join(" ");
   return withCourse(header, course, text);
 }
 
+type PreviousProposal = Pick<CurriculumChange, "units" | "why"> & {
+  outcome: CurriculumChangeOutcome | "waiting";
+};
+
+/** The cards the learner saw and what happened to each, in proposal order. */
+function previousProposals(events: readonly PageEvent[]): PreviousProposal[] {
+  const proposals = new Map<string, PreviousProposal>();
+  for (const event of events) {
+    if (event.type === "curriculum_change_proposed") {
+      proposals.set(event.proposalId, {
+        units: event.units,
+        why: event.why,
+        outcome: "waiting",
+      });
+    } else if (event.type === "curriculum_change_answered") {
+      const proposal = proposals.get(event.proposalId);
+      if (proposal !== undefined) proposal.outcome = event.outcome;
+    }
+  }
+  return [...proposals.values()];
+}
+
 /**
  * The first turn of a session that takes over from a conversation lost
- * (task 2.15), with what was said in it, and the proposal waiting, if one
- * does.
+ * (task 2.15), with what was said and how the learner answered its cards.
  */
 function lostTurn(
   text: string,
   said: readonly Said[],
-  waiting: CurriculumChange | undefined,
+  proposals: readonly PreviousProposal[],
   course: string,
 ): string {
+  const allowed = proposals.at(-1)?.outcome === "waiting" ? WAITING : ALLOWED;
   return withCourse(
     "This conversation is new: the one before it with the learner was " +
       "lost, so you have not seen it. What was said in it, oldest first, as " +
       'JSON (the "planner" messages are your replies):\n' +
       // Followed by a space: "]\n" is where the header ends.
       `${JSON.stringify(said)} ` +
-      (waiting === undefined
+      (proposals.length === 0
         ? ""
-        : "Your proposal from it waits on its card, not applied: " +
-          `${JSON.stringify({ units: waiting.units, why: waiting.why })} `) +
-      `Their new message follows. ${ALLOWED}`,
+        : "Your earlier proposals and their outcomes, oldest first, as JSON:\n" +
+          `${JSON.stringify(proposals)} ` +
+          '"kept" means they chose to keep the current curriculum instead. ' +
+          "Do not repeat those proposals unless the learner asks for them. ") +
+      `Their new message follows. ${allowed}`,
     course,
     text,
   );

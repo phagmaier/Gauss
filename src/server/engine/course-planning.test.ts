@@ -6,7 +6,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CurriculumProposal, Unit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -16,8 +16,10 @@ import {
   type FakeBackend,
   type FakeTurn,
 } from "../backends/fake.ts";
+import type * as AtomicWrite from "../record/atomic-write.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { givenOrder } from "./choice-order.ts";
+import { IDLE_MS } from "./conversation.ts";
 import { createCoursePlannings } from "./course-planning.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
@@ -25,12 +27,35 @@ import { createHelpJudge } from "./help-judge.ts";
 import { createUnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 
+// Fail a curriculum write on either side of publication, leaving the real
+// record I/O in place. A directory sync error can occur after the rename.
+const disk = vi.hoisted(() => ({
+  failure: undefined as "before rename" | "after rename" | undefined,
+}));
+vi.mock("../record/atomic-write.ts", async (importOriginal) => {
+  const real = await importOriginal<typeof AtomicWrite>();
+  return {
+    ...real,
+    async writeFileAtomic(path: string, contents: string) {
+      const failure = path.endsWith("/curriculum.json")
+        ? disk.failure
+        : undefined;
+      if (failure !== undefined) disk.failure = undefined;
+      if (failure === "before rename") throw new Error("Injected write error");
+      await real.writeFileAtomic(path, contents);
+      if (failure === "after rename")
+        throw new Error("Injected directory sync error");
+    },
+  };
+});
+
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gauss-planning-"));
 });
 afterEach(async () => {
+  disk.failure = undefined;
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -149,14 +174,18 @@ async function setUp(options: {
     order: givenOrder,
     backup,
   });
-  const backend = createFakeBackend(options.planner, []);
+  const keptSessions = new Set<string>();
+  const backend = createFakeBackend(options.planner, [], {
+    kept: keptSessions,
+  });
+  const timer = createFakeTimer();
   const plannings = createCoursePlannings({
     backend,
     systemPrompt: "Plan the course.",
     dataRoot: root,
     units,
     backup,
-    timer: createFakeTimer(),
+    timer,
     now: () => new Date(NOW),
   });
   async function planning() {
@@ -176,6 +205,8 @@ async function setUp(options: {
   }
   return {
     backend,
+    keptSessions,
+    timer,
     tutorBackend,
     root,
     plannings,
@@ -397,7 +428,7 @@ test('"Keep the current one" is said in the planner\'s next header; a new propos
   expect((await stored())?.map((u) => u.id)).toEqual(["loops", "sets", "maps"]);
 });
 
-test("Apply is refused, the card still waiting, once a unit it drops has started since", async () => {
+test("reopening during Apply keeps the original conversation and card when a unit has since started", async () => {
   const { root, planning, stored } = await setUp({
     planner: [[amend([LOOPS, SETS])]],
   });
@@ -409,13 +440,108 @@ test("Apply is refused, the card still waiting, once a unit it drops has started
   const card = lastCard(chat.events());
 
   await root.storePlan(COURSE, "maps", plan("map-count"));
-  const refused = await chat.apply(card.proposalId);
+  const writing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const changeCurriculum = root.changeCurriculum;
+  vi.spyOn(root, "changeCurriculum").mockImplementationOnce(
+    async (id, units) => {
+      writing.resolve();
+      await release.promise;
+      return changeCurriculum(id, units);
+    },
+  );
+  const applying = chat.apply(card.proposalId);
+  await writing.promise;
+  const reopened = await planning().finally(() => release.resolve());
+  const refused = await applying;
+  expect(reopened.id).toBe(chat.id);
+  expect((await planning()).id).toBe(chat.id);
   expect(refused).toMatchObject({ ok: false, status: 409 });
   expect(refused.ok ? "" : refused.error).toContain(
     'This change can no longer be applied. Unit "maps" ("Maps") has been started',
   );
   expect((await stored())?.map((u) => u.id)).toEqual(["loops", "sets", "maps"]);
-  expect(await chat.keep(card.proposalId)).toEqual({ ok: true });
+  expect(await reopened.keep(card.proposalId)).toEqual({ ok: true });
+});
+
+test.each(["before rename", "after rename"] as const)(
+  "Apply follows what reached disk when a curriculum write reports an error %s",
+  async (failure) => {
+    const { planning, stored, commits } = await setUp({
+      planner: [[amend([LOOPS, SETS, MAPS])]],
+    });
+    const chat = await planning();
+    chat.say("Add maps.");
+    await chat.settled();
+    const { proposalId } = lastCard(chat.events());
+
+    disk.failure = failure;
+    const applying = chat.apply(proposalId);
+    if (failure === "before rename") {
+      await expect(applying).rejects.toThrow("Injected write error");
+      expect((await stored())?.map((u) => u.id)).toEqual(["loops", "sets"]);
+      expect(await chat.keep(proposalId)).toEqual({ ok: true });
+      expect(commits).toEqual([]);
+    } else {
+      await expect(applying).resolves.toEqual({ ok: true });
+      expect((await stored())?.map((u) => u.id)).toEqual([
+        "loops",
+        "sets",
+        "maps",
+      ]);
+      expect(chat.events()).toContainEqual({
+        type: "curriculum_change_answered",
+        proposalId,
+        outcome: "applied",
+      });
+      expect(await chat.keep(proposalId)).toMatchObject({
+        ok: false,
+        status: 409,
+      });
+      expect(commits).toEqual(["counting: curriculum changed"]);
+    }
+  },
+);
+
+test("a replacement planner is told which proposals were replaced, kept, and still waiting", async () => {
+  const { backend, keptSessions, timer, planning } = await setUp({
+    planner: [
+      [amend([LOOPS, SETS, ...NEXT], "Add both units.")],
+      [amend([LOOPS, SETS, MAPS], "Cover maps instead.")],
+      [amend([LOOPS, SETS, NEXT[0] as Unit], "Add one unit.")],
+      [{ text: "Let's compare them." }],
+    ],
+  });
+  const chat = await planning();
+  chat.say("Plan Counting 2.");
+  await chat.settled();
+  chat.say("Focus on maps instead.");
+  await chat.settled();
+  expect(await chat.keep(lastCard(chat.events()).proposalId)).toEqual({
+    ok: true,
+  });
+  chat.say("What about just the first unit of the original stretch?");
+  await chat.settled();
+
+  timer.advance(IDLE_MS);
+  keptSessions.clear();
+  chat.say("How does this compare with the one I declined?");
+  await chat.settled();
+
+  expect(chat.events()).toContainEqual(
+    expect.objectContaining({ type: "fresh_start", reason: "not-resumed" }),
+  );
+  const turn = backend.received.at(-1)?.text ?? "";
+  const proposals = [
+    {
+      units: [LOOPS, SETS, ...NEXT],
+      why: "Add both units.",
+      outcome: "replaced",
+    },
+    { units: [LOOPS, SETS, MAPS], why: "Cover maps instead.", outcome: "kept" },
+    { units: [LOOPS, SETS, NEXT[0]], why: "Add one unit.", outcome: "waiting" },
+  ];
+  expect(turn).toContain(JSON.stringify(proposals));
 });
 
 test("an open unit chat is told an applied change in its next header, and its next session lists the units", async () => {

@@ -232,10 +232,12 @@ also before it reaches the backend.
   `record/data-root.ts`, which checks again under the state and curriculum
   locks that no started unit is dropped, then asks for a backup, tells the
   course's open unit chats as another unit's Apply does, closes the
-  session, and ends the conversation; the next "Change the curriculum"
-  starts a new one. "Keep the current one" is said in the planner's next
-  header. A restart loses the conversation and its proposal, with nothing
-  changed. Planning conversations have no transcripts.
+  session, and ends the conversation; until the write succeeds, opening
+  planning again returns the same conversation. "Keep the current one" is
+  said in the planner's next header. If the backend cannot resume an idle
+  session, its replacement gets the earlier messages, proposals and their
+  outcomes. A server restart loses any conversation and proposal still
+  waiting, without applying it. Planning conversations have no transcripts.
 - **Unit planning** (`engine/unit-planning.ts`). A unit without a plan is
   planned when it is opened, in a session of its own: one turn with "#
   The learner" (the profile, when there is one, then the background

@@ -1493,9 +1493,9 @@ works is `architecture.md` section 4.
 - **Its Apply checks the started units again under the state and
   curriculum locks** (`changeCurriculum` in `record/data-root.ts`), as a
   unit's Apply does, since a unit can start between the proposal and the
-  Apply. A curriculum that already has the proposed units counts as
-  applied, so an Apply whose write reported an error after renaming can
-  be pressed again.
+  Apply. If the write reports an error after renaming, the published
+  curriculum proves Apply succeeded, as it does for a unit's Apply. The
+  planner's card is marked applied rather than left open for a Keep.
 
 ## Prompts
 
