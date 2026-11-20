@@ -41,7 +41,6 @@ import {
   type GradedAnswer,
   type QuestionView,
   REASONING_LIMIT,
-  type WrittenAnswer,
 } from "../shared/question.ts";
 import type { Graded, QuestionItem } from "../shared/timeline.ts";
 import { type DisputeApi, DisputePart, VerdictNow } from "./Dispute.tsx";
@@ -639,52 +638,51 @@ function WaitingCard(props: {
 
 /**
  * The answer as sent: the written text, the choice, the expression, the
- * files run, or "I don't know"; with the learner's thinking or where they
- * got stuck.
+ * files run, or "I don't know"; with how sure, until it is graded, and the
+ * learner's thinking or where they got stuck.
  */
 function AnswerRecord(props: {
   question: QuestionView;
   answer: AnswerSubmission;
-  /** The tests have run on a code answer's files. */
-  ran?: boolean;
+  /**
+   * Graded: the tests have run on a code answer's files, and how sure is in
+   * the verdict's line instead.
+   */
+  graded?: boolean;
 }) {
   const { question, answer } = props;
+  const graded = props.graded === true;
+  const sure =
+    graded || answer.kind === "unknown" ? null : (
+      <span className="c">{confidenceLabel(answer.confidence)} sure</span>
+    );
   return (
     <>
       {answer.kind === "written" ? (
-        <WrittenRecord answer={answer} />
+        <>
+          <div className="qa-said prose">
+            <Prose text={answer.text} />
+          </div>
+          {sure === null ? null : <div className="qa-line">{sure}</div>}
+        </>
       ) : (
         <div className="qa-line">
           <span className="k">Your answer</span>
           {answer.kind === "choice" ? (
-            <>
-              <ChoiceText question={question} letter={answer.choice} />
-              <span className="c">
-                {confidenceLabel(answer.confidence)} sure
-              </span>
-            </>
+            <ChoiceText question={question} letter={answer.choice} />
           ) : answer.kind === "math" ? (
-            <>
-              <span>
-                <MathText source={answer.expression} />
-              </span>
-              <span className="c">
-                {confidenceLabel(answer.confidence)} sure
-              </span>
-            </>
+            <span>
+              <MathText source={answer.expression} />
+            </span>
           ) : answer.kind === "code" ? (
-            <>
-              <span>
-                <FileNames files={answer.files} />,{" "}
-                {props.ran === true ? "as you ran it" : "as you sent it"}
-              </span>
-              <span className="c">
-                {confidenceLabel(answer.confidence)} sure
-              </span>
-            </>
+            <span>
+              <FileNames files={answer.files} />,{" "}
+              {graded ? "as you ran it" : "as you sent it"}
+            </span>
           ) : (
             <span>I don't know</span>
           )}
+          {sure}
         </div>
       )}
       {answer.kind === "unknown" ? (
@@ -750,21 +748,6 @@ function ChoiceText(props: { question: QuestionView; letter: ChoiceLetter }) {
   ) : null;
 }
 
-function WrittenRecord(props: { answer: WrittenAnswer }) {
-  return (
-    <>
-      <div className="qa-said prose">
-        <Prose text={props.answer.text} />
-      </div>
-      <div className="qa-line">
-        <span className="c">
-          {confidenceLabel(props.answer.confidence)} sure
-        </span>
-      </div>
-    </>
-  );
-}
-
 function GradedCard(props: {
   question: QuestionView;
   graded: Graded;
@@ -783,38 +766,27 @@ function GradedCard(props: {
   };
   const now = standing(first);
   const choices = question.kind === "choice" ? question.choices : [];
+  const dot = (
+    <span className="dot" aria-hidden="true">
+      ·
+    </span>
+  );
+  const missed = now.verdict !== "correct";
+  const expected = !missed ? null : question.kind === "choice" &&
+    now.key !== undefined ? (
+    <ChoiceLabel choices={choices} letter={now.key} />
+  ) : question.kind === "math" && now.expected !== undefined ? (
+    <MathText source={now.expected} />
+  ) : null;
   return (
     <div className="qa-card done">
-      <QuestionHead question={question}>
-        <VerdictNow first={first} />
-        {graded.assisted && now.verdict === "correct" ? (
-          <span>With help, so it does not count toward passing</span>
-        ) : null}
-      </QuestionHead>
+      <QuestionHead question={question} />
       <div className="qa-prompt prose">
         <Prose text={question.prompt} />
       </div>
-      <AnswerRecord question={question} answer={answer} ran />
+      <AnswerRecord question={question} answer={answer} graded />
       {graded.output === undefined ? null : (
         <CodeOutput output={graded.output} verdict={graded.verdict} />
-      )}
-      {now.verdict === "correct" ||
-      question.kind !== "choice" ||
-      now.key === undefined ? null : (
-        <div className="qa-line">
-          <span className="k">Correct answer</span>
-          <ChoiceLabel choices={choices} letter={now.key} />
-        </div>
-      )}
-      {now.verdict === "correct" ||
-      question.kind !== "math" ||
-      now.expected === undefined ? null : (
-        <div className="qa-line">
-          <span className="k">Correct answer</span>
-          <span>
-            <MathText source={now.expected} />
-          </span>
-        </div>
       )}
       {graded.unsettled === undefined ? null : (
         <div className="qa-line">
@@ -831,12 +803,34 @@ function GradedCard(props: {
           </span>
         </div>
       )}
-      <DisputePart
-        api={props.disputes}
-        questionId={graded.questionId}
-        first={first}
-        choices={choices}
-      />
+      {/* The verdict: one line under a hairline, only its word in colour. */}
+      <div className="qa-verdict">
+        <VerdictNow first={first} />
+        {answer.kind === "unknown" ? null : (
+          <>
+            {dot}
+            <span>{confidenceLabel(answer.confidence)} sure</span>
+          </>
+        )}
+        {graded.assisted && !missed ? (
+          <>
+            {dot}
+            <span>With help, so it does not count toward passing</span>
+          </>
+        ) : null}
+        {expected === null ? null : (
+          <>
+            {dot}
+            <span>Expected {expected}</span>
+          </>
+        )}
+        <DisputePart
+          api={props.disputes}
+          questionId={graded.questionId}
+          first={first}
+          choices={choices}
+        />
+      </div>
     </div>
   );
 }

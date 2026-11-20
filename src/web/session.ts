@@ -14,6 +14,7 @@ import {
   type Item,
   type JudgmentItem,
   offersSteps,
+  type PhaseItem,
   type Position,
   type QuestionItem,
   type Timeline,
@@ -326,30 +327,68 @@ export function divided(before: Item | undefined, item: Item): boolean {
   );
 }
 
+/** A segment's heading in the thread, where it begins (piece 19). */
+export interface SegmentHeading {
+  /** What the unit's outline jumps to (`PhaseItem` in timeline.ts). */
+  id: string;
+  /** "Segment 2 of 5"; none for going over again, which its title names. */
+  label?: string;
+  title: string;
+  /** The objectives it teaches, as they stand now. */
+  objectives: {
+    id: string;
+    statement: string;
+    status: ObjectiveStatus;
+    /** The objective to do now, drawn in the accent's ringed form. */
+    current: boolean;
+  }[];
+}
+
 /**
- * The marker line where a phase begins (mock 3). A segment's teaching has
- * none: it starts well clear of the segment before (mock 4), or at the top
- * of the thread. The segment that goes over objectives again says so (mock
- * 10).
+ * The heading of the segment a phase begins, if it begins one: "Segment N of
+ * M" and the segment's title, or "Going over again", with the objectives it
+ * teaches. `current` is the objective to do now (`currentObjective` in
+ * plan.ts), marked only in the heading of the segment the unit is in.
  */
-export function phaseMarker(
-  position: Position,
-  first: boolean,
-): { name: string; says?: string } | "new-segment" | null {
+export function segmentHeading(
+  plan: Plan,
+  item: PhaseItem,
+  statuses: Readonly<Record<string, ObjectiveStatus>>,
+  current: string | undefined,
+): SegmentHeading | undefined {
+  if (item.heading === undefined) return undefined;
+  const segment = plan.segments[item.segment];
+  const ids = item.again ?? segment?.objectives;
+  if (ids === undefined) return undefined;
+  const statement = new Map(plan.objectives.map((o) => [o.id, o.statement]));
+  return {
+    id: item.heading,
+    ...(item.again === undefined && segment !== undefined
+      ? {
+          label: `Segment ${item.segment + 1} of ${plan.segments.length}`,
+          title: segment.title,
+        }
+      : { title: AGAIN }),
+    objectives: ids.map((id) => ({
+      id,
+      statement: statement.get(id) ?? id,
+      status: statuses[id] ?? "not-started",
+      current: id === current,
+    })),
+  };
+}
+
+/**
+ * The hairline where a phase begins, with its name (mock 3, piece 19); a
+ * segment's teaching comes under the segment's heading.
+ */
+export function phaseMarker(position: Position): {
+  name: string;
+  says?: string;
+} {
   switch (position.phase) {
-    case "teach": {
-      const { again } = position;
-      if (again !== undefined) {
-        return {
-          name: "Teach",
-          says:
-            again.length === 1
-              ? "Going over one objective again."
-              : `Going over ${word(again.length)} objectives again.`,
-        };
-      }
-      return first ? null : "new-segment";
-    }
+    case "teach":
+      return { name: "Teach" };
     case "discuss":
       return { name: "Discuss", says: "Ask anything. Nothing here is graded." };
     case "check":

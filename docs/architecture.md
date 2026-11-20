@@ -1052,7 +1052,23 @@ take the outline.
   confidence level, how many unassisted answers were correct, "I don't
   know" apart.
 - **Session** (`/courses/<id>/units/<unit>`): the thread with rendered
-  Markdown and math; phase markers; one next-step control where the thread
+  Markdown and math; a heading where each segment begins, with "Segment N
+  of M" (or "Going over again" for the extra segment), its title and its
+  objectives' status forms as they stand now, the current objective
+  ringed in the latest heading only; each heading has an id the outline
+  jumps to (`PhaseItem` in `timeline.ts`). The timeline derives the
+  headings from the phase events, so earlier sessions' segments have
+  theirs: a phase begins a segment when the one before it was in another
+  segment or closed its own. A chat that opens where the thread is, as
+  after a fresh start, adds no phase and so no heading. The test before
+  a unit comes before the first segment: the phase the chat opened in
+  gives way to its card, and the segment the unit goes on from begins
+  where the result is answered; a segment the test skipped has none.
+  Teach, discuss, check and done are hairlines with a label, as are the
+  other markers. A graded card's verdict is one line under a hairline:
+  the word coloured, then how sure, help taken and the expected answer
+  of a miss, and "Dispute this grade" at its end. One next-step control
+  where the thread
   has reached; the open question pinned above the message box until it is
   graded or withdrawn (only a question of what is under way: a review's
   while it runs, the check's otherwise), then moved to where it was

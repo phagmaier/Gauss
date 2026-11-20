@@ -1,9 +1,11 @@
 // A unit's session (plan task 2.11): its chat in the Thread layout, as the
 // mocks settled it. The top line has the path out and the position in the
 // unit, which opens the outline (docs/prototype/04-session-nav.html). Each
-// phase begun is a marker in the thread, and the one next-step control sits
-// where the thread has reached (03-phases.html). A question is a card in the
-// thread (02-check-question.html), and the unit ends with a closing card
+// segment begins with a heading, and each phase begun is a hairline under
+// it (19-unit-page.html); the one next-step control sits where the thread
+// has reached (03-phases.html). A question is a card in the thread
+// (02-check-question.html), its verdict one line once graded (piece 19),
+// and the unit ends with a closing card
 // (10-unit-end.html). "Start fresh" is in the outline, and the conversations
 // before a fresh start stay in the thread, dimmed (11-start-fresh.html). An
 // artifact the tutor shows opens in the side pane, and its reference in the
@@ -48,7 +50,7 @@ import {
   UnitOpened,
 } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
-import type { Plan } from "../shared/plan.ts";
+import { currentObjective, type Plan } from "../shared/plan.ts";
 import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
 import {
   type ArtifactItem,
@@ -93,10 +95,13 @@ import {
   type Placement,
   phaseMarker,
   placement,
+  type SegmentHeading,
   SKIP_GATE_ASKS,
+  segmentHeading,
   skipLabel,
   whereInUnit,
 } from "./session.ts";
+import { objectiveMark } from "./what-i-know.ts";
 
 const enc = encodeURIComponent;
 
@@ -264,6 +269,15 @@ export function Session(props: { courseId: string; unitId: string }) {
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
+  // The objective to do now is marked in the heading of the segment the unit
+  // is in, the thread's last.
+  const current =
+    plan === null
+      ? undefined
+      : currentObjective(plan, timeline.position, timeline.statuses);
+  const lastHeading = timeline.items.findLast(
+    (i) => i.kind === "phase" && i.heading !== undefined,
+  );
   // The closing card whose steps can be taken, if one stands.
   const standing = standingCard(timeline.items);
   // The test's result card whose steps can be taken, if it waits.
@@ -379,8 +393,16 @@ export function Session(props: { courseId: string; unitId: string }) {
                     {divided(before, item) ? <hr className="th-sep" /> : null}
                     <ThreadItem
                       item={item}
-                      // A session's marker sets it apart as the top of the thread does.
-                      first={before === undefined || before.kind === "session"}
+                      heading={
+                        item.kind === "phase" && plan !== null
+                          ? segmentHeading(
+                              plan,
+                              item,
+                              timeline.statuses,
+                              item === lastHeading ? current : undefined,
+                            )
+                          : undefined
+                      }
                       plan={plan}
                       place={place}
                       busy={busy}
@@ -784,7 +806,8 @@ function Outline(props: {
 
 function ThreadItem(props: {
   item: Item;
-  first: boolean;
+  /** The heading of the segment this phase begins, if it begins one. */
+  heading: SegmentHeading | undefined;
   plan: Plan | null;
   place: Placement | undefined;
   busy: boolean;
@@ -984,16 +1007,19 @@ function ThreadItem(props: {
         />
       );
     case "phase": {
-      const marker = phaseMarker(item, props.first);
-      if (marker === null) return null;
-      if (marker === "new-segment") return <div className="ns-new" />;
+      const marker = phaseMarker(item);
       return (
-        <div className="pf-mark">
-          <span>
-            <b>{marker.name}</b>
-            {marker.says === undefined ? null : ` ${marker.says}`}
-          </span>
-        </div>
+        <>
+          {props.heading === undefined ? null : (
+            <SegmentHead heading={props.heading} />
+          )}
+          <div className="pf-mark">
+            <span>
+              <b>{marker.name}</b>
+              {marker.says === undefined ? null : ` ${marker.says}`}
+            </span>
+          </div>
+        </>
       );
     }
     case "session":
@@ -1043,6 +1069,33 @@ function ThreadItem(props: {
       // Only an intake proposes a curriculum.
       return null;
   }
+}
+
+/**
+ * Where a segment begins (piece 19): a rule, "Segment N of M", its title,
+ * and its objectives with their forms as they stand now.
+ */
+function SegmentHead(props: { heading: SegmentHeading }) {
+  const { heading } = props;
+  return (
+    <section className="seg" id={heading.id}>
+      {heading.label === undefined ? null : (
+        <div className="seg-k">{heading.label}</div>
+      )}
+      <h2 className="seg-t">{heading.title}</h2>
+      <ul className="seg-objs">
+        {heading.objectives.map((o) => (
+          <li key={o.id} className="seg-o">
+            <StatusForm objective={o.status} current={o.current} />
+            <span>
+              <InlineProse text={o.statement} />
+              <span className="sr">, {objectiveMark(o.status).text}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 /** A file's outline, for the line of each file the tutor writes (piece 14). */

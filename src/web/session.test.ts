@@ -26,8 +26,8 @@ import {
   nextStep,
   openQuestion,
   outline,
-  phaseMarker,
   placement,
+  segmentHeading,
   skipLabel,
   whereInUnit,
 } from "./session.ts";
@@ -133,30 +133,75 @@ test("the outline marks the segments done and the one in progress, and adds the 
   ]);
 });
 
-test("each phase but teaching has a marker; a segment's teaching starts clear of the one before, and going over again says how many", () => {
-  expect(phaseMarker({ segment: 0, phase: "teach" }, true)).toBeNull();
-  expect(phaseMarker({ segment: 1, phase: "teach" }, false)).toBe(
-    "new-segment",
-  );
+test("a segment's heading names it by number and title with its objectives as they stand, the extra segment as going over again; only the one given marks the current objective", () => {
+  const statuses = {
+    "power-rule": "passed",
+    "product-rule": "attempted",
+  } as const;
+  const begins = (position: Position, heading: string) => ({
+    kind: "phase" as const,
+    key: 0,
+    ...position,
+    heading,
+  });
+
   expect(
-    phaseMarker(
-      { segment: 3, phase: "teach", again: ["product-rule", "chain-rule"] },
-      false,
+    segmentHeading(
+      PLAN,
+      begins({ segment: 1, phase: "teach" }, "segment-2"),
+      statuses,
+      "product-rule",
     ),
-  ).toEqual({ name: "Teach", says: "Going over two objectives again." });
+  ).toEqual({
+    id: "segment-2",
+    label: "Segment 2 of 3",
+    title: "Products",
+    objectives: [
+      {
+        id: "product-rule",
+        statement: "Apply the product rule.",
+        status: "attempted",
+        current: true,
+      },
+    ],
+  });
   expect(
-    phaseMarker({ segment: 3, phase: "teach", again: ["chain-rule"] }, true),
-  ).toEqual({ name: "Teach", says: "Going over one objective again." });
-  expect(phaseMarker({ segment: 0, phase: "discuss" }, true)).toEqual({
-    name: "Discuss",
-    says: "Ask anything. Nothing here is graded.",
+    segmentHeading(
+      PLAN,
+      begins(
+        { segment: 3, phase: "teach", again: ["power-rule", "chain-rule"] },
+        "again-1",
+      ),
+      statuses,
+      undefined,
+    ),
+  ).toEqual({
+    id: "again-1",
+    title: "Going over again",
+    objectives: [
+      {
+        id: "power-rule",
+        statement: "Differentiate a power of x.",
+        status: "passed",
+        current: false,
+      },
+      {
+        id: "chain-rule",
+        statement: "Apply the chain rule.",
+        status: "not-started",
+        current: false,
+      },
+    ],
   });
-  expect(phaseMarker({ segment: 0, phase: "check" }, false)).toMatchObject({
-    name: "Check",
-  });
-  expect(phaseMarker({ segment: 0, phase: "closed" }, false)).toEqual({
-    name: "Done",
-  });
+  // A phase within a segment begins none.
+  expect(
+    segmentHeading(
+      PLAN,
+      { kind: "phase", key: 0, segment: 1, phase: "discuss" },
+      statuses,
+      "product-rule",
+    ),
+  ).toBeUndefined();
 });
 
 // --- The next-step control ---------------------------------------------------

@@ -1757,7 +1757,18 @@ redesign's.
   text with their status forms. Teach, discuss and check under it are
   hairlines with a small label. One next-step control sits where the
   conversation has reached; while the tutor writes, Send becomes Stop.
-  Rejected: a phase strip across the top.
+  Rejected: a phase strip across the top. As built (the agent's choices,
+  open to change): a fresh start does not repeat the heading of the
+  segment it goes on with. The heading stays where the segment began, in
+  the dimmed conversation that taught it, so each segment has one heading
+  for the outline to jump to, and the "Fresh start" marker and the top
+  line say where the unit is. The extra segment's heading has no
+  "Segment N of M" line; its title is "Going over again", and each time
+  the unit goes over objectives again it has a heading of its own. The
+  test before a unit sits above the first heading, outside any segment.
+  Each objective's status word is in the heading for assistive
+  technology only (`.sr`), since the mock shows forms alone. Review, gate
+  and test markers stay hairlines, not headings.
 - **Session navigation is one line across the top**: the path on the left,
   ending in "Unit N" and the unit's title; on the right the position,
   "Segment N of M" with the segment's title and a tick per segment, which

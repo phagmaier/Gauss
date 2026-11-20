@@ -3,7 +3,9 @@
 // log starts with the unit's earlier sessions (task 2.13), and its own
 // opening repeats where the unit stands: a phase, an open question or a
 // closing card the thread already shows is not shown twice, nor is the test's
-// result card (task 5.6). When the tutor's
+// result card (task 5.6). A phase that begins a segment carries the
+// segment's heading (piece 19), so the segments of earlier sessions have
+// theirs too. When the tutor's
 // conversation is replaced by a new one (task 2.14), a marker says so, and
 // the thread before it is shown as earlier conversations.
 
@@ -14,7 +16,7 @@ import type { ShownDispute } from "./dispute.ts";
 import type { PageEvent, TestShown } from "./events.ts";
 import type { AssessmentMode } from "./evidence.ts";
 import type { PackageSpec, PackagesOutcome } from "./packages.ts";
-import type { Plan } from "./plan.ts";
+import { firstTaught, type Plan } from "./plan.ts";
 import type {
   AnswerSubmission,
   GradedAnswer,
@@ -200,8 +202,13 @@ export type Item =
   | CurriculumItem
   | QuestionItem
   | JudgmentItem
-  /** A phase of a segment began, or the chat opened in it. */
-  | ({ kind: "phase"; key: number } & Position)
+  /**
+   * A phase of a segment began, or the chat opened in it. One that begins a
+   * segment has the id of the segment's heading: `segment-N` for the plan's
+   * Nth segment, `again-N` for the Nth time the unit goes over objectives
+   * again.
+   */
+  | PhaseItem
   | UnitEndItem
   | AssessmentItem
   | AssessmentEndItem
@@ -252,6 +259,12 @@ export type Item =
     }
   | { kind: "note"; key: number; text: string };
 
+export type PhaseItem = {
+  kind: "phase";
+  key: number;
+  heading?: string;
+} & Position;
+
 export interface Timeline {
   chatId: string | null;
   /** The index of the last event applied, or -1. */
@@ -280,6 +293,8 @@ export interface Timeline {
   inSession: boolean;
   /** The unit's plan, once it is known. */
   plan: Plan | null;
+  /** How each of the unit's objectives stands now; empty until the unit is open. */
+  statuses: Record<string, ObjectiveStatus>;
   /** The unit has no plan yet and is being planned. */
   planning: boolean;
   /** Why the unit could not be opened; opening it again tries again. */
@@ -314,6 +329,7 @@ export const emptyTimeline: Timeline = {
   reopened: false,
   inSession: false,
   plan: null,
+  statuses: {},
   planning: false,
   failed: null,
   position: null,
@@ -365,6 +381,38 @@ function withQuestion(
   return items.map((item) =>
     item.kind === "question" && item.question.id === id ? change(item) : item,
   );
+}
+
+/**
+ * The phase item for a position the unit moved to. It begins a segment, and
+ * carries the segment's heading, when the thread's last phase was in another
+ * segment, or closed its segment, as the one before going over again does,
+ * or when the thread has none, as at the unit's start or in a chat that
+ * opened with no earlier thread. A chat that opens where the thread is adds
+ * no phase, so a fresh start does not repeat the heading of the segment it
+ * goes on with: the heading stays where the segment began.
+ */
+function phaseItem(items: readonly Item[], key: number, at: Position): Item {
+  const before = items.findLast((i): i is PhaseItem => i.kind === "phase");
+  if (
+    before !== undefined &&
+    before.segment === at.segment &&
+    before.phase !== "closed"
+  ) {
+    return { kind: "phase", key, ...at };
+  }
+  const again = items.filter(
+    (i) => i.kind === "phase" && i.heading !== undefined && i.again,
+  ).length;
+  return {
+    kind: "phase",
+    key,
+    ...at,
+    heading:
+      at.again === undefined
+        ? `segment-${at.segment + 1}`
+        : `again-${again + 1}`,
+  };
 }
 
 /**
@@ -888,7 +936,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       return { ...next, plan: event.plan, planning: false, failed: null };
     // How the unit stands: the closing card carries its own statuses.
     case "unit_status":
-      return next;
+      return { ...next, statuses: event.objectives };
     case "phase": {
       const position: Position = {
         segment: event.segment,
@@ -915,7 +963,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
           : state.items;
       return {
         ...next,
-        items: [...items, { kind: "phase", key: index, ...position }],
+        items: [...items, phaseItem(items, index, position)],
         position,
         detour: null,
         assessment: null,
@@ -971,11 +1019,18 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
           items: state.items.with(at, { ...card, stage: "on" }),
         };
       }
+      // The test before the unit comes before its first segment: the phase
+      // the chat opened in gives way to it, and the segment begins once the
+      // learner answers the test's result.
+      const opened =
+        event.mode === "test-out"
+          ? state.items.findLastIndex((i) => i.kind === "phase")
+          : -1;
       return {
         ...next,
         assessment: run,
         items: [
-          ...state.items,
+          ...(opened === -1 ? state.items : state.items.toSpliced(opened, 1)),
           {
             kind: "assessment",
             key: index,
@@ -1078,6 +1133,29 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       const at = state.items.findLastIndex((i) => i.kind === "test_result");
       const card = state.items[at];
       const { skipped } = event;
+      const answered =
+        card?.kind === "test_result"
+          ? state.items.with(at, { ...card, skipped: [...skipped] })
+          : state.items;
+      const skipping = skipped.length === 0 ? {} : { skipping: [...skipped] };
+      // The unit goes on from the first segment left to teach, which begins
+      // here; none is left when the test passed every objective.
+      const first =
+        state.plan === null ? undefined : firstTaught(state.plan, skipped);
+      if (first !== undefined) {
+        const position: Position = {
+          segment: first,
+          phase: "teach",
+          ...skipping,
+        };
+        return {
+          ...next,
+          testWaits: false,
+          position,
+          items: [...answered, phaseItem(answered, index, position)],
+          tutorOpen: false,
+        };
+      }
       const { skipping: _, ...rest } = state.position ?? {
         segment: 0,
         phase: "teach" as const,
@@ -1085,12 +1163,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       return {
         ...next,
         testWaits: false,
-        position:
-          skipped.length === 0 ? rest : { ...rest, skipping: [...skipped] },
-        items:
-          card?.kind === "test_result"
-            ? state.items.with(at, { ...card, skipped: [...skipped] })
-            : state.items,
+        position: { ...rest, ...skipping },
+        items: answered,
       };
     }
     case "moved_on":

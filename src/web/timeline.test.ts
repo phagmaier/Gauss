@@ -384,7 +384,7 @@ test("a unit's plan and phases: each phase begun is a marker in the thread, and 
   ]);
 
   expect(state.items).toEqual([
-    { kind: "phase", key: 3, segment: 0, phase: "teach" },
+    { kind: "phase", key: 3, segment: 0, phase: "teach", heading: "segment-1" },
     { kind: "tutor", key: 5, text: "The power rule." },
     { kind: "phase", key: 7, segment: 0, phase: "discuss" },
     { kind: "learner", key: 8, text: "Why?" },
@@ -628,7 +628,7 @@ test("a question the thread went on below is shown where it was answered, and a 
   const state = play(events);
 
   expect(state.items).toEqual([
-    { kind: "phase", key: 0, segment: 0, phase: "check" },
+    { kind: "phase", key: 0, segment: 0, phase: "check", heading: "segment-1" },
     { kind: "tutor", key: 2, text: "Now one on powers." },
     { kind: "answered-below", key: 3, number: 1 },
     { kind: "learner", key: 5, text: "Is x³ x cubed?" },
@@ -677,7 +677,7 @@ test("moving on withdraws the open question, and a note says it was recorded", (
   ]);
 
   expect(state.items).toEqual([
-    { kind: "phase", key: 0, segment: 1, phase: "check" },
+    { kind: "phase", key: 0, segment: 1, phase: "check", heading: "segment-2" },
     {
       kind: "question",
       key: 1,
@@ -827,7 +827,7 @@ test("each session after the first begins with a marker, and a reply the session
   expect(atTuesday.tutorOpen).toBe(false);
   const state = play(events);
   expect(state.items).toEqual([
-    { kind: "phase", key: 2, segment: 0, phase: "teach" },
+    { kind: "phase", key: 2, segment: 0, phase: "teach", heading: "segment-1" },
     { kind: "tutor", key: 4, text: "The power rule" },
     { kind: "session", key: 5, startedAt: TUESDAY, cutOff: true },
     { kind: "tutor", key: 9, text: "The power rule, again." },
@@ -850,7 +850,13 @@ test("a session that showed nothing gives way to the next one's marker", () => {
   ]);
 
   expect(state.items).toEqual([
-    { kind: "phase", key: 1, segment: 0, phase: "discuss" },
+    {
+      kind: "phase",
+      key: 1,
+      segment: 0,
+      phase: "discuss",
+      heading: "segment-1",
+    },
     { kind: "learner", key: 2, text: "Why?" },
     { kind: "session", key: 6, startedAt: WEDNESDAY, cutOff: false },
     { kind: "learner", key: 7, text: "Back again." },
@@ -976,7 +982,7 @@ test("a detour is a marker after the missed question's card, open until the lear
   ]);
 
   expect(state.items).toEqual([
-    { kind: "phase", key: 0, segment: 0, phase: "check" },
+    { kind: "phase", key: 0, segment: 0, phase: "check", heading: "segment-1" },
     { kind: "question", key: 1, question: QUESTION, graded: MISSED },
     { kind: "detour", key: 3, questionId: "q1", number: 1 },
     { kind: "tutor", key: 5, text: "It is $3x^2$." },
@@ -1032,7 +1038,13 @@ test("a unit reopened past where its thread got to shows the phase it is in", ()
   ]);
 
   expect(state.items).toEqual([
-    { kind: "phase", key: 1, segment: 0, phase: "discuss" },
+    {
+      kind: "phase",
+      key: 1,
+      segment: 0,
+      phase: "discuss",
+      heading: "segment-1",
+    },
     { kind: "session", key: 2, startedAt: TUESDAY, cutOff: false },
     { kind: "phase", key: 3, segment: 0, phase: "check" },
   ]);
@@ -1052,7 +1064,13 @@ test("a note from before the thread could be read gives way to the thread, whose
 
   expect(state.failed).toBeNull();
   expect(state.items).toEqual([
-    { kind: "phase", key: 2, segment: 0, phase: "discuss" },
+    {
+      kind: "phase",
+      key: 2,
+      segment: 0,
+      phase: "discuss",
+      heading: "segment-1",
+    },
     { kind: "learner", key: 3, text: "Why?" },
     { kind: "session", key: 4, startedAt: TUESDAY, cutOff: false },
   ]);
@@ -1081,7 +1099,13 @@ test("a fresh start is a marker after the session's, and each begins a conversat
     {
       key: 2,
       items: [
-        { kind: "phase", key: 2, segment: 0, phase: "discuss" },
+        {
+          kind: "phase",
+          key: 2,
+          segment: 0,
+          phase: "discuss",
+          heading: "segment-1",
+        },
         { ...learner, key: 3, text: "Show it with gears." },
       ],
     },
@@ -1185,7 +1209,13 @@ test("a lost turn moves its explicitly matched learner and every queued item aft
     {
       key: 1,
       items: [
-        { kind: "phase", key: 1, segment: 0, phase: "discuss" },
+        {
+          kind: "phase",
+          key: 1,
+          segment: 0,
+          phase: "discuss",
+          heading: "segment-1",
+        },
         { kind: "tutor", key: 2, text: "Earlier conversation." },
       ],
     },
@@ -1502,4 +1532,147 @@ test("a review skipped partway withdraws its open question, ends its detour and 
   expect(onCard.items.filter((i) => i.kind.startsWith("assessment"))).toEqual([
     { kind: "assessment", key: 1, mode: "review", count: 2, stage: "skipped" },
   ]);
+});
+
+// --- Segment headings (piece 19) ---------------------------------------------
+
+/** The thread's items, a phase that begins a segment by its heading's id. */
+const outline = (state: Timeline) =>
+  state.items.map((i) =>
+    i.kind === "phase" && i.heading !== undefined ? i.heading : i.kind,
+  );
+
+test("each segment entered begins with one heading: earlier sessions' too, the extra segment each time, and a fresh start or a reopened chat repeats none", () => {
+  const state = play([
+    began(MONDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "tutor_text", text: "Powers." },
+    { type: "phase", segment: 0, phase: "discuss" },
+    // The next day the chat opens where the thread is.
+    began(TUESDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "discuss" },
+    { type: "fresh_start", reason: "learner" },
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "phase", segment: 0, phase: "closed" },
+    { type: "phase", segment: 1, phase: "teach" },
+    { type: "phase", segment: 1, phase: "closed" },
+    NOT_ALL,
+    { type: "phase", segment: 2, phase: "teach", again: ["chain-rule"] },
+    { type: "phase", segment: 2, phase: "closed", again: ["chain-rule"] },
+    NOT_ALL,
+    { type: "phase", segment: 2, phase: "teach", again: ["chain-rule"] },
+  ]);
+
+  expect(outline(state)).toEqual([
+    "segment-1",
+    "tutor",
+    "phase",
+    "session",
+    "fresh",
+    "phase",
+    "phase",
+    "segment-2",
+    "phase",
+    "unit_end",
+    "again-1",
+    "phase",
+    "unit_end",
+    "again-2",
+  ]);
+});
+
+test("a unit reopened past where its thread got to begins the segment it is in", () => {
+  const state = play([
+    began(MONDAY),
+    { type: "phase", segment: 0, phase: "discuss" },
+    began(TUESDAY),
+    { type: "phase", segment: 1, phase: "check" },
+  ]);
+
+  expect(outline(state)).toEqual(["segment-1", "session", "segment-2"]);
+});
+
+/** The test before the unit: offered as the unit opens, then its result. */
+const TESTED: PageEvent[] = [
+  began(MONDAY),
+  { type: "unit_plan", plan: PLAN },
+  { type: "phase", segment: 0, phase: "teach" },
+  { type: "assessment", mode: "test-out", stage: "on", count: 3 },
+  { type: "question", question: QUESTION },
+  { type: "assessment_end", mode: "test-out", skipped: false, statuses: {} },
+  {
+    type: "test_result",
+    objectives: ["power-rule", "product-rule", "chain-rule"].map((id) => ({
+      objective: id,
+      passed: id !== "chain-rule",
+      answers: [],
+    })),
+  },
+];
+
+test("the test before a unit comes before its first segment, which begins where the learner answers it; a segment it skipped has no heading", () => {
+  const skipped = ["power-rule", "product-rule"];
+  const skip = play([
+    ...TESTED,
+    { type: "test_answered", skipped },
+    { type: "phase", segment: 1, phase: "teach", skipping: skipped },
+  ]);
+  expect(outline(skip)).toEqual([
+    "assessment",
+    "question",
+    "test_result",
+    "segment-2",
+  ]);
+  expect(skip.position).toEqual({
+    segment: 1,
+    phase: "teach",
+    skipping: skipped,
+  });
+
+  // Teaching the whole unit goes on from the phase the chat opened in.
+  const whole = play([
+    ...TESTED,
+    { type: "test_answered", skipped: [] },
+    { type: "phase", segment: 0, phase: "teach" },
+  ]);
+  expect(outline(whole)).toEqual([
+    "assessment",
+    "question",
+    "test_result",
+    "segment-1",
+  ]);
+
+  // A chat reopened while the result waits begins no segment.
+  const reopened = play([
+    ...TESTED,
+    began(TUESDAY),
+    { type: "unit_plan", plan: PLAN },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "assessment", mode: "test-out", stage: "on", count: 3 },
+  ]);
+  expect(outline(reopened)).toEqual([
+    "assessment",
+    "question",
+    "test_result",
+    "session",
+  ]);
+
+  // A test that passed every objective finishes the unit with none.
+  const all = ["power-rule", "product-rule", "chain-rule"];
+  const finished = play([
+    ...TESTED,
+    { type: "test_answered", skipped: all },
+    { type: "unit_closed", status: "passed" },
+  ]);
+  expect(outline(finished)).toEqual(["assessment", "question", "test_result"]);
+});
+
+test("the objectives' statuses are kept as the latest word on them", () => {
+  const state = play([
+    { type: "unit_status", unit: "in-progress", objectives: STATUSES },
+    { type: "unit_status", unit: "passed", objectives: ALL_PASSED },
+  ]);
+  expect(state.statuses).toEqual(ALL_PASSED);
 });

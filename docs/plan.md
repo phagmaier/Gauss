@@ -34,30 +34,6 @@ view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.32 Segment headings, phase hairlines, the verdict line
-
-- Status: todo
-- Depends on: 5.31
-- As piece 19. Where each segment starts in the thread, a heading: a rule,
-  "Segment N of M", its title, and its objectives with their forms as they
-  stand now (`StatusForm.tsx`, the current one by `currentObjective` in
-  `src/shared/plan.ts` from the timeline's position). The extra segment's
-  heading reads "Going over again". Teach,
-  discuss and check become hairlines with a small label. Review, gate and
-  test markers keep their words in the same hairline form (the agent's).
-  A graded card's verdict becomes one line under a hairline, with only the
-  verdict word in colour. The headings are derived in the timeline
-  (`src/shared/timeline.ts`) from the positions on its phase events, so an
-  earlier session's segments get them too. A segment skipped by a test
-  has none. Each heading has an id the outline (5.33) jumps to. To settle
-  in the task: whether a fresh start repeats the heading of the segment it
-  resumes.
-- Done when: timeline tests show one heading per segment entered,
-  including the extra segment and after Start fresh, and none for a
-  skipped one. On `pnpm dev:fake`, a unit's thread shows piece 19's
-  headings, hairlines and verdict lines: correct, incorrect with the
-  expected answer, "I don't know", and disputed.
-
 ### 5.33 The unit's top line and outline
 
 - Status: todo
@@ -72,7 +48,14 @@ and cheat sheets (stage 6).
   struck through. The gate follows the segments. "Export transcript" and
   "Start fresh" keep their behaviour. A past or current segment picked
   there scrolls only the thread's scroller to its heading and lights it
-  briefly, with no smooth scroll or fade under reduced motion.
+  briefly, with no smooth scroll or fade under reduced motion. The
+  headings' ids are on the timeline's phase items (`PhaseItem` in
+  `src/shared/timeline.ts`): `segment-N`, and `again-N` for each time the
+  unit goes over objectives again, of which the outline's "Going over
+  again" jumps to the latest. The seeded units have no thread before
+  their current segment, so their past segments have no headings: the
+  done-when check needs the seed to write their transcripts, or a unit
+  taken through two segments on the scripted backend.
 - Done when: on `pnpm dev:fake`, a seeded unit with two segments past
   jumps to each heading and lights it, and the position reads right in a
   segment, a review, the gate and a test (the scripted backend's commands
