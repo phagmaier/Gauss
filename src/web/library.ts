@@ -6,6 +6,7 @@
 
 import type { CourseWithProgress } from "../shared/library.ts";
 import { lead, progressOf, unitMark } from "./progress.ts";
+import type { FormOf } from "./StatusForm.tsx";
 
 const DAY = 24 * 60 * 60 * 1000;
 
