@@ -498,11 +498,7 @@ function gradedText(
     `[The learner's answer to ${name}:]`,
     answerText(answer, view),
   ];
-  if (
-    (answer.kind === "choice" || answer.kind === "math") &&
-    answer.reasoning !== undefined &&
-    answer.reasoning.trim() !== ""
-  ) {
+  if (answer.kind !== "unknown" && answer.reasoning?.trim()) {
     lines.push(`Their reasoning: ${answer.reasoning.trim()}`);
   }
   if (answer.kind === "unknown" && answer.stuck !== undefined) {

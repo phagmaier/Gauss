@@ -163,6 +163,34 @@ test("an unsure miss is not named confident, a miss with help says so, and a det
   expect(stretch.detours.size).toBe(1);
 });
 
+test("a written answer's reasoning is read after the answer", () => {
+  const stretch = readStretch(
+    [
+      {
+        type: "question",
+        question: { kind: "written", id: "q-1", number: 1, prompt: "Why?" },
+      },
+      {
+        type: "graded",
+        questionId: "q-1",
+        verdict: "correct",
+        answer: {
+          kind: "written",
+          questionId: "q-1",
+          text: "Because the limit exists.",
+          confidence: "75",
+          reasoning: "  I first thought it was the value.  ",
+        },
+        assisted: false,
+      },
+    ],
+    { plan: PLAN, objectiveOf },
+  );
+  expect(stretch.text).toContain(
+    "Because the limit exists.\nTheir reasoning: I first thought it was the value.\nGraded correct, at 75% sure.",
+  );
+});
+
 test("a stretch of markers alone, as a unit finishing as its last segment closes leaves, is not worth a call", () => {
   const stretch = readStretch(
     [

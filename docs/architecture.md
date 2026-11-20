@@ -483,8 +483,10 @@ tab.
    tutor's turn itself.
 3. The learner submits an answer (a choice, an expression typed in the math
    field, a written answer, or "Run the tests" on a code question's files),
-   a confidence level and, for a choice or an expression, optional
-   reasoning, or "I don't know".
+   a confidence level and optional reasoning ("Your thinking" on the page),
+   or "I don't know". Nothing grades the reasoning: the grader and the
+   tests see the answer alone. The tutor, the handoff writer, the dispute
+   judge, "What I know" and the exported transcript show it.
 4. The engine grades it (section 6) and appends the evidence.
 5. The tutor gets the result as the next turn: feedback, or a detour's
    first turn after a miss (above).
@@ -703,7 +705,7 @@ with sources (stage 4).
 
 | Answer kind | Method | Notes |
 | --- | --- | --- |
-| Multiple choice | Exact match in the engine | Reasoning is passed to the tutor for feedback |
+| Multiple choice | Exact match in the engine | |
 | Computational math | The symbolic check (`pytools/mathcheck.py`) for questions declared unrestricted; otherwise the grader | An unreadable or undecided answer, failed check, or time-out also goes to the grader. The evidence keeps why (`unsettled`) |
 | Code | Runs the question's tests with their command on the learner's files as sent, in the engine's sandbox; exit status 0 is correct | The tests must fail on the starter files and pass on the solution for the question to be posted. The learner sees the end of their output once graded, never the tests |
 | Proof, explanation, reconstruction | A separate one-shot model call, `prompts/grader.md` with the question's rubric | Names the first flawed step or missing element; never sees the tutor's conversation |
@@ -713,7 +715,7 @@ with sources (stage 4).
   learner saw it, the rubric and the answer, each between tags, and nothing
   else. For a math answer the rubric uses the expected expression and
   gives priority to the prompt's constraints. The answer is the expression
-  without the learner's reasoning. `WrittenGrade` (`src/shared/question.ts`)
+  or the written text, never the learner's reasoning. `WrittenGrade` (`src/shared/question.ts`)
   gives a correct or incorrect verdict with no partial credit, and the
   flaw when incorrect, which the evidence keeps. A reply out of shape,
   a failed request or one past three

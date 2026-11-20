@@ -435,14 +435,12 @@ function renderQuestion({
     html.push(
       `<div class="answer"><b>Your answer</b><div>${said}${confidence}</div></div>`,
     );
-    if (answer.kind === "unknown" && answer.stuck !== undefined) {
-      html.push(`<p><b>Stuck on:</b> ${escapeHtml(answer.stuck)}</p>`);
-    } else if (
-      (answer.kind === "choice" || answer.kind === "math") &&
-      answer.reasoning
-    ) {
+    if (answer.kind === "unknown") {
+      if (answer.stuck !== undefined)
+        html.push(`<p><b>Stuck on:</b> ${escapeHtml(answer.stuck)}</p>`);
+    } else if (answer.reasoning?.trim()) {
       html.push(
-        `<div><b>Reasoning</b>${String(learnerMarkdown.processSync(answer.reasoning))}</div>`,
+        `<div><b>Your thinking</b>${String(learnerMarkdown.processSync(answer.reasoning))}</div>`,
       );
     }
   }

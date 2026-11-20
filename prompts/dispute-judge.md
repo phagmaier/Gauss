@@ -26,7 +26,9 @@ The request gives you, each between tags:
   whether the run could execute that file directly.
 - `<answer>`: the learner's answer (the choice picked, the expression, the
   written answer, or their files, each between `<file>` tags), and any
-  `<reasoning>` they added.
+  `<reasoning>` they added. The reasoning is not graded: a false start in
+  it does not make the answer wrong, and a step only there does not make
+  it right.
 - `<grade>`: the grade given, `correct` or `incorrect`; with the grader's
   `<flaw>` when it named one, or, for code, the end of the tests' `<output>`.
 - `<reason>`: why the learner says the grade is wrong.

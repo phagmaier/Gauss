@@ -190,11 +190,16 @@ async function edit(workspace: string, content: string, path = "bpe.py") {
   await writeFile(join(workspace, path), content);
 }
 
-async function runTests(chat: UnitChat, confidence: "50" | "90" = "50") {
+async function runTests(
+  chat: UnitChat,
+  confidence: "50" | "90" = "50",
+  reasoning?: string,
+) {
   const result = await chat.answer({
     kind: "code",
     questionId: openQuestionId(chat),
     confidence,
+    ...(reasoning === undefined ? {} : { reasoning }),
   });
   expect(result).toEqual({ ok: true });
   await chat.settled();
@@ -295,6 +300,7 @@ test("a passing run is recorded correct, with the files as run and the output's 
   expect(turn).toContain(
     "The learner ran the tests, at 90% confidence, on their files as they were then:\n\n" +
       `bpe.py:\n\`\`\`\n${SOLUTION.trimEnd()}\n\`\`\`\n\n` +
+      "They gave no reasoning.\n" +
       "The tests passed: correct. The end of their output:",
   );
 
@@ -310,7 +316,7 @@ test("a passing run is recorded correct, with the files as run and the output's 
   expect(line.verdict.text).toBe("Correct");
 });
 
-test("a failing run is a miss that opens a detour, its output's end saying which test failed", async () => {
+test("a failing run is a miss that opens a detour, its output's end saying which test failed, and the tutor has the learner's reasoning", async () => {
   const { backend, root, chat, workspace } = await setUp([
     TEACH,
     ask(CODE),
@@ -318,7 +324,7 @@ test("a failing run is a miss that opens a detour, its output's end saying which
   ]);
   await edit(workspace, LAST_OF_TIED);
 
-  await runTests(chat);
+  await runTests(chat, "50", "I compared counts with >=.");
 
   const questionId = openQuestionId(chat);
   expect(chat.events()).toContainEqual({
@@ -329,7 +335,10 @@ test("a failing run is a miss that opens a detour, its output's end saying which
   const [entry] = await root.readEvidence(COURSE);
   expect(entry).toMatchObject({
     verdict: "incorrect",
-    answer: { files: [{ path: "bpe.py", content: LAST_OF_TIED }] },
+    answer: {
+      files: [{ path: "bpe.py", content: LAST_OF_TIED }],
+      reasoning: "I compared counts with >=.",
+    },
   });
   expect(entry).not.toHaveProperty("flaw");
   const output = entry?.kind === "answer" ? (entry.output ?? "") : "";
@@ -337,12 +346,13 @@ test("a failing run is a miss that opens a detour, its output's end saying which
   expect(output.split("\n").at(-1)).toBe("Exit status 1.");
   const turn = answerTurn(backend);
   expect(turn).toContain(
-    "The tests failed: incorrect. The end of their output:",
+    "Their reasoning: I compared counts with >=.\n" +
+      "The tests failed: incorrect. The end of their output:",
   );
   expect(turn).toContain("FAILED test_bpe.py::test_tie_takes_the_first");
   expect(turn).toContain("The miss opens a detour");
   expect(turn).toContain(
-    "from the end of the tests' output and the files they ran",
+    "from the end of the tests' output, the files they ran and their reasoning",
   );
   expect((await known(root)).line.verdict.text).toBe("Not quite");
 });

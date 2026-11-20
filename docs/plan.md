@@ -30,26 +30,6 @@ views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`
 (`decisions.md`, "Page design"); 5.17 makes new ones. Not in this stage:
 sources and web access (4.0), self-test and cheat sheets (stage 6).
 
-### 5.15 Working on written and code answers
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19): written and code answers get the
-  optional field that choice and math answers have, so the learner's
-  thinking stays apart from what is graded. A false start written into a
-  written answer can now be graded as its first flaw. As with math, the
-  grader and the tests never see it; the tutor (feedback and detour), the
-  handoff writer, the dispute judge, "What I know" and the exported
-  transcript do, as they do for a choice's reasoning. Its label says only
-  the answer is graded, e.g. "Your thinking (optional, not graded: only
-  the answer above is graded)". `WrittenAnswer`'s comment in
-  `src/shared/question.ts` records the old choice (mock 2); replace it.
-- Done when: on `pnpm dev:fake`, a written and a code answer sent with
-  working show it on the graded card, in "What I know" and in the
-  exported transcript; tests show the tutor's turn carries it and the
-  grader's call does not. Record the user's decision in `decisions.md`,
-  "Product decisions".
-
 ### 5.16 Large courses planned in stretches
 
 - Status: todo

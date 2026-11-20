@@ -490,14 +490,21 @@ export const QuestionView = z.discriminatedUnion("kind", [
 export type QuestionView = z.infer<typeof QuestionView>;
 
 /**
- * A written answer as the learner sends it. It is its own reasoning, so it
- * has no separate field for that (mock 2).
+ * The learner's thinking sent with an answer, optional on every kind but
+ * "I don't know". Never graded: the grader and a code question's tests see
+ * only the answer, so a false start written here is no flaw of it. The
+ * tutor, the handoff writer, the dispute judge and the learner's record
+ * see it.
  */
+const reasoning = z.string().max(10_000).optional();
+
+/** A written answer as the learner sends it. */
 export const WrittenAnswer = z.object({
   kind: z.literal("written"),
   questionId: z.string(),
   text: z.string().trim().min(1).max(20_000),
   confidence: Confidence,
+  reasoning,
 });
 export type WrittenAnswer = z.infer<typeof WrittenAnswer>;
 
@@ -510,7 +517,7 @@ export const MathAnswer = z.object({
   questionId: z.string(),
   expression: z.string().trim().min(1).max(1000),
   confidence: Confidence,
-  reasoning: z.string().max(10_000).optional(),
+  reasoning,
 });
 export type MathAnswer = z.infer<typeof MathAnswer>;
 
@@ -522,6 +529,7 @@ export const CodeRun = z.object({
   kind: z.literal("code"),
   questionId: z.string(),
   confidence: Confidence,
+  reasoning,
 });
 export type CodeRun = z.infer<typeof CodeRun>;
 
@@ -547,7 +555,7 @@ const ChoiceAnswer = z.object({
   questionId: z.string(),
   choice: ChoiceLetter,
   confidence: Confidence,
-  reasoning: z.string().max(10_000).optional(),
+  reasoning,
 });
 
 /** "I don't know", which asks no confidence and can say where the learner got stuck (task 2.20). */

@@ -268,9 +268,7 @@ export function answerTurn(
   } else if (answer.kind === "choice" && question.kind === "choice") {
     lines.push(
       `The learner chose ${answer.choice}, at ${confidenceLabel(answer.confidence)} confidence.`,
-      answer.reasoning === undefined || answer.reasoning.trim() === ""
-        ? "They gave no reasoning."
-        : `Their reasoning: ${answer.reasoning}`,
+      reasoningLine(answer.reasoning),
       entry.verdict === "correct"
         ? "Graded: correct."
         : `Graded: incorrect. The correct choice is ${question.answer}.`,
@@ -278,9 +276,7 @@ export function answerTurn(
   } else if (answer.kind === "math" && question.kind === "math") {
     lines.push(
       `The learner's answer, at ${confidenceLabel(answer.confidence)} confidence: ${answer.expression}`,
-      answer.reasoning === undefined || answer.reasoning.trim() === ""
-        ? "They gave no reasoning."
-        : `Their reasoning: ${answer.reasoning}`,
+      reasoningLine(answer.reasoning),
       mathGrade(entry, question.expected),
     );
   } else if (answer.kind === "code" && question.kind === "code") {
@@ -292,6 +288,7 @@ export function answerTurn(
         fenced(file.content),
         "",
       ]),
+      reasoningLine(answer.reasoning),
       entry.verdict === "correct"
         ? "The tests passed: correct. The end of their output:"
         : "The tests failed: incorrect. The end of their output:",
@@ -307,6 +304,7 @@ export function answerTurn(
         ? "The grader, which saw only the question, your rubric and this answer, graded it correct."
         : "The grader, which saw only the question, your rubric and this answer, graded it incorrect. " +
             `The first flaw it found: ${entry.flaw}`,
+      reasoningLine(answer.reasoning),
     );
   }
   if (entry.assisted) {
@@ -343,6 +341,13 @@ export function answerTurn(
               ? detourOpening(where, entry)
               : feedbackAllowed(where),
   );
+}
+
+/** The reasoning sent with an answer, which nothing grades. */
+function reasoningLine(said: string | undefined): string {
+  return said === undefined || said.trim() === ""
+    ? "They gave no reasoning."
+    : `Their reasoning: ${said}`;
 }
 
 /**
@@ -403,17 +408,26 @@ function detourOpening(where: Where, entry: AnswerEvidence): string {
 /** Where a missed answer may show the learner's confusion, for a detour's first turn. */
 function confusionFrom(entry: AnswerEvidence): string {
   const { answer } = entry;
-  return answer.kind === "choice"
-    ? `from the choice they picked${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
-    : answer.kind === "math"
-      ? `from the answer they gave${entry.flaw === undefined ? "" : ", the grader's flaw"}${answer.reasoning?.trim() ? " and their reasoning" : ""}, or, if that does not show it, `
-      : answer.kind === "code"
-        ? "from the end of the tests' output and the files they ran, or, if that does not show it, "
-        : answer.kind === "written"
-          ? "from the grader's flaw and what they wrote, or, if that does not show it, "
-          : answer.stuck !== undefined
-            ? "from where they say they got stuck, or, if that does not show it, "
-            : "";
+  if (answer.kind === "unknown") {
+    return answer.stuck !== undefined
+      ? "from where they say they got stuck, or, if that does not show it, "
+      : "";
+  }
+  const shown =
+    answer.kind === "choice"
+      ? ["the choice they picked"]
+      : answer.kind === "math"
+        ? [
+            "the answer they gave",
+            ...(entry.flaw === undefined ? [] : ["the grader's flaw"]),
+          ]
+        : answer.kind === "code"
+          ? ["the end of the tests' output", "the files they ran"]
+          : ["the grader's flaw", "what they wrote"];
+  if (answer.reasoning?.trim()) shown.push("their reasoning");
+  const last = shown.pop();
+  const listed = shown.length === 0 ? last : `${shown.join(", ")} and ${last}`;
+  return `from ${listed}, or, if that does not show it, `;
 }
 
 /**

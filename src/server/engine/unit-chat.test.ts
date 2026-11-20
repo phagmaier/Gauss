@@ -2749,7 +2749,8 @@ test("a written answer is kept, graded by the grader, and recorded with its grad
       "\n" +
       `${PROOF}\n` +
       "\n" +
-      "The grader, which saw only the question, your rubric and this answer, graded it correct.",
+      "The grader, which saw only the question, your rubric and this answer, graded it correct.\n" +
+      "They gave no reasoning.",
   );
 });
 
@@ -2783,6 +2784,34 @@ test("a written answer graded incorrect is recorded with the flaw the grader nam
   );
   expect(setup.backend.received[2]?.text).toContain(
     '"difference-quotient": missed, so another question is needed (1 asked)',
+  );
+});
+
+test("a written answer's reasoning reaches the tutor and the record, never the grader", async () => {
+  const setup = setUp([TEACH, ask(Q_PROOF), [{ text: "Nearly." }]], {
+    replies: [{ output: { verdict: "incorrect", flaw: FLAW } }],
+  });
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  const thinking = "I tried $h = 0$ first, which divides by zero.";
+  const sent = { ...written(chat, "90"), reasoning: thinking };
+
+  expect(await chat.answer(sent)).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(setup.backend.oneShots).toHaveLength(1);
+  expect(setup.backend.oneShots[0]?.prompt).toContain(PROOF);
+  expect(setup.backend.oneShots[0]?.prompt).not.toContain("I tried");
+  expect(await reload().readEvidence(COURSE)).toEqual([
+    expect.objectContaining({ answer: sent, verdict: "incorrect" }),
+  ]);
+  const turn = setup.backend.received[2]?.text;
+  expect(turn).toContain(
+    `The first flaw it found: ${FLAW}\nTheir reasoning: ${thinking}`,
+  );
+  expect(turn).toContain(
+    "from the grader's flaw, what they wrote and their reasoning, or, if that does not show it, ",
   );
 });
 

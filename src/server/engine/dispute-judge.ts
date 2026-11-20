@@ -194,6 +194,7 @@ export function disputeRequest(entry: AnswerEvidence, reason: string): string {
       ...tag("graded_by", "A grader, against the rubric below."),
       ...tag("rubric", question.rubric),
       ...tag("answer", answer.text),
+      ...reasoning(answer.reasoning),
       ...tag("grade", entry.verdict),
       ...(entry.flaw === undefined ? [] : tag("flaw", entry.flaw)),
     );
@@ -224,6 +225,7 @@ export function disputeRequest(entry: AnswerEvidence, reason: string): string {
       ...answer.files.flatMap(fileBlock),
       "</answer>",
       "",
+      ...reasoning(answer.reasoning),
       ...tag("grade", entry.verdict),
       ...tag("output", entry.output ?? ""),
     );

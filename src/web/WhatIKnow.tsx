@@ -28,7 +28,7 @@ import { calibrationRows, hasCalibration } from "./calibration.ts";
 import { type DisputeApi, DisputePart, disputeApi } from "./Dispute.tsx";
 import { Link, TopLine } from "./Frame.tsx";
 import { ChoiceLabel, InlineProse, MathText, Prose } from "./prose.tsx";
-import { CodeOutput, FileNames } from "./QuestionCard.tsx";
+import { CodeOutput, FileNames, Thinking } from "./QuestionCard.tsx";
 import { paths } from "./route.ts";
 import {
   answerLine,
@@ -277,6 +277,7 @@ function AnswerEntry(
           )}
         </div>
       )}
+      {answer.kind === "unknown" ? null : <Thinking text={answer.reasoning} />}
       {entry.output === undefined ? null : (
         <CodeOutput output={entry.output} verdict={entry.verdict} />
       )}
@@ -295,15 +296,6 @@ function AnswerEntry(
             </div>
           ))}
         </details>
-      ) : null}
-      {(answer.kind === "choice" || answer.kind === "math") &&
-      answer.reasoning !== undefined ? (
-        <div className="qa-line">
-          <span className="k">Your reasoning</span>
-          <span className="qa-flaw">
-            <InlineProse text={answer.reasoning} />
-          </span>
-        </div>
       ) : null}
       {answer.kind === "unknown" && answer.stuck !== undefined ? (
         <div className="qa-line">

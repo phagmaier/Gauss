@@ -58,6 +58,7 @@ const WRITTEN = recorded({
     questionId: "q-written",
     text: "For every $\\varepsilon > 0$ there is a $\\delta > 0$ ...",
     confidence: "90",
+    reasoning: "I first thought of the limit, then wrote epsilon-delta.",
   },
   verdict: "incorrect",
   flaw: "It does not say that the limit exists.",
@@ -109,6 +110,7 @@ const CODE = recorded({
     kind: "code",
     questionId: "q-code",
     confidence: "90",
+    reasoning: "The chain rule's sign was a guess.",
     files: [
       {
         path: "chain.py",
@@ -165,10 +167,13 @@ test("a choice dispute's request has the question, the choices, the key, the ans
   );
 });
 
-test("the other kinds' requests carry what graded each: the rubric and the flaw, the rubric the grader had for an unsettled math answer, and the tests with the files and their output", () => {
+test("the other kinds' requests carry what graded each: the rubric and the flaw, the rubric the grader had for an unsettled math answer, and the tests with the files and their output; a written or code answer's reasoning follows it", () => {
   const written = disputeRequest(WRITTEN, "It is the same definition.");
   expect(written).toContain(
     "<rubric>\nSays that $f(a)$ is defined, the limit exists, and they are equal.\n</rubric>",
+  );
+  expect(written).toContain(
+    "</answer>\n\n<reasoning>\nI first thought of the limit, then wrote epsilon-delta.\n</reasoning>\n\n<grade>",
   );
   expect(written).toContain(
     "<flaw>\nIt does not say that the limit exists.\n</flaw>",
@@ -194,6 +199,9 @@ test("the other kinds' requests carry what graded each: the rubric and the flaw,
     '<inputs>\n<file path="check" executable="true">\n#!/bin/sh\nexec .venv/bin/python test_chain.py\n\n</file>\n<file path="sign.txt" executable="false">\n6\n\n\n</file>\n</inputs>',
   );
   expect(code).toContain('<answer>\n<file path="chain.py">');
+  expect(code).toContain(
+    "</answer>\n\n<reasoning>\nThe chain rule's sign was a guess.\n</reasoning>\n\n<grade>",
+  );
   expect(code).toContain(
     "<output>\nAssertionError: assert -6 == 6\nExit status 1.\n</output>",
   );

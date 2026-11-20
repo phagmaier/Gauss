@@ -255,6 +255,19 @@ The brief states the result; this is who decided and why.
   part its rubric requires, and the detour after a part left out says
   what was right and what was missing and names no misconception
   (`tutor.md`; "Prompts").
+- **2026-11-19, thinking on written and code answers** (from the stage 5
+  check). Every answer but "I don't know" takes the optional reasoning a
+  choice and a math answer had; mock 2 had left it off a written answer as
+  its own reasoning. Now a false start can stay out of the graded text:
+  the grader and the tests see the answer alone, and the tutor, the
+  handoff writer, the dispute judge, "What I know" and the exported
+  transcript see the reasoning (the user's decision). The agent chose:
+  one field for all four kinds; "Your thinking (optional, not graded:
+  only your answer is graded)" on the card and "Your thinking" on the
+  record, for every kind, while the models' requests keep "reasoning",
+  since "thinking" is the model's own there; and a line in
+  `dispute-judge.md` that the reasoning is not graded, so a false start
+  in it makes no answer wrong (not tried on a real model).
 
 ## Toolchain
 

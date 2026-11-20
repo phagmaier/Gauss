@@ -1,10 +1,10 @@
 // The check question card, as settled in docs/prototype/02-check-question.html:
-// answered inside the card, with how sure and, for a choice or a math
-// answer, an optional reasoning; shrunk to a record once graded. Four
+// answered inside the card, with how sure and an optional "Your thinking",
+// which is never graded; shrunk to a record once graded. Four
 // answer kinds: multiple choice; math, an expression typed in a field that
 // shows it as math as it is typed, compared with the expected answer by the
-// symbolic check (task 3.5); a written answer, which is its own reasoning
-// and is graded by the grader (task 2.8); and code (task 3.7, piece 14):
+// symbolic check (task 3.5); a written answer, graded by the grader
+// (task 2.8); and code (task 3.7, piece 14):
 // the card names the files to edit in the workspace by their full paths,
 // with "Copy path" and "Open", which has the server open the file in the
 // system's default app (task 3.22), and "Run the tests", with how sure, is
@@ -150,42 +150,28 @@ function OpenCard(props: {
   /** The answer as it would be sent, or undefined while it is incomplete. */
   function answer(): AnswerPost | undefined {
     if (confidence === undefined) return undefined;
-    if (question.kind === "code") {
-      return { kind: "code", questionId: question.id, confidence };
-    }
+    const said = reasoning.trim();
+    const base = {
+      questionId: question.id,
+      confidence,
+      ...(said === "" ? {} : { reasoning: said }),
+    };
+    if (question.kind === "code") return { kind: "code", ...base };
     if (question.kind === "math") {
       const expression = text.trim();
-      const said = reasoning.trim();
       return expression === ""
         ? undefined
-        : {
-            kind: "math",
-            questionId: question.id,
-            expression,
-            confidence,
-            ...(said === "" ? {} : { reasoning: said }),
-          };
+        : { kind: "math", expression, ...base };
     }
     if (question.kind === "written") {
       const written = text.trim();
       return written === ""
         ? undefined
-        : {
-            kind: "written",
-            questionId: question.id,
-            text: written,
-            confidence,
-          };
+        : { kind: "written", text: written, ...base };
     }
-    if (choice === undefined) return undefined;
-    const said = reasoning.trim();
-    return {
-      kind: "choice",
-      questionId: question.id,
-      choice,
-      confidence,
-      ...(said === "" ? {} : { reasoning: said }),
-    };
+    return choice === undefined
+      ? undefined
+      : { kind: "choice", choice, ...base };
   }
   const ready = answer();
 
@@ -347,17 +333,17 @@ function OpenCard(props: {
               ))}
             </div>
           </fieldset>
-          {question.kind === "choice" || question.kind === "math" ? (
-            <details className="why">
-              <summary>Add your reasoning</summary>
-              <textarea
-                className="field reason"
-                aria-label="Your reasoning"
-                value={reasoning}
-                onChange={(e) => setReasoning(e.target.value)}
-              />
-            </details>
-          ) : null}
+          <details className="why">
+            <summary>
+              Your thinking (optional, not graded: only your answer is graded)
+            </summary>
+            <textarea
+              className="field reason"
+              aria-label="Your thinking"
+              value={reasoning}
+              onChange={(e) => setReasoning(e.target.value)}
+            />
+          </details>
         </>
       )}
       {error === undefined ? null : <p className="qa-error">{error}</p>}
@@ -621,7 +607,8 @@ function WaitingCard(props: {
 
 /**
  * The answer as sent: the written text, the choice, the expression, the
- * files run, or "I don't know".
+ * files run, or "I don't know"; with the learner's thinking or where they
+ * got stuck.
  */
 function AnswerRecord(props: {
   question: QuestionView;
@@ -630,43 +617,69 @@ function AnswerRecord(props: {
   ran?: boolean;
 }) {
   const { question, answer } = props;
-  if (answer.kind === "written") return <WrittenRecord answer={answer} />;
   return (
     <>
-      <div className="qa-line">
-        <span className="k">Your answer</span>
-        {answer.kind === "choice" ? (
-          <>
-            <ChoiceText question={question} letter={answer.choice} />
-            <span className="c">{confidenceLabel(answer.confidence)} sure</span>
-          </>
-        ) : answer.kind === "math" ? (
-          <>
-            <span>
-              <MathText source={answer.expression} />
-            </span>
-            <span className="c">{confidenceLabel(answer.confidence)} sure</span>
-          </>
-        ) : answer.kind === "code" ? (
-          <>
-            <span>
-              <FileNames files={answer.files} />,{" "}
-              {props.ran === true ? "as you ran it" : "as you sent it"}
-            </span>
-            <span className="c">{confidenceLabel(answer.confidence)} sure</span>
-          </>
-        ) : (
-          <span>I don't know</span>
-        )}
-      </div>
-      {answer.kind === "unknown" && answer.stuck !== undefined ? (
+      {answer.kind === "written" ? (
+        <WrittenRecord answer={answer} />
+      ) : (
         <div className="qa-line">
-          <span className="k">Stuck on</span>
-          <span className="qa-stuck-said">{answer.stuck}</span>
+          <span className="k">Your answer</span>
+          {answer.kind === "choice" ? (
+            <>
+              <ChoiceText question={question} letter={answer.choice} />
+              <span className="c">
+                {confidenceLabel(answer.confidence)} sure
+              </span>
+            </>
+          ) : answer.kind === "math" ? (
+            <>
+              <span>
+                <MathText source={answer.expression} />
+              </span>
+              <span className="c">
+                {confidenceLabel(answer.confidence)} sure
+              </span>
+            </>
+          ) : answer.kind === "code" ? (
+            <>
+              <span>
+                <FileNames files={answer.files} />,{" "}
+                {props.ran === true ? "as you ran it" : "as you sent it"}
+              </span>
+              <span className="c">
+                {confidenceLabel(answer.confidence)} sure
+              </span>
+            </>
+          ) : (
+            <span>I don't know</span>
+          )}
         </div>
-      ) : null}
+      )}
+      {answer.kind === "unknown" ? (
+        answer.stuck === undefined ? null : (
+          <div className="qa-line">
+            <span className="k">Stuck on</span>
+            <span className="qa-stuck-said">{answer.stuck}</span>
+          </div>
+        )
+      ) : (
+        <Thinking text={answer.reasoning} />
+      )}
     </>
   );
+}
+
+/** The thinking sent with an answer, which is not graded ("What I know" too). */
+export function Thinking(props: { text: string | undefined }) {
+  const text = props.text?.trim();
+  return text ? (
+    <div className="qa-line">
+      <span className="k">Your thinking</span>
+      <div className="qa-flaw prose">
+        <Prose text={text} />
+      </div>
+    </div>
+  ) : null;
 }
 
 /** "`bpe.py`", or "`a.py` and `b.py`" ("What I know" too). */
