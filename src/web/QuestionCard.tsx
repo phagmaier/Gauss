@@ -28,7 +28,7 @@
 // verdict, and the right choice or expected answer of a miss, are then the
 // ones the dispute left, and a verdict the dispute changed is marked.
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { ShownDispute } from "../shared/dispute.ts";
 import { standing } from "../shared/dispute-view.ts";
 import {
@@ -40,6 +40,7 @@ import {
   confidenceLabel,
   type GradedAnswer,
   type QuestionView,
+  REASONING_LIMIT,
   type WrittenAnswer,
 } from "../shared/question.ts";
 import type { Graded, QuestionItem } from "../shared/timeline.ts";
@@ -56,6 +57,8 @@ import {
 import { outputLines, unsettledLine } from "./what-i-know.ts";
 
 type ChoiceView = Extract<QuestionView, { kind: "choice" }>;
+
+const reasoningLimitLabel = REASONING_LIMIT.toLocaleString("en-US");
 
 const CONFIDENCE: { value: Confidence; label: string }[] = [
   { value: "under-50", label: "Under 50%" },
@@ -147,14 +150,17 @@ function OpenCard(props: {
   const firstLevel = useRef<HTMLButtonElement>(null);
   const mathField = useRef<HTMLTextAreaElement>(null);
 
-  /** The answer as it would be sent, or undefined while it is incomplete. */
+  const reasoningHint = useId();
+  const thinking = reasoning.trim();
+  const reasoningTooLong = thinking.length > REASONING_LIMIT;
+
+  /** The answer as it would be sent, or undefined while incomplete or invalid. */
   function answer(): AnswerPost | undefined {
-    if (confidence === undefined) return undefined;
-    const said = reasoning.trim();
+    if (confidence === undefined || reasoningTooLong) return undefined;
     const base = {
       questionId: question.id,
       confidence,
-      ...(said === "" ? {} : { reasoning: said }),
+      ...(thinking === "" ? {} : { reasoning: thinking }),
     };
     if (question.kind === "code") return { kind: "code", ...base };
     if (question.kind === "math") {
@@ -340,10 +346,21 @@ function OpenCard(props: {
             <textarea
               className="field reason"
               aria-label="Your thinking"
+              aria-describedby={reasoningHint}
+              aria-invalid={reasoningTooLong}
               value={reasoning}
               onChange={(e) => setReasoning(e.target.value)}
             />
           </details>
+          <p
+            id={reasoningHint}
+            aria-live="polite"
+            className={reasoningTooLong ? "qa-error" : "qa-aside"}
+          >
+            {reasoningTooLong
+              ? `Your thinking is over the ${reasoningLimitLabel}-character limit. Shorten it to submit.`
+              : `Thinking limit: ${reasoningLimitLabel} characters.`}
+          </p>
         </>
       )}
       {error === undefined ? null : <p className="qa-error">{error}</p>}

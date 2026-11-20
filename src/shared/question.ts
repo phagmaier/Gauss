@@ -489,6 +489,8 @@ export const QuestionView = z.discriminatedUnion("kind", [
 ]);
 export type QuestionView = z.infer<typeof QuestionView>;
 
+export const REASONING_LIMIT = 10_000;
+
 /**
  * The learner's thinking sent with an answer, optional on every kind but
  * "I don't know". Never graded: the grader and a code question's tests see
@@ -496,7 +498,7 @@ export type QuestionView = z.infer<typeof QuestionView>;
  * tutor, the handoff writer, the dispute judge and the learner's record
  * see it.
  */
-const reasoning = z.string().max(10_000).optional();
+const reasoning = z.string().max(REASONING_LIMIT).optional();
 
 /** A written answer as the learner sends it. */
 export const WrittenAnswer = z.object({
