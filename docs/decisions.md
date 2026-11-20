@@ -1722,7 +1722,9 @@ redesign's.
   look.css's Frappé block plus `--flag`, the yellow that marks what changed
   and help taken, which the redesign's mocks do not show; a label in a card's
   head or a marker is its `<b>`, and the words after it stay in the
-  controls' type. CMU Serif's four faces are the `computer-modern`
+  controls' type. Section and card labels use `--ink-2` rather than the
+  mock's `--ink-3` so the small capitals meet 4.5:1 contrast on both the page
+  and raised cards. CMU Serif's four faces are the `computer-modern`
   package's WOFF2 files (0.1.3), copied with the OFL; that package declares
   the regular face as weight 500, declared here as 400, the weight body text
   asks for.

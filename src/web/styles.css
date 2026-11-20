@@ -114,7 +114,8 @@ textarea::placeholder {
   color: var(--ink-3);
   opacity: 1;
 }
-button:focus-visible {
+button:focus-visible,
+.field:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -136,7 +137,7 @@ code {
   font: 500 11px / 1.3 var(--f-label);
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 /* a number the app gives a unit, in the labels' mono */
 .cu-n,
@@ -535,11 +536,7 @@ code {
   border: 1px solid var(--rule-2);
   border-radius: 8px;
   padding: 0.5em 0.8em;
-  outline: 0;
   line-height: 1.5;
-}
-.field:focus {
-  border-color: var(--ink-3);
 }
 
 /* how sure, reasoning, and the two ways out */
@@ -593,9 +590,6 @@ details.why summary:hover {
   font-size: 0.94em;
   margin-top: 0.5em;
 }
-.reason:focus {
-  border-color: var(--rule-2);
-}
 .qa-foot {
   display: flex;
   justify-content: space-between;
@@ -620,20 +614,21 @@ details.why summary:hover {
 .btn:hover {
   filter: brightness(1.06);
 }
-.btn:disabled {
-  background: var(--rule);
-  color: var(--ink-3);
-  cursor: default;
-  filter: none;
-}
 /* a step that is not the next one */
 .btn.quiet {
   background: none;
   color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--rule-2);
 }
-.btn.quiet:hover {
+.btn.quiet:enabled:hover {
   background: var(--rule);
+  filter: none;
+}
+.btn:disabled {
+  background: var(--rule);
+  color: var(--ink-3);
+  box-shadow: none;
+  cursor: default;
   filter: none;
 }
 .textbtn {
