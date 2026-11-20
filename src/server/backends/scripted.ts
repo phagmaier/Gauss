@@ -48,7 +48,8 @@
 //   a tangent to a parabola that a slider moves, with a button that tries
 //   to reach the app and the web and says what was refused; so does a reply
 //   to a message with "/artifact" in it, which the engine refuses while a
-//   question is open.
+//   question is open. "/broken-aid" shows one whose script throws as it
+//   loads (task 5.20).
 // - Packages (task 3.11): a message with "/packages" in it asks to install
 //   the names that follow it on its line, `pytest` if none, which the
 //   engine refuses while a question is open; Install really installs them,
@@ -555,6 +556,15 @@ function teaching(
   if (/(^|\s)\/artifact\b/.test(body)) {
     return [...showArtifact(), { text: "Scripted: that was the aid." }];
   }
+  if (/(^|\s)\/broken-aid\b/.test(body)) {
+    return [
+      {
+        call: "show_artifact",
+        input: { title: "A plot that fails", html: BROKEN_ARTIFACT },
+      },
+      { text: "Scripted: that aid's script throws." },
+    ];
+  }
   const packages = /(?:^|\s)\/packages\b(.*)$/m.exec(body);
   if (packages !== null) {
     const names = (packages[1] ?? "").trim().split(/\s+/).filter(Boolean);
@@ -783,6 +793,16 @@ const SCRIPTED_ARTIFACT = `<!doctype html>
 </script>
 </body>
 </html>
+`;
+
+/** An aid whose script throws as it loads, on its line 6. */
+const BROKEN_ARTIFACT = `<!doctype html>
+<meta charset="utf-8">
+<style>body { margin: 0; padding: 16px 20px; background: #292c3c; color: #c6d0f5; }</style>
+<p>A plot of the points should appear here.</p>
+<script>
+  document.body.append(points.length + " points");
+</script>
 `;
 
 /**

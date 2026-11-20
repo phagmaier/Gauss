@@ -69,6 +69,7 @@ import {
   type Timeline,
   type UnitEndItem,
 } from "../shared/timeline.ts";
+import { ArtifactPane } from "./ArtifactPane.tsx";
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
 import { Composer, type ComposerHandle } from "./Composer.tsx";
 import { Diagram } from "./Curriculum.tsx";
@@ -686,21 +687,15 @@ export function Session(props: { courseId: string; unitId: string }) {
           </SidePane>
         )
       ) : pane.kind === "artifact" ? (
-        <SidePane
-          title={pane.title}
-          subtitle="From the tutor"
+        <ArtifactPane
+          key={pane.file}
+          courseId={courseId}
+          artifact={pane}
+          enabled={open && timeline.failed === null}
+          busy={busy}
+          onSend={(text) => post(path("messages"), { text })}
           onClose={closePane}
-        >
-          <iframe
-            key={pane.file}
-            src={`/api/courses/${enc(courseId)}/artifacts/${enc(pane.file)}`}
-            // Scripts run, with an origin of their own; the artifact's
-            // policy keeps it from the network (task 3.6).
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            title={pane.title}
-          />
-        </SidePane>
+        />
       ) : (
         <SidePane
           title="Curriculum"

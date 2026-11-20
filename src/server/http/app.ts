@@ -60,6 +60,7 @@ import type { Backup } from "../record/backup.ts";
 import { type DataRoot, ProfileChanged } from "../record/data-root.ts";
 import { finishedCourses, withProgress } from "../record/progress.ts";
 import { whatIKnow } from "../record/what-i-know.ts";
+import { withReporter } from "./artifact-frame.ts";
 
 export function createApp(options: {
   dataRoot: DataRoot;
@@ -213,8 +214,9 @@ export function createApp(options: {
       : c.json({ error: opened.error }, 502);
   });
 
-  // An artifact runs only in the app's side pane. Other requests get its
-  // source as inert text, even when its URL is opened in the browser.
+  // An artifact runs only in the app's side pane, with the reporter that
+  // tells the page of its errors. Other requests get its source as inert
+  // text, even when its URL is opened in the browser.
   app.get("/api/courses/:id/artifacts/:file", async (c) => {
     const html = await dataRoot.readArtifact(
       c.req.param("id"),
@@ -224,11 +226,9 @@ export function createApp(options: {
     const inPane =
       c.req.header("Sec-Fetch-Dest") === "iframe" &&
       c.req.header("Sec-Fetch-Site") === "same-origin";
-    return c.body(
-      html,
-      200,
-      inPane ? ARTIFACT_FRAME_HEADERS : ARTIFACT_TEXT_HEADERS,
-    );
+    return inPane
+      ? c.body(withReporter(html), 200, ARTIFACT_FRAME_HEADERS)
+      : c.body(html, 200, ARTIFACT_TEXT_HEADERS);
   });
 
   // A draft is reviewed in an intake: the one that proposed it, if it is

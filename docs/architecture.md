@@ -1281,6 +1281,16 @@ progress take the outline.
   the response policy sandbox HTML to its own origin with scripts allowed.
   The parent page's `frame-src 'self'` prevents the frame from navigating
   away. WebRTC is not blocked (`decisions.md`, "Confinement").
+  The HTML served to the frame starts with a one-line script
+  (`withReporter` in `http/artifact-frame.ts`) that posts the aid's first
+  uncaught error or unhandled rejection to the page (`ArtifactReport` in
+  `src/shared/artifact.ts`); the record keeps the document as written. The
+  page takes a report only from the frame it shows (`frameReport` in
+  `src/web/artifact.ts`), shows the error above the aid, and offers "Send
+  the error to the tutor", which posts it once as the learner's message
+  (`errorMessage`), not while the tutor is writing. In WebKit the error
+  reaches the page only as "Script error." (`decisions.md`,
+  "Confinement").
 - **Notes** (`/courses/<id>/units/<unit>/notes`): a finished
   unit offers notes on its closing card, or on the result card when it
   tested out of whole. The reader shows the saved HTML in a sandboxed

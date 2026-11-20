@@ -45,6 +45,7 @@ import { createUnitPlanner } from "../engine/unit-planning.ts";
 import type { FileOpener } from "../open-file.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { createApp } from "./app.ts";
+import { ARTIFACT_REPORTER } from "./artifact-frame.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
@@ -1587,7 +1588,7 @@ const GRAPH_REFERENCE = {
   title: "A graph",
 };
 
-test("an artifact is served as HTML in the pane, but its direct URL serves inert text", async () => {
+test("an artifact is served as HTML in the pane, with the reporter after its doctype, but its direct URL serves inert text", async () => {
   const setup = setUp([[GRAPH]]);
   await approvedCourse();
   await openUnit(setup);
@@ -1602,7 +1603,9 @@ test("an artifact is served as HTML in the pane, but its direct URL serves inert
   });
 
   expect(response.status).toBe(200);
-  expect(await response.text()).toBe(GRAPH.input.html);
+  expect(await response.text()).toBe(
+    `<!doctype html>${ARTIFACT_REPORTER}<p>A graph</p><script>document.title = "Graph";</script>`,
+  );
   expect(Object.fromEntries(response.headers)).toMatchObject({
     "content-type": "text/html; charset=utf-8",
     "content-security-policy":

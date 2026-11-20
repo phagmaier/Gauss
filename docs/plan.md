@@ -33,23 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.20 An aid's errors reach the tutor
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19, from the LearnHarness comparison):
-  when an artifact's script fails, the side pane says so and offers a
-  button that sends the error's text to the tutor as the learner's
-  message, so the tutor can mend the aid. Today a failing aid shows blank
-  or half drawn, and the tutor never learns of it. The frame runs scripts
-  in an origin of its own (`architecture.md` section 10, "Artifacts");
-  how the error leaves it is the task's to settle, and the page must take
-  reports only from the artifact frame it shows. A message sent while a
-  question is open is judged for help as any other.
-- Done when: on `pnpm dev:fake`, an aid whose script throws shows the
-  error and the button, and pressing it sends the error as a message; a
-  test shows that a report from anything but the shown frame is ignored.
-
 ### 5.21 "I don't know" with a wrong key
 
 - Status: todo
@@ -104,14 +87,16 @@ and cheat sheets (stage 6).
 ### 5.23 Questions from inside an aid
 
 - Status: todo
-- Depends on: 5.20
+- Depends on: nothing
 - The user's decision (2026-11-19, from the DeepTutor comparison): an
   aid can put a question into the message box, such as a button "Ask
   about this" that fills in what the aid shows ("why does the series
   stop converging at $x = 1.2$?"); the learner sends it or not, and the
-  page never sends it by itself. It uses the channel 5.20 makes from the
-  aid's frame, taking messages only from the frame it shows. A message
-  sent while a question is open is judged for help as any other.
+  page never sends it by itself. It extends the channel by which an aid's
+  error leaves its frame (`ArtifactReport` in `src/shared/artifact.ts`,
+  the reporter in `http/artifact-frame.ts`, `frameReport` in
+  `src/web/artifact.ts`), taking messages only from the frame it shows. A
+  message sent while a question is open is judged for help as any other.
   `tutor.md` says when an aid offers one. DeepTutor does this with
   `sendPrompt(text)` and `data-prompt` (`web/lib/iframe-html.ts` in that
   project). To settle in the task: a length limit, and what happens to

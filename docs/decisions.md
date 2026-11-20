@@ -627,6 +627,24 @@ needs neither, since the record lies outside the workspace.
 - **No KaTeX in artifacts.** The app's KaTeX would need a route for its
   files and exceptions in the policy naming the server's host and port;
   MathML and Unicode text need neither, so the policy loads nothing.
+- **An aid's errors leave its frame by `postMessage`** (the user's
+  decision of 2026-11-19 that the tutor hears of them; the channel is the
+  agent's choice, open to change). The page cannot read a frame of
+  another origin, so the app adds a one-line reporter to the document it
+  serves to the frame, on the doctype's line so the aid's line numbers stay
+  the tutor's. It sends only the first error, as a drawing loop would
+  repeat one many times a second, and posts to `"*"`: the frame's parent
+  can only be the app's page (`frame-ancestors 'self'`). The page checks
+  `event.source` against the shown frame's window; the origin is `"null"`
+  for every sandboxed frame, so it cannot tell them apart.
+- **WebKit mutes an aid's errors.** In a frame with an opaque origin,
+  WebKit gives the `error` event only "Script error." with no line, for
+  errors at the top of an inline script, in a timer, in `eval` and in
+  `new Function`; only an error caught in the aid's own code keeps its
+  text. Chromium 157 gives each in full, with its line in the document.
+  So in WebKit the tutor learns only that the aid failed. Wrapping the
+  aid's callbacks in the reporter would get the text through for timers
+  and handlers, not for the top of a script; not built.
 
 ## Codex
 
