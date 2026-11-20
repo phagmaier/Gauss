@@ -1124,11 +1124,11 @@ take the outline.
   prompt offers "Quote" over it (`QuoteOffer.tsx`, `quote.ts`), which puts
   the passage after the draft as Markdown quote lines
   (`src/shared/quote.ts`) and focuses the box at its end. Each formula
-  comes back as its TeX between `$` or `$$`, whole when the selection
-  starts or ends inside it; lists, code and paragraphs keep their
-  Markdown, emphasis does not. A learner's message shows its quoted lines
-  as a quote, set as the tutor's text is, and the rest as typed; so does
-  the exported transcript. The tutor gets the message as sent.
+  comes back as its TeX, with whitespace intact and the formula whole
+  when the selection starts or ends inside it. Code, lists and tables
+  keep their structure; emphasis does not. The thread and transcript
+  export render `> ` lines outside the learner's fenced code as a quote
+  and the rest as typed. The tutor gets the message as sent.
   Review is a card in the thread, with how many questions,
   Skip and "Start the review", which holds the unit's own control until
   it is answered and becomes a marker once started or skipped; a review

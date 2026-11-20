@@ -16,16 +16,18 @@ export function quotableRange(selection: Selection | null): Range | undefined {
   return block?.contains(range.endContainer) === true ? range : undefined;
 }
 
-/** The passage a range covers, as Markdown with math as its TeX between dollars. */
+/** A quotable range as Markdown with math as its TeX between dollars. */
 export function passageSource(range: Range): string {
   const whole = range.cloneRange();
   const startMath = formulaAround(whole.startContainer);
   if (startMath !== null) whole.setStartBefore(startMath);
   const endMath = formulaAround(whole.endContainer);
   if (endMath !== null) whole.setEndAfter(endMath);
-  const out = passageWriter();
-  writeNodes(whole.cloneContents(), out);
-  return out.done();
+  // Walk the original elements. cloneContents drops enclosing code, lists and
+  // tables when both selection endpoints are inside them.
+  const common = whole.commonAncestorContainer;
+  const block = elementOf(common)?.closest(QUOTABLE);
+  return childrenSource(block ?? common, whole);
 }
 
 function elementOf(node: Node): Element | null {
@@ -42,109 +44,204 @@ function formulaAround(node: Node): Element | null {
 }
 
 /** Elements that stand as paragraphs of their own. */
-const PARAGRAPH = /^(?:P|DIV|H[1-6]|BLOCKQUOTE|UL|OL|TABLE|HR)$/;
+const PARAGRAPH = /^(?:P|DIV|H[1-6]|BLOCKQUOTE|HR)$/;
 
-function writeNodes(parent: Node, out: PassageWriter): void {
+function childrenSource(parent: Node, range: Range, inCell = false): string {
+  const out = passageWriter(inCell);
+  writeNodes(parent, range, out);
+  return out.done();
+}
+
+function writeNodes(parent: Node, range: Range, out: PassageWriter): void {
   for (const node of parent.childNodes) {
+    if (!range.intersectsNode(node)) continue;
     if (node.nodeType === Node.TEXT_NODE) {
-      out.text(node.nodeValue ?? "");
+      out.text(textSlice(node, range));
       continue;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) continue;
-    const el = node as Element;
+    const el = node as HTMLElement;
     if (el.classList.contains("katex-display")) {
-      out.lineBreak();
-      out.text(`$$${tex(el)}$$`);
-      out.lineBreak();
+      const source = tex(el);
+      const fence = delimiter(source, "$", /\$+/g, 2);
+      if (fence === "$$" && !/^\s|\s$|^\$|\$$|\n/.test(source)) {
+        out.around(`$$${source}$$`, 1);
+      } else {
+        out.around(`${fence}\n${source}\n${fence}`, 2);
+      }
     } else if (el.classList.contains("katex")) {
-      out.text(`$${tex(el)}$`);
+      out.verbatim(inlineMath(tex(el)));
     } else if (el.classList.contains("katex-error")) {
-      out.text(`$${el.textContent ?? ""}$`);
-    } else if (el.tagName === "BR" || el.tagName === "TR") {
-      out.lineBreak();
-      writeNodes(el, out);
-    } else if (el.tagName === "LI") {
-      out.lineBreak();
-      out.item();
-      writeNodes(el, out);
-      out.lineBreak();
-    } else if (el.tagName === "PRE") {
-      out.paragraphBreak();
-      out.verbatim(
-        `\`\`\`\n${(el.textContent ?? "").replace(/\n$/, "")}\n\`\`\``,
+      out.verbatim(inlineMath(el.textContent ?? ""));
+    } else if (el.tagName === "BR") {
+      out.break(1);
+    } else if (el.tagName === "OL" || el.tagName === "UL") {
+      out.around(
+        listSource(el, range),
+        el.parentElement?.tagName === "LI" ? 1 : 2,
       );
-      out.paragraphBreak();
+    } else if (el.tagName === "TABLE") {
+      out.around(tableSource(el as HTMLTableElement, range), 2);
+    } else if (el.tagName === "PRE") {
+      const source = selectedText(el, range).replace(/\n$/, "");
+      const fence = delimiter(source, "`", /`+/g, 3);
+      const language =
+        Array.from(el.firstElementChild?.classList ?? [])
+          .find((name) => name.startsWith("language-"))
+          ?.slice("language-".length) ?? "";
+      if (source !== "")
+        out.around(`${fence}${language}\n${source}\n${fence}`, 2);
     } else if (el.tagName === "CODE") {
-      out.text(`\`${el.textContent ?? ""}\``);
-    } else if (el.tagName === "TD" || el.tagName === "TH") {
-      writeNodes(el, out);
-      out.text(" ");
-    } else if (PARAGRAPH.test(el.tagName)) {
-      out.paragraphBreak();
-      writeNodes(el, out);
-      out.paragraphBreak();
+      const source = selectedText(el, range);
+      if (source !== "") {
+        const fence = delimiter(source, "`", /`+/g, 1);
+        out.code(inlineSpan(source, fence));
+      }
     } else {
-      writeNodes(el, out);
+      const paragraph = PARAGRAPH.test(el.tagName);
+      if (paragraph) out.break(2);
+      writeNodes(el, range, out);
+      if (paragraph) out.break(2);
     }
   }
 }
 
-/** A formula's TeX, its whitespace on one line. */
+/** TeX as written, including significant spaces and line endings. */
 function tex(el: Element): string {
-  const source = el.querySelector(
-    'annotation[encoding="application/x-tex"]',
-  )?.textContent;
-  return (source ?? "").replace(/\s+/g, " ").trim();
+  return (
+    el.querySelector('annotation[encoding="application/x-tex"]')?.textContent ??
+    ""
+  );
 }
 
-interface PassageWriter {
-  /** Text as the page shows it: its whitespace collapsed. */
-  text(value: string): void;
-  /** Text kept as it is, such as a code block. */
-  verbatim(text: string): void;
-  lineBreak(): void;
-  paragraphBreak(): void;
-  /** A list item's mark before the next text. */
-  item(): void;
-  done(): string;
+function inlineMath(source: string): string {
+  // Two dollars on their own line mean display math in Prose.
+  const fence = source.includes("$") ? delimiter(source, "$", /\$+/g, 3) : "$";
+  return inlineSpan(source, fence);
 }
 
-/**
- * Text written out as Markdown lines. Text collapses its whitespace, as the
- * page shows it. A break is owed until text follows, so breaks in a row make
- * one and none starts or ends the passage; a list item's mark is owed the
- * same way, so a paragraph inside the item stays on the mark's line.
- */
-function passageWriter(): PassageWriter {
+function delimiter(
+  source: string,
+  mark: string,
+  runs: RegExp,
+  minimum: number,
+): string {
+  let length = minimum;
+  for (const [run] of source.matchAll(runs)) {
+    length = Math.max(length, run.length + 1);
+  }
+  return mark.repeat(length);
+}
+
+function inlineSpan(source: string, fence: string): string {
+  // Markdown strips one space from each side if both sides are padded.
+  const pad =
+    source.startsWith(fence[0] ?? "") ||
+    source.endsWith(fence[0] ?? "") ||
+    (source.startsWith(" ") && source.endsWith(" ") && source.trim() !== "")
+      ? " "
+      : "";
+  return `${fence}${pad}${source}${pad}${fence}`;
+}
+
+function textSlice(node: Node, range: Range): string {
+  return (node.nodeValue ?? "").slice(
+    node === range.startContainer ? range.startOffset : 0,
+    node === range.endContainer ? range.endOffset : undefined,
+  );
+}
+
+/** Code should not go through the prose writer's whitespace handling. */
+function selectedText(node: Node, range: Range): string {
+  if (!range.intersectsNode(node)) return "";
+  if (node.nodeType === Node.TEXT_NODE) return textSlice(node, range);
+  let text = "";
+  for (const child of node.childNodes) text += selectedText(child, range);
+  return text;
+}
+
+function listSource(list: HTMLElement, range: Range): string {
+  const ordered = list.tagName === "OL";
+  let number = Number(list.getAttribute("start") ?? 1);
+  const items: string[] = [];
+  for (const item of list.children) {
+    const marker = ordered ? `${number++}. ` : "- ";
+    if (!range.intersectsNode(item)) continue;
+    const text = childrenSource(item, range);
+    if (text === "") continue;
+    const indent = " ".repeat(marker.length);
+    items.push(marker + text.replace(/\n(?=[^\n])/g, `\n${indent}`));
+  }
+  return items.join("\n");
+}
+
+function tableSource(table: HTMLTableElement, range: Range): string {
+  let first = Infinity;
+  let last = -1;
+  let heading: string[] | undefined;
+  const rows: string[][] = [];
+  for (const row of table.rows) {
+    if (!range.intersectsNode(row)) continue;
+    const cells: string[] = [];
+    for (const cell of row.cells) {
+      if (!range.intersectsNode(cell)) continue;
+      first = Math.min(first, cell.cellIndex);
+      last = Math.max(last, cell.cellIndex);
+      cells[cell.cellIndex] = childrenSource(cell, range, true);
+    }
+    if (row.parentElement === table.tHead) heading = cells;
+    else rows.push(cells);
+  }
+  if (last === -1) return "";
+  const columns = last - first + 1;
+  const line = (cells: readonly string[]) => `| ${cells.join(" | ")} |`;
+  const selectedLine = (cells: readonly string[]) =>
+    line(Array.from({ length: columns }, (_, i) => cells[first + i] ?? ""));
+  // GFM needs a header even when the selection contains only body cells.
+  return [
+    selectedLine(heading ?? []),
+    line(Array<string>(columns).fill("---")),
+    ...rows.map(selectedLine),
+  ].join("\n");
+}
+
+type PassageWriter = ReturnType<typeof passageWriter>;
+
+function passageWriter(inCell: boolean) {
   let out = "";
-  /** The break owed before the next text: 0 none, 1 a new line, 2 a blank line. */
-  let owed = 0;
-  let mark = "";
-  function put(text: string) {
-    out += (out === "" ? "" : "\n".repeat(owed)) + mark + text;
-    owed = 0;
-    mark = "";
+  let breaks = 0;
+  let space = false;
+  function verbatim(text: string) {
+    if (text === "") return;
+    if (out !== "") out += breaks ? "\n".repeat(breaks) : space ? " " : "";
+    out += text;
+    breaks = 0;
+    space = false;
+  }
+  function breakBefore(lines: number) {
+    breaks = Math.max(breaks, lines);
   }
   return {
     text(value: string) {
-      let text = value.replace(/\s+/g, " ");
-      if (out === "" || owed > 0 || mark !== "") text = text.trimStart();
-      if (text !== "") put(text);
+      const text = value.replace(/\s+/g, " ");
+      space ||= text.startsWith(" ");
+      const body = text.trim();
+      verbatim(inCell ? body.replace(/[\\|]/g, "\\$&") : body);
+      space ||= text.endsWith(" ");
     },
-    verbatim(text: string) {
-      put(text);
+    verbatim,
+    // GFM removes the table escape inside code spans, but not inside
+    // math spans. TeX from this cell already uses an escaped pipe.
+    code(text: string) {
+      verbatim(inCell ? text.replaceAll("|", "\\|") : text);
     },
-    lineBreak() {
-      if (mark === "") owed = Math.max(owed, 1);
+    break: breakBefore,
+    around(text: string, lines: number) {
+      if (text === "") return;
+      breakBefore(lines);
+      verbatim(text);
+      breakBefore(lines);
     },
-    paragraphBreak() {
-      if (mark === "") owed = 2;
-    },
-    item() {
-      mark = "- ";
-    },
-    done(): string {
-      return out.replace(/ +$/gm, "");
-    },
+    done: () => out,
   };
 }

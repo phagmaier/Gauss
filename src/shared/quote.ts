@@ -5,7 +5,9 @@
 
 /** A passage as a quote for the message box: each line `> `, then a blank line. */
 export function asQuote(passage: string): string {
-  const lines = passage.split("\n").map((line) => `> ${line}`.trimEnd());
+  const lines = passage
+    .split("\n")
+    .map((line) => (line === "" ? ">" : `> ${line}`));
   return `${lines.join("\n")}\n\n`;
 }
 
@@ -21,30 +23,65 @@ export interface MessagePart {
   text: string;
 }
 
-const QUOTE_LINE = /^ {0,3}> ?/;
+const QUOTE_PREFIX = "> ";
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
 /**
- * A message as its quoted runs of lines and the learner's own text between
- * them, with the blank lines around each run dropped. A message with no
- * quote is one part, unchanged.
+ * The composer's `> ` runs as quotes, with plain text kept as typed except
+ * for the blank lines separating the runs. Code fences in the learner's
+ * own text protect their contents from quote recognition.
  */
 export function messageParts(text: string): MessagePart[] {
   const lines = text.split("\n");
-  if (!lines.some((line) => QUOTE_LINE.test(line))) {
-    return [{ quote: false, text }];
-  }
   const parts: MessagePart[] = [];
-  for (const line of lines) {
-    const quote = QUOTE_LINE.test(line);
-    const last = parts.at(-1);
-    const content = quote ? line.replace(QUOTE_LINE, "") : line;
-    if (last?.quote === quote) last.text += `\n${content}`;
-    else parts.push({ quote, text: content });
+  let plainStart = 0;
+  let fence: string | undefined;
+  function addPlain(end: number) {
+    const plain = lines
+      .slice(plainStart, end)
+      .join("\n")
+      .replace(/^(?:[ \t]*\n)+|(?:\n[ \t]*)+$/g, "");
+    if (plain.trim() !== "") parts.push({ quote: false, text: plain });
   }
-  return parts
-    .map((part) => ({
-      quote: part.quote,
-      text: part.text.replace(/^(?:[ \t]*\n)+|(?:\n[ \t]*)+$/g, ""),
-    }))
-    .filter((part) => part.text.trim() !== "");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const [, marker = "", rest = ""] = FENCE.exec(line) ?? [];
+    if (fence !== undefined) {
+      if (
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        /^[ \t]*$/.test(rest)
+      ) {
+        fence = undefined;
+      }
+      continue;
+    }
+    if (marker !== "" && (marker[0] === "~" || !rest.includes("`"))) {
+      fence = marker;
+      continue;
+    }
+    if (!line.startsWith(QUOTE_PREFIX) || line.slice(2).trim() === "") {
+      continue;
+    }
+
+    let end = i + 1;
+    while (lines[end] === ">" || lines[end]?.startsWith(QUOTE_PREFIX)) end++;
+    // A bare marker separates paragraphs inside a quote, but on its own
+    // is literal learner text.
+    while (lines[end - 1] === ">") end--;
+    addPlain(i);
+    parts.push({
+      quote: true,
+      text: lines
+        .slice(i, end)
+        .map((quoted) => quoted.slice(2))
+        .join("\n"),
+    });
+    plainStart = end;
+    i = end - 1;
+  }
+  if (parts.length === 0) return [{ quote: false, text }];
+  addPlain(lines.length);
+  return parts;
 }

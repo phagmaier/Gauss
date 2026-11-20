@@ -8,9 +8,10 @@ export interface MdNode {
 }
 
 /**
- * `$$...$$` on a line of its own is display math, as writers mean it, though
- * Markdown reads it as inline math unless the dollars are on lines of their
- * own. The newlines around it are dropped, since the formula is a block.
+ * A line with an inline span delimited by exactly two dollars means display
+ * math. Longer inline delimiters can quote TeX containing dollar signs. The
+ * newlines around a display span are dropped, since the formula is a block.
+ * Markdown display fences on their own lines already render as display math.
  */
 export function displayMathLines() {
   return (tree: MdNode, file: { value: unknown }) => {
@@ -35,6 +36,7 @@ export function displayMathLines() {
           child.type === "inlineMath" &&
           at !== undefined &&
           source.startsWith("$$", at) &&
+          source[at + 2] !== "$" &&
           startsLine(children[i - 1]) &&
           endsLine(children[i + 1])
         );

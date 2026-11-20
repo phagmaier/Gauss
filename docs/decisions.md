@@ -1799,11 +1799,12 @@ redesign's.
   the tutor's. Math comes from KaTeX's TeX annotation, since the
   selection's text has each formula twice; a formula cut by the
   selection is taken whole, as half a formula has no source. In the
-  learner's message only the quoted lines are read as Markdown; their own
-  text stays as typed, as before. The conversion is tested in happy-dom
-  on the HTML `Prose` renders, with real KaTeX output; rejected: an
-  interface over both the DOM and hast trees, which would not have
-  tested the range's own handling.
+  learner's message, quotes use the composer's `> ` prefix outside
+  fenced code. A bare `>` between quote lines keeps the paragraph break;
+  on its own it stays literal, as do Python's `>>>` prompts. The
+  conversion is tested in happy-dom on the HTML `Prose` renders, with
+  real KaTeX output; an interface over both the DOM and hast trees would
+  not test how the range handles a selection.
 - **The library is grouped by where each course stands**: in progress,
   drafts, finished, newest first in each (the redesign, piece 21). A row
   has a status form per unit in place of the ticks, and how many

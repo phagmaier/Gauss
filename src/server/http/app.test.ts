@@ -898,7 +898,17 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
     { type: "phase", phase: "discuss", segment: 0 },
     {
       type: "learner",
-      text: "> The image of $e_1$ is the\n> first column.\n\nWhat about <one vector>?",
+      text: [
+        "```python",
+        ">>> 2 + 2",
+        "> copied output",
+        "```",
+        "",
+        "> The image of $e_1$ is the",
+        "> first column.",
+        "",
+        "What about <one vector>?",
+      ].join("\n"),
     },
     {
       type: "packages_requested",
@@ -1038,6 +1048,9 @@ test("downloads the recorded thread of a finished unit without opening a chat", 
   expect(before).toContain("Further reading");
   expect(before).toContain("Basis &amp; image");
   expect(before).toContain("examples/map.py");
+  expect(before).toContain(
+    "```python\n&gt;&gt;&gt; 2 + 2\n&gt; copied output\n```",
+  );
   expect(before).toMatch(
     /<blockquote><p>The image of <span class="katex">[\s\S]*?e_1<\/annotation>[\s\S]*? is the\nfirst column\.<\/p><\/blockquote>What about &lt;one vector&gt;\?<\/div>/,
   );
