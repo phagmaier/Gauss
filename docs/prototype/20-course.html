@@ -52,7 +52,7 @@ const CALC1 = [
   ['Limits', 'Find limits from tables, graphs and algebra.', [], [['Compute a limit from a table of values', 'kept'], ['Evaluate a limit by simplifying first', 'slip']]],
   ['The derivative', 'Define the derivative as a limit and read it as a slope.', [1], [['State the derivative as a limit of difference quotients', 'pass'], ['Read a derivative as the slope of a tangent', 'pass']]],
   ['Differentiation rules', 'Differentiate sums, products, quotients and compositions.', [2],
-    [['Differentiate a polynomial term by term', 'pass'], ['Use the power rule for any real exponent', 'pass'], ['Differentiate a product of two functions', 'pass'],
+    [['Differentiate a polynomial term by term', 'pass'], ['Use the power rule for any real exponent', 'over'], ['Differentiate a product of two functions', 'pass'],
      ['Differentiate a quotient of two functions', 'pass'], ['Differentiate a composition with the chain rule', 'not'], ['Pick out the inner and the outer function', 'not'],
      ['Differentiate an equation in x and y implicitly', 'not'], ['Find the derivative of an inverse from the original', 'not']]],
   ['Optimisation', 'Find the largest and smallest values of a function on an interval.', [3], null],
@@ -77,7 +77,7 @@ const CALC30 = TITLES30.map((t, i) => {
 const WORD = {pass: 'Passed', kept: 'Retained', slip: 'Slipping', att: 'Not passed yet', not: 'Not started', over: 'Overridden'};
 
 /* ---------------- state ---------------- */
-const st = {course: 'calc1', state: 'progress', fold: 'open', theme: 'frappe', label: 'mono', map: false, view: 'course', expanded: new Set()};
+const st = {course: 'calc1', state: 'progress', fold: 'started', theme: 'frappe', label: 'mono', map: false, view: 'course', unitOpen: new Map()};
 const $ = s => document.querySelector(s);
 const app = $('#app');
 const sg = s => `<i class="sg ${s}" aria-hidden="true"></i>`;
@@ -88,25 +88,33 @@ const SEND = '<svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke
 function course() {
   const big = st.course === 'calc30';
   let units = big ? CALC30 : CALC1;
-  if (st.state === 'finished') units = units.map(([t, g, p, o]) => [t, g, p, (o || [[`State the main idea of ${t.toLowerCase()}`], [`Use ${t.toLowerCase()} in a worked problem`]]).map(([s, x], j) => [s, x === 'slip' ? 'slip' : j === 1 && t.length % 3 === 0 ? 'kept' : 'pass'])]);
-  return {title: big ? 'Calculus 1 to 3' : 'Calculus I', units, now: big ? 5 : NOW1, due: big ? 4 : 3};
+  if (st.state === 'finished') {
+    units = units.map(([t, g, p, o]) => {
+      const objs = o || [[`State the main idea of ${t.toLowerCase()}`], [`Use ${t.toLowerCase()} in a worked problem`]];
+      return [t, g, p, objs.map(([s, x]) => [s, passedOnce(x) || x === 'over' ? x : 'pass'])];
+    });
+  }
+  return {title: big ? 'Calculus 1 to 3' : 'Calculus I', units, now: big ? 5 : NOW1, activeObjectives: big ? [1, 2] : [4, 5], due: big ? 4 : 3};
 }
 const passed = s => s === 'pass' || s === 'kept';
+const passedOnce = s => passed(s) || s === 'slip';
+const finished = s => s === 'pass' || s === 'over';
 function unitState(objs, n, c) {
   if (!objs) return 'not';
-  if (objs.every(([, s]) => passed(s) || s === 'slip')) return 'pass';
+  if (objs.every(([, s]) => passedOnce(s))) return 'pass';
+  if (objs.every(([, s]) => passedOnce(s) || s === 'over')) return 'over';
   return n === c.now ? 'now' : 'att';
 }
 
 /* ---------------- the course view ---------------- */
 function unitRow([t, goal, pre, objs], i, c) {
-  const n = i + 1, s = unitState(objs, n, c), fin = s === 'pass';
+  const n = i + 1, s = unitState(objs, n, c), fin = finished(s);
   const npass = objs ? objs.filter(([, x]) => passed(x)).length : 0;
   const count = objs ? `${npass} of ${objs.length}` : '';
-  const open = st.fold === 'open' ? true : st.expanded.has(n) || (st.state !== 'finished' && (s === 'now' || s === 'att'));
-  const nextIdx = s === 'now' || s === 'att' ? objs.findIndex(([, x]) => !passed(x)) : -1;
+  const open = st.fold === 'open' || (st.unitOpen.get(n) ?? (s === 'now' || s === 'att'));
+  const nextIdx = s === 'now' ? c.activeObjectives.find(j => !passed(objs[j][1])) : -1;
   const obs = objs ? `<ul class="ob">${objs.map(([o, x], j) => {
-    const isNext = j === nextIdx && s === 'now';
+    const isNext = j === nextIdx;
     return `<li class="${x === 'not' ? 'todo' : ''} ${isNext ? 'nx-ob' : ''}">${sg(isNext ? 'now' : x)}<span>${o}</span><span class="st ${isNext ? 'next' : x}">${isNext ? 'Next' : WORD[x]}</span></li>`;
   }).join('')}</ul>` : `<p class="cu-g">${goal} Its objectives are set when it starts.</p>`;
   const acts = [pre.length ? `<span>Builds on ${pre.length > 1 ? 'units ' + pre.join(' and ') : 'unit ' + pre[0]}</span>` : '',
@@ -119,7 +127,7 @@ function unitRow([t, goal, pre, objs], i, c) {
 }
 function courseView() {
   const c = course(), fin = st.state === 'finished';
-  const nUnits = c.units.length, nFin = fin ? nUnits : c.units.filter((u, i) => unitState(u[3], i + 1, c) === 'pass').length;
+  const nUnits = c.units.length, nFin = c.units.filter((u, i) => finished(unitState(u[3], i + 1, c))).length;
   const objs = c.units.flatMap(u => u[3] || []), nObj = objs.length, nPass = objs.filter(([, x]) => passed(x)).length;
   const nowU = c.units[c.now - 1];
   const card = fin
@@ -134,7 +142,7 @@ function courseView() {
       <div class="acts"><button class="tb" type="button" data-act="map" aria-pressed="${st.map}">${MAP}Course map</button><button class="tb" type="button">What I know</button></div></header>
     <div class="pg-scroll"><div class="pg-col">
       <h1 class="title">${c.title}</h1>
-      <div class="meta"><span><b>${nUnits}</b> units</span><span><b>${nFin}</b> finished</span><span><b>${fin ? nObj : nPass}</b> of ${nObj} objectives passed${fin ? '' : ' in the units started'}</span></div>
+      <div class="meta"><span><b>${nUnits}</b> units</span><span><b>${nFin}</b> finished</span><span><b>${nPass}</b> of ${nObj} objectives passed${fin ? '' : ' in the units started'}</span></div>
       <div class="duebar"><span class="due-dot"></span><span><b style="font-weight:500">${c.due} objectives</b> <span class="k">are due for review</span></span><button class="btn sm quiet" type="button">Review now</button></div>
       ${card}
       <div class="sec"><span class="lbl">Units</span><div class="acts"><button class="link" type="button" data-act="change">Change the curriculum</button></div></div>
@@ -142,11 +150,10 @@ function courseView() {
     </div></div>${st.map ? mapPane(c) : ''}</div>`;
 }
 function mapPane(c) {
-  const st2 = (u, i) => { const s = unitState(u[3], i + 1, c); return st.state === 'finished' ? 'pass' : s; };
   return `<aside class="pane-side" aria-label="Course map"><div class="pane-h"><span class="lbl">Course map</span><span class="title">${c.title}</span>
     <button class="pane-x" type="button" data-act="map" aria-label="Close">✕</button></div><div class="pane-b">
-    <div class="legend">${[['pass', 'Finished'], ['now', 'Continue here'], ['att', 'Started'], ['not', 'Not started']].map(([k, w]) => `<span>${sg(k)}${w}</span>`).join('')}</div>
-    <ul class="dl">${c.units.map((u, i) => { const s = st2(u, i); return `<li class="${s === 'now' ? 'here' : s === 'not' ? 'todo' : ''}"><span class="n">${i + 1}</span>${sg(s)}<span class="t">${u[0]}</span><span class="pre">${u[2].length ? 'needs ' + u[2].join(', ') : ''}</span></li>`; }).join('')}</ul>
+    <div class="legend">${[['pass', 'Finished'], ['over', 'Overridden'], ['now', 'Continue here'], ['att', 'Started'], ['not', 'Not started']].map(([k, w]) => `<span>${sg(k)}${w}</span>`).join('')}</div>
+    <ul class="dl">${c.units.map((u, i) => { const s = unitState(u[3], i + 1, c); return `<li class="${s === 'now' ? 'here' : s === 'not' ? 'todo' : ''}"><span class="n">${i + 1}</span>${sg(s)}<span class="t">${u[0]}</span><span class="pre">${u[2].length ? 'needs ' + u[2].join(', ') : ''}</span></li>`; }).join('')}</ul>
     <p class="proto">The pane shows the diagram when it is wide enough for distinct lines (piece 19); this is the numbered form it falls back to.</p></div></aside>`;
 }
 
@@ -179,10 +186,20 @@ function render() {
 document.addEventListener('click', e => {
   const t = e.target.closest?.('[data-act],[data-unit],[data-bar]');
   if (!t) return;
-  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; st.expanded.clear(); render(); return; }
-  if (t.dataset.unit) { if (st.fold === 'open') return; const n = +t.dataset.unit; const li = t.parentElement;
-    if (li.classList.contains('fold')) st.expanded.add(n); else st.expanded.delete(n);
-    li.classList.toggle('fold'); t.setAttribute('aria-expanded', !li.classList.contains('fold')); return; }
+  if (t.dataset.bar) {
+    const [k, v] = t.dataset.bar.split(':');
+    if ((k === 'course' || k === 'state') && st[k] !== v) st.unitOpen.clear();
+    st[k] = v;
+    render();
+    return;
+  }
+  if (t.dataset.unit) {
+    if (st.fold === 'open') return;
+    const open = !t.parentElement.classList.toggle('fold');
+    st.unitOpen.set(+t.dataset.unit, open);
+    t.setAttribute('aria-expanded', open);
+    return;
+  }
   const act = t.dataset.act;
   if (act === 'map') { st.map = !st.map; render(); }
   if (act === 'change') { st.view = 'change'; st.map = false; render(); }

@@ -1836,9 +1836,9 @@ entries below say which parts are the redesign's.
   on every unit not started and under the course card's "Start unit N", so
   it is seen before Start is pressed. Skipped segments stay in the outline,
   struck through, and show as hollow ticks in the top line. "Skip the
-  gate" partway asks with a text of its own: the answers so far count, the
-  open question is dropped, and leaving instead lets the gate pick up
-  later (the redesign, piece 19).
+  gate" partway asks with a text of its own: the answers so far count,
+  any open question is dropped, and leaving instead lets the gate pick
+  up where the learner left off (the redesign, piece 19).
 - **Notes are offered in a section of the closing card** (piece 17), drawn
   quieter than the card's next step; the reader is the writer's page in a
   frame under the top line. What a unit's notes look like is the writer's;

@@ -63,18 +63,20 @@ and cheat sheets (stage 6).
 - Depends on: 5.30
 - One component draws an objective's or a unit's status as a form
   (`decisions.md`, "Page design", "Status shows by form as well as
-  colour"), from `ObjectiveStatus` or `UnitStatus`, and "current": the
-  first objective not passed of the segment in progress, and the unit the
-  course view's card leads to. Which one is current is a pure function
-  beside its view, tested. It replaces the coloured words alone in the
-  closing card's rows, "What I know", the course view's unit list and the
-  diagram with its numbered fallback; 5.32, 5.33 and 5.39 use it in their
-  views.
-- Done when: a test of the current pick on hand-made progress (the first
-  objective not passed of the segment in progress; none in a finished
-  unit); on `pnpm dev:fake` each of the seven forms shows in those views,
-  from the seeded courses (Calculus I has retained and slipping,
-  Probability overridden).
+  colour"), from `ObjectiveStatus` or `UnitStatus`, and "current". The
+  session and course view use the same pure rule: the first objective
+  not passed among those the active segment teaches, in segment order.
+  This respects what testing out skipped and uses the extra segment's
+  own objectives; no active segment means no current objective. The
+  current unit is the one the course view's card leads to. The form
+  accompanies the status words in the closing card's rows, "What I know",
+  the course view's unit list and the diagram with its numbered fallback;
+  5.32, 5.33 and 5.39 use it in their views.
+- Done when: tests on hand-made progress pick from the active segment,
+  not an earlier overridden objective or one skipped by testing out,
+  and pick none in a finished unit. On `pnpm dev:fake` each of the seven
+  forms shows in those views, from the seeded courses (Calculus I has
+  retained and slipping, Probability overridden).
 
 ### 5.32 Segment headings, phase hairlines, the verdict line
 
@@ -158,18 +160,16 @@ and cheat sheets (stage 6).
 - Depends on: nothing
 - `SKIP_GATE_ASKS` (`src/web/session.ts`) is written for the gate's card.
   Partway, "Skip the gate" asks with a second text, settled in piece 19:
-  "Skip the rest of the gate? Your N answers so far count, and the open
-  question is dropped. Nothing more is marked retained, and the gate is
-  not offered again. To stop for now instead, just leave: the gate waits,
-  and picks up at this question when you come back." Its buttons read
-  "Skip the rest of the gate" and "Keep going". First, check in the engine
-  that leaving mid-gate keeps the open question for the next sitting;
-  `architecture.md` section 4 says only that the card waits across
-  sittings. If the engine does not keep the question, the text says what
-  it does.
+  "Skip the rest of the gate? Your N answers so far count. Any open
+  question is dropped. Nothing more is marked retained, and the gate
+  is not offered again. To stop for now instead, just leave: the gate
+  picks up where you left off when you come back." Its buttons read
+  "Skip the rest of the gate" and "Keep going". The wording covers an
+  open question and a detour: the engine restores whichever was waiting
+  (`architecture.md` section 4, "Assessments").
 - Done when: a test shows the partway text with the answer count (one
   answer, and several), and the card's text unchanged; on `pnpm dev:fake`,
-  "Skip the gate" after one gate answer shows it.
+  "Skip the gate" after one gate answer and during a detour shows it.
 
 ### 5.37 The course view down to objectives
 
@@ -184,20 +184,24 @@ and cheat sheets (stage 6).
   is "Change the curriculum"; 5.38 makes both work. Each unit is a heading
   with "Unit N", its title, "k of n passed" and its form. A started unit
   lists its objectives with their forms and words, and "Next" in the
-  accent, with the ringed form, marks the first not passed, in plan
-  order, of the unit the card leads to. A unit not started shows its goal,
-  "Its objectives are set when it starts", Start and Test out. A finished
-  unit has Open, and Notes or "Write notes". Only units in progress are
-  open; the others are one line each and open when clicked, staying open
-  while the page lives. The top line has "Course map", the side pane as
-  "Show the diagram" opens it today, and "What I know". The course
-  response gains each started unit's objective statuses (`UnitProgress`
-  in `src/shared/library.ts`), derived, never stored. The objective rows
-  replace the retained and slipping counts under a finished unit.
+  accent, with the ringed form, marks the current objective (5.31) of
+  the unit the card leads to. The course and unit counts include only
+  passed and retained objectives, even when finished. A unit not started
+  shows its goal, "Its objectives are set when it starts", Start and
+  Test out. A finished unit has Open, and Notes or "Write notes". Only
+  units in progress open by default. Manual opening and folding survive
+  opening and closing the course map. The top line has "Course map",
+  which opens the side pane as "Show the diagram" does today, and
+  "What I know". The course response gains each started unit's objective
+  statuses (`UnitProgress` in `src/shared/library.ts`), derived, never
+  stored. The objective rows replace the retained and slipping counts
+  under a finished unit.
 - Done when: tests on hand-made progress give the objective statuses and
-  the "Next" pick. On `pnpm dev:fake`, Calculus I and Calculus 1 to 3 read
-  as piece 20 and fold as picked, and Start, Test out and Continue still
-  work.
+  show that "Next" stays in the active segment after an earlier override.
+  A finished course with slipping and overridden objectives shows counts
+  consistent with its unit rows. On `pnpm dev:fake`, Calculus I and
+  Calculus 1 to 3 read as piece 20, retain manual folding across map
+  toggles, and Start, Test out and Continue still work.
 
 ### 5.38 Planning from the course view
 
@@ -410,16 +414,21 @@ and cheat sheets (stage 6).
     segment's teaching and its check;
   - a "Review now" button beside 5.24's due count, in the course view,
     starts a review when something is due. Review runs in a unit's
-    thread; which unit's, when the course has several open, is the task's
-    to settle.
+    thread. In a finished course, use the thread of the unit that owns
+    the first objective in review order. Allow the requested review
+    there, without offering it automatically or restarting the unit's
+    teaching or gate. When several units are in progress, which thread
+    to use is the task's to settle.
   The user had first asked for review on request only; they took the
   card, rarer, because a mode one has to open tends not to be opened
   (their own finding of 2026-11-17).
 - Done when: tests on hand-made evidence logs show no card when nothing is
-  due, and a card held mid-segment offered once the segment closes; on
-  `pnpm dev:fake`, "Review now" starts a review from the course view.
-  `architecture.md` section 4 and `decisions.md`, "Review", change with
-  it.
+  due, and a card held mid-segment offered once the segment closes. A
+  review requested from a finished course uses the expected unit's thread,
+  records an answer, and leaves the unit finished. On `pnpm dev:fake`,
+  "Review now" starts a review from the course view, including for a
+  finished course with objectives due. `architecture.md` section 4 and
+  `decisions.md`, "Review", change with it.
 
 ### 5.26 Moving on from the discussion
 

@@ -61,7 +61,7 @@ const COURSE = 'Calculus I';
 const UNIT = {n: 3, of: 8, title: 'Differentiation rules'};
 // segment status: past, now, todo. Objective status: pass, kept, slip, att, not, now, over.
 const SEGS = [
-  {t: 'Power and sum rules', objs: [['Differentiate a polynomial term by term', 'pass'], ['Use the power rule for any real exponent', 'pass']]},
+  {t: 'Power and sum rules', objs: [['Differentiate a polynomial term by term', 'pass'], ['Use the power rule for any real exponent', 'over']]},
   {t: 'Product and quotient rules', objs: [['Differentiate a product of two functions', 'pass'], ['Differentiate a quotient of two functions', 'pass']]},
   {t: 'The chain rule', objs: [['Differentiate a composition with the chain rule', 'now'], ['Pick out the inner and the outer function', 'not']]},
   {t: 'Implicit differentiation', objs: [['Differentiate an equation in x and y implicitly', 'not']]},
@@ -86,7 +86,7 @@ const CHEV = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke
 const sg = s => `<i class="sg ${s}" aria-hidden="true"></i>`;
 const gate = () => st.moment === 'gate';
 const segState = i => gate() ? 'past' : i < 2 ? 'past' : i === 2 ? 'now' : 'todo';
-const objState = s => gate() ? 'pass' : s;
+const objState = s => gate() && s !== 'over' ? 'pass' : s;
 
 /* ---------------- the thread ---------------- */
 function segHead(i) {
@@ -124,8 +124,8 @@ const SEG3 = segHead(2) + ph('Teach') + tutor(LESSON) + DISCUSS;
 
 function gateTail() {
   const confirm = st.skipAsk
-    ? `<div class="confirm"><div class="says"><p>Skip the rest of the gate? Your 2 answers so far count, and the open question is dropped. Nothing more is marked retained, and the gate is not offered again.</p>
-        <p>To stop for now instead, just leave: the gate waits, and picks up at this question when you come back.</p></div>
+    ? `<div class="confirm"><div class="says"><p>Skip the rest of the gate? Your 2 answers so far count. Any open question is dropped. Nothing more is marked retained, and the gate is not offered again.</p>
+        <p>To stop for now instead, just leave: the gate picks up where you left off when you come back.</p></div>
         <button class="btn sm quiet" type="button" data-act="skip-no">Skip the rest of the gate</button><button class="link" type="button" data-act="skip-no">Keep going</button></div>`
     : `<button class="link" type="button" data-act="skip">Skip the gate</button>`;
   return segHead(3) + ph('Teach') + tutor(String.raw`<p>When $y$ is tied to $x$ by an equation rather than given as a formula, differentiate both sides and let the chain rule handle every $y$.</p>`)
@@ -157,7 +157,8 @@ function topLine() {
 function outline() {
   const rows = SEGS.map((s, i) => {
     const k = segState(i);
-    const right = k === 'now' ? 'You are here' : k === 'past' ? `${s.objs.length} of ${s.objs.length} passed` : '';
+    const passed = s.objs.filter(([, x]) => ['pass', 'kept'].includes(objState(x))).length;
+    const right = k === 'now' ? 'You are here' : k === 'past' ? `${passed} of ${s.objs.length} passed` : '';
     const tag = k === 'todo' ? 'div' : 'button type="button"';
     return `<li><${tag} class="ol-seg ${k}" data-seg="${i}"><span class="n">${i + 1}</span><span class="t">${s.t}</span><span class="r">${right}</span>
       <ul class="ol-objs">${s.objs.map(([o, x]) => `<li>${sg(objState(x))}<span>${o}</span></li>`).join('')}</ul></${tag.split(' ')[0]}></li>`;
