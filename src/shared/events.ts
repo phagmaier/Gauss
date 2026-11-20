@@ -523,6 +523,13 @@ export type LearnerMessage = z.infer<typeof LearnerMessage>;
 export const IntakeStarted = z.object({ intakeId: z.string() });
 export type IntakeStarted = z.infer<typeof IntakeStarted>;
 
+/**
+ * The answer to "Change the curriculum": the id of the course's planning
+ * conversation (task 5.38), which lasts only as long as the server runs.
+ */
+export const PlanningOpened = z.object({ planningId: z.string() });
+export type PlanningOpened = z.infer<typeof PlanningOpened>;
+
 /** The learner approves the proposal with this revision number. */
 export const Approval = z.object({
   revision: z.number().int().positive(),

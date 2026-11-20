@@ -28,6 +28,7 @@ import {
   type FakeTurn,
 } from "../backends/fake.ts";
 import { givenOrder } from "../engine/choice-order.ts";
+import { createCoursePlannings } from "../engine/course-planning.ts";
 import { createDisputeJudge } from "../engine/dispute-judge.ts";
 import { createDisputes } from "../engine/disputes.ts";
 import { createGrader } from "../engine/grading.ts";
@@ -146,6 +147,13 @@ function setUp(
   const app = createApp({
     dataRoot,
     intakes,
+    plannings: createCoursePlannings({
+      backend,
+      systemPrompt: "You are a test course planner.",
+      dataRoot,
+      units,
+      backup,
+    }),
     units,
     disputes,
     notes,

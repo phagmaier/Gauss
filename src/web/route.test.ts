@@ -25,6 +25,11 @@ test.each([
     "/courses/linear-algebra/what-i-know",
     { view: "known", courseId: "linear-algebra" },
   ],
+  [
+    "/courses/linear-algebra/planning",
+    { view: "planning", courseId: "linear-algebra" },
+  ],
+  ["/courses/linear-algebra/planning/more", { view: "library" }],
   ["/courses/linear-algebra/what-i-know/more", { view: "library" }],
   ["/intakes/3eb7af09/what-i-know", { view: "library" }],
   ["/courses/linear-algebra/units/%E0%A4", { view: "library" }],

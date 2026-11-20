@@ -49,9 +49,15 @@ export type CurriculumChange = z.infer<typeof CurriculumChange>;
 
 /**
  * How a proposed change ended. "kept": the learner kept the current
- * curriculum; "withdrawn": the unit ended with the proposal still waiting.
+ * curriculum; "withdrawn": the unit ended with the proposal still waiting;
+ * "replaced": the course's planner proposed another in its place (task 5.38).
  */
-export const CurriculumChangeOutcome = z.enum(["applied", "kept", "withdrawn"]);
+export const CurriculumChangeOutcome = z.enum([
+  "applied",
+  "kept",
+  "withdrawn",
+  "replaced",
+]);
 export type CurriculumChangeOutcome = z.infer<typeof CurriculumChangeOutcome>;
 
 /** The learner's answer to a proposed change, as the page posts it. */

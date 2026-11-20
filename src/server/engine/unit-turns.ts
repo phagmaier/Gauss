@@ -1032,8 +1032,9 @@ export function curriculumNote(
       );
     case "changed":
       return (
-        "The learner applied a change to this course's curriculum in " +
-        "another unit. The course's units are now these, in order; they " +
+        "The learner applied a change to this course's curriculum, in " +
+        "another unit or from the course view. The course's units are now " +
+        "these, in order; they " +
         `replace the list in your instructions:${list}`
       );
     case "kept":

@@ -8,7 +8,7 @@
 // writes and reads each unit's handoff note and the misconception log (task 5.7),
 // and reads and writes the learner profile, writing it too when a curriculum
 // that proposes one is approved (task 5.8), and applies the changes to an
-// approved curriculum that the learner accepts (task 5.12).
+// approved curriculum that the learner accepts (tasks 5.12 and 5.38).
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -199,6 +199,15 @@ export interface DataRoot {
         | { delivered: readonly CurriculumDecision[] };
     },
   ): Promise<State>;
+  /**
+   * Replaces the approved curriculum's units with these, each kept unit with
+   * its plan: a change applied from the course's planning conversation (task
+   * 5.38), which no unit's position holds. Throws CurriculumChangeRefused,
+   * writing nothing, if it would drop a unit that has started or breaks the
+   * curriculum's rules. A curriculum that has these units already is left
+   * as it is, so an Apply whose write reported an error can be repeated.
+   */
+  changeCurriculum(id: string, units: readonly Unit[]): Promise<void>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
   appendEvidence(id: string, entry: EvidenceEntry): Promise<void>;
   /** The evidence, oldest first, without a last line a crash cut short. */
@@ -464,6 +473,35 @@ export function openDataRoot(options: {
   }
 
   /**
+   * The approved curriculum with these units, each kept unit with its plan.
+   * Throws CurriculumChangeRefused if the change would drop a unit that has
+   * started, by the plans and the state, or breaks the curriculum's rules.
+   * The caller holds the state and curriculum locks.
+   */
+  function changedCurriculum(
+    id: string,
+    current: Curriculum | null | undefined,
+    state: State,
+    units: readonly Unit[],
+  ): Curriculum {
+    if (current?.approval.status !== "approved") {
+      throw new Error(`The curriculum of "${id}" is not approved.`);
+    }
+    const refusal = droppedStarted(current.units, units, state);
+    if (refusal !== undefined) throw new CurriculumChangeRefused(refusal);
+    const parsed = Curriculum.safeParse({
+      ...current,
+      units: withPlans(current.units, units),
+    });
+    if (!parsed.success) {
+      throw new CurriculumChangeRefused(
+        parsed.error.issues.map((issue) => issue.message).join("\n"),
+      );
+    }
+    return parsed.data;
+  }
+
+  /**
    * Writes the changed curriculum, each kept unit with its plan, then the
    * state with the decision; curriculum.json holding the change commits it.
    * Holds the state, curriculum and snapshot locks.
@@ -476,23 +514,14 @@ export function openDataRoot(options: {
     change: CurriculumChange,
   ): Promise<State> {
     const file = courseFile(id, "curriculum.json");
-    const current = (await readCourse(id))?.curriculum;
-    if (current?.approval.status !== "approved") {
-      throw new Error(`The curriculum of "${id}" is not approved.`);
-    }
-    const refusal = droppedStarted(current.units, change.units, after);
-    if (refusal !== undefined) throw new CurriculumChangeRefused(refusal);
-    const parsed = Curriculum.safeParse({
-      ...current,
-      units: withPlans(current.units, change.units),
-    });
-    if (!parsed.success) {
-      throw new CurriculumChangeRefused(
-        parsed.error.issues.map((issue) => issue.message).join("\n"),
-      );
-    }
+    const changed = changedCurriculum(
+      id,
+      (await readCourse(id))?.curriculum,
+      after,
+      change.units,
+    );
     try {
-      await writeJson(file, Curriculum, parsed.data);
+      await writeJson(file, Curriculum, changed);
       await writeJson(path, State, after);
     } catch (error) {
       // An atomic write can report a directory sync error after renaming.
@@ -1029,6 +1058,29 @@ export function openDataRoot(options: {
         const settled = settleApplied(state, stored.curriculum?.units);
         await writeJson(path, State, settled);
         return settled;
+      });
+    },
+
+    async changeCurriculum(id, units) {
+      const path = courseFile(id, "state.json");
+      const file = courseFile(id, "curriculum.json");
+      // The state's lock first, as writePosition takes it, so no unit's
+      // position or plan can start one between the check and the write.
+      await withFileLock(path, async () => {
+        const stored = await existingCourse(id);
+        const state = await recoverCurriculum(
+          path,
+          await recoverStyle(id, path),
+          stored.curriculum,
+        );
+        await withCurriculumLock(file, () =>
+          withFileLock(courses, async () => {
+            const current = (await readCourse(id))?.curriculum;
+            const changed = changedCurriculum(id, current, state, units);
+            if (current != null && sameUnits(current.units, units)) return;
+            await writeJson(file, Curriculum, changed);
+          }),
+        );
       });
     },
 

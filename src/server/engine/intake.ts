@@ -455,8 +455,8 @@ function reviewTurn(
   );
 }
 
-/** One message of the intake's conversation: the learner's, or the planner's reply. */
-interface Said {
+/** One message of a planning conversation: the learner's, or the planner's reply. */
+export interface Said {
   from: "learner" | "planner";
   text: string;
 }
@@ -467,7 +467,7 @@ interface Said {
  * wrote. Composed when that message's turn is sent, so every turn before it
  * has ended; messages the learner sent after it come as turns of their own.
  */
-function conversationBefore(
+export function conversationBefore(
   events: readonly PageEvent[],
   learnerId: string,
 ): Said[] {

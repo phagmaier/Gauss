@@ -10,6 +10,7 @@ import { getRequestListener } from "@hono/node-server";
 import { createServer as createViteServer } from "vite";
 import type { TutorBackend } from "./backends/backend.ts";
 import { createCodeRunner } from "./engine/code-run.ts";
+import { createCoursePlannings } from "./engine/course-planning.ts";
 import { createDisputeJudge } from "./engine/dispute-judge.ts";
 import { createDisputes } from "./engine/disputes.ts";
 import { createGrader } from "./engine/grading.ts";
@@ -35,7 +36,7 @@ const host = "127.0.0.1";
  * until the process is interrupted, and then closes every session.
  */
 export async function serve(options: {
-  /** Runs the intakes, the planning of units and their tutors. */
+  /** Runs the intakes, the planning conversations, the planning of units and their tutors. */
   backend: TutorBackend;
   /** Grades written answers, and math answers the symbolic check does not settle. */
   graderBackend: TutorBackend;
@@ -64,6 +65,7 @@ export async function serve(options: {
     disputePrompt,
     handoffPrompt,
     notesPrompt,
+    coursePlannerPrompt,
   ] = await Promise.all([
     prompt("planner.md"),
     prompt("unit-planner.md"),
@@ -73,6 +75,7 @@ export async function serve(options: {
     prompt("dispute-judge.md"),
     prompt("handoff.md"),
     prompt("notes.md"),
+    prompt("course-planner.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
   // The engine's commands run in it (task 3.2); it says once if it cannot,
@@ -134,6 +137,13 @@ export async function serve(options: {
         }
       : {}),
   });
+  const plannings = createCoursePlannings({
+    backend,
+    systemPrompt: coursePlannerPrompt,
+    dataRoot,
+    units,
+    backup,
+  });
   const disputes = createDisputes({
     dataRoot,
     units,
@@ -154,6 +164,7 @@ export async function serve(options: {
     createApp({
       dataRoot,
       intakes,
+      plannings,
       units,
       disputes,
       notes,
@@ -184,6 +195,7 @@ export async function serve(options: {
     server.closeAllConnections();
     await Promise.allSettled([
       intakes.close(),
+      plannings.close(),
       units.close(),
       notes.close(),
       vite.close(),

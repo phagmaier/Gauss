@@ -68,6 +68,7 @@ export function CurriculumCard(props: {
           withdrawn: (
             <span className="dk">Not applied: the unit ended first</span>
           ),
+          replaced: <span className="dk">Replaced by the proposal below</span>,
         }[item.outcome]
       );
     return (

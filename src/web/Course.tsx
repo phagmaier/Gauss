@@ -9,7 +9,9 @@
 // not finished asks once first (task 2.12). "Test out" beside Start, and
 // under the card's "Start unit N", asks once, saying what the test is, then
 // opens the unit with its test (task 5.6, piece 16). Finished units offer
-// notes (task 5.9, piece 17).
+// notes (task 5.9, piece 17). "Change the curriculum" above the units, and
+// a finished course's "Plan what comes next", open the course's planning
+// conversation (task 5.38).
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { StoredUnit } from "../shared/curriculum.ts";
@@ -246,7 +248,9 @@ export function Course(props: { courseId: string }) {
                 </p>
               )}
               {finished ? (
-                <FinishedCard />
+                <FinishedCard
+                  onPlan={() => navigate(paths.planning(courseId))}
+                />
               ) : leadsTo === null ? null : (
                 <LeadCard
                   lead={leadsTo}
@@ -268,6 +272,11 @@ export function Course(props: { courseId: string }) {
                 <>
                   <div className="cv-hrow cv-sec">
                     <h2 className="pg-h">Units</h2>
+                    {approved ? (
+                      <Link to={paths.planning(courseId)} className="textbtn">
+                        Change the curriculum
+                      </Link>
+                    ) : null}
                   </div>
                   {draft ? (
                     <UnitList units={curriculum.units} selected={selected} />
@@ -476,16 +485,18 @@ function UnitEntry(props: {
 }
 
 /** The card on a finished course (piece 20). */
-function FinishedCard() {
+function FinishedCard(props: { onPlan(): void }) {
   return (
     <section className="cn" aria-label="Course finished">
       <div>
         <div className="cn-k">Course finished</div>
         <div className="cn-t">Every unit is finished</div>
+        <div className="cn-g">
+          To go further, plan more units: the planner sees what you know.
+        </div>
       </div>
       <div className="cn-go">
-        {/* Planning from the course view comes next (plan task 5.38). */}
-        <button type="button" className="btn" disabled>
+        <button type="button" className="btn" onClick={props.onPlan}>
           Plan what comes next
         </button>
       </div>

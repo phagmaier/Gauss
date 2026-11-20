@@ -60,6 +60,13 @@
 // - Curriculum (task 5.12): a message with "/amend" in it proposes the
 //   course's latest units, with a practice unit added at the end that
 //   builds on the unit taught. The engine refuses it while a question is open.
+// - Planning from the course view (task 5.38; amend_curriculum without
+//   ask_question): asks a question in reply to the learner's first message,
+//   and in reply to the next proposes the course's units with two more
+//   after the last, "Next stretch, part 1" and "part 2". While that
+//   proposal waits, messages are answered in text; "/revise" proposes one
+//   unit more instead of two. "/drop" in any message proposes the units
+//   without the first, which the engine refuses once that unit has started.
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -167,9 +174,10 @@ export function scriptedPlan(unitId: string): Plan {
 function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   const { header, body } = parts(turn.text);
   const has = (tool: string) => session.tools.some((t) => t.name === tool);
-  const course = has("amend_curriculum")
-    ? listedCourse(session, header)
-    : undefined;
+  const course =
+    has("amend_curriculum") && has("ask_question")
+      ? listedCourse(session, header)
+      : undefined;
   if (/(^|\s)\/hold\b/.test(body)) {
     return [
       { text: "Holding this turn open until you stop it." },
@@ -177,6 +185,11 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     ];
   }
   if (has("plan_unit")) return planning(header);
+  // The course's planner has the change tool, and no questions to ask.
+  const amend = session.tools.find((t) => t.name === "amend_curriculum");
+  if (amend !== undefined && !has("ask_question")) {
+    return coursePlanning(header, body, amend);
+  }
   const propose = session.tools.find((t) => t.name === "propose_curriculum");
   if (propose !== undefined) return intake(header, body, propose);
   const tools = session.workspace !== undefined;
@@ -379,6 +392,83 @@ function intake(
       text: "A scripted reply. Say /revise for a revised curriculum, or approve the proposal.",
     },
   ];
+}
+
+// --- Planning from the course view ----------------------------------------
+
+/**
+ * Each planning conversation's latest units, from the last turn that gave
+ * the course, by its amend_curriculum tool, which its sessions share.
+ */
+const plannedUnits = new WeakMap<TeachingTool, Unit[]>();
+
+function coursePlanning(
+  header: string,
+  body: string,
+  tool: TeachingTool,
+): FakeStep[] {
+  const given = /<course>\n[^\n]*\n(\[.*\])\n/.exec(body)?.[1];
+  if (given !== undefined) {
+    plannedUnits.set(
+      tool,
+      (JSON.parse(given) as Unit[]).map(
+        ({ id, title, goal, prerequisites }) => ({
+          id,
+          title,
+          goal,
+          prerequisites,
+        }),
+      ),
+    );
+  }
+  const units = plannedUnits.get(tool) ?? [];
+  const last = units.at(-1)?.id;
+  const added = (count: number) => {
+    const ids = new Set(units.map((unit) => unit.id));
+    const made: Unit[] = [];
+    for (let n = 1; made.length < count; n += 1) {
+      const id = `next-${n}`;
+      if (ids.has(id)) continue;
+      made.push({
+        id,
+        title: `Next stretch, part ${made.length + 1}`,
+        goal: "Go on from where the course ended, in a small example.",
+        prerequisites: [made.at(-1)?.id ?? last].filter((p) => p !== undefined),
+      });
+    }
+    return made;
+  };
+  const amend = (proposed: Unit[], why: string): FakeStep[] => [
+    { text: "Here is a scripted change to the course's units." },
+    { call: "amend_curriculum", input: { units: proposed, why } },
+  ];
+  if (/(^|\s)\/drop\b/.test(body)) {
+    return amend(units.slice(1), "You asked to drop the first unit.");
+  }
+  if (header.startsWith("[Start of a planning conversation")) {
+    return [
+      {
+        text:
+          "A scripted question: shall I add the next stretch, two units " +
+          "after the last? When you reply, I will propose it on a card, " +
+          'which you can apply or answer with "Keep the current one".',
+      },
+    ];
+  }
+  if (/(^|\s)\/revise\b/.test(body)) {
+    return amend([...units, ...added(1)], "You asked for a shorter stretch.");
+  }
+  if (header.includes("Your last proposal waits on its card")) {
+    return [
+      {
+        text: "A scripted reply. Say /revise for another proposal, or answer the card.",
+      },
+    ];
+  }
+  return amend(
+    [...units, ...added(2)],
+    "You asked for the next stretch of the course.",
+  );
 }
 
 // --- Teaching a unit -------------------------------------------------------

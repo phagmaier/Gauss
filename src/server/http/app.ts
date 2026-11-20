@@ -2,7 +2,8 @@
 // task 1.5), the unit chats (task 2.6), "What I know" with the course's
 // calibration (tasks 2.26 and 2.29), the artifacts the tutor shows (task
 // 3.6), disputes of recorded answers' grades (task 3.8), "Open" on a code
-// question's files (task 3.22), and the learner profile (task 5.8). Each chat has an event stream from the
+// question's files (task 3.22), the learner profile (task 5.8), and the
+// course's planning conversation (task 5.38). Each chat has an event stream from the
 // server to the page, and a POST for each thing the learner does in it. Only
 // Gauss's own page may use any of them.
 
@@ -21,6 +22,7 @@ import {
   type IntakeStarted,
   LearnerMessage,
   type PageEvent,
+  type PlanningOpened,
   SkipTestedPost,
   type UnitOpened,
 } from "../../shared/events.ts";
@@ -37,6 +39,10 @@ import { StyleAnswer } from "../../shared/style.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
+import type {
+  CoursePlanning,
+  CoursePlannings,
+} from "../engine/course-planning.ts";
 import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { Notes } from "../engine/notes.ts";
@@ -52,6 +58,8 @@ import { whatIKnow } from "../record/what-i-know.ts";
 export function createApp(options: {
   dataRoot: DataRoot;
   intakes: Intakes;
+  /** Planning from the course view (task 5.38). */
+  plannings: CoursePlannings;
   units: UnitChats;
   disputes: Disputes;
   notes: Notes;
@@ -61,7 +69,8 @@ export function createApp(options: {
   backup?: Backup;
   heartbeatMs?: number;
 }) {
-  const { dataRoot, intakes, units, disputes, notes, openFile } = options;
+  const { dataRoot, intakes, plannings, units, disputes, notes, openFile } =
+    options;
   const heartbeatMs = options.heartbeatMs ?? 20_000;
   const app = new Hono();
   app.use("/api/*", localOnly);
@@ -330,6 +339,76 @@ export function createApp(options: {
     "/api/intakes/:id/interrupt",
     withIntake(async (c, intake) => {
       await intake.interrupt();
+      return c.json({ ok: true });
+    }),
+  );
+
+  // --- Planning from the course view (task 5.38): "Change the curriculum"
+  // opens the course's conversation that has not ended, or a new one -------
+
+  app.post("/api/courses/:id/planning", async (c) => {
+    const opened = await plannings.open(c.req.param("id"));
+    return opened.ok
+      ? c.json({ planningId: opened.planning.id } satisfies PlanningOpened)
+      : c.json({ error: opened.error }, opened.status);
+  });
+
+  const planningPath = "/api/courses/:id/planning/:planning";
+
+  /** Runs the handler with the conversation the path names, or answers 404. */
+  function withPlanning(
+    handler: (
+      c: Context,
+      planning: CoursePlanning,
+    ) => Response | Promise<Response>,
+  ) {
+    return (c: Context) => {
+      const planning = plannings.get(
+        c.req.param("id") ?? "",
+        c.req.param("planning") ?? "",
+      );
+      return planning === undefined
+        ? c.json({ error: "No such planning conversation." }, 404)
+        : handler(c, planning);
+    };
+  }
+
+  app.get(
+    `${planningPath}/events`,
+    withPlanning((c, planning) => streamLog(c, planning, heartbeatMs)),
+  );
+
+  app.post(
+    `${planningPath}/messages`,
+    withPlanning(async (c, planning) => {
+      const body = await readBody(c, LearnerMessage);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, planning.say(body.data.text), 202);
+    }),
+  );
+
+  app.post(
+    `${planningPath}/apply`,
+    withPlanning(async (c, planning) => {
+      const body = await readBody(c, CurriculumChangeAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await planning.apply(body.data.proposalId), 200);
+    }),
+  );
+
+  app.post(
+    `${planningPath}/keep`,
+    withPlanning(async (c, planning) => {
+      const body = await readBody(c, CurriculumChangeAnswer);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await planning.keep(body.data.proposalId), 200);
+    }),
+  );
+
+  app.post(
+    `${planningPath}/interrupt`,
+    withPlanning(async (c, planning) => {
+      await planning.interrupt();
       return c.json({ ok: true });
     }),
   );

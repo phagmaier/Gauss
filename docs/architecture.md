@@ -37,7 +37,7 @@ the reason for using one language.
 ```
 Gauss/
   docs/                 brief.md, architecture.md, decisions.md, plan.md; prototype/ (the page mocks, a file per piece)
-  prompts/              tutor.md, planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md, handoff.md, notes.md
+  prompts/              tutor.md, planner.md, course-planner.md, unit-planner.md, grader.md, help-judge.md, dispute-judge.md, handoff.md, notes.md
   src/
     shared/             zod schemas: record files, questions, events, route bodies; pure helpers both sides use
     server/
@@ -49,7 +49,7 @@ Gauss/
       tools/            teaching tool definitions (transport-free functions)
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
-    web/                React app: library, profile, intake, course, session, "what I know", notes
+    web/                React app: library, profile, intake, course, its planning conversation, session, "what I know", notes
   pytools/              mathcheck.py; sandbox_exec.py (the workload filter) and sandbox_verify.py (a sandboxed command's exit status apart from its output); tests/
   scripts/              dev-fake.ts (no model); faults.ts (injects faults, runs the tests); grade-set.ts, judge-set.ts and decide-set.ts, which run grader-set.ts, help-set.ts and dispute-set.ts on a real model
   mise.toml             pinned node, pnpm, python, uv; `mise run setup` and `mise run check`
@@ -212,6 +212,30 @@ also before it reaches the backend.
   told. Intakes are kept in memory: a restart loses one in progress, and
   its draft is reviewed in a new intake from the stored draft
   (`POST /api/courses/<id>/review`).
+- **The planning conversation** (`engine/course-planning.ts`), one per
+  approved course at a time, opened by "Change the curriculum" or "Plan
+  what comes next" in the course view and run as the intake is: the page
+  asks the opening question, which says whether every unit is finished,
+  and the session starts with the answer. The session's first turn gives
+  the planner, after the header, the course in `<course>` (each unit with
+  its status, each started unit's objectives with theirs, the style note
+  and the background note) and the profile in `<about_the_learner>`; a
+  later turn gives them again if any has changed since the last turn sent.
+  It proposes with its own `amend_curriculum`, whose card is the unit
+  tutor's; posting ends its turn, and a new proposal replaces the one
+  waiting. The proposal is checked as a unit tutor's is (nothing changed,
+  a started unit dropped) and goes through the course's queue with the
+  unit tutors' (`CourseDesk`): it is refused while a style or curriculum
+  proposal waits in a unit, and while it waits theirs are refused. It is
+  kept in memory only. Apply is refused while a turn is queued or running;
+  it writes `curriculum.json` through `changeCurriculum` in
+  `record/data-root.ts`, which checks again under the state and curriculum
+  locks that no started unit is dropped, then asks for a backup, tells the
+  course's open unit chats as another unit's Apply does, closes the
+  session, and ends the conversation; the next "Change the curriculum"
+  starts a new one. "Keep the current one" is said in the planner's next
+  header. A restart loses the conversation and its proposal, with nothing
+  changed. Planning conversations have no transcripts.
 - **Unit planning** (`engine/unit-planning.ts`). A unit without a plan is
   planned when it is opened, in a session of its own: one turn with "#
   The learner" (the profile, when there is one, then the background
@@ -233,10 +257,11 @@ also before it reaches the backend.
   review, which holds the teaching turn or the test ("Assessments" below).
   Opening a unit marks it opened in `course.json`. A unit reopened in teach
   is taught again.
-- **Kept sessions and resume.** A tutor's session and an intake's are kept
-  by the backend and resumed by id, in the folder they ran in (the course's
-  `workspace/`, made when a unit first opens, or the data root's
-  `intake/`); the tutor's id is in the unit's position.
+- **Kept sessions and resume.** A tutor's session, an intake's and a
+  planning conversation's are kept by the backend and resumed by id, in
+  the folder they ran in (the course's `workspace/`, made when a unit
+  first opens, or the data root's `intake/` for the other two); the
+  tutor's id is in the unit's position.
   Opening a unit only asks the backend whether the session is still there
   (`hasSession`); the first turn resumes it. The system prompt is built
   when a session starts or resumes, from the record as it is then (the
@@ -365,7 +390,8 @@ The rules:
   would replace and why are kept in the position (`curriculumChange`), its
   card shows, each header says it waits, a restart shows the card again,
   and the unit finishing withdraws it. One proposal of either kind waits
-  in a course. It is refused if it changes nothing, or drops a unit that
+  in a course, the course's planning conversation's included
+  (`CourseDesk` in `unit-chat.ts`). It is refused if it changes nothing, or drops a unit that
   has started (it has a plan, a position, or was tested out of; a changed
   id drops the unit), and checked again on Apply (`droppedStarted` in
   `src/shared/curriculum-change.ts`). Apply writes `curriculum.json`,
@@ -687,7 +713,7 @@ tool server, for Codex an MCP server.
 | `propose_curriculum` | Stores a draft curriculum with its style note, background note and the learner profile's whole text, and shows them for review; approval covers all four. Refused in the intake's first turn |
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session |
 | `ask_question` | Posts a question on an objective of the segment, in the check, or on the one an assessment asks next: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
-| `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. Uses the proposal and feedback rules in section 4. Does not end the turn |
+| `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. A tutor's uses the proposal and feedback rules in section 4 and does not end the turn. The course planner's (`planCurriculumChangeTool`) ends its turn and replaces the proposal waiting (section 4, "The planning conversation") |
 | `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
@@ -981,6 +1007,11 @@ Kept as files in `prompts/`, each revised against real runs.
   The tutor is instructed to offer each next stretch with
   `amend_curriculum` in the first teaching turn of the last unit or the
   one before, before any check starts.
+- `course-planner.md` drives the planning conversation of a course
+  (section 4): what it is given and what the statuses mean, asking what
+  the learner wants, offering the next stretch the style or background
+  note names, the rules of a change, and proposing with
+  `amend_curriculum`.
 - `unit-planner.md` drives a unit's planning session.
 - `grader.md`, `help-judge.md` and `dispute-judge.md` are the one-shot
   calls of section 6; `handoff.md` is the one-shot call that writes
@@ -1031,8 +1062,8 @@ other units in progress take the outline.
   (`courseCounts` in `progress.ts`). A card leads to the unit in progress
   most recently opened, or else the next unit in order (the first not
   started whose prerequisites are finished); on a finished course it reads
-  "Every unit is finished", with "Plan what comes next", disabled until
-  planning from the course view is built. Each unit is a heading with
+  "Every unit is finished", with "Plan what comes next", which opens the
+  course's planning conversation. Each unit is a heading with
   "Unit N", its title, "k of n
   passed" once started, and its form, the card's unit in the accent; it
   opens and folds, only units in progress open at first, and the view
@@ -1055,7 +1086,17 @@ other units in progress take the outline.
   lines drawn at once apart, it lists prerequisites by unit number;
   selecting a unit still scrolls to it. The proposal and curriculum-change
   cards use the same diagram and fallback; when crowded, their nodes can
-  be selected too.
+  be selected too. "Change the curriculum" at the right of the Units
+  heading of an approved course opens its planning conversation.
+- **Planning** (`/courses/<id>/planning`): the course's planning
+  conversation in the thread's layout, opened or picked up when the view
+  loads (`POST /api/courses/<id>/planning`). A heading reads "What comes
+  next" on a finished course, otherwise "Changing the curriculum", with
+  the number of units and that nothing changes until a proposal is
+  applied; the page's opening question follows. Each proposal is the
+  curriculum change card, its diagram in the side pane; a replaced one
+  says so. Apply returns to the course view. After a restart the view
+  says the conversation ended and nothing changed.
 - **What I know** (`/courses/<id>/what-i-know`): each started unit's
   objectives with their status ("Retained" in teal, "Slipping" in peach)
   and, under each, its evidence in log order (question, answer,

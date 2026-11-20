@@ -392,8 +392,32 @@ export interface UnitChats {
     options?: { testOut?: boolean },
   ): Promise<OpenResult>;
   get(courseId: string, unitId: string): UnitChat | undefined;
+  /** The course's side of its planning conversation (task 5.38). */
+  courseDesk(courseId: Slug): CourseDesk;
   /** Closes the tutor session of every chat. */
   close(): Promise<void>;
+}
+
+export type Proposed = { proposed: true } | { refused: string };
+
+/**
+ * Where the course's planning conversation (engine/course-planning.ts)
+ * proposes. Its proposal goes through the course's queue as a unit tutor's
+ * does, so that one proposal, of a style note or a curriculum change, waits
+ * in a course.
+ */
+export interface CourseDesk {
+  /**
+   * Runs `work`, which makes the planning conversation's proposal, with the
+   * state as read, unless a proposal waits in a unit of the course. Once
+   * `work` returns `{ proposed: true }`, the unit tutors' proposals are
+   * refused until `answered`.
+   */
+  propose(work: (state: State) => Promise<Proposed>): Promise<Proposed>;
+  /** The planning conversation's proposal no longer waits. */
+  answered(): void;
+  /** Tells the course's open unit chats a curriculum the learner applied. */
+  applied(): void;
 }
 
 interface ChatOptions {
@@ -469,14 +493,23 @@ export function createUnitChats(options: ChatOptions): UnitChats {
     return guard;
   }
 
-  /** The open chats of the course's other units. */
-  function othersIn(courseId: string, unitId: string): OpenableChat[] {
+  /** The open chats of the course's units, but this one. */
+  function othersIn(courseId: string, unitId: string | undefined) {
     return [...chats]
       .filter(([at]) => {
         const [course, unit] = JSON.parse(at) as [string, string];
         return course === courseId && unit !== unitId;
       })
       .map(([, chat]) => chat);
+  }
+
+  /** Tells the open chats of the course's units, but this one, a curriculum the learner applied. */
+  function recurriculum(courseId: string, unitId: string | undefined) {
+    for (const other of othersIn(courseId, unitId)) {
+      void other.learnCurriculum().catch((error: unknown) => {
+        console.error("The chat could not refresh its curriculum:", error);
+      });
+    }
   }
 
   return {
@@ -529,16 +562,7 @@ export function createUnitChats(options: ChatOptions): UnitChats {
               void other.learnStyle(note);
             }
           },
-          recurriculum: () => {
-            for (const other of othersIn(courseId, unitId)) {
-              void other.learnCurriculum().catch((error: unknown) => {
-                console.error(
-                  "The chat could not refresh its curriculum:",
-                  error,
-                );
-              });
-            }
-          },
+          recurriculum: () => recurriculum(courseId, unitId),
         });
         chats.set(key(courseId, unitId), chat);
       }
@@ -546,11 +570,20 @@ export function createUnitChats(options: ChatOptions): UnitChats {
       return { ok: true, chat };
     },
     get: (courseId, unitId) => chats.get(key(courseId, unitId)),
+    courseDesk(courseId) {
+      return {
+        ...workspace(courseId).desk,
+        applied: () => recurriculum(courseId, undefined),
+      };
+    },
     async close() {
       await Promise.allSettled([...chats.values()].map((c) => c.close()));
     },
   };
 }
+
+/** The course's desk without the open chats, which `createUnitChats` adds. */
+type WorkspaceDesk = Omit<CourseDesk, "applied">;
 
 interface CourseWorkspace {
   tools: WorkspaceTools;
@@ -573,11 +606,14 @@ interface CourseWorkspace {
   request<T>(work: () => Promise<T>): Promise<T | { refused: string }>;
   /**
    * Runs `work`, which makes a style or curriculum proposal, with the state
-   * as read, unless a proposal of either kind waits in a unit of the course.
+   * as read, unless a proposal of either kind waits in a unit of the course
+   * or in its planning conversation.
    */
   propose<T>(
     work: (state: State) => Promise<T>,
   ): Promise<T | { refused: string }>;
+  /** The course planning conversation's side of the proposals (task 5.38). */
+  desk: WorkspaceDesk;
   /**
    * Closes the workspace to the tutors' changes and to questions while an
    * install runs, unless a question is open or a change is under way; the
@@ -593,6 +629,30 @@ function openInCourse(state: State): OpenQuestion | undefined {
   }
   return undefined;
 }
+
+/**
+ * A style or curriculum proposal waiting in a unit of the course, if there
+ * is one: a style note before a curriculum change, as either blocks.
+ */
+function waitingProposal(
+  state: State,
+): { what: string; unit: string } | undefined {
+  const units = Object.entries(state.units);
+  const style = units.find(([, p]) => p.styleProposal !== undefined);
+  if (style !== undefined) {
+    return { what: "A proposed style note", unit: style[0] };
+  }
+  const change = units.find(([, p]) => p.curriculumChange !== undefined);
+  return change === undefined
+    ? undefined
+    : { what: "A proposed curriculum change", unit: change[0] };
+}
+
+/** Why a unit's tutor cannot propose while the course's planning conversation's proposal waits. */
+const PLANNED =
+  "A curriculum change proposed from the course view waits for the " +
+  "learner's answer there. Propose no style note or curriculum change " +
+  "until it is answered; you are not told when it is.";
 
 const INSTALLING =
   "Packages are being installed in the workspace: no file may be written " +
@@ -616,6 +676,8 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
   let recoveryBlocked = false;
   let pending: PackageReceipt | undefined;
   let cleanupNeeded: string | undefined;
+  /** The course planning conversation's proposal waits (task 5.38). */
+  let planned = false;
 
   async function clearSavedInstall(folder: string) {
     try {
@@ -790,22 +852,39 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
       work: (state: State) => Promise<T>,
     ): Promise<T | { refused: string }> {
       return exclusive(async () => {
+        if (planned) return { refused: PLANNED };
         const state = await dataRoot.readState(courseId);
-        const positions = Object.values(state.units);
-        const what = positions.some((p) => p.styleProposal !== undefined)
-          ? "A proposed style note"
-          : positions.some((p) => p.curriculumChange !== undefined)
-            ? "A proposed curriculum change"
-            : undefined;
-        if (what !== undefined) {
+        const waiting = waitingProposal(state);
+        if (waiting !== undefined) {
           return {
             refused:
-              `${what} already waits for the learner's answer. ` +
+              `${waiting.what} already waits for the learner's answer. ` +
               "Wait for it: a header says how they answered.",
           };
         }
         return work(state);
       });
+    },
+    desk: {
+      propose: (work) =>
+        exclusive(async () => {
+          const state = await dataRoot.readState(courseId);
+          const waiting = waitingProposal(state);
+          if (waiting !== undefined) {
+            return {
+              refused:
+                `${waiting.what} waits for the learner's answer in the chat ` +
+                `of unit "${waiting.unit}". Tell the learner to answer it ` +
+                "there first; nothing can be proposed here until they do.",
+            };
+          }
+          const result = await work(state);
+          if ("proposed" in result) planned = true;
+          return result;
+        }),
+      answered() {
+        planned = false;
+      },
     },
     beginInstall(owner) {
       return exclusive(async () => {

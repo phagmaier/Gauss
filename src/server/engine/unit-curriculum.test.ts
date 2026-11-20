@@ -498,7 +498,7 @@ test("another unit open when a change is applied is told the units in its next h
   await sets.settled();
   const header = backend.received.at(-1)?.text ?? "";
   expect(header).toContain(
-    "The learner applied a change to this course's curriculum in another unit.",
+    "The learner applied a change to this course's curriculum, in another unit or from the course view.",
   );
   expect(header).toMatch(/^\[Unit 3 of 4, "Sets and maps"/);
   expect(await sets.startFresh()).toEqual({ ok: true });

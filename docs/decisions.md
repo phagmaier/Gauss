@@ -284,9 +284,9 @@ The brief states the result; this is who decided and why.
   planned far ahead would be guesses made before anything is known of
   the learner. Rejected: the whole topic planned up front; one course
   per stretch. A course whose last unit finished before its next stretch
-  was added cannot add it until task 5.38 lets it plan from the course
-  view ("Page design", "A curriculum change is asked for from the course
-  view").
+  was added adds it from the course view ("Page design", "A curriculum
+  change is asked for from the course view"): the planner there is given
+  the style note, and offers the stretch it names.
 
 ## Toolchain
 
@@ -1482,6 +1482,20 @@ works is `architecture.md` section 4.
 - **The change card reuses the intake card's list and diagram**; a move
   compares the order of the units that stay, so inserting or dropping one
   does not mark its neighbours moved.
+- **The planning conversation's proposal shares the course's one
+  waiting place** (task 5.38, the agent's choice). It goes through the
+  course's queue with the unit tutors' proposals (`CourseDesk` in
+  `unit-chat.ts`), so neither can slip in between the other's check and
+  its card. It waits in memory, not in `state.json`: the conversation
+  itself is lost on a restart, and a stored proposal would then block the
+  tutors with no card left to answer it. A tutor refused meanwhile is not
+  told when it is answered.
+- **Its Apply checks the started units again under the state and
+  curriculum locks** (`changeCurriculum` in `record/data-root.ts`), as a
+  unit's Apply does, since a unit can start between the proposal and the
+  Apply. A curriculum that already has the proposed units counts as
+  applied, so an Apply whose write reported an error after renaming can
+  be pressed again.
 
 ## Prompts
 
@@ -1682,6 +1696,13 @@ the denominator rule into a false "never use the full space".
   posted the card still gave names and timing but omitted topics. The
   tutor's offer of the next stretch has not been tried on a real model.
 
+**`course-planner.md`** (task 5.38): in one Haiku run on a finished
+"Calculus 1 to 3" whose style note named Calculus 2 and 3, the planner
+named Calculus 2 and its topics in reply to "What comes next?", asked to
+go ahead, and then proposed nine units after the five finished, each
+building on earlier ones. It posted the card with no text before it, as
+the intake's planner has done (left: the card's line on why says it).
+
 **Writing rules for the page**: `$...$` inline and `$$` for display; a
 dollar sign that is not math must be `\$`, since "it costs $5 and $10" reads
 as math and no rule fixes that reliably (Pandoc's fails on "$5. Then
@@ -1839,7 +1860,23 @@ redesign's.
   tools. Segments stay fixed within a unit (the user, 2026-11-19).
   Rejected: a request box answered by one planner call, with no questions
   back; asking in a unit's chat, the only way before, which nothing on the
-  page announced.
+  page announced. The agent's choices in building it (task 5.38, open to
+  change): the planner's prompt is a file of its own,
+  `prompts/course-planner.md`, since its job (changing units of a course
+  under way, from what the record shows) shares little with the intake's
+  beyond the unit rules, and none of the style, background and profile
+  proposals. The page asks the opening question, as the intake's does, so
+  opening the view spends nothing until the learner writes. The
+  conversation lives at `/courses/<id>/planning`, one per course until a
+  change is applied, so leaving and coming back finds the card still
+  there; it is kept in memory with no transcript, as an intake is, since
+  what it leaves is the changed `curriculum.json` and its backup commit.
+  It is not refused while unit chats of the course are open (they stay
+  open until the server stops, so that would refuse it nearly always):
+  they hear an applied change as they hear another unit's Apply. A new
+  proposal replaces the one waiting, as a revision does in the intake,
+  so pushing back needs no "Keep the current one" first. Apply ends the
+  conversation and goes back to the course view.
 - **The diagram at 30 units** (task 5.16, the agent's choice): lines that
   cross a row sit side by side, in the order they came from, instead of
   all through the gap's middle, where long lines merged into one. Diagram

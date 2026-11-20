@@ -1,11 +1,13 @@
-// The page (plan tasks 1.6, 2.11, 2.26 and 5.8): the library, the learner
-// profile, an intake, a course, its "What I know", a unit's session or
-// its notes, chosen by the address. Each view loads its data from the server.
+// The page (plan tasks 1.6, 2.11, 2.26, 5.8 and 5.38): the library, the
+// learner profile, an intake, a course, its "What I know", its planning
+// conversation, a unit's session or its notes, chosen by the address. Each
+// view loads its data from the server.
 
 import { Course } from "./Course.tsx";
 import { Intake } from "./Intake.tsx";
 import { Library } from "./Library.tsx";
 import { NotesReader } from "./Notes.tsx";
+import { Planning } from "./Planning.tsx";
 import { Profile } from "./Profile.tsx";
 import { paths, useRoute } from "./route.ts";
 import { Session } from "./Session.tsx";
@@ -25,6 +27,8 @@ export function App() {
       return <Course key={route.courseId} courseId={route.courseId} />;
     case "known":
       return <WhatIKnow key={route.courseId} courseId={route.courseId} />;
+    case "planning":
+      return <Planning key={route.courseId} courseId={route.courseId} />;
     case "unit":
       return (
         <Session

@@ -34,37 +34,6 @@ view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.38 Planning from the course view
-
-- Status: todo
-- Depends on: nothing left. The course view (`Course.tsx`) shows "Plan
-  what comes next" disabled, for this task to enable, and leaves "Change
-  the curriculum" out, for this task to add above the units (mock 20)
-- The user's pick (`decisions.md`, "Page design", "A curriculum change is
-  asked for from the course view"). "Change the curriculum", and a
-  finished course's "Plan what comes next", open a planning conversation
-  of the course, run as the intake is. The planner is given the course,
-  its curriculum with each unit's status and its objectives' statuses,
-  the style note (with the later stretches it names), and the profile. It
-  asks, then proposes with the change tool, and the proposal is the
-  curriculum change card (`CurriculumCard.tsx`), with Apply and "Keep the
-  current one". A change's rules hold: a started unit cannot be dropped,
-  and one proposal waits per course. Applying goes back to the course
-  view. This closes the gap in `decisions.md`, "Product decisions", large
-  courses: a finished unit's tutor has no tools. To settle in the task:
-  the prompt (a section of `planner.md` or a file of its own), the chat's
-  route and transcript, whether it is refused while a unit chat of the
-  course is open, how open unit chats hear of an applied change (as they
-  do for a unit tutor's), and the scripted planner for `pnpm dev:fake`.
-  `architecture.md` sections 4 and 10, and `decisions.md`, "Mastery loop",
-  "Style and curriculum changes", change with it.
-- Done when: fake-backend tests show the conversation proposing and
-  applying a change that adds units to a finished course, and refusing
-  what a unit tutor's change refuses. On `pnpm dev:fake`, "Plan what comes
-  next" on a finished seeded course reaches a card and applies it. A short
-  real-model run (Haiku), on a finished course whose style note names the
-  next stretch, proposes that stretch.
-
 ### 5.39 The library grouped
 
 - Status: todo

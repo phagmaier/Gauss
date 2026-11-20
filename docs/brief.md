@@ -75,7 +75,9 @@ acceptance cases because together they exercise every grading and content path:
    is written, and the learner is offered notes on the unit.
 
 The tutor can propose curriculum changes mid-course (for example a remedial
-unit); the learner approves them.
+unit); the learner approves them. The learner can also ask for one from the
+course, in a conversation with the planner, which is how a finished course
+goes on to its next stretch.
 
 ## Session rhythm
 

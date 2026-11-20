@@ -287,6 +287,7 @@ function renderItem(
         applied: "Applied",
         kept: "Kept the current one",
         withdrawn: "Not applied: the unit ended first",
+        replaced: "Replaced by a later proposal",
       };
       const state =
         item.outcome === undefined
