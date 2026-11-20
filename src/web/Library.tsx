@@ -1,12 +1,11 @@
-// The library (docs/prototype/06-library.html): one plain list of courses,
-// most recently opened first, with the finished ones grouped at the bottom,
-// and "Profile" (18-profile.html) and "New course" at the right of the top
-// line. Every row opens its course
-// view (task 2.28), whose card continues a unit in progress and whose
-// "Review the curriculum" reviews a draft. Calibration is per course, on
-// its "What I know" (task 2.29).
+// The library (docs/prototype/21-library.html): the courses grouped as in
+// progress, drafts and finished, each group with its count, and "Profile"
+// (18-profile.html) and "New course" at the right of the top line. Every
+// row opens its course view (task 2.28), whose card continues a unit in
+// progress and whose "Review the curriculum" reviews a draft. Calibration
+// is per course, on its "What I know" (task 2.29).
 
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { IntakeStarted } from "../shared/events.ts";
 import {
   type CourseWithProgress,
@@ -14,8 +13,9 @@ import {
 } from "../shared/library.ts";
 import { getJson, postFor } from "./api.ts";
 import { TopLine } from "./Frame.tsx";
-import { standing, whenOpened } from "./library.ts";
+import { libraryGroups, standing, whenOpened } from "./library.ts";
 import { navigate, paths } from "./route.ts";
+import { StatusForm } from "./StatusForm.tsx";
 
 export function Library() {
   const [courses, setCourses] = useState<CourseWithProgress[]>();
@@ -38,25 +38,11 @@ export function Library() {
     else setProblem(answer.error);
   }
 
-  const groups =
-    courses === undefined
-      ? []
-      : [
-          {
-            name: "In progress",
-            courses: courses.filter((c) => !standing(c).finished),
-          },
-          {
-            name: "Finished",
-            courses: courses.filter((c) => standing(c).finished),
-          },
-        ].filter((group) => group.courses.length > 0);
-
   return (
     <div className="pg">
       <TopLine
         trail={[]}
-        here="Library"
+        here="Gauss"
         action={
           <span className="nl-acts">
             <button
@@ -79,15 +65,19 @@ export function Library() {
       />
       <div className="pg-scroll">
         <div className="pg-col">
+          <h1 className="cv-title">Library</h1>
           {problem === undefined ? null : <p className="ph-note">{problem}</p>}
           {courses === undefined ? null : courses.length === 0 ? (
             <p className="ph-note">
               No courses yet. Start one with New course.
             </p>
           ) : (
-            groups.map((group) => (
-              <Fragment key={group.name}>
-                <h2 className="pg-h">{group.name}</h2>
+            libraryGroups(courses).map((group) => (
+              <section key={group.group}>
+                <div className="cv-hrow cv-sec">
+                  <h2 className="pg-h">{group.heading}</h2>
+                  <span className="pg-h">{group.courses.length}</span>
+                </div>
                 <div className="lib-list">
                   {group.courses.map((stored) => (
                     <Row
@@ -98,7 +88,7 @@ export function Library() {
                     />
                   ))}
                 </div>
-              </Fragment>
+              </section>
             ))
           )}
         </div>
@@ -117,7 +107,7 @@ function Row(props: {
   return (
     <button
       type="button"
-      className={where.finished ? "lc done" : "lc"}
+      className={where.group === "finished" ? "lc done" : "lc"}
       disabled={props.disabled}
       onClick={props.onOpen}
     >
@@ -126,15 +116,13 @@ function Row(props: {
         {where.oneOff ? <small>One-off</small> : null}
       </span>
       <span className="lc-when">{whenOpened(course.lastOpenedAt)}</span>
-      <span className={where.review ? "lc-where todo" : "lc-where"}>
-        {where.text}
-      </span>
-      {where.ticks.length === 0 ? null : (
-        <span className="ticks" aria-hidden="true">
-          {where.ticks.map((mark, i) => (
-            // One tick per unit, in the list's order.
+      <span className="lc-where">{where.text}</span>
+      {where.units.length === 0 ? null : (
+        <span className="lc-units" aria-hidden="true">
+          {where.units.map((form, i) => (
+            // One form per unit, in the curriculum's order.
             // biome-ignore lint/suspicious/noArrayIndexKey: see above
-            <i key={i} className={mark} />
+            <StatusForm key={i} {...form} />
           ))}
         </span>
       )}

@@ -1,5 +1,5 @@
 // What the views share around their content: the top line with the path out
-// (docs/prototype/04-session-nav.html, 06-library.html) and the side pane
+// (docs/prototype/04-session-nav.html, 21-library.html) and the side pane
 // (05-side-pane.html).
 
 import { Fragment, type ReactNode, useEffect, useState } from "react";

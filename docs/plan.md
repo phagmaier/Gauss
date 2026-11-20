@@ -27,26 +27,11 @@ user's choice; the numbers are kept because code and documents use them.
 
 The tasks the stage's check and the two comparisons added. The stage's
 views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`, and
-the redesign in pieces 19 to 21 (`decisions.md`, "Page design"), which
-tasks 5.31 to 5.39 build in the redesign's look, which the app has. Every
-view must still read at 30 units: `pnpm dev:fake` seeds
+the redesign in pieces 19 to 21 (`decisions.md`, "Page design"), whose
+look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 "Calculus 1 to 3" with thirty, and its scripted planner proposes thirty
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
-
-### 5.39 The library grouped
-
-- Status: todo
-- Depends on: 5.31
-- As piece 21. Courses are grouped as in progress, drafts (a curriculum
-  not approved) and finished, each group with its count and newest first.
-  A one-off sits in its group, marked "One-off". A row has the title,
-  where it stands, when it was last opened, a status form per unit in
-  place of the ticks, and at its right the place for the due count, which
-  5.24 fills. The top line has Gauss, Profile and New course.
-- Done when: `library.test.ts` shows the grouping, with a draft, a course
-  with nothing started, and a finished one-off. On `pnpm dev:fake`, the
-  seeded library reads as piece 21.
 
 ### 5.18 Deleting a course
 
@@ -183,9 +168,11 @@ and cheat sheets (stage 6).
 ### 5.24 Reviews due, shown before a unit is opened
 
 - Status: todo
-- Depends on: 5.19, which gives each objective a due time, and 5.39,
-  which makes the library's place for the count (piece 21); in the course
-  view (piece 20) it goes between the line of counts and the card
+- Depends on: 5.19, which gives each objective a due time. In the
+  library the count goes at the right of a row's second line, which the
+  row's grid leaves empty for it (`.lc` in `styles.css`; `.lr .due` in
+  piece 21); in the course view (piece 20) it goes between the line of
+  counts and the card
 - The user's decision (2026-11-19, from the DeepTutor comparison): each
   course's row in the library, and its course view, show how many of its
   objectives are due for review, derived from the evidence with 5.19's

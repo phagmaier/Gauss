@@ -1231,7 +1231,7 @@ a.nl-pos {
   background: var(--wash);
 }
 
-/* ---- Pages outside a session, and the library, piece 6: one plain list ---- */
+/* ---- Pages outside a session, and the library, piece 21: courses in groups ---- */
 .pg {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1258,7 +1258,7 @@ a.nl-pos {
 .lib-list {
   display: grid;
   gap: 2px;
-  margin: 0 -14px;
+  margin: 0.9em -14px 0;
 }
 .lc {
   display: grid;
@@ -1274,6 +1274,7 @@ a.nl-pos {
 }
 .lc:hover {
   background: var(--raised);
+  --ring-gap: var(--raised);
 }
 .lc:disabled {
   cursor: progress;
@@ -1297,12 +1298,14 @@ a.nl-pos {
   color: var(--ink-2);
   font-size: 14.5px;
 }
-.lc-where.todo {
-  color: var(--ink);
-}
-.lc .ticks {
-  grid-column: 1;
-  margin-top: 0.65em;
+/* a status form per unit, in the curriculum's order, as in mock 21; the
+   row's second line leaves its right column for the due count */
+.lc-units {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 0.55em;
 }
 .lc.done .lc-title {
   color: var(--ink-2);
@@ -2130,6 +2133,19 @@ button.dn:hover {
   height: 9px;
   margin: 0;
   transform: translateY(1px);
+}
+/* smaller in the library's rows, as in mock 21 */
+.lc-units .sg {
+  width: 8px;
+  height: 8px;
+  border-width: 1.25px;
+  margin: 0;
+}
+.lc-units .sg.now {
+  margin: 0;
+  box-shadow:
+    0 0 0 2px var(--ring-gap, var(--bg)),
+    0 0 0 3.25px var(--accent);
 }
 .dn small .sg {
   width: 8px;

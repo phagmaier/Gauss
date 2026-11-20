@@ -1832,7 +1832,13 @@ redesign's.
   objectives are due for review when any are. Finished courses need no
   archive: a course is deleted (task 5.18). Rejected: one plain list with
   finished courses at the bottom (piece 6), leading with where the learner
-  stopped, or with a message box.
+  stopped, or with a message box. As built (the agent's choices, open to
+  change): a course whose intake stopped before any proposal is a draft;
+  one whose record cannot be read is in progress, since where it stands is
+  not known. A one-off has no forms, as in the mock. A course with no unit
+  started reads "Not started. Next: unit 1, ..." as in the mock; the
+  status word stays "overridden", not the mock's "moved on from", the
+  brief's term. Rows stay buttons, as before, not the mock's links.
 - **The course view is built around the unit list, down to objectives**
   (the redesign, piece 20, from DeepTutor's path page): each unit is a
   heading with "Unit N", how many of its objectives have passed, and its

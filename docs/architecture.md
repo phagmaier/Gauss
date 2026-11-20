@@ -1038,14 +1038,19 @@ the HTML `Prose` renders.
 An objective's or a unit's status shows as a form beside its word
 (`StatusForm.tsx`; `decisions.md`, "Page design"): in the course view's
 unit headings and objective rows, its diagram and the diagram's numbered
-fallback, "What I know", and the closing card's rows. The current unit,
-the one the course view's card leads to, takes the accent's ringed form;
-other units in progress take the outline.
+fallback, "What I know", the closing card's rows, and the library's rows,
+one form per unit with no word. The current unit, the one the course
+view's card leads to, takes the accent's ringed form; other units in
+progress take the outline.
 
-- **Library** (`/`): every course and one-off, with where it stands, a tick
-  per unit, and when it was last opened; finished courses grouped at the
-  bottom. Every row opens its course view. "Profile" and "New course" are
-  at the right of the top line.
+- **Library** (`/`): the courses in three groups, in progress, drafts (no
+  approved curriculum) and finished, each with its count and most recently
+  opened first, an empty group left out (`libraryGroups`). A row has the
+  title, "One-off" for a course of one unit, where it stands, when it was
+  last opened, and a form per unit for a course of more than one
+  (`standing` in `library.ts`); the right of its second line is left for
+  the due count. Every row opens its course view. The top line has
+  "Gauss", and "Profile" and "New course" at its right.
 - **Intake** (`/intakes/<id>`): the conversation, with each proposal as a
   card (units, "How I would teach it", "What the tutor will know about
   you", "What I would remember about you", the diagram, Approve); a

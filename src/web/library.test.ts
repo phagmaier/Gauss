@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { StoredUnit } from "../shared/curriculum.ts";
 import type { CourseWithProgress } from "../shared/library.ts";
-import { standing, whenOpened } from "./library.ts";
+import { libraryGroups, standing, whenOpened } from "./library.ts";
 
 // Local times, so the calendar days do not depend on the time zone.
 const NOW = new Date(2026, 10, 15, 9, 30);
@@ -80,7 +80,11 @@ const at = (segment?: number) =>
     ...(segment === undefined ? {} : { segment }),
   }) as const;
 
-const NOT_FINISHED = { review: false, finished: false } as const;
+/** A unit's form in a row; `current` for the unit the course view's card leads to. */
+const form = (
+  unit: "passed" | "overridden" | "in-progress" | "not-started",
+  current = false,
+) => ({ unit, current });
 
 test.each([
   {
@@ -88,10 +92,9 @@ test.each([
     course: stored({ approval: { status: "draft" }, units: UNITS }),
     says: {
       text: "The curriculum is ready for your review",
-      review: true,
-      finished: false,
+      group: "draft",
       oneOff: false,
-      ticks: [],
+      units: [],
     },
   },
   {
@@ -99,19 +102,19 @@ test.each([
     course: stored(null),
     says: {
       text: "No curriculum was proposed",
-      ...NOT_FINISHED,
+      group: "draft",
       oneOff: false,
-      ticks: [],
+      units: [],
     },
   },
   {
     name: "an approved course has not started",
     course: stored(APPROVED),
     says: {
-      text: "Unit 1 of 2: Vectors, not started",
-      ...NOT_FINISHED,
+      text: "Not started. Next: unit 1, Vectors",
+      group: "in-progress",
       oneOff: false,
-      ticks: ["", ""],
+      units: [form("not-started", true), form("not-started")],
     },
   },
   {
@@ -119,9 +122,9 @@ test.each([
     course: stored(APPROVED, { vectors: PASSED, eigen: at(1) }),
     says: {
       text: "Unit 2 of 2: Eigenvectors, segment 2 of 3",
-      ...NOT_FINISHED,
+      group: "in-progress",
       oneOff: false,
-      ticks: ["past", "now"],
+      units: [form("passed"), form("in-progress", true)],
     },
   },
   {
@@ -129,9 +132,9 @@ test.each([
     course: stored(APPROVED, { vectors: at(2) }),
     says: {
       text: "Unit 1 of 2: Vectors, going over again",
-      ...NOT_FINISHED,
+      group: "in-progress",
       oneOff: false,
-      ticks: ["now", ""],
+      units: [form("in-progress", true), form("not-started")],
     },
   },
   {
@@ -139,9 +142,9 @@ test.each([
     course: stored(APPROVED, { vectors: at() }),
     says: {
       text: "Unit 1 of 2: Vectors, in progress",
-      ...NOT_FINISHED,
+      group: "in-progress",
       oneOff: false,
-      ticks: ["now", ""],
+      units: [form("in-progress", true), form("not-started")],
     },
   },
   {
@@ -156,9 +159,9 @@ test.each([
     ),
     says: {
       text: "Unit 2 of 2: Eigenvectors, segment 1 of 3",
-      ...NOT_FINISHED,
+      group: "in-progress",
       oneOff: false,
-      ticks: ["now", "now"],
+      units: [form("in-progress"), form("in-progress", true)],
     },
   },
   {
@@ -166,9 +169,9 @@ test.each([
     course: stored(APPROVED, { vectors: PASSED }),
     says: {
       text: "Unit 2 of 2: Eigenvectors, not started",
-      ...NOT_FINISHED,
+      group: "in-progress",
       oneOff: false,
-      ticks: ["past", ""],
+      units: [form("passed"), form("not-started", true)],
     },
   },
   {
@@ -176,10 +179,9 @@ test.each([
     course: stored(APPROVED, { vectors: PASSED, eigen: PASSED }),
     says: {
       text: "All 2 units passed",
-      review: false,
-      finished: true,
+      group: "finished",
       oneOff: false,
-      ticks: ["past", "past"],
+      units: [form("passed"), form("passed")],
     },
   },
   {
@@ -187,48 +189,40 @@ test.each([
     course: stored(APPROVED, { vectors: PASSED, eigen: OVERRIDDEN }),
     says: {
       text: "All 2 units finished, 1 overridden",
-      review: false,
-      finished: true,
+      group: "finished",
       oneOff: false,
-      ticks: ["past", "past"],
+      units: [form("passed"), form("overridden")],
     },
   },
   {
     name: "a one-off not started",
     course: oneOff(),
-    says: { text: "Not started", ...NOT_FINISHED, oneOff: true, ticks: [] },
+    says: {
+      text: "Not started",
+      group: "in-progress",
+      oneOff: true,
+      units: [],
+    },
   },
   {
     name: "a one-off in progress",
     course: oneOff({ vectors: at(0) }),
     says: {
       text: "Segment 1 of 2",
-      ...NOT_FINISHED,
+      group: "in-progress",
       oneOff: true,
-      ticks: [],
+      units: [],
     },
   },
   {
     name: "a one-off passed",
     course: oneOff({ vectors: PASSED }),
-    says: {
-      text: "Passed",
-      review: false,
-      finished: true,
-      oneOff: true,
-      ticks: [],
-    },
+    says: { text: "Passed", group: "finished", oneOff: true, units: [] },
   },
   {
     name: "a one-off overridden",
     course: oneOff({ vectors: OVERRIDDEN }),
-    says: {
-      text: "Overridden",
-      review: false,
-      finished: true,
-      oneOff: true,
-      ticks: [],
-    },
+    says: { text: "Overridden", group: "finished", oneOff: true, units: [] },
   },
   {
     // The row opens the course view, which gives the reason.
@@ -239,11 +233,41 @@ test.each([
     },
     says: {
       text: "The record could not be read",
-      ...NOT_FINISHED,
+      group: "in-progress",
       oneOff: false,
-      ticks: [],
+      units: [],
     },
   },
 ])("$name", ({ course, says }) => {
   expect(standing(course)).toEqual(says);
+});
+
+test("the library groups courses as in progress, drafts and finished, in the order given", () => {
+  const named = (id: string, course: CourseWithProgress) => ({
+    ...course,
+    id,
+  });
+  // Most recently opened first, as the library route sends them.
+  const courses = [
+    named("topology", stored({ approval: { status: "draft" }, units: UNITS })),
+    named("pigeonhole", oneOff({ vectors: PASSED })),
+    named("pca", stored(APPROVED)),
+    named("abandoned-intake", stored(null)),
+    named("calculus", stored(APPROVED, { vectors: PASSED, eigen: at(1) })),
+    named("group-theory", oneOff({ vectors: at(0) })),
+  ];
+  const groups = libraryGroups(courses).map((g) => ({
+    heading: g.heading,
+    ids: g.courses.map((c) => c.id),
+  }));
+  expect(groups).toEqual([
+    { heading: "In progress", ids: ["pca", "calculus", "group-theory"] },
+    { heading: "Drafts", ids: ["topology", "abandoned-intake"] },
+    { heading: "Finished", ids: ["pigeonhole"] },
+  ]);
+});
+
+test("a group with no course is left out", () => {
+  const groups = libraryGroups([oneOff({ vectors: PASSED })]);
+  expect(groups.map((g) => g.heading)).toEqual(["Finished"]);
 });
