@@ -13,18 +13,30 @@ export interface ReviewPick {
   objective: string;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long after its last correct answer an objective is due again, by its
+ * correct answers in a row in reviews and gates: none, one, two, three,
+ * four or more.
+ */
+const INTERVALS_MS = [1, 3, 7, 21, 60].map((days) => days * DAY_MS);
+
 /**
  * Up to `count` objectives of the course's plans to review at `at`, the
  * first to ask first, leaving out those in `leaveOut`. Only an objective
- * that is passed, retained or slipping, and that has no answer recorded
- * within SESSION_GAP_MS before `at`, so none is asked twice in a sitting.
+ * that is due, and that has no answer recorded within SESSION_GAP_MS
+ * before `at`, so none is asked twice in a sitting.
  *
- * - Slipping ones first.
- * - Then passed ones, the lowest confidence first, among the answers that
- *   pass each.
- * - Then retained ones.
- * - Among equals, the one whose last answer is the oldest first; then in
- *   the course's order, by unit and then by the unit's plan.
+ * - A slipping objective is due, and comes first, the longest unanswered
+ *   first.
+ * - A passed or retained one is due once INTERVALS_MS, picked by its
+ *   correct answers in a row in reviews and gates since its last miss, has
+ *   gone by since its last correct answer given without help. The most
+ *   overdue for its interval (the time since that answer over the
+ *   interval) comes first.
+ * - Among equals, in the course's order, by unit and then by the unit's
+ *   plan.
  */
 export function pickForReview(
   units: readonly StoredUnit[],
@@ -42,7 +54,8 @@ export function pickForReview(
       lastAnswered.set(entry.objective, at);
     }
   }
-  const quietSince = options.at.getTime() - SESSION_GAP_MS;
+  const now = options.at.getTime();
+  const quietSince = now - SESSION_GAP_MS;
 
   const eligible = new Map<string, { pick: ReviewPick; last: number }>();
   for (const unit of units) {
@@ -54,35 +67,26 @@ export function pickForReview(
     }
   }
   const standings = objectiveStandings(evidence, eligible.keys());
-  const candidates = [];
-  for (const [id, { pick, last }] of eligible) {
+  const slipping: { pick: ReviewPick; last: number }[] = [];
+  const due: { pick: ReviewPick; overdue: number }[] = [];
+  for (const [id, candidate] of eligible) {
     const standing = standings.get(id);
-    if (standing === undefined) continue;
-    const { status, lowestConfidence } = standing;
-    const rank =
-      status === "slipping"
-        ? 0
-        : status === "passed"
-          ? 1
-          : status === "retained"
-            ? 2
-            : undefined;
-    if (rank === undefined) continue;
-    candidates.push({
-      pick,
-      rank,
-      confidence: status === "passed" ? lowestConfidence : 0,
-      last,
-    });
+    if (standing?.status === "slipping") {
+      slipping.push(candidate);
+    } else if (
+      (standing?.status === "passed" || standing?.status === "retained") &&
+      standing.lastCorrectAt !== undefined
+    ) {
+      const interval =
+        INTERVALS_MS[Math.min(standing.row, INTERVALS_MS.length - 1)] ?? DAY_MS;
+      const overdue = (now - standing.lastCorrectAt) / interval;
+      if (overdue >= 1) due.push({ pick: candidate.pick, overdue });
+    }
   }
   // A stable sort keeps the course's order among equals.
-  return candidates
-    .sort(
-      (a, b) =>
-        a.rank - b.rank || a.confidence - b.confidence || a.last - b.last,
-    )
-    .slice(0, options.count)
-    .map((c) => c.pick);
+  slipping.sort((a, b) => a.last - b.last);
+  due.sort((a, b) => b.overdue - a.overdue);
+  return [...slipping, ...due].slice(0, options.count).map((c) => c.pick);
 }
 
 /** How many objectives of the course's other units a unit's gate asks about, at most. */

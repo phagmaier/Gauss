@@ -6,11 +6,7 @@
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { DisputeEvidence, EvidenceEntry } from "../../shared/evidence.ts";
-import {
-  CONFIDENCE_LEVELS,
-  isConfident,
-  type Question,
-} from "../../shared/question.ts";
+import { isConfident, type Question } from "../../shared/question.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import {
   hasPassed,
@@ -48,8 +44,10 @@ export function objectiveStatus(
 
 interface ObjectiveStanding {
   status: ObjectiveStatus;
-  /** Index in CONFIDENCE_LEVELS of the least confident unassisted correct answer since the last miss, or Infinity if none. */
-  lowestConfidence: number;
+  /** The unassisted correct answers given in a review or a gate since the last miss. */
+  row: number;
+  /** When the last unassisted correct answer since the last miss was recorded, in ms; undefined if none. */
+  lastCorrectAt: number | undefined;
   /**
    * One of the unassisted correct answers since the last miss was given
    * while testing out: the unit's gate leaves the objective out, since that
@@ -67,7 +65,8 @@ export function objectiveStandings(
   for (const [id, standing] of collectStandings(evidence, objectives)) {
     result.set(id, {
       status: statusOf(standing),
-      lowestConfidence: standing.lowestConfidence,
+      row: standing.row,
+      lastCorrectAt: standing.lastCorrectAt,
       tested: standing.tested,
     });
   }
@@ -82,9 +81,10 @@ interface Standing {
   // Up to two distinct questions answered correctly without help since the last miss.
   problems: Set<string>;
   confident: boolean;
-  cold: boolean;
   tested: boolean;
-  lowestConfidence: number;
+  // Unassisted correct answers in a review or a gate since the last miss: retained when passed with one.
+  row: number;
+  lastCorrectAt: number | undefined;
 }
 
 function collectStandings(
@@ -100,9 +100,9 @@ function collectStandings(
       slipped: false,
       problems: new Set(),
       confident: false,
-      cold: false,
       tested: false,
-      lowestConfidence: Infinity,
+      row: 0,
+      lastCorrectAt: undefined,
     });
   }
   if (standings.size === 0) return standings;
@@ -128,24 +128,19 @@ function collectStandings(
       standing.missed = true;
       standing.problems.clear();
       standing.confident = false;
-      standing.cold = false;
       standing.tested = false;
-      standing.lowestConfidence = Infinity;
+      standing.row = 0;
+      standing.lastCorrectAt = undefined;
     } else if (!entry.assisted) {
       if (standing.problems.size < 2) {
         standing.problems.add(problemOf(entry.question));
       }
-      standing.cold ||= cold;
       standing.tested ||= mode === "test-out";
+      if (cold) standing.row += 1;
+      standing.lastCorrectAt = Date.parse(entry.recordedAt);
       const { answer } = entry;
       standing.confident ||=
         answer.kind !== "unknown" && isConfident(answer.confidence);
-      standing.lowestConfidence = Math.min(
-        standing.lowestConfidence,
-        answer.kind === "unknown"
-          ? 0
-          : CONFIDENCE_LEVELS.indexOf(answer.confidence),
-      );
     }
   }
   return standings;
@@ -159,7 +154,7 @@ function passes(standing: Standing): boolean {
 
 function statusOf(standing: Standing | undefined): ObjectiveStatus {
   if (standing === undefined) return "not-started";
-  if (passes(standing)) return standing.cold ? "retained" : "passed";
+  if (passes(standing)) return standing.row > 0 ? "retained" : "passed";
   if (standing.overridden) return "overridden";
   if (standing.slipped) return "slipping";
   return standing.answered ? "attempted" : "not-started";

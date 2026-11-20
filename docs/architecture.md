@@ -576,10 +576,14 @@ the test before a unit lets the learner skip what they know.
   learner or the tutor: no assessment, open question, detour, package
   request or install, style or curriculum proposal, test result card,
   closing card, feedback or other turn to come, and the unit's last
-  segment is not closed. It asks about `pickForReview`'s three over the
-  whole course (`record/review.ts`: passed, retained and slipping
-  objectives not answered within the hour, slipping first); none when that
-  is empty. `course.json` keeps when review was last offered, and no card
+  segment is not closed. It asks about up to three objectives of the
+  whole course that are due (`pickForReview` in `record/review.ts`): a
+  slipping one at once; a passed or retained one 1, 3, 7, 21 or 60 days
+  after its last correct answer without help, by how many correct answers
+  without help it has had in a row in reviews and gates since its last
+  miss. Slipping ones come first, then the most overdue for their
+  interval, and none answered within the hour; with nothing due there is
+  no card. `course.json` keeps when review was last offered, and no card
   comes within the hour of it, so two units opened together get one
   (`markReviewOffered` in `record/data-root.ts`). Showing the card sends
   the tutor nothing; a teaching turn that is due and the unit's own steps
@@ -601,18 +605,19 @@ the test before a unit lets the learner skip what they know.
   `pickForGate`'s objectives (`record/review.ts`): the unit's own that are
   passed and not retained, leaving out those whose pass rests on an answer
   given while testing out, in the plan's order; then up to three of other
-  units' by review's pick. With nothing to ask there is no card, and the
-  unit finishes. With every objective passed as the segment closed, the
-  card comes with no closing card before it; one standing (a dispute or
-  another unit's answer passed the rest) is shown again with the statuses
-  as they are. The card says how many questions and on what, holds the
-  unit's steps, sends the tutor nothing, and waits across sittings: a
-  message leaves it waiting. Its rules are review's. When it ends or is
-  skipped (on the card or partway, with an open question withdrawn), the
-  closing card comes again (`closeAfterGate`), with the other units'
-  objectives the gate asked and their statuses, including one whose open
-  question was withdrawn without an answer. Its two steps cover only
-  what the gate left not passed (`toGoOver` in `check-rules.ts`),
+  units' by review's pick, so only those due. With nothing to ask there is
+  no card, and the unit finishes. With every objective passed as the
+  segment closed, the card comes with no closing card before it; one
+  standing (a dispute or another unit's answer passed the rest) is shown
+  again with the statuses as they are. The card says how many questions
+  and on what, holds the unit's steps, sends the tutor nothing, and waits
+  across sittings: a message leaves it waiting. Its rules are review's.
+  When it ends or is skipped (on the card or partway, with an open
+  question withdrawn), the closing card comes again (`closeAfterGate`),
+  with the other units' objectives the gate asked and their statuses,
+  including one whose open question was withdrawn without an answer. Its
+  two steps cover only what the gate left not passed (`toGoOver` in
+  `check-rules.ts`),
   not what the learner moved on from before it, and the unit finishes
   when that is nothing. `gated` in the position keeps the gate from being
   offered again, across going over objectives again and restarts.

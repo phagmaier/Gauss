@@ -1320,11 +1320,26 @@ works is `architecture.md` section 4.
   by itself), at most once an hour per course, so two units opened
   together get one card; an open question or a detour is picked up
   instead. Task 5.25 changes when.
-- **Which**: slipping first, since the gap is known; then passed, the
-  least confident first, as the brief has it; then retained, the longest
-  unanswered first; never one answered within the hour; three over the
-  whole course (`record/review.ts`). No schedule of intervals: the order
-  is the spacing (5.19 changes this).
+- **Which**: what is due, slipping first, then the most overdue (the
+  user's, 2026-11-19, from the LearnHarness comparison); never one
+  answered within the hour; three over the whole course
+  (`record/review.ts`). Not FSRS, which needs a rating per answer and
+  many answers per item (the user's). As built (the agent's choices, open
+  to change):
+  - due 1, 3, 7, 21, then 60 days after the last correct answer given
+    without help, by the row: correct answers without help in reviews and
+    gates since the last miss. A check's correct answer restarts the
+    clock and keeps the row; a slipping objective is due at once;
+  - "most overdue" is the time since that answer over the interval, the
+    lowest expected recall: a 1-day objective two days late comes before
+    a 60-day one two days late. Days past due would put the long
+    intervals first, which are the safest;
+  - nothing due, no card. The gate's other units' objectives are review's
+    pick, so only those due: asking the rest early spends the gate's
+    questions on what is not at risk;
+  - dropped: passed before retained and the least confident first. A
+    retained objective a month unasked waited behind one passed the day
+    before.
 - **A message on the card skips it**: the learner has gone on. The turn it
   brings is sent after the teaching the card held, as a message during
   teaching is. One sent while the card is being offered (`offering` in

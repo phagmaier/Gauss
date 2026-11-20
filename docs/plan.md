@@ -33,31 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.19 Review picks the most overdue
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19, from the LearnHarness comparison):
-  review asks first about the objectives most overdue. Today
-  `pickForReview` (`src/server/record/review.ts`) ranks by status, then
-  by lowest confidence, and age only breaks ties: a retained objective
-  last asked a month ago waits behind a passed one asked the day before,
-  and one confirmed five times comes up as often as one confirmed once.
-  Instead, an objective is due again some time after its last correct
-  answer, and that time grows with each correct answer in a row given in
-  a review or a gate; slipping objectives still come first. The due time
-  is derived from the evidence log, nothing stored. Not FSRS, which needs
-  a rating per answer and many answers per item. To settle in the task:
-  the intervals (the agent's example: 1, 3, 7, 21 and 60 days), whether
-  review is offered when nothing is due, and whether the gate's pick of
-  other units' objectives, which is review's (`pickForGate`), follows.
-  `brief.md`, "Assessment modes", already states the new rule.
-- Done when: tests on hand-made evidence logs show the order (a slipping
-  objective first; a retained one long unasked before a passed one asked
-  the day before; the interval growing with correct answers in reviews
-  and gates), and `architecture.md` section 4, "Assessments", says how
-  review picks.
-
 ### 5.20 An aid's errors reach the tutor
 
 - Status: todo
@@ -156,12 +131,15 @@ and cheat sheets (stage 6).
 - The user's decision (2026-11-19, from the DeepTutor comparison): each
   course's row in the library, and its course view, show how many of its
   objectives are due for review, derived from the evidence with 5.19's
-  rule; nothing is stored. Today review is met only on the card when a
-  unit is opened in a new sitting, so a course left for weeks does not
-  show that it needs review. DeepTutor shows due counts across topics
-  (`web/components/space/learning/TopicAtlas.tsx` in that project). To
-  settle in the task: whether slipping objectives count as due, and what
-  a course with none shows.
+  rule (`pickForReview` in `record/review.ts`, which picks at most a
+  count and leaves out what was answered within the hour; the count
+  needs the due test on its own); nothing is stored. Today review is met
+  only on the card when a unit is opened in a new sitting, so a course
+  left for weeks does not show that it needs review. DeepTutor shows due
+  counts across topics (`web/components/space/learning/TopicAtlas.tsx` in
+  that project). To settle in the task: whether slipping objectives,
+  which review treats as due at once, count as due here, and what a
+  course with none shows.
 - Done when: tests on hand-made evidence logs give the counts; on
   `pnpm dev:fake` the library and the course view show them for a
   seeded course with objectives due.
@@ -178,7 +156,8 @@ and cheat sheets (stage 6).
   finished is opened after `SESSION_GAP_MS` (an hour) away
   (`decisions.md`, "Mastery loop", "Review"). Instead:
   - the card is offered only when an objective of the course is due by
-    5.19's rule;
+    5.19's rule (so already: `pickForReview` picks only what is due, and
+    `offerReview` offers no card when it picks nothing);
   - only between segments: a sitting that opens mid-segment holds the
     card until that segment closes, and it never stands between a
     segment's teaching and its check;

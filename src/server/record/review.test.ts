@@ -6,12 +6,15 @@ import type { Confidence } from "../../shared/question.ts";
 import { pickForGate, pickForReview } from "./review.ts";
 
 // Every expected pick below was worked out by hand from the rules in
-// docs/decisions.md, "Mastery loop" ("Review"), and the statuses from
-// "Objective status", not by running the code.
+// docs/decisions.md, "Mastery loop" ("Review": due after 1, 3, 7, 21, then
+// 60 days by the correct answers in a row in reviews and gates; the most
+// overdue for its interval first), and the statuses from "Objective
+// status", not by running the code.
 
 const AT = new Date("2026-11-18T12:00:00.000Z");
-const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 /** The time `ms` before AT. */
 const ago = (ms: number) => new Date(AT.getTime() - ms).toISOString();
 
@@ -41,7 +44,7 @@ function unit(id: string, objectives: string[]): StoredUnit {
 }
 
 interface Given {
-  /** When it was recorded: three hours before AT unless given. */
+  /** When it was recorded: thirty days before AT unless given, so due whatever the row. */
   at?: string;
   confidence?: Confidence;
   assisted?: boolean;
@@ -59,7 +62,7 @@ function answer(
   asked += 1;
   return EvidenceEntry.parse({
     kind: "answer",
-    recordedAt: given.at ?? ago(3 * HOUR),
+    recordedAt: given.at ?? ago(30 * DAY),
     objective,
     question: {
       kind: "choice",
@@ -85,7 +88,7 @@ const right = (objective: string, given: Given = {}) =>
   answer(objective, "correct", given);
 const wrong = (objective: string, given: Given = {}) =>
   answer(objective, "incorrect", given);
-/** Passed by one answer at 90%, never missed. */
+/** Passed in a check by one answer at 90%, never missed. */
 const pass = (objective: string, at?: string) =>
   right(objective, { confidence: "90", ...(at === undefined ? {} : { at }) });
 
@@ -118,6 +121,8 @@ describe("which objectives review may ask", () => {
       pass("d-three"),
       wrong("d-three", { in: "review" }),
     ];
+    // d-three slipping first; then l-one, 30 days into its 1-day interval,
+    // before d-two, 30 days into its 3-day one.
     expect(
       pickForReview(UNITS, evidence, { at: AT, count: 10, leaveOut: [] }),
     ).toEqual([
@@ -156,96 +161,136 @@ describe("which objectives review may ask", () => {
 describe("the hour", () => {
   test("an objective answered within the hour is left out, by any answer on it, while one answered an hour ago is asked", () => {
     const evidence = [
-      // l-one passed long ago, then answered with help 59 minutes ago,
-      // which changes nothing in its status.
-      pass("l-one", ago(5 * HOUR)),
+      // l-one passed five days ago, due, then answered with help 59 minutes
+      // ago, which changes nothing in its status or its due time.
+      pass("l-one", ago(5 * DAY)),
       right("l-one", { assisted: true, at: ago(59 * MINUTE) }),
-      // l-two passed exactly an hour ago, as a new sitting begins.
-      pass("l-two", ago(SESSION_GAP_MS)),
+      // l-two the same, answered with help exactly an hour ago, as a new
+      // sitting begins.
+      pass("l-two", ago(5 * DAY)),
+      right("l-two", { assisted: true, at: ago(SESSION_GAP_MS) }),
       // d-one passed, then missed in this sitting's review: slipping, and
       // just asked.
-      pass("d-one", ago(26 * HOUR)),
+      pass("d-one", ago(26 * DAY)),
       wrong("d-one", { in: "review", at: ago(5 * MINUTE) }),
     ];
     expect(pick(evidence)).toEqual(["l-two"]);
   });
 });
 
-describe("the order", () => {
-  test("slipping first, then passed, then retained, whatever the confidence and the times", () => {
+describe("when an objective is due", () => {
+  // The row is the correct answers in a review or a gate since the last
+  // miss; the interval is counted from the last correct answer.
+  test.each([
+    { row: 0, days: 1 },
+    { row: 1, days: 3 },
+    { row: 2, days: 7 },
+    { row: 3, days: 21 },
+    { row: 4, days: 60 },
+    { row: 5, days: 60 },
+  ])(
+    "after $days days with $row in a row in reviews and gates, and not a minute before",
+    ({ row, days }) => {
+      const answered = (at: string) => [
+        pass("l-one", at),
+        ...Array.from({ length: row }, (_, i) =>
+          right("l-one", { in: i % 2 === 0 ? "review" : "gate", at }),
+        ),
+      ];
+      expect(pick(answered(ago(days * DAY)))).toEqual(["l-one"]);
+      expect(pick(answered(ago(days * DAY - MINUTE)))).toEqual([]);
+    },
+  );
+
+  test("a miss starts the row again; a check's correct answer restarts the clock but keeps the row; an answer with help does neither", () => {
     const evidence = [
-      // Retained, answered a day ago.
-      right("l-one", { confidence: "100", in: "review", at: ago(24 * HOUR) }),
-      // Passed at 90%, two hours ago, so less confident than the retained
-      // one and answered more recently.
-      pass("l-two", ago(2 * HOUR)),
-      // Slipping, answered two hours ago, passed at 100% before.
-      right("d-one", { confidence: "100", at: ago(30 * HOUR) }),
-      wrong("d-one", { in: "gate", at: ago(2 * HOUR) }),
+      // l-one: three in a row (21 days), then a review's miss, then passed
+      // again in a check three days ago: a row of none, due after a day.
+      pass("l-one", ago(40 * DAY)),
+      right("l-one", { in: "review", at: ago(35 * DAY) }),
+      right("l-one", { in: "gate", at: ago(30 * DAY) }),
+      right("l-one", { in: "review", at: ago(25 * DAY) }),
+      wrong("l-one", { in: "review", at: ago(20 * DAY) }),
+      right("l-one", { at: ago(3 * DAY) }),
+      right("l-one", { at: ago(3 * DAY) }),
+      // l-two: one in a row (3 days), then right in a check two days ago:
+      // not due for another day.
+      pass("l-two", ago(30 * DAY)),
+      right("l-two", { in: "review", at: ago(30 * DAY) }),
+      right("l-two", { at: ago(2 * DAY) }),
+      // l-three: passed two days ago, then right in a review with help a
+      // day ago: still a row of none from two days ago, so due.
+      pass("l-three", ago(2 * DAY)),
+      right("l-three", { in: "review", assisted: true, at: ago(DAY) }),
     ];
-    expect(pick(evidence)).toEqual(["d-one", "l-two", "l-one"]);
+    // l-one three days into one day, l-three two days into one day.
+    expect(pick(evidence)).toEqual(["l-one", "l-three"]);
   });
 
-  test("passed ones by the lowest confidence among the answers that passed them", () => {
+  test("a review's miss disputed into a correct answer counts in the row", () => {
+    const disputed = wrong("l-one", { in: "review", at: ago(5 * DAY) });
     const evidence = [
-      // l-one: two correct answers, at 100% and 50%; the lowest is 50%.
-      right("l-one", { confidence: "100" }),
-      right("l-one", { confidence: "50" }),
-      // l-two: under 50% and then a miss, both cleared by it; then an
-      // answer with help at 50%, which counts for nothing, and two at 90%
-      // and 100%. The lowest of those that passed it is 90%.
-      right("l-two", { confidence: "under-50" }),
-      wrong("l-two"),
-      right("l-two", { confidence: "50", assisted: true }),
-      right("l-two", { confidence: "90" }),
-      right("l-two", { confidence: "100" }),
-      // d-one: two at 75%.
-      right("d-one", { confidence: "75" }),
-      right("d-one", { confidence: "75" }),
-    ];
-    expect(pick(evidence)).toEqual(["l-one", "d-one", "l-two"]);
-  });
-
-  test("an answer disputed into a correct one counts with its confidence", () => {
-    // l-one: graded wrong at 50%, which a dispute overturned, then right at
-    // 100%: passed by two answers, the lowest at 50%. l-two: passed at 75%.
-    const disputed = wrong("l-one", { confidence: "50" });
-    const evidence = [
+      pass("l-one", ago(10 * DAY)),
       disputed,
-      right("l-one", { confidence: "100" }),
-      right("l-two"),
-      right("l-two"),
+      // l-two: passed two days ago, two days into one day.
+      pass("l-two", ago(2 * DAY)),
       EvidenceEntry.parse({
         kind: "dispute",
-        recordedAt: ago(2 * HOUR),
+        recordedAt: ago(4 * DAY),
         questionId:
           disputed.kind === "answer" ? disputed.answer.questionId : "",
         reason: "The choice I picked is also right.",
         outcome: { verdict: "correct", reason: "It is." },
       }),
     ];
+    // l-one, retained, five days into its 3-day interval, so after l-two;
+    // undisputed it would be slipping and first.
+    expect(pick(evidence)).toEqual(["l-two", "l-one"]);
+  });
+});
+
+describe("the order", () => {
+  test("slipping first, however overdue the others", () => {
+    const evidence = [
+      // Retained, answered in a review sixty days ago: 20 times its 3 days.
+      right("l-one", { confidence: "100", in: "review", at: ago(60 * DAY) }),
+      // Passed thirty days ago: 30 times its day.
+      pass("l-two", ago(30 * DAY)),
+      // Slipping, missed in a gate two hours ago.
+      right("d-one", { confidence: "100", at: ago(30 * DAY) }),
+      wrong("d-one", { in: "gate", at: ago(2 * HOUR) }),
+    ];
+    expect(pick(evidence)).toEqual(["d-one", "l-two", "l-one"]);
+  });
+
+  test("a retained objective long unasked comes before a passed one answered the day before", () => {
+    const evidence = [
+      // l-one retained by a review thirty days ago: ten times its 3 days.
+      pass("l-one", ago(40 * DAY)),
+      right("l-one", { in: "review", at: ago(30 * DAY) }),
+      // l-two passed 25 hours ago: just past its day.
+      pass("l-two", ago(25 * HOUR)),
+    ];
     expect(pick(evidence)).toEqual(["l-one", "l-two"]);
   });
 
-  test("passed ones of equal confidence: the longest unanswered first", () => {
+  test("the most overdue for its interval first, not by the days past due", () => {
     const evidence = [
-      pass("l-one", ago(2 * HOUR)),
-      pass("l-two", ago(5 * HOUR)),
-      // d-one: passed at 90% eight hours ago, and answered since, with help.
-      pass("d-one", ago(8 * HOUR)),
-      right("d-one", { assisted: true, at: ago(3 * HOUR) }),
+      // l-one: a row of none, two days ago: twice its day, a day past due.
+      pass("l-one", ago(2 * DAY)),
+      // l-two: one in a row, nine days ago: three times its 3 days, six
+      // days past due.
+      pass("l-two", ago(40 * DAY)),
+      right("l-two", { in: "review", at: ago(9 * DAY) }),
+      // d-one: four in a row, the last 62 days ago: just past its 60 days,
+      // two days past due.
+      pass("d-one", ago(100 * DAY)),
+      right("d-one", { in: "review", at: ago(90 * DAY) }),
+      right("d-one", { in: "gate", at: ago(80 * DAY) }),
+      right("d-one", { in: "review", at: ago(70 * DAY) }),
+      right("d-one", { in: "gate", at: ago(62 * DAY) }),
     ];
-    expect(pick(evidence)).toEqual(["l-two", "d-one", "l-one"]);
-  });
-
-  test("retained ones: the longest unanswered first", () => {
-    const evidence = [
-      right("l-one", { confidence: "90", in: "gate", at: ago(2 * HOUR) }),
-      right("l-two", { confidence: "100", in: "review", at: ago(9 * HOUR) }),
-      right("d-one", { confidence: "50", at: ago(30 * HOUR) }),
-      right("d-one", { confidence: "50", in: "review", at: ago(4 * HOUR) }),
-    ];
-    expect(pick(evidence)).toEqual(["l-two", "d-one", "l-one"]);
+    expect(pick(evidence)).toEqual(["l-two", "l-one", "d-one"]);
   });
 
   test("slipping ones: the longest unanswered first", () => {
@@ -259,6 +304,8 @@ describe("the order", () => {
   });
 
   test("otherwise equal: in the course's order, by unit and then by the plan, not by the log", () => {
+    // All answered thirty days ago: the passed ones 30 times their day, the
+    // retained ones 10 times their 3 days.
     const evidence = [
       pass("d-one"),
       pass("l-three"),
@@ -277,11 +324,12 @@ describe("the order", () => {
 });
 
 describe("the count and the objectives left out", () => {
+  // Each a row of none: two to five times its day.
   const evidence = [
-    pass("l-one", ago(2 * HOUR)),
-    pass("l-two", ago(3 * HOUR)),
-    pass("d-one", ago(4 * HOUR)),
-    pass("d-two", ago(5 * HOUR)),
+    pass("l-one", ago(2 * DAY)),
+    pass("l-two", ago(3 * DAY)),
+    pass("d-one", ago(4 * DAY)),
+    pass("d-two", ago(5 * DAY)),
   ];
 
   test("up to the count", () => {
@@ -310,14 +358,15 @@ describe("what the unit gate asks", () => {
   test("the unit's objectives passed and not yet retained, in its plan's order, then up to three of other units' by review's pick", () => {
     const evidence = [
       // Own: d-three passed by two answers at 75%, d-one passed at 90%
-      // minutes ago (the hour does not apply to the unit's own), d-two
-      // retained by a review's answer.
+      // minutes ago (neither the hour nor the due time applies to the
+      // unit's own), d-two retained by a review's answer.
       right("d-three"),
       right("d-three"),
       pass("d-one", ago(5 * MINUTE)),
       right("d-two", { confidence: "90", in: "review" }),
-      // Others, as review picks them: l-two slipping, then l-one passed at
-      // 75% before l-three passed at 90%; the integrals have no plan.
+      // Others, as review picks them: l-two slipping, then l-one and
+      // l-three, both thirty days into their day, in the plan's order; the
+      // integrals have no plan.
       pass("l-one"),
       right("l-one"),
       pass("l-two"),
@@ -370,7 +419,7 @@ describe("what the unit gate asks", () => {
     ]);
   });
 
-  test("other units' objectives answered within the hour are left out, and three at most are asked", () => {
+  test("other units' objectives answered within the hour or not yet due are left out, and three at most are asked", () => {
     const units = [...UNITS.slice(0, 2), unit("integrals", ["i-one"])];
     const asked = (lOneAt: string) =>
       pickForGate(
@@ -385,16 +434,13 @@ describe("what the unit gate asks", () => {
         ],
         AT,
       ).map((p) => p.objective);
-    // l-one answered within the hour: the other three, standing equal, in
-    // the course's order.
-    expect(asked(ago(30 * MINUTE))).toEqual([
-      "d-one",
-      "l-two",
-      "l-three",
-      "i-one",
-    ]);
-    // All four eligible: the first three.
-    expect(asked(ago(3 * HOUR))).toEqual([
+    // l-one answered within the hour, or passed three hours ago and due
+    // after a day: the other three, standing equal, in the course's order.
+    const withoutLOne = ["d-one", "l-two", "l-three", "i-one"];
+    expect(asked(ago(30 * MINUTE))).toEqual(withoutLOne);
+    expect(asked(ago(3 * HOUR))).toEqual(withoutLOne);
+    // All four due and standing equal: the first three.
+    expect(asked(ago(30 * DAY))).toEqual([
       "d-one",
       "l-one",
       "l-two",

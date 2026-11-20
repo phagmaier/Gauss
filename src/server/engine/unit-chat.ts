@@ -69,7 +69,7 @@
 // unit's thread, asked by its tutor, kept in the position beside the phase,
 // which it leaves alone: review, offered on a card when a unit not finished
 // is opened in a new sitting with nothing waiting on the learner, at most
-// once an hour in a course, on what `pickForReview` picks over the whole
+// once an hour in a course, on what `pickForReview` finds due in the
 // course; or the unit's gate, above. Its rules are assessment-rules.ts's.
 // While it is offered or under way the unit's own steps and a teaching turn
 // that waits hold; a message sent while a review's card waits skips it, and
