@@ -129,8 +129,8 @@ function UnitSection(
   return (
     <section className="wk-unit" aria-labelledby={headingId}>
       <div className="cv-hrow">
-        <h2 className="pg-h" id={headingId}>
-          Unit {unit.number}: {unit.title}
+        <h2 className="wk-uh" id={headingId}>
+          <span>Unit {unit.number}</span> {unit.title}
         </h2>
         <span className={`wk-s ${word.className}`}>{word.text}</span>
       </div>

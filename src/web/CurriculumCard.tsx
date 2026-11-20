@@ -73,7 +73,7 @@ export function CurriculumCard(props: {
     return (
       <div className="qa-card cp done">
         <div className="q-count">
-          <b className="pk-title">Change the curriculum</b> {said}
+          <b>Change the curriculum</b> {said}
         </div>
         <div className="qa-prompt">{item.why}</div>
         {units}
@@ -91,7 +91,7 @@ export function CurriculumCard(props: {
   return (
     <div className="qa-card cp">
       <div className="q-count">
-        <b className="pk-title">Change the curriculum</b>
+        <b>Change the curriculum</b>
       </div>
       <div className="qa-prompt">{item.why}</div>
       {units}

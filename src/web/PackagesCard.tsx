@@ -75,7 +75,7 @@ export function PackagesCard(props: {
     return (
       <div className="qa-card done pk">
         <div className="q-count">
-          <b className="pk-title">Install packages</b> {said}
+          <b>Install packages</b> {said}
         </div>
         {lines}
         {item.output === undefined || item.output === "" ? null : (
@@ -97,7 +97,7 @@ export function PackagesCard(props: {
   return (
     <div className="qa-card pk">
       <div className="q-count">
-        <b className="pk-title">Install packages</b>
+        <b>Install packages</b>
       </div>
       <div className="qa-prompt">
         The tutor asks to install{" "}

@@ -51,7 +51,7 @@ export function StyleCard(props: {
     return (
       <div className="qa-card done">
         <div className="q-count">
-          <b className="pk-title">Change the teaching style</b> {said}
+          <b>Change the teaching style</b> {said}
         </div>
         <div className="qa-prompt">{item.why}</div>
         {note}
@@ -68,7 +68,7 @@ export function StyleCard(props: {
   return (
     <div className="qa-card">
       <div className="q-count">
-        <b className="pk-title">Change the teaching style</b>
+        <b>Change the teaching style</b>
       </div>
       <div className="qa-prompt">{item.why}</div>
       {note}

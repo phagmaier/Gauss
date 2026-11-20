@@ -1697,8 +1697,9 @@ redesign, 2026-11-19 (task 5.17). Each mock's header comment says what was
 asked and rejected. Pieces 15 to 18 were shown as the agent would build them
 and accepted so, but for the notes ("Product decisions"); as built, they are
 `architecture.md` section 10. The redesign is built by tasks 5.30 to 5.39;
-until each is done, the app shows what pieces 1 to 18 settled, and the
-entries below say which parts are the redesign's.
+the look is built, and until the rest is done, the app has the layouts
+pieces 1 to 18 settled, and the entries below say which parts are the
+redesign's.
 
 - **Thread layout**: one centred column, the tutor's text unframed, the
   learner's messages on the right, one message box at the bottom. Rejected:
@@ -1717,7 +1718,14 @@ entries below say which parts are the redesign's.
   capitals for labels. Rejected earlier: the other flavours and accents, a
   blackboard look (the user found it the ugliest), a warm book look; and
   the first look's accent headings, yellow key terms and accent-washed
-  messages.
+  messages. As built (the agent's choices, open to change): the roles are
+  look.css's Frappé block plus `--flag`, the yellow that marks what changed
+  and help taken, which the redesign's mocks do not show; a label in a card's
+  head or a marker is its `<b>`, and the words after it stay in the
+  controls' type. CMU Serif's four faces are the `computer-modern`
+  package's WOFF2 files (0.1.3), copied with the OFL; that package declares
+  the regular face as weight 500, declared here as 400, the weight body text
+  asks for.
 - **Status shows by form as well as colour** (the redesign, piece 19, from
   DeepTutor's `StudyOutline.tsx`), so that it reads in a light theme too:
   passed filled; retained filled in teal; slipping half filled in peach;

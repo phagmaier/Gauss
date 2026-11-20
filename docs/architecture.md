@@ -1133,9 +1133,12 @@ module beside it (`session.ts`, `progress.ts`, `library.ts`,
   instructions, and "Write again" takes new instructions.
 
 The look and layout were settled with static mocks in `docs/prototype/`,
-a file per piece (start at `index.html`; the shared look is `base.css`,
-copied into `src/web/styles.css`); the picks are in `decisions.md`, "Page
-design".
+a file per piece (start at `index.html`); the picks are in `decisions.md`,
+"Page design". `src/web/styles.css` has the redesign's look
+(`prototype/look.css`): every colour is a named role in one block, and
+the type registers are rule groups near its top. CMU Serif is served from
+`src/web/fonts/` with its licence; IBM Plex Sans and Mono come from Google
+Fonts (`src/web/index.html`).
 
 **Routes** (`src/server/http/app.ts`; bodies are schemas in `src/shared/`,
 mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`):

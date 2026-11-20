@@ -820,7 +820,7 @@ function QuestionHead(props: { question: QuestionView; children?: ReactNode }) {
   if (assessment?.objective !== undefined) {
     return (
       <div className="q-count">
-        {`Question ${number}`}
+        <b>{`Question ${number}`}</b>
         {props.children}
         <span className="q-from">
           Objective {assessment.objective} of {assessment.of}
@@ -831,9 +831,11 @@ function QuestionHead(props: { question: QuestionView; children?: ReactNode }) {
   }
   return (
     <div className="q-count">
-      {assessment === undefined
-        ? `Question ${number}`
-        : `Question ${number} of ${assessment.of}`}
+      <b>
+        {assessment === undefined
+          ? `Question ${number}`
+          : `Question ${number} of ${assessment.of}`}
+      </b>
       {assessment?.second === true ? <span>second question</span> : null}
       {props.children}
       {assessment?.from === undefined ? null : (

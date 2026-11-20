@@ -28,34 +28,11 @@ user's choice; the numbers are kept because code and documents use them.
 The tasks the stage's check and the two comparisons added. The stage's
 views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`, and
 the redesign in pieces 19 to 21 (`decisions.md`, "Page design"), which
-tasks 5.30 to 5.39 build; 5.30 goes first, since the others are drawn in
-its look. Every view must still read at 30 units: `pnpm dev:fake` seeds
+tasks 5.31 to 5.39 build in the redesign's look, which the app has. Every
+view must still read at 30 units: `pnpm dev:fake` seeds
 "Calculus 1 to 3" with thirty, and its scripted planner proposes thirty
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
-
-### 5.30 The redesign's look
-
-- Status: todo
-- Depends on: nothing
-- `src/web/styles.css` takes `docs/prototype/look.css`'s colour roles in
-  place of the palette's names, and its four type registers
-  (`decisions.md`, "Page design", "Look"): the app's labels in Plex Mono
-  capitals; titles, the tutor's text, a question's prompt and its choices
-  in CMU Serif, with KaTeX at 1em; the controls in Plex Sans. The accent
-  only on the next step and "you are here"; headings and key terms in the
-  text colour; the learner's messages on the raised surface. Every view
-  takes it: the library, the course view, the intake and its card, the
-  unit thread and its cards, "What I know", the profile and the notes
-  reader's frame. CMU Serif is served by the app: its four woff2 files
-  (regular, italic, bold, bold italic) and the OFL in `src/web/`, not a
-  CDN and not the 19 MB `computer-modern` package (the agent's choice).
-  Only the roles block names colours. Not here: the status forms (5.31)
-  and the new layouts.
-- Done when: no colour literal in `styles.css` outside the roles block
-  (a grep); `pnpm lint` and `pnpm typecheck` pass; on `pnpm dev:fake`,
-  screenshots of each view above, with a thread holding inline and display
-  math, match piece 19's type and colours.
 
 ### 5.31 Status forms
 
