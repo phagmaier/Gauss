@@ -395,6 +395,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     type: z.literal("phase"),
     segment: SegmentIndex,
     phase: Phase,
+    /** The position before the unit's test is answered, not a phase begun. */
+    beforeTest: z.literal(true).optional(),
     /** For a segment after the plan's last: the objectives it goes over again. */
     again: z.array(Slug).optional(),
     /**

@@ -1782,8 +1782,7 @@ button.dn:hover {
   min-width: 0;
   white-space: pre-wrap;
 }
-.q-count .chg,
-.qa-verdict .chg {
+.q-count .chg {
   color: var(--flag);
 }
 /* a graded card's verdict (piece 19): one line under a hairline, the word

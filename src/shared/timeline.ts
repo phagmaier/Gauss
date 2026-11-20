@@ -415,6 +415,12 @@ function phaseItem(items: readonly Item[], key: number, at: Position): Item {
   };
 }
 
+/** Older transcripts put a placeholder phase before the unit's test. */
+function withoutOpeningPhase(items: Item[]): Item[] {
+  const at = items.findLastIndex((item) => item.kind === "phase");
+  return at === -1 ? items : items.toSpliced(at, 1);
+}
+
 /**
  * A closing card is in the thread with no phase begun since, and no gate
  * offered: a `unit_end` now is that card shown again, by a chat that opened
@@ -944,6 +950,15 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...(event.again === undefined ? {} : { again: event.again }),
         ...(event.skipping === undefined ? {} : { skipping: event.skipping }),
       };
+      if (event.beforeTest) {
+        return {
+          ...next,
+          items: withoutOpeningPhase(state.items),
+          position,
+          detour: null,
+          assessment: null,
+        };
+      }
       // A chat that opens in the phase the thread is in, as a unit reopened
       // after a restart does, begins nothing new. A detour or an assessment
       // still open is said again after the phase, so one whose end the
@@ -1019,18 +1034,15 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
           items: state.items.with(at, { ...card, stage: "on" }),
         };
       }
-      // The test before the unit comes before its first segment: the phase
-      // the chat opened in gives way to it, and the segment begins once the
-      // learner answers the test's result.
-      const opened =
+      const items =
         event.mode === "test-out"
-          ? state.items.findLastIndex((i) => i.kind === "phase")
-          : -1;
+          ? withoutOpeningPhase(state.items)
+          : state.items;
       return {
         ...next,
         assessment: run,
         items: [
-          ...(opened === -1 ? state.items : state.items.toSpliced(opened, 1)),
+          ...items,
           {
             kind: "assessment",
             key: index,
@@ -1142,7 +1154,10 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       // here; none is left when the test passed every objective.
       const first =
         state.plan === null ? undefined : firstTaught(state.plan, skipped);
-      if (first !== undefined) {
+      if (
+        first !== undefined &&
+        state.items.findLastIndex((i) => i.kind === "phase") <= at
+      ) {
         const position: Position = {
           segment: first,
           phase: "teach",

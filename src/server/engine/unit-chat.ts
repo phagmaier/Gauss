@@ -1151,7 +1151,20 @@ function createUnitChat(
         return;
       }
       const { position } = record;
-      log.emit(phaseEvent(position));
+      const phase = phaseEvent(position);
+      // The record can save a test choice before the transcript gets it.
+      // Restore the choice before saying where teaching resumed.
+      if (
+        !phase.beforeTest &&
+        log
+          .events()
+          .findLast(
+            (e) => e.type === "test_result" || e.type === "test_answered",
+          )?.type === "test_result"
+      ) {
+        log.emit({ type: "test_answered", skipped: phase.skipping ?? [] });
+      }
+      log.emit(phase);
       // An assessment offered or under way says so before its question.
       if (position.assessment !== undefined) {
         showRun(r, position.assessment);

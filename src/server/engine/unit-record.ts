@@ -1030,12 +1030,19 @@ export function assessmentEvent(
 }
 
 /** A `phase` event: the segment's phase began, or the chat opened in it. */
-export function phaseEvent(position: UnitPosition): PageEvent {
-  const { testOut } = position;
+export function phaseEvent(
+  position: UnitPosition,
+): Extract<PageEvent, { type: "phase" }> {
+  const { testOut, assessment } = position;
+  const beforeTest =
+    testOut?.stage === "due" ||
+    testOut?.stage === "result" ||
+    assessment?.mode === "test-out";
   return {
     type: "phase",
     segment: position.segment,
     phase: position.phase,
+    ...(beforeTest ? { beforeTest: true } : {}),
     ...(position.again === undefined ? {} : { again: position.again }),
     ...(testOut?.stage === "skip" ? { skipping: testOut.passed } : {}),
   };

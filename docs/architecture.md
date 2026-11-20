@@ -589,6 +589,8 @@ the test before a unit lets the learner skip what they know.
   its answers. The position keeps the result waiting, so a restart shows
   the card again (and asks the tutor again first if the card was never
   shown); a dispute or another unit's answer shows it again as it stands.
+  If the choice was saved but its transcript event was lost, reopening
+  settles the result card from the saved position before resuming teaching.
   Nothing is skipped until the learner answers it (`test-out/skip`,
   `test-out/whole`): a skip request must match the objectives shown on
   the learner's card; if they changed, the learner must choose again.
@@ -1055,15 +1057,14 @@ take the outline.
   Markdown and math; a heading where each segment begins, with "Segment N
   of M" (or "Going over again" for the extra segment), its title and its
   objectives' status forms as they stand now, the current objective
-  ringed in the latest heading only; each heading has an id the outline
-  jumps to (`PhaseItem` in `timeline.ts`). The timeline derives the
-  headings from the phase events, so earlier sessions' segments have
-  theirs: a phase begins a segment when the one before it was in another
-  segment or closed its own. A chat that opens where the thread is, as
-  after a fresh start, adds no phase and so no heading. The test before
-  a unit comes before the first segment: the phase the chat opened in
-  gives way to its card, and the segment the unit goes on from begins
-  where the result is answered; a segment the test skipped has none.
+  ringed and marked for assistive technology in the latest heading only;
+  each heading has an id the outline jumps to (`PhaseItem` in `timeline.ts`).
+  Earlier sessions have headings too: a phase begins a segment when the
+  previous phase was in another segment or closed its own. A chat that
+  opens where the thread is, as after a fresh start, adds no phase and no
+  heading. The test before a unit, and any review before that test, come
+  before the first segment heading. The first segment taught begins where
+  the learner answers the result; a skipped segment has no heading.
   Teach, discuss, check and done are hairlines with a label, as are the
   other markers. A graded card's verdict is one line under a hairline:
   the word coloured, then how sure, help taken and the expected answer

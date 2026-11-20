@@ -1085,7 +1085,11 @@ function SegmentHead(props: { heading: SegmentHeading }) {
       <h2 className="seg-t">{heading.title}</h2>
       <ul className="seg-objs">
         {heading.objectives.map((o) => (
-          <li key={o.id} className="seg-o">
+          <li
+            key={o.id}
+            className="seg-o"
+            aria-current={o.current ? "step" : undefined}
+          >
             <StatusForm objective={o.status} current={o.current} />
             <span>
               <InlineProse text={o.statement} />

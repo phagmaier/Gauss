@@ -557,6 +557,46 @@ test("every objective passed, the learner has the whole unit taught: from its fi
   );
 });
 
+test.each(["whole", "partial skip"] as const)(
+  "reopening after a saved %s choice with no transcript record settles the test and heads the lesson",
+  async (choice) => {
+    const root = await makeCourse();
+    const first = setUp();
+    const before = await testOut(first);
+    await answer(before, "B");
+    await answer(before, "A");
+    await answer(before, "B");
+    await first.units.close();
+
+    // The choice reached state.json, but not the transcript. Both choices
+    // start at segment 1, the same position the chat opened the test in.
+    const skipped = choice === "whole" ? [] : ["power-rule"];
+    await root.writePosition(COURSE, "derivative", {
+      segment: 0,
+      phase: "teach",
+      ...(skipped.length === 0
+        ? {}
+        : { testOut: { stage: "skip", passed: skipped } }),
+    });
+
+    const restarted = setUp();
+    const timeline = replay(await open(restarted));
+    expect(timeline.testWaits).toBe(false);
+    expect(resultOf(timeline).skipped).toEqual(skipped);
+    const lesson = timeline.items.flatMap((item) => {
+      if (item.kind === "test_result") return ["result"];
+      if (item.kind === "phase" && item.heading !== undefined) {
+        return [`${item.heading}:${item.phase}`];
+      }
+      if (item.kind === "tutor" && item.text === "Teaching.") {
+        return [item.text];
+      }
+      return [];
+    });
+    expect(lesson).toEqual(["result", "segment-1:teach", "Teaching."]);
+  },
+);
+
 // --- A partial result --------------------------------------------------------------
 
 test("a partial result skips nothing while its card waits, across a restart too; then a segment is skipped, and one of two objectives teaches and checks the other", async () => {
@@ -1003,11 +1043,15 @@ test("a review that is due is offered first; the test waits behind its card, acr
   });
   expect(sent(first.backend)).toEqual([]);
   expect(ofType(before, "question")).toEqual([]);
+  expect(replay(before).items.some((item) => item.kind === "phase")).toBe(
+    false,
+  );
   await first.units.close();
 
   const second = setUp();
   const chat = await open(second);
   expect(sent(second.backend)).toEqual([]);
+  expect(replay(chat).items.some((item) => item.kind === "phase")).toBe(false);
   await step(chat.skipAssessment(), chat);
 
   expect(await positionOf()).toEqual({
