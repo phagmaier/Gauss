@@ -121,6 +121,13 @@ its rationale would help a later agent avoid repeating the investigation.
   server stops: a session page left open keeps opening its unit on whatever
   server next comes up on its port, and on a real backend that plans and
   teaches the unit.
+- **Browser checks run in Chromium** unless the task is about another
+  engine. The default browser here is WebKit, which behaves differently
+  (it hides an aid's errors, `decisions.md`, "Confinement"), and omp's
+  managed Chromium does not start on this NixOS machine. Get Chromium
+  with `nix build nixpkgs#chromium --no-link --print-out-paths` and open
+  it with `browser.open({ app: "<that path>/bin/chromium", ... })`; the
+  user chose this over adding libraries to nix-ld (2026-11-20).
 - **The engine never imports an agent SDK.** Only files under
   `src/server/backends/` do.
 - **Objective status is derived from the evidence log**, never stored.
