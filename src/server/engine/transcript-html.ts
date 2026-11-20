@@ -32,6 +32,7 @@ import {
   type ChoiceLetter,
   confidenceLabel,
 } from "../../shared/question.ts";
+import { messageParts } from "../../shared/quote.ts";
 import {
   emptyTimeline,
   type Item,
