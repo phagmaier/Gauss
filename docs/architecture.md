@@ -73,8 +73,8 @@ Dependencies, kept few (`package.json`, `pytools/pyproject.toml`):
   page), `@biomejs/biome`, and the types `@types/node`, `@types/react`,
   `@types/react-dom` and `@types/hast` (document trees).
 - Python: `sympy`, with `antlr4-python3-runtime` 4.11 for its LaTeX
-  parser; `pytest` for development. Stage 4 adds a PDF and an EPUB
-  converter.
+  parser; `pytest` for development. Stage 4 adds `pypdfium2` and `Pillow`
+  for PDFs and their page images; EPUB is read with the standard library.
 
 The curriculum diagram is laid out by the page itself
 (`src/web/diagram.ts`), not by a diagram library.
@@ -94,6 +94,7 @@ The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
   .profile-approval.json          recovery journal present only during a curriculum approval that changes the profile, or until recovery
   .notes-write.json               recovery journal present only during publication of unit notes, or until recovery
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
+  uploads/<intake-id>/            (stage 4) sources attached in an intake, converted, until its first proposal creates the course; outside the history
   cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
     course.json                   title, backend, settings, dates, when each unit was last opened, when review was last offered
@@ -106,7 +107,7 @@ The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
     units/<unit-id>/handoff.md    the unit's handoff note, rewritten whole when a segment closes or the unit finishes
     units/<unit-id>/handoff.json  how far into the unit's transcripts that note reads
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
-    sources/<source-id>/          (stage 4) original file, outline.json, sections/*.md, pages/
+    sources/<source-id>/          (stage 4) the original, outline.json, sections/<id>.md, and pages/ (PDF page images rendered on request; outside the history)
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
     notes/<unit-id>.html          each unit's standalone notes, as the engine finished them
     notes/<unit-id>.json          the writer's original document, kept as data, with the instructions and date
@@ -490,7 +491,8 @@ The rules:
 
 The engine composes every message the tutor receives: a short header (unit,
 segment, phase, what is allowed now, what happened that the tutor has not
-been told, and in a source course the segment's sections), followed by the
+been told, and in a source course (stage 4) the segment's sections, or in
+an assessment the assessed unit's), followed by the
 learner's text or an event. An answer's turn repeats the question with its
 choices, the learner's answer, confidence, reasoning and the grade. A turn
 that allows a question adds a separate “Questions asked before” section to
@@ -777,7 +779,9 @@ tool server, for Codex an MCP server.
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session |
 | `ask_question` | Posts a question on an objective of the segment, in the check, or on the one an assessment asks next: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. A tutor's uses the proposal and feedback rules in section 4 and does not end the turn. The course planner's (`planCurriculumChangeTool`) ends its turn and replaces the proposal waiting (section 4, "The planning conversation") |
-| `quote_source` | (stage 4) Returns a verified quote block, or an error if the text is not in the source |
+| `read_section` | (stage 4) Returns a section's text, after a line naming it with its title and place; any section of the course's sources, at any time |
+| `view_page` | (stage 4) Returns a PDF page as an image, rendered in the engine's sandbox and kept in the source's `pages/` |
+| `quote_source` | (stage 4) Shows a verified quote in the source's own words with its citation (section 8), or is refused with the reason: not in the sources, too short or long, an ellipsis, or a question of the unit open. Does not end the turn |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
 | `propose_style` | Proposes the whole revised style note with a line on why (`StyleInput` in `src/shared/style.ts`), shown on a card; Apply writes `style.md`. Uses the proposal and feedback rules in section 4. Does not end the turn |
@@ -795,8 +799,8 @@ workspace, is closed to its writes (`decisions.md`, "Confinement"). An open
 question in any unit of a course blocks every tutor's workspace changes,
 including after restart. Commands run in the foreground, and posting a
 question is refused while a write or command still runs. Reads stay allowed.
-Web search, where a course allows it, comes
-with sources (stage 4).
+In a course whose web search setting is on (stage 4), the tutor also has
+Claude Code's `WebSearch`, never `WebFetch` (section 8).
 
 ## 6. Grading
 
@@ -1020,40 +1024,62 @@ Not built. What its SDK can and cannot do, from the stage 0 spike, is in
 
 ## 8. Sources
 
-Planned for stage 4, not yet implemented (`decisions.md`, "Sources").
+Planned for stage 4, not yet built; the tasks are in the plan, and the
+choices and the trials behind them in `decisions.md`, "Sources".
 
-1. **Ingest** (`pytools/convert.py`): copy the original; convert to
-   Markdown; build an outline from the headings or the table of contents;
-   write one file per section, and `outline.json`, whose schema is written
-   in stage 4.
+1. **Attach**, in the intake only: the page sends the file, and the engine
+   converts it by running `pytools/convert.py` in its sandbox. A source
+   waits in `uploads/<intake id>/` until the first proposal creates the
+   course, then lives in the course's `sources/`. PDF, EPUB, TXT and
+   Markdown are recognised by their content. A scanned PDF is refused as
+   needing text recognition, which is not in the first version; so are a
+   protected PDF or EPUB and any other file.
+2. **Convert**: copy the original; convert to Markdown; build an outline
+   from the PDF's bookmarks (without them, from type size and heading
+   numbers), the EPUB's table of contents, or the Markdown's headings;
+   write one file per section, and `outline.json` (`Outline` in
+   `src/shared/source.ts`).
    - The outline nests as the source does, to any depth. A **section** is a
      leaf of the outline and the only kind of entry with a file. Text
      between a heading and its first subheading is a section of its own.
-   - Each section records where it sits in the original (a page range, or a
-     paragraph range for formats without pages), for citations and page
-     images.
-   - A section has a size limit, below what one file read returns. A
-     stretch over the limit with no headings is cut at paragraph boundaries
-     into parts of roughly equal size, titled from its parent and position.
-   - The same file and converter always give the same sections and ids.
-2. **Map**: during curriculum planning each unit lists the sections it
-   teaches. When the unit is planned, each segment names the sections it
-   draws on.
-3. **Plan**: the unit's planning session reads the unit's whole text, so
-   the tutor's session starts from the stored plan rather than carrying the
-   text from its first turn.
-4. **Teach**: the engine names the current segment's sections in the turn
-   header, and the tutor reads those files. It may read other sections when
-   the discussion needs them, and requests a page image for a page whose
-   text lost equations or figures.
-5. **Quote**: `quote_source` checks the text against the source's whole
-   text, its sections in order, after normalising whitespace and
-   punctuation, so a quote across a cut still verifies. It returns the
-   section and the page or paragraph, and the page links the quote to its
-   place.
-
-Scanned PDFs are detected and reported as needing text recognition; that
-step is not in the first version.
+   - A section file holds the source's own text, its heading included,
+     plus footnote references and, in a PDF, a marker at each page's start
+     with the page's printed label and whether its text lost math or
+     images. Joined in order, the sections are the source's whole text.
+   - Each section records where it sits in the original: a page range for
+     a PDF, otherwise a paragraph range, numbered within its heading's
+     stretch.
+   - A section has a size limit, 20,000 characters. A stretch over it is
+     cut between paragraphs into the fewest parts of roughly equal size
+     within it, titled from the stretch and the part's position ("Preface
+     (part 2 of 6)").
+   - Section ids are ordinals in reading order (`s1`, `s2`, ...); the same
+     file and converter always give the same sections and ids. A course
+     names a section `<source id>/<section id>`.
+3. **Map**: the planners are given each source's outline, and each unit
+   lists the sections it teaches, at most 150,000 characters in all. When
+   the unit is planned, each segment names the sections it draws on.
+4. **Plan**: the unit's planning turn carries the unit's sections whole,
+   so the tutor's session starts from a plan made from the text rather
+   than carrying the text from its first turn.
+5. **Teach**: the tutor's system prompt holds each source's outline. The
+   engine names the current segment's sections in the turn header, and an
+   assessed unit's for a review or gate question on another unit's
+   objective. The tutor reads sections with `read_section`, the segment's
+   and others when the discussion needs them, and looks at a PDF page with
+   `view_page` where the page's marker says its text lost math or images.
+6. **Quote**: `quote_source` checks the text against each source's whole
+   text, its sections in order, so a quote across a cut still verifies.
+   Matching ignores case, whitespace, hyphens, punctuation variants,
+   emphasis marks, page markers, footnote references and margin line
+   numbers. A match shows in the thread as a quote in the source's own
+   words, with its citation (the section, and the page or paragraph),
+   which opens the passage in the side pane. A passage paraphrased is
+   linked, claiming no quote, by a Markdown link to
+   `source:<source id>/<section id>`.
+7. **Web search** is a course's setting, off by default. With it on, the
+   tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
+   search shows in the thread with its links.
 
 ## 9. Prompts
 
@@ -1456,8 +1482,7 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
 ## 12. Build stages
 
 Stage scope is listed here; task status and user checks live in the
-[plan](plan.md). Stages 0 to 3 and 5 are finished; stage 4 comes next,
-after the follow-up tasks stage 5's check added.
+[plan](plan.md). Stages 0 to 3 and 5 are finished; stage 4 is under way.
 
 | Stage | Scope |
 | --- | --- |
@@ -1489,8 +1514,13 @@ after the follow-up tasks stage 5's check added.
   for installing packages the learner approved, and the permission
   settings confine the tutor's writes to the course's workspace; the
   engine runs tests and the symbolic check in a sandbox too. Reads are
-  not confined, which matters once the tutor has web access.
+  not confined yet (plan task 4.2 confines them before sources).
+- **A source or a search result can carry instructions to the tutor.**
+  Mitigation: confined reads, no network for commands, web search without
+  reading pages, a refused search that holds the account's email address.
+  What remains is below.
 - **The tutor's artifacts run scripts in the learner's browser.**
   Mitigation: a sandboxed frame with an origin of its own, and a policy
-  that loads and fetches nothing. WebRTC still reaches the network, which
-  matters once the tutor reads text from outside the machine.
+  that loads and fetches nothing. WebRTC still reaches the network, so a
+  misled tutor could send the session's context out through an aid; the
+  user accepted that (`decisions.md`, "Sources").

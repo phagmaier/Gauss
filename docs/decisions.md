@@ -34,7 +34,7 @@ a42a409:docs/decisions.md`.
 | Page behaviour | Rendering, performance, the pinned question, dimming, retries, the artifact pane | Touching `src/web/` |
 | HTTP and event stream | Route rules, security, intakes | Adding or changing a route |
 | Dev server and tests | `pnpm dev:fake`, the fake backends, test timing, real-model runs | Running checks; touching `scripted.ts`, `dev-seed.ts`, `serve.ts` |
-| Sources | Splitting sources into sections | Stage 4 |
+| Sources | The section limit and the trials behind it, the converters, reading, quotes and links, attaching, the web and the channel out | Stage 4; touching sources, quotes or web search |
 | Known gaps | What is known to be wrong or missing and not scheduled | Before calling something a new bug |
 
 ## Product decisions
@@ -311,6 +311,14 @@ The brief states the result; this is who decided and why.
   prompts until its own real-model runs, old prompt against new on the
   same moves, show nothing lost, and keeps them as short as that allows.
   A task's "the user reads ..." check on a prompt no longer applies.
+- **2026-11-21, the stage 4 breakdown.** The user took the agent's
+  recommendation on each of four choices ("Sources"): a source is attached
+  when a course starts, in the intake, and not added to a course later in
+  this stage; web access is search only, never reading a page; the
+  channel out of an aid through WebRTC is accepted once reads are
+  confined, since it then exposes only the session's context and only if
+  a source misleads the tutor; and PDFs are converted with pypdfium2 and
+  Gauss's own layout code, not PyMuPDF4LLM, whose AGPL would bind Gauss.
 
 ## Toolchain
 
@@ -385,9 +393,10 @@ options as built are in `architecture.md` section 7.
   refreshing one copy can sign the learner out. With no web tool and no
   network in the tutor's sandbox, it can reach only Anthropic, which has it
   as the account's, or a workspace file the model chose to write it in
-  (the agent's judgment, task 3.0). Web access (stage 4) would let a
-  request carry it, with anything else in the context; 4.0 has the point.
-  Look again if an SDK adds a switch.
+  (the agent's judgment, task 3.0). Web access is search only (the user's
+  pick, 2026-11-21), so a query could carry it to Anthropic's search but
+  to no site, and a hook refuses a query that holds it (task 4.11). Look
+  again if an SDK adds a switch.
 
 **Tools and ending a turn**
 
@@ -598,8 +607,9 @@ needs neither, since the record lies outside the workspace.
   tried in task 3.3, is off: it hid the home folder from sandboxed
   commands (`ls ~` empty), where mise installs `python` and `uv`, which
   were then not found, and it still let a command read `../state.json`
-  with the data root in `/tmp`. Settle reads before the tutor gets web
-  access.
+  with the data root in `/tmp`. Task 4.2 confines them before the tutor
+  reads a source: the sandboxes' `denyRead` with `allowRead` for what
+  commands need, and a listed environment.
 - **Artifacts.** The frame and response policy give the aid an opaque
   origin and allow inline scripts. CSP has no `navigate-to`: the parent
   page's `frame-src 'self'` stops an external navigation, but a direct
@@ -611,10 +621,9 @@ needs neither, since the record lies outside the workspace.
   request reached the server. CSP's `webrtc 'block'` is "Unrecognized" in
   Chromium 157, and removing the constructor in the artifact is undone by
   a nested `srcdoc` frame's own script. So a document the tutor writes can
-  send what it holds out, by STUN or TURN. Left open in stage 3, where the
-  tutor reads no text from outside the machine; with unconfined reads it
-  is a channel out for a tutor misled by a source or a web page, so 4.0
-  settles it. DNS prefetch from an artifact was not tried.
+  send what it holds out, by STUN or TURN. The user accepted it
+  (2026-11-21, "Sources") once reads are confined (task 4.2), which also
+  tries DNS prefetch from an artifact.
 - **Artifacts in the record** are named by a hard link, so a file there is
   never replaced; the engine refuses a write when no safe number remains
   rather than repeat one. `show_artifact` is refused while a question of
@@ -2285,16 +2294,43 @@ redesign's.
 ## Sources
 
 The user brought a proposal for splitting sources (2026-11-14); the
-agent's smaller version was accepted. The design is `architecture.md`
-section 8.
+agent's smaller version was accepted. Task 4.0 settled the rest by trying
+candidates on the user's files; the user's four picks are in "Product
+decisions" (2026-11-21). The design is `architecture.md` section 8.
 
-- **The gap was real**: long stretches without headings exist (from
-  memory of the Miller translation of the _Phenomenology_: the Preface,
-  about 45 pages, and "Force and the Understanding", about 30). Check the
-  user's edition in stage 4.
-- **One `Read` call is capped at 25,000 tokens by default**
-  (`CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS` overrides it; read from the
-  binary, not observed), so a section must stay below it.
+**Sections**
+
+- **The limit is 20,000 characters of section text** (the agent's choice,
+  task 4.0), about 5.5 pages of the user's edition. Tried at 15,000, 20,000
+  and 30,000, on PDFium's page text with running heads removed and stretches
+  bounded by pages: the Inwood _Phenomenology_ (Oxford 2018, the user's
+  PDF: 543 pages, 127 bookmarks, printed page labels), whose Preface is
+  108,000 characters with no heading (72 numbered ¶s, the longest 3,600)
+  and "Force and Understanding" about 60,000; arXiv 1706.03762 (40,000 in
+  all, bookmarks) and 1512.03385 (no bookmarks), where no section comes
+  near any limit; and EPUBs by Girard (chapters of 12,000 to 37,000, no
+  heading tags) and Han (chapters of 2,700 to 32,000). At 20,000 the
+  Preface is 6 parts of 15,000 to 19,000, starting at ¶1, 15, 27, 40, 51
+  and 61, and "Force and Understanding" 4 of about 15,000: about one
+  segment's share of a unit. At 30,000 the parts were 26,000 to 27,000,
+  more than a segment teaches, so segments would share parts; at 15,000
+  the Preface was 8 parts for no gain. Cost at 20,000: 10 of Girard's 14
+  chapters, his foreword and his conclusion are cut in two, and Han's
+  chapter of 20,400 into two halves.
+- **The limit is not what a read returns.** A teaching tool's result is
+  capped at 25,000 tokens (`MAX_MCP_OUTPUT_TOKENS`'s default) and `Read`
+  at 25,000 too (`CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`), both read in
+  Claude Code 2.1.325's code; 20,000 characters of prose is about 5,000
+  tokens.
+- **Cuts fall between paragraphs into equal shares**, the fewest parts
+  within the limit. A part runs from half the limit to the limit.
+- **Section ids are ordinals** (`s1`, `s2`, ...; the agent's choice):
+  stable for one file and converter, short for a model to copy; the title
+  carries the meaning.
+- **A section file holds only the source's text**, with page markers and
+  footnote references, so the sections joined are the source's whole text
+  and a quote across a cut still matches. A title Gauss made ("Preface
+  (part 2 of 6)") lives in the outline.
 - **Not adopted from the proposal**: new terms ("subsection", "chunk") for
   what the brief calls sections; a field list and two-level file names in
   the architecture (shapes are zod schemas, and the _Phenomenology_'s
@@ -2305,8 +2341,87 @@ section 8.
   two places.
 - **On context size**: what the tutor reads stays in its session, so
   smaller files lower the cost of a unit's early turns, not its end; the
-  size of a unit is what bounds the context. 15,000 to 30,000 characters
-  is about 6 to 12 dense pages.
+  size of a unit is what bounds the context, hence a unit's cap of 150,000
+  characters (the Preface, 108,000, fits).
+
+**Conversion**
+
+- **PDF through pypdfium2** (Apache-2.0 or BSD), with Gauss's own
+  paragraphs, headings and footnotes (the user's pick). Its character pass
+  over the Inwood PDF, 2.1 million characters with their boxes, took 7
+  seconds; a page renders in 0.26 seconds. Tried and not taken:
+  PyMuPDF4LLM, whose Markdown was the best seen (paragraphs joined,
+  superscripts marked), but which is AGPL, kept the running heads, did
+  not join a paragraph across a page break, and made a heading of a line
+  of ResNet's text; pdfplumber, which ran the words of justified lines
+  together ("Itiscustomarytobegin").
+- **What extraction does to the Inwood PDF**: running heads in private-use
+  characters; footnote markers glued to words ("the Thing,1 even"), which
+  would fail a quote; a font size of 1 on every character, while the
+  loose box's height tells a superscript (6.4) from body text (9.6) and
+  from a ligature (7.2). TeX math in a paper comes out mangled
+  (`softmax(QKT √ dk )V`), hence page images and the page marker that
+  says a page has math or images.
+- **EPUB through the standard library**: EbookLib is AGPL, and `zipfile`,
+  `xml.etree` and `html.parser` cover the container, the table of
+  contents and the XHTML. Girard's EPUB (Calibre) sets its headings as
+  styled paragraphs and its NCX lacks chapter 9, so the outline comes from
+  the table of contents, not the markup.
+- **Conversion runs in the engine's sandbox**: PDFium is native code
+  parsing a file from outside the machine.
+
+**Reading and planning**
+
+- **The tutor reads sections through teaching tools** (`read_section`,
+  `view_page`), not its file tools (the agent's choice): they work where
+  the tutor has no file tools (no sandbox, another platform) and on
+  another backend, keep the record out of the tutor's reach, and need no
+  read rule. The brief's "reads those files directly" is about no
+  embedding search, which still holds.
+- **A unit's planning turn carries the unit's sections whole**, rather than
+  a tool to read them: one request, with nothing left unread.
+
+**Quotes and links**
+
+- **A verified quote is a card the tool shows, in the source's words**
+  (the agent's choice): verifying and showing are one act, so the page
+  never shows a quote that was not verified, and matching can ignore
+  case, punctuation, hyphens and spacing without letting a misquote
+  through, since the learner sees the source's span. Rejected: marking
+  quotes in the tutor's text, which the page could not tie to what was
+  verified. A quote is one passage: an ellipsis is refused (open to
+  change).
+- **Matching ignores what extraction adds** (the user's pick from the
+  DeepTutor comparison): margin line numbers on lines of their own and a
+  word split by a hyphen at a line's end. DeepTutor drops number-only
+  lines and all spacing and hyphens before comparing.
+- **A section link claims no quote** (the user's pick): a Markdown link
+  to `source:<source>/<section>`, since a paraphrase runs inside the
+  tutor's sentences, where a tool call would break the text.
+
+**Sources in a course**
+
+- **Attached in the intake only** (the user's pick); adding one to a
+  course later is in stage 6's list. Since the first proposal makes the
+  course, a source waits in `uploads/` until then.
+- **The backup keeps the original and the text**, and leaves out page
+  images, which can be rendered again; an original is committed once (the
+  Inwood PDF is 5.7 MB).
+
+**The web and the channel out**
+
+- **Web search, never fetching a page** (the user's pick): a query goes to
+  Anthropic's search, and the results come back as titles, links and a
+  summary; a fetch could send what the tutor holds to any site in an
+  address.
+- **The email address** reaches every session ("Claude backend"). A query
+  could carry it to the search, not to a site; the hook that refuses a
+  query holding it (task 4.11) stops the plain case.
+- **WebRTC from an aid is accepted** (the user's decision, 2026-11-21),
+  once reads are confined (task 4.2): what an aid could send out is then
+  the session's context (the learner's messages, profile and email
+  address), and only if a source or a search result misleads the tutor.
+  Rejected: aids without scripts in such courses.
 
 ## Known gaps
 
