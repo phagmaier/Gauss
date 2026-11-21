@@ -678,10 +678,17 @@ the test before a unit lets the learner skip what they know.
   stretch, the previous note, and misconceptions recorded on those
   objectives (`handoffRequest`).
 - **What it writes.** `HandoffReply` (`src/shared/handoff.ts`): the note,
-  whole, and the misconceptions found, each naming an objective given and,
-  if it showed in a detour, the detour's number, which the engine turns
-  into its question's id and number; one naming anything else is left
-  out. The misconceptions are appended, then the note replaces the one
+  whole, and the misconceptions found, each naming an objective given,
+  quoting the learner's words that showed it and, if it showed in a
+  detour, giving the detour's number, which the engine turns into its
+  question's id and number. `foundIn` leaves out, and logs with its
+  belief, one naming anything else or whose words are in none of the
+  learner's own texts the stretch kept (`Stretch.said`: their messages,
+  answers, reasoning and where they got stuck; a choice answer by the
+  choice picked; not the tutor's text, nor "I don't know"). The
+  comparison ignores case, spacing, `$` and the form of quotation marks,
+  and quotation marks, ellipses and sentence marks at the quote's ends.
+  The misconceptions are appended, then the note replaces the one
   before, then the mark moves to the stretch's end, and a backup commit is
   asked for. A failed call, a reply out of shape or one past
   `HANDOFF_TIME_LIMIT_MS` records nothing, so the next call reads its
@@ -699,7 +706,8 @@ the test before a unit lets the learner skip what they know.
   record stands when the chat opens or the unit is planned, the last notes
   of the unit's direct prerequisites and the open misconceptions on other
   units' objectives (`readEarlier`), in a section left out when it is
-  empty. "What I know" shows each under its objective.
+  empty. "What I know" shows each under its objective, with the learner's
+  words when it has them (older records have none).
 
 ### Unit notes
 

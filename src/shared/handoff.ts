@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { Timestamp } from "./course.ts";
+import { MISCONCEPTION_WORDS_LIMIT } from "./misconception.ts";
 
 /** A note aims for about 250 words; only the character ceiling is enforced. */
 export const HANDOFF_NOTE_LIMIT = 4000;
@@ -42,6 +43,14 @@ export const HandoffReply = z.object({
           .min(1)
           .max(2000)
           .describe("What is so, and briefly why, in a sentence or two."),
+        words: z
+          .string()
+          .trim()
+          .min(1)
+          .max(MISCONCEPTION_WORDS_LIMIT)
+          .describe(
+            "The learner's own words that showed it, copied exactly from one of their messages or answers in the stretch: one continuous run, nothing left out in the middle.",
+          ),
         detour: z
           .number()
           .int()

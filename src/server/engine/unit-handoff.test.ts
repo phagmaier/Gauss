@@ -302,6 +302,15 @@ test("the writer is called as each segment closes and as the unit finishes, each
           objective: "limit-value",
           believed: "A limit is the value at the point.",
           actually: "It is where the values head.",
+          words: "I thought it was $f(2)$",
+          detour: 1,
+        },
+        // The tutor's words, not the learner's: left out.
+        {
+          objective: "limit-value",
+          believed: "A limit is a value.",
+          actually: "It is where the values head.",
+          words: "Detour: the limit is where values head.",
           detour: 1,
         },
       ],
@@ -347,6 +356,7 @@ test("the writer is called as each segment closes and as the unit finishes, each
       objective: "limit-value",
       believed: "A limit is the value at the point.",
       actually: "It is where the values head.",
+      words: "I thought it was $f(2)$",
       where: { in: "detour", questionId: missed?.id, number: 1 },
     },
   ]);
@@ -504,11 +514,13 @@ test("a fresh session's first turn carries the unit's handoff note and its open 
           objective: "limit-value",
           believed: "Values at the point decide the limit.",
           actually: "Nearby values do.",
+          words: "Right",
         },
         {
           objective: "one-sided",
           believed: "A limit has one side only.",
           actually: "It has two.",
+          words: "A. Right",
         },
       ],
     }),
@@ -545,18 +557,18 @@ test("a fresh session's first turn carries the unit's handoff note and its open 
     objectives.map((o) => ({
       id: o.id,
       status: o.status,
-      believed: o.misconceptions.map((m) => m.believed),
+      misconceptions: o.misconceptions.map((m) => [m.believed, m.words]),
     })),
   ).toEqual([
     {
       id: "limit-value",
       status: "passed",
-      believed: ["Values at the point decide the limit."],
+      misconceptions: [["Values at the point decide the limit.", "Right"]],
     },
     {
       id: "one-sided",
       status: "not-started",
-      believed: ["A limit has one side only."],
+      misconceptions: [["A limit has one side only.", "A. Right"]],
     },
   ]);
   await chat.close();

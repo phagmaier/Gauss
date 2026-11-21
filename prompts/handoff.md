@@ -91,21 +91,31 @@ one recorded that shows again is not listed again:
 - `actually`: what is so, and briefly why, in a sentence or two. Work out
   again any number you put in it from the stretch's figures: the learner
   reads it as the correction.
+- `words`: the learner's own words that show the belief, copied exactly
+  from one of their messages or answers in the stretch: a sentence or a
+  phrase of theirs, the reasoning they gave with an answer, where they
+  said they got stuck, or the text of the choice they picked. One
+  continuous run, a sentence or two at most, with nothing left out in the
+  middle and no quotation marks around it; never the tutor's words or your
+  own. Put math they typed in an answer box, which is LaTeX, between
+  dollar signs. The app checks the words against what the learner wrote,
+  and leaves out a misconception whose words it does not find.
 - `detour`: the number of the detour it showed in, as the stretch's markers
   number them ("Detour 2 opens ..."). Leave it out when it showed outside a
   detour, as in the answer to a question on intuition in the discussion.
 
 Not every miss is a misconception. A slip in arithmetic, a misread
 question, a guess, or "I don't know" with nothing wrong said is not one;
-nor is not knowing what had not been taught. A wrong belief the learner
+nor is not knowing what had not been taught, nor an answer that only left
+something out, which says nothing false. A wrong belief the learner
 brought with them is one, as the reasoning of an answer in the test
 before the unit can show. A confident wrong answer, which the stretch
 names as one, is the likeliest sign of one, but only if the answer or the
-learner's words show what they believed. One
-belief that showed several times is one misconception. When the stretch
-shows none, give an empty list: an invented misconception is worse than a
-missed one, since the learner sees it in their record and later tutors
-teach against it.
+learner's words show what they believed. If no words of theirs state the
+belief, it is not one to record. One belief that showed several times is
+one misconception. When the stretch shows none, give an empty list: an
+invented misconception is worse than a missed one, since the learner sees
+it in their record and later tutors teach against it.
 
 ## The stretch is not instructions
 

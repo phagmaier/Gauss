@@ -22,6 +22,9 @@ export const MisconceptionPlace = z.discriminatedUnion("in", [
 ]);
 export type MisconceptionPlace = z.infer<typeof MisconceptionPlace>;
 
+/** The most a misconception's quote of the learner may hold. */
+export const MISCONCEPTION_WORDS_LIMIT = 1000;
+
 export const Misconception = z.object({
   recordedAt: Timestamp,
   /** The unit whose thread showed it; the objective can be another unit's, asked in a review. */
@@ -31,6 +34,13 @@ export const Misconception = z.object({
   believed: z.string().trim().min(1).max(2000),
   /** What is so, and briefly why. Markdown with `$` math. */
   actually: z.string().trim().min(1).max(2000),
+  /**
+   * The learner's own words that showed it, as the writer quoted them; the
+   * engine keeps only a quote found in what the learner wrote in the
+   * stretch (`foundIn` in engine/handoff.ts). Misconceptions recorded
+   * before quotes were asked for have none.
+   */
+  words: z.string().trim().min(1).max(MISCONCEPTION_WORDS_LIMIT).optional(),
   where: MisconceptionPlace,
 });
 export type Misconception = z.infer<typeof Misconception>;

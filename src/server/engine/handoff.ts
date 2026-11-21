@@ -262,6 +262,12 @@ export interface Stretch {
   detours: ReadonlyMap<number, StretchDetour>;
   /** The objectives of the questions it shows answered, detoured on or re-keyed. */
   objectives: ReadonlySet<string>;
+  /**
+   * The learner's own words in the text, each as it reads there: their
+   * messages, answers (a choice by the choice they picked), reasoning and
+   * where they got stuck. Not "I don't know", which is the page's.
+   */
+  said: readonly string[];
   /** It holds the tutor's text, a learner's message, an answer or a correction to an answer shown. */
   worthReading: boolean;
 }
@@ -290,6 +296,8 @@ export function readStretch(
   const { plan, answers } = given;
   const objectiveOf = (id: string) => answers.get(id)?.objective;
   const parts: string[] = [];
+  /** The learner's words, by the part that holds them. */
+  const said: { part: number; text: string }[] = [];
   const views = new Map<string, QuestionView>();
   const detours = new Map<number, StretchDetour>();
   const objectives = new Set<string>();
@@ -299,7 +307,10 @@ export function readStretch(
   let lastPhase: string | undefined;
   let run: string | undefined;
 
-  const say = (part: string) => parts.push(part);
+  const say = (part: string, words: readonly string[] = []) => {
+    for (const text of words) said.push({ part: parts.length, text });
+    parts.push(part);
+  };
   const flush = () => {
     if (text.trim() !== "") say(`Tutor:\n${text.trim()}`);
     text = "";
@@ -329,7 +340,7 @@ export function readStretch(
         break;
       case "learner":
         worthReading = true;
-        say(`Learner:\n${event.text.trim()}`);
+        say(`Learner:\n${event.text.trim()}`, [event.text.trim()]);
         break;
       case "file_written":
         say(`[The tutor wrote the file "${event.path}".]`);
@@ -361,12 +372,10 @@ export function readStretch(
         worthReading = true;
         const objective = objectiveOf(event.questionId);
         if (objective !== undefined) objectives.add(objective);
+        const view = views.get(event.questionId);
         say(
-          gradedText(
-            event,
-            views.get(event.questionId),
-            name(event.questionId),
-          ),
+          gradedText(event, view, name(event.questionId)),
+          wordsOf(event.answer, view),
         );
         break;
       }
@@ -482,9 +491,10 @@ export function readStretch(
   }
   flush();
   return {
-    text: given.whole ? parts.join("\n\n") : cut(parts),
+    text: kept.text,
     detours,
     objectives,
+    said: said.filter((s) => s.part >= kept.from).map((s) => s.text),
     worthReading,
   };
 }
@@ -511,6 +521,26 @@ function segmentName(
   }
   const title = plan.segments[event.segment]?.title;
   return `Segment ${event.segment + 1}${title === undefined ? "" : `, "${title}"`}`;
+}
+
+/** How much of the end of a code answer's file the writer reads. */
+const CODE_TAIL = 3000;
+
+/** The learner's own words in a graded answer, as `gradedText` writes them out. */
+function wordsOf(
+  answer: AnswerSubmission,
+  view: QuestionView | undefined,
+): string[] {
+  const words =
+    answer.kind === "unknown"
+      ? [answer.stuck]
+      : [
+          ...(answer.kind === "code"
+            ? answer.files.map((f) => tail(f.content, CODE_TAIL))
+            : [answerText(answer, view)]),
+          answer.reasoning,
+        ];
+  return words.flatMap((w) => (w?.trim() ? [w.trim()] : []));
 }
 
 /** A graded answer as the writer reads it: the answer, how sure, and the grade. */
@@ -587,7 +617,7 @@ function answerText(
       return answer.files
         .map(
           (f) =>
-            `The file "${f.path}" as they ran it:\n${tail(f.content, 3000)}`,
+            `The file "${f.path}" as they ran it:\n${tail(f.content, CODE_TAIL)}`,
         )
         .join("\n");
     case "unknown":
@@ -595,8 +625,11 @@ function answerText(
   }
 }
 
-/** The parts joined, the earliest left out if they run over the limit. */
-function cut(parts: readonly string[]): string {
+/**
+ * The parts joined, the earliest left out if they run over the limit, and
+ * the index of the first part kept.
+ */
+function cut(parts: readonly string[]): { text: string; from: number } {
   let total = 0;
   let from = parts.length;
   while (from > 0) {
@@ -611,7 +644,7 @@ function cut(parts: readonly string[]): string {
       "[The start of this stretch is left out: it was too long to read whole.]",
     );
   }
-  return kept.join("\n\n");
+  return { text: kept.join("\n\n"), from };
 }
 
 /** The end of a text, at most `limit` characters. */
@@ -751,8 +784,9 @@ export function handoffRequest(input: {
 
 /**
  * The misconceptions of the reply as the record keeps them. One that names
- * an objective not given, or a detour the stretch does not have, is left
- * out, with why.
+ * an objective not given or a detour the stretch does not have, or whose
+ * words the learner did not write in the stretch, is left out, with why;
+ * the reason carries the belief, which is recorded nowhere else.
  */
 export function foundIn(
   reply: HandoffReply,
@@ -780,12 +814,19 @@ export function foundIn(
       );
       continue;
     }
+    if (!quotes(given.stretch.said, m.words)) {
+      dropped.push(
+        `it quotes the learner as writing "${oneLine(m.words)}", which no message or answer of theirs in the stretch has; it was on "${m.objective}": "${oneLine(m.believed)}"`,
+      );
+      continue;
+    }
     found.push({
       recordedAt: given.recordedAt,
       unit: given.unitId,
       objective: m.objective,
       believed: m.believed,
       actually: m.actually,
+      words: m.words,
       where:
         detour === undefined
           ? { in: "discussion" }
@@ -797,6 +838,28 @@ export function foundIn(
     });
   }
   return { found, dropped };
+}
+
+/**
+ * Whether the words are in one of the learner's texts, as one run. Case,
+ * spacing, `$` around math and the form of quotation marks are not
+ * compared, nor quotation marks, ellipses and sentence marks at either end,
+ * which a quote adds or drops.
+ */
+function quotes(said: readonly string[], words: string): boolean {
+  const quote = comparable(words).replace(ENDS, "");
+  return quote !== "" && said.some((s) => comparable(s).includes(quote));
+}
+
+const ENDS = /^["'.,;:!?]+|["'.,;:!?]+$/g;
+
+function comparable(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\s$]+/g, "");
 }
 
 // --- What other prompts read -----------------------------------------------

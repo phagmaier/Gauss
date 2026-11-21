@@ -290,6 +290,7 @@ test("the request gives the unit, its objectives with another unit's a review as
     text: "Learner:\nHello.",
     detours: new Map(),
     objectives: new Set(["factor", "limit-value"]),
+    said: ["Hello."],
     worthReading: true,
   };
   const objectives = objectivesFor(CONTEXT, stretch);
@@ -361,15 +362,54 @@ test("the request gives the unit, its objectives with another unit's a review as
   );
 });
 
-test("a misconception is kept with its detour's question, or as the discussion's; one naming an objective or a detour not given is left out", () => {
+test("a misconception is kept with its detour's question and the learner's words, or as the discussion's; one naming an objective or a detour not given, or quoting words the learner did not write, is left out", () => {
   const stretch = readStretch(CHECK, { plan: PLAN, answers });
   const reply: HandoffReply = {
     note: "Note.",
     misconceptions: [
-      { objective: "limit-value", believed: "B1", actually: "A1", detour: 1 },
-      { objective: "one-sided", believed: "B2", actually: "A2" },
-      { objective: "derivative", believed: "B3", actually: "A3" },
-      { objective: "limit-value", believed: "B4", actually: "A4", detour: 2 },
+      // The reasoning of the answer, quoted with its spacing, case and
+      // quotation marks changed.
+      {
+        objective: "limit-value",
+        believed: "B1",
+        actually: "A1",
+        words: "“Two is  WHERE x goes”",
+        detour: 1,
+      },
+      // The discussion's message.
+      {
+        objective: "one-sided",
+        believed: "B2",
+        actually: "A2",
+        words: "is it the value at the point",
+      },
+      {
+        objective: "derivative",
+        believed: "B3",
+        actually: "A3",
+        words: "Two is where x goes.",
+      },
+      {
+        objective: "limit-value",
+        believed: "B4",
+        actually: "A4",
+        words: "Two is where x goes.",
+        detour: 2,
+      },
+      // The tutor's words, not the learner's.
+      {
+        objective: "limit-value",
+        believed: "B5",
+        actually: "A5",
+        words: "where values head",
+      },
+      // Words no one wrote.
+      {
+        objective: "limit-value",
+        believed: "B6",
+        actually: "A6",
+        words: "A limit is the value at the point.",
+      },
     ],
   };
   const { found, dropped } = foundIn(reply, {
@@ -385,6 +425,7 @@ test("a misconception is kept with its detour's question, or as the discussion's
       objective: "limit-value",
       believed: "B1",
       actually: "A1",
+      words: "“Two is  WHERE x goes”",
       where: { in: "detour", questionId: "q-1", number: 1 },
     },
     {
@@ -393,8 +434,97 @@ test("a misconception is kept with its detour's question, or as the discussion's
       objective: "one-sided",
       believed: "B2",
       actually: "A2",
+      words: "is it the value at the point",
       where: { in: "discussion" },
     },
   ]);
-  expect(dropped).toHaveLength(2);
+  expect(dropped).toHaveLength(4);
+  expect(dropped[3]).toBe(
+    'it quotes the learner as writing "A limit is the value at the point.", which no message or answer of theirs in the stretch has; it was on "limit-value": "B6"',
+  );
+});
+
+test("the learner's words are their messages, answers, reasoning, the choice they picked and where they got stuck, math markup ignored; an \"I don't know\" and a part the stretch left out are not", () => {
+  const math: QuestionView = {
+    kind: "math",
+    id: "q-2",
+    number: 2,
+    prompt: "Differentiate.",
+  };
+  const events: PageEvent[] = [
+    { type: "question", question: CHOICE },
+    {
+      type: "graded",
+      questionId: "q-1",
+      verdict: "incorrect",
+      answer: {
+        kind: "choice",
+        questionId: "q-1",
+        choice: "C",
+        confidence: "90",
+      },
+      correctChoice: "B",
+      assisted: false,
+    },
+    { type: "question", question: math },
+    {
+      type: "graded",
+      questionId: "q-2",
+      verdict: "incorrect",
+      answer: {
+        kind: "math",
+        questionId: "q-2",
+        expression: "\\cos(2x)",
+        confidence: "75",
+      },
+      assisted: false,
+    },
+    { type: "question", question: { ...math, id: "q-3", number: 3 } },
+    {
+      type: "graded",
+      questionId: "q-3",
+      verdict: "unknown",
+      answer: {
+        kind: "unknown",
+        questionId: "q-3",
+        stuck: "I thought the chain rule was for products.",
+      },
+      assisted: false,
+    },
+  ];
+  const kept = (words: string, stretchEvents = events) => {
+    const reply: HandoffReply = {
+      note: "Note.",
+      misconceptions: [
+        { objective: "limit-value", believed: "B", actually: "A", words },
+      ],
+    };
+    return (
+      foundIn(reply, {
+        stretch: readStretch(stretchEvents, { plan: PLAN, answers }),
+        objectives: new Set(["limit-value"]),
+        unitId: "limits",
+        recordedAt: "2026-11-18T10:00:00.000Z",
+      }).found.length === 1
+    );
+  };
+  // The choice picked, by its text.
+  expect(kept("8")).toBe(true);
+  // A choice not picked is the tutor's.
+  expect(kept("4")).toBe(false);
+  // A math answer, put between dollar signs and spaced.
+  expect(kept("$\\cos (2x)$")).toBe(true);
+  expect(kept("the chain rule was for products")).toBe(true);
+  // "I don't know" is the button's, and a quote of nothing is no quote.
+  expect(kept("I don't know.")).toBe(false);
+  expect(kept("“…”")).toBe(false);
+
+  // A message the stretch left out over its limit is not what the writer read.
+  const long = "x".repeat(STRETCH_LIMIT / 3);
+  const over: PageEvent[] = [1, 2, 3, 4].map((n) => ({
+    type: "learner",
+    text: `Message ${n} says the limit is f(a). ${long}`,
+  }));
+  expect(kept("Message 1 says the limit is f(a).", over)).toBe(false);
+  expect(kept("Message 4 says the limit is f(a).", over)).toBe(true);
 });

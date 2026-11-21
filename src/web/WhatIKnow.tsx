@@ -208,7 +208,10 @@ function ObjectiveItem(
   );
 }
 
-/** A misconception found on the objective: what the learner believed, and what is so. */
+/**
+ * A misconception found on the objective: what the learner believed, in
+ * their words when the record has them, and what is so.
+ */
 function MisconceptionEntry(props: {
   misconception: ShownMisconception;
   status: ObjectiveStatus;
@@ -229,6 +232,14 @@ function MisconceptionEntry(props: {
           <InlineProse text={misconception.believed} />
         </span>
       </div>
+      {misconception.words === undefined ? null : (
+        <div className="qa-line">
+          <span className="k">Your words</span>
+          <span className="qa-flaw">
+            “<InlineProse text={misconception.words} />”
+          </span>
+        </div>
+      )}
       <div className="qa-line">
         <span className="k">What is so</span>
         <span className="qa-flaw">

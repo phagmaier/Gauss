@@ -1470,6 +1470,20 @@ works is `architecture.md` section 4.
   back to the question's id: question numbers restart in each check and
   assessment, and an id is easy to miscopy. A misconception naming
   something not given is dropped alone, not the whole call.
+- **A misconception quotes the learner, and the engine checks the quote**
+  (the user's decision, "Product decisions"): the writer's `believed` is a
+  paraphrase nothing could check, and an invented misconception reaches
+  the learner's record and later tutors. The quote must be in one of the
+  learner's own texts that the stretch kept, not anywhere in the stretch,
+  or the writer could quote the tutor; a picked choice counts, since the
+  learner endorsed it. The agent's choices: the comparison ignores only
+  what a faithful quote changes (case, spacing, `$` around math, the form
+  of quotation marks, marks at its ends); an ellipsis inside is not
+  bridged, and the prompt asks for one continuous run. A dropped
+  misconception goes to the server log with its belief, as the other
+  drops do, since it is recorded nowhere else. The quote is required in
+  the reply and optional in the record, which holds misconceptions from
+  before.
 - **The writer is given the misconceptions already recorded on its
   objectives**, so one shown again is not recorded twice.
 - **Misconceptions are appended before the note is written**: a crash

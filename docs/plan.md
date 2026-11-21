@@ -33,29 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.22 Misconceptions in the learner's words
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19, from the DeepTutor comparison): each
-  misconception carries the learner's words that showed it, quoted by
-  the handoff writer; the engine checks them against the stretch it sent
-  (`readStretch` in `engine/handoff.ts`) and drops a misconception whose
-  words are not there. "What I know" shows them under the
-  misconception. Today `believed` is the writer's paraphrase and nothing
-  checks it (`src/shared/misconception.ts`); `handoff.md` only asks for
-  none invented. An answer that only left something out has no false
-  statement to quote, which backs 5.14's rule that a gap is no
-  misconception. DeepTutor checks the learner quotes behind its teaching
-  notes the same way (`deeptutor/learning/teaching.py` in that project).
-  The field is optional: misconceptions already recorded have none. To
-  settle in the task: how far the check normalises (spacing, math
-  markup), and what is logged when one is dropped.
-- Done when: tests with the fake backend show a reply whose quoted words
-  are in the stretch recorded with them and one whose words are not
-  dropped; a short real-model run (Haiku) shows the writer quoting the
-  learner; on `pnpm dev:fake`, "What I know" shows the words.
-
 ### 5.23 Questions from inside an aid
 
 - Status: todo

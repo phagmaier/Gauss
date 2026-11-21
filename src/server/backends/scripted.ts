@@ -84,7 +84,9 @@
 // The handoff writer (task 5.7), called when a segment closes or a unit
 // finishes, writes a note that counts what it read, numbered on from the
 // note before, and finds one misconception for each detour in its stretch,
-// on the detour's objective. "/nohandoff" in a learner's message in the
+// on the detour's objective, quoting the first line of the missed answer;
+// after "I don't know" that is no words of the learner's, and the engine
+// leaves the misconception out. "/nohandoff" in a learner's message in the
 // stretch fails the call, which records nothing: the next one reads that
 // stretch too.
 //
@@ -1037,7 +1039,9 @@ function scriptedDispute(request: OneShotRequest<unknown>): FakeReply {
 
 /**
  * The handoff writer's call: a note numbered on from the one before, which
- * counts what it read, and a misconception for each detour it read.
+ * counts what it read, and a misconception for each detour it read, quoting
+ * the first line of the missed answer before it (so after "I don't know" it
+ * quotes no words of the learner's, and the engine leaves it out).
  */
 function scriptedHandoff(request: OneShotRequest<unknown>): FakeReply {
   const stretch =
@@ -1055,6 +1059,17 @@ function scriptedHandoff(request: OneShotRequest<unknown>): FakeReply {
       /^\[Detour (\d+) opens, after the miss on question (\d+), on "([^"]+)"\.\]$/gm,
     ),
   ];
+  const answerBefore = (question: string, at: number) =>
+    [
+      ...stretch
+        .slice(0, at)
+        .matchAll(
+          new RegExp(
+            `^\\[The learner's answer to question ${question}:\\]\\n(.+)$`,
+            "gm",
+          ),
+        ),
+    ].at(-1)?.[1] ?? "Scripted: no answer was read.";
   return {
     output: {
       note:
@@ -1063,12 +1078,16 @@ function scriptedHandoff(request: OneShotRequest<unknown>): FakeReply {
         `${count(/^Learner:$/gm)} of the learner's messages, ` +
         `${count(/^\[The learner's answer to /gm)} answers and ` +
         `${detours.length} detours.`,
-      misconceptions: detours.map(([, detour, question, objective]) => ({
-        objective,
-        believed: `Scripted: what the answer to question ${question} showed, that $a^2 + b^2 = c$.`,
-        actually: "Scripted: it is $a^2 + b^2 = c^2$.",
-        detour: Number(detour),
-      })),
+      misconceptions: detours.map((match) => {
+        const [, detour, question, objective] = match;
+        return {
+          objective,
+          believed: `Scripted: what the answer to question ${question} showed, that $a^2 + b^2 = c$.`,
+          actually: "Scripted: it is $a^2 + b^2 = c^2$.",
+          words: answerBefore(question ?? "", match.index),
+          detour: Number(detour),
+        };
+      }),
     },
   };
 }
