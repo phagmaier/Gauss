@@ -402,12 +402,6 @@ test.each<{
     },
   },
   {
-    name: `an "I don't know" whose key the judge does not name keeps it`,
-    entry: IDK_CHOICE,
-    judgment: { reason: "C is right.", verdict: "incorrect" },
-    gives: { ok: true, outcome: { verdict: "unknown", reason: "C is right." } },
-  },
-  {
     name: `an "I don't know" given a key that is not one of the choices fails`,
     entry: IDK_CHOICE,
     judgment: { reason: "Odd.", verdict: "incorrect", key: "E" },

@@ -16,7 +16,7 @@ import type { AnswerEvidence } from "../../shared/evidence.ts";
 import type { HandoffReply } from "../../shared/handoff.ts";
 import type { Misconception } from "../../shared/misconception.ts";
 import type { Plan } from "../../shared/plan.ts";
-import type { Confidence } from "../../shared/question.ts";
+import type { ChoiceQuestion, Confidence } from "../../shared/question.ts";
 import type { EngineTurn } from "../backends/backend.ts";
 import {
   createFakeBackend,
@@ -29,10 +29,11 @@ import { whatIKnow } from "../record/what-i-know.ts";
 import { givenOrder } from "./choice-order.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
-import { createHandoffWriter } from "./handoff.ts";
+import { createHandoffs, createHandoffWriter } from "./handoff.ts";
 import { createHelpJudge } from "./help-judge.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
+import { disputedEvent, gradedEvent } from "./unit-record.ts";
 import { JOINED_NOTE } from "./unit-turns.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
@@ -395,6 +396,71 @@ test("the writer is called as each segment closes and as the unit finishes, each
   // Nothing more was found, so the first misconception is still the only one.
   expect(await reload().readMisconceptions(COURSE)).toHaveLength(1);
   await chat.close();
+});
+
+test("a choice correction after the handoff mark reaches the writer with the earlier question and the corrected choice", async () => {
+  const dataRoot = await makeCourse();
+  const units = (await dataRoot.readCourse(COURSE))?.curriculum?.units ?? [];
+  const unit = units.find((u) => u.id === "limits");
+  if (unit?.plan === undefined) throw new Error("No plan for limits.");
+  const { id, plan } = unit;
+  const question: ChoiceQuestion = {
+    kind: "choice",
+    prompt: "What is the limit of $x^2$ as $x$ approaches 2?",
+    choices: ["2", "4"],
+    answer: "A",
+  };
+  const entry: AnswerEvidence = {
+    kind: "answer",
+    recordedAt: YESTERDAY,
+    objective: "limit-value",
+    question,
+    answer: { kind: "unknown", questionId: "q-1" },
+    assisted: false,
+    verdict: "unknown",
+  };
+  await dataRoot.appendEvidence(COURSE, entry);
+  await dataRoot.appendTranscript(COURSE, id, 1, [
+    {
+      type: "question",
+      question: {
+        kind: "choice",
+        id: "q-1",
+        number: 1,
+        prompt: question.prompt,
+        choices: question.choices,
+      },
+    },
+    gradedEvent(entry),
+  ]);
+  await dataRoot.writeHandoff(COURSE, id, "Earlier note.", {
+    writtenAt: YESTERDAY,
+    through: { session: 1, events: 2 },
+  });
+  const dispute = {
+    kind: "dispute",
+    recordedAt: NOW,
+    questionId: "q-1",
+    reason: "The limit is four.",
+    outcome: { verdict: "unknown", reason: "Squaring 2 gives 4.", key: "B" },
+  } as const;
+  await dataRoot.appendDispute(COURSE, dispute);
+  await dataRoot.appendTranscript(COURSE, id, 1, [disputedEvent(dispute)]);
+  const backend = createFakeBackend([], writer());
+  const handoffs = createHandoffs({
+    writer: createHandoffWriter({ backend, systemPrompt: "Handoff." }),
+    dataRoot,
+    courseId: COURSE,
+    unitId: id,
+    context: () => ({ courseTitle: CURRICULUM.title, units, unitId: id, plan }),
+    flushed: () => Promise.resolve(),
+    now: () => clock,
+  });
+  handoffs.request();
+  await handoffs.settled();
+  const stretch = stretchOf(asked(backend)[0]);
+  expect(stretch).toContain("What is the limit of $x^2$ as $x$ approaches 2?");
+  expect(stretch).toContain("the right choice is B. 4");
 });
 
 test("moving on closes a segment and calls the writer; a failed call records nothing, and the next reads both stretches", async () => {

@@ -663,18 +663,20 @@ the test before a unit lets the learner skip what they know.
   for a backup commit. The calls run outside the chat's queue, one at a
   time per unit (`createHandoffs`): a close while one runs is read by one
   more call after it. Closing the chat stops a call, which records
-  nothing. A stretch with no tutor text, learner message or answer (a unit
-  that finishes as its last segment closes) gets no call.
+  nothing. A stretch with only markers gets no call; a correction to the
+  answer shown after "I don't know" is enough on its own.
 - **What it reads.** The unit's transcripts on disk, once the thread's
   events so far are written, from the mark in `handoff.json` on
   (`since`): written out by `readStretch` with the tutor's text joined,
   the learner's messages, each question with its answer, reasoning,
   confidence and grade (a confident wrong answer named as one), detours
-  numbered in order, and the thread's markers; at most `STRETCH_LIMIT`
-  characters, its start left out beyond that. With it, the unit, its
-  objectives and those of other units that the stretch's questions asked,
-  the note before, and the misconceptions recorded on those objectives
-  (`handoffRequest`).
+  numbered in order, and the thread's markers. When an "I don't know"
+  correction refers to a question before the mark, the writer gets the
+  question and the corrected answer from the record. The stretch keeps at
+  most `STRETCH_LIMIT` characters, its start left out beyond that. With it,
+  the writer gets the unit, its objectives and those of other units in the
+  stretch, the previous note, and misconceptions recorded on those
+  objectives (`handoffRequest`).
 - **What it writes.** `HandoffReply` (`src/shared/handoff.ts`): the note,
   whole, and the misconceptions found, each naming an objective given and,
   if it showed in a detour, the detour's number, which the engine turns
@@ -874,9 +876,9 @@ with sources (stage 4).
   stuck. `DisputeJudgment` gives
   a reason shown to the learner, the verdict, and for a choice question the
   right letter, from which its verdict must follow; an "I don't know"'s
-  verdict is not read. A reply out of shape,
-  a failed request or one past three minutes fails as the grader's does:
-  nothing is recorded, the page shows why, and the learner can send the
+  verdict is ignored, but a choice report without a key fails. An invalid
+  reply, a failed request or one past three minutes fails as the grader's
+  does: nothing is recorded, the page shows why, and the learner can send the
   dispute again. It runs on Claude Sonnet 5.5 (`DISPUTE_MODEL`).
 
 ## 7. Backends

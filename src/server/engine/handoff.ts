@@ -17,7 +17,7 @@
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { ShownDispute } from "../../shared/dispute.ts";
 import type { PageEvent } from "../../shared/events.ts";
-import type { EvidenceEntry } from "../../shared/evidence.ts";
+import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import { type HandoffMark, HandoffReply } from "../../shared/handoff.ts";
 import { isOpen, type Misconception } from "../../shared/misconception.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -132,10 +132,10 @@ export function createHandoffs(options: {
     const context = options.context();
     const stretch = readStretch(events, {
       plan: context.plan,
-      objectiveOf: objectiveLookup(evidence),
+      answers: answersById(evidence),
     });
-    // A close with nothing said or answered since the last note, such as
-    // a unit that finishes as its last segment closes, has nothing to add.
+    // A close with only markers since the last note, such as a unit that
+    // finishes as its last segment closes, has nothing to add.
     if (!stretch.worthReading) return;
     const objectives = objectivesFor(context, stretch);
     const given = new Set(objectives.map((o) => o.id));
@@ -237,17 +237,14 @@ export function since(
   };
 }
 
-/** The objective each recorded answer's question was on, by the question's id. */
-function objectiveLookup(
+function answersById(
   evidence: readonly EvidenceEntry[],
-): (questionId: string) => string | undefined {
-  const objectives = new Map<string, string>();
+): Map<string, AnswerEvidence> {
+  const answers = new Map<string, AnswerEvidence>();
   for (const entry of evidence) {
-    if (entry.kind === "answer") {
-      objectives.set(entry.answer.questionId, entry.objective);
-    }
+    if (entry.kind === "answer") answers.set(entry.answer.questionId, entry);
   }
-  return (id) => objectives.get(id);
+  return answers;
 }
 
 // --- The stretch, as the writer reads it -----------------------------------
@@ -263,9 +260,9 @@ export interface StretchDetour {
 export interface Stretch {
   text: string;
   detours: ReadonlyMap<number, StretchDetour>;
-  /** The objectives of the questions it shows answered or detoured on. */
+  /** The objectives of the questions it shows answered, detoured on or re-keyed. */
   objectives: ReadonlySet<string>;
-  /** It holds the tutor's text, a learner's message or an answer. */
+  /** It holds the tutor's text, a learner's message, an answer or a correction to an answer shown. */
   worthReading: boolean;
 }
 
@@ -281,13 +278,17 @@ export function readStretch(
   events: readonly PageEvent[],
   given: {
     plan: Plan;
-    /** The objective of a question answered, by its id. */
-    objectiveOf: (questionId: string) => string | undefined;
+    /** Recorded answers, including questions before the handoff mark. */
+    answers: ReadonlyMap<
+      string,
+      Pick<AnswerEvidence, "objective" | "question">
+    >;
     /** Notes read the whole unit instead of keeping only a recent stretch. */
     whole?: boolean;
   },
 ): Stretch {
-  const { plan, objectiveOf } = given;
+  const { plan, answers } = given;
+  const objectiveOf = (id: string) => answers.get(id)?.objective;
   const parts: string[] = [];
   const views = new Map<string, QuestionView>();
   const detours = new Map<number, StretchDetour>();
@@ -372,15 +373,32 @@ export function readStretch(
       case "question_withdrawn":
         say(`[${capital(name(event.questionId))} was withdrawn, unanswered.]`);
         break;
-      case "disputed":
+      case "disputed": {
+        const { dispute, questionId } = event;
+        const { outcome } = dispute;
+        const correctedAnswerShown =
+          outcome.verdict === "unknown" &&
+          (outcome.key !== undefined || outcome.expected !== undefined);
+        const answer = correctedAnswerShown
+          ? answers.get(questionId)
+          : undefined;
+        if (correctedAnswerShown) worthReading = true;
+        if (answer !== undefined) objectives.add(answer.objective);
+        const view = views.get(questionId);
+        const question = view ?? answer?.question;
+        const label =
+          view === undefined && answer !== undefined
+            ? `the earlier question "${answer.question.prompt.trim()}"${on(answer.objective)}`
+            : name(questionId);
         say(
           disputedText(
-            event.dispute,
-            views.get(event.questionId),
-            name(event.questionId),
+            dispute,
+            question?.kind === "choice" ? question.choices : undefined,
+            label,
           ),
         );
         break;
+      }
       case "detour": {
         const known = [...detours].find(
           ([, d]) => d.questionId === event.questionId,
@@ -607,7 +625,7 @@ function tail(text: string, limit: number): string {
  */
 function disputedText(
   dispute: ShownDispute,
-  view: QuestionView | undefined,
+  choices: readonly string[] | undefined,
   name: string,
 ): string {
   const { outcome } = dispute;
@@ -615,11 +633,9 @@ function disputedText(
     return `[The learner disputed the grade of ${name}, and a judge decided it counts as ${outcome.verdict === "correct" ? "correct" : "wrong"}.]`;
   }
   const choice =
-    outcome.key === undefined
-      ? undefined
-      : view?.kind === "choice"
-        ? `${outcome.key}. ${view.choices[CHOICE_LETTERS.indexOf(outcome.key)]?.trim() ?? ""}`
-        : outcome.key;
+    outcome.key === undefined || choices === undefined
+      ? outcome.key
+      : `${outcome.key}. ${choices[CHOICE_LETTERS.indexOf(outcome.key)]?.trim() ?? ""}`;
   const corrected =
     choice !== undefined
       ? `corrected it: the right choice is ${choice}`

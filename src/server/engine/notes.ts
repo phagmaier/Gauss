@@ -259,7 +259,7 @@ async function request(
   const disputes = disputesIn(evidence);
   const stretch = readStretch(unitEvents(events, byId), {
     plan,
-    objectiveOf: (id) => byId.get(id)?.objective,
+    answers: byId,
     whole: true,
   });
   const misses = countedAnswers(answers, evidence)

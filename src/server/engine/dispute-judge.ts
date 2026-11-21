@@ -76,8 +76,8 @@ export function createDisputeJudge(options: {
  * choice question, and an expected expression only for a math one, each
  * only when it differs from the question's. A choice question's verdict
  * follows from its key: a reply whose verdict and key disagree, or whose key
- * is not one of the choices, is a failure. An "I don't know" stays a miss,
- * "unknown", whatever verdict the reply gives: only its key can change.
+ * is not one of the choices, is a failure. An "I don't know" stays a miss
+ * regardless of the reply's verdict; for choice, the judge must name a key.
  */
 export function disputeOutcome(
   entry: AnswerEvidence,
@@ -87,8 +87,14 @@ export function disputeOutcome(
   const { reason } = judgment;
   if (question.kind === "choice") {
     const picked = answer.kind === "choice" ? answer.choice : undefined;
-    // Without a key, a correct verdict names the choice picked; an incorrect
-    // one, or an "I don't know", keeps the key.
+    if (picked === undefined && judgment.key === undefined) {
+      return {
+        ok: false,
+        error: "The judge did not name the correct choice.",
+      };
+    }
+    // For a graded answer without a key, a correct verdict names the choice
+    // picked and an incorrect one keeps the key.
     const key =
       judgment.key ??
       (judgment.verdict === "correct" && picked !== undefined

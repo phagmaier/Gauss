@@ -100,10 +100,15 @@ const CHECK: PageEvent[] = [
   { type: "detour_end" },
 ];
 
-const objectiveOf = (id: string) => (id === "q-1" ? "limit-value" : undefined);
+const answers = new Map([
+  [
+    CHOICE.id,
+    { objective: "limit-value", question: { ...CHOICE, answer: "B" as const } },
+  ],
+]);
 
 test("a stretch is written out with the tutor's text joined, the learner's messages, a question with its answer and a confident miss named, and detours numbered", () => {
-  const stretch = readStretch(CHECK, { plan: PLAN, objectiveOf });
+  const stretch = readStretch(CHECK, { plan: PLAN, answers });
   expect(stretch.text).toBe(
     [
       '[Segment 1, "Values": the teaching.]',
@@ -151,7 +156,7 @@ test("an unsure miss is not named confident, a miss with help says so, and a det
       { type: "question", question: CHOICE },
       { type: "detour", questionId: "q-1", number: 1 },
     ],
-    { plan: PLAN, objectiveOf },
+    { plan: PLAN, answers },
   );
   expect(stretch.text).toContain(
     "Graded wrong, at 50% sure. It was given with help, so it does not count.",
@@ -184,7 +189,7 @@ test("a written answer's reasoning is read after the answer", () => {
         assisted: false,
       },
     ],
-    { plan: PLAN, objectiveOf },
+    { plan: PLAN, answers },
   );
   expect(stretch.text).toContain(
     "Because the limit exists.\nTheir reasoning: I first thought it was the value.\nGraded correct, at 75% sure.",
@@ -217,7 +222,7 @@ test(`an "I don't know" whose answer shown a judge corrected is read with the ri
     },
   ];
   const read = (events: PageEvent[]) =>
-    readStretch(events, { plan: PLAN, objectiveOf }).text;
+    readStretch(events, { plan: PLAN, answers }).text;
   expect(read(reported("C"))).toContain(
     "[The learner said the answer shown for question 1 was wrong, and a judge corrected it: the right choice is C. 8.]",
   );
@@ -233,7 +238,7 @@ test("a stretch of markers alone, as a unit finishing as its last segment closes
       { type: "unit_status", unit: "passed", objectives: {} },
       { type: "unit_closed", status: "passed" },
     ],
-    { plan: PLAN, objectiveOf },
+    { plan: PLAN, answers },
   );
   expect(stretch.worthReading).toBe(false);
   expect(stretch.text).toBe(
@@ -245,7 +250,7 @@ test("a stretch over the limit keeps its end, and says its start is left out", (
   const long = "x".repeat(STRETCH_LIMIT / 3);
   const stretch = readStretch(
     [1, 2, 3, 4].map((n) => ({ type: "learner", text: `${n}${long}` })),
-    { plan: PLAN, objectiveOf },
+    { plan: PLAN, answers },
   );
   expect(
     stretch.text.startsWith("[The start of this stretch is left out"),
@@ -357,7 +362,7 @@ test("the request gives the unit, its objectives with another unit's a review as
 });
 
 test("a misconception is kept with its detour's question, or as the discussion's; one naming an objective or a detour not given is left out", () => {
-  const stretch = readStretch(CHECK, { plan: PLAN, objectiveOf });
+  const stretch = readStretch(CHECK, { plan: PLAN, answers });
   const reply: HandoffReply = {
     note: "Note.",
     misconceptions: [

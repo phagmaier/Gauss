@@ -2720,6 +2720,7 @@ test('a dispute through its route waits for the outcome, which What I know then 
     { fail: "The model is unavailable." },
     { output: { reason: "It restates the rule.", verdict: "incorrect" } },
     { output: { reason: "The key is right.", verdict: "incorrect" } },
+    { output: { reason: "A line is right.", verdict: "incorrect", key: "A" } },
   ]);
   const reason = "I wrote down the rule without saying why it holds.";
 
@@ -2761,10 +2762,17 @@ test('a dispute through its route waits for the outcome, which What I know then 
 
   const second = await post(app, `${answerRoute("q5")}/dispute`, { reason });
   expect(second.status).toBe(409);
+  // A choice report without an explicit ruling on the key is retryable.
+  const missingKey = await post(app, `${answerRoute("q4")}/dispute`, {
+    reason,
+  });
+  expect(missingKey.status).toBe(502);
   const unknown = await post(app, `${answerRoute("q4")}/dispute`, { reason });
   expect(unknown.status).toBe(200);
-  expect(await unknown.json()).toMatchObject({
-    outcome: { verdict: "unknown", reason: "The key is right." },
+  expect(await unknown.json()).toEqual({
+    recordedAt: NOW,
+    reason,
+    outcome: { verdict: "unknown", reason: "A line is right." },
   });
   const blank = await post(app, `${answerRoute("q2")}/dispute`, {
     reason: "  ",
@@ -2772,7 +2780,7 @@ test('a dispute through its route waits for the outcome, which What I know then 
   expect(blank.status).toBe(400);
   const none = await post(app, `${answerRoute("open")}/dispute`, { reason });
   expect(none.status).toBe(404);
-  expect(disputeBackend.oneShots).toHaveLength(3);
+  expect(disputeBackend.oneShots).toHaveLength(4);
 });
 
 test("a dispute raised through its route while the unit is open reaches the unit's event stream", async () => {
