@@ -1444,6 +1444,47 @@ test("in a review the control is its skip, beside its question in any phase; non
   expect(nextStep(grading)).toBeNull();
 });
 
+test.each(["completed", "skipped"] as const)(
+  "a finished unit offers navigation after its review is %s",
+  (outcome) => {
+    const finished: PageEvent[] = [
+      planned,
+      phase(2, "closed"),
+      { type: "unit_end", passed: true, objectives: all("passed") },
+      { type: "unit_closed", status: "passed" },
+    ];
+    expect(nextStep(play(finished))).toBeNull();
+
+    const offered = [...finished, run("review", "offered", 1)];
+    expect(nextStep(play(offered))).toBeNull();
+
+    const active: PageEvent[] = [
+      ...offered,
+      run("review", "on", 1),
+      { type: "question", question: { ...CHOICE, assessment: { of: 1 } } },
+    ];
+    expect(nextStep(play(active))).toBe("assessment");
+
+    const done = play([
+      ...active,
+      ...(outcome === "completed" ? [right] : []),
+      {
+        type: "assessment_end",
+        mode: "review",
+        ...(outcome === "completed"
+          ? { skipped: false, statuses: { "power-rule": "retained" } }
+          : { skipped: true, statuses: {}, withdrawnQuestionId: CHOICE.id }),
+      },
+    ]);
+    expect(done.items.find((item) => item.kind === "unit_end")).toMatchObject({
+      passed: true,
+      objectives: all("passed"),
+    });
+    expect(standingCard(done.items)).toBeUndefined();
+    expect(nextStep(done)).toBe("leave");
+  },
+);
+
 test.each<[string, Record<string, ObjectiveStatus>, string]>([
   [
     "two retained and one slipping",

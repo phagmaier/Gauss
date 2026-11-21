@@ -128,8 +128,8 @@ version: a field added later must be optional.
 - **Derived, never stored**: objective status (not started, attempted,
   passed, retained, slipping, overridden), from `evidence.jsonl` by the
   pure functions in `record/status.ts`; a unit's status from its
-  objectives', where a unit with a position in `state.json` is in
-  progress; where a course stands and whether it is a one-off (a course
+  objectives', where a unit with a position in `state.json`'s `units` is
+  in progress; where a course stands and whether it is a one-off (a course
   of one unit); each unit's progress for the library and the course view,
   with each started unit's objective statuses and, for a unit in progress,
   what of its position `currentObjective` reads (`record/progress.ts`,
@@ -152,9 +152,10 @@ version: a field added later must be optional.
   current unit: several units can be in progress at once (`UnitPosition`
   in `src/shared/state.ts`). A finished unit holding a review the learner
   asked for keeps its position apart while the review runs
-  (`finishedReviews`), so the unit stays finished. Besides positions it
-  keeps the outcomes that
-  must survive a lost transcript line: completed package cards, units
+  (`finishedReviews`), so the unit stays finished. A cold answer still
+  pending when a dispute causes an override does not undo the override
+  unless it restores the pass. The state also keeps outcomes that must
+  survive a lost transcript line: completed package cards, units
   finished by testing out, and the learner's style and curriculum answers
   not yet told to the tutor. Before the first unit exposes the workspace,
   the course rolls back an interrupted install or saves its committed
@@ -579,8 +580,9 @@ the test before a unit lets the learner skip what they know.
   last. A sitting that begins in a segment's discussion or check holds
   the card until that segment closes, by its check or by moving on, and
   offers it once the tutor's turn has ended (`offerHeld` in
-  `unit-chat.ts`); after the unit's last segment it is dropped, so a card
-  never stands between a segment's teaching and its check. Nothing may
+  `unit-chat.ts`). If the next segment starts first, that segment holds
+  it instead. After the last segment it is dropped, so a card never
+  stands between a segment's teaching and its check. Nothing may
   wait on the learner or the tutor: no assessment, open question, detour,
   package request or install, style or curriculum proposal, test result
   card, closing card, feedback or other turn to come. It asks about up to
@@ -601,18 +603,17 @@ the test before a unit lets the learner skip what they know.
   it.
 - **"Review now"** on the course view (`POST
   /api/courses/<id>/review-now`, `reviewNow` in `unit-chat.ts`) starts a
-  review of what is due at once, in any phase, and the page opens its
-  unit. It runs in the thread of the unit in progress opened last; with
-  none in progress, of the finished unit that holds the first objective
-  in review's order. It is refused with nothing due, or while something
-  waits in that unit (the tutor writing, an assessment, open question,
-  detour, package request, proposal, test result card or closing card),
-  with the reason, and it marks review offered for the hour. A review
-  offered on its card there is started instead. In a finished unit the
-  review's position is kept apart (section 3), the unit stays finished,
-  only the review's steps are taken, its tutor is told the unit is
-  finished and that the learner asked for the review, and when it ends
-  the unit is as it was.
+  review of what is due at once, and the page opens its unit. A review
+  already under way continues in its own thread. For a new review, one
+  pick determines both the objectives and the finished unit to use, if
+  no unit is in progress. Otherwise the unit in progress opened last
+  holds it. No new review starts with nothing due or while another step,
+  a tutor turn, or a package install waits in that unit; the refusal
+  says why. A review offered on its card in the chosen unit starts
+  instead. A manual start resets the automatic-card cooldown. In a
+  finished unit only the review's steps are taken. The tutor is told the
+  unit stays finished; an existing tutor session is kept for the review,
+  or a new one gets the handoff note.
 - **"Skip review"** ends it on the card or partway, withdrawing an open
   question with nothing recorded; it is refused while an answer is kept
   for grading, as moving on is. When it ends or is skipped, the page is

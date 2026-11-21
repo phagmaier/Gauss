@@ -9,8 +9,8 @@
 // question, so a restart never finds the question closed and no detour.
 //
 // The position also keeps the id of the unit's tutor session, so a unit
-// reopened after a restart resumes it (task 2.14): every position written
-// carries the id kept last, whatever position the chat gives.
+// reopened after a restart resumes it (task 2.14). A finished unit without
+// a review keeps the id only in memory.
 //
 // Once a segment's close or the unit's end is written, the backup is asked
 // for a commit (task 2.25), and the handoff writer for a note (task 5.7).
@@ -108,7 +108,7 @@ export interface UnitRecord {
   readonly finished: "passed" | "overridden" | undefined;
   /** The learner skipped every segment and finished at the test's result. */
   readonly testedOut: boolean;
-  /** The unit had a position in state.json when it was opened: it was under way. */
+  /** A position was read from state.json, in progress or for a review. */
   readonly reopened: boolean;
   /** The unit's status and each objective's, as `unit_status` tells the page. */
   status(): PageEvent;
@@ -144,8 +144,8 @@ export interface UnitRecord {
   move(position: UnitPosition, tell?: () => void): Promise<void>;
   /**
    * Writes the id of the unit's tutor session into its position, or takes
-   * it out, so the next start of the unit makes a new session. Nothing is
-   * written once the unit is finished: it has no position.
+   * it out, so the next start of the unit makes a new session. A finished
+   * unit with no review keeps the id only in memory.
    */
   keepSession(id: string | undefined): Promise<void>;
   /**
@@ -320,41 +320,56 @@ export async function openUnitRecord(options: {
   const stored = Object.hasOwn(positions, unitId)
     ? positions[unitId]
     : undefined;
-  if (stored !== undefined) checkPosition(plan, stored);
+  const storedReview = Object.hasOwn(finishedReviews, unitId)
+    ? finishedReviews[unitId]
+    : undefined;
   const allEvidence = await dataRoot.readEvidence(courseId);
-  const evidence = concerning(
-    allEvidence,
-    objectivesKept(plan, allEvidence, unitId, stored),
-  );
-  const before = unitStatus(unit, evidence, undefined);
+  // An older build could restart teaching and leave both entries for a
+  // finished unit. An ordinary position alone still means in progress.
+  const before =
+    stored === undefined || storedReview !== undefined
+      ? unitStatus(unit, allEvidence, undefined)
+      : undefined;
   let finished: "passed" | "overridden" | undefined =
-    stored === undefined && (before === "passed" || before === "overridden")
-      ? before
-      : undefined;
+    before === "passed" || before === "overridden" ? before : undefined;
   let testedOut = finished !== undefined && tests?.[unitId] === true;
-  // A finished unit holds a review the learner asked for, if one runs.
-  const reviewing =
-    finished !== undefined && Object.hasOwn(finishedReviews, unitId)
-      ? finishedReviews[unitId]
-      : undefined;
-  if (reviewing !== undefined) checkPosition(plan, reviewing);
+  const reviewing = finished === undefined ? undefined : storedReview;
+  const kept = reviewing ?? stored;
+  if (kept !== undefined) checkPosition(plan, kept);
+  let sessionId = kept?.tutorSessionId;
+
+  function closedPosition(): UnitPosition {
+    return {
+      segment: plan.segments.length - 1,
+      phase: "closed",
+      ...(sessionId === undefined ? {} : { tutorSessionId: sessionId }),
+    };
+  }
+
+  if (reviewing !== undefined && stored !== undefined) {
+    await dataRoot.writePosition(courseId, unitId, null);
+  } else if (storedReview !== undefined && finished === undefined) {
+    await dataRoot.writePosition(courseId, unitId, null, { finished: true });
+  }
   let position: UnitPosition =
-    stored ??
-    reviewing ??
+    kept ??
     (finished !== undefined
-      ? { segment: plan.segments.length - 1, phase: "closed" }
+      ? closedPosition()
       : options.testOut === true
         ? { segment: 0, phase: "teach", testOut: { stage: "due" } }
         : { segment: 0, phase: "teach" });
   if (stored === undefined && finished === undefined) {
     await dataRoot.writePosition(courseId, unitId, position);
   }
+  const evidence = concerning(
+    allEvidence,
+    objectivesKept(plan, allEvidence, unitId, position),
+  );
   let checkAnswers = answersInCheck(allEvidence, position, plan);
   let runAnswers =
     position.assessment === undefined
       ? []
       : answersInRun(allEvidence, position.assessment, unitId);
-  let sessionId = position.tutorSessionId;
 
   /**
    * Saves a move and notices an Apply recovered before or during the write.
@@ -367,13 +382,12 @@ export async function openUnitRecord(options: {
   ) {
     if (finished !== undefined) {
       const kept = next ?? position;
-      const saved = await dataRoot.writePosition(
-        courseId,
-        unitId,
-        kept.assessment === undefined ? null : kept,
-        { ...outcome, finished: true },
-      );
-      position = kept;
+      const review = kept.assessment?.mode === "review" ? kept : null;
+      const saved = await dataRoot.writePosition(courseId, unitId, review, {
+        ...outcome,
+        finished: true,
+      });
+      position = review ?? closedPosition();
       return saved;
     }
     const waiting = position.curriculumChange;
@@ -463,7 +477,7 @@ export async function openUnitRecord(options: {
     );
   }
 
-  function status(): PageEvent {
+  function status(): Extract<PageEvent, { type: "unit_status" }> {
     return {
       type: "unit_status",
       unit: unitStatus(
@@ -473,6 +487,17 @@ export async function openUnitRecord(options: {
       ),
       objectives: objectiveStatuses(),
     };
+  }
+
+  function tellStatus(): void {
+    const event = status();
+    if (
+      finished !== undefined &&
+      (event.unit === "passed" || event.unit === "overridden")
+    ) {
+      finished = event.unit;
+    }
+    emit(event);
   }
 
   function openQuestion(): OpenQuestion {
@@ -499,12 +524,8 @@ export async function openUnitRecord(options: {
   ): void {
     evidence.push(entry);
     if (override !== undefined) evidence.push(override);
-    if (finished !== undefined) {
-      const now = unitStatus(unit, evidence, undefined);
-      if (now === "passed" || now === "overridden") finished = now;
-    }
     emit(disputedEvent(entry));
-    emit(status());
+    tellStatus();
   }
 
   /**
@@ -527,7 +548,7 @@ export async function openUnitRecord(options: {
           };
     await move(detour === undefined ? rest : { ...rest, detour });
     emit(gradedEvent(entry));
-    emit(status());
+    tellStatus();
     if (detour !== undefined) emit(detourEvent(detour));
     return { question, entry };
   }
@@ -542,13 +563,7 @@ export async function openUnitRecord(options: {
       testedOut?: boolean;
     } = {},
   ): Promise<void> {
-    const {
-      packageRequest,
-      styleProposal,
-      curriculumChange,
-      pendingMoveOn: _,
-      ...closed
-    } = position;
+    const { packageRequest, styleProposal, curriculumChange } = position;
     const completion: PackageCompletion | undefined =
       packageRequest === undefined
         ? undefined
@@ -560,7 +575,7 @@ export async function openUnitRecord(options: {
     const saved = await savePosition(null, { completion, testedOut: byTest });
     finished = how;
     testedOut = byTest;
-    position = closed;
+    position = closedPosition();
     tell?.();
     if (completion !== undefined) {
       keepCompletion(completion, !options.savingPackage(completion.request.id));
@@ -621,7 +636,7 @@ export async function openUnitRecord(options: {
     get testedOut() {
       return testedOut;
     },
-    reopened: stored !== undefined || reviewing !== undefined,
+    reopened: kept !== undefined,
     status,
     recordedAnswer,
     disputeOf: (questionId) => disputesIn(evidence).get(questionId),
@@ -654,20 +669,18 @@ export async function openUnitRecord(options: {
     learnAnswer(entry) {
       if (recordedAnswer(entry.answer.questionId) !== undefined) return false;
       evidence.push(entry);
-      emit(status());
+      tellStatus();
       return true;
     },
 
     async keepSession(id) {
-      // A finished unit keeps one only while it holds a review.
-      if (
-        (finished !== undefined && position.assessment === undefined) ||
-        id === sessionId
-      ) {
-        return;
-      }
+      if (id === sessionId) return;
       const was = sessionId;
       sessionId = id;
+      if (finished !== undefined && position.assessment === undefined) {
+        position = closedPosition();
+        return;
+      }
       try {
         await move(position);
       } catch (error) {
@@ -1110,13 +1123,13 @@ function objectivesKept(
   plan: Plan,
   log: readonly EvidenceEntry[],
   unitId: string,
-  position?: Pick<UnitPosition, "assessment" | "gateUnanswered">,
+  position: Pick<UnitPosition, "assessment" | "gateUnanswered">,
 ): Set<string> {
   const ids = new Set(plan.objectives.map((o) => o.id));
-  for (const { objective } of position?.assessment?.objectives ?? []) {
+  for (const { objective } of position.assessment?.objectives ?? []) {
     ids.add(objective);
   }
-  if (position?.gateUnanswered !== undefined) ids.add(position.gateUnanswered);
+  if (position.gateUnanswered !== undefined) ids.add(position.gateUnanswered);
   for (const entry of log) {
     if (entry.kind === "answer" && entry.assessment?.unit === unitId) {
       ids.add(entry.objective);

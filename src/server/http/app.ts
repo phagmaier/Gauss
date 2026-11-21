@@ -213,9 +213,13 @@ export function createApp(options: {
       return c.json({ error: "No such course." }, 404);
     }
     const questionId = c.req.param("question");
-    const open = Object.values((await dataRoot.readState(courseId)).units)
-      .map((position) => position.openQuestion)
-      .find((q) => q?.id === questionId);
+    const state = await dataRoot.readState(courseId);
+    const open =
+      Object.values(state.units).find((p) => p.openQuestion?.id === questionId)
+        ?.openQuestion ??
+      Object.values(state.finishedReviews ?? {}).find(
+        (p) => p.openQuestion?.id === questionId,
+      )?.openQuestion;
     if (open?.question.kind !== "code") {
       return c.json(
         { error: "No open code question of this course has that id." },

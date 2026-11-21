@@ -3026,6 +3026,51 @@ test('"Open" opens a file the open code question lists, in its course\'s workspa
   expect(setup.openFile).toHaveBeenCalledTimes(2);
 });
 
+test('"Open" finds a code question in the persisted review of a finished unit', async () => {
+  await approvedCourse();
+  const { app, dataRoot, openFile } = setUp([]);
+  await dataRoot.appendEvidence(COURSE, {
+    kind: "override",
+    recordedAt: CREATED,
+    objectives: ["basis-image", "matrix-columns"],
+  });
+  await dataRoot.writePosition(
+    COURSE,
+    "vectors",
+    {
+      segment: 1,
+      phase: "closed",
+      assessment: {
+        mode: "review",
+        stage: "on",
+        objectives: [{ unit: "vectors", objective: "basis-image" }],
+        from: 1,
+      },
+      openQuestion: {
+        id: "review-question",
+        number: 1,
+        objective: "basis-image",
+        postedAt: NOW,
+        question: codeQuestion(["maps.py"]),
+      },
+    },
+    { finished: true },
+  );
+  const workspace = await realpath(await dataRoot.workspaceFolder(COURSE));
+  const path = join(workspace, "maps.py");
+  await writeFile(path, "def image(v):\n    raise\n");
+
+  const opened = await openPost(app, COURSE, "review-question", { file: 0 });
+  expect(opened.status).toBe(200);
+  expect(await opened.json()).toEqual({ ok: true });
+  expect(openFile).toHaveBeenCalledWith(path);
+
+  await dataRoot.writePosition(COURSE, "vectors", null, { finished: true });
+  const ended = await openPost(app, COURSE, "review-question", { file: 0 });
+  expect(ended.status).toBe(404);
+  expect(openFile).toHaveBeenCalledTimes(1);
+});
+
 test('"Open" refuses a listed file that is now a link or gone, with why, and passes on a failure to open it', async () => {
   await approvedCourse();
   const workspace = await withCodeQuestion(COURSE, "q1", [

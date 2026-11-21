@@ -158,7 +158,11 @@ import type { StyleDecision, StyleProposal } from "../../shared/style.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import { CurriculumChangeRefused, type DataRoot } from "../record/data-root.ts";
-import { pickForGate, pickForReview } from "../record/review.ts";
+import {
+  pickForGate,
+  pickForReview,
+  type ReviewPick,
+} from "../record/review.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
 import {
   amendCurriculumTool,
@@ -507,6 +511,7 @@ export function createUnitChats(options: ChatOptions): UnitChats {
   const key = (courseId: string, unitId: string) =>
     JSON.stringify([courseId, unitId]);
   const courses = new Map<string, CourseWorkspace>();
+  const reviewRequests = new Map<string, Promise<ReviewResult>>();
 
   function workspace(courseId: Slug) {
     let guard = courses.get(courseId);
@@ -614,53 +619,64 @@ export function createUnitChats(options: ChatOptions): UnitChats {
     }
   }
 
+  async function reviewCourse(courseId: string): Promise<ReviewResult> {
+    const stored = await dataRoot.readCourse(courseId);
+    const curriculum = stored?.curriculum ?? undefined;
+    if (curriculum === undefined) {
+      return {
+        ok: false,
+        status: 404,
+        error: `There is no course "${courseId}" with a curriculum.`,
+      };
+    }
+    if (curriculum.approval.status !== "approved") {
+      return {
+        ok: false,
+        status: 409,
+        error: "The curriculum is not approved yet, so nothing is reviewed.",
+      };
+    }
+    const [state, evidence] = await Promise.all([
+      dataRoot.readState(courseId),
+      dataRoot.readEvidence(courseId),
+    ]);
+    const thread = reviewThread(
+      curriculum.units,
+      stored?.course.unitsOpenedAt ?? {},
+      state,
+      evidence,
+      (options.now ?? (() => new Date()))(),
+    );
+    if (typeof thread === "string") {
+      return { ok: false, status: 409, error: thread };
+    }
+    const { unit, number, objectives } = thread;
+    const opened = await open(courseId, unit.id);
+    if (!opened.ok) return opened;
+    const chat = chats.get(key(courseId, unit.id));
+    if (chat === undefined) throw new Error("The unit's chat was not kept.");
+    const started = await chat.reviewNow(objectives);
+    return started.ok
+      ? { ok: true, unitId: unit.id }
+      : {
+          ok: false,
+          status: 409,
+          error: `In unit ${number}, ${unit.title}: ${started.error}`,
+        };
+  }
+
   return {
     open,
     get: (courseId, unitId) => chats.get(key(courseId, unitId)),
-    async reviewNow(courseId) {
-      const stored = await dataRoot.readCourse(courseId);
-      const curriculum = stored?.curriculum ?? undefined;
-      if (curriculum === undefined) {
-        return {
-          ok: false,
-          status: 404,
-          error: `There is no course "${courseId}" with a curriculum.`,
-        };
-      }
-      if (curriculum.approval.status !== "approved") {
-        return {
-          ok: false,
-          status: 409,
-          error: "The curriculum is not approved yet, so nothing is reviewed.",
-        };
-      }
-      const [state, evidence] = await Promise.all([
-        dataRoot.readState(courseId),
-        dataRoot.readEvidence(courseId),
-      ]);
-      const thread = reviewThread(
-        curriculum.units,
-        stored?.course.unitsOpenedAt ?? {},
-        state,
-        evidence,
-        (options.now ?? (() => new Date()))(),
-      );
-      if (typeof thread === "string") {
-        return { ok: false, status: 409, error: thread };
-      }
-      const { unit, number } = thread;
-      const opened = await open(courseId, unit.id);
-      if (!opened.ok) return opened;
-      const chat = chats.get(key(courseId, unit.id));
-      if (chat === undefined) throw new Error("The unit's chat was not kept.");
-      const started = await chat.reviewNow();
-      return started.ok
-        ? { ok: true, unitId: unit.id }
-        : {
-            ok: false,
-            status: 409,
-            error: `In unit ${number}, ${unit.title}: ${started.error}`,
-          };
+    reviewNow(courseId) {
+      // A second request during opening or the first save joins that start.
+      const pending = reviewRequests.get(courseId);
+      if (pending !== undefined) return pending;
+      const request = reviewCourse(courseId).finally(() => {
+        reviewRequests.delete(courseId);
+      });
+      reviewRequests.set(courseId, request);
+      return request;
     },
     courseDesk(courseId) {
       return {
@@ -698,10 +714,9 @@ export function createUnitChats(options: ChatOptions): UnitChats {
 }
 
 /**
- * The unit whose thread "Review now" runs in (docs/decisions.md, "Review"):
- * the unit in progress opened last, those never marked opened after, in
- * the course's order; with none, the finished unit that holds the first
- * objective due in review's order. Or why there is none.
+ * The thread and objective pick from one course snapshot. Continue an
+ * existing review first; otherwise use the unit in progress opened last
+ * or the finished unit that holds the first due objective.
  */
 function reviewThread(
   units: readonly StoredUnit[],
@@ -709,21 +724,30 @@ function reviewThread(
   state: State,
   evidence: readonly EvidenceEntry[],
   at: Date,
-): { unit: StoredUnit; number: number } | string {
-  const picks = pickForReview(units, evidence, {
+): { unit: StoredUnit; number: number; objectives?: ReviewPick[] } | string {
+  const numbered = units.map((unit, i) => ({ unit, number: i + 1 }));
+  const active = numbered.find(({ unit }) => {
+    const kept = state.finishedReviews?.[unit.id]?.assessment;
+    const running = state.units[unit.id]?.assessment;
+    return (
+      kept?.mode === "review" ||
+      (running?.mode === "review" && running.stage === "on")
+    );
+  });
+  if (active !== undefined) return active;
+  const objectives = pickForReview(units, evidence, {
     at,
     count: REVIEW_COUNT,
     leaveOut: [],
   });
-  if (picks.length === 0) return NOTHING_DUE;
-  const numbered = units.map((unit, i) => ({ unit, number: i + 1 }));
+  if (objectives.length === 0) return NOTHING_DUE;
   const time = (id: string) =>
     Object.hasOwn(openedAt, id) ? Date.parse(openedAt[id] ?? "") : -Infinity;
   const [inProgress] = numbered
     .filter(({ unit }) => Object.hasOwn(state.units, unit.id))
     .sort((a, b) => time(b.unit.id) - time(a.unit.id) || a.number - b.number);
-  if (inProgress !== undefined) return inProgress;
-  for (const { unit: id } of picks) {
+  if (inProgress !== undefined) return { ...inProgress, objectives };
+  for (const { unit: id } of objectives) {
     const found = numbered.find(({ unit }) => unit.id === id);
     const status =
       found === undefined
@@ -733,7 +757,7 @@ function reviewThread(
       found !== undefined &&
       (status === "passed" || status === "overridden")
     ) {
-      return found;
+      return { ...found, objectives };
     }
   }
   return "No unit can hold a review now.";
@@ -1104,7 +1128,7 @@ interface OpenableChat extends UnitChat {
    * unit's too, unless something waits on the learner or the tutor here.
    * A review offered on its card starts; one under way is left to go on.
    */
-  reviewNow(): Promise<ChatResult>;
+  reviewNow(objectives: ReviewPick[] | undefined): Promise<ChatResult>;
   /**
    * Takes in a style note the learner applied in another unit's chat: the
    * tutor's next session starts with it, and its next header gives it.
@@ -2073,7 +2097,6 @@ function createUnitChat(
       r.reviewHeld = true;
       return;
     }
-    r.reviewHeld = false;
     if (
       // Feedback, or any other turn, still to come.
       r.feedback !== undefined ||
@@ -2089,6 +2112,7 @@ function createUnitChat(
     ) {
       return;
     }
+    r.reviewHeld = false;
     offering = true;
     try {
       const at = now();
@@ -2128,8 +2152,10 @@ function createUnitChat(
    */
   function offerHeld(r: Running): void {
     if (r.reviewHeld !== true) return;
-    r.reviewHeld = false;
-    if (isLastSegment(r.context.plan, r.record.position)) return;
+    if (isLastSegment(r.context.plan, r.record.position)) {
+      r.reviewHeld = false;
+      return;
+    }
     heldOffer = r.agents
       .settled()
       .then(() => exclusive(() => offerReview(r)))
@@ -2154,48 +2180,56 @@ function createUnitChat(
    * on the learner or the tutor, or when nothing is due. Runs inside
    * `exclusive`.
    */
-  async function requestReview(r: Running): Promise<ChatResult> {
+  async function requestReview(
+    r: Running,
+    objectives: ReviewPick[] | undefined,
+  ): Promise<ChatResult> {
     const { position, finished } = r.record;
-    const waiting = position.assessment;
-    if (waiting?.mode === "review") {
-      if (waiting.stage === "offered") await startRun(r, waiting);
+    let offered = position.assessment;
+    if (offered?.mode === "review" && offered.stage === "on") {
       return { ok: true };
     }
-    const waits = reviewWaits(r);
-    if (waits !== undefined) return refused(waits);
-    const at = now();
-    const [stored, log, misconceptions] = await Promise.all([
-      dataRoot.readCourse(courseId),
-      dataRoot.readEvidence(courseId),
-      dataRoot.readMisconceptions(courseId),
-    ]);
-    const units = stored?.curriculum?.units ?? r.context.units;
-    const objectives = pickForReview(units, log, {
-      at,
-      count: REVIEW_COUNT,
-      leaveOut: [],
-    });
-    if (objectives.length === 0) return refused(NOTHING_DUE);
-    // No card follows on its own within the hour.
-    await dataRoot.markReviewOffered(courseId, at);
-    r.reviewHeld = false;
-    r.handoff.misconceptions = misconceptions;
-    r.context = { ...r.context, units };
-    // A finished unit's session was not kept, so the review's is new.
-    if (
-      finished !== undefined &&
-      position.tutorSessionId === undefined &&
-      !r.notes.includes(JOINED_NOTE)
-    ) {
-      r.notes.push(JOINED_NOTE);
+    if (install !== undefined) {
+      return refused(
+        "Packages are being installed. Wait until the install finishes.",
+      );
     }
-    const offered: AssessmentRun = {
-      mode: "review",
-      stage: "offered",
-      objectives,
-    };
-    await r.record.offerAssessment(offered, log, () => showRun(r, offered));
+    if (pendingInstall !== undefined) return refused(PACKAGE_SAVE_FAILED);
+    if (offered?.mode !== "review") {
+      const waits = reviewWaits(r);
+      if (waits !== undefined) return refused(waits);
+      if (objectives === undefined) {
+        return refused("That review has already ended.");
+      }
+      // The pick chose this thread. Refresh the context, not the pick.
+      const [stored, log, misconceptions] = await Promise.all([
+        dataRoot.readCourse(courseId),
+        dataRoot.readEvidence(courseId),
+        dataRoot.readMisconceptions(courseId),
+      ]);
+      r.handoff.misconceptions = misconceptions;
+      r.context = {
+        ...r.context,
+        units: stored?.curriculum?.units ?? r.context.units,
+      };
+      if (
+        finished !== undefined &&
+        position.tutorSessionId === undefined &&
+        !r.notes.includes(JOINED_NOTE)
+      ) {
+        r.notes.push(JOINED_NOTE);
+      }
+      const run: AssessmentRun = {
+        mode: "review",
+        stage: "offered",
+        objectives,
+      };
+      await r.record.offerAssessment(run, log, () => showRun(r, run));
+      offered = run;
+    }
     await startRun(r, offered);
+    r.reviewHeld = false;
+    await dataRoot.markReviewOffered(courseId, now(), { requested: true });
     return { ok: true };
   }
 
@@ -2221,7 +2255,7 @@ function createUnitChat(
     if (position.detour !== undefined) {
       return `A detour is open after question ${position.detour.number}: end it first.`;
     }
-    if (position.packageRequest !== undefined || pendingInstall !== undefined) {
+    if (position.packageRequest !== undefined) {
       return "A request to install packages waits for your answer.";
     }
     if (position.styleProposal !== undefined) {
@@ -2271,6 +2305,7 @@ function createUnitChat(
         ),
       );
     }
+    if (r.record.finished !== undefined) return;
     if (run.mode === "gate") {
       await endUnit(r);
       return;
@@ -3828,12 +3863,12 @@ function createUnitChat(
         { inRun: true },
       ),
 
-    async reviewNow() {
+    async reviewNow(objectives) {
       await loading;
       return exclusive(async () => {
         const r = running;
         if (r === undefined) return notOpen();
-        return requestReview(r);
+        return requestReview(r, objectives);
       });
     },
 

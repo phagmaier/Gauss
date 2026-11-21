@@ -114,12 +114,15 @@ export interface DataRoot {
    */
   markOpened(id: string, unitId?: string): Promise<StoredCourse>;
   /**
-   * Notes that review is offered in the course at `at`, unless it was
-   * offered less than SESSION_GAP_MS before: then it changes nothing and
-   * answers false. Checked and written under the course file's lock, so two
-   * units opened together cannot both offer one.
+   * Notes that review is offered in the course at `at`, under the course
+   * file's lock. An automatic offer within SESSION_GAP_MS changes nothing
+   * and answers false; a requested start refreshes the cooldown.
    */
-  markReviewOffered(id: string, at: Date): Promise<boolean>;
+  markReviewOffered(
+    id: string,
+    at: Date,
+    options?: { requested?: true },
+  ): Promise<boolean>;
   /**
    * The course's style note, style.md, trimmed, or undefined when it has
    * none (a course proposed before notes existed, task 2.10) or the file is
@@ -780,12 +783,13 @@ export function openDataRoot(options: {
       });
     },
 
-    async markReviewOffered(id, at) {
+    async markReviewOffered(id, at, { requested } = {}) {
       const path = courseFile(id, "course.json");
       return withFileLock(path, async () => {
         const stored = await existingCourse(id);
         const last = stored.course.reviewOfferedAt;
         if (
+          requested !== true &&
           last !== undefined &&
           at.getTime() - Date.parse(last) < SESSION_GAP_MS
         ) {

@@ -1379,31 +1379,17 @@ works is `architecture.md` section 4.
   instead.
 - **Only when due, and only between segments** (the user's, 2026-11-19,
   from the stage 5 check, where the card sat between a segment's teaching
-  and its check): a sitting that begins in a segment's discussion or check
-  holds the card until the segment closes. As built (the agent's choices,
-  open to change): the hold lasts while the chat is open, a restart or a
-  new sitting decides again; the held card is offered once the tutor's
-  turn after the close has ended, since a card shown while a turn is
-  queued would be skipped by it; one held in the unit's last segment is
-  dropped, as the gate follows and asks other units' due objectives.
+  and its check). The hold is in memory: a restart decides again. Waiting
+  for the tutor's turn to end avoids showing a card to skip at once;
+  the final segment drops the hold because the gate can cover other
+  units' due objectives. The behavior is in `architecture.md` section 4.
 - **"Review now"** (the user's, 2026-11-19; they had first asked for
   review on request only, and took the card too because a mode one has
-  to open tends not to be opened). It starts at once, with no card,
-  since the learner just asked, and in any phase, between teaching and
-  check too: the learner chose it. Settled by the agent, open to change:
-  - the thread: the unit in progress opened last, the one the course
-    view's card continues; with none, the finished unit holding the first
-    objective in review's order (the user's rule for a finished course).
-    Refused, with the unit's reason, while something waits there, rather
-    than moving to another thread the learner did not expect;
-  - a finished unit's review keeps its position in `finishedReviews`
-    beside `units` in `state.json`, so every reader of `units` still sees
-    the unit finished, and a restart resumes the review. Writing it in
-    `units` would have made the unit in progress, and its end would have
-    run the closing card and gate again;
-  - its tutor's session was not kept once the unit finished, so the
-    review's first header carries the note that the conversation is new,
-    with the unit's handoff note.
+  to open tends not to be opened). An explicit request can interrupt the
+  usual segment rhythm. The latest in-progress thread is the same one
+  the course view continues; if it is blocked, a refusal keeps the
+  learner out of an unexpected thread. A finished unit's review position
+  is kept apart so it does not restart teaching or its gate.
 - **Which**: what is due, slipping first, then the most overdue (the
   user's, 2026-11-19, from the LearnHarness comparison); never one
   answered within the hour; three over the whole course

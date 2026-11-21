@@ -37,6 +37,7 @@ import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
+import { JOINED_NOTE } from "./unit-turns.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
@@ -154,12 +155,15 @@ function correct(
  * The course, approved and planned the day before, with unit 1's two
  * objectives passed then, so review is due on them.
  */
-async function makeCourse(passedAt = YESTERDAY): Promise<DataRoot> {
+async function makeCourse(
+  passedAt = YESTERDAY,
+  plans = PLANS,
+): Promise<DataRoot> {
   const root = openDataRoot({ path: dir, now: () => new Date(YESTERDAY) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
   await root.saveProposal(id, CURRICULUM);
   await root.approveCurriculum(id, CURRICULUM);
-  for (const [unit, plan] of Object.entries(PLANS)) {
+  for (const [unit, plan] of Object.entries(plans)) {
     await root.storePlan(id, unit, plan);
   }
   await root.appendEvidence(id, correct("limit-value", passedAt));
@@ -182,7 +186,10 @@ function tutor() {
       text,
     )?.[1];
     if (text.includes("The miss opens a detour")) return [{ text: "Detour." }];
-    if (/^\[[^\]]*The learner answered question/.test(text)) {
+    if (
+      objective === undefined &&
+      /^\[[^\]]*The learner answered question/.test(text)
+    ) {
       return [{ text: "Feedback." }];
     }
     if (objective !== undefined) {
@@ -1248,6 +1255,57 @@ test("a card held in the unit's last segment is not offered at the unit's end", 
   expect(ofType(chat, "unit_end")).toHaveLength(1);
 });
 
+test("a held review survives Next segment winning the queue and appears at the next non-final close", async () => {
+  const plan = PLANS.derivative as Plan;
+  const root = await makeCourse(YESTERDAY, {
+    ...PLANS,
+    derivative: {
+      objectives: [
+        ...plan.objectives,
+        { id: "chain-rule", statement: "Differentiate a composition." },
+      ],
+      segments: [
+        ...plan.segments,
+        { title: "Compositions", objectives: ["chain-rule"] },
+      ],
+    },
+  });
+  await root.writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "discuss",
+  });
+  const saving = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const setup = setUp(tutor(), [], (root) => ({
+    ...root,
+    async writePosition(...args) {
+      const [, unit, position] = args;
+      if (
+        unit === "derivative" &&
+        position?.segment === 0 &&
+        position.phase === "closed"
+      ) {
+        saving.resolve();
+        await release.promise;
+      }
+      return root.writePosition(...args);
+    },
+  }));
+  const chat = await open(setup);
+  const movingOn = chat.override();
+  await saving.promise;
+  const next = chat.nextSegment();
+  release.resolve();
+  await step(movingOn, chat);
+  await step(next, chat);
+  expect(ofType(chat, "assessment")).toEqual([]);
+  expect(await positionOf()).toMatchObject({ segment: 1, phase: "discuss" });
+
+  await step(chat.override(), chat);
+  expect(ofType(chat, "assessment")).toEqual([OFFERED]);
+  expect(await positionOf()).toMatchObject({ segment: 1, phase: "closed" });
+});
+
 // --- Review now (task 5.25) ---------------------------------------------------
 
 /** Passes the objective the day before, `days` before NOW. */
@@ -1262,8 +1320,8 @@ async function passedDaysAgo(objective: string, days: number) {
 }
 
 test("in a finished course the review runs in the thread of the unit whose objective is due first, records its answers, and leaves the unit finished, across a restart", async () => {
-  // Every unit finished; "slope" and "power-rule", three days old, are the
-  // most overdue, then unit 1's, a day old, then the integral's, two days.
+  // Every unit finished: the derivative's objectives are three days old,
+  // the integral's two, and the limits' one.
   await makeCourse();
   await passedDaysAgo("slope", 3);
   await passedDaysAgo("power-rule", 3);
@@ -1313,6 +1371,14 @@ test("in a finished course the review runs in the thread of the unit whose objec
   expect(lastQuestion(reopened).prompt).toMatch(/ on power-rule\?$/);
   expect(nextStep(replay(reopened))).toBe("assessment");
   await answer(reopened, "A");
+  expect(sent(second.backend).at(-1)).toContain("Seeded question 1 on area.");
+  const area = lastQuestion(reopened);
+  expect(await second.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  expect(lastQuestion(reopened)).toEqual(area);
+  expect(second.units.get(COURSE, "integral")).toBeUndefined();
   await answer(reopened, "A");
 
   expect(ofType(reopened, "assessment_end")).toHaveLength(1);
@@ -1352,6 +1418,179 @@ test("in a finished course the review runs in the thread of the unit whose objec
     "retained",
   );
 });
+
+test("a disputed pass and a review miss leave the finished unit closed and its pending question recoverable", async () => {
+  await makeCourse();
+  await passedDaysAgo("slope", 3);
+  await passedDaysAgo("power-rule", 2);
+  const first = setUp();
+  expect(await first.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  const chat = await open(first);
+  const disputes = createDisputes({
+    dataRoot: first.dataRoot,
+    judge: {
+      decide: async () => ({
+        ok: true,
+        outcome: {
+          verdict: "incorrect",
+          key: "B",
+          reason: "The key was wrong.",
+        },
+      }),
+    },
+    units: first.units,
+    now: () => clock,
+  });
+  expect(
+    await disputes.raise(COURSE, "seeded-slope-1", "B is correct."),
+  ).toMatchObject({ ok: true });
+  await answer(chat, "B");
+  expect(objectiveStatus(await reload().readEvidence(COURSE), "slope")).toBe(
+    "overridden",
+  );
+  await step(chat.anotherQuestion(), chat);
+  const pending = lastQuestion(chat);
+  await first.units.close();
+
+  // A prior restart under the old rules could have written a teaching
+  // position beside the still-active finished review.
+  await reload().writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "discuss",
+  });
+  const second = setUp();
+  const resumed = await open(second);
+  expect(ofType(resumed, "unit_closed").at(-1)?.status).toBe("overridden");
+  expect(openQuestion(replay(resumed))?.question.id).toBe(pending.id);
+  expect((await reload().readState(COURSE)).units).toEqual({});
+  await step(resumed.skipAssessment(), resumed);
+  expect((await reload().readState(COURSE)).finishedReviews).toBeUndefined();
+  expect(sent(second.backend)).toEqual([]);
+});
+
+test("a unit tested out in this process can run a review without teaching or a gate", async () => {
+  await makeCourse();
+  for (const objective of ["limit-value", "one-sided"]) {
+    await reload().appendEvidence(COURSE, {
+      ...correct(objective, NOW, "90", 2),
+      assessment: { mode: "review", unit: "limits" },
+    });
+  }
+  const setup = setUp();
+  const tested = await setup.units.open(COURSE, "derivative", {
+    testOut: true,
+  });
+  if (!tested.ok) throw new Error(tested.error);
+  const { chat } = tested;
+  await chat.settled();
+  await answer(chat, "A", "90");
+  await answer(chat, "A", "90");
+  await step(chat.skipTested(["slope", "power-rule"]), chat);
+  const turnsBefore = sent(setup.backend).length;
+
+  clock = new Date(Date.parse(NOW) + 2 * 24 * HOUR);
+  expect(await setup.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  await chat.settled();
+  expect(ofType(chat, "assessment").at(-1)).toMatchObject({
+    mode: "review",
+    stage: "on",
+  });
+  await step(chat.skipAssessment(), chat);
+  expect(sent(setup.backend).slice(turnsBefore)).toHaveLength(1);
+  expect(await reload().readState(COURSE)).toEqual({
+    units: {},
+    testedOut: { derivative: true },
+  });
+});
+
+test("a finished review keeps the tutor session already used in its thread", async () => {
+  await makeCourse();
+  const first = setUp();
+  const chat = await open(first, "limits");
+  expect(chat.say("Hello.")).toEqual({ ok: true });
+  await chat.settled();
+  expect(await first.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "limits",
+  });
+  await chat.settled();
+  expect(sent(first.backend).at(-1)).not.toContain(JOINED_NOTE);
+  await first.units.close();
+
+  const second = setUp();
+  const resumed = await open(second, "limits");
+  expect(ofType(resumed, "fresh_start")).toEqual([]);
+  await answer(resumed, "A");
+  expect(sent(second.backend)[0]).not.toContain(JOINED_NOTE);
+});
+
+test("the review keeps the pick that chose its finished thread while opening it", async () => {
+  await makeCourse();
+  await passedDaysAgo("slope", 3);
+  await passedDaysAgo("power-rule", 2);
+  await reload().appendEvidence(COURSE, {
+    ...correct(
+      "limit-value",
+      new Date(Date.parse(NOW) - HOUR + 60_000).toISOString(),
+      "90",
+      2,
+    ),
+    verdict: "incorrect",
+    assessment: { mode: "review", unit: "limits" },
+  });
+  const setup = setUp(tutor(), [], (root) => ({
+    ...root,
+    async markOpened(...args) {
+      // This makes the slipping objective eligible after routing but
+      // before the tutor can ask. The request uses one pick, not two.
+      clock = new Date(Date.parse(NOW) + 60_000);
+      return root.markOpened(...args);
+    },
+  }));
+  expect(await setup.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  const chat = setup.units.get(COURSE, "derivative");
+  if (chat === undefined) throw new Error("No chat.");
+  await chat.settled();
+  expect(lastQuestion(chat).prompt).toMatch(/ on slope\?$/);
+});
+
+test.each(["a new run", "an offered card"])(
+  "starting %s from Review now resets the automatic-card cooldown",
+  async (start) => {
+    const root = await makeCourse();
+    const setup = setUp();
+    if (start === "an offered card") {
+      await root.writePosition(COURSE, "derivative", {
+        segment: 0,
+        phase: "closed",
+      });
+      expect(ofType(await open(setup), "assessment")).toEqual([OFFERED]);
+    } else {
+      await root.markReviewOffered(COURSE, clock);
+      await root.writePosition(COURSE, "derivative", {
+        segment: 0,
+        phase: "discuss",
+      });
+    }
+
+    clock = new Date(Date.parse(NOW) + 59 * 60_000);
+    expect(await setup.units.reviewNow(COURSE)).toEqual({
+      ok: true,
+      unitId: "derivative",
+    });
+    clock = new Date(Date.parse(NOW) + 61 * 60_000);
+    expect(ofType(await open(setup, "integral"), "assessment")).toEqual([]);
+  },
+);
 
 test("with units in progress the review runs in the one opened last, and is refused while something waits there", async () => {
   await makeCourse();

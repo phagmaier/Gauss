@@ -33,7 +33,8 @@ import { countedEvidence } from "./disputes.ts";
  * - Missed in a review or a gate while it was passed, it is slipping until
  *   it passes again.
  * - An override marks it overridden, but never takes away a pass. A later
- *   answer takes the override's place.
+ *   answer takes its place, except in a review or gate: those answers
+ *   leave the override in place until the objective passes again.
  */
 export function objectiveStatus(
   evidence: readonly EvidenceEntry[],
@@ -111,7 +112,9 @@ function collectStandings(
     if (entry.kind === "override") {
       for (const id of entry.objectives) {
         const standing = standings.get(id);
-        if (standing !== undefined) standing.overridden = true;
+        if (standing !== undefined && !passes(standing)) {
+          standing.overridden = true;
+        }
       }
       continue;
     }
@@ -119,9 +122,9 @@ function collectStandings(
     if (standing === undefined) continue;
 
     standing.answered = true;
-    standing.overridden = false;
     const mode = entry.assessment?.mode;
     const cold = mode === "review" || mode === "gate";
+    if (!cold) standing.overridden = false;
     if (entry.verdict !== "correct") {
       if (mode === "test-out") continue;
       if (passes(standing)) standing.slipped = cold;
@@ -141,6 +144,7 @@ function collectStandings(
       const { answer } = entry;
       standing.confident ||=
         answer.kind !== "unknown" && isConfident(answer.confidence);
+      if (standing.overridden && passes(standing)) standing.overridden = false;
     }
   }
   return standings;
@@ -161,7 +165,7 @@ function statusOf(standing: Standing | undefined): ObjectiveStatus {
 }
 
 /**
- * A unit's status. A unit with a position in `state.json` is in progress.
+ * A unit's status. A unit with a position in `state.units` is in progress.
  * Otherwise its objectives decide: none with evidence, or no plan, is not
  * started; all passed (retained or slipping since) is passed; all passed or
  * overridden is overridden; anything else is still in progress.
@@ -172,10 +176,9 @@ export function unitStatus(
   position: UnitPosition | undefined,
 ): UnitStatus {
   if (position !== undefined) return "in-progress";
-  const statuses = (unit.plan?.objectives ?? []).map((o) =>
-    objectiveStatus(evidence, o.id),
-  );
-  return unitStatusFromObjectives(statuses);
+  const objectives = unit.plan?.objectives.map((o) => o.id) ?? [];
+  const standings = collectStandings(evidence, objectives);
+  return unitStatusFromObjectives(Array.from(standings.values(), statusOf));
 }
 
 /** Derives the status of a unit with no position from its objective statuses. */

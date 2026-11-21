@@ -314,15 +314,17 @@ async function start(
   unitId = "loops",
   {
     codeRunner,
+    now = () => new Date(NOW),
     withoutInstaller = false,
     workspaceTools = false,
   }: {
     codeRunner?: CodeRunner;
+    now?: () => Date;
     withoutInstaller?: boolean;
     workspaceTools?: boolean;
   } = {},
 ) {
-  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const root = openDataRoot({ path: dir, now });
   if ((await root.readCourse(COURSE)) === undefined) {
     const { id } = await root.createCourse({ title: CURRICULUM.title });
     await root.saveProposal(id, CURRICULUM);
@@ -345,7 +347,7 @@ async function start(
     }),
     grader: createGrader({ backend, systemPrompt: "Grader." }),
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
-    now: () => new Date(NOW),
+    now,
     timer: createFakeTimer(),
     order: givenOrder,
     workspaceTools,
@@ -1106,6 +1108,88 @@ test("Retry saving preserves the original install outcome after the unit finishe
     output: " + pytest==9.2.0",
   });
   await units.close();
+});
+
+test("Review now waits for a live install even after its host unit finishes", async () => {
+  const started = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<SandboxResult>();
+  const fake = fakeRun([held.promise]);
+  const reviewQuestion = {
+    ...CHOICE,
+    prompt: "How many times does `for i in range(4)` run?",
+    choices: ["4", "3"],
+  };
+  let clock = new Date(NOW);
+  const { backend, chat, root, units } = await start(
+    [
+      [{ text: "Teaching." }, ask([{ name: "pytest" }])],
+      [{ call: "ask_question", input: reviewQuestion }],
+    ],
+    (command) => {
+      started.resolve();
+      return fake.run(command);
+    },
+    "loops",
+    { now: () => clock },
+  );
+  try {
+    try {
+      // Seed a pass in the course record before this objective is due.
+      await root.appendEvidence(COURSE, {
+        kind: "answer",
+        recordedAt: NOW,
+        objective: CHOICE.objective,
+        question: {
+          kind: "choice",
+          prompt: CHOICE.prompt,
+          choices: CHOICE.choices,
+          answer: "A",
+        },
+        answer: {
+          kind: "choice",
+          questionId: "earlier-loop-check",
+          choice: "A",
+          confidence: "90",
+        },
+        assisted: false,
+        verdict: "correct",
+      });
+      expect(await chat.installPackages(requestId(chat.events()))).toEqual({
+        ok: true,
+      });
+      await started.promise;
+      expect(await chat.override()).toEqual({ ok: true });
+      expect(await chat.finishUnit()).toEqual({ ok: true });
+      // The seeded pass makes the gate eligible; skipping it finishes
+      // the unit without a tutor turn, while the install is still held.
+      expect(await chat.skipAssessment()).toEqual({ ok: true });
+      expect((await root.readState(COURSE)).units).toEqual({});
+      clock = new Date("2026-11-19T10:00:00.000Z");
+
+      expect(await units.reviewNow(COURSE)).toMatchObject({
+        ok: false,
+        status: 409,
+        error: expect.stringMatching(/being installed|install.*finish/i),
+      });
+      expect(backend.received).toHaveLength(1);
+    } finally {
+      held.resolve(ok());
+      await chat.settled();
+    }
+
+    expect(await units.reviewNow(COURSE)).toEqual({
+      ok: true,
+      unitId: "loops",
+    });
+    await chat.settled();
+    expect(chat.events().filter((e) => e.type === "question")).toEqual([
+      expect.objectContaining({
+        question: expect.objectContaining({ prompt: reviewQuestion.prompt }),
+      }),
+    ]);
+  } finally {
+    await units.close();
+  }
 });
 
 test.each(["preparing", "running"] as const)(

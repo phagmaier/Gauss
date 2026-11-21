@@ -27,6 +27,7 @@ import {
   type PhaseItem,
   type Position,
   type QuestionItem,
+  standingCard,
   type Timeline,
   type UnitEndItem,
 } from "../shared/timeline.ts";
@@ -321,8 +322,8 @@ export function nextStep(timeline: Timeline): NextStep {
   const { position, plan, finished } = timeline;
   if (timeline.failed !== null) return "try-again";
   if (finished !== null && timeline.assessment === null) {
-    // A card that finished the unit holds the way out; one moved on from does not.
-    const card = lastCard(timeline);
+    // Only a closing card that still stands holds the way out.
+    const card = standingCard(timeline.items);
     return card !== undefined &&
       card.stepTaken === undefined &&
       !offersSteps(card)

@@ -492,6 +492,26 @@ describe("retained and slipping", () => {
   test.each(cases)("$name: $is", ({ log, is }) => {
     expect(objectiveStatus(log, CHAIN)).toBe(is);
   });
+
+  test("cold answers leave an override in place until the pass is reestablished", () => {
+    const log = [
+      override(CHAIN),
+      wrong("75", { in: "review" }),
+      right("90", { in: "gate" }),
+      right("50", { in: "review" }),
+      wrong("50", { in: "gate" }),
+    ];
+    const statuses = log.map((_, i) =>
+      objectiveStatus(log.slice(0, i + 1), CHAIN),
+    );
+    expect(statuses).toEqual([
+      "overridden",
+      "overridden",
+      "overridden",
+      "retained",
+      "slipping",
+    ]);
+  });
 });
 
 // The theology course's first objective as the user answered it on
