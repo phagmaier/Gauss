@@ -685,9 +685,10 @@ the test before a unit lets the learner skip what they know.
   belief, one naming anything else or whose words are in none of the
   learner's own texts the stretch kept (`Stretch.said`: their messages,
   answers, reasoning and where they got stuck; a choice answer by the
-  choice picked; not the tutor's text, nor "I don't know"). The
-  comparison ignores case, spacing, `$` and the form of quotation marks,
-  and quotation marks, ellipses and sentence marks at the quote's ends.
+  choice picked; not "I don't know" or submitted code files). It matches
+  whole tokens and whole formulas, ignoring prose case, token spacing,
+  math delimiters, and ordinary quotation and sentence marks at the
+  quote's ends.
   The misconceptions are appended, then the note replaces the one
   before, then the mark moves to the stretch's end, and a backup commit is
   asked for. A failed call, a reply out of shape or one past

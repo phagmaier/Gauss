@@ -97,9 +97,11 @@ one recorded that shows again is not listed again:
   said they got stuck, or the text of the choice they picked. One
   continuous run, a sentence or two at most, with nothing left out in the
   middle and no quotation marks around it; never the tutor's words or your
-  own. Put math they typed in an answer box, which is LaTeX, between
-  dollar signs. The app checks the words against what the learner wrote,
-  and leaves out a misconception whose words it does not find.
+  own. For a code answer, quote their reasoning or messages, not the
+  submitted files, which can contain tutor starter code. Quote formulas
+  whole, preserving their case and symbols. Put math from an answer box
+  between dollar signs. The app checks the words against what the learner
+  wrote, and leaves out a misconception whose words it does not find.
 - `detour`: the number of the detour it showed in, as the stretch's markers
   number them ("Detour 2 opens ..."). Leave it out when it showed outside a
   detour, as in the answer to a question on intuition in the discussion.

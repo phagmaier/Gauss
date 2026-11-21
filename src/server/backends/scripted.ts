@@ -83,12 +83,11 @@
 //
 // The handoff writer (task 5.7), called when a segment closes or a unit
 // finishes, writes a note that counts what it read, numbered on from the
-// note before, and finds one misconception for each detour in its stretch,
-// on the detour's objective, quoting the first line of the missed answer;
-// after "I don't know" that is no words of the learner's, and the engine
-// leaves the misconception out. "/nohandoff" in a learner's message in the
-// stretch fails the call, which records nothing: the next one reads that
-// stretch too.
+// note before, and finds a misconception on each detour's objective when
+// it can quote a short excerpt of the missed answer's first line. After
+// "I don't know" the engine leaves the misconception out. "/nohandoff"
+// in a learner's message fails the call, which records nothing: the next
+// one reads that stretch too.
 //
 // The notes writer (task 5.9) supplies a small standalone page with a
 // figure and math, repeating any instructions from the learner.
@@ -116,6 +115,7 @@ import { join } from "node:path";
 import type { PlannerProposal, Unit } from "../../shared/curriculum.ts";
 import { DisputeJudgment } from "../../shared/dispute.ts";
 import { HandoffReply } from "../../shared/handoff.ts";
+import { MISCONCEPTION_WORDS_LIMIT } from "../../shared/misconception.ts";
 import { NotesReply } from "../../shared/notes.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { sentences } from "../../shared/profile.ts";
@@ -1039,9 +1039,8 @@ function scriptedDispute(request: OneShotRequest<unknown>): FakeReply {
 
 /**
  * The handoff writer's call: a note numbered on from the one before, which
- * counts what it read, and a misconception for each detour it read, quoting
- * the first line of the missed answer before it (so after "I don't know" it
- * quotes no words of the learner's, and the engine leaves it out).
+ * counts what it read, and misconceptions quoting the start of the missed
+ * answer before each detour.
  */
 function scriptedHandoff(request: OneShotRequest<unknown>): FakeReply {
   const stretch =
@@ -1059,8 +1058,8 @@ function scriptedHandoff(request: OneShotRequest<unknown>): FakeReply {
       /^\[Detour (\d+) opens, after the miss on question (\d+), on "([^"]+)"\.\]$/gm,
     ),
   ];
-  const answerBefore = (question: string, at: number) =>
-    [
+  const answerBefore = (question: string, at: number) => {
+    const line = [
       ...stretch
         .slice(0, at)
         .matchAll(
@@ -1069,7 +1068,18 @@ function scriptedHandoff(request: OneShotRequest<unknown>): FakeReply {
             "gm",
           ),
         ),
-    ].at(-1)?.[1] ?? "Scripted: no answer was read.";
+    ]
+      .at(-1)?.[1]
+      ?.trim();
+    if (line === undefined || line.length <= MISCONCEPTION_WORDS_LIMIT) {
+      return line;
+    }
+    // Include the next character to see whether the last word fits whole.
+    return line
+      .slice(0, MISCONCEPTION_WORDS_LIMIT + 1)
+      .replace(/\S+$/u, "")
+      .trimEnd();
+  };
   return {
     output: {
       note:
@@ -1078,15 +1088,19 @@ function scriptedHandoff(request: OneShotRequest<unknown>): FakeReply {
         `${count(/^Learner:$/gm)} of the learner's messages, ` +
         `${count(/^\[The learner's answer to /gm)} answers and ` +
         `${detours.length} detours.`,
-      misconceptions: detours.map((match) => {
+      misconceptions: detours.flatMap((match) => {
         const [, detour, question, objective] = match;
-        return {
-          objective,
-          believed: `Scripted: what the answer to question ${question} showed, that $a^2 + b^2 = c$.`,
-          actually: "Scripted: it is $a^2 + b^2 = c^2$.",
-          words: answerBefore(question ?? "", match.index),
-          detour: Number(detour),
-        };
+        const words = answerBefore(question ?? "", match.index);
+        if (!words) return [];
+        return [
+          {
+            objective,
+            believed: `Scripted: what the answer to question ${question} showed, that $a^2 + b^2 = c$.`,
+            actually: "Scripted: it is $a^2 + b^2 = c^2$.",
+            words,
+            detour: Number(detour),
+          },
+        ];
       }),
     },
   };

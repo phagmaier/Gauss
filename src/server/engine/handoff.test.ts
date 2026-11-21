@@ -290,7 +290,7 @@ test("the request gives the unit, its objectives with another unit's a review as
     text: "Learner:\nHello.",
     detours: new Map(),
     objectives: new Set(["factor", "limit-value"]),
-    said: ["Hello."],
+    said: [{ text: "Hello." }],
     worthReading: true,
   };
   const objectives = objectivesFor(CONTEXT, stretch);
@@ -361,6 +361,25 @@ test("the request gives the unit, its objectives with another unit's a review as
     "</objectives>\n\nThe unit has no note yet: this is its first.\n\nNo misconception is recorded on these objectives yet.\n\n<stretch>",
   );
 });
+
+function quoteKept(events: PageEvent[], words: string): boolean {
+  return (
+    foundIn(
+      {
+        note: "Note.",
+        misconceptions: [
+          { objective: "limit-value", believed: "B", actually: "A", words },
+        ],
+      },
+      {
+        stretch: readStretch(events, { plan: PLAN, answers }),
+        objectives: new Set(["limit-value"]),
+        unitId: "limits",
+        recordedAt: "2026-11-18T10:00:00.000Z",
+      },
+    ).found.length === 1
+  );
+}
 
 test("a misconception is kept with its detour's question and the learner's words, or as the discussion's; one naming an objective or a detour not given, or quoting words the learner did not write, is left out", () => {
   const stretch = readStretch(CHECK, { plan: PLAN, answers });
@@ -492,28 +511,14 @@ test("the learner's words are their messages, answers, reasoning, the choice the
       assisted: false,
     },
   ];
-  const kept = (words: string, stretchEvents = events) => {
-    const reply: HandoffReply = {
-      note: "Note.",
-      misconceptions: [
-        { objective: "limit-value", believed: "B", actually: "A", words },
-      ],
-    };
-    return (
-      foundIn(reply, {
-        stretch: readStretch(stretchEvents, { plan: PLAN, answers }),
-        objectives: new Set(["limit-value"]),
-        unitId: "limits",
-        recordedAt: "2026-11-18T10:00:00.000Z",
-      }).found.length === 1
-    );
-  };
+  const kept = (words: string) => quoteKept(events, words);
   // The choice picked, by its text.
   expect(kept("8")).toBe(true);
   // A choice not picked is the tutor's.
   expect(kept("4")).toBe(false);
   // A math answer, put between dollar signs and spaced.
   expect(kept("$\\cos (2x)$")).toBe(true);
+  expect(kept("$\\COS(2x)$")).toBe(false);
   expect(kept("the chain rule was for products")).toBe(true);
   // "I don't know" is the button's, and a quote of nothing is no quote.
   expect(kept("I don't know.")).toBe(false);
@@ -525,6 +530,46 @@ test("the learner's words are their messages, answers, reasoning, the choice the
     type: "learner",
     text: `Message ${n} says the limit is f(a). ${long}`,
   }));
-  expect(kept("Message 1 says the limit is f(a).", over)).toBe(false);
-  expect(kept("Message 4 says the limit is f(a).", over)).toBe(true);
+  expect(quoteKept(over, "Message 1 says the limit is f(a).")).toBe(false);
+  expect(quoteKept(over, "Message 4 says the limit is f(a).")).toBe(true);
+});
+
+test.each([
+  ["The intercept is x = 10.", "The intercept is x = 1."],
+  ["The intercept is x = 1.5.", "The intercept is x = 1."],
+  ["The intercept is x = -1.", "The intercept is x = 1."],
+  ["The map is nonlinear.", "linear"],
+  ["The map is not linear.", "The map is notlinear."],
+  [
+    "The circle satisfies $x² + y² = 25$.",
+    "The circle satisfies $x2 + y2 = 25$.",
+  ],
+  ["The event is $a$.", "The event is $A$."],
+  ["The rate is $x = 1/2$.", "The rate is $x = 1$."],
+  ["The rate is $x = 1/2$.", "The rate is $x = 1$/2."],
+  ["The rule can't apply.", "The rule can."],
+])("does not treat %s as the same learner evidence as %s", (text, words) => {
+  expect(quoteKept([{ type: "learner", text }], words)).toBe(false);
+});
+
+test("a code answer's reasoning can be quoted, but not the submitted file, which can contain tutor code", () => {
+  const events: PageEvent[] = [
+    {
+      type: "graded",
+      questionId: "q-code",
+      verdict: "incorrect",
+      answer: {
+        kind: "code",
+        questionId: "q-code",
+        confidence: "90",
+        files: [
+          { path: "exercise.py", content: "def times(x):\n    return 0\n" },
+        ],
+        reasoning: "Multiplying by two should leave x unchanged.",
+      },
+      assisted: false,
+    },
+  ];
+  expect(quoteKept(events, "leave x unchanged")).toBe(true);
+  expect(quoteKept(events, "return 0")).toBe(false);
 });

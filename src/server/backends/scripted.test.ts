@@ -133,6 +133,8 @@ test("a unit not yet planned runs to its end: planned, each segment taught, chec
   const prompts: string[] = [];
   const kinds = new Set<string>();
   const segments = plan?.segments.length ?? 0;
+  // A valid single-line answer longer than a misconception quote may be.
+  const wrongAnswer = `This is wrong.${" I used the first rule for every case.".repeat(40)}`;
   for (let segment = 0; segment < segments; segment += 1) {
     if (segment > 0) {
       expect(await chat.nextSegment()).toEqual({ ok: true });
@@ -166,7 +168,7 @@ test("a unit not yet planned runs to its end: planned, each segment taught, chec
           : await chat.answer({
               kind: "written",
               questionId: open.id,
-              text: missed ? "Because it is so." : "This is wrong.",
+              text: missed ? "Because it is so." : wrongAnswer,
               confidence: "90",
             });
       expect(answered).toEqual({ ok: true });
@@ -258,6 +260,7 @@ test("a unit not yet planned runs to its end: planned, each segment taught, chec
     expect.objectContaining({
       unit: "limits",
       objective: "limits-proof",
+      words: expect.stringMatching(/^This is wrong\./),
       where: {
         in: "detour",
         questionId: detour?.type === "detour" ? detour.questionId : "",

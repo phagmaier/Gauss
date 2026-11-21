@@ -257,6 +257,8 @@ export interface StretchDetour {
   objective: string | undefined;
 }
 
+type QuoteSource = { text: string; formula?: true };
+
 export interface Stretch {
   text: string;
   detours: ReadonlyMap<number, StretchDetour>;
@@ -265,9 +267,10 @@ export interface Stretch {
   /**
    * The learner's own words in the text, each as it reads there: their
    * messages, answers (a choice by the choice they picked), reasoning and
-   * where they got stuck. Not "I don't know", which is the page's.
+   * where they got stuck. Not the page's "I don't know" or submitted code
+   * files, which can contain tutor-written starter code.
    */
-  said: readonly string[];
+  said: readonly QuoteSource[];
   /** It holds the tutor's text, a learner's message, an answer or a correction to an answer shown. */
   worthReading: boolean;
 }
@@ -297,7 +300,7 @@ export function readStretch(
   const objectiveOf = (id: string) => answers.get(id)?.objective;
   const parts: string[] = [];
   /** The learner's words, by the part that holds them. */
-  const said: { part: number; text: string }[] = [];
+  const said: { part: number; words: QuoteSource }[] = [];
   const views = new Map<string, QuestionView>();
   const detours = new Map<number, StretchDetour>();
   const objectives = new Set<string>();
@@ -307,8 +310,8 @@ export function readStretch(
   let lastPhase: string | undefined;
   let run: string | undefined;
 
-  const say = (part: string, words: readonly string[] = []) => {
-    for (const text of words) said.push({ part: parts.length, text });
+  const say = (part: string, sources: readonly QuoteSource[] = []) => {
+    for (const words of sources) said.push({ part: parts.length, words });
     parts.push(part);
   };
   const flush = () => {
@@ -338,10 +341,12 @@ export function readStretch(
           "[The tutor's conversation was replaced by a new one, which had not seen the conversation before it.]",
         );
         break;
-      case "learner":
+      case "learner": {
         worthReading = true;
-        say(`Learner:\n${event.text.trim()}`, [event.text.trim()]);
+        const words = event.text.trim();
+        say(`Learner:\n${words}`, [{ text: words }]);
         break;
+      }
       case "file_written":
         say(`[The tutor wrote the file "${event.path}".]`);
         break;
@@ -495,7 +500,7 @@ export function readStretch(
     text: kept.text,
     detours,
     objectives,
-    said: said.filter((s) => s.part >= kept.from).map((s) => s.text),
+    said: said.filter((s) => s.part >= kept.from).map((s) => s.words),
     worthReading,
   };
 }
@@ -531,17 +536,17 @@ const CODE_TAIL = 3000;
 function wordsOf(
   answer: AnswerSubmission,
   view: QuestionView | undefined,
-): string[] {
-  const words =
-    answer.kind === "unknown"
-      ? [answer.stuck]
-      : [
-          ...(answer.kind === "code"
-            ? answer.files.map((f) => tail(f.content, CODE_TAIL))
-            : [answerText(answer, view)]),
-          answer.reasoning,
-        ];
-  return words.flatMap((w) => (w?.trim() ? [w.trim()] : []));
+): QuoteSource[] {
+  const words: QuoteSource[] = [];
+  if (answer.kind !== "unknown" && answer.kind !== "code") {
+    const text = answerText(answer, view);
+    words.push(answer.kind === "math" ? { text, formula: true } : { text });
+  }
+  const reasoning = (
+    answer.kind === "unknown" ? answer.stuck : answer.reasoning
+  )?.trim();
+  if (reasoning) words.push({ text: reasoning });
+  return words;
 }
 
 /** A graded answer as the writer reads it: the answer, how sure, and the grade. */
@@ -800,6 +805,7 @@ export function foundIn(
 ): { found: Misconception[]; dropped: string[] } {
   const found: Misconception[] = [];
   const dropped: string[] = [];
+  let said: QuoteToken[][] | undefined;
   for (const m of reply.misconceptions) {
     if (!given.objectives.has(m.objective)) {
       dropped.push(
@@ -815,7 +821,8 @@ export function foundIn(
       );
       continue;
     }
-    if (!quotes(given.stretch.said, m.words)) {
+    said ??= given.stretch.said.map(quoteTokens);
+    if (!quotes(said, m.words)) {
       dropped.push(
         `it quotes the learner as writing "${oneLine(m.words)}", which no message or answer of theirs in the stretch has; it was on "${m.objective}": "${oneLine(m.believed)}"`,
       );
@@ -841,26 +848,85 @@ export function foundIn(
   return { found, dropped };
 }
 
-/**
- * Whether the words are in one of the learner's texts, as one run. Case,
- * spacing, `$` around math and the form of quotation marks are not
- * compared, nor quotation marks, ellipses and sentence marks at either end,
- * which a quote adds or drops.
- */
-function quotes(said: readonly string[], words: string): boolean {
-  const quote = comparable(words).replace(ENDS, "");
-  return quote !== "" && said.some((s) => comparable(s).includes(quote));
+/** Tokens of a formula share a group number; prose uses zero. */
+type QuoteToken = { text: string; folded: string; math: number };
+
+const MATH_SPAN = /(?<![\\$])(\$+)(?!\$)([\s\S]+?)(?<![\\$])\1(?!\$)/g;
+// Keep words, contractions, signed decimals and LaTeX commands whole.
+const QUOTE_TOKEN =
+  /\\[A-Za-z]+|(?:[+−-]\s*)?(?:\p{Nd}+(?:[.,]\p{Nd}+)?|[.,]\p{Nd}+)(?![\p{L}\p{M}\p{N}_])|[\p{L}\p{M}\p{N}_]+(?:'[\p{L}\p{M}\p{N}_]+)*|[^\s]/gu;
+const END_MARK = /^["'.,;:!?…]$/;
+
+function quoteTokens(source: QuoteSource): QuoteToken[] {
+  const text = source.text
+    .normalize("NFC")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"');
+  const tokens: QuoteToken[] = [];
+  const append = (part: string, math: number) => {
+    for (const [raw] of part.matchAll(QUOTE_TOKEN)) {
+      const text = raw.replace(/\s+/g, "");
+      tokens.push({ text, folded: math ? text : text.toLowerCase(), math });
+    }
+  };
+  const outside = source.formula ? 1 : 0;
+  let group = outside;
+  let offset = 0;
+  for (const match of text.matchAll(MATH_SPAN)) {
+    append(text.slice(offset, match.index), outside);
+    append(match[2] ?? "", outside || ++group);
+    offset = match.index + match[0].length;
+  }
+  append(text.slice(offset), outside);
+  return tokens;
 }
 
-const ENDS = /^["'.,;:!?]+|["'.,;:!?]+$/g;
+/** The gap at `at` is inside one formula, not between complete formulas. */
+function insideFormula(tokens: readonly QuoteToken[], at: number): boolean {
+  const group = tokens[at]?.math;
+  return group !== undefined && group !== 0 && group === tokens[at - 1]?.math;
+}
 
-function comparable(text: string): string {
-  return text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\s$]+/g, "");
+/** One run of whole tokens; case and both ends of a formula are significant. */
+function quotes(said: readonly QuoteToken[][], words: string): boolean {
+  const tokens = quoteTokens({ text: words });
+  const decoration = (token: QuoteToken | undefined) =>
+    token !== undefined && token.math === 0 && END_MARK.test(token.text);
+  let from = 0;
+  let to = tokens.length;
+  while (from < to && decoration(tokens[from])) from += 1;
+  while (to > from && decoration(tokens[to - 1])) to -= 1;
+  if (from === to) return false;
+  const quote = tokens.slice(from, to);
+  return said.some((source) =>
+    source.some((_, at) => {
+      const end = at + quote.length;
+      if (
+        end > source.length ||
+        insideFormula(source, at) ||
+        insideFormula(source, end)
+      ) {
+        return false;
+      }
+      return quote.every((token, offset) => {
+        const i = at + offset;
+        const actual = source[i];
+        if (actual === undefined) return false;
+        if (actual.math && token.math) {
+          // Delimiters can be omitted, but not moved within a formula.
+          if (
+            insideFormula(source, i) !== insideFormula(quote, offset) ||
+            insideFormula(source, i + 1) !== insideFormula(quote, offset + 1)
+          ) {
+            return false;
+          }
+        }
+        return actual.math || token.math
+          ? actual.text === token.text
+          : actual.folded === token.folded;
+      });
+    }),
+  );
 }
 
 // --- What other prompts read -----------------------------------------------
