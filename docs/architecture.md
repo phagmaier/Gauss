@@ -1539,6 +1539,6 @@ Stage scope is listed here; task status and user checks live in the
 - **The tutor's artifacts run scripts in the learner's browser.**
   Mitigation: a sandboxed frame with an origin of its own, and a policy
   that loads and fetches nothing. WebRTC and DNS lookups from a
-  `dns-prefetch` link still reach the network, so a misled tutor could
-  send the session's context out through an aid; the user accepted that
-  for WebRTC (`decisions.md`, "Sources"), and DNS gives out no more.
+  `dns-prefetch` link a script builds still reach the network, so a misled
+  tutor could send the session's context out through an aid; the user
+  accepted both (`decisions.md`, "Sources").

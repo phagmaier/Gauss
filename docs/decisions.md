@@ -324,6 +324,12 @@ The brief states the result; this is who decided and why.
   additions: removing a source until the first proposal, a line for each
   read and page view, a unit's sections in the course view, and a check
   on a verified quote's citation. The picks are in "Page design".
+- **2026-11-21, DNS lookups from an aid accepted.** Task 4.2 found that
+  an aid's script can have Chromium look up a host it names, whatever the
+  frame's headers say ("Confinement"). The user took the agent's
+  recommendation to accept it as WebRTC was, adding no code: it sends
+  nothing WebRTC could not, the page cannot close it, and the only full
+  fix, aids without scripts, was turned down for WebRTC already.
 
 ## Toolchain
 
@@ -668,13 +674,16 @@ needs neither, since the record lies outside the workspace.
   send what it holds out, by STUN or TURN. The user accepted it
   (2026-11-21, "Sources"), with reads confined.
 - **DNS gets out of an artifact too** (task 4.2). In Chromium 158, with a
-  net log, a `<link rel="dns-prefetch">` in an aid, written in the
-  document or made by its script, had its host looked up, with
-  `X-DNS-Prefetch-Control: off` on the frame's response and without it
-  alike; links, hovered too, were not looked up. A host name can carry
-  what the aid holds to whoever answers for its domain: the same channel
-  as WebRTC, with nothing more to send. The header is kept (sent since
-  task 3.6) for engines that honour it; WebKit not tried.
+  net log, a `<link rel="dns-prefetch">` in an aid had its host looked up,
+  with `X-DNS-Prefetch-Control: off` on the frame's response and without
+  it alike; links, hovered too, were not looked up. `show_artifact`
+  refuses a link whose host is written in the document (`//host` is an
+  address it catches), so the trial wrote the aid to disk past that check;
+  a link a script builds gets through. A host name can carry what the aid
+  holds to whoever answers for its domain: the same channel as WebRTC,
+  with nothing more to send, and no more closable from the page. The user
+  accepted it (2026-11-21, "Sources"). The header is kept (sent since task
+  3.6) for engines that honour it; WebKit not tried.
 - **Artifacts in the record** are named by a hard link, so a file there is
   never replaced; the engine refuses a write when no safe number remains
   rather than repeat one. `show_artifact` is refused while a question of
@@ -2527,8 +2536,8 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   session's context (the learner's messages, profile and email address),
   and only if a source or a search result misleads the tutor. A DNS
   lookup from an aid, found in task 4.2, is the same channel with nothing
-  more to send; not yet put to the user. Rejected: aids without scripts in
-  such courses.
+  more to send, and the user accepted it on the same grounds the same day.
+  Rejected: aids without scripts in such courses.
 
 ## Known gaps
 
