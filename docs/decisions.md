@@ -2560,6 +2560,30 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   contents and the XHTML. Girard's EPUB (Calibre) sets its headings as
   styled paragraphs and its NCX lacks chapter 9, so the outline comes from
   the table of contents, not the markup.
+- **A contents entry's heading replaces the lines that print it** (the
+  agent's choice), found by their letters as a PDF bookmark's are, since
+  writing it beside them would print each title twice. Girard's are bold
+  paragraphs broken by `<br>` ("Part Three / The Victory / of the Cross");
+  Han's _Psychopolitics_ (Verso) sets one as two `h2`s, "1." and the
+  title. A heading tag at the target stands in when no lines match
+  ("12 Vita Contemplativa" for "12. Vita Contemplativa").
+- **Emphasis from the style sheets' class rules too** (the agent's
+  choice): Girard's italics are all `span.italic`, from Calibre's
+  stylesheet, with no `<i>` or `<em>`. Only simple selectors (`.c`,
+  `span.c`) are read; a class's `font-style: normal` is ignored.
+- **Notes are found through their links** (the agent's choice): two of
+  Han's other EPUBs (Polity's, on Wiley's template) end each chapter with
+  asides typed
+  `rearnote` whose first link is the reference's target, and
+  _Psychopolitics_ has a Notes document of paragraphs whose first link
+  is the target and links back. A raised link counts only when it points
+  at an anchor, so a superscript link to a chapter is not a reference. A
+  label is unique where it is read, not in the whole book: the Notes
+  stretch holds every chapter's "1", so they become `1`, `1-2`, `1-3`
+  there and in their chapters (its 96 notes all defined once).
+- **DRM is what `META-INF/encryption.xml` lists** (the agent's choice):
+  any text document listed refuses the book. Fonts are never read, so the
+  font-obfuscation algorithms need no exception; dropped as dead code.
 - **Conversion runs in the engine's sandbox**: PDFium is native code
   parsing a file from outside the machine.
 

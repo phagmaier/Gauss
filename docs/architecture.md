@@ -1038,7 +1038,7 @@ See the [plan](plan.md#stage-4-sources-built-after-stage-5) for status,
 [Sources decisions](decisions.md#sources) for rationale, and the
 [mock index](prototype/index.html#planned-source-ui) for the planned UI.
 
-### Available now: PDF, TXT and Markdown conversion
+### Available now: conversion
 
 `pytools/convert.py ingest` copies the original to `original.<ext>` and
 writes `outline.json` ([`Outline`](../src/shared/source.ts)) and one `.md`
@@ -1101,8 +1101,45 @@ their origins, boxes and fonts (`_read_pdf`):
 - **Title**: the metadata's title, else the largest line of the first page
   with text, else the file's name.
 
-- The outline nests as the source does. A PDF keeps its bookmark tree
-  even when destinations are out of order. A **section** is a leaf and
+An EPUB is converted to Markdown that Gauss writes from its XHTML documents
+in spine order (`_read_epub`), with the standard library only:
+
+- **Outline**: the navigation document's `toc` (EPUB 3), else the NCX
+  (EPUB 2). Each entry's heading goes at its target, a document's start or
+  an anchor in it, in place of the lines there (up to three) whose letters
+  print its title, with or without a number before it, or else of a
+  heading tag there; failing both, before the target. Its level is its
+  depth in the contents. An entry's text runs to the next entry's target
+  in spine order, so a document the contents leave out stays in the entry
+  before it. An entry with no target in the spine takes its first
+  descendant's, or is left out with its children kept under the nearest
+  kept parent. Heading tags no entry targets stay in the text.
+- **Markdown**: heading tags as ATX headings; paragraphs, and each run of
+  text between block elements, as paragraphs; italic and bold from tags
+  or from the style sheets' simple class rules, as `*` and `**`; list
+  items with their markers, nested; block quotes with `>`; a table as its
+  caption and a line per row, the cells between ` | `; a preformatted
+  block as a fence; a `<br>` as a new line; an image as its alternative
+  text; MathML as its `alttext`, else its TeX annotation. Hidden elements,
+  page-break markers and soft hyphens are left out. `*`, `` ` ``, `\` and
+  a `<` that could open a tag are escaped, and so is a line that would
+  start a heading, a quote or a fence.
+- **Footnotes**: a link typed `noteref`, or a raised link to an anchor
+  whose text is a short label (`1`, `[2]`, `*`), is a reference
+  `[^label]`. The block at its target is its note, `[^label]: ...`, when
+  it starts with a link that is that target or links back, the link left
+  out, or when it is inside an element typed as a note. A label is made
+  unique in the stretches where its note is referred to or defined.
+- **Title**: the package's first `dc:title`, else the NCX's `docTitle`,
+  else the file's name.
+- **Refusals**: a file named `.epub` that is not a ZIP with the EPUB
+  `mimetype` ("format"); a text document listed in
+  `META-INF/encryption.xml`, or encrypted in the ZIP ("protected"). An
+  obfuscated font listed there is never read, so it does not refuse the
+  book.
+
+- The outline nests as the source does. A PDF keeps its bookmark tree,
+  and an EPUB its contents' tree, even when targets are out of order. A **section** is a leaf and
   the only kind of entry with a file. Text before a heading's first
   subheading is its own section; headings without text of their own go
   into the next section's file, or the last file at the end. Text before
@@ -1136,8 +1173,7 @@ their origins, boxes and fonts (`_read_pdf`):
    until the first proposal creates the course and moves it to `sources/`.
    The planner is told what was attached, removed, or refused on its next
    turn. Gauss refuses scanned PDFs that need text recognition,
-   protected PDFs or EPUBs, and unsupported formats. EPUB tables of
-   contents give their outlines.
+   protected PDFs or EPUBs, and unsupported formats.
 2. **Map**: the planners are given each source's outline, and each unit
    lists the sections it teaches, at most 150,000 characters in all. When
    the unit is planned, each segment names the sections it draws on.
@@ -1539,9 +1575,10 @@ required by [`AGENTS.md`](../AGENTS.md#project-rules).
 - **Python helpers (pytest via uv)**: equivalent and non-equivalent
   expression pairs worked by hand, and `mathcheck.py` run on the venv's
   own Python; conversion of sources the tests write, PDFs among them
-  (reportlab, in Courier so that lines' lengths are known), with each
-  expected section written out by hand. Vitest tests read the outlines
-  `convert.py` writes, of Markdown and of a PDF, with their schema.
+  (reportlab, in Courier so that lines' lengths are known) and EPUBs
+  (`zipfile`), with each expected section written out by hand. Vitest
+  tests read the outlines `convert.py` writes, of Markdown, a PDF and an
+  EPUB, with their schema.
 - **Browser checks with no model**: run `pnpm dev:fake` on port 4330 by
   default. See [`scripts/dev-fake.ts`](../scripts/dev-fake.ts) for the
   seed and `--empty`, and [`scripted.ts`](../src/server/backends/scripted.ts)
@@ -1602,7 +1639,7 @@ Stage scope is listed here; task status and user checks live in the
 - **Poor PDF conversion.** Mitigation: page-image fallback; scanned files
   flagged at ingestion.
 - **A section boundary can split an argument.** See the
-  [cut rules](#available-now-txt-and-markdown-conversion); the sources
+  [cut rules](#available-now-conversion); the sources
   design lets the tutor read neighbouring sections.
 - **The tutor's shell, and the tests and expressions it writes, run on
   the learner's machine.** Mitigation: the sandbox, with no network but

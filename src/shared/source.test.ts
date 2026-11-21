@@ -1,5 +1,5 @@
 // The outline as `pytools/convert.py` writes it, read by the schema: the
-// converter's own rules are tested in `pytools/tests/test_convert.py`.
+// converter's own rules are tested in `pytools/tests/`.
 
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -152,6 +152,75 @@ test("the schema reads a PDF's outline: its pages, and sections placed by page",
         title: "Opening",
         size: 98,
         place: { pages: { first: 1, last: 2 } },
+      },
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// An EPUB 2 with a part holding a chapter, its headings set as bold
+// paragraphs, and front matter before the NCX's first entry.
+const WRITE_EPUB = `
+import sys, zipfile
+page = '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>p</title></head><body>{}</body></html>'
+with zipfile.ZipFile(sys.argv[1], "w") as book:
+    book.writestr("mimetype", "application/epub+zip")
+    book.writestr("META-INF/container.xml", '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>')
+    book.writestr("front.xhtml", page.format("<p>Front matter.</p>"))
+    book.writestr("part.xhtml", page.format("<p><b>Part One</b></p>"))
+    book.writestr("ch1.xhtml", page.format("<p><b>Chapter 1</b></p><p>Its text.</p>"))
+    book.writestr("toc.ncx", '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap><navPoint><navLabel><text>Part One</text></navLabel><content src="part.xhtml"/><navPoint><navLabel><text>Chapter 1</text></navLabel><content src="ch1.xhtml"/></navPoint></navPoint></navMap></ncx>')
+    items = "".join(f'<item id="{n}" href="{n}.xhtml" media-type="application/xhtml+xml"/>' for n in ("front", "part", "ch1"))
+    book.writestr("content.opf", '<package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Book</dc:title></metadata><manifest>' + items + '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/></manifest><spine toc="ncx"><itemref idref="front"/><itemref idref="part"/><itemref idref="ch1"/></spine></package>')
+`;
+
+test("the schema reads an EPUB's outline: its contents' entries, and sections placed by paragraph", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gauss-source-"));
+  try {
+    const python = join(pytools, ".venv", "bin", "python");
+    const original = join(dir, "book.epub");
+    await promisify(execFile)(python, ["-I", "-c", WRITE_EPUB, original]);
+    const folder = join(dir, "book");
+    await promisify(execFile)(python, [
+      "-I",
+      join(pytools, "convert.py"),
+      "ingest",
+      original,
+      folder,
+    ]);
+    const written = JSON.parse(
+      await readFile(join(folder, "outline.json"), "utf8"),
+    );
+
+    const outline = Outline.parse(written);
+
+    expect(outline).toEqual(written);
+    expect(outline).toMatchObject({
+      title: "Book",
+      file: "original.epub",
+      format: "epub",
+    });
+    expect(outline.pages).toBeUndefined();
+    // "Front matter.\n\n", then "# Part One\n\n## Chapter 1\n\nIts text.\n":
+    // the part has no text of its own, so its heading is in the chapter's file.
+    expect(outline.entries).toEqual([
+      {
+        id: "s1",
+        title: "Book",
+        size: 15,
+        place: { paragraphs: { first: 1, last: 1 } },
+      },
+      {
+        title: "Part One",
+        entries: [
+          {
+            id: "s2",
+            title: "Chapter 1",
+            size: 36,
+            place: { paragraphs: { first: 1, last: 1 } },
+          },
+        ],
       },
     ]);
   } finally {

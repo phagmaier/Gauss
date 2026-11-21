@@ -43,35 +43,6 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-For 4.5, use user-approved local copies of the named real files
-and keep them out of the repository. If a required private copy is
-unavailable, run the generated fixture checks, ask the user for an
-approved local location for the file, and report that real-file sign-off
-is still pending. Generated fixtures do not substitute for the real-file
-checks.
-
-### 4.5 Conversion: EPUB
-
-- Status: todo
-- Depends on: 4.3
-- Why: the fourth format. Its books have chapters, but often no headings
-  in the markup.
-- Do: the standard library only (`zipfile`, `xml.etree`, `html.parser`):
-  EbookLib is AGPL. Read into `convert.py`'s shared part, as a PDF is (`_Source`).
-  The outline from the navigation document (EPUB 3) or
-  the NCX (EPUB 2); an entry's text runs from its target, a file or an
-  anchor in one, to the next entry's, in spine order, and text before the
-  first entry is a section of its own. XHTML to Markdown: headings,
-  paragraphs, emphasis, lists, block quotes, footnote references, a
-  table's rows as lines, an image as its alternative text, MathML as its
-  `alttext`. A book whose text documents are encrypted (DRM) is refused;
-  obfuscated fonts are not encrypted text.
-- Done when: pytest, on EPUBs the tests build, covers an NCX outline, a
-  navigation document with anchors into one file, a chapter with no
-  heading tags, a long chapter cut, and DRM refused. Read the user's
-  approved Girard and Han EPUBs by hand: Girard's 20 entries, with
-  chapter 9, which its NCX lacks, inside the entry before it.
-
 ### 4.6 Sources in the intake and the record
 
 - Status: todo
