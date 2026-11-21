@@ -336,7 +336,6 @@ def test_a_second_run_writes_the_same_bytes(tmp_path):
     ("name", "content", "reason"),
     [
         ("notes.txt", "Café".encode("latin-1"), "format"),
-        ("paper.pdf", b"%PDF-1.7\n", "format"),
         ("notes.rtf", b"{\\rtf1 Hello}", "format"),
         ("notes.txt", b"Hello\x00world", "format"),
         ("notes.md", b"\xef\xbb\xbf \n\n\t\n", "empty"),

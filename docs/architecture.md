@@ -73,9 +73,9 @@ Dependencies, kept few (`package.json`, `pytools/pyproject.toml`):
   page), `@biomejs/biome`, and the types `@types/node`, `@types/react`,
   `@types/react-dom` and `@types/hast` (document trees).
 - Python: `sympy` with `antlr4-python3-runtime` 4.11 for LaTeX;
-  `markdown-it-py` for source Markdown; `pytest` for development. Stage 4
-  adds `pypdfium2` and `Pillow` for PDFs and their page images; EPUB is read
-  with the standard library.
+  `markdown-it-py` for source Markdown; `pypdfium2` and `Pillow` for PDFs
+  and their page images; `pytest`, and `reportlab` to write the tests'
+  PDFs, for development. EPUB is read with the standard library.
 
 The curriculum diagram is laid out by the page itself
 (`src/web/diagram.ts`), not by a diagram library.
@@ -1038,13 +1038,64 @@ See the [plan](plan.md#stage-4-sources-built-after-stage-5) for status,
 [Sources decisions](decisions.md#sources) for rationale, and the
 [mock index](prototype/index.html#planned-source-ui) for the planned UI.
 
-### Available now: TXT and Markdown conversion
+### Available now: PDF, TXT and Markdown conversion
 
 `pytools/convert.py ingest` copies the original to `original.<ext>` and
 writes `outline.json` ([`Outline`](../src/shared/source.ts)) and one `.md`
-file per section. Its header documents the command's inputs and refusals.
-Plain text is paragraphs between blank lines with no headings; Markdown's
-top-level ATX and setext headings make its outline.
+file per section. Its header documents the command's inputs and refusals,
+and `convert.py page`, which renders a PDF page as an image. Plain text is
+paragraphs between blank lines with no headings; Markdown's top-level ATX
+and setext headings make its outline.
+
+A PDF is converted to Markdown that Gauss writes from PDFium's characters,
+their origins, boxes and fonts (`_read_pdf`):
+
+- **Lines** follow PDFium's character order (a two-column paper's left
+  column first), and break where the next character's origin moves left,
+  a wide gap opens or the baseline jumps. Spaces come from the gaps.
+  Rotated text (an arXiv stamp), text inside a figure's form, and
+  private-use characters other than small capitals are left out.
+- **Furniture**: running heads and feet (the same text, numbers aside, at
+  one height on three pages or more), a number alone in a page's top or
+  bottom row, and a column of five numbers or more (margin line numbers)
+  are left out. A page with nothing left is listed in `Outline.pages.blank`;
+  more than half such pages, and the PDF is refused as scanned.
+- **Footnotes**: a smaller, raised run of digits or marks (∗ † ‡ § ¶),
+  not beside math nor after a digit, is a reference `[^label]`; its label
+  is made unique within its heading's stretch (`1`, `1-2`, `star`). A
+  smaller run of lines at a page's or column's foot that starts with such
+  a label is that note, written `[^label]: ...` after the paragraph that
+  refers to it, inside that paragraph's block. A marker with no note at
+  the foot (the _Phenomenology_'s, which point to the commentary) stays a
+  reference.
+- **Paragraphs**: a paragraph is one line of text. A line starts one when
+  its type size changes by more than 15%, it is indented from its
+  column's left edge, the line before ended short of the column's right
+  edge by more than this line's first word, or, in the same column, the
+  gap is over 1.4 times the usual leading. A paragraph runs across pages
+  and columns. A word hyphenated at a line's end is joined, unless the
+  parts form a compound the document writes elsewhere with its hyphen
+  ("self-consciousness") or the second part holds a hyphen itself
+  ("English-to-German"). A leading `#`, `>` or `<` is escaped.
+- **Headings** come from the bookmarks, each placed at the one to four
+  lines on its page that print its title (compared by letters and digits;
+  a printed number before it is kept, "3.2 Attention"), or, where none
+  does, written before the first line below the bookmark's target. With
+  no bookmarks, a heading is a line set at 1.25 times the body's size or
+  more, a bold line standing alone (when the body is not bold), or a
+  numbered line standing alone of at most 12 words; never a line sharing
+  its baseline with another in its column (a table's cell). Its level is
+  its number's depth, else that of its style's numbered headings, else
+  its style's rank by size.
+- **Page markers**: each page's start is an HTML comment,
+  `<!-- page 31 label "5" math images -->`: its number from 1, its
+  printed label where the PDF defines labels, `math` where it uses a math
+  font (TeX's, not `CMSY`), and `images` where an image or a figure covers
+  1% of it or more. Before a block that starts the page, the marker is a
+  line of its own and the block's start; inside a paragraph it is inline,
+  after a word mended across the page, never at a line's start.
+- **Title**: the metadata's title, else the first page's largest line,
+  else the file's name. A section's place is its first and last page.
 
 - The outline nests as the source does. A **section** is a leaf and the
   only kind of entry with a file. Text before a heading's first subheading
@@ -1076,10 +1127,8 @@ top-level ATX and setext headings make its outline.
    until the first proposal creates the course and moves it to `sources/`.
    The planner is told what was attached, removed, or refused on its next
    turn. Gauss refuses scanned PDFs that need text recognition,
-   protected PDFs or EPUBs, and unsupported formats. PDF bookmarks
-   (or type size and heading numbers) and EPUB tables of contents give
-   their outlines; PDF places use page ranges, with page markers and
-   footnote references in the converted text.
+   protected PDFs or EPUBs, and unsupported formats. EPUB tables of
+   contents give their outlines.
 2. **Map**: the planners are given each source's outline, and each unit
    lists the sections it teaches, at most 150,000 characters in all. When
    the unit is planned, each segment names the sections it draws on.
@@ -1480,9 +1529,10 @@ required by [`AGENTS.md`](../AGENTS.md#project-rules).
   named in its file's first line (`// @vitest-environment happy-dom`).
 - **Python helpers (pytest via uv)**: equivalent and non-equivalent
   expression pairs worked by hand, and `mathcheck.py` run on the venv's
-  own Python; conversion of sources the tests write, with each expected
-  section written out by hand. A Vitest test reads the outline
-  `convert.py` writes with its schema.
+  own Python; conversion of sources the tests write, PDFs among them
+  (reportlab, in Courier so that lines' lengths are known), with each
+  expected section written out by hand. Vitest tests read the outlines
+  `convert.py` writes, of Markdown and of a PDF, with their schema.
 - **Browser checks with no model**: run `pnpm dev:fake` on port 4330 by
   default. See [`scripts/dev-fake.ts`](../scripts/dev-fake.ts) for the
   seed and `--empty`, and [`scripted.ts`](../src/server/backends/scripted.ts)

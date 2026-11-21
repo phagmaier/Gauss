@@ -2489,21 +2489,71 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   ranges to slice the source rather than rendering it back to Markdown.
 
 - **PDF through pypdfium2** (Apache-2.0 or BSD), with Gauss's own
-  paragraphs, headings and footnotes (the user's pick). Its character pass
-  over the Inwood PDF, 2.1 million characters with their boxes, took 7
-  seconds; a page renders in 0.26 seconds. Tried and not taken:
+  paragraphs, headings and footnotes (the user's pick), all in
+  `convert.py`: `source.test.ts` runs it with `python -I`, which leaves
+  its folder off `sys.path`, so a module beside it would not import. Its
+  character pass over the Inwood PDF, 2.1 million characters with their
+  boxes, took 7 seconds; a page renders in 0.26 seconds. reportlab
+  writes the tests' PDFs (a development dependency only). Tried and not taken:
   PyMuPDF4LLM, whose Markdown was the best seen (paragraphs joined,
   superscripts marked), but which is AGPL, kept the running heads, did
   not join a paragraph across a page break, and made a heading of a line
   of ResNet's text; pdfplumber, which ran the words of justified lines
   together ("Itiscustomarytobegin").
-- **What extraction does to the Inwood PDF**: running heads in private-use
-  characters; footnote markers glued to words ("the Thing,1 even"), which
-  would fail a quote; a font size of 1 on every character, while the
-  loose box's height tells a superscript (6.4) from body text (9.6) and
-  from a ligature (7.2). TeX math in a paper comes out mangled
-  (`softmax(QKT √ dk )V`), hence page images and the page marker that
-  says a page has math or images.
+- **What extraction does to the Inwood PDF** (task 4.4's findings, read
+  in PDFium 5.15.2's results). Its running heads and its section headings
+  are Adobe's small capitals (U+F761 to U+F77A for a to z), its page
+  numbers in them another private-use range, so small capitals are read
+  as letters and other private-use characters dropped: 123 of the 127
+  bookmarks then match a printed line, against 100 when all were dropped,
+  which put 25 headings at the top of their page instead of mid-page.
+  `FPDFText_GetFontSize` is 1 on every character; the type size is it
+  times the scale of the character's matrix (`FPDFText_GetMatrix`): body
+  9.96, notes 8.0, superscripts 7.04. A hyphen at a line's end comes as
+  `\x02` or U+FFFE, and PDFium sometimes runs the next line on with no
+  break ("with\ufffedrawal-into-itself"), so lines come from origins,
+  not from its `\r\n`. Some spaces are missing ("wereflect"), found as a
+  gap over 0.15 of the type size between boxes (within words 0 to 0.2
+  points, between them 1.8 to 3.9); a few stay too tight ("lack
+  ofcontent"). Its bookmarks' titles are padded with spaces and all point
+  to the page's top, so a heading is found by its text. TeX math in a
+  paper comes out mangled (`softmax(QKT √ dk )V`), hence page images and
+  the marker that says a page has math or images.
+- **Lines from origins, broken where x goes back** (the agent's choice):
+  a baseline move alone breaks a line only from 1.5 times the type size,
+  2 beside a math font, since a radical, a fraction or a script moves
+  less while x goes on. Breaking at 0.7 split Attention's "divide each by
+  √dk" into three paragraphs; a column's top is always further.
+- **Not a footnote marker** (the agent's choice): a raised digit beside a
+  math font (Attention's 1/√dk) or after a digit (ResNet's 10⁹). `CMSY`
+  is not a math font for the marker: Attention sets its ∗ † ‡ in it.
+- **A figure's text is left out** where the figure is a form covering
+  under half its page (ResNet's and Attention's charts, whose axis labels
+  PDFium puts in the reading order). Tables are drawn as text and come
+  through as short lines, one paragraph each, so their page's image is
+  the way to read them (known gap).
+- **Headings with no bookmarks** (the agent's choice, on ResNet): larger
+  by a quarter, since its authors' line is regular at 1.2 times the body;
+  bold only standing alone and every letter bold, since paragraphs open
+  with bold run-in phrases ("Residual Representations."); never a line
+  sharing its baseline with another in its column, a table's cell. The
+  outline then matches the paper's numbered sections and its appendix.
+- **A page marker is an HTML comment** (the agent's choice): Markdown
+  shows nothing for it and a model reads it as a note. Inside a paragraph
+  it never starts a line, which would end the paragraph as an HTML block,
+  and after a hyphen mended across the page it follows the whole word.
+- **A paragraph is one line**, its notes' definitions after it in its
+  block (the agent's choice), so a cut never parts a note from its
+  reference and a quote's text is the paragraph's.
+- **Line-end hyphens** (the agent's choice): joined, unless the parts with
+  their hyphen are a word the document writes elsewhere and never without
+  it, or the second part has a hyphen and the parts do not join into a
+  word it uses ("English-to-German" kept, "with-drawal-into-itself"
+  mended). The Inwood text keeps "self-consciousness" 1,112 times and
+  never runs it together. No dictionary: ResNet's "high-level", written
+  nowhere else with its hyphen, becomes "highlevel".
+- **Timing**: the Inwood PDF converts in 11.4 seconds, most of it the
+  character pass (a ctypes call or more per character).
 - **EPUB through the standard library**: EbookLib is AGPL, and `zipfile`,
   `xml.etree` and `html.parser` cover the container, the table of
   contents and the XHTML. Girard's EPUB (Calibre) sets its headings as
@@ -2632,3 +2682,10 @@ they will close.
 - Markdown front matter (a block between `---` lines at a file's top) is
   not recognized as metadata. Its closing line can be read as a setext
   underline, turning the metadata into an outline heading.
+- PDF conversion: a table comes through as its cells' short lines, a
+  paragraph each; a figure drawn outside a form keeps its labels in the
+  text; reading order is PDFium's, so a layout it orders wrongly reads
+  wrongly; a note that runs on at the next page's foot is read as body
+  text in small type; a bookmark whose title differs from the printed
+  one (the Inwood commentary's "b. Observation of nature", printed "a.")
+  gets its heading at the top of its page, not at the printed line.

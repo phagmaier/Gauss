@@ -43,61 +43,12 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-For 4.4 and 4.5, use user-approved local copies of the named real files
+For 4.5, use user-approved local copies of the named real files
 and keep them out of the repository. If a required private copy is
 unavailable, run the generated fixture checks, ask the user for an
 approved local location for the file, and report that real-file sign-off
 is still pending. Generated fixtures do not substitute for the real-file
 checks.
-
-### 4.4 Conversion: PDF
-
-- Status: todo
-- Depends on: 4.3
-- Why: most sources will be PDFs (the user's _Phenomenology_, papers), and
-  a PDF's text has no paragraphs, headings or reading order of its own.
-- Do: `pypdfium2`, with Pillow for page images, added to `pytools`
-  (`decisions.md`, "Sources").
-  - `convert.py` reads text and Markdown only, and refuses anything else
-    as `format` (its tests' `paper.pdf` row changes). The shared part
-    (`_outline`, `_cut`) works on the source's text with its headings and
-    paragraphs as offsets into it (`Heading`, `Paragraph`), and gives each
-    section's place as paragraphs; a PDF's are pages, and its pages fill
-    `Outline.pages`.
-  - The outline from the PDF's bookmarks. Without them (the ResNet paper),
-    headings are lines set larger or bolder than the body, or numbered as
-    headings are ("3.2.1 Scaled Dot-Product Attention").
-  - Lines from PDFium's characters and boxes, joined into paragraphs (one
-    starts at an indented line, a larger gap, or after a line that ends
-    short of the margin), across page breaks. A word hyphenated at a
-    line's end is joined. Running heads and feet, page numbers and margin
-    line numbers (text repeated at one place on most pages, numbers alone
-    at the margin) are left out, and so are private-use characters (the
-    Inwood edition's running heads are made of them).
-  - Superscripts: PDFium's font size is 1 on every character of the
-    Inwood PDF, but the loose box's height tells body text (9.6) from a
-    superscript (6.4); a ligature (7.2) is not one, and a superscript also
-    sits above its line. A marker becomes a footnote reference
-    `[^label]`, its label unique in the section; a note at a page's foot
-    becomes its definition after the paragraph that refers to it.
-  - A page marker at each page's start in the text, with the page's label
-    and whether the page has images or math fonts, whose text extraction
-    mangles (the Attention paper's `softmax(QKT √ dk )V`), so the tutor
-    knows when to look at the page.
-  - A PDF most of whose pages have no text is refused as scanned, needing
-    text recognition; one that needs a password, as protected.
-  - `convert.py page <original> <page> <png>` renders one page at 150 dpi
-    (an Inwood page: 0.26 seconds, 414 KB).
-- Done when: pytest, on PDFs the tests write (reportlab as a development
-  dependency, or a small writer of the tests' own), covers bookmarks and
-  type-size headings, a paragraph across a page break, a line-end hyphen,
-  a running head, a superscript, a footnote at a page's foot, a page with
-  no text, a scanned file refused, page labels, and a rendered page. Read
-  the approved real files by hand and record the findings in the commit:
-  the Inwood _Phenomenology_ (its 127 bookmarks as the outline; the
-  Preface in 6 parts cut between ¶s; no running head or footnote digit
-  left in the text of ten sampled pages) and arXiv 1706.03762 (bookmarks)
-  and 1512.03385 (none).
 
 ### 4.5 Conversion: EPUB
 
@@ -106,7 +57,7 @@ checks.
 - Why: the fourth format. Its books have chapters, but often no headings
   in the markup.
 - Do: the standard library only (`zipfile`, `xml.etree`, `html.parser`):
-  EbookLib is AGPL. Read into `convert.py`'s shared part, as 4.4's PDF is.
+  EbookLib is AGPL. Read into `convert.py`'s shared part, as a PDF is (`_Source`).
   The outline from the navigation document (EPUB 3) or
   the NCX (EPUB 2); an entry's text runs from its target, a file or an
   anchor in one, to the next entry's, in spine order, and text before the
@@ -261,7 +212,9 @@ checks.
   - Matching, with a map back to the text's positions: case folded;
     whitespace, hyphens (U+002D, U+00AD, U+2010, U+2011) and Markdown's
     emphasis marks removed; curly quotes as straight, dashes as one; page
-    markers and footnote references left out; lines that hold only a
+    markers, footnote references and the note definitions a PDF
+    paragraph carries after it (`[^label]: ...`) left out, and the
+    backslash before a PDF paragraph's leading `#`, `>` or `<`; lines that hold only a
     number of up to four digits left out (margin line numbers, as
     DeepTutor's `evidence_key` in `deeptutor/reading/_grounding.py`). A
     quote never matches across two sources.

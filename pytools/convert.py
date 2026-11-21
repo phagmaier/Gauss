@@ -9,14 +9,25 @@ original (`original.<ext>`), `outline.json` (`Outline` in
 standard output: {"result": "converted", ...} with the outline's summary (its
 title, format, number of sections, and each stretch cut into parts), or
 {"result": "refused", "reason", "detail"}, the reason "format" (not a file
-Gauss reads) or "empty" (no text). Arguments it cannot use, an original it
-cannot read or a folder that is not empty are an error on standard error, with
-exit status 2.
+Gauss reads), "empty" (no text), "scanned" (a PDF most of whose pages have no
+text, needing text recognition) or "protected" (a PDF that needs a password).
+Arguments it cannot use, an original it cannot read or a folder that is not
+empty are an error on standard error, with exit status 2.
 
-The format comes from the content: UTF-8 text named `.txt` is plain text,
-named `.md` or `.markdown` Markdown. Text is paragraphs between blank lines,
-with no headings. Markdown's top-level ATX and setext headings make the
-outline. A fenced block, including one in a list or quote, is never cut.
+    convert.py page <original> <page> <png>
+
+renders a PDF's page, counted from 1, at 150 dpi as a PNG image, and writes
+{"result": "rendered", "page", "width", "height"}; a page the PDF lacks is an
+error, with exit status 2.
+
+The format comes from the content: a file starting `%PDF-` is a PDF, UTF-8
+text named `.txt` is plain text, named `.md` or `.markdown` Markdown. Text is
+paragraphs between blank lines, with no headings. Markdown's top-level ATX
+and setext headings make the outline. A fenced block, including one in a list
+or quote, is never cut. A PDF's text is Markdown that Gauss writes from
+PDFium's characters (`_read_pdf`): headings from its bookmarks, or else from
+its type; a paragraph per line, its notes' definitions after it; and a marker
+at each page's start, `<!-- page 3 label "ii" math images -->`.
 
 The sections (architecture.md section 8; decisions.md, "Sources"): a
 heading's stretch runs to the next heading. Its text before a first
@@ -25,19 +36,25 @@ with no text of its own goes into the next section, or the last. The
 section files are slices of the source's text, which in order are the whole
 of it, so a section holds its heading. A stretch over the limit is cut
 (`_cut`), and its paragraphs are numbered before the cut, so that its parts
-continue the count.
+continue the count. A PDF section's place is its pages instead.
 """
 
 import argparse
+import ctypes
 import hashlib
 import json
+import math
 import re
 import sys
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
+from collections import Counter
 from dataclasses import dataclass, field
-from itertools import pairwise
+from itertools import pairwise, takewhile
 from pathlib import Path
+from statistics import median
 
+import pypdfium2 as pdfium
+import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
 CONVERTER_VERSION = 2  # raised when the same original would give other files
@@ -46,7 +63,7 @@ _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
 _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")  # `Slug` in src/shared/course.ts
 _EXTENSIONS = {".txt": "text", ".md": "markdown", ".markdown": "markdown"}
-_COPY = {"text": "original.txt", "markdown": "original.md"}
+_COPY = {"pdf": "original.pdf", "text": "original.txt", "markdown": "original.md"}
 
 _LINE = re.compile(r"[^\n]*\n")
 _BLANK = re.compile(r"[ \t]*")
@@ -82,6 +99,20 @@ class Paragraph:
     whole: bool = False  # never cut: a fenced block
 
 
+def _paragraph_place(start, end, first, last):
+    return {"paragraphs": {"first": first, "last": last}}
+
+
+@dataclass(frozen=True)
+class _Source:
+    format: str
+    text: str
+    blocks: list
+    title: str | None = None  # None: from its headings or its file's name (`_title`)
+    pages: dict | None = None  # `Outline.pages`, for a PDF
+    place: object = _paragraph_place  # a section's place from (start, end, first paragraph, last paragraph)
+
+
 @dataclass
 class _Stretch:
     heading: Heading | None  # None for the text before any heading
@@ -109,10 +140,10 @@ def ingest(original, folder, limit=SECTION_LIMIT):
         raise Unusable(f"the destination folder cannot be used ({error})") from None
 
     try:
-        format, text, blocks = _read(data, original.name)
-        headings = [block for block in blocks if isinstance(block, Heading)]
-        title = _title(original.name, blocks, headings)
-        entries, sections, cut = _outline(text, blocks, title, limit)
+        source = _read(data, original.name)
+        headings = [block for block in source.blocks if isinstance(block, Heading)]
+        title = source.title or _title(original.name, source.blocks, headings)
+        entries, sections, cut = _outline(source.text, source.blocks, title, limit, source.place)
     except Refused as refusal:
         return {"result": "refused", "reason": refusal.reason, "detail": str(refusal)}
 
@@ -120,31 +151,35 @@ def ingest(original, folder, limit=SECTION_LIMIT):
     for id, section in sections.items():
         with open(folder / "sections" / f"{id}.md", "w", encoding="utf-8", newline="\n") as out:
             out.write(section)
-    (folder / _COPY[format]).write_bytes(data)
+    (folder / _COPY[source.format]).write_bytes(data)
     outline = {
         "id": folder.name,
         "title": title,
-        "file": _COPY[format],
+        "file": _COPY[source.format],
         "name": original.name,
-        "format": format,
+        "format": source.format,
         "sha256": hashlib.sha256(data).hexdigest(),
         "converter": CONVERTER_VERSION,
         "limit": limit,
-        "entries": entries,
     }
+    if source.pages is not None:
+        outline["pages"] = source.pages
+    outline["entries"] = entries
     with open(folder / "outline.json", "w", encoding="utf-8", newline="\n") as out:
         out.write(json.dumps(outline, ensure_ascii=False, indent=2) + "\n")
-    return {"result": "converted", "title": title, "format": format, "sections": len(sections), "cut": cut}
+    return {"result": "converted", "title": title, "format": source.format, "sections": len(sections), "cut": cut}
 
 
 # Reading
 
 
 def _read(data, name):
-    """The format, the source's text, and its headings and paragraphs in order."""
+    """The source's format, text, headings and paragraphs; for a PDF, also its title, pages and places."""
+    if b"%PDF-" in data[:1024]:
+        return _read_pdf(data)
     format = _EXTENSIONS.get(Path(name).suffix.lower())
     if format is None:
-        raise Refused("format", "Only .txt, .md and .markdown files are supported.")
+        raise Refused("format", "Only PDF, .txt, .md and .markdown files are supported.")
     try:
         decoded = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -155,9 +190,13 @@ def _read(data, name):
     if not text:
         raise Refused("empty", "It holds no text.")
     blocks = _markdown_blocks(text) if format == "markdown" else _text_blocks(text)
+    _check_paragraphs(blocks)
+    return _Source(format, text, blocks)
+
+
+def _check_paragraphs(blocks):
     if not any(isinstance(block, Paragraph) for block in blocks):
         raise Refused("empty", "It holds headings but no text under them.")
-    return format, text, blocks
 
 
 def _normal(text):
@@ -238,10 +277,737 @@ def _title(name, blocks, headings):
     return Path(name).stem.strip() or name
 
 
+# PDF (decisions.md, "Sources"): lines from PDFium's characters, then
+# furniture, footnotes, headings and paragraphs from the lines' geometry.
+
+_BOLD_FONT = re.compile(r"bold|black|heavy|semibold|demi|medi", re.IGNORECASE)
+_MATH_FONT = re.compile(r"CMMI|CMEX|CMBSY|MSAM|MSBM|EUFM|EURM|EUSM|RSFS|Math")
+_NUMBERED = re.compile(r"(\d{1,2}(?:\.\d{1,2})*)\.?\s+[A-Z]")
+_PAGE_NUMBER = re.compile(r"[\[(–—-]?\s*(?:\d+|[ivxlcdm]+)\s*[\])–—-]?")
+_NUMBER_PREFIX = re.compile(r"\d+|[ivxlcdm]+|[a-z]|(?:chapter|part|section)\w*")
+_NOTE_LABEL = re.compile(r"(\d{1,3}|[*∗†‡§¶])(?=\s)")
+_WORD = re.compile(r"[^\W_]+(?:-[^\W_]+)*")
+_HYPHENATED_END = re.compile(r"([^\W\d_]+)[-\xad]$")
+# Footnote marks as labels: a Markdown footnote label holds no spaces, and `*` would read as emphasis.
+_SYMBOLS = {"*": "star", "∗": "star", "†": "dagger", "‡": "ddagger", "§": "section", "¶": "pilcrow"}
+_DPI = 150
+# FPDFText_GetTextObject giving the object's address, which keys the fonts' cache without a cast per character.
+_text_object = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)(
+    ctypes.cast(pdfium_c.FPDFText_GetTextObject, ctypes.c_void_p).value
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _Font:
+    size: float
+    bold: bool
+    math: bool
+    upright: bool
+
+
+@dataclass(slots=True)
+class _Char:
+    text: str
+    x: float  # the origin
+    y: float
+    left: float  # the loose box's sides
+    right: float
+    font: _Font
+    space: bool  # a space comes before it
+
+
+@dataclass(frozen=True, slots=True)
+class _Ref:
+    label: str  # as printed
+
+
+@dataclass(eq=False, slots=True)
+class _Line:
+    page: int  # from 0
+    parts: list  # its text, `str`, and its footnote markers, `_Ref`, in order
+    size: float  # its body's type size, superscripts aside
+    bold: bool  # every letter bold
+    y: float  # the baseline
+    left: float
+    right: float
+    first_word: float  # the first word's width
+    count: int  # its characters
+    anchor: float = 0.0  # its column's left edge
+    edge: float = 0.0  # its column's right edge
+
+    @property
+    def text(self):
+        return "".join(part for part in self.parts if isinstance(part, str))
+
+
+@dataclass(eq=False)
+class _Page:
+    lines: list
+    images: bool
+    math: bool
+    notes: dict = field(default_factory=dict)  # a note's label as printed: its lines, in order
+
+
+def _read_pdf(data):
+    """A PDF as Gauss's text: its pages' lines in reading order, as headings and paragraphs."""
+    try:
+        document = pdfium.PdfDocument(data)
+    except pdfium.PdfiumError as error:
+        if getattr(error, "err_code", None) == pdfium_c.FPDF_ERR_PASSWORD:
+            raise Refused("protected", "The PDF needs a password to open.") from None
+        raise Refused("format", "The file is not a PDF that can be read.") from None
+    try:
+        pages = [_pdf_page(document, index) for index in range(len(document))]
+        labels = [document.get_page_label(index) for index in range(len(document))]
+        bookmarks = _bookmarks(document)
+        title = " ".join(document.get_metadata_value("Title").split())
+        title = "" if title.lower() == "untitled" else title
+    finally:
+        document.close()
+    if not pages:
+        raise Refused("empty", "The PDF has no pages.")
+
+    _drop_furniture(pages)
+    blank = [number for number, page in enumerate(pages, 1) if not page.lines]
+    if 2 * len(blank) > len(pages):
+        raise Refused("scanned", "Most of its pages have no text: it needs text recognition, which Gauss does not do.")
+    sizes, bolds = Counter(), Counter()
+    for page in pages:
+        for line in page.lines:
+            sizes[line.size] += line.count
+            bolds[line.size, line.bold] += line.count
+    body = max(sizes, key=lambda size: (sizes[size], size))
+    body_bold = bolds[body, True] > bolds[body, False]
+    for page in pages:
+        _take_notes(page, body)
+        _columns(page, body)
+
+    lines = [line for page in pages for line in page.lines]
+    starts = _paragraph_starts(lines, _leading(lines))
+    if bookmarks:
+        headings = _bookmark_headings(bookmarks, pages)
+    else:
+        headings = _type_headings(lines, starts, pages, body, body_bold)
+    labelled = labels if any(labels) else None
+    text, blocks, marks = _PdfWriter(pages, labelled, lines, headings, starts).write()
+    _check_paragraphs(blocks)
+
+    def place(start, end, first, last):
+        last_character = len(text[start:end].rstrip()) + start - 1
+        return {"pages": {"first": _page_at(marks, start), "last": _page_at(marks, max(start, last_character))}}
+
+    outline_pages = {"count": len(pages)}
+    if labelled:
+        outline_pages["labels"] = labels
+    outline_pages["blank"] = blank
+    return _Source("pdf", text, blocks, title or _largest_line(pages), outline_pages, place)
+
+
+def _page_at(marks, offset):
+    """The page, from 1, that the text at `offset` is on: the last page marker's at or before it."""
+    offsets = [mark[0] for mark in marks]
+    return marks[max(0, bisect_right(offsets, offset) - 1)][1]
+
+
+def _largest_line(pages):
+    """A title from the first page's largest type, for a PDF with none in its metadata; else None."""
+    page = next((page for page in pages if page.lines), None)
+    if page is None:
+        return None
+    largest = max(line.size for line in page.lines)
+    first = next(index for index, line in enumerate(page.lines) if line.size == largest)
+    run = list(takewhile(lambda line: line.size == largest, page.lines[first:]))
+    return " ".join(" ".join(line.text for line in run).split()) or None
+
+
+def _pdf_page(document, index):
+    page = document[index]
+    try:
+        width, height = page.get_size()
+        figures, images = [], False
+        for obj in page.get_objects(max_depth=1):
+            if obj.type not in (pdfium_c.FPDF_PAGEOBJ_FORM, pdfium_c.FPDF_PAGEOBJ_IMAGE):
+                continue
+            left, bottom, right, top = obj.get_bounds()
+            share = (right - left) * (top - bottom) / (width * height or 1)
+            if obj.type == pdfium_c.FPDF_PAGEOBJ_FORM and share < 0.5:
+                figures.append((left, bottom, right, top))  # a chart, whose labels are not the text
+            images = images or (share >= 0.01 and (obj.type == pdfium_c.FPDF_PAGEOBJ_IMAGE or share < 0.5))
+        textpage = page.get_textpage()
+        try:
+            chars, has_math = _chars(textpage.raw, figures)
+        finally:
+            textpage.close()
+    finally:
+        page.close()
+    return _Page([_line(group, index) for group in _line_groups(chars)], images, has_math)
+
+
+def _chars(raw, figures):
+    """The page's characters in PDFium's order: upright, outside figures, private-use ones but small capitals left out."""
+    x, y, box, matrix = ctypes.c_double(), ctypes.c_double(), pdfium_c.FS_RECTF(), pdfium_c.FS_MATRIX()
+    fonts, chars, space, has_math = {}, [], False, False
+    for index in range(pdfium_c.FPDFText_CountChars(raw)):
+        code = pdfium_c.FPDFText_GetUnicode(raw, index)
+        if code in (0x20, 0xA0, 0x09, 0x3000):
+            space = True
+            continue
+        if code in (0x02, 0xFFFE):  # PDFium's mark for a hyphen at a line's end
+            code = 0x2D
+        elif 0xF761 <= code <= 0xF77A:  # Adobe's small capitals, a to z (the Inwood edition's headings)
+            code -= 0xF700
+        if code < 0x20 or 0x7F <= code < 0xA0 or 0xE000 <= code <= 0xF8FF or code == 0xFFFF:
+            continue
+        obj = _text_object(raw, index)
+        if not obj:
+            continue
+        font = fonts.get(obj)
+        if font is None:
+            font = fonts[obj] = _font(raw, index, ctypes.cast(obj, pdfium_c.FPDF_PAGEOBJECT), matrix)
+        if not font.upright:
+            continue
+        pdfium_c.FPDFText_GetCharOrigin(raw, index, x, y)
+        pdfium_c.FPDFText_GetLooseCharBox(raw, index, box)
+        if figures:
+            middle_x, middle_y = (box.left + box.right) / 2, (box.top + box.bottom) / 2
+            if any(l <= middle_x <= r and b <= middle_y <= t for l, b, r, t in figures):
+                continue
+        chars.append(_Char(chr(code), x.value, y.value, box.left, box.right, font, space))
+        has_math = has_math or font.math
+        space = False
+    return chars, has_math
+
+
+def _font(raw, index, obj, matrix):
+    """A text object's type size, from its font size and matrix (the Inwood PDF's font size is 1), and its kind."""
+    pdfium_c.FPDFText_GetMatrix(raw, index, matrix)
+    scale = math.sqrt(abs(matrix.a * matrix.d - matrix.b * matrix.c))
+    size = round(pdfium_c.FPDFText_GetFontSize(raw, index) * scale, 1)
+    upright = matrix.a > 0 and abs(matrix.b) <= 0.02 * matrix.a
+    name = ""
+    handle = pdfium_c.FPDFTextObj_GetFont(obj)
+    if handle:
+        buffer = ctypes.create_string_buffer(256)
+        pdfium_c.FPDFFont_GetBaseFontName(handle, buffer, len(buffer))
+        name = buffer.value.decode("latin-1")
+    return _Font(size, bool(_BOLD_FONT.search(name)), bool(_MATH_FONT.search(name)), upright)
+
+
+def _line_groups(chars):
+    """Characters into lines by their origins: a line ends where x goes back, a wide gap opens, or the baseline jumps."""
+    line, base_y, base_size = [], 0.0, 0.0
+    for char in chars:
+        if line:
+            previous, size = line[-1], max(base_size, char.font.size)
+            # A line's next character is to the right; scripts, radicals and fractions move from the baseline.
+            moved = 2 if char.font.math or previous.font.math else 1.5
+            if (
+                abs(char.y - base_y) >= moved * size
+                or char.x < previous.x - 0.1 * size
+                or char.left - previous.right > 2.5 * size
+            ):
+                yield line
+                line = []
+        if not line:
+            base_y, base_size = char.y, char.font.size
+        elif char.font.size >= 0.85 * base_size:  # the line's own type, not a superscript
+            base_y, base_size = char.y, max(base_size, char.font.size)
+        line.append(char)
+    if line:
+        yield line
+
+
+def _line(chars, page):
+    """A line's text and footnote markers: runs of smaller, raised digits or marks, not beside math."""
+    counts = Counter(char.font.size for char in chars)
+    size = max(counts, key=lambda size: (counts[size], size))
+    baseline = median(char.y for char in chars if char.font.size == size)
+    spaced = [False] + [char.space or char.left - previous.right > 0.15 * size for previous, char in pairwise(chars)]
+    marks = [
+        char.font.size < 0.85 * size
+        and char.y > baseline + 0.2 * size
+        and not char.font.math
+        and (char.text.isdigit() or char.text in _SYMBOLS)
+        for char in chars
+    ]
+    parts, buffer, index = [], [], 0
+    while index < len(chars):
+        end = index
+        if marks[index]:
+            end = index + 1
+            digits = chars[index].text.isdigit()
+            while end < len(chars) and marks[end] and not spaced[end] and chars[end].text.isdigit() == digits:
+                end += 1
+            before = chars[index - 1] if index > 0 and not spaced[index] else None
+            after = chars[end] if end < len(chars) else None
+            # Beside math, or after a digit (10⁹), raised digits are part of the text.
+            if (before and (before.font.math or before.text.isdigit())) or (after and after.font.math):
+                end = index
+        if spaced[index]:
+            buffer.append(" ")
+        if end > index:
+            if buffer:
+                parts.append("".join(buffer))
+                buffer = []
+            parts.append(_Ref("".join(char.text for char in chars[index:end])))
+            index = end
+        else:
+            buffer.append(chars[index].text)
+            index += 1
+    if buffer:
+        parts.append("".join(buffer))
+    # A soft hyphen is a hyphen at the line's end, and nothing within it.
+    parts = [part.replace("\xad", "") if isinstance(part, str) else part for part in parts]
+    if chars[-1].text == "\xad":
+        parts.append("-")
+    first_word = next((chars[i - 1].right for i in range(1, len(chars)) if spaced[i]), chars[-1].right)
+    letters = [char for char in chars if char.text.isalpha()]
+    return _Line(
+        page=page,
+        parts=[part for part in parts if part != ""],
+        size=size,
+        bold=bool(letters) and all(char.font.bold for char in letters),
+        y=baseline,
+        left=min(char.left for char in chars),
+        right=max(char.right for char in chars),
+        first_word=first_word - chars[0].left,
+        count=len(chars),
+    )
+
+
+def _drop_furniture(pages):
+    """Removes running heads and feet (text repeated at one place on pages), page numbers and margin line numbers."""
+    rows, edges = Counter(), {}
+    for index, page in enumerate(pages):
+        if not page.lines:
+            continue
+        top, bottom = max(line.y for line in page.lines), min(line.y for line in page.lines)
+        edges[index] = [line for line in page.lines if line.y >= top - 2 or line.y <= bottom + 2]
+        for line in edges[index]:
+            rows[_signature(line), round(line.y / 2)] += 1
+    for index, page in enumerate(pages):
+        drop = set()
+        for line in edges.get(index, ()):
+            text = line.text.strip()
+            if _PAGE_NUMBER.fullmatch(text) or (rows[_signature(line), round(line.y / 2)] >= 3 and text):
+                drop.add(id(line))
+        margins = Counter(round(line.left / 3) for line in page.lines if line.text.strip().isdigit())
+        for line in page.lines:
+            if line.text.strip().isdigit() and margins[round(line.left / 3)] >= 5:
+                drop.add(id(line))
+        page.lines = [line for line in page.lines if id(line) not in drop and line.text.strip()]
+
+
+def _signature(line):
+    """A line's text with its numbers, and a page number in roman at either end, as `#`."""
+    words = re.sub(r"\d+", "#", line.text.lower()).split()
+    for end in (0, -1):
+        if words and _PAGE_NUMBER.fullmatch(words[end]):
+            words[end] = "#"
+    return " ".join(words)
+
+
+def _take_notes(page, body):
+    """Moves the notes at the page's foot out of its lines: smaller lines from one that starts with a marker's label."""
+    refs = {part.label for line in page.lines for part in line.parts if isinstance(part, _Ref)}
+    if not refs:
+        return
+    lines, kept, index = page.lines, [], 0
+    while index < len(lines):
+        label = _note_label(lines[index], refs) if lines[index].size < 0.92 * body else None
+        end = index + 1
+        while end < len(lines) and lines[end].size < 0.92 * body and lines[end].y < lines[end - 1].y:
+            end += 1
+        # The run must close the page, or its column: the next line is higher up.
+        if label is None or (end < len(lines) and lines[end].y < lines[end - 1].y):
+            kept.append(lines[index])
+            index += 1
+            continue
+        current = None
+        for line in lines[index:end]:
+            label = _note_label(line, refs)
+            if label is not None:
+                current = page.notes.setdefault(label, [])
+                if current:  # the same label again: another note
+                    current = page.notes[label] = current + [None]
+            current.append(line)
+        index = end
+    page.lines = kept
+
+
+def _note_label(line, refs):
+    first = line.parts[0]
+    if isinstance(first, _Ref):
+        return first.label if first.label in refs else None
+    match = _NOTE_LABEL.match(first)
+    return match.group(1) if match and match.group(1) in refs else None
+
+
+def _columns(page, body):
+    """Each line's column: its left edge, the page's most frequent left edges that are not indents, and right edge."""
+    edges = Counter(round(line.left) for line in page.lines)
+    anchors = []
+    for edge, count in sorted(edges.items(), key=lambda item: (-item[1], item[0])):
+        if count < 2:
+            break
+        if not any(anchor - 1 <= edge <= anchor + 4 * body for anchor in anchors):
+            anchors.append(edge)
+    rights = {}
+    for line in page.lines:
+        below = [anchor for anchor in anchors if anchor <= line.left + 1]
+        line.anchor = max(below) if below else line.left
+        rights.setdefault(line.anchor, Counter())[round(line.right)] += 1
+    for line in page.lines:
+        counts = rights[line.anchor]
+        repeated = [right for right, count in counts.items() if count >= 2]
+        line.edge = max(repeated) if repeated else max(counts)
+
+
+def _leading(lines):
+    """The usual distance between baselines, for each type size."""
+    gaps = {}
+    for previous, line in pairwise(lines):
+        gap = previous.y - line.y
+        same = previous.page == line.page and previous.anchor == line.anchor and previous.size == line.size
+        if same and 0 < gap < 2.5 * line.size:
+            gaps.setdefault(line.size, Counter())[round(gap, 1)] += 1
+    return {size: max(counts, key=lambda gap: (counts[gap], -gap)) for size, counts in gaps.items()}
+
+
+def _paragraph_starts(lines, leading):
+    """Whether each line starts a paragraph: a change of size, an indent, a short line before it, or a wider gap."""
+    starts = []
+    for index, line in enumerate(lines):
+        if index == 0:
+            starts.append(True)
+            continue
+        previous = lines[index - 1]
+        same_column = previous.page == line.page and previous.anchor == line.anchor and previous.y > line.y
+        starts.append(
+            abs(line.size - previous.size) > 0.15 * max(line.size, previous.size)
+            or line.left - line.anchor > 0.4 * line.size
+            or previous.edge - previous.right > line.first_word + 0.3 * line.size
+            or (same_column and previous.y - line.y > 1.4 * leading.get(line.size, 1.2 * line.size))
+        )
+    return starts
+
+
+def _bookmarks(document):
+    """The bookmarks as (level from 1, title, page from 0, the target's height or None), those with a page."""
+    found = []
+    for bookmark in document.get_toc():
+        title = " ".join(bookmark.get_title().split())
+        dest = pdfium_c.FPDFBookmark_GetDest(document.raw, bookmark.raw)
+        if not dest:
+            action = pdfium_c.FPDFBookmark_GetAction(bookmark.raw)
+            if action and pdfium_c.FPDFAction_GetType(action) == pdfium_c.PDFACTION_GOTO:
+                dest = pdfium_c.FPDFAction_GetDest(document.raw, action)
+        if not dest or not title:
+            continue
+        page = pdfium_c.FPDFDest_GetDestPageIndex(document.raw, dest)
+        if not 0 <= page < len(document):
+            continue
+        has = [ctypes.c_int() for _ in range(3)]
+        place = [ctypes.c_float() for _ in range(3)]
+        pdfium_c.FPDFDest_GetLocationInPage(dest, *has, *place)
+        found.append((bookmark.level + 1, title, page, place[1].value if has[1].value else None))
+    return found
+
+
+def _letters(text):
+    return "".join(character for character in text.lower() if character.isalnum())
+
+
+def _bookmark_headings(bookmarks, pages):
+    """Each bookmark's heading: the lines on its page that print its title, or else a heading before its place.
+
+    Returns {(page, line index): [(level, title, lines it replaces)]}, in reading order.
+    """
+    headings, taken = {}, set()
+    for level, title, page, y in bookmarks:
+        lines, wanted = pages[page].lines, _letters(title)
+        matches = []
+        for first in range(len(lines)):
+            joined = ""
+            for count in range(1, 5):
+                if first + count > len(lines) or (page, first + count - 1) in taken:
+                    break
+                joined += _letters(lines[first + count - 1].text)
+                if joined == wanted:
+                    matches.append((first, count, title))
+                elif wanted and joined.endswith(wanted) and _NUMBER_PREFIX.fullmatch(joined[: -len(wanted)]):
+                    printed = " ".join(" ".join(line.text for line in lines[first : first + count]).split())
+                    matches.append((first, count, printed))
+                if len(joined) >= len(wanted) + 12:
+                    break
+        if matches:
+            first, count, name = min(matches, key=lambda m: abs(lines[m[0]].y - y) if y is not None else 0)
+            taken.update((page, index) for index in range(first, first + count))
+            headings.setdefault((page, first), []).append((level, name, count))
+        else:
+            first = 0 if y is None else next((i for i, line in enumerate(lines) if line.y <= y + 2), len(lines))
+            headings.setdefault((page, first), []).append((level, title, 0))
+    return headings
+
+
+def _type_headings(lines, starts, pages, body, body_bold):
+    """Headings for a PDF with no bookmarks: lines set larger, or bold and alone, or numbered as headings are."""
+    runs, index = [], 0
+    while index < len(lines):
+        line = lines[index]
+        end = index + 1
+        while (
+            end < len(lines)
+            and lines[end].page == line.page
+            and (lines[end].size, lines[end].bold) == (line.size, line.bold)
+            and (line.size >= 1.25 * body or (line.bold and not body_bold))
+        ):
+            end += 1
+        runs.append((index, end))
+        index = end
+
+    found = []
+    for first, end in runs:
+        group, line = lines[first:end], lines[first]
+        text = " ".join(" ".join(part.text for part in group).split())
+        alone = starts[first] and (end == len(lines) or starts[end])
+        numbered = _NUMBERED.match(text)
+        big = line.size >= 1.25 * body
+        bold = line.bold and not body_bold
+        if sum(character.isalpha() for character in text) < 2 or any(_crowded(part, pages) for part in group):
+            continue
+        if (
+            (big and len(group) <= 4)
+            or (bold and alone and len(group) <= 3)
+            or (numbered and alone and len(group) == 1 and len(text.split()) <= 12 and text[-1] not in ".,;:")
+        ):
+            depth = numbered.group(1).count(".") + 1 if numbered else None
+            found.append((first, end, text, (line.size, line.bold), depth))
+
+    depths = {}
+    for _, _, _, style, depth in found:
+        if depth is not None:
+            depths.setdefault(style, Counter())[depth] += 1
+    styles = sorted({style for _, _, _, style, _ in found}, key=lambda style: (-style[0], not style[1]))
+    ranks = {style: rank for rank, style in enumerate(styles, 1)}
+    headings = {}
+    for first, end, text, style, depth in found:
+        if depth is None:
+            depth = depths[style].most_common(1)[0][0] if style in depths else ranks[style]
+        line = lines[first]
+        position = pages[line.page].lines.index(line)
+        headings.setdefault((line.page, position), []).append((depth, text, end - first))
+    return headings
+
+
+def _crowded(line, pages):
+    """Another line on its baseline within its column: a table's cell, not a heading."""
+    for other in pages[line.page].lines:
+        if other is line or abs(other.y - line.y) > 1:
+            continue
+        if line.right < other.left <= line.edge or line.anchor <= other.right < line.left:
+            return True
+    return False
+
+
+class _PdfWriter:
+    """Writes the lines as Markdown: headings, a paragraph per line of text with its notes after it, page markers."""
+
+    def __init__(self, pages, labels, lines, headings, starts):
+        self.pages, self.labels, self.headings = pages, labels, headings
+        self.starts = {id(line): start for line, start in zip(lines, starts, strict=True)}
+        self.out, self.length, self.blocks, self.marks = [], 0, [], []  # marks: (offset, page from 1)
+        self.pending = []  # pages, from 0, whose markers wait for the next line
+        self.paragraph = None  # the open paragraph's text
+        self.paragraph_start = 0
+        self.inline = []  # (offset in the open paragraph, page from 1) of its markers
+        self.notes = []  # (label, a note's lines), written after the open paragraph
+        self.waiting = {}  # the page's notes not yet referred to, by their printed label
+        self.used = Counter()  # footnote labels in the current heading's stretch
+        words = [line.text for page in pages for line in page.lines]
+        words += [line.text for page in pages for note in page.notes.values() for line in note if line]
+        self.plain = {word.lower() for text in words for word in _WORD.findall(text)}
+        self.hyphenated = {word for word in self.plain if "-" in word}
+
+    def write(self):
+        for number, page in enumerate(self.pages):
+            self.pending.append(number)
+            self.waiting = {label: list(_split_notes(lines)) for label, lines in page.notes.items()}
+            consumed = 0
+            for index, line in enumerate(page.lines):
+                for level, title, count in self.headings.get((number, index), ()):
+                    self._heading(level, title)
+                    consumed = max(consumed, index + count)
+                if index >= consumed:
+                    self._line(line)
+            for level, title, _ in self.headings.get((number, len(page.lines)), ()):
+                self._heading(level, title)
+            # A note no marker on its page refers to still follows the paragraph.
+            self.notes += [(self._unique(label), note) for label, notes in self.waiting.items() for note in notes]
+        self._close()
+        self._markers()
+        text = "".join(self.out)
+        return (text[:-1] if text.endswith("\n\n") else text), self.blocks, self.marks
+
+    def _emit(self, text):
+        self.out.append(text)
+        self.length += len(text)
+
+    def _marker(self, number):
+        words = [f"page {number + 1}"]
+        if self.labels is not None:
+            label = " ".join(self.labels[number].replace('"', "'").split())
+            while "--" in label:
+                label = label.replace("--", "-")
+            words.append(f'label "{label}"')
+        if self.pages[number].math:
+            words.append("math")
+        if self.pages[number].images:
+            words.append("images")
+        return f"<!-- {' '.join(words)} -->"
+
+    def _markers(self):
+        """Writes the waiting markers as lines of their own, where the next block starts; that start."""
+        start = self.length
+        for number in self.pending:
+            self.marks.append((self.length, number + 1))
+            self._emit(self._marker(number) + "\n")
+        self.pending = []
+        return start
+
+    def _heading(self, level, title):
+        self._close()
+        start = self._markers()
+        self.blocks.append(Heading(level, title, start))
+        self._emit("#" * min(level, 6) + " " + title + "\n\n")
+        self.used = Counter()
+
+    def _unique(self, label):
+        label = _SYMBOLS.get(label, label)
+        self.used[label] += 1
+        return label if self.used[label] == 1 else f"{label}-{self.used[label]}"
+
+    def _render(self, line, notes=True):
+        """The line's text with its markers as references, each taking its page's note of that label."""
+        out = []
+        for part in line.parts:
+            if isinstance(part, str):
+                out.append(part)
+            elif not notes:
+                out.append(part.label)
+            else:
+                label = self._unique(part.label)
+                out.append(f"[^{label}]")
+                if self.waiting.get(part.label):
+                    self.notes.append((label, self.waiting[part.label].pop(0)))
+        return "".join(out).strip()
+
+    def _line(self, line):
+        if self.paragraph is None or self.starts[id(line)]:
+            self._close()
+            self.paragraph_start = self._markers()
+            text = self._render(line)
+            # A line starting so would be a heading, a quote or HTML.
+            self.paragraph = "\\" + text if text.startswith(("#", ">", "<")) else text
+            return
+        joined, at = self._join(self.paragraph, self._render(line))
+        if self.pending:
+            # Never at a line's start, where a comment would end the paragraph; after a mended word.
+            before, after = joined[:at], joined[at:].lstrip(" ")
+            position = len(before) + 1
+            for number in self.pending:
+                self.inline.append((position, number + 1))
+                position += len(self._marker(number)) + 1
+            markers = " ".join(self._marker(number) for number in self.pending)
+            joined = before + " " + markers + (" " + after if after else "")
+            self.pending = []
+        self.paragraph = joined
+
+    def _join(self, text, following):
+        """The text with its next line, a word hyphenated at the line's end mended; where a page marker would go."""
+        match = _HYPHENATED_END.search(text, max(0, len(text) - 80))  # the end only: a paragraph grows long
+        if not (match and following[:1].islower()):
+            return text + " " + following, len(text)
+        token = following.split(" ", 1)[0]
+        fragment = _WORD.match(following).group()
+        left, head = match.group(1).lower(), fragment.split("-", 1)[0].lower()
+        # Kept for a compound ("English-to-German", "self-consciousness"), unless the parts make a word used elsewhere.
+        keep = (
+            text.endswith("-")
+            and f"{left}{head}" not in self.plain
+            and ("-" in fragment or f"{left}-{head}" in self.hyphenated)
+        )
+        joined = (text if keep else text[:-1]) + following
+        return joined, len(joined) - len(following) + len(token)
+
+    def _close(self):
+        if self.paragraph is None:
+            return
+        self.marks += [(self.length + position, number) for position, number in self.inline]
+        self.inline = []
+        self._emit(self.paragraph + "\n")
+        for label, note in self.notes:
+            self._emit(f"\n[^{label}]: {self._note_text(note)}\n")
+        self.notes = []
+        self.blocks.append(Paragraph(self.paragraph_start, self.length))
+        self._emit("\n")
+        self.paragraph = None
+
+    def _note_text(self, lines):
+        """A note's text, its label left out."""
+        first = lines[0]
+        parts = [part if isinstance(part, str) else part.label for part in first.parts]
+        if isinstance(first.parts[0], _Ref):
+            parts = parts[1:]
+        else:
+            parts[0] = parts[0][_NOTE_LABEL.match(parts[0]).end() :]
+        text = "".join(parts).strip()
+        for line in lines[1:]:
+            text = self._join(text, self._render(line, notes=False))[0]
+        return " ".join(text.split())
+
+
+def _split_notes(lines):
+    """A label's lines as notes: `None` separates two notes with the same label."""
+    note = []
+    for line in lines:
+        if line is None:
+            if note:
+                yield note
+            note = []
+        else:
+            note.append(line)
+    if note:
+        yield note
+
+
+def render_page(original, number, png):
+    """Renders page `number` (from 1) of the PDF `original` at 150 dpi into `png`: its size in pixels."""
+    try:
+        document = pdfium.PdfDocument(Path(original).read_bytes())
+    except (OSError, pdfium.PdfiumError) as error:
+        raise Unusable(f"the original cannot be read as a PDF ({error})") from None
+    try:
+        if not 1 <= number <= len(document):
+            raise Unusable(f"the PDF has {len(document)} pages, not a page {number}")
+        page = document[number - 1]
+        try:
+            image = page.render(scale=_DPI / 72).to_pil()
+        finally:
+            page.close()
+        try:
+            image.save(png, format="PNG")
+        except OSError as error:
+            raise Unusable(f"the image cannot be written ({error})") from None
+        return {"result": "rendered", "page": number, "width": image.width, "height": image.height}
+    finally:
+        document.close()
+
+
 # Sections
 
 
-def _outline(text, blocks, title, limit):
+def _outline(text, blocks, title, limit, place=_paragraph_place):
     """The outline's entries, each section's text by id, and the stretches cut into parts."""
     stretches = []
     for block in blocks:
@@ -278,7 +1044,7 @@ def _outline(text, blocks, title, limit):
                 "id": id,
                 "title": name if len(parts) == 1 else f"{name} (part {number} of {len(parts)})",
                 "size": end - start,
-                "place": {"paragraphs": {"first": first, "last": last}},
+                "place": place(start, end, first, last),
             }
             if len(parts) > 1:
                 entry["part"] = {"number": number, "of": len(parts)}
@@ -394,9 +1160,16 @@ def main(argv=None):
     ingest_command.add_argument("original", type=Path)
     ingest_command.add_argument("folder", type=Path)
     ingest_command.add_argument("--limit", type=_positive, default=SECTION_LIMIT, help="a section's characters")
+    page_command = commands.add_parser("page", help="render a PDF's page as a PNG image at 150 dpi")
+    page_command.add_argument("original", type=Path)
+    page_command.add_argument("page", type=_positive, help="the page's number, from 1")
+    page_command.add_argument("png", type=Path)
     arguments = parser.parse_args(argv)
     try:
-        result = ingest(arguments.original, arguments.folder, arguments.limit)
+        if arguments.command == "page":
+            result = render_page(arguments.original, arguments.page, arguments.png)
+        else:
+            result = ingest(arguments.original, arguments.folder, arguments.limit)
     except Unusable as error:
         print(f"convert.py: {error}", file=sys.stderr)
         return 2

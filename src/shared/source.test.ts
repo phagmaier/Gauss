@@ -98,6 +98,67 @@ test("the schema reads the outline convert.py writes, every field of it", async 
   }
 });
 
+// A page with a bookmarked heading and a paragraph, then a page with no text,
+// numbered i and ii.
+const WRITE_PDF = `
+import sys
+from reportlab.pdfgen import canvas
+c = canvas.Canvas(sys.argv[1], pagesize=(612, 792))
+c.setTitle("Paper")
+c.bookmarkPage("opening", fit="XYZ", left=0, top=740)
+c.addOutlineEntry("Opening", "opening", 0)
+c.setFont("Courier-Bold", 14)
+c.drawString(72, 720, "Opening")
+c.setFont("Courier", 10)
+c.drawString(72, 696, "The first page's only paragraph.")
+c.showPage()
+c.showPage()
+c.addPageLabel(0, "ROMAN_LOWER", 1)
+c.save()
+`;
+
+test("the schema reads a PDF's outline: its pages, and sections placed by page", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gauss-source-"));
+  try {
+    const python = join(pytools, ".venv", "bin", "python");
+    const original = join(dir, "paper.pdf");
+    await promisify(execFile)(python, ["-I", "-c", WRITE_PDF, original]);
+    const folder = join(dir, "paper");
+    await promisify(execFile)(python, [
+      "-I",
+      join(pytools, "convert.py"),
+      "ingest",
+      original,
+      folder,
+    ]);
+    const written = JSON.parse(
+      await readFile(join(folder, "outline.json"), "utf8"),
+    );
+
+    const outline = Outline.parse(written);
+
+    expect(outline).toEqual(written);
+    expect(outline).toMatchObject({
+      title: "Paper",
+      file: "original.pdf",
+      format: "pdf",
+      pages: { count: 2, labels: ["i", "ii"], blank: [2] },
+    });
+    // `<!-- page 1 label "i" -->`, the heading, the paragraph, then the
+    // second page's marker: 26 + 11 + 34 + 27 characters.
+    expect(outline.entries).toEqual([
+      {
+        id: "s1",
+        title: "Opening",
+        size: 98,
+        place: { pages: { first: 1, last: 2 } },
+      },
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("the outline rejects ambiguous entries and places instead of stripping fields", () => {
   const section = {
     id: "s1",
