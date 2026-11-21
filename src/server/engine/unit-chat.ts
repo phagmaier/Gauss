@@ -3560,21 +3560,27 @@ function createUnitChat(
       }),
 
     anotherQuestion: () =>
-      act(async (r) => {
-        const { detour } = r.record.position;
-        if (detour === undefined) {
-          return refused("No detour is open, so there is nothing to end.");
-        }
-        const stops = stopCount;
-        await r.record.endDetour();
-        const run = runOn(r);
-        if (run !== undefined) {
-          // One more question on the objective, or the next objective's.
-          if (nextOf(r, run) === undefined) await endRun(r, false);
-          else {
-            const { number, objective } = detour;
-            askInRun(r, { after: "detour", number, objective }, stops);
+      act(
+        async (r) => {
+          const { detour } = r.record.position;
+          if (detour === undefined) {
+            return refused("No detour is open, so there is nothing to end.");
           }
+          const stops = stopCount;
+          await r.record.endDetour();
+          const run = runOn(r);
+          if (run !== undefined) {
+            // One more question on the objective, or the next objective's.
+            if (nextOf(r, run) === undefined) await endRun(r, false);
+            else {
+              const { number, objective } = detour;
+              askInRun(r, { after: "detour", number, objective }, stops);
+            }
+            return { ok: true };
+          }
+          // A dispute during the detour can have left nothing to ask.
+          if (checkDone(r)) await closeSegment(r);
+          else askNext(r, detour.number, stops, "detour");
           return { ok: true };
         },
         { inRun: true },
