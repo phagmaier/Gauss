@@ -306,6 +306,11 @@ The brief states the result; this is who decided and why.
     the workspace may not have triggered a commit yet. The folder is
     renamed out of the library before it is removed, so the library
     never shows a half-deleted course.
+- **2026-11-20, prompt changes are the agent's to judge.** The user does
+  not read transcripts to approve a prompt change: the agent revises the
+  prompts until its own real-model runs, old prompt against new on the
+  same moves, show nothing lost, and keeps them as short as that allows.
+  A task's "the user reads ..." check on a prompt no longer applies.
 
 ## Toolchain
 
@@ -1880,6 +1885,24 @@ the denominator rule into a false "never use the full space".
   reply and style note gave names, topics and timing; the reply that
   posted the card still gave names and timing but omitted topics. The
   tutor's offer of the next stretch has not been tried on a real model.
+- **Pruned against the engine** (task 5.29a), as `tutor.md` was: the
+  intake's headers, the refusal of a first-turn proposal, the field
+  descriptions of `shared/curriculum.ts` and `shared/profile.ts` and the
+  tool's description carry the rest (214 lines and 1,991 words became
+  133 and 1,192). On Sonnet, old and new on the same profile and messages
+  (a narrow topic with a question on review and notes, a go-ahead and a
+  revision; "Calculus 1 to 3"): cut to "the profile holds what is true in
+  any course", the planner added a sentence about this course to the
+  profile in five of six cards over two runs (how it wanted checks,
+  "working understanding ... rather than full formal rigor"), where the
+  old prompt kept it word for word. Naming what belongs in each (work,
+  general knowledge and how they like to be taught in the profile; this
+  topic, how far and how it is checked in the background note) kept it
+  word for word in all three cards of the next run. The new prompt asked
+  at most two questions where the old asked three once, and kept a narrow
+  topic to one unit where the old proposed two. A revision went without
+  a sentence on what changed in the old prompt's run and the last run
+  (left).
 
 **`course-planner.md`** (task 5.38): in one Haiku run on a finished
 "Calculus 1 to 3" whose style note named Calculus 2 and 3, the planner
@@ -2068,6 +2091,9 @@ redesign's.
   proposal replaces the one waiting, as a revision does in the intake,
   so pushing back needs no "Keep the current one" first. Apply ends the
   conversation and goes back to the course view.
+- **Every view must read at 30 units** (stage 5, from the large-course
+  decision): `pnpm dev:fake` seeds "Calculus 1 to 3" with thirty, and its
+  scripted planner proposes thirty for "/large".
 - **The diagram at 30 units** (task 5.16, the agent's choice): lines that
   cross a row sit side by side, in the order they came from, instead of
   all through the gap's middle, where long lines merged into one. Diagram

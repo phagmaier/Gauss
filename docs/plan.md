@@ -21,35 +21,8 @@ user's choice; the numbers are kept because code and documents use them.
   decisions").
 - Stage 5, mastery loop: passed on 2026-11-19. The user's notes from the
   check, and the comparisons with LearnHarness and DeepTutor the same day,
-  added tasks 5.14 to 5.29 (`decisions.md`, "Product decisions").
-
-## Stage 5: follow-ups from the check (built before stage 4)
-
-The tasks the stage's check and the two comparisons added. The stage's
-views are laid out in the mocks, pieces 15 to 18 of `docs/prototype/`, and
-the redesign in pieces 19 to 21 (`decisions.md`, "Page design"), whose
-look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
-"Calculus 1 to 3" with thirty, and its scripted planner proposes thirty
-for "/large". Not in this stage: sources and web access (4.0), self-test
-and cheat sheets (stage 6).
-
-### 5.29a A shorter planner prompt
-
-- Status: todo
-- Depends on: 5.29
-- Split from 5.29, whose method worked on `tutor.md` (`decisions.md`,
-  "Prompts", "The prompt says only what the app does not"):
-  `prompts/planner.md` (214 lines) gets the same pass. List every rule
-  with its fate (kept, merged, left to the engine because the intake's
-  tool descriptions, refusals or turn text already say it, or dropped,
-  with why); a rule from a failure seen in a real run stays unless the
-  engine now prevents it. Keep the example or the reason a finding
-  depended on: cutting those was what lost rules in 5.29.
-- Done when: the rule list is in the commit message; the tests pass; and
-  Sonnet intakes with the old prompt and the new, on the same profile and
-  the same learner messages (a small course, then a large topic planned
-  in stretches), show no rule lost. `decisions.md`, "Prompts", keeps what
-  the pass found.
+  added tasks 5.14 to 5.29 (`decisions.md`, "Product decisions"), all
+  done on 2026-11-20.
 
 ## Stage 4: sources (built after stage 5)
 
