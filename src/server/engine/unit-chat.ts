@@ -1175,6 +1175,11 @@ interface Running {
    * is offered once that segment closes (task 5.25).
    */
   reviewHeld?: boolean;
+  /**
+   * What the closing card standing before the gate told the learner:
+   * whether moving on from it offers the gate.
+   */
+  gateFollows?: boolean;
 }
 
 function createUnitChat(
@@ -2698,10 +2703,13 @@ function createUnitChat(
     // Every objective passed as the last segment closed: the gate's card,
     // or the finish, comes with no closing card before it.
     if (!passed || !closedNow) {
+      // A card with its steps says whether moving on offers the gate.
+      r.gateFollows = !passed && (await gatePicks(r)).objectives.length > 0;
       log.emit({
         type: "unit_end",
         passed,
         objectives: r.record.objectiveStatuses(),
+        ...(r.gateFollows ? { gateFollows: true } : {}),
       });
     }
     if (passed) await gateOrFinish(r, !closedNow);
@@ -2731,19 +2739,32 @@ function createUnitChat(
   }
 
   /**
-   * Offers the unit's gate on a card, if it has anything to ask
-   * (`pickForGate`, from the course as it stands now); false if it has
-   * not. Nothing is sent to the tutor. Runs inside `exclusive`.
+   * What the unit's gate would ask now (`pickForGate`, from the course as
+   * it stands), with the course's units and evidence it read for it.
    */
-  async function offerGate(r: Running, tell?: () => void): Promise<boolean> {
-    const [stored, evidence, misconceptions] = await Promise.all([
+  async function gatePicks(r: Running) {
+    const [stored, evidence] = await Promise.all([
       dataRoot.readCourse(courseId),
       dataRoot.readEvidence(courseId),
-      dataRoot.readMisconceptions(courseId),
     ]);
-    r.handoff.misconceptions = misconceptions;
     const units = stored?.curriculum?.units ?? r.context.units;
-    const objectives = pickForGate(units, unitId, evidence, now());
+    return {
+      units,
+      evidence,
+      objectives: pickForGate(units, unitId, evidence, now()),
+    };
+  }
+
+  /**
+   * Offers the unit's gate on a card, if it has anything to ask
+   * (`gatePicks`); false if it has not. Nothing is sent to the tutor. Runs
+   * inside `exclusive`.
+   */
+  async function offerGate(r: Running, tell?: () => void): Promise<boolean> {
+    const [{ units, evidence, objectives }, misconceptions] = await Promise.all(
+      [gatePicks(r), dataRoot.readMisconceptions(courseId)],
+    );
+    r.handoff.misconceptions = misconceptions;
     if (objectives.length === 0) return false;
     r.context = { ...r.context, units };
     const run: AssessmentRun = { mode: "gate", stage: "offered", objectives };
@@ -3968,9 +3989,22 @@ function createUnitChat(
       act(async (r) => {
         const waits = runWaits(r);
         if (waits !== undefined) return waits;
-        const objectives =
-          r.record.position.pendingMoveOn?.objectives ?? atUnitEnd(r);
+        const pending = r.record.position.pendingMoveOn;
+        const objectives = pending?.objectives ?? atUnitEnd(r);
         if (typeof objectives === "string") return refused(objectives);
+        // The card's step said whether the gate comes next: if that no
+        // longer holds, the card is shown again as it now stands.
+        if (pending === undefined && r.record.position.gated !== true) {
+          const follows = (await gatePicks(r)).objectives.length > 0;
+          if (follows !== (r.gateFollows === true)) {
+            await endUnit(r);
+            return refused(
+              follows
+                ? "The unit gate now has questions to ask, so it comes next if you move on. The card is shown again."
+                : "The unit gate has nothing to ask now, so moving on finishes the unit. The card is shown again.",
+            );
+          }
+        }
         await moveOnAtEnd(r, objectives);
         return { ok: true };
       }),

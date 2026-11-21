@@ -33,23 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.27 The closing card says the gate comes next
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19, from the stage 5 check): before the
-  gate, the closing card's "Move on without them" read as skipping the
-  unit gate. It does not skip it: the gate follows when `pickForGate` has
-  anything to ask, and has its own "Skip the gate". When a gate follows,
-  the step reads "Go on to the unit gate", and its confirmation says that
-  the objectives not passed stay overridden and that the gate comes next;
-  "Go over the four again" stays beside it. Without a gate to follow, the
-  text stays as it is. The page needs to know before the step whether a
-  gate follows; how is the task's to settle.
-- Done when: tests show the card's step and confirmation with a gate to
-  follow and without; on `pnpm dev:fake`, a unit with skipped segments
-  shows them.
-
 ### 5.28 Math only for math, and no echo of the app's markers
 
 - Status: todo

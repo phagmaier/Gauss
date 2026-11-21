@@ -128,10 +128,15 @@ type SessionAction =
   | TimelineAction
   | { type: "confirm"; confirmation: Confirmation | undefined };
 
-function finishingCardKey(timeline: Timeline): number | undefined {
+/**
+ * What a "finish" confirmation was asked on: the standing closing card that
+ * offers its steps, by its key, and whether moving on from it offers the
+ * gate, which changes the step it confirms.
+ */
+function finishingStep(timeline: Timeline): string | undefined {
   const card = standingCard(timeline.items);
   if (card !== undefined && card.stepTaken === undefined && offersSteps(card)) {
-    return card.key;
+    return `${card.key}${card.gateFollows === true ? " gate" : ""}`;
   }
   return undefined;
 }
@@ -157,7 +162,7 @@ function reduceSession(
     timeline.assessment?.mode !== before.assessment?.mode ||
     timeline.assessment?.stage !== before.assessment?.stage ||
     (confirming === "finish"
-      ? finishingCardKey(timeline) !== finishingCardKey(before)
+      ? finishingStep(timeline) !== finishingStep(before)
       : nextStep(timeline) !== nextStep(before))
   ) {
     return { timeline };
@@ -1427,7 +1432,7 @@ function ClosingCard(props: {
     foot = (
       <div className="qa-foot">
         <span className="confirm">
-          <span>The unit will be recorded as overridden.</span>
+          <span>{view.confirm}</span>
           <button
             type="button"
             className="textbtn"
@@ -1455,7 +1460,7 @@ function ClosingCard(props: {
           disabled={props.busy}
           onClick={() => props.onConfirm(true)}
         >
-          Move on without them
+          {view.moveOn}
         </button>
         <button
           type="button"

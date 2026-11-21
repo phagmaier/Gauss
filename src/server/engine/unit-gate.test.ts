@@ -210,7 +210,7 @@ function setUp(record: (root: DataRoot) => DataRoot = (root) => root) {
     timer: createFakeTimer(),
     order: givenOrder,
   });
-  return { backend, units };
+  return { backend, units, clock };
 }
 
 async function open(
@@ -391,6 +391,7 @@ test("moving on from the closing card without the objectives not passed records 
       type: "unit_end",
       passed: false,
       objectives: { slope: "passed", "power-rule": "overridden" },
+      gateFollows: true,
     },
   ]);
 
@@ -1011,4 +1012,47 @@ test("a unit whose gate has nothing to ask finishes as before: every objective m
   const timeline = replay(chat);
   expect(cardOf(timeline).stepTaken).toBe("moved-on");
   expect(nextStep(timeline)).toBe("leave");
+});
+
+test("moving on is refused, and the closing card shown again, when whether the gate follows has changed since the card was shown", async () => {
+  await makeCourse({ limitsAt: LATELY, slope: false });
+  const setup = setUp();
+  const chat = await open(setup);
+  await step(chat.override(), chat);
+  expect(ofType(chat, "unit_end").at(-1)?.gateFollows).toBeUndefined();
+
+  // A day on, unit 1's objectives are due: the gate would ask them.
+  setup.clock.setTime(Date.parse("2026-11-19T12:00:00.000Z"));
+  expect(await chat.finishUnit()).toEqual({
+    ok: false,
+    status: 409,
+    error:
+      "The unit gate now has questions to ask, so it comes next if you move on. The card is shown again.",
+  });
+  expect(cardOf(replay(chat)).gateFollows).toBe(true);
+
+  // Answered in another unit's review just now: nothing is due again.
+  for (const objective of ["limit-value", "one-sided"]) {
+    const entry = correct(objective, setup.clock.toISOString());
+    await reload().appendEvidence(COURSE, {
+      ...entry,
+      answer: { ...entry.answer, questionId: `review-${objective}` },
+    });
+  }
+  expect(await chat.finishUnit()).toEqual({
+    ok: false,
+    status: 409,
+    error:
+      "The unit gate has nothing to ask now, so moving on finishes the unit. The card is shown again.",
+  });
+  const timeline = replay(chat);
+  expect(cardOf(timeline).gateFollows).toBeUndefined();
+  expect(timeline.items.filter((i) => i.kind === "unit_end")).toHaveLength(1);
+
+  await step(chat.finishUnit(), chat);
+  expect(ofType(chat, "assessment")).toEqual([]);
+  expect(chat.events().at(-1)).toEqual({
+    type: "unit_closed",
+    status: "overridden",
+  });
 });

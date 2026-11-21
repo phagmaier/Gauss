@@ -432,6 +432,13 @@ export const PageEvent = z.discriminatedUnion("type", [
     passed: z.boolean(),
     objectives: z.record(Slug, ObjectiveStatus),
     /**
+     * Set on a card before the gate that offers its steps when moving on
+     * offers the gate: `pickForGate` has something to ask as the card is
+     * shown. Moving on is refused, and the card shown again, if that has
+     * changed by then.
+     */
+    gateFollows: z.literal(true).optional(),
+    /**
      * Set on the card after the unit's gate, or after it was skipped (piece
      * 16). Its steps then cover `goOver`, the unit's objectives the gate
      * left not passed, and not every objective not passed: those the

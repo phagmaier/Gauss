@@ -2386,6 +2386,7 @@ test("a unit not passed waits on its closing card; going over again teaches one 
         "difference-quotient": "passed",
         "secant-slope": "overridden",
       },
+      gateFollows: true,
     },
   ]);
   expect(await chat.nextSegment()).toEqual({
@@ -2648,6 +2649,7 @@ test("a closing card that was waiting before a restart is shown again, and going
         "difference-quotient": "passed",
         "secant-slope": "overridden",
       },
+      gateFollows: true,
     },
   ]);
   expect(await chat.goOverAgain()).toEqual({ ok: true });

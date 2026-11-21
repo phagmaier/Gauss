@@ -1287,6 +1287,15 @@ test("a unit of one objective, not passed, is spoken of in the singular", () => 
       "You moved on. The unit is recorded as overridden, and its objective stays not passed.",
   });
   expect(
+    closingCard(one, {
+      passed: false,
+      objectives: { bayes: "attempted" },
+      gateFollows: true,
+    }).confirm,
+  ).toBe(
+    "The objective not passed is recorded as overridden and stays so; the unit gate comes next.",
+  );
+  expect(
     closingCard(one, { passed: true, objectives: { bayes: "passed" } }).summary,
   ).toBe("Its one objective passed.");
 });

@@ -107,6 +107,8 @@ async function open(phase: "discuss" | "closed") {
   return {
     stream: events,
     button,
+    /** What a confirmation asks, if one is shown. */
+    confirmation: () => host.querySelector(".confirm > span")?.textContent,
     async click(name: string) {
       const control = button(name);
       if (control === undefined || control.disabled) {
@@ -166,14 +168,47 @@ test("starting the gate in another tab does not leave Skip the rest already conf
   expect(button("Skip the rest of the gate")).toBeUndefined();
 });
 
+// Two objectives not passed before the gate, as the server shows the card.
+const BEFORE_GATE = {
+  type: "unit_end",
+  passed: false,
+  objectives: { "power-rule": "attempted", "product-rule": "overridden" },
+} as const;
+
+test("before the gate, a closing card that the gate follows says the gate comes next, and one without keeps its own step", async () => {
+  const { stream, button, click, confirmation } = await open("closed");
+  await stream.emit({ ...BEFORE_GATE, gateFollows: true });
+
+  expect(button("Go over the two again")?.disabled).toBe(false);
+  expect(button("Move on without them")).toBeUndefined();
+  await click("Go on to the unit gate");
+  expect(confirmation()).toBe(
+    "The two objectives not passed are recorded as overridden and stay so; the unit gate comes next.",
+  );
+  expect(button("Move on")?.disabled).toBe(false);
+  expect(button("Stay")?.disabled).toBe(false);
+
+  // The card shown again with nothing left for the gate to ask: the
+  // confirmation asked on the gate's step is gone.
+  await stream.emit(BEFORE_GATE);
+
+  expect(confirmation()).toBeUndefined();
+  expect(button("Go on to the unit gate")).toBeUndefined();
+  expect(button("Go over the two again")?.disabled).toBe(false);
+  await click("Move on without them");
+  expect(confirmation()).toBe("The unit will be recorded as overridden.");
+  expect(button("Move on")?.disabled).toBe(false);
+});
+
 test("a closing card after the gate asks for its own Move on confirmation", async () => {
   const { stream, button, click } = await open("closed");
   await stream.emit({
     type: "unit_end",
     passed: false,
     objectives: { "power-rule": "passed", "product-rule": "overridden" },
+    gateFollows: true,
   });
-  await click("Move on without them");
+  await click("Go on to the unit gate");
   expect(button("Stay")).toBeDefined();
   // Another tab moves on, then misses the gate's question on the passed objective.
   await stream.emit(

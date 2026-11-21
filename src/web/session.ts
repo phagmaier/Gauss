@@ -738,6 +738,10 @@ export interface ClosingCard {
   steps: boolean;
   /** The label of the step that goes over the objectives not passed again. */
   again: string;
+  /** The label of the step that moves on without them: to the gate, when it follows. */
+  moveOn: string;
+  /** What moving on asks before it is taken. */
+  confirm: string;
   /** The note once the learner has moved on without them. */
   movedOn: string;
 }
@@ -751,7 +755,10 @@ function cardRow(id: string, statement: string, status: ObjectiveStatus) {
 
 export function closingCard(
   plan: Plan,
-  card: Pick<UnitEndItem, "passed" | "objectives" | "stepTaken" | "gate">,
+  card: Pick<
+    UnitEndItem,
+    "passed" | "objectives" | "stepTaken" | "gate" | "gateFollows"
+  >,
 ): ClosingCard {
   const rows = plan.objectives.map((o) =>
     cardRow(o.id, o.statement, card.objectives[o.id] ?? "not-started"),
@@ -808,6 +815,19 @@ export function closingCard(
       toGoOver === 1
         ? "Go over it again"
         : `Go over the ${word(toGoOver)} again`,
+    ...(card.gateFollows === true
+      ? {
+          moveOn: "Go on to the unit gate",
+          confirm: `${
+            missed === 1
+              ? "The objective not passed is recorded as overridden and stays so"
+              : `The ${word(missed)} objectives not passed are recorded as overridden and stay so`
+          }; the unit gate comes next.`,
+        }
+      : {
+          moveOn: "Move on without them",
+          confirm: "The unit will be recorded as overridden.",
+        }),
     movedOn:
       "You moved on. The unit is recorded as overridden, and " +
       (total === 1

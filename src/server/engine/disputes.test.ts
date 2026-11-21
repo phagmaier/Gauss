@@ -611,6 +611,7 @@ test("at the unit's closing card, an overturned miss that leaves every objective
     type: "unit_end",
     passed: false,
     objectives: { quotient: "attempted", limit: "passed" },
+    gateFollows: true,
   });
 
   expect((await setup.disputes.raise(COURSE, "q1", "B is right.")).ok).toBe(

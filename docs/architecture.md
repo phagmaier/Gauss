@@ -629,7 +629,11 @@ the test before a unit lets the learner skip what they know.
   passed and not retained, leaving out those whose pass rests on an answer
   given while testing out, in the plan's order; then up to three of other
   units' by review's pick, so only those due. With nothing to ask there is
-  no card, and the unit finishes. With every objective passed as the
+  no card, and the unit finishes. A closing card before the gate that
+  offers its steps says whether moving on from it offers the gate
+  (`gateFollows` on `unit_end`, from `gatePicks` as the card is shown);
+  if that has changed when the learner moves on, the move is refused and
+  the card shown again as it stands. With every objective passed as the
   segment closed, the card comes with no closing card before it; one
   standing (a dispute or another unit's answer passed the rest) is shown
   again with the statuses as they are. The card says how many questions
@@ -1282,10 +1286,16 @@ progress take the outline.
   skips there and beside its questions (partway, with the answers given so
   far and that leaving instead keeps the gate for the next sitting,
   `skipGatePartway` in `src/web/session.ts`), and "Start the gate"; while it
-  runs the top line reads "Unit gate". The closing card after it has a
-  section, "Also asked, from other units", of those objectives with their
-  units and statuses. Only the closing card standing at the thread's end,
-  with no phase or assessment after it, offers its steps. The test
+  runs the top line reads "Unit gate". Before it, a closing card whose
+  move-on offers the gate reads "Go on to the unit gate" beside "Go over
+  the N again", and its confirmation says the objectives not passed are
+  recorded as overridden and stay so, and that the gate comes next;
+  without a gate to follow, the step stays "Move on without them" (the
+  texts are `closingCard`'s in `src/web/session.ts`). The closing card
+  after it has a section, "Also asked, from other units", of those
+  objectives with their units and statuses. Only the closing card
+  standing at the thread's end, with no phase or assessment after it,
+  offers its steps. The test
   is a marker, then question cards whose head reads "Objective 2 of 5",
   and "second question" after an unsure correct answer, with "Start
   learning instead" as the control. Its result card has a
