@@ -33,37 +33,23 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.29 A shorter tutor prompt
+### 5.29a A shorter planner prompt
 
 - Status: todo
-- Depends on: 5.14, 5.16, 5.23 and 5.28, which add rules to
-  `prompts/tutor.md`
-- The user's decision (2026-11-19): `prompts/tutor.md` (596 lines, about
-  6,000 words) goes to the tutor in every session, before the course and
-  the unit; cut it hard, as a task of its own. Its rules grew one finding
-  at a time (`decisions.md`, "Prompts"), so the same point is often made
-  in several sections, with its reason and examples each time.
-  - List every rule first, and give each a fate: kept, merged with
-    another, left to the engine (a refusal the tool returns already says
-    it, with a reason the tutor can act on), or dropped, with why. A rule
-    written after a failure seen in a real run (`decisions.md`,
-    "Prompts") stays in some form unless the engine now prevents that
-    failure.
-  - Say each rule once, where it applies; keep a reason only where the
-    model needs it to apply the rule well; one example at most.
-  - Read the turn headers (`engine/unit-turns.ts`) and tool descriptions
-    (`src/server/tools/`) beside it: what they already tell the tutor
-    need not be in the prompt.
-  - Guide, not a hard limit: about half its length. `planner.md` (182
-    lines) gets the same pass if the method works.
-- Done when: the rule list with each fate is in the commit message;
-  the tests pass (headers and refusals the prompt relies on unchanged);
-  and real-model runs on Sonnet, since the result depends on how well
-  the tutor teaches, on the same seeded units with the old prompt and
-  the new show no rule lost: a segment through teaching, discussion and
-  a check with a miss and its detour, a written and a code question, a
-  review and a gate. Short runs; the user reads one pair of transcripts.
-  `decisions.md`, "Prompts", keeps what the pass found.
+- Depends on: 5.29
+- Split from 5.29, whose method worked on `tutor.md` (`decisions.md`,
+  "Prompts", "The prompt says only what the app does not"):
+  `prompts/planner.md` (214 lines) gets the same pass. List every rule
+  with its fate (kept, merged, left to the engine because the intake's
+  tool descriptions, refusals or turn text already say it, or dropped,
+  with why); a rule from a failure seen in a real run stays unless the
+  engine now prevents it. Keep the example or the reason a finding
+  depended on: cutting those was what lost rules in 5.29.
+- Done when: the rule list is in the commit message; the tests pass; and
+  Sonnet intakes with the old prompt and the new, on the same profile and
+  the same learner messages (a small course, then a large topic planned
+  in stretches), show no rule lost. `decisions.md`, "Prompts", keeps what
+  the pass found.
 
 ## Stage 4: sources (built after stage 5)
 

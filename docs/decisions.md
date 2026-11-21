@@ -1643,6 +1643,19 @@ to change.
 
 **`tutor.md`**
 
+- **The prompt says only what the app does not** (task 5.29, the user's
+  decision to cut it; the method is the agent's): a rule a header
+  (`engine/unit-turns.ts`), a tool's description or result, a field's
+  description (`shared/question.ts`) or a refusal already states, with
+  what to do, is left to them, and every other rule is said once, where
+  it applies (634 lines and 6,465 words became 356 and 3,376). So the
+  tutor is now told those things only by the engine: rewording a header,
+  a description or a refusal changes the tutor's instructions. On Sonnet,
+  the old and new prompts on the same seeded unit (a review with a miss,
+  teaching, a discussion, a check with a written miss and its detour, a
+  code question, the gate with a miss) behaved alike but for two losses,
+  under "Assessment lead-ins" and "The rule against copying" below.
+  Cutting a rule's example or its reason was what lost it both times.
 - **Teaching** runs 250 to 400 words by default and never over 600,
   whatever the style note says: the brief caps it and lets the style set
   length, and the hard cap keeps a note from removing it.
@@ -1700,7 +1713,15 @@ to change.
   Sonnet (3.10) wrote out the very function the first code question then
   asked for. In the Teach phase, the next run taught the technique on one
   case and asked for it on another. An objective that names its
-  implementation ("... using zip") leaves little else to teach.
+  implementation ("... using zip") leaves little else to teach. With the
+  same Teach-phase sentence but the code section's "ask for code they
+  have not seen" folded away (task 5.29), Sonnet's two teaching turns on
+  a digit-sum objective pointed at the check's own function ("for the
+  digit sum, `//` and `%` help"), and a discussion set half of it as an
+  exercise; the old prompt's run used other examples. Saying that the
+  objective's task is not written out, set as an exercise or hinted at,
+  and that exercises use other examples too, gave a teaching turn and an
+  exercise on other functions.
 - **Starters hold what the question gives** (task 3.19): an objective
   "stores values of the basic types in variables" got, on Opus and then on
   Sonnet under "leave out only the code the exercise asks for", a
@@ -1740,7 +1761,12 @@ to change.
 - **Assessment lead-ins name only where the question comes from** (task
   5.13): lead-ins that named the concept ("a question on joint
   probability") told the learner which denominator. "Only that a question
-  follows, or which unit it comes from" fixed it.
+  follows, or which unit it comes from" fixed it. Cut to "name at most the
+  unit" without the example or the reason (task 5.29), Sonnet named the
+  subject in four of six review and gate lead-ins ("Now a question on
+  counting loop steps"); with both back, in one of three, the one after a
+  miss; with "One more from the same unit." as the example after a miss,
+  in none of three. The old prompt's run named it in two of five.
 - **"Unlike those listed" is defined by the pattern, not the numbers**
   (task 5.13): with the list in the header, the tutor still asked "an X or
   a Y, find P(X)" with new figures four times across a check, a gate, a
@@ -1767,7 +1793,14 @@ to change.
   which the plan did hold. On Haiku (task 5.28), a check's question had
   two lead-ins, the first pointing at the answer ("a log entry for a tool
   that never ran"), and a gate's lead-in named what its question read
-  ("one on reading a response with two tool calls").
+  ("one on reading a response with two tool calls"). On Sonnet (task
+  5.29), with either prompt, a written question asked two things ("explain
+  why ..., and what the base case would have to do"); with the new one, a
+  check's three written questions shared one pattern (a function whose
+  base case is never reached, explain why), and a gate question's text
+  said "n + (n−2) + ..." over code that subtracted 3, which the tutor
+  owned in the detour; one of three teaching turns asked for no package
+  before the check.
 
 **`handoff.md`** (task 5.13): every note, on both models, reported what the
 app already gives the next tutor (where the unit stands, answers, how the
