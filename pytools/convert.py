@@ -57,7 +57,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
-CONVERTER_VERSION = 2  # raised when the same original would give other files
+CONVERTER_VERSION = 3  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text (decisions.md, "Sources")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
@@ -86,10 +86,21 @@ class Unusable(Exception):
 
 
 @dataclass(frozen=True)
+class _Bookmark:
+    order: int
+    parent: int | None
+    level: int
+    title: str
+    page: int
+    y: float | None
+
+
+@dataclass(frozen=True)
 class Heading:
     level: int
     title: str
     start: int  # where the heading's lines start in the text
+    bookmark: _Bookmark | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +108,7 @@ class Paragraph:
     start: int
     end: int  # after its last line's newline
     whole: bool = False  # never cut: a fenced block
+    protected: tuple[tuple[int, int], ...] = ()  # no cut strictly inside these sorted, disjoint spans
 
 
 def _paragraph_place(start, end, first, last):
@@ -175,7 +187,7 @@ def ingest(original, folder, limit=SECTION_LIMIT):
 
 def _read(data, name):
     """The source's format, text, headings and paragraphs; for a PDF, also its title, pages and places."""
-    if b"%PDF-" in data[:1024]:
+    if data.startswith(b"%PDF-"):
         return _read_pdf(data)
     format = _EXTENSIONS.get(Path(name).suffix.lower())
     if format is None:
@@ -284,17 +296,17 @@ _BOLD_FONT = re.compile(r"bold|black|heavy|semibold|demi|medi", re.IGNORECASE)
 _MATH_FONT = re.compile(r"CMMI|CMEX|CMBSY|MSAM|MSBM|EUFM|EURM|EUSM|RSFS|Math")
 _NUMBERED = re.compile(r"(\d{1,2}(?:\.\d{1,2})*)\.?\s+[A-Z]")
 _PAGE_NUMBER = re.compile(r"[\[(–—-]?\s*(?:\d+|[ivxlcdm]+)\s*[\])–—-]?")
-_NUMBER_PREFIX = re.compile(r"\d+|[ivxlcdm]+|[a-z]|(?:chapter|part|section)\w*")
+_NUMBER_PREFIX = re.compile(r"(?i)(?:(?:chapter|part|section)\s+)?(?:\d+(?:\.\d+)*|[ivxlcdm]+|[a-z][.)])[.):]*\s+")
 _NOTE_LABEL = re.compile(r"(\d{1,3}|[*∗†‡§¶])(?=\s)")
 _WORD = re.compile(r"[^\W_]+(?:-[^\W_]+)*")
-_HYPHENATED_END = re.compile(r"([^\W\d_]+)[-\xad]$")
+_HYPHENATED_END = re.compile(r"([^\W\d_]+(?:-[^\W\d_]+)*)-$")
 # Footnote marks as labels: a Markdown footnote label holds no spaces, and `*` would read as emphasis.
 _SYMBOLS = {"*": "star", "∗": "star", "†": "dagger", "‡": "ddagger", "§": "section", "¶": "pilcrow"}
 _DPI = 150
-# FPDFText_GetTextObject giving the object's address, which keys the fonts' cache without a cast per character.
-_text_object = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)(
-    ctypes.cast(pdfium_c.FPDFText_GetTextObject, ctypes.c_void_p).value
-)
+
+
+def _address(pointer):
+    return ctypes.cast(pointer, ctypes.c_void_p).value
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,7 +357,8 @@ class _Page:
     lines: list
     images: bool
     math: bool
-    notes: dict = field(default_factory=dict)  # a note's label as printed: its lines, in order
+    bounds: tuple[float, float, float, float]
+    notes: dict = field(default_factory=dict)  # printed label to a list of notes, each with its own lines
 
 
 def _read_pdf(data):
@@ -423,28 +436,49 @@ def _largest_line(pages):
 def _pdf_page(document, index):
     page = document[index]
     try:
-        width, height = page.get_size()
-        figures, images = [], False
-        for obj in page.get_objects(max_depth=1):
-            if obj.type not in (pdfium_c.FPDF_PAGEOBJ_FORM, pdfium_c.FPDF_PAGEOBJ_IMAGE):
-                continue
-            left, bottom, right, top = obj.get_bounds()
-            share = (right - left) * (top - bottom) / (width * height or 1)
-            if obj.type == pdfium_c.FPDF_PAGEOBJ_FORM and share < 0.5:
-                figures.append((left, bottom, right, top))  # a chart, whose labels are not the text
-            images = images or (share >= 0.01 and (obj.type == pdfium_c.FPDF_PAGEOBJ_IMAGE or share < 0.5))
+        bounds = page.get_bbox()
         textpage = page.get_textpage()
         try:
-            chars, has_math = _chars(textpage.raw, figures)
+            images, chart_labels = _page_graphics(page, textpage, bounds)
+            chars, has_math = _chars(textpage.raw, chart_labels)
         finally:
             textpage.close()
     finally:
         page.close()
-    return _Page([_line(group, index) for group in _line_groups(chars)], images, has_math)
+    return _Page([_line(group, index) for group in _line_groups(chars)], images, has_math, bounds)
 
 
-def _chars(raw, figures):
-    """The page's characters in PDFium's order: upright, outside figures, private-use ones but small capitals left out."""
+def _page_graphics(page, textpage, bounds):
+    """Whether the page shows graphics, and the text objects identified as chart labels."""
+    left, bottom, right, top = bounds
+    area = (right - left) * (top - bottom) or 1
+    labels, images = set(), False
+    for obj in page.get_objects(max_depth=1, filter=[pdfium_c.FPDF_PAGEOBJ_FORM, pdfium_c.FPDF_PAGEOBJ_IMAGE]):
+        left, bottom, right, top = obj.get_bounds()
+        share = (right - left) * (top - bottom) / area
+        if obj.type == pdfium_c.FPDF_PAGEOBJ_IMAGE:
+            images = images or share >= 0.01
+        elif share < 0.5:
+            # A form is a container, not a figure. Inspect its objects, never text that merely overlaps it.
+            text_objects, paths, pictures = [], 0, False
+            for child in page.get_objects(form=obj, textpage=textpage):
+                if child.type == pdfium_c.FPDF_PAGEOBJ_TEXT:
+                    text_objects.append(child)
+                elif child.type == pdfium_c.FPDF_PAGEOBJ_PATH:
+                    paths += 1
+                elif child.type in (pdfium_c.FPDF_PAGEOBJ_IMAGE, pdfium_c.FPDF_PAGEOBJ_SHADING):
+                    pictures = True
+            images = images or (share >= 0.01 and (paths > 0 or pictures))
+            if paths >= max(10, len(text_objects)):
+                for text in text_objects:
+                    label = text.extract().strip()
+                    if len(label.split()) <= 4 and not (len(label) > 1 and label.endswith((".", "?", "!"))):
+                        labels.add(_address(text.raw))
+    return images, labels
+
+
+def _chars(raw, figure_text):
+    """Upright characters in PDFium's order, skipping chart labels and private-use characters other than small capitals."""
     x, y, box, matrix = ctypes.c_double(), ctypes.c_double(), pdfium_c.FS_RECTF(), pdfium_c.FS_MATRIX()
     fonts, chars, space, has_math = {}, [], False, False
     for index in range(pdfium_c.FPDFText_CountChars(raw)):
@@ -458,20 +492,19 @@ def _chars(raw, figures):
             code -= 0xF700
         if code < 0x20 or 0x7F <= code < 0xA0 or 0xE000 <= code <= 0xF8FF or code == 0xFFFF:
             continue
-        obj = _text_object(raw, index)
-        if not obj:
+        raw_obj = pdfium_c.FPDFText_GetTextObject(raw, index)
+        if not raw_obj:
+            continue
+        obj = _address(raw_obj)
+        if obj in figure_text:
             continue
         font = fonts.get(obj)
         if font is None:
-            font = fonts[obj] = _font(raw, index, ctypes.cast(obj, pdfium_c.FPDF_PAGEOBJECT), matrix)
+            font = fonts[obj] = _font(raw, index, raw_obj, matrix)
         if not font.upright:
             continue
         pdfium_c.FPDFText_GetCharOrigin(raw, index, x, y)
         pdfium_c.FPDFText_GetLooseCharBox(raw, index, box)
-        if figures:
-            middle_x, middle_y = (box.left + box.right) / 2, (box.top + box.bottom) / 2
-            if any(l <= middle_x <= r and b <= middle_y <= t for l, b, r, t in figures):
-                continue
         chars.append(_Char(chr(code), x.value, y.value, box.left, box.right, font, space))
         has_math = has_math or font.math
         space = False
@@ -577,17 +610,26 @@ def _line(chars, page):
 
 def _drop_furniture(pages):
     """Removes running heads and feet (text repeated at one place on pages), page numbers and margin line numbers."""
-    rows, edges = Counter(), {}
-    for index, page in enumerate(pages):
+    rows, edges = Counter(), []
+    for page in pages:
         if not page.lines:
+            edges.append([])
             continue
-        top, bottom = max(line.y for line in page.lines), min(line.y for line in page.lines)
-        edges[index] = [line for line in page.lines if line.y >= top - 2 or line.y <= bottom + 2]
-        for line in edges[index]:
-            rows[_signature(line), round(line.y / 2)] += 1
-    for index, page in enumerate(pages):
+        _, bottom, _, top = page.bounds
+        margin = 0.12 * (top - bottom)
+        upper, lower = max(line.y for line in page.lines), min(line.y for line in page.lines)
+        candidates = [
+            line for line in page.lines
+            if (line.y >= upper - 2 and line.y >= top - margin)
+            or (line.y <= lower + 2 and line.y <= bottom + margin)
+        ]
+        edges.append(candidates)
+        # A lone line cannot establish that the recurring text is separate from the body.
+        if upper - lower > 2:
+            rows.update({(_signature(line), round(line.y / 2)) for line in candidates})
+    for page, candidates in zip(pages, edges, strict=True):
         drop = set()
-        for line in edges.get(index, ()):
+        for line in candidates:
             text = line.text.strip()
             if _PAGE_NUMBER.fullmatch(text) or (rows[_signature(line), round(line.y / 2)] >= 3 and text):
                 drop.add(id(line))
@@ -627,9 +669,8 @@ def _take_notes(page, body):
         for line in lines[index:end]:
             label = _note_label(line, refs)
             if label is not None:
-                current = page.notes.setdefault(label, [])
-                if current:  # the same label again: another note
-                    current = page.notes[label] = current + [None]
+                current = []
+                page.notes.setdefault(label, []).append(current)
             current.append(line)
         index = end
     page.lines = kept
@@ -693,9 +734,12 @@ def _paragraph_starts(lines, leading):
 
 
 def _bookmarks(document):
-    """The bookmarks as (level from 1, title, page from 0, the target's height or None), those with a page."""
-    found = []
+    """Local bookmarks in TOC order, with their nearest included parent and destination."""
+    found, parents = [], []
     for bookmark in document.get_toc():
+        level = bookmark.level + 1
+        while parents and parents[-1].level >= level:
+            parents.pop()
         title = " ".join(bookmark.get_title().split())
         dest = pdfium_c.FPDFBookmark_GetDest(document.raw, bookmark.raw)
         if not dest:
@@ -710,7 +754,12 @@ def _bookmarks(document):
         has = [ctypes.c_int() for _ in range(3)]
         place = [ctypes.c_float() for _ in range(3)]
         pdfium_c.FPDFDest_GetLocationInPage(dest, *has, *place)
-        found.append((bookmark.level + 1, title, page, place[1].value if has[1].value else None))
+        item = _Bookmark(
+            len(found), parents[-1].order if parents else None, level, title, page,
+            place[1].value if has[1].value else None,
+        )
+        found.append(item)
+        parents.append(item)
     return found
 
 
@@ -721,32 +770,39 @@ def _letters(text):
 def _bookmark_headings(bookmarks, pages):
     """Each bookmark's heading: the lines on its page that print its title, or else a heading before its place.
 
-    Returns {(page, line index): [(level, title, lines it replaces)]}, in reading order.
+    Returns {(page, line index): [(level, title, line count, bookmark)]}.
     """
     headings, taken = {}, set()
-    for level, title, page, y in bookmarks:
+    for bookmark in bookmarks:
+        title, page, y = bookmark.title, bookmark.page, bookmark.y
         lines, wanted = pages[page].lines, _letters(title)
         matches = []
-        for first in range(len(lines)):
-            joined = ""
-            for count in range(1, 5):
-                if first + count > len(lines) or (page, first + count - 1) in taken:
-                    break
-                joined += _letters(lines[first + count - 1].text)
-                if joined == wanted:
-                    matches.append((first, count, title))
-                elif wanted and joined.endswith(wanted) and _NUMBER_PREFIX.fullmatch(joined[: -len(wanted)]):
-                    printed = " ".join(" ".join(line.text for line in lines[first : first + count]).split())
-                    matches.append((first, count, printed))
-                if len(joined) >= len(wanted) + 12:
-                    break
+        for first, line in enumerate(lines):
+            for after in range(first + 1, min(first + 4, len(lines)) + 1):
+                if after > first + 1:
+                    previous, current = lines[after - 2], lines[after - 1]
+                    if not 0 < previous.y - current.y <= 1.8 * max(previous.size, current.size):
+                        break
+                printed = " ".join(" ".join(part.text for part in lines[first:after]).split())
+                prefix = _NUMBER_PREFIX.match(printed)
+                if _letters(printed) == wanted:
+                    name = title
+                elif prefix and _letters(printed[prefix.end():]) == wanted:
+                    name = printed
+                else:
+                    continue
+                rank = (abs(line.y - y) if y is not None else 0, -line.size, not line.bold, after - first, first)
+                matches.append((rank, first, after, name))
         if matches:
-            first, count, name = min(matches, key=lambda m: abs(lines[m[0]].y - y) if y is not None else 0)
-            taken.update((page, index) for index in range(first, first + count))
-            headings.setdefault((page, first), []).append((level, name, count))
+            _, first, after, name = min(matches)
+            positions = {(page, index) for index in range(first, after)}
+            count = 0 if taken & positions else after - first
+            if count:
+                taken.update(positions)
         else:
             first = 0 if y is None else next((i for i, line in enumerate(lines) if line.y <= y + 2), len(lines))
-            headings.setdefault((page, first), []).append((level, title, 0))
+            name, count = title, 0
+        headings.setdefault((page, first), []).append((bookmark.level, name, count, bookmark))
     return headings
 
 
@@ -760,6 +816,8 @@ def _type_headings(lines, starts, pages, body, body_bold):
             end < len(lines)
             and lines[end].page == line.page
             and (lines[end].size, lines[end].bold) == (line.size, line.bold)
+            and 0 < lines[end - 1].y - lines[end].y <= 1.5 * line.size
+            and not _NUMBERED.match(lines[end].text)
             and (line.size >= 1.25 * body or (line.bold and not body_bold))
         ):
             end += 1
@@ -770,7 +828,9 @@ def _type_headings(lines, starts, pages, body, body_bold):
     for first, end in runs:
         group, line = lines[first:end], lines[first]
         text = " ".join(" ".join(part.text for part in group).split())
-        alone = starts[first] and (end == len(lines) or starts[end])
+        starts_alone = starts[first] or line.page != lines[first - 1].page
+        ends_alone = end == len(lines) or starts[end] or line.page != lines[end].page
+        alone = starts_alone and ends_alone
         numbered = _NUMBERED.match(text)
         big = line.size >= 1.25 * body
         bold = line.bold and not body_bold
@@ -796,7 +856,7 @@ def _type_headings(lines, starts, pages, body, body_bold):
             depth = depths[style].most_common(1)[0][0] if style in depths else ranks[style]
         line = lines[first]
         position = pages[line.page].lines.index(line)
-        headings.setdefault((line.page, position), []).append((depth, text, end - first))
+        headings.setdefault((line.page, position), []).append((depth, text, end - first, None))
     return headings
 
 
@@ -821,29 +881,46 @@ class _PdfWriter:
         self.paragraph = None  # the open paragraph's text
         self.paragraph_start = 0
         self.inline = []  # (offset in the open paragraph, page from 1) of its markers
-        self.notes = []  # (label, a note's lines), written after the open paragraph
-        self.waiting = {}  # the page's notes not yet referred to, by their printed label
+        self.protected = []
+        self.note_start = None  # first reference whose definition follows the open paragraph
+        self.notes = []  # (label, a note's lines), written after the open heading or paragraph
+        self.page_notes = {}
+        self.claimed = Counter()
         self.used = Counter()  # footnote labels in the current heading's stretch
-        words = [line.text for page in pages for line in page.lines]
-        words += [line.text for page in pages for note in page.notes.values() for line in note if line]
-        self.plain = {word.lower() for text in words for word in _WORD.findall(text)}
-        self.hyphenated = {word for word in self.plain if "-" in word}
+        self.words = {
+            word.lower()
+            for page in pages
+            for line in page.lines
+            for word in _WORD.findall(line.text)
+        }
+        self.words.update(
+            word.lower()
+            for page in pages
+            for notes in page.notes.values()
+            for note in notes
+            for line in note
+            for word in _WORD.findall(line.text)
+        )
 
     def write(self):
         for number, page in enumerate(self.pages):
             self.pending.append(number)
-            self.waiting = {label: list(_split_notes(lines)) for label, lines in page.notes.items()}
+            self.page_notes, self.claimed = page.notes, Counter()
             consumed = 0
             for index, line in enumerate(page.lines):
-                for level, title, count in self.headings.get((number, index), ()):
-                    self._heading(level, title)
+                for level, title, count, bookmark in self.headings.get((number, index), ()):
+                    self._heading(level, title, page.lines[index:index + count], bookmark)
                     consumed = max(consumed, index + count)
                 if index >= consumed:
                     self._line(line)
-            for level, title, _ in self.headings.get((number, len(page.lines)), ()):
-                self._heading(level, title)
-            # A note no marker on its page refers to still follows the paragraph.
-            self.notes += [(self._unique(label), note) for label, notes in self.waiting.items() for note in notes]
+            for level, title, _, bookmark in self.headings.get((number, len(page.lines)), ()):
+                self._heading(level, title, (), bookmark)
+            # Keep any definition left after pairing rather than silently dropping source text.
+            for label, notes in self.page_notes.items():
+                self.notes.extend((self._unique(label), note) for note in notes[self.claimed[label]:])
+            if self.paragraph is None and self.notes:
+                self._definitions()
+                self._emit("\n")
         self._close()
         self._markers()
         text = "".join(self.out)
@@ -867,7 +944,7 @@ class _PdfWriter:
         return f"<!-- {' '.join(words)} -->"
 
     def _markers(self):
-        """Writes the waiting markers as lines of their own, where the next block starts; that start."""
+        """Writes the waiting markers as lines of their own and returns their start."""
         start = self.length
         for number in self.pending:
             self.marks.append((self.length, number + 1))
@@ -875,83 +952,127 @@ class _PdfWriter:
         self.pending = []
         return start
 
-    def _heading(self, level, title):
+    def _heading(self, level, title, printed, bookmark):
         self._close()
         start = self._markers()
-        self.blocks.append(Heading(level, title, start))
-        self._emit("#" * min(level, 6) + " " + title + "\n\n")
+        self.blocks.append(Heading(level, title, start, bookmark))
         self.used = Counter()
+        if any(isinstance(part, _Ref) for line in printed for part in line.parts):
+            title = " ".join(self._render(line)[0] for line in printed)
+        self._emit("#" * min(level, 6) + " " + title + "\n")
+        self._definitions()
+        self._emit("\n")
 
     def _unique(self, label):
         label = _SYMBOLS.get(label, label)
         self.used[label] += 1
         return label if self.used[label] == 1 else f"{label}-{self.used[label]}"
 
-    def _render(self, line, notes=True):
-        """The line's text with its markers as references, each taking its page's note of that label."""
-        out = []
+    def _render(self, line):
+        """Returns the line with footnote references and the offset of its first attached reference."""
+        out, length, first = [], 0, None
         for part in line.parts:
             if isinstance(part, str):
-                out.append(part)
-            elif not notes:
-                out.append(part.label)
+                text = part
             else:
                 label = self._unique(part.label)
-                out.append(f"[^{label}]")
-                if self.waiting.get(part.label):
-                    self.notes.append((label, self.waiting[part.label].pop(0)))
-        return "".join(out).strip()
+                text = f"[^{label}]"
+                notes = self.page_notes.get(part.label)
+                used = self.claimed[part.label]
+                if notes and (used < len(notes) or len(notes) == 1):
+                    self.notes.append((label, notes[used] if len(notes) > 1 else notes[0]))
+                    self.claimed[part.label] += 1
+                    if first is None:
+                        first = length
+            out.append(text)
+            length += len(text)
+        raw = "".join(out)
+        text = raw.lstrip()
+        return text.rstrip(), None if first is None else first - (len(raw) - len(text))
 
     def _line(self, line):
         if self.paragraph is None or self.starts[id(line)]:
             self._close()
             self.paragraph_start = self._markers()
-            text = self._render(line)
+            text, note = self._render(line)
             # A line starting so would be a heading, a quote or HTML.
-            self.paragraph = "\\" + text if text.startswith(("#", ">", "<")) else text
+            escape = text.startswith(("#", ">", "<"))
+            self.paragraph = "\\" + text if escape else text
+            if self.paragraph_start < self.length:
+                first_space = self.paragraph.find(" ")
+                word_end = len(self.paragraph) if first_space < 0 else first_space
+                self._protect(self.paragraph_start, self.length + word_end)
+            self.note_start = note + escape if note is not None else None
             return
-        joined, at = self._join(self.paragraph, self._render(line))
+        following, note = self._render(line)
+        joined, at = self._join(self.paragraph, following)
+        if note is not None:
+            note += len(joined) - len(following)
         if self.pending:
-            # Never at a line's start, where a comment would end the paragraph; after a mended word.
+            # A comment inside a paragraph follows the preceding word, including across a section cut.
             before, after = joined[:at], joined[at:].lstrip(" ")
-            position = len(before) + 1
+            position, markers = at + 1, []
             for number in self.pending:
-                self.inline.append((position, number + 1))
-                position += len(self._marker(number)) + 1
-            markers = " ".join(self._marker(number) for number in self.pending)
-            joined = before + " " + markers + (" " + after if after else "")
+                marker = self._marker(number)
+                self.inline.append((self.length + position, number + 1))
+                position += len(marker) + 1
+                markers.append(marker)
+            self._protect(self.length + before.rfind(" ") + 1, self.length + position - 1)
+            with_markers = before + " " + " ".join(markers) + (" " + after if after else "")
+            if note is not None and note >= at:
+                note += len(with_markers) - len(joined)
+            joined = with_markers
             self.pending = []
+        if self.note_start is None:
+            self.note_start = note
         self.paragraph = joined
 
     def _join(self, text, following):
         """The text with its next line, a word hyphenated at the line's end mended; where a page marker would go."""
-        match = _HYPHENATED_END.search(text, max(0, len(text) - 80))  # the end only: a paragraph grows long
-        if not (match and following[:1].islower()):
+        if not text.endswith("-"):
             return text + " " + following, len(text)
-        token = following.split(" ", 1)[0]
-        fragment = _WORD.match(following).group()
-        left, head = match.group(1).lower(), fragment.split("-", 1)[0].lower()
-        # Kept for a compound ("English-to-German", "self-consciousness"), unless the parts make a word used elsewhere.
-        keep = (
-            text.endswith("-")
-            and f"{left}{head}" not in self.plain
-            and ("-" in fragment or f"{left}-{head}" in self.hyphenated)
+        match = _HYPHENATED_END.search(text, max(0, len(text) - 80))  # the end only: a paragraph grows long
+        word = _WORD.match(following)
+        if not (match and word):
+            return text + " " + following, len(text)
+        left, right = match.group(1).lower(), word.group().lower()
+        compound = f"{left}-{right}" in self.words
+        if not (compound or following[0].islower()):
+            return text + " " + following, len(text)
+        head = right.split("-", 1)[0]
+        keep = f"{left}{right}" not in self.words and (
+            compound or (f"{left}{head}" not in self.words and ("-" in right or f"{left}-{head}" in self.words))
         )
         joined = (text if keep else text[:-1]) + following
-        return joined, len(joined) - len(following) + len(token)
+        return joined, len(joined) - len(following) + len(following.split(" ", 1)[0])
+
+    def _protect(self, start, end):
+        """Adds an indivisible span, coalescing any overlapping spans at the end."""
+        while self.protected and self.protected[-1][1] > start:
+            start = min(start, self.protected.pop()[0])
+        self.protected.append((start, end))
 
     def _close(self):
         if self.paragraph is None:
             return
-        self.marks += [(self.length + position, number) for position, number in self.inline]
+        self.marks.extend(self.inline)
         self.inline = []
+        origin = self.length
         self._emit(self.paragraph + "\n")
+        self._definitions()
+        if self.note_start is not None:
+            word_start = self.paragraph.rfind(" ", 0, self.note_start) + 1
+            self._protect(origin + word_start, self.length)
+        self.blocks.append(Paragraph(self.paragraph_start, self.length, protected=tuple(self.protected)))
+        self.protected = []
+        self.note_start = None
+        self._emit("\n")
+        self.paragraph = None
+
+    def _definitions(self):
         for label, note in self.notes:
             self._emit(f"\n[^{label}]: {self._note_text(note)}\n")
         self.notes = []
-        self.blocks.append(Paragraph(self.paragraph_start, self.length))
-        self._emit("\n")
-        self.paragraph = None
 
     def _note_text(self, lines):
         """A note's text, its label left out."""
@@ -963,22 +1084,9 @@ class _PdfWriter:
             parts[0] = parts[0][_NOTE_LABEL.match(parts[0]).end() :]
         text = "".join(parts).strip()
         for line in lines[1:]:
-            text = self._join(text, self._render(line, notes=False))[0]
+            following = "".join(part if isinstance(part, str) else part.label for part in line.parts).strip()
+            text = self._join(text, following)[0]
         return " ".join(text.split())
-
-
-def _split_notes(lines):
-    """A label's lines as notes: `None` separates two notes with the same label."""
-    note = []
-    for line in lines:
-        if line is None:
-            if note:
-                yield note
-            note = []
-        else:
-            note.append(line)
-    if note:
-        yield note
 
 
 def render_page(original, number, png):
@@ -1050,16 +1158,23 @@ def _outline(text, blocks, title, limit, place=_paragraph_place):
                 entry["part"] = {"number": number, "of": len(parts)}
             stretch.sections.append(entry)
 
-    # Nesting: each heading under the nearest one before it of a higher level.
+    # Bookmarks carry their parents; other headings nest by level in reading order.
     top, open_headings = [], []
+    bookmarked = {}
     for stretch in stretches:
         if stretch.heading is None:
             top.append(stretch)
+            continue
+        if stretch.heading.bookmark is not None:
+            bookmarked[stretch.heading.bookmark.order] = stretch
             continue
         while open_headings and open_headings[-1].heading.level >= stretch.heading.level:
             open_headings.pop()
         (open_headings[-1].children if open_headings else top).append(stretch)
         open_headings.append(stretch)
+    for _, stretch in sorted(bookmarked.items()):
+        parent = stretch.heading.bookmark.parent
+        (bookmarked[parent].children if parent is not None else top).append(stretch)
     return [entry for stretch in top for entry in _entries(stretch)], sections, cut
 
 
@@ -1138,19 +1253,30 @@ def _split(text, start, end, paragraph, limit):
     prefix, suffix = low - start, end - high
     if high - low + (prefix if prefix < limit else 0) + (suffix if suffix < limit else 0) <= limit:
         return [start]
-    cut = _cut_point(text, low, high)
+    cut = _cut_point(text, low, high, paragraph.protected)
     if cut is None:
         return [start]
     return _split(text, start, cut, paragraph, limit) + _split(text, cut, end, paragraph, limit)
 
 
-def _cut_point(text, low, high):
-    """The sentence end, or else the space, nearest the middle of text[low:high], cut after its spacing."""
+def _cut_point(text, low, high, protected):
+    """The nearest sentence end or whitespace, then the midpoint; never inside a protected span."""
+
+    def covering(offset):
+        i = bisect_right(protected, offset, key=lambda span: span[0]) - 1
+        return protected[i] if i >= 0 and protected[i][0] < offset < protected[i][1] else None
+
+    def distance(offset):
+        return abs(2 * offset - low - high), offset
+
     for pattern in (_SENTENCE_END, _SPACE):
-        cuts = [m.end() for m in pattern.finditer(text, low, high) if low < m.end() < high]
-        if cuts:
-            return min(cuts, key=lambda cut: (abs(2 * cut - low - high), cut))
-    return (low + high) // 2 if high - low > 1 else None
+        cuts = (m.end() for m in pattern.finditer(text, low, high) if m.end() < high and not covering(m.end()))
+        best = min(cuts, key=distance, default=None)
+        if best is not None:
+            return best
+    middle = (low + high) // 2
+    edges = covering(middle) or (middle,)
+    return min((edge for edge in edges if low < edge < high), key=distance, default=None)
 
 
 def main(argv=None):

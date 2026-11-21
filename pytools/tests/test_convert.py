@@ -332,6 +332,15 @@ def test_a_second_run_writes_the_same_bytes(tmp_path):
     assert len(files(runs[0])) > 5  # the original, the outline, and the sections, some of them parts
 
 
+@pytest.mark.parametrize("name", ["notes.txt", "notes.md"])
+def test_mentioning_a_pdf_header_does_not_make_text_a_pdf(tmp_path, name):
+    paragraph = "A text note: %PDF-1.7 is a PDF header.\n"
+    summary, folder = run(tmp_path, name, paragraph.encode())
+
+    assert summary["result"] == "converted"
+    assert section_files(folder) == {"s1": paragraph}
+
+
 @pytest.mark.parametrize(
     ("name", "content", "reason"),
     [

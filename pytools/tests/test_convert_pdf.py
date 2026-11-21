@@ -74,11 +74,12 @@ def _pieces(word, size):
     return [piece for piece in pieces if piece[0]]
 
 
-def write_pdf(pages, title="", labels=(), password=None):
-    """The PDF's bytes: its pages, metadata title and page labels as (first page, style, start)."""
+def write_pdf(pages, title="", labels=(), password=None, *, bookmark_order=None):
+    """The PDF's bytes: its pages, metadata title and page labels as (first page, style, start or prefix)."""
     out = io.BytesIO()
     c = canvas.Canvas(out, pagesize=(612, 792), encrypt=password)
     c.setTitle(title)
+    bookmarks = {}
     for number, page in enumerate(pages):
         for call in page.calls:
             call(c)
@@ -88,10 +89,15 @@ def write_pdf(pages, title="", labels=(), password=None):
                 c.bookmarkPage(key, fit="Fit")
             else:
                 c.bookmarkPage(key, fit="XYZ", left=0, top=top)
-            c.addOutlineEntry(name, key, level)
+            bookmarks[number, index] = (name, key, level)
         c.showPage()
+    for position in bookmarks if bookmark_order is None else bookmark_order:
+        c.addOutlineEntry(*bookmarks[position])
     for page, style, start in labels:
-        c.addPageLabel(page, style, start)
+        if style is None:
+            c.addPageLabel(page, prefix=start)
+        else:
+            c.addPageLabel(page, style, start)
     c.save()
     return out.getvalue()
 
@@ -291,6 +297,171 @@ def test_a_cut_pdf_stretch_gives_each_part_its_pages(tmp_path):
         pdf_section(f"s{n}", f"The Book of Tests (part {n} of 4)", part, first, last, part=(n, 4))
         for n, (part, (first, last)) in enumerate(zip(parts, pages, strict=True), 1)
     ]
+
+
+def test_a_cut_inside_a_pdf_paragraph_keeps_page_markers_intact(tmp_path):
+    one, two = Page(), Page()
+    one.text("The first line keeps on going onto the next page of text", 720)
+    two.text("and the second line finishes the rather long paragraph.", 720)
+    label = "A long page label for the opening text"
+    data = write_pdf([one, two], labels=[(0, None, label)])
+
+    _, folder = run(tmp_path, "paper.pdf", data, limit=90)
+    files = list(section_files(folder).values())
+
+    assert len(files) > 1
+    assert all(part.count("<!--") == part.count("-->") for part in files)
+    assert "".join(files) == (
+        f'<!-- page 1 label "{label}" -->\nThe first line keeps on going onto the next page of text '
+        f'<!-- page 2 label "{label}" --> and the second line finishes the rather long paragraph.\n'
+    )
+
+
+def test_a_cut_inside_a_pdf_paragraph_keeps_a_note_with_its_reference(tmp_path):
+    page = Page()
+    page.line("A raised footnote marker follows these words in the text^1".split(), 720)
+    page.text("and this line completes the paragraph with other details.", 708)
+    definition = "This footnote is multiple words long and belongs with the text that refers to it."
+    page.text(f"1 {definition}", 60, size=8)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([page]), limit=110)
+    files = list(section_files(folder).values())
+
+    assert len(files) > 1  # prose before the reference can still be cut
+    assert [part for part in files if "[^1]" in part] == [
+        next(part for part in files if f"[^1]: {definition}\n" in part)
+    ]
+    assert any("text[^1] and this line" in part for part in files)
+
+
+def test_repeated_body_prompts_are_not_running_heads(tmp_path):
+    pages = [Page() for _ in range(3)]
+    prompts = [f"Exercise {i}: Describe the structure you observed." for i in range(1, 4)]
+    for page, prompt in zip(pages, prompts, strict=True):
+        page.text(prompt, 720)  # even in the top band, these lone lines aren't furniture
+
+    _, folder = run(tmp_path, "exercises.pdf", write_pdf(pages))
+
+    assert outline(folder)["pages"]["blank"] == []
+    assert all(prompt in section_files(folder)["s1"] for prompt in prompts)
+
+
+@pytest.mark.parametrize("chart", [False, True])
+def test_prose_in_or_overlapping_a_pdf_form_is_kept(tmp_path, chart):
+    page = Page()
+
+    def draw_form(c):
+        c.beginForm("body", 65, 500, 500, 730)
+        c.setFont("Courier", 10)
+        if chart:
+            for y in range(580, 730, 12):
+                c.line(68, y, 500, y)
+            c.drawString(72, 720, "Axis label")
+        c.drawString(72, 700, "The first line of the body is inside a reusable form.")
+        c.drawString(72, 688, "The second line belongs to the same book paragraph.")
+        c.endForm()
+        c.doForm("body")
+
+    page.calls.append(draw_form)
+    page.text("The next paragraph is outside that form.", 652 if chart else 445)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([page]))
+
+    marker = "<!-- page 1 images -->" if chart else "<!-- page 1 -->"
+    assert section_files(folder) == {
+        "s1": f"{marker}\nThe first line of the body is inside a reusable form. "
+        "The second line belongs to the same book paragraph.\n\nThe next paragraph is outside that form.\n"
+    }
+
+
+@pytest.mark.parametrize("earlier", ["Partial results", "Methods"])
+def test_a_page_only_bookmark_chooses_the_printed_heading_over_earlier_prose(tmp_path, earlier):
+    page = Page()
+    page.bookmark("Methods", 0)
+    page.text(earlier, 740)
+    page.text("Methods", 690, font="Courier-Bold", size=14)
+    page.text("The methods paragraph is printed beneath the heading.", 665)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([page]))
+
+    files = section_files(folder)
+    assert files["s1"] == f"<!-- page 1 -->\n{earlier}\n\n"
+    assert files["s2"].startswith("# Methods\n\nThe methods paragraph")
+
+
+def test_out_of_order_bookmark_destinations_keep_the_bookmark_parent(tmp_path):
+    one, two = Page(), Page()
+    one.bookmark("Child", 1)
+    one.text("Child", 720, font="Courier-Bold", size=14)
+    one.text("This paragraph belongs to the child bookmark.", 690)
+    two.bookmark("Parent", 0)
+    two.text("Parent", 720, font="Courier-Bold", size=14)
+    two.text("This paragraph belongs to the parent bookmark.", 690)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([one, two], bookmark_order=[(1, 0), (0, 0)]))
+
+    parent, = outline(folder)["entries"]
+    assert parent["title"] == "Parent"
+    assert [(entry["title"], entry["id"]) for entry in parent["entries"]] == [("Parent", "s2"), ("Child", "s1")]
+
+
+def test_a_heading_and_body_can_each_reference_the_same_note(tmp_path):
+    page = Page()
+    page.bookmark("Heading", 0)
+    page.line(["*Heading^1*"], 720, size=14)
+    page.line("The body refers to the same note^1 in a second place.".split(), 680)
+    page.text("1 A note about the heading.", 70, size=8)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([page]))
+
+    assert outline(folder)["entries"][0]["title"] == "Heading"
+    assert section_files(folder) == {
+        "s1": "<!-- page 1 -->\n# Heading[^1]\n\n[^1]: A note about the heading.\n\n"
+        "The body refers to the same note[^1-2] in a second place.\n\n[^1-2]: A note about the heading.\n"
+    }
+
+
+def test_repeated_labels_for_distinct_notes_are_paired_in_order(tmp_path):
+    page = Page()
+    page.line("The first paragraph has this reference^1".split(), 720)
+    page.line("And the second has another reference^1".split(), 688)
+    page.text("1 The first note.", 90, size=8)
+    page.text("Its continuation.", 80, size=8)
+    page.text("1 The second note.", 70, size=8)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([page]))
+
+    assert section_files(folder) == {
+        "s1": "<!-- page 1 -->\nThe first paragraph has this reference[^1]\n\n[^1]: The first note. Its continuation.\n\n"
+        "And the second has another reference[^1-2]\n\n[^1-2]: The second note.\n"
+    }
+
+
+def test_distinct_type_headings_do_not_merge_and_numbered_headings_need_not_be_bold(tmp_path):
+    page = Page()
+    page.text("1 Methods", 735, size=16, font="Courier-Bold")
+    page.text("1.1 Sampling", 640, size=16, font="Courier-Bold")
+    page.text("The first paragraph discusses the sampling method.", 600)
+    page.text("1.2 Limits", 550)
+    page.text("The last paragraph explains the limits of the method.", 510)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([page]))
+
+    methods, = outline(folder)["entries"]
+    assert methods["title"] == "1 Methods"
+    assert [entry["title"] for entry in methods["entries"]] == ["1.1 Sampling", "1.2 Limits"]
+
+
+@pytest.mark.parametrize(("left", "right"), [("state-of-the", "art"), ("English-to", "German")])
+def test_a_known_compound_is_preserved_across_a_line_break(tmp_path, left, right):
+    page = Page()
+    compound = f"{left}-{right}"
+    page.text(f"We cite the {compound} text and then another {left}-", 720)
+    page.text(f"{right} text in the same paragraph for a different result.", 708)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([page]))
+
+    assert section_files(folder)["s1"].count(compound) == 2
 
 
 def scanned():

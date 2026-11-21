@@ -2527,24 +2527,25 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
 - **Not a footnote marker** (the agent's choice): a raised digit beside a
   math font (Attention's 1/√dk) or after a digit (ResNet's 10⁹). `CMSY`
   is not a math font for the marker: Attention sets its ∗ † ‡ in it.
-- **A figure's text is left out** where the figure is a form covering
-  under half its page (ResNet's and Attention's charts, whose axis labels
-  PDFium puts in the reading order). Tables are drawn as text and come
-  through as short lines, one paragraph each, so their page's image is
-  the way to read them (known gap).
+- **Judge a form by its contents, not its bounds** (agent's choice):
+  PDF forms can hold prose. Vector-heavy forms can supply chart labels
+  to suppress, but only from their own objects. The old bounding-box
+  rule erased prose both inside text-only forms and overlapping drawings.
 - **Headings with no bookmarks** (the agent's choice, on ResNet): larger
   by a quarter, since its authors' line is regular at 1.2 times the body;
   bold only standing alone and every letter bold, since paragraphs open
   with bold run-in phrases ("Residual Representations."); never a line
   sharing its baseline with another in its column, a table's cell. The
   outline then matches the paper's numbered sections and its appendix.
-- **A page marker is an HTML comment** (the agent's choice): Markdown
-  shows nothing for it and a model reads it as a note. Inside a paragraph
-  it never starts a line, which would end the paragraph as an HTML block,
-  and after a hyphen mended across the page it follows the whole word.
-- **A paragraph is one line**, its notes' definitions after it in its
-  block (the agent's choice), so a cut never parts a note from its
-  reference and a quote's text is the paragraph's.
+- **Page markers are HTML comments** (agent's choice) so the reader
+  doesn't see them and the tutor can request the page image. A cut
+  protects generated markers and the text from a footnote reference to
+  its definition, even at the cost of an oversized part: a section is
+  read alone, and files must remain exact slices when joined.
+- **Bookmarks have two orders** (agent's choice): the outline follows
+  the bookmark tree; section ids follow physical reading order. Inferring
+  parentage from sorted destinations lost parents when a child linked back
+  to an earlier page.
 - **Line-end hyphens** (the agent's choice): joined, unless the parts with
   their hyphen are a word the document writes elsewhere and never without
   it, or the second part has a hyphen and the parts do not join into a
