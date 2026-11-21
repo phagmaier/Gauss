@@ -13,28 +13,25 @@ Read only what the task needs.
 | --- | --- | --- |
 | [Plan](docs/plan.md) | Open tasks, dependencies, and user checks | First when taking a plan task or checking stage status |
 | [Product brief](docs/brief.md) | Intended behaviour and shared terms | When working on product behaviour or terminology; read the relevant sections |
-| [Architecture](docs/architecture.md) | How the system works now | Sections 1 and 2 for orientation; then the sections the task touches |
+| [Architecture](docs/architecture.md) | How the system works now | Read the relevant sections; sections 1–2 orient new contributors |
 | [Decisions](docs/decisions.md) | Rationale, SDK findings, and known gaps | Follow the index to the relevant sections; don't load the whole file |
-| [Prompts](prompts/) | The model's instructions: tutor, planners, grader, judges, handoff and notes writers | When a task changes what a model is told; the findings behind the wording are in `decisions.md`, "Prompts" |
-| [Mocks](docs/prototype/) | Static page mocks, one per numbered piece; each file's header says what was picked | When a task names a piece, or changes a view's layout |
+| [Prompts](docs/architecture.md#9-prompts) | Model instructions, including [`prompts/`](prompts/) and engine-supplied text | When changing what a model is told |
+| [Mock index](docs/prototype/index.html) | Selected and historical page designs | When a task names a piece or changes a layout |
 
 Use the terms as `brief.md` defines them (course, unit, objective, segment,
 session, evidence, detour). Do not introduce synonyms in code or documents.
 
-A finished task lives in its commit, whose message starts with the task id:
-`git log --grep='^2\.13'` finds the task that code comments call "task
-2.13", and `git show` on it gives the task's text (the plan's diff) and the
-checks it passed (the message).
+Recover a finished task's text from the commit that removed its heading,
+e.g. `git log -1 -p -G '^### 2\.13 ' -- docs/plan.md`. The commit message
+records its checks.
 
 ## Finding things
 
-- Code (where a symbol is defined, who calls it, what a change affects):
-  the codebase-memory tools first, then read the file. Grep for exact
-  strings and known paths.
-- Libraries and SDKs (the Claude Agent SDK, Hono, Vite, React, zod, Vitest,
-  Biome): look the call up with context7 before writing or debugging it.
-  This project uses very new major versions, so remembered APIs are often
-  out of date.
+- Use codebase-memory for cross-file structure and change impact; use the
+  language server for exact definitions and references. Read known files
+  directly and search for exact literals.
+- Check Context7 when adding or debugging library or SDK calls whose
+  behaviour you need to verify.
 
 ## How to work a task
 
@@ -56,11 +53,9 @@ starting a plan task, editing files, or committing.
    into that task's or stage's note in the plan, or into the document where
    it belongs.
 6. Commit the task's changes and the document updates together as one
-   commit. The message starts with the task id (`2.13: transcripts`); its
-   body says what was checked and how (the commands and their results,
-   browser and real-model runs, faults injected into the code with
-   `scripts/faults.ts`) and what was not checked. Do not commit if the
-   "done when" check failed; leave the task `in progress` and report why.
+   commit. Start the message with the task id (`2.13: transcripts`) and
+   record checks, outcomes and limits. If a "done when" check fails, leave
+   the task `in progress` without committing and report why.
 7. Report what you checked and what you could not check, then stop. Start
    the next task only if the user asked for more than one.
 
@@ -108,37 +103,29 @@ its rationale would help a later agent avoid repeating the investigation.
 
 ## Project rules
 
-- **Automated tests never call a real model backend.** Use the fake backend
-  in `src/server/backends/fake.ts`. Real-backend runs spend the user's plan
-  usage: do them only where a task calls for one, and keep them short.
-- **Real-backend checks use a cheap model** unless the check depends on how
-  well the tutor teaches. To see that a call, a tool or a flow works, run
-  Claude Haiku 5.5 (`GAUSS_CLAUDE_MODEL=claude-haiku-5-5 pnpm dev`), or a
-  cheap OpenAI model on the Codex side. Use Sonnet or Opus only when the
-  result depends on the model's judgment (the user's request, 2026-11-15).
-- **Tests never touch the real data root** (`~/gauss/` by default). Point
-  the data root at a temporary directory.
-- **Browser checks that need no real tutor run on `pnpm dev:fake`**, which
-  calls no model. End every browser run by closing the browser, before the
-  server stops: a session page left open keeps opening its unit on whatever
-  server next comes up on its port, and on a real backend that plans and
-  teaches the unit.
-- **Browser checks run in Chromium** unless the task is about another
-  engine. The default browser here is WebKit, which behaves differently
-  (it hides an aid's errors, `decisions.md`, "Confinement"), and omp's
-  managed Chromium does not start on this NixOS machine. Get Chromium
-  with `nix build nixpkgs#chromium --no-link --print-out-paths` and open
-  it with `browser.open({ app: "<that path>/bin/chromium", ... })`; the
-  user chose this over adding libraries to nix-ld (2026-11-20).
+- **Automated tests never call a real model backend.** Use the fake
+  backend. Run a real model only for a task's required checks; use a cheap
+  model unless the result depends on model judgment.
+- **Tests and trial runs never use the real data root.** Use a temporary
+  directory. See [Testing](docs/architecture.md#11-testing) for safe
+  commands.
+- **Browser checks use `pnpm dev:fake` unless a real model is required.**
+  Use Chromium unless checking another engine. Close the test browser
+  before stopping the server so a left-open tab cannot contact a later
+  real server.
+- **Run fault injection only in an isolated worktree.** Restoration
+  replaces entire files; never restore over newer edits.
 - **The engine never imports an agent SDK.** Only files under
   `src/server/backends/` do.
 - **Objective status is derived from the evidence log**, never stored.
 - **Data shapes are defined once**, as zod schemas in `src/shared/`.
   Documents describe behaviour and point at the schemas; they do not
   restate fields.
-- **Prompts live in `prompts/`** as files, not as strings in code.
-- Do not set or rely on `ANTHROPIC_API_KEY`. The app runs on the user's
-  plan login; see `architecture.md` section 7.
+- Keep static role prompts in `prompts/`. Turn headers, tool and field
+  descriptions, results and refusals also instruct the model; see
+  [Prompts](docs/architecture.md#9-prompts).
+- Do not set or rely on `ANTHROPIC_API_KEY`. Use the
+  [plan login](docs/architecture.md#7-backends).
 
 ## Authorization
 
@@ -154,56 +141,11 @@ its rationale would help a later agent avoid repeating the investigation.
 - Leave `docs/brief.md` decisions alone unless the user changes them;
   propose changes instead.
 
-## Commands
+## Tooling
 
-Runtimes are pinned in `mise.toml`. Run everything inside mise: a shell with
-mise activated, or `mise exec -- <command>`.
-
-| Purpose | Command |
-| --- | --- |
-| Install the pinned runtimes | `mise install` |
-| Install dependencies | `mise run setup` |
-| Lint, type-check and both test suites | `mise run check` |
-| Lint and format check (a warning fails it too) | `pnpm lint` |
-| Apply formatting and safe fixes | `pnpm format` |
-| Type-check | `pnpm typecheck` |
-| Test, TypeScript | `pnpm test` (`pnpm test:watch` while working) |
-| Test, Python helpers | `uv run --directory pytools pytest` |
-| Run the app on Claude (http://localhost:4320; opening a unit can spend plan usage even without sending a message) | `pnpm dev` |
-| Run the app with no model (http://localhost:4330; `--empty` skips seeding) | `pnpm dev:fake` |
-| Grade the grader's hand-graded set (real model) | `node scripts/grade-set.ts --runs 2` (`--model`, `--prompt`, `--only`) |
-| Judge the help judge's hand-judged set (real model) | `node scripts/judge-set.ts --runs 2` (same options) |
-| Decide the dispute judge's hand-judged set (real model) | `node scripts/decide-set.ts --runs 2` (same options) |
-| Check that tests catch injected faults (its header gives the file format; each fault reruns the tests, so set a long enough timeout) | `node scripts/faults.ts <faults file>`; `--restore` puts back a file a killed run left with a fault |
-
-| Variable | Effect |
-| --- | --- |
-| `GAUSS_CLAUDE_MODEL` | The model of every session and one-shot call. Unset: the learner's Claude Code default for sessions, Sonnet 5.5 for grading, dispute judging, handoff notes and unit notes, Haiku 5.5 for help judging |
-| `GAUSS_DATA_ROOT` | The folder that holds the courses; `~/gauss` when unset. Point it at a scratch folder for trial runs |
-| `GAUSS_PORT` | The port |
-| `GAUSS_BACKUP` | The data root's git history: `off` turns it off under `pnpm dev`, `on` turns it on under `pnpm dev:fake` |
-
-- The server prints the data root when it starts, and the model each
-  session runs on. Stop it with Ctrl-C.
-- The engine's sandbox needs, on Linux, `bwrap`, `socat` and `rg` on the
-  path, which mise does not install. Without them the server says what is
-  missing when it starts, and the sandbox's tests fail.
-- `pnpm dev:fake` runs the same server (`src/server/serve.ts`) on the
-  scripted backend; the header of `src/server/backends/scripted.ts` says
-  what its tutor does and what the commands in a message (`/hold`,
-  `/fail`, `/broken-aid` and others) make it do. Its scripted planner
-  asks a question first, so a browser
-  check takes two messages to reach a proposal card. Its data root is
-  `GAUSS_DATA_ROOT`, or `gauss-fake` in the temporary folder, never the
-  real one. An empty data root is seeded with courses in each state
-  (`src/server/record/dev-seed.ts`), and one with courses is kept, so a
-  restart keeps the record; for a fresh seed, use a new folder.
-- TypeScript tests sit beside the code as `src/**/*.test.ts`; Python tests
-  are in `pytools/tests/`.
-- Imports name the real file, with its `.ts` extension, and only erasable
-  TypeScript syntax is allowed (no `enum`, no parameter properties).
-- Biome lints and formats code and config. Markdown and `docs/` are
-  excluded.
-- Add dependencies with `pnpm add` and `uv add --directory pytools`, and
-  commit both lockfiles. pnpm refuses releases less than a day old
-  (`pnpm-workspace.yaml`).
+- Run commands under mise (`mise exec -- <command>`). Setup and check
+  commands are in [Testing](docs/architecture.md#11-testing).
+- Import `.ts` files by their real extension and use only erasable
+  TypeScript syntax (no `enum` or parameter properties).
+- Add dependencies with `pnpm add` or `uv add --directory pytools` and
+  commit the affected lockfile.

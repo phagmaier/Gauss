@@ -1,8 +1,9 @@
 # Gauss: build plan
 
 Open work only. Status values: `todo`, `in progress`, `blocked` (say why).
-`AGENTS.md` says how to work a task. A finished task is deleted from this
-file; its text and its checks are in its commit (`git log --grep='^2\.13'`).
+Use the [task workflow in AGENTS.md](../AGENTS.md) to work a task or find a
+finished one. A finished task is deleted from this file; its text and
+checks are in its commit.
 
 Each stage is broken down by its first task (`N.0`) when it starts, because
 each finished stage changes the details. Stage scope comes from
@@ -38,6 +39,16 @@ scanned PDFs, and questions on a source's figure.
 
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
+
+For each stage 4 task, `mise run check` must pass in addition to its
+specific “Done when” checks.
+
+For 4.4 and 4.5, use user-approved local copies of the named real files
+and keep them out of the repository. If a required private copy is
+unavailable, run the generated fixture checks, ask the user for an
+approved local location for the file, and report that real-file sign-off
+is still pending. Generated fixtures do not substitute for the real-file
+checks.
 
 ### 4.4 Conversion: PDF
 
@@ -81,12 +92,12 @@ quotes, and one unit taught from a paper.
   dependency, or a small writer of the tests' own), covers bookmarks and
   type-size headings, a paragraph across a page break, a line-end hyphen,
   a running head, a superscript, a footnote at a page's foot, a page with
-  no text, a scanned file refused, page labels, and a rendered page. On
-  the real files, kept out of the repository and read by hand with the
-  findings in the commit: the Inwood _Phenomenology_ (its 127 bookmarks as
-  the outline; the Preface in 6 parts cut between ¶s; no running head or
-  footnote digit left in the text of ten sampled pages) and arXiv
-  1706.03762 (bookmarks) and 1512.03385 (none). `mise run check` passes.
+  no text, a scanned file refused, page labels, and a rendered page. Read
+  the approved real files by hand and record the findings in the commit:
+  the Inwood _Phenomenology_ (its 127 bookmarks as the outline; the
+  Preface in 6 parts cut between ¶s; no running head or footnote digit
+  left in the text of ten sampled pages) and arXiv 1706.03762 (bookmarks)
+  and 1512.03385 (none).
 
 ### 4.5 Conversion: EPUB
 
@@ -106,15 +117,14 @@ quotes, and one unit taught from a paper.
   obfuscated fonts are not encrypted text.
 - Done when: pytest, on EPUBs the tests build, covers an NCX outline, a
   navigation document with anchors into one file, a chapter with no
-  heading tags, a long chapter cut, and DRM refused. On the user's Girard
-  and Han EPUBs, kept out of the repository and read by hand: Girard's 20
-  entries, with chapter 9, which its NCX lacks, inside the entry before
-  it. `mise run check` passes.
+  heading tags, a long chapter cut, and DRM refused. Read the user's
+  approved Girard and Han EPUBs by hand: Girard's 20 entries, with
+  chapter 9, which its NCX lacks, inside the entry before it.
 
 ### 4.6 Sources in the intake and the record
 
 - Status: todo
-- Depends on: 4.2, 4.4
+- Depends on: 4.2, 4.4, 4.5
 - Why: a source is attached when a course starts (the user's pick,
   2026-11-21), before the course exists: the first proposal makes it.
 - Do:
@@ -137,9 +147,9 @@ quotes, and one unit taught from a paper.
     the sandbox, attaching is refused, as a symbolic question is. A
     source waits in `uploads/<intake id>/<source id>/` at the data root
     until the first proposal moves it into `courses/<id>/sources/`; one
-    attached later goes there directly. At start, the uploads of intakes
-    no longer running are removed. A source's id is a slug of its title,
-    unique in the course.
+    attached later in the intake goes there directly. At start, the uploads
+    of intakes no longer running are removed. A source's id is a slug of
+    its title, unique in the course.
   - The intake's thread shows the source's card (piece 22) while it
     converts and when it is done, or why it was refused. Send waits while
     a file converts. "Remove" on the card, until the first proposal,
@@ -162,7 +172,7 @@ quotes, and one unit taught from a paper.
   converter in the engine's sandbox on a small Markdown fixture, using
   the locked `pytools` environment. Check the section text and that the
   parsed outline's id matches the final source folder's name.
-  `mise run check` passes. On `pnpm dev:fake` a TXT and a PDF are
+  On `pnpm dev:fake` a TXT and a PDF are
   attached in an intake that reaches a proposal, and the browser is
   closed before the server stops.
 
@@ -193,8 +203,8 @@ quotes, and one unit taught from a paper.
 - Done when: tests cover a proposal with sections stored and shown, an
   unknown section and a unit over the limit refused, an amended unit
   keeping its sections, a planning turn holding the unit's text, and a
-  plan whose segment names a section outside its unit refused. `mise run
-  check` passes. One Haiku run on `pnpm dev`, with a scratch data root,
+  plan whose segment names a section outside its unit refused. One Haiku
+  run on `pnpm dev`, with a scratch data root,
   plans a one-unit course on a chapter of the Inwood _Phenomenology_ and
   then its unit, each segment naming its sections.
 
@@ -225,7 +235,7 @@ quotes, and one unit taught from a paper.
   lines for a read and a page view; `read_section` on another unit's
   section and on an unknown one; `view_page` on a PDF
   page (rendered once, then read from `pages/`), on a page out of range
-  and in a source that is not a PDF. `mise run check` passes. A Haiku run
+  and in a source that is not a PDF. A Haiku run
   on a unit of the Inwood _Phenomenology_ reads the segment's sections
   whole and views a page.
 
@@ -261,7 +271,7 @@ quotes, and one unit taught from a paper.
   the passage; a first letter's case changed; text not found, too short,
   too long, or with an ellipsis; two matches, in reading order and in the
   named section; a refusal while a question is open; the quote shown and
-  restored after a restart. `mise run check` passes. A Haiku run quotes a
+  restored after a restart. A Haiku run quotes a
   passage from a section it read.
 
 ### 4.10 The citation view and section links
@@ -294,7 +304,7 @@ quotes, and one unit taught from a paper.
     pane there.
 - Done when: tests cover the link's forms (a section, a page, an unknown
   section) and the pane's logic, as pure helpers beside `src/web/`'s
-  others. `mise run check` passes. On `pnpm dev:fake`, in Chromium, a
+  others. On `pnpm dev:fake`, in Chromium, a
   quote's citation, a section link and a page image each open the pane,
   and the browser is closed before the server stops.
 
@@ -322,8 +332,7 @@ quotes, and one unit taught from a paper.
   the web verbatim.
 - Done when: tests cover the tool given only with the setting on, a
   switch that closes a session between turns and the next turn resuming
-  with the tool, a search's thread entry, and the hook's refusal. `mise
-  run check` passes.
+  with the tool, a search's thread entry, and the hook's refusal.
   A Haiku run on the plan login, in a course with the setting on, searches,
   shows the entry and cites a link; with it off, the tool is absent. The
   SDK's detached search (a call that "stepped aside for a message the user
@@ -352,7 +361,7 @@ quotes, and one unit taught from a paper.
   _Phenomenology_ (4 parts) and of a unit on the Attention paper show
   verified quotes, section links, no verbatim quote outside
   `quote_source`, and a page viewed for the paper's equations. The
-  findings are in `decisions.md`, "Prompts". `mise run check` passes.
+  findings are in `decisions.md`, "Prompts".
 
 ### 4.13 Notes and the transcript in a source course
 
@@ -367,7 +376,7 @@ quotes, and one unit taught from a paper.
   citation, and a section link as its words with the section's title and
   page.
 - Done when: tests on a seeded source course cover the request and the
-  export. `mise run check` passes. One notes call on Sonnet 5.5 for a
+  export. One notes call on Sonnet 5.5 for a
   source unit cites a quote by its place.
 
 ### 4.14 The grader's and help judge's sets in a source course
@@ -388,8 +397,7 @@ quotes, and one unit taught from a paper.
   models; where they disagree with the hand grades, revise `grader.md` or
   `help-judge.md` as their sections of `decisions.md` say.
 - Done when: both sets run, with their agreement and any prompt change in
-  `decisions.md`, "Grader prompt" and "Help judge". `mise run check`
-  passes.
+  `decisions.md`, "Grader prompt" and "Help judge".
 
 ## Stage 6: later
 

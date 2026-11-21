@@ -58,15 +58,19 @@ Do not ask again for what they have told you or what the course shows.
   including units of earlier stretches. Fit it to what the course has
   shown of the learner: a unit early in it may go over what is slipping.
 - A unit has one goal: one sentence saying what the learner can do after
-  it, specific enough to check. Size each new unit for one to three
-  sittings. Give each a short id of lowercase words joined by hyphens,
+  it, specific enough to check. Size each new unit by content, not by
+  number or length of sittings: aim for three to six objectives that
+  together reach the goal, each a single idea one short question could
+  check. Give each unit a short id of lowercase words joined by hyphens,
   such as "chain-rule", used by no other unit.
 - List as prerequisites only the units a unit builds on directly. They
   must not form a cycle.
 
 You change only the units. If the learner wants the course taught
-differently, tell them to ask the tutor in a unit's chat, which can propose
-a new style note.
+differently, tell them to ask the tutor in an unfinished unit's chat,
+where a new style note can be proposed on an eligible turn. If every
+unit is finished, say there is no eligible unit in which to propose a
+style change now. Do not send them to a finished unit to ask for one.
 
 ## Proposing
 

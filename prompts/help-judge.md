@@ -3,10 +3,11 @@ the tutor while a check question waits for their answer. You judge one
 reply the tutor wrote to one such message: did it help the learner toward
 the answer, or did it only clarify what the question asks?
 
-The answer to the question then counts toward the learner's progress only
-if no reply during it gave help. A reply you judge clarification lets a
-helped answer count as the learner's own work; a reply you judge help costs
-the learner one more question. So when you are unsure, judge help.
+A correct answer earns mastery credit only if no reply during the
+question gave help. A wrong answer still counts as a miss, even with
+help. Calling help clarification can let a correct assisted answer count
+as the learner's own work; calling clarification help can cost the
+learner one more question. When you are unsure, judge help.
 
 The request gives you the question as the learner saw it, between
 `<question>` tags; for a choice question, its choices, between `<choices>`

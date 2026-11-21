@@ -14,28 +14,28 @@ a42a409:docs/decisions.md`.
 
 | Section | Holds | Read when |
 | --- | --- | --- |
-| Product decisions | What the user decided, when, and why | Changing what the product does; breaking down a stage |
-| Toolchain | Versions, type-checking, Biome, pnpm and uv settings | Changing tooling or `tsconfig.json` |
-| Claude backend | The Agent SDK on the plan login: environment, isolation, ending turns, Stop, sessions and resume, one-shot calls, thinking | Touching `src/server/backends/` |
-| Confinement | The tutor's built-in tools and their two layers, its working and temporary folders, the engine's sandbox, package installs, the backup of the workspace, confined reads and the commands' environment; artifacts' frame and policy, WebRTC and DNS prefetch | Changing the tutor's tools or the engine's commands; giving web access (stage 4); changing artifacts |
-| Codex | What the Codex SDK can and cannot do | Stage 6 |
-| Record | Ids, writes, the file lock, logs, transcripts on disk, the backup | Touching `src/server/record/` or a record file's schema |
-| Objective status | The passing rule, misses, help, overrides, no question limit, the check's start | Touching `record/status.ts`, `engine/check-rules.ts`, or what counts as help |
-| Calibration | What the counts count | Touching calibration, or what confidence or help mean |
-| Session engine | The chats' design choices: phases, the feedback turn, queues, answers, detours, choice order, planning, intake, resume, idle sessions, transcripts | Touching `src/server/engine/` |
-| Grader prompt | The hand-graded set, the grader's model and rules | Changing `grader.md`, `WrittenGrade` or the grader's model; disputes |
-| Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
-| Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits; math questions in the engine and on the page | Changing `mathcheck.py`, math questions, or what they accept |
-| Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept, "Open" | Changing code questions or how their tests run |
-| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, the answer shown after "I don't know", who decides; the judge's set and model | Building or changing disputes or `dispute-judge.md` |
-| Mastery loop | Assessments in the unit's thread, retained and slipping, review, the gate, testing out, handoff notes and misconceptions, the profile, notes, the export, style and curriculum changes | Touching assessments, status, handoff notes, the profile, notes, or style and curriculum changes |
-| Prompts | Findings from real runs behind `tutor.md`, `planner.md`, `unit-planner.md`, `handoff.md`, `notes.md`; the writing rules | Revising any prompt |
-| Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
-| Page behaviour | Rendering, performance, the pinned question, dimming, retries, the artifact pane | Touching `src/web/` |
-| HTTP and event stream | Route rules, security, intakes | Adding or changing a route |
-| Dev server and tests | `pnpm dev:fake`, the fake backends, test timing, real-model runs | Running checks; touching `scripted.ts`, `dev-seed.ts`, `serve.ts` |
-| Sources | The section limit and the trials behind it, the converters, reading, quotes and links, attaching, the web and the channel out | Stage 4; touching sources, quotes or web search |
-| Known gaps | What is known to be wrong or missing and not scheduled | Before calling something a new bug |
+| [Product decisions](#product-decisions) | What the user decided, when, and why | Changing what the product does; breaking down a stage |
+| [Toolchain](#toolchain) | Type-checking, Biome, pnpm and uv settings | Changing tooling or `tsconfig.json` |
+| [Claude backend](#claude-backend) | The Agent SDK on the plan login: environment, isolation, ending turns, Stop, sessions and resume, one-shot calls, thinking | Touching `src/server/backends/` |
+| [Confinement](#confinement) | Tutor tools, the engine's sandbox, package installs, confined reads, and artifact networking | Changing the tutor's tools or the engine's commands; giving web access; changing artifacts |
+| [Codex](#codex) | What the Codex SDK can and cannot do | Stage 6 |
+| [Record](#record) | Ids, writes, the file lock, logs, transcripts on disk, the backup | Touching `src/server/record/` or a record file's schema |
+| [Objective status](#objective-status) | The passing rule, misses, help, overrides, no question limit, the check's start | Touching `record/status.ts`, `engine/check-rules.ts`, or what counts as help |
+| [Calibration](#calibration) | What the counts count | Touching calibration, or what confidence or help mean |
+| [Session engine](#session-engine) | The chats' design choices: phases, feedback, queues, answers, detours, choice order, planning, intake, resume, transcripts | Touching `src/server/engine/` |
+| [Grader prompt](#grader-prompt) | The hand-graded set, the grader's model and rules | Changing `grader.md`, `WrittenGrade` or the grader's model; disputes |
+| [Help judge](#help-judge) | The judge's rules, failures, model and set | Changing help judging; disputes |
+| [Symbolic check](#symbolic-check) | `mathcheck.py`: the parser and its traps, equality, time limits, math questions | Changing `mathcheck.py`, math questions, or what they accept |
+| [Code questions](#code-questions) | Where tests run, checks at posting, learner files, time-outs, output and "Open" | Changing code questions or how their tests run |
+| [Disputes](#disputes) | What can be disputed, outcomes, wrong keys, reports of wrong answers, the judge's set and model | Changing disputes or `dispute-judge.md` |
+| [Mastery loop](#mastery-loop) | Assessments, review, the gate, testing out, handoff notes, misconceptions, profile, notes, export, style and curriculum | Touching these features |
+| [Prompts](#prompts) | Real-run findings by role: [tutor](#tutor), [planners](#intake-planner), [handoff](#handoff-writer), [notes](#notes-writer) | Revising these prompts |
+| [Page design](#page-design) | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
+| [Page behaviour](#page-behaviour) | Rendering, performance, the pinned question, dimming, retries, the artifact pane | Touching `src/web/` |
+| [HTTP and event stream](#http-and-event-stream) | Route rules, security, intakes | Adding or changing a route |
+| [Dev server and tests](#dev-server-and-tests) | Scripted and fake backends, test timing, real-model runs | Touching test or smoke-run setup |
+| [Sources](#sources) | The section limit, converters, reading, quotes and links, attaching, the web and the channel out | Touching sources, quotes or web search |
+| [Known gaps](#known-gaps) | What is known to be wrong or missing and not scheduled | Before calling something a new bug |
 
 ## Product decisions
 
@@ -356,9 +356,9 @@ The brief states the result; this is who decided and why.
   "only-system"`), so uv never downloads a second interpreter.
 - **A test on each side checks the runtime pin**, so a suite run outside
   mise fails.
-- **No DOM in the tests.** React components have no automated tests; their
-  logic is in pure modules, and rendering is tested to static HTML with
-  `react-dom/server`. No DOM library was added for it.
+- **Test DOM behaviour only where needed.** See
+  [Testing](architecture.md#11-testing) for the Vitest DOM environment.
+  Keep logic tests independent of React where practical.
 
 ## Claude backend
 
@@ -1715,7 +1715,7 @@ Findings from real runs, on Sonnet 5.5 unless a model is named; the task
 id leads to the runs in its commit. Wordings are the agent's choices, open
 to change.
 
-**`tutor.md`**
+### Tutor
 
 - **The prompt says only what the app does not** (task 5.29, the user's
   decision to cut it; the method is the agent's): a rule a header
@@ -1876,7 +1876,9 @@ to change.
   owned in the detour; one of three teaching turns asked for no package
   before the check.
 
-**`handoff.md`** (task 5.13): every note, on both models, reported what the
+### Handoff writer
+
+In task 5.13 every note, on both models, reported what the
 app already gives the next tutor (where the unit stands, answers, how the
 gate went), wrote about the stretch itself ("whether it was tried is not
 known"), and listed as open what the plan had still to teach. The prompt
@@ -1890,7 +1892,9 @@ character ceiling guards runaway replies. A belief shown in a test
 answer's reasoning is a misconception: both models recorded them, though
 the prompt had said that something not yet taught is not one.
 
-**`notes.md`** (task 5.13): Sonnet followed the learner's instructions and
+### Notes writer
+
+In task 5.13 Sonnet followed the learner's instructions and
 gave the misses most of the room. It copied a wrong key in as the correct
 value; told to work every value again, it gave the right one and said the
 recorded key differed. A figure's labels ran past its `viewBox` and its
@@ -1903,7 +1907,7 @@ events), so the writer checks assumptions and boundary cases and states
 each rule positively even in quick-reference boxes: two drafts had turned
 the denominator rule into a false "never use the full space".
 
-**`unit-planner.md`**:
+### Unit planner
 
 - **One idea per objective**, tested by "could a learner know one part and
   not the other", up to eight objectives rather than joining two. The test
@@ -1926,7 +1930,7 @@ the denominator rule into a false "never use the full space".
   when it needs something the others do not, the next run still split a
   spam filter from a witness report. Not settled.
 
-**`planner.md`**:
+### Intake planner
 
 - **Questions in rounds of at most two**, counting every question in a
   message (the first run asked three under "Two quick questions"); a short
@@ -1973,14 +1977,18 @@ the denominator rule into a false "never use the full space".
   a sentence on what changed in the old prompt's run and the last run
   (left).
 
-**`course-planner.md`** (task 5.38): in one Haiku run on a finished
+### Course planner
+
+In task 5.38, in one Haiku run on a finished
 "Calculus 1 to 3" whose style note named Calculus 2 and 3, the planner
 named Calculus 2 and its topics in reply to "What comes next?", asked to
 go ahead, and then proposed nine units after the five finished, each
 building on earlier ones. It posted the card with no text before it, as
 the intake's planner has done (left: the card's line on why says it).
 
-**Writing rules for the page**: `$...$` inline and `$$` for display; a
+### Writing rules for the page
+
+Use `$...$` inline and `$$` for display; a
 dollar sign that is not math must be `\$`, since "it costs $5 and $10" reads
 as math and no rule fixes that reliably (Pandoc's fails on "$5. Then
 $x$"); `\(...\)` is not supported, because Markdown reads `\(` as an
@@ -1989,16 +1997,14 @@ render math.
 
 ## Page design
 
-Picked by the user from the mocks in `docs/prototype/` (pieces 1 to 18),
-2026-11-13, 2026-11-15, 2026-11-17 and 2026-11-18, pieces 19 to 21, the
-redesign, 2026-11-19 (task 5.17), and pieces 22 to 24, sources, 2026-11-21
-(task 4.1). Each mock's header comment says what was asked and rejected.
-Pieces 15 to 18 were shown as the agent would build them and accepted so,
-but for the notes ("Product decisions"); as built, they are
-`architecture.md` section 10. The redesign is built by tasks 5.30 to 5.39;
-the look is built, and until the rest is done, the app has the layouts
-pieces 1 to 18 settled, and the entries below say which parts are the
-redesign's. Pieces 22 to 24 are built by tasks 4.6 to 4.11.
+The user picked pieces 1–18 on 2026-11-13, 15, 17 and 18, pieces 19–21
+for the redesign on 2026-11-19, and pieces 22–24 for the planned source
+UI on 2026-11-21. The [mock index](prototype/index.html) identifies the
+references; each mock's header records what it tried and rejected. The
+notes were the exception to the accepted pieces 15–18
+([Product decisions](#product-decisions)).
+See [Architecture](architecture.md#10-page) for the shipped page and the
+[plan](plan.md#stage-4-sources-built-after-stage-5) for source UI status.
 
 - **Thread layout**: one centred column, the tutor's text unframed, the
   learner's messages on the right, one message box at the bottom. Rejected:

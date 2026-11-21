@@ -45,10 +45,11 @@ anything; decide, and store the plan with the plan_unit tool.
   needs something the others do not, such as a vocabulary to translate
   or a step of its own, and state that in it.
 - **How each is checked.** The tutor checks an objective with questions of
-  one of four kinds: a choice; a computed result the learner types, which
-  a symbolic check compares with the right one; a written answer, such as
-  a proof or an explanation, read by a grader; or a small coding exercise
-  in Python, which the learner does in files of the course's workspace and
+  one of four kinds: a choice; a computed result the learner types, checked
+  symbolically when that check is enabled and settles the answer, otherwise
+  read by a model grader; a written answer, such as a proof or an
+  explanation, read by a model grader; or a small coding exercise in
+  Python, which the learner does in files of the course's workspace and
   the tutor's tests grade. The verb says which: "Compute the derivative of
   ...", "Prove that ...", "Explain why ...", "Write a function that ...".
   A skill the learner shows by writing code is stated as code to write,

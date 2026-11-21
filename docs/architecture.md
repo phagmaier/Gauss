@@ -1034,71 +1034,66 @@ Not built. What its SDK can and cannot do, from the stage 0 spike, is in
 
 ## 8. Sources
 
-Being built in stage 4: conversion of text and Markdown is built, the rest
-is planned. The tasks are in the plan, the choices and the trials behind
-them in `decisions.md`, "Sources", and the pages in mocks 22 to 24
-(`decisions.md`, "Page design").
+See the [plan](plan.md#stage-4-sources-built-after-stage-5) for status,
+[Sources decisions](decisions.md#sources) for rationale, and the
+[mock index](prototype/index.html#planned-source-ui) for the planned UI.
 
-1. **Attach**, in the intake only: the page sends the file, and the engine
-   converts it by running `pytools/convert.py` in its sandbox. A source
-   waits in `uploads/<intake id>/` until the first proposal creates the
-   course, then lives in the course's `sources/`; until then the learner
-   can remove it. PDF, EPUB, TXT and Markdown are recognised by their
-   content. A scanned PDF is refused as needing text recognition, which is
-   not in the first version; so are a protected PDF or EPUB and any other
-   file. The planner's next turn is told of each source attached, removed
-   or refused.
-2. **Convert**: `pytools/convert.py ingest`, whose header gives what it
-   reads, writes and prints, and why it refuses a file. It copies the
-   original into the source's folder (`original.<ext>`) and writes
-   `outline.json` (`Outline` in `src/shared/source.ts`) and one `.md` file
-   per section. Plain text is paragraphs between blank lines with no
-   headings; Markdown's top-level ATX and setext headings make its
-   outline. A PDF's outline will come from its bookmarks (without them,
-   from type size and heading numbers), and an EPUB's from its table of
-   contents.
-   - The outline nests as the source does, to any depth. A **section** is a
-     leaf of the outline and the only kind of entry with a file. A
-     heading's text before its first subheading is a section of its own,
-     under the heading's title; a heading with no text of its own goes into
-     the next section's file (at the end, the last one's). Text before any
-     heading is a section under the source's title: a Markdown file's one
-     top heading when it opens the file, otherwise the file's name.
-   - Joined in order, the section files are the whole source text. For
-     TXT and Markdown they are exact slices: the converter removes a
-     leading byte-order mark and outer blank lines, retains whitespace on
-     nonblank lines, and uses LF line endings, including the final LF. A
-     cut stretch's heading is not repeated in its later parts. PDF page
-     markers and footnote references are added during conversion.
-   - Each section records where it sits in the original: a page range for
-     a PDF, otherwise a paragraph range, numbered within its heading's
-     stretch.
-   - The target section size is 20,000 characters, in the unit defined by
-     `OutlineSection.size`. Longer stretches are cut between paragraphs
-     near equal shares; each part is titled by its position ("Preface
-     (part 2 of 6)") and sits in the stretch's heading, if it has one. A
-     paragraph over the limit by itself is cut at the nearest sentence
-     end to its middle, otherwise at whitespace, or at the midpoint if
-     there is no break. Fences, including in lists and quotes, are never
-     cut. A part can exceed the target if a fence or attached text cannot
-     fit without cutting a heading or a paragraph that fits on its own.
-   - Section ids are ordinals in reading order (`s1`, `s2`, ...); the same
-     input bytes, name, folder id, limit and converter version give the
-     same files. A course names a section `<source id>/<section id>`.
-3. **Map**: the planners are given each source's outline, and each unit
+### Available now: TXT and Markdown conversion
+
+`pytools/convert.py ingest` copies the original to `original.<ext>` and
+writes `outline.json` ([`Outline`](../src/shared/source.ts)) and one `.md`
+file per section. Its header documents the command's inputs and refusals.
+Plain text is paragraphs between blank lines with no headings; Markdown's
+top-level ATX and setext headings make its outline.
+
+- The outline nests as the source does. A **section** is a leaf and the
+  only kind of entry with a file. Text before a heading's first subheading
+  is its own section; headings without text of their own go into the next
+  section's file, or the last file at the end. Text before any heading is a
+  section under the source's title: Markdown's sole level-one heading
+  when it opens the file, otherwise the file name without its extension.
+- The files are exact slices of the normalized text, joined in reading
+  order. The converter removes a leading byte-order mark and outer blank
+  lines, preserves whitespace on nonblank lines and uses LF endings,
+  including a final LF. It doesn't repeat the heading in later parts.
+- Section place is a paragraph range numbered within its heading's
+  stretch. A stretch over 20,000 characters, in the unit defined by
+  `OutlineSection.size`, is cut near equal shares, at paragraph
+  boundaries. An oversized paragraph alone is cut at the sentence end
+  nearest its middle, then at whitespace, then at the midpoint if needed.
+  Fences, including in lists and quotes, are not cut. Fences and attached
+  text that cannot fit without cutting a heading or an otherwise fitting
+  paragraph can take a part over the target. Parts are titled by position
+  and grouped under the stretch's heading if it has one.
+- Section ids are ordinals in reading order (`s1`, `s2`, ...). The same
+  input bytes, name, folder id, limit and converter version give the
+  same files. A course names a section `<source id>/<section id>`.
+
+### Planned: intake, teaching, and source views
+
+1. **Attach and convert.** Intake uploads use the converter in the
+   engine's sandbox. A source waits in `uploads/<intake id>/`, removable
+   until the first proposal creates the course and moves it to `sources/`.
+   The planner is told what was attached, removed, or refused on its next
+   turn. Gauss refuses scanned PDFs that need text recognition,
+   protected PDFs or EPUBs, and unsupported formats. PDF bookmarks
+   (or type size and heading numbers) and EPUB tables of contents give
+   their outlines; PDF places use page ranges, with page markers and
+   footnote references in the converted text.
+2. **Map**: the planners are given each source's outline, and each unit
    lists the sections it teaches, at most 150,000 characters in all. When
    the unit is planned, each segment names the sections it draws on.
-4. **Plan**: the unit's planning turn carries the unit's sections whole,
+3. **Plan**: the unit's planning turn carries the unit's sections whole,
    so the tutor's session starts from a plan made from the text rather
    than carrying the text from its first turn.
-5. **Teach**: the tutor's system prompt holds each source's outline. The
+4. **Teach**: the tutor's system prompt holds each source's outline. The
    engine names the current segment's sections in the turn header, and an
    assessed unit's for a review or gate question on another unit's
    objective. The tutor reads sections with `read_section`, the segment's
    and others when the discussion needs them, and looks at a PDF page with
    `view_page` where the page's marker says its text lost math or images.
    Each read and page view shows as a line in the thread.
-6. **Quote**: `quote_source` checks the text against each source's whole
+5. **Quote**: `quote_source` checks the text against each source's whole
    text, its sections in order, so a quote across a cut still verifies.
    Matching ignores case, whitespace, hyphens, punctuation variants,
    emphasis marks, page markers, footnote references and margin line
@@ -1107,7 +1102,7 @@ them in `decisions.md`, "Sources", and the pages in mocks 22 to 24
    and the page or paragraph), which opens the passage in the side pane.
    A passage paraphrased is linked, claiming no quote, by a Markdown link
    to `source:<source id>/<section id>`.
-7. **Web search** is a course's setting, off by default. With it on, the
+6. **Web search** is a course's setting, off by default. With it on, the
    tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
    search shows in the thread with its links. A change applies from the
    learner's next message: the course's kept tutor sessions are closed,
@@ -1115,7 +1110,14 @@ them in `decisions.md`, "Sources", and the pages in mocks 22 to 24
 
 ## 9. Prompts
 
-Kept as files in `prompts/`, each revised against real runs.
+Static role prompts live in [`prompts/`](../prompts/). A model also takes
+instructions from [turn headers](#turn-protocol), tool and schema field
+descriptions, results and refusals. Before removing a repeated rule,
+check that the same model receives it on every turn where it applies.
+For consequential wording changes, compare old and new on the same
+cases; fake-backend tests cover routing and validation, not judgment.
+See [prompt findings](decisions.md#prompts), [grader](decisions.md#grader-prompt),
+[help judge](decisions.md#help-judge), and [disputes](decisions.md#disputes).
 
 - `tutor.md` is the start of the tutor's system prompt, which
   `engine/unit-turns.ts` assembles: `tutor.md`, the course's units with
@@ -1428,57 +1430,24 @@ progress take the outline.
   after leaving and returning; "Try again" uses the failed attempt's
   instructions, and "Write again" takes new instructions.
 
-The look and layout were settled with static mocks in `docs/prototype/`,
-a file per piece (start at `index.html`); the picks are in `decisions.md`,
-"Page design". `src/web/styles.css` has the redesign's look
+The [mock index](prototype/index.html) distinguishes selected redesign
+references, planned screens and earlier pieces. [Page design](decisions.md#page-design)
+records the picks. `src/web/styles.css` has the redesign's look
 (`prototype/look.css`): every colour is a named role in one block, and
 the type registers are rule groups near its top. CMU Serif is served from
 `src/web/fonts/` with its licence; IBM Plex Sans and Mono come from Google
 Fonts (`src/web/index.html`).
 
-**Routes** (`src/server/http/app.ts`; bodies are schemas in `src/shared/`,
-mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`):
+### HTTP and event stream
 
-- `GET /api/profile` (the text and the finished courses) and `POST
-  /api/profile` with the new text and the one it replaces (409 if that is
-  no longer the profile).
-- `GET /api/courses`, `GET /api/courses/<id>` (with each unit's progress),
-  `GET /api/courses/<id>/what-i-know`, `GET
-  /api/courses/<id>/artifacts/<file>`, `POST /api/courses/<id>/review`
-  (the intake for a draft), `POST /api/courses/<id>/delete` with the
-  course `instance` and the typed `title` when required (409 with the
-  reason when refused).
-- `POST /api/courses/<id>/questions/<question id>/open` with `{ file }`,
-  the file's place in the list of an open code question of the course:
-  opens it if it is a plain file in the workspace (409 when it is not;
-  502 with the opener's reason when the opener fails).
-- Under `/api/courses/<id>/answers/<question id>/`, for a recorded answer:
-  `GET graded-by` (what graded it, for its dispute; 409 for "I don't
-  know"), and `POST dispute` with the reason, for a dispute or a report of
-  the answer shown, which answers once the outcome is recorded (502 when
-  the judge failed and nothing was recorded).
-- `POST /api/intakes`, then under `/api/intakes/<id>/`: `events`,
-  `messages`, `approval`, `interrupt`. An intake is addressed by an id of
-  its own, since the course exists only from the first proposal.
-- Under `/api/courses/<id>/units/<unit>/`: `open` first, then `events`,
-  `messages`, `ready`, `answers`, `grade-again`, `another-question`,
-  `packages/install`, `packages/not-now` and `packages/retry-saving`
-  (with the request's id), `style/apply`, `style/keep`,
-  `curriculum/apply` and `curriculum/keep` (with the proposal's id),
-  `override`, `next-segment`, `go-over-again`, `finish`, `start-fresh`,
-  `interrupt`, `assessment/start` and `assessment/skip` (which is the
-  test's "Start learning instead"), `test-out/skip` and `test-out/whole`.
-  `test-out` opens a unit not started with its test, in place of `open`.
-  A unit not opened since the server started answers 404 on these chat
-  routes except `open` and `test-out`.
-- `GET /api/courses/<id>/units/<unit>/transcript` downloads the unit's
-  recorded thread as one HTML file (section 4, "Sessions and
-  transcripts"); it needs no open chat.
-- Under `/api/courses/<id>/units/<unit>/notes`: `GET` reads metadata and
-  the current attempt, `POST` starts a write (202), `GET /html` serves the
-  finished document as HTML only to a same-origin iframe (inert text
-  otherwise), and `POST /open` opens the saved file on disk. None opens
-  or requires the unit's chat.
+The route inventory is in [`src/server/http/app.ts`](../src/server/http/app.ts);
+shared request and event schemas are in [`src/shared/`](../src/shared/).
+Intake, course planning and unit chats have separate lifecycles
+([Session engine](#4-session-engine)). An intake has its own id before the
+course exists. After a server restart, unit chat routes require opening
+the unit; transcript and notes routes need no open chat. Notes are served
+as HTML only to a same-origin iframe and as inert text otherwise.
+
 - An event stream replays its chat's log with ids `<log id>.<index>`, so a
   page that reconnects gets only what it missed. It starts with `hello`,
   outside the log: the chat's id and the index of the log's last event,
@@ -1490,6 +1459,14 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
   is not its own page.
 
 ## 11. Testing
+
+Run commands under mise. Use `mise install` and `mise run setup` for the
+pinned toolchain and dependencies; `mise run check` runs lint, type-check
+and both test suites. For focused checks, use `pnpm exec vitest run <file>`
+or `uv run --directory pytools pytest <path>`. The Linux sandbox also
+needs `bwrap`, `socat` and `rg`. For fault injection, see
+[`scripts/faults.ts`](../scripts/faults.ts); use an isolated worktree as
+required by [`AGENTS.md`](../AGENTS.md#project-rules).
 
 - **Automated (Vitest)**: tests sit beside the code. Expected results come
   from worked examples written by hand. Engine flows run on the fake
@@ -1506,11 +1483,34 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
   own Python; conversion of sources the tests write, with each expected
   section written out by hand. A Vitest test reads the outline
   `convert.py` writes with its schema.
-- **Browser checks with no model**: `pnpm dev:fake`, the real server on the
-  scripted backend and a seeded scratch data root.
-- **Real-model runs**: by hand, short, on Haiku 5.5 unless the result
-  depends on the model's judgment. A run's turns as sent, with headers,
-  tool inputs, tool results and thinking, are in Claude Code's session log
+- **Browser checks with no model**: run `pnpm dev:fake` on port 4330 by
+  default. See [`scripts/dev-fake.ts`](../scripts/dev-fake.ts) for the
+  seed and `--empty`, and [`scripted.ts`](../src/server/backends/scripted.ts)
+  for scenario commands. Point `GAUSS_DATA_ROOT` at a fresh temporary
+  directory for a clean run. Close the test browser before stopping the
+  server.
+- **Chromium for browser checks.** On NixOS, get its path with
+  `nix build nixpkgs#chromium --no-link --print-out-paths` and pass
+  `app: "<that path>/bin/chromium"` to `browser.open`. Omp's managed
+  Chromium does not start here; WebKit handles aid errors differently
+  ([Confinement](decisions.md#confinement)).
+- **Real-model checks**, only when required, use a fresh temporary data
+  root. Opening a unit can spend plan usage before anyone sends a
+  message. A short smoke run on the plan login (port 4320 by default):
+
+  ```sh
+  scratch=$(mktemp -d) &&
+    GAUSS_DATA_ROOT="$scratch" GAUSS_CLAUDE_MODEL=claude-haiku-5-5 \
+    mise exec -- pnpm dev
+  ```
+
+  For paired grader or judge checks, use
+  [`grade-set.ts`](../scripts/grade-set.ts),
+  [`judge-set.ts`](../scripts/judge-set.ts), or
+  [`decide-set.ts`](../scripts/decide-set.ts) with `--prompt` and `--only`
+  to run the same cases against both versions.
+  The request headers, tool inputs, results and thinking from a run are
+  in Claude Code's session log
   under `~/.claude/projects/<the course's workspace folder, every character
   but letters and digits made "-">/`; the page events are in the course's
   `sessions/`.
@@ -1526,7 +1526,7 @@ Stage scope is listed here; task status and user checks live in the
 | 1. Record and library | Data root, course creation by intake, review and approval, diagram, library |
 | 2. Session engine | Unit planning, phases, choice and rubric-graded questions, confidence, evidence, derived status, override, detours, help judging, resume, transcripts, math rendering, backup, "What I know", calibration |
 | 3. Checked grading and aids | SymPy check, workspace and code tests, installing a course's packages, artifacts pane, disputes, the tutor's built-in tools |
-| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review questions at the start of each sitting, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style and curriculum changes |
+| 5. Mastery loop (before 4) | Unit gate with earlier objectives, testing out of a unit, review offered when due between segments, retained and slipping status, the misconception record, handoff notes, the learner profile, HTML notes, transcript export, style and curriculum changes |
 | 4. Sources (after 5) | Ingestion for the four formats, outline, unit mapping, `quote_source`, citation view, page images, web search setting |
 | 6. Later | Codex backend; a model chosen in the app's settings; self-test, on a scope the learner picks (a segment, a unit, the course, or a random mix of what they have passed) and the kinds of question they pick; teaching instructions the learner can add to or edit, app-wide, with what the app relies on fixed and the shipped prompt kept to revert to; cheat sheets; photo input; starred messages for the notes, if the generated notes miss what the learner wants kept |
 
@@ -1542,9 +1542,9 @@ Stage scope is listed here; task status and user checks live in the
   pointer to the flaw, disputes. Proof grades remain a model's judgment.
 - **Poor PDF conversion.** Mitigation: page-image fallback; scanned files
   flagged at ingestion.
-- **Cutting a long stretch can split an argument.** Mitigation: cuts fall
-  only at paragraph boundaries, and the tutor can read the neighbouring
-  sections.
+- **A section boundary can split an argument.** See the
+  [cut rules](#available-now-txt-and-markdown-conversion); the sources
+  design lets the tutor read neighbouring sections.
 - **The tutor's shell, and the tests and expressions it writes, run on
   the learner's machine.** Mitigation: the sandbox, with no network but
   for installing packages the learner approved, and the permission

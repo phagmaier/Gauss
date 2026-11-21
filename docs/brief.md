@@ -25,8 +25,8 @@ acceptance cases because together they exercise every grading and content path:
 
 - **Course**: a topic the learner is studying, with its own curriculum, record,
   sources, notes and workspace. A one-off topic is a course with one unit.
-- **Unit**: a part of a course with one stated goal, sized for one to three
-  sittings.
+- **Unit**: a part of a course with one stated goal and a handful of
+  objectives. It is sized by content, not by the length of a sitting.
 - **Objective**: one specific, testable skill or understanding, such as "apply
   the chain rule to a composite function". Objectives are what mastery is
   tracked on. A unit groups several.
@@ -103,10 +103,8 @@ The learner moves from discuss to check with a "ready" control; the tutor may
 suggest it. A segment closes only when every one of its objectives has
 passed, or when the learner moves on, which is recorded as an override.
 
-Units are sized by content (a handful of objectives), not by time; sitting
-length is not a design input. Progress is saved after every segment and every
-answer, so a session can stop anywhere and resume at the same segment and
-phase.
+Progress is saved after every segment and every answer, so a session can
+stop anywhere and resume at the same segment and phase.
 
 ## Teaching style
 

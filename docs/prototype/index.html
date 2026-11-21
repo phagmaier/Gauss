@@ -1,15 +1,9 @@
 <!doctype html>
 <!--
-  PROTOTYPE, throwaway. Plan task 1.0: the page layout, settled piece by
-  piece on 2026-11-13. This page lists the eight pieces in the order a
-  learner meets them. Each file is a static mock with simulated content; its
-  header comment says what was asked, what was picked and what was rejected.
-  The shared look is base.css. The picks are recorded in ../decisions.md.
-  Plan task 2.1 adds pieces 9 to 12, for what stage 2 shows that task 1.0
-  did not design, task 3.1 pieces 13 and 14, for stage 3, task 5.1 pieces
-  15 to 18, for stage 5, task 5.17 pieces 19 to 21, the redesign, in
-  a look of their own (look.css), and task 4.1 pieces 22 to 24, for
-  sources, in that look.
+  Standalone design fixtures, not a walkthrough or a snapshot of the
+  running app. Pieces 19–21 are the selected redesign references; 22–24
+  are planned source UI; 1–18 retain earlier design and feature choices.
+  Each mock's header records what was tried and rejected.
 -->
 <html lang="en">
 <head>
@@ -29,19 +23,22 @@ a.lc{color:inherit;text-decoration:none}
 <div class="pg"><header class="nl"><nav class="crumbs"><b>Gauss prototype</b></nav></header>
 <div class="pg-scroll"><div class="pg-col">
   <h1 class="cv-title">The page layout</h1>
-  <p class="cv-at">Static mocks, in the order a learner meets them. Everything in them is simulated.</p>
+  <p class="cv-at">Static, simulated fixtures, not a continuous walkthrough.
+    Start with the <a href="#selected-redesign">selected redesign</a> or
+    the <a href="#planned-source-ui">planned source UI</a>.
+    See <a href="../decisions.md#page-design">Page design</a> for the choices behind them.</p>
 
-  <h2 class="pg-h">Outside a session</h2>
+  <h2 class="pg-h">Historical layouts — outside a session</h2>
   <div class="lib-list">
     <a class="lc" href="06-library.html"><span class="lc-title">Library</span><span class="lc-when">Piece 6</span>
-      <span class="lc-where">One plain list of courses and one-offs, newest first. "New course" is in the top line.</span></a>
+      <span class="lc-where">Superseded by piece 21. One plain list of courses and one-offs, newest first.</span></a>
     <a class="lc" href="08-intake.html"><span class="lc-title">Starting a course</span><span class="lc-when">Piece 8</span>
       <span class="lc-where">An intake conversation, then the proposed curriculum as a card in the thread to push back on or approve.</span></a>
     <a class="lc" href="07-course.html"><span class="lc-title">Course</span><span class="lc-when">Piece 7</span>
-      <span class="lc-where">The unit list with goals and status. The diagram opens in the side pane.</span></a>
+      <span class="lc-where">Superseded by piece 20. The unit list with goals and status; the diagram opens in the side pane.</span></a>
   </div>
 
-  <h2 class="pg-h">In a session</h2>
+  <h2 class="pg-h">Historical layouts — in a session</h2>
   <div class="lib-list">
     <a class="lc" href="01-reading-chat.html"><span class="lc-title">Reading and chat</span><span class="lc-when">Piece 1</span>
       <span class="lc-where">One centred column, the learner's messages on the right, one message box at the bottom.</span></a>
@@ -55,7 +52,7 @@ a.lc{color:inherit;text-decoration:none}
       <span class="lc-where">A pane beside the thread, opened from a reference or a citation.</span></a>
   </div>
 
-  <h2 class="pg-h">Added for stage 2</h2>
+  <h2 class="pg-h">Earlier feature references — stage 2</h2>
   <div class="lib-list">
     <a class="lc" href="09-style-note.html"><span class="lc-title">The style note</span><span class="lc-when">Piece 9</span>
       <span class="lc-where">A section of the proposal card, under the units, approved with the curriculum.</span></a>
@@ -67,7 +64,7 @@ a.lc{color:inherit;text-decoration:none}
       <span class="lc-where">A closing card in the thread: one row per objective, and the next step in its foot.</span></a>
   </div>
 
-  <h2 class="pg-h">Added for stage 3</h2>
+  <h2 class="pg-h">Earlier feature references — stage 3</h2>
   <div class="lib-list">
     <a class="lc" href="14-code-question.html"><span class="lc-title">Code questions</span><span class="lc-when">Piece 14</span>
       <span class="lc-where">The card names the file to edit, the tests are hidden, and "Run the tests" is the answer. Packages are installed from a card.</span></a>
@@ -75,7 +72,7 @@ a.lc{color:inherit;text-decoration:none}
       <span class="lc-where">"Dispute this grade" on a graded card and on each answer in "What I know". A separate check decides, and the outcome stays with the answer.</span></a>
   </div>
 
-  <h2 class="pg-h">Added for stage 5</h2>
+  <h2 class="pg-h">Earlier feature references — stage 5</h2>
   <div class="lib-list">
     <a class="lc" href="15-review.html"><span class="lc-title">Review questions</span><span class="lc-when">Piece 15</span>
       <span class="lc-where">A card offers them when a sitting starts. One question per objective, a detour and a second question after a miss, and markers around the run.</span></a>
@@ -87,7 +84,7 @@ a.lc{color:inherit;text-decoration:none}
       <span class="lc-where">The profile as a section of the proposal card and on a page to edit. A misconception under its objective in "What I know".</span></a>
   </div>
 
-  <h2 class="pg-h">The redesign (task 5.17)</h2>
+  <h2 class="pg-h" id="selected-redesign">Selected redesign references</h2>
   <div class="lib-list">
     <a class="lc" href="21-library.html"><span class="lc-title">Library</span><span class="lc-when">Piece 21</span>
       <span class="lc-where">Courses grouped by where they stand, with how many objectives are due for review and a status form per unit.</span></a>
@@ -97,14 +94,14 @@ a.lc{color:inherit;text-decoration:none}
       <span class="lc-where">The new type and colours; segment headings and phase hairlines; the outline that jumps; the course map; Quote; the gate's partway skip.</span></a>
   </div>
 
-  <h2 class="pg-h">Added for stage 4 (task 4.1)</h2>
+  <h2 class="pg-h" id="planned-source-ui">Planned source UI — not shipped</h2>
   <div class="lib-list">
     <a class="lc" href="22-source-intake.html"><span class="lc-title">A source in the intake</span><span class="lc-when">Piece 22</span>
       <span class="lc-where">Attaching a file by the message box or by dropping it; the card while it converts, what was found, or why it was refused; the proposal card with each unit's sections.</span></a>
     <a class="lc" href="23-reading-source.html"><span class="lc-title">Reading the source</span><span class="lc-when">Piece 23</span>
       <span class="lc-where">A verified quote and its citation; a section link; the pane with the section's text, page numbers in the margin and a page's image; a web search in the thread.</span></a>
     <a class="lc" href="24-course-sources.html"><span class="lc-title">The course's sources</span><span class="lc-when">Piece 24</span>
-      <span class="lc-where">The sources in the course view, each opening its outline in the pane, and the web search switch.</span></a>
+      <span class="lc-where">A planned extension of piece 20, with a source outline pane and the web search switch.</span></a>
   </div>
 </div></div></div>
 </body>
