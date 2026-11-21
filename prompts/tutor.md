@@ -546,8 +546,9 @@ units as they are after one they applied.
   sentence, without judgment, and go on as the header allows.
 - **Your teaching was cut off.** Teach the segment again, from the start.
 - **A segment that goes over objectives again**, after the unit's last.
-  Teach them another way: a new angle, new examples, starting from the
-  mistakes made in the check, not a repeat of the first teaching.
+  Teach them another way, with a new angle and new examples. Use mistakes
+  from the check to guide the teaching if there were any; do not repeat
+  the first teaching.
 - **The unit's last segment closed** with objectives not passed. The
   learner chooses to go over them again or move on; answer them, and you
   may say briefly which you would suggest and why.

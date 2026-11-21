@@ -63,10 +63,12 @@ import {
   conversations,
   emptyTimeline,
   type Item,
+  offersSteps,
   reduce,
   standingCard,
   type TestResultItem,
   type Timeline,
+  type TimelineAction,
   type UnitEndItem,
 } from "../shared/timeline.ts";
 import { ArtifactPane } from "./ArtifactPane.tsx";
@@ -120,9 +122,56 @@ const RETRY_MS = 1000;
 /** How long a heading the outline jumped to stays lit before it fades. */
 const LIT_MS = 900;
 
+type Confirmation = "move-on" | "finish" | "skip-gate";
+type SessionState = { timeline: Timeline; confirming?: Confirmation };
+type SessionAction =
+  | TimelineAction
+  | { type: "confirm"; confirmation: Confirmation | undefined };
+
+function finishingCardKey(timeline: Timeline): number | undefined {
+  const card = standingCard(timeline.items);
+  if (card !== undefined && card.stepTaken === undefined && offersSteps(card)) {
+    return card.key;
+  }
+  return undefined;
+}
+
+function reduceSession(
+  state: SessionState,
+  action: SessionAction,
+): SessionState {
+  const { timeline: before, confirming } = state;
+  if (action.type === "confirm") {
+    return action.confirmation === undefined
+      ? { timeline: before }
+      : { timeline: before, confirming: action.confirmation };
+  }
+
+  const timeline = reduce(before, action);
+  if (timeline === before) return state;
+  // Check each event: an assessment can interrupt a step without moving the
+  // segment, even if React batches the interruption and the return.
+  if (
+    confirming === undefined ||
+    timeline.position !== before.position ||
+    timeline.assessment?.mode !== before.assessment?.mode ||
+    timeline.assessment?.stage !== before.assessment?.stage ||
+    (confirming === "finish"
+      ? finishingCardKey(timeline) !== finishingCardKey(before)
+      : nextStep(timeline) !== nextStep(before))
+  ) {
+    return { timeline };
+  }
+  return { timeline, confirming };
+}
+
 export function Session(props: { courseId: string; unitId: string }) {
   const { courseId, unitId } = props;
-  const [timeline, dispatch] = useReducer(reduce, emptyTimeline);
+  const [{ timeline, confirming }, dispatch] = useReducer(reduceSession, {
+    timeline: emptyTimeline,
+  });
+  const setConfirming = (confirmation: Confirmation | undefined) =>
+    dispatch({ type: "confirm", confirmation });
   // Undefined while loading, null when there is no such course.
   const [stored, setStored] = useState<CourseWithProgress | null>();
   const [connected, setConnected] = useState(false);
@@ -140,9 +189,6 @@ export function Session(props: { courseId: string; unitId: string }) {
   const [outlineOpen, setOutlineOpen] = useState(false);
   /** The heading the outline last jumped to, lit for a moment; a new object each jump. */
   const [lit, setLit] = useState<{ id: string }>();
-  const [confirming, setConfirming] = useState<
-    "move-on" | "finish" | "skip-gate"
-  >();
   /**
    * What the side pane shows, one thing at a time: an artifact, a proposed
    * curriculum's diagram, or the course map.
@@ -255,10 +301,6 @@ export function Session(props: { courseId: string; unitId: string }) {
     if (timeline.shown !== null) setPane(timeline.shown);
   }, [timeline.shown]);
   const closePane = useCallback(() => setPane(undefined), []);
-
-  // A confirmation belongs to the step it was asked for.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the unit moves on
-  useEffect(() => setConfirming(undefined), [timeline.position]);
 
   useEffect(() => {
     if (lit === undefined) return;
@@ -1756,7 +1798,6 @@ function NextStepControl(props: {
     case null:
       return null;
     case "ready":
-      // Moving on is offered beside it, so a skip costs no question.
       return (
         <div className="pf-act">
           {props.confirming ? null : (

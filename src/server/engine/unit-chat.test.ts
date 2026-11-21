@@ -2407,11 +2407,14 @@ test("a unit not passed waits on its closing card; going over again teaches one 
     phase: "teach",
     again: ["secant-slope"],
   });
-  expect(setup.backend.received[4]?.text).toBe(
-    '[Unit 1 of 2, "The derivative"; a segment after the plan\'s 1, going over "secant-slope" again. Phase: teach. Start of a segment that goes over objectives the learner has not passed. The learner moved on without finishing the check of the segment just closed, which is recorded as an override of "difference-quotient" and "secant-slope". Allowed now: teach the segment\'s objectives in this turn, within the length the style sets, then stop; the learner can ask anything next. No questions yet: ask_question is refused until the learner presses "ready".]\n' +
-      "Teach these objectives again, another way, starting from what went wrong:\n" +
-      '- "secant-slope": Read a difference quotient as the slope of a secant line.',
+  const reteaching = setup.backend.received[4]?.text;
+  expect(reteaching).toContain(
+    'recorded as an override of "difference-quotient" and "secant-slope"',
   );
+  expect(reteaching).toContain(
+    '\n- "secant-slope": Read a difference quotient as the slope of a secant line.',
+  );
+  expect(reteaching).not.toContain('\n- "difference-quotient":');
 
   await toCheck(chat);
 

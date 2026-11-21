@@ -297,13 +297,13 @@ function gateRow(
 }
 
 /**
- * The one control that moves the unit on, at the point the thread has
- * reached (mock 3): "ready" or moving on in the discussion, moving on in
- * the check, and in a detour asking for another question or moving on
- * (task 2.20), the next segment once one closes, and the way out of a
- * finished unit. None in teach (the test's result card waits only there,
- * and holds its own steps), while an answer waits for its grade (moving on
- * is refused then), or at the closing card, whose foot holds the steps.
+ * The controls where the thread has reached: "ready" renders both discussion
+ * actions (start the check or move on). The check offers moving on; a detour
+ * also offers another question. A closed segment offers the next segment
+ * when there is one, and a finished unit offers the way out. None in teach
+ * (the test's result card waits only there and holds its own steps), while
+ * an answer waits for its grade, or at the closing card, whose foot has its
+ * own steps.
  * While an assessment is under way (piece 15), its skip, and in its detour
  * the step that ends it; none while its card waits, which holds Start and
  * Skip.

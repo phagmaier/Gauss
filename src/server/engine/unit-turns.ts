@@ -186,7 +186,7 @@ export function teachTurn(where: Where, cutOff: boolean): string {
       ? "Start of a segment that goes over objectives the learner has not passed."
       : "Start of the segment.";
   const lead = segment.again
-    ? "Teach these objectives again, another way, starting from what went wrong:"
+    ? "Teach these objectives again, another way:"
     : "Teach these objectives:";
   const { leftOut } = segment;
   const them = leftOut.length === 1 ? "it" : "them";

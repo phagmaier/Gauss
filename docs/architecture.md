@@ -473,7 +473,7 @@ The rules:
   also wait for an assessment offered or under way, and for the test's
   result card. Answers and messages are taken at any time.
 - **Moving on sends the tutor nothing.** The next turn's header says the
-  learner moved on, and which question was withdrawn.
+  learner moved on, and which question, if any, was withdrawn.
 - **A finished unit is not started again.** Opening one shows it finished;
   one reopened at its closing card shows the card again.
 - **Order of writes.** Every change is written to `state.json` before the
