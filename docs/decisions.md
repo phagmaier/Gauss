@@ -1397,6 +1397,15 @@ works is `architecture.md` section 4.
   - dropped: passed before retained and the least confident first. A
     retained objective a month unasked waited behind one passed the day
     before.
+- **The due count before a unit is opened** (the user's, 2026-11-19, from
+  the DeepTutor comparison): each course's library row and its course view
+  say how many objectives are due, derived when the route answers
+  (`dueCount` in `record/review.ts`). Settled by the agent, open to
+  change: it counts what review could ask now, with no limit of three, so
+  slipping ones count and one answered within the hour does not; a count
+  of what review would not ask would offer a "Review now" (5.25) that
+  starts nothing. A course with none shows nothing, as the mocks do (pieces
+  20 and 21).
 - **A message on the card skips it**: the learner has gone on. The turn it
   brings is sent after the teaching the card held, as a message during
   teaching is. One sent while the card is being offered (`offering` in

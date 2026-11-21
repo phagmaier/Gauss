@@ -51,6 +51,12 @@ export const CourseWithProgress = StoredCourse.extend({
   progress: z.record(Slug, UnitProgress),
   /** Set when the course has recorded evidence, even outside its current plan. */
   hasEvidence: z.literal(true).optional(),
+  /**
+   * How many objectives are due for review when the route answered
+   * (`dueCount` in src/server/record/review.ts); absent when none, and
+   * when `progress` is empty.
+   */
+  due: z.number().int().positive().optional(),
   /** Why state or evidence could not be read, when progress is unavailable. */
   problem: z.string().optional(),
 });

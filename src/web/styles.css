@@ -1341,6 +1341,43 @@ a.nl-pos {
 .lc.done .lc-title {
   color: var(--ink-2);
 }
+/* how many of the course's objectives are due for review, as in mocks 20
+   and 21: at the right of a library row's second line, and in the course
+   view between its counts and its card */
+.lc-due {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.due-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-2);
+}
+.cv-due {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  margin: 1.4em 0 0;
+  padding: 0.75em 1em;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  font-size: 14.5px;
+}
+.cv-due b {
+  font-weight: 500;
+}
+.cv-due .k {
+  color: var(--ink-2);
+}
 
 /* ---- The course view, pieces 7 and 20: the title, its counts, the card, the units ---- */
 .cv-title {

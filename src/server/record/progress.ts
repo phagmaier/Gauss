@@ -1,8 +1,9 @@
 // Where each unit of a course stands, as the library routes send it to the
 // page (task 2.12): its status, derived from the evidence and its position,
-// what of the position of a unit in progress the page reads, and each
-// started unit's objective statuses; and which courses are finished, which a
-// new course's planner is given with the learner profile (task 5.8).
+// what of the position of a unit in progress the page reads, each started
+// unit's objective statuses and how many objectives are due for review
+// (task 5.24); and which courses are finished, which a new course's planner
+// is given with the learner profile (task 5.8).
 // Derived when asked, never stored (architecture.md section 3).
 
 import type { Curriculum } from "../../shared/curriculum.ts";
@@ -16,6 +17,7 @@ import type { FinishedCourse } from "../../shared/profile.ts";
 import type { State } from "../../shared/state.ts";
 import { isFinished, type ObjectiveStatus } from "../../shared/status.ts";
 import type { DataRoot } from "./data-root.ts";
+import { dueCount } from "./review.ts";
 import { objectiveStandings, unitStatusFromObjectives } from "./status.ts";
 
 /**
@@ -75,10 +77,14 @@ export function courseProgress(
   );
 }
 
-/** The course with its progress, or a reason when that part of the record is unreadable. */
+/**
+ * The course with its progress and how many objectives are due for review
+ * at `at`, or a reason when that part of the record is unreadable.
+ */
 export async function withProgress(
   dataRoot: DataRoot,
   stored: StoredCourse,
+  at: Date = new Date(),
 ): Promise<CourseWithProgress> {
   if (stored.curriculum?.approval.status !== "approved") {
     return { ...stored, progress: {} };
@@ -92,10 +98,12 @@ export async function withProgress(
   try {
     if (state.status === "rejected") throw state.reason;
     if (evidence.status === "rejected") throw evidence.reason;
+    const due = dueCount(stored.curriculum.units, evidence.value, at);
     return {
       ...stored,
       progress: courseProgress(stored.curriculum, state.value, evidence.value),
       ...(evidence.value.length === 0 ? {} : { hasEvidence: true as const }),
+      ...(due === 0 ? {} : { due }),
     };
   } catch (error) {
     return {

@@ -89,6 +89,23 @@ export function pickForReview(
   return [...slipping, ...due].slice(0, options.count).map((c) => c.pick);
 }
 
+/**
+ * How many objectives are due for review at `at`: as many as review could
+ * ask now with no limit on the count, so slipping ones too, and none
+ * answered within SESSION_GAP_MS. Shown before a unit is opened (task 5.24).
+ */
+export function dueCount(
+  units: readonly StoredUnit[],
+  evidence: readonly EvidenceEntry[],
+  at: Date,
+): number {
+  return pickForReview(units, evidence, {
+    at,
+    count: Number.POSITIVE_INFINITY,
+    leaveOut: [],
+  }).length;
+}
+
 /** How many objectives of the course's other units a unit's gate asks about, at most. */
 export const GATE_OTHERS = 3;
 

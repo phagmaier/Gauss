@@ -133,7 +133,9 @@ version: a field added later must be optional.
   of one unit); each unit's progress for the library and the course view,
   with each started unit's objective statuses and, for a unit in progress,
   what of its position `currentObjective` reads (`record/progress.ts`,
-  `UnitProgress` in `src/shared/library.ts`), and which courses are
+  `UnitProgress` in `src/shared/library.ts`), and how many of the course's
+  objectives are due for review (`dueCount` in `record/review.ts`: those
+  review could ask now, with no limit on the count); which courses are
   finished, every unit of
   an approved curriculum passed or overridden, omitting unreadable records
   (`finishedCourses`), a list for new planners and the Profile page;
@@ -1085,8 +1087,9 @@ progress take the outline.
   opened first, an empty group left out (`libraryGroups`). A row has the
   title, "One-off" for a course of one unit, where it stands, when it was
   last opened, and a form per unit for a course of more than one
-  (`standing` in `library.ts`); the right of its second line is left for
-  the due count. Every row opens its course view. The top line has
+  (`standing` in `library.ts`), and at the right of its second line how
+  many objectives are due for review, when any are. Every row opens its
+  course view. The top line has
   "Gauss", and "Profile" and "New course" at its right.
 - **Intake** (`/intakes/<id>`): the conversation, with each proposal as a
   card (units, "How I would teach it", "What the tutor will know about
@@ -1103,7 +1106,8 @@ progress take the outline.
   know" (a draft has "Review the curriculum" instead of the latter). Under
   the title, a line counts the units, the finished ones, and the started
   units' objectives passed (passed or retained) out of how many
-  (`courseCounts` in `progress.ts`). A card leads to the unit in progress
+  (`courseCounts` in `progress.ts`). When any objectives are due for
+  review, a bar under that line says how many. A card leads to the unit in progress
   most recently opened, or else the next unit in order (the first not
   started whose prerequisites are finished); on a finished course it reads
   "Every unit is finished", with "Plan what comes next", which opens the

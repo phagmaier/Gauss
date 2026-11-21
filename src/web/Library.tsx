@@ -2,8 +2,9 @@
 // progress, drafts and finished, each group with its count, and "Profile"
 // (18-profile.html) and "New course" at the right of the top line. Every
 // row opens its course view (task 2.28), whose card continues a unit in
-// progress and whose "Review the curriculum" reviews a draft. Calibration
-// is per course, on its "What I know" (task 2.29).
+// progress and whose "Review the curriculum" reviews a draft; a row says
+// how many of the course's objectives are due for review, when any are
+// (task 5.24). Calibration is per course, on its "What I know" (task 2.29).
 
 import { useEffect, useState } from "react";
 import { IntakeStarted } from "../shared/events.ts";
@@ -102,7 +103,7 @@ function Row(props: {
   disabled: boolean;
   onOpen(): void;
 }) {
-  const { course } = props.stored;
+  const { course, due } = props.stored;
   const where = standing(props.stored);
   return (
     <button
@@ -117,6 +118,12 @@ function Row(props: {
       </span>
       <span className="lc-when">{whenOpened(course.lastOpenedAt)}</span>
       <span className="lc-where">{where.text}</span>
+      {due === undefined ? null : (
+        <span className="lc-due">
+          <span className="due-dot" aria-hidden="true" />
+          {due} due for review
+        </span>
+      )}
       {where.units.length === 0 ? null : (
         <span className="lc-units" aria-hidden="true">
           {where.units.map((form, i) => (

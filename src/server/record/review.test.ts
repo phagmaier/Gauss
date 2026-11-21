@@ -3,7 +3,7 @@ import type { StoredUnit } from "../../shared/curriculum.ts";
 import { SESSION_GAP_MS } from "../../shared/events.ts";
 import { type AssessmentMode, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Confidence } from "../../shared/question.ts";
-import { pickForGate, pickForReview } from "./review.ts";
+import { dueCount, pickForGate, pickForReview } from "./review.ts";
 
 // Every expected pick below was worked out by hand from the rules in
 // docs/decisions.md, "Mastery loop" ("Review": due after 1, 3, 7, 21, then
@@ -346,6 +346,46 @@ describe("the count and the objectives left out", () => {
       "d-two",
       "l-two",
     ]);
+  });
+});
+
+describe("how many are due, shown before a unit is opened", () => {
+  test("every objective review could ask now, past a review's three, slipping ones too", () => {
+    const evidence = [
+      // Passed, each more than a day ago: due.
+      pass("l-one", ago(2 * DAY)),
+      pass("l-two", ago(3 * DAY)),
+      pass("d-one", ago(4 * DAY)),
+      // Slipping, missed in a review yesterday: due at once.
+      pass("d-two", ago(9 * DAY)),
+      wrong("d-two", { in: "review", at: ago(DAY) }),
+    ];
+    expect(dueCount(UNITS, evidence, AT)).toBe(4);
+  });
+
+  test("not one passed within its interval, answered within the hour, overridden, only attempted, or in no plan", () => {
+    const evidence = [
+      // Due: passed two days ago.
+      pass("l-one", ago(2 * DAY)),
+      // Passed ten hours ago: not due for another fourteen.
+      pass("l-two", ago(10 * HOUR)),
+      // Slipping, but missed in a review ten minutes ago.
+      pass("l-three", ago(9 * DAY)),
+      wrong("l-three", { in: "review", at: ago(10 * MINUTE) }),
+      // Attempted: one answer at 75%, which does not pass.
+      right("d-one", { at: ago(5 * DAY) }),
+      // Overridden after a miss.
+      wrong("d-two", { at: ago(5 * DAY) }),
+      EvidenceEntry.parse({
+        kind: "override",
+        recordedAt: ago(5 * DAY),
+        objectives: ["d-two"],
+      }),
+      // Passed, but the unit that holds it has no plan yet.
+      pass("i-one", ago(5 * DAY)),
+    ];
+    expect(dueCount(UNITS, evidence, AT)).toBe(1);
+    expect(dueCount(UNITS, [], AT)).toBe(0);
   });
 });
 

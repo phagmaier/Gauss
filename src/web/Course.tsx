@@ -1,5 +1,6 @@
 // The course view (docs/prototype/20-course.html, with 12-unit-order.html's
-// card and Start): the title, a line of counts, the card that leads on, and
+// card and Start): the title, a line of counts, how many objectives are due
+// for review when any are (task 5.24), the card that leads on, and
 // the unit list down to objectives. Each unit is a heading that opens and
 // folds; a started unit lists its objectives, "Next" on the one to do in the
 // card's unit, and a unit not started its goal. "Course map" in the top line
@@ -257,6 +258,7 @@ export function Course(props: { courseId: string }) {
                     : "No curriculum was proposed."}
                 </p>
               )}
+              {stored.due === undefined ? null : <DueCount due={stored.due} />}
               {finished ? (
                 <FinishedCard
                   onPlan={() => navigate(paths.planning(courseId))}
@@ -381,6 +383,22 @@ function Counts(props: { counts: CourseCounts; finished: boolean }) {
           {props.finished ? "" : " in the units started"}
         </span>
       )}
+    </p>
+  );
+}
+
+/** How many of the course's objectives are due for review, under the counts (piece 20). */
+function DueCount(props: { due: number }) {
+  const { due } = props;
+  return (
+    <p className="cv-due">
+      <span className="due-dot" aria-hidden="true" />
+      <span>
+        <b>
+          {due} {due === 1 ? "objective" : "objectives"}
+        </b>{" "}
+        <span className="k">{due === 1 ? "is" : "are"} due for review</span>
+      </span>
     </p>
   );
 }

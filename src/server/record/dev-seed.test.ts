@@ -38,18 +38,27 @@ test("the seed gives courses in each state, as the routes would send them", {
 
   const root = openDataRoot({ path: dir });
   const courses = await Promise.all(
-    (await root.listCourses()).map((stored) => withProgress(root, stored)),
+    (await root.listCourses()).map((stored) =>
+      withProgress(root, stored, TODAY),
+    ),
   );
   expect(ids?.toSorted()).toEqual(courses.map((c) => c.id).toSorted());
   const byId = Object.fromEntries(
     courses.map((c) => [
       c.id,
-      { approval: c.curriculum?.approval.status, progress: c.progress },
+      {
+        approval: c.curriculum?.approval.status,
+        progress: c.progress,
+        due: c.due,
+      },
     ]),
   );
   expect(byId).toEqual({
+    // Due for review, by the seed's own dates: limits' three, retained or
+    // slipping, derivative's one passed, and rules' one passed.
     "calculus-i": {
       approval: "approved",
+      due: 5,
       progress: {
         limits: {
           status: "passed",
@@ -93,6 +102,7 @@ test("the seed gives courses in each state, as the routes would send them", {
     },
     "linear-algebra-for-pca": {
       approval: "approved",
+      due: undefined,
       progress: {
         vectors: { status: "not-started" },
         eigen: { status: "not-started" },
@@ -101,6 +111,7 @@ test("the seed gives courses in each state, as the routes would send them", {
     },
     probability: {
       approval: "approved",
+      due: 4,
       progress: {
         events: expect.objectContaining({ status: "passed" }),
         bayes: {
@@ -113,9 +124,10 @@ test("the seed gives courses in each state, as the routes would send them", {
         },
       },
     },
-    topology: { approval: "draft", progress: {} },
+    topology: { approval: "draft", progress: {}, due: undefined },
     "what-is-a-group": {
       approval: "approved",
+      due: 1,
       progress: {
         group: expect.objectContaining({
           status: "in-progress",
@@ -125,10 +137,12 @@ test("the seed gives courses in each state, as the routes would send them", {
     },
     "the-pigeonhole-principle": {
       approval: "approved",
+      due: 3,
       progress: { pigeonhole: expect.objectContaining({ status: "passed" }) },
     },
     "calculus-1-to-3": {
       approval: "approved",
+      due: 12,
       progress: expect.objectContaining({
         functions: expect.objectContaining({ status: "passed" }),
         derivative: expect.objectContaining({ status: "passed" }),

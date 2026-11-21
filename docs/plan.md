@@ -33,33 +33,13 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.24 Reviews due, shown before a unit is opened
-
-- Status: todo
-- Depends on: nothing. In the library the count goes at the right of a
-  row's second line, which the row's grid leaves empty for it (`.lc` in
-  `styles.css`; `.lr .due` in piece 21); in the course view (piece 20) it
-  goes between the line of counts and the card
-- The user's decision (2026-11-19, from the DeepTutor comparison): each
-  course's row in the library, and its course view, show how many of its
-  objectives are due for review, derived from the evidence with 5.19's
-  rule (`pickForReview` in `record/review.ts`, which picks at most a
-  count and leaves out what was answered within the hour; the count
-  needs the due test on its own); nothing is stored. Today review is met
-  only on the card when a unit is opened in a new sitting, so a course
-  left for weeks does not show that it needs review. DeepTutor shows due
-  counts across topics (`web/components/space/learning/TopicAtlas.tsx` in
-  that project). To settle in the task: whether slipping objectives,
-  which review treats as due at once, count as due here, and what a
-  course with none shows.
-- Done when: tests on hand-made evidence logs give the counts; on
-  `pnpm dev:fake` the library and the course view show them for a
-  seeded course with objectives due.
-
 ### 5.25 Review when due, between segments, or on request
 
 - Status: todo
-- Depends on: 5.24, which places the due count
+- Depends on: nothing left. The due count the button sits beside is
+  `DueCount` in `src/web/Course.tsx` (`.cv-due`, a flex row; piece 20's
+  `.duebar .btn` pushes the button right), counted by `dueCount` in
+  `record/review.ts`
 - The user's decision (2026-11-19, from the stage 5 check; the agent's
   recommendation): in the check, the review card came when the unit was
   reopened three hours after segment 1's teaching, and sat between that
