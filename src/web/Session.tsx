@@ -694,6 +694,7 @@ export function Session(props: { courseId: string; unitId: string }) {
           enabled={open && timeline.failed === null}
           busy={busy}
           onSend={(text) => post(path("messages"), { text })}
+          onAsk={(question) => composer.current?.ask(question)}
           onClose={closePane}
         />
       ) : (

@@ -1,10 +1,11 @@
 // An artifact in the side pane (05-side-pane.html), in a frame that runs its
 // scripts in an origin of its own. When the aid's script stops with an
 // error, the pane says so above the aid and offers to send the error to the
-// tutor as the learner's message (artifact.ts).
+// tutor as the learner's message; a question the aid asks goes into the
+// message box (artifact.ts).
 
-import { useLayoutEffect, useRef, useState } from "react";
-import type { ArtifactReport } from "../shared/artifact.ts";
+import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import type { ArtifactError } from "../shared/artifact.ts";
 import type { ArtifactItem } from "../shared/timeline.ts";
 import { errorMessage, frameReport } from "./artifact.ts";
 import { SidePane } from "./Frame.tsx";
@@ -21,21 +22,30 @@ export function ArtifactPane(props: {
   busy: boolean;
   /** Posts the message; the reason when it is refused. */
   onSend(text: string): Promise<string | undefined>;
+  /** Puts the aid's question into the message box, unsent. */
+  onAsk(question: string): void;
   onClose(): void;
 }) {
   const { artifact } = props;
   const frame = useRef<HTMLIFrameElement>(null);
   /** The aid's first error; the frame reports no more. */
-  const [report, setReport] = useState<ArtifactReport>();
+  const [report, setReport] = useState<ArtifactError>();
   const [sending, setSending] = useState<
     "sending" | "sent" | { refused: string }
   >();
+  const ask = useEffectEvent((question: string) => {
+    if (props.enabled) props.onAsk(question);
+  });
 
   // Listening before the frame's document can load, so its first error is heard.
   useLayoutEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const received = frameReport(event, frame.current?.contentWindow);
-      if (received !== undefined) setReport((first) => first ?? received);
+      if (received?.type === "error") {
+        setReport((first) => first ?? received);
+      } else if (received?.type === "ask") {
+        ask(received.text);
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);

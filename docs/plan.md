@@ -33,27 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.23 Questions from inside an aid
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19, from the DeepTutor comparison): an
-  aid can put a question into the message box, such as a button "Ask
-  about this" that fills in what the aid shows ("why does the series
-  stop converging at $x = 1.2$?"); the learner sends it or not, and the
-  page never sends it by itself. It extends the channel by which an aid's
-  error leaves its frame (`ArtifactReport` in `src/shared/artifact.ts`,
-  the reporter in `http/artifact-frame.ts`, `frameReport` in
-  `src/web/artifact.ts`), taking messages only from the frame it shows. A
-  message sent while a question is open is judged for help as any other.
-  `tutor.md` says when an aid offers one. DeepTutor does this with
-  `sendPrompt(text)` and `data-prompt` (`web/lib/iframe-html.ts` in that
-  project). To settle in the task: a length limit, and what happens to
-  text already in the message box.
-- Done when: on `pnpm dev:fake`, an aid's button fills the message box
-  and nothing is sent until the learner sends it; a test shows a request
-  from anything but the shown frame ignored.
-
 ### 5.24 Reviews due, shown before a unit is opened
 
 - Status: todo

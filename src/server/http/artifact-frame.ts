@@ -1,15 +1,23 @@
 // What the app adds to an artifact it serves in the side pane: a script, run
 // before the aid's own, that tells the page when the aid's script stops with
-// an error, so the learner can send the error to the tutor. The frame's
+// an error, so the learner can send the error to the tutor, and gives the aid
+// `askTutor(text)`, which puts a question into the message box. The frame's
 // origin is its own (`ARTIFACT_POLICY` in app.ts), so the page cannot catch
-// the error itself; a message to the parent window is the one way out. The
-// document in the record stays as the tutor wrote it.
+// the error or read the aid itself; a message to the parent window is the
+// one way out. The document in the record stays as the tutor wrote it.
+
+import { ASK_LIMIT } from "../../shared/artifact.ts";
 
 /**
  * Sends the aid's first uncaught error or unhandled rejection to the page,
  * as an `ArtifactReport` (`src/shared/artifact.ts`), and nothing after it:
- * an error in a drawing loop would repeat many times a second. One line, so
- * the aid's line numbers stay those of the document the tutor wrote.
+ * an error in a drawing loop would repeat many times a second. Defines
+ * `askTutor(text)`, which sends a question only while the learner's press
+ * in the aid is fresh (`navigator.userActivation`, where the browser has
+ * it), so an aid cannot fill the message box by itself; that is a guard
+ * against a careless aid, not a boundary, as the aid can post to the page
+ * itself. One line, so the aid's line numbers stay those of the document
+ * the tutor wrote.
  */
 export const ARTIFACT_REPORTER =
   "<script>(function () {" +
@@ -27,6 +35,12 @@ export const ARTIFACT_REPORTER =
   'var why; try { why = String(e.reason); } catch { why = "a value that cannot be shown"; }' +
   'report("Uncaught (in promise) " + why, 0, 0);' +
   "});" +
+  "window.askTutor = function (text) {" +
+  "var pressed = navigator.userActivation;" +
+  "if (pressed && !pressed.isActive) return;" +
+  'parent.postMessage({ gauss: "artifact", type: "ask", ' +
+  `text: String(text).slice(0, ${ASK_LIMIT}) }, "*");` +
+  "};" +
   "})();</script>";
 
 /**

@@ -1,7 +1,8 @@
 // The message box (docs/prototype/01-reading-chat.html): it grows with its
 // text, sends on Enter, and turns into a stop button while the tutor writes.
 // A send owns only the draft it sent, so text typed meanwhile is kept
-// (task 0.8). A quoted passage goes after the draft (piece 19).
+// (task 0.8). A quoted passage (piece 19) and an aid's question go after the
+// draft; neither is sent until the learner sends it.
 
 import {
   type Ref,
@@ -12,6 +13,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { withQuote } from "../shared/quote.ts";
+import { withAsk } from "./artifact.ts";
 
 const SEND_ICON = (
   <svg
@@ -38,6 +40,8 @@ const STOP_ICON = (
 export interface ComposerHandle {
   /** Puts the passage, as a quote, after the draft, and focuses the box at its end. */
   quote(passage: string): void;
+  /** Puts an aid's question after the draft, and focuses the box at its end. */
+  ask(question: string): void;
 }
 
 export function Composer(props: {
@@ -63,22 +67,22 @@ export function Composer(props: {
     el.style.height = `${el.scrollHeight}px`;
   }, [text]);
 
-  useImperativeHandle(
-    props.ref,
-    () => ({
-      quote(passage) {
-        const next = withQuote(text, passage);
-        draftRevision.current += 1;
-        flushSync(() => setText(next));
-        const el = box.current;
-        if (el === null) return;
-        el.focus();
-        el.setSelectionRange(next.length, next.length);
-        el.scrollTop = el.scrollHeight;
-      },
-    }),
-    [text],
-  );
+  useImperativeHandle(props.ref, () => {
+    /** Replaces the draft with `next`, and focuses the box at its end. */
+    function fill(next: string) {
+      draftRevision.current += 1;
+      flushSync(() => setText(next));
+      const el = box.current;
+      if (el === null) return;
+      el.focus();
+      el.setSelectionRange(next.length, next.length);
+      el.scrollTop = el.scrollHeight;
+    }
+    return {
+      quote: (passage) => fill(withQuote(text, passage)),
+      ask: (question) => fill(withAsk(text, question)),
+    };
+  }, [text]);
 
   async function submit() {
     const message = text.trim();

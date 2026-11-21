@@ -46,10 +46,11 @@
 //   is right.
 // - Artifacts (task 3.6): the teaching of a unit's first segment shows one,
 //   a tangent to a parabola that a slider moves, with a button that tries
-//   to reach the app and the web and says what was refused; so does a reply
-//   to a message with "/artifact" in it, which the engine refuses while a
-//   question is open. "/broken-aid" shows one whose script throws as it
-//   loads (task 5.20).
+//   to reach the app and the web and says what was refused, and "Ask about
+//   this", which puts a question on the point shown into the message box
+//   (task 5.23); so does a reply to a message with "/artifact" in it, which
+//   the engine refuses while a question is open. "/broken-aid" shows one
+//   whose script throws as it loads (task 5.20).
 // - Packages (task 3.11): a message with "/packages" in it asks to install
 //   the names that follow it on its line, `pytest` if none, which the
 //   engine refuses while a question is open; Install really installs them,
@@ -753,7 +754,7 @@ const SCRIPTED_ARTIFACT = `<!doctype html>
   <circle id="pt" r="4.5" fill="#e5c890"/>
 </svg>
 <label>x <input id="x" type="range" min="-2" max="2" step="0.01" value="1"><output id="xv"></output></label>
-<p>Slope of the tangent, 2x: <b id="slope"></b></p>
+<p>Slope of the tangent, 2x: <b id="slope"></b> <button id="ask" type="button">Ask about this</button></p>
 <p><button id="check" type="button">Try to reach the app and the web</button></p>
 <ul id="results"></ul>
 <script>
@@ -777,6 +778,10 @@ const SCRIPTED_ARTIFACT = `<!doctype html>
   }
   document.getElementById("x").addEventListener("input", draw);
   draw();
+  document.getElementById("ask").addEventListener("click", function () {
+    var a = Number(document.getElementById("x").value);
+    askTutor("Why is the tangent's slope " + (2 * a).toFixed(2) + " at x = " + a.toFixed(2) + "?");
+  });
   function say(what, outcome) {
     var li = document.createElement("li");
     li.textContent = what + ": " + outcome;

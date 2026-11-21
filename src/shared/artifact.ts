@@ -36,19 +36,42 @@ export const ArtifactFile = z
   .regex(/^[1-9][0-9]*-[a-z0-9]+(-[a-z0-9]+)*\.html$/);
 export type ArtifactFile = z.infer<typeof ArtifactFile>;
 
+/** The most an aid's question may hold, in characters. */
+export const ASK_LIMIT = 500;
+
 /**
- * What an artifact's frame tells the page around it: that the aid's script
- * stopped with an error. The app adds the script that sends it to each
- * artifact it serves in the pane (`withReporter` in
- * `src/server/http/artifact-frame.ts`), and the page takes a report only
- * from the frame it shows (`frameReport` in `src/web/artifact.ts`). A line
- * of 0 is unknown: a promise rejected with no handler has no place.
+ * The aid's script stopped with an error. A line of 0 is unknown: a promise
+ * rejected with no handler has no place.
  */
-export const ArtifactReport = z.object({
+export const ArtifactError = z.object({
   gauss: z.literal("artifact"),
   type: z.literal("error"),
   message: z.string(),
   line: z.number().int().min(0),
   column: z.number().int().min(0),
 });
+export type ArtifactError = z.infer<typeof ArtifactError>;
+
+/**
+ * A question the aid puts into the message box, from a button the learner
+ * pressed in it; the learner sends it or not.
+ */
+export const ArtifactAsk = z.object({
+  gauss: z.literal("artifact"),
+  type: z.literal("ask"),
+  text: z.string().trim().min(1).max(ASK_LIMIT),
+});
+export type ArtifactAsk = z.infer<typeof ArtifactAsk>;
+
+/**
+ * What an artifact's frame tells the page around it. The app adds the
+ * script that sends it to each artifact it serves in the pane
+ * (`withReporter` in `src/server/http/artifact-frame.ts`), and the page takes
+ * a report only from the frame it shows (`frameReport` in
+ * `src/web/artifact.ts`).
+ */
+export const ArtifactReport = z.discriminatedUnion("type", [
+  ArtifactError,
+  ArtifactAsk,
+]);
 export type ArtifactReport = z.infer<typeof ArtifactReport>;
