@@ -655,12 +655,19 @@ test("in a code course, a review's code exercise skipped with a draft in its fil
       verdict: "correct",
     });
     const workspace = await dataRoot.workspaceFolder(id);
-    const review = async (units: typeof first.units) => {
+    /**
+     * Opens the unit and starts a review: from its card in the first
+     * sitting, at the unit's start; asked for in the next, which opens in
+     * the discussion, where no card comes.
+     */
+    const review = async (units: typeof first.units, asked: boolean) => {
       const opened = await units.open(id, "derivative");
       if (!opened.ok) throw new Error(opened.error);
       const chat = opened.chat;
       await chat.settled();
-      expect(await chat.startAssessment()).toEqual({ ok: true });
+      expect(
+        asked ? await units.reviewNow(id) : await chat.startAssessment(),
+      ).toEqual(asked ? { ok: true, unitId: "derivative" } : { ok: true });
       await chat.settled();
       const open = (await dataRoot.readState(id)).units.derivative
         ?.openQuestion;
@@ -668,7 +675,7 @@ test("in a code course, a review's code exercise skipped with a draft in its fil
       return { chat, question: open.question };
     };
 
-    const before = await review(first.units);
+    const before = await review(first.units, false);
     expect(before.question).toMatchObject({
       kind: "code",
       files: ["exercise_limits_idea_2.py"],
@@ -682,7 +689,7 @@ test("in a code course, a review's code exercise skipped with a draft in its fil
     // Two hours on, the next sitting reviews the same objective.
     clock = new Date(clock.getTime() + 2 * 60 * 60 * 1000);
     const second = setUp(given);
-    const after = await review(second.units);
+    const after = await review(second.units, true);
     expect(after.question).toMatchObject({
       kind: "code",
       files: ["exercise_limits_idea_3.py"],

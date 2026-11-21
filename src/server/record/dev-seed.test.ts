@@ -78,8 +78,8 @@ test("the seed gives courses in each state, as the routes would send them", {
         },
         rules: {
           status: "in-progress",
-          segment: 1,
-          phase: "discuss",
+          segment: 0,
+          phase: "closed",
           objectives: {
             "rules-a": "passed",
             "rules-b": "not-started",

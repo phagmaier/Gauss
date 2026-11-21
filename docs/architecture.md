@@ -150,7 +150,10 @@ version: a field added later must be optional.
   `src/shared/misconception.ts`).
 - **`state.json`** holds a position for each unit in progress, not one
   current unit: several units can be in progress at once (`UnitPosition`
-  in `src/shared/state.ts`). Besides positions it keeps the outcomes that
+  in `src/shared/state.ts`). A finished unit holding a review the learner
+  asked for keeps its position apart while the review runs
+  (`finishedReviews`), so the unit stays finished. Besides positions it
+  keeps the outcomes that
   must survive a lost transcript line: completed package cards, units
   finished by testing out, and the learner's style and curriculum answers
   not yet told to the tutor. Before the first unit exposes the workspace,
@@ -571,11 +574,17 @@ the test before a unit lets the learner skip what they know.
   own (below).
 - **Review is offered on a card** when a unit not finished is opened in a
   new sitting (the chat is new, or `quiet()` in `engine/transcript.ts`:
-  nothing has happened for `SESSION_GAP_MS`), and nothing waits on the
-  learner or the tutor: no assessment, open question, detour, package
-  request or install, style or curriculum proposal, test result card,
-  closing card, feedback or other turn to come, and the unit's last
-  segment is not closed. It asks about up to three objectives of the
+  nothing has happened for `SESSION_GAP_MS`) between segments: before a
+  segment's teaching, or with a segment closed that is not the unit's
+  last. A sitting that begins in a segment's discussion or check holds
+  the card until that segment closes, by its check or by moving on, and
+  offers it once the tutor's turn has ended (`offerHeld` in
+  `unit-chat.ts`); after the unit's last segment it is dropped, so a card
+  never stands between a segment's teaching and its check. Nothing may
+  wait on the learner or the tutor: no assessment, open question, detour,
+  package request or install, style or curriculum proposal, test result
+  card, closing card, feedback or other turn to come. It asks about up to
+  three objectives of the
   whole course that are due (`pickForReview` in `record/review.ts`): a
   slipping one at once; a passed or retained one 1, 3, 7, 21 or 60 days
   after its last correct answer without help, by how many correct answers
@@ -590,6 +599,20 @@ the test before a unit lets the learner skip what they know.
   until it is answered. Start asks the tutor for the first question. A
   message sent while the card waits, or while it is being offered, skips
   it.
+- **"Review now"** on the course view (`POST
+  /api/courses/<id>/review-now`, `reviewNow` in `unit-chat.ts`) starts a
+  review of what is due at once, in any phase, and the page opens its
+  unit. It runs in the thread of the unit in progress opened last; with
+  none in progress, of the finished unit that holds the first objective
+  in review's order. It is refused with nothing due, or while something
+  waits in that unit (the tutor writing, an assessment, open question,
+  detour, package request, proposal, test result card or closing card),
+  with the reason, and it marks review offered for the hour. A review
+  offered on its card there is started instead. In a finished unit the
+  review's position is kept apart (section 3), the unit stays finished,
+  only the review's steps are taken, its tutor is told the unit is
+  finished and that the learner asked for the review, and when it ends
+  the unit is as it was.
 - **"Skip review"** ends it on the card or partway, withdrawing an open
   question with nothing recorded; it is refused while an answer is kept
   for grading, as moving on is. When it ends or is skipped, the page is
@@ -1107,7 +1130,7 @@ progress take the outline.
   the title, a line counts the units, the finished ones, and the started
   units' objectives passed (passed or retained) out of how many
   (`courseCounts` in `progress.ts`). When any objectives are due for
-  review, a bar under that line says how many. A card leads to the unit in progress
+  review, a bar under that line says how many, with "Review now". A card leads to the unit in progress
   most recently opened, or else the next unit in order (the first not
   started whose prerequisites are finished); on a finished course it reads
   "Every unit is finished", with "Plan what comes next", which opens the

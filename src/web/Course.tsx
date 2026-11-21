@@ -1,7 +1,8 @@
 // The course view (docs/prototype/20-course.html, with 12-unit-order.html's
 // card and Start): the title, a line of counts, how many objectives are due
-// for review when any are (task 5.24), the card that leads on, and
-// the unit list down to objectives. Each unit is a heading that opens and
+// for review when any are (task 5.24) with "Review now", which starts a
+// review in a unit's thread and opens it (task 5.25), the card that leads
+// on, and the unit list down to objectives. Each unit is a heading that opens and
 // folds; a started unit lists its objectives, "Next" on the one to do in the
 // card's unit, and a unit not started its goal. "Course map" in the top line
 // opens the diagram in the side pane, where picking a unit scrolls the list
@@ -17,7 +18,7 @@
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { StoredUnit } from "../shared/curriculum.ts";
-import { IntakeStarted, UnitOpened } from "../shared/events.ts";
+import { IntakeStarted, ReviewStarted, UnitOpened } from "../shared/events.ts";
 import {
   CourseWithProgress,
   courseInstance,
@@ -61,6 +62,8 @@ export function Course(props: { courseId: string }) {
    * finished, or "Test out", from its row or from the card.
    */
   const [asking, setAsking] = useState<Asking>();
+  /** "Review now" is starting a review, so it is not pressed twice. */
+  const [starting, setStarting] = useState(false);
   const closeMap = useCallback(() => {
     setMapOpen(false);
     setSelected(undefined);
@@ -83,6 +86,18 @@ export function Course(props: { courseId: string }) {
       IntakeStarted,
     );
     if (answer.ok) navigate(paths.intake(answer.data.intakeId));
+    else setProblem(answer.error);
+  }
+
+  /** Starts a review of what is due in a unit's thread, then opens that unit. */
+  async function reviewNow() {
+    setStarting(true);
+    const answer = await postFor(
+      `/api/courses/${encodeURIComponent(courseId)}/review-now`,
+      ReviewStarted,
+    );
+    setStarting(false);
+    if (answer.ok) navigate(paths.unit(courseId, answer.data.unit));
     else setProblem(answer.error);
   }
 
@@ -258,7 +273,13 @@ export function Course(props: { courseId: string }) {
                     : "No curriculum was proposed."}
                 </p>
               )}
-              {stored.due === undefined ? null : <DueCount due={stored.due} />}
+              {stored.due === undefined ? null : (
+                <DueCount
+                  due={stored.due}
+                  starting={starting}
+                  onReview={() => void reviewNow()}
+                />
+              )}
               {finished ? (
                 <FinishedCard
                   onPlan={() => navigate(paths.planning(courseId))}
@@ -387,11 +408,11 @@ function Counts(props: { counts: CourseCounts; finished: boolean }) {
   );
 }
 
-/** How many of the course's objectives are due for review, under the counts (piece 20). */
-function DueCount(props: { due: number }) {
+/** How many of the course's objectives are due for review, under the counts, with "Review now" (piece 20). */
+function DueCount(props: { due: number; starting: boolean; onReview(): void }) {
   const { due } = props;
   return (
-    <p className="cv-due">
+    <div className="cv-due">
       <span className="due-dot" aria-hidden="true" />
       <span>
         <b>
@@ -399,7 +420,15 @@ function DueCount(props: { due: number }) {
         </b>{" "}
         <span className="k">{due === 1 ? "is" : "are"} due for review</span>
       </span>
-    </p>
+      <button
+        type="button"
+        className="btn sm quiet"
+        disabled={props.starting}
+        onClick={props.onReview}
+      >
+        Review now
+      </button>
+    </div>
   );
 }
 

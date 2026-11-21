@@ -123,8 +123,11 @@ export interface AssessmentEndItem {
   skipped: boolean;
   /** The objectives it recorded an answer on, with their statuses then. */
   statuses: Record<string, ObjectiveStatus>;
-  /** Where the unit goes on: the phase the thread was in. */
-  at: Position | null;
+  /**
+   * Where the unit goes on: the phase the thread was in, or "finished" for
+   * a review the learner asked for in a finished unit (task 5.25).
+   */
+  at: Position | "finished" | null;
 }
 
 /** The test's result card (task 5.6, piece 16), and the learner's answer to it. */
@@ -1093,7 +1096,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             mode: event.mode,
             skipped: event.skipped,
             statuses: event.statuses,
-            at: state.position,
+            at: state.finished === null ? state.position : "finished",
           },
         ],
       };

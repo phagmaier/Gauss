@@ -106,6 +106,10 @@ export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
     return title === undefined ? { label, ticks } : { label, title, ticks };
   };
   if (t.finished !== null) {
+    // A review the learner asked for in a finished unit's thread.
+    if (assessment?.mode === "review" && assessment.stage === "on") {
+      return at(assessmentTitle("review"), marked(Array(count).fill("past")));
+    }
     return { label: "Finished", ticks: marked(Array(count).fill("past")) };
   }
   if (assessment?.mode === "gate") {
@@ -316,7 +320,7 @@ export type NextStep =
 export function nextStep(timeline: Timeline): NextStep {
   const { position, plan, finished } = timeline;
   if (timeline.failed !== null) return "try-again";
-  if (finished !== null) {
+  if (finished !== null && timeline.assessment === null) {
     // A card that finished the unit holds the way out; one moved on from does not.
     const card = lastCard(timeline);
     return card !== undefined &&
@@ -325,7 +329,7 @@ export function nextStep(timeline: Timeline): NextStep {
       ? null
       : "leave";
   }
-  if (position === null || plan === null) return null;
+  // An assessment, a finished unit's review the learner asked for included.
   const run = timeline.assessment;
   if (run !== null) {
     if (run.stage === "offered") return null;
@@ -337,6 +341,7 @@ export function nextStep(timeline: Timeline): NextStep {
       ? "assessment"
       : null;
   }
+  if (position === null || plan === null) return null;
   switch (position.phase) {
     case "teach":
       return null;

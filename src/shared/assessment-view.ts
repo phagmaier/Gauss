@@ -176,7 +176,8 @@ export function assessmentEndMarker(item: AssessmentEndItem): {
 }
 
 /** Where the unit goes on after an assessment, from the phase it was in. */
-function goesOn(at: Position | null): string {
+function goesOn(at: Position | "finished" | null): string {
+  if (at === "finished") return "The unit stays finished.";
   if (at === null) return "The unit goes on where it was.";
   const segment =
     at.again === undefined

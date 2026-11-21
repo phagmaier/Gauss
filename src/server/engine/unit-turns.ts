@@ -319,7 +319,7 @@ export function answerTurn(
     where,
     `The learner answered question ${number}.`,
     lines.join("\n"),
-    where.finished !== undefined
+    where.finished !== undefined && where.assessment === undefined
       ? undefined
       : testing
         ? // The turn that brings a test's grade asks for its next question,
@@ -1172,9 +1172,13 @@ function describe(where: Where): string {
       slipping.length === 0
         ? ""
         : ` Since then, ${quoted(slipping)} ${slipping.length === 1 ? "was" : "were"} missed in a review or a gate, and ${slipping.length === 1 ? "is" : "are"} slipping.`;
+    const run =
+      where.assessment === undefined
+        ? ""
+        : " The learner asked for a review in its thread, which leaves it finished.";
     return movedOn.length === 0
-      ? `${unit}. The unit is finished: every objective passed.${since}`
-      : `${unit}. The unit is finished: the learner moved on without passing ${quoted(movedOn)}.${since}`;
+      ? `${unit}. The unit is finished: every objective passed.${since}${run}`
+      : `${unit}. The unit is finished: the learner moved on without passing ${quoted(movedOn)}.${since}${run}`;
   }
   const segment = segmentOf(context.plan, position);
   const leaving =

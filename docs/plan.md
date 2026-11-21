@@ -33,43 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.25 Review when due, between segments, or on request
-
-- Status: todo
-- Depends on: nothing left. The due count the button sits beside is
-  `DueCount` in `src/web/Course.tsx` (`.cv-due`, a flex row; piece 20's
-  `.duebar .btn` pushes the button right), counted by `dueCount` in
-  `record/review.ts`
-- The user's decision (2026-11-19, from the stage 5 check; the agent's
-  recommendation): in the check, the review card came when the unit was
-  reopened three hours after segment 1's teaching, and sat between that
-  teaching and its check. Today the card is offered whenever a unit not
-  finished is opened after `SESSION_GAP_MS` (an hour) away
-  (`decisions.md`, "Mastery loop", "Review"). Instead:
-  - the card is offered only when an objective of the course is due by
-    5.19's rule (so already: `pickForReview` picks only what is due, and
-    `offerReview` offers no card when it picks nothing);
-  - only between segments: a sitting that opens mid-segment holds the
-    card until that segment closes, and it never stands between a
-    segment's teaching and its check;
-  - a "Review now" button beside 5.24's due count, in the course view,
-    starts a review when something is due. Review runs in a unit's
-    thread. In a finished course, use the thread of the unit that owns
-    the first objective in review order. Allow the requested review
-    there, without offering it automatically or restarting the unit's
-    teaching or gate. When several units are in progress, which thread
-    to use is the task's to settle.
-  The user had first asked for review on request only; they took the
-  card, rarer, because a mode one has to open tends not to be opened
-  (their own finding of 2026-11-17).
-- Done when: tests on hand-made evidence logs show no card when nothing is
-  due, and a card held mid-segment offered once the segment closes. A
-  review requested from a finished course uses the expected unit's thread,
-  records an answer, and leaves the unit finished. On `pnpm dev:fake`,
-  "Review now" starts a review from the course view, including for a
-  finished course with objectives due. `architecture.md` section 4 and
-  `decisions.md`, "Review", change with it.
-
 ### 5.26 Moving on from the discussion
 
 - Status: todo

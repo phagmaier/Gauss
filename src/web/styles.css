@@ -1378,6 +1378,9 @@ a.nl-pos {
 .cv-due .k {
   color: var(--ink-2);
 }
+.cv-due .btn {
+  margin-left: auto;
+}
 
 /* ---- The course view, pieces 7 and 20: the title, its counts, the card, the units ---- */
 .cv-title {

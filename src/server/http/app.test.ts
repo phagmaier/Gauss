@@ -1995,8 +1995,8 @@ test("malformed bodies on the unit routes are refused with a reason, and nothing
 test("review's card is answered through its routes: Start asks for the first question, and Skip withdraws it; each is refused when there is nothing for it", async () => {
   const setup = setUp([[{ call: "ask_question", input: QUESTION }]]);
   await approvedCourse();
-  // Segment 1's objective passed the day before, and the unit left in
-  // segment 2's discussion: a new sitting opens with review.
+  // Segment 1's objective passed the day before, and the unit left with
+  // segment 1 closed: a new sitting opens with review, between segments.
   const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
   await root.appendEvidence(COURSE, {
     kind: "answer",
@@ -2017,7 +2017,7 @@ test("review's card is answered through its routes: Start asks for the first que
     assisted: false,
     verdict: "correct",
   });
-  await root.writePosition(COURSE, "vectors", { segment: 1, phase: "discuss" });
+  await root.writePosition(COURSE, "vectors", { segment: 0, phase: "closed" });
   await openUnit(setup);
   expect(await unitState()).toMatchObject({
     assessment: { mode: "review", stage: "offered" },
@@ -2035,7 +2035,7 @@ test("review's card is answered through its routes: Start asks for the first que
   const skipped = await post(setup.app, `${UNIT}/assessment/skip`);
   expect(skipped.status).toBe(200);
   expect(await skipped.json()).toEqual({ ok: true });
-  expect(await unitState()).toEqual({ segment: 1, phase: "discuss" });
+  expect(await unitState()).toEqual({ segment: 0, phase: "closed" });
   const again = await post(setup.app, `${UNIT}/assessment/skip`);
   expect(again.status).toBe(409);
   expect(await again.json()).toEqual({

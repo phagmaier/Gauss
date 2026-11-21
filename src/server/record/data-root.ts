@@ -192,7 +192,10 @@ export interface DataRoot {
    * A style or curriculum decision can be recorded with the position, or
    * marked delivered. An applied curriculum decision writes curriculum.json
    * first, with each kept unit's plan, and throws CurriculumChangeRefused
-   * if the change would now drop a unit that has started.
+   * if the change would now drop a unit that has started. With `finished`,
+   * the position is a finished unit's, held for a review the learner asked
+   * for: it goes in `finishedReviews`, and null takes it out, while the
+   * units in progress stay as they are.
    * Writes land in the order they were called, each on the one before.
    */
   writePosition(
@@ -208,6 +211,7 @@ export interface DataRoot {
       curriculum?:
         | { decision: CurriculumDecision }
         | { delivered: readonly CurriculumDecision[] };
+      finished?: boolean;
     },
   ): Promise<State>;
   /**
@@ -973,7 +977,7 @@ export function openDataRoot(options: {
       id,
       unitId,
       position,
-      { completion, testedOut, style, curriculum } = {},
+      { completion, testedOut, style, curriculum, finished } = {},
     ) {
       const unit = Slug.parse(unitId);
       // Checked and copied now, so a later change to the caller's object
@@ -1037,15 +1041,20 @@ export function openDataRoot(options: {
           const { curriculumChange: _, ...rest } = checked;
           position = rest;
         }
-        const state: State = {
-          ...before,
-          units:
-            position === null
-              ? Object.fromEntries(
-                  Object.entries(before.units).filter(([key]) => key !== unit),
-                )
-              : { ...before.units, [unit]: position },
-        };
+        const state: State =
+          finished === true
+            ? withReview(before, unit, position)
+            : {
+                ...before,
+                units:
+                  position === null
+                    ? Object.fromEntries(
+                        Object.entries(before.units).filter(
+                          ([key]) => key !== unit,
+                        ),
+                      )
+                    : { ...before.units, [unit]: position },
+              };
         if (checked === null && testedOut === true) {
           state.testedOut = { ...before.testedOut, [unit]: true };
         }
@@ -1407,6 +1416,22 @@ function changeWaits(state: State): boolean {
   return Object.values(state.units).some(
     (p) => p.curriculumChange !== undefined,
   );
+}
+
+/** The state with the finished unit's review position set, or taken out with null. */
+function withReview(
+  state: State,
+  unit: Slug,
+  position: UnitPosition | null,
+): State {
+  const { finishedReviews, ...rest } = state;
+  const others = Object.fromEntries(
+    Object.entries(finishedReviews ?? {}).filter(([key]) => key !== unit),
+  );
+  const reviews = position === null ? others : { ...others, [unit]: position };
+  return Object.keys(reviews).length === 0
+    ? rest
+    : { ...rest, finishedReviews: reviews };
 }
 
 /**

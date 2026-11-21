@@ -1376,7 +1376,34 @@ works is `architecture.md` section 4.
 - **Offered on a card** (the user's; the agent had recommended starting
   by itself), at most once an hour per course, so two units opened
   together get one card; an open question or a detour is picked up
-  instead. Task 5.25 changes when.
+  instead.
+- **Only when due, and only between segments** (the user's, 2026-11-19,
+  from the stage 5 check, where the card sat between a segment's teaching
+  and its check): a sitting that begins in a segment's discussion or check
+  holds the card until the segment closes. As built (the agent's choices,
+  open to change): the hold lasts while the chat is open, a restart or a
+  new sitting decides again; the held card is offered once the tutor's
+  turn after the close has ended, since a card shown while a turn is
+  queued would be skipped by it; one held in the unit's last segment is
+  dropped, as the gate follows and asks other units' due objectives.
+- **"Review now"** (the user's, 2026-11-19; they had first asked for
+  review on request only, and took the card too because a mode one has
+  to open tends not to be opened). It starts at once, with no card,
+  since the learner just asked, and in any phase, between teaching and
+  check too: the learner chose it. Settled by the agent, open to change:
+  - the thread: the unit in progress opened last, the one the course
+    view's card continues; with none, the finished unit holding the first
+    objective in review's order (the user's rule for a finished course).
+    Refused, with the unit's reason, while something waits there, rather
+    than moving to another thread the learner did not expect;
+  - a finished unit's review keeps its position in `finishedReviews`
+    beside `units` in `state.json`, so every reader of `units` still sees
+    the unit finished, and a restart resumes the review. Writing it in
+    `units` would have made the unit in progress, and its end would have
+    run the closing card and gate again;
+  - its tutor's session was not kept once the unit finished, so the
+    review's first header carries the note that the conversation is new,
+    with the unit's handoff note.
 - **Which**: what is due, slipping first, then the most overdue (the
   user's, 2026-11-19, from the LearnHarness comparison); never one
   answered within the hour; three over the whole course

@@ -43,14 +43,16 @@ const DAY = 24 * 60 * 60 * 1000;
  * - "Calculus I", six units: unit 1 passed, its gate answered right on
  *   both its objectives, and the second missed later in unit 3's review,
  *   so one is retained and one slipping; unit 2 overridden, units 3 and 5
- *   in progress (5 opened last, 3 in its second segment), 4 and 6 not
- *   started, so either can be tested out of (task 5.6). Every answer is
- *   due by review's rule (three days old or more, the gate's six), so
- *   opening a unit not finished offers review (task 5.4), on objectives
- *   of other units too, before a test as before teaching.
- *   The scripted plan has two segments, so unit 3's check closes it, and
- *   its gate (task 5.5) asks unit 1's objectives too, unless a review in
- *   the hour before has answered them.
+ *   in progress (5 opened last, in its first segment's discussion; 3
+ *   between its first and second segments), 4 and 6 not started, so either
+ *   can be tested out of (task 5.6). Every answer is due by review's rule
+ *   (three days old or more, the gate's six), so opening unit 3, or 4 or 6
+ *   for its test, offers review (task 5.4), on objectives of other units
+ *   too; unit 5 holds the card until its segment closes (task 5.25), and
+ *   "Review now" starts one in it.
+ *   The scripted plan has two segments, so unit 3's next segment is its
+ *   last, whose check closes it, and its gate (task 5.5) asks unit 1's
+ *   objectives too, unless a review in the hour before has answered them.
  * - "Linear algebra for PCA", three units, approved and not started.
  * - "Probability", two units, finished: one passed, one overridden.
  * - "Topology", a draft awaiting review.
@@ -208,6 +210,15 @@ export async function seedCourses(options: {
         await root.writePosition(id, unitId, { segment, phase: "discuss" });
         await root.markOpened(id, unitId);
       },
+      async betweenSegments(unitId, closed) {
+        const segments = await planned(unitId);
+        await pass(segments.slice(0, closed + 1).flat());
+        await root.writePosition(id, unitId, {
+          segment: closed,
+          phase: "closed",
+        });
+        await root.markOpened(id, unitId);
+      },
     });
     return id;
   }
@@ -234,7 +245,7 @@ export async function seedCourses(options: {
         c.daysAgo(5);
         await c.overridden("derivative");
         c.daysAgo(3);
-        await c.inProgress("rules", 1);
+        await c.betweenSegments("rules", 0);
         await c.reviewMissed("rules", "limits", 1);
         c.daysAgo(1);
         await c.inProgress("integral", 0);
@@ -361,4 +372,6 @@ interface Seeding {
   reviewMissed(held: string, unitId: string, at: number): Promise<void>;
   /** The unit, opened and left in the discussion of that segment, those before it passed. */
   inProgress(unitId: string, segment: number): Promise<void>;
+  /** The unit, opened and left with that segment closed and passed, those before it too. */
+  betweenSegments(unitId: string, closed: number): Promise<void>;
 }

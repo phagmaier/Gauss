@@ -378,9 +378,15 @@ const QUESTION_OPEN: UnitPosition = {
 test.each<{
   why: string;
   unit?: string;
-  given: (root: DataRoot) => Promise<void>;
+  /** When unit 1's objectives passed; the day before unless given. */
+  passedAt?: string;
+  given?: (root: DataRoot) => Promise<void>;
   replies?: FakeReply[];
 }>([
+  {
+    why: "nothing is due: unit 1's objectives passed less than a day before",
+    passedAt: new Date(Date.parse(NOW) - 23 * HOUR).toISOString(),
+  },
   {
     why: "every objective was answered within the hour",
     given: async (root) => {
@@ -486,9 +492,9 @@ test.each<{
       });
     },
   },
-])("no card when $why", async ({ unit, given, replies }) => {
-  const root = await makeCourse();
-  await given(root);
+])("no card when $why", async ({ unit, passedAt, given, replies }) => {
+  const root = await makeCourse(passedAt);
+  await given?.(root);
   const offeredBefore = (await reload().readCourse(COURSE))?.course
     .reviewOfferedAt;
   const setup = setUp(tutor(), replies);
@@ -503,12 +509,17 @@ test.each<{
 
 test("a chat already open offers review only once it has been quiet for an hour, as a new sitting", async () => {
   const root = await makeCourse();
+  // Between segments, where the card can come.
+  await root.appendEvidence(COURSE, correct("slope", NOW));
+  await root.writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "closed",
+  });
   await root.markReviewOffered(COURSE, new Date(Date.parse(NOW) - 50 * 60_000));
   const setup = setUp();
   const chat = await open(setup);
   expect(ofType(chat, "assessment")).toEqual([]);
-  expect(sent(setup.backend)).toHaveLength(1);
-
+  expect(sent(setup.backend)).toEqual([]);
   // Twenty minutes on: the course's hour is over, but the sitting is not.
   clock = new Date(Date.parse(NOW) + 20 * 60_000);
   await open(setup);
@@ -523,7 +534,7 @@ test("a chat already open offers review only once it has been quiet for an hour,
     { type: "session", startedAt: clock.toISOString() },
     OFFERED,
   ]);
-  expect(sent(setup.backend)).toHaveLength(1);
+  expect(sent(setup.backend)).toEqual([]);
 });
 
 test("two units opened within the hour get one card, in the first", async () => {
@@ -1061,7 +1072,13 @@ test("a restart after the thread lost the end of a review skipped in a check doe
       : base(turn),
   );
   const before = await open(first);
-  await step(before.startAssessment(), before);
+  // Held in the check; asked for, it starts there.
+  expect(ofType(before, "assessment")).toEqual([]);
+  expect(await first.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  await before.settled();
   await step(before.skipAssessment(), before);
   expect((await positionOf())?.openQuestion).toBeUndefined();
   await first.units.close();
@@ -1077,7 +1094,7 @@ test("a restart after the thread lost the end of a review skipped in a check doe
 
 // --- The unit going on -----------------------------------------------------
 
-test("after a review in the discussion nothing is sent, and the next message's header says what it did", async () => {
+test("a review asked for in the discussion starts there; after it nothing is sent, and the next message's header says what it did", async () => {
   await makeCourse();
   await reload().writePosition(COURSE, "derivative", {
     segment: 0,
@@ -1085,7 +1102,12 @@ test("after a review in the discussion nothing is sent, and the next message's h
   });
   const setup = setUp();
   const chat = await open(setup);
-  await step(chat.startAssessment(), chat);
+  expect(ofType(chat, "assessment")).toEqual([]);
+  expect(await setup.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  await chat.settled();
   await answer(chat, "A");
   await answer(chat, "A");
   const turns = sent(setup.backend).length;
@@ -1109,7 +1131,7 @@ test("after a review in the discussion nothing is sent, and the next message's h
   await chat.settled();
 });
 
-test("after a review in the check, the check goes on: the tutor is asked for its question", async () => {
+test("after a review asked for in the check, the check goes on: the tutor is asked for its question", async () => {
   await makeCourse();
   await reload().writePosition(COURSE, "derivative", {
     segment: 0,
@@ -1118,15 +1140,18 @@ test("after a review in the check, the check goes on: the tutor is asked for its
   });
   const setup = setUp();
   const chat = await open(setup);
-  expect(ofType(chat, "assessment")).toEqual([OFFERED]);
+  expect(ofType(chat, "assessment")).toEqual([]);
+  expect(await setup.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  await chat.settled();
 
   await step(chat.skipAssessment(), chat);
 
-  expect(sent(setup.backend)).toHaveLength(1);
-  // A position written by hand has no session to resume, so the note
-  // that the conversation is new comes with it.
-  expect(sent(setup.backend)[0]).toContain("Phase: check. The check goes on.");
-  expect(sent(setup.backend)[0]).toContain(
+  expect(sent(setup.backend)).toHaveLength(2);
+  expect(sent(setup.backend)[1]).toContain("Phase: check. The check goes on.");
+  expect(sent(setup.backend)[1]).toContain(
     'In this check, "slope": not asked yet. Allowed now: post a question on "slope" with ask_question',
   );
   expect(lastQuestion(chat)).toMatchObject({ number: 1 });
@@ -1158,3 +1183,236 @@ test("after a review at a closed segment nothing is sent, and the learner starts
   await step(chat.nextSegment(), chat);
   expect(sent(setup.backend)[0]).toContain('segment 2 of 2, "Powers"');
 });
+
+// --- Only between segments (task 5.25) ----------------------------------------
+
+test.each<{ how: string; close: (chat: UnitChat) => Promise<void> }>([
+  {
+    how: "its check passes",
+    close: async (chat) => {
+      await step(chat.ready(), chat);
+      await answer(chat, "A", "90");
+    },
+  },
+  {
+    how: "the learner moves on without the check",
+    close: (chat) => step(chat.override(), chat),
+  },
+])(
+  "a sitting that opens in a segment's discussion holds the card until the segment closes, when $how; it never stands between the teaching and the check",
+  async ({ close }) => {
+    await makeCourse();
+    await reload().writePosition(COURSE, "derivative", {
+      segment: 0,
+      phase: "discuss",
+    });
+    const setup = setUp();
+    const chat = await open(setup);
+    expect(ofType(chat, "assessment")).toEqual([]);
+    expect((await reload().readCourse(COURSE))?.course.reviewOfferedAt).toBe(
+      undefined,
+    );
+
+    await close(chat);
+
+    expect(ofType(chat, "assessment")).toEqual([OFFERED]);
+    expect(await positionOf()).toMatchObject({
+      segment: 0,
+      phase: "closed",
+      assessment: { mode: "review", stage: "offered", objectives: BOTH },
+    });
+    expect(nextStep(replay(chat))).toBeNull();
+    // The card came after the segment closed, with nothing sent for it.
+    const types = chat.events().map((e) => e.type);
+    expect(types.lastIndexOf("phase")).toBeLessThan(
+      types.indexOf("assessment"),
+    );
+    await step(chat.skipAssessment(), chat);
+    expect(nextStep(replay(chat))).toBe("next-segment");
+  },
+);
+
+test("a card held in the unit's last segment is not offered at the unit's end", async () => {
+  await makeCourse();
+  await reload().appendEvidence(COURSE, correct("slope", NOW));
+  await reload().writePosition(COURSE, "derivative", {
+    segment: 1,
+    phase: "discuss",
+  });
+  const setup = setUp();
+  const chat = await open(setup);
+
+  await step(chat.override(), chat);
+
+  expect(ofType(chat, "assessment")).toEqual([]);
+  expect(ofType(chat, "unit_end")).toHaveLength(1);
+});
+
+// --- Review now (task 5.25) ---------------------------------------------------
+
+/** Passes the objective the day before, `days` before NOW. */
+async function passedDaysAgo(objective: string, days: number) {
+  await reload().appendEvidence(
+    COURSE,
+    correct(
+      objective,
+      new Date(Date.parse(NOW) - days * 24 * HOUR).toISOString(),
+    ),
+  );
+}
+
+test("in a finished course the review runs in the thread of the unit whose objective is due first, records its answers, and leaves the unit finished, across a restart", async () => {
+  // Every unit finished; "slope" and "power-rule", three days old, are the
+  // most overdue, then unit 1's, a day old, then the integral's, two days.
+  await makeCourse();
+  await passedDaysAgo("slope", 3);
+  await passedDaysAgo("power-rule", 3);
+  await passedDaysAgo("area", 2);
+  await passedDaysAgo("riemann", 2);
+  const first = setUp();
+
+  expect(await first.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  const chat = first.units.get(COURSE, "derivative");
+  if (chat === undefined) throw new Error("No chat.");
+  await chat.settled();
+
+  const asked = [
+    { unit: "derivative", objective: "slope" },
+    { unit: "derivative", objective: "power-rule" },
+    { unit: "integral", objective: "area" },
+  ];
+  expect(ofType(chat, "unit_closed")).toEqual([
+    { type: "unit_closed", status: "passed" },
+  ]);
+  expect(ofType(chat, "assessment").map((e) => e.stage)).toEqual([
+    "offered",
+    "on",
+  ]);
+  expect(lastQuestion(chat).prompt).toMatch(/ on slope\?$/);
+  expect(nextStep(replay(chat))).toBe("assessment");
+  // The thread is new, so its tutor is told so; the unit is still finished.
+  expect(sent(first.backend)[0]).toContain(
+    "The unit is finished: every objective passed. The learner asked for a review in its thread, which leaves it finished.",
+  );
+  const state = await reload().readState(COURSE);
+  expect(state.units).toEqual({});
+  expect(state.finishedReviews?.derivative?.assessment).toMatchObject({
+    mode: "review",
+    stage: "on",
+    objectives: asked,
+  });
+  await answer(chat, "A");
+  await first.units.close();
+
+  // A restart shows the open question again and goes on.
+  const second = setUp();
+  const reopened = await open(second);
+  expect(lastQuestion(reopened).prompt).toMatch(/ on power-rule\?$/);
+  expect(nextStep(replay(reopened))).toBe("assessment");
+  await answer(reopened, "A");
+  await answer(reopened, "A");
+
+  expect(ofType(reopened, "assessment_end")).toHaveLength(1);
+  const marker = replay(reopened).items.find(
+    (i) => i.kind === "assessment_end",
+  );
+  if (marker?.kind !== "assessment_end") throw new Error("No end marker.");
+  expect(assessmentEndMarker(marker).says).toBe(
+    "All three retained. The unit stays finished.",
+  );
+  expect(nextStep(replay(reopened))).toBe("leave");
+  const after = await reload().readState(COURSE);
+  expect(after.units).toEqual({});
+  expect(after.finishedReviews).toBeUndefined();
+  const answers = (await reload().readEvidence(COURSE)).filter(
+    (e): e is AnswerEvidence =>
+      e.kind === "answer" && e.assessment !== undefined,
+  );
+  expect(answers.map((a) => [a.objective, a.assessment])).toEqual(
+    asked.map(({ objective }) => [
+      objective,
+      { mode: "review", unit: "derivative" },
+    ]),
+  );
+  // Finished as it was: reopening shows it closed, with nothing waiting.
+  await second.units.close();
+  const third = setUp();
+  const closed = await open(third);
+  expect(ofType(closed, "unit_closed").at(-1)).toEqual({
+    type: "unit_closed",
+    status: "passed",
+  });
+  expect(replay(closed).assessment).toBeNull();
+  expect(nextStep(replay(closed))).toBe("leave");
+  expect(sent(third.backend)).toEqual([]);
+  expect(objectiveStatus(await reload().readEvidence(COURSE), "slope")).toBe(
+    "retained",
+  );
+});
+
+test("with units in progress the review runs in the one opened last, and is refused while something waits there", async () => {
+  await makeCourse();
+  await reload().writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "closed",
+  });
+  await reload().writePosition(COURSE, "integral", QUESTION_OPEN_IN("area"));
+  await openDataRoot({
+    path: dir,
+    now: () => new Date(Date.parse(NOW) - HOUR),
+  }).markOpened(COURSE, "derivative");
+  await openDataRoot({ path: dir, now: () => new Date(NOW) }).markOpened(
+    COURSE,
+    "integral",
+  );
+  const setup = setUp();
+
+  expect(await setup.units.reviewNow(COURSE)).toEqual({
+    ok: false,
+    status: 409,
+    error: "In unit 3, The integral: Question 1 is open: answer it first.",
+  });
+  expect(
+    ofType(setup.units.get(COURSE, "integral") as UnitChat, "assessment"),
+  ).toEqual([]);
+
+  // Opened last now, the derivative holds it.
+  clock = new Date(Date.parse(NOW) + 60_000);
+  const derivative = await open(setup, "derivative");
+  expect(await setup.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  await derivative.settled();
+  expect(ofType(derivative, "assessment").at(-1)).toMatchObject({
+    stage: "on",
+  });
+});
+
+test("Review now with nothing due is refused, and opens no unit", async () => {
+  await makeCourse(new Date(Date.parse(NOW) - 2 * HOUR).toISOString());
+  const setup = setUp();
+
+  expect(await setup.units.reviewNow(COURSE)).toEqual({
+    ok: false,
+    status: 409,
+    error: "Nothing is due for review.",
+  });
+  expect(setup.units.get(COURSE, "limits")).toBeUndefined();
+});
+
+/** A check with question 1 open on the objective. */
+function QUESTION_OPEN_IN(objective: string): UnitPosition {
+  return {
+    ...QUESTION_OPEN,
+    openQuestion: {
+      ...(QUESTION_OPEN.openQuestion as NonNullable<
+        UnitPosition["openQuestion"]
+      >),
+      objective,
+    },
+  };
+}

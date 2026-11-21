@@ -267,6 +267,13 @@ function asking(p: { phase: Phase; assessment?: AssessmentRun | undefined }) {
 export const State = z.object({
   /** The units in progress, by id. */
   units: z.record(Slug, UnitPosition),
+  /**
+   * Finished units holding a review the learner asked for (task 5.25), by
+   * id: the unit's position while the review runs, with its run, open
+   * question, detour and tutor session. The unit stays finished, so it is
+   * not in `units`; its entry goes once the review ends.
+   */
+  finishedReviews: z.record(Slug, UnitPosition).optional(),
   /** Units finished without teaching after the learner accepted a full pass. */
   testedOut: z.record(Slug, z.literal(true)).optional(),
   /** Terminal package cards, by unit id and request id, including finished units. */

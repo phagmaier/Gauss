@@ -506,6 +506,10 @@ export type Hello = z.infer<typeof Hello>;
 export const UnitOpened = Hello.extend({ ok: z.literal(true) });
 export type UnitOpened = z.infer<typeof UnitOpened>;
 
+/** "Review now" started a review, in the thread of this unit (task 5.25). */
+export const ReviewStarted = z.object({ ok: z.literal(true), unit: Slug });
+export type ReviewStarted = z.infer<typeof ReviewStarted>;
+
 /** The objectives the result card offered to skip, in plan order. */
 export const SkipTestedPost = z.object({ objectives: z.array(Slug).min(1) });
 export type SkipTestedPost = z.infer<typeof SkipTestedPost>;

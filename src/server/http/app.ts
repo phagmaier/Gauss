@@ -24,6 +24,7 @@ import {
   LearnerMessage,
   type PageEvent,
   type PlanningOpened,
+  type ReviewStarted,
   SkipTestedPost,
   type UnitOpened,
 } from "../../shared/events.ts";
@@ -551,6 +552,15 @@ export function createApp(options: {
     return opened.ok
       ? c.json({ ok: true, chatId: opened.chat.id, last } satisfies UnitOpened)
       : c.json({ error: opened.error }, opened.status);
+  });
+
+  // "Review now" on the course view (task 5.25): starts a review of what is
+  // due in a unit's thread, which the page then opens.
+  app.post("/api/courses/:id/review-now", async (c) => {
+    const started = await units.reviewNow(c.req.param("id"));
+    return started.ok
+      ? c.json({ ok: true, unit: started.unitId } satisfies ReviewStarted)
+      : c.json({ error: started.error }, started.status);
   });
 
   /** Runs the handler with the open chat of the unit the path names, or answers 404. */

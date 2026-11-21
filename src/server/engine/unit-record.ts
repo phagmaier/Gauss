@@ -303,6 +303,7 @@ export async function openUnitRecord(options: {
   // of a property every object inherits.
   const {
     units: positions,
+    finishedReviews = {},
     packageCompletions = {},
     testedOut: tests,
     styleDecisions = {},
@@ -331,8 +332,15 @@ export async function openUnitRecord(options: {
       ? before
       : undefined;
   let testedOut = finished !== undefined && tests?.[unitId] === true;
+  // A finished unit holds a review the learner asked for, if one runs.
+  const reviewing =
+    finished !== undefined && Object.hasOwn(finishedReviews, unitId)
+      ? finishedReviews[unitId]
+      : undefined;
+  if (reviewing !== undefined) checkPosition(plan, reviewing);
   let position: UnitPosition =
     stored ??
+    reviewing ??
     (finished !== undefined
       ? { segment: plan.segments.length - 1, phase: "closed" }
       : options.testOut === true
@@ -348,11 +356,26 @@ export async function openUnitRecord(options: {
       : answersInRun(allEvidence, position.assessment, unitId);
   let sessionId = position.tutorSessionId;
 
-  /** Saves a move and notices an Apply recovered before or during the write. */
+  /**
+   * Saves a move and notices an Apply recovered before or during the write.
+   * A finished unit's position is saved only while it holds a review, in
+   * `finishedReviews`; null leaves it as it is.
+   */
   async function savePosition(
     next: UnitPosition | null,
     outcome?: Parameters<DataRoot["writePosition"]>[3],
   ) {
+    if (finished !== undefined) {
+      const kept = next ?? position;
+      const saved = await dataRoot.writePosition(
+        courseId,
+        unitId,
+        kept.assessment === undefined ? null : kept,
+        { ...outcome, finished: true },
+      );
+      position = kept;
+      return saved;
+    }
     const waiting = position.curriculumChange;
     const saved = await dataRoot.writePosition(courseId, unitId, next, outcome);
     const current = saved.units[unitId];
@@ -598,7 +621,7 @@ export async function openUnitRecord(options: {
     get testedOut() {
       return testedOut;
     },
-    reopened: stored !== undefined,
+    reopened: stored !== undefined || reviewing !== undefined,
     status,
     recordedAnswer,
     disputeOf: (questionId) => disputesIn(evidence).get(questionId),
@@ -636,7 +659,13 @@ export async function openUnitRecord(options: {
     },
 
     async keepSession(id) {
-      if (finished !== undefined || id === sessionId) return;
+      // A finished unit keeps one only while it holds a review.
+      if (
+        (finished !== undefined && position.assessment === undefined) ||
+        id === sessionId
+      ) {
+        return;
+      }
       const was = sessionId;
       sessionId = id;
       try {
