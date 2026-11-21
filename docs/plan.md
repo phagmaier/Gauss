@@ -158,9 +158,13 @@ quotes, and one unit taught from a paper.
   proposal, a source attached after it, a format refused, a body over the
   limit, a conversion that fails and one that runs out of time, the
   start's clean-up, and `pages/` ignored by the backup (with an earlier
-  `.gitignore` brought up to date). `mise run check` passes. On `pnpm
-  dev:fake` a TXT and a PDF are attached in an intake that reaches a
-  proposal, and the browser is closed before the server stops.
+  `.gitignore` brought up to date). In the upload test, run the real
+  converter in the engine's sandbox on a small Markdown fixture, using
+  the locked `pytools` environment. Check the section text and that the
+  parsed outline's id matches the final source folder's name.
+  `mise run check` passes. On `pnpm dev:fake` a TXT and a PDF are
+  attached in an intake that reaches a proposal, and the browser is
+  closed before the server stops.
 
 ### 4.7 Units and segments name their sections
 
