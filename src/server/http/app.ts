@@ -19,6 +19,7 @@ import {
 } from "../../shared/dispute.ts";
 import {
   Approval,
+  FinishUnitPost,
   type Hello,
   type IntakeStarted,
   LearnerMessage,
@@ -734,7 +735,11 @@ export function createApp(options: {
 
   app.post(
     `${unitPath}/finish`,
-    withUnit(async (c, chat) => reply(c, await chat.finishUnit(), 200)),
+    withUnit(async (c, chat) => {
+      const body = await readBody(c, FinishUnitPost);
+      if (!body.ok) return c.json({ error: body.error }, 400);
+      return reply(c, await chat.finishUnit(body.data.finishId), 200);
+    }),
   );
 
   // A new conversation with the tutor, which picks up where the unit stands.

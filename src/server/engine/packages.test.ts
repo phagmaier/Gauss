@@ -1053,7 +1053,10 @@ test("Retry saving preserves the original install outcome after the unit finishe
   expect(await chat.installPackages(id)).toEqual({ ok: true });
   await started.promise;
   expect(await chat.override()).toEqual({ ok: true });
-  expect(await chat.finishUnit()).toEqual({ ok: true });
+  const finishId = chat
+    .events()
+    .findLast((event) => event.type === "unit_end")?.finishId;
+  expect(await chat.finishUnit(finishId ?? "")).toEqual({ ok: true });
   expect((await root.readState(COURSE)).units.loops).toBeUndefined();
   expect(backend.received).toHaveLength(1);
 
@@ -1159,7 +1162,10 @@ test("Review now waits for a live install even after its host unit finishes", as
       });
       await started.promise;
       expect(await chat.override()).toEqual({ ok: true });
-      expect(await chat.finishUnit()).toEqual({ ok: true });
+      const finishId = chat
+        .events()
+        .findLast((event) => event.type === "unit_end")?.finishId;
+      expect(await chat.finishUnit(finishId ?? "")).toEqual({ ok: true });
       // The seeded pass makes the gate eligible; skipping it finishes
       // the unit without a tutor turn, while the install is still held.
       expect(await chat.skipAssessment()).toEqual({ ok: true });

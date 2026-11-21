@@ -80,6 +80,8 @@ export interface UnitEndItem {
   gate?: Extract<PageEvent, { type: "unit_end" }>["gate"];
   /** Before the gate: moving on from the card offers it. */
   gateFollows?: true;
+  /** The action offered by the closing card, absent in older transcripts. */
+  finishId?: string;
   /** The step taken from a card that offers its steps, once taken. */
   stepTaken?: "again" | "moved-on";
 }
@@ -1115,9 +1117,10 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...(event.gateFollows === undefined
           ? {}
           : { gateFollows: event.gateFollows }),
+        ...(event.finishId === undefined ? {} : { finishId: event.finishId }),
       };
       if (cardStanding(state.items) && card?.kind === "unit_end") {
-        const { gate: _, gateFollows: __, ...was } = card;
+        const { gate: _, gateFollows: __, finishId: ___, ...was } = card;
         return { ...next, items: state.items.with(at, { ...was, ...shown }) };
       }
       return {

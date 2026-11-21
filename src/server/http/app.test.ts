@@ -844,6 +844,16 @@ async function settle(setup: ReturnType<typeof setUp>) {
   await setup.units.get(COURSE, "vectors")?.settled();
 }
 
+function finishId(setup: ReturnType<typeof setUp>): string {
+  const card = setup.units
+    .get(COURSE, "vectors")
+    ?.events()
+    .findLast((event) => event.type === "unit_end");
+  if (card?.finishId === undefined)
+    throw new Error("No closing card's move-on.");
+  return card.finishId;
+}
+
 /** The unit's position on disk, without the tutor's session id (unit-chat.test.ts checks it). */
 async function unitState() {
   const position = (await openDataRoot({ path: dir }).readState(COURSE)).units
@@ -1227,7 +1237,10 @@ test("a finished unit writes only on request, retries a failure and replaces its
     expect((await post(setup.app, `${UNIT}/next-segment`)).status).toBe(202);
     await settle(setup);
     expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
-    expect((await post(setup.app, `${UNIT}/finish`)).status).toBe(200);
+    expect(
+      (await post(setup.app, `${UNIT}/finish`, { finishId: finishId(setup) }))
+        .status,
+    ).toBe(200);
     expect(setup.units.get(COURSE, "vectors")?.events().at(-1)).toMatchObject({
       type: "unit_closed",
     });
@@ -1980,9 +1993,10 @@ test("malformed bodies on the unit routes are refused with a reason, and nothing
     post(setup.app, `${UNIT}/messages`, { text: "" }),
     post(setup.app, `${UNIT}/answers`, { kind: "choice", questionId: "q" }),
     post(setup.app, `${UNIT}/answers`, "choice=A"),
+    post(setup.app, `${UNIT}/finish`, {}),
   ]);
 
-  expect(responses.map((r) => r.status)).toEqual([400, 400, 400]);
+  expect(responses.map((r) => r.status)).toEqual([400, 400, 400, 400]);
   expect(await responses[2]?.json()).toEqual({
     error: "The body must be JSON.",
   });
@@ -2137,11 +2151,14 @@ test("at the unit's end, going over again and finishing without the rest go thro
   await openUnit(setup);
 
   // Both segments are moved on from, so neither objective passes.
-  expect((await post(setup.app, `${UNIT}/finish`)).status).toBe(409);
+  expect(
+    (await post(setup.app, `${UNIT}/finish`, { finishId: "old-card" })).status,
+  ).toBe(409);
   expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
   expect((await post(setup.app, `${UNIT}/next-segment`)).status).toBe(202);
   await settle(setup);
   expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
+  const oldCard = finishId(setup);
 
   expect((await post(setup.app, `${UNIT}/go-over-again`)).status).toBe(202);
   await settle(setup);
@@ -2168,7 +2185,14 @@ test("at the unit's end, going over again and finishing without the rest go thro
   });
 
   expect((await post(setup.app, `${UNIT}/override`)).status).toBe(200);
-  const finished = await post(setup.app, `${UNIT}/finish`);
+  const stale = await post(setup.app, `${UNIT}/finish`, { finishId: oldCard });
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toEqual({
+    error: "The closing card changed. Confirm its current step.",
+  });
+  const finished = await post(setup.app, `${UNIT}/finish`, {
+    finishId: finishId(setup),
+  });
   expect(finished.status).toBe(200);
   expect(await finished.json()).toEqual({ ok: true });
   expect(await unitState()).toBeUndefined();

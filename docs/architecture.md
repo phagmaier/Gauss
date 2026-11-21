@@ -629,11 +629,14 @@ the test before a unit lets the learner skip what they know.
   passed and not retained, leaving out those whose pass rests on an answer
   given while testing out, in the plan's order; then up to three of other
   units' by review's pick, so only those due. With nothing to ask there is
-  no card, and the unit finishes. A closing card before the gate that
-  offers its steps says whether moving on from it offers the gate
-  (`gateFollows` on `unit_end`, from `gatePicks` as the card is shown);
-  if that has changed when the learner moves on, the move is refused and
-  the card shown again as it stands. With every objective passed as the
+  no card, and the unit finishes. A closing card with steps identifies
+  its move-on action by the objectives it covers and whether the gate
+  follows (`unit_end` in `src/shared/events.ts`). The page confirms that
+  action, not a later one. A changed pick that alters the destination
+  requires a new confirmation; the refusal and the updated card reflect
+  the same pick. Once accepted, that pick (including no gate) is kept
+  with the pending move-on so recovery completes the same step. With
+  every objective passed as the
   segment closed, the card comes with no closing card before it; one
   standing (a dispute or another unit's answer passed the rest) is shown
   again with the statuses as they are. The card says how many questions

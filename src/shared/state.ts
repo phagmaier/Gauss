@@ -183,7 +183,13 @@ export const UnitPosition = z
     /** Another unit's objective with an open question withdrawn when the gate was skipped. */
     gateUnanswered: Slug.optional(),
     /** A closing-card override whose gate or finish has not been saved yet. */
-    pendingMoveOn: OverrideEvidence.required({ moveOnId: true }).optional(),
+    pendingMoveOn: OverrideEvidence.required({ moveOnId: true })
+      .extend({
+        // The confirmed gate questions, or [] for a finish without a gate.
+        // Older pending moves did not keep a pick.
+        gate: z.array(AssessedObjective).optional(),
+      })
+      .optional(),
     /** The tutor's session on the backend, once the backend has reported it. */
     tutorSessionId: z.string().min(1).optional(),
     /**

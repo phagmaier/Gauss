@@ -1447,15 +1447,11 @@ works is `architecture.md` section 4.
 - **After it, the closing card's steps cover only what it left not
   passed**: what the learner moved on from before it was declined once
   already.
-- **Before it, the closing card says whether the gate follows** (the
-  user's, 2026-11-19: "Move on without them" read as skipping the gate).
-  The server decides, as the card is shown, with the gate's own pick
-  (`gateFollows` on `unit_end`); the page does not run `pickForGate`.
-  The pick can change while the card waits (an objective falls due, or
-  another unit's review answers one), so moving on checks it again and,
-  if it changed, is refused with the card shown again: the agent's
-  choice, so the page never promises a gate that does not come or
-  confirms a step that turns out to be another.
+- **Say when moving on leads to the gate** (the user's, 2026-11-19):
+  "Move on without them" sounded like skipping it. Require fresh consent
+  if the step changes while the card waits: another unit can answer an
+  objective in the meantime, or one can fall due. See `architecture.md`,
+  "Assessments".
 - **Other units, not only earlier ones**: several units can be in
   progress, so the page says "other units" where piece 16 said "earlier".
   The hour rule applies to them and not to the unit's own, passed minutes
@@ -2050,8 +2046,7 @@ redesign's.
   it", always shown and marked when changed. Rejected: folded into a line,
   where two revisions can look the same.
 - **A unit ends with a closing card**: a row per objective, and the next
-  step ("Start unit N", or "Go over the N again" and "Move on without them",
-  or "Go on to the unit gate" when the gate follows).
+  step (see the closing card in `architecture.md`).
   Rejected: a marker line, and sending the learner to the course view.
 - **"Start fresh" is in the unit's outline**, asks once, and leaves the
   earlier conversation dimmed under a "Fresh start" marker. Rejected: a

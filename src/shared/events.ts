@@ -33,6 +33,8 @@ export const SESSION_GAP_MS = 60 * 60 * 1000;
 /** A segment by its index in the unit's plan, from 0, as in state.json. */
 const SegmentIndex = z.number().int().nonnegative();
 
+const FinishId = z.string().min(1);
+
 /**
  * What the test before a unit showed on one of its objectives (piece 16):
  * whether it passed, and the test's answers on it, in order, as they count
@@ -438,6 +440,8 @@ export const PageEvent = z.discriminatedUnion("type", [
      * changed by then.
      */
     gateFollows: z.literal(true).optional(),
+    /** The closing card's move-on action, stable while its scope and destination are unchanged. */
+    finishId: FinishId.optional(),
     /**
      * Set on the card after the unit's gate, or after it was skipped (piece
      * 16). Its steps then cover `goOver`, the unit's objectives the gate
@@ -520,6 +524,10 @@ export type ReviewStarted = z.infer<typeof ReviewStarted>;
 /** The objectives the result card offered to skip, in plan order. */
 export const SkipTestedPost = z.object({ objectives: z.array(Slug).min(1) });
 export type SkipTestedPost = z.infer<typeof SkipTestedPost>;
+
+/** The move-on action the learner confirmed on the closing card. */
+export const FinishUnitPost = z.object({ finishId: FinishId });
+export type FinishUnitPost = z.infer<typeof FinishUnitPost>;
 
 /** A message the learner typed in the message box. */
 export const LearnerMessage = z.object({

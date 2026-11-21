@@ -138,6 +138,12 @@ export function createTranscribedLog(options: {
           for (const event of joinText(events)) {
             // The current chat alone can grant approval or offer a save retry.
             if (event.type === "packages_save_failed") continue;
+            if (event.type === "unit_end" && event.finishId !== undefined) {
+              // Only the live chat can offer an action on a closing card.
+              const { finishId: _, ...card } = event;
+              log.emit(card);
+              continue;
+            }
             log.emit(
               event.type === "artifact" ||
                 event.type === "packages_requested" ||

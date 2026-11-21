@@ -126,6 +126,19 @@ function correct(objective: string, at: string): AnswerEvidence {
   };
 }
 
+/** Another sitting's review just answered the only objectives due. */
+async function reviewedLimits(at: string) {
+  const root = reload();
+  for (const objective of ["limit-value", "one-sided"]) {
+    const entry = correct(objective, at);
+    await root.appendEvidence(COURSE, {
+      ...entry,
+      answer: { ...entry.answer, questionId: `review-${objective}` },
+      assessment: { mode: "review", unit: "limits" },
+    });
+  }
+}
+
 /**
  * The course, approved and planned: unit 1 finished, passed at `limitsAt`;
  * unit 2 in the discussion of its last segment, its first objective passed
@@ -300,6 +313,12 @@ function cardOf(timeline: Timeline) {
   return card;
 }
 
+function finishId(chat: UnitChat): string {
+  const id = ofType(chat, "unit_end").at(-1)?.finishId;
+  if (id === undefined) throw new Error("No closing card's move-on.");
+  return id;
+}
+
 const SLOPE = { unit: "derivative", objective: "slope" };
 const POWER = { unit: "derivative", objective: "power-rule" };
 const LIMIT_VALUE = { unit: "limits", objective: "limit-value" };
@@ -343,7 +362,7 @@ test("the last segment's close, every objective passed, offers the gate on a car
   });
   for (const refused of [
     await chat.goOverAgain(),
-    await chat.finishUnit(),
+    await chat.finishUnit("old-card"),
     await chat.nextSegment(),
   ]) {
     expect(refused).toEqual({
@@ -392,10 +411,11 @@ test("moving on from the closing card without the objectives not passed records 
       passed: false,
       objectives: { slope: "passed", "power-rule": "overridden" },
       gateFollows: true,
+      finishId: expect.any(String),
     },
   ]);
 
-  await step(chat.finishUnit(), chat);
+  await step(chat.finishUnit(finishId(chat)), chat);
 
   expect((await reload().readEvidence(COURSE)).at(-1)).toEqual({
     kind: "override",
@@ -421,10 +441,35 @@ test("moving on from the closing card without the objectives not passed records 
   expect(nextStep(timeline)).toBeNull();
 });
 
+test("a confirmed gate is offered even if a review answers all its picks during the move-on write", async () => {
+  await makeCourse({ slope: false });
+  const setup = setUp((root) => ({
+    ...root,
+    async writePosition(...args) {
+      if (args[2]?.pendingMoveOn !== undefined) await reviewedLimits(NOW);
+      return root.writePosition(...args);
+    },
+  }));
+  const chat = await open(setup);
+  try {
+    await step(chat.override(), chat);
+    expect(ofType(chat, "unit_end").at(-1)?.gateFollows).toBe(true);
+    await step(chat.finishUnit(finishId(chat)), chat);
+    expect(ofType(chat, "assessment")).toEqual([
+      { ...GATE_OFFERED, count: 2, own: 0 },
+    ]);
+    expect(await positionOf()).toMatchObject({
+      assessment: { objectives: [LIMIT_VALUE, ONE_SIDED] },
+    });
+  } finally {
+    await setup.units.close();
+  }
+});
+
 test.each(["override", "gate"] as const)(
   "restarting after a closing-card move-on interrupted at the %s write offers the gate and records the override once",
   async (at) => {
-    await makeCourse();
+    await makeCourse({ slope: false });
     let interrupt = false;
     const before = setUp((root) => ({
       ...root,
@@ -449,19 +494,30 @@ test.each(["override", "gate"] as const)(
     await step(first.override(), first);
     const beforeMove = (await reload().readEvidence(COURSE)).length;
     interrupt = true;
-    await expect(first.finishUnit()).rejects.toThrow("Interrupted write.");
+    await expect(first.finishUnit(finishId(first))).rejects.toThrow(
+      "Interrupted write.",
+    );
     await before.units.close();
+    // All the questions confirmed before the interruption are no longer due.
+    await reviewedLimits(NOW);
 
     const after = setUp();
     const chat = await open(after);
     expect(ofType(chat, "assessment")).toEqual([
-      { ...GATE_OFFERED, count: 3, own: 1 },
+      { ...GATE_OFFERED, count: 2, own: 0 },
     ]);
     const timeline = replay(chat);
     expect(timeline.assessment?.stage).toBe("offered");
     expect(cardOf(timeline).stepTaken).toBe("moved-on");
-    expect((await reload().readEvidence(COURSE)).slice(beforeMove)).toEqual([
-      expect.objectContaining({ kind: "override", objectives: ["power-rule"] }),
+    expect(
+      (await reload().readEvidence(COURSE))
+        .slice(beforeMove)
+        .filter((entry) => entry.kind === "override"),
+    ).toEqual([
+      expect.objectContaining({
+        kind: "override",
+        objectives: ["slope", "power-rule"],
+      }),
     ]);
     await step(chat.skipAssessment(), chat);
     expect(replay(chat).finished).toBe("overridden");
@@ -475,7 +531,7 @@ test("after moving on before the gate, the closing card after it offers its step
   const chat = await open(setup);
   await step(chat.ready(), chat);
   await step(chat.override(), chat);
-  await step(chat.finishUnit(), chat);
+  await step(chat.finishUnit(finishId(chat)), chat);
   await step(chat.startAssessment(), chat);
   await answer(chat, "B");
   await step(chat.anotherQuestion(), chat);
@@ -487,6 +543,7 @@ test("after moving on before the gate, the closing card after it offers its step
       passed: false,
       objectives: { slope: "slipping", "power-rule": "overridden" },
       gate: { goOver: ["slope"], others: [] },
+      finishId: expect.any(String),
     },
   ]);
   expect(
@@ -503,7 +560,7 @@ test("after moving on before the gate, the closing card after it offers its step
       "The segment is closed, and it was the unit's last. The unit's gate left \"slope\" not passed. The learner chooses whether to go over them again or to move on without them.",
   );
 
-  await step(chat.finishUnit(), chat);
+  await step(chat.finishUnit(finishId(chat)), chat);
 
   expect((await reload().readEvidence(COURSE)).at(-1)).toEqual({
     kind: "override",
@@ -816,6 +873,7 @@ test("a miss on the unit's own objective: its detour and a second question, the 
       passed: false,
       objectives: { slope: "slipping", "power-rule": "retained" },
       gate: { goOver: ["slope"], others: [] },
+      finishId: expect.any(String),
     },
   ]);
   expect(await positionOf()).toEqual({
@@ -842,6 +900,7 @@ test("a miss on the unit's own objective: its detour and a second question, the 
       passed: false,
       objectives: { slope: "slipping", "power-rule": "retained" },
       gate: { goOver: ["slope"], others: [] },
+      finishId: expect.any(String),
     },
   ]);
   expect(sent(after.backend)).toEqual([]);
@@ -992,10 +1051,11 @@ test("a unit whose gate has nothing to ask finishes as before: every objective m
       type: "unit_end",
       passed: false,
       objectives: { slope: "not-started", "power-rule": "overridden" },
+      finishId: expect.any(String),
     },
   ]);
 
-  await step(chat.finishUnit(), chat);
+  await step(chat.finishUnit(finishId(chat)), chat);
 
   expect(since(chat, "unit_end").slice(1)).toEqual([
     expect.objectContaining({ type: "unit_status" }),
@@ -1023,7 +1083,7 @@ test("moving on is refused, and the closing card shown again, when whether the g
 
   // A day on, unit 1's objectives are due: the gate would ask them.
   setup.clock.setTime(Date.parse("2026-11-19T12:00:00.000Z"));
-  expect(await chat.finishUnit()).toEqual({
+  expect(await chat.finishUnit(finishId(chat))).toEqual({
     ok: false,
     status: 409,
     error:
@@ -1032,14 +1092,9 @@ test("moving on is refused, and the closing card shown again, when whether the g
   expect(cardOf(replay(chat)).gateFollows).toBe(true);
 
   // Answered in another unit's review just now: nothing is due again.
-  for (const objective of ["limit-value", "one-sided"]) {
-    const entry = correct(objective, setup.clock.toISOString());
-    await reload().appendEvidence(COURSE, {
-      ...entry,
-      answer: { ...entry.answer, questionId: `review-${objective}` },
-    });
-  }
-  expect(await chat.finishUnit()).toEqual({
+  await reviewedLimits(setup.clock.toISOString());
+  const gateAction = finishId(chat);
+  expect(await chat.finishUnit(gateAction)).toEqual({
     ok: false,
     status: 409,
     error:
@@ -1048,11 +1103,87 @@ test("moving on is refused, and the closing card shown again, when whether the g
   const timeline = replay(chat);
   expect(cardOf(timeline).gateFollows).toBeUndefined();
   expect(timeline.items.filter((i) => i.kind === "unit_end")).toHaveLength(1);
+  expect(await chat.finishUnit(gateAction)).toMatchObject({
+    ok: false,
+    status: 409,
+  });
+  expect(ofType(chat, "moved_on")).toEqual([]);
 
-  await step(chat.finishUnit(), chat);
+  await step(chat.finishUnit(finishId(chat)), chat);
   expect(ofType(chat, "assessment")).toEqual([]);
   expect(chat.events().at(-1)).toEqual({
     type: "unit_closed",
     status: "overridden",
   });
+});
+
+test("a refusal and its redrawn card use the same pick even if fresh answers arrive in between", async () => {
+  await makeCourse({ limitsAt: LATELY, slope: false });
+  let reviewOnRead = false;
+  const setup = setUp((root) => ({
+    ...root,
+    async readEvidence(...args) {
+      const evidence = await root.readEvidence(...args);
+      if (reviewOnRead) {
+        reviewOnRead = false;
+        await reviewedLimits(setup.clock.toISOString());
+      }
+      return evidence;
+    },
+  }));
+  const chat = await open(setup);
+  try {
+    await step(chat.override(), chat);
+    setup.clock.setTime(Date.parse("2026-11-19T12:00:00.000Z"));
+    reviewOnRead = true;
+    expect(await chat.finishUnit(finishId(chat))).toMatchObject({
+      ok: false,
+      status: 409,
+      error: expect.stringContaining("now has questions to ask"),
+    });
+    expect(cardOf(replay(chat)).gateFollows).toBe(true);
+    expect(ofType(chat, "moved_on")).toEqual([]);
+  } finally {
+    await setup.units.close();
+  }
+});
+
+test("a dispute that passes an objective invalidates the old move-on even if the gate still follows", async () => {
+  const root = await makeCourse({ slope: false });
+  const wrong = correct("slope", YESTERDAY);
+  await root.appendEvidence(COURSE, {
+    ...wrong,
+    answer: { ...wrong.answer, kind: "choice", choice: "B", confidence: "90" },
+    verdict: "incorrect",
+  });
+  const setup = setUp();
+  const chat = await open(setup);
+  try {
+    await step(chat.override(), chat);
+    const before = finishId(chat);
+    expect(ofType(chat, "unit_end").at(-1)?.gateFollows).toBe(true);
+    await chat.recordDispute({
+      kind: "dispute",
+      recordedAt: NOW,
+      questionId: wrong.answer.questionId,
+      reason: "B is right.",
+      outcome: { verdict: "correct", reason: "The key was wrong.", key: "B" },
+    });
+    expect(ofType(chat, "unit_end").at(-1)?.gateFollows).toBe(true);
+    expect(await chat.finishUnit(before)).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    expect(ofType(chat, "moved_on")).toEqual([]);
+    await step(chat.finishUnit(finishId(chat)), chat);
+    expect(ofType(chat, "moved_on")).toEqual([
+      { type: "moved_on", objectives: ["power-rule"] },
+    ]);
+    expect(ofType(chat, "assessment").at(-1)).toMatchObject({
+      mode: "gate",
+      stage: "offered",
+    });
+  } finally {
+    await setup.units.close();
+  }
 });

@@ -47,6 +47,7 @@ import {
 } from "../shared/assessment-view.ts";
 import { compareUnits } from "../shared/curriculum-change.ts";
 import {
+  type FinishUnitPost,
   Hello,
   PageEvent,
   type SkipTestedPost,
@@ -126,17 +127,14 @@ type Confirmation = "move-on" | "finish" | "skip-gate";
 type SessionState = { timeline: Timeline; confirming?: Confirmation };
 type SessionAction =
   | TimelineAction
-  | { type: "confirm"; confirmation: Confirmation | undefined };
+  | { type: "confirm"; confirmation: Confirmation | undefined }
+  | { type: "finish_answered"; finishId: string };
 
-/**
- * What a "finish" confirmation was asked on: the standing closing card that
- * offers its steps, by its key, and whether moving on from it offers the
- * gate, which changes the step it confirms.
- */
+/** The standing closing card's move-on action, if it is still available. */
 function finishingStep(timeline: Timeline): string | undefined {
   const card = standingCard(timeline.items);
   if (card !== undefined && card.stepTaken === undefined && offersSteps(card)) {
-    return `${card.key}${card.gateFollows === true ? " gate" : ""}`;
+    return card.finishId;
   }
   return undefined;
 }
@@ -150,6 +148,11 @@ function reduceSession(
     return action.confirmation === undefined
       ? { timeline: before }
       : { timeline: before, confirming: action.confirmation };
+  }
+  if (action.type === "finish_answered") {
+    return confirming === "finish" && finishingStep(before) === action.finishId
+      ? { timeline: before }
+      : state;
   }
 
   const timeline = reduce(before, action);
@@ -342,6 +345,14 @@ export function Session(props: { courseId: string; unitId: string }) {
     const why = await post(path(route), body);
     setProblem(why);
     setConfirming(undefined);
+  }
+
+  async function finish(finishId: string) {
+    const why = await post(path("finish"), {
+      finishId,
+    } satisfies FinishUnitPost);
+    setProblem(why);
+    dispatch({ type: "finish_answered", finishId });
   }
 
   // Unknown until the course's details are loaded.
@@ -575,7 +586,7 @@ export function Session(props: { courseId: string; unitId: string }) {
                         post(path("curriculum/keep"), { proposalId })
                       }
                       onAgain={() => act("go-over-again")}
-                      onFinish={() => act("finish")}
+                      onFinish={finish}
                       offered={
                         item.kind === "assessment" &&
                         item.stage === "offered" &&
@@ -1040,7 +1051,7 @@ function ThreadItem(props: {
   onApplyCurriculum(proposalId: string): Promise<string | undefined>;
   onKeepCurriculum(proposalId: string): Promise<string | undefined>;
   onAgain(): void;
-  onFinish(): void;
+  onFinish(finishId: string): void;
   /** This is the card of the assessment offered now, whose Start and Skip can be pressed. */
   offered: boolean;
   onStartAssessment(): void;
@@ -1375,11 +1386,12 @@ function ClosingCard(props: {
   confirming: boolean;
   onConfirm(asking: boolean): void;
   onAgain(): void;
-  onFinish(): void;
+  onFinish(finishId: string): void;
   onCourse(): void;
   onNext: (() => void) | undefined;
 }) {
   const { card, place } = props;
+  const { finishId } = card;
   const view = closingCard(props.plan, card);
   const title = place?.title ?? "";
   const head = (
@@ -1436,8 +1448,12 @@ function ClosingCard(props: {
           <button
             type="button"
             className="textbtn"
-            disabled={props.busy}
-            onClick={props.onFinish}
+            disabled={props.busy || finishId === undefined}
+            onClick={
+              finishId === undefined
+                ? undefined
+                : () => props.onFinish(finishId)
+            }
           >
             Move on
           </button>
@@ -1457,7 +1473,7 @@ function ClosingCard(props: {
         <button
           type="button"
           className="textbtn"
-          disabled={props.busy}
+          disabled={props.busy || finishId === undefined}
           onClick={() => props.onConfirm(true)}
         >
           {view.moveOn}

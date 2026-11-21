@@ -60,7 +60,10 @@ afterEach(async () => {
   }
 });
 
-async function open(phase: "discuss" | "closed") {
+async function open(
+  phase: "discuss" | "closed",
+  finish?: (init: RequestInit | undefined) => Response,
+) {
   let stream: Stream | undefined;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
@@ -72,13 +75,14 @@ async function open(phase: "discuss" | "closed") {
       }
     },
   );
-  vi.stubGlobal("fetch", async (path: string) => {
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
     if (path === "/api/courses/calculus/units/derivative/open") {
       return Response.json({ ...CHAT, ok: true });
     }
     if (path === "/api/courses/calculus") {
       return Response.json({ error: "No course details." }, { status: 404 });
     }
+    if (path.endsWith("/finish") && finish !== undefined) return finish(init);
     throw new Error(`Unexpected request to ${path}`);
   });
   const host = document.createElement("div");
@@ -173,6 +177,7 @@ const BEFORE_GATE = {
   type: "unit_end",
   passed: false,
   objectives: { "power-rule": "attempted", "product-rule": "overridden" },
+  finishId: "before-gate",
 } as const;
 
 test("before the gate, a closing card that the gate follows says the gate comes next, and one without keeps its own step", async () => {
@@ -190,7 +195,7 @@ test("before the gate, a closing card that the gate follows says the gate comes 
 
   // The card shown again with nothing left for the gate to ask: the
   // confirmation asked on the gate's step is gone.
-  await stream.emit(BEFORE_GATE);
+  await stream.emit({ ...BEFORE_GATE, finishId: "without-gate" });
 
   expect(confirmation()).toBeUndefined();
   expect(button("Go on to the unit gate")).toBeUndefined();
@@ -200,6 +205,31 @@ test("before the gate, a closing card that the gate follows says the gate comes 
   expect(button("Move on")?.disabled).toBe(false);
 });
 
+test("a closing-card confirmation survives an unchanged scope but not a changed one, even with the same gate destination", async () => {
+  const finish = vi.fn(() => Response.json({ ok: true }));
+  const { stream, click, confirmation } = await open("closed", finish);
+  const card = { ...BEFORE_GATE, gateFollows: true } as const;
+  await stream.emit(card);
+  await click("Go on to the unit gate");
+  await stream.emit({ ...card });
+  expect(confirmation()).toContain("The two objectives not passed");
+
+  await stream.emit({
+    ...card,
+    objectives: { "power-rule": "passed", "product-rule": "overridden" },
+    finishId: "one-objective",
+  });
+  expect(confirmation()).toBeUndefined();
+  await click("Go on to the unit gate");
+  expect(confirmation()).toContain("The objective not passed");
+  await click("Move on");
+  expect(finish).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: JSON.stringify({ finishId: "one-objective" }),
+    }),
+  );
+});
+
 test("a closing card after the gate asks for its own Move on confirmation", async () => {
   const { stream, button, click } = await open("closed");
   await stream.emit({
@@ -207,6 +237,7 @@ test("a closing card after the gate asks for its own Move on confirmation", asyn
     passed: false,
     objectives: { "power-rule": "passed", "product-rule": "overridden" },
     gateFollows: true,
+    finishId: "before-gate",
   });
   await click("Go on to the unit gate");
   expect(button("Stay")).toBeDefined();
@@ -226,6 +257,7 @@ test("a closing card after the gate asks for its own Move on confirmation", asyn
       passed: false,
       objectives: { "power-rule": "slipping", "product-rule": "overridden" },
       gate: { goOver: ["power-rule"], others: [] },
+      finishId: "after-gate",
     },
   );
 

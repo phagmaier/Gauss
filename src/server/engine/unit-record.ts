@@ -63,6 +63,7 @@ import type {
   Verdict,
 } from "../../shared/question.ts";
 import type {
+  AssessedObjective,
   AssessmentRun,
   Detour,
   OpenQuestion,
@@ -259,7 +260,10 @@ export interface UnitRecord {
    * Keeps and records the closing-card override, or resumes a pending one.
    * The caller tells the page once its gate or finish is saved.
    */
-  moveOn(objectives: readonly string[]): Promise<void>;
+  moveOn(action?: {
+    objectives: string[];
+    gate: AssessedObjective[];
+  }): Promise<NonNullable<UnitPosition["pendingMoveOn"]>>;
   /**
    * Removes the position and keeps any full test-out finish, then shows it.
    * A style proposal still waiting is withdrawn.
@@ -957,18 +961,21 @@ export async function openUnitRecord(options: {
       return { objectives, withdrawn };
     },
 
-    async moveOn(objectives) {
-      let entry = position.pendingMoveOn;
-      if (entry === undefined) {
-        entry = {
+    async moveOn(action) {
+      let pending = position.pendingMoveOn;
+      if (pending === undefined) {
+        if (action === undefined) throw new Error("No move-on is pending.");
+        const entry = {
           kind: "override",
           recordedAt: now().toISOString(),
-          objectives: [...objectives],
+          objectives: action.objectives,
           moveOnId: randomUUID(),
-        };
-        await move({ ...position, pendingMoveOn: entry });
+        } as const;
+        pending = { ...entry, gate: action.gate };
+        await move({ ...position, pendingMoveOn: pending });
         await append(entry);
       } else {
+        const { gate: _, ...entry } = pending;
         const id = entry.moveOnId;
         if (!evidence.some((e) => e.kind === "override" && e.moveOnId === id)) {
           // The append may have reached disk before its failure was reported.
@@ -981,8 +988,8 @@ export async function openUnitRecord(options: {
         }
       }
       emit(status());
+      return pending;
     },
-
     finish,
   };
 }

@@ -313,6 +313,14 @@ function since(chat: UnitChat, type: PageEvent["type"]): PageEvent[] {
   return events.slice(Math.max(at, 0));
 }
 
+function finishId(chat: UnitChat): string {
+  const id = chat
+    .events()
+    .findLast((event) => event.type === "unit_end")?.finishId;
+  if (id === undefined) throw new Error("No closing card's move-on.");
+  return id;
+}
+
 /**
  * Skips the unit's gate, offered on its card once the last segment closed
  * with every objective passed or moved on from (task 5.5), which brings the
@@ -1380,7 +1388,7 @@ test("the learner starts each next segment, and once the last closes with every 
     chat.nextSegment(),
     chat.ready(),
     chat.goOverAgain(),
-    chat.finishUnit(),
+    chat.finishUnit("old-card"),
   ]) {
     expect(await step).toEqual({
       ok: false,
@@ -1897,6 +1905,7 @@ test("there is no limit: an objective not passed is asked again until it passes 
       "difference-quotient": "overridden",
       "secant-slope": "overridden",
     },
+    finishId: expect.any(String),
   });
   // The unit stays in progress while its closing card waits.
   expect(await position()).toEqual({
@@ -2387,6 +2396,7 @@ test("a unit not passed waits on its closing card; going over again teaches one 
         "secant-slope": "overridden",
       },
       gateFollows: true,
+      finishId: expect.any(String),
     },
   ]);
   expect(await chat.nextSegment()).toEqual({
@@ -2473,7 +2483,7 @@ test("moving on without the objectives not passed records them as overridden, an
   await chat.settled();
   const turns = setup.backend.received.length;
 
-  expect(await chat.finishUnit()).toEqual({ ok: true });
+  expect(await chat.finishUnit(finishId(chat))).toEqual({ ok: true });
 
   expect((await reload().readEvidence(COURSE)).at(-1)).toEqual({
     kind: "override",
@@ -2527,7 +2537,10 @@ test.each([
     await answer(chat, "A");
     await answer(chat, "B");
 
-    for (const result of [await chat.goOverAgain(), await chat.finishUnit()]) {
+    for (const result of [
+      await chat.goOverAgain(),
+      await chat.finishUnit("old-card"),
+    ]) {
       expect(result).toEqual({ ok: false, status: 409, error });
     }
   },
@@ -2650,6 +2663,7 @@ test("a closing card that was waiting before a restart is shown again, and going
         "secant-slope": "overridden",
       },
       gateFollows: true,
+      finishId: expect.any(String),
     },
   ]);
   expect(await chat.goOverAgain()).toEqual({ ok: true });
@@ -4967,7 +4981,7 @@ test("moving on commits the segment's close, and moving on from the closing card
   await chat.settled();
   expect(await chat.override()).toEqual({ ok: true });
   await chat.settled();
-  expect(await chat.finishUnit()).toEqual({ ok: true });
+  expect(await chat.finishUnit(finishId(chat))).toEqual({ ok: true });
   await skipGate(chat);
 
   expect(commits.map((c) => c.message)).toEqual([
