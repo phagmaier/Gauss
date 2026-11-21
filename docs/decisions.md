@@ -319,6 +319,11 @@ The brief states the result; this is who decided and why.
   confined, since it then exposes only the session's context and only if
   a source misleads the tutor; and PDFs are converted with pypdfium2 and
   Gauss's own layout code, not PyMuPDF4LLM, whose AGPL would bind Gauss.
+- **2026-11-21, the stage 4 mocks** (pieces 22 to 24, task 4.1). The user
+  took the agent's recommendation on each choice and kept its four
+  additions: removing a source until the first proposal, a line for each
+  read and page view, a unit's sections in the course view, and a check
+  on a verified quote's citation. The picks are in "Page design".
 
 ## Toolchain
 
@@ -1930,14 +1935,15 @@ render math.
 ## Page design
 
 Picked by the user from the mocks in `docs/prototype/` (pieces 1 to 18),
-2026-11-13, 2026-11-15, 2026-11-17 and 2026-11-18, and pieces 19 to 21, the
-redesign, 2026-11-19 (task 5.17). Each mock's header comment says what was
-asked and rejected. Pieces 15 to 18 were shown as the agent would build them
-and accepted so, but for the notes ("Product decisions"); as built, they are
+2026-11-13, 2026-11-15, 2026-11-17 and 2026-11-18, pieces 19 to 21, the
+redesign, 2026-11-19 (task 5.17), and pieces 22 to 24, sources, 2026-11-21
+(task 4.1). Each mock's header comment says what was asked and rejected.
+Pieces 15 to 18 were shown as the agent would build them and accepted so,
+but for the notes ("Product decisions"); as built, they are
 `architecture.md` section 10. The redesign is built by tasks 5.30 to 5.39;
 the look is built, and until the rest is done, the app has the layouts
 pieces 1 to 18 settled, and the entries below say which parts are the
-redesign's.
+redesign's. Pieces 22 to 24 are built by tasks 4.6 to 4.11.
 
 - **Thread layout**: one centred column, the tutor's text unframed, the
   learner's messages on the right, one message box at the bottom. Rejected:
@@ -2184,9 +2190,62 @@ redesign's.
   (the agent's): the intake card's style section with the profile's
   sentence marks (`ChangedText.tsx`) and the package card's foot; the
   intake card's list and diagram ("Mastery loop").
+- **A source is attached in the intake's thread** (piece 22): a clip button
+  first in the message box, or a file dropped on the thread. Its card sits
+  on the learner's side: converting, then what was found (pages, sections,
+  stretches cut into parts, pages with no text, in the learner's words, no
+  character counts), or why it was refused and what would work instead.
+  "Outline" opens the source's outline in the side pane. Typing goes on
+  while a file converts; Send waits for it, so that the planner's turn has
+  the outline. "Remove" until the first proposal, while the source is
+  still in `uploads/` (the agent's addition, kept by the user). The
+  proposal and change cards list under each unit "Reads" and its
+  sections: consecutive parts of one stretch as one line ("Preface, parts
+  1 to 3"), folded to a count and pages above two lines, with a section
+  saying how much of the source the units read.
+- **A verified quote** (piece 23) is piece 5's block in the reading type,
+  with its citation under it: the stretch, never Gauss's part, then the
+  page or paragraph ("Preface, p. 11"; "Chapter I. Introductory, ¶ 9").
+  A small check before the citation sets it apart from a block quote the
+  tutor types in Markdown (the agent's addition, kept).
+- **A section link** (piece 23) is the linked words with a dotted
+  underline and a small §, so that it reads neither as a quote nor as a
+  web link; its tooltip names the section and page (the user's pick).
+  Rejected: an underline like a web link's; the place in a pill after the
+  words.
+- **The source pane** (piece 23) shows a section's text in the reading
+  type, with its page numbers (or ¶ numbers) in the margin, a dot by a
+  page whose text lost math or images, the previous and next section at
+  its foot, and "Outline" in its head. From a quote the passage is marked,
+  in a low wash of `--open`, and scrolled to; from a link it opens at the
+  link's page, lit briefly; from a "Read" line, at its top. **A page
+  image** opens from its number in the margin, with "Back to the text"
+  (the user's pick). Rejected: a Text / Page switch in the pane's head; a
+  "Show page" line under each paragraph where a page starts.
+- **What the tutor did with a source shows as a line** (piece 23), as a
+  file it wrote does: "Read" a section, "Looked at" a page, each opening
+  the pane there (the agent's addition, kept). A web search is a line
+  with its query and the links it got, three shown and the rest folded; a
+  result the tutor cites is an ordinary web link.
+- **The course view lists its sources below the units** (piece 24), each
+  opening its outline in the pane (the user's pick): the source's own
+  headings, folded below the first level except where a unit reads, each
+  section with its place and the unit that reads it. An open unit lists
+  what it reads under its objectives or goal, each line opening the
+  outline with the unit's sections lit (the agent's addition, kept).
+  Rejected: the sources in the course's facts under the title, or behind
+  "Sources" in the top line.
+- **Web search is a switch in a section of its own**, "The web", after the
+  sources (piece 24): off by default, in the text colour when on with "On"
+  or "Off" beside it, saying what a search sends. It applies from the
+  learner's next message in each unit (the user's pick, over "from each
+  unit's next session", which a learner cannot see happen): moving the
+  switch closes the course's kept tutor sessions, each once it is between
+  turns, so that the next turn resumes it with the tools the setting
+  gives. Rejected: the switch as a row among the sources.
 - Not designed yet: a light theme (`look.css` has a rough Latte only to
-  show that the colour roles and status forms carry over), the source
-  reader, settings, narrow screens.
+  show that the colour roles and status forms carry over), settings,
+  narrow screens.
 
 ## Page behaviour
 

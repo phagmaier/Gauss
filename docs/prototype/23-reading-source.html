@@ -1,0 +1,333 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 4.1, piece 23: reading the source, in the
+  redesign's look (look.css).
+  SETTLED 2026-11-21: the user took the recommended section link (the words
+  and a small §) and page image (from its number in the margin), and kept
+  the check and the "Read" and "Looked at" lines. Rejected: a link
+  underlined as a web link is, a link with its place in a pill, a Text /
+  Page switch, a "Show page" line under each page break.
+
+  What it answers (the plan's 4.1; the design is architecture.md section 8):
+  - A verified quote as piece 5 has it, the source's own words with a
+    citation under them that opens the passage. The citation names the
+    stretch the quote starts in, never a part Gauss cut ("Preface", not
+    "Preface (part 2 of 6)"), then its page ("Preface, p. 11"), or in a
+    source without pages its paragraph ("Chapter I. Introductory, ¶ 9").
+  - A section link in the tutor's text, which claims no quote. The bar
+    compares three forms: the linked words with a small section mark
+    (recommended: it reads neither as a quote nor as a web link), the words
+    underlined as a web link is, and the words with the place in a pill.
+    A link names its section and page in its tooltip.
+  - The pane each opens: the section's text in the reading type, page
+    numbers in the margin where each page starts, the previous and next
+    section at the foot. From a quote, the passage is marked and scrolled
+    to; from a link, the section opens at its page, lit briefly; from
+    "Read", at its top.
+  - A PDF page as an image, on request. The bar compares: from its page
+    number in the margin (recommended: the text stays the default and every
+    page is one click away); a Text / Page switch in the pane's head; a
+    "Show page" line under each paragraph where a page starts. A page whose
+    text lost math or images has a dot by its number.
+  - A web search in the thread: what was searched, and the links that came
+    back, three shown and the rest folded. A link the tutor cites from them
+    is an ordinary web link.
+
+  The agent's choices, shown as it would build them:
+  - The citation line has a small check, so that a verified quote reads
+    apart from a block quote the tutor types in Markdown, which has none.
+  - A quiet line for what the tutor did with the source, as "The tutor
+    wrote" has for a file (piece 14): "Read" a section, "Looked at" a page,
+    each opening the pane there. Not in the plan's 4.8 before this piece;
+    the user kept it.
+  - The marked passage takes the yellow of "answered, not passed yet" at a
+    low wash, a highlighter's colour; the accent stays for "you are here".
+  - The pane's head says where the text sits: the source, then the
+    stretch, the part and its pages.
+
+  The bar at the bottom left picks the course (a PDF book, a paper with
+  math, an EPUB), what the pane shows, the form of a section link, how a
+  page image is reached, and the theme. Keys: Esc closes the pane, H hides
+  the bar.
+
+  Everything is simulated. The quoted sentences follow J. B. Baillie's
+  translation of the Phenomenology (1910) and Mill's On Liberty (1859), both
+  in the public domain, and one sentence of arXiv 1706.03762; the text
+  around them is filler in their manner, and the page numbers are
+  invented. A page image is drawn here in HTML; the app shows a PNG
+  rendered at 150 dpi. The message box, "Outline" in the pane, the check
+  and the search's links do nothing.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 23: reading the source</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="look.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="bar"></div>
+
+<script>
+/* ---------------- icons ---------------- */
+const SEND = '<svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const MAP = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="1.5" width="5" height="3.5" rx="1"/><rect x="9.5" y="6.25" width="5" height="3.5" rx="1"/><rect x="1.5" y="11" width="5" height="3.5" rx="1"/><path d="M4 5v6M6.5 3.25h3v3"/></svg>';
+const CHEV = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5"/></svg>';
+const BOOK = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.2c2-.9 4-.9 6 .4 2-1.3 4-1.3 6-.4v9.6c-2-.9-4-.9-6 .4-2-1.3-4-1.3-6-.4z"/><path d="M8 3.6v9.6"/></svg>';
+const PAGE = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="1.8" width="10" height="12.4" rx="1"/><path d="M5.5 5h5M5.5 7.5h5M5.5 10h3"/></svg>';
+const GLOBE = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c1.8 1.7 2.6 3.8 2.6 6.2S9.8 12.5 8 14.2C6.2 12.5 5.4 10.4 5.4 8S6.2 3.5 8 1.8z"/></svg>';
+const CHECK = '<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7.4 2.6 2.6L11 4.4"/></svg>';
+
+/* ---------------- simulated content ----------------
+   A section's paragraphs are HTML with markers: {p7} where page 7 starts, {p4*} for a page whose text lost math or
+   images, {q}...{/q} the quoted passage, {l}...{/l} the paragraph a link lands on. */
+const COURSES = {
+  hegel: {
+    course: 'Reading Hegel\'s Phenomenology', unit: [1, 'What a preface cannot do'], seg: [2, 3, 'The true is the whole'], ticks: ['past', 'now', ''],
+    src: 'The Phenomenology of Spirit', pdf: true, pages: 543,
+    objs: [['Say what Hegel means by "the true is the whole"', 'now'], ['Explain why a result needs the way it came about', 'not']],
+    sections: {
+      s1: {stretch: 'Preface', part: 'part 1 of 6', place: 'pp. 1–6', prev: null, next: 's2', paras: [
+        '{p1}It is customary to preface a work with an explanation of the author\'s aim, why he wrote the book, and the relationship in which he believes it to stand to other earlier or contemporary treatises on the same subject. In the case of a philosophical work, however, such an explanation seems not only superfluous but, in view of the nature of the subject-matter, even inappropriate and misleading.',
+        '{l}The more the ordinary mind takes the opposition between true and false to be fixed, the more it is accustomed to expect either agreement or contradiction with a given philosophical system. {p2}The bud disappears when the blossom breaks through, and we might say that the former is refuted by the latter; in the same way when the fruit comes, the blossom may be explained to be a false form of the plant\'s existence, for the fruit appears as its true nature in place of the blossom. These stages are not merely differentiated; they supplant one another as being incompatible with one another. But the ceaseless activity of their own inherent nature makes them at the same time moments of an organic unity, where they not merely do not contradict one another, but where one is as necessary as the other; and this equal necessity of all moments constitutes alone and thereby the life of the whole.{/l}',
+        'But contradiction as between philosophical systems is not wont to be conceived in this way; on the other hand, the mind perceiving the contradiction does not commonly know how to relieve it or keep it free from its one-sidedness.{p3}',
+      ]},
+      s2: {stretch: 'Preface', part: 'part 2 of 6', place: 'pp. 7–13', prev: 's1', next: 's3', paras: [
+        '{p7}The systematic development of truth in scientific form can alone be the true shape in which truth exists. To help to bring philosophy nearer to the form of science, to the goal where it can lay aside the name of love of knowledge and be actual knowledge, that is what I have set before me.',
+        'In my view, a view which the developed exposition of the system itself can alone justify, everything depends on grasping and expressing the ultimate truth not as Substance but as Subject as well.<sup><a href="#fn1">1</a></sup> {p10}The living substance, further, is that being which is truly subject, or, what is the same thing, is truly realized and actual solely in the process of positing itself.',
+        '{p11}{q}The truth is the whole. The whole, however, is merely the essential nature reaching its completeness through the process of its own development.{/q} Of the Absolute it must be said that it is essentially a result, that only at the end is it what it is in very truth; and just in that consists its nature, which is to be actual, subject, or self-becoming, self-development.',
+        'Should it appear contradictory that the Absolute has to be conceived essentially as a result, a little consideration will set this show of contradiction in its true light. {p12}The beginning, the principle, or the Absolute, as at first or immediately expressed, is merely the universal.',
+      ], notes: ['Hegel\'s word is <i>Subjekt</i>: the subject of a sentence as well as the self that knows.']},
+      s3: {stretch: 'Preface', part: 'part 3 of 6', place: 'pp. 13–19', prev: 's2', next: 's4', paras: ['{p13}…']},
+    },
+    teach: c => `${did(BOOK, 'Read', 's2', 'read')}
+      <div class="tutor read"><p>Hegel has just complained that philosophers want a result without the way to it, as if a bare conclusion were the thing itself. Now he says what the thing is instead:</p></div>
+      ${quote('s2', 'Preface, p. 11')}
+      <div class="tutor read"><p>Read the second sentence slowly. The whole is not a sum of parts lying side by side: it is something that <em>completes itself</em>. So a truth is not a proposition you could state once and be done with; it takes in the movement that arrives at it. It is the thought he put in ${link('the picture of the bud, the blossom and the fruit', 's1', 'Preface (part 1 of 6), p. 2', 'Preface, p. 2')} at the start: each stage refutes the one before, and yet each is as necessary as the others.</p>
+      <p>This is why a preface cannot do philosophy: it can only announce results, and a result cut off from the way to it is, by his account, lifeless.</p></div>`,
+    discuss: () => `<div class="you">Isn't this just saying that context matters? I remember Adorno writing that the whole is the false. Was he answering this?</div>
+      <div class="ws">${did(GLOBE, 'Searched the web for', null, 'search')}
+        <ul>${[['Theodor W. Adorno', 'plato.stanford.edu'], ['Minima Moralia: Reflections from Damaged Life', 'en.wikipedia.org'], ['Hegel and Adorno on the whole and the false', 'philpapers.org']]
+          .map(([t, d]) => `<li><a href="#" onclick="return false">${t}</a><span class="dom">${d}</span></li>`).join('')}
+          <li><button class="link" type="button" style="font-size:13px">4 more</button></li></ul></div>
+      <div class="tutor read"><p>More than context. Context is something you add to a claim from outside; Hegel's point is that the claim's truth <em>is</em> its development. And yes, Adorno was answering him: in <i>Minima Moralia</i> he turns the sentence upside down, holding that a whole which claims to reconcile everything hides what it crushes (<a class="webl" href="#" onclick="return false">Stanford Encyclopedia of Philosophy</a>).</p>
+      <p>When you are ready, I have one question to check the first objective.</p></div>
+      <div class="step"><button class="btn" type="button">I'm ready for the check</button></div>`,
+    search: 'Adorno "the whole is the false" Hegel "the true is the whole"',
+    quoteIn: 's2', linkIn: 's1', linkPage: 2, readIn: 's2', pageImg: 11,
+  },
+  paper: {
+    course: 'Transformers from the paper', unit: [2, 'Attention'], seg: [1, 2, 'Scaled dot-product attention'], ticks: ['now', ''],
+    src: 'Attention Is All You Need', pdf: true, pages: 15,
+    objs: [['Write the attention formula and say what each part does', 'now'], ['Explain why the dot products are scaled by $1/\\sqrt{d_k}$', 'not']],
+    sections: {
+      s6: {stretch: '3.1 Encoder and Decoder Stacks', part: '', place: 'p. 3', prev: null, next: 's7', paras: ['{p3}…']},
+      s7: {stretch: '3.2 Attention', part: '', place: 'pp. 3–5', prev: 's6', next: 's8', paras: [
+        '{q}An attention function can be described as mapping a query and a set of key-value pairs to an output, where the query, keys, values, and output are all vectors.{/q} The output is computed as a weighted sum of the values, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.',
+        '3.2.1 Scaled Dot-Product Attention',
+        '{p4*}{l}We call our particular attention "Scaled Dot-Product Attention" (Figure 2). The input consists of queries and keys of dimension dk, and values of dimension dv. We compute the dot products of the query with all keys, divide each by √ dk, and apply a softmax function to obtain the weights on the values.{/l}',
+        'In practice, we compute the attention function on a set of queries simultaneously, packed together into a matrix Q. The keys and values are also packed together into matrices K and V. We compute the matrix of outputs as: Attention(Q, K, V ) = softmax( QKT √ dk )V (1)',
+        'While for small values of dk the two mechanisms perform similarly, additive attention outperforms dot product attention without scaling for larger values of dk.<sup><a href="#fn1">4</a></sup>',
+        '{p5*}3.2.2 Multi-Head Attention …',
+      ], notes: ['To illustrate why the dot products get large, assume that the components of q and k are independent random variables with mean 0 and variance 1. Then their dot product, q · k = ∑ qiki, has mean 0 and variance dk.']},
+      s8: {stretch: '3.3 Position-wise Feed-Forward Networks', part: '', place: 'p. 5', prev: 's7', next: null, paras: ['{p5}…']},
+    },
+    teach: () => `${did(BOOK, 'Read', 's7', 'read')}${did(PAGE, 'Looked at', null, 'page')}
+      <div class="tutor read"><p>An attention layer is a lookup with soft edges. The paper puts it in one sentence:</p></div>
+      ${quote('s7', '3.2 Attention, p. 3')}
+      <div class="tutor read"><p>The text of page 4 lost its formula, so I looked at the page itself. Written out, the attention of a set of queries is</p>
+      $$\\operatorname{Attention}(Q, K, V) = \\operatorname{softmax}\\!\\left(\\frac{QK^{\\top}}{\\sqrt{d_k}}\\right)V.$$
+      <p>Each query is compared with every key by a dot product; the softmax turns those scores into weights that sum to one; the output is the weighted sum of the values. The division by $\\sqrt{d_k}$ is the part people skip, and the paper gives its reason in ${link('the footnote on page 4', 's7', '3.2 Attention, p. 4', '3.2 Attention, p. 4')}: without it the scores grow with the dimension and the softmax saturates.</p></div>`,
+    discuss: () => `<div class="step"><button class="btn" type="button">I'm ready for the check</button></div>`,
+    quoteIn: 's7', linkIn: 's7', linkPage: 4, readIn: 's7', pageImg: 4,
+  },
+  mill: {
+    course: 'Mill, On Liberty', unit: [1, 'The harm principle'], seg: [1, 2, 'One very simple principle'], ticks: ['now', ''],
+    src: 'On Liberty', pdf: false,
+    objs: [['State the harm principle and what it rules out', 'now'], ['Say whom Mill leaves outside it, and why', 'not']],
+    sections: {
+      s2: {stretch: 'Chapter I. Introductory', part: 'part 1 of 2', place: '¶ 1–8', prev: 's1', next: 's3', paras: ['…']},
+      s3: {stretch: 'Chapter I. Introductory', part: 'part 2 of 2', place: '¶ 9–16', prev: 's2', next: 's4', first: 9, paras: [
+        'The object of this Essay is to assert one very simple principle, as entitled to govern absolutely the dealings of society with the individual in the way of compulsion and control. That principle is, that the sole end for which mankind are warranted, individually or collectively, in interfering with the liberty of action of any of their number, is self-protection. {q}That the only purpose for which power can be rightfully exercised over any member of a civilised community, against his will, is to prevent harm to others.{/q} His own good, either physical or moral, is not a sufficient warrant.',
+        '{l}It is, perhaps, hardly necessary to say that this doctrine is meant to apply only to human beings in the maturity of their faculties. We are not speaking of children, or of young persons below the age which the law may fix as that of manhood or womanhood.{/l}',
+        'It is proper to state that I forego any advantage which could be derived to my argument from the idea of abstract right, as a thing independent of utility.',
+      ]},
+    },
+    teach: () => `${did(BOOK, 'Read', 's3', 'read')}
+      <div class="tutor read"><p>Mill states the principle once, near the start, and the rest of the book defends it:</p></div>
+      ${quote('s3', 'Chapter I. Introductory, ¶ 9')}
+      <div class="tutor read"><p>Notice what it rules out: a person's own good, of body or of character, never warrants compelling them. And notice whom it leaves out, which he says at once, in ${link('the paragraph after', 's3', 'Chapter I. Introductory, ¶ 10', 'Introductory, ¶ 10')}: children, and those not yet in the maturity of their faculties.</p></div>`,
+    discuss: () => `<div class="step"><button class="btn" type="button">I'm ready for the check</button></div>`,
+    quoteIn: 's3', linkIn: 's3', linkPara: 10, readIn: 's3',
+  },
+};
+
+/* ---------------- state ---------------- */
+const st = {course: 'hegel', pane: 'none', sl: 'mark', pageWay: 'number', page: null, toggle: 'text', inline: new Set(), theme: 'frappe'};
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const C = () => COURSES[st.course];
+const math = el => window.renderMathInElement && renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false});
+const sg = s => `<i class="sg ${s}" aria-hidden="true"></i>`;
+
+/* ---------------- the thread's pieces ---------------- */
+function quote(id, cite) {
+  const html = C().sections[id].paras.join(' ').match(/\{q\}(.*?)\{\/q\}/)[1];
+  return `<figure class="vq"><blockquote>${html}</blockquote><figcaption>${CHECK}<span class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Verified in the source:</span>
+    <button class="cite" type="button" data-open="quote" aria-expanded="${st.pane === 'quote'}">${cite}</button></figcaption></figure>`;
+}
+function link(words, id, tip, place) {
+  const open = st.pane === 'link';
+  const a = `<a class="sl" href="#" data-open="link" aria-expanded="${open}" title="${tip}">`;
+  if (st.sl === 'chip') return `${a}${words}<span class="slc">§ ${place}</span></a>`;
+  if (st.sl === 'web') return `${a}${words}</a>`;
+  return `${a}${words}<span class="sm" aria-hidden="true">§</span></a>`;
+}
+function did(icon, verb, id, kind) {
+  const c = C();
+  if (kind === 'search') return `<div class="did">${icon}<span>${verb} <q>${c.search}</q></span></div>`;
+  if (kind === 'page') return `<p class="did">${icon}<span>${verb}</span><button class="cite" type="button" data-open="page" aria-expanded="${st.pane === 'page'}">page ${c.pageImg}</button><span class="pl">its text lost a formula</span></p>`;
+  const s = c.sections[id];
+  return `<p class="did">${icon}<span>${verb}</span><button class="cite" type="button" data-open="read" aria-expanded="${st.pane === 'read'}">${s.stretch}${s.part ? ` (${s.part})` : ''}</button><span class="pl">${s.place}</span></p>`;
+}
+function segHead(c) {
+  return `<section class="seg"><div class="lbl">Segment ${c.seg[0]} of ${c.seg[1]}</div><h2 class="title">${c.seg[2]}</h2>
+    <ul class="seg-objs">${c.objs.map(([o, x]) => `<li>${sg(x)}<span>${o}</span></li>`).join('')}</ul></section>`;
+}
+const ph = (k, note = '') => `<div class="ph"><span class="lbl">${k}</span>${note ? `<span class="note">${note}</span>` : ''}</div>`;
+
+/* ---------------- the pane ---------------- */
+function paneSection() {
+  const c = C();
+  const id = st.pane === 'quote' ? c.quoteIn : st.pane === 'link' ? c.linkIn : c.readIn;
+  return [id, c.sections[id]];
+}
+function textBody(s) {
+  const c = C();
+  let n = s.first ?? 1;
+  const paras = s.paras.map((raw, i) => {
+    let h = raw.replace(/\{q\}/g, '<mark id="qmark">').replace(/\{\/q\}/g, '</mark>');
+    const lit = st.pane === 'link' && /\{l\}/.test(h);
+    h = h.replace(/\{l\}|\{\/l\}/g, '');
+    const pagesHere = [];
+    h = h.replace(/\{p(\d+)(\*?)\}/g, (_, p, lost, at) => {
+      pagesHere.push(+p);
+      const cls = `pgn ${lost ? 'lost' : ''}`, tip = lost ? `Page ${p}: its text lost math or images. Show the page` : `Show page ${p} as an image`;
+      const num = st.pageWay === 'number' ? `<button class="${cls}" type="button" data-page="${p}" title="${tip}">${p}</button>` : `<span class="${cls}">${p}</span>`;
+      return `${at === 0 ? '' : '<span class="brk" aria-hidden="true">|</span>'}${num}`;
+    });
+    if (!c.pdf) h = `<span class="pgn">¶ ${n++}</span>${h}`;
+    if (/^3\.2\.\d /.test(raw)) return `<h3>${h}</h3>`;
+    let after = '';
+    if (st.pageWay === 'inline' && c.pdf) after = pagesHere.map(p => st.inline.has(p)
+      ? `<div class="inl-pg"><button class="link" type="button" data-inline="${p}">Hide page ${p}</button></div>${pageImage(p, true)}`
+      : `<div class="inl-pg"><button class="link" type="button" data-inline="${p}">Show page ${p} as an image</button></div>`).join('');
+    return `<p class="${lit ? 'lit' : ''}" ${lit ? 'id="lit"' : ''}>${h}</p>${after}`;
+  }).join('');
+  const notes = s.notes ? `<div class="fns"><ol start="${st.course === 'paper' ? 4 : 1}">${s.notes.map(t => `<li>${t}</li>`).join('')}</ol></div>` : '';
+  return `<div class="sx">${paras}${notes}</div>`;
+}
+function pageImage(p, bare) {
+  const c = C();
+  const page = st.course === 'paper'
+    ? `<div class="page"><h4>3.2.1&nbsp; Scaled Dot-Product Attention</h4><p>We call our particular attention "Scaled Dot-Product Attention" (Figure 2). The input consists of queries and keys of dimension $d_k$, and values of dimension $d_v$. We compute the dot products of the query with all keys, divide each by $\\sqrt{d_k}$, and apply a softmax function to obtain the weights on the values.</p>
+        <p>In practice, we compute the attention function on a set of queries simultaneously, packed together into a matrix $Q$. The keys and values are also packed together into matrices $K$ and $V$. We compute the matrix of outputs as:</p>
+        <div class="eq">$\\mathrm{Attention}(Q,K,V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$<i>(1)</i></div>
+        <p>The two most commonly used attention functions are additive attention, and dot-product (multiplicative) attention. …</p>
+        <div class="fig">Figure 2: (left) Scaled Dot-Product Attention. (right) Multi-Head Attention.</div>
+        <p style="font-size:.85em;border-top:1px solid #999;padding-top:.4em;margin-top:1.4em"><sup>4</sup>To illustrate why the dot products get large, assume that the components of $q$ and $k$ are independent random variables with mean 0 and variance 1. Then their dot product, $q \\cdot k = \\sum_{i=1}^{d_k} q_i k_i$, has mean 0 and variance $d_k$.</p><div class="ft">${p}</div></div>`
+    : `<div class="page book"><div class="rh"><span>PREFACE</span><span>${p}</span></div>${[...C().sections.s2.paras.slice(2), ...C().sections.s1.paras, C().sections.s2.paras[0]].map(t => `<p>${t.replace(/\{[^}]*\}|<sup>.*?<\/sup>/g, '')}</p>`).join('')}</div>`;
+  if (bare) return `<div style="margin:0 0 1.2em">${page}</div>`;
+  return `<div class="pgv"><div class="pgv-h"><span>Page ${p} of ${c.pages}</span><span class="r"><button class="pane-tb" type="button" aria-label="Previous page">‹</button><button class="pane-tb" type="button" aria-label="Next page">›</button>
+    ${st.pageWay === 'number' ? '<button class="pane-tb" type="button" data-back>Back to the text</button>' : ''}</span></div>${page}</div>`;
+}
+function pane() {
+  const c = C();
+  let id, s, body, showPage = false;
+  if (st.pane === 'page') {
+    [id, s] = [c.readIn, c.sections[c.readIn]];
+    showPage = c.pdf;
+  } else [id, s] = paneSection();
+  if (st.pageWay === 'toggle' && st.toggle === 'page' && c.pdf) showPage = true;
+  if (st.pageWay === 'inline' && st.pane === 'page') showPage = false;
+  const p = st.page ?? (st.pane === 'page' ? c.pageImg : st.pane === 'quote' ? (st.course === 'paper' ? 3 : 11) : st.pane === 'link' ? c.linkPage : +(s.place.match(/\d+/) || [1])[0]);
+  body = showPage ? pageImage(p) : textBody(s);
+  if (st.pane === 'page' && !c.pdf) body = `<p class="proto" style="margin:20px">An EPUB has no pages, so it has no page image. Pick a PDF course in the bar.</p>` + textBody(s);
+  if (st.pageWay === 'inline' && st.pane === 'page' && c.pdf && !st.inline.has(c.pageImg)) { st.inline.add(c.pageImg); body = textBody(s); }
+  const toggle = st.pageWay === 'toggle' && c.pdf
+    ? `<span class="seg2" role="group" aria-label="Show"><button type="button" data-toggle="text" aria-pressed="${!showPage}">Text</button><button type="button" data-toggle="page" aria-pressed="${showPage}">Page ${p}</button></span>` : '';
+  const prev = s.prev && c.sections[s.prev], next = s.next && c.sections[s.next];
+  const name = x => `${x.stretch}${x.part ? ` (${x.part})` : ''}`;
+  return `<aside class="pane-side src" aria-label="${c.src}"><div class="pane-h two"><div class="stack"><span class="title">${c.src}</span><span class="where">${s.stretch}${s.part ? ` · ${s.part}` : ''} · ${s.place}</span></div>
+      <div class="tools">${toggle}<button class="pane-tb" type="button">Outline</button><button class="pane-x" type="button" data-open="none" aria-label="Close">✕</button></div></div>
+    <div class="pane-b" id="paneb" style="padding:0">${body}</div>
+    <div class="pane-f">${prev ? `<button type="button"><span class="k">Previous</span><span>${name(prev)}</span></button>` : '<span></span>'}
+      ${next ? `<button type="button"><span>${name(next)}</span><span class="k">Next</span></button>` : '<span></span>'}</div></aside>`;
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  document.documentElement.dataset.sl = st.sl;
+  const c = C();
+  const open = st.pane !== 'none';
+  const top = `<header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span><a href="24-course-sources.html">${c.course}</a><span class="sep">/</span>
+      <span class="here"><span class="lbl">Unit ${c.unit[0]}</span><span class="t">${c.unit[1]}</span></span></nav>
+    <div class="acts"><button class="tb" type="button"><span class="ticks" aria-hidden="true">${c.ticks.map(k => `<i class="${k}"></i>`).join('')}</span><span class="lbl">Segment ${c.seg[0]} of ${c.seg[1]}</span><span class="t">${c.seg[2]}</span>${CHEV}</button>
+      <button class="tb" type="button">${MAP}Course map</button></div></header>`;
+  const thread = segHead(c) + ph('Teach') + c.teach(c) + ph('Discuss', 'Ask anything. Nothing here is graded.') + c.discuss(c);
+  app.innerHTML = `<div class="th ${open ? 'pane' : ''}">${top}
+    <div class="th-scroll" id="scroll"><div class="th-col">${thread}</div></div>
+    <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>${SEND}</button></form></div>
+    ${open ? pane() : ''}</div>`;
+  math(app);
+  const pb = $('#paneb');
+  if (pb) {
+    const target = st.pane === 'quote' ? $('#qmark') : st.pane === 'link' ? $('#lit') : null;
+    if (target) pb.scrollTop = target.getBoundingClientRect().top - pb.getBoundingClientRect().top + pb.scrollTop - 80;
+    if (st.pane === 'page' && st.pageWay === 'inline') { const el = pb.querySelector(`[data-inline="${C().pageImg}"]`); if (el) pb.scrollTop = el.getBoundingClientRect().top - pb.getBoundingClientRect().top - 40; }
+  }
+  bar();
+}
+
+/* ---------------- input ---------------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-open],[data-bar],[data-page],[data-back],[data-toggle],[data-inline]');
+  if (!t) return;
+  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; st.page = null; st.toggle = 'text'; st.inline.clear(); render(); return; }
+  if (t.dataset.open) { e.preventDefault(); const v = t.dataset.open; st.pane = st.pane === v ? 'none' : v; st.page = null; st.toggle = 'text'; st.inline.clear(); render(); return; }
+  if (t.dataset.page) { st.page = +t.dataset.page; st.pane = st.pane === 'none' ? 'read' : st.pane; st.toggle = 'page'; render(); const pb = $('#paneb'); if (pb) pb.scrollTop = 0;
+    if (st.pageWay === 'number') { app.querySelector('.pane-b').innerHTML = pageImage(st.page); math(app.querySelector('.pane-b')); } return; }
+  if ('back' in t.dataset) { const p = st.page; st.page = null; if (st.pane === 'page') st.pane = 'read'; render(); const el = $(`[data-page="${p}"]`), pb = $('#paneb'); if (el && pb) pb.scrollTop = el.getBoundingClientRect().top - pb.getBoundingClientRect().top - 80; return; }
+  if (t.dataset.toggle) { st.toggle = t.dataset.toggle; if (st.pane === 'page' && st.toggle === 'text') st.pane = 'read'; render(); return; }
+  if (t.dataset.inline) { const p = +t.dataset.inline; st.inline.has(p) ? st.inline.delete(p) : st.inline.add(p); const pb = $('#paneb'), y = pb.scrollTop; render(); $('#paneb').scrollTop = y; }
+});
+app.addEventListener('submit', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+  if (e.target.matches?.('textarea,input')) return;
+  if (e.key === 'Escape' && st.pane !== 'none') { st.pane = 'none'; render(); }
+  if (e.key === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- the prototype bar ---------------- */
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, n]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${st[k] === v}">${n}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('course', 'Course', [['hegel', 'Hegel (PDF)'], ['paper', 'The Attention paper (PDF, math)'], ['mill', 'On Liberty (EPUB)']])
+    + grp('pane', 'Pane', [['none', 'Closed'], ['quote', 'From the quote'], ['link', 'From the link'], ['read', 'From "Read"'], ['page', 'A page']])
+    + grp('sl', 'Section link', [['mark', 'Words and § (recommended)'], ['web', 'Like a web link'], ['chip', 'Words and a pill']])
+    + grp('pageWay', 'Page image', [['number', 'From its number (recommended)'], ['toggle', 'Text / Page switch'], ['inline', 'Under each page break']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">Click a citation, a link, "Read" or a page number · Esc closes the pane · H hides this</div>';
+}
+render();
+</script>
+</body>
+</html>

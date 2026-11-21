@@ -1024,16 +1024,19 @@ Not built. What its SDK can and cannot do, from the stage 0 spike, is in
 
 ## 8. Sources
 
-Planned for stage 4, not yet built; the tasks are in the plan, and the
-choices and the trials behind them in `decisions.md`, "Sources".
+Planned for stage 4, not yet built; the tasks are in the plan, the
+choices and the trials behind them in `decisions.md`, "Sources", and the
+pages in mocks 22 to 24 (`decisions.md`, "Page design").
 
 1. **Attach**, in the intake only: the page sends the file, and the engine
    converts it by running `pytools/convert.py` in its sandbox. A source
    waits in `uploads/<intake id>/` until the first proposal creates the
-   course, then lives in the course's `sources/`. PDF, EPUB, TXT and
-   Markdown are recognised by their content. A scanned PDF is refused as
-   needing text recognition, which is not in the first version; so are a
-   protected PDF or EPUB and any other file.
+   course, then lives in the course's `sources/`; until then the learner
+   can remove it. PDF, EPUB, TXT and Markdown are recognised by their
+   content. A scanned PDF is refused as needing text recognition, which is
+   not in the first version; so are a protected PDF or EPUB and any other
+   file. The planner's next turn is told of each source attached, removed
+   or refused.
 2. **Convert**: copy the original; convert to Markdown; build an outline
    from the PDF's bookmarks (without them, from type size and heading
    numbers), the EPUB's table of contents, or the Markdown's headings;
@@ -1068,18 +1071,21 @@ choices and the trials behind them in `decisions.md`, "Sources".
    objective. The tutor reads sections with `read_section`, the segment's
    and others when the discussion needs them, and looks at a PDF page with
    `view_page` where the page's marker says its text lost math or images.
+   Each read and page view shows as a line in the thread.
 6. **Quote**: `quote_source` checks the text against each source's whole
    text, its sections in order, so a quote across a cut still verifies.
    Matching ignores case, whitespace, hyphens, punctuation variants,
    emphasis marks, page markers, footnote references and margin line
    numbers. A match shows in the thread as a quote in the source's own
-   words, with its citation (the section, and the page or paragraph),
-   which opens the passage in the side pane. A passage paraphrased is
-   linked, claiming no quote, by a Markdown link to
-   `source:<source id>/<section id>`.
+   words, with its citation (the stretch it starts in, not Gauss's part,
+   and the page or paragraph), which opens the passage in the side pane.
+   A passage paraphrased is linked, claiming no quote, by a Markdown link
+   to `source:<source id>/<section id>`.
 7. **Web search** is a course's setting, off by default. With it on, the
    tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
-   search shows in the thread with its links.
+   search shows in the thread with its links. A change applies from the
+   learner's next message: the course's kept tutor sessions are closed,
+   each once it is between turns, and resumed with the new tools.
 
 ## 9. Prompts
 

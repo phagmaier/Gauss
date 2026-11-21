@@ -1,0 +1,240 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 4.1, piece 24: a course's sources and its
+  web search setting in the course view (piece 20), in the redesign's look
+  (look.css).
+  SETTLED 2026-11-21: the user took the sources below the units, the switch
+  in a section of its own, applying from the next message, and kept each
+  unit's "Reads". Rejected: the sources in the course's facts or in the top
+  line, the switch among the sources, applying from a unit's next session.
+
+  What it answers (the plan's 4.1; the design is architecture.md section 8):
+  - Where the course's sources sit, each opening the side pane on its
+    outline. The bar compares: a section below the units (recommended: the
+    units stay first, and the sources are reference, reached when wanted),
+    a line in the course's facts under the title, and "Sources" in the top
+    line beside "Course map".
+  - The web search setting: a switch, off by default, that says what a
+    search sends and when the setting applies. The bar compares a section
+    of its own after the sources (recommended) with a row inside the
+    sources, since the web is a source of material too.
+  - When the setting applies. The plan had "from a unit's next session",
+    since a running tutor session keeps the tools it started with. The
+    recommendation: from the learner's next message in each unit, by
+    closing the course's kept tutor sessions when the switch moves, each
+    once it is between turns, so that the next turn resumes it with or
+    without WebSearch, as after the ten-minute idle close. The bar shows
+    both wordings.
+
+  The agent's choices, shown as it would build them:
+  - The outline in the pane is piece 22's: the source's own headings,
+    folded below the first level except where a unit reads, each section
+    with its pages (or paragraphs) and the unit that reads it.
+  - An open unit says what it reads, under its objectives or its goal, as
+    the proposal card does; each line opens the outline with the unit's
+    sections lit. Not in the plan before this piece; the user kept it.
+  - The switch is in the text colour when on, with "On" or "Off" beside
+    it, not in the accent, which marks only the next step.
+
+  The bar at the bottom left switches the placements, the wording, one or
+  two sources, and the theme. Keys: Esc closes the pane, H hides the bar.
+
+  Everything is simulated: the course is piece 22's proposal approved, with
+  unit 1 started; the outline and pages are invented. Continue, Start, Test
+  out, "Change the curriculum" and the outline's sections do nothing here.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 24: the course's sources</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="look.css">
+<style>
+.cu .reads{margin:.55em 0 0 72px}
+.cu .reads button{background:none;border:0;padding:0;color:var(--ink-2);text-decoration:underline;text-decoration-color:var(--rule-2);text-underline-offset:3px}
+.cu .reads button:hover{color:var(--ink)}
+.meta .fact-src button{background:none;border:0;padding:0;font:inherit;color:var(--ink);text-decoration:underline;text-decoration-color:var(--rule-2);text-underline-offset:3px}
+.websec{margin-top:.2em}
+.srcs .sw{padding:.95em 0 1em;border-bottom:1px solid var(--rule)}
+.cu>li.fold .reads{display:none}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="bar"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Reading Hegel\'s Phenomenology';
+const SOURCES = [
+  {id: 'phenomenology', title: 'The Phenomenology of Spirit', file: 'hegel-phenomenology-inwood.pdf', format: 'PDF', size: '543 pages', sections: 141, read: 13},
+  {id: 'seminar-notes', title: 'Seminar notes on the Preface', file: 'preface-notes.md', format: 'Markdown', size: '86 paragraphs', sections: 7, read: 0},
+];
+// a unit: [title, goal, prerequisites, objectives or null, what it reads]
+const UNITS = [
+  ['What a preface cannot do', 'Say why Hegel thinks a preface cannot state a philosophical truth, and what "the true is the whole" rules out.', [],
+    [['Say why a preface cannot state a philosophical truth', 'pass'], ['Say what Hegel means by "the true is the whole"', 'att'], ['Explain why a result needs the way it came about', 'not']],
+    [['Preface, parts 1 to 3', 'pp. 1–19']]],
+  ['Substance as subject', 'Explain what it means to grasp the true not only as substance but as subject.', [1], null, [['Preface, parts 4 to 6', 'pp. 19–40']]],
+  ['Knowing as a test', 'Explain how consciousness tests its knowledge against a standard of its own, and why the test changes the standard.', [2], null, [['Introduction', 'pp. 41–48']]],
+  ['Consciousness', 'Follow consciousness from sense-certainty to the understanding, and say why each shape fails by its own measure.', [3], null,
+    [['I. Sense-certainty: or the This and Meaning', 'pp. 49–58'], ['II. Perception: or the Thing and Illusion', 'pp. 59–70'], ['III. Force and Understanding, parts 1 to 4', 'pp. 71–103']]],
+];
+const sec = (t, p, unit) => ({t, p, unit});
+const parts = (title, ranges, units) => [title, '', ranges.map((p, i) => ({t: `part ${i + 1} of ${ranges.length}`, p: `pp. ${p}`, unit: units[i]})), true];
+const OUTLINE = [
+  parts('Preface', ['1–6', '7–13', '13–19', '19–26', '26–33', '33–40'], [1, 1, 1, 2, 2, 2]),
+  sec('Introduction', 'pp. 41–48', 3),
+  ['A. Consciousness', 'pp. 49–103', [
+    sec('I. Sense-certainty: or the This and Meaning', 'pp. 49–58', 4),
+    sec('II. Perception: or the Thing and Illusion', 'pp. 59–70', 4),
+    parts('III. Force and Understanding: Appearance and the Supersensible World', ['71–79', '79–87', '87–95', '95–103'], [4, 4, 4, 4]),
+  ]],
+  ['B. Self-consciousness', 'pp. 104–133', [
+    sec('IV. The Truth of Self-certainty', 'pp. 104–108'),
+    sec('A. Independence and Dependence of Self-consciousness: Mastery and Bondage', 'pp. 108–116'),
+    parts('B. Freedom of Self-consciousness: Stoicism, Scepticism and the Unhappy Consciousness', ['116–124', '124–133'], []),
+  ]],
+  ['C. (AA.) Reason', 'pp. 134–283', 'More headings: 38 sections'],
+  ['(BB.) Spirit', 'pp. 284–440', 'More headings: 41 sections'],
+  ['(CC.) Religion', 'pp. 441–519', 'More headings: 27 sections'],
+  ['(DD.) Absolute Knowing', 'pp. 520–540', [sec('VIII. Absolute Knowing (part 1 of 2)', 'pp. 520–531'), sec('VIII. Absolute Knowing (part 2 of 2)', 'pp. 531–540')]],
+];
+const NOTES_OUTLINE = [sec('The occasion of the Preface', '¶ 1–9'), sec('Truth and system', '¶ 10–24'), sec('Substance and subject', '¶ 25–41'), sec('The labour of the concept', '¶ 42–58'),
+  sec('Mathematical truth', '¶ 59–70'), sec('Philosophical prose', '¶ 71–80'), sec('Reading questions', '¶ 81–86')];
+const WORD = {pass: 'Passed', kept: 'Retained', slip: 'Slipping', att: 'Not passed yet', not: 'Not started', over: 'Overridden'};
+
+/* ---------------- state ---------------- */
+const st = {where: 'below', web: 'own', words: 'next', reads: 'on', two: 'one', webOn: false, pane: null, lit: null, open: new Map(), theme: 'frappe'};
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const sg = s => `<i class="sg ${s}" aria-hidden="true"></i>`;
+const MAP = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="1.5" width="5" height="3.5" rx="1"/><rect x="9.5" y="6.25" width="5" height="3.5" rx="1"/><rect x="1.5" y="11" width="5" height="3.5" rx="1"/><path d="M4 5v6M6.5 3.25h3v3"/></svg>';
+const CHEV = '<svg class="chev" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4.5 3 7.5 6 4.5 9"/></svg>';
+const BOOK = '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.2c2-.9 4-.9 6 .4 2-1.3 4-1.3 6-.4v9.6c-2-.9-4-.9-6 .4-2-1.3-4-1.3-6-.4z"/><path d="M8 3.6v9.6"/></svg>';
+const SRC = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.2c2-.9 4-.9 6 .4 2-1.3 4-1.3 6-.4v9.6c-2-.9-4-.9-6 .4-2-1.3-4-1.3-6-.4z"/><path d="M8 3.6v9.6"/></svg>';
+const sources = () => st.two === 'two' ? SOURCES : SOURCES.slice(0, 1);
+
+/* ---------------- the course view ---------------- */
+function readsLine(reads, n) {
+  if (st.reads !== 'on') return '';
+  const multi = st.two === 'two';
+  return `<div class="reads"><span class="k">Reads</span><ul>${reads.map(([t, p]) => `<li><button type="button" data-lit="${n}">${multi ? 'Phenomenology, ' : ''}${t}</button><span class="pl">${p}</span></li>`).join('')}</ul></div>`;
+}
+function unitRow([t, goal, pre, objs, reads], i) {
+  const n = i + 1, s = objs ? (n === 1 ? 'now' : 'att') : 'not';
+  const open = st.open.get(n) ?? s === 'now';
+  const npass = objs ? objs.filter(([, x]) => x === 'pass' || x === 'kept').length : 0;
+  const obs = objs ? `<ul class="ob">${objs.map(([o, x], j) => {
+    const next = j === 1;
+    return `<li class="${x === 'not' ? 'todo' : ''} ${next ? 'nx-ob' : ''}">${sg(next ? 'now' : x)}<span>${o}</span><span class="st ${next ? 'next' : x}">${next ? 'Next' : WORD[x]}</span></li>`;
+  }).join('')}</ul>` : `<p class="cu-g">${goal} Its objectives are set when it starts.</p>`;
+  const acts = [pre.length ? `<span>Builds on unit ${pre.join(' and ')}</span>` : '',
+    objs ? '<button class="link" type="button">Continue</button>' : '<button class="link" type="button">Start</button><button class="link" type="button">Test out</button>'].join('');
+  return `<li class="${open ? '' : 'fold'} ${s === 'now' ? 'here' : ''}">
+    <button class="cu-h" type="button" data-unit="${n}" aria-expanded="${open}"><span class="n">Unit ${n}</span><span class="title">${t}</span>
+      <span class="cnt">${objs ? `${npass} of ${objs.length} passed` : ''}${sg(s)}${CHEV}</span></button>${obs}${readsLine(reads, n)}<div class="cu-a">${acts}</div></li>`;
+}
+function webSwitch() {
+  const applies = st.words === 'next'
+    ? 'Turning it on or off applies from your next message in each unit.'
+    : 'Turning it on or off applies to each unit from its next session: a unit open now keeps what it had until its tutor restarts, after ten minutes without a message or when Gauss restarts.';
+  return `<div class="sw"><button class="tog" type="button" role="switch" aria-checked="${st.webOn}" aria-labelledby="ws-t" data-act="web"></button>
+    <div class="t" id="ws-t">Web search<span class="st">${st.webOn ? 'On' : 'Off'}</span></div>
+    <p>The tutor may search the web for what the sources and its own knowledge lack, and cites what it uses. A search sends the words the tutor searches for to Anthropic's web search; the tutor never opens a page.</p>
+    <p>${applies}</p></div>`;
+}
+function sourceRows() {
+  const rows = sources().map((s, i) => `<li><button type="button" data-src="${i}" aria-pressed="${st.pane === i}">${BOOK}<span class="title">${s.title}</span><span class="go">${st.pane === i ? 'Showing' : 'Outline'}</span>
+    <span class="m">${s.format} · ${s.size} · ${s.sections} sections${s.read ? ` · the units read ${s.read}` : ' · no unit reads it'} · ${s.file}</span></button></li>`).join('');
+  return `<ul class="srcs">${rows}${st.web === 'with' ? `<li>${webSwitch()}</li>` : ''}</ul>`;
+}
+function courseView() {
+  const srcFact = st.where === 'facts'
+    ? `<span class="fact-src">${sources().length > 1 ? 'Sources:' : 'Source:'} ${sources().map((s, i) => `<button type="button" data-src="${i}">${s.title}</button>`).join(', ')}</span>` : '';
+  const srcSec = st.where === 'below' || st.web === 'with'
+    ? `<div class="sec"><span class="lbl">${st.where !== 'below' ? 'The web' : st.web === 'with' ? 'Sources and the web' : 'Sources'}</span></div>${st.where === 'below' ? sourceRows() : `<ul class="srcs"><li>${webSwitch()}</li></ul>`}` : '';
+  const webSec = st.web === 'own' ? `<div class="sec"><span class="lbl">The web</span></div><div class="websec">${webSwitch()}</div>` : '';
+  const topSrc = st.where === 'top' ? `<button class="tb" type="button" data-src="0" aria-pressed="${st.pane !== null}">${SRC}Sources</button>` : '';
+  return `<div class="pg ${st.pane !== null ? 'pane' : ''}"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span><span class="here"><span class="t">${COURSE}</span></span></nav>
+      <div class="acts">${topSrc}<button class="tb" type="button">${MAP}Course map</button><button class="tb" type="button">What I know</button></div></header>
+    <div class="pg-scroll"><div class="pg-col">
+      <h1 class="title">${COURSE}</h1>
+      <div class="meta"><span><b>4</b> units</span><span><b>0</b> finished</span><span><b>1</b> of 3 objectives passed in the units started</span>${srcFact}</div>
+      <div class="nx"><div><div class="lbl on">In progress</div><div class="title"><span class="lbl" style="font-size:12px;margin-right:.6em;vertical-align:.2em">Unit 1</span>${UNITS[0][0]}</div>
+        <div class="at"><span class="ticks" aria-hidden="true"><i class="past"></i><i class="now"></i><i></i></span>Segment 2 of 3: The true is the whole</div></div>
+        <div class="go"><button class="btn" type="button">Continue</button></div></div>
+      <div class="sec"><span class="lbl">Units</span><div class="acts"><button class="link" type="button">Change the curriculum</button></div></div>
+      <ul class="cu">${UNITS.map(unitRow).join('')}</ul>
+      ${srcSec}${webSec}
+      <p style="margin-top:4em"><button class="link" type="button">Delete this course</button></p>
+    </div></div>${st.pane !== null ? pane() : ''}</div>`;
+}
+
+/* ---------------- the pane: a source's outline ---------------- */
+function rows(list, depth = 0) {
+  return list.map(e => {
+    if (!Array.isArray(e)) {
+      const here = st.lit !== null && e.unit === st.lit;
+      return `<li><button class="se ${here ? 'here' : ''}" type="button"><span>${e.t}</span><span class="pl">${e.p}</span>${e.unit ? `<span class="u">Unit ${e.unit}</span>` : '<span></span>'}</button></li>`;
+    }
+    const [t, p, kids, isCut] = e;
+    if (typeof kids === 'string') return `<li><button class="hd" type="button" aria-expanded="false">${CHEV}<span>${t}</span><span class="pl">${p}</span></button><ul><li class="se">${kids}</li></ul></li>`;
+    return `<li><button class="hd" type="button" aria-expanded="${isCut || (depth === 0 && hasUnit(e))}">${CHEV}<span>${t}</span><span class="pl">${p}</span></button><ul>${rows(kids, depth + 1)}</ul></li>`;
+  }).join('');
+}
+const hasUnit = e => Array.isArray(e) ? Array.isArray(e[2]) && e[2].some(hasUnit) : !!e.unit;
+function pane() {
+  const s = sources()[st.pane];
+  const pick = st.where === 'top' && sources().length > 1
+    ? `<div class="seg2" role="group" aria-label="Source" style="margin-bottom:14px">${sources().map((x, i) => `<button type="button" data-src="${i}" aria-pressed="${st.pane === i}">${x.title}</button>`).join('')}</div>` : '';
+  return `<aside class="pane-side" aria-label="Outline of ${s.title}"><div class="pane-h two"><div class="stack"><span class="lbl">Outline</span><span class="title">${s.title}</span></div>
+      <div class="tools"><button class="pane-x" type="button" data-act="close" aria-label="Close">✕</button></div></div>
+    <div class="pane-b">${pick}<div class="sfacts"><span>${s.format} · ${s.size} · ${s.sections} sections${s.read ? ` · the units read ${s.read}` : ''}</span><span class="file">${s.file}</span></div>
+      <ul class="ot">${rows(st.pane === 0 ? OUTLINE : NOTES_OUTLINE)}</ul>
+      <p class="proto">A section opens its text in this pane (piece 23), with "Outline" in its head to come back here.</p></div></aside>`;
+}
+
+/* ---------------- render and input ---------------- */
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  const y = $('.pg-scroll')?.scrollTop ?? 0;
+  app.innerHTML = courseView();
+  $('.pg-scroll').scrollTop = y;
+  bar();
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-act],[data-unit],[data-bar],[data-src],[data-lit],.hd');
+  if (!t) return;
+  if (t.classList.contains('hd')) { t.setAttribute('aria-expanded', t.getAttribute('aria-expanded') !== 'true'); return; }
+  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; if (k === 'two' || k === 'where') { st.pane = null; st.lit = null; } render(); return; }
+  if (t.dataset.unit) { const open = !t.parentElement.classList.toggle('fold'); st.open.set(+t.dataset.unit, open); t.setAttribute('aria-expanded', open); return; }
+  if (t.dataset.src) { const i = +t.dataset.src; st.pane = st.pane === i && !t.closest('.seg2') ? null : i; st.lit = null; render(); return; }
+  if (t.dataset.lit) { st.pane = 0; st.lit = +t.dataset.lit; render(); return; }
+  const act = t.dataset.act;
+  if (act === 'web') { st.webOn = !st.webOn; render(); }
+  if (act === 'close') { st.pane = null; st.lit = null; render(); }
+});
+document.addEventListener('keydown', e => {
+  if (e.target.matches?.('textarea,input')) return;
+  if (e.key === 'Escape' && st.pane !== null) { st.pane = null; st.lit = null; render(); }
+  if (e.key === 'h') document.body.classList.toggle('nobar');
+});
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, n]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${st[k] === v}">${n}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('where', 'Sources', [['below', 'Below the units (recommended)'], ['facts', 'In the facts'], ['top', 'In the top line']])
+    + grp('web', 'Web search', [['own', 'Its own section (recommended)'], ['with', 'Among the sources']])
+    + grp('words', 'Applies', [['next', 'From the next message (recommended)'], ['session', 'From the next session']])
+    + grp('reads', 'Unit reads', [['on', 'Shown'], ['off', 'Not shown']])
+    + grp('two', 'Course', [['one', 'One source'], ['two', 'Two sources']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">Esc closes the pane · H hides this</div>';
+}
+render();
+</script>
+</body>
+</html>

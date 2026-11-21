@@ -1,0 +1,264 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Plan task 4.1, piece 22: a source in the intake, in
+  the redesign's look (look.css).
+  SETTLED 2026-11-21: the user took it as shown, "Remove" included.
+
+  What it answers (the plan's 4.1; the design is architecture.md section 8):
+  - Attaching a file: a button in the message box, before the text, and a
+    file dropped anywhere on the thread. The intake is the only place a
+    source is attached (the user's pick, 2026-11-21).
+  - The card the thread shows on the learner's side, since the learner
+    brought it: while the file converts, then what was found (title,
+    format, pages, sections, pages with no text, stretches cut into parts),
+    or why it was refused (scanned, protected, not a format Gauss reads,
+    too large, the conversion failing or running out of time, no sandbox).
+  - "Outline" on the card opens the source's outline in the side pane, the
+    same outline the course view opens (piece 24); once a curriculum is
+    proposed it marks the unit that reads each section.
+  - The proposal card: under each unit's goal, "Reads" and its sections.
+    Consecutive parts of one stretch read as one line ("Preface, parts 1 to
+    3"). A unit that reads more than two lines is folded to a count and its
+    pages, with "Show them". The card's foot says how much of the source the
+    units read. The curriculum change card shows units the same way.
+
+  The agent's choices, shown as it would build them:
+  - The card's facts say what the learner can act on, in the learner's
+    words: pages, sections, the stretches "cut into parts between
+    paragraphs", and the pages with no text, which the tutor can still look
+    at as images. No character counts.
+  - Typing goes on while a file converts; Send waits until the conversion
+    ends, so that the planner's turn always has the outline.
+  - "Remove" on the card until the first proposal: the source still sits in
+    uploads/ then, so removing it deletes one folder, and the planner's next
+    turn is told. Once a proposal has made the course, a source stays
+    (removing one from a course is not in this stage). Not in the plan
+    before this piece; the user kept it.
+  - A refused file's card stays in the thread, and the planner's next turn
+    is told what was refused and why, so that it does not plan from a file
+    it never got.
+  - With two sources, each line under "Reads" starts with its source's
+    short title; one source, as here, needs none.
+
+  The bar at the bottom left picks the moment, the reason a file is refused,
+  and the theme. Keys: Esc closes the pane, H hides the bar.
+
+  Everything is simulated: the book's outline and page numbers are invented
+  in the shape of the user's edition (543 pages, 127 bookmarks), and the
+  message box, Approve and the attach button do nothing here. The attach
+  button opens no file picker; drag a file over the page to see the drop.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 22: a source in the intake</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="look.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="bar"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const BOOK = {title: 'The Phenomenology of Spirit', short: 'Phenomenology', file: 'hegel-phenomenology-inwood.pdf', size: '5.7 MB', format: 'PDF', pages: 543,
+  entries: 127, sections: 141, blank: ['ii', 'iv', 'vi', '541', '542', '543'], cut: [['Preface', 6], ['Force and Understanding', 4], ['The Unhappy Consciousness', 2]], cutMore: 9};
+// the outline: a heading is [title, pages, children]; a section is {t, p, unit?}; a cut stretch is [title, pages, parts] with parts {part, p}
+const sec = (t, p, unit) => ({t, p, unit});
+const parts = (title, ranges, units) => [title, `pp. ${ranges[0].split('–')[0]}–${ranges.at(-1).split('–')[1]}`, ranges.map((p, i) => ({t: `part ${i + 1} of ${ranges.length}`, p: `pp. ${p}`, unit: units[i]})), true];
+const OUTLINE = [
+  parts('Preface', ['1–6', '7–13', '13–19', '19–26', '26–33', '33–40'], [1, 1, 1, 2, 2, 2]),
+  sec('Introduction', 'pp. 41–48', 3),
+  ['A. Consciousness', 'pp. 49–103', [
+    sec('I. Sense-certainty: or the This and Meaning', 'pp. 49–58', 4),
+    sec('II. Perception: or the Thing and Illusion', 'pp. 59–70', 4),
+    parts('III. Force and Understanding: Appearance and the Supersensible World', ['71–79', '79–87', '87–95', '95–103'], [4, 4, 4, 4]),
+  ]],
+  ['B. Self-consciousness', 'pp. 104–133', [
+    sec('IV. The Truth of Self-certainty', 'pp. 104–108'),
+    sec('A. Independence and Dependence of Self-consciousness: Mastery and Bondage', 'pp. 108–116'),
+    parts('B. Freedom of Self-consciousness: Stoicism, Scepticism and the Unhappy Consciousness', ['116–124', '124–133'], []),
+  ]],
+  ['C. (AA.) Reason', 'pp. 134–283', 'More headings: 38 sections'],
+  ['(BB.) Spirit', 'pp. 284–440', 'More headings: 41 sections'],
+  ['(CC.) Religion', 'pp. 441–519', 'More headings: 27 sections'],
+  ['(DD.) Absolute Knowing', 'pp. 520–540', [sec('VIII. Absolute Knowing (part 1 of 2)', 'pp. 520–531'), sec('VIII. Absolute Knowing (part 2 of 2)', 'pp. 531–540')]],
+];
+// what each unit reads, already merged into lines: [text, pages]
+const UNITS = [
+  {t: 'What a preface cannot do', g: 'Say why Hegel thinks a preface cannot state a philosophical truth, and what "the true is the whole" rules out.',
+    reads: [['Preface, parts 1 to 3', 'pp. 1–19']], n: 3},
+  {t: 'Substance as subject', g: 'Explain what it means to grasp the true not only as substance but as subject.', pre: [1],
+    reads: [['Preface, parts 4 to 6', 'pp. 19–40']], n: 3},
+  {t: 'Knowing as a test', g: 'Explain how consciousness tests its knowledge against a standard of its own, and why the test changes the standard.', pre: [2],
+    reads: [['Introduction', 'pp. 41–48']], n: 1},
+  {t: 'Consciousness', g: 'Follow consciousness from sense-certainty to the understanding, and say why each shape fails by its own measure.', pre: [3],
+    reads: [['I. Sense-certainty: or the This and Meaning', 'pp. 49–58'], ['II. Perception: or the Thing and Illusion', 'pp. 59–70'],
+      ['III. Force and Understanding, parts 1 to 4', 'pp. 71–103']], n: 6, pages: 'pp. 49–103'},
+];
+const REFUSALS = {
+  scanned: {file: 'kojeve-introduction-scan.pdf', size: '48.2 MB', format: 'PDF', title: 'This PDF is a scan',
+    says: '<p><b>498 of its 512 pages have no text</b>: they are pictures of pages. Reading them needs text recognition, which Gauss does not have yet, and which would make errors in the text the tutor quotes.</p><p>A copy with a text layer works: most publishers\' PDFs and e-books have one.</p>'},
+  protected: {file: 'reading-hegel.epub', size: '1.1 MB', format: 'EPUB', title: 'This book is locked',
+    says: '<p><b>Its text is encrypted</b> (DRM), so only the reader app it was bought for can open it.</p><p>A copy without DRM works; so does a PDF that needs no password.</p>'},
+  format: {file: 'seminar-notes.docx', size: '84 KB', format: 'Not read', title: 'Gauss cannot read this file',
+    says: '<p>Gauss reads <b>PDF, EPUB, plain text and Markdown</b> (.txt, .md). This file is none of these.</p><p>Saved as a PDF from the program that made it, it works.</p>'},
+  large: {file: 'hegel-werke-complete.pdf', size: '212 MB', format: 'PDF', title: 'This file is too large',
+    says: '<p>It is <b>212 MB</b>; Gauss takes files up to 100 MB.</p><p>A copy with only the part you want to study works, and so does one with its pictures compressed.</p>'},
+  failed: {file: 'hegel-phenomenology-inwood.pdf', size: '5.7 MB', format: 'PDF', title: 'The conversion failed',
+    says: '<p>Gauss could not take the text out of this file. The converter said: <code>PdfiumError: Failed to load page 212</code>.</p><p>The file may be damaged: a fresh download, or a copy saved again from a PDF reader, may work.</p>'},
+  time: {file: 'hegel-phenomenology-inwood.pdf', size: '5.7 MB', format: 'PDF', title: 'The conversion took too long',
+    says: '<p>It was stopped after <b>five minutes</b>, which a book of this size should not need.</p><p>Try again; if it stops again, the file is likely unusual in a way the converter does not handle.</p>'},
+  sandbox: {file: 'hegel-phenomenology-inwood.pdf', size: '5.7 MB', format: 'PDF', title: 'Sources need the sandbox',
+    says: '<p>Gauss converts a file inside its sandbox, since the file comes from outside this machine, and <b>the sandbox is not running</b>: <code>bwrap</code> is missing. The server says what it needs when it starts.</p>'},
+};
+const REASON_NAMES = {scanned: 'Scanned', protected: 'Locked (DRM)', format: 'Not a format', large: 'Too large', failed: 'Failed', time: 'Too long', sandbox: 'No sandbox'};
+
+/* ---------------- state ---------------- */
+const st = {moment: 'attach', reason: 'scanned', pane: false, drag: false, removed: false, show: new Set(), theme: 'frappe'};
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const SEND = '<svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const CLIP = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 8.6 9 14.1a3.6 3.6 0 0 1-5.1-5.1l5.8-5.8a2.4 2.4 0 0 1 3.4 3.4L7.4 12.3a1.2 1.2 0 0 1-1.7-1.7l5.2-5.2"/></svg>';
+const DOC = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z"/><path d="M9 1.8V5.2h3.5"/></svg>';
+const CHEV = '<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4.5 3 7.5 6 4.5 9"/></svg>';
+const at = m => ['attach', 'converting', 'found', 'refused', 'proposal'].indexOf(st.moment) >= ['attach', 'converting', 'found', 'refused', 'proposal'].indexOf(m);
+
+/* ---------------- the thread ---------------- */
+const tutor = html => `<div class="tutor read">${html}</div>`;
+const you = text => `<div class="you">${text}</div>`;
+function sourceCard() {
+  if (st.moment === 'converting') {
+    return `<div class="srcc" aria-live="polite"><div class="srcc-h"><span class="lbl">Source</span><span>${BOOK.format}</span><span class="r"><span class="spin" aria-hidden="true"></span>Converting</span></div>
+      <div class="file">${DOC}<span>${BOOK.file} · ${BOOK.size}</span></div>
+      <p class="says" style="border:0;padding:0;margin-top:.5em">Finding the text, its pages and its sections. You can write meanwhile; your message goes once this is done.</p></div>`;
+  }
+  if (st.moment === 'refused') {
+    const r = REFUSALS[st.reason];
+    return `<div class="srcc no"><div class="srcc-h"><span class="lbl">Source</span><span>${r.format}</span><span class="r">Not attached</span></div>
+      <div class="title">${r.title}</div><div class="file">${DOC}<span>${r.file} · ${r.size}</span></div>
+      <div class="says">${r.says}</div></div>`;
+  }
+  const proposed = st.moment === 'proposal';
+  const [c1, c2] = BOOK.cut;
+  return `<div class="srcc"><div class="srcc-h"><span class="lbl">Source</span><span>${BOOK.format}</span><span class="r">Attached</span></div>
+    <div class="title">${BOOK.title}</div><div class="file">${DOC}<span>${BOOK.file} · ${BOOK.size}</span></div>
+    <ul class="facts"><li><b>${BOOK.pages} pages</b>, with its own page numbers</li>
+      <li><b>${BOOK.sections} sections</b>, from the book's ${BOOK.entries} bookmarks</li>
+      <li><b>${BOOK.cut.length + BOOK.cutMore} long stretches cut into parts</b>, between paragraphs, so that the tutor reads one at a time: ${c1[0]} into ${c1[1]}, ${c2[0]} into ${c2[1]}, and ${BOOK.cut.length + BOOK.cutMore - 2} more</li>
+      <li><b>${BOOK.blank.length} pages with no text</b> (${BOOK.blank.slice(0, 3).join(', ')}, ${BOOK.blank[3]} to ${BOOK.blank.at(-1)}): blank, or pictures; the tutor can look at them as images</li></ul>
+    <div class="srcc-foot"><button class="link" type="button" data-act="pane" aria-expanded="${st.pane}">${st.pane ? 'Hide the outline' : 'Outline'}</button>
+      ${proposed ? '' : '<button class="link" type="button" data-act="remove">Remove</button>'}</div></div>`;
+}
+function readsLines(u, i) {
+  const folded = u.reads.length > 2 && !st.show.has(i);
+  const list = folded
+    ? `<li>${u.n} sections<span class="pl">${u.pages}</span><button class="link" type="button" data-show="${i}">Show them</button></li>`
+    : u.reads.map(([t, p], j) => `<li>${t}<span class="pl">${p}</span>${u.reads.length > 2 && j === u.reads.length - 1 ? `<button class="link" type="button" data-show="${i}">Fold</button>` : ''}</li>`).join('');
+  return `<div class="reads"><span class="k">Reads</span><ul>${list}</ul></div>`;
+}
+function proposal() {
+  const units = UNITS.map((u, i) => `<li><span class="n">${i + 1}</span><div><div class="title">${u.t}</div><div class="g">${u.g}</div>${readsLines(u, i)}
+    ${u.pre ? `<div class="m">Builds on unit ${u.pre.join(' and ')}</div>` : ''}</div></li>`).join('');
+  return `<div class="card live"><div class="card-h"><span class="lbl">Proposed curriculum</span><span class="k">4 units</span></div>
+    <ul class="cpu">${units}</ul>
+    <section class="cs"><div class="cs-h"><span class="lbl">From the source</span></div>
+      <p class="cs-t">The units read 13 of the ${BOOK.sections} sections of <i>${BOOK.title}</i>: pages 1 to 103 of ${BOOK.pages}, from the Preface to the end of Consciousness.
+        <button class="link" type="button" data-act="pane" aria-expanded="${st.pane}">${st.pane ? 'Hide the outline' : 'Outline'}</button></p></section>
+    <section class="cs"><div class="cs-h"><span class="lbl">How I would teach it</span></div>
+      <p class="cs-t">Lecture-style and close to the text: each segment goes through a few pages in order, quoting the sentences that carry the argument and explaining them, then asks what you make of them.</p></section>
+    <section class="cs"><div class="cs-h"><span class="lbl">What the tutor will know about you</span></div>
+      <p class="cs-t">Has read Kant's first Critique, no Hegel. Wants to read slowly, and to stop after Consciousness.</p></section>
+    <div class="card-foot"><button class="link" type="button">Show the diagram</button><button class="btn" type="button">Approve</button></div></div>`;
+}
+function thread() {
+  let h = tutor('<p>What do you want to learn? Tell me what you already know.</p>');
+  if (st.moment === 'attach' || st.removed) return h + (st.removed ? '<p class="note-line">You removed <i>The Phenomenology of Spirit</i>. The planner will be told when you next write.</p>' : '');
+  h += sourceCard();
+  if (st.moment === 'converting' || st.moment === 'found') return h;
+  if (st.moment === 'refused') return h + you('I want to read this, the Preface and the first chapters, slowly.')
+    + tutor('<p>That file did not come through, so I have only your words to go on. If you have a copy with a text layer, attach it and I will plan from its outline; or tell me more about what you want to read and I can plan without it.</p>');
+  return h + you('I want to read this, the Preface and the first chapters, slowly. I have read Kant\'s first Critique but no Hegel.')
+    + tutor('<p>I have the book\'s outline: 543 pages, from the Preface to Absolute Knowing. Two things before I propose. Where should the course stop: after Consciousness, or on into Self-consciousness and the master and the slave? And how closely do you want to read: a few pages per segment, or more ground with less quoting?</p>')
+    + you('Stop after Consciousness. A few pages at a time.')
+    + tutor('<p>Here is a curriculum that reads the Preface, the Introduction and Consciousness closely. Each unit names the sections it reads; the outline shows where they sit in the book.</p>')
+    + proposal();
+}
+
+/* ---------------- the side pane: the source's outline ---------------- */
+function outlineRows(list, depth = 0) {
+  return list.map(e => {
+    if (!Array.isArray(e)) return `<li><button class="se" type="button"><span>${e.t}</span><span class="pl">${e.p}</span>${unitTag(e.unit)}</button></li>`;
+    const [t, p, kids, isCut] = e;
+    if (typeof kids === 'string') return `<li><button class="hd" type="button" aria-expanded="false">${CHEV}<span>${t}</span><span class="pl">${p}</span></button><ul><li class="se">${kids}</li></ul></li>`;
+    const open = isCut || (depth === 0 && hasUnit(e));
+    return `<li><button class="hd" type="button" aria-expanded="${!!open}">${CHEV}<span>${t}</span><span class="pl">${isCut ? '' : p}</span></button><ul>${outlineRows(kids, depth + 1)}</ul></li>`;
+  }).join('');
+}
+const hasUnit = e => Array.isArray(e) ? Array.isArray(e[2]) && e[2].some(hasUnit) : !!e.unit;
+const unitTag = u => st.moment === 'proposal' && u ? `<span class="u">Unit ${u}</span>` : '<span></span>';
+function pane() {
+  return `<aside class="pane-side" aria-label="Outline of ${BOOK.title}"><div class="pane-h two"><div class="stack"><span class="lbl">Outline</span><span class="title">${BOOK.title}</span></div>
+      <div class="tools"><button class="pane-x" type="button" data-act="pane" aria-label="Close">✕</button></div></div>
+    <div class="pane-b"><div class="sfacts"><span>${BOOK.format} · ${BOOK.pages} pages · ${BOOK.sections} sections${st.moment === 'proposal' ? ' · the units read 13' : ''}</span><span class="file">${BOOK.file}</span></div>
+      <ul class="ot">${outlineRows(OUTLINE)}</ul>
+      <p class="proto">Each section opens its text in this pane, as a citation does (piece 23). In the proposal, a section's tag names the unit that reads it; the course view's outline does the same (piece 24).</p></div></aside>`;
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  const converting = st.moment === 'converting';
+  const box = `<form class="box"><button class="att" type="button" data-act="attach" aria-label="Attach a source: PDF, EPUB, text or Markdown" title="Attach a source: PDF, EPUB, text or Markdown">${CLIP}</button>
+    <textarea rows="1" id="msg" placeholder="${st.moment === 'proposal' ? 'Push back, or ask a question' : 'Message the tutor'}" aria-label="Message">${converting ? 'I want to read this, the Preface and the first chapters, slowly.' : ''}</textarea>
+    <button class="send" aria-label="${converting ? 'Send, once the conversion is done' : 'Send'}" disabled>${SEND}</button></form>`;
+  const drop = st.drag ? `<div class="drop"><div class="title">Drop the file to attach it</div><p>PDF, EPUB, plain text or Markdown, up to 100 MB</p></div>` : '';
+  app.innerHTML = `<div class="th ${st.pane ? 'pane' : ''}"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span>
+      <span class="here"><span class="t">New course</span></span></nav></header>
+    <div class="th-scroll" id="scroll"><div class="th-col">${thread()}</div></div>
+    <div class="th-foot">${box}</div>${st.pane ? pane() : ''}${drop}</div>`;
+  const s = $('#scroll'); s.style.scrollBehavior = 'auto'; s.scrollTop = st.moment === 'proposal' ? s.scrollHeight - s.clientHeight * 1.6 : s.scrollHeight; s.style.scrollBehavior = '';
+  bar();
+}
+
+/* ---------------- input ---------------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-act],[data-bar],[data-show],.hd');
+  if (!t) return;
+  if (t.classList.contains('hd')) { t.setAttribute('aria-expanded', t.getAttribute('aria-expanded') !== 'true'); return; }
+  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v === 'true' ? true : v === 'false' ? false : v; st.removed = false; if (k === 'moment' && !['found', 'proposal'].includes(v)) st.pane = false; render(); return; }
+  if (t.dataset.show) { const i = +t.dataset.show; st.show.has(i) ? st.show.delete(i) : st.show.add(i); render(); return; }
+  const act = t.dataset.act;
+  if (act === 'pane') { st.pane = !st.pane; render(); }
+  if (act === 'remove') { st.removed = true; st.pane = false; render(); }
+  if (act === 'attach') { st.moment = 'converting'; st.removed = false; render(); setTimeout(() => { if (st.moment === 'converting') { st.moment = 'found'; render(); } }, 2600); }
+});
+app.addEventListener('submit', e => e.preventDefault());
+let depth = 0;
+document.addEventListener('dragenter', e => { e.preventDefault(); if (depth++ === 0) { st.drag = true; render(); } });
+document.addEventListener('dragleave', () => { if (--depth === 0) { st.drag = false; render(); } });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { e.preventDefault(); depth = 0; st.drag = false; st.moment = 'converting'; render(); setTimeout(() => { if (st.moment === 'converting') { st.moment = 'found'; render(); } }, 2600); });
+document.addEventListener('keydown', e => {
+  if (e.target.matches?.('textarea,input')) return;
+  if (e.key === 'Escape' && st.pane) { st.pane = false; render(); }
+  if (e.key === 'h') document.body.classList.toggle('nobar');
+});
+
+/* ---------------- the prototype bar ---------------- */
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, n]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${String(st[k]) === v}">${n}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('moment', 'Moment', [['attach', 'Before attaching'], ['converting', 'Converting'], ['found', 'Attached'], ['refused', 'Refused'], ['proposal', 'The proposal']])
+    + grp('reason', 'Refused as', Object.entries(REASON_NAMES))
+    + grp('drag', 'Drop', [['false', 'No file held'], ['true', 'A file held over the page']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">The clip "attaches" a file · Esc closes the pane · H hides this</div>';
+}
+render();
+</script>
+</body>
+</html>

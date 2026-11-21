@@ -31,49 +31,13 @@ formats, the outline, unit mapping, `quote_source`, the citation view, page
 images and the web search setting. The design is `architecture.md` section
 8. The choices behind it, with the trials on the user's files, are in
 `decisions.md`, "Sources"; the user's picks of 2026-11-21 are in "Product
-decisions". Not in this stage (stage 6's list): a source added to a course
-after its intake, text recognition for scanned PDFs, and questions on a
-source's figure.
+decisions". The pages are mocks 22 to 24 in `docs/prototype/`, picked the
+same day (`decisions.md`, "Page design"). Not in this stage (stage 6's
+list): a source added to a course after its intake, text recognition for
+scanned PDFs, and questions on a source's figure.
 
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
-
-### 4.1 Designs the stage needs
-
-- Status: todo
-- Depends on: stage 5
-- Why: attaching a source, a section link, a page image, the course's
-  sources and the web search setting have no design. Piece 5 settled a
-  quote's citation and the passage it opens in the pane; piece 7's list of
-  sources predates the course view's redesign (piece 20), which has none.
-- Do: mocks in `docs/prototype/`, built as pieces 19 to 21 were, each with
-  the agent's recommendation marked and the rest shown as the agent would
-  build it.
-  - Piece 22, a source in the intake: attaching a file (a button beside
-    the message box, and a file dropped on the thread), the conversion
-    running, and the card that reports what was found (title, format,
-    pages, how many sections, pages with no text, stretches cut) or why it
-    was refused (scanned, protected, not a format Gauss reads, too large);
-    the proposal card with each unit's sections, folded when long.
-  - Piece 23, reading the source: a verified quote as piece 5 has it, with
-    the citation's wording for a page ("Preface, p. 19") and for a
-    paragraph ("Chapter 1, ¶ 14"); a section link in the tutor's text,
-    which claims no quote (recommended: the linked words with a small
-    section mark, so that it reads neither as a quote nor as a web link);
-    the pane each opens: the section's text with the quoted passage marked,
-    or from the link's section or page, page numbers in the margin, the
-    previous and next section, and a PDF page as an image on request
-    (recommended: from its page number, the text staying the default); a
-    web search in the thread, with its query and its links.
-  - Piece 24, the course view: the course's sources, each opening the
-    pane on its outline (recommended: a row below the units), and the web
-    search setting (recommended: a switch, off by default, saying that it
-    applies from a unit's next session and that searches leave the
-    machine).
-- Done when: the user has picked an answer to each; the picks are in
-  `decisions.md`, "Page design"; `docs/prototype/index.html` lists the new
-  pieces; the tasks below are revised where a pick differs from the
-  recommendation.
 
 ### 4.2 Confined reads
 
@@ -233,7 +197,7 @@ quotes, and one unit taught from a paper.
 ### 4.6 Sources in the intake and the record
 
 - Status: todo
-- Depends on: 4.1, 4.2, 4.4
+- Depends on: 4.2, 4.4
 - Why: a source is attached when a course starts (the user's pick,
   2026-11-21), before the course exists: the first proposal makes it.
 - Do:
@@ -251,10 +215,12 @@ quotes, and one unit taught from a paper.
     attached later goes there directly. At start, the uploads of intakes
     no longer running are removed. A source's id is a slug of its title,
     unique in the course.
-  - The intake's thread shows the source's card (4.1) while it converts
-    and when it is done. The planner's next turn gets each new source's
-    outline, one line per entry (id, title, place, size); a reopened
-    draft's intake gets its course's.
+  - The intake's thread shows the source's card (piece 22) while it
+    converts and when it is done, or why it was refused. Send waits while
+    a file converts. "Remove" on the card, until the first proposal,
+    deletes the upload. The planner's next turn is told of each source
+    attached (its outline, one line per entry: id, title, place, size),
+    removed or refused; a reopened draft's intake gets its course's.
   - `record/backup.ts`: the history keeps each source's original,
     `outline.json` and sections, and leaves out `pages/`, images that can
     be rendered again.
@@ -262,7 +228,8 @@ quotes, and one unit taught from a paper.
     through the record's own operations; the scripted planner answers a
     turn that brings a source's outline.
 - Done when: fake-backend and route tests cover an upload converted and
-  shown, the planner's turn with the outline, the move at the first
+  shown, the planner's turn with the outline, a source removed before the
+  first proposal and refused removal after it, the move at the first
   proposal, a source attached after it, a format refused, a body over the
   limit, a conversion that fails and one that runs out of time, the
   start's clean-up, and `pages/` ignored by the backup (with an earlier
@@ -284,7 +251,9 @@ quotes, and one unit taught from a paper.
     Preface is 108,000), saying the total, so that the planner splits it.
     A course with no source has none.
   - The course planner gets the outlines as the intake's planner does; the
-    proposal and change cards show each unit's sections (4.1).
+    proposal and change cards show each unit's sections as piece 22 does
+    ("Reads", consecutive parts of a stretch as one line, folded above two
+    lines, and how much of the source the units read).
   - Unit planning: the planning turn adds the unit's sections whole, each
     in a tag with its id, title and place, after the curriculum. `Segment`
     (`src/shared/plan.ts`) gains the sections it draws on: required when
@@ -317,10 +286,14 @@ quotes, and one unit taught from a paper.
   - A segment's turn header names its sections with their titles and
     places. A review or gate question on another unit's objective names
     that unit's sections.
+  - Each `read_section` and `view_page` shows in the thread as a line
+    (piece 23: "Read" a section with its place, "Looked at" a page), a
+    page event; 4.10 makes it open the pane.
   - The scripted backend reads a section its header names.
 - Done when: tests cover the header's sections in a segment, in a new
-  session's first turn and in an assessment of another unit; `read_section`
-  on another unit's section and on an unknown one; `view_page` on a PDF
+  session's first turn and in an assessment of another unit; the thread's
+  lines for a read and a page view; `read_section` on another unit's
+  section and on an unknown one; `view_page` on a PDF
   page (rendered once, then read from `pages/`), on a page out of range
   and in a source that is not a PDF. `mise run check` passes. A Haiku run
   on a unit of the Inwood _Phenomenology_ reads the segment's sections
@@ -329,7 +302,7 @@ quotes, and one unit taught from a paper.
 ### 4.9 Verified quotes
 
 - Status: todo
-- Depends on: 4.1, 4.8
+- Depends on: 4.8
 - Why: a passage the tutor quotes is verified to appear verbatim in the
   source (`brief.md`, "Sources").
 - Do:
@@ -337,11 +310,12 @@ quotes, and one unit taught from a paper.
     sources, its sections joined in order, so that a quote across a cut
     verifies. A match is recorded and shown: a page event with the source,
     the section, the source's own words for the span (not the tutor's),
-    and the page or paragraph where it starts, shown as piece 5's quote
-    (4.1). A match in the named section comes first, then in the segment's
-    sections, then the first in reading order. Refused: text not found
-    (saying to copy from a section read with `read_section`), under three
-    words, over 1,200 characters, holding an ellipsis (two quotes
+    and the page or paragraph where it starts, shown as piece 23's quote,
+    whose citation names the stretch where it starts, never Gauss's part
+    ("Preface, p. 11"). A match in the named section comes first, then in
+    the segment's sections, then the first in reading order. Refused: text
+    not found (saying to copy from a section read with `read_section`),
+    under three words, over 1,200 characters, holding an ellipsis (two quotes
     instead), and while a question of the unit is open, as `show_artifact`
     is. The result tells the tutor where the quote was found.
   - Matching, with a map back to the text's positions: case folded;
@@ -367,19 +341,27 @@ quotes, and one unit taught from a paper.
 - Why: a citation opens the passage (`brief.md`, "Sources"), and a
   paraphrase links its section without claiming a quote (the user's pick,
   from the DeepTutor comparison).
-- Do: as 4.1 settles.
+- Do: as pieces 23 and 24 show (`decisions.md`, "Page design").
   - A section link: the tutor writes `[words](source:<source id>/<section
     id>)`, or `.../p<page label>` for one of its pages. `src/web/prose.tsx`
-    lets that address through and shows it as 4.1 settles; a section the
+    lets that address through and shows the words with a dotted underline
+    and a small §, its tooltip naming the section and page; a section the
     course does not have shows the words alone. A link is text: no tool,
     nothing recorded.
   - The source pane: the section's text rendered (footnotes by
     `remark-gfm`), a quote's passage marked and scrolled to, a link's
-    section from its top or page, page numbers in the margin from the
-    page markers, the previous and next section, and a PDF page's image
-    on request. Routes for a section's text and a page's image, rendered
-    on request as `view_page` does.
-  - The course view's sources, each opening the pane on its outline.
+    section from its page lit briefly, a "Read" line's from its top; page
+    numbers in the margin from the page markers, a dot by a page whose
+    text lost math or images; the previous and next section; "Outline".
+    A PDF page's image opens from its number in the margin, with "Back to
+    the text". Routes for a section's text and a page's image, rendered on
+    request as `view_page` does.
+  - The course view: a Sources section below the units, each source
+    opening the pane on its outline (headings folded below the first level
+    except where a unit reads, each section with its place and its unit);
+    an open unit's "Reads" lines, each opening the outline with the unit's
+    sections lit. The thread's "Read" and "Looked at" lines (4.8) open the
+    pane there.
 - Done when: tests cover the link's forms (a section, a page, an unknown
   section) and the pane's logic, as pure helpers beside `src/web/`'s
   others. `mise run check` passes. On `pnpm dev:fake`, in Chromium, a
@@ -389,15 +371,18 @@ quotes, and one unit taught from a paper.
 ### 4.11 Web search
 
 - Status: todo
-- Depends on: 4.1, 4.2
+- Depends on: 4.2
 - Why: web search is allowed per course, used only for material the tutor
   lacks, and cited when used (`brief.md`, "Sources"). The user chose search
   without reading pages (2026-11-21): what the tutor writes then goes to
   Anthropic's search, not to a site of anyone's choosing.
 - Do: the course's setting, in `course.json` and off when absent, with its
-  switch (4.1). A tutor session of a course with it on gets Claude Code's
-  `WebSearch`, allowed under `dontAsk`, and never `WebFetch`; the setting
-  applies from the next session start or resume. Each search shows in the
+  switch in a section of its own, "The web", below the sources (piece 24).
+  A tutor session of a course with it on gets Claude Code's `WebSearch`,
+  allowed under `dontAsk`, and never `WebFetch`. The setting applies from
+  the learner's next message: moving the switch closes the course's kept
+  tutor sessions, each once it is between turns, and the next turn
+  resumes it with the setting's tools. Each search shows in the
   thread with its query and result links, taken from the tool's
   structured output. A `PreToolUse` hook refuses a query holding the
   account's email address (`accountInfo()`), the piece of the learner's
@@ -406,7 +391,9 @@ quotes, and one unit taught from a paper.
   knowledge lack, cite what is used by its link, and quote nothing from
   the web verbatim.
 - Done when: tests cover the tool given only with the setting on, a
-  search's thread entry, and the hook's refusal. `mise run check` passes.
+  switch that closes a session between turns and the next turn resuming
+  with the tool, a search's thread entry, and the hook's refusal. `mise
+  run check` passes.
   A Haiku run on the plan login, in a course with the setting on, searches,
   shows the entry and cites a link; with it off, the tool is absent. The
   SDK's detached search (a call that "stepped aside for a message the user
