@@ -43,14 +43,14 @@ Gauss/
     server/
       main.ts, serve.ts the real server's start, and the wiring it shares with the dev server
       open-file.ts      the system's opener, for a code question's files and a unit's notes
-      sandbox-command.ts  wraps a sandboxed command in the Linux workload filter
+      sandbox-command.ts  what a sandboxed command gets, the engine's and the tutor's: the Linux workload filter, its variables, where it may read
       record/           read/write course files; derive status, progress, "what I know"; the backup; the dev server's seed
       engine/           chats and check rules, model calls, document finishing, the sandbox for commands
       tools/            teaching tool definitions (transport-free functions)
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
     web/                React app: library, profile, intake, course, its planning conversation, session, "what I know", notes
-  pytools/              mathcheck.py; sandbox_exec.py (the workload filter) and sandbox_verify.py (a sandboxed command's exit status apart from its output); tests/
+  pytools/              mathcheck.py; sandbox_exec.py (the workload filter, which also gives a command its variables) and sandbox_verify.py (a sandboxed command's exit status apart from its output); tests/
   scripts/              dev-fake.ts (no model); faults.ts (injects faults, runs the tests); grade-set.ts, judge-set.ts and decide-set.ts, which run grader-set.ts, help-set.ts and dispute-set.ts on a real model
   mise.toml             pinned node, pnpm, python, uv; `mise run setup` and `mise run check`
 ```
@@ -792,10 +792,11 @@ for either; detours are opened by the engine and ended by the learner.
 The tutor also has Claude Code's file and shell tools (`Read`, `Glob`,
 `Grep`, `Write`, `Edit`, `Bash`) when the engine's sandbox can run (the
 check `serve.ts` makes at start; otherwise it has no built-in tools), with
-the course's `workspace/` as its working folder. Its file tools write only
-there, its commands run in a sandbox with no network that writes only there
-and in a temporary folder of the course's, and the record, outside the
-workspace, is closed to its writes (`decisions.md`, "Confinement"). An open
+the course's `workspace/` as its working folder. Its file tools read and
+write only there; its commands run in a sandbox with no network that
+writes only there and in a temporary folder of the course's, and reads
+there and as the engine's commands do (section 6); the record, outside the
+workspace, is closed to both (`decisions.md`, "Confinement"). An open
 question in any unit of a course blocks every tutor's workspace changes,
 including after restart. Commands run in the foreground, and posting a
 question is refused while a write or command still runs. Reads stay allowed.
@@ -880,13 +881,19 @@ Claude Code's `WebSearch`, never `WebFetch` (section 8).
   contains descendants in a PID namespace. `pytools/sandbox_exec.py` adds
   an inherited seccomp filter to commands (engine and tutor), using the
   project's venv Python, closing the runtime's Unix-socket route to host
-  services. Reads and the server's
-  environment are not confined (`decisions.md`, "Confinement"). The server
-  starts the sandbox once (`serve.ts`) and probes both Unix-socket creation
-  routes; when it cannot run safely, it says once what is missing, and
-  nothing that needs it
-  runs. Installing packages (section 5) runs there too, with the network
-  open to the package index.
+  services. Reads and variables are confined, for the engine's commands and
+  the tutor's alike (`commandReads` and `commandEnvironment` in
+  `sandbox-command.ts`; `decisions.md`, "Confinement"): nothing in the home
+  folder, the data root or `/run/user/<uid>` can be read but `pytools/`,
+  the Python its venv is made from, uv, and what the caller names (a code
+  question's tests: the workspace's `.venv`); a command gets `PATH`, `HOME`,
+  `LANG`, `LC_*`, `TZ` and `TERM` of the server's environment, its
+  `$TMPDIR` and the sandbox's proxy, and the variables the caller sets.
+  Inside, the home folder is an empty folder whose writes are lost. The
+  server starts the sandbox once (`serve.ts`) and probes both Unix-socket
+  creation routes; when it cannot run safely, it says once what is
+  missing, and nothing that needs it runs. Installing packages (section 5)
+  runs there too, with the network open to the package index.
 - **Disputes** (`engine/disputes.ts`; why, `decisions.md`, "Disputes").
   Any graded answer of the course can be disputed once, from its graded
   card in the session or from "What I know", in a finished unit too. An
@@ -994,8 +1001,9 @@ backend".
   file and shell tools with the options of `workspaceOptions` (`dontAsk`,
   one `Edit` allow rule for the working folder,
   `blockWritesOutsideWorkingDirectories`, the sandbox required with no
-  network, and `CLAUDE_CODE_TMPDIR` a private folder per course under
-  `/tmp`, made `0700` and checked; `decisions.md`, "Confinement"). A
+  network, its reads as the engine's `WorkspaceTools.reads` says and in
+  the working folder, and `CLAUDE_CODE_TMPDIR` a private folder per course
+  under `/tmp`, made `0700` and checked; `decisions.md`, "Confinement"). A
   `PreToolUse` hook asks the engine before each `Write`, `Edit` and
   `Bash`, and its reason denies the call. A write is reported
   (`file_written`) once its tool result says it succeeded. The teaching
@@ -1375,7 +1383,9 @@ progress take the outline.
   iframe requests get HTML; a direct URL shows inert text. The frame and
   the response policy sandbox HTML to its own origin with scripts allowed.
   The parent page's `frame-src 'self'` prevents the frame from navigating
-  away. WebRTC is not blocked (`decisions.md`, "Confinement").
+  away. WebRTC, and a DNS lookup of a host an aid names in a
+  `<link rel="dns-prefetch">`, are not blocked (`decisions.md`,
+  "Confinement").
   The HTML served to the frame starts with a one-line script
   (`withReporter` in `http/artifact-frame.ts`) that posts the aid's first
   uncaught error or unhandled rejection to the page, and gives the aid
@@ -1518,15 +1528,17 @@ Stage scope is listed here; task status and user checks live in the
 - **The tutor's shell, and the tests and expressions it writes, run on
   the learner's machine.** Mitigation: the sandbox, with no network but
   for installing packages the learner approved, and the permission
-  settings confine the tutor's writes to the course's workspace; the
-  engine runs tests and the symbolic check in a sandbox too. Reads are
-  not confined yet (plan task 4.2 confines them before sources).
+  settings confine the tutor's writes and reads to the course's
+  workspace; its commands, and the engine's tests and symbolic check, read
+  nothing in the home folder or the record but what they need, and get
+  none of the server's variables but a listed few.
 - **A source or a search result can carry instructions to the tutor.**
   Mitigation: confined reads, no network for commands, web search without
   reading pages, a refused search that holds the account's email address.
   What remains is below.
 - **The tutor's artifacts run scripts in the learner's browser.**
   Mitigation: a sandboxed frame with an origin of its own, and a policy
-  that loads and fetches nothing. WebRTC still reaches the network, so a
-  misled tutor could send the session's context out through an aid; the
-  user accepted that (`decisions.md`, "Sources").
+  that loads and fetches nothing. WebRTC and DNS lookups from a
+  `dns-prefetch` link still reach the network, so a misled tutor could
+  send the session's context out through an aid; the user accepted that
+  for WebRTC (`decisions.md`, "Sources"), and DNS gives out no more.

@@ -12,7 +12,11 @@ let sandbox: Extract<Sandbox, { available: true }>;
 let check: MathCheck;
 
 beforeAll(async () => {
-  const started = await startSandbox({ log: () => {} });
+  // The check keeps no record.
+  const started = await startSandbox({
+    log: () => {},
+    dataRoot: "/nonexistent/gauss",
+  });
   if (!started.available) {
     throw new Error(`These tests need the sandbox: ${started.reason}`);
   }

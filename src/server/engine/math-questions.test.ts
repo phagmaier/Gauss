@@ -42,7 +42,11 @@ import { createUnitPlanner } from "./unit-planning.ts";
 let sandbox: Extract<Sandbox, { available: true }>;
 let check: MathCheck;
 beforeAll(async () => {
-  const started = await startSandbox({ log: () => {} });
+  // The records are made per test, outside the data root it closes.
+  const started = await startSandbox({
+    log: () => {},
+    dataRoot: join(tmpdir(), "gauss-no-record"),
+  });
   if (!started.available) {
     throw new Error(`These tests need the sandbox: ${started.reason}`);
   }

@@ -164,6 +164,7 @@ import {
   type ReviewPick,
 } from "../record/review.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
+import type { CommandReads } from "../sandbox-command.ts";
 import {
   amendCurriculumTool,
   type CurriculumDesk,
@@ -490,9 +491,10 @@ interface ChatOptions {
   backup?: Backup;
   /**
    * Gives tutors the file and shell tools in the course's workspace (task
-   * 3.3); only when the sandbox can run. None if not given.
+   * 3.3), their commands reading as this says (the sandbox's `reads`); only
+   * when the sandbox can run. None if not given.
    */
-  workspaceTools?: boolean;
+  workspaceTools?: CommandReads;
   /**
    * Installs the packages a tutor asks for (task 3.11); only when the
    * sandbox can run. Without it, tutors get no install_packages.
@@ -767,7 +769,7 @@ function reviewThread(
 type WorkspaceDesk = Omit<CourseDesk, "applied">;
 
 interface CourseWorkspace {
-  tools: WorkspaceTools;
+  tools: Omit<WorkspaceTools, "reads">;
   /** Restores the workspace before the course's first chat uses it. */
   prepare(folder: string): Promise<PackageReceipt | undefined>;
   /** Saves a live or previously unsaved install result. */
@@ -911,7 +913,7 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
     await clearSavedInstall(folder);
   }
 
-  const tools: WorkspaceTools = {
+  const tools: CourseWorkspace["tools"] = {
     acquire: () =>
       exclusive(async () => {
         if (installing !== undefined) return { refused: INSTALLING };
@@ -1353,9 +1355,14 @@ function createUnitChat(
           amendCurriculumTool(curriculumDesk),
         ],
         cwd: workspace,
-        ...(options.workspaceTools === true
-          ? { workspace: options.workspace.tools }
-          : {}),
+        ...(options.workspaceTools === undefined
+          ? {}
+          : {
+              workspace: {
+                ...options.workspace.tools,
+                reads: options.workspaceTools,
+              },
+            }),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
         keep: (id) => exclusive(() => record.keepSession(id)),
         // Only a turn calls it, once `r` is set.

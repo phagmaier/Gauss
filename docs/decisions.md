@@ -17,7 +17,7 @@ a42a409:docs/decisions.md`.
 | Product decisions | What the user decided, when, and why | Changing what the product does; breaking down a stage |
 | Toolchain | Versions, type-checking, Biome, pnpm and uv settings | Changing tooling or `tsconfig.json` |
 | Claude backend | The Agent SDK on the plan login: environment, isolation, ending turns, Stop, sessions and resume, one-shot calls, thinking | Touching `src/server/backends/` |
-| Confinement | The tutor's built-in tools and their two layers, its working and temporary folders, the engine's sandbox, package installs, the backup of the workspace, unconfined reads; artifacts' frame and policy, and WebRTC | Changing the tutor's tools or the engine's commands; giving web access (stage 4); changing artifacts |
+| Confinement | The tutor's built-in tools and their two layers, its working and temporary folders, the engine's sandbox, package installs, the backup of the workspace, confined reads and the commands' environment; artifacts' frame and policy, WebRTC and DNS prefetch | Changing the tutor's tools or the engine's commands; giving web access (stage 4); changing artifacts |
 | Codex | What the Codex SDK can and cannot do | Stage 6 |
 | Record | Ids, writes, the file lock, logs, transcripts on disk, the backup | Touching `src/server/record/` or a record file's schema |
 | Objective status | The passing rule, misses, help, overrides, no question limit, the check's start | Touching `record/status.ts`, `engine/check-rules.ts`, or what counts as help |
@@ -566,15 +566,17 @@ needs neither, since the record lies outside the workspace.
   command, which the module closes; with no writable temporary folder,
   Python's `tempfile` falls back to the working folder, and pytest's
   folders would land in the workspace.
-- **`uv run` fails in both sandboxes**: its cache, `~/.cache/uv`, is
-  read-only there. A venv's own Python runs, and so does `uv run` with
-  `UV_CACHE_DIR` in `$TMPDIR`. So the tutor is told to run
-  `.venv/bin/python` (`tutor.md`, "Packages").
+- **`uv run` runs in the engine's sandbox** (task 4.2; the tutor's not
+  tried). Before reads were confined it failed in both: its cache,
+  `~/.cache/uv`, was read-only. Now a command sees the home folder as an
+  empty folder it may write, whose writes are lost, so the cache is made
+  afresh each time. A venv's own Python runs too.
 - **Installing packages is the one command with network access** (the
   user's pick, piece 14). The tutor names the packages and the engine
   builds the command (`engine/packages.ts`; names checked in
-  `src/shared/packages.ts`): reads are not confined, so tutor code must
-  never run with network access. Python through uv only; add another
+  `src/shared/packages.ts`): tutor code must never run with network
+  access, since it could send out what it can read, the workspace at
+  least. Python through uv only; add another
   language's package manager when a course needs it.
   - The network is `registerCommandNetworkLists` with `pypi.org` and
     `files.pythonhosted.org` exactly: the runtime matches a host whole.
@@ -605,16 +607,53 @@ needs neither, since the record lies outside the workspace.
   locked even after the session closes (SDK shutdown is asynchronous); a
   restart is the way out. Background Bash is refused so a running command
   cannot cross a question's posting.
-- **Reads are not confined**: sandboxed commands can read most of the
-  machine, credential files included, and the engine's commands get the
-  server's environment. With no network and no web tool, what the tutor
-  reads can reach only Anthropic. `blockReadsOutsideWorkingDirectories`,
-  tried in task 3.3, is off: it hid the home folder from sandboxed
-  commands (`ls ~` empty), where mise installs `python` and `uv`, which
-  were then not found, and it still let a command read `../state.json`
-  with the data root in `/tmp`. Task 4.2 confines them before the tutor
-  reads a source: the sandboxes' `denyRead` with `allowRead` for what
-  commands need, and a listed environment.
+- **Reads are confined** (task 4.2, the agent's choices within the plan),
+  for the engine's commands and the tutor's alike (`commandReads` in
+  `sandbox-command.ts`): `denyRead` the home folder, by `HOME` and by the
+  account (a server started with another `HOME` still hides the real
+  one), the data root and `/run/user/<uid>`; `allowRead` `pytools/` whole
+  (every helper the sandbox runs, and their venv, nothing private), the
+  Python that venv is made from, and uv. Each command adds what it needs:
+  the tutor's its workspace, a code question's tests the workspace's
+  `.venv`, every engine command the runtime's own seccomp helper (in
+  `node_modules`: without it no command started, "apply-seccomp: No such
+  file"). Tried on Haiku 5.5 through the tutor's options, with the data
+  root in `/tmp`: `cat` of a file in the home folder and of
+  `../state.json` found nothing, `ls ~` showed only the folders allowed
+  back, `.venv/bin/python`, `python3` and `uv` ran, and an install and a
+  code question's tests ran on `pnpm dev`.
+  - **`allowRead` wins inside `denyRead`**, in runtime 0.0.83 and in
+    Claude Code's sandbox alike, but only for a path given as it really
+    lies: the runtime opens a carve-out reached through a link only when
+    no closed folder holds its target, so a pnpm link in `node_modules`
+    stays closed. The engine gives real paths for what it trusts, and a
+    workspace's `.venv` unresolved past the workspace, so that a tutor
+    who makes it a link into the home folder opens nothing.
+  - **A workspace's venv is not read for its Python**: the tutor can write
+    its `pyvenv.cfg`, and `home = ~/bin` would open the home folder. The
+    installer makes workspace venvs from the same Python as `pytools/`'s
+    (`projectPython`); one made from another Python does not run.
+  - **The file tools needed nothing new**: under `dontAsk`, `Glob` and
+    `Grep` outside the workspace are refused as `Read` is ("Permission to
+    use Glob has been denied"), so `blockReadsOutsideWorkingDirectories`
+    stays off. In task 3.3 it hid the home folder from commands, where
+    mise keeps `python` and `uv`, and still let one read `../state.json`.
+  - **The real tutor declines on its own**: on `pnpm dev`, Haiku with
+    `tutor.md` refused each of four requests to run `cat` or `ls` on the
+    home folder or `../state.json`, saying they lay outside what the
+    session could read, so the reads were tried with a probe prompt. The
+    Bash tool's description in Claude Code names the sandbox's read
+    denials (`read.denyOnly`, in the binary's text); not seen directly.
+- **A command gets a listed environment** (task 4.2, the agent's choice):
+  `PATH`, `HOME`, `LANG`, `LC_*`, `TZ` and `TERM` of the server's
+  (`commandEnvironment`), handed to `sandbox_exec.py` as `NAME=VALUE`
+  words with the variables the engine sets, and of what the sandbox sets
+  inside only `TMPDIR` and its proxy (`HTTP_PROXY` and the like, which an
+  install needs). The engine also starts the runtime with the listed
+  variables alone. `/proc/1/environ` is unreadable in both sandboxes, and
+  no process in them held a server variable (a test, and the Haiku run).
+  The system can add its own: NixOS's loader sets `LD_LIBRARY_PATH`, and
+  Python `LC_CTYPE`.
 - **Artifacts.** The frame and response policy give the aid an opaque
   origin and allow inline scripts. CSP has no `navigate-to`: the parent
   page's `frame-src 'self'` stops an external navigation, but a direct
@@ -627,8 +666,15 @@ needs neither, since the record lies outside the workspace.
   Chromium 157, and removing the constructor in the artifact is undone by
   a nested `srcdoc` frame's own script. So a document the tutor writes can
   send what it holds out, by STUN or TURN. The user accepted it
-  (2026-11-21, "Sources") once reads are confined (task 4.2), which also
-  tries DNS prefetch from an artifact.
+  (2026-11-21, "Sources"), with reads confined.
+- **DNS gets out of an artifact too** (task 4.2). In Chromium 158, with a
+  net log, a `<link rel="dns-prefetch">` in an aid, written in the
+  document or made by its script, had its host looked up, with
+  `X-DNS-Prefetch-Control: off` on the frame's response and without it
+  alike; links, hovered too, were not looked up. A host name can carry
+  what the aid holds to whoever answers for its domain: the same channel
+  as WebRTC, with nothing more to send. The header is kept (sent since
+  task 3.6) for engines that honour it; WebKit not tried.
 - **Artifacts in the record** are named by a hard link, so a file there is
   never replaced; the engine refuses a write when no safe number remains
   rather than repeat one. `show_artifact` is refused while a question of
@@ -2477,10 +2523,12 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   could carry it to the search, not to a site; the hook that refuses a
   query holding it (task 4.11) stops the plain case.
 - **WebRTC from an aid is accepted** (the user's decision, 2026-11-21),
-  once reads are confined (task 4.2): what an aid could send out is then
-  the session's context (the learner's messages, profile and email
-  address), and only if a source or a search result misleads the tutor.
-  Rejected: aids without scripts in such courses.
+  with reads confined ("Confinement"): what an aid could send out is the
+  session's context (the learner's messages, profile and email address),
+  and only if a source or a search result misleads the tutor. A DNS
+  lookup from an aid, found in task 4.2, is the same channel with nothing
+  more to send; not yet put to the user. Rejected: aids without scripts in
+  such courses.
 
 ## Known gaps
 

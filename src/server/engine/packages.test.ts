@@ -28,6 +28,7 @@ import {
 import type { Plan } from "../../shared/plan.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
+import type { CommandReads } from "../sandbox-command.ts";
 import { givenOrder } from "./choice-order.ts";
 import type { CodeRunner } from "./code-run.ts";
 import { createFakeTimer } from "./fake-timer.ts";
@@ -50,6 +51,9 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
+
+/** Where the tutors' commands may read, as the sandbox would say. */
+const READS: CommandReads = { denied: ["/data"], allowed: [] };
 
 const PY = "/opt/python/bin/python3";
 const ok = (stderr = ""): SandboxResult => ({
@@ -350,7 +354,7 @@ async function start(
     now,
     timer: createFakeTimer(),
     order: givenOrder,
-    workspaceTools,
+    ...(workspaceTools ? { workspaceTools: READS } : {}),
     ...(codeRunner === undefined ? {} : { codeRunner }),
     ...(withoutInstaller
       ? {}

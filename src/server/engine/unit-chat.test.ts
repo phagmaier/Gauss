@@ -35,6 +35,7 @@ import {
 } from "../backends/fake.ts";
 import { type Backup, startBackup } from "../record/backup.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
+import type { CommandReads } from "../sandbox-command.ts";
 import { type ChoiceOrder, givenOrder } from "./choice-order.ts";
 import { IDLE_MS } from "./conversation.ts";
 import { createFakeTimer, type FakeTimer } from "./fake-timer.ts";
@@ -200,6 +201,12 @@ async function makeCourse(planned = true, plan = PLAN): Promise<void> {
   if (planned) await root.storePlan(id, "derivative", plan);
 }
 
+/** Where the tutors' commands may read, as the sandbox would say. */
+const READS: CommandReads = {
+  denied: ["/home/learner", "/data"],
+  allowed: ["/opt/gauss/pytools"],
+};
+
 function setUp(
   script: FakeTurn[],
   given: {
@@ -223,7 +230,7 @@ function setUp(
     order?: ChoiceOrder;
     /** Commits the record after the steps that matter (task 2.25). */
     backup?: Backup;
-    /** Gives tutors the file and shell tools (task 3.3). */
+    /** Gives tutors the file and shell tools (task 3.3), reading as READS says. */
     workspaceTools?: boolean;
   } = {},
 ) {
@@ -252,9 +259,7 @@ function setUp(
     timer: given.timer ?? createFakeTimer(),
     order: given.order ?? givenOrder,
     ...(given.backup === undefined ? {} : { backup: given.backup }),
-    ...(given.workspaceTools === undefined
-      ? {}
-      : { workspaceTools: given.workspaceTools }),
+    ...(given.workspaceTools === true ? { workspaceTools: READS } : {}),
   });
   return { backend, judgeBackend, dataRoot, units };
 }
@@ -3724,7 +3729,7 @@ test("with the sandbox, the tutor's sessions, new and resumed, get the file and 
   expect(planning?.cwd).toBeUndefined();
   expect(planning?.workspace).toBeUndefined();
   expect(tutor?.cwd).toBe(FOLDER());
-  expect(tutor?.workspace).toBeDefined();
+  expect(tutor?.workspace?.reads).toEqual(READS);
   expect((await stat(FOLDER())).isDirectory()).toBe(true);
   await before.units.close();
 
@@ -3735,7 +3740,7 @@ test("with the sandbox, the tutor's sessions, new and resumed, get the file and 
   expect(resumed.backend.sessions).toEqual([
     expect.objectContaining({ cwd: FOLDER(), resumeId: before.backend.ids[1] }),
   ]);
-  expect(resumed.backend.sessions[0]?.workspace).toBeDefined();
+  expect(resumed.backend.sessions[0]?.workspace?.reads).toEqual(READS);
   await resumed.units.close();
 
   const without = setUp([[{ text: "Without tools." }]]);
@@ -3920,6 +3925,7 @@ test.each([false, true])(
                 ? {}
                 : {
                     workspace: {
+                      ...workspace,
                       acquire() {
                         const reservation = workspace.acquire();
                         starting.resolve();

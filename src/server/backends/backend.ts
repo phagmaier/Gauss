@@ -2,6 +2,7 @@
 // these types; the SDKs stay inside the files of this folder.
 
 import { z } from "zod";
+import type { CommandReads } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 
 export interface SessionOptions {
@@ -35,9 +36,10 @@ export interface SessionOptions {
 
 /**
  * The file and shell tools (Read, Glob, Grep, Write, Edit, Bash). The
- * session reads files anywhere, writes files only in its working folder, and
- * runs commands in a sandbox with no network that writes only there and in a
- * temporary folder of the course's (decisions.md, "Confinement").
+ * session writes files only in its working folder, reads files only there,
+ * and runs commands in a sandbox with no network that writes only there and
+ * in a temporary folder of the course's and reads as `reads` says and in
+ * the working folder (decisions.md, "Confinement").
  */
 export interface WorkspaceTools {
   /**
@@ -47,6 +49,8 @@ export interface WorkspaceTools {
    * Reads never acquire a reservation.
    */
   acquire(): Promise<{ refused: string } | { release(): void }>;
+  /** Where its commands may read, beside the working folder. */
+  reads: CommandReads;
 }
 
 /**

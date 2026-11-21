@@ -8,7 +8,8 @@
 // (the starter versions, the solution, or the learner's files as sent), the
 // test files, the saved dependency files, and a read-only link to the live
 // `.venv` if present. The command runs there in the sandbox, which writes
-// only to that folder and to its own temporary one. Exit status 0 is a pass.
+// only to that folder and to its own temporary one, and of the course's
+// folder reads only that `.venv`. Exit status 0 is a pass.
 //
 // When the question is posted, the tests must fail on the starter files the
 // tutor wrote in the workspace and pass on its solution: tests that cannot
@@ -123,9 +124,13 @@ export function createCodeRunner(options: {
         return { result: "error", reason: NO_INPUTS };
       }
       folder = await mkdtemp(join(tmpdir(), "gauss-code-"));
+      // By its real path, the one the sandbox opens again inside the data
+      // root. Its last step is left as it is: the tutor can make it a link,
+      // and the sandbox opens no link that leads into a folder it closes.
+      const venv = join(await realpath(workspace), ".venv");
       await populate(
         folder,
-        workspace,
+        venv,
         [...files, ...question.tests, ...question.inputs],
         signal,
       );
@@ -135,6 +140,7 @@ export function createCodeRunner(options: {
         argv: [program ?? "", ...rest],
         cwd: folder,
         writable: [folder],
+        readable: [venv],
         timeLimitMs,
         mergeOutput: true,
         verifyLaunch: true,
@@ -411,12 +417,11 @@ export function fileProblem(found: {
 /** Writes the exercise into its own folder, sharing only the environment. */
 async function populate(
   folder: string,
-  workspace: string,
+  venv: string,
   files: readonly SavedCodeInput[],
   signal?: AbortSignal,
 ): Promise<void> {
   signal?.throwIfAborted();
-  const venv = join(workspace, ".venv");
   const installed = await lstat(venv).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== "ENOENT") throw error;
     return undefined;

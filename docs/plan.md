@@ -39,53 +39,6 @@ scanned PDFs, and questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-### 4.2 Confined reads
-
-- Status: todo
-- Depends on: stage 5
-- Why: a source is text from outside the machine and can carry
-  instructions. A sandboxed command, the tutor's or the engine's, can read
-  most of the machine and the server's environment (`decisions.md`,
-  "Confinement"). The user accepted that an aid can still send data out
-  through WebRTC on the ground that only the session's context is then
-  exposed (2026-11-21), so reads are confined before the tutor reads a
-  source.
-- Do:
-  - The tutor's commands: `sandbox.filesystem.denyRead` with the home
-    folder, the data root and `/run/user/<uid>`, and `allowRead` with the
-    course's workspace, `pytools/.venv` and `pytools/sandbox_exec.py`
-    (every tutor command starts there on Linux), and the real folders of
-    the runtimes the workspace's `.venv` uses (mise's Python, and `uv`).
-    `allowRead` takes precedence inside `denyRead` by the SDK's settings
-    and runtime 0.0.83's `sandbox-config.js`; untried.
-  - The tutor's file tools: `Read`, `Glob` and `Grep` refused outside the
-    workspace. `dontAsk` refused `Read` there in task 3.3; `Glob` and
-    `Grep` were not tried. If they are not refused, try
-    `blockReadsOutsideWorkingDirectories` with `blockReadsExemptPaths`,
-    remembering that in 3.3 it also hid the home folder from commands.
-  - The engine's commands (`configFor` in `engine/sandbox.ts`): the same
-    denial, with each command's reads allowed back: `pytools/.venv` and
-    its Python for every command, the workspace for a code question's
-    tests, and the source's folder for conversion (4.6).
-  - The environment: commands, the tutor's (through `sandbox_exec.py`) and
-    the engine's, get a listed set of variables (`PATH`, `HOME`, `LANG` and
-    `LC_*`, `TZ`, `TERM`, `TMPDIR`, and those the engine sets), not the
-    server's.
-  - An artifact's frame response sends `X-DNS-Prefetch-Control: off`. Try
-    a DNS prefetch from an aid in Chromium (`<link rel="dns-prefetch">`,
-    and an anchor to a host whose lookups can be seen), with and without
-    the header.
-- Done when: sandbox tests show an engine command reading the workspace
-  and running `pytools/.venv`'s Python, refused a file under a scratch
-  home folder and a record file beside the workspace, and given no
-  variable outside the list. A Haiku tutor run on `pnpm dev` with a scratch
-  data root shows `cat` of a scratch file in the home folder and of
-  `../state.json` refused, `.venv/bin/python` and a code question's tests
-  working, and `Read`, `Glob` and `Grep` outside the workspace refused.
-  `decisions.md`, "Confinement", records the findings and what the
-  prefetch did, and its "Reads are not confined" entry is rewritten.
-  `mise run check` passes.
-
 ### 4.3 Conversion: text, Markdown, the outline and the cut
 
 - Status: todo
@@ -207,8 +160,10 @@ quotes, and one unit taught from a paper.
     EPUB's `mimetype` entry, UTF-8 text named `.txt`, `.md` or
     `.markdown`.
   - Conversion runs `convert.py` in the engine's sandbox, as
-    `engine/math-check.ts` runs `mathcheck.py`, reading the original and
-    writing only the source's folder, with a five-minute limit. Without
+    `engine/math-check.ts` runs `mathcheck.py`, reading the original (the
+    command's `readable` names its folder, inside the data root, which
+    commands cannot otherwise read) and writing only the source's folder,
+    with a five-minute limit. Without
     the sandbox, attaching is refused, as a symbolic question is. A
     source waits in `uploads/<intake id>/<source id>/` at the data root
     until the first proposal moves it into `courses/<id>/sources/`; one

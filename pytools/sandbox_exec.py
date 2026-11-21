@@ -1,4 +1,7 @@
-"""Exec a Linux sandbox workload with reconnectable socketpairs disabled.
+"""Exec a Linux sandbox workload with reconnectable socketpairs disabled and
+only the variables it is given.
+
+Usage: sandbox_exec.py [NAME=VALUE ...] -- PROGRAM [ARGUMENT ...]
 
 The sandbox runtime blocks socket(AF_UNIX), but its filter permits socketpair.
 A datagram endpoint from a pair can be reconnected to a host Unix socket. This
@@ -7,13 +10,35 @@ started its own relays and namespace helper. A stream pair stays allowed: it
 is connected for good (connect fails with EISCONN), and uv's runtime (tokio's
 signal handling) and Python's asyncio need one. No compiler or extra package
 is needed; sandbox.ts runs this with the project's Python and -I.
+
+The program gets the NAME=VALUE pairs as its environment, and of the
+environment this runs in only what the sandbox sets for its commands: its
+temporary folder, unless a pair names one, and its proxy. Whoever starts a
+command (sandbox-command.ts) names the variables of the server's it keeps.
 """
 
 import ctypes
 import errno
 import os
 import platform
+import re
 import sys
+
+# What the sandbox, the runtime's or Claude Code's, sets inside for every
+# command: its temporary folder and the proxy that refuses or lets through
+# its connections.
+SANDBOX_VARIABLES = (
+    "TMPDIR",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+)
+NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
 class SockFilter(ctypes.Structure):
@@ -67,6 +92,26 @@ def block_reconnectable_socketpairs():
             raise OSError(error, os.strerror(error))
 
 
+def environment_and_argv(arguments, inherited):
+    """The command's environment and argv from this script's arguments."""
+    try:
+        end = arguments.index("--")
+    except ValueError:
+        raise SystemExit("sandbox_exec.py: no -- before the program") from None
+    if end == len(arguments) - 1:
+        raise SystemExit("sandbox_exec.py: no program after --")
+    environment = {
+        name: inherited[name] for name in SANDBOX_VARIABLES if name in inherited
+    }
+    for pair in arguments[:end]:
+        name, equals, value = pair.partition("=")
+        if not equals or not NAME.match(name):
+            raise SystemExit(f"sandbox_exec.py: not a NAME=VALUE pair: {pair!r}")
+        environment[name] = value
+    return environment, arguments[end + 1 :]
+
+
 if __name__ == "__main__":
+    environment, argv = environment_and_argv(sys.argv[1:], os.environ)
     block_reconnectable_socketpairs()
-    os.execvpe(sys.argv[1], sys.argv[1:], os.environ)
+    os.execvpe(argv[0], argv, environment)

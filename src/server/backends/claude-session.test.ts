@@ -15,7 +15,7 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { expect, test, vi } from "vitest";
-import { sandboxPython } from "../sandbox-command.ts";
+import { type CommandReads, sandboxPython } from "../sandbox-command.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import {
   type BackendEvent,
@@ -265,6 +265,11 @@ test("resuming that fails another way keeps its own error", async () => {
 // --- The tutor's file and shell tools (task 3.3) ------------------------------
 
 const WORKSPACE = "/data/courses/vectors/workspace";
+/** Where the engine says the tutor's commands may read. */
+const READS: CommandReads = {
+  denied: ["/home/learner", "/data"],
+  allowed: ["/opt/gauss/pytools"],
+};
 
 /** Starts a new session on the stand-in query and returns the options it got. */
 async function sessionOptions(given: Partial<SessionOptions>) {
@@ -317,7 +322,7 @@ test("a tutor's session gets the file and shell tools confined to its workspace:
   try {
     const options = await optionsOf({
       cwd: WORKSPACE,
-      workspace: { acquire: async () => ({ release() {} }) },
+      workspace: { acquire: async () => ({ release() {} }), reads: READS },
     });
 
     expect(options).toMatchObject({
@@ -335,6 +340,11 @@ test("a tutor's session gets the file and shell tools confined to its workspace:
         autoAllowBashIfSandboxed: true,
         allowUnsandboxedCommands: false,
         network: { allowedDomains: [] },
+        // Reads as the engine says, and in the workspace.
+        filesystem: {
+          denyRead: ["/home/learner", "/data"],
+          allowRead: [WORKSPACE, "/opt/gauss/pytools"],
+        },
       },
       // The isolation settings stay.
       settings: {
@@ -378,7 +388,7 @@ test("sessions without the file and shell tools, an intake's and a unit's planni
     createClaudeBackend().startSession({
       systemPrompt: "Test tutor.",
       tools: [],
-      workspace: { acquire: async () => ({ release() {} }) },
+      workspace: { acquire: async () => ({ release() {} }), reads: READS },
     }),
   ).rejects.toThrow("The file and shell tools need a working folder.");
 });
@@ -392,7 +402,7 @@ test("before each write and command the engine is asked, and its reason refuses 
   try {
     const { options, session } = await sessionOptions({
       cwd: WORKSPACE,
-      workspace: { acquire },
+      workspace: { acquire, reads: READS },
     });
     expect(options.hooks?.PreToolUse?.[0]?.matcher).toBe("Write|Edit|Bash");
 
@@ -451,7 +461,7 @@ test("concurrent mutations remain reserved until their own success or failure, e
   });
   const { options, session } = await sessionOptions({
     cwd: WORKSPACE,
-    workspace: { acquire },
+    workspace: { acquire, reads: READS },
   });
   try {
     expect(options.hooks?.PreToolUse?.[0]?.onFailure).toBe("block");
@@ -505,7 +515,7 @@ test("a permission-denied write releases only its unstarted mutation without ret
     .mockResolvedValueOnce({ release: running });
   const { options, session } = await sessionOptions({
     cwd: WORKSPACE,
-    workspace: { acquire },
+    workspace: { acquire, reads: READS },
   });
   try {
     await preToolUse(options, "Write", "outside", {
@@ -552,7 +562,7 @@ test("a failed safety hook blocks execution, and closing during an asynchronous 
     .mockReturnValueOnce(pending.promise);
   const { options, session } = await sessionOptions({
     cwd: WORKSPACE,
-    workspace: { acquire },
+    workspace: { acquire, reads: READS },
   });
   try {
     expect(options.hooks?.PreToolUse?.[0]?.onFailure).toBe("block");
@@ -574,16 +584,17 @@ test("a failed safety hook blocks execution, and closing during an asynchronous 
 });
 
 test.skipIf(process.platform !== "linux")(
-  "an approved Bash input runs through the workload filter: no datagram Unix socketpair, a stream one allowed",
+  "an approved Bash input runs through the workload filter: no datagram Unix socketpair, a stream one allowed, and none of the server's variables but the listed ones",
   async () => {
+    vi.stubEnv("GAUSS_SERVER_SECRET", "s3cret");
     const cwd = await mkdtemp(join(tmpdir(), "gauss-sdk-command-"));
     const release = vi.fn();
     const { options, session } = await sessionOptions({
       cwd,
-      workspace: { acquire: async () => ({ release }) },
+      workspace: { acquire: async () => ({ release }), reads: READS },
     });
     const program = [
-      "import socket",
+      "import os, socket",
       "try:",
       "    socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)",
       '    print("escaped")',
@@ -591,6 +602,7 @@ test.skipIf(process.platform !== "linux")(
       "    print(error.errno)",
       "socket.socketpair()",
       'print("stream")',
+      'print(os.environ.get("GAUSS_SERVER_SECRET"), os.environ["HOME"])',
     ].join("\n");
     const command = `'${sandboxPython.replaceAll("'", `'\\''`)}' -I -c '${program.replaceAll("'", `'\\''`)}'`;
     const input = {
@@ -616,12 +628,13 @@ test.skipIf(process.platform !== "linux")(
       if (typeof guarded !== "string") throw new Error("No guarded command.");
       expect(
         execFileSync("bash", ["-c", guarded], { cwd, encoding: "utf8" }),
-      ).toBe("1\nstream\n");
+      ).toBe(`1\nstream\nNone ${process.env.HOME}\n`);
       expect(input.command).toBe(command);
       expect(release).not.toHaveBeenCalled();
       await postToolUse(options, "PostToolUse", "guarded");
       expect(release).toHaveBeenCalledTimes(1);
     } finally {
+      vi.unstubAllEnvs();
       await session.close();
       await rm(workspaceTmpDir(cwd), { recursive: true, force: true });
       await rm(cwd, { recursive: true, force: true });
@@ -641,7 +654,7 @@ test("a temporary folder another user could reach refuses the session", async ()
         systemPrompt: "Test tutor.",
         tools: [],
         cwd,
-        workspace: { acquire: async () => ({ release() {} }) },
+        workspace: { acquire: async () => ({ release() {} }), reads: READS },
       }),
     ).rejects.toThrow(
       `The tutor's temporary folder ${tmpDir} is not closed to other users.`,

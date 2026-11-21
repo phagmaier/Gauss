@@ -3,11 +3,18 @@
 // cannot run.
 
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { tmpdir, userInfo } from "node:os";
+import { dirname, join, sep } from "node:path";
 import {
   afterAll,
   afterEach,
@@ -18,15 +25,30 @@ import {
   test,
   vi,
 } from "vitest";
+import { sandboxPython } from "../sandbox-command.ts";
 import { type Sandbox, startSandbox } from "./sandbox.ts";
 
 let sandbox: Extract<Sandbox, { available: true }>;
+/** Holds the scratch home folder and data root the sandbox closes to reads. */
+let scratch: string;
+let home: string;
+let dataRoot: string;
+/** Node's own folder, which may lie in the home folder: test clients need it. */
+let node: string;
 let dir: string;
 let work: string;
 let other: string;
 
 beforeAll(async () => {
-  const started = await startSandbox({ log: () => {} });
+  scratch = await mkdtemp(join(tmpdir(), "gauss-sandbox-closed-"));
+  home = join(scratch, "home");
+  dataRoot = join(scratch, "data");
+  await mkdir(home);
+  await mkdir(dataRoot);
+  node = dirname(dirname(await realpath(process.execPath)));
+  vi.stubEnv("HOME", home);
+  const started = await startSandbox({ log: () => {}, dataRoot });
+  vi.unstubAllEnvs();
   if (!started.available) {
     throw new Error(`These tests need the sandbox: ${started.reason}`);
   }
@@ -34,6 +56,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await sandbox?.close();
+  await rm(scratch, { recursive: true, force: true });
 });
 
 beforeEach(async () => {
@@ -188,6 +211,69 @@ describe("writes", () => {
   });
 });
 
+describe("reads", () => {
+  /** Prints, for each path given, "read" or why it could not be read. */
+  const reader = `import sys
+for path in sys.argv[1:]:
+    try:
+        with open(path) as file:
+            file.read()
+        print("read")
+    except OSError as error:
+        print(type(error).__name__)
+`;
+  const repository = dirname(dirname(dirname(dirname(sandboxPython))));
+
+  test("reach what the caller names in the data root, with the venv's Python, and not the record beside it or the home folder", async () => {
+    const course = join(dataRoot, "courses", "vectors");
+    const workspace = join(course, "workspace");
+    await mkdir(workspace, { recursive: true });
+    await writeFile(join(workspace, "notes.txt"), "the learner's\n");
+    await writeFile(join(course, "state.json"), "{}\n");
+    await writeFile(join(home, "credentials"), "secret\n");
+
+    const result = await sandbox.run({
+      argv: [
+        sandboxPython,
+        "-I",
+        "-c",
+        reader,
+        join(workspace, "notes.txt"),
+        join(course, "state.json"),
+        join(home, "credentials"),
+      ],
+      cwd: workspace,
+      writable: [],
+      readable: [workspace],
+      timeLimitMs: 10_000,
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("read\nFileNotFoundError\nFileNotFoundError\n");
+  });
+
+  test.runIf(repository.startsWith(`${userInfo().homedir}${sep}`))(
+    "are closed in the account's home folder too, where HOME names another, but for what commands need there",
+    async () => {
+      const result = await sandbox.run({
+        argv: [
+          sandboxPython,
+          "-I",
+          "-c",
+          reader,
+          join(repository, "package.json"),
+        ],
+        cwd: work,
+        writable: [],
+        timeLimitMs: 10_000,
+      });
+
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toBe("FileNotFoundError\n");
+    },
+  );
+});
+
 describe("the network", () => {
   let server: Server;
   let port: number;
@@ -242,6 +328,7 @@ describe("the network", () => {
       argv: [process.execPath, "-e", client, String(port)],
       cwd: work,
       writable: [],
+      readable: [node],
       timeLimitMs: 10_000,
     });
 
@@ -320,6 +407,7 @@ else:
         argv: [process.execPath, "-e", client, String(port)],
         cwd: work,
         writable: [],
+        readable: [node],
         hosts,
         timeLimitMs: 10_000,
       });
@@ -367,6 +455,63 @@ describe("variables", () => {
         timeLimitMs: 10_000,
       }),
     ).rejects.toThrow("Not a variable's name");
+  });
+
+  test("of the server's environment are only the listed ones, in no process of the sandbox", async () => {
+    vi.stubEnv("GAUSS_SERVER_SECRET", "s3cret");
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("LANG", "en_GB.UTF-8");
+    vi.stubEnv("LC_COLLATE", "C");
+    vi.stubEnv("TZ", "Europe/London");
+    vi.stubEnv("TERM", "dumb");
+    const script = `import glob, json, os
+seen = []
+for path in glob.glob("/proc/[0-9]*/environ"):
+    try:
+        with open(path, "rb") as file:
+            if b"s3cret" in file.read():
+                seen.append(path)
+    except OSError:
+        pass
+print(json.dumps({"variables": dict(os.environ), "seen": seen}))
+`;
+    const result = await sandbox.run({
+      argv: [sandboxPython, "-I", "-c", script],
+      cwd: work,
+      writable: [],
+      env: { GAUSS_GIVEN: "given" },
+      timeLimitMs: 10_000,
+    });
+
+    expect(result.stderr).toBe("");
+    const { variables, seen } = JSON.parse(result.stdout) as {
+      variables: Record<string, string>;
+      seen: string[];
+    };
+    expect(variables).toMatchObject({
+      HOME: home,
+      LANG: "en_GB.UTF-8",
+      LC_COLLATE: "C",
+      TZ: "Europe/London",
+      TERM: "dumb",
+      GAUSS_GIVEN: "given",
+    });
+    expect(variables.PATH).toBe(process.env.PATH);
+    expect(variables.TMPDIR).toMatch(/\/gauss-run-/);
+    // No other variable of the server's: what the command has beyond the
+    // listed ones the sandbox's proxy and the system's loader set.
+    const listed = new Set(["PATH", "HOME", "LANG", "TZ", "TERM", "TMPDIR"]);
+    const proxy = /^(HTTPS?|ALL|NO)_PROXY$/i;
+    expect(
+      Object.keys(process.env).filter(
+        (name) =>
+          name in variables &&
+          !listed.has(name) &&
+          !name.startsWith("LC_") &&
+          !proxy.test(name),
+      ),
+    ).toEqual([]);
+    expect(seen).toEqual([]);
   });
 });
 
@@ -445,6 +590,7 @@ describe("output over the limit", () => {
       ],
       cwd: work,
       writable: [],
+      readable: [node],
       timeLimitMs: 10_000,
       outputLimit: limit,
     });
@@ -462,7 +608,10 @@ describe("starting", () => {
     vi.stubEnv("PATH", dir);
     const lines: string[] = [];
 
-    const started = await startSandbox({ log: (line) => lines.push(line) });
+    const started = await startSandbox({
+      log: (line) => lines.push(line),
+      dataRoot,
+    });
 
     expect(started.available).toBe(false);
     expect(lines).toHaveLength(1);

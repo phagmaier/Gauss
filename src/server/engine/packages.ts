@@ -24,7 +24,6 @@ import {
 } from "../../shared/packages.ts";
 import { syncFolder, writeFileAtomic } from "../record/atomic-write.ts";
 import type { DataRoot } from "../record/data-root.ts";
-import { sandboxPython } from "../sandbox-command.ts";
 import type { SandboxCommand, SandboxResult } from "./sandbox.ts";
 
 /** The hosts the install may reach: PyPI's index and its files. */
@@ -375,23 +374,6 @@ package = false
 [tool.uv.workspace]
 members = []
 `;
-}
-
-/**
- * The Python the project's helpers run on, which mise pins: the base of
- * `pytools/.venv`, read from its `pyvenv.cfg`, so none is looked for on the
- * path or downloaded.
- */
-export async function projectPython(): Promise<string> {
-  const config = await readFile(
-    join(dirname(dirname(sandboxPython)), "pyvenv.cfg"),
-    "utf8",
-  );
-  const home = /^home\s*=\s*(.+)$/m.exec(config)?.[1]?.trim();
-  if (home === undefined) {
-    throw new Error("pytools/.venv/pyvenv.cfg names no Python.");
-  }
-  return join(home, "python3");
 }
 
 /** The last lines of the output, without the blank ones. */

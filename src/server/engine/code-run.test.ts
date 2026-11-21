@@ -3,6 +3,7 @@
 // sandbox cannot run. The workspace's `.venv` links to `pytools/.venv` to
 // run the project's own pytest.
 
+import { execFile } from "node:child_process";
 import {
   chmod,
   mkdir,
@@ -15,6 +16,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import {
   afterAll,
   afterEach,
@@ -33,10 +35,15 @@ import {
 } from "./code-run.ts";
 import { type Sandbox, startSandbox } from "./sandbox.ts";
 
+const execute = promisify(execFile);
+
 let sandbox: Extract<Sandbox, { available: true }>;
 let runner: CodeRunner;
+/** The data root the sandbox closes to reads; most workspaces lie outside it. */
+let closed: string;
 beforeAll(async () => {
-  const started = await startSandbox({ log: () => {} });
+  closed = await mkdtemp(join(tmpdir(), "gauss-code-closed-"));
+  const started = await startSandbox({ log: () => {}, dataRoot: closed });
   if (!started.available) {
     throw new Error(`These tests need the sandbox: ${started.reason}`);
   }
@@ -45,6 +52,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await sandbox?.close();
+  await rm(closed, { recursive: true, force: true });
 });
 
 let workspace: string;
@@ -150,6 +158,45 @@ test("a published exercise keeps its helper and executable launcher when their s
   ]);
   expect(await readdir(join(workspace, "__pycache__"))).toEqual([]);
   expect(await readFile(join(workspace, "counting.py"), "utf8")).toBe(changed);
+});
+
+test("in the data root, a run reads the workspace's environment and nothing else of the course", async () => {
+  const course = join(closed, "courses", "vectors");
+  const inRecord = join(course, "workspace");
+  await mkdir(inRecord, { recursive: true });
+  await writeFile(join(course, "state.json"), "{}\n");
+  // An environment of the project's Python, as an install leaves one there.
+  await execute(sandboxPython, [
+    "-m",
+    "venv",
+    "--without-pip",
+    join(inRecord, ".venv"),
+  ]);
+  const check = `import sys
+try:
+    open(${JSON.stringify(join(course, "state.json"))}).read()
+except OSError:
+    print("the record is closed")
+else:
+    sys.exit("the record was read")
+`;
+  const question: CodeQuestion = {
+    kind: "code",
+    prompt: "Leave `answer.py` as it is.",
+    files: ["answer.py"],
+    tests: [{ path: "check.py", content: check }],
+    solution: [{ path: "answer.py", content: "" }],
+    command: [".venv/bin/python", "check.py"],
+    inputs: [],
+  };
+
+  const ran = await runner.run(question, question.solution, inRecord);
+
+  expect(ran).toEqual({
+    result: "passed",
+    exitCode: 0,
+    output: "the record is closed",
+  });
 });
 
 test("a failing run is a miss whose output's end says which test failed and why", async () => {

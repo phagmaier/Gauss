@@ -19,7 +19,7 @@ import { createHelpJudge } from "./engine/help-judge.ts";
 import { createIntakes } from "./engine/intake.ts";
 import { createMathCheck } from "./engine/math-check.ts";
 import { createNotes } from "./engine/notes.ts";
-import { createPackageInstaller, projectPython } from "./engine/packages.ts";
+import { createPackageInstaller } from "./engine/packages.ts";
 import { startSandbox } from "./engine/sandbox.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
@@ -27,6 +27,7 @@ import { createApp } from "./http/app.ts";
 import { systemOpener } from "./open-file.ts";
 import { noBackup, startBackup } from "./record/backup.ts";
 import { openDataRoot } from "./record/data-root.ts";
+import { projectPython } from "./sandbox-command.ts";
 
 const root = new URL("../../", import.meta.url);
 const host = "127.0.0.1";
@@ -80,9 +81,11 @@ export async function serve(options: {
   const dataRoot = openDataRoot({ path: dataRootPath });
   // The engine's commands run in it (task 3.2); it says once if it cannot,
   // and tutors then get no file and shell tools, and math and code
-  // questions are refused with the reason.
+  // questions are refused with the reason. Its commands read nothing in
+  // the data root but what they are given.
   const sandbox = await startSandbox({
     log: (line) => process.stdout.write(`${line}\n`),
+    dataRoot: dataRootPath,
   });
   const backup = options.backup
     ? await startBackup({
@@ -122,12 +125,13 @@ export async function serve(options: {
     }),
     mathCheck: createMathCheck({ sandbox }),
     codeRunner: createCodeRunner({ sandbox }),
-    // Tutors run commands only where the sandbox runs (task 3.3), and ask
-    // for packages only where they can be installed. The install cache is
-    // separate from the old workspace-based installer's cache and the backup.
-    workspaceTools: sandbox.available,
+    // Tutors run commands only where the sandbox runs (task 3.3), reading
+    // as its commands do, and ask for packages only where they can be
+    // installed. The install cache is separate from the old workspace-based
+    // installer's cache and the backup.
     ...(sandbox.available
       ? {
+          workspaceTools: sandbox.reads,
           installer: createPackageInstaller({
             dataRoot,
             run: sandbox.run,

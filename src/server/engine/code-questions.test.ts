@@ -43,7 +43,11 @@ import { createUnitPlanner } from "./unit-planning.ts";
 let sandbox: Extract<Sandbox, { available: true }>;
 let runner: CodeRunner;
 beforeAll(async () => {
-  const started = await startSandbox({ log: () => {} });
+  // The records are made per test, outside the data root it closes.
+  const started = await startSandbox({
+    log: () => {},
+    dataRoot: join(tmpdir(), "gauss-no-record"),
+  });
   if (!started.available) {
     throw new Error(`These tests need the sandbox: ${started.reason}`);
   }
@@ -166,7 +170,7 @@ async function openChat(script: FakeTurn[], codeRunner: CodeRunner) {
     grader: createGrader({ backend, systemPrompt: "Grader." }),
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
     codeRunner,
-    workspaceTools: true,
+    workspaceTools: sandbox.reads,
     now: () => new Date(NOW),
     timer: createFakeTimer(),
     order: givenOrder,

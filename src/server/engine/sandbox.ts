@@ -5,9 +5,11 @@
 // which on Linux is bubblewrap. A command has no network, unless its caller
 // names the hosts it may reach through the runtime's proxy; writes only to the
 // folders its caller names and to a temporary folder of its own, its
-// `$TMPDIR`, removed when it ends; is stopped at its time limit with
-// everything it started; and has its output cut to a limit. Reads are not
-// confined.
+// `$TMPDIR`, removed when it ends; reads nothing in the home folder or the
+// data root but what it needs to start and what its caller names
+// (`commandReads` in `sandbox-command.ts`); gets only the listed variables of
+// the server's environment; is stopped at its time limit with everything it
+// started; and has its output cut to a limit.
 //
 // The runtime keeps one configuration per process, so the server starts one
 // sandbox (`serve.ts`). Starting checks that it can run, by its dependency
@@ -16,15 +18,21 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { type FileHandle, mkdtemp, open, rm } from "node:fs/promises";
-import { constants, homedir, tmpdir } from "node:os";
+import { type FileHandle, mkdtemp, open, realpath, rm } from "node:fs/promises";
+import { constants, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   SandboxManager,
   type SandboxRuntimeConfig,
 } from "@anthropic-ai/sandbox-runtime";
-import { sandboxCommand, sandboxPython } from "../sandbox-command.ts";
+import {
+  type CommandReads,
+  commandEnvironment,
+  commandReads,
+  sandboxCommand,
+  sandboxPython,
+} from "../sandbox-command.ts";
 
 export interface SandboxCommand {
   /** The program and its arguments, passed as they are: no shell reads them. */
@@ -37,11 +45,18 @@ export interface SandboxCommand {
    */
   writable: readonly string[];
   /**
+   * What it may read beyond what every command may, inside the folders
+   * closed to reads (the home folder, the data root), absolute paths. The
+   * runtime allows back a link there only where it really lies, so a path
+   * here is given unresolved where a model may have made it a link.
+   */
+  readable?: readonly string[];
+  /**
    * The hosts it may reach, through the runtime's proxy, which refuses every
    * other. Absent or empty: none.
    */
   hosts?: readonly string[];
-  /** Variables set for it, over the server's environment. */
+  /** Variables set for it, over the listed ones of the server's environment. */
   env?: Readonly<Record<string, string>>;
   /** Written to its standard input, which is then closed. Absent: none. */
   input?: string;
@@ -77,6 +92,8 @@ export type Sandbox =
   | {
       available: true;
       run(command: SandboxCommand): Promise<SandboxResult>;
+      /** Where every command may read; a tutor's commands are confined so too. */
+      reads: CommandReads;
       /** Stops the runtime's proxies. Wait for every run first. */
       close(): Promise<void>;
     }
@@ -115,9 +132,11 @@ socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
 /**
  * Checks that the sandbox can run and starts it. `log` gets one line when it
  * cannot, saying why, and one per warning of the runtime's when it can.
+ * Commands read nothing in `dataRoot` but what their callers name.
  */
 export async function startSandbox(options: {
   log: (line: string) => void;
+  dataRoot: string;
 }): Promise<Sandbox> {
   const { log } = options;
   const unavailable = (why: string): Sandbox => {
@@ -139,15 +158,29 @@ export async function startSandbox(options: {
   }
   const { errors, warnings } = SandboxManager.checkDependencies();
   if (errors.length > 0) return unavailable(errors.join("; "));
+  let reads: CommandReads;
+  let confined: CommandReads;
   try {
-    await SandboxManager.initialize(configFor([]));
+    reads = await commandReads(options.dataRoot);
+    // The runtime's own helper, which starts every command, lies in
+    // node_modules.
+    confined = {
+      denied: reads.denied,
+      allowed: [...reads.allowed, await realpath(seccompHelpers)],
+    };
+  } catch (error) {
+    return unavailable(messageOf(error));
+  }
+  try {
+    await SandboxManager.initialize(configFor(confined, [], []));
   } catch (error) {
     await SandboxManager.reset();
     return unavailable(messageOf(error));
   }
+  const runConfined = (command: SandboxCommand) => run(confined, command);
   // Run the workload guard too: installed dependencies do not establish
   // that namespaces, seccomp and the project's Python actually work.
-  const trial = await run({
+  const trial = await runConfined({
     argv: [sandboxPython, "-I", "-c", socketProbe],
     cwd: "/",
     writable: [],
@@ -164,38 +197,61 @@ export async function startSandbox(options: {
   for (const warning of warnings) {
     log(`The sandbox for the engine's commands has a warning: ${warning}`);
   }
-  return { available: true, run, close: () => SandboxManager.reset() };
+  return {
+    available: true,
+    run: runConfined,
+    reads,
+    close: () => SandboxManager.reset(),
+  };
 }
 
+/** The runtime's seccomp helpers, one per architecture. */
+const seccompHelpers = fileURLToPath(
+  new URL(
+    "../vendor/seccomp",
+    import.meta.resolve("@anthropic-ai/sandbox-runtime"),
+  ),
+);
+
 /**
- * The runtime's configuration for a command that may write to `writable`.
- * It has no network: an empty allow list sends every connection to the
- * runtime's proxy, which refuses it. The runtime always leaves a few paths
- * writable that no caller named; two are closed here. `~/.npm/_logs` and
- * `~/.claude/debug` are dropped when a read deny covers them (they become
- * empty folders whose writes are lost), and `/tmp/claude` is denied writes.
+ * The runtime's configuration for a command that may write to `writable`
+ * and read `readable` too. It has no network: an empty allow list sends
+ * every connection to the runtime's proxy, which refuses it. The runtime
+ * always leaves a few paths writable that no caller named: `~/.npm/_logs`
+ * and `~/.claude/debug` it drops, since the home folder is closed to reads
+ * (they become empty folders whose writes are lost), and `/tmp/claude` is
+ * denied writes here.
  */
-function configFor(writable: readonly string[]): SandboxRuntimeConfig {
+function configFor(
+  reads: CommandReads,
+  writable: readonly string[],
+  readable: readonly string[],
+): SandboxRuntimeConfig {
   return {
     network: { allowedDomains: [], deniedDomains: [] },
     filesystem: {
-      denyRead: [
-        join(homedir(), ".npm", "_logs"),
-        join(homedir(), ".claude", "debug"),
-      ],
+      denyRead: [...reads.denied],
+      allowRead: [...reads.allowed, ...readable],
       allowWrite: [...writable],
       denyWrite: ["/tmp/claude"],
     },
   };
 }
 
-async function run(command: SandboxCommand): Promise<SandboxResult> {
+async function run(
+  reads: CommandReads,
+  command: SandboxCommand,
+): Promise<SandboxResult> {
   command.signal?.throwIfAborted();
-  for (const path of [command.cwd, ...command.writable]) {
+  for (const path of [
+    command.cwd,
+    ...command.writable,
+    ...(command.readable ?? []),
+  ]) {
     if (!isAbsolute(path)) throw new Error(`Not an absolute path: ${path}`);
   }
   // The runtime sets TMPDIR inside the sandbox, so the command's own is
-  // set by the script it runs, after the runtime's.
+  // given to the workload filter, which sets it after the runtime's.
   const variables = Object.entries(command.env ?? {});
   for (const [name] of variables) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
@@ -215,16 +271,20 @@ async function run(command: SandboxCommand): Promise<SandboxResult> {
       status = await open(statusPath, "wx+", 0o600);
       argv = [sandboxPython, "-I", launchSupervisor, statusPath, ...argv];
     }
-    const exports = [["TMPDIR", temporary], ...variables]
-      .map(([name, value]) => `export ${name}=${quote(value ?? "")}; `)
-      .join("");
     const merge = command.mergeOutput === true ? " 2>&1" : "";
-    const script = `${exports}exec ${sandboxCommand(argv)}${merge}`;
+    const script = `exec ${sandboxCommand(argv, {
+      TMPDIR: temporary,
+      ...Object.fromEntries(variables),
+    })}${merge}`;
     command.signal?.throwIfAborted();
     const wrapped = await SandboxManager.wrapWithSandbox(
       script,
       undefined,
-      configFor([...command.writable, temporary]),
+      configFor(
+        reads,
+        [...command.writable, temporary],
+        command.readable ?? [],
+      ),
       command.signal,
       { commandId },
     );
@@ -302,6 +362,8 @@ function sandboxFailure(message: string, result: SandboxResult): Error {
  * a PID namespace, so everything the command started dies with it, whatever
  * group or session it moved to. The runtime's own argv form starts
  * `/bin/bash`, which not every system has; `/bin/sh` is what it is written for.
+ * It starts with the listed variables alone, so that no process in the
+ * sandbox holds the server's others.
  */
 function runWrapped(
   wrapped: string,
@@ -310,6 +372,7 @@ function runWrapped(
   return new Promise((resolve, reject) => {
     const child = spawn("/bin/sh", ["-c", wrapped], {
       cwd: command.cwd,
+      env: commandEnvironment(process.env),
       detached: true,
       stdio: [command.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
@@ -422,11 +485,6 @@ function lastBytes(limit: number) {
       return { text, cut };
     },
   };
-}
-
-/** Quotes a word for the shell, so that it reads it as it is. */
-function quote(word: string): string {
-  return `'${word.replaceAll("'", `'\\''`)}'`;
 }
 
 function messageOf(error: unknown): string {

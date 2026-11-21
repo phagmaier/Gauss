@@ -21,11 +21,14 @@ import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { withProgress } from "../record/progress.ts";
+import type { CommandReads } from "../sandbox-command.ts";
 import {
   BROKEN_SESSION,
   createScriptedBackend,
   scriptedPlan,
 } from "./scripted.ts";
+
+const NO_COMMANDS: CommandReads = { denied: [], allowed: [] };
 
 // The scripted backend runs the dev server with no model (scripts/dev-fake.ts).
 // These tests take it through the engine, as the server wires it, so a change
@@ -85,13 +88,14 @@ function setUp(
     grader: createGrader({ backend, systemPrompt: "Grade." }),
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
     handoff: createHandoffWriter({ backend, systemPrompt: "Handoff." }),
-    // As the server has it where the sandbox runs (serve.ts).
+    // As the server has it where the sandbox runs (serve.ts). The scripted
+    // tutor runs no command, so where one may read is not used.
     ...(given.mathCheck === undefined
       ? {}
-      : { mathCheck: given.mathCheck, workspaceTools: true }),
+      : { mathCheck: given.mathCheck, workspaceTools: NO_COMMANDS }),
     ...(given.codeRunner === undefined
       ? {}
-      : { codeRunner: given.codeRunner, workspaceTools: true }),
+      : { codeRunner: given.codeRunner, workspaceTools: NO_COMMANDS }),
     ...(given.installer === undefined ? {} : { installer: given.installer }),
   });
   const intakes = createIntakes({ backend, systemPrompt: "Intake.", dataRoot });
@@ -483,7 +487,7 @@ test("question history is not interpreted as a scripted tutor instruction", asyn
 test("where the sandbox runs, the second question on the first objective is a math question, which the symbolic check grades", async () => {
   // The real check in the real sandbox, so the scripted expected
   // expression is one it reads.
-  const sandbox = await startSandbox({ log: () => {} });
+  const sandbox = await startSandbox({ log: () => {}, dataRoot: dir });
   if (!sandbox.available) {
     throw new Error(`This test needs the sandbox: ${sandbox.reason}`);
   }
@@ -545,7 +549,7 @@ test("where the sandbox runs, the second question on the first objective is a ma
 });
 
 test("in a course whose title says code, the first objective's questions are code questions: the tutor writes the starter, which fails, and a fixed file passes", async () => {
-  const sandbox = await startSandbox({ log: () => {} });
+  const sandbox = await startSandbox({ log: () => {}, dataRoot: dir });
   if (!sandbox.available) {
     throw new Error(`This test needs the sandbox: ${sandbox.reason}`);
   }
@@ -617,7 +621,7 @@ test("in a course whose title says code, the first objective's questions are cod
 });
 
 test("in a code course, a review's code exercise skipped with a draft in its file is not written over: the next review's exercise has a file of its own", async () => {
-  const sandbox = await startSandbox({ log: () => {} });
+  const sandbox = await startSandbox({ log: () => {}, dataRoot: dir });
   if (!sandbox.available) {
     throw new Error(`This test needs the sandbox: ${sandbox.reason}`);
   }

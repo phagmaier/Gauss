@@ -3,6 +3,9 @@
 import { expect, test, vi } from "vitest";
 import { startSandbox } from "./sandbox.ts";
 
+/** A data root that holds nothing: these tests keep no record. */
+const NO_RECORD = "/nonexistent/gauss";
+
 vi.mock("@anthropic-ai/sandbox-runtime", () => ({
   SandboxManager: {
     isSupportedPlatform: () => true,
@@ -20,7 +23,10 @@ test.runIf(process.platform === "linux")(
   "a successful command is not enough: startup refuses ineffective Unix-socket confinement",
   async () => {
     const lines: string[] = [];
-    const sandbox = await startSandbox({ log: (line) => lines.push(line) });
+    const sandbox = await startSandbox({
+      log: (line) => lines.push(line),
+      dataRoot: NO_RECORD,
+    });
     try {
       expect(sandbox.available).toBe(false);
       expect(sandbox).not.toHaveProperty("run");
@@ -38,7 +44,10 @@ test("a runtime that supports macOS does not enable workloads without verified p
   const lines: string[] = [];
   Object.defineProperty(process, "platform", { value: "darwin" });
   try {
-    const sandbox = await startSandbox({ log: (line) => lines.push(line) });
+    const sandbox = await startSandbox({
+      log: (line) => lines.push(line),
+      dataRoot: NO_RECORD,
+    });
     try {
       expect(sandbox.available).toBe(false);
       expect(sandbox).not.toHaveProperty("run");

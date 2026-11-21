@@ -13,14 +13,14 @@
 // schema's shape.
 //
 // A tutor's session gets the file and shell tools, confined to its course's
-// workspace (task 3.3; decisions.md, "Confinement"): writes by the file tools
-// only there, commands only in Claude Code's sandbox, and a temporary folder
-// of its own. The engine can refuse a write or a command, which a PreToolUse
-// hook asks it about.
+// workspace (task 3.3; decisions.md, "Confinement"): writes and reads by the
+// file tools only there, commands only in Claude Code's sandbox, reading
+// only what the engine allows, and a temporary folder of its own. The engine
+// can refuse a write or a command, which a PreToolUse hook asks it about.
 
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir } from "node:fs/promises";
+import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -35,7 +35,7 @@ import {
   tool,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { sandboxCommand } from "../sandbox-command.ts";
+import { type CommandReads, sandboxCommand } from "../sandbox-command.ts";
 import {
   type BackendEvent,
   checkReply,
@@ -198,9 +198,16 @@ export function workspaceTmpDir(cwd: string): string {
  * Writes: the file tools only where the one Edit rule allows (it covers
  * Write), which blockWritesOutsideWorkingDirectories backs; commands only
  * in the sandbox, which must run and cannot be left, writing only in `cwd`
- * and the temporary folder, with no network. Reads are not confined.
+ * and the temporary folder, with no network. Reads: the file tools only in
+ * `cwd`, which dontAsk keeps them to; commands as `reads` says, and in
+ * `cwd`, given as its real path, where the sandbox allows it back.
  */
-function workspaceOptions(cwd: string, tmpDir: string): Options {
+function workspaceOptions(
+  cwd: string,
+  realCwd: string,
+  tmpDir: string,
+  reads: CommandReads,
+): Options {
   return {
     tools: WORKSPACE_TOOLS,
     permissionMode: "dontAsk",
@@ -213,6 +220,10 @@ function workspaceOptions(cwd: string, tmpDir: string): Options {
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
       network: { allowedDomains: [] },
+      filesystem: {
+        denyRead: [...reads.denied],
+        allowRead: [realCwd, ...reads.allowed],
+      },
     },
     settings: {
       ...ISOLATED_SETTINGS,
@@ -381,7 +392,9 @@ async function startSession(
     }
     const tmpDir = workspaceTmpDir(cwd);
     await makePrivateFolder(tmpDir);
-    builtIn = workspaceOptions(cwd, tmpDir);
+    // A folder not made yet has no other real path.
+    const realCwd = await realpath(cwd).catch(() => cwd);
+    builtIn = workspaceOptions(cwd, realCwd, tmpDir, workspace.reads);
   }
   const inbox = createInbox();
   let interruptRequested = false;
