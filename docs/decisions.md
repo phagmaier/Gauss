@@ -819,10 +819,10 @@ How the chats work is `architecture.md` section 4; these are the reasons.
   included, so the learner can ask for what was missed.
 - **The learner's steps are refused while the tutor writes**: taken at
   once, each would put a marker in the middle of a reply still streaming.
-- **Moving on is allowed from the discussion on the server**, since the
-  brief lets the learner always move on and making them press "ready"
-  first would cost a turn; the page offers it only in the check, as mock 3
-  does.
+- **Moving on is offered from the discussion**, beside "ready": the brief
+  lets the learner always move on, and offering it only once the check had
+  started (as mock 3 did) cost a tutor turn writing a question that was
+  then withdrawn (the user's decision, from the stage 5 check).
 - **Moving on sends the tutor nothing**: a turn would cost a reply and a
   wait before the next segment. The next turn's header says it; a restart
   before then loses that note.

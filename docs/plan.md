@@ -33,21 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.26 Moving on from the discussion
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19, from the stage 5 check): the
-  discussion offers "Move on without the check" beside "I'm ready for the
-  check", with the same confirmation. Today the page offers it only once
-  the check has started (`NextStepControl` in `src/web/Session.tsx`), so a
-  skip costs a tutor turn writing a question that is then withdrawn, as
-  in segments 3 and 4 of the check's transcript. The server already
-  allows it; `decisions.md`, "Moving on is allowed from the discussion on
-  the server", says the page does not, and changes with it.
-- Done when: on `pnpm dev:fake`, moving on from the discussion records the
-  override and offers the next segment, with no question posted.
-
 ### 5.27 The closing card says the gate comes next
 
 - Status: todo

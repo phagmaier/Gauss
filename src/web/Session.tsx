@@ -1756,16 +1756,20 @@ function NextStepControl(props: {
     case null:
       return null;
     case "ready":
+      // Moving on is offered beside it, so a skip costs no question.
       return (
         <div className="pf-act">
-          <button
-            type="button"
-            className="btn sm"
-            disabled={busy}
-            onClick={() => props.onAct("ready")}
-          >
-            I'm ready for the check
-          </button>
+          {props.confirming ? null : (
+            <button
+              type="button"
+              className="btn sm"
+              disabled={busy}
+              onClick={() => props.onAct("ready")}
+            >
+              I'm ready for the check
+            </button>
+          )}
+          <MoveOn {...props} />
         </div>
       );
     case "move-on":
