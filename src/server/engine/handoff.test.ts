@@ -548,9 +548,34 @@ test.each([
   ["The rate is $x = 1/2$.", "The rate is $x = 1$."],
   ["The rate is $x = 1/2$.", "The rate is $x = 1$/2."],
   ["The rule can't apply.", "The rule can."],
+  ["The rate is x = 1/2.", "The rate is x = 1."],
+  ["The rate is x = 1/2.", "$1/2$"],
+  ["The rate is x = 1/2.", "The rate is $x = 1$/2."],
+  ["The rate is x = 2 x + 1.", "The rate is x = 2."],
+  ["The bound satisfies x != 1.", "$x ! = 1$"],
+  ["The chance is 10%.", "The chance is 10."],
+  ["I substituted f(X).", "I substituted f(x)."],
+  ["The upper bound is 1,000.5.", "The upper bound is 1,000."],
+  ["The upper bound is 1,000.5.", "000.5"],
+  ["The coefficient is 1e-3.", "-3"],
+  ["The model is non-linear.", "linear"],
 ])("does not treat %s as the same learner evidence as %s", (text, words) => {
   expect(quoteKept([{ type: "learner", text }], words)).toBe(false);
 });
+
+test.each([
+  ["I used $2x$.", "I used $2 x$."],
+  ["I used $f(1, 2)$.", "I used $f(1,2)$."],
+  ["The rate is x = 1/2.", "the rate is $x=1 / 2$"],
+  ["I substituted f(X).", "$f(X)$"],
+  ["The rate is x = 2 x + 1.", "the rate is $x=2x+1$"],
+  ["The model is non-linear.", "NON-LINEAR"],
+])(
+  "can quote %s as %s without changing the learner's meaning",
+  (text, words) => {
+    expect(quoteKept([{ type: "learner", text }], words)).toBe(true);
+  },
+);
 
 test("a code answer's reasoning can be quoted, but not the submitted file, which can contain tutor code", () => {
   const events: PageEvent[] = [

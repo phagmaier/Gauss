@@ -682,13 +682,13 @@ the test before a unit lets the learner skip what they know.
   quoting the learner's words that showed it and, if it showed in a
   detour, giving the detour's number, which the engine turns into its
   question's id and number. `foundIn` leaves out, and logs with its
-  belief, one naming anything else or whose words are in none of the
+  belief, one naming anything else or missing a usable quote from the
   learner's own texts the stretch kept (`Stretch.said`: their messages,
   answers, reasoning and where they got stuck; a choice answer by the
   choice picked; not "I don't know" or submitted code files). It matches
-  whole tokens and whole formulas, ignoring prose case, token spacing,
-  math delimiters, and ordinary quotation and sentence marks at the
-  quote's ends.
+  whole words, numbers and formulas, including recognizable bare math,
+  ignoring prose case, token spacing, optional dollar delimiters and
+  ordinary quotation and sentence marks at the quote's ends.
   The misconceptions are appended, then the note replaces the one
   before, then the mark moves to the stretch's end, and a backup commit is
   asked for. A failed call, a reply out of shape or one past

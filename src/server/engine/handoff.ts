@@ -19,7 +19,7 @@ import type { ShownDispute } from "../../shared/dispute.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import { type HandoffMark, HandoffReply } from "../../shared/handoff.ts";
-import { isOpen, type Misconception } from "../../shared/misconception.ts";
+import { isOpen, Misconception } from "../../shared/misconception.ts";
 import type { Plan } from "../../shared/plan.ts";
 import {
   type AnswerSubmission,
@@ -821,10 +821,18 @@ export function foundIn(
       );
       continue;
     }
-    said ??= given.stretch.said.map(quoteTokens);
-    if (!quotes(said, m.words)) {
+    const quote = Misconception.shape.words.safeParse(m.words);
+    if (!quote.success || quote.data === undefined) {
       dropped.push(
-        `it quotes the learner as writing "${oneLine(m.words)}", which no message or answer of theirs in the stretch has; it was on "${m.objective}": "${oneLine(m.believed)}"`,
+        `it has no usable learner quote; it was on "${m.objective}": "${oneLine(m.believed)}"`,
+      );
+      continue;
+    }
+    const words = quote.data;
+    said ??= given.stretch.said.map(quoteTokens);
+    if (!quotes(said, words)) {
+      dropped.push(
+        `it quotes the learner as writing "${oneLine(words)}", which no message or answer of theirs in the stretch has; it was on "${m.objective}": "${oneLine(m.believed)}"`,
       );
       continue;
     }
@@ -834,7 +842,7 @@ export function foundIn(
       objective: m.objective,
       believed: m.believed,
       actually: m.actually,
-      words: m.words,
+      words,
       where:
         detour === undefined
           ? { in: "discussion" }
@@ -848,13 +856,43 @@ export function foundIn(
   return { found, dropped };
 }
 
-/** Tokens of a formula share a group number; prose uses zero. */
-type QuoteToken = { text: string; folded: string; math: number };
+/** A joined token continues the preceding token's word, number or formula. */
+type QuoteToken = {
+  text: string;
+  folded: string;
+  math: boolean;
+  joined: boolean;
+};
 
 const MATH_SPAN = /(?<![\\$])(\$+)(?!\$)([\s\S]+?)(?<![\\$])\1(?!\$)/g;
-// Keep words, contractions, signed decimals and LaTeX commands whole.
+// Use the same tokens with or without math delimiters. Prose spans impose
+// additional boundaries, e.g. the hyphen that joins "non-linear".
 const QUOTE_TOKEN =
-  /\\[A-Za-z]+|(?:[+−-]\s*)?(?:\p{Nd}+(?:[.,]\p{Nd}+)?|[.,]\p{Nd}+)(?![\p{L}\p{M}\p{N}_])|[\p{L}\p{M}\p{N}_]+(?:'[\p{L}\p{M}\p{N}_]+)*|[^\s]/gu;
+  /\\[A-Za-z]+|[<>=!:]=|(?:\p{Nd}+(?:\.\p{Nd}+)?|\.\p{Nd}+)(?:[eE][+−-]?\p{Nd}+)?|[\p{L}\p{M}_][\p{L}\p{M}\p{N}_]*|[^\s]/gu;
+const WORD_CHARS = String.raw`\p{L}\p{M}\p{N}_`;
+const NUMBER = String.raw`(?:\p{Nd}{1,3}(?:,\p{Nd}{3})+(?:\.\p{Nd}+)?|\p{Nd}+(?:[.,]\p{Nd}+)?|[.,]\p{Nd}+)(?:[eE][+−-]?\p{Nd}+)?`;
+const SIGNED_NUMBER = String.raw`(?:[+−-][ \t]*)?${NUMBER}`;
+const PROSE_SPAN = new RegExp(
+  String.raw`(?<![${WORD_CHARS}])(?:${SIGNED_NUMBER}(?![${WORD_CHARS}]|[.,]\p{Nd})|[${WORD_CHARS}]+(?:['‐‑-][${WORD_CHARS}]+)+|\p{Nd}+[\p{L}\p{M}_][${WORD_CHARS}]*)`,
+  "gu",
+);
+
+// Recognize common bare notation without treating ordinary words as math:
+// operator chains, calls such as f(x), and quantities such as 10% or 2x.
+const VARIABLE = String.raw`(?:\\[A-Za-z]+|\p{L}\p{M}*)(?:_[\p{L}\p{Nd}]+)?['′]*`;
+const QUANTITY = String.raw`${SIGNED_NUMBER}(?:[ \t]*%|${VARIABLE})`;
+const PARENS = String.raw`\((?:[^()\r\n]|\([^()\r\n]*\))+\)`;
+const CALL = String.raw`(?:${VARIABLE}[ \t]*|\p{L}{2,16})${PARENS}`;
+const COEFFICIENT = String.raw`${SIGNED_NUMBER}[ \t]+${VARIABLE}(?![${WORD_CHARS}])`;
+const TERM = String.raw`(?:${CALL}|${PARENS}|${QUANTITY}|${COEFFICIENT}|${SIGNED_NUMBER}|(?:[+−-][ \t]*)?${VARIABLE})`;
+const OPERATOR = "(?:[<>=!:]=|[=<>≤≥≠≈+*/^×÷·⋅−-])";
+// The lookaheads fix each term before trying the next operator. In particular,
+// a chain with scientific notation cannot backtrack over every split at a sign.
+const CHAIN = String.raw`(?=(?<first>${TERM}))\k<first>(?:[ \t]*${OPERATOR}[ \t]*(?=(?<next>${TERM}))\k<next>)+`;
+const BARE_MATH = new RegExp(
+  String.raw`(?<![${WORD_CHARS}'′%.-])(?:${CHAIN}|${CALL}|${QUANTITY})(?![${WORD_CHARS}'′%-]|[.,]\p{Nd})`,
+  "gu",
+);
 const END_MARK = /^["'.,;:!?…]$/;
 
 function quoteTokens(source: QuoteSource): QuoteToken[] {
@@ -863,35 +901,50 @@ function quoteTokens(source: QuoteSource): QuoteToken[] {
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"');
   const tokens: QuoteToken[] = [];
-  const append = (part: string, math: number) => {
-    for (const [raw] of part.matchAll(QUOTE_TOKEN)) {
-      const text = raw.replace(/\s+/g, "");
-      tokens.push({ text, folded: math ? text : text.toLowerCase(), math });
+  const append = (part: string, math: boolean, continued = false) => {
+    const spans = math ? undefined : part.matchAll(PROSE_SPAN);
+    let span = spans?.next().value;
+    for (const { 0: raw, index } of part.matchAll(QUOTE_TOKEN)) {
+      while (span !== undefined && index >= span.index + span[0].length) {
+        span = spans?.next().value;
+      }
+      tokens.push({
+        text: raw,
+        folded: math ? raw : raw.toLowerCase(),
+        math,
+        joined: math ? continued : span !== undefined && index > span.index,
+      });
+      continued = true;
     }
   };
-  const outside = source.formula ? 1 : 0;
-  let group = outside;
+  const appendOutside = (part: string) => {
+    if (source.formula) {
+      append(part, true, tokens.length > 0);
+      return;
+    }
+    let offset = 0;
+    for (const { 0: formula, index } of part.matchAll(BARE_MATH)) {
+      append(part.slice(offset, index), false);
+      append(formula, true);
+      offset = index + formula.length;
+    }
+    append(part.slice(offset), false);
+  };
   let offset = 0;
   for (const match of text.matchAll(MATH_SPAN)) {
-    append(text.slice(offset, match.index), outside);
-    append(match[2] ?? "", outside || ++group);
+    appendOutside(text.slice(offset, match.index));
+    append(match[2] ?? "", true, source.formula && tokens.length > 0);
     offset = match.index + match[0].length;
   }
-  append(text.slice(offset), outside);
+  appendOutside(text.slice(offset));
   return tokens;
-}
-
-/** The gap at `at` is inside one formula, not between complete formulas. */
-function insideFormula(tokens: readonly QuoteToken[], at: number): boolean {
-  const group = tokens[at]?.math;
-  return group !== undefined && group !== 0 && group === tokens[at - 1]?.math;
 }
 
 /** One run of whole tokens; case and both ends of a formula are significant. */
 function quotes(said: readonly QuoteToken[][], words: string): boolean {
   const tokens = quoteTokens({ text: words });
   const decoration = (token: QuoteToken | undefined) =>
-    token !== undefined && token.math === 0 && END_MARK.test(token.text);
+    token !== undefined && !token.math && END_MARK.test(token.text);
   let from = 0;
   let to = tokens.length;
   while (from < to && decoration(tokens[from])) from += 1;
@@ -901,25 +954,22 @@ function quotes(said: readonly QuoteToken[][], words: string): boolean {
   return said.some((source) =>
     source.some((_, at) => {
       const end = at + quote.length;
-      if (
-        end > source.length ||
-        insideFormula(source, at) ||
-        insideFormula(source, end)
-      ) {
+      if (end > source.length || source[at]?.joined || source[end]?.joined) {
         return false;
       }
       return quote.every((token, offset) => {
         const i = at + offset;
         const actual = source[i];
         if (actual === undefined) return false;
-        if (actual.math && token.math) {
-          // Delimiters can be omitted, but not moved within a formula.
-          if (
-            insideFormula(source, i) !== insideFormula(quote, offset) ||
-            insideFormula(source, i + 1) !== insideFormula(quote, offset + 1)
-          ) {
-            return false;
-          }
+        // Delimiters can be omitted, but not moved inside a formula. Likewise
+        // spacing cannot split a prose word or numeric literal.
+        if (
+          actual.math === token.math &&
+          (actual.joined !== token.joined ||
+            Boolean(source[i + 1]?.joined) !==
+              Boolean(quote[offset + 1]?.joined))
+        ) {
+          return false;
         }
         return actual.math || token.math
           ? actual.text === token.text

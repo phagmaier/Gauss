@@ -408,6 +408,49 @@ test("the writer is called as each segment closes and as the unit finishes, each
   await chat.close();
 });
 
+test("malformed quotes do not prevent the handoff note or another misconception from being saved", async () => {
+  const dataRoot = await makeCourse();
+  const belief = {
+    objective: "limit-value",
+    believed: "A limit is the value at the point.",
+    actually: "It is where the values head.",
+  };
+  const words = "The limit is the value at the point.";
+  const longQuote = "The limit is the value. ".repeat(100).trimEnd();
+  const chat = await open(
+    setUp([
+      {
+        output: {
+          note: "The learner confused limits and values.",
+          misconceptions: [
+            { ...belief, words: "   " },
+            { ...belief, words },
+            belief,
+            { ...belief, words: 2 },
+            { ...belief, words: longQuote },
+          ],
+        },
+      },
+    ]),
+  );
+  await step(Promise.resolve(chat.say(`${words}\n${longQuote}`)), chat);
+  await step(chat.override(), chat);
+
+  expect((await dataRoot.readHandoff(COURSE, "limits"))?.note).toBe(
+    "The learner confused limits and values.",
+  );
+  expect(await dataRoot.readMisconceptions(COURSE)).toEqual([
+    {
+      ...belief,
+      words,
+      recordedAt: NOW,
+      unit: "limits",
+      where: { in: "discussion" },
+    },
+  ]);
+  await chat.close();
+});
+
 test("a choice correction after the handoff mark reaches the writer with the earlier question and the corrected choice", async () => {
   const dataRoot = await makeCourse();
   const units = (await dataRoot.readCourse(COURSE))?.curriculum?.units ?? [];
