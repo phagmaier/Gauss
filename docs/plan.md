@@ -123,11 +123,12 @@ quotes, and one unit taught from a paper.
     "HTTP and event stream"). The format from the content: `%PDF-`, an
     EPUB's `mimetype` entry, UTF-8 text named `.txt`, `.md` or
     `.markdown`.
-  - `convert.py ingest` takes the source's id from its folder's name (an
-    empty folder) and the name the learner gave the file from the
-    original's; the title, which the id is made from, comes from the
-    conversion. The engine reads the line it prints with a schema of its
-    own, as `engine/math-check.ts` reads `mathcheck.py`'s.
+  - Run `convert.py ingest` into a scratch folder with a valid slug for
+    its name. The converter uses that name as the source id and the
+    original's basename as the name the learner gave the file. Read its
+    JSON line with a schema of its own, as `engine/math-check.ts` does.
+    On success, derive the unique final slug from the returned title, set
+    the parsed outline's id to that slug, and move the folder into place.
   - Conversion runs `convert.py` in the engine's sandbox, as
     `engine/math-check.ts` runs `mathcheck.py`, reading the original (the
     command's `readable` names its folder, inside the data root, which
@@ -171,8 +172,9 @@ quotes, and one unit taught from a paper.
 - Do:
   - `Unit` (`src/shared/curriculum.ts`) gains the sections it teaches.
     `propose_curriculum` and `amend_curriculum` refuse an unknown section
-    and a unit whose sections come to more than 150,000 characters (the
-    Preface is 108,000), saying the total, so that the planner splits it.
+    and a unit whose sections' stored sizes sum to more than 150,000
+    characters (the Preface is 108,000), saying the total so the planner
+    splits it.
     A course with no source has none.
   - The course planner gets the outlines as the intake's planner does; the
     proposal and change cards show each unit's sections as piece 22 does

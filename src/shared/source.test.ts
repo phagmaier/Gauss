@@ -97,3 +97,34 @@ test("the schema reads the outline convert.py writes, every field of it", async 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("the outline rejects ambiguous entries and places instead of stripping fields", () => {
+  const section = {
+    id: "s1",
+    title: "Opening",
+    size: 10,
+    place: { paragraphs: { first: 1, last: 1 } },
+  };
+  const source = {
+    id: "notes",
+    title: "Notes",
+    file: "original.md",
+    name: "notes.md",
+    format: "markdown",
+    sha256: "0".repeat(64),
+    converter: 1,
+    limit: 20000,
+  };
+  for (const hybrid of [
+    { ...section, entries: [] },
+    { ...section, size: 0, entries: [] },
+    {
+      ...section,
+      place: { ...section.place, pages: { first: 1, last: 1 } },
+    },
+  ]) {
+    expect(Outline.safeParse({ ...source, entries: [hybrid] }).success).toBe(
+      false,
+    );
+  }
+});

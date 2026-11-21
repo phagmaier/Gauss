@@ -72,9 +72,10 @@ Dependencies, kept few (`package.json`, `pytools/pyproject.toml`):
   `vitest`, `happy-dom` (a DOM for the tests of code that reads the
   page), `@biomejs/biome`, and the types `@types/node`, `@types/react`,
   `@types/react-dom` and `@types/hast` (document trees).
-- Python: `sympy`, with `antlr4-python3-runtime` 4.11 for its LaTeX
-  parser; `pytest` for development. Stage 4 adds `pypdfium2` and `Pillow`
-  for PDFs and their page images; EPUB is read with the standard library.
+- Python: `sympy` with `antlr4-python3-runtime` 4.11 for LaTeX;
+  `markdown-it-py` for source Markdown; `pytest` for development. Stage 4
+  adds `pypdfium2` and `Pillow` for PDFs and their page images; EPUB is read
+  with the standard library.
 
 The curriculum diagram is laid out by the page itself
 (`src/web/diagram.ts`), not by a diagram library.
@@ -1049,13 +1050,13 @@ them in `decisions.md`, "Sources", and the pages in mocks 22 to 24
    or refused.
 2. **Convert**: `pytools/convert.py ingest`, whose header gives what it
    reads, writes and prints, and why it refuses a file. It copies the
-   original into the source's folder (`original.<ext>`), converts it to
-   Markdown, builds the outline, and writes one file per section and
-   `outline.json` (`Outline` in `src/shared/source.ts`). Plain text is
-   paragraphs between blank lines with no headings; Markdown's ATX and
-   setext headings make its outline. The outline of a PDF will come from
-   its bookmarks (without them, from type size and heading numbers), and an
-   EPUB's from its table of contents.
+   original into the source's folder (`original.<ext>`) and writes
+   `outline.json` (`Outline` in `src/shared/source.ts`) and one `.md` file
+   per section. Plain text is paragraphs between blank lines with no
+   headings; Markdown's top-level ATX and setext headings make its
+   outline. A PDF's outline will come from its bookmarks (without them,
+   from type size and heading numbers), and an EPUB's from its table of
+   contents.
    - The outline nests as the source does, to any depth. A **section** is a
      leaf of the outline and the only kind of entry with a file. A
      heading's text before its first subheading is a section of its own,
@@ -1063,24 +1064,27 @@ them in `decisions.md`, "Sources", and the pages in mocks 22 to 24
      the next section's file (at the end, the last one's). Text before any
      heading is a section under the source's title: a Markdown file's one
      top heading when it opens the file, otherwise the file's name.
-   - The section files are slices of the source's text, so joined in order
-     they are the whole of it, and each holds its heading. Nothing is
-     added but footnote references and, in a PDF, a marker at each page's
-     start with the page's printed label and whether its text lost math or
-     images.
+   - Joined in order, the section files are the whole source text. For
+     TXT and Markdown they are exact slices: the converter removes a
+     leading byte-order mark and outer blank lines, retains whitespace on
+     nonblank lines, and uses LF line endings, including the final LF. A
+     cut stretch's heading is not repeated in its later parts. PDF page
+     markers and footnote references are added during conversion.
    - Each section records where it sits in the original: a page range for
      a PDF, otherwise a paragraph range, numbered within its heading's
      stretch.
-   - A section has a size limit, 20,000 characters. A stretch over it is
-     cut between paragraphs into parts near equal shares, each within the
-     limit (`_cut` in `convert.py`), titled from the stretch and the
-     part's position ("Preface (part 2 of 6)"); the parts sit in the
-     stretch's heading. A paragraph over the limit by itself is cut at a
-     sentence end. A Markdown fenced block is never cut, and so can be a
-     part over the limit.
+   - The target section size is 20,000 characters, in the unit defined by
+     `OutlineSection.size`. Longer stretches are cut between paragraphs
+     near equal shares; each part is titled by its position ("Preface
+     (part 2 of 6)") and sits in the stretch's heading, if it has one. A
+     paragraph over the limit by itself is cut at the nearest sentence
+     end to its middle, otherwise at whitespace, or at the midpoint if
+     there is no break. Fences, including in lists and quotes, are never
+     cut. A part can exceed the target if a fence or attached text cannot
+     fit without cutting a heading or a paragraph that fits on its own.
    - Section ids are ordinals in reading order (`s1`, `s2`, ...); the same
-     file and converter always give the same sections and ids. A course
-     names a section `<source id>/<section id>`.
+     input bytes, name, folder id, limit and converter version give the
+     same files. A course names a section `<source id>/<section id>`.
 3. **Map**: the planners are given each source's outline, and each unit
    lists the sections it teaches, at most 150,000 characters in all. When
    the unit is planned, each segment names the sections it draws on.

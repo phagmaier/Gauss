@@ -15,8 +15,8 @@ exit status 2.
 
 The format comes from the content: UTF-8 text named `.txt` is plain text,
 named `.md` or `.markdown` Markdown. Text is paragraphs between blank lines,
-with no headings. In Markdown, ATX and setext headings make the outline, and
-a fenced block is one paragraph, never cut, holding no heading.
+with no headings. Markdown's top-level ATX and setext headings make the
+outline. A fenced block, including one in a list or quote, is never cut.
 
 The sections (architecture.md section 8; decisions.md, "Sources"): a
 heading's stretch runs to the next heading. Its text before a first
@@ -31,7 +31,6 @@ continue the count.
 import argparse
 import hashlib
 import json
-import math
 import re
 import sys
 from bisect import bisect_left
@@ -39,8 +38,11 @@ from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
 
-CONVERTER_VERSION = 1  # raised when the same original would give other files
+from markdown_it import MarkdownIt
+
+CONVERTER_VERSION = 2  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text (decisions.md, "Sources")
+_MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
 _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")  # `Slug` in src/shared/course.ts
 _EXTENSIONS = {".txt": "text", ".md": "markdown", ".markdown": "markdown"}
@@ -48,11 +50,8 @@ _COPY = {"text": "original.txt", "markdown": "original.md"}
 
 _LINE = re.compile(r"[^\n]*\n")
 _BLANK = re.compile(r"[ \t]*")
-_ATX = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*")
-_SETEXT = re.compile(r" {0,3}(=+|-+)[ \t]*")
-_FENCE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
-# A line that starts a list item, a block quote or indented code: what follows it is no setext heading.
-_NOT_PARAGRAPH = re.compile(r" {4}|\t| {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)| {0,3}>")
+_MARKDOWN = MarkdownIt("commonmark").disable("inline")
+_LEAF_BLOCKS = {"heading_open", "paragraph_open", "fence", "code_block", "html_block", "hr"}
 _SENTENCE_END = re.compile(r"[.!?…][\"'”’»)\]]*\s+")
 _SPACE = re.compile(r"\s+")
 
@@ -102,9 +101,12 @@ def ingest(original, folder, limit=SECTION_LIMIT):
         data = original.read_bytes()
     except OSError as error:
         raise Unusable(f"the original cannot be read ({error})") from None
-    folder.mkdir(exist_ok=True)
-    if any(folder.iterdir()):
-        raise Unusable(f"the folder {folder} is not empty")
+    try:
+        folder.mkdir(exist_ok=True)
+        if any(folder.iterdir()):
+            raise Unusable(f"the folder {folder} is not empty")
+    except OSError as error:
+        raise Unusable(f"the destination folder cannot be used ({error})") from None
 
     try:
         format, text, blocks = _read(data, original.name)
@@ -141,12 +143,14 @@ def ingest(original, folder, limit=SECTION_LIMIT):
 def _read(data, name):
     """The format, the source's text, and its headings and paragraphs in order."""
     format = _EXTENSIONS.get(Path(name).suffix.lower())
+    if format is None:
+        raise Refused("format", "Only .txt, .md and .markdown files are supported.")
     try:
         decoded = data.decode("utf-8")
     except UnicodeDecodeError:
-        decoded = None
-    if format is None or decoded is None or "\x00" in decoded:
-        raise Refused("format", "It is not UTF-8 text named .txt, .md or .markdown.")
+        raise Refused("format", "The file is not UTF-8 text.") from None
+    if "\x00" in decoded:
+        raise Refused("format", "The file contains a NUL character.")
     text = _normal(decoded)
     if not text:
         raise Refused("empty", "It holds no text.")
@@ -159,15 +163,21 @@ def _read(data, name):
 def _normal(text):
     """The text as Gauss keeps it: newlines as `\\n`, no byte-order mark, no blank lines before or after."""
     text = text.removeprefix("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
-    text = re.sub(r"\A(?:[ \t]*\n)+", "", text).rstrip()
-    return text + "\n" if text else ""
+    start = re.match(r"(?:[ \t]*\n)*", text).end()
+    last = len(text) - 1
+    while last >= start and text[last] in " \t\n":
+        last -= 1
+    if last < start:
+        return ""
+    newline = text.find("\n", last + 1)
+    return text[start : newline + 1] if newline != -1 else text[start:] + "\n"
 
 
-def _text_blocks(text):
-    """Paragraphs between blank lines."""
+def _text_blocks(text, low=0, high=None):
+    """Paragraphs between blank lines in a line-aligned span."""
     blocks, start, end = [], None, None
-    for line in _LINE.finditer(text):
-        if _BLANK.fullmatch(line.group()[:-1]):
+    for line in _LINE.finditer(text, low, len(text) if high is None else high):
+        if _BLANK.fullmatch(text, line.start(), line.end() - 1):
             if start is not None:
                 blocks.append(Paragraph(start, end))
             start = None
@@ -180,62 +190,44 @@ def _text_blocks(text):
 
 
 def _markdown_blocks(text):
-    """Headings and paragraphs; a fenced block is one paragraph, and holds no heading."""
-    blocks = []
-    para = None  # [start, end, lines, may be a setext heading's text]
-    fence = None  # (character, length, start)
-
-    def end_paragraph():
-        nonlocal para
-        if para is not None:
-            blocks.append(Paragraph(para[0], para[1]))
-        para = None
-
-    for match in _LINE.finditer(text):
-        line, start, end = match.group()[:-1], match.start(), match.end()
-        if fence is not None:
-            close = _FENCE.fullmatch(line)
-            if close and close[1][0] == fence[0] and len(close[1]) >= fence[1] and _BLANK.fullmatch(close[2]):
-                blocks.append(Paragraph(fence[2], end, whole=True))
-                fence = None
+    """Use CommonMark block ranges, never rendered text, to locate headings and paragraphs."""
+    offsets = [0, *(line.end() for line in _LINE.finditer(text))]
+    env = {}
+    tokens = _MARKDOWN.parse(text, env)
+    blocks, previous = [], 0
+    for index, token in enumerate(tokens):
+        if token.type not in _LEAF_BLOCKS:
             continue
-        if _BLANK.fullmatch(line):
-            end_paragraph()
-            continue
-        opening = _FENCE.fullmatch(line)
-        if opening and not (opening[1][0] == "`" and "`" in opening[2]):
-            end_paragraph()
-            fence = (opening[1][0], len(opening[1]), start)
-            continue
-        atx = _ATX.fullmatch(line)
-        if atx:
-            end_paragraph()
-            blocks.append(Heading(len(atx[1]), _plain(atx[2] or ""), start))
-            continue
-        setext = _SETEXT.fullmatch(line)
-        if setext and para is not None and para[3]:
-            blocks.append(Heading(1 if setext[1][0] == "=" else 2, _plain(" ".join(para[2])), para[0]))
-            para = None
-            continue
-        if para is None:
-            para = [start, end, [], not _NOT_PARAGRAPH.match(line)]
-        para[1] = end
-        para[2].append(line.strip())
-    if fence is not None:  # never closed: it runs to the end
-        blocks.append(Paragraph(fence[2], len(text), whole=True))
-    end_paragraph()
+        first, after = token.map
+        start, end = offsets[first], offsets[after]
+        # Link definitions and empty containers may not emit a leaf token.
+        if previous < start:
+            blocks.extend(_text_blocks(text, previous, start))
+        if token.type == "heading_open" and token.level == 0:
+            title = _plain(tokens[index + 1].content, env)
+            blocks.append(Heading(int(token.tag[1:]), title, start))
+        else:
+            blocks.append(Paragraph(start, end, whole=token.type == "fence"))
+        previous = end
+    if previous < len(text):
+        blocks.extend(_text_blocks(text, previous))
     return blocks
 
 
-def _plain(title):
-    """A heading's text without Markdown's marks: links as their text, no emphasis or code marks."""
-    title = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", title)
-    title = re.sub(r"`+([^`]+)`+", r"\1", title)
-    title = re.sub(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", r"\2", title)
-    title = re.sub(r"(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])", r"\1", title)
-    title = re.sub(r"(?<![\w_])_(?=\S)(.+?)(?<=\S)_(?![\w_])", r"\1", title)
-    title = re.sub(r"\\([!-/:-@\[-`{-~])", r"\1", title)
-    return " ".join(title.split()) or "Untitled"
+def _plain(title, env):
+    """Read inline text only in headings, with code and link labels intact."""
+
+    def contents(tokens):
+        for token in tokens:
+            if token.type in {"text", "text_special", "code_inline"}:
+                yield token.content
+            elif token.type in {"softbreak", "hardbreak"}:
+                yield " "
+            elif token.type == "image":
+                yield from contents(token.children)
+
+    tokens = _MARKDOWN.inline.parse(title, _MARKDOWN, env, [])
+    return " ".join("".join(contents(tokens)).split()) or "Untitled"
 
 
 def _title(name, blocks, headings):
@@ -320,25 +312,33 @@ def _cut(text, stretch, limit):
 
     Within the limit, one part. Over it, `ceil(size / limit)` parts, cut at the
     paragraph boundaries closest to equal shares, with one part more while a
-    part of several paragraphs is still over the limit. A paragraph over the
-    limit by itself is cut first, at the sentence end nearest its middle, or
-    else the space; a fenced block never is, so it can be a part over the
-    limit.
+    part of several units is still over the limit. Split an oversized
+    paragraph at a sentence end nearest its middle, or else at a space.
+    Fences and attached text that cannot fit without cutting a heading or
+    a short paragraph may make a part exceed the limit.
     """
     start, end, paragraphs = stretch.start, stretch.end, stretch.paragraphs
     if end - start <= limit:
         return [(start, end, 1, len(paragraphs))]
 
     units = []  # (start, paragraph number): where a part may start
+    unit_start = start
     for number, paragraph in enumerate(paragraphs, 1):
-        unit_start = start if number == 1 else paragraph.start
-        unit_end = paragraphs[number].start if number < len(paragraphs) else end
-        pieces = [unit_start] if paragraph.whole else _split(text, unit_start, unit_end, paragraph, limit)
+        following = paragraphs[number] if number < len(paragraphs) else None
+        unit_end = following.start if following else end
+        if following and paragraph.end <= unit_start + limit < unit_end:
+            # Assign only the excess separator to the next paragraph, if it fits there.
+            if following.end <= unit_start + 2 * limit:
+                unit_end = unit_start + limit
+        pieces = [unit_start]
+        if not paragraph.whole and paragraph.end - paragraph.start > limit:
+            pieces = _split(text, unit_start, unit_end, paragraph, limit)
         units.extend((piece, number) for piece in pieces)
+        unit_start = unit_end
     starts = [unit[0] for unit in units] + [end]
 
     size = end - start
-    count = min(math.ceil(size / limit), len(units))
+    count = min((size + limit - 1) // limit, len(units))
     while True:
         firsts = [0, *_shares(starts, size, count), len(units)]
         over = any(starts[b] - starts[a] > limit and b - a > 1 for a, b in pairwise(firsts))
@@ -365,10 +365,14 @@ def _shares(starts, size, count):
 
 
 def _split(text, start, end, paragraph, limit):
-    """Where the pieces of a unit over the limit start, cut inside its paragraph until each is within it."""
-    if end - start <= limit:
+    """Split a long paragraph, without trying to shrink a heading that alone fills a part."""
+    low, high = max(start, paragraph.start), min(end, paragraph.end)
+    # Attachments live at the edges; if one cannot fit with any paragraph text,
+    # leave it attached instead of repeatedly cutting right next to it.
+    prefix, suffix = low - start, end - high
+    if high - low + (prefix if prefix < limit else 0) + (suffix if suffix < limit else 0) <= limit:
         return [start]
-    cut = _cut_point(text, max(start, paragraph.start), min(end, paragraph.end))
+    cut = _cut_point(text, low, high)
     if cut is None:
         return [start]
     return _split(text, start, cut, paragraph, limit) + _split(text, cut, end, paragraph, limit)
@@ -404,6 +408,8 @@ def _positive(value):
     number = int(value)
     if number < 1:
         raise argparse.ArgumentTypeError("must be a positive number")
+    if number > _MAX_LIMIT:
+        raise argparse.ArgumentTypeError(f"must be at most {_MAX_LIMIT}")
     return number
 
 

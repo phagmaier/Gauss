@@ -29,16 +29,16 @@ const Range = z
  * stretch of its heading, the text from the heading to the next one.
  */
 export const SectionPlace = z.union([
-  z.object({ pages: Range }),
-  z.object({ paragraphs: Range }),
+  z.strictObject({ pages: Range }),
+  z.strictObject({ paragraphs: Range }),
 ]);
 export type SectionPlace = z.infer<typeof SectionPlace>;
 
-export const OutlineSection = z.object({
+export const OutlineSection = z.strictObject({
   id: SectionId,
   /** For a part of a cut stretch, "<the stretch's title> (part n of m)". */
   title: z.string().min(1),
-  /** Characters of the section's file. */
+  /** Unicode code points in the section's file, not UTF-16 code units. */
   size: Count,
   place: SectionPlace,
   /**
@@ -61,7 +61,7 @@ export type OutlineSection = z.infer<typeof OutlineSection>;
  * no text of its own has its lines in the next section's file, or at the
  * end of the last one's.
  */
-export const OutlineHeading = z.object({
+export const OutlineHeading = z.strictObject({
   title: z.string().min(1),
   get entries(): z.ZodArray<
     z.ZodUnion<[typeof OutlineSection, typeof OutlineHeading]>
@@ -85,9 +85,9 @@ export const Outline = z.object({
   format: SourceFormat,
   /** Of the original. */
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  /** The converter's version: the same original and version give the same files. */
+  /** Converter version; output is repeatable for the same inputs and version. */
   converter: Count,
-  /** The section size, in characters, that stretches were cut at. */
+  /** Target section size, in Unicode code points. */
   limit: Count,
   /** A PDF's pages. */
   pages: z

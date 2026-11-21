@@ -2437,21 +2437,19 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   Claude Code 2.1.325's code; 20,000 characters of prose is about 5,000
   tokens.
 - **Cuts fall between paragraphs near equal shares**: `ceil(size / limit)`
-  parts, with one more while a part is still over the limit (`_cut` in
-  `pytools/convert.py`). A part runs from about half the limit to the
-  limit.
+  parts, with one more while a part combines units and is still over the
+  limit (`_cut` in `pytools/convert.py`).
+  Blank separators normally stay with the preceding paragraph; when they
+  would make it too large, move the excess if the next paragraph can take
+  it. This keeps a short paragraph intact.
+  Keep headings attached, even over the limit, rather than making
+  heading-only sections or breaking their lines (agent choices).
 - **Section ids are ordinals** (`s1`, `s2`, ...; the agent's choice):
   stable for one file and converter, short for a model to copy; the title
   carries the meaning.
-- **A section file holds only the source's text**, with page markers and
-  footnote references, so the sections joined are the source's whole text
-  and a quote across a cut still matches. A title Gauss made ("Preface
-  (part 2 of 6)") lives in the outline.
-- **A section file is an exact slice of the source's text** (the agent's
-  choice, task 4.3), with the blank lines after its last paragraph, so the
-  sections joined are the text character for character. That text is the
-  original with its newlines made `\n` and its byte-order mark and outer
-  blank lines removed.
+- **Keep exact source slices** (the agent's choice), so a quote across a
+  cut can still match. A title Gauss made ("Preface (part 2 of 6)") lives
+  in the outline.
 - **A heading with no text of its own goes into the next section's file**
   (the agent's choice), not a section of its own holding only its line,
   which would give the planner a section with nothing in it. The outline
@@ -2478,6 +2476,11 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   characters (the Preface, 108,000, fits).
 
 **Conversion**
+
+- **Read Markdown with `markdown-it-py`** (the agent's choice): CommonMark
+  supplies source line ranges, so list or quote fences stay whole and
+  thematic breaks do not turn unrelated text into headings. Use those
+  ranges to slice the source rather than rendering it back to Markdown.
 
 - **PDF through pypdfium2** (Apache-2.0 or BSD), with Gauss's own
   paragraphs, headings and footnotes (the user's pick). Its character pass
@@ -2621,5 +2624,5 @@ they will close.
   for the course's workspace, outside the data root. They stay until its
   own sweep ("Claude backend").
 - Markdown front matter (a block between `---` lines at a file's top) is
-  read as text, and its closing line as a setext underline, so its last
-  line becomes a heading in the outline.
+  not recognized as metadata. Its closing line can be read as a setext
+  underline, turning the metadata into an outline heading.

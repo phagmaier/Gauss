@@ -5,6 +5,7 @@ description = "Python helpers for Gauss: document conversion and symbolic math c
 requires-python = ">=3.14"
 dependencies = [
     "antlr4-python3-runtime==4.11.*",
+    "markdown-it-py>=4,<5",
     "sympy>=1.14.0",
 ]
 

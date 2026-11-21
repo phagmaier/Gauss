@@ -135,6 +135,40 @@ def test_text_before_the_first_heading_is_a_section_under_the_source_s_title(tmp
     ]
 
 
+@pytest.mark.parametrize(
+    ("before", "title"),
+    [
+        ("Intro\n- item\n---\n", None),
+        ("Intro\n> quote\n---\n", None),
+        ("Intro\n***\n", "Actual heading"),
+        ("    code\n", "Actual heading"),
+    ],
+)
+def test_setext_underline_belongs_only_to_a_markdown_paragraph(tmp_path, before, title):
+    text = before + ("Actual heading\n---\n" if title else "") + "Body.\n"
+    _, folder = run(tmp_path, "notes.md", text)
+
+    assert [entry["title"] for entry in outline(folder)["entries"]] == (["notes", title] if title else ["notes"])
+    expected = [before, "Actual heading\n---\nBody.\n"] if title else [text]
+    assert list(section_files(folder).values()) == expected
+
+
+def test_heading_title_keeps_backslashes_in_code_spans(tmp_path):
+    text = "# `a\\*b` and \\# ###\n\nBody.\n"
+    _, folder = run(tmp_path, "notes.md", text)
+
+    assert outline(folder)["title"] == r"a\*b and #"
+    assert list(section_files(folder).values()) == [text]
+
+
+def test_normalization_keeps_the_last_nonblank_line_intact(tmp_path):
+    data = b"\xef\xbb\xbf \r\n\r\n# Code\r\n\r\n```\r\nline  \r\n \t\r\n"
+    _, folder = run(tmp_path, "notes.md", data)
+
+    assert (folder / "sections" / "s1.md").read_bytes() == b"# Code\n\n```\nline  \n"
+    assert (folder / "original.md").read_bytes() == data
+
+
 def test_plain_text_is_paragraphs_with_no_headings_and_its_original_is_kept(tmp_path):
     original = b"# Not a heading\r\n\r\nSecond line.\r\n"
     _, folder = run(tmp_path, "Hegel notes.txt", original, folder="hegel-notes")
@@ -186,6 +220,23 @@ def test_a_long_stretch_is_cut_between_paragraphs_near_equal_shares_within_the_l
     ]
     assert list(section_files(folder).values()) == parts
     assert summary["cut"] == [{"title": "notes", "parts": n}]
+
+
+def test_a_separator_does_not_make_a_fitting_paragraph_split(tmp_path):
+    _, folder = run(tmp_path, "notes.txt", "01234567\n\nB\n", limit=9)
+
+    assert list(section_files(folder).values()) == ["01234567\n", "\nB\n"]
+    assert [entry["place"]["paragraphs"] for entry in outline(folder)["entries"]] == [
+        {"first": 1, "last": 1},
+        {"first": 2, "last": 2},
+    ]
+
+
+def test_an_oversized_heading_prefix_does_not_fragment_its_short_paragraph(tmp_path):
+    text = "# This heading alone is quite long\n\n## Short\n\nOne sentence.\n"
+    _, folder = run(tmp_path, "notes.md", text, limit=20)
+
+    assert list(section_files(folder).values()) == [text]
 
 
 def test_the_parts_of_a_heading_s_stretch_sit_under_it_and_number_its_paragraphs_on(tmp_path):
@@ -250,6 +301,20 @@ def test_a_fenced_block_is_never_cut_and_holds_no_heading(tmp_path):
     ]
 
 
+@pytest.mark.parametrize(
+    "fence",
+    [
+        "> ```python\n> x = 1\n>\n> y = 2\n> ```\n",
+        "- ~~~language`name\n  x = 1\n\n  # Not a heading\n  ~~~\n",
+    ],
+)
+def test_a_fenced_block_in_a_container_is_never_cut(tmp_path, fence):
+    tail = "\n## Next\n\nText.\n"
+    _, folder = run(tmp_path, "notes.md", fence + tail, limit=18)
+
+    assert list(section_files(folder).values()) == [fence + "\n", tail[1:]]
+
+
 def test_a_second_run_writes_the_same_bytes(tmp_path):
     original = tmp_path / "hegel.md"
     original.write_text(BOOK + "\n" + "".join(paragraphs([300] * 6)), encoding="utf-8")
@@ -307,3 +372,29 @@ def test_the_command_prints_the_summary_and_refuses_a_folder_that_is_not_empty(t
     assert again.returncode == 2
     assert again.stdout == ""
     assert "not empty" in again.stderr
+
+
+@pytest.mark.parametrize("problem", ["file", "missing-parent", "limit"])
+def test_the_command_rejects_unusable_arguments_without_a_traceback(tmp_path, problem):
+    original = tmp_path / "notes.txt"
+    original.write_text("Text.\n", encoding="utf-8")
+    target = tmp_path / "notes"
+    args = []
+    if problem == "file":
+        target.write_text("Not a folder.", encoding="utf-8")
+    elif problem == "missing-parent":
+        target = tmp_path / "missing" / "notes"
+    else:
+        args = ["--limit", "9007199254740992"]
+
+    result = subprocess.run(
+        [sys.executable, "-I", str(SCRIPT), "ingest", str(original), str(target), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "convert.py" in result.stderr and "Traceback" not in result.stderr
+    assert not target.is_dir()
