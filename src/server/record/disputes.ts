@@ -85,8 +85,10 @@ export type Disputable =
 
 /**
  * The answer to the question, if it can be disputed: not if the log has no
- * answer to it, if the answer is "I don't know", which nothing graded, or
- * if it was disputed once already.
+ * answer to it, if it was disputed once already, or if it is "I don't know"
+ * to a written or code question, which shows no answer that could be wrong.
+ * "I don't know" to a choice or math question can be: its answer shown is
+ * reported as wrong.
  */
 export function disputable(
   evidence: readonly EvidenceEntry[],
@@ -100,19 +102,22 @@ export function disputable(
       error: "No answer to that question is recorded in this course.",
     };
   }
-  if (answer.answer.kind === "unknown") {
+  const { kind } = answer.question;
+  const unknown = answer.answer.kind === "unknown";
+  if (unknown && kind !== "choice" && kind !== "math") {
     return {
       ok: false,
       status: 409,
-      error: `"I don't know" was not graded, so there is no grade to dispute.`,
+      error: `"I don't know" to a ${kind} question was shown no answer, so there is none to report as wrong.`,
     };
   }
   if (disputesIn(evidence).has(questionId)) {
     return {
       ok: false,
       status: 409,
-      error:
-        "This grade was disputed once already, and a grade can be disputed only once.",
+      error: unknown
+        ? "The answer shown was reported once already, and it can be reported only once."
+        : "This grade was disputed once already, and a grade can be disputed only once.",
     };
   }
   return { ok: true, answer };

@@ -15,6 +15,7 @@
 // thread's events so far are written, so it is the same after a restart.
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
+import type { ShownDispute } from "../../shared/dispute.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
 import { type HandoffMark, HandoffReply } from "../../shared/handoff.ts";
@@ -373,7 +374,11 @@ export function readStretch(
         break;
       case "disputed":
         say(
-          `[The learner disputed the grade of ${name(event.questionId)}, and a judge decided it counts as ${event.dispute.outcome.verdict === "correct" ? "correct" : "wrong"}.]`,
+          disputedText(
+            event.dispute,
+            views.get(event.questionId),
+            name(event.questionId),
+          ),
         );
         break;
       case "detour": {
@@ -594,6 +599,34 @@ function cut(parts: readonly string[]): string {
 /** The end of a text, at most `limit` characters. */
 function tail(text: string, limit: number): string {
   return text.length <= limit ? text : `…${text.slice(-limit)}`;
+}
+
+/**
+ * A dispute's outcome; for an "I don't know", whether the answer shown was
+ * right, and the corrected one when it was not.
+ */
+function disputedText(
+  dispute: ShownDispute,
+  view: QuestionView | undefined,
+  name: string,
+): string {
+  const { outcome } = dispute;
+  if (outcome.verdict !== "unknown") {
+    return `[The learner disputed the grade of ${name}, and a judge decided it counts as ${outcome.verdict === "correct" ? "correct" : "wrong"}.]`;
+  }
+  const choice =
+    outcome.key === undefined
+      ? undefined
+      : view?.kind === "choice"
+        ? `${outcome.key}. ${view.choices[CHOICE_LETTERS.indexOf(outcome.key)]?.trim() ?? ""}`
+        : outcome.key;
+  const corrected =
+    choice !== undefined
+      ? `corrected it: the right choice is ${choice}`
+      : outcome.expected !== undefined
+        ? `corrected it: the expected answer is ${outcome.expected}`
+        : "found it right";
+  return `[The learner said the answer shown for ${name} was wrong, and a judge ${corrected}.]`;
 }
 
 function capital(text: string): string {

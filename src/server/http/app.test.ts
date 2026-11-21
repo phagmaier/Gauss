@@ -2714,11 +2714,12 @@ test("what an answer was graded by is given only for a recorded, graded answer",
   ).toBe(404);
 });
 
-test('a dispute through its route waits for the outcome, which What I know then shows with the status it gives; a second, an "I don\'t know", a blank reason and a failed judge are refused', async () => {
+test('a dispute through its route waits for the outcome, which What I know then shows with the status it gives; a second, a blank reason and a failed judge are refused, and an "I don\'t know" to a choice question reports its answer shown', async () => {
   await courseWithEvidence();
   const { app, disputeBackend } = setUp([], [], undefined, [
     { fail: "The model is unavailable." },
     { output: { reason: "It restates the rule.", verdict: "incorrect" } },
+    { output: { reason: "The key is right.", verdict: "incorrect" } },
   ]);
   const reason = "I wrote down the rule without saying why it holds.";
 
@@ -2761,14 +2762,17 @@ test('a dispute through its route waits for the outcome, which What I know then 
   const second = await post(app, `${answerRoute("q5")}/dispute`, { reason });
   expect(second.status).toBe(409);
   const unknown = await post(app, `${answerRoute("q4")}/dispute`, { reason });
-  expect(unknown.status).toBe(409);
+  expect(unknown.status).toBe(200);
+  expect(await unknown.json()).toMatchObject({
+    outcome: { verdict: "unknown", reason: "The key is right." },
+  });
   const blank = await post(app, `${answerRoute("q2")}/dispute`, {
     reason: "  ",
   });
   expect(blank.status).toBe(400);
   const none = await post(app, `${answerRoute("open")}/dispute`, { reason });
   expect(none.status).toBe(404);
-  expect(disputeBackend.oneShots).toHaveLength(2);
+  expect(disputeBackend.oneShots).toHaveLength(3);
 });
 
 test("a dispute raised through its route while the unit is open reaches the unit's event stream", async () => {

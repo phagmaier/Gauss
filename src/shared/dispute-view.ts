@@ -1,5 +1,7 @@
 // The first grade, standing after a dispute, and feedback shown on graded cards
-// in the live thread, What I know, and the transcript export.
+// in the live thread, What I know, and the transcript export. After an "I
+// don't know", the same part reports the answer shown as wrong, in its own
+// words (`disputeWords`).
 
 import { countedVerdict, type GradedBy, type ShownDispute } from "./dispute.ts";
 import type { ChoiceLetter, Verdict } from "./question.ts";
@@ -32,11 +34,13 @@ export function firstGradeFeedback(
   const verdict = verdictWord(first.verdict).text;
   if (first.flaw !== undefined)
     return { label: `${verdict}:`, flaw: first.flaw };
+  // An "I don't know" was not graded: what it showed was the expected answer.
+  const by = first.verdict === "unknown" ? "Expected" : undefined;
   if (first.kind === "choice" && first.key !== undefined)
-    return { label: `${verdict}, by the key`, key: first.key };
+    return { label: by ?? `${verdict}, by the key`, key: first.key };
   if (first.kind === "math" && first.expected !== undefined)
     return {
-      label: `${verdict}, by the expected answer`,
+      label: by ?? `${verdict}, by the expected answer`,
       expected: first.expected,
     };
   return {
@@ -91,12 +95,67 @@ export function verdictWord(verdict: Verdict): {
 /** The mark beside a verdict a dispute changed. */
 export const AFTER_DISPUTE = "after your dispute";
 
-/** The outcome's first words: "The grade stands." or "Changed to Correct." */
+/**
+ * The outcome's first words: "The grade stands." or "Changed to Correct.";
+ * for an "I don't know", whether the answer shown stands.
+ */
 export function outcomeHead(answer: Disputed): string {
-  const { verdict, changed } = standing(answer);
+  const { verdict, changed, corrected } = standing(answer);
+  if (answer.verdict === "unknown") {
+    return corrected
+      ? "The answer shown is corrected."
+      : "The answer shown stands.";
+  }
   return changed
     ? `Changed to ${verdictWord(verdict).text}.`
     : "The grade stands.";
+}
+
+/** What a dispute's part says, in a dispute or in a report of an answer shown. */
+export interface DisputeWords {
+  /** The button that opens the form. */
+  open: string;
+  /** Over the reason's field. */
+  ask: string;
+  /** Under the reason: who decides, and what it sees. */
+  decidedBy: string;
+  send: string;
+  /** Beside the reason sent. */
+  said: string;
+  /** Beside what the answer first showed, when the outcome changed it. */
+  first: string;
+}
+
+/**
+ * The words of a dispute, or, for an "I don't know" to a choice or math
+ * question, of a report that the answer shown is wrong; none for an "I don't
+ * know" to a written or code question, which shows no answer.
+ */
+export function disputeWords(first: FirstGrade): DisputeWords | undefined {
+  if (first.verdict !== "unknown") {
+    return {
+      open: "Dispute this grade",
+      ask: "Why is the grade wrong?",
+      decidedBy:
+        "Decided once, by a separate check that sees the question, what it was " +
+        "graded by, your answer and this reason, and nothing of the conversation.",
+      send: "Send dispute",
+      said: "Your dispute",
+      first: "First graded",
+    };
+  }
+  if (first.kind !== "choice" && first.kind !== "math") return undefined;
+  return {
+    open: "The answer shown is wrong",
+    ask: "What is wrong with the answer shown?",
+    decidedBy:
+      "Decided once, by a separate check that sees the question, the answer " +
+      "shown and this reason, and nothing of the conversation. Your answer " +
+      "stays a miss either way.",
+    send: "Send",
+    said: "You said",
+    first: "First shown",
+  };
 }
 
 /** The heading over what the answer was graded by, in the dispute's form. */
@@ -116,8 +175,3 @@ export function gradedByHeading(by: GradedBy): string {
         : "Graded by these tests";
   }
 }
-
-/** Said under the reason: who decides, and what it sees. */
-export const DECIDED_BY =
-  "Decided once, by a separate check that sees the question, what it was " +
-  "graded by, your answer and this reason, and nothing of the conversation.";

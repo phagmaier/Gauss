@@ -191,6 +191,41 @@ test("a written answer's reasoning is read after the answer", () => {
   );
 });
 
+test(`an "I don't know" whose answer shown a judge corrected is read with the right choice, and one found right says so`, () => {
+  const reported = (key?: "C"): PageEvent[] => [
+    { type: "question", question: CHOICE },
+    {
+      type: "graded",
+      questionId: "q-1",
+      verdict: "unknown",
+      answer: { kind: "unknown", questionId: "q-1" },
+      correctChoice: "B",
+      assisted: false,
+    },
+    {
+      type: "disputed",
+      questionId: "q-1",
+      dispute: {
+        recordedAt: "2026-11-20T10:00:00.000Z",
+        reason: "B is not it.",
+        outcome: {
+          verdict: "unknown",
+          reason: "Decided.",
+          ...(key === undefined ? {} : { key }),
+        },
+      },
+    },
+  ];
+  const read = (events: PageEvent[]) =>
+    readStretch(events, { plan: PLAN, objectiveOf }).text;
+  expect(read(reported("C"))).toContain(
+    "[The learner said the answer shown for question 1 was wrong, and a judge corrected it: the right choice is C. 8.]",
+  );
+  expect(read(reported())).toContain(
+    "[The learner said the answer shown for question 1 was wrong, and a judge found it right.]",
+  );
+});
+
 test("a stretch of markers alone, as a unit finishing as its last segment closes leaves, is not worth a call", () => {
   const stretch = readStretch(
     [

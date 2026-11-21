@@ -33,34 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.21 "I don't know" with a wrong key
-
-- Status: todo
-- Depends on: nothing
-- The user's decision (2026-11-19, from the DeepTutor comparison): an
-  "I don't know" answer's card offers "The answer shown is wrong",
-  decided by the dispute judge as a dispute is, once per answer. The
-  miss stands; only the key changes, a corrected choice letter or
-  expected expression, which then shows wherever the key did: the
-  graded card, "What I know", what the notes writer reads, and the
-  tutor's next header. Today "I don't know" cannot be disputed
-  (`decisions.md`, "Disputes"), so a wrong key on one stays in the
-  record, and in task 5.13 it went into the first notes as the right
-  value; `prompts/notes.md` asks the writer to work values again, which
-  does not reach "What I know". `tutor.md` says about one math key in ten
-  was wrong in real runs. Not DeepTutor's way
-  (`mastery_repair_question`), where the tutor that wrote the key
-  decides. To settle in the task: what the learner writes (a reason, as
-  for a dispute), what the judge sees with no answer to grade, and
-  whether written and code questions, which show no key, are covered.
-- Done when: tests on hand-made evidence show an "I don't know" re-keyed
-  by the judge, still a miss for status and calibration, with the
-  corrected key in "What I know" and in the tutor's next header; on
-  `pnpm dev:fake` the card offers it and shows the outcome. If
-  `dispute-judge.md` or `DisputeJudgment` change, re-run
-  `node scripts/decide-set.ts --runs 2` with a case of this kind.
-  `decisions.md`, "Disputes", changes with it.
-
 ### 5.22 Misconceptions in the learner's words
 
 - Status: todo

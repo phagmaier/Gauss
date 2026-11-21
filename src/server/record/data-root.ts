@@ -226,10 +226,9 @@ export interface DataRoot {
   /**
    * Appends a dispute of a recorded answer, with the override it brings if
    * it takes the pass from an objective of a finished unit (task 3.8), in
-   * one write. Throws DisputeRefused, appending nothing, when the evidence
-   * has no answer to the question, the answer is "I don't know", or it was
-   * disputed already: checked as the append waits its turn, so two disputes
-   * of one answer cannot both land.
+   * one write. Throws DisputeRefused, appending nothing, when `disputable`
+   * (record/disputes.ts) refuses it: checked as the append waits its turn,
+   * so two disputes of one answer cannot both land.
    */
   appendDispute(
     id: string,

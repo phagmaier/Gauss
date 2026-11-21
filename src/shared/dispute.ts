@@ -1,23 +1,27 @@
 // Disputes (brief.md, "Mastery and evidence"; docs/decisions.md,
 // "Disputes"): the learner contests the grade of one recorded answer, once,
 // with a reason, and a separate one-shot call, the dispute judge, decides.
-// The outcome is kept in the evidence beside the answer's line, which keeps
-// its first grade (`DisputeEvidence` in evidence.ts); the answer then counts
-// with the outcome's verdict wherever it stands in the log.
+// After an "I don't know" to a choice or math question, the learner can
+// report the answer shown as wrong in the same way: the judge decides only
+// the key, and the miss stands. The outcome is kept in the evidence beside
+// the answer's line, which keeps its first grade (`DisputeEvidence` in
+// evidence.ts); the answer then counts with the outcome's verdict wherever
+// it stands in the log.
 
 import { z } from "zod";
 import { Timestamp } from "./course.ts";
-import { ChoiceLetter, CodeFile, SavedCodeInput } from "./question.ts";
+import { ChoiceLetter, CodeFile, SavedCodeInput, Verdict } from "./question.ts";
 
 /** The learner's reason, required, as long as a choice's reasoning may be. */
 export const DisputeReason = z.string().trim().min(1).max(10_000);
 
 /**
  * What a dispute decided, as the record keeps it. The verdict is the one the
- * answer now counts with: the first grade's when it stands.
+ * answer now counts with: the first grade's when it stands, and "unknown",
+ * always, for an "I don't know".
  */
 export const DisputeOutcome = z.object({
-  verdict: z.enum(["correct", "incorrect"]),
+  verdict: Verdict,
   /** The judge's reason, shown to the learner with the outcome. */
   reason: z.string().trim().min(1),
   /**
@@ -48,6 +52,7 @@ export function countedVerdict<V extends string>(
  * as JSON in this shape. The engine keeps a key only for a choice question
  * and an expected expression only for a math one, and only when they differ
  * from the question's; a choice question's verdict must agree with its key.
+ * For an "I don't know" the verdict is not read: the miss stands.
  */
 export const DisputeJudgment = z.object({
   reason: z

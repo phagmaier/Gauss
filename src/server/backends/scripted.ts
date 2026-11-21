@@ -94,8 +94,11 @@
 // A dispute of a grade (task 3.8) is decided by the scripted judge: the
 // grade stands unless the learner's reason has "/change" in it, which
 // changes it; for a choice question changed to correct, the key becomes the
-// choice picked, and changed to incorrect, the first other choice. "/fail"
-// in the reason fails the call, which records nothing.
+// choice picked, and changed to incorrect, the first other choice. After an
+// "I don't know", "/change" in the reason corrects the answer shown: a
+// choice's key becomes the first other choice, and a math question's
+// expected answer gains "+ 1". "/fail" in the reason fails the call, which
+// records nothing.
 //
 // Every session it starts in a folder (a unit's tutor, an intake) is kept,
 // across restarts too, so a unit reopened after a restart resumes its tutor
@@ -977,7 +980,8 @@ svg { display: block; width: 10em; }
 
 /**
  * The dispute judge's call: the grade stands, unless the reason has
- * "/change" in it. A choice question's key follows the verdict.
+ * "/change" in it. A choice question's key follows the verdict. After an
+ * "I don't know", which has no grade, "/change" corrects the answer shown.
  */
 function scriptedDispute(request: OneShotRequest<unknown>): FakeReply {
   const tagged = (name: string) =>
@@ -986,16 +990,37 @@ function scriptedDispute(request: OneShotRequest<unknown>): FakeReply {
   if (reason.includes("/fail")) {
     return { fail: "The scripted dispute judge was told to fail." };
   }
-  const graded = tagged("grade") === "correct" ? "correct" : "incorrect";
   const change = reason.includes("/change");
+  const choices = tagged("choices")?.split("\n").length;
+  const key = /^([A-F])\./.exec(tagged("key") ?? "")?.[1];
+  if (tagged("grade") === undefined) {
+    const expected = tagged("expected_answer");
+    return {
+      output: {
+        reason: change
+          ? 'Scripted: the reason has "/change" in it, so the answer shown is corrected.'
+          : 'Scripted: the answer shown stands, since the reason does not have "/change" in it.',
+        verdict: "incorrect",
+        ...(choices === undefined
+          ? {}
+          : {
+              key: change
+                ? CHOICE_LETTERS.slice(0, choices).find((l) => l !== key)
+                : key,
+            }),
+        ...(change && expected !== undefined
+          ? { expected: `${expected} + 1` }
+          : {}),
+      },
+    };
+  }
+  const graded = tagged("grade") === "correct" ? "correct" : "incorrect";
   const verdict = change
     ? graded === "correct"
       ? "incorrect"
       : "correct"
     : graded;
-  const choices = tagged("choices")?.split("\n").length;
   const picked = /^([A-F])\./.exec(tagged("answer") ?? "")?.[1];
-  const key = /^([A-F])\./.exec(tagged("key") ?? "")?.[1];
   const other = CHOICE_LETTERS.slice(0, choices).find((l) => l !== picked);
   return {
     output: {

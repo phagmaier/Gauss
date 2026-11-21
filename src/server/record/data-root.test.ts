@@ -1104,11 +1104,12 @@ describe("disputes", () => {
     ]);
   });
 
-  test('a dispute of an answer the log does not have, or of an "I don\'t know", is refused', async () => {
+  test('a dispute of an answer the log does not have, or of an "I don\'t know" to a written question, is refused', async () => {
     const root = openDataRoot({ path: dir });
     const id = await courseWithCurriculum(root);
     await root.appendEvidence(id, {
       ...answer(2),
+      question: { kind: "written", prompt: "Why?", rubric: "Because." },
       answer: { kind: "unknown", questionId: "q2" },
       verdict: "unknown",
     });

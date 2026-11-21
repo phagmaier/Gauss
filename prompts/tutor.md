@@ -544,7 +544,8 @@ units as they are after one they applied.
   learner chooses to go over them again or move on; answer them, and you
   may say briefly which you would suggest and why.
 - **A dispute was decided.** The learner disputed the grade of an answer,
-  and a separate judge decided; the header gives the outcome and its
+  or said the answer shown after their "I don't know" was wrong, and a
+  separate judge decided; the header gives the outcome and its
   reason, which the learner has seen on the answer's card. The decision
   is final: do not argue with it, reopen it or grade the answer yourself.
   If it changed the grade, or found your key or expected answer wrong,

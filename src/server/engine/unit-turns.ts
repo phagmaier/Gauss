@@ -905,6 +905,8 @@ export function overrideNote(
  * answer's grade ended (task 3.8), since its feedback or detour may have
  * taught from a wrong key: the question, the grade before and after, a
  * corrected key or expected answer, the judge's reason and the learner's.
+ * For an "I don't know", whether the answer shown was right, and that the
+ * miss stands.
  */
 export function disputeNote(
   answer: AnswerEvidence,
@@ -912,6 +914,22 @@ export function disputeNote(
 ): string {
   const { question } = answer;
   const { outcome } = dispute;
+  if (answer.answer.kind === "unknown") {
+    const right =
+      outcome.key !== undefined && question.kind === "choice"
+        ? `it wrong: the correct choice is ${outcome.key}, not ${question.answer}`
+        : outcome.expected !== undefined && question.kind === "math"
+          ? `it wrong: the expected answer is ${outcome.expected}, not ${question.expected}`
+          : "it right";
+    return (
+      `The learner answered "I don't know" to a question on ` +
+      `"${answer.objective}" ("${shortPrompt(question.prompt)}"), then said the ` +
+      `answer shown to them was wrong, giving this reason: ` +
+      `"${oneLine(dispute.reason)}". A separate judge, which saw the question, ` +
+      `the answer shown and that reason, found ${right}. Its reason: ` +
+      `${oneLine(outcome.reason)} The answer still counts as "I don't know", a miss.`
+    );
+  }
   const first = answer.verdict === "correct" ? "correct" : "incorrect";
   const grade =
     outcome.verdict === first

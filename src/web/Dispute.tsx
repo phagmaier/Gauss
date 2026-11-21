@@ -3,9 +3,12 @@
 // place, with what the answer was graded by and a field for the reason,
 // which is required; once sent, the card keeps the first grade (when the
 // dispute changed something), the reason and the outcome. The same part is
-// on the session's graded card and on each answer in "What I know". A call
-// that fails records nothing: it is shown, with the reason kept, and sent
-// again on request. Its words are in dispute.ts.
+// on the session's graded card and on each answer in "What I know". After
+// an "I don't know" to a choice or math question it is "The answer shown is
+// wrong", whose form has the reason alone: the answer shown is on the card
+// already, and nothing graded it. A call that fails records nothing: it is
+// shown, with the reason kept, and sent again on request. Its words are in
+// dispute-view.ts.
 
 import { useState } from "react";
 import {
@@ -15,8 +18,8 @@ import {
 } from "../shared/dispute.ts";
 import {
   AFTER_DISPUTE,
-  DECIDED_BY,
   type Disputed,
+  disputeWords,
   type FirstGrade,
   firstGradeFeedback,
   gradedByHeading,
@@ -59,8 +62,9 @@ type Form =
     };
 
 /**
- * The dispute's button, its form, or its record. Nothing for "I don't know",
- * which was not graded.
+ * The dispute's button, its form, or its record; for an "I don't know", the
+ * report of the answer shown. Nothing for an "I don't know" to a written or
+ * code question, which shows no answer.
  */
 export function DisputePart(props: {
   api: DisputeApi;
@@ -76,10 +80,20 @@ export function DisputePart(props: {
   /** The outcome as the route answered it, until the card's own arrives. */
   const [decided, setDecided] = useState<ShownDispute>();
   const dispute = first.dispute ?? decided;
+  const words = disputeWords(first);
+  /** An "I don't know", which nothing graded. */
+  const shown = first.verdict === "unknown";
 
-  if (first.verdict === "unknown") return null;
+  if (words === undefined) return null;
   if (dispute !== undefined) {
-    return <DisputeRecord first={{ ...first, dispute }} choices={choices} />;
+    return (
+      <DisputeRecord
+        first={{ ...first, dispute }}
+        choices={choices}
+        said={words.said}
+        firstLine={words.first}
+      />
+    );
   }
   if (form.step === "closed") {
     return (
@@ -95,6 +109,7 @@ export function DisputePart(props: {
             sending: false,
             error: undefined,
           });
+          if (shown) return;
           void api
             .gradedBy(questionId)
             .then((answer) =>
@@ -108,7 +123,7 @@ export function DisputePart(props: {
             );
         }}
       >
-        Dispute this grade
+        {words.open}
       </button>
     );
   }
@@ -132,7 +147,7 @@ export function DisputePart(props: {
   if (form.sending) {
     return (
       <div className="dp-rec">
-        <Line k="Your dispute">
+        <Line k={words.said}>
           <span className="dp-said">{form.reason}</span>
         </Line>
         <Line k="Outcome">
@@ -146,7 +161,7 @@ export function DisputePart(props: {
   const fieldId = `dispute-${questionId}`;
   return (
     <div className="dp">
-      {form.gradedBy !== undefined ? (
+      {shown ? null : form.gradedBy !== undefined ? (
         <GradedByBlock by={form.gradedBy} choices={choices} />
       ) : form.loadError !== undefined ? (
         <p className="qa-error">
@@ -159,7 +174,7 @@ export function DisputePart(props: {
         </p>
       )}
       <label className="dp-k" htmlFor={fieldId}>
-        Why is the grade wrong?
+        {words.ask}
       </label>
       <textarea
         id={fieldId}
@@ -177,7 +192,7 @@ export function DisputePart(props: {
         <p className="qa-error">{form.error}</p>
       )}
       <div className="qa-foot">
-        <span className="qa-aside">{DECIDED_BY}</span>
+        <span className="qa-aside">{words.decidedBy}</span>
         <span className="dp-btns">
           <button
             type="button"
@@ -192,7 +207,7 @@ export function DisputePart(props: {
             disabled={reason === ""}
             onClick={() => void send(reason)}
           >
-            {form.error === undefined ? "Send dispute" : "Try again"}
+            {form.error === undefined ? words.send : "Try again"}
           </button>
         </span>
       </div>
@@ -204,17 +219,21 @@ export function DisputePart(props: {
 function DisputeRecord(props: {
   first: FirstGrade & { dispute: ShownDispute };
   choices: readonly string[];
+  /** Beside the reason. */
+  said: string;
+  /** Beside the first grade, or the answer first shown. */
+  firstLine: string;
 }) {
   const { first, choices } = props;
   const { dispute } = first;
   return (
     <div className="dp-rec">
       {standing(first).corrected ? (
-        <Line k="First graded">
+        <Line k={props.firstLine}>
           <FirstGraded first={first} choices={choices} />
         </Line>
       ) : null}
-      <Line k="Your dispute">
+      <Line k={props.said}>
         <span className="dp-said">{dispute.reason}</span>
       </Line>
       <Line k="Outcome">

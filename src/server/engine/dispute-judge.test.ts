@@ -123,6 +123,55 @@ const CODE = recorded({
   output: "AssertionError: assert -6 == 6\nExit status 1.",
 });
 
+/** "I don't know" to CHOICE's question, keyed C: B is right. */
+const IDK_CHOICE = recorded({
+  question: CHOICE.question,
+  answer: { kind: "unknown", questionId: "q-idk", stuck: "The sign." },
+  verdict: "unknown",
+});
+
+const IDK_MATH = recorded({
+  question: MATH_UNSETTLED.question,
+  answer: { kind: "unknown", questionId: "q-idk-math" },
+  verdict: "unknown",
+});
+
+test(`an "I don't know" report's request has the question, the choices and the answer shown, and no grade, nor where the learner got stuck`, () => {
+  expect(disputeRequest(IDK_CHOICE, " C has the wrong sign. ")).toBe(
+    [
+      `The learner answered "I don't know" to this question, which stays a miss. They say the answer shown to them afterwards as the right one is wrong. Decide whether it is.`,
+      "",
+      "<question>",
+      "What is the derivative of $e^{-x^2}$?",
+      "</question>",
+      "",
+      "<choices>",
+      "A. $e^{-x^2}$",
+      "B. $-2x e^{-x^2}$",
+      "C. $2x e^{-x^2}$",
+      "</choices>",
+      "",
+      "<key>",
+      "C. $2x e^{-x^2}$",
+      "</key>",
+      "",
+      "<answer>",
+      "I don't know",
+      "</answer>",
+      "",
+      "<reason>",
+      "C has the wrong sign.",
+      "</reason>",
+    ].join("\n"),
+  );
+  const math = disputeRequest(IDK_MATH, "It should be 5.");
+  expect(math).toContain(
+    "<expected_answer>\n10(2x+1)^4\n</expected_answer>\n\n<answer>\nI don't know\n</answer>",
+  );
+  expect(math).not.toContain("<grade>");
+  expect(math).not.toContain("<rubric>");
+});
+
 test("a choice dispute's request has the question, the choices, the key, the answer with its reasoning, the grade and the reason, and not the confidence", () => {
   expect(
     disputeRequest(CHOICE, "  B is right: the sign comes from $-x^2$. "),
@@ -333,6 +382,56 @@ test.each<{
       expected: "10 (2x+1)^4",
     },
     gives: { ok: true, outcome: { verdict: "correct", reason: "A typo." } },
+  },
+  {
+    name: `an "I don't know" whose key is wrong gets the right one and stays "unknown"`,
+    entry: IDK_CHOICE,
+    judgment: { reason: "B is right.", verdict: "incorrect", key: "B" },
+    gives: {
+      ok: true,
+      outcome: { verdict: "unknown", reason: "B is right.", key: "B" },
+    },
+  },
+  {
+    name: `an "I don't know" stays "unknown" whatever verdict the judge gives`,
+    entry: IDK_CHOICE,
+    judgment: { reason: "B is right.", verdict: "correct", key: "B" },
+    gives: {
+      ok: true,
+      outcome: { verdict: "unknown", reason: "B is right.", key: "B" },
+    },
+  },
+  {
+    name: `an "I don't know" whose key the judge does not name keeps it`,
+    entry: IDK_CHOICE,
+    judgment: { reason: "C is right.", verdict: "incorrect" },
+    gives: { ok: true, outcome: { verdict: "unknown", reason: "C is right." } },
+  },
+  {
+    name: `an "I don't know" given a key that is not one of the choices fails`,
+    entry: IDK_CHOICE,
+    judgment: { reason: "Odd.", verdict: "incorrect", key: "E" },
+    gives: {
+      ok: false,
+      error: "The judge named choice E, which the question does not have.",
+    },
+  },
+  {
+    name: `an "I don't know" on a math question gets a corrected expected expression`,
+    entry: IDK_MATH,
+    judgment: {
+      reason: "It is 20.",
+      verdict: "incorrect",
+      expected: "20(2x+1)^4",
+    },
+    gives: {
+      ok: true,
+      outcome: {
+        verdict: "unknown",
+        reason: "It is 20.",
+        expected: "20(2x+1)^4",
+      },
+    },
   },
 ])("$name", ({ entry, judgment, gives }) => {
   expect(disputeOutcome(entry, judgment)).toEqual(gives);

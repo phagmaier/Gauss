@@ -27,7 +27,7 @@ a42a409:docs/decisions.md`.
 | Help judge | The judge's rules, failures, model and set | Changing help judging; disputes |
 | Symbolic check | `mathcheck.py`: the parser and its traps, what counts as equal, the time limits; math questions in the engine and on the page | Changing `mathcheck.py`, math questions, or what they accept |
 | Code questions | Where a code question's tests run, the checks at posting, the learner's files, time-outs, the output kept, "Open" | Changing code questions or how their tests run |
-| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, who decides; the judge's set and model | Building or changing disputes or `dispute-judge.md` |
+| Disputes | What can be disputed, what an outcome changes, what the learner sees, wrong keys, the answer shown after "I don't know", who decides; the judge's set and model | Building or changing disputes or `dispute-judge.md` |
 | Mastery loop | Assessments in the unit's thread, retained and slipping, review, the gate, testing out, handoff notes and misconceptions, the profile, notes, the export, style and curriculum changes | Touching assessments, status, handoff notes, the profile, notes, or style and curriculum changes |
 | Prompts | Findings from real runs behind `tutor.md`, `planner.md`, `unit-planner.md`, `handoff.md`, `notes.md`; the writing rules | Revising any prompt |
 | Page design | The look and layout picked from the mocks, with what was rejected | Building or changing a view |
@@ -1177,18 +1177,20 @@ user picked from piece 13 of the mocks (2026-11-17). How disputes work is
 `architecture.md` section 6; the look is in "Page design".
 
 - **What can be disputed**: any graded answer, of any kind, at any time,
-  in a finished unit too. Not "I don't know", which nothing graded. Not the
-  help judge's call: "when unsure, help" is its rule by design, and a false
-  help costs one more question.
+  in a finished unit too. Not "I don't know", which nothing graded (but see
+  "The answer shown after "I don't know"" below). Not the help judge's
+  call: "when unsure, help" is its rule by design, and a false help costs
+  one more question.
 - **One dispute per answer.** A second would be another draw from the same
   judge.
 - **An outcome replaces the answer's verdict where the answer stands in
   the log**, not where the dispute does: a regraded answer counts as if it
   had been graded so. It is replaced where it is read (`countedEvidence`
   in `record/disputes.ts`), so the log stays append-only.
-- **A wrong choice key or expected expression is corrected only by a
-  dispute**, and the correction shows wherever the key did; a corrected
-  expression is shown, never graded against. The tutor is told in its
+- **A wrong choice key or expected expression is corrected only by the
+  dispute judge**, in a dispute or a report of the answer shown, and the
+  correction shows wherever the key did; a corrected expression is shown,
+  never graded against. The tutor is told in its
   next header, since its feedback or detour taught from the wrong key; a
   restart before then loses the note, as with moving on.
 - **A choice outcome's verdict follows from its key.** The judge names the
@@ -1230,19 +1232,48 @@ user picked from piece 13 of the mocks (2026-11-17). How disputes work is
   checked, when `grader.md` is next revised. Nothing is added
   automatically, since the set's grades are hand-checked.
 
-**The judge's set and model** (task 3.9):
+**The answer shown after "I don't know"** (task 5.21; the user's decision of
+2026-11-19, from the DeepTutor comparison; the details are the agent's):
+
+- **"The answer shown is wrong" on an "I don't know" card**, decided by the
+  dispute judge as a dispute is, once per answer, and recorded as a
+  `DisputeEvidence` whose verdict is "unknown": the miss stands for status
+  and calibration, and only the key or expected expression changes.
+  Without it, a wrong key on an "I don't know" stays in the record and
+  reaches the notes as the right value, as in task 5.13's first notes.
+  Rejected: DeepTutor's way, where the tutor that wrote the key decides.
+- **Choice and math questions only.** Their card shows the key or the
+  expected expression; a written or code question's shows neither the
+  rubric nor the tests, so the learner has nothing shown to find wrong,
+  and an outcome can change only a key or an expected expression.
+- **The learner writes a reason, required**, as for a dispute: it points the
+  judge at the mistake, and a click alone would spend a Sonnet call on a
+  hunch.
+- **The judge sees the question, its choices, the key or expected
+  expression, the answer as "I don't know" and the reason**: no grade,
+  since there is none, and not where the learner got stuck, which says
+  nothing of the key. The form shows nothing of what graded it, since the
+  card already shows the answer shown. The prompt asks for the verdict
+  "incorrect"; the engine does not read it, so a slip cannot turn the miss
+  into anything else.
+
+**The judge's set and model** (tasks 3.9 and 5.21):
 
 - **The set** (`scripts/dispute-set.ts`, run by `scripts/decide-set.ts`):
-  18 recorded answers with the learner's reasons, decided by hand: eight
-  grades that should change, a wrong key beside a wrong choice, and nine
+  22 recorded answers with the learner's reasons, decided by hand: eight
+  grades that should change, a wrong key beside a wrong choice, nine
   wrong answers disputed to persuade (effort, unfairness, certainty,
-  instructions to the judge and the like). Not in it: a learner disputing
-  a grade of correct.
+  instructions to the judge and the like), and four "I don't know"
+  answers whose answer shown is reported wrong, two rightly (a choice key,
+  an expected expression) and two with a wrong derivation. Not in it: a
+  learner disputing a grade of correct.
 - **An outcome agrees** when its verdict, a choice's right letter, and
   whether a math question's expected answer is corrected all match the
   hand outcome. A corrected expected answer is compared by the reader.
 - **Sonnet 5.5 is the judge's model.** It agreed with every hand outcome in
-  three runs over two prompt versions, 3 to 6 seconds a call. Haiku 5.5
+  three runs over two prompt versions, 3 to 6 seconds a call, and in two
+  more runs of the 22 with the "I don't know" section added (2026-11-20).
+  Haiku 5.5
   agreed in its one run too, so the set does not separate them. Sonnet was
   kept: a dispute reviews the grader's Sonnet work, Haiku failed a correct
   proof in plain words on the grader's set, and disputes are too rare for

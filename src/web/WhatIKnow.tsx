@@ -8,9 +8,10 @@
 // it, each "Open" until the objective passes (piece 18; task 5.7). Its words
 // are in what-i-know.ts. Under the summary, the
 // course's calibration (task 2.29), its words in calibration.ts. Each
-// graded answer can be disputed here (task 3.8, Dispute.tsx); once its
-// outcome is in, the view is loaded again, since statuses and calibration
-// follow the corrected grade.
+// graded answer can be disputed here (task 3.8, Dispute.tsx), and the
+// answer shown after an "I don't know" reported as wrong; once its outcome
+// is in, the view is loaded again, since statuses, calibration and the
+// answer shown follow it.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Calibration } from "../shared/calibration.ts";
@@ -339,22 +340,20 @@ function AnswerEntry(
           </span>
         </div>
       )}
-      {answer.kind === "unknown" ? null : (
-        <DisputePart
-          api={props.disputes}
-          questionId={answer.questionId}
-          first={{
-            kind: question.kind,
-            verdict: entry.verdict,
-            key: question.kind === "choice" ? question.answer : undefined,
-            expected: question.kind === "math" ? question.expected : undefined,
-            flaw: entry.flaw,
-            dispute: entry.dispute,
-          }}
-          choices={choices}
-          onDisputed={props.onDisputed}
-        />
-      )}
+      <DisputePart
+        api={props.disputes}
+        questionId={answer.questionId}
+        first={{
+          kind: question.kind,
+          verdict: entry.verdict,
+          key: question.kind === "choice" ? question.answer : undefined,
+          expected: question.kind === "math" ? question.expected : undefined,
+          flaw: entry.flaw,
+          dispute: entry.dispute,
+        }}
+        choices={choices}
+        onDisputed={props.onDisputed}
+      />
     </>
   );
 }

@@ -18,6 +18,7 @@ import { compareUnits } from "../../shared/curriculum-change.ts";
 import { displayMathLines } from "../../shared/display-math-lines.ts";
 import {
   AFTER_DISPUTE,
+  disputeWords,
   type FirstGrade,
   firstGradeFeedback,
   outcomeHead,
@@ -478,13 +479,14 @@ function renderQuestion({
   }
   if (first?.flaw !== undefined && !now?.changed)
     html.push(`<div><b>The first flaw</b>${prose(first.flaw)}</div>`);
-  if (first !== undefined && dispute !== undefined) {
+  const words = first === undefined ? undefined : disputeWords(first);
+  if (first !== undefined && dispute !== undefined && words !== undefined) {
     if (now?.corrected)
       html.push(
-        `<div><b>First graded</b> ${renderFirstGrade(first, question)}</div>`,
+        `<div><b>${words.first}</b> ${renderFirstGrade(first, question)}</div>`,
       );
     html.push(
-      `<div><b>Your dispute</b><p>${escapeHtml(dispute.reason)}</p><b>Outcome</b> ${outcomeHead(first)} ${prose(dispute.outcome.reason, true)}</div>`,
+      `<div><b>${words.said}</b><p>${escapeHtml(dispute.reason)}</p><b>Outcome</b> ${outcomeHead(first)} ${prose(dispute.outcome.reason, true)}</div>`,
     );
   }
   html.push("</div>");

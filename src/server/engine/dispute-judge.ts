@@ -16,6 +16,7 @@ import type { AnswerEvidence } from "../../shared/evidence.ts";
 import {
   CHOICE_LETTERS,
   type ChoiceLetter,
+  type ChoiceQuestion,
   type CodeFile,
 } from "../../shared/question.ts";
 import type { TutorBackend } from "../backends/backend.ts";
@@ -75,7 +76,8 @@ export function createDisputeJudge(options: {
  * choice question, and an expected expression only for a math one, each
  * only when it differs from the question's. A choice question's verdict
  * follows from its key: a reply whose verdict and key disagree, or whose key
- * is not one of the choices, is a failure.
+ * is not one of the choices, is a failure. An "I don't know" stays a miss,
+ * "unknown", whatever verdict the reply gives: only its key can change.
  */
 export function disputeOutcome(
   entry: AnswerEvidence,
@@ -83,33 +85,36 @@ export function disputeOutcome(
 ): DisputeDecision {
   const { question, answer } = entry;
   const { reason } = judgment;
-  if (question.kind === "choice" && answer.kind === "choice") {
-    // Without a key, a correct verdict names the choice picked, and an
-    // incorrect one keeps the key.
+  if (question.kind === "choice") {
+    const picked = answer.kind === "choice" ? answer.choice : undefined;
+    // Without a key, a correct verdict names the choice picked; an incorrect
+    // one, or an "I don't know", keeps the key.
     const key =
       judgment.key ??
-      (judgment.verdict === "correct" ? answer.choice : question.answer);
+      (judgment.verdict === "correct" && picked !== undefined
+        ? picked
+        : question.answer);
     if (CHOICE_LETTERS.indexOf(key) >= question.choices.length) {
       return {
         ok: false,
         error: `The judge named choice ${key}, which the question does not have.`,
       };
     }
-    const verdict = key === answer.choice ? "correct" : "incorrect";
+    const corrected = key === question.answer ? {} : { key };
+    if (picked === undefined) {
+      return {
+        ok: true,
+        outcome: { verdict: "unknown", reason, ...corrected },
+      };
+    }
+    const verdict = key === picked ? "correct" : "incorrect";
     if (verdict !== judgment.verdict) {
       return {
         ok: false,
         error: `The judge's verdict, ${judgment.verdict}, does not follow from the correct choice it named, ${key}.`,
       };
     }
-    return {
-      ok: true,
-      outcome: {
-        verdict,
-        reason,
-        ...(key === question.answer ? {} : { key }),
-      },
-    };
+    return { ok: true, outcome: { verdict, reason, ...corrected } };
   }
   const expected =
     question.kind === "math" &&
@@ -120,7 +125,7 @@ export function disputeOutcome(
   return {
     ok: true,
     outcome: {
-      verdict: judgment.verdict,
+      verdict: answer.kind === "unknown" ? "unknown" : judgment.verdict,
       reason,
       ...(expected === undefined ? {} : { expected }),
     },
@@ -137,7 +142,9 @@ const spaced = (text: string) => text.replaceAll(/\s+/g, "");
  * the grade, with the grader's flaw or the tests' output; and the learner's
  * reason. Each is between tags, so that an answer or a reason that reads
  * like instructions stays what it is. Not the confidence, which must not
- * sway the outcome, and nothing of the conversation.
+ * sway the outcome, and nothing of the conversation. For an "I don't know",
+ * which has no grade, the question, the answer shown and the reason, and not
+ * where the learner got stuck, which says nothing of the answer shown.
  */
 export function disputeRequest(entry: AnswerEvidence, reason: string): string {
   const { question, answer } = entry;
@@ -148,23 +155,39 @@ export function disputeRequest(entry: AnswerEvidence, reason: string): string {
     "",
   ];
   const lines = [
-    "The learner disputes the grade of their answer to this question. " +
-      "Decide what the grade should be.",
+    answer.kind === "unknown"
+      ? `The learner answered "I don't know" to this question, which stays a miss. ` +
+        "They say the answer shown to them afterwards as the right one is wrong. " +
+        "Decide whether it is."
+      : "The learner disputes the grade of their answer to this question. " +
+        "Decide what the grade should be.",
     "",
     ...tag("question", question.prompt),
   ];
   const reasoning = (said: string | undefined) =>
     said === undefined || said.trim() === "" ? [] : tag("reasoning", said);
 
-  if (question.kind === "choice" && answer.kind === "choice") {
-    const choice = (letter: ChoiceLetter) =>
-      `${letter}. ${question.choices[CHOICE_LETTERS.indexOf(letter)]?.trim() ?? ""}`;
-    const letters = CHOICE_LETTERS.slice(0, question.choices.length);
+  if (answer.kind === "unknown") {
+    if (question.kind === "choice") {
+      lines.push(
+        ...tag("choices", choiceList(question)),
+        ...tag("key", choiceLine(question, question.answer)),
+      );
+    } else if (question.kind === "math") {
+      lines.push(...tag("expected_answer", question.expected));
+    } else {
+      // Nothing was shown (disputes.ts refuses it).
+      throw new Error(
+        `"I don't know" to a ${question.kind} question shows no answer.`,
+      );
+    }
+    lines.push(...tag("answer", "I don't know"));
+  } else if (question.kind === "choice" && answer.kind === "choice") {
     lines.push(
-      ...tag("choices", letters.map(choice).join("\n")),
+      ...tag("choices", choiceList(question)),
       ...tag("graded_by", "The choice picked, matched against the key."),
-      ...tag("key", choice(question.answer)),
-      ...tag("answer", choice(answer.choice)),
+      ...tag("key", choiceLine(question, question.answer)),
+      ...tag("answer", choiceLine(question, answer.choice)),
       ...reasoning(answer.reasoning),
       ...tag("grade", entry.verdict),
     );
@@ -230,11 +253,22 @@ export function disputeRequest(entry: AnswerEvidence, reason: string): string {
       ...tag("output", entry.output ?? ""),
     );
   } else {
-    // "I don't know" has no grade to dispute (disputes.ts refuses it).
-    throw new Error("Only a graded answer can be disputed.");
+    // The evidence's schema refuses an answer of another kind.
+    throw new Error("The answer is not of its question's kind.");
   }
   lines.push("<reason>", reason.trim(), "</reason>");
   return lines.join("\n");
+}
+
+/** A choice by its letter and its text, as the request lists it. */
+function choiceLine(question: ChoiceQuestion, letter: ChoiceLetter): string {
+  return `${letter}. ${question.choices[CHOICE_LETTERS.indexOf(letter)]?.trim() ?? ""}`;
+}
+
+function choiceList(question: ChoiceQuestion): string {
+  return CHOICE_LETTERS.slice(0, question.choices.length)
+    .map((letter) => choiceLine(question, letter))
+    .join("\n");
 }
 
 /** A file of a code question, between tags that name it. */

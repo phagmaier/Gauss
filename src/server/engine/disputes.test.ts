@@ -330,13 +330,13 @@ test("a second dispute of one answer is refused, and so is one sent while the fi
   expect(evidence.filter((e) => e.kind === "dispute")).toHaveLength(1);
 });
 
-test('"I don\'t know" cannot be disputed, nor a question with no answer recorded, and neither asks the judge', async () => {
+test('"I don\'t know" to a written question cannot be reported, nor a question with no answer recorded, and neither asks the judge; nothing graded an "I don\'t know"', async () => {
   await makeCourse();
   await reload().appendEvidence(COURSE, {
     kind: "answer",
     recordedAt: NOW,
     objective: "quotient",
-    question: QUESTION,
+    question: { kind: "written", prompt: "Why?", rubric: "Because." },
     answer: { kind: "unknown", questionId: "q-idk" },
     assisted: false,
     verdict: "unknown",
@@ -346,7 +346,7 @@ test('"I don\'t know" cannot be disputed, nor a question with no answer recorded
   expect(await setup.disputes.raise(COURSE, "q-idk", "I guessed.")).toEqual({
     ok: false,
     status: 409,
-    error: `"I don't know" was not graded, so there is no grade to dispute.`,
+    error: `"I don't know" to a written question was shown no answer, so there is none to report as wrong.`,
   });
   expect(await setup.disputes.gradedBy(COURSE, "q-idk")).toEqual({
     ok: false,
@@ -367,6 +367,100 @@ test('"I don\'t know" cannot be disputed, nor a question with no answer recorded
   expect(
     (await reload().readEvidence(COURSE)).filter((e) => e.kind === "dispute"),
   ).toEqual([]);
+});
+
+test("an \"I don't know\" whose answer shown the judge corrects stays a miss for status and calibration, with the corrected key in What I know and in the tutor's next header", async () => {
+  const setup = setUp(
+    [
+      [{ text: "A difference quotient divides by $h$." }],
+      [
+        { text: "A question." },
+        { call: "ask_question", input: { objective: "quotient", ...QUESTION } },
+      ],
+      [{ text: "The answer is A. What did you try?" }],
+      [{ text: "Noted: the answer shown was wrong." }],
+    ],
+    // The judge gives "incorrect", as its prompt asks for an "I don't know".
+    [ruling("incorrect", "B")],
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  expect(await chat.ready()).toEqual({ ok: true });
+  await chat.settled();
+  const questionId = lastQuestionId(chat);
+  expect(await chat.answer({ kind: "unknown", questionId })).toEqual({
+    ok: true,
+  });
+  await chat.settled();
+
+  const raised = await setup.disputes.raise(
+    COURSE,
+    questionId,
+    "A does not divide by h, so it cannot be the quotient.",
+  );
+
+  const dispute = {
+    kind: "dispute",
+    recordedAt: NOW,
+    questionId,
+    reason: "A does not divide by h, so it cannot be the quotient.",
+    outcome: { verdict: "unknown", reason: "Decided incorrect.", key: "B" },
+  };
+  expect(raised).toEqual({ ok: true, dispute });
+  expect((await reload().readEvidence(COURSE)).at(-1)).toEqual(dispute);
+  // Still a miss: attempted, not passed.
+  expect(statusOf(chat)).toEqual({
+    type: "unit_status",
+    unit: "in-progress",
+    objectives: { quotient: "attempted", limit: "not-started" },
+  });
+  // The card shows the corrected key, and the verdict it had.
+  const timeline = chat
+    .events()
+    .reduce(
+      (t, event, index) => reduce(t, { type: "event", index, event }),
+      reduce(emptyTimeline, { type: "hello", chatId: chat.id }),
+    );
+  const card = timeline.items.find((i) => i.kind === "question");
+  expect(card?.kind === "question" ? card.dispute?.outcome : undefined).toEqual(
+    dispute.outcome,
+  );
+
+  expect(chat.say("Was I right about A?")).toEqual({ ok: true });
+  await chat.settled();
+  const header = setup.backend.received.at(-1)?.text ?? "";
+  expect(header).toContain(
+    `The learner answered "I don't know" to a question on "quotient" ` +
+      '("Which is the difference quotient of $f$ at $a$?"), then said the ' +
+      "answer shown to them was wrong, giving this reason: " +
+      '"A does not divide by h, so it cannot be the quotient.". A separate ' +
+      "judge, which saw the question, the answer shown and that reason, found " +
+      "it wrong: the correct choice is B, not A. Its reason: Decided " +
+      `incorrect. The answer still counts as "I don't know", a miss.`,
+  );
+
+  const stored = await reload().readCourse(COURSE);
+  if (stored?.curriculum == null) throw new Error("no curriculum");
+  const known = whatIKnow(
+    stored.course.title,
+    stored.curriculum,
+    await reload().readState(COURSE),
+    await reload().readEvidence(COURSE),
+  );
+  const objective = known.units[0]?.objectives?.[0];
+  expect(objective?.status).toBe("attempted");
+  expect(objective?.evidence[0]).toMatchObject({
+    verdict: "unknown",
+    question: { answer: "A" },
+    dispute: { outcome: { verdict: "unknown", key: "B" } },
+  });
+  // Counted as "I don't know", at no confidence.
+  expect(known.calibration.unknown).toBe(1);
+  expect(known.calibration.levels.every((l) => l.answered === 0)).toBe(true);
+  // Reported once, as a dispute is.
+  expect(
+    await setup.disputes.raise(COURSE, questionId, "Again."),
+  ).toMatchObject({ ok: false, status: 409 });
 });
 
 test("a judge that fails records nothing, and the dispute can be sent again", async () => {

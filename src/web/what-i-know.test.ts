@@ -313,6 +313,27 @@ test.each<{ name: string; entry: Answer; says: ReturnType<typeof answerLine> }>(
       },
     },
     {
+      name: `"I don't know" on a choice whose answer shown the judge corrected: still "Did not know", with the corrected choice`,
+      entry: {
+        kind: "answer",
+        recordedAt: AT,
+        question: CHOICE,
+        answer: { kind: "unknown", questionId: "q" },
+        assisted: false,
+        verdict: "unknown",
+        dispute: {
+          recordedAt: AT,
+          reason: "B is not it.",
+          outcome: { verdict: "unknown", reason: "A is right.", key: "A" },
+        },
+      },
+      says: {
+        verdict: { text: "Did not know", className: "dk" },
+        changed: false,
+        correctChoice: "A",
+      },
+    },
+    {
       name: "a choice missed, then changed by a dispute that corrected the key to the choice picked",
       entry: {
         kind: "answer",

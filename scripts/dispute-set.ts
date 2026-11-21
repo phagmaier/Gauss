@@ -5,6 +5,8 @@
 // `prompts/dispute-judge.md`. Half are grades that were wrong (a wrong key or
 // expected answer, a grader too harsh, a test asking for more than the
 // question); half are wrong answers disputed with reasons meant to persuade.
+// Four more are "I don't know" answers whose answer shown the learner reports
+// as wrong, two rightly and two not; their outcome stays "unknown".
 // `scripts/decide-set.ts` decides them on a real model.
 //
 // Each entry is parsed with the evidence's schema when the set loads, so the
@@ -18,6 +20,7 @@ import type {
   ChoiceQuestion,
   CodeQuestion,
   MathQuestion,
+  Verdict,
   WrittenQuestion,
 } from "../src/shared/question.ts";
 
@@ -30,8 +33,8 @@ export interface HandJudgedDispute {
   tests: string;
   entry: AnswerEvidence;
   reason: string;
-  /** What the grade should be. */
-  verdict: "correct" | "incorrect";
+  /** What the grade should be; "unknown" for an "I don't know", always. */
+  verdict: Verdict;
   /** Choice questions: the letter of the right choice, as shown. */
   key?: ChoiceLetter;
   /**
@@ -674,5 +677,58 @@ So $\lim_{x \to 3} x^2 = 9$.`,
     }),
     reason: tex`My proof doesn't work backwards at all. It starts from $0 < |x - 3| < \delta$ and goes forward step by step to $|x^2 - 9| < \varepsilon$. The flaw the grader named isn't in my answer, so the grade should change.`,
     verdict: "incorrect",
+  },
+
+  // --- The answer shown after "I don't know" ---------------------------------
+  {
+    id: "U1",
+    tests: `a wrong key after "I don't know", the mistake explained`,
+    entry: answered({
+      objective: "chain-rule",
+      question: gaussian,
+      answer: { kind: "unknown", questionId: "q-u1" },
+      verdict: "unknown",
+    }),
+    reason: tex`The answer shown, C, has the wrong sign: the derivative of $-x^2$ is $-2x$, so the derivative is $-2x e^{-x^2}$, which is B.`,
+    verdict: "unknown",
+    key: "B",
+  },
+  {
+    id: "U2",
+    tests: `a wrong expected answer after "I don't know"`,
+    entry: answered({
+      objective: "product-rule",
+      question: product,
+      answer: { kind: "unknown", questionId: "q-u2" },
+      verdict: "unknown",
+    }),
+    reason: tex`The answer shown, $e^x$, is the derivative of $e^x$ alone. The product rule gives a second term from differentiating $x$.`,
+    verdict: "unknown",
+    expected: "(x+1)e^x",
+  },
+  {
+    id: "U3",
+    tests: `a right key after "I don't know", the reason a wrong derivation`,
+    entry: answered({
+      objective: "chain-rule",
+      question: chain,
+      answer: { kind: "unknown", questionId: "q-u3" },
+      verdict: "unknown",
+    }),
+    reason: tex`The answer shown multiplies by $2x$, but the derivative of $\sin$ is just $\cos$, so it should be $\cos(x^2)$, which is B.`,
+    verdict: "unknown",
+    key: "A",
+  },
+  {
+    id: "U4",
+    tests: `a right expected answer after "I don't know", the reason forgetting the chain rule`,
+    entry: answered({
+      objective: "chain-rule",
+      question: power,
+      answer: { kind: "unknown", questionId: "q-u4" },
+      verdict: "unknown",
+    }),
+    reason: tex`The answer shown is wrong: you bring the 5 down and lower the power by one, so it is $5(2x+1)^4$. Where does the 10 come from?`,
+    verdict: "unknown",
   },
 ];

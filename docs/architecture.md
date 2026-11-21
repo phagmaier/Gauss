@@ -841,13 +841,18 @@ with sources (stage 4).
   open to the package index.
 - **Disputes** (`engine/disputes.ts`; why, `decisions.md`, "Disputes").
   Any graded answer of the course can be disputed once, from its graded
-  card in the session or from "What I know", in a finished unit too; not
-  "I don't know". While disputing, the learner sees what the answer was
+  card in the session or from "What I know", in a finished unit too. An
+  "I don't know" to a choice or math question cannot be, but its answer
+  shown, the key or expected expression, can be reported wrong in the same
+  way, once; one to a written or code question shows none and has neither.
+  While disputing, the learner sees what the answer was
   graded by (`GradedBy` in `src/shared/dispute.ts`) and writes a reason,
-  which is required. The dispute judge decides, outside every queue, and
+  which is required; a report has the reason alone. The dispute judge
+  decides, outside every queue, and
   one dispute of an answer is decided at a time. Its outcome (`DisputeEvidence`
   in `src/shared/evidence.ts`) names the answer by `questionId` and holds
-  the verdict the answer now counts with, the judge's reason, and a
+  the verdict the answer now counts with ("unknown", always, for an "I
+  don't know"), the judge's reason, and a
   corrected choice key or expected expression, which shows wherever the
   first one did. It is written through the unit's chat when that is open,
   in its queue; otherwise directly, and the chat shows it, and tells the
@@ -863,9 +868,13 @@ with sources (stage 4).
   has `unsettled`; the rubric; the tests, frozen workspace inputs and
   command, not the solution), the answer with its reasoning, the grade with
   the flaw or the tests' output, and the learner's reason, each between
-  tags; never the confidence or the conversation. `DisputeJudgment` gives
+  tags; never the confidence or the conversation. For an "I don't know",
+  the question, its choices, the key or expected expression, the answer as
+  "I don't know" and the reason; no grade, and not where the learner got
+  stuck. `DisputeJudgment` gives
   a reason shown to the learner, the verdict, and for a choice question the
-  right letter, from which its verdict must follow. A reply out of shape,
+  right letter, from which its verdict must follow; an "I don't know"'s
+  verdict is not read. A reply out of shape,
   a failed request or one past three minutes fails as the grader's does:
   nothing is recorded, the page shows why, and the learner can send the
   dispute again. It runs on Claude Sonnet 5.5 (`DISPUTE_MODEL`).
@@ -1138,9 +1147,11 @@ progress take the outline.
   showed, ruled in peach and "Open" while the objective is not passed, grey
   and "Cleared" once it is; a rubric or a code question's tests and frozen
   inputs only while that answer is disputed. Each graded answer has
-  "Dispute this grade" (`src/web/Dispute.tsx`), and a disputed
+  "Dispute this grade" (`src/web/Dispute.tsx`), and an "I don't know" to a
+  choice or math question "The answer shown is wrong"; a disputed
   one shows the verdict it now counts with, marked "after your dispute"
-  when changed, with its first grade, the reason and the outcome. Once an
+  when changed, with its first grade or answer shown, the reason and the
+  outcome. Once an
   outcome is in, the view is loaded again. Under the summary, the course's
   calibration shows, for each
   confidence level, how many unassisted answers were correct, "I don't
@@ -1180,7 +1191,8 @@ progress take the outline.
   Teach, discuss, check and done are hairlines with a label, as are the
   other markers. A graded card's verdict is one line under a hairline:
   the word coloured, then how sure, help taken and the expected answer
-  of a miss, and "Dispute this grade" at its end. One next-step control
+  of a miss, and "Dispute this grade" (after an "I don't know", "The
+  answer shown is wrong") at its end. One next-step control
   where the thread
   has reached; the open question pinned above the message box until it is
   graded or withdrawn (only a question of what is under way: a review's
@@ -1323,8 +1335,9 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
   opens it if it is a plain file in the workspace (409 when it is not;
   502 with the opener's reason when the opener fails).
 - Under `/api/courses/<id>/answers/<question id>/`, for a recorded answer:
-  `GET graded-by` (what graded it, for its dispute), and `POST dispute`
-  with the reason, which answers once the outcome is recorded (502 when
+  `GET graded-by` (what graded it, for its dispute; 409 for "I don't
+  know"), and `POST dispute` with the reason, for a dispute or a report of
+  the answer shown, which answers once the outcome is recorded (502 when
   the judge failed and nothing was recorded).
 - `POST /api/intakes`, then under `/api/intakes/<id>/`: `events`,
   `messages`, `approval`, `interrupt`. An intake is addressed by an id of

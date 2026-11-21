@@ -124,7 +124,8 @@ export type OverrideEvidence = z.infer<typeof OverrideEvidence>;
  * The learner disputed the grade of the answer to question `questionId`,
  * and the dispute judge decided (task 3.8). The answer's own line keeps its
  * first grade; it counts with this outcome's verdict where it stands in the
- * log. One per answer, and never for "I don't know".
+ * log. One per answer. For an "I don't know", which nothing graded, it
+ * reports the answer shown as wrong: only the key can change.
  */
 export const DisputeEvidence = z.object({
   kind: z.literal("dispute"),
