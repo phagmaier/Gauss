@@ -53,12 +53,14 @@ import math
 import posixpath
 import re
 import sys
+import unicodedata
 import zipfile
 import zlib
 from bisect import bisect_left, bisect_right
 from collections import Counter
-from dataclasses import dataclass, field
-from itertools import pairwise, takewhile
+from dataclasses import dataclass, field, replace
+from itertools import dropwhile, groupby, pairwise, takewhile
+from operator import not_
 from pathlib import Path
 from html.parser import HTMLParser
 from statistics import median
@@ -69,7 +71,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
-CONVERTER_VERSION = 3  # raised when the same original would give other files
+CONVERTER_VERSION = 4  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text (decisions.md, "Sources")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
@@ -1139,7 +1141,10 @@ def render_page(original, number, png):
 # leave out stays in the entry before it.
 
 _EPUB = b"application/epub+zip"
-_EPUB_BUDGET = 256 << 20  # bytes read out of the archive, decompressed
+_EPUB_BUDGET = 64 << 20  # bytes read out of the archive, decompressed
+_EPUB_ELEMENTS = 1_000_000  # elements in all the documents parsed
+_EPUB_DEPTH = 100  # elements inside one another
+_TOO_LARGE = "The EPUB is too large to read."
 _XHTML = {"application/xhtml+xml", "text/html"}
 _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 _SKIPPED = {"head", "script", "style", "svg", "template", "title"}
@@ -1148,20 +1153,57 @@ _BLOCK_TAGS = {
     "fieldset", "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hgroup", "hr",
     "html", "li", "main", "nav", "ol", "p", "pre", "section", "summary", "table", "ul",
 }  # fmt: skip
+# HTML's implied end tags: a start tag ends an open element of the first set, inside the nearest of the second.
+_ENDS = {
+    "li": ({"li"}, {"ol", "ul"}),
+    "dt": ({"dt", "dd"}, {"dl"}),
+    "dd": ({"dt", "dd"}, {"dl"}),
+    "tr": ({"tr"}, {"table"}),
+    "td": ({"td", "th"}, {"tr", "table"}),
+    "th": ({"td", "th"}, {"tr", "table"}),
+    "thead": ({"thead", "tbody", "tfoot"}, {"table"}),
+    "tbody": ({"thead", "tbody", "tfoot"}, {"table"}),
+    "tfoot": ({"thead", "tbody", "tfoot"}, {"table"}),
+}
+_ENDS_P = _BLOCK_TAGS - {"body", "caption", "html"}  # these start tags end an open paragraph
 _TAG_FLAGS = {
     "i": {"italic"}, "em": {"italic"}, "cite": {"italic"}, "dfn": {"italic"}, "var": {"italic"},
     "b": {"bold"}, "strong": {"bold"}, "sup": {"super"},
 }  # fmt: skip
-_NOTE_TYPES = {"footnote", "endnote", "rearnote", "note", "footnotes", "endnotes", "rearnotes", "doc-footnote", "doc-endnote", "doc-endnotes"}  # fmt: skip
+_NOTES = {"footnote", "endnote", "rearnote", "note", "doc-footnote", "doc-endnote"}  # an element that is one note
+_NOTE_LISTS = {"footnotes", "endnotes", "rearnotes", "doc-endnotes"}  # an element that holds notes
+_NOTEREFS = {"noteref", "doc-noteref"}
+_BACKLINKS = {"backlink", "doc-backlink"}
 _NOTE_REFERENCE = re.compile(r"[\[(]?(?:\d{1,4}|[a-z]{1,3}|[*∗†‡§¶]{1,3})[\])]?\.?", re.IGNORECASE)
+_LABEL_AFTER = {".", ")", ":", "]"}  # between a note's printed label and its text
 _HTML_SPACE = re.compile(r"[ \t\n\r\f]+")
+_SPACES = re.compile(" {2,}")
 _INVISIBLE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\xad]")  # controls and soft hyphens
-_ESCAPED = re.compile(r"[\\*`]|<(?=[A-Za-z/!?])")
-_LINE_START = re.compile(r"#|>|~~~|[-=]+\s*$")  # would start a heading, a quote or a fence, or underline a heading
-_LABEL_AFTER = re.compile(r"[\s.):\]]*")
 _CSS_RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
 _CSS_CLASS = re.compile(r"\s*[a-z0-9]*\.([\w-]+)\s*", re.IGNORECASE)
 _CSS_DECLARATION = re.compile(r"([\w-]+)\s*:\s*([^;]+)")
+
+# Markdown's inline syntax in a document's own characters. A reference is written between \x00 and \x01, and
+# text kept as it is (math) as its number between \x02 and \x03, until the line is whole (`_EpubWriter._line`).
+_ESCAPED = re.compile(
+    r"[\\*`]"
+    r"|(?<![^\W_])_|_(?![^\W_])"  # an underscore that is not inside a word
+    r"|<(?=[A-Za-z/!?])"  # a tag, or a link in angle brackets
+    r"|&(?=#?[A-Za-z0-9]+;)"  # an entity
+    r"|\[(?=\^)"  # a footnote
+    r"|\](?=\()"  # a link
+    r"|(?<=\x01)[(:]"  # after a reference: its text as a link's, or a definition's colon
+    r"|~(?=~)|(?<=~)~"  # struck-through text
+)
+_KEPT = re.compile("\x00([^\x01]*)\x01|\x02([0-9]+)\x03")
+# A line's start that would make it a heading, a quote, a list item, a rule, a heading's underline, a table's
+# rule or a link's definition.
+_LINE_START = re.compile(r"#{1,6}(?=\s|$)|>|[-+](?=\s|$)|[-=:|][-=:|\s]*$|\[(?=.*\]:)")
+_LINE_NUMBER = re.compile(r"\d{1,9}(?=[.)](?:\s|$))")
+# A written paragraph's spans that are not the document's characters: a line break, an escape, a reference.
+_WRITTEN = re.compile(r"(\\\n)|\\.|(\[\^[^\]\s]+\])")
+_ATOM = re.compile(r"([ \t\n\r\f   -   　]+)|([^\W_]+)|(.)", re.DOTALL)
+_ITALIC, _BOLD = 1, 2
 
 
 @dataclass(frozen=True)
@@ -1172,7 +1214,7 @@ class _TocEntry:
     title: str
 
 
-@dataclass
+@dataclass(eq=False, slots=True)
 class _Element:
     tag: str
     attrs: dict
@@ -1182,12 +1224,25 @@ class _Element:
         return set(f"{self.attrs.get('epub:type', '')} {self.attrs.get('role', '')}".split())
 
 
-@dataclass
-class _Item:
-    """A list item a block is in: its marker, written before the item's first block only."""
+@dataclass(eq=False)
+class _Container:
+    """A block quote or a list item a block is in; an item's marker is written before its first block only."""
 
     marker: str
+    quote: bool = False
     used: bool = False
+
+
+@dataclass(frozen=True)
+class _Inherited:
+    """What a block takes from the elements it is in."""
+
+    context: tuple = ()  # the quotes and list items, from the outside
+    italic: bool = False
+    bold: bool = False
+    note: bool = False  # in an element typed as a note, or as notes
+    unit: int | None = None  # the note it is in: an element typed as one, or an item of a list typed as notes
+    listed: bool = False  # in an element typed as notes
 
 
 @dataclass
@@ -1195,10 +1250,8 @@ class _Block:
     kind: str  # "text", "heading" (h1 to h6), "table", "pre" or "rule"
     nodes: list
     file: int  # its document's place in the spine
+    state: _Inherited
     level: int = 0
-    italic: bool = False  # set by an enclosing block's style
-    bold: bool = False
-    note: bool = False  # inside an element typed as a note
     first: str = ""  # its first line's quote marks and list marker
     rest: str = ""  # its other lines'
 
@@ -1210,24 +1263,40 @@ class _Link:
     leading: bool  # no text before it in its block
     raised: bool  # superscript, or holding one
     order: int
-    key: tuple | None  # (document, id) of the link itself
+    keys: tuple  # (document, id) of the link itself, by its id and its name
     target: tuple | None  # (document, fragment or None) it points to, within the spine
 
 
+@dataclass(slots=True)
+class _Atom:
+    """A piece of a line: spaces, a word's characters, or one punctuation mark; or a reference, or math."""
+
+    text: str
+    style: int  # _ITALIC, _BOLD
+    head: str  # its first character's kind for emphasis marks: "s" space, "p" punctuation, "w" other
+    tail: str  # its last character's
+
+
 class _Archive:
-    """The EPUB's ZIP archive, read within a budget; reading an encrypted text document refuses the book."""
+    """The EPUB's ZIP archive, read within a budget of bytes and one of parsed elements."""
 
     def __init__(self, archive):
-        self.archive, self.budget, self.encrypted = archive, _EPUB_BUDGET, set()
+        self.archive, self.budget, self.elements, self.encrypted = archive, _EPUB_BUDGET, _EPUB_ELEMENTS, set()
         self.names = {info.filename: info for info in archive.infolist()}
 
+    def locked(self, name):
+        """Whether the member is encrypted: META-INF/encryption.xml lists it, or the ZIP says so."""
+        info = self.names.get(name)
+        return name in self.encrypted or (info is not None and bool(info.flag_bits & 1))
+
     def read(self, name, document=True):
+        """The member's bytes, or None without it; an encrypted one refuses the book if it is a text document."""
         info = self.names.get(name)
         if info is None:
             return None
-        if document and (name in self.encrypted or info.flag_bits & 1):
-            raise Refused("protected", "Its text is encrypted (DRM), so Gauss cannot read it.")
-        if info.flag_bits & 1:
+        if self.locked(name):
+            if document:
+                raise Refused("protected", "Its text is encrypted (DRM), so Gauss cannot read it.")
             return None
         try:
             with self.archive.open(info) as member:
@@ -1236,7 +1305,7 @@ class _Archive:
             raise Refused("format", "The EPUB's archive cannot be read.") from None
         self.budget -= len(raw)
         if self.budget < 0:
-            raise Refused("format", "The EPUB is too large to read.")
+            raise Refused("format", _TOO_LARGE)
         return raw
 
     def xml(self, name, required=True):
@@ -1251,6 +1320,10 @@ class _Archive:
             if not required:
                 return None
             raise Refused("format", f"The EPUB's {name} is not well-formed XML.") from None
+
+    def html(self, name):
+        raw = self.read(name)
+        return None if raw is None else _parse_html(raw, self)
 
 
 def _read_epub(data):
@@ -1267,57 +1340,63 @@ def _read_epub(data):
             return None
         if mimetype is None or mimetype.strip() != _EPUB:
             return None
-        container = book.xml("META-INF/container.xml")
-        package_path = next(
-            (e.get("full-path") for e in container.iter() if _local(e.tag) == "rootfile" and e.get("full-path")),
-            None,
-        )
-        if package_path is None:
-            raise Refused("format", "The EPUB names no package document.")
-        book.encrypted = _encrypted(book)
-        package = book.xml(package_path)
+        try:
+            return _read_book(book)
+        except RecursionError:
+            raise Refused("format", "The EPUB's documents nest too deeply to read.") from None
 
-        manifest = {}  # id: (path, media type, properties)
-        for item in package.iter():
-            if _local(item.tag) == "item" and item.get("id") and item.get("href"):
-                target = _href(package_path, item.get("href"))
-                if target:
-                    manifest[item.get("id")] = (target[0], item.get("media-type", ""), item.get("properties", "").split())
-        spine = next((e for e in package.iter() if _local(e.tag) == "spine"), None)
-        paths = []
-        for itemref in [] if spine is None else spine:
-            item = manifest.get(itemref.get("idref")) if _local(itemref.tag) == "itemref" else None
-            if item and item[1] in _XHTML and item[0] not in paths:
-                paths.append(item[0])
-        documents = []
-        for path in paths:
-            raw = book.read(path)
-            if raw is not None:
-                documents.append((path, _body(_parse_html(raw))))
 
-        toc = []
-        nav = next((path for path, _, properties in manifest.values() if "nav" in properties), None)
-        if nav is not None and (raw := book.read(nav)) is not None:
-            toc = _nav_toc(_parse_html(raw), nav)
-        ncx = manifest.get(spine.get("toc")) if spine is not None else None
-        ncx = ncx or next((item for item in manifest.values() if item[1] == "application/x-dtbncx+xml"), None)
-        ncx_root = book.xml(ncx[0], required=False) if ncx and not toc else None
-        if ncx_root is not None:
-            toc = _ncx_toc(ncx_root, ncx[0])
+def _read_book(book):
+    container = book.xml("META-INF/container.xml")
+    package_path = next(
+        (e.get("full-path") for e in container.iter() if _local(e.tag) == "rootfile" and e.get("full-path")),
+        None,
+    )
+    if package_path is None:
+        raise Refused("format", "The EPUB names no package document.")
+    book.encrypted = _encrypted(book)
+    package = book.xml(package_path)
 
-        sheets = [book.read(path, document=False) for path, media, _ in manifest.values() if media == "text/css"]
-        styles = _css_classes(sheet.decode("utf-8", "replace") for sheet in sheets if sheet)
-        metadata = (e for e in package.iter() if _local(e.tag) == "title")
-        title = next((" ".join("".join(e.itertext()).split()) for e in metadata if "".join(e.itertext()).strip()), None)
-        if title is None and ncx_root is not None:
-            doc_title = next((e for e in ncx_root.iter() if _local(e.tag) == "docTitle"), None)
-            title = " ".join("".join(doc_title.itertext()).split()) if doc_title is not None else None
+    manifest = {}  # id: (path, media type, properties)
+    for item in package.iter():
+        if _local(item.tag) == "item" and item.get("id") and item.get("href"):
+            target = _href(package_path, item.get("href"))
+            if target:
+                manifest[item.get("id")] = (target[0], item.get("media-type", ""), item.get("properties", "").split())
+    for path, media, _ in manifest.values():
+        if media in _XHTML and book.locked(path):
+            book.read(path)  # refuses: a text document of the book, in its reading order or not
+    spine = next((e for e in package.iter() if _local(e.tag) == "spine"), None)
+    paths = []
+    for itemref in [] if spine is None else spine:
+        item = manifest.get(itemref.get("idref")) if _local(itemref.tag) == "itemref" else None
+        if item and item[1] in _XHTML and item[0] not in paths:
+            paths.append(item[0])
+    documents = []
+    for path in paths:
+        root = book.html(path)
+        if root is not None:
+            documents.append((path, _body(root)))
 
+    metadata = (e for e in package.iter() if _local(e.tag) == "title")
+    title = next((" ".join("".join(e.itertext()).split()) for e in metadata if "".join(e.itertext()).strip()), None)
+    toc = []
+    nav = next((path for path, _, properties in manifest.values() if "nav" in properties), None)
+    if nav is not None and (root := book.html(nav)) is not None:
+        toc = _nav_toc(root, nav)
+    ncx = manifest.get(spine.get("toc")) if spine is not None else None
+    ncx = ncx or next((item for item in manifest.values() if item[1] == "application/x-dtbncx+xml"), None)
+    ncx_root = book.xml(ncx[0], required=False) if ncx and (not toc or title is None) else None
+    if ncx_root is not None and not toc:
+        toc = _ncx_toc(ncx_root, ncx[0])
+    if ncx_root is not None and title is None:
+        doc_title = next((e for e in ncx_root.iter() if _local(e.tag) == "docTitle"), None)
+        title = " ".join("".join(doc_title.itertext()).split()) if doc_title is not None else None
+
+    sheets = [book.read(path, document=False) for path, media, _ in manifest.values() if media == "text/css"]
+    styles = _css_classes(sheet.decode("utf-8", "replace") for sheet in sheets if sheet)
     entries, targets = _toc_entries(toc, {path: index for index, (path, _) in enumerate(documents)})
-    try:
-        text, blocks = _EpubWriter(documents, styles).write(entries, targets)
-    except RecursionError:
-        raise Refused("format", "The EPUB's documents nest too deeply to read.") from None
+    text, blocks = _EpubWriter(documents, styles, targets).write(entries, targets)
     if not text:
         raise Refused("empty", "It holds no text.")
     _check_paragraphs(blocks)
@@ -1343,7 +1422,7 @@ def _href(document, href):
 def _encrypted(book):
     """The archive paths that META-INF/encryption.xml lists: encrypted, or obfuscated as fonts are.
 
-    Only a text document among them refuses the book (`_Archive.read`); Gauss never reads a font.
+    Only a text document among them refuses the book (`_read_book`); Gauss never reads a font.
     """
     raw = book.read("META-INF/encryption.xml", document=False)
     if raw is None:
@@ -1365,21 +1444,46 @@ def _encrypted(book):
 
 
 class _TreeBuilder(HTMLParser):
-    """XHTML, or HTML, as a tree of `_Element`s and strings; a stray end tag is left out."""
+    """XHTML, or HTML, as a tree of `_Element`s and strings.
 
-    def __init__(self):
+    HTML's end tags that may be left out are supplied (`_ENDS`), and a stray end tag is left out.
+    """
+
+    def __init__(self, book):
         super().__init__(convert_charrefs=True)
+        self.book = book
         self.root = _Element("#root", {})
         self.stack = [self.root]
 
-    def handle_starttag(self, tag, attrs):
-        element = _Element(_local(tag), {name: value or "" for name, value in attrs})
+    def _end(self, tags, within):
+        for depth in range(len(self.stack) - 1, 0, -1):
+            if self.stack[depth].tag in tags:
+                del self.stack[depth:]
+                return
+            if self.stack[depth].tag in within:
+                return
+
+    def _start(self, tag, attrs, open):
+        tag = _local(tag)
+        if tag in _ENDS:
+            self._end(*_ENDS[tag])
+        if tag in _ENDS_P:
+            self._end({"p"}, _BLOCK_TAGS)
+        self.book.elements -= 1
+        if self.book.elements < 0:
+            raise Refused("format", _TOO_LARGE)
+        element = _Element(tag, {name: value or "" for name, value in attrs})
         self.stack[-1].children.append(element)
-        if element.tag not in _VOID:
+        if open and tag not in _VOID:
+            if len(self.stack) > _EPUB_DEPTH:
+                raise Refused("format", "The EPUB's documents nest too deeply to read.")
             self.stack.append(element)
 
+    def handle_starttag(self, tag, attrs):
+        self._start(tag, attrs, True)
+
     def handle_startendtag(self, tag, attrs):
-        self.stack[-1].children.append(_Element(_local(tag), {name: value or "" for name, value in attrs}))
+        self._start(tag, attrs, False)
 
     def handle_endtag(self, tag):
         tag = _local(tag)
@@ -1389,16 +1493,24 @@ class _TreeBuilder(HTMLParser):
                 return
 
     def handle_data(self, data):
-        self.stack[-1].children.append(data)
+        children = self.stack[-1].children
+        if children and isinstance(children[-1], str):
+            children[-1] += data
+        else:
+            children.append(data)
+
+    def unknown_decl(self, data):
+        if data.startswith("CDATA["):
+            self.handle_data(data[6:])
 
 
-def _parse_html(raw):
+def _parse_html(raw, book):
     if raw.startswith(codecs.BOM_UTF8):
         text = raw[3:].decode("utf-8", "replace")
     elif raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
         text = raw.decode("utf-16", "replace")
     else:
-        declared = re.match(rb"\s*<\?xml[^>]*encoding=[\"']([A-Za-z0-9._-]+)", raw)
+        declared = re.match(rb"\s*<\?xml[^>]*?\bencoding\s*=\s*[\"']([A-Za-z0-9._-]+)", raw)
         encoding = "utf-8"
         if declared:
             try:
@@ -1406,7 +1518,7 @@ def _parse_html(raw):
             except LookupError:
                 pass
         text = raw.decode(encoding, "replace")
-    builder = _TreeBuilder()
+    builder = _TreeBuilder(book)
     builder.feed(text)
     builder.close()
     return builder.root
@@ -1529,18 +1641,128 @@ def _escape(text):
     return _ESCAPED.sub(lambda match: "\\" + match[0], text)
 
 
-def _wrap(text, mark):
-    """Text in emphasis marks, its outer whitespace outside them."""
-    core = text.strip()
-    if not mark or not core:
-        return text
-    return f"{text[: len(text) - len(text.lstrip())]}{mark}{core}{mark[::-1]}{text[len(text.rstrip()) :]}"
+def _line_start(line):
+    """The line, with a start that Markdown would read as a block's mark escaped."""
+    if _LINE_START.match(line):
+        return "\\" + line
+    if number := _LINE_NUMBER.match(line):
+        return f"{number[0]}\\{line[number.end() :]}"
+    return line
 
 
-def _lines(text):
-    """A block's text as its lines: from `<br>`s, spaces collapsed, empty lines left out."""
-    lines = (re.sub(" {2,}", " ", line).strip() for line in text.split("\n"))
-    return ["\\" + line if _LINE_START.match(line) else line for line in lines if line]
+def _heading_line(level, text):
+    """An ATX heading; a run of `#` that would close it is escaped."""
+    if re.search(r"(?:^|\s)#+$", text):
+        text = text[:-1] + "\\#"
+    return f"{'#' * min(level, 6)} {text}"
+
+
+def _words(text):
+    return re.findall(r"[^\W_]+", text.lower())
+
+
+def _holds(words, others):
+    """Whether one list of words holds the other, in order and together."""
+    long, short = (words, others) if len(words) >= len(others) else (others, words)
+    return bool(short) and any(long[i : i + len(short)] == short for i in range(len(long) - len(short) + 1))
+
+
+def _text_atoms(text, style, out):
+    for match in _ATOM.finditer(text):
+        if match[1]:
+            kind = "s"
+        elif match[2]:
+            kind = "w"
+        else:
+            kind = "p" if unicodedata.category(match[3])[0] in "PS" else "w"
+        out.append(_Atom(match[0], style, kind, kind))
+
+
+def _settle(atoms):
+    """Narrows the atoms' styles until emphasis marks written around them are read as written.
+
+    CommonMark reads `*` as opening only before a character that is not a
+    space, and not before punctuation that follows a letter; as closing, the
+    reverse. So spaces take the style both their neighbours share, and
+    punctuation between a letter and a change of style takes the letter's
+    side. Italic and bold that overlap without one holding the other cannot
+    be nested: the one that starts later gives up the overlap. And marks
+    that open more emphasis inside emphasis are read as closing it unless
+    they follow a space, or punctuation before a letter: elsewhere the text
+    gives the inner emphasis up.
+    """
+    while True:
+        changed = False
+        for index, atom in enumerate(atoms):
+            if atom.head == "s":
+                atom.style = atoms[index - 1].style & atoms[index + 1].style
+        for a, b in pairwise(atoms):
+            if a.head == "s" or b.head == "s" or a.style == b.style:
+                continue
+            closes, opens = a.style & ~b.style, b.style & ~a.style
+            if closes and a.tail == "p" and b.head == "w":
+                a.style &= b.style
+                changed = True
+            elif opens and (a.tail + b.head == "wp" or (a.style & b.style and a.tail + b.head != "pw")):
+                b.style &= a.style
+                changed = True
+        for bit, other in ((_ITALIC, _BOLD), (_BOLD, _ITALIC)):
+            start = 0
+            while start < len(atoms):
+                end = start
+                while end < len(atoms) and atoms[end].style & bit:
+                    end += 1
+                if end > start and start > 0 and atoms[start].style & atoms[start - 1].style & other:
+                    stop = start
+                    while stop < end and atoms[stop].style & other:
+                        stop += 1
+                    if stop < end:  # the other style started before this one, and ends inside it
+                        for atom in atoms[start:stop]:
+                            atom.style &= ~bit
+                        changed = True
+                start = max(end, start + 1)
+        if not changed:
+            return
+
+
+def _marked(runs, active=0):
+    """Runs of (style, text) as Markdown: each style's marks around the longest stretch of runs that have it."""
+    out, index = [], 0
+    while index < len(runs):
+        style, text = runs[index]
+        best = None
+        for bit, mark in ((_ITALIC, "*"), (_BOLD, "**")):
+            if style & bit & ~active:
+                end = index
+                while end < len(runs) and runs[end][0] & bit:
+                    end += 1
+                if best is None or end > best[0]:
+                    best = (end, bit, mark)
+        if best is None:
+            out.append(_escape(text))
+            index += 1
+        else:
+            end, bit, mark = best
+            out.append(mark + _marked(runs[index:end], active | bit) + mark)
+            index = end
+    return "".join(out)
+
+
+def _guarded(paragraph):
+    """A written paragraph's spans that no cut may fall in: a reference with the word it follows, and a line break."""
+    spans = []
+    for match in _WRITTEN.finditer(paragraph):
+        if match[1]:
+            start, end = match.start(), min(match.end() + 1, len(paragraph))
+        elif match[2]:
+            word = max(paragraph.rfind(" ", 0, match.start()), paragraph.rfind("\n", 0, match.start())) + 1
+            start, end = word, match.end()
+        else:
+            continue
+        while spans and spans[-1][1] > start:
+            start = min(start, spans.pop()[0])
+        spans.append((start, end))
+    return spans
 
 
 def _epub_label(text):
@@ -1551,16 +1773,19 @@ def _epub_label(text):
 class _EpubWriter:
     """Writes the spine's documents as Markdown blocks, with a heading at each contents entry's target."""
 
-    def __init__(self, documents, styles):
+    def __init__(self, documents, styles, targets):
         self.documents, self.styles = documents, styles
+        self.targets = {target for target in targets if target[1] is not None}
         self.files = {path: file for file, (path, _) in enumerate(documents)}
         self.blocks, self.links = [], []
         self.anchors, self.starts, self.pending = {}, [], []  # (document, id): its block; each document's first
-        self.references, self.dropped, self.definitions = {}, set(), {}
+        self.definitions, self.continued = set(), {}  # blocks that start a note; a note's later blocks: its first
+        self.dropped, self.stripped = set(), set()  # links left out; blocks whose label was one
+        self.references, self.labels, self.kept = {}, {}, []  # a reference's label; a definition's; text kept as it is
         for file, (_, body) in enumerate(documents):
             self.file = file
             self.starts.append(len(self.blocks))
-            self._container(body, (), False, False, False)
+            self._container(body, _Inherited())
         self.starts.append(len(self.blocks))
         for key in self.pending:
             self.anchors.setdefault(key, len(self.blocks))
@@ -1577,33 +1802,42 @@ class _EpubWriter:
             flags |= self.styles.get(name, set())
         return flags | _css_flags(node.attrs.get("style", ""))
 
-    def _container(self, element, context, italic, bold, note):
+    def _keys(self, element):
+        return [(self.file, element.attrs[name]) for name in ("id", "name") if element.attrs.get(name)]
+
+    def _container(self, element, state):
         """Adds the element's children as blocks: a run of inline content between block elements is one."""
         run = []
         for child in element.children:
             if isinstance(child, str) or child.tag not in _BLOCK_TAGS:
                 run.append(child)
                 continue
-            self._add(_Block("text", run, self.file, italic=italic, bold=bold, note=note), context)
+            self._add(_Block("text", run, self.file, state))
             run = []
-            self._block(child, context, italic, bold, note)
-        self._add(_Block("text", run, self.file, italic=italic, bold=bold, note=note), context)
+            self._block(child, state)
+        self._add(_Block("text", run, self.file, state))
 
-    def _block(self, element, context, italic, bold, note, marker="- "):
+    def _block(self, element, state, marker="- "):
+        self.pending.extend(self._keys(element))
         if self._hidden(element):
             return
-        for name in ("id", "name"):
-            if element.attrs.get(name):
-                self.pending.append((self.file, element.attrs[name]))
-        flags = self._flags(element)
-        italic, bold = italic or "italic" in flags, bold or "bold" in flags
-        note = note or bool(element.types() & _NOTE_TYPES)
-        tag = element.tag
+        flags, types, tag = self._flags(element), element.types(), element.tag
+        unit = state.unit
+        if unit is None and (types & _NOTES or (tag == "li" and state.listed)):
+            unit = id(element)
+        state = replace(
+            state,
+            italic=state.italic or "italic" in flags,
+            bold=state.bold or "bold" in flags,
+            note=state.note or bool(types & (_NOTES | _NOTE_LISTS)),
+            unit=unit,
+            listed=state.listed or bool(types & _NOTE_LISTS),
+        )
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
-            self._add(_Block("heading", element.children, self.file, int(tag[1]), note=note), context)
+            self._add(_Block("heading", element.children, self.file, state, int(tag[1])))
         elif tag in {"table", "pre", "hr"}:
             kind = {"table": "table", "pre": "pre", "hr": "rule"}[tag]
-            self._add(_Block(kind, [element], self.file, note=note), context)
+            self._add(_Block(kind, [element], self.file, state))
         elif tag in {"ul", "ol"}:
             start = element.attrs.get("start", "1").strip()
             number = int(start) if start.isdigit() else 1
@@ -1611,29 +1845,73 @@ class _EpubWriter:
                 if isinstance(child, _Element):
                     value = child.attrs.get("value", "").strip()
                     number = int(value) if value.isdigit() else number
-                    self._block(child, context, italic, bold, note, "- " if tag == "ul" else f"{number}. ")
+                    self._block(child, state, "- " if tag == "ul" else f"{number}. ")
                     number += child.tag == "li"
         elif tag == "li":
-            self._container(element, (*context, _Item(marker)), italic, bold, note)
+            self._container(element, replace(state, context=(*state.context, _Container(marker))))
         elif tag == "blockquote":
-            self._container(element, (*context, "quote"), italic, bold, note)
+            self._container(element, replace(state, context=(*state.context, _Container("> ", quote=True))))
         else:
-            self._container(element, context, italic, bold, note)
+            self._container(element, state)
 
-    def _add(self, block, context):
-        ids = [
-            (self.file, element.attrs[name])
-            for node in block.nodes
+    def _ids(self, nodes):
+        return [
+            key
+            for node in nodes
             if isinstance(node, _Element)
             for element in (node, *_elements(node))
-            for name in ("id", "name")
-            if element.attrs.get(name)
+            for key in self._keys(element)
         ]
+
+    def _add(self, block):
+        """Adds the block, divided where a contents entry's target is inside its text."""
+        if block.kind == "text" and any(key in self.targets for key in self._ids(block.nodes)):
+            while (parts := self._divide(block.nodes)) is not None:
+                self._put(replace(block, nodes=parts[0]))
+                block = replace(block, nodes=parts[1])
+        self._put(block)
+
+    def _divide(self, nodes):
+        """The nodes before, and from, the first contents target among them that has text before it; or None."""
+        seen, found = False, None
+
+        def find(nodes):
+            nonlocal seen, found
+            for node in nodes:
+                if isinstance(node, str):
+                    seen = seen or bool(node.strip())
+                    continue
+                if seen and any(key in self.targets for key in self._keys(node)):
+                    found = node
+                    return True
+                if self._hidden(node):
+                    continue
+                if node.tag in {"img", "math"}:
+                    seen = seen or bool(self._plain([node]).strip())
+                elif find(node.children):
+                    return True
+            return False
+
+        def cut(nodes):
+            for index, node in enumerate(nodes):
+                if node is found:
+                    return nodes[:index], nodes[index:]
+                inner = cut(node.children) if isinstance(node, _Element) else None
+                if inner is not None:
+                    attrs = {name: value for name, value in node.attrs.items() if name not in {"id", "name"}}
+                    before, after = _Element(node.tag, node.attrs, inner[0]), _Element(node.tag, attrs, inner[1])
+                    return [*nodes[:index], before], [after, *nodes[index + 1 :]]
+            return None
+
+        return cut(nodes) if find(nodes) else None
+
+    def _put(self, block):
+        ids = self._ids(block.nodes)
         if block.kind != "rule" and not self._plain(block.nodes).strip():
             self.pending.extend(ids)
             return
-        for container in context:
-            if container == "quote":
+        for container in block.state.context:
+            if container.quote:
                 block.first, block.rest = block.first + "> ", block.rest + "> "
             else:
                 block.first += " " * len(container.marker) if container.used else container.marker
@@ -1666,8 +1944,8 @@ class _EpubWriter:
                     target = _href(path, node.attrs["href"])
                     target = (files[target[0]], target[1]) if target and target[0] in files else None
                     holds = any("super" in self._flags(element) for element in _elements(node))
-                    key = (block.file, node.attrs["id"]) if node.attrs.get("id") else None
-                    self.links.append(_Link(node, index, not seen, here or holds, len(self.links), key, target))
+                    keys = tuple((block.file, node.attrs[name]) for name in ("id", "name") if node.attrs.get(name))
+                    self.links.append(_Link(node, index, not seen, here or holds, len(self.links), keys, target))
                 walk(node.children, here)
 
         walk(block.nodes, False)
@@ -1690,127 +1968,137 @@ class _EpubWriter:
                 out.append(self._plain(node.children, skip))
         return "".join(out)
 
+    def _label(self, link):
+        return " ".join(self._plain([link.node]).split())
+
     # Notes and headings
 
     def _notes(self):
-        """Footnote references, and the blocks that define their notes, with the label links those start with."""
+        """The footnote references, each with the block that starts its note, or None when it has none.
+
+        A link typed as a note's reference is one. So is a raised link with a
+        short label, when the block at its target is a note: inside an element
+        typed as a note, or starting with the same label as a link that is the
+        target or leads back. That link, and one typed as leading back, are
+        left out.
+        """
         leading = {}
         for link in self.links:
             if link.leading:
                 leading.setdefault(link.block, link)
-        candidates = []
+        references = []
         for link in self.links:
-            if link.node.types() & {"noteref", "doc-noteref"}:
-                candidates.append(link)
-            elif link.raised and link.target is not None and link.target[1] is not None:
-                if _NOTE_REFERENCE.fullmatch(" ".join(self._plain([link.node]).split())):
-                    candidates.append(link)
-        for link in candidates:
+            types = link.node.types()
+            if types & _BACKLINKS:
+                self.dropped.add(id(link.node))
             if id(link.node) in self.dropped:
                 continue
-            block = self.anchors.get(link.target) if link.target and link.target[1] else None
-            if block is None or block >= len(self.blocks) or block == link.block or block in self.definitions:
+            typed = bool(types & _NOTEREFS)
+            anchored = link.target is not None and link.target[1] is not None
+            if not typed and not (link.raised and anchored and _NOTE_REFERENCE.fullmatch(self._label(link))):
                 continue
-            label = leading.get(block)
-            # The note's label links to the reference, or is its target, or links back into its paragraph.
-            if label is None or label is link or not (
-                label.key == link.target
-                or (label.target is not None and (label.target == link.key or self.anchors.get(label.target) == link.block))
-            ):
-                label = None
-                if not (self.blocks[block].note or link.node.types() & {"noteref", "doc-noteref"}):
-                    continue
-            self.definitions[block] = link.target
-            if label is not None:
-                self.dropped.add(id(label.node))
-        return [link for link in candidates if id(link.node) not in self.dropped]
+            block = self.anchors.get(link.target) if anchored else None
+            if block is None or block >= len(self.blocks) or block == link.block or self.blocks[block].kind != "text":
+                block = None
+            elif block not in self.definitions:
+                label = leading.get(block)
+                if label is not None and self._labels(label, link):
+                    self.dropped.add(id(label.node))
+                    self.stripped.add(block)
+                elif not (typed or self.blocks[block].state.note):
+                    block = None
+                if block is not None:
+                    self.definitions.add(block)
+            if block is not None or typed:
+                references.append((link, block))
 
-    def _match(self, title, first, file, consumed):
-        """The block after the lines from `first` that print the title, or None.
+        owner = unit = None  # the note being read, and the element it is
+        for index, block in enumerate(self.blocks):
+            if index in self.definitions:
+                owner, unit = index, block.state.unit
+            elif unit is not None and block.state.unit == unit:
+                self.continued[index] = owner
+            else:
+                owner = unit = None
+        # A link in a note that leads back to its reference, by a mark or the label alone, is left out too.
+        referred = {id(link.node) for link, _ in references}
+        back = {}
+        for link, block in references:
+            if block is not None:
+                back.setdefault(block, set()).update(link.keys)
+        for link in self.links:
+            keys = back.get(self.continued.get(link.block, link.block), ())
+            if link.target in keys and id(link.node) not in referred:
+                label = self._label(link)
+                if not any(c.isalnum() for c in label) or _NOTE_REFERENCE.fullmatch(label):
+                    self.dropped.add(id(link.node))
+        return references
 
-        A heading tag of the target's document stands for the title when no lines print it.
+    def _labels(self, label, link):
+        """Whether `label`, the link a block starts with, prints the label of the note that `link` refers to."""
+        if label is link or id(label.node) in self.dropped:
+            return False
+        printed = self._label(label)
+        if not _NOTE_REFERENCE.fullmatch(printed) or _epub_label(printed) != _epub_label(self._label(link)):
+            return False
+        back = label.target
+        return link.target in label.keys or (
+            back is not None and (back in link.keys or self.anchors.get(back) == link.block)
+        )
+
+    def _place(self, entries, targets):
+        """Each entry's heading, as (the block it goes before, the entry, the blocks that print its title).
+
+        The title is looked for from the entry's target, after the lines an
+        entry before it took, in its document and before the next entry's
+        target. Lines that print its letters come first for every entry; then
+        a heading tag at the target whose words hold the title's, or the
+        reverse.
         """
+        positions = [self._position(target) for target in targets]
+        bounds = sorted(set(positions))
+        noted = self.definitions | self.continued.keys()
+        consumed, printed = set(), {}
+        for exact in (True, False):
+            for i in sorted(range(len(entries)), key=lambda i: (positions[i], i)):
+                if i in printed:
+                    continue
+                first = positions[i]
+                while exact and first in consumed:
+                    first += 1
+                after = bisect_right(bounds, positions[i])
+                end = min(self.starts[targets[i][0] + 1], bounds[after] if after < len(bounds) else len(self.blocks))
+                found = self._match(entries[i].title, first, end, consumed, noted, exact)
+                if found is not None:
+                    printed[i] = range(first, found)
+                    consumed.update(printed[i])
+        placed = [(positions[i], entry, printed.get(i, range(0))) for i, entry in enumerate(entries)]
+        return sorted(placed, key=lambda place: (place[0], place[1].order)), consumed
+
+    def _match(self, title, first, end, consumed, noted, exact):
+        """The block after those from `first`, before `end`, that print the title; or None.
+
+        `exact`: by their letters, with or without a number before them; or else a heading tag by its words.
+        """
+        if not exact:
+            if first >= end or first in consumed or first in noted or self.blocks[first].kind != "heading":
+                return None
+            printed = self._plain(self.blocks[first].nodes, self.references)
+            return first + 1 if _holds(_words(title), _words(printed)) else None
         wanted = _letters(title)
         prefix = _NUMBER_PREFIX.match(title)
         bare = _letters(title[prefix.end() :]) if prefix else None
         parts = []
-        for index in range(first, min(first + 3, len(self.blocks))):
-            block = self.blocks[index]
-            if index in consumed or index in self.definitions or block.file != self.blocks[first].file:
+        for index in range(first, min(first + 3, end)):
+            if index in consumed or index in noted or self.blocks[index].kind not in {"text", "heading"}:
                 break
-            if block.kind not in {"text", "heading"}:
-                break
-            parts.append(self._plain(block.nodes, self.references))
+            parts.append(self._plain(self.blocks[index].nodes, self.references))
             printed = " ".join(" ".join(parts).split())
             number = _NUMBER_PREFIX.match(printed)
-            if wanted and (_letters(printed) in {wanted, bare} or (number and _letters(printed[number.end() :]) == wanted)):
+            numbered = number and _letters(printed[number.end() :]) == wanted
+            if wanted and (_letters(printed) in {wanted, bare} or numbered):
                 return index + 1
-        if first < len(self.blocks) and first not in consumed and first not in self.definitions:
-            if self.blocks[first].kind == "heading" and self.blocks[first].file == file:
-                return first + 1
         return None
-
-    def write(self, entries, targets):
-        """The text and its blocks: each entry's heading, in place of the lines that print it, then the blocks."""
-        references = self._notes()
-        self.references = {id(link.node) for link in references}
-
-        placed, consumed = [], set()  # placed: (block it precedes, entry, the blocks that print it)
-        order = sorted(range(len(entries)), key=lambda i: (self._position(targets[i]), i))
-        for i in order:
-            first = self._position(targets[i])
-            while first in consumed:
-                first += 1
-            after = self._match(entries[i].title, first, targets[i][0], consumed)
-            printed = range(first, after) if after else range(0)
-            consumed.update(printed)
-            placed.append((first, entries[i], printed))
-        placed.sort(key=lambda place: (place[0], place[1].order))
-
-        # Footnote labels: the printed one, made unique in the stretches where the note is referred to or defined.
-        positions = [place[0] for place in placed]
-
-        def stretch(block):
-            return bisect_right(positions, block)
-
-        defined_in = {key: block for block, key in self.definitions.items()}
-        notes = {}
-        for link in references:
-            key = link.target or ("reference", link.order)
-            note = notes.setdefault(key, [_epub_label(self._plain([link.node])), set()])
-            note[1].add(stretch(link.block))
-            if key in defined_in:
-                note[1].add(stretch(defined_in[key]))
-        used, labels = {}, {}
-        for key, (printed, stretches) in notes.items():
-            label, number = printed, 1
-            while any(label in used.get(s, ()) for s in stretches):
-                number += 1
-                label = f"{printed}-{number}"
-            for s in stretches:
-                used.setdefault(s, set()).add(label)
-            labels[key] = label
-        self.references = {id(link.node): labels[link.target or ("reference", link.order)] for link in references}
-        self.labels = {block: labels[key] for block, key in self.definitions.items() if key in labels}
-
-        out, length, blocks = [], 0, []
-        for index in range(len(self.blocks) + 1):
-            while placed and placed[0][0] == index:
-                _, entry, printed = placed.pop(0)
-                lines = [line for i in printed for line in _lines(self._inline(self.blocks[i].nodes, marks=False))]
-                heading = f"{'#' * min(entry.level, 6)} {' '.join(lines) or _escape(entry.title)}\n"
-                blocks.append(Heading(entry.level, entry.title, length, entry))
-                out.append(heading + "\n")
-                length += len(heading) + 1
-            if index == len(self.blocks) or index in consumed:
-                continue
-            lines = self._render(index)
-            if lines:
-                paragraph = "\n".join(lines) + "\n"
-                blocks.append(Paragraph(length, length + len(paragraph), whole=self.blocks[index].kind == "pre"))
-                out.append(paragraph + "\n")
-                length += len(paragraph) + 1
-        return "".join(out)[:-1], blocks
 
     def _position(self, target):
         file, fragment = target
@@ -1818,57 +2106,204 @@ class _EpubWriter:
             return self.starts[file]
         return self.anchors.get((file, fragment), self.starts[file])
 
+    def write(self, entries, targets):
+        """The text and its blocks: each entry's heading, in place of the lines that print it, then the blocks."""
+        references = self._notes()
+        self.references = dict.fromkeys(id(link.node) for link, _ in references)
+        placed, consumed = self._place(entries, targets)
+
+        # Footnote labels: the printed one, made unique in the stretches where the note is referred to or defined.
+        positions = [place[0] for place in placed]
+
+        def stretch(block):
+            return bisect_right(positions, block)
+
+        def key(link, block):
+            if block is not None:
+                return "note", block
+            return ("target", link.target) if link.target else ("reference", link.order)
+
+        notes = {}
+        for link, block in references:
+            note = notes.setdefault(key(link, block), [_epub_label(self._label(link)), set()])
+            note[1].add(stretch(link.block))
+            if block is not None:
+                note[1].add(stretch(block))
+        used, labels = {}, {}
+        for note, (printed, stretches) in notes.items():
+            label, number = printed, 1
+            while any(label in used.get(s, ()) for s in stretches):
+                number += 1
+                label = f"{printed}-{number}"
+            for s in stretches:
+                used.setdefault(s, set()).add(label)
+            labels[note] = label
+        self.references = {id(link.node): labels[key(link, block)] for link, block in references}
+        self.labels = {block: labels["note", block] for block in self.definitions}
+
+        out, length, blocks = [], 0, []
+        before = None  # the block written last, when the next may go on in its quote
+        note = None  # the note being written: the block that starts it
+        for index in range(len(self.blocks) + 1):
+            while placed and placed[0][0] == index:
+                _, entry, printed = placed.pop(0)
+                lines = [line for i in printed for line in self._lines(self.blocks[i].nodes, marks=False)]
+                text = " ".join(line for line in lines if line)
+                heading = _heading_line(entry.level, text or _escape(_INVISIBLE.sub("", entry.title))) + "\n"
+                if out:
+                    out.append("\n")
+                    length += 1
+                blocks.append(Heading(entry.level, entry.title, length, entry))
+                out.append(heading)
+                length += len(heading)
+                before = note = None
+            if index == len(self.blocks) or index in consumed:
+                continue
+            block = self.blocks[index]
+            joined = note is not None and self.continued.get(index) == note
+            paragraphs, breaks = self._render(index, joined)
+            for number, lines in enumerate(paragraphs):
+                paragraph = ("\\\n" if breaks else "\n").join(lines) + "\n"
+                if joined or (number and index in self.labels):  # a note's later paragraphs are part of it
+                    out.append("\n" + paragraph)
+                    length += 1 + len(paragraph)
+                    blocks[-1] = Paragraph(blocks[-1].start, length, whole=True)
+                    continue
+                if out:
+                    separator = "" if index in self.labels else self._separator(before, block)
+                    out.append(separator + "\n")
+                    length += len(separator) + 1
+                whole = block.kind == "pre" or index in self.labels
+                guarded = () if whole else tuple((length + a, length + b) for a, b in _guarded(paragraph))
+                blocks.append(Paragraph(length, length + len(paragraph), whole=whole, protected=guarded))
+                out.append(paragraph)
+                length += len(paragraph)
+                before, note = (None, index) if index in self.labels else (block, None)
+        return "".join(out), blocks
+
     # Markdown
 
-    def _inline(self, nodes, italic=False, bold=False, marks=True):
-        """The nodes as Markdown: emphasis, footnote references, images' alternative text, math's; `<br>` a newline."""
-        out = []
+    def _separator(self, before, block):
+        """The line between two blocks: empty, or the marks of the innermost quote that both are in."""
+        if before is None:
+            return ""
+        shared = list(takewhile(lambda pair: pair[0] is pair[1], zip(before.state.context, block.state.context)))
+        while shared and not shared[-1][0].quote:
+            shared.pop()
+        return "".join("> " if c.quote else " " * len(c.marker) for c, _ in shared).rstrip()
+
+    def _atoms(self, nodes, style, marks, out):
+        """The nodes' text in pieces, each with its emphasis, and None for a `<br>`."""
         for node in nodes:
             if isinstance(node, str):
-                out.append(_escape(_HTML_SPACE.sub(" ", _INVISIBLE.sub("", node))))
+                _text_atoms(_HTML_SPACE.sub(" ", _INVISIBLE.sub("", node)), style, out)
             elif self._hidden(node) or id(node) in self.dropped:
                 continue
             elif node.tag == "br":
-                out.append("\n")
+                out.append(None)
             elif node.tag == "img":
-                out.append(_escape(" ".join(node.attrs.get("alt", "").split())))
+                _text_atoms(" ".join(_INVISIBLE.sub("", node.attrs.get("alt", "")).split()), style, out)
             elif node.tag == "math":
-                out.append(" ".join(_math(node).split()))
+                text = " ".join(_math(node).split())
+                if text:
+                    kinds = ["p" if unicodedata.category(c)[0] in "PS" else "w" for c in (text[0], text[-1])]
+                    out.append(_Atom(f"\x02{len(self.kept)}\x03", style, *kinds))
+                    self.kept.append(text)
             elif id(node) in self.references:
-                out.append(f"[^{self.references[id(node)]}]")
+                out.append(_Atom(f"\x00{self.references[id(node)]}\x01", style, "p", "p"))
             elif node.tag in _BLOCK_TAGS:
-                out.append(f" {self._inline(node.children, italic, bold, marks)} ")
+                out.append(_Atom(" ", style, "s", "s"))
+                self._atoms(node.children, style, marks, out)
+                out.append(_Atom(" ", style, "s", "s"))
             else:
-                flags = self._flags(node)
-                on_italic, on_bold = "italic" in flags and not italic, "bold" in flags and not bold
-                inner = self._inline(node.children, italic or on_italic, bold or on_bold, marks)
-                out.append(_wrap(inner, ("*" if on_italic else "") + ("**" if on_bold else "") if marks else ""))
-        return "".join(out)
+                flags = self._flags(node) if marks else ()
+                inner = style | (_ITALIC if "italic" in flags else 0) | (_BOLD if "bold" in flags else 0)
+                self._atoms(node.children, inner, marks, out)
+        return out
 
-    def _render(self, index):
-        """A block's lines, its quote marks and list marker before them."""
+    def _lines(self, nodes, style=0, marks=True, strip=False):
+        """The nodes as Markdown, a line for each run between `<br>`s, empty for a run with no text.
+
+        `strip`: without the punctuation that followed the note's label, which was a link left out.
+        """
+        rows = [[]]
+        for atom in self._atoms(nodes, style, marks, []):
+            if atom is None:
+                rows.append([])
+            else:
+                rows[-1].append(atom)
+        if strip:
+            rows[0] = list(dropwhile(lambda atom: atom.head == "s" or atom.text in _LABEL_AFTER, rows[0]))
+        return [self._line(row) for row in rows]
+
+    def _line(self, atoms):
+        """A line's pieces as Markdown: spaces collapsed and trimmed, emphasis marked, its own characters escaped."""
+        line = []
+        for atom in atoms:
+            if atom.head == "s" and (not line or line[-1].head == "s"):
+                if line:
+                    line[-1].text += atom.text
+                continue
+            line.append(atom)
+        if line and line[-1].head == "s":
+            line.pop()
+        for atom in line:
+            if atom.head == "s":
+                atom.text = _SPACES.sub(" ", atom.text)
+        if any(atom.style for atom in line):
+            _settle(line)
+        styled = groupby(line, key=lambda atom: atom.style)
+        runs = [(style, "".join(atom.text for atom in run)) for style, run in styled]
+        return _KEPT.sub(lambda m: f"[^{m[1]}]" if m[2] is None else self.kept[int(m[2])], _marked(runs))
+
+    def _flat(self, nodes, marks=True):
+        return " ".join(line for line in self._lines(nodes, marks=marks) if line)
+
+    def _render(self, index, joined=False):
+        """A block's paragraphs, each its lines, and whether a line of them ends with a break.
+
+        A note's first block starts with its label; `joined`, a later block of the note written before it.
+        """
         block = self.blocks[index]
+        breaks = block.kind in {"text", "table"}
         if block.kind == "heading":
-            lines = _lines(self._inline(block.nodes, marks=False))
-            lines = [f"{'#' * block.level} {' '.join(lines)}"] if lines else []
+            text = self._flat(block.nodes, marks=False)
+            paragraphs = [[_heading_line(block.level, text)]] if text else []
         elif block.kind == "table":
-            lines = self._table(block.nodes[0])
+            rows = self._table(block.nodes[0])
+            paragraphs = [rows] if rows else []
         elif block.kind == "pre":
             code = "".join(_text_with_breaks(block.nodes[0])).replace("\r\n", "\n").replace("\r", "\n")
-            code = _INVISIBLE.sub("", code).strip("\n").rstrip()
-            fence = "`" * max(3, 1 + max((len(run) for run in re.findall(r"`+", code)), default=0))
-            lines = [fence, *code.split("\n"), fence]
+            code = _INVISIBLE.sub("", code).split("\n")
+            while code and not code[0].strip():
+                code.pop(0)
+            while code and not code[-1].strip():
+                code.pop()
+            fence = "`" * max(3, 1 + max((len(run) for line in code for run in re.findall(r"`+", line)), default=0))
+            paragraphs = [[fence, *code, fence]]
         elif block.kind == "rule":
-            lines = ["---"]
+            paragraphs = [["---"]]
         else:
-            mark = ("*" if block.italic else "") + ("**" if block.bold else "")
-            text = _wrap(self._inline(block.nodes, block.italic, block.bold), mark)
-            if index in self.labels:
-                text = text.lstrip()
-                lines = _lines(text[_LABEL_AFTER.match(text).end() :])
-                return [f"[^{self.labels[index]}]: {lines[0] if lines else ''}".rstrip(), *lines[1:]]
-            lines = _lines(text)
-        return [(block.first if number == 0 else block.rest) + line for number, line in enumerate(lines)]
+            style = (_ITALIC if block.state.italic else 0) | (_BOLD if block.state.bold else 0)
+            lines = self._lines(block.nodes, style, strip=index in self.stripped)
+            paragraphs = [[_line_start(line) for line in run] for empty, run in groupby(lines, key=not_) if not empty]
+        first, rest = block.first, block.rest
+        if index in self.labels:
+            marker = f"[^{self.labels[index]}]:"
+            if not paragraphs:
+                return [[marker]], breaks
+            paragraphs[0][0] = f"{marker} {paragraphs[0][0]}"
+            first, rest = "", "    "
+        elif joined:
+            outer = self.blocks[self.continued[index]].rest
+            inside = len(outer) if rest.startswith(outer) else 0
+            first, rest = "    " + first[inside:], "    " + rest[inside:]
+        written = []
+        for lines in paragraphs:
+            starts = [rest] * len(lines) if written else [first, *[rest] * (len(lines) - 1)]
+            pairs = zip(starts, lines, strict=True)
+            written.append([start + line if line else start.rstrip() for start, line in pairs])
+        return written, breaks
 
     def _table(self, table):
         """A table as its caption and its rows, a line each, the cells between ` | `."""
@@ -1879,19 +2314,19 @@ class _EpubWriter:
                 if not isinstance(child, _Element) or self._hidden(child):
                     continue
                 if child.tag == "caption":
-                    lines.extend(_lines(" ".join(_lines(self._inline(child.children)))))
+                    lines.append(self._flat(child.children))
                 elif child.tag == "tr":
                     cells = [
-                        " ".join(_lines(self._inline(cell.children)))
+                        self._flat(cell.children)
                         for cell in child.children
-                        if isinstance(cell, _Element) and cell.tag in {"td", "th"}
+                        if isinstance(cell, _Element) and cell.tag in {"td", "th"} and not self._hidden(cell)
                     ]
-                    lines.extend(_lines(" | ".join(cells)))
+                    lines.append(" | ".join(cells).strip() if any(cells) else "")
                 elif child.tag in {"thead", "tbody", "tfoot"}:
                     rows(child)
 
         rows(table)
-        return lines
+        return [_line_start(line) for line in lines if line]
 
 
 def _math(node):

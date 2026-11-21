@@ -2565,25 +2565,60 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   writing it beside them would print each title twice. Girard's are bold
   paragraphs broken by `<br>` ("Part Three / The Victory / of the Cross");
   Han's _Psychopolitics_ (Verso) sets one as two `h2`s, "1." and the
-  title. A heading tag at the target stands in when no lines match
-  ("12 Vita Contemplativa" for "12. Vita Contemplativa").
+  title. A heading tag at the target stands in only when its words hold
+  the title's or the reverse ("POLITY END USER LICENSE AGREEMENT" for
+  "End User License Agreement"), and after every entry has looked for its
+  exact lines. Dropped: any heading tag at the target, which printed
+  "Psychopolitics" under "Halftitle Page" and gave a part its chapter's
+  heading. The lines are looked for in the target's document, before the
+  next entry's target, or one entry takes another's title.
+- **A contents target inside a paragraph divides it** (the agent's
+  choice): the text before an inline anchor belongs to the entry before.
 - **Emphasis from the style sheets' class rules too** (the agent's
   choice): Girard's italics are all `span.italic`, from Calibre's
   stylesheet, with no `<i>` or `<em>`. Only simple selectors (`.c`,
   `span.c`) are read; a class's `font-style: normal` is ignored.
+- **Emphasis marks are placed by CommonMark's rules, and given up where
+  those cannot say it** (the agent's choice): `A<em>! </em>B` and
+  `<em>one</em><em>two</em>` came out as literal stars or the wrong span.
+  The rules in `_settle` were checked by writing some 700,000 sequences of
+  up to five styled pieces and reading each back with markdown-it: none
+  misread. What is given up is rare in a book: bold inside an italic
+  word, and an italic and a bold run that overlap without nesting.
+- **An EPUB's own characters are escaped, narrowly** (the agent's choice):
+  the section is Markdown, read by the model and rendered by the source
+  pane, so "1. The Crisis of Freedom" as a paragraph must not become a
+  list. Only what would be read as syntax is escaped (`[12]` and
+  `snake_case` are not), because the quote matcher has to undo each
+  escape. MathML's alternative text is kept as it is: escaping would
+  break its TeX.
+- **A `<br>` is a line ending in a backslash** (the agent's choice), not
+  two spaces, which editors strip and no one sees; two in a row start a
+  paragraph. A plain newline rendered Girard's verse as one line.
 - **Notes are found through their links** (the agent's choice): two of
   Han's other EPUBs (Polity's, on Wiley's template) end each chapter with
   asides typed
   `rearnote` whose first link is the reference's target, and
   _Psychopolitics_ has a Notes document of paragraphs whose first link
-  is the target and links back. A raised link counts only when it points
-  at an anchor, so a superscript link to a chapter is not a reference. A
-  label is unique where it is read, not in the whole book: the Notes
-  stretch holds every chapter's "1", so they become `1`, `1-2`, `1-3`
-  there and in their chapters (its 96 notes all defined once).
+  is the target and links back. A raised link is a reference only when
+  its target is such a note: the label link must print the reference's
+  own label, so a superscript cross-reference to a heading or to a
+  paragraph that links back stays text. A label belongs to the note, not
+  the link (Han's _The Scent of Time_ refers to one note twice), and is
+  unique where it is read, not in the whole book: the Notes stretch holds
+  every chapter's "1", so they become `1`, `1-2`, `1-3` there and in
+  their chapters (its 96 notes all defined once). A note's later
+  paragraphs are indented under it, as GFM continues a definition
+  (checked with remark-gfm).
 - **DRM is what `META-INF/encryption.xml` lists** (the agent's choice):
-  any text document listed refuses the book. Fonts are never read, so the
-  font-obfuscation algorithms need no exception; dropped as dead code.
+  any text document of the manifest listed refuses the book, read or not.
+  Fonts are never read, so the font-obfuscation algorithms need no
+  exception; dropped as dead code.
+- **An EPUB's budgets** (the agent's choice): 64 MB read from the archive,
+  a million parsed elements and a hundred nested, each refused as
+  "format". The bytes alone did not bound the parsed tree's memory or the
+  recursion over it. The five books tried have 1,600 to 3,300 elements,
+  of 90 to 280 bytes each, nested at most nine deep.
 - **Conversion runs in the engine's sandbox**: PDFium is native code
   parsing a file from outside the machine.
 
@@ -2662,6 +2697,9 @@ they will close.
 - Stop during an artifact write can still open the aid when the write
   finishes. The math field's Enter shortcut can submit while an input
   method is still composing text (the message box checks for it).
+- An EPUB's spine items marked `linear="no"` are written where the
+  spine has them, inside the entry before; whether such optional material
+  should be an entry of its own is the user's to decide.
 - Sandboxed commands and artifact scripts have no resource budgets for
   peak disk, memory or CPU use. The command deadline and output cap do
   not supply those budgets.

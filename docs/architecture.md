@@ -1106,46 +1106,69 @@ in spine order (`_read_epub`), with the standard library only:
 
 - **Outline**: the navigation document's `toc` (EPUB 3), else the NCX
   (EPUB 2). Each entry's heading goes at its target, a document's start or
-  an anchor in it, in place of the lines there (up to three) whose letters
-  print its title, with or without a number before it, or else of a
-  heading tag there; failing both, before the target. Its level is its
+  an anchor in it; an anchor with text before it in its paragraph divides
+  the paragraph there. The heading replaces the lines there (up to three)
+  whose letters print its title, with or without a number before it; or
+  else a heading tag there whose words hold the title's, or the reverse;
+  failing both, it is written before the target, and what is there stays
+  in the text. A title's lines are looked for in the target's document
+  and before the next entry's target. The heading's level is the entry's
   depth in the contents. An entry's text runs to the next entry's target
   in spine order, so a document the contents leave out stays in the entry
   before it. An entry with no target in the spine takes its first
   descendant's, or is left out with its children kept under the nearest
-  kept parent. Heading tags no entry targets stay in the text.
+  kept parent. Heading tags no entry replaces stay in the text.
 - **Markdown**: heading tags as ATX headings; paragraphs, and each run of
-  text between block elements, as paragraphs; italic and bold from tags
-  or from the style sheets' simple class rules, as `*` and `**`; list
-  items with their markers, nested; block quotes with `>`; a table as its
-  caption and a line per row, the cells between ` | `; a preformatted
-  block as a fence; a `<br>` as a new line; an image as its alternative
-  text; MathML as its `alttext`, else its TeX annotation. Hidden elements,
-  page-break markers and soft hyphens are left out. `*`, `` ` ``, `\` and
-  a `<` that could open a tag are escaped, and so is a line that would
-  start a heading, a quote or a fence.
-- **Footnotes**: a link typed `noteref`, or a raised link to an anchor
-  whose text is a short label (`1`, `[2]`, `*`), is a reference
-  `[^label]`. The block at its target is its note, `[^label]: ...`, when
-  it starts with a link that is that target or links back, the link left
-  out, or when it is inside an element typed as a note. A label is made
-  unique in the stretches where its note is referred to or defined.
+  text between block elements, as paragraphs; list items with their
+  markers, nested; block quotes with `>`, also on the line between two
+  blocks of one quote; a table as its caption and a line per row, the
+  cells between ` | `; a preformatted block as a fence, its lines' spaces
+  kept; a `<br>` as a line ending in `\`, and two in a row as a new
+  paragraph; an image as its alternative text; MathML as its `alttext`,
+  else its TeX annotation, as it is. Hidden elements, page-break markers
+  and soft hyphens are left out. The parser reads a declared encoding and
+  CDATA sections, and supplies the end tags HTML lets a document leave
+  out.
+- **Emphasis**: italic and bold from tags or from the style sheets'
+  simple class rules, as `*` and `**`, written so that CommonMark reads
+  them back (`_settle`): adjacent runs of one style are one; spaces and
+  punctuation at an edge go outside the marks where they would stop them
+  working; bold inside a word in italics, or the reverse, and the overlap
+  of an italic and a bold run that do not nest, give the inner or later
+  style up.
+- **The document's own characters** are escaped where Markdown would read
+  them as syntax (`_ESCAPED`, `_LINE_START`): `\`, `*`, `` ` ``, an
+  underscore not inside a word, a `<` that could open a tag, an entity's
+  `&`, `[^`, `](`, `~~`, and a line's start that would make a heading, a
+  quote, a list item, a rule, a table or a link's definition.
+- **Footnotes**: a link typed `noteref` is a reference `[^label]`. So is
+  a raised link with a short label (`1`, `[2]`, `*`) whose target is a
+  note: a block inside an element typed as a note, or one that starts with
+  the same label as a link that is the target or leads back. The block is
+  written `[^label]: ...`, without that link or one typed as a backlink;
+  the later blocks of its element (typed as a note, or a list item of an
+  element typed as notes) follow it indented, as part of it. References to
+  one note share its label, which is made unique in the stretches where
+  the note is referred to or defined. A raised link to anything else is
+  text.
 - **Title**: the package's first `dc:title`, else the NCX's `docTitle`,
-  else the file's name.
+  else as a Markdown source's (below).
 - **Refusals**: a file named `.epub` that is not a ZIP with the EPUB
-  `mimetype` ("format"); a text document listed in
-  `META-INF/encryption.xml`, or encrypted in the ZIP ("protected"). An
-  obfuscated font listed there is never read, so it does not refuse the
-  book.
+  `mimetype`, or one over the converter's budgets (64 MB read from the
+  archive, a million elements, a hundred nested) ("format"); any text
+  document of the manifest listed in `META-INF/encryption.xml`, or
+  encrypted in the ZIP, in the spine or not ("protected"). An obfuscated
+  font listed there is never read, so it does not refuse the book.
 
 - The outline nests as the source does. A PDF keeps its bookmark tree,
   and an EPUB its contents' tree, even when targets are out of order. A **section** is a leaf and
   the only kind of entry with a file. Text before a heading's first
   subheading is its own section; headings without text of their own go
   into the next section's file, or the last file at the end. Text before
-  any heading is a section under the source's title. A Markdown source
-  takes its title from its sole level-one heading if that opens the file;
-  otherwise it uses the file name without its extension.
+  any heading is a section under the source's title. A Markdown source,
+  or an EPUB that names no title, takes its title from its sole level-one
+  heading if that opens the text; otherwise it uses the file name without
+  its extension.
 - The files are exact slices of the normalized text. Read them by
   section-id ordinal for physical source order. The converter removes a
   leading byte-order mark and outer blank lines, preserves whitespace on
@@ -1158,9 +1181,10 @@ in spine order (`_read_epub`), with the standard library only:
   `OutlineSection.size`, is cut near equal shares, at paragraph
   boundaries. An oversized paragraph is cut at the safe sentence end
   nearest its middle, then at whitespace, then at the midpoint if needed.
-  No cut breaks a fence, a page marker, or a footnote's attachment to
-  its reference. If a heading, fence or other indivisible text cannot
-  fit, a part can exceed the target. Parts are titled by position and
+  No cut breaks a fence, a page marker, a footnote reference, an EPUB's
+  note or line break, or a PDF footnote's attachment to its reference. If
+  a heading, fence, note or other indivisible text cannot fit, a part can
+  exceed the target. Parts are titled by position and
   grouped under the stretch's heading if it has one.
 - Section ids are ordinals in reading order (`s1`, `s2`, ...). The same
   input bytes, name, folder id, limit and converter version give the

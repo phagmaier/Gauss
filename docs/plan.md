@@ -185,7 +185,9 @@ specific “Done when” checks.
     emphasis marks removed; curly quotes as straight, dashes as one; page
     markers, footnote references and the note definitions a PDF
     paragraph carries after it (`[^label]: ...`) left out, and the
-    backslash before a PDF paragraph's leading `#`, `>` or `<`; lines that hold only a
+    backslash before a PDF paragraph's leading `#`, `>` or `<`, and an
+    EPUB's backslashes (`_ESCAPED`, `_LINE_START` and a `<br>`'s line end
+    in `convert.py`) and the indent of a note's later paragraphs; lines that hold only a
     number of up to four digits left out (margin line numbers, as
     DeepTutor's `evidence_key` in `deeptutor/reading/_grounding.py`). A
     quote never matches across two sources.
@@ -213,7 +215,10 @@ specific “Done when” checks.
     course does not have shows the words alone. A link is text: no tool,
     nothing recorded.
   - The source pane: the section's text rendered (footnotes by
-    `remark-gfm`), a quote's passage marked and scrolled to, a link's
+    `remark-gfm`; an EPUB's note can be defined in another section, its
+    Notes chapter's, under a label unique only in the stretches that
+    refer to or define it, so text joined from several stretches needs
+    its labels told apart), a quote's passage marked and scrolled to, a link's
     section from its page lit briefly, a "Read" line's from its top; page
     numbers in the margin from the page markers, a dot by a page whose
     text lost math or images; the previous and next section; "Outline".
