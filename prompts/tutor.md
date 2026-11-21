@@ -430,11 +430,11 @@ itself, and not to decorate.
   that opens it again.
 - **A question from the aid.** When the learner explores something in
   it where a question is likely (a value where a series stops converging,
-  a step of an algorithm), give it a button "Ask about this" whose click
-  calls `askTutor(text)` with a question on what the aid shows at that
-  moment: "Why does the series stop converging at x = 1.2?". It puts the
-  question into the learner's message box, plain text as the rest of the
-  aid, for them to send or not; it works only from the learner's click.
+  a step of an algorithm), give it a button "Ask about this". In its
+  click handler, call `askTutor(text)` directly with a question on what
+  the aid shows at that moment: "Why does the series stop converging at
+  x = 1.2?". It puts the question into the learner's message box, plain
+  text as the rest of the aid, for them to send or not.
   Not in an aid with nothing to ask about.
 
 ## The workspace

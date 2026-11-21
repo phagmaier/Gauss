@@ -12,12 +12,10 @@ import { ASK_LIMIT } from "../../shared/artifact.ts";
  * Sends the aid's first uncaught error or unhandled rejection to the page,
  * as an `ArtifactReport` (`src/shared/artifact.ts`), and nothing after it:
  * an error in a drawing loop would repeat many times a second. Defines
- * `askTutor(text)`, which sends a question only while the learner's press
- * in the aid is fresh (`navigator.userActivation`, where the browser has
- * it), so an aid cannot fill the message box by itself; that is a guard
- * against a careless aid, not a boundary, as the aid can post to the page
- * itself. One line, so the aid's line numbers stay those of the document
- * the tutor wrote.
+ * `askTutor(text)`, which sends a question only during a trusted click
+ * in the aid. This guards against a careless aid, not an aid posting to
+ * the page itself. One line, so the aid's line numbers stay those of the
+ * document the tutor wrote.
  */
 export const ARTIFACT_REPORTER =
   "<script>(function () {" +
@@ -35,9 +33,10 @@ export const ARTIFACT_REPORTER =
   'var why; try { why = String(e.reason); } catch { why = "a value that cannot be shown"; }' +
   'report("Uncaught (in promise) " + why, 0, 0);' +
   "});" +
+  "var click;" +
+  'addEventListener("click", function (e) { if (e.isTrusted) click = e; }, true);' +
   "window.askTutor = function (text) {" +
-  "var pressed = navigator.userActivation;" +
-  "if (pressed && !pressed.isActive) return;" +
+  "if (!click || click.eventPhase === Event.NONE) return;" +
   'parent.postMessage({ gauss: "artifact", type: "ask", ' +
   `text: String(text).slice(0, ${ASK_LIMIT}) }, "*");` +
   "};" +

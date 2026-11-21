@@ -694,7 +694,13 @@ export function Session(props: { courseId: string; unitId: string }) {
           enabled={open && timeline.failed === null}
           busy={busy}
           onSend={(text) => post(path("messages"), { text })}
-          onAsk={(question) => composer.current?.ask(question)}
+          onAsk={(question) => {
+            // The side pane covers the composer at this width (styles.css).
+            if (window.matchMedia("(max-width: 900px)").matches) {
+              flushSync(closePane);
+            }
+            composer.current?.ask(question);
+          }}
           onClose={closePane}
         />
       ) : (

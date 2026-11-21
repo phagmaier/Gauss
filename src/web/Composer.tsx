@@ -125,7 +125,8 @@ export function Composer(props: {
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
-            void submit();
+            // Focus can have just moved here from Enter on an aid's button.
+            if (!e.repeat) void submit();
           }
         }}
       />

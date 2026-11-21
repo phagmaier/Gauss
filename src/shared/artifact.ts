@@ -59,7 +59,7 @@ export type ArtifactError = z.infer<typeof ArtifactError>;
 export const ArtifactAsk = z.object({
   gauss: z.literal("artifact"),
   type: z.literal("ask"),
-  text: z.string().trim().min(1).max(ASK_LIMIT),
+  text: z.string().max(ASK_LIMIT).trim().min(1),
 });
 export type ArtifactAsk = z.infer<typeof ArtifactAsk>;
 

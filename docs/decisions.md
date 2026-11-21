@@ -638,14 +638,13 @@ needs neither, since the record lies outside the workspace.
   `data-prompt` attribute too: one way for the tutor to learn, and a
   function takes the value the aid shows at the press. The question goes
   after the learner's draft, as a quoted passage does, since replacing it
-  would lose what they wrote; a second press of the same question adds
-  nothing. At most 500 characters, a question and not a document: the
-  frame cuts it there, and the page ignores a longer one, which only an
-  aid posting by itself can send. The frame sends it only while
-  `navigator.userActivation.isActive`, so an aid asking on load or in a
-  timer fills nothing; Chromium 158 gave `false` there 7 seconds after a
-  click. It is a guard against a careless aid, not a boundary: the aid
-  can post to the page itself, and the learner still sends or not.
+  would lose what they wrote; a second press adds nothing if the whole
+  question already stands at the end of the draft. At most 500 characters,
+  a question and not a document: the frame cuts it there, and the page
+  checks the length before trimming. `askTutor` only posts during a
+  trusted click's dispatch: recent input alone would let a timer fill the
+  box and steal focus after a slider move. This guards against a careless
+  aid, not an aid posting directly; the learner still sends or not.
 - **WebKit mutes an aid's errors.** In a frame with an opaque origin,
   WebKit gives the `error` event only "Script error." with no line, for
   errors at the top of an inline script, in a timer, in `eval` and in

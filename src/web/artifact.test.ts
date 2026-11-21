@@ -42,6 +42,7 @@ test("a report or a question is taken only from the frame the pane shows, and on
     { ...REPORT, type: "ask" },
     { ...ASK, text: "  " },
     { ...ASK, text: "x".repeat(501) },
+    { ...ASK, text: ` ${"x".repeat(500)}` },
     { ...ASK, text: 12 },
   ]) {
     expect(frameReport({ source: shown, data }, shown)).toBeUndefined();
@@ -57,6 +58,7 @@ test("a report or a question is taken only from the frame the pane shows, and on
 test("an aid's question goes after the learner's draft, once", () => {
   const question = "Why is the tangent's slope 2.40 at x = 1.20?";
   expect(withAsk("", question)).toBe(question);
+  expect(withAsk(question, question)).toBe(question);
   expect(withAsk(" \n", question)).toBe(question);
   expect(withAsk("I see the point move.\n", question)).toBe(
     `I see the point move.\n\n${question}`,
@@ -64,6 +66,10 @@ test("an aid's question goes after the learner's draft, once", () => {
   // Pressed again, the box keeps what it has, the learner's spaces too.
   const once = `I see the point move.\n\n${question}`;
   expect(withAsk(`${once} `, question)).toBe(`${once} `);
+  // Matching only the end of a different paragraph is not a repeat.
+  expect(withAsk("I can explain why?", "why?")).toBe(
+    "I can explain why?\n\nwhy?",
+  );
   // Another question, from the slider moved, goes after the first.
   expect(withAsk(once, "Why is the tangent's slope 0.00 at x = 0.00?")).toBe(
     `${once}\n\nWhy is the tangent's slope 0.00 at x = 0.00?`,

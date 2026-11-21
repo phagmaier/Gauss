@@ -43,11 +43,14 @@ export function errorMessage(
 
 /**
  * The message box's draft with the aid's question after it, so nothing the
- * learner wrote is lost; unchanged when the draft already ends with that
- * question, as when the aid's button is pressed twice.
+ * learner wrote is lost; unchanged when that question is already the last
+ * block of the draft, as when the aid's button is pressed twice.
  */
 export function withAsk(draft: string, question: string): string {
   const before = draft.trimEnd();
   if (before === "") return question;
-  return before.endsWith(question) ? draft : `${before}\n\n${question}`;
+  const block = `\n\n${question}`;
+  return before === question || before.endsWith(block)
+    ? draft
+    : `${before}${block}`;
 }

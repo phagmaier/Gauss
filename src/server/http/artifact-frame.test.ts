@@ -5,11 +5,9 @@ import { ARTIFACT_REPORTER, withReporter } from "./artifact-frame.ts";
 
 /**
  * Runs the reporter in a window of its own, as a frame would, and gives its
- * listeners, what it posted to the parent, and its `askTutor`. The frame's
- * `navigator.userActivation` is as given, or missing, as in a browser
- * without it.
+ * listeners, what it posted to the parent, and its `askTutor`.
  */
-function frame(userActivation?: { isActive: boolean }) {
+function frame() {
   const posted: { data: unknown; target: string }[] = [];
   const listeners = new Map<string, (event: object) => void>();
   const script = /^<script>(.*)<\/script>$/.exec(ARTIFACT_REPORTER)?.[1];
@@ -17,7 +15,9 @@ function frame(userActivation?: { isActive: boolean }) {
   const window: { askTutor?: (text: unknown) => void } = {};
   runInNewContext(script, {
     window,
-    navigator: { userActivation },
+    Event,
+    // Recent input in the frame is not necessarily the Ask button's click.
+    navigator: { userActivation: { isActive: true } },
     parent: {
       postMessage: (data: unknown, target: string) =>
         posted.push({ data, target }),
@@ -76,11 +76,21 @@ test("an unhandled rejection is reported with no place, even when its reason can
   });
 });
 
-test("askTutor sends the aid's question, cut at its limit, only while the learner's press is fresh", () => {
-  const pressed = frame({ isActive: true });
-  pressed.ask("Why is the tangent's slope 2.40 at x = 1.20?");
-  pressed.ask(`Why ${"x".repeat(600)}`);
-  expect(pressed.posted.map((p) => ArtifactReport.parse(p.data))).toEqual([
+test("askTutor posts only during a trusted click, and cuts the question at its limit", () => {
+  const { posted, fire, ask } = frame();
+  ask("On load or after input other than a click?");
+  fire("click", { isTrusted: false, eventPhase: Event.CAPTURING_PHASE });
+  ask("During a synthetic click?");
+  expect(posted).toEqual([]);
+
+  const click = { isTrusted: true, eventPhase: Number(Event.CAPTURING_PHASE) };
+  fire("click", click);
+  click.eventPhase = Event.AT_TARGET;
+  ask("Why is the tangent's slope 2.40 at x = 1.20?");
+  ask(`Why ${"x".repeat(600)}`);
+  click.eventPhase = Event.NONE;
+  ask("From a timer after the click?");
+  expect(posted.map((p) => ArtifactReport.parse(p.data))).toEqual([
     {
       gauss: "artifact",
       type: "ask",
@@ -88,16 +98,6 @@ test("askTutor sends the aid's question, cut at its limit, only while the learne
     },
     { gauss: "artifact", type: "ask", text: `Why ${"x".repeat(496)}` },
   ]);
-
-  // An aid asking by itself, on load or in a timer, fills nothing.
-  const unpressed = frame({ isActive: false });
-  unpressed.ask("Why?");
-  expect(unpressed.posted).toEqual([]);
-
-  // A browser that cannot tell lets it through.
-  const unknown = frame();
-  unknown.ask("Why?");
-  expect(unknown.posted).toHaveLength(1);
 });
 
 test.each([

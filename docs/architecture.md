@@ -1306,15 +1306,17 @@ progress take the outline.
   The HTML served to the frame starts with a one-line script
   (`withReporter` in `http/artifact-frame.ts`) that posts the aid's first
   uncaught error or unhandled rejection to the page, and gives the aid
-  `askTutor(text)`, which posts a question while the learner's click in
-  the aid is fresh (`ArtifactReport` in `src/shared/artifact.ts`); the
-  record keeps the document as written. The page takes a report only from
+  `askTutor(text)`, which posts a question during the learner's click
+  in the aid (`ArtifactReport` in `src/shared/artifact.ts`); the record
+  keeps the document as written. The page takes a report only from
   the frame it shows (`frameReport` in `src/web/artifact.ts`). An error
   shows above the aid, with "Send the error to the tutor", which posts it
   once as the learner's message (`errorMessage`), not while the tutor is
   writing. A question goes into the message box after the draft, once
-  for a repeated press (`withAsk`), and focuses it; nothing is sent until
-  the learner sends it, and it is ignored when the unit takes no message.
+  for a repeated press (`withAsk`). The page closes the pane if it covers
+  the box, then focuses the draft. Nothing is sent until the learner sends
+  it; holding Enter through the focus change does not send. A question is
+  ignored when the unit takes no message.
   In WebKit the error reaches the page only as "Script error."
   (`decisions.md`, "Confinement").
 - **Notes** (`/courses/<id>/units/<unit>/notes`): a finished
