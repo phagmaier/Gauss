@@ -2591,7 +2591,11 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   list. Only what would be read as syntax is escaped (`[12]` and
   `snake_case` are not), because the quote matcher has to undo each
   escape. MathML's alternative text is kept as it is: escaping would
-  break its TeX.
+  break its TeX. What GFM reads beyond CommonMark is escaped too: every
+  `~` (remark-gfm strikes `~word~` and `H~2~O`), and a `<` before an
+  address (`<123@example.com>` lost its brackets).
+  `src/shared/source-markdown.test.ts` reads sections with remark-gfm,
+  since markdown-it does not read these as it does.
 - **A `<br>` is a line ending in a backslash** (the agent's choice), not
   two spaces, which editors strip and no one sees; two in a row start a
   paragraph. A plain newline rendered Girard's verse as one line.
@@ -2608,8 +2612,12 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   unique where it is read, not in the whole book: the Notes stretch holds
   every chapter's "1", so they become `1`, `1-2`, `1-3` there and in
   their chapters (its 96 notes all defined once). A note's later
-  paragraphs are indented under it, as GFM continues a definition
-  (checked with remark-gfm).
+  paragraphs are indented under it, as GFM continues a definition. The
+  notes are found from all the links first: a reference read before the
+  one its note's label leads back to was left as text. A target in a
+  later block of a note's element is the note's, unless that block starts
+  with a label of its own, so it does not become a second definition or
+  take a contents entry's heading into the note.
 - **DRM is what `META-INF/encryption.xml` lists** (the agent's choice):
   any text document of the manifest listed refuses the book, read or not.
   Fonts are never read, so the font-obfuscation algorithms need no
@@ -2617,7 +2625,9 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
 - **An EPUB's budgets** (the agent's choice): 64 MB read from the archive,
   a million parsed elements and a hundred nested, each refused as
   "format". The bytes alone did not bound the parsed tree's memory or the
-  recursion over it. The five books tried have 1,600 to 3,300 elements,
+  recursion over it. The container, package, NCX and `encryption.xml`
+  are counted as they are parsed, like the XHTML. The five books tried
+  have 1,600 to 3,300 elements,
   of 90 to 280 bytes each, nested at most nine deep.
 - **Conversion runs in the engine's sandbox**: PDFium is native code
   parsing a file from outside the machine.

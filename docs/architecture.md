@@ -1122,8 +1122,9 @@ in spine order (`_read_epub`), with the standard library only:
   text between block elements, as paragraphs; list items with their
   markers, nested; block quotes with `>`, also on the line between two
   blocks of one quote; a table as its caption and a line per row, the
-  cells between ` | `; a preformatted block as a fence, its lines' spaces
-  kept; a `<br>` as a line ending in `\`, and two in a row as a new
+  cells between ` | `; a preformatted block as a fence, its lines as they
+  are but for the newline HTML drops after `<pre>` and the one that ends
+  the last; a `<br>` as a line ending in `\`, and two in a row as a new
   paragraph; an image as its alternative text; MathML as its `alttext`,
   else its TeX annotation, as it is. Hidden elements, page-break markers
   and soft hyphens are left out. The parser reads a declared encoding and
@@ -1138,24 +1139,29 @@ in spine order (`_read_epub`), with the standard library only:
   style up.
 - **The document's own characters** are escaped where Markdown would read
   them as syntax (`_ESCAPED`, `_LINE_START`): `\`, `*`, `` ` ``, an
-  underscore not inside a word, a `<` that could open a tag, an entity's
-  `&`, `[^`, `](`, `~~`, and a line's start that would make a heading, a
-  quote, a list item, a rule, a table or a link's definition.
+  underscore not inside a word, `~`, a `<` that could open a tag, a link
+  or an address, an entity's `&`, `[^`, `](`, and a line's start that
+  would make a heading, a quote, a list item, a rule, a table or a link's
+  definition.
 - **Footnotes**: a link typed `noteref` is a reference `[^label]`. So is
   a raised link with a short label (`1`, `[2]`, `*`) whose target is a
   note: a block inside an element typed as a note, or one that starts with
   the same label as a link that is the target or leads back. The block is
   written `[^label]: ...`, without that link or one typed as a backlink;
   the later blocks of its element (typed as a note, or a list item of an
-  element typed as notes) follow it indented, as part of it. References to
-  one note share its label, which is made unique in the stretches where
-  the note is referred to or defined. A raised link to anything else is
-  text.
+  element typed as notes) follow it indented, as part of it: a link to
+  one of them refers to the note, and a contents target among them puts
+  its heading before the note. The notes are found from every link before
+  any link is told from text, so the order of a note's references does
+  not matter. References to one note share its label, which is made
+  unique in the stretches where the note is referred to or defined. A
+  raised link to anything else is text.
 - **Title**: the package's first `dc:title`, else the NCX's `docTitle`,
   else as a Markdown source's (below).
 - **Refusals**: a file named `.epub` that is not a ZIP with the EPUB
   `mimetype`, or one over the converter's budgets (64 MB read from the
-  archive, a million elements, a hundred nested) ("format"); any text
+  archive; in its XML and XHTML, a million elements, a hundred nested)
+  ("format"); any text
   document of the manifest listed in `META-INF/encryption.xml`, or
   encrypted in the ZIP, in the spine or not ("protected"). An obfuscated
   font listed there is never read, so it does not refuse the book.
@@ -1182,7 +1188,8 @@ in spine order (`_read_epub`), with the standard library only:
   boundaries. An oversized paragraph is cut at the safe sentence end
   nearest its middle, then at whitespace, then at the midpoint if needed.
   No cut breaks a fence, a page marker, a footnote reference, an EPUB's
-  note or line break, or a PDF footnote's attachment to its reference. If
+  note, line break or escaped character, or a PDF footnote's attachment
+  to its reference. If
   a heading, fence, note or other indivisible text cannot fit, a part can
   exceed the target. Parts are titled by position and
   grouped under the stretch's heading if it has one.

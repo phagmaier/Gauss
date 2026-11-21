@@ -71,7 +71,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
-CONVERTER_VERSION = 4  # raised when the same original would give other files
+CONVERTER_VERSION = 5  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text (decisions.md, "Sources")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
@@ -1145,6 +1145,7 @@ _EPUB_BUDGET = 64 << 20  # bytes read out of the archive, decompressed
 _EPUB_ELEMENTS = 1_000_000  # elements in all the documents parsed
 _EPUB_DEPTH = 100  # elements inside one another
 _TOO_LARGE = "The EPUB is too large to read."
+_TOO_DEEP = "The EPUB's documents nest too deeply to read."
 _XHTML = {"application/xhtml+xml", "text/html"}
 _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 _SKIPPED = {"head", "script", "style", "svg", "template", "title"}
@@ -1186,14 +1187,13 @@ _CSS_DECLARATION = re.compile(r"([\w-]+)\s*:\s*([^;]+)")
 # Markdown's inline syntax in a document's own characters. A reference is written between \x00 and \x01, and
 # text kept as it is (math) as its number between \x02 and \x03, until the line is whole (`_EpubWriter._line`).
 _ESCAPED = re.compile(
-    r"[\\*`]"
+    r"[\\*`~]"  # `~` too: GFM reads text between single ones as struck through
     r"|(?<![^\W_])_|_(?![^\W_])"  # an underscore that is not inside a word
-    r"|<(?=[A-Za-z/!?])"  # a tag, or a link in angle brackets
+    r"|<(?=[A-Za-z/!?]|[0-9A-Za-z.!#$%&'*+/=?^_`{|}~-]+@)"  # a tag, or a link or an address in angle brackets
     r"|&(?=#?[A-Za-z0-9]+;)"  # an entity
     r"|\[(?=\^)"  # a footnote
     r"|\](?=\()"  # a link
     r"|(?<=\x01)[(:]"  # after a reference: its text as a link's, or a definition's colon
-    r"|~(?=~)|(?<=~)~"  # struck-through text
 )
 _KEPT = re.compile("\x00([^\x01]*)\x01|\x02([0-9]+)\x03")
 # A line's start that would make it a heading, a quote, a list item, a rule, a heading's underline, a table's
@@ -1201,7 +1201,7 @@ _KEPT = re.compile("\x00([^\x01]*)\x01|\x02([0-9]+)\x03")
 _LINE_START = re.compile(r"#{1,6}(?=\s|$)|>|[-+](?=\s|$)|[-=:|][-=:|\s]*$|\[(?=.*\]:)")
 _LINE_NUMBER = re.compile(r"\d{1,9}(?=[.)](?:\s|$))")
 # A written paragraph's spans that are not the document's characters: a line break, an escape, a reference.
-_WRITTEN = re.compile(r"(\\\n)|\\.|(\[\^[^\]\s]+\])")
+_WRITTEN = re.compile(r"(\\\n)|(\\.)|(\[\^[^\]\s]+\])")
 _ATOM = re.compile(r"([ \t\n\r\f   -   　]+)|([^\W_]+)|(.)", re.DOTALL)
 _ITALIC, _BOLD = 1, 2
 
@@ -1278,7 +1278,7 @@ class _Atom:
 
 
 class _Archive:
-    """The EPUB's ZIP archive, read within a budget of bytes and one of parsed elements."""
+    """The EPUB's ZIP archive, read within a budget of bytes, and of parsed elements and their depth."""
 
     def __init__(self, archive):
         self.archive, self.budget, self.elements, self.encrypted = archive, _EPUB_BUDGET, _EPUB_ELEMENTS, set()
@@ -1315,15 +1315,46 @@ class _Archive:
         if raw is None:
             raise Refused("format", f"The EPUB lacks its {name}.")
         try:
-            return ElementTree.fromstring(raw)
+            return self.parse(raw)
         except ElementTree.ParseError:
             if not required:
                 return None
             raise Refused("format", f"The EPUB's {name} is not well-formed XML.") from None
 
+    def parse(self, raw):
+        """XML as a tree of its elements, each counted as it is read."""
+        parser = ElementTree.XMLParser(target=_XmlBuilder(self))
+        parser.feed(raw)
+        return parser.close()
+
     def html(self, name):
         raw = self.read(name)
         return None if raw is None else _parse_html(raw, self)
+
+    def element(self, depth):
+        """Counts a parsed element, the `depth`th inside one another, against the budgets."""
+        self.elements -= 1
+        if self.elements < 0:
+            raise Refused("format", _TOO_LARGE)
+        if depth > _EPUB_DEPTH:
+            raise Refused("format", _TOO_DEEP)
+
+
+class _XmlBuilder(ElementTree.TreeBuilder):
+    """`ElementTree`'s builder, within the archive's budgets."""
+
+    def __init__(self, book):
+        super().__init__()
+        self.book, self.depth = book, 0
+
+    def start(self, tag, attrs):
+        self.depth += 1
+        self.book.element(self.depth)
+        return super().start(tag, attrs)
+
+    def end(self, tag):
+        self.depth -= 1
+        return super().end(tag)
 
 
 def _read_epub(data):
@@ -1343,7 +1374,7 @@ def _read_epub(data):
         try:
             return _read_book(book)
         except RecursionError:
-            raise Refused("format", "The EPUB's documents nest too deeply to read.") from None
+            raise Refused("format", _TOO_DEEP) from None
 
 
 def _read_book(book):
@@ -1428,7 +1459,7 @@ def _encrypted(book):
     if raw is None:
         return set()
     try:
-        root = ElementTree.fromstring(raw)
+        root = book.parse(raw)
     except ElementTree.ParseError:
         raise Refused("format", "The EPUB's META-INF/encryption.xml is not well-formed XML.") from None
     found = set()
@@ -1469,14 +1500,10 @@ class _TreeBuilder(HTMLParser):
             self._end(*_ENDS[tag])
         if tag in _ENDS_P:
             self._end({"p"}, _BLOCK_TAGS)
-        self.book.elements -= 1
-        if self.book.elements < 0:
-            raise Refused("format", _TOO_LARGE)
+        self.book.element(len(self.stack))
         element = _Element(tag, {name: value or "" for name, value in attrs})
         self.stack[-1].children.append(element)
         if open and tag not in _VOID:
-            if len(self.stack) > _EPUB_DEPTH:
-                raise Refused("format", "The EPUB's documents nest too deeply to read.")
             self.stack.append(element)
 
     def handle_starttag(self, tag, attrs):
@@ -1749,16 +1776,19 @@ def _marked(runs, active=0):
 
 
 def _guarded(paragraph):
-    """A written paragraph's spans that no cut may fall in: a reference with the word it follows, and a line break."""
+    """A written paragraph's spans that no cut may fall in.
+
+    A reference with the word it follows, a line break, and an escaped character with its backslash.
+    """
     spans = []
     for match in _WRITTEN.finditer(paragraph):
         if match[1]:
             start, end = match.start(), min(match.end() + 1, len(paragraph))
         elif match[2]:
+            start, end = match.span()
+        else:
             word = max(paragraph.rfind(" ", 0, match.start()), paragraph.rfind("\n", 0, match.start())) + 1
             start, end = word, match.end()
-        else:
-            continue
         while spans and spans[-1][1] > start:
             start = min(start, spans.pop()[0])
         spans.append((start, end))
@@ -1977,38 +2007,53 @@ class _EpubWriter:
         """The footnote references, each with the block that starts its note, or None when it has none.
 
         A link typed as a note's reference is one. So is a raised link with a
-        short label, when the block at its target is a note: inside an element
-        typed as a note, or starting with the same label as a link that is the
+        short label, when its target is in a note: inside an element typed as
+        a note, or a block starting with the same label as a link that is the
         target or leads back. That link, and one typed as leading back, are
-        left out.
+        left out. The notes are found first, from every link, so that a
+        reference does not depend on the ones read before it; and a target in
+        a note's later block is a reference to the note.
         """
         leading = {}
         for link in self.links:
             if link.leading:
                 leading.setdefault(link.block, link)
-        references = []
+        candidates = []  # (link, whether typed as a reference, the block at its target or None)
         for link in self.links:
             types = link.node.types()
             if types & _BACKLINKS:
                 self.dropped.add(id(link.node))
-            if id(link.node) in self.dropped:
                 continue
             typed = bool(types & _NOTEREFS)
             anchored = link.target is not None and link.target[1] is not None
             if not typed and not (link.raised and anchored and _NOTE_REFERENCE.fullmatch(self._label(link))):
                 continue
             block = self.anchors.get(link.target) if anchored else None
-            if block is None or block >= len(self.blocks) or block == link.block or self.blocks[block].kind != "text":
+            if block is not None and (block >= len(self.blocks) or self.blocks[block].kind != "text"):
                 block = None
-            elif block not in self.definitions:
-                label = leading.get(block)
-                if label is not None and self._labels(label, link):
-                    self.dropped.add(id(label.node))
-                    self.stripped.add(block)
-                elif not (typed or self.blocks[block].state.note):
+            candidates.append((link, typed, block))
+
+        inside = set()  # blocks in a note that do not start with its label
+        for link, typed, block in candidates:
+            if block is None or block == link.block or id(link.node) in self.dropped:
+                continue
+            label = leading.get(block)
+            if label is not None and self._labels(label, link):
+                self.dropped.add(id(label.node))
+                self.stripped.add(block)
+                self.definitions.add(block)
+            elif typed or self.blocks[block].state.note:
+                inside.add(block)
+        self.definitions.update([self._note_start(block) for block in inside])
+
+        references = []
+        for link, typed, block in candidates:
+            if id(link.node) in self.dropped:
+                continue
+            if block is not None:
+                block = self._note_start(block)
+                if block not in self.definitions or block == self._note_start(link.block):
                     block = None
-                if block is not None:
-                    self.definitions.add(block)
             if block is not None or typed:
                 references.append((link, block))
 
@@ -2033,6 +2078,22 @@ class _EpubWriter:
                 if not any(c.isalnum() for c in label) or _NOTE_REFERENCE.fullmatch(label):
                     self.dropped.add(id(link.node))
         return references
+
+    def _note_start(self, block):
+        """The block that starts the note `block` is in.
+
+        Itself, unless it is a later block of an element that is one note: then the nearest block before it
+        that starts with a note's label, or else the element's first block of text.
+        """
+        unit = self.blocks[block].state.unit
+        start = block
+        if unit is None:
+            return start
+        while start not in self.definitions and block and self.blocks[block - 1].state.unit == unit:
+            block -= 1
+            if self.blocks[block].kind == "text":
+                start = block
+        return start
 
     def _labels(self, label, link):
         """Whether `label`, the link a block starts with, prints the label of the note that `link` refers to."""
@@ -2104,7 +2165,8 @@ class _EpubWriter:
         file, fragment = target
         if fragment is None:
             return self.starts[file]
-        return self.anchors.get((file, fragment), self.starts[file])
+        block = self.anchors.get((file, fragment), self.starts[file])
+        return self.continued.get(block, block)  # a target inside a note is the note's: its blocks stay together
 
     def write(self, entries, targets):
         """The text and its blocks: each entry's heading, in place of the lines that print it, then the blocks."""
@@ -2274,11 +2336,8 @@ class _EpubWriter:
             paragraphs = [rows] if rows else []
         elif block.kind == "pre":
             code = "".join(_text_with_breaks(block.nodes[0])).replace("\r\n", "\n").replace("\r", "\n")
-            code = _INVISIBLE.sub("", code).split("\n")
-            while code and not code[0].strip():
-                code.pop(0)
-            while code and not code[-1].strip():
-                code.pop()
+            # HTML leaves out a newline that starts the element; one that ends the text ends its last line.
+            code = _INVISIBLE.sub("", code).removeprefix("\n").removesuffix("\n").split("\n")
             fence = "`" * max(3, 1 + max((len(run) for line in code for run in re.findall(r"`+", line)), default=0))
             paragraphs = [[fence, *code, fence]]
         elif block.kind == "rule":

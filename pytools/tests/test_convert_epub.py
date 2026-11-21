@@ -14,6 +14,7 @@ from test_convert import heading, outline, run, section, section_files
 import convert
 
 # What a reader of Markdown makes of a section: CommonMark, with the tables and struck-through text of GFM.
+# What remark-gfm, the page's parser, reads otherwise is tested with it (`src/shared/source-markdown.test.ts`).
 MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 
 STYLES = ".bold { font-weight: bold }\n.it, span.italic { font-style: italic }\n.up { vertical-align: super }\n"
@@ -335,6 +336,26 @@ def test_an_epub_over_the_budget_of_bytes_or_of_elements_is_refused(tmp_path, mo
     assert list(folder.iterdir()) == []
 
 
+@pytest.mark.parametrize(
+    ("limit", "value", "detail"),
+    [("_EPUB_ELEMENTS", 30, "too large"), ("_EPUB_DEPTH", 8, "nest too deeply")],
+)
+def test_the_budgets_of_elements_and_of_depth_cover_the_contents_too(tmp_path, monkeypatch, limit, value, detail):
+    # The document has six elements, three deep. The NCX has 44, ten entries inside one another: 14 deep.
+    entry = ("Entry 0", "one.xhtml", [])
+    for number in range(1, 10):
+        entry = (f"Entry {number}", "one.xhtml", [entry])
+    data = write_epub([("one.xhtml", "<p>Text.</p>")], ncx=[entry])
+    assert run(tmp_path, "book.epub", data, folder="whole")[0]["result"] == "converted"
+
+    monkeypatch.setattr(convert, limit, value)
+    summary, folder = run(tmp_path, "book.epub", data)
+
+    assert (summary["result"], summary["reason"]) == ("refused", "format")
+    assert detail in summary["detail"]
+    assert list(folder.iterdir()) == []
+
+
 def test_an_anchor_inside_a_paragraph_starts_its_entry_there(tmp_path):
     # The first target has text before it in its paragraph; the second is inside emphasis; the third ends a
     # paragraph, so its entry starts with the next one.
@@ -405,18 +426,45 @@ def test_a_heading_tag_stands_for_an_entry_only_when_it_prints_its_title_s_words
 
 
 def test_a_note_s_references_share_its_label_and_its_paragraphs_stay_in_it(tmp_path):
-    # Two references to one note, by the aside's id and by its first paragraph's; a second paragraph; and a link
-    # typed as leading back, which is left out.
+    # Three references to one note, by the aside's id and by each of its paragraphs'; and a link typed as
+    # leading back, which is left out.
     book = (
-        '<h1>One</h1><p>Once<a epub:type="noteref" id="r" href="#n">1</a>; again<a epub:type="noteref" href="#alias">1</a>.</p>'
+        '<h1>One</h1><p>Once<a epub:type="noteref" id="r" href="#n">1</a>; again<a epub:type="noteref" href="#alias">1</a>;'
+        ' thrice<a epub:type="noteref" href="#later">1</a>.</p>'
         '<aside epub:type="footnote" id="n"><p id="alias">The note.</p>'
-        '<p>Its second paragraph. <sup><a role="doc-backlink" href="#r">1</a></sup></p></aside><p>After.</p>'
+        '<p id="later">Its second paragraph. <sup><a role="doc-backlink" href="#r">1</a></sup></p></aside><p>After.</p>'
     )
     _, folder = run(tmp_path, "book.epub", write_epub([("book.xhtml", book)], nav=[("One", "book.xhtml", [])]))
 
-    text = "# One\n\nOnce[^1]; again[^1].\n\n[^1]: The note.\n\n    Its second paragraph.\n\nAfter.\n"
+    text = "# One\n\nOnce[^1]; again[^1]; thrice[^1].\n\n[^1]: The note.\n\n    Its second paragraph.\n\nAfter.\n"
     assert section_files(folder) == {"s1": text}
     assert outline(folder)["entries"] == [section("s1", "One", text, 1, 3)]  # the note is one paragraph
+
+
+def test_a_contents_target_inside_a_note_starts_its_entry_at_the_note(tmp_path):
+    book = (
+        '<h1>One</h1><p>Once<a epub:type="noteref" href="#n">1</a>.</p>'
+        '<aside epub:type="footnote" id="n"><p>The note.</p><p id="later">Its second paragraph.</p></aside><p>After.</p>'
+    )
+    nav = [("One", "book.xhtml", []), ("Two", "book.xhtml#later", [])]
+    _, folder = run(tmp_path, "book.epub", write_epub([("book.xhtml", book)], nav=nav))
+
+    assert section_files(folder) == {
+        "s1": "# One\n\nOnce[^1].\n\n",
+        "s2": "# Two\n\n[^1]: The note.\n\n    Its second paragraph.\n\nAfter.\n",
+    }
+
+
+def test_a_note_known_by_one_reference_is_every_reference_s(tmp_path):
+    # The note is a paragraph like any other, known by its label: a link back to the second reference. The
+    # first, in a paragraph before, points to the same note.
+    book = (
+        '<h1>One</h1><p>First<sup><a href="#n">1</a></sup> here.</p>'
+        '<p>Second<sup><a href="#n" id="r">1</a></sup> there.</p><p id="n"><a href="#r">1</a>. The note.</p>'
+    )
+    _, folder = run(tmp_path, "book.epub", write_epub([("book.xhtml", book)], nav=[("One", "book.xhtml", [])]))
+
+    assert section_files(folder) == {"s1": "# One\n\nFirst[^1] here.\n\nSecond[^1] there.\n\n[^1]: The note.\n"}
 
 
 def test_a_cut_never_falls_inside_a_reference_or_a_note(tmp_path):
@@ -432,6 +480,14 @@ def test_a_cut_never_falls_inside_a_reference_or_a_note(tmp_path):
         {"first": 1, "last": 1},
         {"first": 2, "last": 2},
     ]
+
+
+def test_a_cut_never_falls_inside_an_escape(tmp_path):
+    _, folder = run(tmp_path, "book.epub", write_epub([("book.xhtml", "<p>*******</p>")]), limit=10)
+
+    # 15 characters with no space to be cut at. Their middle is between the fourth star and its backslash, so
+    # the cut goes to the nearer end of that pair.
+    assert section_files(folder) == {"s1": "\\*\\*\\*\\*", "s2": "\\*\\*\\*\n"}
 
 
 def test_a_declared_encoding_a_cdata_section_and_end_tags_left_out_are_read(tmp_path):
@@ -469,6 +525,7 @@ def written(tmp_path, body):
         ("<p>&amp;copy; AT&amp;T</p>", "\\&copy; AT&T\n", "<p>&amp;copy; AT&amp;T</p>\n"),
         ("<p>&lt;b&gt; and 2 &lt; 3</p>", "\\<b> and 2 < 3\n", "<p>&lt;b&gt; and 2 &lt; 3</p>\n"),
         ("<p>_under_ snake_case ~~gone~~</p>", "\\_under\\_ snake_case \\~\\~gone\\~\\~\n", "<p>_under_ snake_case ~~gone~~</p>\n"),
+        ("<p>~once~ H~2~O &lt;123@example.com&gt;</p>", "\\~once\\~ H\\~2\\~O \\<123@example.com>\n", "<p>~once~ H~2~O &lt;123@example.com&gt;</p>\n"),
         ("<p>[a]: b and [c](d)</p>", "\\[a]: b and [c\\](d)\n", "<p>[a]: b and [c](d)</p>\n"),
         ("<p>[^x] is literal</p><p>[^x]: So is this</p>", "\\[^x] is literal\n\n\\[^x]: So is this\n", "<p>[^x] is literal</p>\n<p>[^x]: So is this</p>\n"),
         ("<h2>F #</h2>", "## F \\#\n", "<h2>F #</h2>\n"),
@@ -495,7 +552,7 @@ def test_blocks_keep_their_breaks_their_nesting_and_their_spaces(tmp_path):
     body = (
         "<p>A<br/>B<br/><br/>C<br/></p>"
         "<blockquote><ul><li><p>Item</p><pre>code  \n  more</pre></li></ul><p>Tail</p></blockquote>"
-        "<pre>\n  x  \n\n  y  \n\n</pre>"
+        "<pre>\n  \n  x  \n\n  y  \n\n</pre>"  # the first newline is HTML's to drop, and the last ends a line
         '<table><tr><td>Shown</td><td hidden="hidden">Secret</td></tr><tr><td>Second</td><td>2</td></tr></table>'
     )
     text = written(tmp_path, body)
@@ -503,13 +560,13 @@ def test_blocks_keep_their_breaks_their_nesting_and_their_spaces(tmp_path):
     assert text == (
         "A\\\nB\n\nC\n\n"
         "> - Item\n>\n>   ```\n>   code  \n>     more\n>   ```\n>\n> Tail\n\n"
-        "```\n  x  \n\n  y  \n```\n\n"
+        "```\n  \n  x  \n\n  y  \n\n```\n\n"
         "Shown\\\nSecond | 2\n"
     )
     assert MARKDOWN.render(text) == (
         "<p>A<br />\nB</p>\n<p>C</p>\n"
         "<blockquote>\n<ul>\n<li>\n<p>Item</p>\n<pre><code>code  \n  more\n</code></pre>\n</li>\n</ul>\n<p>Tail</p>\n</blockquote>\n"
-        "<pre><code>  x  \n\n  y  \n</code></pre>\n"
+        "<pre><code>  \n  x  \n\n  y  \n\n</code></pre>\n"
         "<p>Shown<br />\nSecond | 2</p>\n"
     )
 
