@@ -33,25 +33,6 @@ look the app has. Every view must still read at 30 units: `pnpm dev:fake` seeds
 for "/large". Not in this stage: sources and web access (4.0), self-test
 and cheat sheets (stage 6).
 
-### 5.28 Math only for math, and no echo of the app's markers
-
-- Status: todo
-- Depends on: nothing
-- From the agent's reading of the check's transcript, accepted by the
-  user (2026-11-19). Two rules in `prompts/tutor.md`:
-  - a math question only for a mathematical result. Gate question 6 asked
-    for two `tool_use_id` values as one: the math box set them as LaTeX
-    ("toolu" with "A7" as a subscript), the learner's prose answer lost
-    its spaces, and the miss, on format with the reasoning right, made a
-    retained objective slipping. A value read off a text (an id, a name,
-    a field) is a choice question;
-  - do not restate what the app's markers say. After each skipped check
-    the tutor repeated the override marker ("Moving on without the check
-    is fine; that one is recorded…"), three times in one unit.
-- Done when: a short real-model run (Haiku) on an objective about reading
-  ids off an API response posts a choice question, and the teaching turn
-  after a skipped check does not mention the override.
-
 ### 5.29 A shorter tutor prompt
 
 - Status: todo

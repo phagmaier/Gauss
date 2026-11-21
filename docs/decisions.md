@@ -1684,6 +1684,17 @@ to change.
   written; recognise or choose, a choice. A choice shows recognition, not
   that the learner can produce the answer, so it never stands in for the
   others.
+- **A math question only for a mathematical result** (task 5.28): a gate
+  asked for two `tool_use_id` values as a math question; the math box set
+  them as LaTeX and dropped the spaces of the learner's answer, and the
+  miss, on format, made a retained objective slipping. A value read off a
+  text is a choice question. On Haiku, a check (two questions) and a gate
+  question on that objective, the gate's with earlier choice questions
+  listed, were all choice questions, the gate's asking for an id.
+- **The app's own lines are not restated** (task 5.28): told to
+  "acknowledge" a skipped check, the tutor repeated the page's override
+  line after each of three skips in one unit. Now it says nothing of it;
+  on Haiku the next teaching turn did not mention it.
 - **The rule against copying sits in the Teach phase**: under "Code
   questions" it did not reach the teaching, and Haiku (task 3.7) and
   Sonnet (3.10) wrote out the very function the first code question then
@@ -1753,7 +1764,10 @@ to change.
   of three, pytest was asked for only once the check was open, holding it
   up until installed; a style change was explained after its card, not
   before; a detour promised "we'll come back to it in a later segment",
-  which the plan did hold.
+  which the plan did hold. On Haiku (task 5.28), a check's question had
+  two lead-ins, the first pointing at the answer ("a log entry for a tool
+  that never ran"), and a gate's lead-in named what its question read
+  ("one on reading a response with two tool calls").
 
 **`handoff.md`** (task 5.13): every note, on both models, reported what the
 app already gives the next tutor (where the unit stands, answers, how the
