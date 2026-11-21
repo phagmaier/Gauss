@@ -39,49 +39,6 @@ scanned PDFs, and questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-### 4.3 Conversion: text, Markdown, the outline and the cut
-
-- Status: todo
-- Depends on: stage 5
-- Why: every format ends in the same outline and section files. The plain
-  formats need no layout analysis, so the shared part is built and tested
-  on them first.
-- Do:
-  - `pytools/convert.py ingest <original> <folder> [--limit N]` writes
-    `outline.json` and `sections/<id>.md` into the folder and prints one
-    line of JSON: the outline's summary, or a refusal with its reason.
-    TXT: paragraphs between blank lines, no headings. Markdown: ATX and
-    setext headings make the outline; a fenced block is never cut.
-  - `Outline` in `src/shared/source.ts`, which the Python side writes: the
-    source's id (its folder's name), title, the copy's file name and the
-    name the learner gave it, format, SHA-256, the converter's version and
-    the limit it cut at; for a PDF, its page count, each page's printed
-    label where the PDF defines labels, and the pages with no text; and
-    the entries, nesting as the source does: a heading with its entries,
-    or a section with its id, title, size in characters, place (first and
-    last page for a PDF, first and last paragraph otherwise), and, for a
-    part of a cut stretch, its number and how many there are.
-  - Section ids are `s1`, `s2`, ... in reading order; a course names a
-    section `<source id>/<section id>`. A section file holds the source's
-    own text, its heading included, and nothing Gauss adds but page
-    markers (4.4) and footnote references, so the sections joined in order
-    are the source's whole text. Text between a heading and its first
-    subheading is a section of its own, under the heading's title.
-  - The cut: a section over the limit (20,000 characters; `decisions.md`,
-    "Sources") is cut into `ceil(size / limit)` parts at the paragraph
-    boundaries closest to equal shares, with one part more while any part
-    is still over the limit, each titled "<title> (part n of m)". A
-    paragraph over the limit by itself is cut at the sentence end nearest
-    its middle, or else at a space. Paragraphs are numbered within the
-    stretch before it is cut, so its parts continue the count.
-- Done when: pytest, on fixtures the tests build, covers a second run
-  giving byte-identical files; a long stretch cut only at paragraph
-  boundaries into parts within the limit whose joined text is the
-  stretch; headings three deep; text before a first subheading; a
-  paragraph over the limit; a fenced block left whole. A Vitest test
-  reads a fixture's `outline.json` with the zod schema. `mise run check`
-  passes.
-
 ### 4.4 Conversion: PDF
 
 - Status: todo
@@ -90,6 +47,12 @@ quotes, and one unit taught from a paper.
   a PDF's text has no paragraphs, headings or reading order of its own.
 - Do: `pypdfium2`, with Pillow for page images, added to `pytools`
   (`decisions.md`, "Sources").
+  - `convert.py` reads text and Markdown only, and refuses anything else
+    as `format` (its tests' `paper.pdf` row changes). The shared part
+    (`_outline`, `_cut`) works on the source's text with its headings and
+    paragraphs as offsets into it (`Heading`, `Paragraph`), and gives each
+    section's place as paragraphs; a PDF's are pages, and its pages fill
+    `Outline.pages`.
   - The outline from the PDF's bookmarks. Without them (the ResNet paper),
     headings are lines set larger or bolder than the body, or numbered as
     headings are ("3.2.1 Scaled Dot-Product Attention").
@@ -132,7 +95,8 @@ quotes, and one unit taught from a paper.
 - Why: the fourth format. Its books have chapters, but often no headings
   in the markup.
 - Do: the standard library only (`zipfile`, `xml.etree`, `html.parser`):
-  EbookLib is AGPL. The outline from the navigation document (EPUB 3) or
+  EbookLib is AGPL. Read into `convert.py`'s shared part, as 4.4's PDF is.
+  The outline from the navigation document (EPUB 3) or
   the NCX (EPUB 2); an entry's text runs from its target, a file or an
   anchor in one, to the next entry's, in spine order, and text before the
   first entry is a section of its own. XHTML to Markdown: headings,
@@ -159,6 +123,11 @@ quotes, and one unit taught from a paper.
     "HTTP and event stream"). The format from the content: `%PDF-`, an
     EPUB's `mimetype` entry, UTF-8 text named `.txt`, `.md` or
     `.markdown`.
+  - `convert.py ingest` takes the source's id from its folder's name (an
+    empty folder) and the name the learner gave the file from the
+    original's; the title, which the id is made from, comes from the
+    conversion. The engine reads the line it prints with a schema of its
+    own, as `engine/math-check.ts` reads `mathcheck.py`'s.
   - Conversion runs `convert.py` in the engine's sandbox, as
     `engine/math-check.ts` runs `mathcheck.py`, reading the original (the
     command's `readable` names its folder, inside the data root, which

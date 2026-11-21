@@ -2436,8 +2436,10 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   at 25,000 too (`CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`), both read in
   Claude Code 2.1.325's code; 20,000 characters of prose is about 5,000
   tokens.
-- **Cuts fall between paragraphs into equal shares**, the fewest parts
-  within the limit. A part runs from half the limit to the limit.
+- **Cuts fall between paragraphs near equal shares**: `ceil(size / limit)`
+  parts, with one more while a part is still over the limit (`_cut` in
+  `pytools/convert.py`). A part runs from about half the limit to the
+  limit.
 - **Section ids are ordinals** (`s1`, `s2`, ...; the agent's choice):
   stable for one file and converter, short for a model to copy; the title
   carries the meaning.
@@ -2445,6 +2447,23 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   footnote references, so the sections joined are the source's whole text
   and a quote across a cut still matches. A title Gauss made ("Preface
   (part 2 of 6)") lives in the outline.
+- **A section file is an exact slice of the source's text** (the agent's
+  choice, task 4.3), with the blank lines after its last paragraph, so the
+  sections joined are the text character for character. That text is the
+  original with its newlines made `\n` and its byte-order mark and outer
+  blank lines removed.
+- **A heading with no text of its own goes into the next section's file**
+  (the agent's choice), not a section of its own holding only its line,
+  which would give the planner a section with nothing in it. The outline
+  still lists the heading.
+- **A cut stretch's parts sit in its heading's entry** (the agent's
+  choice), so a citation can name the stretch by its heading's title and
+  never by a part's.
+- **A Markdown fenced block is never cut**, even over the limit: half of it
+  would not read as code, and a read holds 25,000 tokens.
+- **A Markdown source's title is its one top heading when that opens the
+  file** (the agent's choice); a file with several is a collection, titled
+  by its file's name.
 - **Not adopted from the proposal**: new terms ("subsection", "chunk") for
   what the brief calls sections; a field list and two-level file names in
   the architecture (shapes are zod schemas, and the _Phenomenology_'s
@@ -2601,3 +2620,6 @@ they will close.
 - Deleting a course does not remove the tutor sessions Claude Code keeps
   for the course's workspace, outside the data root. They stay until its
   own sweep ("Claude backend").
+- Markdown front matter (a block between `---` lines at a file's top) is
+  read as text, and its closing line as a setext underline, so its last
+  line becomes a heading in the outline.

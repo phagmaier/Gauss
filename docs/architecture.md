@@ -50,7 +50,7 @@ Gauss/
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
     web/                React app: library, profile, intake, course, its planning conversation, session, "what I know", notes
-  pytools/              mathcheck.py; sandbox_exec.py (the workload filter, which also gives a command its variables) and sandbox_verify.py (a sandboxed command's exit status apart from its output); tests/
+  pytools/              mathcheck.py; convert.py (a source into its outline and sections); sandbox_exec.py (the workload filter, which also gives a command its variables) and sandbox_verify.py (a sandboxed command's exit status apart from its output); tests/
   scripts/              dev-fake.ts (no model); faults.ts (injects faults, runs the tests); grade-set.ts, judge-set.ts and decide-set.ts, which run grader-set.ts, help-set.ts and dispute-set.ts on a real model
   mise.toml             pinned node, pnpm, python, uv; `mise run setup` and `mise run check`
 ```
@@ -107,7 +107,7 @@ The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
     units/<unit-id>/handoff.md    the unit's handoff note, rewritten whole when a segment closes or the unit finishes
     units/<unit-id>/handoff.json  how far into the unit's transcripts that note reads
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
-    sources/<source-id>/          (stage 4) the original, outline.json, sections/<id>.md, and pages/ (PDF page images rendered on request; outside the history)
+    sources/<source-id>/          (stage 4) the original's copy (original.<ext>), outline.json, sections/<id>.md, and pages/ (PDF page images rendered on request; outside the history)
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
     notes/<unit-id>.html          each unit's standalone notes, as the engine finished them
     notes/<unit-id>.json          the writer's original document, kept as data, with the instructions and date
@@ -118,8 +118,9 @@ The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
 
 The shapes are the schemas in `src/shared/`: `course.ts`, `curriculum.ts`
 (a unit's plan in `plan.ts`), `state.ts`, `evidence.ts`, `misconception.ts`,
-`handoff.ts` for `handoff.json`, `notes.ts` for the notes' source, and
-`profile.ts` for `profile.md`. A course id is its folder's name, made from
+`handoff.ts` for `handoff.json`, `notes.ts` for the notes' source,
+`profile.ts` for `profile.md`, and `source.ts` for a source's
+`outline.json`. A course id is its folder's name, made from
 its title; unit and objective ids are slugs, and
 objective ids are unique in the course, because the evidence names an
 objective by its id alone. A curriculum is a draft until the learner
@@ -1032,9 +1033,10 @@ Not built. What its SDK can and cannot do, from the stage 0 spike, is in
 
 ## 8. Sources
 
-Planned for stage 4, not yet built; the tasks are in the plan, the
-choices and the trials behind them in `decisions.md`, "Sources", and the
-pages in mocks 22 to 24 (`decisions.md`, "Page design").
+Being built in stage 4: conversion of text and Markdown is built, the rest
+is planned. The tasks are in the plan, the choices and the trials behind
+them in `decisions.md`, "Sources", and the pages in mocks 22 to 24
+(`decisions.md`, "Page design").
 
 1. **Attach**, in the intake only: the page sends the file, and the engine
    converts it by running `pytools/convert.py` in its sandbox. A source
@@ -1045,25 +1047,37 @@ pages in mocks 22 to 24 (`decisions.md`, "Page design").
    not in the first version; so are a protected PDF or EPUB and any other
    file. The planner's next turn is told of each source attached, removed
    or refused.
-2. **Convert**: copy the original; convert to Markdown; build an outline
-   from the PDF's bookmarks (without them, from type size and heading
-   numbers), the EPUB's table of contents, or the Markdown's headings;
-   write one file per section, and `outline.json` (`Outline` in
-   `src/shared/source.ts`).
+2. **Convert**: `pytools/convert.py ingest`, whose header gives what it
+   reads, writes and prints, and why it refuses a file. It copies the
+   original into the source's folder (`original.<ext>`), converts it to
+   Markdown, builds the outline, and writes one file per section and
+   `outline.json` (`Outline` in `src/shared/source.ts`). Plain text is
+   paragraphs between blank lines with no headings; Markdown's ATX and
+   setext headings make its outline. The outline of a PDF will come from
+   its bookmarks (without them, from type size and heading numbers), and an
+   EPUB's from its table of contents.
    - The outline nests as the source does, to any depth. A **section** is a
-     leaf of the outline and the only kind of entry with a file. Text
-     between a heading and its first subheading is a section of its own.
-   - A section file holds the source's own text, its heading included,
-     plus footnote references and, in a PDF, a marker at each page's start
-     with the page's printed label and whether its text lost math or
-     images. Joined in order, the sections are the source's whole text.
+     leaf of the outline and the only kind of entry with a file. A
+     heading's text before its first subheading is a section of its own,
+     under the heading's title; a heading with no text of its own goes into
+     the next section's file (at the end, the last one's). Text before any
+     heading is a section under the source's title: a Markdown file's one
+     top heading when it opens the file, otherwise the file's name.
+   - The section files are slices of the source's text, so joined in order
+     they are the whole of it, and each holds its heading. Nothing is
+     added but footnote references and, in a PDF, a marker at each page's
+     start with the page's printed label and whether its text lost math or
+     images.
    - Each section records where it sits in the original: a page range for
      a PDF, otherwise a paragraph range, numbered within its heading's
      stretch.
    - A section has a size limit, 20,000 characters. A stretch over it is
-     cut between paragraphs into the fewest parts of roughly equal size
-     within it, titled from the stretch and the part's position ("Preface
-     (part 2 of 6)").
+     cut between paragraphs into parts near equal shares, each within the
+     limit (`_cut` in `convert.py`), titled from the stretch and the
+     part's position ("Preface (part 2 of 6)"); the parts sit in the
+     stretch's heading. A paragraph over the limit by itself is cut at a
+     sentence end. A Markdown fenced block is never cut, and so can be a
+     part over the limit.
    - Section ids are ordinals in reading order (`s1`, `s2`, ...); the same
      file and converter always give the same sections and ids. A course
      names a section `<source id>/<section id>`.
@@ -1485,7 +1499,9 @@ mainly `events.ts`, `library.ts`, `what-i-know.ts`, `profile.ts` and `notes.ts`)
   named in its file's first line (`// @vitest-environment happy-dom`).
 - **Python helpers (pytest via uv)**: equivalent and non-equivalent
   expression pairs worked by hand, and `mathcheck.py` run on the venv's
-  own Python; (stage 4) conversion of small fixture files.
+  own Python; conversion of sources the tests write, with each expected
+  section written out by hand. A Vitest test reads the outline
+  `convert.py` writes with its schema.
 - **Browser checks with no model**: `pnpm dev:fake`, the real server on the
   scripted backend and a seeded scratch data root.
 - **Real-model runs**: by hand, short, on Haiku 5.5 unless the result
