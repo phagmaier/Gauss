@@ -490,6 +490,7 @@ export function readStretch(
     }
   }
   flush();
+  const kept = given.whole ? { text: parts.join("\n\n"), from: 0 } : cut(parts);
   return {
     text: kept.text,
     detours,
