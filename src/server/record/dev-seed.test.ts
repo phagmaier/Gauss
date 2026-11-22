@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -150,7 +150,39 @@ test("the seed gives courses in each state, as the routes would send them", {
         "green-stokes": { status: "not-started" },
       }),
     },
+    "three-ways-of-counting": {
+      approval: "approved",
+      due: undefined,
+      progress: {
+        pigeonhole: { status: "not-started" },
+        "double-counting": { status: "not-started" },
+        invariants: { status: "not-started" },
+      },
+    },
   });
+  // Its source, converted from the fixture: one section for the text before
+  // the first chapter, and one per chapter, under the book's title.
+  const [source, ...more] = await root.readSources("three-ways-of-counting");
+  expect(more).toEqual([]);
+  expect(source).toMatchObject({
+    id: "three-ways-of-counting",
+    title: "Three Ways of Counting",
+    name: "counting.md",
+    format: "markdown",
+  });
+  expect(source?.entries).toMatchObject([
+    {
+      title: "Three Ways of Counting",
+      entries: [
+        { id: "s1", title: "Three Ways of Counting" },
+        { id: "s2", title: "The pigeonhole principle" },
+        { id: "s3", title: "Counting in two ways" },
+        { id: "s4", title: "Invariants" },
+      ],
+    },
+  ]);
+  // The scratch folder the seed converted in is gone.
+  expect(await readdir(join(dir, "uploads"))).toEqual([]);
   // The large course has thirty units, the first four passed and the
   // fifth in progress.
   const large = Object.values(byId["calculus-1-to-3"]?.progress ?? {});

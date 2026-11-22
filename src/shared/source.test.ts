@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test } from "vitest";
-import { Outline } from "./source.ts";
+import { formatBytes, Outline, sourceFacts } from "./source.ts";
 
 const pytools = fileURLToPath(new URL("../../pytools/", import.meta.url));
 
@@ -257,4 +257,121 @@ test("the outline rejects ambiguous entries and places instead of stripping fiel
       false,
     );
   }
+});
+
+/**
+ * A PDF's outline as the converter would write it, by hand: twelve pages,
+ * four in roman numerals, then 1 to 8; the Preface cut into two parts;
+ * pages ii, iii, 7 and 8 with no text.
+ */
+const BOOK_OUTLINE: Outline = {
+  id: "phenomenology",
+  title: "The Phenomenology of Spirit",
+  file: "original.pdf",
+  name: "hegel.pdf",
+  format: "pdf",
+  sha256: "b".repeat(64),
+  converter: 5,
+  limit: 20_000,
+  pages: {
+    count: 12,
+    labels: ["i", "ii", "iii", "iv", "1", "2", "3", "4", "5", "6", "7", "8"],
+    blank: [11, 2, 12, 3],
+  },
+  entries: [
+    {
+      title: "Preface",
+      entries: [
+        {
+          id: "s1",
+          title: "Preface (part 1 of 2)",
+          size: 15_203,
+          place: { pages: { first: 1, last: 3 } },
+          part: { number: 1, of: 2 },
+        },
+        {
+          id: "s2",
+          title: "Preface (part 2 of 2)",
+          size: 9_000,
+          place: { pages: { first: 3, last: 4 } },
+          part: { number: 2, of: 2 },
+        },
+      ],
+    },
+    {
+      title: "A. Consciousness",
+      entries: [
+        {
+          id: "s3",
+          title: "I. Sense-certainty",
+          size: 4_100,
+          place: { pages: { first: 5, last: 5 } },
+        },
+      ],
+    },
+  ],
+};
+
+test("a source's facts for its card: sections counted, the stretches cut, and the pages with no text as runs of printed labels", () => {
+  expect(sourceFacts(BOOK_OUTLINE)).toEqual({
+    id: "phenomenology",
+    title: "The Phenomenology of Spirit",
+    name: "hegel.pdf",
+    format: "pdf",
+    sections: 3,
+    pages: {
+      count: 12,
+      labelled: true,
+      blank: {
+        count: 4,
+        runs: [
+          { first: "ii", last: "iii" },
+          { first: "7", last: "8" },
+        ],
+      },
+    },
+    cut: [{ title: "Preface", parts: 2 }],
+  });
+});
+
+test("the text before any heading, cut, is named by the source's title", () => {
+  const { pages: _, ...text } = BOOK_OUTLINE;
+  const facts = sourceFacts({
+    ...text,
+    format: "text",
+    entries: [
+      {
+        id: "s1",
+        title: "Notes (part 1 of 2)",
+        size: 20_000,
+        place: { paragraphs: { first: 1, last: 40 } },
+        part: { number: 1, of: 2 },
+      },
+      {
+        id: "s2",
+        title: "Notes (part 2 of 2)",
+        size: 19_000,
+        place: { paragraphs: { first: 41, last: 80 } },
+        part: { number: 2, of: 2 },
+      },
+    ],
+  });
+
+  expect(facts.cut).toEqual([
+    { title: "The Phenomenology of Spirit", parts: 2 },
+  ]);
+  expect(facts.pages).toBeUndefined();
+});
+
+test.each([
+  [0, "0 bytes"],
+  [1, "1 byte"],
+  [1023, "1023 bytes"],
+  [1024, "1 KB"],
+  [86_016, "84 KB"],
+  [5_976_883, "5.7 MB"],
+  [104_857_600, "100 MB"],
+  [222_298_112, "212 MB"],
+])("%i bytes read as %s", (bytes, shown) => {
+  expect(formatBytes(bytes)).toBe(shown);
 });

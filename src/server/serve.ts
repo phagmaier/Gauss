@@ -21,6 +21,7 @@ import { createMathCheck } from "./engine/math-check.ts";
 import { createNotes } from "./engine/notes.ts";
 import { createPackageInstaller } from "./engine/packages.ts";
 import { startSandbox } from "./engine/sandbox.ts";
+import { createSourceConverter } from "./engine/source-convert.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
 import { createApp } from "./http/app.ts";
@@ -94,11 +95,16 @@ export async function serve(options: {
         log: (line) => process.stdout.write(`${line}\n`),
       })
     : noBackup;
+  // An intake ends with the server, so the sources its learner attached
+  // before its first proposal go too.
+  await dataRoot.clearUploads();
   const intakes = createIntakes({
     backend,
     systemPrompt: plannerPrompt,
     dataRoot,
     backup,
+    // Without the sandbox, attaching a source is refused with the reason.
+    converter: createSourceConverter({ sandbox }),
   });
   const planner = createUnitPlanner({
     backend,

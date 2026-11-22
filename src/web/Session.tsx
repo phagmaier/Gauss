@@ -1277,7 +1277,8 @@ function ThreadItem(props: {
         />
       );
     case "proposal":
-      // Only an intake proposes a curriculum.
+    case "source":
+      // Only an intake proposes a curriculum, or takes a source.
       return null;
   }
 }

@@ -6,10 +6,12 @@
 //
 // A data root that is not a repository becomes one, with a `.gitignore`
 // that keeps `courses/` and `profile.md` (architecture.md section 3) and
-// leaves out `intake/`, the record's temporary files (atomic-write.ts), and
-// in a course's workspace what its tools make again: a Python environment
-// and Python's caches. The learner's files in the workspace are kept. One
-// that is a repository already is kept as it is, with its own rules; only a
+// leaves out `intake/`, `uploads/`, the record's temporary files
+// (atomic-write.ts), in a course's workspace what its tools make again (a
+// Python environment and Python's caches), and a source's page images,
+// which are rendered again on request. A source's original and its text are
+// kept. The learner's files in the workspace are kept. One that is a
+// repository already is kept as it is, with its own rules; only a
 // `.gitignore` Gauss wrote that lacks a line of today's is brought up to it.
 //
 // Commits run in the background, one at a time, in the order asked. Each
@@ -45,16 +47,31 @@ const GITIGNORE = `# Written by Gauss. The backup keeps the course record only.
 .venv/
 __pycache__/
 .pytest_cache/
+/courses/*/sources/*/pages/
 `;
 
-/** The `.gitignore` Gauss wrote before workspaces had packages, replaced by today's. */
-const GITIGNORE_BEFORE = `# Written by Gauss (task 2.25). The backup keeps the course record only.
+/** The `.gitignore`s Gauss wrote before today's, which replaces them. */
+const GITIGNORES_BEFORE = [
+  // Before workspaces had packages.
+  `# Written by Gauss (task 2.25). The backup keeps the course record only.
 /*
 !/.gitignore
 !/courses/
 !/profile.md
 .*.tmp
-`;
+`,
+  // Before sources had page images.
+  `# Written by Gauss. The backup keeps the course record only.
+/*
+!/.gitignore
+!/courses/
+!/profile.md
+.*.tmp
+.venv/
+__pycache__/
+.pytest_cache/
+`,
+];
 
 const AS_GAUSS = [
   "-c",
@@ -132,7 +149,9 @@ export async function startBackup(options: {
   const ignore = join(path, ".gitignore");
   if (!fresh) {
     const rules = await readFile(ignore, "utf8").catch(() => undefined);
-    if (rules === GITIGNORE_BEFORE) await writeFile(ignore, GITIGNORE);
+    if (rules !== undefined && GITIGNORES_BEFORE.includes(rules)) {
+      await writeFile(ignore, GITIGNORE);
+    }
   }
   if (fresh) {
     try {

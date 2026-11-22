@@ -2669,6 +2669,29 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
 - **The backup keeps the original and the text**, and leaves out page
   images, which can be rendered again; an original is committed once (the
   Inwood PDF is 5.7 MB).
+- **The converter alone decides a file's format** (the agent's choice,
+  task 4.6): the upload route reads no bytes of its own, so there is one
+  rule, `_read` in `convert.py`, and a refusal costs one sandboxed run of
+  under a second.
+- **The scratch folder is inside the data root**,
+  `uploads/<intake id>/.<card id>.tmp/` (the agent's choice): putting a
+  source in place is then a rename on one file system, and the hidden
+  name keeps it out of the backup and of a course's sources.
+- **What a planner session was told is kept as the sources it was told
+  of** (the agent's choice): each turn tells the difference, so a source
+  attached and removed between two turns is never mentioned, and a new
+  session (after a lost one, or a reopened draft's) is told of them all.
+- **A message's turn waits for a conversion on the server too, and
+  approval is refused while one runs** (the agent's choice): the page's
+  Send waits, but no planner should plan, nor learner approve, without a
+  file the learner sent.
+- **The card counts sections, not headings** (the agent's choice): the
+  outline makes a heading with no subheadings a section, so a count of
+  its heading entries said "2 sections, under 1 heading" for a file with
+  two headings.
+- **The dev seed converts its fixture outside the sandbox** (the agent's
+  choice): the text is the repository's own, and a process has one
+  sandbox, which the server starts after seeding.
 
 **The web and the channel out**
 
@@ -2755,6 +2778,9 @@ they will close.
 - Markdown front matter (a block between `---` lines at a file's top) is
   not recognized as metadata. Its closing line can be read as a setext
   underline, turning the metadata into an outline heading.
+- A crash after the first proposal creates a course and before its
+  sources are moved from `uploads/` leaves the course without them, and
+  the next start empties `uploads/`. Seen in the code, not reproduced.
 - PDF conversion: a table comes through as its cells' short lines, a
   paragraph each; a figure drawn outside a form keeps its labels in the
   text; reading order is PDFium's, so a layout it orders wrongly reads

@@ -81,6 +81,38 @@ export async function post(
 }
 
 /**
+ * Posts a file as the body, its name in a header. Undefined when the server
+ * takes it; otherwise its reason, and whether a card of the thread already
+ * shows the refusal, as it does when the answer names the file's card.
+ */
+export async function postFile(
+  path: string,
+  file: File,
+  nameHeader: string,
+): Promise<{ error: string; shown: boolean } | undefined> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      headers: { [nameHeader]: encodeURIComponent(file.name) },
+      body: file,
+    });
+  } catch {
+    return { error: "The server could not be reached.", shown: false };
+  }
+  if (response.ok) return undefined;
+  const data: unknown = await response.json().catch(() => undefined);
+  const said = typeof data === "object" && data !== null ? data : {};
+  return {
+    error:
+      "error" in said && typeof said.error === "string"
+        ? said.error
+        : `The server answered ${response.status}.`,
+    shown: "attachment" in said && typeof said.attachment === "string",
+  };
+}
+
+/**
  * Gets until the server answers. A server not reached, or one that failed
  * (5xx), is asked again after a wait that doubles from a second up to 15
  * seconds, and each failure is reported as it happens. A refusal (4xx) is

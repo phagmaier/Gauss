@@ -7,10 +7,11 @@ import type { AnswerEvidence } from "../../shared/evidence.ts";
 import { CHOICE_LETTERS } from "../../shared/question.ts";
 import { type CodeRunner, createCodeRunner } from "../engine/code-run.ts";
 import { createDisputeJudge } from "../engine/dispute-judge.ts";
+import { fakeConverter, upload } from "../engine/fake-converter.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createHandoffWriter } from "../engine/handoff.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
-import { createIntakes } from "../engine/intake.ts";
+import { createIntake, createIntakes } from "../engine/intake.ts";
 import { createMathCheck, type MathCheck } from "../engine/math-check.ts";
 import {
   createPackageInstaller,
@@ -777,6 +778,42 @@ test("the scripted planner proposes a profile of its own sentence and what was a
     profile: `${OWN} Prefers proofs. Scripted: asked last for "Measure theory".`,
     profileWas: `${OWN} Scripted: asked last for "Topology for analysts". Prefers proofs.`,
   });
+});
+
+test("the scripted planner starts its reply with what the sources' block told it: each outline's title and sections, each source removed and each file refused", async () => {
+  const intake = createIntake({
+    backend: createScriptedBackend(),
+    systemPrompt: "Intake.",
+    dataRoot: openDataRoot({ path: dir }),
+    converter: fakeConverter(),
+  });
+  const replies = () =>
+    intake
+      .events()
+      .filter((e) => e.type === "tutor_text")
+      .map((e) => e.text);
+  const kant = await intake.attach(
+    upload("kant.md", "# The Transcendental Aesthetic\n\nSpace.\n"),
+  );
+  await intake.attach(
+    upload("hegel.md", "# Force and Understanding\n\nForce.\n"),
+  );
+  await intake.settled();
+
+  intake.say("Hegel, read closely.");
+  await intake.settled();
+  await intake.removeSource(kant.ok ? kant.attachment : "");
+  await intake.attach(upload("notes.docx", "PK"));
+  intake.say("Only Hegel.");
+  await intake.settled();
+
+  expect(replies()[0]).toBe(
+    'Scripted: I have the outline of "The Transcendental Aesthetic", 1 section. Scripted: I have the outline of "Force and Understanding", 1 section.\n\n',
+  );
+  expect(replies()[2]).toBe(
+    'Scripted: I will not plan from "The Transcendental Aesthetic". Scripted: "notes.docx" did not come through.\n\n',
+  );
+  expect(intake.courseId()).toBe("hegel-read-closely");
 });
 
 test("/one-off proposes a course of one unit", async () => {

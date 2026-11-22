@@ -3,11 +3,17 @@
 // in each state the library and the course view show, written through the
 // record's own operations so they are checked against the schemas.
 
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import type { CurriculumProposal, Unit } from "../../shared/curriculum.ts";
 import type { AssessmentMode, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
+import { sandboxPython } from "../sandbox-command.ts";
 import { openDataRoot, resolveDataRoot } from "./data-root.ts";
 
 /**
@@ -36,8 +42,16 @@ export function scratchDataRoot(
 
 const DAY = 24 * 60 * 60 * 1000;
 
+const converter = fileURLToPath(
+  new URL("../../../pytools/convert.py", import.meta.url),
+);
+/** The seeded source's text, the repository's own. */
+const SOURCE_FIXTURE = fileURLToPath(
+  new URL("fixtures/counting.md", import.meta.url),
+);
+
 /**
- * Seeds an empty data root with seven courses and returns their ids; a data
+ * Seeds an empty data root with eight courses and returns their ids; a data
  * root that has a course already is left as it is, and nothing is returned.
  *
  * - "Calculus I", six units: unit 1 passed, its gate answered right on
@@ -62,6 +76,11 @@ const DAY = 24 * 60 * 60 * 1000;
  * - "Calculus 1 to 3", thirty units, as a large course is once its later
  *   stretches are added, some building on units far above them: units 1
  *   to 4 passed, 5 in progress, the rest not started.
+ * - "Three ways of counting", three units, approved and not started, with
+ *   a source: `fixtures/counting.md`, converted by `convert.py` and put in
+ *   place by the record. The converter runs outside the sandbox here, on a
+ *   text the repository ships: the sandbox is for files from outside the
+ *   machine, and the server starts the one sandbox a process can have.
  *
  * @param plan the plan of a unit that has started; it must have at least two
  * segments. The dev server passes the scripted backend's, so its tutor can
@@ -172,6 +191,27 @@ export async function seedCourses(options: {
       daysAgo,
       async approve() {
         await root.approveCurriculum(id, proposed(title, units));
+      },
+      async source(original) {
+        const scratch = join(
+          options.path,
+          "uploads",
+          `.seed-${randomUUID()}.tmp`,
+        );
+        const folder = join(scratch, "source");
+        await mkdir(scratch, { recursive: true });
+        try {
+          await promisify(execFile)(sandboxPython, [
+            "-I",
+            converter,
+            "ingest",
+            original,
+            folder,
+          ]);
+          await root.placeSource(folder, { course: id });
+        } finally {
+          await rm(scratch, { recursive: true, force: true });
+        }
       },
       async passed(unitId) {
         await pass((await planned(unitId)).flat());
@@ -354,6 +394,19 @@ export async function seedCourses(options: {
         await c.inProgress("rules", 0);
       },
     ),
+    course(
+      "Three ways of counting",
+      [
+        unit("pigeonhole", "The pigeonhole principle", []),
+        unit("double-counting", "Counting in two ways", []),
+        unit("invariants", "Invariants", ["pigeonhole"]),
+      ],
+      3,
+      async (c) => {
+        await c.source(SOURCE_FIXTURE);
+        await c.approve();
+      },
+    ),
   ]);
 }
 
@@ -362,6 +415,8 @@ interface Seeding {
   /** Moves the course's clock to that many days before today. */
   daysAgo(days: number): void;
   approve(): Promise<void>;
+  /** A source of the course, converted from this file. */
+  source(original: string): Promise<void>;
   /** The unit, finished with every objective passed. */
   passed(unitId: string): Promise<void>;
   /** The unit, finished: its first segment passed, the rest moved on from. */

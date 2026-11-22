@@ -15,7 +15,10 @@
 //   "/revise" proposes a revision with one unit fewer. Its learner profile
 //   (task 5.8) is the one it was given, with its sentence saying what was
 //   asked for last replaced by one for this course, and a first sentence
-//   of its own when there was none.
+//   of its own when there was none. A turn that tells it of the sources
+//   (`<sources>`, task 4.6) starts its reply with what it was told: the
+//   title and number of sections of each source attached, each removed,
+//   and each file refused.
 // - A unit's planning (plan_unit): two segments of one objective each. The
 //   first objective is checked by choice questions, and every second
 //   question on it is a math question (task 3.5) when the session has the
@@ -262,24 +265,70 @@ function scriptedProfile(given: string | undefined, title: string): string {
 }
 
 /**
- * The body without the block about the learner that a first turn, or one
- * after the profile changed, puts before the learner's text; and the
- * profile the block gives, if it gives one.
+ * The body without the blocks a turn can put before the learner's text: the
+ * one about the learner, in a first turn or one after the profile changed,
+ * with the profile it gives, if it gives one; then the sources'.
  */
 function learnerPart(body: string): {
   text: string;
   profile?: { text: string | undefined };
+  sources?: string;
 } {
-  const open = "<about_the_learner>\n";
-  const close = "\n</about_the_learner>\n\n";
-  const end = body.indexOf(close);
-  if (!body.startsWith(open) || end === -1) return { text: body };
-  const block = body.slice(open.length, end);
-  const given = /<profile>\n([\s\S]*)\n<\/profile>/.exec(block)?.[1];
+  const learner = leadingBlock(body, "about_the_learner");
+  const rest = learner?.after ?? body;
+  const sources = leadingBlock(rest, "sources");
+  const given =
+    learner === undefined
+      ? undefined
+      : /<profile>\n([\s\S]*)\n<\/profile>/.exec(learner.block)?.[1];
   return {
-    text: body.slice(end + close.length),
-    profile: { text: given },
+    text: sources?.after ?? rest,
+    ...(learner === undefined ? {} : { profile: { text: given } }),
+    ...(sources === undefined ? {} : { sources: sources.block }),
   };
+}
+
+/** The block of this tag at the text's start, and what follows it. */
+function leadingBlock(
+  text: string,
+  tag: string,
+): { block: string; after: string } | undefined {
+  const open = `<${tag}>\n`;
+  const close = `\n</${tag}>\n\n`;
+  const end = text.indexOf(close);
+  if (!text.startsWith(open) || end === -1) return undefined;
+  return {
+    block: text.slice(open.length, end),
+    after: text.slice(end + close.length),
+  };
+}
+
+/** A JSON string at the start of a match: a title or a file's name, quoted. */
+const QUOTED = String.raw`("(?:[^"\\]|\\.)*")`;
+
+/** What the planner says it was told by a sources block; nothing for none. */
+function sourcesSaid(block: string): string | undefined {
+  const said = block.split("\n\n").flatMap((item) => {
+    const attached = new RegExp(`^Attached: ${QUOTED}`).exec(item);
+    if (attached !== null) {
+      const sections = item
+        .split("\n")
+        .filter((line) => /^\s*- s\d+: /.test(line)).length;
+      return [
+        `Scripted: I have the outline of ${attached[1]}, ${sections} section${sections === 1 ? "" : "s"}.`,
+      ];
+    }
+    const removed = new RegExp(`^Removed by the learner: ${QUOTED}`).exec(item);
+    if (removed !== null)
+      return [`Scripted: I will not plan from ${removed[1]}.`];
+    const refused = new RegExp(
+      `^Not attached: the learner's file ${QUOTED}`,
+    ).exec(item);
+    if (refused !== null)
+      return [`Scripted: ${refused[1]} did not come through.`];
+    return [];
+  });
+  return said.length === 0 ? undefined : said.join(" ");
 }
 
 function proposal(
@@ -338,8 +387,18 @@ function intake(
   turnBody: string,
   tool: TeachingTool,
 ): FakeStep[] {
-  const { text: body, profile: given } = learnerPart(turnBody);
+  const { text: body, profile: given, sources } = learnerPart(turnBody);
   if (given !== undefined) profiles.set(tool, given);
+  const said = sources === undefined ? undefined : sourcesSaid(sources);
+  const steps = intakeSteps(header, body, tool);
+  return said === undefined ? steps : [{ text: `${said}\n\n` }, ...steps];
+}
+
+function intakeSteps(
+  header: string,
+  body: string,
+  tool: TeachingTool,
+): FakeStep[] {
   /** The text, without the commands, on one line and short. */
   const plain = (text: string) =>
     text

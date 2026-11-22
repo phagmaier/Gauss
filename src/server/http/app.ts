@@ -3,8 +3,9 @@
 // calibration (tasks 2.26 and 2.29), the artifacts the tutor shows (task
 // 3.6), disputes of recorded answers' grades (task 3.8), "Open" on a code
 // question's files (task 3.22), the learner profile (task 5.8), the
-// course's planning conversation (task 5.38), and deleting a course (task
-// 5.18). Each chat has an event stream from the server to the page, and a
+// course's planning conversation (task 5.38), deleting a course (task
+// 5.18), and the sources attached in an intake (piece 22). Each chat has an
+// event stream from the server to the page, and a
 // POST for each thing the learner does in it. Only Gauss's own page may use
 // any of them.
 
@@ -19,6 +20,7 @@ import {
 } from "../../shared/dispute.ts";
 import {
   Approval,
+  FILE_NAME_HEADER,
   FinishUnitPost,
   type Hello,
   type IntakeStarted,
@@ -27,6 +29,7 @@ import {
   type PlanningOpened,
   type ReviewStarted,
   SkipTestedPost,
+  type SourceUploaded,
   type UnitOpened,
 } from "../../shared/events.ts";
 import {
@@ -377,6 +380,48 @@ export function createApp(options: {
       await intake.interrupt();
       return c.json({ ok: true });
     }),
+  );
+
+  // A source attached in the intake (piece 22): the body is the file, its
+  // name in a header. The answer comes once the file is received; its card
+  // then shows the conversion over the event stream.
+  app.post("/api/intakes/:id/sources", (c) =>
+    withIntake(c, async (intake) => {
+      let name: string;
+      try {
+        name = decodeURIComponent(c.req.header(FILE_NAME_HEADER) ?? "");
+      } catch {
+        return c.json({ error: "The file's name could not be read." }, 400);
+      }
+      const length = c.req.header("Content-Length");
+      const size = length === undefined ? undefined : Number(length);
+      if (size !== undefined && !(Number.isSafeInteger(size) && size >= 0)) {
+        return c.json({ error: "The file's length could not be read." }, 400);
+      }
+      const attached = await intake.attach({
+        name,
+        size,
+        body: c.req.raw.body ?? emptyBody(),
+      });
+      if (attached.ok) {
+        return c.json(
+          { attachment: attached.attachment } satisfies SourceUploaded,
+          202,
+        );
+      }
+      const { status, error, attachment } = attached;
+      return c.json(
+        { error, ...(attachment === undefined ? {} : { attachment }) },
+        status,
+      );
+    }),
+  );
+
+  // "Remove" on a source's card, until the first proposal.
+  app.post("/api/intakes/:id/sources/:attachment/remove", (c) =>
+    withIntake(c, async (intake) =>
+      reply(c, await intake.removeSource(c.req.param("attachment") ?? ""), 200),
+    ),
   );
 
   // --- Planning from the course view (task 5.38): "Change the curriculum"
@@ -904,6 +949,9 @@ async function readBody<Schema extends z.ZodType>(
         error: parsed.error.issues.map((i) => i.message).join("; "),
       };
 }
+
+/** A request with no body, read as one of no bytes. */
+async function* emptyBody(): AsyncGenerator<Uint8Array> {}
 
 /** Accepted (202, the tutor will reply) or done (200), or why not. */
 function reply(c: Context, result: ChatResult, okStatus: 200 | 202) {

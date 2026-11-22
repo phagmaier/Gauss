@@ -128,6 +128,39 @@ describe("starting", () => {
     ]);
   });
 
+  test("a .gitignore Gauss wrote before sources had page images is brought up to today's: a source's original and text are kept, its pages/ left out, and a workspace's pages/ kept", async () => {
+    git("init", "-q");
+    const before = `# Written by Gauss. The backup keeps the course record only.
+/*
+!/.gitignore
+!/courses/
+!/profile.md
+.*.tmp
+.venv/
+__pycache__/
+.pytest_cache/
+`;
+    await put(".gitignore", before);
+    const source = "courses/hegel/sources/phenomenology";
+    await put(`${source}/original.pdf`, "%PDF-");
+    await put(`${source}/outline.json`);
+    await put(`${source}/sections/s1.md`, "Preface.\n");
+    await put(`${source}/pages/1.png`, "");
+    await put("courses/hegel/workspace/pages/index.md", "the learner's\n");
+    await put("uploads/0f8fad5b-d9cb-469f-a165-70867728950e/notes/x.md", "");
+
+    const backup = await startBackup({ path: dir, log });
+    await backup.settled();
+
+    expect(tracked()).toEqual([
+      ".gitignore",
+      `${source}/original.pdf`,
+      `${source}/outline.json`,
+      `${source}/sections/s1.md`,
+      "courses/hegel/workspace/pages/index.md",
+    ]);
+  });
+
   test("a .gitignore of the learner's own is left as it is", async () => {
     git("init", "-q");
     await put(".gitignore", "/intake/\n");

@@ -1676,3 +1676,55 @@ test("the objectives' statuses are kept as the latest word on them", () => {
   ]);
   expect(state.statuses).toEqual(ALL_PASSED);
 });
+
+test("a source's card in the intake: converting, then attached, then removed, in place; a file refused unread gets a card of its own", () => {
+  const facts = {
+    id: "notes",
+    title: "Notes",
+    name: "notes.md",
+    format: "markdown" as const,
+    sections: 1,
+    cut: [],
+  };
+  const refusal = {
+    reason: "large" as const,
+    detail: "It is 212 MB; Gauss takes files up to 100 MB.",
+  };
+  const log: PageEvent[] = [
+    { type: "learner", text: "Here are my notes." },
+    { type: "source_converting", attachment: "a", name: "notes.md", size: 40 },
+    { type: "source_attached", attachment: "a", size: 40, source: facts },
+    { type: "source_removed", attachment: "a" },
+    {
+      type: "source_refused",
+      attachment: "b",
+      name: "werke.pdf",
+      size: 222_298_112,
+      refusal,
+    },
+  ];
+  const after = (n: number) => play(log.slice(0, n)).items;
+
+  expect(after(2).at(-1)).toEqual({
+    kind: "source",
+    key: 1,
+    attachment: "a",
+    name: "notes.md",
+    size: 40,
+    state: "converting",
+  });
+  // The card changes where it is, keeping its key.
+  expect(after(3)).toHaveLength(2);
+  expect(after(3).at(-1)).toMatchObject({ key: 1, state: "attached", facts });
+  expect(after(4)).toHaveLength(2);
+  expect(after(4).at(-1)).toMatchObject({ key: 1, state: "removed" });
+  expect(after(5).at(-1)).toEqual({
+    kind: "source",
+    key: 4,
+    attachment: "b",
+    name: "werke.pdf",
+    size: 222_298_112,
+    state: "refused",
+    refusal,
+  });
+});

@@ -136,7 +136,8 @@ code {
 .crumbs-k,
 .nl-k,
 .lc-title small,
-.seg-k {
+.seg-k,
+.srcc-k {
   font: 500 11px / 1.3 var(--f-label);
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -313,6 +314,7 @@ code {
 /* Thread: one centred column, the learner's messages set apart on the right,
    a message box fixed at the bottom. */
 .th {
+  position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100dvh;
@@ -2646,4 +2648,150 @@ button.uo-head:focus-visible::after {
   .nr-again .qa-foot {
     flex-wrap: wrap;
   }
+}
+
+/* ---- Sources in the intake (piece 22) ---- */
+/* the attach button, first in the message box */
+.box .att {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin-left: -9px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--ink-3);
+}
+.box .att:hover {
+  background: var(--rule);
+  color: var(--ink);
+}
+.box .att:disabled {
+  color: var(--ink-4);
+  background: none;
+  cursor: default;
+}
+/* a file held over the thread */
+.drop {
+  position: absolute;
+  inset: 64px 16px 16px;
+  z-index: 20;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.4em;
+  text-align: center;
+  border: 2px dashed var(--ink-3);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  pointer-events: none;
+}
+.drop-t {
+  font-family: var(--f-title);
+  font-size: 26px;
+}
+.drop-p {
+  margin: 0;
+  color: var(--ink-2);
+}
+.spin {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--rule-2);
+  border-top-color: var(--ink-2);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+/* a source the learner attached: a card on the learner's side of the thread */
+.srcc {
+  width: min(100%, 540px);
+  margin: 1.6em 0 1.6em auto;
+  background: var(--raised);
+  border: 1px solid var(--rule-2);
+  border-radius: 14px;
+  padding: 14px 18px 15px;
+}
+.srcc-h {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8em;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.srcc-h .r {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  color: var(--ink-3);
+}
+.srcc-t {
+  font-family: var(--f-title);
+  font-size: 21px;
+  margin: 0.3em 0 0.15em;
+}
+.srcc.refused .srcc-t {
+  color: var(--ink-2);
+}
+.srcc-file {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+.srcc-file svg {
+  flex: none;
+}
+.srcc-facts {
+  list-style: none;
+  margin: 0.75em 0 0;
+  padding: 0.7em 0 0;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  gap: 0.3em;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.srcc-fact {
+  font-weight: 500;
+  color: var(--ink);
+}
+.srcc-says {
+  margin: 0.7em 0 0;
+  padding-top: 0.7em;
+  border-top: 1px solid var(--rule);
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+.srcc-p {
+  margin: 0 0 0.4em;
+}
+.srcc-p:last-child {
+  margin: 0;
+}
+.srcc-note {
+  margin: 0.5em 0 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+.srcc-foot {
+  display: flex;
+  gap: 1.3em;
+  align-items: baseline;
+  margin-top: 0.8em;
 }

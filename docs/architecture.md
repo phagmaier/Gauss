@@ -45,7 +45,7 @@ Gauss/
       open-file.ts      the system's opener, for a code question's files and a unit's notes
       sandbox-command.ts  what a sandboxed command gets, the engine's and the tutor's: the Linux workload filter, its variables, where it may read
       record/           read/write course files; derive status, progress, "what I know"; the backup; the dev server's seed
-      engine/           chats and check rules, model calls, document finishing, the sandbox for commands
+      engine/           chats and check rules, model calls, document finishing, the sandbox for commands, source conversion
       tools/            teaching tool definitions (transport-free functions)
       backends/         adapter interface, claude.ts, fake.ts (tests), scripted.ts (the dev server with no model)
       http/             routes, event stream
@@ -95,7 +95,7 @@ The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
   .profile-approval.json          recovery journal present only during a curriculum approval that changes the profile, or until recovery
   .notes-write.json               recovery journal present only during publication of unit notes, or until recovery
   intake/                         where intakes' sessions run, so they can be kept; Gauss writes nothing in it
-  uploads/<intake-id>/            (stage 4) sources attached in an intake, converted, until its first proposal creates the course; outside the history
+  uploads/<intake-id>/            sources attached in an intake, converted, until its first proposal creates the course; emptied at each start; outside the history
   cache/package-uv/               uv's install cache; outside the record and its history
   courses/<course-id>/
     course.json                   title, backend, settings, dates, when each unit was last opened, when review was last offered
@@ -108,7 +108,7 @@ The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
     units/<unit-id>/handoff.md    the unit's handoff note, rewritten whole when a segment closes or the unit finishes
     units/<unit-id>/handoff.json  how far into the unit's transcripts that note reads
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
-    sources/<source-id>/          (stage 4) the original's copy (original.<ext>), outline.json, sections/<id>.md, and pages/ (PDF page images rendered on request; outside the history)
+    sources/<source-id>/          a source: the original's copy (original.<ext>), outline.json, sections/<id>.md, and pages/ (PDF page images rendered on request; outside the history)
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
     notes/<unit-id>.html          each unit's standalone notes, as the engine finished them
     notes/<unit-id>.json          the writer's original document, kept as data, with the instructions and date
@@ -175,8 +175,9 @@ version: a field added later must be optional.
   read is left out. Transcripts are not flushed to disk.
 - **Backup.** The data root is a git repository (`record/backup.ts`), made
   on the first start if it is not one, with a `.gitignore` that keeps
-  `courses/` and `profile.md`, the learner's files in workspaces with
-  them, and leaves out `.venv/` and Python's caches. A commit is asked for
+  `courses/` and `profile.md`, the learner's files in workspaces and each
+  source's original and text with them, and leaves out `.venv/`, Python's
+  caches and a source's `pages/`. A commit is asked for
   once a segment's close, a unit's end, an approval, an applied style or
   curriculum change, a handoff note, unit notes or the end of an
   assessment that recorded answers is written, once the Profile page's
@@ -214,12 +215,17 @@ also before it reaches the backend.
   appears. Each session's first turn gives the planner, in
   `<about_the_learner>` after the header, the learner profile and the
   titles of the finished courses; later turns give the profile again if
-  it has changed since the last turn sent to the backend. The first
+  it has changed since the last turn sent to the backend. A turn waits for
+  the files being converted (section 8), and gives the planner, in
+  `<sources>`, each source attached since its session was last told (its
+  outline), each removed and each file refused; a session's first turn
+  is told of every source the course has. The first
   proposal creates the course; each proposal replaces the draft with its
   style note, background note and the profile's whole text, and a reply
   to one is a change request. A card compares its profile with `profile.md`
   as it was when the proposal was made, even after reopening a draft.
-  Approval is refused while a turn is queued or running; it checks that
+  Approval is refused while a turn is queued or running, or a file
+  converts; it checks that
   the files still match the card (`DraftMismatch`) and the profile still
   matches the original comparison (`ProfileChanged`). A draft that
   proposes a profile but has no saved comparison must be proposed again.
@@ -1197,28 +1203,54 @@ in spine order (`_read_epub`), with the standard library only:
   input bytes, name, folder id, limit and converter version give the
   same files. A course names a section `<source id>/<section id>`.
 
-### Planned: intake, teaching, and source views
+### Available now: sources in the intake
 
-1. **Attach and convert.** Intake uploads use the converter in the
-   engine's sandbox. A source waits in `uploads/<intake id>/`, removable
-   until the first proposal creates the course and moves it to `sources/`.
-   The planner is told what was attached, removed, or refused on its next
-   turn. Gauss refuses scanned PDFs that need text recognition,
-   protected PDFs or EPUBs, and unsupported formats.
-2. **Map**: the planners are given each source's outline, and each unit
+A source is attached in an intake (piece 22) by
+`POST /api/intakes/<id>/sources`: the body is the file, its name
+URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
+`src/shared/events.ts`), at most 100 MB (`SOURCE_SIZE_LIMIT` in
+`src/shared/source.ts`; a larger stated size is refused unread).
+`engine/intake-sources.ts` does the rest:
+
+- The file is written to a scratch folder in the intake's uploads,
+  `.<card id>.tmp/original/<its name>`, and converted into
+  `.<card id>.tmp/source/` by `convert.py ingest` in the engine's sandbox
+  (`engine/source-convert.ts`), which may read the original's folder and
+  write the source's, for five minutes. The converter decides the format
+  and refuses what it does not read. Without the sandbox, attaching is
+  refused.
+- The record puts the converted folder in place (`placeSource` in
+  `record/data-root.ts`) under a slug of its title, unique where it goes,
+  which becomes its outline's id: in `uploads/<intake id>/` until the
+  first proposal creates the course and moves them into its `sources/`,
+  and in the course's `sources/` after. Placing, moving and removing run
+  one at a time. At each start `uploads/` is emptied, since an intake ends
+  with the server.
+- Each step shows on the file's card through the intake's log
+  (`source_converting`; then `source_attached` with `SourceFacts`, or
+  `source_refused` with a `SourceRefusal`; `source_removed`). "Remove"
+  (`POST /api/intakes/<id>/sources/<card id>/remove`) deletes an upload
+  until the first proposal.
+- The planner is told on its next turn (section 4, "The intake chat"):
+  each source's outline as `outlineLines` in `engine/source-text.ts`
+  writes it, one line per entry.
+
+### Planned: teaching and source views
+
+1. **Map**: the planners are given each source's outline, and each unit
    lists the sections it teaches, at most 150,000 characters in all. When
    the unit is planned, each segment names the sections it draws on.
-3. **Plan**: the unit's planning turn carries the unit's sections whole,
+2. **Plan**: the unit's planning turn carries the unit's sections whole,
    so the tutor's session starts from a plan made from the text rather
    than carrying the text from its first turn.
-4. **Teach**: the tutor's system prompt holds each source's outline. The
+3. **Teach**: the tutor's system prompt holds each source's outline. The
    engine names the current segment's sections in the turn header, and an
    assessed unit's for a review or gate question on another unit's
    objective. The tutor reads sections with `read_section`, the segment's
    and others when the discussion needs them, and looks at a PDF page with
    `view_page` where the page's marker says its text lost math or images.
    Each read and page view shows as a line in the thread.
-5. **Quote**: `quote_source` checks the text against each source's whole
+4. **Quote**: `quote_source` checks the text against each source's whole
    text, its sections in order, so a quote across a cut still verifies.
    Matching ignores case, whitespace, hyphens, punctuation variants,
    emphasis marks, page markers, footnote references and margin line
@@ -1227,7 +1259,7 @@ in spine order (`_read_epub`), with the standard library only:
    and the page or paragraph), which opens the passage in the side pane.
    A passage paraphrased is linked, claiming no quote, by a Markdown link
    to `source:<source id>/<section id>`.
-6. **Web search** is a course's setting, off by default. With it on, the
+5. **Web search** is a course's setting, off by default. With it on, the
    tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
    search shows in the thread with its links. A change applies from the
    learner's next message: the course's kept tutor sessions are closed,
@@ -1310,7 +1342,12 @@ progress take the outline.
 - **Intake** (`/intakes/<id>`): the conversation, with each proposal as a
   card (units, "How I would teach it", "What the tutor will know about
   you", "What I would remember about you", the diagram, Approve); a
-  revision marks what changed. The last section is the profile approval
+  revision marks what changed. A source is attached with the clip first in
+  the message box, or by dropping a file on the thread; its card, on the
+  learner's side, shows it converting, then what was found (`factLines` in
+  `src/web/source-card.ts`) with "Remove" until the first proposal, or why
+  it was refused and what would work instead. Send waits while a file
+  converts. The last section is the profile approval
   would save, marked "New" when there was none, "not changed", or
   "Changed" with each new sentence marked and each dropped one listed
   under the text (`compareSentences` in `src/shared/profile.ts`).
@@ -1600,7 +1637,10 @@ required by [`AGENTS.md`](../AGENTS.md#project-rules).
   sandbox's tests, those of math questions, which run the real symbolic
   check, and those of code questions, which run pytest with
   `pytools/.venv` standing in for a workspace's, run real commands in it,
-  so they need what it needs and fail where it cannot run. A test of code
+  so they need what it needs and fail where it cannot run; so do those of
+  source conversion and the upload route, which run `convert.py`. The
+  intake's handling of sources runs on a converter that writes a source's
+  folder itself (`engine/fake-converter.ts`). A test of code
   that reads the page's DOM, such as a selection's, runs in happy-dom,
   named in its file's first line (`// @vitest-environment happy-dom`).
 - **Python helpers (pytest via uv)**: equivalent and non-equivalent

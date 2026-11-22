@@ -22,6 +22,7 @@ import type {
   GradedAnswer,
   QuestionView,
 } from "./question.ts";
+import type { SourceFacts, SourceRefusal } from "./source.ts";
 import type { Phase } from "./state.ts";
 import type { ObjectiveStatus } from "./status.ts";
 import type { StyleOutcome } from "./style.ts";
@@ -183,6 +184,25 @@ export interface StyleItem {
   outcome?: StyleOutcome;
 }
 
+/**
+ * A file the learner attached in the intake (piece 22): converting, then
+ * attached with what was found, or refused with why; and removed once the
+ * learner removes it.
+ */
+export interface SourceItem {
+  kind: "source";
+  key: number;
+  attachment: string;
+  /** The file's name as the learner gave it. */
+  name: string;
+  /** In bytes, once known. */
+  size?: number;
+  state: "converting" | "attached" | "refused" | "removed";
+  /** Once attached. */
+  facts?: SourceFacts;
+  refusal?: SourceRefusal;
+}
+
 /** The tutor's proposed curriculum change (task 5.12), and its answer. */
 export interface CurriculumItem {
   kind: "curriculum";
@@ -207,6 +227,7 @@ export type Item =
   | PackagesItem
   | StyleItem
   | CurriculumItem
+  | SourceItem
   | QuestionItem
   | JudgmentItem
   /**
@@ -377,6 +398,35 @@ function withChange(
   return items.map((item) =>
     item.kind === "curriculum" && item.proposalId === id ? change(item) : item,
   );
+}
+
+/**
+ * The thread with the card of this attachment changed, or added where the
+ * thread has none, as for a file refused before it was read.
+ */
+function withSource(
+  state: Timeline,
+  key: number,
+  attachment: string,
+  name: string,
+  change: Partial<Omit<SourceItem, "kind" | "key" | "attachment" | "name">> &
+    Pick<SourceItem, "state">,
+): Timeline {
+  const at = state.items.findIndex(
+    (i) => i.kind === "source" && i.attachment === attachment,
+  );
+  const card = state.items[at];
+  if (card?.kind === "source") {
+    return { ...state, items: state.items.with(at, { ...card, ...change }) };
+  }
+  return {
+    ...state,
+    items: [
+      ...state.items,
+      { kind: "source", key, attachment, name, ...change },
+    ],
+    tutorOpen: false,
+  };
 }
 
 /** Changes the question with this id, and leaves every other item as it is. */
@@ -908,6 +958,45 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
     }
     case "draft_reopened":
       return { ...next, reopened: true };
+    // The intake's sources (piece 22): one card per file attached.
+    case "source_converting":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "source",
+            key: index,
+            attachment: event.attachment,
+            name: event.name,
+            ...(event.size === undefined ? {} : { size: event.size }),
+            state: "converting",
+          },
+        ],
+        tutorOpen: false,
+      };
+    case "source_attached":
+      return withSource(next, index, event.attachment, event.source.name, {
+        state: "attached",
+        size: event.size,
+        facts: event.source,
+      });
+    case "source_refused":
+      return withSource(next, index, event.attachment, event.name, {
+        state: "refused",
+        ...(event.size === undefined ? {} : { size: event.size }),
+        refusal: event.refusal,
+      });
+    case "source_removed": {
+      const card = state.items.find(
+        (i) => i.kind === "source" && i.attachment === event.attachment,
+      );
+      return card?.kind === "source"
+        ? withSource(next, index, event.attachment, card.name, {
+            state: "removed",
+          })
+        : next;
+    }
     case "curriculum_proposed": {
       const previous = state.items.findLast((i) => i.kind === "proposal");
       return {

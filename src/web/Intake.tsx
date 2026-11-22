@@ -4,9 +4,12 @@
 // arrives as a new card with what changed marked while the one before shrinks
 // to a line. The diagram opens in the side pane. The card's last section is
 // the learner profile approval would save (18-profile.html), compared
-// sentence by sentence with the profile it would replace.
+// sentence by sentence with the profile it would replace. A source is
+// attached with the clip in the message box or by dropping a file on the
+// thread (piece 22); its card shows the conversion, and Send waits for it.
 
 import {
+  type DragEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -14,16 +17,18 @@ import {
   useRef,
   useState,
 } from "react";
-import { Hello, PageEvent } from "../shared/events.ts";
+import { FILE_NAME_HEADER, Hello, PageEvent } from "../shared/events.ts";
 import { compareSentences } from "../shared/profile.ts";
+import { formatBytes, SOURCE_SIZE_LIMIT } from "../shared/source.ts";
 import { emptyTimeline, type Item, reduce } from "../shared/timeline.ts";
-import { post } from "./api.ts";
+import { post, postFile } from "./api.ts";
 import { ChangedText } from "./ChangedText.tsx";
 import { Composer } from "./Composer.tsx";
 import { Diagram, UnitList } from "./Curriculum.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
+import { SourceCard } from "./SourceCard.tsx";
 
 /** Asked by the page itself; the tutor's session starts with the answer. */
 const OPENING_QUESTION =
@@ -44,6 +49,11 @@ export function Intake(props: { intakeId: string }) {
   const closeDiagram = useCallback(() => setDiagramOpen(false), []);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  /** Files being sent to the server, before their cards show them. */
+  const [uploads, setUploads] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  /** How deep in the page's elements a file is held, which enter and leave count. */
+  const dragDepth = useRef(0);
 
   useEffect(() => {
     const source = new EventSource(intakePath(intakeId, "events"));
@@ -86,9 +96,27 @@ export function Intake(props: { intakeId: string }) {
     return refused;
   }
 
+  async function attach(file: File) {
+    setUploads((n) => n + 1);
+    const refused = await postFile(
+      intakePath(intakeId, "sources"),
+      file,
+      FILE_NAME_HEADER,
+    );
+    setUploads((n) => n - 1);
+    // A refusal its card shows needs no line of its own.
+    setProblem(refused?.shown === false ? refused.error : undefined);
+  }
+
   const latest = timeline.items.findLast((i) => i.kind === "proposal");
   const { approved } = timeline;
   const open = !lost && approved === null;
+  const converting =
+    uploads > 0 ||
+    timeline.items.some((i) => i.kind === "source" && i.state === "converting");
+  /** A file held over the page, which can be dropped to attach it. */
+  const holdsFiles = (e: DragEvent) =>
+    open && e.dataTransfer.types.includes("Files");
   // Mock 8: once approved, the course starts with its first unit.
   const approvedProposal = timeline.items.find(
     (i) => i.kind === "proposal" && i.revision === approved?.revision,
@@ -105,7 +133,32 @@ export function Intake(props: { intakeId: string }) {
         compareSentences(approvedProposal.profileWas, approvedProposal.profile)
           .changed));
   return (
-    <div className={diagramOpen ? "th has-top has-pane" : "th has-top"}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: dropping a file is a shortcut; the clip in the message box attaches one from the keyboard
+    <div
+      className={diagramOpen ? "th has-top has-pane" : "th has-top"}
+      onDragEnter={(e) => {
+        if (!holdsFiles(e)) return;
+        e.preventDefault();
+        dragDepth.current += 1;
+        setDragging(true);
+      }}
+      onDragOver={(e) => {
+        if (!holdsFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragging(false);
+      }}
+      onDrop={(e) => {
+        dragDepth.current = 0;
+        setDragging(false);
+        if (!holdsFiles(e)) return;
+        e.preventDefault();
+        for (const file of e.dataTransfer.files) void attach(file);
+      }}
+    >
       <TopLine
         trail={[{ label: "Library", to: paths.library }]}
         here={latest?.title ?? "New course"}
@@ -138,7 +191,7 @@ export function Intake(props: { intakeId: string }) {
                   key={item.key}
                   proposal={item}
                   approved={approved?.revision === item.revision}
-                  canApprove={open && !timeline.busy}
+                  canApprove={open && !timeline.busy && !converting}
                   diagramOpen={diagramOpen}
                   onToggleDiagram={() => setDiagramOpen(!diagramOpen)}
                   onApprove={() => act("approval", { revision: item.revision })}
@@ -156,6 +209,10 @@ export function Intake(props: { intakeId: string }) {
                 key={item.key}
                 item={item}
                 proposed={timeline.latestRevision > 0}
+                canRemove={open && timeline.latestRevision === 0}
+                onRemove={(attachment) =>
+                  act(`sources/${encodeURIComponent(attachment)}/remove`)
+                }
               />
             ),
           )}
@@ -223,6 +280,8 @@ export function Intake(props: { intakeId: string }) {
         <Composer
           enabled={open}
           busy={timeline.busy}
+          holdSend={converting}
+          onAttach={(file) => void attach(file)}
           placeholder={
             latest === undefined
               ? "Message the tutor"
@@ -232,6 +291,15 @@ export function Intake(props: { intakeId: string }) {
           onStop={() => void act("interrupt")}
         />
       </div>
+      {dragging ? (
+        <div className="drop">
+          <div className="drop-t">Drop the file to attach it</div>
+          <p className="drop-p">
+            PDF, EPUB, plain text or Markdown, up to{" "}
+            {formatBytes(SOURCE_SIZE_LIMIT)}
+          </p>
+        </div>
+      ) : null}
       {diagramOpen && latest !== undefined ? (
         <SidePane
           title="Curriculum"
@@ -400,6 +468,9 @@ function ItemView(props: {
   item: Exclude<Item, Proposal>;
   /** A curriculum has been proposed. */
   proposed: boolean;
+  /** An attached source can still be removed: nothing has been proposed. */
+  canRemove: boolean;
+  onRemove(attachment: string): Promise<string | undefined>;
 }) {
   const { item } = props;
   switch (item.kind) {
@@ -413,6 +484,14 @@ function ItemView(props: {
       );
     case "note":
       return <p className="ph-note">{item.text}</p>;
+    case "source":
+      return (
+        <SourceCard
+          item={item}
+          canRemove={props.canRemove}
+          onRemove={() => props.onRemove(item.attachment)}
+        />
+      );
     // The intake's session could not be resumed after an idle close (task 2.15).
     case "fresh":
       return (

@@ -3,6 +3,8 @@
 // section 8). A section is a leaf of the outline and the only entry with a
 // file, `sections/<section id>.md`; the files in reading order are the
 // source's whole text. A course names a section `<source id>/<section id>`.
+// Also what the intake's card shows of a file the learner attached (piece
+// 22): a converted source's facts, or why the file is not a source.
 
 import { z } from "zod";
 import { Slug } from "./course.ts";
@@ -102,3 +104,124 @@ export const Outline = z.object({
   entries: z.array(OutlineEntry).min(1),
 });
 export type Outline = z.infer<typeof Outline>;
+
+/** The largest file the intake takes as a source (piece 22): 100 MB. */
+export const SOURCE_SIZE_LIMIT = 100 * 1024 * 1024;
+
+/** A size in bytes as the page and the planner read it: "5.7 MB", "84 KB". */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return bytes === 1 ? "1 byte" : `${bytes} bytes`;
+  const [value, unit] =
+    bytes < 1024 * 1024
+      ? [bytes / 1024, "KB"]
+      : bytes < 1024 * 1024 * 1024
+        ? [bytes / (1024 * 1024), "MB"]
+        : [bytes / (1024 * 1024 * 1024), "GB"];
+  const shown = value < 10 ? value.toFixed(1) : Math.round(value).toString();
+  return `${shown.replace(/\.0$/, "")} ${unit}`;
+}
+
+/**
+ * What the intake's card says of a converted source (piece 22), taken from
+ * its outline by `sourceFacts`.
+ */
+export const SourceFacts = z.object({
+  id: Slug,
+  title: z.string().min(1),
+  /** The original's name as the learner gave it. */
+  name: z.string().min(1),
+  format: SourceFormat,
+  sections: Count,
+  /**
+   * A PDF's pages: how many, whether the PDF prints labels of its own, and
+   * the pages with no text, as runs of consecutive pages, each end by its
+   * printed label or else its number.
+   */
+  pages: z
+    .object({
+      count: Count,
+      labelled: z.boolean(),
+      blank: z.object({
+        count: z.number().int().nonnegative(),
+        runs: z.array(z.object({ first: z.string(), last: z.string() })),
+      }),
+    })
+    .optional(),
+  /** Each stretch cut into parts at the size limit, in reading order. */
+  cut: z.array(
+    z.object({ title: z.string().min(1), parts: z.number().int().min(2) }),
+  ),
+});
+export type SourceFacts = z.infer<typeof SourceFacts>;
+
+export function sourceFacts(outline: Outline): SourceFacts {
+  let sections = 0;
+  const cut: SourceFacts["cut"] = [];
+  const walk = (entries: readonly OutlineEntry[], stretch: string) => {
+    for (const entry of entries) {
+      if ("id" in entry) {
+        sections += 1;
+        if (entry.part?.number === 1) {
+          cut.push({ title: stretch, parts: entry.part.of });
+        }
+      } else {
+        walk(entry.entries, entry.title);
+      }
+    }
+  };
+  // The parts of the text before any heading sit at the top, under the
+  // source's title.
+  walk(outline.entries, outline.title);
+  const facts: SourceFacts = {
+    id: outline.id,
+    title: outline.title,
+    name: outline.name,
+    format: outline.format,
+    sections,
+    cut,
+  };
+  const { pages } = outline;
+  if (pages === undefined) return facts;
+  const label = (page: number) => pages.labels?.[page - 1] ?? String(page);
+  const runs: { first: string; last: string }[] = [];
+  let start: number | undefined;
+  const blank = [...pages.blank].sort((a, b) => a - b);
+  for (const [i, page] of blank.entries()) {
+    start ??= page;
+    const next = blank[i + 1];
+    if (next !== page + 1) {
+      runs.push({ first: label(start), last: label(page) });
+      start = undefined;
+    }
+  }
+  return {
+    ...facts,
+    pages: {
+      count: pages.count,
+      labelled: pages.labels !== undefined,
+      blank: { count: blank.length, runs },
+    },
+  };
+}
+
+/**
+ * Why a file the learner attached is not a source (piece 22), with a
+ * sentence the card shows and the planner is told: the converter's
+ * refusals ("format", "empty", "scanned", "protected"), a file over
+ * SOURCE_SIZE_LIMIT, a conversion that failed or ran out of time, and no
+ * sandbox to convert it in.
+ */
+export const SourceRefusal = z.object({
+  reason: z.enum([
+    "format",
+    "empty",
+    "scanned",
+    "protected",
+    "large",
+    "failed",
+    "timed-out",
+    "sandbox",
+  ]),
+  detail: z.string().min(1),
+});
+export type SourceRefusal = z.infer<typeof SourceRefusal>;

@@ -335,9 +335,11 @@ function renderItem(
       return `<div class="card"><b>${item.gate === undefined ? "Unit results" : "Unit results after the gate"}</b><ul>${rows.join("")}</ul>${step}</div>`;
     }
     // Session headings come from the files, including the first sitting.
-    // A curriculum proposal belongs to intake, which has no transcript.
+    // A curriculum proposal and a source's card belong to the intake, which
+    // has no transcript.
     case "session":
     case "proposal":
+    case "source":
       return "";
   }
 }

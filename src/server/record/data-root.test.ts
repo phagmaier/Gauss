@@ -1419,3 +1419,139 @@ describe("handoff notes and misconceptions (task 5.7)", () => {
     expect(await root.readMisconceptions(id)).toHaveLength(3);
   });
 });
+
+describe("sources (stage 4)", () => {
+  const INTAKE = "0f8fad5b-d9cb-469f-a165-70867728950e";
+
+  /** A folder as convert.py writes it for a source of this title, named "source" as the engine's scratch is. */
+  async function converted(title: string): Promise<string> {
+    const folder = join(
+      dir,
+      "uploads",
+      INTAKE,
+      `.${Math.random().toString(36).slice(2)}.tmp`,
+      "source",
+    );
+    await mkdir(join(folder, "sections"), { recursive: true });
+    await writeFile(join(folder, "sections", "s1.md"), `# ${title}\n`);
+    await writeFile(
+      join(folder, "outline.json"),
+      JSON.stringify({
+        id: "source",
+        title,
+        file: "original.md",
+        name: "notes.md",
+        format: "markdown",
+        sha256: "a".repeat(64),
+        converter: 5,
+        limit: 20_000,
+        entries: [
+          {
+            id: "s1",
+            title,
+            size: title.length + 3,
+            place: { paragraphs: { first: 1, last: 1 } },
+          },
+        ],
+      }),
+    );
+    return folder;
+  }
+
+  test("a converted folder is put in place under a slug of its title, unique where it goes, which its outline then names", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id: course } = await root.createCourse({ title: "Hegel" });
+
+    const first = await root.placeSource(
+      await converted("Die Phänomenologie"),
+      {
+        course,
+      },
+    );
+    const second = await root.placeSource(
+      await converted("Die Phänomenologie"),
+      { course },
+    );
+    const waiting = await root.placeSource(
+      await converted("Die Phänomenologie"),
+      {
+        intake: INTAKE,
+      },
+    );
+
+    expect([first.id, second.id, waiting.id]).toEqual([
+      "die-phanomenologie",
+      "die-phanomenologie-2",
+      "die-phanomenologie",
+    ]);
+    // Read back by id, each outline naming its own folder.
+    expect((await root.readSources(course)).map((o) => o.id)).toEqual([
+      "die-phanomenologie",
+      "die-phanomenologie-2",
+    ]);
+    expect(
+      JSON.parse(
+        await readFile(
+          join(dir, "uploads", INTAKE, "die-phanomenologie", "outline.json"),
+          "utf8",
+        ),
+      ).id,
+    ).toBe("die-phanomenologie");
+  });
+
+  test("an upload moves into the course under its id, and one removed is gone", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id: course } = await root.createCourse({ title: "Hegel" });
+    await root.placeSource(await converted("Preface"), { intake: INTAKE });
+    await root.placeSource(await converted("Introduction"), { intake: INTAKE });
+
+    await root.moveUpload(INTAKE, "preface", course);
+    await root.removeUpload(INTAKE, "introduction");
+
+    expect((await root.readSources(course)).map((o) => o.id)).toEqual([
+      "preface",
+    ]);
+    // The scratch folders the converter wrote in are hidden; no source is left.
+    const left = await readdir(join(dir, "uploads", INTAKE));
+    expect(left.filter((name) => !name.startsWith("."))).toEqual([]);
+  });
+
+  test("a course with no source reads none, and a source whose outline names another folder is an error naming the file", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id: course } = await root.createCourse({ title: "Hegel" });
+    expect(await root.readSources(course)).toEqual([]);
+
+    await root.placeSource(await converted("Preface"), { course });
+    const file = join(
+      dir,
+      "courses",
+      course,
+      "sources",
+      "preface",
+      "outline.json",
+    );
+    const outline = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(file, JSON.stringify({ ...outline, id: "elsewhere" }));
+
+    await expect(root.readSources(course)).rejects.toThrow(
+      `${file} names the source "elsewhere", not its folder's "preface".`,
+    );
+  });
+
+  test("the start's clean-up removes every intake's uploads, and nothing of the courses", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id: course } = await root.createCourse({ title: "Hegel" });
+    await root.placeSource(await converted("Preface"), { course });
+    await root.placeSource(await converted("Introduction"), { intake: INTAKE });
+
+    await root.clearUploads();
+
+    expect(await readdir(dir)).toEqual(["courses"]);
+    expect((await root.readSources(course)).map((o) => o.id)).toEqual([
+      "preface",
+    ]);
+    await expect(root.uploadsFolder("../courses")).rejects.toThrow(
+      "cannot be an intake's id",
+    );
+  });
+});

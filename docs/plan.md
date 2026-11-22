@@ -43,61 +43,6 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.6 Sources in the intake and the record
-
-- Status: todo
-- Depends on: 4.2, 4.4, 4.5
-- Why: a source is attached when a course starts (the user's pick,
-  2026-11-21), before the course exists: the first proposal makes it.
-- Do:
-  - A route that takes a file for an intake: the body is the file, its
-    name in a header, at most 100 MB, under the API's rules (`decisions.md`,
-    "HTTP and event stream"). The format from the content: `%PDF-`, an
-    EPUB's `mimetype` entry, UTF-8 text named `.txt`, `.md` or
-    `.markdown`.
-  - Run `convert.py ingest` into a scratch folder with a valid slug for
-    its name. The converter uses that name as the source id and the
-    original's basename as the name the learner gave the file. Read its
-    JSON line with a schema of its own, as `engine/math-check.ts` does.
-    On success, derive the unique final slug from the returned title, set
-    the parsed outline's id to that slug, and move the folder into place.
-  - Conversion runs `convert.py` in the engine's sandbox, as
-    `engine/math-check.ts` runs `mathcheck.py`, reading the original (the
-    command's `readable` names its folder, inside the data root, which
-    commands cannot otherwise read) and writing only the source's folder,
-    with a five-minute limit. Without
-    the sandbox, attaching is refused, as a symbolic question is. A
-    source waits in `uploads/<intake id>/<source id>/` at the data root
-    until the first proposal moves it into `courses/<id>/sources/`; one
-    attached later in the intake goes there directly. At start, the uploads
-    of intakes no longer running are removed. A source's id is a slug of
-    its title, unique in the course.
-  - The intake's thread shows the source's card (piece 22) while it
-    converts and when it is done, or why it was refused. Send waits while
-    a file converts. "Remove" on the card, until the first proposal,
-    deletes the upload. The planner's next turn is told of each source
-    attached (its outline, one line per entry: id, title, place, size),
-    removed or refused; a reopened draft's intake gets its course's.
-  - `record/backup.ts`: the history keeps each source's original,
-    `outline.json` and sections, and leaves out `pages/`, images that can
-    be rendered again.
-  - The dev seed gains a course with a source made from a fixture text,
-    through the record's own operations; the scripted planner answers a
-    turn that brings a source's outline.
-- Done when: fake-backend and route tests cover an upload converted and
-  shown, the planner's turn with the outline, a source removed before the
-  first proposal and refused removal after it, the move at the first
-  proposal, a source attached after it, a format refused, a body over the
-  limit, a conversion that fails and one that runs out of time, the
-  start's clean-up, and `pages/` ignored by the backup (with an earlier
-  `.gitignore` brought up to date). In the upload test, run the real
-  converter in the engine's sandbox on a small Markdown fixture, using
-  the locked `pytools` environment. Check the section text and that the
-  parsed outline's id matches the final source folder's name.
-  On `pnpm dev:fake` a TXT and a PDF are
-  attached in an intake that reaches a proposal, and the browser is
-  closed before the server stops.
-
 ### 4.7 Units and segments name their sections
 
 - Status: todo
@@ -112,7 +57,8 @@ specific “Done when” checks.
     characters (the Preface is 108,000), saying the total so the planner
     splits it.
     A course with no source has none.
-  - The course planner gets the outlines as the intake's planner does; the
+  - The course planner gets the outlines as the intake's planner does
+    (`<sources>`, with `outlineLines` in `engine/source-text.ts`); the
     proposal and change cards show each unit's sections as piece 22 does
     ("Reads", consecutive parts of a stretch as one line, folded above two
     lines, and how much of the source the units read).
@@ -151,6 +97,9 @@ specific “Done when” checks.
   - Each `read_section` and `view_page` shows in the thread as a line
     (piece 23: "Read" a section with its place, "Looked at" a page), a
     page event; 4.10 makes it open the pane.
+  - The intake card's line on pages with no text (`factLines` in
+    `src/web/source-card.ts`) adds piece 22's "the tutor can look at them
+    as images", true once `view_page` is.
   - The scripted backend reads a section its header names.
 - Done when: tests cover the header's sections in a segment, in a new
   session's first turn and in an assessment of another unit; the thread's
@@ -225,6 +174,9 @@ specific “Done when” checks.
     A PDF page's image opens from its number in the margin, with "Back to
     the text". Routes for a section's text and a page's image, rendered on
     request as `view_page` does.
+  - The intake card's "Outline" (piece 22) opens the pane on the source's
+    outline. Before the first proposal the source is in
+    `uploads/<intake id>/`, so its route goes through the intake.
   - The course view: a Sources section below the units, each source
     opening the pane on its outline (headings folded below the first level
     except where a unit reads, each section with its place and its unit);

@@ -8,17 +8,27 @@
 // writes and reads each unit's handoff note and the misconception log (task 5.7),
 // and reads and writes the learner profile, writing it too when a curriculum
 // that proposes one is approved (task 5.8), and applies the changes to an
-// approved curriculum that the learner accepts (tasks 5.12 and 5.38), and
-// deletes a course (task 5.18).
+// approved curriculum that the learner accepts (tasks 5.12 and 5.38),
+// deletes a course (task 5.18), and keeps sources: a converted folder put
+// in an intake's uploads or a course's sources/, moved from one to the
+// other, removed from uploads, and the outlines read.
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
 // append, runs through withFileLock, so it lands in the order called.
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  rmdir,
+  stat,
+} from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { ArtifactFile } from "../../shared/artifact.ts";
@@ -54,6 +64,7 @@ import {
 import { PackageCompletion } from "../../shared/packages.ts";
 import { Plan } from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
+import { Outline } from "../../shared/source.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { StyleDecision } from "../../shared/style.ts";
 import { syncFolder, writeFileAtomic, writeFileNew } from "./atomic-write.ts";
@@ -315,6 +326,34 @@ export interface DataRoot {
   ): Promise<void>;
   /** The misconception log, oldest first, without a last line a crash cut short. */
   readMisconceptions(id: string): Promise<Misconception[]>;
+  /**
+   * The absolute path of the folder where an intake's sources wait,
+   * `uploads/<intake id>/`, until its first proposal creates the course;
+   * made if it is missing. Throws for an id that cannot be an intake's.
+   */
+  uploadsFolder(intakeId: string): Promise<string>;
+  /**
+   * Removes every intake's uploads. Called at start, when no intake is
+   * running: an intake ends with the server.
+   */
+  clearUploads(): Promise<void>;
+  /**
+   * Puts a folder `convert.py ingest` wrote in place: in the course's
+   * `sources/`, or in the intake's uploads, under a slug of its title
+   * unique there, which becomes its outline's id. The folder must be on the
+   * data root's file system, as a scratch folder inside it is. Returns the
+   * outline as written.
+   */
+  placeSource(
+    converted: string,
+    into: { course: Slug } | { intake: string },
+  ): Promise<Outline>;
+  /** Moves a source from the intake's uploads into the course's `sources/`, under its id. */
+  moveUpload(intakeId: string, sourceId: Slug, courseId: Slug): Promise<void>;
+  /** Deletes a source waiting in the intake's uploads. */
+  removeUpload(intakeId: string, sourceId: Slug): Promise<void>;
+  /** The outlines of the course's sources, by id; none when it has none. */
+  readSources(id: string): Promise<Outline[]>;
 }
 
 /**
@@ -382,6 +421,7 @@ export function openDataRoot(options: {
   now?: () => Date;
 }): DataRoot {
   const courses = join(options.path, "courses");
+  const uploads = join(options.path, "uploads");
   const profileFile = join(options.path, "profile.md");
   const pendingFile = join(options.path, ".profile-approval.json");
   const pendingNotesFile = join(options.path, ".notes-write.json");
@@ -692,6 +732,24 @@ export function openDataRoot(options: {
   function courseFile(id: string, name: string): string {
     if (!Slug.safeParse(id).success) throw new Error(noCourse(id));
     return join(courses, id, name);
+  }
+
+  /** The intake's folder in uploads/, made if it is missing. */
+  async function intakeUploads(intakeId: string): Promise<string> {
+    if (!INTAKE_ID.test(intakeId)) {
+      throw new Error(`"${intakeId}" cannot be an intake's id.`);
+    }
+    const folder = resolve(uploads, intakeId);
+    await mkdir(folder, { recursive: true });
+    return folder;
+  }
+
+  /** The course's sources/, made if it is missing; the course must exist. */
+  async function courseSources(id: string): Promise<string> {
+    await existingCourse(id);
+    const folder = resolve(courseFile(id, "sources"));
+    await mkdir(folder, { recursive: true });
+    return folder;
   }
 
   return {
@@ -1360,6 +1418,84 @@ export function openDataRoot(options: {
         }),
       );
     },
+
+    uploadsFolder: intakeUploads,
+
+    async clearUploads() {
+      await rm(uploads, { recursive: true, force: true });
+    },
+
+    async placeSource(converted, into) {
+      const file = join(converted, "outline.json");
+      const outline = await readJson(file, Outline);
+      if (outline === undefined) throw new Error(`${file} is missing.`);
+      const parent =
+        "course" in into
+          ? await courseSources(into.course)
+          : await intakeUploads(into.intake);
+      // Making the folder claims the id; the converted one is renamed onto
+      // it, which an empty folder allows.
+      const id = await makeFolder(
+        parent,
+        idFromTitle(outline.title, ID_LENGTH, "source"),
+      );
+      const placed: Outline = { ...outline, id };
+      const at = join(parent, id);
+      try {
+        await writeJson(file, Outline, placed);
+        await rename(converted, at);
+      } catch (error) {
+        await rmdir(at).catch(() => {});
+        throw error;
+      }
+      await syncFolder(parent);
+      return placed;
+    },
+
+    async moveUpload(intakeId, sourceId, courseId) {
+      const from = join(await intakeUploads(intakeId), Slug.parse(sourceId));
+      const sources = await courseSources(courseId);
+      await rename(from, join(sources, sourceId));
+      await syncFolder(sources);
+      await syncFolder(dirname(from));
+    },
+
+    async removeUpload(intakeId, sourceId) {
+      const folder = await intakeUploads(intakeId);
+      await rm(join(folder, Slug.parse(sourceId)), {
+        recursive: true,
+        force: true,
+      });
+      await syncFolder(folder);
+    },
+
+    async readSources(id) {
+      await existingCourse(id);
+      const folder = courseFile(id, "sources");
+      let ids: string[];
+      try {
+        ids = (await readdir(folder, { withFileTypes: true }))
+          .filter((e) => e.isDirectory() && Slug.safeParse(e.name).success)
+          .map((e) => e.name)
+          .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return [];
+        throw error;
+      }
+      return Promise.all(
+        ids.map(async (sourceId) => {
+          const file = join(folder, sourceId, "outline.json");
+          const outline = await readJson(file, Outline);
+          if (outline === undefined) throw new Error(`${file} is missing.`);
+          if (outline.id !== sourceId) {
+            throw new Error(
+              `${file} names the source "${outline.id}", not its folder's "${sourceId}".`,
+            );
+          }
+          return outline;
+        }),
+      );
+    },
   };
 }
 
@@ -1476,6 +1612,10 @@ function artifactNumber(name: string): number {
 
 /** Leaves room within Slug's 60 characters for a "-2" or longer suffix. */
 const ID_LENGTH = 50;
+
+/** An intake's id, its event log's: a UUID as `randomUUID` writes it. */
+const INTAKE_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Enough of an artifact's title for its file to be found by eye. */
 const ARTIFACT_SLUG_LENGTH = 40;

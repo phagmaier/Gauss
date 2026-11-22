@@ -19,6 +19,7 @@ import {
   Unsettled,
   Verdict,
 } from "./question.ts";
+import { SourceFacts, SourceRefusal } from "./source.ts";
 import { Phase } from "./state.ts";
 import { ObjectiveStatus, UnitStatus } from "./status.ts";
 import { StyleOutcome } from "./style.ts";
@@ -355,6 +356,39 @@ export const PageEvent = z.discriminatedUnion("type", [
    */
   z.object({ type: z.literal("draft_reopened") }),
   /**
+   * The intake: a file the learner attached (piece 22) is being received and
+   * converted. Its card follows `attachment`, an id of the intake's own,
+   * through `source_attached` or `source_refused`.
+   */
+  z.object({
+    type: z.literal("source_converting"),
+    attachment: z.string(),
+    /** The file's name as the learner gave it. */
+    name: z.string(),
+    /** In bytes, when the upload said. */
+    size: z.number().int().nonnegative().optional(),
+  }),
+  /** The file is converted and attached as a source of the course to be. */
+  z.object({
+    type: z.literal("source_attached"),
+    attachment: z.string(),
+    size: z.number().int().nonnegative(),
+    source: SourceFacts,
+  }),
+  /**
+   * The file is not attached, and why. A refusal before the upload is read
+   * (too large, no sandbox) has no `source_converting` before it.
+   */
+  z.object({
+    type: z.literal("source_refused"),
+    attachment: z.string(),
+    name: z.string(),
+    size: z.number().int().nonnegative().optional(),
+    refusal: SourceRefusal,
+  }),
+  /** The learner removed the source before the first proposal made the course. */
+  z.object({ type: z.literal("source_removed"), attachment: z.string() }),
+  /**
    * The tutor proposed a curriculum. Each revision replaces the one before;
    * only the latest can be approved.
    */
@@ -541,6 +575,20 @@ export type LearnerMessage = z.infer<typeof LearnerMessage>;
  */
 export const IntakeStarted = z.object({ intakeId: z.string() });
 export type IntakeStarted = z.infer<typeof IntakeStarted>;
+
+/**
+ * The header that names a file attached in the intake, its body being the
+ * file: the name as the learner gave it, URI-encoded, since a header holds
+ * only Latin-1.
+ */
+export const FILE_NAME_HEADER = "Gauss-File-Name";
+
+/**
+ * The answer to a file attached in the intake: its card's id. A refusal the
+ * card shows (too large, no sandbox) carries it too, beside its error.
+ */
+export const SourceUploaded = z.object({ attachment: z.string() });
+export type SourceUploaded = z.infer<typeof SourceUploaded>;
 
 /**
  * The answer to "Change the curriculum": the id of the course's planning

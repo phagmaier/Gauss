@@ -24,6 +24,12 @@
 // gives it the profile again when profile.md has changed since. Every
 // proposal carries the profile's whole text, and its card compares it with
 // profile.md as it was then, which approval expects to replace.
+//
+// The learner can attach sources (intake-sources.ts, piece 22): each turn
+// waits for the files being converted, and tells the planner of each source
+// attached, removed or refused since it was last told; a session's first
+// turn tells it of every source the course has. The first proposal moves
+// the sources into the course it creates. Approval waits for a conversion.
 
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
@@ -45,6 +51,13 @@ import {
   type Timer,
 } from "./conversation.ts";
 import type { CourseHolder } from "./course-deletion.ts";
+import {
+  type AttachResult,
+  createIntakeSources,
+  type SourcesTold,
+  type Upload,
+} from "./intake-sources.ts";
+import type { SourceConverter } from "./source-convert.ts";
 
 export interface Intake {
   /** Changes when the server restarts, so a page can tell. */
@@ -57,13 +70,20 @@ export interface Intake {
   /** A message from the learner; the first one starts the tutor session. */
   say(text: string): ChatResult;
   /**
+   * A file the learner attached: received now, then converted; its card
+   * shows how it goes.
+   */
+  attach(upload: Upload): Promise<AttachResult>;
+  /** Removes an attached source, until the first proposal. */
+  removeSource(attachment: string): Promise<ChatResult>;
+  /**
    * Approves the proposal with this revision number, which must be the
    * latest, while the tutor is not writing.
    */
   approve(revision: number): Promise<ChatResult>;
   /** Stops the tutor's turn in progress, if there is one. */
   interrupt(): Promise<void>;
-  /** Resolves once every turn sent so far has finished. */
+  /** Resolves once every turn sent so far, and every file being converted, has finished. */
   settled(): Promise<void>;
   /** Its page reads the event stream, or the planner writes, or the curriculum is being approved. */
   inUse(): "review-page" | "review" | undefined;
@@ -90,6 +110,10 @@ export function createIntake(options: {
   timer?: Timer;
   /** Commits the record once a curriculum is approved (task 2.25); none if not given. */
   backup?: Backup;
+  /** Converts the sources attached; none can be attached if not given. */
+  converter?: SourceConverter;
+  /** The largest source taken, in bytes; SOURCE_SIZE_LIMIT unless a test sets it. */
+  sourceSizeLimit?: number;
 }): Intake {
   const { backend, systemPrompt, dataRoot, draft } = options;
   const log = createEventLog();
@@ -112,6 +136,16 @@ export function createIntake(options: {
   let opening = false;
   /** The profile the running session was last given; none before its first turn. */
   let told: string | undefined;
+  const sources = createIntakeSources({
+    intakeId: log.id,
+    dataRoot,
+    converter: options.converter ?? NO_CONVERTER,
+    courseId: () => courseId,
+    emit: log.emit,
+    ...(options.sourceSizeLimit === undefined
+      ? {}
+      : { sizeLimit: options.sourceSizeLimit }),
+  });
 
   const proposeCurriculum = proposeCurriculumTool({
     async propose(proposal) {
@@ -132,6 +166,7 @@ export function createIntake(options: {
           reservedCourseId = undefined;
         }
       }
+      await sources.moveInto(courseId);
       const profileWas = (await dataRoot.readProfile()) ?? null;
       const card = { ...proposal, profileWas };
       await dataRoot.saveProposal(courseId, card);
@@ -228,34 +263,52 @@ export function createIntake(options: {
       const id = randomUUID();
       log.emit({ type: "learner", id, text });
       let profile: string | undefined;
+      let sourcesTold: SourcesTold | undefined;
       tutor.send({
         learnerId: id,
         // Composed when sent, since a lost session is found then.
         async text() {
           opening = false;
+          // The planner's turn has the outline of every file sent before.
+          await sources.settled();
           profile = await dataRoot.readProfile();
-          const learner = await aboutTheLearner(
-            lost || !tutor.started(),
-            profile,
-          );
+          const fresh = lost || !tutor.started();
+          sourcesTold = await sources.forTurn(fresh);
+          const blocks = {
+            learner: await aboutTheLearner(fresh, profile),
+            sources: sourcesTold.block,
+          };
           if (lost) {
             return shown === undefined
-              ? lostTurn(text, conversationBefore(log.events(), id), learner)
-              : reviewTurn(text, shown, latest, learner);
+              ? lostTurn(text, conversationBefore(log.events(), id), blocks)
+              : reviewTurn(text, shown, latest, blocks);
           }
-          if (tutor.started()) return messageTurn(text, about, learner);
+          if (tutor.started()) return messageTurn(text, about, blocks);
           if (draft !== undefined) {
-            return reviewTurn(text, draft.proposal, 1, learner);
+            return reviewTurn(text, draft.proposal, 1, blocks);
           }
           opening = true;
-          return openingTurn(text, learner);
+          return openingTurn(text, blocks);
         },
         sent() {
           told = profile;
           lost = false;
+          sourcesTold?.sent();
         },
       });
       return { ok: true };
+    },
+    async attach(upload) {
+      if (approved) {
+        return { ok: false, status: 409, error: INTAKE_OVER };
+      }
+      return sources.attach(upload);
+    },
+    async removeSource(attachment) {
+      if (approved) {
+        return { ok: false, status: 409, error: INTAKE_OVER };
+      }
+      return sources.remove(attachment);
     },
     async approve(revision) {
       if (approved) {
@@ -279,6 +332,14 @@ export function createIntake(options: {
           ok: false,
           status: 409,
           error: "Wait until the tutor has finished.",
+        };
+      }
+      if (sources.converting()) {
+        return {
+          ok: false,
+          status: 409,
+          error:
+            "Wait until the file is converted: the planner has not seen it yet.",
         };
       }
       // Set before writing, so nothing else can start meanwhile.
@@ -311,16 +372,30 @@ export function createIntake(options: {
       return { ok: true };
     },
     interrupt: tutor.interrupt,
-    settled: tutor.settled,
+    async settled() {
+      await sources.settled();
+      await tutor.settled();
+    },
     inUse() {
       if (log.watched()) return "review-page";
-      return tutor.busy() || approving ? "review" : undefined;
+      return tutor.busy() || approving || sources.converting()
+        ? "review"
+        : undefined;
     },
-    close: tutor.close,
+    close() {
+      sources.close();
+      return tutor.close();
+    },
   };
 }
 
 const INTAKE_OVER = "The curriculum is approved; this intake is over.";
+
+/** For an intake given no converter: attaching is refused, as without the sandbox. */
+const NO_CONVERTER: SourceConverter = {
+  unavailable: "no converter was set up",
+  convert: async () => ({ result: "failed", reason: "no converter" }),
+};
 
 /** Why propose_curriculum is refused in the intake's first turn. */
 const FIRST_TURN =
@@ -370,6 +445,7 @@ export function createIntakes(options: {
   dataRoot: DataRoot;
   timer?: Timer;
   backup?: Backup;
+  converter?: SourceConverter;
 }): Intakes {
   const byId = new Map<string, Intake>();
   function keep(intake: Intake): Intake {
@@ -419,6 +495,18 @@ const ABOUT =
   "Before their message comes what Gauss keeps about the learner across " +
   "their courses, in <about_the_learner>.";
 
+/** Said in a header whose turn tells the planner of the course's sources. */
+const SOURCES =
+  "<sources> says what changed in the course's sources since you were " +
+  "last told: each source the learner attached, with its outline; each " +
+  "they removed; and each file that could not be attached.";
+
+/** What a turn gives the planner before the learner's text, each when there is one. */
+interface Blocks {
+  learner: string | undefined;
+  sources: string | undefined;
+}
+
 /** For a session's first turn: the learner profile and the courses finished. */
 function learnerBlock(known: Known): string {
   const { profile, finished } = known;
@@ -447,26 +535,35 @@ function changedProfileBlock(profile: string | undefined): string {
   ].join("\n");
 }
 
-/** A turn: the header, then the block about the learner if there is one, then their text. */
-function withLearner(
-  header: string,
-  learner: string | undefined,
-  text: string,
-): string {
-  return learner === undefined
+/**
+ * A turn: the header, saying what follows it, then the block about the
+ * learner and the sources' block, each if there is one, then their text.
+ */
+function withBlocks(header: string, blocks: Blocks, text: string): string {
+  const said = [header];
+  const given: string[] = [];
+  if (blocks.learner !== undefined) {
+    said.push(ABOUT);
+    given.push(blocks.learner);
+  }
+  if (blocks.sources !== undefined) {
+    said.push(SOURCES);
+    given.push(blocks.sources);
+  }
+  return given.length === 0
     ? `[${header}]\n${text}`
-    : `[${header} ${ABOUT}]\n${learner}\n\n${text}`;
+    : `[${said.join(" ")}]\n${given.join("\n\n")}\n\n${text}`;
 }
 
-function openingTurn(text: string, learner: string | undefined): string {
-  return withLearner(
+function openingTurn(text: string, blocks: Blocks): string {
+  return withBlocks(
     "Start of the intake. The app has asked the learner what they want to " +
       "learn and what they already know. Allowed now: ask what you still " +
       "need to know and neither their answer nor what Gauss keeps about " +
       "them tells you, at most two questions, or say what you would " +
       "propose and ask whether to go ahead. propose_curriculum is refused " +
       "in this turn.",
-    learner,
+    blocks,
     text,
   );
 }
@@ -476,10 +573,10 @@ function reviewTurn(
   text: string,
   draft: ShownProposal,
   revision: number,
-  learner: string | undefined,
+  blocks: Blocks,
 ): string {
   const { profileWas: _, ...proposal } = draft;
-  return withLearner(
+  return withBlocks(
     `The learner is reviewing proposal ${revision}, a curriculum proposed in an ` +
       "earlier conversation that was not kept:\n" +
       `${JSON.stringify(proposal)}\n` +
@@ -488,7 +585,7 @@ function reviewTurn(
       "curriculum, its style note, its background note and the learner's " +
       "profile (writing any it lacks), keeping the ids of the units you " +
       "keep.",
-    learner,
+    blocks,
     text,
   );
 }
@@ -539,12 +636,8 @@ export function conversationBefore(
  * new session never saw. A session is lost only after one was started for
  * an earlier message, so there is always something said before.
  */
-function lostTurn(
-  text: string,
-  said: readonly Said[],
-  learner: string | undefined,
-): string {
-  return withLearner(
+function lostTurn(text: string, said: readonly Said[], blocks: Blocks): string {
+  return withBlocks(
     "This conversation is new: the one before it with the learner was " +
       "lost, so you have not seen it. What was said in it, oldest first, as " +
       'JSON (the "planner" messages are your replies):\n' +
@@ -552,16 +645,12 @@ function lostTurn(
       `${JSON.stringify(said)} ` +
       "Their new message follows. Allowed now: reply, or propose a " +
       "curriculum with propose_curriculum.",
-    learner,
+    blocks,
     text,
   );
 }
 
-function messageTurn(
-  text: string,
-  proposal: number,
-  learner: string | undefined,
-): string {
+function messageTurn(text: string, proposal: number, blocks: Blocks): string {
   const header =
     proposal === 0
       ? "Message from the learner. Allowed now: reply, or propose a " +
@@ -570,5 +659,5 @@ function messageTurn(
         "have not approved. Allowed now: answer them; if they ask for " +
         "changes, call propose_curriculum with the whole revised curriculum, " +
         "its style note, its background note and the learner's profile.";
-  return withLearner(header, learner, text);
+  return withBlocks(header, blocks, text);
 }
