@@ -484,7 +484,10 @@ test("a session given web search gets WebSearch, allowed with nothing asked, bes
 });
 
 /** A session given web search, on a query that reads the account as `account` says. */
-async function searchingSession(account: () => Promise<object>) {
+async function searchingSession(
+  account: () => Promise<object>,
+  searchRefusal?: () => Promise<string | undefined>,
+) {
   vi.mocked(query).mockImplementation(
     () =>
       ({
@@ -499,6 +502,7 @@ async function searchingSession(account: () => Promise<object>) {
     tools: [],
     cwd: WORKSPACE,
     webSearch: true,
+    ...(searchRefusal === undefined ? {} : { searchRefusal }),
   });
   const options = vi.mocked(query).mock.lastCall?.[0].options;
   if (options === undefined) throw new Error("query() was not called");
@@ -568,6 +572,30 @@ test("with no email address on the account every search goes on, and with an acc
     );
   } finally {
     await unread.session.close();
+  }
+});
+
+test("a search the engine refuses now is refused with the engine's reason, after the email check; one it allows goes on", async () => {
+  let reason: string | undefined = "Question 1 is open.";
+  const { session, search } = await searchingSession(
+    async () => ({ email: "ada@example.org" }),
+    async () => reason,
+  );
+  try {
+    expect(await search({ query: "Hegel" })).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: "Question 1 is open.",
+      },
+    });
+    expect(await search({ query: "ada@example.org" })).toEqual(
+      refusal(/email address/),
+    );
+    reason = undefined;
+    expect(await search({ query: "Hegel" })).toEqual({});
+  } finally {
+    await session.close();
   }
 });
 

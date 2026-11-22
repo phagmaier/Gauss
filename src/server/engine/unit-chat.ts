@@ -1442,6 +1442,7 @@ function createUnitChat(
         webSearch: async () =>
           (await dataRoot.readCourse(courseId))?.course.settings.webSearch ===
           true,
+        searchRefusal: webSearchRefusal,
         cwd: workspace,
         ...(options.workspaceTools === undefined
           ? {}
@@ -3279,6 +3280,18 @@ function createUnitChat(
         return undefined;
       }),
   };
+
+  // Not while a question of the unit is open, answered or not, as an aid: a
+  // page found could help with the answer, and the help judge reads only the
+  // tutor's text.
+  const webSearchRefusal = () =>
+    exclusive(async (): Promise<string | undefined> => {
+      const open = running?.record.position.openQuestion;
+      return open === undefined
+        ? undefined
+        : `Question ${open.number} is open: nothing can be searched until ` +
+            "its answer is graded, since a page found could help with the answer.";
+    });
 
   function sourceSearchRefusal(): string | undefined {
     const r = running;

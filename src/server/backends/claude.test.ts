@@ -141,7 +141,7 @@ test("a file the file tools wrote is reported once its call succeeded, by its pa
   ]);
 });
 
-test("a web search is reported once its result came back, with the query searched and each page found once, in order; a refused search and one that stepped aside for a message are not", () => {
+test("a web search is reported once its result came back, with the query searched and each page found once, in order, or none found; a refused search, a failed one and one that stepped aside for a message are not", () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   const search = (id: string, query: string) =>
     sdk({
@@ -190,6 +190,19 @@ test("a web search is reported once its result came back, with the query searche
       answered("s2", undefined, true),
       search("s3", "a search set aside"),
       answered("s3", { detachedToolCall: true }),
+      // A failed search gives the model the error, with no hit list.
+      search("s4", "hegel"),
+      answered("s4", {
+        query: "hegel",
+        results: ["Web search error: too_many_requests"],
+        durationSeconds: 0.4,
+      }),
+      search("s5", "an unknown phrase"),
+      answered("s5", {
+        query: "an unknown phrase",
+        results: [{ tool_use_id: "srvtoolu_3", content: [] }],
+        durationSeconds: 1.1,
+      }),
     ]).filter((e) => e.type !== "tool_call");
 
     expect(events).toEqual([
@@ -202,6 +215,7 @@ test("a web search is reported once its result came back, with the query searche
           page("Hegel and Adorno", "https://philpapers.org/rec/HA"),
         ],
       },
+      { type: "web_searched", query: "an unknown phrase", results: [] },
     ]);
   } finally {
     warn.mockRestore();

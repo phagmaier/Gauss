@@ -63,7 +63,8 @@
 //   engine refuses it while a question is open, or when the sources lack it.
 // - Web search (task 4.11): a message with "/search" in it searches the web
 //   for the rest of its line, finding five pages, and cites the first, in a
-//   course that allows web search; in another, it says that it cannot.
+//   course that allows web search; in another, it says that it cannot. The
+//   engine refuses it while a question is open.
 // - Packages (task 3.11): a message with "/packages" in it asks to install
 //   the names that follow it on its line, `pytest` if none, which the
 //   engine refuses while a question is open; Install really installs them,

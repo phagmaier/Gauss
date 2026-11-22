@@ -29,6 +29,11 @@ export interface SessionOptions {
    */
   webSearch?: boolean;
   /**
+   * Why a search is refused now, if it is: asked before each search of a
+   * session given web search; the reason is what the model is told.
+   */
+  searchRefusal?: () => Promise<string | undefined>;
+  /**
    * The id of a kept session to resume, in the folder it ran in. Its
    * conversation goes on, and the system prompt given here replaces the one
    * it had. A session the backend cannot find rejects with SessionNotFound.
@@ -90,7 +95,8 @@ export type BackendEvent =
   | { type: "file_written"; path: string }
   /**
    * The web search tool searched: the query as searched and the pages
-   * found. Only once its result came back; a refused search is not one.
+   * found. Only once its result came back; a refused or failed search is
+   * not one.
    */
   | { type: "web_searched"; query: string; results: WebResult[] }
   /** The last event of every turn. */

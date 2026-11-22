@@ -1233,6 +1233,45 @@ test("the web search setting changes for an approved course and is answered as w
   ).toBe(404);
 });
 
+test("turning web search on through the settings route closes an open unit's tutor session, and the next message resumes it with web search", async () => {
+  const pages = [{ title: "Basis", url: "https://example.org/wiki/Basis" }];
+  const setup = setUp([
+    [{ text: "A map is fixed by a basis." }],
+    [{ search: "basis linear map", results: pages }, { text: "See above." }],
+  ]);
+  await approvedCourse();
+  try {
+    await openUnit(setup);
+    const [id] = setup.backend.ids;
+    expect(setup.backend.sessions[0]?.webSearch).toBeUndefined();
+
+    const path = `/api/courses/${COURSE}/settings`;
+    expect((await post(setup.app, path, { webSearch: true })).status).toBe(200);
+    // The session idles, so it closes at once, once the queue gets to it.
+    const tick = Promise.withResolvers<void>();
+    setImmediate(tick.resolve);
+    await tick.promise;
+    expect(setup.backend.closed).toEqual([id]);
+
+    expect(
+      (await post(setup.app, `${UNIT}/messages`, { text: "Which basis?" }))
+        .status,
+    ).toBe(202);
+    await settle(setup);
+    expect(setup.backend.sessions[1]).toMatchObject({
+      resumeId: id,
+      webSearch: true,
+    });
+    expect(setup.units.get(COURSE, "vectors")?.events()).toContainEqual({
+      type: "web_searched",
+      query: "basis linear map",
+      results: pages,
+    });
+  } finally {
+    await setup.units.close();
+  }
+});
+
 test("a finished unit writes only on request, retries a failure and replaces its notes", async () => {
   const first =
     "<!doctype html><html><head><title>First notes</title></head><body><h1>The images of a basis</h1><script>stop()</script></body></html>";

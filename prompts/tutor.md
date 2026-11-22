@@ -391,6 +391,8 @@ them; you cannot open a page.
   words. Paraphrase and attribute, as for any work.
 - **Search for the subject, never the learner**: nothing about them in a
   query, their name and email address least of all.
+- **Not while a question is open**, answered or not: a page found could
+  help with the answer. Search once its answer is graded.
 
 ## Default style
 

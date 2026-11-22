@@ -7,7 +7,8 @@
 // nothing is written, unless a Write gives the file's content (a code
 // question's starter file, task 3.7), which is written in the working
 // folder. A search is reported with the pages scripted for it, in a session
-// given web search; in another, it is refused as a tool it does not have.
+// given web search, unless the engine refuses it; in another, it is refused
+// as a tool it does not have.
 // One-shot requests get the scripted replies in order, checked against the
 // request's schema as the real backends check theirs. In place of a list, a
 // function can answer every turn or request it is given, without end
@@ -234,12 +235,19 @@ export function createFakeBackend(
             continue;
           }
           yield { type: "tool_call", name: "WebSearch" };
+          // The engine is asked first, as Claude's hook asks it.
+          const refused = await options.searchRefusal?.();
           calls.push({
             name: "WebSearch",
             input: { query },
-            result: { status: "done", text: "" },
+            result:
+              refused === undefined
+                ? { status: "done", text: "" }
+                : { status: "refused", text: refused },
           });
-          yield { type: "web_searched", query, results };
+          if (refused === undefined) {
+            yield { type: "web_searched", query, results };
+          }
         } else if ("call" in step) {
           yield { type: "tool_call", name: step.call };
           const tool = options.tools.find((t) => t.name === step.call);

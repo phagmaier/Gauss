@@ -599,13 +599,16 @@ async function startSession(
     return {};
   };
   // The account's email address reaches every session (docs/findings.md,
-  // "Claude Code and the Agent SDK"); a search must not carry it out.
+  // "Claude Code and the Agent SDK"); a search must not carry it out. The
+  // engine then says whether a search may run now.
   const guardSearch: HookCallback = async (input) => {
     if (input.hook_event_name !== "PreToolUse") return {};
     const reason =
       interruptRequested || closed
         ? "The learner stopped this turn."
-        : await searchRefusal(input.tool_input, () => session.accountInfo());
+        : ((await searchRefusal(input.tool_input, () =>
+            session.accountInfo(),
+          )) ?? (await options.searchRefusal?.()));
     return reason === undefined ? {} : deny(reason);
   };
   const beforeTools: HookCallbackMatcher[] = [];
@@ -842,9 +845,12 @@ export function createTurnReader(cwd?: string) {
 
 /**
  * A search's entry, from WebSearch's structured output: each page found
- * once, in the order given. A call that "stepped aside for a message the
- * user sent" carries `{ detachedToolCall: true }` in its place (`sdk.d.ts`),
- * but the engine sends nothing while a turn runs.
+ * once, in the order given. A search that failed (rate limit, unavailable)
+ * gives only the error text, "Web search error: <code>", and no hit list,
+ * even an empty one: it is no search, rather than one that found nothing.
+ * A call that "stepped aside for a message the user sent" carries
+ * `{ detachedToolCall: true }` in its place (`sdk.d.ts`), but the engine
+ * sends nothing while a turn runs.
  */
 function searchedEvent(output: unknown): BackendEvent | undefined {
   const parsed = SearchOutput.safeParse(output);
@@ -853,12 +859,15 @@ function searchedEvent(output: unknown): BackendEvent | undefined {
     return undefined;
   }
   const results = new Map<string, WebResult>();
+  let hits = false;
   for (const part of parsed.data.results) {
     if (typeof part === "string") continue;
+    hits = true;
     for (const { title, url } of part.content) {
       if (!results.has(url)) results.set(url, { title, url });
     }
   }
+  if (!hits) return undefined;
   return {
     type: "web_searched",
     query: parsed.data.query,

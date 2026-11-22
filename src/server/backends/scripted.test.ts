@@ -443,6 +443,50 @@ test("the scripted tutor reads each section its teaching turn's header names bef
   }
 });
 
+test("the scripted tutor searches the web on /search in a course that allows it, with five pages found and the first linked, and says it cannot in one that does not", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const chat = opened.chat;
+  /** What the tutor's reply to a message put in the thread. */
+  const reply = async (message: string) => {
+    expect(chat.say(message)).toEqual({ ok: true });
+    await chat.settled();
+    const events = chat.events();
+    return events
+      .slice(events.findLastIndex((e) => e.type === "learner") + 1)
+      .filter((e) => e.type === "web_searched" || e.type === "tutor_text");
+  };
+  try {
+    await chat.settled();
+    expect(await reply("/search hegel")).toEqual([
+      {
+        type: "tutor_text",
+        text: "Scripted: this course does not allow web search.",
+      },
+    ]);
+
+    await units.setWebSearch(COURSE, true);
+    expect(await reply("/search hegel")).toEqual([
+      {
+        type: "web_searched",
+        query: "hegel",
+        results: [1, 2, 3, 4, 5].map((n) => ({
+          title: `Scripted page ${n} on hegel`,
+          url: `https://example.org/scripted/${n}`,
+        })),
+      },
+      {
+        type: "tutor_text",
+        text: "Scripted: from the search, [the first page](https://example.org/scripted/1).",
+      },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
 test("in a review, unit 2's scripted tutor asks about unit 1's objective, numbered past the question asked on it before, and the review ends before the teaching", async () => {
   const { dataRoot, units } = setUp();
   await approvedCourse(dataRoot);

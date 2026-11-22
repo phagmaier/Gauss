@@ -4560,6 +4560,58 @@ test("a unit opened after the switch was turned on starts its tutor with WebSear
   }
 });
 
+test("while a question is open, a web search is refused with the reason and shows nothing in the thread; once the answer is graded a search goes on", async () => {
+  const setup = setUp(
+    [
+      TEACH,
+      ask(Q_QUOTIENT),
+      [
+        {
+          search: "difference quotient h",
+          results: [
+            {
+              title: "Difference quotient: (f(a+h)-f(a))/h",
+              url: "https://en.wikipedia.org/wiki/Difference_quotient",
+            },
+          ],
+        },
+        { text: "$h$ is the step away from $a$." },
+      ],
+      FEEDBACK,
+      [{ text: "Now the secant." }],
+      SEARCHING,
+    ],
+    { judgments: [CLARIFICATION] },
+  );
+  await makeCourse(true, SHORT);
+  await setup.units.setWebSearch(COURSE, true);
+  const chat = await open(setup);
+  await toCheck(chat);
+
+  chat.say("What does $h$ stand for?");
+  await chat.settled();
+  expect(setup.backend.calls.at(-1)).toEqual({
+    name: "WebSearch",
+    input: { query: "difference quotient h" },
+    result: {
+      status: "refused",
+      text:
+        "Question 1 is open: nothing can be searched until its answer is " +
+        "graded, since a page found could help with the answer.",
+    },
+  });
+  expect(chat.events().map((e) => e.type)).not.toContain("web_searched");
+
+  await answer(chat, "A");
+  chat.say("Who answered Hegel's line?");
+  await chat.settled();
+  expect(since(chat, "learner")).toContainEqual({
+    type: "web_searched",
+    query: "Adorno the whole is the false",
+    results: PAGES,
+  });
+});
+
 // --- Task 2.16a: the feedback turn after an answer ---------------------------
 
 /** Why ask_question is refused in the feedback on question `number`. */

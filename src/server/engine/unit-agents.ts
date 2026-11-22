@@ -24,6 +24,7 @@ import type {
 } from "../../shared/question.ts";
 import {
   SessionNotFound,
+  type SessionOptions,
   type TutorBackend,
   type TutorSession,
   type WorkspaceTools,
@@ -151,6 +152,8 @@ export function createUnitAgents(options: {
    * resumes (task 4.11); none if not given.
    */
   webSearch?: () => Promise<boolean>;
+  /** Why a search is refused now, if it is; asked before each search. */
+  searchRefusal?: () => Promise<string | undefined>;
   /** What the tutor's sessions are called among the backend's kept sessions. */
   title: string;
   /**
@@ -177,8 +180,13 @@ export function createUnitAgents(options: {
     options.workspace === undefined ? {} : { workspace: options.workspace };
 
   /** The course's settings as they are now, for a session starting or resuming. */
-  async function settings(): Promise<{ webSearch?: true }> {
-    return (await options.webSearch?.()) === true ? { webSearch: true } : {};
+  async function settings(): Promise<
+    Pick<SessionOptions, "webSearch" | "searchRefusal">
+  > {
+    if ((await options.webSearch?.()) !== true) return {};
+    return options.searchRefusal === undefined
+      ? { webSearch: true }
+      : { webSearch: true, searchRefusal: options.searchRefusal };
   }
 
   async function startNew(): Promise<TutorSession> {
