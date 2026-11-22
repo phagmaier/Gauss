@@ -20,7 +20,7 @@ import type { StoredCourse } from "../../shared/library.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { sectionsByRef } from "../../shared/source.ts";
 import type { TutorBackend } from "../backends/backend.ts";
-import type { DataRoot } from "../record/data-root.ts";
+import { type DataRoot, PlanSectionsChanged } from "../record/data-root.ts";
 import { objectiveStatus } from "../record/status.ts";
 import { planUnitTool } from "../tools/plan-unit.ts";
 import type { TeachingTool } from "../tools/tool.ts";
@@ -62,50 +62,55 @@ export function createUnitPlanner(options: {
     courseId: string,
     unitId: string,
   ): Promise<PlanningResult> {
-    const stored = await dataRoot.readCourse(courseId);
-    const curriculum = stored?.curriculum ?? undefined;
-    const unit = curriculum?.units.find((u) => u.id === unitId);
-    if (
-      stored === undefined ||
-      curriculum === undefined ||
-      unit === undefined
-    ) {
-      return {
-        ok: false,
-        problem: "not-found",
-        error: `There is no unit "${unitId}" in the course "${courseId}".`,
-      };
-    }
-    if (curriculum.approval.status !== "approved") {
-      return {
-        ok: false,
-        problem: "not-approved",
-        error: "The curriculum is not approved yet, so its units cannot start.",
-      };
-    }
-    if (unit.plan !== undefined) return { ok: true, plan: unit.plan };
-
-    const [evidence, background, profile, misconceptions] = await Promise.all([
-      dataRoot.readEvidence(courseId),
-      dataRoot.readBackground(courseId),
-      dataRoot.readProfile(),
-      dataRoot.readMisconceptions(courseId),
-    ]);
-    const context = planningContext(stored, curriculum, unit, evidence);
-    const earlier = await readEarlier(
-      dataRoot,
-      courseId,
-      curriculum.units,
-      unitId,
-      evidence,
-      misconceptions,
-    );
-    const text = await unitText(dataRoot, courseId, unit);
     let problem: string | undefined;
     for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+      const stored = await dataRoot.readCourse(courseId);
+      const curriculum = stored?.curriculum ?? undefined;
+      const unit = curriculum?.units.find((u) => u.id === unitId);
+      if (
+        stored === undefined ||
+        curriculum === undefined ||
+        unit === undefined
+      ) {
+        return {
+          ok: false,
+          problem: "not-found",
+          error: `There is no unit "${unitId}" in the course "${courseId}".`,
+        };
+      }
+      if (curriculum.approval.status !== "approved") {
+        return {
+          ok: false,
+          problem: "not-approved",
+          error:
+            "The curriculum is not approved yet, so its units cannot start.",
+        };
+      }
+      if (unit.plan !== undefined) return { ok: true, plan: unit.plan };
+
+      const [evidence, background, profile, misconceptions] = await Promise.all(
+        [
+          dataRoot.readEvidence(courseId),
+          dataRoot.readBackground(courseId),
+          dataRoot.readProfile(),
+          dataRoot.readMisconceptions(courseId),
+        ],
+      );
+      const context = planningContext(stored, curriculum, unit, evidence);
+      const earlier = await readEarlier(
+        dataRoot,
+        courseId,
+        curriculum.units,
+        unitId,
+        evidence,
+        misconceptions,
+      );
+      const refs = unitSections(unit);
+      const text = await unitText(dataRoot, courseId, unitId, refs);
       const outcome = await runSession(
         courseId,
         unitId,
+        refs,
         planningTurn(stored, curriculum, unit, {
           context,
           background,
@@ -129,19 +134,33 @@ export function createUnitPlanner(options: {
   async function runSession(
     courseId: string,
     unitId: string,
+    refs: readonly string[],
     text: string,
   ): Promise<{ plan: Plan } | { problem: string }> {
     let plan: Plan | undefined;
+    let sectionsChanged: string | undefined;
     const planUnit = planUnitTool({
       async store(proposed) {
         if (plan !== undefined) {
           return { refused: "The plan is stored already. End your turn." };
         }
+        if (sectionsChanged !== undefined) return { refused: sectionsChanged };
         try {
-          const course = await dataRoot.storePlan(courseId, unitId, proposed);
+          const course = await dataRoot.storePlan(
+            courseId,
+            unitId,
+            proposed,
+            refs,
+          );
           plan = course.curriculum.units.find((u) => u.id === unitId)?.plan;
           return { stored: true };
         } catch (error) {
+          if (error instanceof PlanSectionsChanged) {
+            sectionsChanged = error.message;
+            return {
+              refused: `${sectionsChanged} End your turn; your copy of the text is out of date.`,
+            };
+          }
           return {
             refused: error instanceof Error ? error.message : String(error),
           };
@@ -167,6 +186,7 @@ export function createUnitPlanner(options: {
       });
       try {
         for await (const event of session.send({ text })) {
+          if (sectionsChanged !== undefined) break;
           if (event.type === "turn_end" && event.outcome === "error") {
             failure = event.error ?? "unknown error";
           }
@@ -179,6 +199,7 @@ export function createUnitPlanner(options: {
     }
 
     if (plan !== undefined) return { plan };
+    if (sectionsChanged !== undefined) return { problem: sectionsChanged };
     if (failure !== undefined) {
       return { problem: `the planning session failed (${failure}).` };
     }
@@ -245,9 +266,9 @@ function planningContext(
 async function unitText(
   dataRoot: DataRoot,
   courseId: string,
-  unit: StoredUnit,
+  unitId: string,
+  refs: readonly string[],
 ): Promise<string | undefined> {
-  const refs = unitSections(unit);
   if (refs.length === 0) return undefined;
   const byRef = sectionsByRef(await dataRoot.readSources(courseId));
   const tags = await Promise.all(
@@ -256,7 +277,7 @@ async function unitText(
       const text = await dataRoot.readSection(courseId, ref);
       if (found === undefined || text === undefined) {
         throw new Error(
-          `Unit "${unit.id}" names the section "${ref}", which the course's sources do not have.`,
+          `Unit "${unitId}" names the section "${ref}", which the course's sources do not have.`,
         );
       }
       return (

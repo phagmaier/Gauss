@@ -134,7 +134,7 @@ export function Planning(props: { courseId: string }) {
   const changes = timeline.items.filter(
     (i): i is CurriculumItem => i.kind === "curriculum",
   );
-  const sources = useCourseSources(
+  const { sources, problem: sourceProblem } = useCourseSources(
     courseId,
     changes.flatMap((c) => c.units),
   );
@@ -222,6 +222,9 @@ export function Planning(props: { courseId: string }) {
             </p>
           ) : null}
           {problem === undefined ? null : <p className="ph-note">{problem}</p>}
+          {sourceProblem === undefined ? null : (
+            <p className="ph-note">{sourceProblem}</p>
+          )}
           {lost ? (
             <p className="ph-note">
               This conversation ended when the server restarted, and nothing was

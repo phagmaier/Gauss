@@ -107,29 +107,33 @@ function watchConversion(name: string) {
   };
 }
 
-test("an upload queued during the first proposal cannot claim a waiting source's slug in the course", async () => {
+test("the first proposal keeps its sources stable while the course is made, even with a removal and a new upload queued", async () => {
   const record = openDataRoot({ path: dir });
   const created = Promise.withResolvers<void>();
   const finishCreating = Promise.withResolvers<void>();
-  const removing = Promise.withResolvers<void>();
-  const finishRemoving = Promise.withResolvers<void>();
+  const reading = {
+    ...PROPOSAL,
+    units: PROPOSAL.units.map((unit) => ({
+      ...unit,
+      sections: ["the-transcendental-aesthetic/s1"],
+    })),
+  };
   const conversion = watchConversion("second.md");
-  const { intake } = setUp([OPENING, PROPOSE], conversion.converter, {
-    dataRoot: {
-      ...record,
-      async createCourse(options) {
-        const course = await record.createCourse(options);
-        created.resolve();
-        await finishCreating.promise;
-        return course;
-      },
-      async removeUpload(intakeId, sourceId) {
-        removing.resolve();
-        await finishRemoving.promise;
-        return record.removeUpload(intakeId, sourceId);
+  const { intake } = setUp(
+    [OPENING, [{ call: "propose_curriculum", input: reading }]],
+    conversion.converter,
+    {
+      dataRoot: {
+        ...record,
+        async createCourse(options) {
+          const course = await record.createCourse(options);
+          created.resolve();
+          await finishCreating.promise;
+          return course;
+        },
       },
     },
-  });
+  );
 
   await intake.attach(upload("first.md", HEGEL));
   const disposable = await intake.attach(upload("kant.md", KANT));
@@ -139,16 +143,13 @@ test("an upload queued during the first proposal cannot claim a waiting source's
   intake.say("Go ahead.");
   await created.promise;
   const remove = intake.removeSource(disposable.attachment);
-  await removing.promise;
   try {
     await intake.attach(upload("second.md", HEGEL));
     await conversion.queued();
   } finally {
     finishCreating.resolve();
-    await setImmediate();
-    finishRemoving.resolve();
   }
-  await remove;
+  expect(await remove).toMatchObject({ ok: false, status: 409 });
   await intake.settled();
 
   expect(intake.events()).toContainEqual(
@@ -156,7 +157,7 @@ test("an upload queued during the first proposal cannot claim a waiting source's
   );
   expect(
     (await record.readSources("reading-hegel")).map((s) => s.name),
-  ).toEqual(["first.md", "second.md"]);
+  ).toEqual(["first.md", "second.md", "kant.md"]);
   expect(await uploaded(intake)).toEqual([]);
 });
 
@@ -214,6 +215,85 @@ test("the planner is told when a replacement reuses a slug it already saw", asyn
     /Removed by the learner: .*force-and-understanding.*\n+Attached: .*force-and-understanding.*"second\.md"/,
   );
   expect(sent).toContain("69 characters");
+});
+
+test("a proposal cannot use a same-slug replacement until the planner receives its outline", async () => {
+  const reading = {
+    ...PROPOSAL,
+    units: PROPOSAL.units.map((unit) => ({
+      ...unit,
+      sections: ["force-and-understanding/s1"],
+    })),
+  };
+  const propose: FakeTurn = [{ call: "propose_curriculum", input: reading }];
+  const fake = createFakeBackend([OPENING, propose, propose]);
+  const entered = Promise.withResolvers<void>();
+  const proceed = Promise.withResolvers<void>();
+  const dataRoot = openDataRoot({ path: dir });
+  const intake = createIntake({
+    backend: {
+      ...fake,
+      startSession(options) {
+        return fake.startSession({
+          ...options,
+          tools: options.tools.map((tool) => ({
+            ...tool,
+            async run(input) {
+              entered.resolve();
+              await proceed.promise;
+              return tool.run(input);
+            },
+          })),
+        });
+      },
+    },
+    systemPrompt: "You are a test planner.",
+    dataRoot,
+    converter: fakeConverter(),
+  });
+  const initial = await intake.attach(upload("first.md", HEGEL));
+  if (!initial.ok) throw new Error(initial.error);
+  intake.say("Here is my source.");
+  await intake.settled();
+  intake.say("Go ahead.");
+  await entered.promise;
+
+  const placed = Promise.withResolvers<void>();
+  const stop = intake.subscribe((event) => {
+    if (event.type === "source_attached" && event.source.name === "second.md") {
+      placed.resolve();
+    }
+  });
+  try {
+    expect(await intake.removeSource(initial.attachment)).toEqual({ ok: true });
+    expect(
+      await intake.attach(
+        upload("second.md", `${HEGEL}\nA longer replacement.`),
+      ),
+    ).toMatchObject({ ok: true });
+    await placed.promise;
+  } finally {
+    stop();
+    proceed.resolve();
+    await intake.settled();
+  }
+
+  expect(fake.calls[0]?.result).toMatchObject({
+    status: "refused",
+    text: expect.stringContaining('"force-and-understanding"'),
+  });
+  expect(await dataRoot.listCourses()).toEqual([]);
+
+  intake.say("Use the replacement.");
+  await intake.settled();
+  expect(bodyOf(fake.received[2]?.text)).toContain('"second.md"');
+  expect(fake.calls[1]?.result.status).toBe("done");
+  expect(
+    (await dataRoot.readCourse("reading-hegel"))?.curriculum?.units,
+  ).toEqual(reading.units);
+  expect(
+    (await dataRoot.readSources("reading-hegel")).map((source) => source.name),
+  ).toEqual(["second.md"]);
 });
 
 test("a file attached is converted into the intake's uploads, shown on its card, and its outline given to the planner's next turn, once", async () => {

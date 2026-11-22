@@ -59,16 +59,18 @@ function placeSpan(
   return undefined;
 }
 
-/** The next part of the same cut stretch as the last of a run. */
+/** Cut parts have consecutive section ids in the converter's reading order. */
 function continues(run: SourceSection, next: SourceSection): boolean {
-  const [a, b] = [run.section.part, next.section.part];
+  const a = run.section.part;
+  const b = next.section.part;
   return (
     a !== undefined &&
     b !== undefined &&
     run.source.id === next.source.id &&
     run.stretch === next.stretch &&
     a.of === b.of &&
-    b.number === a.number + 1
+    b.number === a.number + 1 &&
+    Number(next.section.id.slice(1)) === Number(run.section.id.slice(1)) + 1
   );
 }
 

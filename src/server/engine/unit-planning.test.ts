@@ -9,6 +9,9 @@ import type { TutorBackend } from "../backends/backend.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { placeTestSource } from "./fake-converter.ts";
+import { createGrader } from "./grading.ts";
+import { createHelpJudge } from "./help-judge.ts";
+import { createUnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
@@ -85,7 +88,7 @@ async function course(approved = true): Promise<string> {
 }
 
 /** The fake backend, counting the sessions closed. */
-function setUp(script: FakeTurn[]) {
+function setUp(script: FakeTurn[], beforeToolCall?: () => Promise<void>) {
   const fake = createFakeBackend(script);
   let closed = 0;
   const backend: TutorBackend = {
@@ -93,6 +96,12 @@ function setUp(script: FakeTurn[]) {
       const session = await fake.startSession(options);
       return {
         ...session,
+        async *send(turn) {
+          for await (const event of session.send(turn)) {
+            if (event.type === "tool_call") await beforeToolCall?.();
+            yield event;
+          }
+        },
         async close() {
           closed += 1;
           await session.close();
@@ -374,6 +383,132 @@ test("a unit that names sections is planned from their whole text, after the cur
   ]);
   expect(result).toEqual({ ok: true, plan: plan(["phenomenology/s2"]) });
   expect(await storedPlan(id, "preface")).toEqual(plan(["phenomenology/s2"]));
+});
+
+test.each([
+  {
+    change: "adds a section",
+    before: ["notes/s1"],
+    after: ["notes/s1", "notes/s2"],
+  },
+  {
+    change: "reorders the sections",
+    before: ["notes/s1", "notes/s2"],
+    after: ["notes/s2", "notes/s1"],
+  },
+])("replans when an amendment $change", async ({ before, after }) => {
+  const unit = {
+    id: "derivative",
+    title: "The derivative",
+    goal: "Read and compute a derivative.",
+    prerequisites: [],
+    sections: before,
+  };
+  const proposal = { ...PROPOSAL, units: [unit] };
+  const texts = {
+    s1: "A limit defines the derivative.\n",
+    s2: "The rate doubles here.\n",
+  };
+  const { id } = await root.createCourse({ title: proposal.title });
+  await placeTestSource(
+    root,
+    dir,
+    id,
+    {
+      id: "notes",
+      title: "Notes",
+      file: "original.md",
+      name: "notes.md",
+      format: "markdown",
+      sha256: "a".repeat(64),
+      converter: 5,
+      limit: 20_000,
+      entries: [
+        {
+          id: "s1",
+          title: "Definition",
+          size: texts.s1.length,
+          place: { paragraphs: { first: 1, last: 1 } },
+        },
+        {
+          id: "s2",
+          title: "Example",
+          size: texts.s2.length,
+          place: { paragraphs: { first: 2, last: 2 } },
+        },
+      ],
+    },
+    texts,
+  );
+  await root.saveProposal(id, proposal);
+  await root.approveCurriculum(id, proposal);
+  const plan = (sections: string[]): Plan => ({
+    ...DERIVATIVE_PLAN,
+    segments: DERIVATIVE_PLAN.segments.map((segment) => ({
+      ...segment,
+      sections,
+    })),
+  });
+  const updated = { ...unit, title: "Rates and derivatives", sections: after };
+  let amended = false;
+  const { fake, planner, closed } = setUp(
+    [
+      [{ call: "plan_unit", input: plan(before) }],
+      [{ call: "plan_unit", input: plan(after) }],
+    ],
+    async () => {
+      // The first session already got its text but has not called the tool.
+      if (amended) return;
+      amended = true;
+      await root.changeCurriculum(id, [updated]);
+    },
+  );
+
+  const tutor = createFakeBackend([[{ text: "Teaching rates." }]]);
+  const chats = createUnitChats({
+    dataRoot: root,
+    backend: tutor,
+    planner,
+    systemPrompt: "Tutor.",
+    grader: createGrader({ backend: tutor, systemPrompt: "Grade." }),
+    judge: createHelpJudge({ backend: tutor, systemPrompt: "Judge." }),
+  });
+  const opened = await chats.open(id, unit.id);
+  if (!opened.ok) throw new Error(opened.error);
+  try {
+    await opened.chat.settled();
+    expect(opened.chat.events()).toContainEqual({
+      type: "unit_plan",
+      plan: plan(after),
+    });
+    expect(tutor.sessions[0]?.systemPrompt).toContain(
+      `Rates and derivatives (id "derivative"): ${unit.goal} Reads ${after.map((ref) => JSON.stringify(ref)).join(", ")}.`,
+    );
+  } finally {
+    await chats.close();
+  }
+  expect(fake.calls[0]?.result).toEqual({
+    status: "refused",
+    text: expect.stringMatching(/sections.*changed/),
+  });
+  const retry = fake.received[1]?.text;
+  expect(retry).toContain(
+    'of the course "Calculus I": "Rates and derivatives"',
+  );
+  expect(retry).toContain(`"sections":${JSON.stringify(after)}`);
+  expect(retry).toContain("changed during planning.");
+  expect(retry).toContain("The rate doubles here.");
+  expect(closed()).toBe(2);
+  expect(
+    fake.received.map(({ text }) =>
+      [...text.matchAll(/^<section id="([^"]+)"/gm)].map((match) => match[1]),
+    ),
+  ).toEqual([before, after]);
+  expect(await storedPlan(id, unit.id)).toEqual(plan(after));
+
+  // An amendment after storing the plan still keeps it.
+  await root.changeCurriculum(id, [{ ...updated, sections: before }]);
+  expect(await storedPlan(id, unit.id)).toEqual(plan(after));
 });
 
 describe("a refused plan goes back with its reason and is corrected", () => {

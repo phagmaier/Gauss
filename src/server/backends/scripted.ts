@@ -209,6 +209,7 @@ export function scriptedPlan(
 function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   const { header, body } = parts(turn.text);
   const has = (tool: string) => session.tools.some((t) => t.name === tool);
+  if (has("plan_unit")) return planning(body);
   const course =
     has("amend_curriculum") && has("ask_question")
       ? listedCourse(session, header)
@@ -219,7 +220,6 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
       { hold: true },
     ];
   }
-  if (has("plan_unit")) return planning(header, body);
   // The course's planner has the change tool, and no questions to ask.
   const amend = session.tools.find((t) => t.name === "amend_curriculum");
   if (amend !== undefined && !has("ask_question")) {
@@ -255,15 +255,25 @@ function parts(text: string): { header: string; body: string } {
 
 // --- Planning a unit -------------------------------------------------------
 
-function planning(header: string, body: string): FakeStep[] {
-  const unitId = /\(id "([^"]+)"\)/.exec(header)?.[1];
-  // The planning turn gives the unit's sections, each in a tag of its own.
-  const sections = [...body.matchAll(/^<section id="([^"]+)"/gm)].map(
-    (m) => m[1] ?? "",
-  );
-  return unitId === undefined
-    ? [{ text: "The scripted planner could not find the unit in its turn." }]
-    : [{ call: "plan_unit", input: scriptedPlan(unitId, sections) }];
+function planning(body: string): FakeStep[] {
+  // The curriculum's JSON line precedes the source text.
+  const context = /^The curriculum, in order, as JSON\.[^\n]*\n(\{[^\n]*\})$/m;
+  const json = context.exec(body)?.[1];
+  if (json !== undefined) {
+    const { unitToPlan, units } = JSON.parse(json) as {
+      unitToPlan: string;
+      units: Pick<Unit, "id" | "sections">[];
+    };
+    const unit = units.find((u) => u.id === unitToPlan);
+    if (unit !== undefined) {
+      return [
+        { call: "plan_unit", input: scriptedPlan(unit.id, unit.sections) },
+      ];
+    }
+  }
+  return [
+    { text: "The scripted planner could not find the unit in its turn." },
+  ];
 }
 
 // --- The intake ------------------------------------------------------------

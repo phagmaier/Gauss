@@ -186,13 +186,15 @@ export interface DataRoot {
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
   /**
    * Stores the plan on the unit, once the curriculum is approved and while
-   * the unit has none. Refused, changing nothing, when one of its objective
-   * ids is used in another unit's plan.
+   * the unit has none, if its current sections are exactly the ones used
+   * to make the plan, in order. Refused, changing nothing, when one of its
+   * objective ids is used in another unit's plan.
    */
   storePlan(
     id: string,
     unitId: string,
     plan: Plan,
+    expectedSections?: readonly SectionRef[],
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
   /**
    * Where each unit in progress stands; no units when none is. A change to
@@ -405,6 +407,14 @@ export class CurriculumChangeRefused extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CurriculumChangeRefused";
+  }
+}
+
+/** An amendment changed which text a planning session should read. */
+export class PlanSectionsChanged extends Error {
+  constructor(unitId: string) {
+    super(`The sections of unit "${unitId}" changed during planning.`);
+    this.name = "PlanSectionsChanged";
   }
 }
 
@@ -995,7 +1005,7 @@ export function openDataRoot(options: {
       });
     },
 
-    async storePlan(id, unitId, plan) {
+    async storePlan(id, unitId, plan, expectedSections = []) {
       const checked = Plan.parse(plan);
       const path = courseFile(id, "curriculum.json");
       return withCurriculumLock(path, async () => {
@@ -1014,7 +1024,14 @@ export function openDataRoot(options: {
         if (unit.plan !== undefined) {
           throw new Error(`Unit "${unitId}" already has a plan.`);
         }
-        const sections = planSectionProblems(checked, unitSections(unit));
+        const refs = unitSections(unit);
+        if (
+          refs.length !== expectedSections.length ||
+          refs.some((ref, i) => ref !== expectedSections[i])
+        ) {
+          throw new PlanSectionsChanged(unitId);
+        }
+        const sections = planSectionProblems(checked, refs);
         if (sections.length > 0) throw new Error(sections.join("\n"));
         const parsed = Curriculum.safeParse({
           ...curriculum,

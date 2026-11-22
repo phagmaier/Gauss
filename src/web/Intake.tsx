@@ -52,6 +52,8 @@ const intakePath = (id: string, route: string) =>
 
 type IntakeState = {
   timeline: Timeline;
+  /** Increments only when a converted source is attached. */
+  sourceVersion: number;
   posting: number;
   awaiting: string[];
   uploadErrors: { key: number; name: string; error: string }[];
@@ -69,6 +71,7 @@ type IntakeAction =
 
 const emptyIntake: IntakeState = {
   timeline: emptyTimeline,
+  sourceVersion: 0,
   posting: 0,
   awaiting: [],
   uploadErrors: [],
@@ -106,6 +109,9 @@ function reduceIntake(state: IntakeState, action: IntakeAction): IntakeState {
   const next = { ...state, timeline };
   if (action.type === "event") {
     const { event } = action;
+    if (event.type === "source_attached" && state.timeline.approved === null) {
+      next.sourceVersion += 1;
+    }
     if (
       (event.type === "source_attached" || event.type === "source_refused") &&
       state.awaiting.includes(event.attachment)
@@ -118,10 +124,8 @@ function reduceIntake(state: IntakeState, action: IntakeAction): IntakeState {
 
 export function Intake(props: { intakeId: string }) {
   const { intakeId } = props;
-  const [{ timeline, posting, awaiting, uploadErrors }, dispatch] = useReducer(
-    reduceIntake,
-    emptyIntake,
-  );
+  const [state, dispatch] = useReducer(reduceIntake, emptyIntake);
+  const { timeline, sourceVersion, posting, awaiting, uploadErrors } = state;
   const [connected, setConnected] = useState(false);
   const [lost, setLost] = useState(false);
   const [problem, setProblem] = useState<string>();
@@ -188,7 +192,11 @@ export function Intake(props: { intakeId: string }) {
 
   const latest = timeline.items.findLast((i) => i.kind === "proposal");
   // Only the latest proposal is drawn in full, so only its units read.
-  const sources = useCourseSources(latest?.courseId, latest?.units ?? []);
+  const { sources, problem: sourceProblem } = useCourseSources(
+    latest?.courseId,
+    latest?.units ?? [],
+    sourceVersion,
+  );
   const { approved } = timeline;
   const open = !lost && approved === null;
   const converting =
@@ -272,6 +280,7 @@ export function Intake(props: { intakeId: string }) {
                   key={item.key}
                   proposal={item}
                   sources={sources}
+                  sourceProblem={sourceProblem}
                   approved={approved?.revision === item.revision}
                   canApprove={open && !timeline.busy && !converting}
                   diagramOpen={diagramOpen}
@@ -416,6 +425,7 @@ function ProposalCard(props: {
   onApprove(): Promise<string | undefined>;
   /** The course's sources, once loaded: the units' reads come from them. */
   sources: readonly Outline[] | undefined;
+  sourceProblem: string | undefined;
 }) {
   const { proposal } = props;
   const [sending, setSending] = useState(false);
@@ -447,6 +457,9 @@ function ProposalCard(props: {
         sources={props.sources}
       />
       <SourceShare units={proposal.units} sources={props.sources} />
+      {props.sourceProblem === undefined ? null : (
+        <p className="qa-error">{props.sourceProblem}</p>
+      )}
       <section className="cs" aria-label="How I would teach it">
         <div className="cs-h">
           <span>How I would teach it</span>

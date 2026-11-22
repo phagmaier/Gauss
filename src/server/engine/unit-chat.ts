@@ -1246,16 +1246,20 @@ function createUnitChat(
       if (pending?.unitId === unitId) pendingInstall = pending.completion;
       // The earlier sessions' thread first, then this session's.
       await log.open();
-      const stored = await dataRoot.readCourse(courseId);
-      const units = stored?.curriculum?.units ?? [];
-      const storedUnit = units.find((u) => u.id === unitId);
-      if (stored === undefined || storedUnit === undefined) {
-        throw new Error(`There is no unit "${unitId}" in "${courseId}".`);
-      }
-      if (storedUnit.plan === undefined) log.emit({ type: "unit_planning" });
+      const before = await dataRoot.readCourse(courseId);
+      const prior = before?.curriculum?.units.find((u) => u.id === unitId);
+      const needsPlan = prior?.plan === undefined;
+      if (prior !== undefined && needsPlan) log.emit({ type: "unit_planning" });
       const planned = await planner.plan(courseId, unitId);
       if (!planned.ok) throw new Error(planned.error);
       const { plan } = planned;
+      // An amendment while planning can change the new tutor's curriculum.
+      const stored = needsPlan ? await dataRoot.readCourse(courseId) : before;
+      const units = stored?.curriculum?.units ?? [];
+      const storedUnit = needsPlan ? units.find((u) => u.id === unitId) : prior;
+      if (stored === undefined || storedUnit === undefined) {
+        throw new Error(`There is no unit "${unitId}" in "${courseId}".`);
+      }
       log.emit({ type: "unit_plan", plan });
 
       const record = await openUnitRecord({

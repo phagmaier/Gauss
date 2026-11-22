@@ -137,6 +137,44 @@ test("a lone part names its number and count, and parts apart stay apart", () =>
   ]);
 });
 
+test("parts of distinct same-titled stretches under different headings stay apart", () => {
+  const book: Outline = {
+    ...BOOK,
+    entries: [
+      {
+        title: "First chapter",
+        entries: [
+          {
+            title: "Examples",
+            entries: [
+              part("s1", "Examples", 1, 2, [1, 2]),
+              part("s2", "Examples", 2, 2, [3, 4]),
+            ],
+          },
+        ],
+      },
+      {
+        title: "Second chapter",
+        entries: [
+          {
+            title: "Examples",
+            entries: [
+              part("s3", "Examples", 1, 2, [5, 6]),
+              part("s4", "Examples", 2, 2, [7, 8]),
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  expect(reads(["phenomenology/s1", "phenomenology/s4"], [book]).lines).toEqual(
+    [
+      { text: "Examples, part 1 of 2", place: "pp. i–ii" },
+      { text: "Examples, part 2 of 2", place: "pp. 1–2" },
+    ],
+  );
+});
+
 test("more than two lines fold into a count and the pages they span", () => {
   expect(
     reads(["phenomenology/s8", "phenomenology/s9", "phenomenology/s10"]),

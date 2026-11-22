@@ -265,7 +265,7 @@ test("in a course with a source, the tutor's instructions list the sections each
       },
     ],
   };
-  await root.storePlan(id, "loops", plan);
+  await root.storePlan(id, "loops", plan, ["counting/s1"]);
   const [loops, ...rest] = reading;
   const added = (section: string) => ({ ...ADDED, sections: [section] });
   const { backend, open, stored } = await server([

@@ -1,57 +1,72 @@
 // The outlines of a course's sources, which the cards need to say what its
-// units read. Fetched only once a unit shown names a section, and again when
-// one names a source not yet held: an intake can attach a source after its
-// first proposal.
+// units read. The endpoint gives all outlines at once. Only the intake can
+// change that set, by attaching a source after its first proposal.
 
 import { useEffect, useState } from "react";
 import { type Unit, unitSections } from "../shared/curriculum.ts";
 import { CourseSources, type Outline } from "../shared/source.ts";
-import { getJson } from "./api.ts";
+import { getJsonUntilAnswered } from "./api.ts";
 
 /**
- * The course's outlines, or undefined while none is needed or they are
- * being fetched (then the cards show no reads).
+ * Loads once a unit shown names a section. A new version (a successful
+ * intake attachment) refreshes the outlines without hiding the last read.
  */
 export function useCourseSources(
   courseId: string | undefined,
   units: readonly Pick<Unit, "sections">[],
-): readonly Outline[] | undefined {
+  version = 0,
+): { sources: readonly Outline[] | undefined; problem: string | undefined } {
   const [held, setHeld] = useState<{
     courseId: string;
-    /** The sources named when they were fetched. */
-    named: string;
-    outlines: Outline[];
+    version: number;
+    complete: boolean;
+    sources: Outline[] | undefined;
+    problem: string | undefined;
   }>();
-  const ids = new Set(
-    units.flatMap((unit) =>
-      unitSections(unit).map((ref) => ref.slice(0, ref.indexOf("/"))),
-    ),
-  );
-  const named = [...ids].sort().join(" ");
-  const outlines = held?.courseId === courseId ? held?.outlines : undefined;
-  const missing =
-    courseId !== undefined &&
-    [...ids].some((id) => !outlines?.some((source) => source.id === id));
-  // A source still missing after a fetch for the same names is not one of
-  // the course's: the fetch is not repeated, and lines name its sections by
-  // their refs.
-  const settled = !missing || held?.named === named;
-  const wanted = missing ? named : "";
+  const needed = units.some((unit) => unitSections(unit).length > 0);
+  const current = held?.courseId === courseId ? held : undefined;
+  const settled = current?.version === version && current.complete;
+  const wanted = needed && !settled ? courseId : undefined;
 
   useEffect(() => {
-    if (courseId === undefined || wanted === "") return;
+    if (wanted === undefined) return;
     const stop = new AbortController();
-    void getJson(
-      `/api/courses/${encodeURIComponent(courseId)}/sources`,
+    const reportFailure = (error: string, retrying: boolean) => {
+      setHeld((before) => ({
+        courseId: wanted,
+        version,
+        complete: !retrying,
+        sources: before?.courseId === wanted ? before.sources : undefined,
+        problem: `The course's source outlines could not be loaded: ${error}${retrying ? " Trying again…" : ""}`,
+      }));
+    };
+    void getJsonUntilAnswered(
+      `/api/courses/${encodeURIComponent(wanted)}/sources`,
       CourseSources,
-      stop.signal,
+      {
+        signal: stop.signal,
+        onFailure: (error) => reportFailure(error, true),
+      },
     ).then((answer) => {
+      if (answer === undefined || stop.signal.aborted) return;
       if (answer.ok) {
-        setHeld({ courseId, named: wanted, outlines: answer.data.sources });
+        setHeld({
+          courseId: wanted,
+          version,
+          complete: true,
+          sources: answer.data.sources,
+          problem: undefined,
+        });
+      } else {
+        reportFailure(answer.error, false);
       }
     });
     return () => stop.abort();
-  }, [courseId, wanted]);
+  }, [wanted, version]);
 
-  return settled ? outlines : undefined;
+  return {
+    sources: needed ? current?.sources : undefined,
+    problem:
+      needed && current?.version === version ? current.problem : undefined,
+  };
 }

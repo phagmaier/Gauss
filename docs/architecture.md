@@ -223,11 +223,12 @@ also before it reaches the backend.
   is told of every source the course has. The first
   proposal creates the course; each proposal replaces the draft with its
   style note, background note and the profile's whole text, and a reply
-  to one is a change request. A proposal whose units name a section the
-  course's sources lack, or more text than a unit reads, is refused
-  (section 8, "Units and their sections"), the first before it makes the
-  course. A card compares its profile with `profile.md`
-  as it was when the proposal was made, even after reopening a draft.
+  to one is a change request. A proposal is refused if its units name a
+  section that is missing, a source in a form the planner has not seen,
+  or more text than a unit can read (section 8, "Units and their sections").
+  A refusal does not make a course. A card compares its profile with
+  `profile.md` as it was when the proposal was made, even after reopening
+  a draft.
   Approval is refused while a turn is queued or running, or a file
   converts; it checks that
   the files still match the card (`DraftMismatch`) and the profile still
@@ -1232,9 +1233,9 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
   which becomes its outline's id: in `uploads/<intake id>/` until the
   first proposal creates the course and moves them into its `sources/`,
   and in the course's `sources/` after. The record publishes a complete
-  source by rename. Moving the waiting sources and switching the
-  destination share the queue with placement and removal. At each start
-  `uploads/` is emptied before the first backup, since an intake ends
+  source by rename. Checking a proposal, making the course and moving
+  the waiting uploads share the queue with placement and removal. At each
+  start `uploads/` is emptied before the first backup, since an intake ends
   with the server.
 - Each step shows on the file's card through the intake's log
   (`source_converting`; then `source_attached` with `SourceFacts`, or
@@ -1263,14 +1264,19 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
   outline's sizes; a refusal names each unit and section at fault and a
   unit's total. A section named twice in a unit is refused by the schema.
 - **The cards** list under each unit what it reads, and say how much of
-  each source the units read (section 10, "Intake"); the page reads the
-  outlines from `GET /api/courses/<id>/sources` (`CourseSources`).
+  each source the units read (section 10, "Intake"). The page reads the
+  outlines from `GET /api/courses/<id>/sources` (`useCourseSources`),
+  refreshes them when a file is attached in the intake, and reports
+  load failures while retrying temporary ones.
 - **Unit planning** reads the unit's sections whole (`readSection` in
   `record/data-root.ts`) and gives them last in its one turn, under "# The
   unit's text", each in a `<section>` tag with its id, title and place
   (`placeText`), in the unit's order, so the tutor's session starts from a
   plan made from the text rather than carrying the text from its first
-  turn. A section that cannot be read fails the planning.
+  turn. A section that cannot be read fails the planning. `storePlan`
+  checks that the unit still names the same sections in the same order;
+  if an amendment changed them, the next attempt uses the current text and
+  curriculum.
 - **Each segment names the sections it draws on** (`Segment.sections`):
   in a unit that names sections, at least one, each of them the unit's;
   in a unit that names none, none (`planSectionProblems`, which

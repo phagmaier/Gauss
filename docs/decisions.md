@@ -2662,10 +2662,10 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   not by the schema, which cannot see the sources (the agent's choice,
   task 4.7). The refusal names each unit and section at fault, and the
   total of a unit over the limit, so the planner can split it. The intake
-  checks its first proposal before making the course, so a refused one
-  makes none, and every proposal again once the waiting uploads are the
-  course's, since a source can be removed until then; that second check
-  is the only one for a revision.
+  checks on the upload queue before making the course; a removal cannot
+  invalidate a proposal between that check and the move. It checks that
+  the planner has seen each named attachment, not just its slug, which
+  a replacement can reuse.
 - **A unit may name no section in a course with sources** (the agent's
   choice), such as one on what the source assumes; its segments name none.
 - **A planned unit whose sections a change alters keeps its plan** (the
@@ -2678,8 +2678,8 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   `<course>` block, sent again whenever a status changes, would repeat.
 - **The cards read the outlines through a route**
   (`GET /api/courses/<id>/sources`), not from their events (the agent's
-  choice): the events already carry each unit's sections, the outlines do
-  not change once units name them, and the course view's sources (task
+  choice): the events already carry each unit's sections, an existing
+  outline stays fixed once units name it, and the course view's sources (task
   4.10) need the same route. Rejected: each card event carrying its units'
   reads resolved, which a unit's transcript would then keep copies of.
 

@@ -18,6 +18,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Slug } from "../../shared/course.ts";
+import { type Unit, unitSections } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import {
   formatBytes,
@@ -29,7 +30,7 @@ import {
 import type { DataRoot } from "../record/data-root.ts";
 import type { ChatResult } from "./conversation.ts";
 import type { SourceConverter } from "./source-convert.ts";
-import { sourceLines } from "./source-text.ts";
+import { sectionsRefused, sourceLines } from "./source-text.ts";
 
 /** A file the learner attached, as the route passes it on. */
 export interface Upload {
@@ -66,17 +67,17 @@ export interface IntakeSources {
   /** Deletes an attached source before it becomes part of the course. */
   remove(attachment: string): Promise<ChatResult>;
   /**
-   * Moves the waiting uploads and switches the placement destination in one
-   * queue operation. If a move fails, it is retried before placing another
-   * source in the course or saving another proposal.
+   * Checks the proposal against the sources on the placement queue. Only then
+   * makes the course if necessary, moves the uploads and fixes their destination.
    */
-  moveInto(courseId: Slug): Promise<void>;
+  prepareProposal(
+    units: readonly Unit[],
+    createCourse: () => Promise<Slug>,
+  ): Promise<{ courseId: Slug } | { refused: string }>;
   /** A file is being received or converted. */
   converting(): boolean;
   /** Resolves once no file is being received or converted. */
   settled(): Promise<void>;
-  /** The outlines of the sources the course has now, or will have from the first proposal. */
-  outlines(): Promise<Outline[]>;
   /**
    * What the planner's next turn is told: with `fresh`, for a session that
    * has been told nothing, every source the course has.
@@ -129,7 +130,7 @@ export function createIntakeSources(options: {
   let told = new Map<Slug, ToldSource>();
   /** The files refused since the planner was last told. */
   let refusals: { name: string; detail: string }[] = [];
-  /** Placing, moving and removing run one at a time. */
+  /** Placing, removing and preparing a proposal run one at a time. */
   let placing: Promise<unknown> = Promise.resolve();
   let course =
     options.courseId === undefined
@@ -270,6 +271,25 @@ export function createIntakeSources(options: {
     ];
   }
 
+  /** Sources a proposal names must be the same attachments the planner saw. */
+  function unseenSources(
+    units: readonly Unit[],
+    sources: readonly IdentifiedSource[],
+  ): string[] {
+    const named = new Set(
+      units.flatMap((unit) =>
+        unitSections(unit).map((ref) => ref.slice(0, ref.indexOf("/"))),
+      ),
+    );
+    return sources.flatMap(({ outline, attachment }) => {
+      if (!named.has(outline.id)) return [];
+      const seen = told.get(outline.id);
+      return seen === undefined || seen.attachment !== attachment
+        ? [JSON.stringify(outline.id)]
+        : [];
+    });
+  }
+
   return {
     async attach({ name, size, body }) {
       const problem = nameProblem(name);
@@ -367,10 +387,25 @@ export function createIntakeSources(options: {
       });
     },
 
-    moveInto(courseId) {
+    prepareProposal(units, createCourse) {
       return serially(async () => {
-        course ??= { id: courseId, uploadsMoved: false };
+        const sources = await current();
+        const refused = sectionsRefused(
+          units,
+          sources.map((source) => source.outline),
+        );
+        if (refused !== undefined) return { refused };
+        const unseen = unseenSources(units, sources);
+        if (unseen.length > 0) {
+          return {
+            refused:
+              `The proposal names a source you have not seen in its current form: ${unseen.join(", ")}. ` +
+              "Wait for the updated outline on the next learner turn before proposing units that read it.",
+          };
+        }
+        course ??= { id: await createCourse(), uploadsMoved: false };
         if (!course.uploadsMoved) await moveWaitingUploads(course);
+        return { courseId: course.id };
       });
     },
 
@@ -380,8 +415,6 @@ export function createIntakeSources(options: {
     async settled() {
       while (pending.size > 0) await Promise.all(pending);
     },
-
-    outlines: async () => (await current()).map((s) => s.outline),
 
     async forTurn(fresh) {
       const known = fresh ? new Map<Slug, ToldSource>() : told;

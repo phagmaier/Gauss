@@ -212,11 +212,13 @@ async function setUp(options: {
     id,
     "loops",
     plan("loop-count", curriculum.units[0]?.sections),
+    curriculum.units[0]?.sections,
   );
   await root.storePlan(
     id,
     "sets",
     plan("set-count", curriculum.units[1]?.sections),
+    curriculum.units[1]?.sections,
   );
   if (options.finished === true) {
     await root.appendEvidence(id, passed("loop-count"));

@@ -58,7 +58,6 @@ import {
   type Upload,
 } from "./intake-sources.ts";
 import type { SourceConverter } from "./source-convert.ts";
-import { sectionsRefused } from "./source-text.ts";
 
 export interface Intake {
   /** Changes when the server restarts, so a page can tell. */
@@ -154,39 +153,30 @@ export function createIntake(options: {
         return { refused: "The learner has approved the curriculum." };
       }
       if (opening) return { refused: FIRST_TURN };
-      if (courseId === undefined) {
-        // Checked before the course is made, so a refusal makes none.
-        const refused = sectionsRefused(
-          proposal.units,
-          await sources.outlines(),
-        );
-        if (refused !== undefined) return { refused };
-        try {
-          const created = await dataRoot.createCourse({
-            title: proposal.title,
-            reserved: (id) => {
-              reservedCourseId = id;
-            },
-          });
-          courseId = created.id;
-        } finally {
-          reservedCourseId = undefined;
-        }
-      }
-      await sources.moveInto(courseId);
-      // Checked again once the sources are the course's, as they stay from
-      // now on: a source removed while the proposal was being made is gone.
-      const refused = sectionsRefused(
+      const prepared = await sources.prepareProposal(
         proposal.units,
-        await dataRoot.readSources(courseId),
+        async () => {
+          try {
+            const created = await dataRoot.createCourse({
+              title: proposal.title,
+              reserved: (id) => {
+                reservedCourseId = id;
+              },
+            });
+            courseId = created.id;
+            return created.id;
+          } finally {
+            reservedCourseId = undefined;
+          }
+        },
       );
-      if (refused !== undefined) return { refused };
+      if ("refused" in prepared) return prepared;
       const profileWas = (await dataRoot.readProfile()) ?? null;
       const card = { ...proposal, profileWas };
-      await dataRoot.saveProposal(courseId, card);
+      await dataRoot.saveProposal(prepared.courseId, card);
       latest += 1;
       shown = card;
-      emitProposal(courseId, shown);
+      emitProposal(prepared.courseId, shown);
       return { revision: latest };
     },
   });

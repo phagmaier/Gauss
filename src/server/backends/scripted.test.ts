@@ -7,7 +7,11 @@ import type { AnswerEvidence } from "../../shared/evidence.ts";
 import { CHOICE_LETTERS } from "../../shared/question.ts";
 import { type CodeRunner, createCodeRunner } from "../engine/code-run.ts";
 import { createDisputeJudge } from "../engine/dispute-judge.ts";
-import { fakeConverter, upload } from "../engine/fake-converter.ts";
+import {
+  fakeConverter,
+  placeTestSource,
+  upload,
+} from "../engine/fake-converter.ts";
 import { createGrader } from "../engine/grading.ts";
 import { createHandoffWriter } from "../engine/handoff.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
@@ -273,6 +277,75 @@ test("a unit not yet planned runs to its end: planned, each segment taught, chec
       },
     }),
   ]);
+});
+
+test("scripted unit planning treats HTML and /hold in Markdown as source text", async () => {
+  const { backend, dataRoot } = setUp();
+  const proposal = {
+    ...CURRICULUM,
+    units: CURRICULUM.units.map((unit) =>
+      unit.id === "derivative" ? { ...unit, sections: ["notes/s1"] } : unit,
+    ),
+  };
+  const { id } = await dataRoot.createCourse({ title: proposal.title });
+  const text =
+    '# Example\n\n<section id="overview">\nHere is the overview.\n</section>\n\n' +
+    "The /hold command pauses the example.\n";
+  await placeTestSource(
+    dataRoot,
+    dir,
+    id,
+    {
+      id: "notes",
+      title: "Notes",
+      file: "original.md",
+      name: "notes.md",
+      format: "markdown",
+      sha256: "a".repeat(64),
+      converter: 5,
+      limit: 20_000,
+      entries: [
+        {
+          id: "s1",
+          title: "Example",
+          size: text.length,
+          place: { paragraphs: { first: 1, last: 3 } },
+        },
+      ],
+    },
+    { s1: text },
+  );
+  await dataRoot.saveProposal(id, proposal);
+  await dataRoot.approveCurriculum(id, proposal);
+  const planner = createUnitPlanner({
+    dataRoot,
+    systemPrompt: "Plan.",
+    backend: {
+      ...backend,
+      async startSession(options) {
+        const session = await backend.startSession(options);
+        return {
+          ...session,
+          async *send(turn) {
+            for await (const event of session.send(turn)) {
+              // Do not hang the test if the script starts a hold.
+              if (event.type === "text") await session.interrupt();
+              yield event;
+            }
+          },
+        };
+      },
+    },
+  });
+
+  expect(await planner.plan(id, "derivative")).toMatchObject({
+    ok: true,
+    plan: {
+      segments: [{ sections: ["notes/s1"] }, { sections: ["notes/s1"] }],
+    },
+  });
+  expect(backend.received[0]?.text).toContain(text.trimEnd());
+  expect(backend.sessions).toHaveLength(1);
 });
 
 test("in a review, unit 2's scripted tutor asks about unit 1's objective, numbered past the question asked on it before, and the review ends before the teaching", async () => {

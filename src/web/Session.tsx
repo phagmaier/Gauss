@@ -372,7 +372,7 @@ export function Session(props: { courseId: string; unitId: string }) {
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
-  const sources = useCourseSources(
+  const { sources, problem: sourceProblem } = useCourseSources(
     courseId,
     timeline.items.flatMap((i) => (i.kind === "curriculum" ? i.units : [])),
   );
@@ -645,6 +645,9 @@ export function Session(props: { courseId: string; unitId: string }) {
               The course's details could not be loaded: {courseProblem.error}
               {courseProblem.retrying ? " Trying again…" : ""}
             </p>
+          )}
+          {sourceProblem === undefined ? null : (
+            <p className="ph-note">{sourceProblem}</p>
           )}
           {refused !== undefined ? (
             <p className="ph-note">
