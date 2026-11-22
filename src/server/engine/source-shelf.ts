@@ -3,7 +3,9 @@
 // and a PDF page's image for view_page, rendered by `convert.py page` in the
 // engine's sandbox the first time it is asked for and kept in the source's
 // pages/ (DataRoot.pageImage). Each read and each page looked at is shown in
-// the thread. Neither depends on the unit's phase. And the passages it
+// the thread. A read without a range takes the teaching segment's planned
+// range while that segment is taught (`plannedRange`); a page view does not
+// depend on the phase. And the passages it
 // quotes with quote_source (task 4.9), looked for in a shared course index
 // off the server thread and shown when found, as the unit's chat allows
 // (`QuoteDesk`).

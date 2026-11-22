@@ -155,6 +155,7 @@ async function start(
     rendering?: Rendering;
     renderPage?: SourceConverter["renderPage"];
     planThroughModel?: boolean;
+    plan?: Plan;
   } = {},
 ) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
@@ -175,7 +176,7 @@ async function start(
   await root.saveProposal(id, proposal);
   await root.approveCurriculum(id, proposal);
   if (!given.planThroughModel) {
-    await root.storePlan(id, "preface", PLAN, PREFACE.sections);
+    await root.storePlan(id, "preface", given.plan ?? PLAN, PREFACE.sections);
   }
   if (given.position !== undefined) {
     await root.writePosition(id, "preface", given.position);
@@ -666,4 +667,45 @@ test("a review's question on another unit's objective names that unit's sections
       'That unit reads "phenomenology/s1", "Preface (part 1 of 2)", pages 1–3 (printed i–iii); ' +
       '"phenomenology/s2", "Preface (part 2 of 2)", pages 3–4 (printed iii–1). No teaching',
   );
+});
+
+test("outside the segment's teaching, as in its discussion or going over it again, a read with no range is the whole section", async () => {
+  const part = {
+    section: "phenomenology/s1",
+    range: { pages: { first: 2, last: 2 } },
+  };
+  const plan: Plan = {
+    ...PLAN,
+    segments: PLAN.segments.map((segment, i) =>
+      i === 0 ? { ...segment, passages: [part] } : segment,
+    ),
+  };
+  const whole = `Section "phenomenology/s1" of "Phenomenology": "Preface (part 1 of 2)", pages 1–3 (printed i–iii).\n\n${S1}`;
+  const positions = [
+    { segment: 0, phase: "discuss" },
+    // Going over "whole" again, after the last segment.
+    { segment: 2, phase: "teach", again: ["whole"] },
+  ] satisfies UnitPosition[];
+  for (const position of positions) {
+    const section = part.section;
+    const { backend, chat, units } = await start(
+      [[read(section), { text: "The whole." }]],
+      { plan, position },
+    );
+    try {
+      if (position.phase === "discuss") {
+        expect(chat.say("Read it again?")).toEqual({ ok: true });
+      }
+      await chat.settled();
+      expect(backend.calls[0]?.result, JSON.stringify(position)).toEqual({
+        status: "done",
+        text: whole,
+      });
+      expect(chat.events()).toContainEqual({ type: "section_read", section });
+    } finally {
+      await units.close();
+    }
+    await rm(dir, { recursive: true, force: true });
+    dir = await mkdtemp(join(tmpdir(), "gauss-source-reading-"));
+  }
 });

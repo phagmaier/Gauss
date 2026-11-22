@@ -207,6 +207,8 @@ Known and accepted for now; a task that closes one deletes it here.
   stay in the text; PDFium's reading order is trusted; notes continuing on
   the next page read as body; a bookmark title that differs from the
   printed heading lands at the top of its page.
+- `tutor.md` sends the tutor to a page whose math reads garbled; Sonnet
+  looked at it only when asked.
 - The notes writer's `<sections>` lists only the unit's sections: a
   tutor's link to another unit's section reaches it as a bare address.
   Nothing checks the notes against the source: the one live run kept, in

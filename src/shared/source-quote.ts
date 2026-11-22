@@ -53,7 +53,8 @@ export const QUOTE_NOT_FOUND =
   "The passage was not found in the course's sources. Copy it exactly, its " +
   "words in order, from a section you have read with read_section: case, " +
   "spacing, hyphens, curly quotes, emphasis marks, page markers and footnote " +
-  "references do not matter, but every word does.";
+  "references do not matter, but every word does. Leave out " +
+  "`<!-- paragraph N -->` lines.";
 
 /** A source's sections in reading order: by their ids' ordinals, not the outline's order. */
 export function orderedSections(source: Outline): OutlineSection[] {

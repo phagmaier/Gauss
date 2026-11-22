@@ -1754,3 +1754,24 @@ test("source cards do not split streaming Markdown but a tutor's file still inte
     { kind: "tutor", text: "Now read it." },
   ]);
 });
+
+test("a section read keeps the range it read, and a whole-section read has none", () => {
+  const state = play([
+    { type: "turn_start" },
+    {
+      type: "section_read",
+      section: "phenomenology/s1",
+      range: { pages: { first: 2, last: 2 } },
+    },
+    { type: "section_read", section: "phenomenology/s2" },
+  ]);
+  expect(state.items).toEqual([
+    {
+      kind: "read",
+      key: 1,
+      section: "phenomenology/s1",
+      range: { pages: { first: 2, last: 2 } },
+    },
+    { kind: "read", key: 2, section: "phenomenology/s2" },
+  ]);
+});

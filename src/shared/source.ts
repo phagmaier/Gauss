@@ -196,7 +196,7 @@ export function sectionsByRef(
 /** A stable passage within a converted section, named in the section's coordinates. */
 export const PassageRef = z.object({
   section: SectionRef.describe(
-    'The section, as "<source id>/<section id>" from the outlines under "# Sources" in your instructions, such as "phenomenology/s3".',
+    'The section, as "<source id>/<section id>", such as "phenomenology/s3".',
   ),
   range: SectionPlace.describe(
     "An inclusive range within the section: pages counted from 1, not printed labels, or the numbered paragraphs in its heading.",
@@ -206,8 +206,11 @@ export type PassageRef = z.infer<typeof PassageRef>;
 
 /** What the tutor asks read_section for: a section or a passage within it. */
 export const ReadSectionInput = PassageRef.extend({
+  section: SectionRef.describe(
+    'The section, as "<source id>/<section id>" from the outlines under "# Sources" in your instructions, such as "phenomenology/s3".',
+  ),
   range: SectionPlace.optional().describe(
-    "An explicit page or paragraph range within the section, using its own numbering. Omit it to use the current teaching segment's planned range, or to read the whole section if none is planned.",
+    "An explicit page or paragraph range within the section, using its own numbering. Omit it to use the planned range while its segment is being taught, or else to read the whole section.",
   ),
 });
 export type ReadSectionInput = z.infer<typeof ReadSectionInput>;
@@ -247,7 +250,7 @@ export function passageRangeProblem(
       (range.paragraphs.first !== first || range.paragraphs.last !== last) &&
       paragraphStarts?.length !== last - first
     )
-      return "This section has no paragraph boundaries recorded. Read it whole instead.";
+      return "This section has no paragraph boundaries recorded, so give it no range.";
     return;
   }
   return `Use ${"pages" in place ? "pages" : "paragraphs"}, not ${"pages" in range ? "pages" : "paragraphs"}.`;

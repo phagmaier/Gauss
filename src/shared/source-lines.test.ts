@@ -149,3 +149,12 @@ test("until the outlines are known, or when they lack it, a line gives the name 
     quoteCitation({ section: "phenomenology/s1", at: { page: 1 } }, undefined),
   ).toBe("phenomenology/s1");
 });
+
+test("a read of part of a section is named by the range it read", () => {
+  expect(
+    readLine("phenomenology/s1", [BOOK], { pages: { first: 2, last: 2 } }),
+  ).toEqual({ text: "Preface (part 1 of 2)", aside: "p. ii" });
+  expect(
+    readLine("on-liberty/s1", [ESSAY], { paragraphs: { first: 10, last: 11 } }),
+  ).toEqual({ text: "Chapter I. Introductory", aside: "¶ 10–11" });
+});

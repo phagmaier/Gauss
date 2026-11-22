@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { currentObjective, Plan } from "./plan.ts";
+import { currentObjective, Plan, planPassageProblems } from "./plan.ts";
+import {
+  type Outline,
+  type OutlineSection,
+  passageRangeProblem,
+} from "./source.ts";
 import type { ObjectiveStatus } from "./status.ts";
 
 // A hand-written plan for a unit on the derivative: three objectives taught
@@ -224,5 +229,99 @@ describe("the current objective", () => {
         { asymptote: "passed" },
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("passages", () => {
+  // A Markdown essay: no paragraph boundaries recorded in s1, and s2 with
+  // its boundaries.
+  const ESSAY: Outline = {
+    id: "essay",
+    title: "An Essay",
+    file: "original.md",
+    name: "essay.md",
+    format: "markdown",
+    sha256: "a".repeat(64),
+    converter: 5,
+    limit: 20_000,
+    entries: [
+      {
+        id: "s1",
+        title: "Opening",
+        size: 10,
+        place: { paragraphs: { first: 1, last: 3 } },
+      },
+      {
+        id: "s2",
+        title: "Middle",
+        size: 60,
+        place: { paragraphs: { first: 4, last: 9 } },
+        paragraphStarts: [10, 20, 30, 40, 50],
+      },
+    ],
+  };
+  const planWith = (passages: Plan["segments"][number]["passages"]) =>
+    Plan.parse({
+      objectives: [{ id: "one", statement: "Do one thing." }],
+      segments: [
+        {
+          title: "Only",
+          objectives: ["one"],
+          sections: ["essay/s1", "essay/s2"],
+          passages,
+        },
+      ],
+    });
+  const where = 'Segment "Only", passage in';
+
+  test("a passage must name one of its segment's sections, once", () => {
+    expect(
+      planPassageProblems(
+        planWith([
+          {
+            section: "essay/s3",
+            range: { paragraphs: { first: 4, last: 4 } },
+          },
+          {
+            section: "essay/s2",
+            range: { paragraphs: { first: 4, last: 5 } },
+          },
+          {
+            section: "essay/s2",
+            range: { paragraphs: { first: 6, last: 6 } },
+          },
+        ]),
+        [ESSAY],
+      ),
+    ).toEqual([
+      `${where} "essay/s3": name only the segment's own sections.`,
+      `${where} "essay/s2": give at most one range per section.`,
+    ]);
+  });
+
+  test("a section without paragraph boundaries takes only its whole range", () => {
+    expect(
+      passageRangeProblem(ESSAY.entries[0] as OutlineSection, {
+        paragraphs: { first: 2, last: 3 },
+      }),
+    ).toBe(
+      "This section has no paragraph boundaries recorded, so give it no range.",
+    );
+    expect(
+      planPassageProblems(
+        planWith([
+          { section: "essay/s1", range: { paragraphs: { first: 1, last: 3 } } },
+        ]),
+        [ESSAY],
+      ),
+    ).toEqual([]);
+    expect(
+      planPassageProblems(
+        planWith([
+          { section: "essay/s1", range: { paragraphs: { first: 1, last: 2 } } },
+        ]),
+        [ESSAY],
+      ),
+    ).toHaveLength(1);
   });
 });
