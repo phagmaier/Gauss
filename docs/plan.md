@@ -83,7 +83,10 @@ specific “Done when” checks.
   choice in the brief, `decisions.md`, "Product decisions", 2026-11-13).
 - Do: `tutor.md`'s "Quotations": in a course with a source, quote it only
   through `quote_source`, from a section read, and link the section of a
-  passage paraphrased; another work, or the web, is paraphrased and
+  passage paraphrased, in the form the page opens (`architecture.md`,
+  "Reading a source"): a page by its printed label, which its marker
+  gives, else by its number. Until the prompt says so only the scripted
+  tutor writes a link. Another work, or the web, is paraphrased and
   attributed, as in a course with no source. Teaching from a source: go
   through the segment's passages in order, quoting the sentences that
   carry the argument and explaining them, within the teaching limit; use
@@ -112,8 +115,12 @@ specific “Done when” checks.
   places) and the verified quotes in its transcripts with their
   citations; `notes.md` says to cite them as text, since the notes stand
   alone. The transcript export shows a section link as its words with the
-  section's title and page; it shows a quote as a block quote with its
-  citation already (`quoteCitation` in `src/shared/source-lines.ts`).
+  section's title and page: `resolveSourceLink`
+  (`src/web/source-target.ts`) reads a link's address and names its
+  place, and the export is the server's, so it moves to `src/shared/`
+  rather than the address being read twice. The export shows a quote as a
+  block quote with its citation already (`quoteCitation` in
+  `src/shared/source-lines.ts`).
 - Done when: tests on a seeded source course cover the request and the
   export. One notes call on Sonnet 5.5 for a
   source unit cites a quote by its place.
