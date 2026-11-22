@@ -47,15 +47,21 @@ starting a plan task, editing files, or committing.
    and finish the first part.
 3. Check it against the task's "done when" line with evidence you observed:
    a passing test run, a command's output, or the behaviour in the browser.
-4. Update the documents, as "Keeping the documents" says.
-5. Delete the task's entry from the plan. Anything a later task needs goes
+   `mise run check` must pass too.
+4. Review the change, code and tests, against the task, `brief.md` and
+   these rules before committing. For a code change, a reviewer with fresh
+   context (a subagent) finds more than rereading your own diff: in stage
+   4, every separate review found faults. Fix concrete findings and check
+   again.
+5. Update the documents, as "Keeping the documents" says.
+6. Delete the task's entry from the plan. Anything a later task needs goes
    into that task's or stage's note in the plan, or into the document where
    it belongs.
-6. Commit the task's changes and the document updates together as one
+7. Commit the task's changes and the document updates together as one
    commit. Start the message with the task id (`2.13: transcripts`) and
    record checks, outcomes and limits. If a "done when" check fails, leave
    the task `in progress` without committing and report why.
-7. Report what you checked and what you could not check, then stop. Start
+8. Report what you checked and what you could not check, then stop. Start
    the next task only if the user asked for more than one.
 
 If a task's premise is wrong (an SDK behaves differently, a design rule does

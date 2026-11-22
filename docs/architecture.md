@@ -109,20 +109,20 @@ Rules no single file shows:
   `math-check.ts`, `code-run.ts`, `help-judge.ts`, `disputes.ts`,
   `dispute-judge.ts`. Commands: `sandbox.ts` (the only way the engine runs
   model- or learner-written input), `source-convert.ts`, `packages.ts`.
-  Sources: `source-text.ts`, `source-shelf.ts`, `source-quote-worker.ts`.
-  `source-passage-search.ts` runs lexical searches on the same worker and
-  converted text as quote verification. Only passage previews and their
-  coordinates cross back to the server thread.
+  Sources: `source-text.ts` (an outline and a section as a model reads
+  them), `source-shelf.ts` (what the source tools read, view, quote and
+  search), `source-quote-index.ts` with `source-quote-worker.ts` (a
+  course's texts off the server thread, for quote verification and for
+  `source-passage-search.ts`; only previews and coordinates cross back).
   A planned passage is a range in a converted section, stable because a
-  course's sources do not change after intake. Its coordinates come from
-  `shared/source.ts`; the quote verifier still checks the converted source,
-  not the text returned to the tutor by a read.
-  Test doubles: `fake-timer.ts`, `fake-converter.ts`.
+  course's sources do not change after intake; quotes are verified against
+  the converted text, never against what a read returned. Test doubles:
+  `fake-timer.ts`, `fake-converter.ts`.
 - **`src/server/tools/`**: the teaching tools, transport-free (`tool.ts`),
   a file each; `sources.ts` holds `read_section`, `view_page`, `quote_source`,
-  `present_lecture` and `search_source`. A lecture is only recorded after
-  all quote selectors verify. It uses ordinary transcript events so
-  live display, replay and export agree.
+  `present_lecture` and `search_source`. A lecture is recorded only once
+  every quote verifies, as ordinary thread events, so live display, replay
+  and export agree.
 - **`src/server/backends/`**: `backend.ts` (the adapter), `claude.ts`
   (Agent SDK on the plan login), `fake.ts` (tests), `scripted.ts` (the
   fake driven by turn headers, for `pnpm dev:fake`).
@@ -203,8 +203,10 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   root (`pnpm dev`, port 4320). Opening a unit can spend plan usage before
   anyone sends a message. Before a live comparison, specify the model,
   effort and run count (`model` and `effort` of `createClaudeBackend`); do
-  not inherit Opus from the login.
-  A course needs no intake: write it into the root
+  not inherit Opus from the login. Test sources: the user's Inwood
+  _Phenomenology_ at `~/Books/Philosophy/Hegel/The Phenomenology of
+  Spirit.pdf`, and arXiv 1706.03762 (Attention) and 1512.03385 (ResNet),
+  downloaded. A course needs no intake: write it into the root
   with the record's own operations (`createCourse`, `saveProposal`,
   `approveCurriculum`, `storePlan` in `record/data-root.ts`), as
   `record/dev-seed.ts` does, from a throwaway script run with `node`. For
