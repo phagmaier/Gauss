@@ -271,6 +271,15 @@ where `convert.py` handles them.
   With the link's form, and a page "whose marker says `math` ..., or whose
   math reads garbled", every Opus run linked pages (53 links, all opening)
   and looked at the Attention paper's pages 4 and 5 while teaching.
+- **While a question is open, Opus points to the passage it is built on
+  when asked where to read it**: on the Attention paper's scaling
+  question, the learner asking what $d_k$ means, where the paper explains
+  it and to see the passage, 3 of 9 replies (in 2 of 3 runs) linked or
+  named section 3.2.1, two with footnote 4 (one in place of the refused
+  quote), each judged help. With the rule and its reason in `tutor.md` and
+  the open question's header, 0 of 18 over two drafts, and every run still
+  explained $d_k$. Explaining it as a sum over $d_k$ products is still a
+  step to the judge (1 of 3 runs under the old and the final prompt).
 - **A lecture rule crowds out aids**: each of three drafts without "the
   text does not replace an aid" showed one aid in 3 Opus runs on the
   Attention paper, against four under the old prompt; with it, four.

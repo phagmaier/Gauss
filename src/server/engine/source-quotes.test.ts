@@ -575,6 +575,11 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
     await chat.settled();
     expect(chat.say("Where is this in the text?")).toEqual({ ok: true });
     await chat.settled();
+    // In a source course the tutor is told that pointing to the passage
+    // is help, as the judge counts it.
+    expect(backend.received.at(-1)?.text).toContain(
+      "So does a link to the passage the question draws on, or its section, page, paragraph or footnote named",
+    );
     expect(backend.calls.at(-3)?.result).toMatchObject({
       status: "refused",
       text: expect.stringContaining("A graded question is open"),

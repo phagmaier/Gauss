@@ -1387,6 +1387,14 @@ function questionAllowed(where: Where): string | undefined {
         "of its own."
       );
     }
+    // The judge counts a pointer to the passage as help (help-judge.md),
+    // and tutor.md's "Links" rule invites links, so the header says it.
+    const pointing =
+      where.context.sources.length === 0
+        ? ""
+        : " So does a link to the passage the question draws on, or its " +
+          "section, page, paragraph or footnote named, even if the learner " +
+          "asks where to read it: they could read the answer there.";
     return (
       `Question ${open.number}, on "${open.objective}", is open.${helped} ` +
       "Allowed now: reply without giving its answer away. You may " +
@@ -1395,7 +1403,7 @@ function questionAllowed(where: Where): string | undefined {
       "write while it is open, and one that gives anything toward the " +
       "answer (a method, a step, a value, a similar worked example, a " +
       "mistake to avoid, whether a guess is right) makes the answer " +
-      "count as given with help. ask_question is refused until the " +
+      `count as given with help.${pointing} ask_question is refused until the ` +
       "learner answers it."
     );
   }

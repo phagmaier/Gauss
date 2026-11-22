@@ -36,25 +36,6 @@ questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-### 4.18 The tutor told that pointing to the passage is help
-
-- Status: todo
-- Why: `help-judge.md` counts a link to a question's passage, or naming
-  where to read the answer, as help. `tutor.md`'s "Links" rule invites
-  links, and neither its "While a question is open" nor the open
-  question's header (`questionAllowed` in `engine/unit-turns.ts`) says so,
-  so a clarification with a link makes a correct answer count as helped.
-- Do: say it in both places, briefly, with its reason. The scripted
-  backend reads header wording (`backends/scripted.test.ts`). Compare old
-  and new on Opus 5.5 as `findings.md`, "Comparing prompt versions", says:
-  a seeded source course with a question open (the Attention unit, seeded
-  as 4.12's commit describes), the learner asking what a term means, where
-  in the paper this is, and to see the passage; 3 runs each. Count replies
-  that link or name the passage, and judge each reply with the help judge.
-- Done when: no reply under the new wording links or names the passage,
-  the term is still explained, the counts are in `findings.md`, "Tutor",
-  and the known gap is deleted.
-
 ### 4.19 The first page's flags on a whole-section read
 
 - Status: todo
@@ -185,10 +166,7 @@ Known and accepted for now; a task that closes one deletes it here.
 - The tutor can hint at an answer in free text outside a help exchange
   (teaching, feedback); only replies during an open question are judged.
   The help judge sees one exchange at a time, so a hint split over two
-  replies passes. While a question is open, a link to its passage, or the
-  place to read it named, is help to the judge, but neither `tutor.md`
-  (whose "Links" rule invites links) nor the open question's header says
-  so; untried on a real model.
+  replies passes.
 - Nothing refuses a code question whose tests or solution are in the
   workspace, and nothing stops the tutor writing tests there; only
   `tutor.md` forbids it. The engine does not check the arithmetic of the
