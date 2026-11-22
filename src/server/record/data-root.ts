@@ -92,6 +92,9 @@ export function resolveDataRoot(
   return chosen ? resolve(chosen) : join(home, "gauss");
 }
 
+/** Where a converted source lives, before or after an intake makes its course. */
+export type SourceHome = { course: Slug } | { intake: string };
+
 export interface DataRoot {
   /** Makes the folder, reports its reserved id, then publishes course.json. */
   createCourse(input: {
@@ -353,41 +356,36 @@ export interface DataRoot {
    * rename. The folder must be on the data root's file system, as a scratch
    * folder inside it is. Returns the outline as written.
    */
-  placeSource(
-    converted: string,
-    into: { course: Slug } | { intake: string },
-  ): Promise<Outline>;
+  placeSource(converted: string, into: SourceHome): Promise<Outline>;
   /** Moves an upload into the course's `sources/` under its id; throws if the path is taken. */
   moveUpload(intakeId: string, sourceId: Slug, courseId: Slug): Promise<void>;
   /** Deletes a source waiting in the intake's uploads. */
   removeUpload(intakeId: string, sourceId: Slug): Promise<void>;
   /** The outlines of the course's sources, by id; none when it has none. */
   readSources(id: string): Promise<Outline[]>;
-  /**
-   * The text of one of the course's sections, as its file holds it, named
-   * `<source id>/<section id>`; undefined when the course has no such
-   * section.
-   */
-  readSection(id: string, ref: SectionRef): Promise<string | undefined>;
+  /** One checked outline, or undefined if the source is absent. */
+  readSource(home: SourceHome, sourceId: Slug): Promise<Outline | undefined>;
+  /** The text of a named section file, as written, or undefined if missing. */
+  readSection(home: SourceHome, ref: SectionRef): Promise<string | undefined>;
   /** The paths of the course's named section files, for a reader in a worker. */
   sourceSectionFiles(
     id: string,
     refs: Iterable<SectionRef>,
   ): Promise<ReadonlyMap<SectionRef, string>>;
   /**
-   * The PNG image of a page, counted from 1, of one of the course's PDF
-   * sources, kept in its `pages/<page>.png` once rendered. With none kept,
+   * The PNG image of a page, counted from 1, of a PDF source, kept in
+   * its `pages/<page>.png` once rendered. With none kept,
    * `render` writes into a private scratch folder under `pages/`. The
    * record validates the PNG before publishing it by rename, validates
    * cache hits too, and always removes the scratch folder. Undefined when
-   * the course has no such source.
+   * the source or page does not exist.
    */
   pageImage(
-    id: string,
+    home: SourceHome,
     sourceId: string,
     page: number,
     render: (original: string, png: string) => Promise<void>,
-  ): Promise<Buffer | undefined>;
+  ): Promise<Buffer<ArrayBuffer> | undefined>;
 }
 
 /**
@@ -776,20 +774,29 @@ export function openDataRoot(options: {
     return join(courses, id, name);
   }
 
-  function sectionFile(id: string, ref: SectionRef): string {
+  function sectionFile(home: SourceHome, ref: SectionRef): string {
     const [sourceId = "", sectionId = ""] = SectionRef.parse(ref).split("/");
-    return courseFile(
-      id,
-      join("sources", sourceId, "sections", `${sectionId}.md`),
-    );
+    return join(sourceFolder(home, sourceId), "sections", `${sectionId}.md`);
+  }
+
+  function uploadsPath(intakeId: string): string {
+    if (!INTAKE_ID.test(intakeId)) {
+      throw new Error(`"${intakeId}" cannot be an intake's id.`);
+    }
+    return resolve(uploads, intakeId);
+  }
+
+  function sourceFolder(home: SourceHome, sourceId: Slug): string {
+    const parent =
+      "course" in home
+        ? courseFile(home.course, "sources")
+        : uploadsPath(home.intake);
+    return join(parent, Slug.parse(sourceId));
   }
 
   /** The intake's folder in uploads/, made if it is missing. */
   async function intakeUploads(intakeId: string): Promise<string> {
-    if (!INTAKE_ID.test(intakeId)) {
-      throw new Error(`"${intakeId}" cannot be an intake's id.`);
-    }
-    const folder = resolve(uploads, intakeId);
+    const folder = uploadsPath(intakeId);
     await mkdir(folder, { recursive: true });
     return folder;
   }
@@ -1545,37 +1552,50 @@ export function openDataRoot(options: {
       return Promise.all(
         ids.map(async (sourceId) => {
           const file = join(folder, sourceId, "outline.json");
-          const outline = await readJson(file, Outline);
+          const outline = await readOutline(file, sourceId);
           if (outline === undefined) throw new Error(`${file} is missing.`);
-          if (outline.id !== sourceId) {
-            throw new Error(
-              `${file} names the source "${outline.id}", not its folder's "${sourceId}".`,
-            );
-          }
           return outline;
         }),
       );
     },
 
-    async readSection(id, ref) {
-      await existingCourse(id);
-      return readFileText(sectionFile(id, ref));
+    readSource(home, sourceId) {
+      return readOutline(
+        join(sourceFolder(home, sourceId), "outline.json"),
+        sourceId,
+      );
+    },
+
+    readSection(home, ref) {
+      return readFileText(sectionFile(home, ref));
     },
 
     async sourceSectionFiles(id, refs) {
       await existingCourse(id);
       const files = new Map<SectionRef, string>();
-      for (const ref of refs) files.set(ref, resolve(sectionFile(id, ref)));
+      const home = { course: id };
+      for (const ref of refs) files.set(ref, resolve(sectionFile(home, ref)));
       return files;
     },
 
-    async pageImage(id, sourceId, page, render) {
-      await existingCourse(id);
-      const folder = courseFile(id, join("sources", Slug.parse(sourceId)));
-      const outline = await readJson(join(folder, "outline.json"), Outline);
-      if (outline === undefined) return undefined;
+    async pageImage(home, sourceId, page, render) {
+      const folder = sourceFolder(home, sourceId);
+      const outline = await readOutline(join(folder, "outline.json"), sourceId);
+      if (
+        outline?.format !== "pdf" ||
+        outline.pages === undefined ||
+        !Number.isSafeInteger(page) ||
+        page < 1 ||
+        page > outline.pages.count
+      )
+        return undefined;
+      if (outline.file !== "original.pdf") {
+        throw new Error(
+          `The outline of "${sourceId}" does not name original.pdf as its PDF.`,
+        );
+      }
       const pages = join(folder, "pages");
-      const file = join(pages, `${z.int().positive().parse(page)}.png`);
+      const file = join(pages, `${page}.png`);
       // One render of a page at a time: a second request reads the first's.
       return withFileLock(file, async () => {
         const kept = await readPagePng(file);
@@ -1585,7 +1605,7 @@ export function openDataRoot(options: {
         const scratch = await mkdtemp(join(pages, ".render-"));
         try {
           const output = join(scratch, "page.png");
-          await render(join(folder, outline.file), output);
+          await render(join(folder, "original.pdf"), output);
           const image = await readPagePng(output);
           if (image === undefined) {
             throw new Error("The renderer did not write a page image.");
@@ -1799,7 +1819,9 @@ const PNG_BIT_DEPTHS = [
 ];
 
 /** Reads only a bounded regular file; a genuinely missing entry is not an error. */
-async function readPagePng(path: string): Promise<Buffer | undefined> {
+async function readPagePng(
+  path: string,
+): Promise<Buffer<ArrayBuffer> | undefined> {
   const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = constants;
   if (!O_NOFOLLOW) {
     throw new Error("Reading page images requires support for O_NOFOLLOW.");
@@ -1892,6 +1914,20 @@ async function readFileText(path: string): Promise<string | undefined> {
     if (hasCode(error, "ENOENT")) return undefined;
     throw error;
   }
+}
+
+/** Checks an outline against both its schema and the folder that identifies it. */
+async function readOutline(
+  file: string,
+  sourceId: Slug,
+): Promise<Outline | undefined> {
+  const outline = await readJson(file, Outline);
+  if (outline !== undefined && outline.id !== sourceId) {
+    throw new Error(
+      `${file} names the source "${outline.id}", not its folder's "${sourceId}".`,
+    );
+  }
+  return outline;
 }
 
 /** The file's contents checked against the schema; undefined if there is no file. */

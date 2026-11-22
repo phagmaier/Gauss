@@ -54,6 +54,7 @@ import type { CourseHolder } from "./course-deletion.ts";
 import {
   type AttachResult,
   createIntakeSources,
+  type IntakeSources,
   type SourcesTold,
   type Upload,
 } from "./intake-sources.ts";
@@ -76,6 +77,7 @@ export interface Intake {
   attach(upload: Upload): Promise<AttachResult>;
   /** Removes an attached source, until the first proposal. */
   removeSource(attachment: string): Promise<ChatResult>;
+  withSourceHome: IntakeSources["withSourceHome"];
   /**
    * Approves the proposal with this revision number, which must be the
    * latest, while the tutor is not writing.
@@ -314,6 +316,7 @@ export function createIntake(options: {
       }
       return sources.remove(attachment);
     },
+    withSourceHome: sources.withSourceHome,
     async approve(revision) {
       if (approved) {
         return { ok: false, status: 409, error: INTAKE_OVER };

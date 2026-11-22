@@ -59,6 +59,36 @@ export interface SourceConverter {
   ): Promise<Rendering>;
 }
 
+/** A first render could not be completed; a cache hit never needs the converter. */
+export class NotRendered extends Error {}
+
+export async function renderSourcePage(
+  converter: SourceConverter | undefined,
+  original: string,
+  page: number,
+  png: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted();
+  if (converter === undefined || converter.unavailable !== undefined) {
+    throw new NotRendered(
+      `Pages cannot be rendered here: ${converter?.unavailable ?? "no converter was given"}.`,
+    );
+  }
+  const rendered = await converter.renderPage(original, page, png, signal);
+  signal?.throwIfAborted();
+  if (rendered.result === "failed") {
+    throw new NotRendered(
+      `The page could not be rendered: ${rendered.reason}.`,
+    );
+  }
+  if (rendered.result === "timed-out") {
+    throw new NotRendered(
+      `The page could not be rendered within ${rendered.limit}.`,
+    );
+  }
+}
+
 /** Five minutes: the Inwood PDF, 543 pages, converts in about 11 seconds. */
 export const CONVERSION_TIME_LIMIT_MS = 5 * 60_000;
 

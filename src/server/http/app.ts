@@ -12,6 +12,7 @@
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { z } from "zod";
+import { Slug } from "../../shared/course.ts";
 import { CurriculumChangeAnswer } from "../../shared/curriculum-change.ts";
 import {
   DisputePost,
@@ -45,7 +46,11 @@ import {
   type ProfileView,
 } from "../../shared/profile.ts";
 import { AnswerPost, OpenFilePost } from "../../shared/question.ts";
-import type { CourseSources } from "../../shared/source.ts";
+import {
+  type CourseSources,
+  SectionId,
+  sectionsByRef,
+} from "../../shared/source.ts";
 import { StyleAnswer } from "../../shared/style.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
@@ -61,12 +66,20 @@ import type {
 import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { Notes } from "../engine/notes.ts";
+import {
+  renderSourcePage,
+  type SourceConverter,
+} from "../engine/source-convert.ts";
 import { STANDALONE_HTML_POLICY } from "../engine/standalone-html.ts";
 import { renderTranscript } from "../engine/transcript-html.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { FileOpener } from "../open-file.ts";
 import type { Backup } from "../record/backup.ts";
-import { type DataRoot, ProfileChanged } from "../record/data-root.ts";
+import {
+  type DataRoot,
+  ProfileChanged,
+  type SourceHome,
+} from "../record/data-root.ts";
 import { finishedCourses, withProgress } from "../record/progress.ts";
 import { whatIKnow } from "../record/what-i-know.ts";
 import { withReporter } from "./artifact-frame.ts";
@@ -79,6 +92,8 @@ export function createApp(options: {
   units: UnitChats;
   disputes: Disputes;
   notes: Notes;
+  /** Renders a PDF page not already in the source's cache. */
+  converter?: SourceConverter;
   /** "Open" on a code question's card; the system's opener, or a stub in tests. */
   openFile: FileOpener;
   /** Commits the record once the profile is saved; none if not given. */
@@ -157,6 +172,83 @@ export function createApp(options: {
     const sources = await dataRoot.readSources(stored.id);
     return c.json({ sources } satisfies CourseSources);
   });
+
+  for (const scope of ["courses", "intakes"] as const) {
+    const base = `/api/${scope}/:id/sources/:source` as const;
+    async function withSource(
+      c: Context,
+      read: (home: SourceHome, source: Slug) => Promise<Response>,
+    ) {
+      const id = c.req.param("id") ?? "";
+      const source = Slug.safeParse(c.req.param("source"));
+      if (!source.success) return c.json({ error: "No such source." }, 404);
+      c.header("X-Content-Type-Options", "nosniff");
+      c.header("Cross-Origin-Resource-Policy", "same-origin");
+      c.header("Cache-Control", "no-store");
+      if (scope === "courses") {
+        if (!(await dataRoot.readCourse(id)))
+          return c.json({ error: "No such course." }, 404);
+        return read({ course: id }, source.data);
+      }
+      const intake = intakes.get(id);
+      if (intake === undefined)
+        return c.json({ error: "No such intake." }, 404);
+      // Resolve the location on the placement queue. Take the deletion hold
+      // there too: a proposal ahead of us may have just created the course.
+      const response = await intake.withSourceHome(source.data, (home) =>
+        withIntake(c, () => read(home, source.data)),
+      );
+      return response ?? c.json({ error: "No such source." }, 404);
+    }
+
+    app.get(base, (c) =>
+      withSource(c, async (home, source) => {
+        const outline = await dataRoot.readSource(home, source);
+        return outline === undefined
+          ? c.json({ error: "No such source." }, 404)
+          : c.json(outline);
+      }),
+    );
+    app.get(`${base}/sections/:section`, (c) =>
+      withSource(c, async (home, source) => {
+        const section = SectionId.safeParse(c.req.param("section"));
+        if (!section.success) return c.json({ error: "No such section." }, 404);
+        const ref = `${source}/${section.data}`;
+        const outline = await dataRoot.readSource(home, source);
+        if (outline === undefined || !sectionsByRef([outline]).has(ref)) {
+          return c.json({ error: "No such section." }, 404);
+        }
+        const text = await dataRoot.readSection(home, ref);
+        return text === undefined
+          ? c.json({ error: "No such section." }, 404)
+          : c.text(text);
+      }),
+    );
+    app.get(`${base}/pages/:page`, (c) =>
+      withSource(c, async (home, source) => {
+        const number = c.req.param("page");
+        if (!/^[1-9][0-9]*$/.test(number))
+          return c.json({ error: "No such page." }, 404);
+        const page = Number(number);
+        const image = await dataRoot.pageImage(
+          home,
+          source,
+          page,
+          (original, png) =>
+            renderSourcePage(
+              options.converter,
+              original,
+              page,
+              png,
+              c.req.raw.signal,
+            ),
+        );
+        return image === undefined
+          ? c.json({ error: "No such page." }, 404)
+          : c.body(image, 200, { "Content-Type": "image/png" });
+      }),
+    );
+  }
 
   // "What I know" (task 2.26): every objective of the course's planned units
   // with its status and the evidence behind it, and the course's calibration

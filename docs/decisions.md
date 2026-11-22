@@ -2736,6 +2736,12 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
 - **A section link claims no quote** (the user's pick): a Markdown link
   to `source:<source>/<section>`, since a paraphrase runs inside the
   tutor's sentences, where a tool call would break the text.
+- **Keep an EPUB footnote's external destination** (the agent's choice):
+  two unrelated notes in disjoint stretches can both be `[^1]`. A reader
+  cannot recover both destinations by searching for that label. Conversion
+  preserves the link across section cuts rather than renumbering the text.
+  When an older conversion leaves multiple plausible external definitions,
+  the reader leaves the reference unresolved.
 
 **Sources in a course**
 

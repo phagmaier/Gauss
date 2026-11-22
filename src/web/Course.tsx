@@ -16,17 +16,28 @@
 // conversation (task 5.38). At the foot, a course or a draft can be deleted
 // (task 5.18).
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { StoredUnit } from "../shared/curriculum.ts";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  type StoredUnit,
+  type Unit,
+  unitSections,
+} from "../shared/curriculum.ts";
 import { IntakeStarted, ReviewStarted, UnitOpened } from "../shared/events.ts";
 import {
   CourseWithProgress,
   courseInstance,
   deletionAsksTitle,
 } from "../shared/library.ts";
+import type { Outline } from "../shared/source.ts";
 import { isFinished } from "../shared/status.ts";
 import { getJson, post, postFor } from "./api.ts";
-import { Diagram, UnitList } from "./Curriculum.tsx";
+import { Diagram, UnitList, UnitReadLines } from "./Curriculum.tsx";
 import { CourseMapButton, Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
 import {
@@ -40,17 +51,33 @@ import {
   unitRows,
 } from "./progress.ts";
 import { InlineProse } from "./prose.tsx";
+import { courseSourceLine } from "./reads.ts";
 import { navigate, paths } from "./route.ts";
+import { SourcePane } from "./SourcePane.tsx";
 import { StatusForm } from "./StatusForm.tsx";
+import type { SourceTarget } from "./source-target.ts";
+import { useCourseSources } from "./sources.ts";
 import { buildsOn, unitNumbers } from "./units.ts";
 import { objectiveMark, unitWord } from "./what-i-know.ts";
+import "./course-sources.css";
 
 export function Course(props: { courseId: string }) {
   const { courseId } = props;
   // Undefined while loading, null when there is no such course.
   const [stored, setStored] = useState<CourseWithProgress | null>();
   const [problem, setProblem] = useState<string>();
-  const [mapOpen, setMapOpen] = useState(false);
+  const [pane, setPane] = useState<
+    "map" | Extract<SourceTarget, { kind: "outline" }>
+  >();
+  const mapOpen = pane === "map";
+  const { sources, problem: sourceProblem } = useCourseSources(
+    courseId,
+    stored != null,
+  );
+  const openSource =
+    typeof pane === "object"
+      ? sources?.find((s) => s.id === pane.source)
+      : undefined;
   const [selected, setSelected] = useState<string>();
   /**
    * The units the learner opened or folded, by id; the others are open while
@@ -64,10 +91,19 @@ export function Course(props: { courseId: string }) {
   const [asking, setAsking] = useState<Asking>();
   /** "Review now" is starting a review, so it is not pressed twice. */
   const [starting, setStarting] = useState(false);
-  const closeMap = useCallback(() => {
-    setMapOpen(false);
+  const closePane = useCallback(() => {
+    setPane(undefined);
     setSelected(undefined);
   }, []);
+
+  function openOutline(source: string, unit?: string) {
+    setSelected(undefined);
+    setPane(
+      unit === undefined
+        ? { kind: "outline", source }
+        : { kind: "outline", source, unit },
+    );
+  }
 
   useEffect(() => {
     void getJson(
@@ -223,7 +259,7 @@ export function Course(props: { courseId: string }) {
   }
 
   return (
-    <div className={mapOpen ? "pg has-pane" : "pg"}>
+    <div className={mapOpen || openSource !== undefined ? "pg has-pane" : "pg"}>
       <TopLine
         trail={[{ label: "Library", to: paths.library }]}
         here={title}
@@ -241,7 +277,7 @@ export function Course(props: { courseId: string }) {
             <CourseMapButton
               open={mapOpen}
               disabled={curriculum === null}
-              onToggle={() => (mapOpen ? closeMap() : setMapOpen(true))}
+              onToggle={() => (mapOpen ? closePane() : setPane("map"))}
             />
             {approved ? (
               <Link to={paths.known(courseId)} className="nl-pos">
@@ -312,7 +348,12 @@ export function Course(props: { courseId: string }) {
                     ) : null}
                   </div>
                   {draft ? (
-                    <UnitList units={curriculum.units} selected={selected} />
+                    <UnitList
+                      units={curriculum.units}
+                      selected={selected}
+                      sources={sources}
+                      onOutline={openOutline}
+                    />
                   ) : (
                     <ul className="cv-units">
                       {unitRows(stored).map((row) => {
@@ -331,6 +372,8 @@ export function Course(props: { courseId: string }) {
                             }
                             buildsOn={buildsOn(row.unit, curriculum.units)}
                             action={unitAction(stored, row)}
+                            sources={sources}
+                            onOutline={openOutline}
                             after={
                               asking?.unit === row.unit.id &&
                               asking.card !== true
@@ -344,13 +387,26 @@ export function Course(props: { courseId: string }) {
                   )}
                 </>
               )}
+              {sourceProblem === undefined ? null : (
+                <p className="qa-error" role="alert">
+                  {sourceProblem}
+                </p>
+              )}
+              {sources !== undefined && sources.length > 0 ? (
+                <CourseSources
+                  sources={sources}
+                  units={curriculum?.units}
+                  showing={openSource?.id}
+                  onOpen={openOutline}
+                />
+              ) : null}
               <DeleteOffer key={stored.id} course={stored} />
             </>
           )}
         </div>
       </div>
       {mapOpen && curriculum !== null ? (
-        <SidePane title="Course map" subtitle={title} onClose={closeMap}>
+        <SidePane title="Course map" subtitle={title} onClose={closePane}>
           <Diagram
             units={curriculum.units}
             standing={(id) => {
@@ -368,8 +424,69 @@ export function Course(props: { courseId: string }) {
             }}
           />
         </SidePane>
+      ) : typeof pane === "object" && openSource !== undefined ? (
+        <SourcePane
+          base={`/api/courses/${encodeURIComponent(courseId)}/sources`}
+          source={openSource}
+          target={pane}
+          units={curriculum?.units ?? []}
+          onClose={closePane}
+        />
       ) : null}
     </div>
+  );
+}
+
+/** The sources belong to the course even when no unit names one of their sections. */
+function CourseSources(props: {
+  sources: readonly Outline[];
+  units: readonly Unit[] | undefined;
+  showing: string | undefined;
+  onOpen(source: string): void;
+}) {
+  const { sources, units } = props;
+  const rows = useMemo(() => {
+    const named = new Set(units?.flatMap((unit) => unitSections(unit)));
+    return sources.map((source) => ({
+      source,
+      line: courseSourceLine(source, named),
+    }));
+  }, [sources, units]);
+  return (
+    <section aria-label="Sources">
+      <div className="cv-hrow cv-sec">
+        <h2 className="pg-h">Sources</h2>
+      </div>
+      <ul className="cv-sources">
+        {rows.map(({ source, line }) => (
+          <li key={source.id}>
+            <button
+              type="button"
+              aria-pressed={props.showing === source.id}
+              onClick={() => props.onOpen(source.id)}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M2 3.2c2-.9 4-.9 6 .4 2-1.3 4-1.3 6-.4v9.6c-2-.9-4-.9-6 .4-2-1.3-4-1.3-6-.4zM8 3.6v9.6" />
+              </svg>
+              <span className="cv-src-title">{source.title}</span>
+              <span className="cv-src-go">
+                {props.showing === source.id ? "Showing" : "Outline"}
+              </span>
+              <span className="cv-src-facts">{line}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -460,6 +577,8 @@ function UnitEntry(props: {
   buildsOn: string | null;
   action: ReactNode;
   after: ReactNode;
+  sources: readonly Outline[] | undefined;
+  onOutline(source: string, unit: string): void;
 }) {
   const { row, open } = props;
   const { unit, objectives } = row;
@@ -531,6 +650,11 @@ function UnitEntry(props: {
               })}
             </ul>
           )}
+          <UnitReadLines
+            unit={unit}
+            sources={props.sources}
+            onOutline={props.onOutline}
+          />
           <div className="cv-ua">
             {props.buildsOn === null ? null : <span>{props.buildsOn}</span>}
             {props.action}

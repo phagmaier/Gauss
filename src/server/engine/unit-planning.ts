@@ -274,7 +274,7 @@ async function unitText(
   const tags = await Promise.all(
     refs.map(async (ref) => {
       const found = byRef.get(ref);
-      const text = await dataRoot.readSection(courseId, ref);
+      const text = await dataRoot.readSection({ course: courseId }, ref);
       if (found === undefined || text === undefined) {
         throw new Error(
           `Unit "${unitId}" names the section "${ref}", which the course's sources do not have.`,

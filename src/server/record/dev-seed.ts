@@ -45,12 +45,16 @@ const DAY = 24 * 60 * 60 * 1000;
 const converter = fileURLToPath(
   new URL("../../../pytools/convert.py", import.meta.url),
 );
-/** The seeded source's text, the repository's own. */
+/** The seed's two source fixtures, the repository's own. */
 const SOURCE_FIXTURE = fileURLToPath(
   new URL("fixtures/counting.md", import.meta.url),
 );
-/** The id the record gives the seeded source, a slug of its title. */
+const PDF_GENERATOR = fileURLToPath(
+  new URL("fixtures/counting_pdf.py", import.meta.url),
+);
+/** The ids the record gives the seeded sources, slugs of their titles. */
 const SOURCE_ID = "three-ways-of-counting";
+const PDF_ID = "counting-with-pictures";
 
 /**
  * Seeds an empty data root with eight courses and returns their ids; a data
@@ -79,11 +83,10 @@ const SOURCE_ID = "three-ways-of-counting";
  *   stretches are added, some building on units far above them: units 1
  *   to 4 passed, 5 in progress, the rest not started.
  * - "Three ways of counting", three units, approved and not started, with
- *   a source: `fixtures/counting.md`, converted by `convert.py` and put in
- *   place by the record, each unit reading its section (the first, the
- *   text's opening too). The converter runs outside the sandbox here, on a
- *   text the repository ships: the sandbox is for files from outside the
- *   machine, and the server starts the one sandbox a process can have.
+ *   the chapters of `fixtures/counting.md` and the illustrated examples of
+ *   `fixtures/counting_pdf.py`. Both originals are converted by `convert.py`
+ *   and placed by the record. Conversion runs outside the sandbox here on
+ *   the repository's own fixtures, never on an external file.
  *
  * @param plan the plan of a unit that has started; it must have at least two
  * segments. The dev server passes the scripted backend's, so its tutor can
@@ -106,10 +109,13 @@ export async function seedCourses(options: {
     goal: `Work with ${title.toLowerCase()} in a small example.`,
     prerequisites,
   });
-  /** The unit reading these sections of the seeded source, by number. */
-  const reading = (read: Unit, sections: number[]): Unit => ({
+  /** Chapters of the Markdown text, and an illustrated example where applicable. */
+  const reading = (read: Unit, sections: number[], example?: number): Unit => ({
     ...read,
-    sections: sections.map((n) => `${SOURCE_ID}/s${n}`),
+    sections: [
+      ...sections.map((n) => `${SOURCE_ID}/s${n}`),
+      ...(example === undefined ? [] : [`${PDF_ID}/s${example}`]),
+    ],
   });
   const proposed = (title: string, units: Unit[]): CurriculumProposal => ({
     title,
@@ -200,7 +206,7 @@ export async function seedCourses(options: {
       async approve() {
         await root.approveCurriculum(id, proposed(title, units));
       },
-      async source(original) {
+      async countingSources() {
         const scratch = join(
           options.path,
           "uploads",
@@ -209,14 +215,20 @@ export async function seedCourses(options: {
         const folder = join(scratch, "source");
         await mkdir(scratch, { recursive: true });
         try {
-          await promisify(execFile)(sandboxPython, [
-            "-I",
-            converter,
-            "ingest",
-            original,
-            folder,
-          ]);
-          await root.placeSource(folder, { course: id });
+          const run = promisify(execFile);
+          const pdf = join(scratch, "counting-with-pictures.pdf");
+          await run(sandboxPython, ["-I", PDF_GENERATOR, pdf]);
+          for (const original of [SOURCE_FIXTURE, pdf]) {
+            await run(sandboxPython, [
+              "-I",
+              converter,
+              "ingest",
+              "--status-only",
+              original,
+              folder,
+            ]);
+            await root.placeSource(folder, { course: id });
+          }
         } finally {
           await rm(scratch, { recursive: true, force: true });
         }
@@ -405,13 +417,13 @@ export async function seedCourses(options: {
     course(
       "Three ways of counting",
       [
-        reading(unit("pigeonhole", "The pigeonhole principle", []), [1, 2]),
-        reading(unit("double-counting", "Counting in two ways", []), [3]),
+        reading(unit("pigeonhole", "The pigeonhole principle", []), [1, 2], 1),
+        reading(unit("double-counting", "Counting in two ways", []), [3], 2),
         reading(unit("invariants", "Invariants", ["pigeonhole"]), [4]),
       ],
       3,
       async (c) => {
-        await c.source(SOURCE_FIXTURE);
+        await c.countingSources();
         await c.approve();
       },
     ),
@@ -423,8 +435,8 @@ interface Seeding {
   /** Moves the course's clock to that many days before today. */
   daysAgo(days: number): void;
   approve(): Promise<void>;
-  /** A source of the course, converted from this file. */
-  source(original: string): Promise<void>;
+  /** Converts and places the source course's Markdown and PDF fixtures. */
+  countingSources(): Promise<void>;
   /** The unit, finished with every objective passed. */
   passed(unitId: string): Promise<void>;
   /** The unit, finished: its first segment passed, the rest moved on from. */

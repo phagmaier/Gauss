@@ -143,6 +143,10 @@ test("the first proposal keeps its sources stable while the course is made, even
   intake.say("Go ahead.");
   await created.promise;
   const remove = intake.removeSource(disposable.attachment);
+  const section = intake.withSourceHome(
+    "the-transcendental-aesthetic",
+    (home) => record.readSection(home, "the-transcendental-aesthetic/s1"),
+  );
   try {
     await intake.attach(upload("second.md", HEGEL));
     await conversion.queued();
@@ -150,6 +154,7 @@ test("the first proposal keeps its sources stable while the course is made, even
     finishCreating.resolve();
   }
   expect(await remove).toMatchObject({ ok: false, status: 409 });
+  expect(await section).toBe(KANT);
   await intake.settled();
 
   expect(intake.events()).toContainEqual(

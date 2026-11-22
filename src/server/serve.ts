@@ -176,6 +176,7 @@ export async function serve(options: {
   const api = getRequestListener(
     createApp({
       dataRoot,
+      converter,
       intakes,
       plannings,
       units,

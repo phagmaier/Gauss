@@ -19,7 +19,11 @@ import {
 import { QUOTE_NOT_FOUND } from "../../shared/source-quote.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import type { SourceShelf } from "../tools/sources.ts";
-import type { SourceConverter } from "./source-convert.ts";
+import {
+  NotRendered,
+  renderSourcePage,
+  type SourceConverter,
+} from "./source-convert.ts";
 import { findCourseQuote } from "./source-quote-index.ts";
 import {
   formatText,
@@ -27,9 +31,6 @@ import {
   placeText,
   sectionText,
 } from "./source-text.ts";
-
-/** A page that could not be rendered, with why, said to the tutor as a refusal. */
-class NotRendered extends Error {}
 
 export type SourceQuoted = Extract<PageEvent, { type: "source_quoted" }>;
 
@@ -67,6 +68,7 @@ export function createSourceShelf(options: {
     emit,
     quotes,
   } = options;
+  const home = { course: courseId };
   const byRef = sectionsByRef(sources);
   const quoteCourse = {
     dataRoot,
@@ -78,7 +80,7 @@ export function createSourceShelf(options: {
   const sourceIds = sources.map((s) => `"${s.id}"`).join(", ");
 
   async function sectionFile(ref: SectionRef): Promise<string> {
-    const text = await dataRoot.readSection(courseId, ref);
+    const text = await dataRoot.readSection(home, ref);
     if (text === undefined) {
       throw new Error(`The file of the section "${ref}" is missing.`);
     }
@@ -97,37 +99,11 @@ export function createSourceShelf(options: {
       ) {
         continue;
       }
-      const text = await dataRoot.readSection(courseId, found.ref);
+      const text = await dataRoot.readSection(home, found.ref);
       const marked = pageMarkers(text ?? "").find((m) => m.page === page);
       if (marked !== undefined) return marked;
     }
     return undefined;
-  }
-
-  async function render(
-    original: string,
-    page: number,
-    png: string,
-    signal?: AbortSignal,
-  ) {
-    signal?.throwIfAborted();
-    if (converter === undefined || converter.unavailable !== undefined) {
-      throw new NotRendered(
-        `Pages cannot be rendered here: ${converter?.unavailable ?? "no converter was given"}.`,
-      );
-    }
-    const rendered = await converter.renderPage(original, page, png, signal);
-    signal?.throwIfAborted();
-    if (rendered.result === "failed") {
-      throw new NotRendered(
-        `The page could not be rendered: ${rendered.reason}.`,
-      );
-    }
-    if (rendered.result === "timed-out") {
-      throw new NotRendered(
-        `The page could not be rendered within ${rendered.limit}.`,
-      );
-    }
   }
 
   return {
@@ -173,8 +149,8 @@ export function createSourceShelf(options: {
       }
       let image: Buffer | undefined;
       try {
-        image = await dataRoot.pageImage(courseId, sourceId, page, (o, png) =>
-          render(o, page, png, signal),
+        image = await dataRoot.pageImage(home, sourceId, page, (o, png) =>
+          renderSourcePage(converter, o, page, png, signal),
         );
       } catch (error) {
         if (error instanceof NotRendered) return { refused: error.message };

@@ -72,6 +72,8 @@ const CLOSE_ICON = (
 export function SidePane(props: {
   title: string;
   subtitle: string;
+  className?: string;
+  actions?: ReactNode;
   onClose(): void;
   children: ReactNode;
 }) {
@@ -84,10 +86,14 @@ export function SidePane(props: {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <aside className="sp" aria-label={props.title}>
+    <aside
+      className={props.className ? `sp ${props.className}` : "sp"}
+      aria-label={props.title}
+    >
       <div className="sv-head">
         <b>{props.title}</b>
         <span>{props.subtitle}</span>
+        {props.actions}
         <button
           type="button"
           className="sv-close"

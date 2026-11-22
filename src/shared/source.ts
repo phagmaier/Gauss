@@ -77,6 +77,8 @@ export const OutlineSection = z.strictObject({
    * cited at its paragraph. Absent from sources converted before version 6.
    */
   paragraphStarts: z.array(Count).optional(),
+  /** An EPUB reference whose definition lives in another section: label to section id (from converter 8). */
+  noteDefinitions: z.record(z.string(), SectionId).optional(),
   /** Non-paragraph headings in this file, with section-relative code-point spans. */
   headings: z
     .array(

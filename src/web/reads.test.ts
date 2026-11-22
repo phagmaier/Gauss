@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Outline, OutlineSection } from "../shared/source.ts";
-import { sourceShare, unitReads } from "./reads.ts";
+import { courseSourceLine, sourceShare, unitReads } from "./reads.ts";
 
 /** A part of a stretch cut into `of` parts, on the given pages. */
 function part(
@@ -87,7 +87,7 @@ const NOTES: Outline = {
           id: "s1",
           title: "Sense and force (part 1 of 2)",
           size: 1000,
-          place: { paragraphs: { first: 1, last: 12 } },
+          place: { paragraphs: { first: 1, last: 13 } }, // ¶ 13 spans the cut
           part: { number: 1, of: 2 },
         },
         {
@@ -115,25 +115,27 @@ test("consecutive parts of a stretch read as one line, pages by their printed la
   expect(
     reads(["phenomenology/s1", "phenomenology/s2", "phenomenology/s3"]),
   ).toEqual({
-    lines: [{ text: "Preface, parts 1 to 3", place: "pp. i–2" }],
+    lines: [
+      { source: BOOK.id, text: "Preface, parts 1 to 3", place: "pp. i–2" },
+    ],
     folded: undefined,
   });
   expect(reads(["phenomenology/s7"])).toEqual({
-    lines: [{ text: "Introduction", place: "pp. 7–9" }],
+    lines: [{ source: BOOK.id, text: "Introduction", place: "pp. 7–9" }],
     folded: undefined,
   });
 });
 
 test("a lone part names its number and count, and parts apart stay apart", () => {
   expect(reads(["phenomenology/s5"]).lines).toEqual([
-    { text: "Preface, part 5 of 6", place: "pp. 4–5" },
+    { source: BOOK.id, text: "Preface, part 5 of 6", place: "pp. 4–5" },
   ]);
   expect(reads(["phenomenology/s6"]).lines).toEqual([
-    { text: "Preface, part 6 of 6", place: "p. 6" },
+    { source: BOOK.id, text: "Preface, part 6 of 6", place: "p. 6" },
   ]);
   expect(reads(["phenomenology/s1", "phenomenology/s3"]).lines).toEqual([
-    { text: "Preface, part 1 of 6", place: "pp. i–ii" },
-    { text: "Preface, part 3 of 6", place: "pp. v–2" },
+    { source: BOOK.id, text: "Preface, part 1 of 6", place: "pp. i–ii" },
+    { source: BOOK.id, text: "Preface, part 3 of 6", place: "pp. v–2" },
   ]);
 });
 
@@ -169,8 +171,8 @@ test("parts of distinct same-titled stretches under different headings stay apar
   };
   expect(reads(["phenomenology/s1", "phenomenology/s4"], [book]).lines).toEqual(
     [
-      { text: "Examples, part 1 of 2", place: "pp. i–ii" },
-      { text: "Examples, part 2 of 2", place: "pp. 1–2" },
+      { source: BOOK.id, text: "Examples, part 1 of 2", place: "pp. i–ii" },
+      { source: BOOK.id, text: "Examples, part 2 of 2", place: "pp. 1–2" },
     ],
   );
 });
@@ -180,9 +182,13 @@ test("more than two lines fold into a count and the pages they span", () => {
     reads(["phenomenology/s8", "phenomenology/s9", "phenomenology/s10"]),
   ).toEqual({
     lines: [
-      { text: "I. Sense-certainty", place: "pp. 10–12" },
-      { text: "II. Perception", place: "pp. 13–16" },
-      { text: "III. Force and Understanding", place: "pp. 17–24" },
+      { source: BOOK.id, text: "I. Sense-certainty", place: "pp. 10–12" },
+      { source: BOOK.id, text: "II. Perception", place: "pp. 13–16" },
+      {
+        source: BOOK.id,
+        text: "III. Force and Understanding",
+        place: "pp. 17–24",
+      },
     ],
     folded: { text: "3 sections", place: "pp. 10–24" },
   });
@@ -192,11 +198,19 @@ test("with two sources each line starts with its source's short title", () => {
   const both = [BOOK, NOTES];
 
   expect(reads(["phenomenology/s7", "notes/s3"], both).lines).toEqual([
-    { text: "The Phenomenology of Spirit, Introduction", place: "pp. 7–9" },
-    { text: "Reading notes, Questions", place: "¶ 1" },
+    {
+      source: BOOK.id,
+      text: "The Phenomenology of Spirit, Introduction",
+      place: "pp. 7–9",
+    },
+    { source: NOTES.id, text: "Reading notes, Questions", place: "¶ 1" },
   ]);
   expect(reads(["notes/s1", "notes/s2"], both).lines).toEqual([
-    { text: "Reading notes, Sense and force, parts 1 to 2", place: "¶ 1–20" },
+    {
+      source: NOTES.id,
+      text: "Reading notes, Sense and force, parts 1 to 2",
+      place: "¶ 1–20",
+    },
   ]);
   // Folded across two sources, the count has no place.
   expect(
@@ -207,8 +221,12 @@ test("with two sources each line starts with its source's short title", () => {
 test("a Markdown source's places are paragraphs, merged parts spanning both", () => {
   expect(reads(["notes/s1", "notes/s2", "notes/s3"], [NOTES])).toEqual({
     lines: [
-      { text: "Sense and force, parts 1 to 2", place: "¶ 1–20" },
-      { text: "Questions", place: "¶ 1" },
+      {
+        source: NOTES.id,
+        text: "Sense and force, parts 1 to 2",
+        place: "¶ 1–20",
+      },
+      { source: NOTES.id, text: "Questions", place: "¶ 1" },
     ],
     folded: undefined,
   });
@@ -292,4 +310,14 @@ test("a source no unit reads says so, and units naming no section say nothing", 
     },
   ]);
   expect(sourceShare([{}, { sections: [] }], [BOOK, NOTES])).toEqual([]);
+});
+
+test("course source rows count sections read and include sources no unit reads", () => {
+  const named = new Set(["phenomenology/s1", "phenomenology/s3", "notes/s99"]);
+  expect(courseSourceLine(BOOK, named)).toBe(
+    "PDF · 30 pages · 10 sections · the units read 2 · hegel.pdf",
+  );
+  expect(courseSourceLine(NOTES, named)).toBe(
+    "Markdown · 21 paragraphs · 3 sections · no unit reads it · notes.md",
+  );
 });

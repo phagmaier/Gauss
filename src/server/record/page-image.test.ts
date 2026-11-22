@@ -61,7 +61,7 @@ async function pdfSource() {
     original,
     pages: join(folder, "pages"),
     request: (render: Parameters<DataRoot["pageImage"]>[3]) =>
-      root.pageImage(course, source, 1, render),
+      root.pageImage({ course }, source, 1, render),
   };
 }
 
@@ -80,6 +80,24 @@ test("overlapping requests render once in a private folder and share the kept PN
   expect(render).toHaveBeenCalledTimes(1);
   expect(await readdir(pages)).toEqual(["1.png"]);
   expect(await readFile(join(pages, "1.png"))).toEqual(PNG);
+});
+
+test("a cached page still requires a matching PDF outline and original", async () => {
+  const { original, pages, request } = await pdfSource();
+  await mkdir(pages);
+  await writeFile(join(pages, "1.png"), PNG);
+  const file = join(dirname(original), "outline.json");
+  const outline = JSON.parse(await readFile(file, "utf8"));
+  const render = vi.fn(async () => {
+    throw new Error("Should not render.");
+  });
+  await writeFile(file, JSON.stringify({ ...outline, format: "epub" }));
+  expect(await request(render)).toBeUndefined();
+  await writeFile(file, JSON.stringify({ ...outline, file: "elsewhere.pdf" }));
+  await expect(request(render)).rejects.toThrow("original.pdf");
+  await writeFile(file, JSON.stringify({ ...outline, id: "another-source" }));
+  await expect(request(render)).rejects.toThrow("not its folder");
+  expect(render).not.toHaveBeenCalled();
 });
 
 test("a render that throws leaves neither its partial output nor its other scratch files", async () => {

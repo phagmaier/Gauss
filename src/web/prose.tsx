@@ -6,14 +6,22 @@
 // fetch an address. KaTeX runs untrusted, so `\href` and the like are refused.
 // A formula that fails to parse is shown as its source, in red.
 
-import { memo } from "react";
-import Markdown, { type Components } from "react-markdown";
+import { createContext, memo, useContext } from "react";
+import Markdown, { type Components, defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { displayMathLines } from "../shared/display-math-lines.ts";
 import { htmlAsText } from "../shared/html-as-text.ts";
 import { CHOICE_LETTERS, type ChoiceLetter } from "../shared/question.ts";
+import type { SourceSection } from "../shared/source.ts";
+import { resolveSourceLink, type SourceTarget } from "./source-target.ts";
+
+/** Only a tutor's prose in the thread has a reader to open. */
+export const SourceLinks = createContext<{
+  sections: ReadonlyMap<string, SourceSection>;
+  open(target: SourceTarget): void;
+} | null>(null);
 
 const remarkPlugins = [remarkGfm, remarkMath, displayMathLines, htmlAsText];
 // Frappé's red, as `.no` uses for a miss.
@@ -22,14 +30,31 @@ const rehypePlugins: [typeof rehypeKatex, { errorColor: string }][] = [
 ];
 
 const components: Components = {
-  a: ({ node: _, href, children, ...props }) =>
-    href === undefined || href === "" ? (
+  a: function ProseLink({ node: _, href, children, ...props }) {
+    const reader = useContext(SourceLinks);
+    if (href?.startsWith("source:")) {
+      const link = reader && resolveSourceLink(href, reader.sections);
+      return link ? (
+        <button
+          type="button"
+          className="source-link"
+          title={link.title}
+          onClick={() => reader.open({ ...link.target })}
+        >
+          {children}
+        </button>
+      ) : (
+        children
+      );
+    }
+    return href === undefined || href === "" ? (
       children
     ) : (
       <a {...props} href={href} target="_blank" rel="noreferrer">
         {children}
       </a>
-    ),
+    );
+  },
   img: ({ alt }) => alt ?? null,
 };
 
@@ -43,6 +68,11 @@ export const Prose = memo(function Prose(props: { text: string }) {
   return (
     <Markdown
       remarkPlugins={remarkPlugins}
+      urlTransform={(url, key, node) =>
+        key === "href" && node.tagName === "a" && url.startsWith("source:")
+          ? url
+          : defaultUrlTransform(url)
+      }
       rehypePlugins={rehypePlugins}
       components={components}
     >

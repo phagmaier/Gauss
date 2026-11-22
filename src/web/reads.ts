@@ -14,11 +14,14 @@ import {
   placeSpan,
   shortTitle,
 } from "../shared/source-lines.ts";
+import { FORMAT_NAMES } from "./source-card.ts";
 
 /** A line of a unit's reads: what it reads, and where that is, if known. */
 export interface ReadsLine {
   text: string;
   place: string | undefined;
+  /** Absent for an unknown section or the folded count. */
+  source?: string;
 }
 
 /**
@@ -60,6 +63,7 @@ function runLine(run: SourceSection[], prefix: boolean): ReadsLine {
         ? `${first.stretch}, part ${part.number} of ${part.of}`
         : `${first.stretch}, parts ${part.number} to ${lastPart.number}`;
   return {
+    source: first.source.id,
     text: prefix ? `${shortTitle(first.source)}, ${text}` : text,
     place: placeSpan(first.source, first.section.place, last.section.place),
   };
@@ -100,6 +104,38 @@ export function unitReads(
       place: foldedPlace(refs, known),
     },
   };
+}
+
+/** The facts under a source's title on the course page (piece 24). */
+export function courseSourceLine(
+  source: Outline,
+  named: ReadonlySet<string>,
+): string {
+  const sections = sectionsByRef([source]);
+  let read = 0;
+  let paragraphs = 0;
+  for (const { ref, section } of sections.values()) {
+    if (named.has(ref)) read++;
+    // Paragraphs are numbered from one in each stretch. An oversized
+    // paragraph may appear in two parts; only the last part gives the total.
+    if (
+      "paragraphs" in section.place &&
+      section.part?.number === section.part?.of
+    ) {
+      paragraphs += section.place.paragraphs.last;
+    }
+  }
+  const count = (n: number, noun: string) =>
+    `${n} ${noun}${n === 1 ? "" : "s"}`;
+  return [
+    FORMAT_NAMES[source.format],
+    source.pages === undefined
+      ? count(paragraphs, "paragraph")
+      : count(source.pages.count, "page"),
+    count(sections.size, "section"),
+    read === 0 ? "no unit reads it" : `the units read ${read}`,
+    source.name,
+  ].join(" · ");
 }
 
 /** The pages a unit's sections span, when all are pages of one PDF. */

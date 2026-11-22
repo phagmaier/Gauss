@@ -1,0 +1,62 @@
+.cv-u .reads {
+  margin: 0.55em 0 0 72px;
+}
+.reads-outline {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-2);
+  text-underline-offset: 3px;
+}
+.reads-outline:hover {
+  color: var(--ink);
+}
+.cv-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cv-sources button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 0.9em;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  padding: 0.85em 0 0.9em;
+}
+.cv-sources svg {
+  color: var(--ink-3);
+  transform: translateY(3px);
+}
+.cv-src-title {
+  font: 500 20px var(--f-title);
+  overflow-wrap: anywhere;
+}
+.cv-sources button:hover .cv-src-title {
+  text-decoration: underline;
+  text-decoration-color: var(--ink-3);
+  text-underline-offset: 4px;
+}
+.cv-src-facts {
+  grid-column: 2;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  margin-top: 0.15em;
+  overflow-wrap: anywhere;
+}
+.cv-src-go {
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+.cv-sources button[aria-pressed="true"] .cv-src-go {
+  color: var(--accent);
+}

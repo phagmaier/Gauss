@@ -27,7 +27,7 @@ import {
   type SourceRefusal,
   sourceFacts,
 } from "../../shared/source.ts";
-import type { DataRoot } from "../record/data-root.ts";
+import type { DataRoot, SourceHome } from "../record/data-root.ts";
 import type { ChatResult } from "./conversation.ts";
 import type { SourceConverter } from "./source-convert.ts";
 import { sectionsRefused, sourceLines } from "./source-text.ts";
@@ -66,6 +66,11 @@ export interface IntakeSources {
   attach(upload: Upload): Promise<AttachResult>;
   /** Deletes an attached source before it becomes part of the course. */
   remove(attachment: string): Promise<ChatResult>;
+  /** Keeps the source in place throughout a read, even a first render of an uploaded page. */
+  withSourceHome<T>(
+    sourceId: Slug,
+    read: (home: SourceHome) => Promise<T>,
+  ): Promise<T | undefined>;
   /**
    * Checks the proposal against the sources on the placement queue. Only then
    * makes the course if necessary, moves the uploads and fixes their destination.
@@ -130,7 +135,7 @@ export function createIntakeSources(options: {
   let told = new Map<Slug, ToldSource>();
   /** The files refused since the planner was last told. */
   let refusals: { name: string; detail: string }[] = [];
-  /** Placing, removing and preparing a proposal run one at a time. */
+  /** Placing, reading, removing and preparing a proposal run one at a time. */
   let placing: Promise<unknown> = Promise.resolve();
   let course =
     options.courseId === undefined
@@ -384,6 +389,19 @@ export function createIntakeSources(options: {
         attachments.set(attachment, { name: found.name, state: "removed" });
         emit({ type: "source_removed", attachment });
         return { ok: true };
+      });
+    },
+
+    withSourceHome(sourceId, read) {
+      return serially(async () => {
+        // A partial move can leave some uploads here even after the course exists.
+        for (const { source } of attachments.values()) {
+          if (source?.outline.id === sourceId && source.place === "upload") {
+            return read({ intake: intakeId });
+          }
+        }
+        if (course !== undefined) return read({ course: course.id });
+        return undefined;
       });
     },
 

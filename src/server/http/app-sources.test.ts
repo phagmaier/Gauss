@@ -4,9 +4,12 @@
 // than skip, where it cannot run. `engine/intake-sources.test.ts` covers the
 // intake's handling of sources on a converter of its own.
 
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import {
   afterAll,
   afterEach,
@@ -32,6 +35,7 @@ import { createUnitChats } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import type { FileOpener } from "../open-file.ts";
 import { openDataRoot } from "../record/data-root.ts";
+import { sandboxPython } from "../sandbox-command.ts";
 import { createApp } from "./app.ts";
 
 let sandbox: Extract<Sandbox, { available: true }>;
@@ -64,11 +68,12 @@ const ORIGIN = "http://localhost";
 function setUp(script: FakeTurn[] = []) {
   const backend = createFakeBackend(script);
   const dataRoot = openDataRoot({ path: dir });
+  const converter = createSourceConverter({ sandbox });
   const intakes = createIntakes({
     backend,
     systemPrompt: "You are a test planner.",
     dataRoot,
-    converter: createSourceConverter({ sandbox }),
+    converter,
   });
   const units = createUnitChats({
     backend,
@@ -83,6 +88,7 @@ function setUp(script: FakeTurn[] = []) {
   });
   const app = createApp({
     dataRoot,
+    converter,
     intakes,
     plannings: createCoursePlannings({
       backend,
@@ -126,7 +132,7 @@ function attach(
   { app }: Setup,
   intakeId: string,
   name: string | undefined,
-  body: string,
+  body: BodyInit,
   headers: Record<string, string> = {},
 ) {
   return app.request(`/api/intakes/${intakeId}/sources`, {
@@ -207,6 +213,98 @@ test("an upload is converted by the real converter in the sandbox, put in the in
     "## Substance as subject\n\nEverything turns on grasping the true not only as substance.\n",
   );
   expect(await readFile(join(folder, "original.md"), "utf8")).toBe(NOTES);
+  const url = `/api/intakes/${intakeId}/sources/resume-of-the-preface`;
+  const responseText = await setup.app.request(`${url}/sections/s1`);
+  expect(responseText.headers.get("Content-Type")).toMatch(
+    /text\/plain.*utf-8/i,
+  );
+  expect(await responseText.text()).toBe(
+    "# Résumé of the Preface\n\nThe true is the whole.\n\n",
+  );
+  // Even a real section file that the outline doesn't name is not public.
+  await writeFile(join(folder, "sections", "s99.md"), "not a section");
+  for (const suffix of ["/sections/s99", "/sections/s1%2Fother", "/pages/1"]) {
+    expect((await setup.app.request(url + suffix)).status).toBe(404);
+  }
+  const otherIntake = await startIntake(setup);
+  expect(
+    (await setup.app.request(url.replace(intakeId, otherIntake))).status,
+  ).toBe(404);
+});
+
+test("a PDF is browsable in its intake before and after the first proposal and in its course after the move", async () => {
+  const setup = setUp([
+    [{ text: "Shall we count?" }],
+    [
+      {
+        call: "propose_curriculum",
+        input: {
+          title: "Counting",
+          units: [
+            {
+              id: "points",
+              title: "Points",
+              goal: "Count points.",
+              prerequisites: [],
+            },
+          ],
+          style: "Use pictures.",
+          background: "New to counting.",
+          profile: "Likes pictures.",
+        },
+      },
+    ],
+  ]);
+  const intakeId = await startIntake(setup);
+  const fixture = join(dir, "source.pdf");
+  await promisify(execFile)(sandboxPython, [
+    "-I",
+    fileURLToPath(
+      new URL("../record/fixtures/counting_pdf.py", import.meta.url),
+    ),
+    fixture,
+  ]);
+  const uploaded = await attach(
+    setup,
+    intakeId,
+    "points.pdf",
+    await readFile(fixture),
+  );
+  expect(uploaded.status).toBe(202);
+  const intake = setup.intakes.get(intakeId);
+  if (intake === undefined) throw new Error("No intake.");
+  await intake.settled();
+  const before = `/api/intakes/${intakeId}/sources/counting-with-pictures`;
+  const outline = await (await setup.app.request(before)).json();
+  expect(outline).toMatchObject({
+    id: "counting-with-pictures",
+    pages: { count: 2 },
+  });
+  const image = async (url: string) => {
+    const response = await setup.app.request(url);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    return bytes;
+  };
+  const pageOne = await image(`${before}/pages/1`);
+  intake.say("I want to count.");
+  await intake.settled();
+  intake.say("Go ahead.");
+  await intake.settled();
+  const after = "/api/courses/counting/sources/counting-with-pictures";
+  for (const url of [before, after]) {
+    expect(await (await setup.app.request(url)).json()).toEqual(outline);
+    expect(
+      await (await setup.app.request(`${url}/sections/s2`)).text(),
+    ).toContain("Each edge joins two people");
+    expect(await image(`${url}/pages/1`)).toEqual(pageOne);
+    for (const bad of ["0", "3", "1e0", "1.5", "1%2F2"]) {
+      expect((await setup.app.request(`${url}/pages/${bad}`)).status).toBe(404);
+    }
+  }
+  expect(await image(`${after}/pages/2`)).not.toEqual(pageOne);
 });
 
 test("a file of a format Gauss does not read is refused by the converter, and its card says why", async () => {

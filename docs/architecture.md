@@ -74,8 +74,8 @@ Dependencies, kept few (`package.json`, `pytools/pyproject.toml`):
   `@types/react-dom` and `@types/hast` (document trees).
 - Python: `sympy` with `antlr4-python3-runtime` 4.11 for LaTeX;
   `markdown-it-py` for source Markdown; `pypdfium2` and `Pillow` for PDFs
-  and their page images; `pytest`, and `reportlab` to write the tests'
-  PDFs, for development. EPUB is read with the standard library.
+  and their page images; `pytest`, and `reportlab` for the test and
+  development seed PDFs. EPUB is read with the standard library.
 
 The curriculum diagram is laid out by the page itself
 (`src/web/diagram.ts`), not by a diagram library.
@@ -1169,8 +1169,9 @@ in spine order (`_read_epub`), with the standard library only:
   its heading before the note. The notes are found from every link before
   any link is told from text, so the order of a note's references does
   not matter. References to one note share its label, which is made
-  unique in the stretches where the note is referred to or defined. A
-  raised link to anything else is text.
+  unique in the stretches where the note is referred to or defined.
+  For a definition outside the reference's section, the outline keeps
+  its destination (converter version 8). A raised link to anything else is text.
 - **Title**: the package's first `dc:title`, else the NCX's `docTitle`,
   else as a Markdown source's (below).
 - **Refusals**: a file named `.epub` that is not a ZIP with the EPUB
@@ -1359,16 +1360,35 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
   shows the quote and citation; the handoff writer is told the words and
   section. The tool's result tells the tutor where it was found.
 
-### Planned: links, the citation view and the web
+### Reading a source
 
-1. **Links**: a passage paraphrased is linked, claiming no quote, by a
-   Markdown link to `source:<source id>/<section id>`. A quote's citation
-   and a link open the passage in the side pane.
-2. **Web search** is a course's setting, off by default. With it on, the
-   tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
-   search shows in the thread with its links. A change applies from the
-   learner's next message: the course's kept tutor sessions are closed,
-   each once it is between turns, and resumed with the new tools.
+The intake card and the course's Sources list open `SourcePane` on the
+outline. A unit's Reads lines open it with that unit's sections marked.
+Each section leads to its text; its previous and next sections follow
+physical reading order, not the order of the contents tree.
+
+In the thread, a verified citation opens and marks the source passage,
+including the continuation across section cuts. A paraphrase can link
+`source:<source id>/<section id>`, optionally followed by `/p<printed
+label>` for a page in that section. Its words open the section, briefly
+lit at the destination; an unknown address stays plain text. The link is
+part of the tutor's text, not a tool call or a record of reading.
+“Read” opens the section at its start; “Looked at” opens the page image.
+PDF page numbers in the margin open the image, including where the
+conversion marked a page as having lost math or images.
+
+The reader requests an outline, a section's Markdown, or a PDF page PNG
+under `/api/courses/<id>/sources/<source id>` (under
+`/api/intakes/<id>/sources/<source id>` for waiting uploads).
+Page images share `view_page`'s on-demand render and cache.
+
+### Planned: web search
+
+**Web search** is a course's setting, off by default. With it on, the
+tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
+search shows in the thread with its links. A change applies from the
+learner's next message: the course's kept tutor sessions are closed,
+each once it is between turns, and resumed with the new tools.
 
 ## 9. Prompts
 

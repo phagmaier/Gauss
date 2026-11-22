@@ -221,6 +221,36 @@ code {
   color: var(--ink);
   text-decoration-color: var(--ink-3);
 }
+.source-link,
+.cite {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: inherit;
+  color: inherit;
+  text-underline-offset: 3px;
+}
+.source-link {
+  display: inline;
+  text-decoration: underline dotted var(--ink-3);
+}
+.source-link::after {
+  content: "§" / "";
+  display: inline-block;
+  margin-left: 0.12em;
+  vertical-align: super;
+  color: var(--ink-3);
+  font: 500 0.6em var(--f-label);
+}
+.cite {
+  color: var(--ink-2);
+  text-decoration: underline var(--rule-2);
+}
+.source-link:hover,
+.cite:hover {
+  color: var(--ink);
+  text-decoration-color: var(--ink);
+}
 .prose :is(ul, ol) {
   margin: 0 0 0.85em;
   padding-left: 1.4em;
@@ -2183,6 +2213,7 @@ button.dn:hover {
   white-space: pre-line;
 }
 .vq figcaption {
+  position: relative; /* Keep the offscreen verification label inside the thread scroller. */
   display: flex;
   align-items: center;
   gap: 0.45em;

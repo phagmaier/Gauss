@@ -160,10 +160,22 @@ test("the seed gives courses in each state, as the routes would send them", {
       },
     },
   });
-  // Its source, converted from the fixture: one section for the text before
-  // the first chapter, and one per chapter, under the book's title.
-  const [source, ...more] = await root.readSources("three-ways-of-counting");
+  // The two sources, in id order: the generated PDF and the Markdown fixture.
+  const course = "three-ways-of-counting";
+  const [pdf, source, ...more] = await root.readSources(course);
   expect(more).toEqual([]);
+  expect(pdf).toMatchObject({
+    id: "counting-with-pictures",
+    format: "pdf",
+    pages: { count: 2, blank: [] },
+    entries: [
+      { id: "s1", title: "Five points in four squares" },
+      { id: "s2", title: "Counting handshakes" },
+    ],
+  });
+  expect(
+    await root.readSection({ course }, "counting-with-pictures/s1"),
+  ).toContain("Two points must share a square.");
   expect(source).toMatchObject({
     id: "three-ways-of-counting",
     title: "Three Ways of Counting",

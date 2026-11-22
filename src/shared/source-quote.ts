@@ -56,12 +56,14 @@ export const QUOTE_NOT_FOUND =
   "references do not matter, but every word does.";
 
 /** A source's sections in reading order: by their ids' ordinals, not the outline's order. */
-export function readingOrder(source: Outline): SectionRef[] {
+export function orderedSections(source: Outline): OutlineSection[] {
   return [...sectionsByRef([source]).values()]
-    .sort(
-      (a, b) => Number(a.section.id.slice(1)) - Number(b.section.id.slice(1)),
-    )
-    .map((found) => found.ref);
+    .map(({ section }) => section)
+    .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+}
+
+export function readingOrder(source: Outline): SectionRef[] {
+  return orderedSections(source).map((section) => `${source.id}/${section.id}`);
 }
 
 /** A source's whole text, made ready to look for quotes in. */
@@ -192,6 +194,18 @@ export function findQuote(
     text: wordsOf(quotable, start, end),
     at: startOf(quotable, section, start),
   };
+}
+
+/** Raw UTF-16 span for a stored quote's already-verified words. Unlike the
+ * tutor's search, a citation cannot fall back to a different start section. */
+export function citedSpan(
+  passage: string,
+  quotable: QuotableSource,
+  section: SectionRef,
+): { start: number; end: number } | undefined {
+  const key = keyOf(passage, markupOf(passage, "text").hidden, false).key;
+  const match = bestMatch(key, [quotable], { section }, 1);
+  return match && { start: match.start, end: match.end };
 }
 
 function withoutQuotePair(key: string): string | undefined {

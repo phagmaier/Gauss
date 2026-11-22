@@ -250,6 +250,11 @@ def test_footnote_references_and_their_notes_get_labels_unique_where_they_are_re
         "s3": "# Three\n\nThird.[^1-2]\n\n",
         "s4": "# Notes\n\n[^1]: Two’s note.\n\n[^1-2]: Three’s note.\n",
     }
+    # The first chapter's [^1] is local. The second's identically named
+    # reference goes to Notes, not to the first definition in reading order.
+    assert [entry.get("noteDefinitions") for entry in outline(folder)["entries"]] == [
+        None, {"1": "s4"}, {"1-2": "s4"}, None,
+    ]
 
 
 def test_a_long_chapter_is_cut_between_paragraphs_and_its_parts_sit_under_its_heading(tmp_path):

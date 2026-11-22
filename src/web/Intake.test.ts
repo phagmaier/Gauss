@@ -203,10 +203,10 @@ const appendix = {
   name: "appendix.md",
 };
 
-function attached(outline: Outline): PageEvent {
+function attached(outline: Outline, attachment = outline.id): PageEvent {
   return {
     type: "source_attached",
-    attachment: outline.id,
+    attachment,
     size: 1000,
     source: {
       id: outline.id,
@@ -218,6 +218,74 @@ function attached(outline: Outline): PageEvent {
     },
   };
 }
+
+test("Outline on an attachment uses the intake before a proposal and the course afterwards, even if no unit reads it", async () => {
+  const paths: string[] = [];
+  const { host, render, hello, emit, close } = intake(async (path) => {
+    paths.push(path);
+    if (paths.length === 1) {
+      return Response.json({ error: "Book not found." }, { status: 404 });
+    }
+    return Response.json(book);
+  });
+  const button = (label: string) => {
+    const match = [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === label,
+    );
+    if (!match) throw new Error(`No ${label} button`);
+    return match;
+  };
+  try {
+    await render();
+    await act(async () => {
+      hello();
+      emit(attached(book, "upload-1"));
+    });
+    await act(async () => button("Outline").click());
+    expect(host.querySelector('aside [role="alert"]')?.textContent).toContain(
+      "Book not found.",
+    );
+    await act(async () => button("Hide the outline").click());
+    expect(host.querySelector("aside")).toBeNull();
+    await act(async () => button("Outline").click());
+    expect(host.querySelector("aside")?.textContent).toContain("Bases");
+    await act(async () => {
+      emit({
+        type: "curriculum_proposed",
+        courseId: "linear-algebra",
+        revision: 1,
+        title: "Linear algebra",
+        units: [
+          {
+            id: "vectors",
+            title: "Vectors",
+            goal: "Describe vectors.",
+            prerequisites: [],
+          },
+        ],
+      });
+    });
+    expect(host.querySelector("aside")?.textContent).toContain("Bases");
+    expect(paths).toEqual([
+      "/api/intakes/intake/sources/book",
+      "/api/intakes/intake/sources/book",
+      "/api/courses/linear-algebra/sources/book",
+    ]);
+    expect(host.querySelector(".srcc-foot")?.textContent).not.toContain(
+      "Remove",
+    );
+    await act(async () => button("Show the diagram").click());
+    expect(host.querySelectorAll("aside")).toHaveLength(1);
+    expect(host.querySelector("aside")?.getAttribute("aria-label")).toBe(
+      "Curriculum",
+    );
+    await act(async () => button("Outline").click());
+    expect(host.querySelectorAll("aside")).toHaveLength(1);
+    expect(host.querySelector("aside")?.textContent).toContain("Bases");
+  } finally {
+    await close();
+  }
+});
 
 test("an attached source refreshes the proposal's coverage, with recoverable and final failures shown", async () => {
   vi.useFakeTimers();

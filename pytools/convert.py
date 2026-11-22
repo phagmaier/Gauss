@@ -74,7 +74,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
-CONVERTER_VERSION = 7  # raised when the same original would give other files
+CONVERTER_VERSION = 8  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text (decisions.md, "Sources")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
@@ -142,6 +142,8 @@ class _Source:
     title: str | None = None  # None: from its headings or its file's name (`_title`)
     pages: dict | None = None  # `Outline.pages`, for a PDF
     place: object = _paragraph_place  # a section's place from (start, end, first paragraph, last paragraph)
+    # EPUB footnotes: (reference offset, label, definition offset), before section cuts.
+    note_links: tuple[tuple[int, str, int], ...] = ()
 
 
 @dataclass
@@ -174,7 +176,7 @@ def ingest(original, folder, limit=SECTION_LIMIT):
         source = _read(data, original.name)
         headings = [block for block in source.blocks if isinstance(block, Heading)]
         title = source.title or _title(original.name, source.blocks, headings)
-        entries, sections, cut = _outline(source.text, source.blocks, title, limit, source.place)
+        entries, sections, cut = _outline(source.text, source.blocks, title, limit, source.place, source.note_links)
     except Refused as refusal:
         return {"result": "refused", "reason": refusal.reason, "detail": str(refusal)}
 
@@ -1469,11 +1471,11 @@ def _read_book(book):
     sheets = [book.read(path, document=False) for path, media, _ in manifest.values() if media == "text/css"]
     styles = _css_classes(sheet.decode("utf-8", "replace") for sheet in sheets if sheet)
     entries, targets = _toc_entries(toc, {path: index for index, (path, _) in enumerate(documents)})
-    text, blocks = _EpubWriter(documents, styles, targets).write(entries, targets)
+    text, blocks, note_links = _EpubWriter(documents, styles, targets).write(entries, targets)
     if not text:
         raise Refused("empty", "It holds no text.")
     _check_paragraphs(blocks)
-    return _Source("epub", text, blocks, title or None)
+    return _Source("epub", text, blocks, title or None, note_links=note_links)
 
 
 def _local(tag):
@@ -2244,6 +2246,19 @@ class _EpubWriter:
             labels[note] = label
         self.references = {id(link.node): labels[key(link, block)] for link, block in references}
         self.labels = {block: labels["note", block] for block in self.definitions}
+        # Keep the original destination until the final section cuts are known.
+        # Labels alone cannot distinguish notes in disjoint stretches.
+        destinations = {}
+        for link, block in references:
+            if block is not None:
+                destinations.setdefault(link.block, {})[labels["note", block]] = block
+        refs_at, definitions_at = [], {}
+
+        def record_refs(text, start, targets):
+            if targets:
+                for match in _WRITTEN.finditer(text):
+                    if match[3] and (label := match[3][2:-1]) in targets:
+                        refs_at.append((start + match.start(), label, targets[label]))
 
         out, length, blocks = [], 0, []
         before = None  # the block written last, when the next may go on in its quote
@@ -2258,6 +2273,7 @@ class _EpubWriter:
                     out.append("\n")
                     length += 1
                 blocks.append(Heading(entry.level, entry.title, length, entry, length + len(heading)))
+                record_refs(heading, length, {k: v for i in printed for k, v in destinations.get(i, {}).items()})
                 out.append(heading)
                 length += len(heading)
                 before = note = None
@@ -2268,22 +2284,29 @@ class _EpubWriter:
             paragraphs, breaks = self._render(index, joined)
             for number, lines in enumerate(paragraphs):
                 paragraph = ("\\\n" if breaks else "\n").join(lines) + "\n"
-                if joined or (number and index in self.labels):  # a note's later paragraphs are part of it
-                    out.append("\n" + paragraph)
-                    length += 1 + len(paragraph)
-                    blocks[-1] = Paragraph(blocks[-1].start, length, whole=True)
-                    continue
-                if out:
+                continuation = joined or (number and index in self.labels)
+                if continuation:
+                    out.append("\n")
+                    length += 1
+                elif out:
                     separator = "" if index in self.labels else self._separator(before, block)
                     out.append(separator + "\n")
                     length += len(separator) + 1
-                whole = block.kind == "pre" or index in self.labels
-                guarded = () if whole else tuple((length + a, length + b) for a, b in _guarded(paragraph))
-                blocks.append(Paragraph(length, length + len(paragraph), whole=whole, protected=guarded))
+                if index in self.labels and number == 0:
+                    definitions_at[index] = length
+                record_refs(paragraph, length, destinations.get(index))
+                if continuation:  # a note's later paragraphs are part of it
+                    blocks[-1] = Paragraph(blocks[-1].start, length + len(paragraph), whole=True)
+                else:
+                    whole = block.kind == "pre" or index in self.labels
+                    guarded = () if whole else tuple((length + a, length + b) for a, b in _guarded(paragraph))
+                    blocks.append(Paragraph(length, length + len(paragraph), whole=whole, protected=guarded))
                 out.append(paragraph)
                 length += len(paragraph)
-                before, note = (None, index) if index in self.labels else (block, None)
-        return "".join(out), blocks
+                if not continuation:
+                    before, note = (None, index) if index in self.labels else (block, None)
+        links = tuple((r, label, definitions_at[d]) for r, label, d in refs_at if d in definitions_at)
+        return "".join(out), blocks, links
 
     # Markdown
 
@@ -2453,7 +2476,7 @@ def _text_with_breaks(element):
 # Sections
 
 
-def _outline(text, blocks, title, limit, place=_paragraph_place):
+def _outline(text, blocks, title, limit, place=_paragraph_place, note_links=()):
     """The outline's entries, each section's text by id, and the stretches cut into parts."""
     stretches = []
     for block in blocks:
@@ -2512,6 +2535,20 @@ def _outline(text, blocks, title, limit, place=_paragraph_place):
             if len(parts) > 1:
                 entry["part"] = {"number": number, "of": len(parts)}
             stretch.sections.append(entry)
+
+    if note_links:
+        # Both offsets refer to the original normalized text. A cut can put
+        # a reference and definition from even a single stretch in different files.
+        leaves = [entry for stretch in with_text for entry in stretch.sections]
+        ends, offset = [], 0
+        for leaf in leaves:
+            offset += leaf["size"]
+            ends.append(offset)
+        for ref, label, definition in note_links:
+            owner = leaves[bisect_right(ends, ref)]
+            target = leaves[bisect_right(ends, definition)]
+            if owner is not target:
+                owner.setdefault("noteDefinitions", {})[label] = target["id"]
 
     # Bookmarks and EPUB contents entries carry their parents; other headings nest by level in reading order.
     top, open_headings = [], []

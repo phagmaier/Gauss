@@ -36,25 +36,14 @@ export function UnitList<U extends Unit>(props: {
   selected?: string | undefined;
   /** The course's sources: with them, each unit lists what it reads. */
   sources?: readonly Outline[] | undefined;
+  onOutline?(source: string, unit: string): void;
 }) {
   const { units, sources } = props;
-  /** The units whose reads are shown in full, though more than two lines. */
-  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
-  const fold = (id: string, open: boolean) => {
-    const next = new Set(unfolded);
-    if (open) next.add(id);
-    else next.delete(id);
-    setUnfolded(next);
-  };
   return (
     <ol className="cu">
       {units.map((unit, i) => {
         const needs = buildsOn(unit, units);
         const mark = props.mark?.(unit);
-        const reads =
-          sources === undefined || unitSections(unit).length === 0
-            ? undefined
-            : unitReads(unit, sources);
         return (
           <li
             key={unit.id}
@@ -65,44 +54,11 @@ export function UnitList<U extends Unit>(props: {
             <div>
               <div className="cu-t">{unit.title}</div>
               <div className="cu-g">{unit.goal}</div>
-              {reads === undefined ? null : (
-                <div className="reads">
-                  <span className="reads-k">Reads</span>
-                  <ul>
-                    {reads.folded !== undefined && !unfolded.has(unit.id) ? (
-                      <ReadsItem line={reads.folded}>
-                        <button
-                          type="button"
-                          className="textbtn"
-                          onClick={() => fold(unit.id, true)}
-                        >
-                          Show them
-                        </button>
-                      </ReadsItem>
-                    ) : (
-                      reads.lines.map((line, j) => (
-                        <ReadsItem
-                          // Lines can repeat when a unit names a section twice.
-                          // biome-ignore lint/suspicious/noArrayIndexKey: the lines are fixed for the unit
-                          key={j}
-                          line={line}
-                        >
-                          {reads.folded !== undefined &&
-                          j === reads.lines.length - 1 ? (
-                            <button
-                              type="button"
-                              className="textbtn"
-                              onClick={() => fold(unit.id, false)}
-                            >
-                              Fold
-                            </button>
-                          ) : null}
-                        </ReadsItem>
-                      ))
-                    )}
-                  </ul>
-                </div>
-              )}
+              <UnitReadLines
+                unit={unit}
+                sources={sources}
+                onOutline={props.onOutline}
+              />
               {needs === null ? null : (
                 <div className="cu-m">
                   <span>{needs}</span>
@@ -119,11 +75,84 @@ export function UnitList<U extends Unit>(props: {
   );
 }
 
-function ReadsItem(props: { line: ReadsLine; children?: ReactNode }) {
+/** Cards fold longer lists; the course shows every line as an outline link. */
+export function UnitReadLines(props: {
+  unit: Unit;
+  sources: readonly Outline[] | undefined;
+  onOutline?: ((source: string, unit: string) => void) | undefined;
+}) {
+  const { unit, sources, onOutline } = props;
+  const [unfolded, setUnfolded] = useState(false);
+  const reads = useMemo(
+    () =>
+      sources === undefined || unitSections(unit).length === 0
+        ? undefined
+        : unitReads(unit, sources),
+    [unit, sources],
+  );
+  if (reads === undefined) return null;
+  const folded = onOutline === undefined ? reads.folded : undefined;
+  return (
+    <div className="reads">
+      <span className="reads-k">Reads</span>
+      <ul>
+        {folded !== undefined && !unfolded ? (
+          <ReadsItem line={folded}>
+            <button
+              type="button"
+              className="textbtn"
+              onClick={() => setUnfolded(true)}
+            >
+              Show them
+            </button>
+          </ReadsItem>
+        ) : (
+          reads.lines.map((line, i) => {
+            const { source } = line;
+            return (
+              <ReadsItem
+                // biome-ignore lint/suspicious/noArrayIndexKey: a unit can name a section twice
+                key={i}
+                line={line}
+                onOpen={
+                  source !== undefined && onOutline !== undefined
+                    ? () => onOutline(source, unit.id)
+                    : undefined
+                }
+              >
+                {folded !== undefined && i === reads.lines.length - 1 ? (
+                  <button
+                    type="button"
+                    className="textbtn"
+                    onClick={() => setUnfolded(false)}
+                  >
+                    Fold
+                  </button>
+                ) : null}
+              </ReadsItem>
+            );
+          })
+        )}
+      </ul>
+    </div>
+  );
+}
+
+function ReadsItem(props: {
+  line: ReadsLine;
+  children?: ReactNode;
+  onOpen?: (() => void) | undefined;
+}) {
   const { line } = props;
   return (
     <li>
-      {line.text}
+      {props.onOpen === undefined ? (
+        line.text
+      ) : (
+        <button type="button" className="reads-outline" onClick={props.onOpen}>
+          {line.text}
+        </button>
+      )}
       {line.place === undefined ? null : (
         <span className="reads-pl">{line.place}</span>
       )}

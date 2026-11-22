@@ -27,6 +27,7 @@
 // (Vite's client does), which opens the unit the same way.
 
 import {
+  type ContextType,
   Fragment,
   type ReactNode,
   useCallback,
@@ -57,7 +58,10 @@ import { CourseWithProgress } from "../shared/library.ts";
 import { currentObjective, type Plan } from "../shared/plan.ts";
 import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
 import { messageParts } from "../shared/quote.ts";
-import type { Outline as SourceOutline } from "../shared/source.ts";
+import {
+  type Outline as SourceOutline,
+  sectionsByRef,
+} from "../shared/source.ts";
 import {
   type DidLine,
   pageLine,
@@ -89,10 +93,11 @@ import { CourseMapButton, Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
 import { PackagesCard } from "./PackagesCard.tsx";
 import { mapMark } from "./progress.ts";
-import { InlineProse, Prose } from "./prose.tsx";
+import { InlineProse, Prose, SourceLinks } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
 import { QuoteOffer } from "./QuoteOffer.tsx";
 import { navigate, paths } from "./route.ts";
+import { SourcePane } from "./SourcePane.tsx";
 import { StatusForm } from "./StatusForm.tsx";
 import { StyleCard } from "./StyleCard.tsx";
 import {
@@ -120,6 +125,7 @@ import {
   type UnitOutline,
   whereInUnit,
 } from "./session.ts";
+import type { SourceTarget } from "./source-target.ts";
 import { readsSources, useCourseSources } from "./sources.ts";
 import { objectiveMark } from "./what-i-know.ts";
 
@@ -206,11 +212,14 @@ export function Session(props: { courseId: string; unitId: string }) {
   /** The heading the outline last jumped to, lit for a moment; a new object each jump. */
   const [lit, setLit] = useState<{ id: string }>();
   /**
-   * What the side pane shows, one thing at a time: an artifact, a proposed
-   * curriculum's diagram, or the course map.
+   * What the side pane shows, one thing at a time: a source, an artifact,
+   * a proposed curriculum's diagram, or the course map.
    */
   const [pane, setPane] = useState<
-    ArtifactItem | CurriculumItem | { kind: "map" }
+    | ArtifactItem
+    | CurriculumItem
+    | { kind: "map" }
+    | { kind: "source"; source: SourceOutline; target: SourceTarget }
   >();
   /** The unit picked on the course map, whose lines are lit. */
   const [picked, setPicked] = useState<string>();
@@ -384,8 +393,22 @@ export function Session(props: { courseId: string; unitId: string }) {
       timeline.items.flatMap((i) => (i.kind === "curriculum" ? i.units : [])),
     ) ||
       timeline.items.some(
-        (i) => i.kind === "read" || i.kind === "page" || i.kind === "quote",
+        (i) =>
+          i.kind === "read" ||
+          i.kind === "page" ||
+          i.kind === "quote" ||
+          (i.kind === "tutor" && i.text.includes("source:")),
       ),
+  );
+  const reader = useMemo(
+    () => ({
+      sections: sectionsByRef(sources ?? []),
+      open(target: SourceTarget) {
+        const source = sources?.find((s) => s.id === target.source);
+        if (source) setPane({ kind: "source", source, target });
+      },
+    }),
+    [sources],
   );
   // The objective to do now is marked in the heading of the segment the unit
   // is in, the thread's last.
@@ -523,6 +546,7 @@ export function Session(props: { courseId: string; unitId: string }) {
                     {divided(before, item) ? <hr className="th-sep" /> : null}
                     <ThreadItem
                       item={item}
+                      reader={reader}
                       heading={
                         item.kind === "phase" && plan !== null
                           ? segmentHeading(
@@ -765,6 +789,14 @@ export function Session(props: { courseId: string; unitId: string }) {
             />
           </SidePane>
         )
+      ) : pane.kind === "source" ? (
+        <SourcePane
+          base={`/api/courses/${enc(courseId)}/sources`}
+          source={pane.source}
+          target={pane.target}
+          units={stored?.curriculum?.units ?? []}
+          onClose={closePane}
+        />
       ) : pane.kind === "artifact" ? (
         <ArtifactPane
           key={pane.file}
@@ -1081,6 +1113,7 @@ function ThreadItem(props: {
   confirmingSkip: boolean;
   /** The course's sources, once loaded, for a curriculum change's reads and what the tutor read. */
   sources: readonly SourceOutline[] | undefined;
+  reader: NonNullable<ContextType<typeof SourceLinks>>;
   onConfirmSkip(asking: boolean): void;
   /** This is the test's result card that waits, whose steps can be taken. */
   answers: boolean;
@@ -1096,7 +1129,9 @@ function ThreadItem(props: {
     case "tutor":
       return (
         <div className="th-tutor prose">
-          <Prose text={item.text} />
+          <SourceLinks value={props.reader}>
+            <Prose text={item.text} />
+          </SourceLinks>
         </div>
       );
     case "note":
@@ -1110,33 +1145,71 @@ function ThreadItem(props: {
           </span>
         </p>
       );
-    case "read":
+    case "read": {
+      const found = props.reader.sections.get(item.section);
       return (
         <SourceLine
           icon={BOOK_ICON}
           verb="Read"
           line={readLine(item.section, props.sources)}
+          onOpen={
+            found &&
+            (() =>
+              props.reader.open({
+                kind: "section",
+                source: found.source.id,
+                section: found.section.id,
+              }))
+          }
         />
       );
-    case "page":
+    }
+    case "page": {
+      const found = props.sources?.find((source) => source.id === item.source);
       return (
         <SourceLine
           icon={PAGE_ICON}
           verb="Looked at"
           line={pageLine(item, props.sources)}
+          onOpen={
+            found?.pages && item.page <= found.pages.count
+              ? () =>
+                  props.reader.open({
+                    kind: "page",
+                    source: found.id,
+                    page: item.page,
+                  })
+              : undefined
+          }
         />
       );
-    case "quote":
+    }
+    case "quote": {
+      const found = props.reader.sections.get(item.section);
       return (
         <figure className="vq">
           <blockquote>{item.text}</blockquote>
           <figcaption>
             {CHECK_ICON}
             <span className="sr">Verified in the source: </span>
-            <span>{quoteCitation(item, props.sources)}</span>
+            <Citation
+              onOpen={
+                found &&
+                (() =>
+                  props.reader.open({
+                    kind: "section",
+                    source: found.source.id,
+                    section: found.section.id,
+                    quote: item.text,
+                  }))
+              }
+            >
+              {quoteCitation(item, props.sources)}
+            </Citation>
           </figcaption>
         </figure>
       );
+    }
     case "artifact":
       return (
         <button
@@ -1481,15 +1554,33 @@ const CHECK_ICON = (
  * A quiet line for what the tutor read of a source (piece 23): what it did,
  * what, and a section's place or what a page's text lost.
  */
-function SourceLine(props: { icon: ReactNode; verb: string; line: DidLine }) {
+function SourceLine(props: {
+  icon: ReactNode;
+  verb: string;
+  line: DidLine;
+  onOpen: (() => void) | undefined;
+}) {
   const { aside } = props.line;
   return (
     <p className="fw did">
       {props.icon}
       <span>{props.verb}</span>
-      <span>{props.line.text}</span>
+      <Citation onOpen={props.onOpen}>{props.line.text}</Citation>
       {aside === undefined ? null : <span className="pl">{aside}</span>}
     </p>
+  );
+}
+
+function Citation(props: {
+  onOpen: (() => void) | undefined;
+  children: ReactNode;
+}) {
+  return props.onOpen ? (
+    <button type="button" className="cite" onClick={props.onOpen}>
+      {props.children}
+    </button>
+  ) : (
+    <span>{props.children}</span>
   );
 }
 

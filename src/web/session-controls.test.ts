@@ -116,8 +116,9 @@ async function open(
     stream: events,
     sourceLines: () =>
       [...host.querySelectorAll(".did")].map((line) =>
-        [...line.querySelectorAll("span")]
-          .map((span) => span.textContent)
+        [...line.children]
+          .filter((el) => el.tagName.toLowerCase() !== "svg")
+          .map((el) => el.textContent)
           .join(" "),
       ),
     button,

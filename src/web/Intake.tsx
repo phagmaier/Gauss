@@ -17,13 +17,10 @@ import {
   useRef,
   useState,
 } from "react";
+import type { Unit } from "../shared/curriculum.ts";
 import { FILE_NAME_HEADER, Hello, PageEvent } from "../shared/events.ts";
 import { compareSentences } from "../shared/profile.ts";
-import {
-  formatBytes,
-  type Outline,
-  SOURCE_SIZE_LIMIT,
-} from "../shared/source.ts";
+import { formatBytes, Outline, SOURCE_SIZE_LIMIT } from "../shared/source.ts";
 import {
   emptyTimeline,
   type Item,
@@ -31,7 +28,13 @@ import {
   type Timeline,
   type TimelineAction,
 } from "../shared/timeline.ts";
-import { post, postFile, type UploadAnswer } from "./api.ts";
+import {
+  type Answer,
+  getJson,
+  post,
+  postFile,
+  type UploadAnswer,
+} from "./api.ts";
 import { ChangedText } from "./ChangedText.tsx";
 import { Composer } from "./Composer.tsx";
 import { Diagram, SourceShare, UnitList } from "./Curriculum.tsx";
@@ -39,6 +42,8 @@ import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
 import { SourceCard } from "./SourceCard.tsx";
+import { SourcePane } from "./SourcePane.tsx";
+import type { SourceTarget } from "./source-target.ts";
 import { readsSources, useCourseSources } from "./sources.ts";
 
 /** Asked by the page itself; the tutor's session starts with the answer. */
@@ -46,6 +51,7 @@ const OPENING_QUESTION =
   "What do you want to learn? Tell me what you already know.";
 
 type Proposal = Extract<Item, { kind: "proposal" }>;
+type OutlineTarget = Extract<SourceTarget, { kind: "outline" }>;
 
 const intakePath = (id: string, route: string) =>
   `/api/intakes/${encodeURIComponent(id)}/${route}`;
@@ -129,8 +135,11 @@ export function Intake(props: { intakeId: string }) {
   const [connected, setConnected] = useState(false);
   const [lost, setLost] = useState(false);
   const [problem, setProblem] = useState<string>();
-  const [diagramOpen, setDiagramOpen] = useState(false);
-  const closeDiagram = useCallback(() => setDiagramOpen(false), []);
+  const [pane, setPane] = useState<
+    "diagram" | (OutlineTarget & { attachment: string })
+  >();
+  const diagramOpen = pane === "diagram";
+  const closePane = useCallback(() => setPane(undefined), []);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const nextUpload = useRef(0);
@@ -197,6 +206,20 @@ export function Intake(props: { intakeId: string }) {
     readsSources(latest?.units ?? []),
     sourceVersion,
   );
+  const sourceBase =
+    latest === undefined
+      ? intakePath(intakeId, "sources")
+      : `/api/courses/${encodeURIComponent(latest.courseId)}/sources`;
+  const card =
+    typeof pane === "object"
+      ? timeline.items.find(
+          (i) =>
+            i.kind === "source" &&
+            i.state === "attached" &&
+            i.attachment === pane.attachment,
+        )
+      : undefined;
+  const sourceTitle = card?.kind === "source" ? card.facts?.title : undefined;
   const { approved } = timeline;
   const open = !lost && approved === null;
   const converting =
@@ -224,7 +247,11 @@ export function Intake(props: { intakeId: string }) {
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: dropping a file is a shortcut; the clip in the message box attaches one from the keyboard
     <div
-      className={diagramOpen ? "th has-top has-pane" : "th has-top"}
+      className={
+        diagramOpen || sourceTitle !== undefined
+          ? "th has-top has-pane"
+          : "th has-top"
+      }
       onDragEnter={(e) => {
         if (!holdsFiles(e)) return;
         e.preventDefault();
@@ -284,7 +311,9 @@ export function Intake(props: { intakeId: string }) {
                   approved={approved?.revision === item.revision}
                   canApprove={open && !timeline.busy && !converting}
                   diagramOpen={diagramOpen}
-                  onToggleDiagram={() => setDiagramOpen(!diagramOpen)}
+                  onToggleDiagram={() =>
+                    setPane(diagramOpen ? undefined : "diagram")
+                  }
                   onApprove={() => act("approval", { revision: item.revision })}
                 />
               ) : (
@@ -301,6 +330,18 @@ export function Intake(props: { intakeId: string }) {
                 item={item}
                 proposed={timeline.latestRevision > 0}
                 canRemove={open && timeline.latestRevision === 0}
+                outlineOpen={
+                  typeof pane === "object" &&
+                  item.kind === "source" &&
+                  pane.attachment === item.attachment
+                }
+                onOutline={(source, attachment) =>
+                  setPane(
+                    typeof pane === "object" && pane.attachment === attachment
+                      ? undefined
+                      : { kind: "outline", source, attachment },
+                  )
+                }
                 onRemove={(attachment) =>
                   act(`sources/${encodeURIComponent(attachment)}/remove`)
                 }
@@ -400,15 +441,76 @@ export function Intake(props: { intakeId: string }) {
         <SidePane
           title="Curriculum"
           subtitle="How the units build on each other"
-          onClose={closeDiagram}
+          onClose={closePane}
         >
           <Diagram
             units={latest.units}
             marks={new Map([...latest.changed].map((id) => [id, "Changed"]))}
           />
         </SidePane>
+      ) : typeof pane === "object" && sourceTitle !== undefined ? (
+        <IntakeOutline
+          key={`${sourceBase}/${pane.source}`}
+          base={sourceBase}
+          target={pane}
+          title={sourceTitle}
+          known={sources?.find((s) => s.id === pane.source)}
+          units={latest?.units ?? []}
+          onClose={closePane}
+        />
       ) : null}
     </div>
+  );
+}
+
+/** An attachment can be read before a course or its collection of outlines exists. */
+function IntakeOutline(props: {
+  target: OutlineTarget;
+  base: string;
+  title: string;
+  known: Outline | undefined;
+  units: readonly Unit[];
+  onClose(): void;
+}) {
+  const { target, base, known } = props;
+  const [answer, setAnswer] = useState<Answer<Outline>>();
+  useEffect(() => {
+    if (known !== undefined) return;
+    const stop = new AbortController();
+    void getJson(
+      `${base}/${encodeURIComponent(target.source)}`,
+      Outline,
+      stop.signal,
+    ).then((result) => {
+      if (!stop.signal.aborted) setAnswer(result);
+    });
+    return () => stop.abort();
+  }, [base, target.source, known]);
+
+  const source = known ?? (answer?.ok ? answer.data : undefined);
+  if (source !== undefined) {
+    return (
+      <SourcePane
+        base={base}
+        source={source}
+        target={target}
+        units={props.units}
+        onClose={props.onClose}
+      />
+    );
+  }
+  return (
+    <SidePane title="Outline" subtitle={props.title} onClose={props.onClose}>
+      {answer !== undefined && !answer.ok ? (
+        <p className="qa-error" role="alert">
+          The source's outline could not be loaded: {answer.error}
+        </p>
+      ) : (
+        <p className="ph-note" role="status">
+          Loading the outline…
+        </p>
+      )}
+    </SidePane>
   );
 }
 
@@ -574,6 +676,8 @@ function ItemView(props: {
   proposed: boolean;
   /** An attached source can still be removed: nothing has been proposed. */
   canRemove: boolean;
+  outlineOpen: boolean;
+  onOutline(source: string, attachment: string): void;
   onRemove(attachment: string): Promise<string | undefined>;
 }) {
   const { item } = props;
@@ -593,6 +697,8 @@ function ItemView(props: {
         <SourceCard
           item={item}
           canRemove={props.canRemove}
+          outlineOpen={props.outlineOpen}
+          onOutline={(source) => props.onOutline(source, item.attachment)}
           onRemove={() => props.onRemove(item.attachment)}
         />
       );

@@ -43,58 +43,6 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.10 The citation view and section links
-
-- Status: todo
-- Depends on: 4.9
-- Why: a citation opens the passage (`brief.md`, "Sources"), and a
-  paraphrase links its section without claiming a quote (the user's pick,
-  from the DeepTutor comparison).
-- Do: as pieces 23 and 24 show (`decisions.md`, "Page design").
-  - A section link: the tutor writes `[words](source:<source id>/<section
-    id>)`, or `.../p<page label>` for one of its pages. `src/web/prose.tsx`
-    lets that address through and shows the words with a dotted underline
-    and a small §, its tooltip naming the section and page; a section the
-    course does not have shows the words alone. A link is text: no tool,
-    nothing recorded.
-  - The source pane: the section's text rendered (footnotes by
-    `remark-gfm`; an EPUB's note can be defined in another section, its
-    Notes chapter's, under a label unique only in the stretches that
-    refer to or define it, so text joined from several stretches needs
-    its labels told apart), a quote's passage marked and scrolled to, a link's
-    section from its page lit briefly, a "Read" line's from its top; page
-    numbers in the margin from the page markers, a dot by a page whose
-    text lost math or images; the previous and next section; "Outline".
-    A PDF page's image opens from its number in the margin, with "Back to
-    the text". Routes for a section's text and a page's image, rendered on
-    request as `view_page` does (`DataRoot.pageImage`; `pageMarkers` in
-    `src/shared/source.ts` reads a section's page markers).
-  - The intake card's "Outline" (piece 22) opens the pane on the source's
-    outline. Before the first proposal the source is in
-    `uploads/<intake id>/`, so its route goes through the intake.
-  - The course view: a Sources section below the units, each source
-    opening the pane on its outline (headings folded below the first level
-    except where a unit reads, each section with its place and its unit);
-    an open unit's "Reads" lines, each opening the outline with the unit's
-    sections lit. The thread's "Read" and "Looked at" lines (4.8) open the
-    pane there. The cards' "Reads" lines and the outlines' route are in
-    place (`UnitList`'s `sources`, `useCourseSources`,
-    `GET /api/courses/<id>/sources`). A quote's event (`source_quoted`)
-    names the section where it starts and holds the source's words, not
-    offsets. Match in that section and its successors in reading order
-    within the same source, constraining the match to start in the named
-    section. On `pnpm dev:fake`, "/quote <words>" in a
-    message has the scripted tutor quote them.
-  - The dev seed's source course gains a small PDF source, written with
-    reportlab (a development dependency) and converted as the seed's
-    Markdown source is, so that a page image can be opened on
-    `pnpm dev:fake`.
-- Done when: tests cover the link's forms (a section, a page, an unknown
-  section) and the pane's logic, as pure helpers beside `src/web/`'s
-  others. On `pnpm dev:fake`, in Chromium, a
-  quote's citation, a section link and a page image each open the pane,
-  and the browser is closed before the server stops.
-
 ### 4.11 Web search
 
 - Status: todo

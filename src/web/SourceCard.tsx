@@ -26,6 +26,8 @@ const DOC = (
 
 export function SourceCard(props: {
   item: SourceItem;
+  outlineOpen: boolean;
+  onOutline(source: string): void;
   /** No proposal has made the course yet. */
   canRemove: boolean;
   onRemove(): Promise<string | undefined>;
@@ -121,8 +123,16 @@ export function SourceCard(props: {
         ))}
       </ul>
       {error === undefined ? null : <p className="qa-error">{error}</p>}
-      {props.canRemove ? (
-        <div className="srcc-foot">
+      <div className="srcc-foot">
+        <button
+          type="button"
+          className="textbtn"
+          aria-expanded={props.outlineOpen}
+          onClick={() => props.onOutline(facts.id)}
+        >
+          {props.outlineOpen ? "Hide the outline" : "Outline"}
+        </button>
+        {props.canRemove ? (
           <button
             type="button"
             className="textbtn"
@@ -131,8 +141,8 @@ export function SourceCard(props: {
           >
             Remove
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -701,7 +701,8 @@ function teaching(
         text:
           `**Scripted teaching.** ${where}\n\n` +
           "Inline math reads $e^{i\\pi} + 1 = 0$, and display math:\n\n" +
-          "$$\\int_0^1 x\\,dx = \\tfrac{1}{2}$$\n\n",
+          "$$\\int_0^1 x\\,dx = \\tfrac{1}{2}$$\n\n" +
+          (sections[0] ? `See [the section](source:${sections[0]}).\n\n` : ""),
       },
       ...(where.includes("; segment 1 of ") ? showArtifact() : []),
       { text: 'Ask anything, or press "ready" for the check.' },
