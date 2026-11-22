@@ -108,7 +108,7 @@ The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
     units/<unit-id>/handoff.md    the unit's handoff note, rewritten whole when a segment closes or the unit finishes
     units/<unit-id>/handoff.json  how far into the unit's transcripts that note reads
     sessions/<unit-id>.<n>.jsonl  transcript of a unit's session n: its page events
-    sources/<source-id>/          a source: the original's copy (original.<ext>), outline.json, sections/<id>.md, and pages/ (PDF page images rendered on request; outside the history)
+    sources/<source-id>/          a source: the original's copy (original.<ext>), outline.json, sections/<id>.md, and a regenerable pages/ cache (see Backup)
     artifacts/                    HTML aids the tutor shows, written by the engine: <n>-<title>.html, never overwritten
     notes/<unit-id>.html          each unit's standalone notes, as the engine finished them
     notes/<unit-id>.json          the writer's original document, kept as data, with the instructions and date
@@ -177,8 +177,8 @@ version: a field added later must be optional.
   on the first start if it is not one, with a `.gitignore` that keeps
   `courses/` and `profile.md`, the learner's files in workspaces and each
   source's original and text with them, and leaves out `.venv/`, Python's
-  caches and a source's `pages/`. Backup snapshots exclude `uploads/`
-  even in a repository with its own ignore rules. A commit is asked for
+  caches and a source's `pages/`. A repository with its own ignore rules
+  keeps them; only `uploads/` is excluded regardless. A commit is asked for
   once a segment's close, a unit's end, an approval, an applied style or
   curriculum change, a handoff note, unit notes or the end of an
   assessment that recorded answers is written, once the Profile page's
@@ -508,10 +508,10 @@ The rules:
 
 The engine composes every message the tutor receives: a short header (unit,
 segment, phase, what is allowed now, what happened that the tutor has not
-been told, and in a source course (stage 4) the segment's sections, or in
-an assessment the assessed unit's), followed by the
-learner's text or an event. An answer's turn repeats the question with its
-choices, the learner's answer, confidence, reasoning and the grade. A turn
+been told, and [source sections](#available-now-teaching-from-the-sections)
+where applicable), followed by the learner's text or an event. An answer's
+turn repeats the question with its choices, the learner's answer, confidence,
+reasoning and the grade. A turn
 that allows a question adds a separate “Questions asked before” section to
 the header: the latest six recorded prompts for each objective it may ask
 about. This gives a new tutor session examples to avoid repeating. In an
@@ -796,8 +796,8 @@ tool server, for Codex an MCP server.
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session; in a unit that names sections, each segment names those it draws on, only the unit's (`planSectionProblems` in `src/shared/plan.ts`, checked by `storePlan`) |
 | `ask_question` | Posts a question on an objective of the segment, in the check, or on the one an assessment asks next: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. Its units' sections are checked as `propose_curriculum`'s. A tutor's uses the proposal and feedback rules in section 4 and does not end the turn. The course planner's (`planCurriculumChangeTool`) ends its turn and replaces the proposal waiting (section 4, "The planning conversation") |
-| `read_section` | Returns a section's text whole, after a line naming it with its source, title and place; any section of the course's sources, in any phase, and shows a "Read" line in the thread (section 8). Refused for a section the sources lack, saying what they have. Does not end the turn |
-| `view_page` | Returns a PDF page as an image, rendered in the engine's sandbox the first time and kept in the source's `pages/`; in any phase, with a "Looked at" line in the thread (section 8). Refused for a page out of range, a source that is not a PDF, and a page that cannot be rendered. Does not end the turn |
+| `read_section` | Reads a section of the course's sources (section 8) |
+| `view_page` | Looks at a PDF page as an image (section 8) |
 | `quote_source` | (stage 4) Shows a verified quote in the source's own words with its citation (section 8), or is refused with the reason: not in the sources, too short or long, an ellipsis, or a question of the unit open. Does not end the turn |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
@@ -818,8 +818,7 @@ question in any unit of a course blocks every tutor's workspace changes,
 including after restart. Commands run in the foreground, and posting a
 question is refused while a write or command still runs. Reads stay allowed.
 In a course whose web search setting is on (stage 4), the tutor also has
-Claude Code's `WebSearch`, never `WebFetch` (section 8). In a course with
-a source, it also has `read_section` and `view_page`.
+Claude Code's `WebSearch`, never `WebFetch` (section 8).
 
 ## 6. Grading
 
@@ -1287,10 +1286,9 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
 
 ### Available now: teaching from the sections
 
-- **The tutor's system prompt** has "# Sources" after the unit's plan:
-  a line saying `read_section` and `view_page` may be called in any
-  turn, even one whose header allows no teaching tools, then each
-  source as `sourceLines` gives it (its outline, one line per entry).
+- **The tutor's system prompt** has "# Sources" after the unit's plan in
+  courses with sources: each source as `sourceLines` gives it (its outline,
+  one line per entry).
 - **The header names sections** (`sectionsText` in
   `engine/source-text.ts`: each section's name, title and place, between
   semicolons). Every turn of a segment names the sections it draws on
@@ -1299,21 +1297,24 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
   first turn has them too; a segment's teaching turn asks for each to be
   read whole first, unless the conversation has read it. A review's or a
   gate's question on another unit's objective names that unit's sections.
-- **Reading** (`engine/source-shelf.ts`, behind the tools in
-  `tools/sources.ts`): `read_section` returns the section's file after a
-  line naming it; `view_page` returns the PNG of a PDF page, counted from
-  1 as its marker counts it. A page is rendered by `convert.py page` in
-  the engine's sandbox, which may read only the original and write only
-  the source's `pages/`, into a scratch file there that is put in place by
-  rename; later calls read the kept image (`DataRoot.pageImage`, one
-  render of a page at a time). Without a sandbox, a page not kept is
-  refused with the reason. Both work in any phase, since they change
-  nothing in the record.
-- **The thread** shows each read as a `section_read` event and each page
-  as `page_viewed`, with what the page's marker says its text lost
-  (`pageMarkers` in `src/shared/source.ts`); the page names them from the
-  course's outlines (section 10). The handoff writer is told of each by
-  its name, and the exported transcript shows each as the thread does.
+- **Reading** (`engine/source-shelf.ts`, behind `tools/sources.ts`) is
+  allowed in any turn, including text-only replies: it does not change
+  progress or evidence. `read_section` returns a whole section after a line
+  naming its title and place, or tells the tutor what sections are available.
+  `view_page` takes a PDF page number counted from 1, not its printed label.
+  It reuses a validated PNG from `pages/` if present. Otherwise
+  `convert.py page` runs in the engine's sandbox with the original as its
+  only source file and its own scratch directory as its only writable part
+  of the source. `DataRoot.pageImage` validates PNG framing in a bounded
+  regular file without following links, then publishes it by rename under
+  a per-page lock. An out-of-range page, a non-PDF source, an invalid cache
+  entry or an unavailable or failed render returns a refusal.
+  Stop cancels the render and suppresses unfinished reads and views.
+- **The thread and export** show a "Read" line with the section's title and
+  place, or a "Looked at" line with the printed page label and what the
+  marker says the page's text lost. The transcript stores `section_read`
+  and `page_viewed` events; `src/shared/source-lines.ts` names them from the
+  course's outlines. The handoff writer is told of each by its name.
 
 ### Planned: quotes, links and the web
 
@@ -1346,8 +1347,8 @@ See [prompt findings](decisions.md#prompts), [grader](decisions.md#grader-prompt
 - `tutor.md` is the start of the tutor's system prompt, which
   `engine/unit-turns.ts` assembles: `tutor.md`, the course's units with
   their goals, prerequisites and sections, the unit taught and its plan,
-  "# Sources" with each source's outline in a course with sources
-  (section 8), "# The learner" with
+  [source instructions](#available-now-teaching-from-the-sections),
+  "# The learner" with
   `profile.md` when there is one, then `background.md` (or a line saying
   none was recorded), "# Earlier units"
   when it has anything (the last handoff notes of the unit's
@@ -1549,11 +1550,8 @@ progress take the outline.
   visible. The thread shows the help notice above the message box and
   the judge's call under each reply; a line for each file the tutor
   writes with its file tools, once a reply, with its path in the
-  workspace; a line for each section the tutor reads, "Read" with its
-  title and place, and each PDF page it looks at, "Looked at" with the
-  page's printed label and what its text lost (`readLine` and `pageLine`
-  in `src/shared/source-lines.ts`, from the course's outlines, which the
-  export uses too); a package request's card
+  workspace; [source reading lines](#available-now-teaching-from-the-sections);
+  a package request's card
   with its packages, Install and "Not now", and its commands
   and folder under a closed "Show the command"; then the outcome, with
   the output's end under "Show the output", open only when the install

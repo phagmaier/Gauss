@@ -5,7 +5,7 @@
 // then read from the source's pages/. Each read and page shows in the
 // thread. The tutor is the fake backend; pages render on the fake converter.
 
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -20,7 +20,7 @@ import { fakeConverter, fakePage, placeTestSource } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
-import type { Rendering } from "./source-convert.ts";
+import type { Rendering, SourceConverter } from "./source-convert.ts";
 import { createUnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 import { JOINED_NOTE, runTurn, type Where } from "./unit-turns.ts";
@@ -149,7 +149,11 @@ const PLAN: Plan = {
  */
 async function start(
   script: FakeTurn[],
-  given: { position?: UnitPosition; rendering?: Rendering } = {},
+  given: {
+    position?: UnitPosition;
+    rendering?: Rendering;
+    renderPage?: SourceConverter["renderPage"];
+  } = {},
 ) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
@@ -178,7 +182,10 @@ async function start(
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
     now: () => new Date(NOW),
     timer: createFakeTimer(),
-    converter,
+    converter: {
+      ...converter,
+      renderPage: given.renderPage ?? converter.renderPage,
+    },
   });
   const opened = await units.open(id, "preface");
   if (!opened.ok) throw new Error(opened.error);
@@ -231,7 +238,7 @@ test("the tutor's instructions outline each source, and a segment's teaching tur
     );
 
     expect(backend.received[0]?.text).toMatch(
-      /^\[Unit 1 of 2, "The Preface"; segment 1 of 2, "The whole", on "whole"\. The segment draws on "phenomenology\/s1", "Preface \(part 1 of 2\)", pages 1–3 \(printed i–iii\)\. Phase: teach\. Start of the segment\. Allowed now: teach the segment's objectives in this turn, from its sections: first read each whole with read_section, unless this conversation has read it already; teach within the length the style sets/,
+      /^\[Unit 1 of 2, "The Preface"; segment 1 of 2, "The whole", on "whole"\.\nSegment section refs: phenomenology\/s1\.\nThe segment draws on "phenomenology\/s1", "Preface \(part 1 of 2\)", pages 1–3 \(printed i–iii\)\. Phase: teach\. Start of the segment\. Allowed now: teach the segment's objectives in this turn, from its sections: first read each whole with read_section, unless this conversation has read it already; teach within the length the style sets/,
     );
   } finally {
     await units.close();
@@ -366,6 +373,47 @@ test("a page that cannot be rendered is refused with why, and nothing is kept or
   }
 });
 
+test("stopping a turn aborts its page render and shows no page view", async () => {
+  const rendering = Promise.withResolvers<AbortSignal | undefined>();
+  const finish = Promise.withResolvers<void>();
+  const { chat, units, id } = await start(
+    [[view("phenomenology", 2), { text: "I looked at it." }]],
+    {
+      position: { segment: 0, phase: "discuss" },
+      async renderPage(_original, _page, png, signal) {
+        rendering.resolve(signal);
+        await finish.promise;
+        // Simulate a renderer completing its output just as Stop arrives.
+        await writeFile(png, fakePage(2));
+        return { result: "rendered" };
+      },
+    },
+  );
+  try {
+    expect(chat.say("Look at the page.")).toEqual({ ok: true });
+    const signal = await rendering.promise;
+    await chat.interrupt();
+    const aborted = signal?.aborted;
+    finish.resolve();
+    await chat.settled();
+    expect(aborted).toBe(true);
+    expect(chat.events().at(-1)).toEqual({
+      type: "turn_end",
+      outcome: "interrupted",
+    });
+    expect(thread(chat.events())).toEqual([]);
+    expect(
+      await readdir(
+        join(dir, "courses", id, "sources", "phenomenology", "pages"),
+      ),
+    ).toEqual([]);
+  } finally {
+    finish.resolve();
+    await chat.settled();
+    await units.close();
+  }
+});
+
 test("a new session's first turn names the segment's sections", async () => {
   // The position keeps no session of the tutor's to resume.
   const { backend, chat, units } = await start([[{ text: "It is." }]], {
@@ -376,7 +424,7 @@ test("a new session's first turn names the segment's sections", async () => {
     await chat.settled();
     const text = backend.received[0]?.text ?? "";
     expect(text).toMatch(
-      /^\[Unit 1 of 2, "The Preface"; segment 2 of 2, "Substance", on "subject"\. The segment draws on "phenomenology\/s2", "Preface \(part 2 of 2\)", pages 3–4 \(printed iii–1\)\. Phase: discuss\. Message from the learner\./,
+      /^\[Unit 1 of 2, "The Preface"; segment 2 of 2, "Substance", on "subject"\.\nSegment section refs: phenomenology\/s2\.\nThe segment draws on "phenomenology\/s2", "Preface \(part 2 of 2\)", pages 3–4 \(printed iii–1\)\. Phase: discuss\. Message from the learner\./,
     );
     expect(text).toContain(JOINED_NOTE);
   } finally {

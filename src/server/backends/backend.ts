@@ -97,7 +97,7 @@ export interface TutorSession {
    * sending the next. Never throws; a failure is a `turn_end` with
    * outcome "error".
    */
-  send(turn: EngineTurn): AsyncIterable<BackendEvent>;
+  send(turn: EngineTurn, signal?: AbortSignal): AsyncIterable<BackendEvent>;
   /** Stops the turn in progress, which then ends with outcome "interrupted". */
   interrupt(): Promise<void>;
   close(): Promise<void>;

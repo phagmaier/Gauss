@@ -24,7 +24,7 @@ export interface TeachingTool {
   /** The input's fields, for backends that describe a tool by its fields. */
   inputShape: z.ZodRawShape;
   /** Validates the raw input, then runs the tool. Never throws. */
-  run(input: unknown): Promise<ToolResult>;
+  run(input: unknown, signal?: AbortSignal): Promise<ToolResult>;
 }
 
 export function defineTool<Shape extends z.ZodRawShape>(definition: {
@@ -32,19 +32,23 @@ export function defineTool<Shape extends z.ZodRawShape>(definition: {
   description: string;
   /** May carry refinements across fields; they are checked here. */
   input: z.ZodObject<Shape>;
-  run(input: z.infer<z.ZodObject<Shape>>): Promise<ToolResult> | ToolResult;
+  run(
+    input: z.infer<z.ZodObject<Shape>>,
+    signal?: AbortSignal,
+  ): Promise<ToolResult> | ToolResult;
 }): TeachingTool {
   return {
     name: definition.name,
     description: definition.description,
     inputShape: definition.input.shape,
-    async run(raw) {
+    async run(raw, signal) {
       const parsed = definition.input.safeParse(raw);
       if (!parsed.success) {
         return { status: "refused", text: z.prettifyError(parsed.error) };
       }
       try {
-        return await definition.run(parsed.data);
+        signal?.throwIfAborted();
+        return await definition.run(parsed.data, signal);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return { status: "refused", text: `The tool failed: ${message}` };

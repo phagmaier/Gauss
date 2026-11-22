@@ -2682,26 +2682,19 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   outline stays fixed once units name it, and the course view's sources (task
   4.10) need the same route. Rejected: each card event carrying its units'
   reads resolved, which a unit's transcript would then keep copies of.
-- **Every turn of a segment names its sections** (the agent's choice,
-  task 4.8), in the header after the segment, not only in its teaching
-  turn: a resumed or new session, and a discussion that goes back to the
-  text, have them without a turn of their own. The cost is a line a turn.
-- **Reading is allowed in any turn** (the agent's choice): the headers
-  that allow "no teaching tools" stay as they are, and "# Sources" in the
-  system prompt says `read_section` and `view_page` may be called even
-  then. Rejected: rewording every such header in a course with sources.
+- **The header carries section references in a separate field** (the
+  agent's choice): the scripted tutor reads those instead of interpreting
+  titles and places as delimiters. The model gets the titles and places.
 - **The tutor is given both tools in any course with a source**, a PDF
   or not (the agent's choice): `view_page` refuses a source without
   pages, saying to read its sections.
-- **A read's thread event names the section only**, and the page names it
-  from the outlines, as the cards do (the agent's choice). A page's event
-  carries what its marker says the text lost, which the page cannot read
-  from an outline.
-- **The page render may read the original alone, not its folder**
-  (task 4.8's finding): the sandbox's read-only bind of the source's
-  folder covered `pages/` inside it, and `convert.py page` could not write
-  the image ("Read-only file system"). `source-convert.test.ts` renders a
-  page in the real sandbox.
+- **A read's event carries a reference rather than copied outline text**
+  (the agent's choice), for the same reason as the curriculum cards.
+  Page marker flags are not in the outline, so the page event carries them.
+- **The renderer gets one writable scratch directory** (the agent's
+  choice). Binding the whole source read-only also closed its nested
+  `pages/` to writes; giving a render the full cache would let it modify
+  existing images. The host validates the output before exposing it.
 
 **Quotes and links**
 

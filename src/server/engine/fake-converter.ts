@@ -57,7 +57,10 @@ export function fakeConverter(
     unavailable: undefined,
     renders,
     async renderPage(_original, page, png) {
-      if (options.rendering !== undefined) return options.rendering;
+      if (options.rendering !== undefined) {
+        await writeFile(png, "partial output");
+        return options.rendering;
+      }
       renders.push(page);
       await writeFile(png, fakePage(page));
       return { result: "rendered" };
@@ -109,10 +112,11 @@ export function fakeConverter(
 
 /** The image the fake converter renders of a page. */
 export function fakePage(page: number): Buffer {
-  return Buffer.concat([
-    Buffer.from("\x89PNG\r\n\x1a\n", "latin1"),
-    Buffer.from(`fake page ${page}`),
-  ]);
+  const base64 =
+    page % 3 === 1
+      ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
+      : "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC";
+  return Buffer.from(base64, "base64");
 }
 
 /** The text as a file the learner attached, its size stated unless given. */

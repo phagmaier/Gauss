@@ -2,9 +2,8 @@
 // sections 5 and 8), given to the tutor of a course with a source: a
 // section's text, and a PDF page as an image where the text lost math or
 // figures. Teaching tools rather than the tutor's file tools (decisions.md,
-// "Sources"). Reading changes nothing in the record, so both are allowed at
-// any time; the engine finds the text or the page, says why not, and shows
-// each read in the thread. Neither ends the tutor's turn.
+// "Sources"). Both are allowed at any time and neither ends the tutor's
+// turn.
 
 import {
   ReadSectionInput,
@@ -16,11 +15,15 @@ import { defineTool, type TeachingTool, type ToolImage } from "./tool.ts";
 /** Where the course's sources are read. The engine provides it. */
 export interface SourceShelf {
   /** The section's text after a line naming it, or why it cannot be read. */
-  read(section: SectionRef): Promise<{ text: string } | { refused: string }>;
+  read(
+    section: SectionRef,
+    signal?: AbortSignal,
+  ): Promise<{ text: string } | { refused: string }>;
   /** The page as an image, with a line naming it, or why it cannot be shown. */
   view(
     source: string,
     page: number,
+    signal?: AbortSignal,
   ): Promise<{ text: string; image: ToolImage } | { refused: string }>;
 }
 
@@ -39,8 +42,8 @@ export function readSectionTool(shelf: SourceShelf): TeachingTool {
       "at such a page with view_page. Allowed at any time; your turn goes " +
       "on after it.",
     input: ReadSectionInput,
-    async run({ section }) {
-      const read = await shelf.read(section);
+    async run({ section }, signal) {
+      const read = await shelf.read(section, signal);
       if ("refused" in read) return { status: "refused", text: read.refused };
       return { status: "done", text: read.text };
     },
@@ -57,8 +60,8 @@ export function viewPageTool(shelf: SourceShelf): TeachingTool {
       "as its marker in a section's text gives it, not its printed label. " +
       "Allowed at any time; your turn goes on after it.",
     input: ViewPageInput,
-    async run({ source, page }) {
-      const viewed = await shelf.view(source, page);
+    async run({ source, page }, signal) {
+      const viewed = await shelf.view(source, page, signal);
       if ("refused" in viewed) {
         return { status: "refused", text: viewed.refused };
       }

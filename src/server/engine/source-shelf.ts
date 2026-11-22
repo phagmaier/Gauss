@@ -3,8 +3,7 @@
 // and a PDF page's image for view_page, rendered by `convert.py page` in the
 // engine's sandbox the first time it is asked for and kept in the source's
 // pages/ (DataRoot.pageImage). Each read and each page looked at is shown in
-// the thread. Nothing here changes the record, so neither depends on the
-// unit's phase.
+// the thread. Neither depends on the unit's phase.
 
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";
@@ -55,13 +54,20 @@ export function createSourceShelf(options: {
     return undefined;
   }
 
-  async function render(original: string, page: number, png: string) {
+  async function render(
+    original: string,
+    page: number,
+    png: string,
+    signal?: AbortSignal,
+  ) {
+    signal?.throwIfAborted();
     if (converter === undefined || converter.unavailable !== undefined) {
       throw new NotRendered(
         `Pages cannot be rendered here: ${converter?.unavailable ?? "no converter was given"}.`,
       );
     }
-    const rendered = await converter.renderPage(original, page, png);
+    const rendered = await converter.renderPage(original, page, png, signal);
+    signal?.throwIfAborted();
     if (rendered.result === "failed") {
       throw new NotRendered(
         `The page could not be rendered: ${rendered.reason}.`,
@@ -75,7 +81,7 @@ export function createSourceShelf(options: {
   }
 
   return {
-    async read(ref: SectionRef) {
+    async read(ref: SectionRef, signal) {
       const found = byRef.get(ref);
       if (found === undefined) {
         return {
@@ -83,6 +89,7 @@ export function createSourceShelf(options: {
         };
       }
       const text = await dataRoot.readSection(courseId, ref);
+      signal?.throwIfAborted();
       if (text === undefined) {
         throw new Error(`The file of the section "${ref}" is missing.`);
       }
@@ -96,7 +103,7 @@ export function createSourceShelf(options: {
       };
     },
 
-    async view(sourceId, page) {
+    async view(sourceId, page, signal) {
       const source = sources.find((s) => s.id === sourceId);
       if (source === undefined) {
         return {
@@ -120,7 +127,7 @@ export function createSourceShelf(options: {
       let image: Buffer | undefined;
       try {
         image = await dataRoot.pageImage(courseId, sourceId, page, (o, png) =>
-          render(o, page, png),
+          render(o, page, png, signal),
         );
       } catch (error) {
         if (error instanceof NotRendered) return { refused: error.message };
@@ -129,7 +136,9 @@ export function createSourceShelf(options: {
       if (image === undefined) {
         throw new Error(`The source "${sourceId}" is missing.`);
       }
+      signal?.throwIfAborted();
       const marked = await marker(source, page);
+      signal?.throwIfAborted();
       emit({
         type: "page_viewed",
         source: source.id,

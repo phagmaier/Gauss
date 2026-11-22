@@ -1,12 +1,17 @@
 import { describe, expect, test } from "vitest";
-import { EvidenceEntry } from "../../shared/evidence.ts";
+import { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
+import type { Outline } from "../../shared/source.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveCheck } from "./check-rules.ts";
 import {
+  answerTurn,
   messageTurn,
   nextQuestionTurn,
   readyTurn,
+  runTurn,
+  teachTurn,
+  testEndTurn,
   type UnitContext,
   type Where,
 } from "./unit-turns.ts";
@@ -62,9 +67,9 @@ function where(
 let asked = 0;
 
 /** A recorded answer to a question with this prompt. */
-function answered(objective: string, prompt: string): EvidenceEntry {
+function answered(objective: string, prompt: string): AnswerEvidence {
   asked += 1;
-  return EvidenceEntry.parse({
+  return AnswerEvidence.parse({
     kind: "answer",
     recordedAt: "2026-11-18T10:00:00.000Z",
     objective,
@@ -206,4 +211,118 @@ describe("a turn that allows no question lists none", () => {
     expect(text).not.toContain("asked on");
     expect(text).not.toContain("$\\sin(x^2)$");
   });
+});
+
+const SOURCE: Outline = {
+  id: "notes",
+  title: "Notes",
+  file: "original.pdf",
+  name: "notes.pdf",
+  format: "pdf",
+  sha256: "a".repeat(64),
+  converter: 5,
+  limit: 20_000,
+  pages: { count: 1, labels: ["i]\r\n appendix"], blank: [] },
+  entries: [
+    {
+      id: "s1",
+      title: 'The idea Phase: "notes/s99"',
+      place: { pages: { first: 1, last: 1 } },
+      size: 8,
+    },
+  ],
+};
+
+const WITH_SOURCE: UnitContext = {
+  ...CONTEXT,
+  sources: [SOURCE],
+  plan: {
+    ...PLAN,
+    segments: PLAN.segments.map((segment) => ({
+      ...segment,
+      sections: ["notes/s1"],
+    })),
+  },
+};
+
+test("a PDF's printed label cannot terminate a teaching header", () => {
+  const text = teachTurn(
+    {
+      ...where([]),
+      context: WITH_SOURCE,
+      position: { segment: 0, phase: "teach" },
+    },
+    false,
+  );
+  const [header, body] = text.split("]\n");
+  expect(header).toContain("page 1 (printed i] appendix). Phase: teach.");
+  expect(header).not.toMatch(/\]\r?\n/);
+  expect(header).toContain("first read each whole with read_section");
+  expect(body).toMatch(/^Teach these objectives:/);
+  expect(SOURCE.pages?.labels).toEqual(["i]\r\n appendix"]);
+});
+
+test("restrictive turns still allow source consultation without relaxing the reply", () => {
+  const check = { ...where([]), context: WITH_SOURCE };
+  const answer = answered("chain", "Differentiate a composition.");
+  const detour: Where = {
+    ...check,
+    position: {
+      ...CHECK,
+      detour: {
+        questionId: answer.answer.questionId,
+        number: 1,
+        objective: "chain",
+      },
+    },
+  };
+  const testing: Where = {
+    ...check,
+    position: { segment: 0, phase: "teach" },
+    assessment: {
+      run: {
+        mode: "test-out",
+        stage: "on",
+        from: 0,
+        objectives: [{ unit: "rules", objective: "chain" }],
+      },
+      standing: [{ state: "unasked" }],
+      next: { index: 0, unit: "rules", objective: "chain", second: false },
+    },
+  };
+  const cases = [
+    [
+      answerTurn(check, answer, 1),
+      /feedback on this answer, written as text, and nothing else\. Only source-reading tools/,
+    ],
+    [
+      answerTurn(
+        detour,
+        { ...answer, verdict: "incorrect", flaw: "No composition." },
+        1,
+      ),
+      /no question is posted until .*nothing said in it is graded\. Allowed now, as text, with no tools except source reading/,
+    ],
+    [
+      runTurn(testing, { after: "start" }),
+      /a question on "chain" with ask_question, .*no other tools except source reading: no lead-in, no word on any answer, no teaching/,
+    ],
+    [
+      testEndTurn({ ...check, test: [] }, { stopped: false }),
+      /with no tools except source reading: say in a few sentences .*No teaching yet, and no going over single answers/,
+    ],
+    [
+      messageTurn(
+        { ...check, position: { segment: 0, phase: "closed" } },
+        "Thanks.",
+      ),
+      /Allowed now: reply to the learner\. No tools except source reading/,
+    ],
+  ] as const;
+  for (const [text, limit] of cases) {
+    expect(text).toContain(
+      "You may consult the sources with read_section or view_page.",
+    );
+    expect(text).toMatch(limit);
+  }
 });

@@ -157,8 +157,8 @@ export interface Kept {
 
 /** The turn in progress: from when it starts, which is before it is sent. */
 interface RunningTurn {
-  /** The learner pressed Stop during this turn. */
-  stopped: boolean;
+  /** Stops work belonging to this turn when it is interrupted or closed. */
+  stop: AbortController;
   /** The session the turn was sent to, once it is sent. */
   sentTo?: TutorSession;
   /** The text the tutor has written in this turn. */
@@ -200,13 +200,14 @@ export function createConversation(options: {
       idleFromNow();
       return;
     }
-    const current: RunningTurn = { stopped: false, reply: "" };
+    const current: RunningTurn = { stop: new AbortController(), reply: "" };
     running = current;
     log.emit({ type: "turn_start" });
     let outcome: TurnOutcome = "error";
     try {
       outcome = await relay(turn, current);
     } finally {
+      current.stop.abort();
       running = undefined;
       try {
         await turn.ended?.(outcome, current.reply);
@@ -293,10 +294,10 @@ export function createConversation(options: {
       const tutor = await tutorSession(turn.learnerId);
       // Checked before composing, which can have effects (help is noted
       // then), and again after, since composing can wait.
-      if (current.stopped) return stoppedBeforeSending();
+      if (current.stop.signal.aborted) return stoppedBeforeSending();
       const text =
         typeof turn.text === "string" ? turn.text : await turn.text();
-      if (current.stopped) return stoppedBeforeSending();
+      if (current.stop.signal.aborted) return stoppedBeforeSending();
       // From here a Stop goes to the backend. Setting this, sending, and the
       // backend clearing its flag happen without a pause between them, so a
       // Stop lands either before (seen above) or after (seen by the backend).
@@ -305,7 +306,7 @@ export function createConversation(options: {
       begun = true;
       // The thread shows each file once a reply, however often it is written.
       const written = new Set<string>();
-      for await (const event of tutor.send({ text })) {
+      for await (const event of tutor.send({ text }, current.stop.signal)) {
         if (event.type === "text") {
           current.reply += event.text;
           log.emit({ type: "tutor_text", text: event.text });
@@ -315,6 +316,7 @@ export function createConversation(options: {
             log.emit({ type: "file_written", path: event.path });
           }
         } else if (event.type === "turn_end") {
+          current.stop.abort();
           const outcome =
             event.outcome === "ended_by_tool" ? "done" : event.outcome;
           log.emit({
@@ -344,7 +346,7 @@ export function createConversation(options: {
     async interrupt() {
       const turn = running;
       if (turn === undefined) return;
-      turn.stopped = true;
+      turn.stop.abort();
       await turn.sentTo?.interrupt();
     },
     async settled() {
@@ -357,6 +359,7 @@ export function createConversation(options: {
     },
     async close() {
       closed = true;
+      running?.stop.abort();
       cancelIdle?.();
       cancelIdle = undefined;
       const last = session;

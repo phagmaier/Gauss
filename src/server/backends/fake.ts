@@ -162,7 +162,10 @@ export function createFakeBackend(
     let release: (() => void) | undefined;
     const mutations = new Set<() => void>();
 
-    async function* send(turn: EngineTurn): AsyncGenerator<BackendEvent> {
+    async function* send(
+      turn: EngineTurn,
+      signal?: AbortSignal,
+    ): AsyncGenerator<BackendEvent> {
       received.push(turn);
       interrupted = false;
       const entry =
@@ -221,7 +224,7 @@ export function createFakeBackend(
           const result: ToolResult =
             tool === undefined
               ? { status: "refused", text: `No such tool: ${step.call}` }
-              : await tool.run(step.input);
+              : await tool.run(step.input, signal);
           calls.push({ name: step.call, input: step.input, result });
           if (result.status === "done" && result.endTurn === true) {
             yield { type: "turn_end", outcome: "ended_by_tool" };

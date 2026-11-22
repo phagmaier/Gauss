@@ -67,13 +67,12 @@ export function placeText(place: SectionPlace, outline: Outline): string {
   const pages = first === last ? `page ${first}` : `pages ${first}–${last}`;
   const labels = outline.pages?.labels;
   if (labels === undefined) return pages;
-  const label = (page: number) => labels[page - 1] || String(page);
-  if (label(first) === String(first) && label(last) === String(last)) {
-    return pages;
-  }
-  const printed =
-    first === last ? label(first) : `${label(first)}–${label(last)}`;
-  return `${pages} (printed ${printed})`;
+  const label = (page: number) =>
+    labels[page - 1]?.trim().replace(/\s+/g, " ") || String(page);
+  const start = label(first);
+  const end = first === last ? start : label(last);
+  if (start === String(first) && end === String(last)) return pages;
+  return `${pages} (printed ${first === last ? start : `${start}–${end}`})`;
 }
 
 /**

@@ -129,7 +129,10 @@ import type { Plan } from "../../shared/plan.ts";
 import { sentences } from "../../shared/profile.ts";
 import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
 import { UNIT_TEXT_LIMIT } from "../../shared/source.ts";
-import { QUESTION_HISTORY_START } from "../engine/unit-turns.ts";
+import {
+  QUESTION_HISTORY_START,
+  SEGMENT_SECTION_REFS,
+} from "../engine/unit-turns.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 import type { EngineTurn, OneShotRequest, SessionOptions } from "./backend.ts";
@@ -648,9 +651,6 @@ function coursePlanning(
 /** What the first objective's questions are besides choices, by the session's tools and course. */
 type Checked = "none" | "math" | "code";
 
-/** A section's name in a header, `"<source id>/<section id>"`. */
-const SECTION_NAME = /"([a-z0-9]+(?:-[a-z0-9]+)*\/s[1-9][0-9]*)"/g;
-
 function teaching(
   header: string,
   history: string,
@@ -666,15 +666,29 @@ function teaching(
   // A review can be under way in any phase, teach too: what it allows comes
   // before the phase.
   if (header.includes("Allowed now: teach")) {
-    // "Unit 1 of 6, "Limits"; segment 1 of 2, "The idea", on "limits-idea".",
-    // then the sections it draws on, if it names any.
-    const described = header.slice(1, header.indexOf(" Phase:"));
-    const drawsAt = described.indexOf(" The segment draws on ");
-    const where = drawsAt === -1 ? described : described.slice(0, drawsAt);
-    const sections =
-      drawsAt === -1
-        ? []
-        : [...described.slice(drawsAt).matchAll(SECTION_NAME)].map((m) => m[1]);
+    // Only the dedicated second line carries refs; prose titles and places
+    // may themselves contain anything that looks like a ref or delimiter.
+    const firstBreak = header.indexOf("\n");
+    const refsAt = firstBreak + 1;
+    const hasRefs =
+      firstBreak !== -1 && header.startsWith(SEGMENT_SECTION_REFS, refsAt);
+    const where = header.slice(
+      1,
+      hasRefs
+        ? firstBreak
+        : header.lastIndexOf(
+            " Phase: teach.",
+            header.indexOf("Allowed now: teach"),
+          ),
+    );
+    const sections = hasRefs
+      ? header
+          .slice(
+            refsAt + SEGMENT_SECTION_REFS.length,
+            header.indexOf("\n", refsAt) - 1,
+          )
+          .split(", ")
+      : [];
     return [
       ...sections.map((section) => ({
         call: "read_section",
@@ -686,7 +700,7 @@ function teaching(
           "Inline math reads $e^{i\\pi} + 1 = 0$, and display math:\n\n" +
           "$$\\int_0^1 x\\,dx = \\tfrac{1}{2}$$\n\n",
       },
-      ...(header.includes("; segment 1 of ") ? showArtifact() : []),
+      ...(where.includes("; segment 1 of ") ? showArtifact() : []),
       { text: 'Ask anything, or press "ready" for the check.' },
     ];
   }

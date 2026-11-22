@@ -17,6 +17,7 @@ import {
 import { expect, test, vi } from "vitest";
 import { type CommandReads, sandboxPython } from "../sandbox-command.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
+import { viewPageTool } from "../tools/sources.ts";
 import {
   type BackendEvent,
   SessionNotFound,
@@ -199,6 +200,44 @@ function startingQuery(start: Promise<unknown>) {
   );
   return { closed };
 }
+
+test("a page tool sends text and raw base64 image content to Claude, or a text error", async () => {
+  startingQuery(Promise.resolve({}));
+  const session = await createClaudeBackend().startSession({
+    systemPrompt: "Test tutor.",
+    tools: [
+      viewPageTool({
+        read: async () => ({ refused: "No section requested." }),
+        view: async (_source, page) =>
+          page === 1
+            ? {
+                text: "Page one.",
+                image: {
+                  data: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+                  mimeType: "image/png",
+                },
+              }
+            : { refused: "There is no such page." },
+      }),
+    ],
+  });
+  try {
+    const tool = vi.mocked(createSdkMcpServer).mock.lastCall?.[0].tools?.[0];
+    if (tool === undefined) throw new Error("No page tool.");
+    expect(await tool.handler({ source: "book", page: 1 }, undefined)).toEqual({
+      content: [
+        { type: "text", text: "Page one." },
+        { type: "image", data: "iVBORw==", mimeType: "image/png" },
+      ],
+    });
+    expect(await tool.handler({ source: "book", page: 2 }, undefined)).toEqual({
+      content: [{ type: "text", text: "There is no such page." }],
+      isError: true,
+    });
+  } finally {
+    await session.close();
+  }
+});
 
 const RESUMED = "46a23d60-3723-4703-b5ff-f62ad2721ea0";
 

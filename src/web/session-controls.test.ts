@@ -63,6 +63,7 @@ afterEach(async () => {
 async function open(
   phase: "discuss" | "closed",
   finish?: (init: RequestInit | undefined) => Response,
+  sources?: () => Promise<Response>,
 ) {
   let stream: Stream | undefined;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -81,6 +82,9 @@ async function open(
     }
     if (path === "/api/courses/calculus") {
       return Response.json({ error: "No course details." }, { status: 404 });
+    }
+    if (path === "/api/courses/calculus/sources" && sources !== undefined) {
+      return sources();
     }
     if (path.endsWith("/finish") && finish !== undefined) return finish(init);
     throw new Error(`Unexpected request to ${path}`);
@@ -110,6 +114,12 @@ async function open(
     [...host.querySelectorAll("button")].find((b) => b.textContent === name);
   return {
     stream: events,
+    sourceLines: () =>
+      [...host.querySelectorAll(".did")].map((line) =>
+        [...line.querySelectorAll("span")]
+          .map((span) => span.textContent)
+          .join(" "),
+      ),
     button,
     /** What a confirmation asks, if one is shown. */
     confirmation: () => host.querySelector(".confirm > span")?.textContent,
@@ -122,6 +132,57 @@ async function open(
     },
   };
 }
+
+test("source events in the thread resolve to section titles and printed page labels", async () => {
+  const outline = Promise.withResolvers<Response>();
+  const { stream, sourceLines } = await open(
+    "discuss",
+    undefined,
+    () => outline.promise,
+  );
+  await stream.emit(
+    { type: "turn_start" },
+    { type: "section_read", section: "lectures/s1" },
+    { type: "page_viewed", source: "lectures", page: 2, math: true },
+    { type: "turn_end", outcome: "done" },
+  );
+  expect(sourceLines()).toEqual([
+    "Read lectures/s1",
+    "Looked at page 2 its text lost its math",
+  ]);
+
+  await act(async () => {
+    outline.resolve(
+      Response.json({
+        sources: [
+          {
+            id: "lectures",
+            title: "Lectures",
+            file: "original.pdf",
+            name: "lectures.pdf",
+            format: "pdf",
+            sha256: "a".repeat(64),
+            converter: 5,
+            limit: 20_000,
+            pages: { count: 2, labels: ["i", "1"], blank: [] },
+            entries: [
+              {
+                id: "s1",
+                title: "Rates of change",
+                size: 50,
+                place: { pages: { first: 1, last: 2 } },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  });
+  expect(sourceLines()).toEqual([
+    "Read Rates of change pp. i–1",
+    "Looked at page 1 its text lost its math",
+  ]);
+});
 
 const READY = "I'm ready for the check";
 const MOVE_ON = "Move on without the check";

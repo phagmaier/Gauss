@@ -349,7 +349,7 @@ test("scripted unit planning treats HTML and /hold in Markdown as source text", 
 });
 
 test("the scripted tutor reads each section its teaching turn's header names before it teaches", async () => {
-  const { dataRoot, units } = setUp();
+  const { backend, dataRoot, units } = setUp();
   const proposal = {
     ...CURRICULUM,
     units: CURRICULUM.units.map((unit) =>
@@ -361,9 +361,9 @@ test("the scripted tutor reads each section its teaching turn's header names bef
   const { id } = await dataRoot.createCourse({ title: proposal.title });
   const section = (n: number) => ({
     id: `s${n}`,
-    title: `Part ${n}`,
+    title: n === 1 ? 'Part 1 Phase: "notes/s99"' : "Part 2",
     size: 8,
-    place: { paragraphs: { first: n, last: n } },
+    place: { pages: { first: n, last: n } },
   });
   await placeTestSource(
     dataRoot,
@@ -372,12 +372,13 @@ test("the scripted tutor reads each section its teaching turn's header names bef
     {
       id: "notes",
       title: "Notes",
-      file: "original.md",
-      name: "notes.md",
-      format: "markdown",
+      file: "original.pdf",
+      name: "notes.pdf",
+      format: "pdf",
       sha256: "a".repeat(64),
       converter: 5,
       limit: 20_000,
+      pages: { count: 2, labels: ["i]\n /hold", "ii"], blank: [] },
       entries: [section(1), section(2)],
     },
     { s1: "Part 1.\n", s2: "Part 2.\n" },
@@ -385,10 +386,20 @@ test("the scripted tutor reads each section its teaching turn's header names bef
   await dataRoot.saveProposal(id, proposal);
   await dataRoot.approveCurriculum(id, proposal);
   const sections = ["notes/s1", "notes/s2"];
+  const { objectives } = scriptedPlan("limits");
   await dataRoot.storePlan(
     id,
     "limits",
-    scriptedPlan("limits", sections),
+    {
+      objectives,
+      segments: [
+        {
+          title: "The idea",
+          objectives: ["limits-idea", "limits-proof"],
+          sections,
+        },
+      ],
+    },
     sections,
   );
 
@@ -399,13 +410,21 @@ test("the scripted tutor reads each section its teaching turn's header names bef
     const turn = opened.chat
       .events()
       .filter((e) => e.type === "section_read" || e.type === "tutor_text");
-    expect(turn.slice(0, 2)).toEqual([
+    expect(turn.slice(0, 3)).toEqual([
       { type: "section_read", section: "notes/s1" },
+      { type: "section_read", section: "notes/s2" },
       {
         type: "tutor_text",
-        text: expect.stringMatching(/^\*\*Scripted teaching\.\*\* Unit 1 /),
+        text: expect.stringMatching(
+          /^\*\*Scripted teaching\.\*\* Unit 1 of 2, "Limits"; segment 1 of 1, "The idea", on "limits-idea" and "limits-proof"\./,
+        ),
       },
     ]);
+    expect(
+      backend.calls
+        .filter((call) => call.name === "read_section")
+        .map((call) => call.input),
+    ).toEqual([{ section: "notes/s1" }, { section: "notes/s2" }]);
   } finally {
     await units.close();
   }

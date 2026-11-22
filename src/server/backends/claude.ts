@@ -398,6 +398,7 @@ async function startSession(
   }
   const inbox = createInbox();
   let interruptRequested = false;
+  let turnSignal: AbortSignal | undefined;
   let closed = false;
   const mutations = new Map<string, () => void>();
 
@@ -411,13 +412,14 @@ async function startSession(
       teachingTool.description,
       teachingTool.inputShape,
       async (args) => {
-        if (interruptRequested) {
+        const signal = turnSignal;
+        if (interruptRequested || signal?.aborted === true) {
           return {
             content: [{ type: "text", text: "The learner stopped this turn." }],
             isError: true,
           };
         }
-        const result = await teachingTool.run(args);
+        const result = await teachingTool.run(args, signal);
         if (result.status === "done" && result.endTurn === true) {
           endTurnRequested = true;
         }
@@ -576,13 +578,17 @@ async function startSession(
   const messages = session[Symbol.asyncIterator]();
   let finished: string | undefined;
 
-  async function* send(turn: EngineTurn): AsyncGenerator<BackendEvent> {
+  async function* send(
+    turn: EngineTurn,
+    signal?: AbortSignal,
+  ): AsyncGenerator<BackendEvent> {
     if (finished !== undefined) {
       yield { type: "turn_end", outcome: "error", error: finished };
       return;
     }
     interruptRequested = false;
     endTurnRequested = false;
+    turnSignal = signal;
     inbox.push(turn.text);
     const reader = createTurnReader(cwd);
     let interruptedOnStart = false;

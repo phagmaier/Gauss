@@ -19,9 +19,13 @@
 // append, runs through withFileLock, so it lands in the order called.
 
 import { randomUUID } from "node:crypto";
+import { constants } from "node:fs";
 import {
+  type FileHandle,
   lstat,
   mkdir,
+  mkdtemp,
+  open,
   readdir,
   readFile,
   rename,
@@ -31,6 +35,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { crc32 } from "node:zlib";
 import { z } from "zod";
 import { ArtifactFile } from "../../shared/artifact.ts";
 import { Course, Slug } from "../../shared/course.ts";
@@ -367,9 +372,10 @@ export interface DataRoot {
   /**
    * The PNG image of a page, counted from 1, of one of the course's PDF
    * sources, kept in its `pages/<page>.png` once rendered. With none kept,
-   * `render` renders it from the original into the file it is given, a new
-   * one in `pages/`, which is then put in place by rename; a render that
-   * throws keeps nothing. Undefined when the course has no such source.
+   * `render` writes into a private scratch folder under `pages/`. The
+   * record validates the PNG before publishing it by rename, validates
+   * cache hits too, and always removes the scratch folder. Undefined when
+   * the course has no such source.
    */
   pageImage(
     id: string,
@@ -1558,20 +1564,23 @@ export function openDataRoot(options: {
       const file = join(pages, `${z.int().positive().parse(page)}.png`);
       // One render of a page at a time: a second request reads the first's.
       return withFileLock(file, async () => {
-        try {
-          return await readFile(file);
-        } catch (error) {
-          if (!hasCode(error, "ENOENT")) throw error;
-        }
+        const kept = await readPagePng(file);
+        if (kept !== undefined) return kept;
         await mkdir(pages, { recursive: true });
-        const scratch = join(pages, `.${page}-${randomUUID()}.tmp.png`);
+        // The renderer can write to dirname(output), not the cache itself.
+        const scratch = await mkdtemp(join(pages, ".render-"));
         try {
-          await render(join(folder, outline.file), scratch);
-          await rename(scratch, file);
+          const output = join(scratch, "page.png");
+          await render(join(folder, outline.file), output);
+          const image = await readPagePng(output);
+          if (image === undefined) {
+            throw new Error("The renderer did not write a page image.");
+          }
+          await rename(output, file);
+          return image;
         } finally {
-          await rm(scratch, { force: true });
+          await rm(scratch, { recursive: true, force: true });
         }
-        return readFile(file);
       });
     },
   };
@@ -1757,6 +1766,103 @@ async function publishSource(from: string, to: string): Promise<void> {
   await syncFolder(parent);
   const previous = dirname(from);
   if (previous !== parent) await syncFolder(previous);
+}
+
+const PAGE_PNG_MAX_BYTES = 16 * 1024 * 1024;
+const PAGE_PNG_MAX_PIXELS = 64 * 1024 * 1024;
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const PNG_IHDR = 0x49484452;
+const PNG_IDAT = 0x49444154;
+const PNG_IEND = 0x49454e44;
+const PNG_BIT_DEPTHS = [
+  [1, 2, 4, 8, 16],
+  [],
+  [8, 16],
+  [1, 2, 4, 8],
+  [8, 16],
+  [],
+  [8, 16],
+];
+
+/** Reads only a bounded regular file; a genuinely missing entry is not an error. */
+async function readPagePng(path: string): Promise<Buffer | undefined> {
+  const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = constants;
+  if (!O_NOFOLLOW) {
+    throw new Error("Reading page images requires support for O_NOFOLLOW.");
+  }
+  let handle: FileHandle;
+  try {
+    // A FIFO must not block the open before we can check the file type.
+    handle = await open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+  } catch (error) {
+    if (hasCode(error, "ENOENT")) return undefined;
+    throw error;
+  }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) throw new Error(`${path} is not a regular file.`);
+    if (info.size > PAGE_PNG_MAX_BYTES) {
+      throw new Error(`${path} exceeds the 16 MiB page image limit.`);
+    }
+    // Use this descriptor for both the type check and a fixed-length read.
+    const image = Buffer.allocUnsafe(info.size);
+    for (let offset = 0; offset < image.length; ) {
+      const { bytesRead } = await handle.read(
+        image,
+        offset,
+        image.length - offset,
+        offset,
+      );
+      if (bytesRead === 0) throw new Error(`${path} is an incomplete PNG.`);
+      offset += bytesRead;
+    }
+    if (!isPagePng(image)) throw new Error(`${path} is not a bounded PNG.`);
+    return image;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Checks the header, pixel count and chunk framing without decoding pixels. */
+function isPagePng(image: Buffer): boolean {
+  const start = PNG_SIGNATURE.length;
+  if (!image.subarray(0, start).equals(PNG_SIGNATURE)) return false;
+  let hasData = false;
+  for (let at = start; at + 12 <= image.length; ) {
+    const length = image.readUInt32BE(at);
+    const type = image.readUInt32BE(at + 4);
+    const end = at + 8 + length;
+    if (end + 4 > image.length) return false;
+    if (at === start) {
+      if (type !== PNG_IHDR || length !== 13) return false;
+      const width = image.readUInt32BE(at + 8);
+      const height = image.readUInt32BE(at + 12);
+      if (
+        width === 0 ||
+        height === 0 ||
+        width * height > PAGE_PNG_MAX_PIXELS ||
+        !PNG_BIT_DEPTHS[image.readUInt8(at + 17)]?.includes(
+          image.readUInt8(at + 16),
+        ) ||
+        image[at + 18] !== 0 || // Compression method
+        image[at + 19] !== 0 || // Filter method
+        image.readUInt8(at + 20) > 1 // Interlace method
+      ) {
+        return false;
+      }
+    } else if (type === PNG_IHDR) {
+      return false;
+    }
+    if (crc32(image.subarray(at + 4, end)) !== image.readUInt32BE(end)) {
+      return false;
+    }
+    if (type === PNG_IEND) {
+      return hasData && length === 0 && end + 4 === image.length;
+    }
+    if (type === PNG_IDAT && length > 0) hasData = true;
+    at = end + 4;
+  }
+  return false;
 }
 
 /** A text file's contents, trimmed; undefined if there is no file or it is blank. */

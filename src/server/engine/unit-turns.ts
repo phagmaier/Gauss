@@ -116,7 +116,7 @@ export function tutorSystemPrompt(
           "The course is taught from these sources. Read a section with " +
             "read_section, and look at a page of a PDF with view_page, in " +
             "any turn, even one whose header allows no teaching tools: " +
-            "reading changes nothing.",
+            "reading does not change progress or evidence.",
           "",
           ...context.sources.flatMap((source) => [...sourceLines(source), ""]),
         ]),
@@ -350,7 +350,7 @@ export function answerTurn(
           ? undefined
           : where.test === undefined
             ? undefined
-            : `That was the test's last question, and the test is over. ${testSummaryAllowed(where.test)}`
+            : `That was the test's last question, and the test is over. ${testSummaryAllowed(where, where.test)}`
         : entry.assessment !== undefined
           ? !running
             ? undefined
@@ -401,8 +401,8 @@ function mathGrade(entry: AnswerEvidence, expected: string): string {
  * What the first turn of a detour allows (task 2.20): it takes the place of
  * the feedback on the missed answer. The tutor gives the right answer, finds
  * where the confusion is and works through it, and from the objective's
- * second miss in this check teaches it again another way. No tool: the
- * learner asks for the next question.
+ * second miss in this check teaches it again another way. The learner
+ * asks for the next question.
  */
 function detourOpening(where: Where, entry: AnswerEvidence): string {
   const { standing } = checkStanding(where);
@@ -419,8 +419,8 @@ function detourOpening(where: Where, entry: AnswerEvidence): string {
   return (
     `In this check, ${standing}. The miss opens a detour, a pause in the ` +
     'check: no question is posted until the learner presses "Ready for ' +
-    'another question", and nothing said in it is graded. Allowed now, as ' +
-    "text, with no tool: give the right answer and why it is right; then " +
+    `another question", and nothing said in it is graded. Allowed now, ${textOnly(where)}: ` +
+    "give the right answer and why it is right; then " +
     `find where the confusion is, ${from}by asking them one question, and ` +
     `work through it with them.${again} You may suggest pressing "Ready ` +
     'for another question" once the confusion seems cleared.'
@@ -453,7 +453,7 @@ function confusionFrom(entry: AnswerEvidence): string {
 }
 
 /**
- * What the turn after a graded answer allows: feedback, and no tool (task
+ * What the turn after a graded answer allows: feedback alone (task
  * 2.16a). Given the next question to plan, the tutor wrote its feedback in
  * its thinking, which is never shown, so the next question is asked for in
  * a turn of its own.
@@ -466,8 +466,7 @@ function feedbackAllowed(where: Where): string {
       : "every objective is done, so the check is over, and the segment closes once it ends";
   return (
     `In this check, ${standing}. Allowed now: your feedback on this ` +
-    "answer, written as text, and nothing else. No tool may be called in " +
-    `this reply: ${next}.`
+    `answer, written as text, and nothing else. ${feedbackToolLimit(where)}: ${next}.`
   );
 }
 
@@ -609,15 +608,17 @@ export function testEndTurn(
     where,
     event,
     undefined,
-    where.test === undefined ? undefined : testSummaryAllowed(where.test),
+    where.test === undefined
+      ? undefined
+      : testSummaryAllowed(where, where.test),
   );
 }
 
 /** What the turn that ends the test allows: a few sentences on what it showed. */
-function testSummaryAllowed(test: readonly TestShown[]): string {
+function testSummaryAllowed(where: Where, test: readonly TestShown[]): string {
   return (
-    `What it showed: ${test.map(testLine).join("; ")}. Allowed now, as ` +
-    "text, with no tool: say in a few sentences what the test showed, what " +
+    `What it showed: ${test.map(testLine).join("; ")}. Allowed now, ${textOnly(where)}: ` +
+    "say in a few sentences what the test showed, what " +
     "the learner has and what it did not show, which is where you would " +
     "teach. No teaching yet, and no going over single answers. The learner " +
     "then sees a card with what passed and what skipping it would skip, and " +
@@ -775,13 +776,13 @@ function runAllowed(where: Where): string | undefined {
         `The unit's gate, ${questions(count)}, ${gateSplit(where)}, is ` +
         "offered to the learner on a card, which they start or skip, now or " +
         "in a later sitting; the unit ends after it. Allowed now: reply to " +
-        "the learner. No teaching tools."
+        `the learner. ${noTeachingTools(where)}.`
       );
     }
     return (
       `A ${name} of ${questions(count)} is ` +
       "offered to the learner on a card, which they start or skip; the unit " +
-      "waits until they do. Allowed now: reply to the learner. No teaching tools."
+      `waits until they do. Allowed now: reply to the learner. ${noTeachingTools(where)}.`
     );
   }
   // An open question, or feedback queued, reads as in a check.
@@ -810,10 +811,14 @@ function runAllowed(where: Where): string | undefined {
     const again = next.second
       ? ", and unlike the one just answered: the same objective asked another way"
       : "";
+    const only =
+      where.context.sources.length === 0
+        ? "and nothing else"
+        : "and nothing else for the learner; no other tools except source reading";
     return (
       `In this test, ${standing}. Allowed now: a question on ` +
       `"${next.objective}" with ask_question, unlike the ones asked ` +
-      `before${again}, and nothing else: no lead-in, no word on any answer, ` +
+      `before${again}, ${only}: no lead-in, no word on any answer, ` +
       `no teaching. ${aboutObjective(where, next)} Posting ends your turn.` +
       askedBefore(where, [next.objective])
     );
@@ -881,7 +886,7 @@ function runFeedbackAllowed(where: Where): string {
   return (
     `In this ${name}, ${runStanding(where)}. Allowed now: feedback on this ` +
     "answer in a sentence or two, written as text, and nothing else: no " +
-    `teaching. No tool may be called in this reply: ${next}.`
+    `teaching. ${feedbackToolLimit(where)}: ${next}.`
   );
 }
 
@@ -905,8 +910,8 @@ function runDetourOpening(where: Where, entry: AnswerEvidence): string {
   return (
     `In this ${name}, ${runStanding(where)}. The miss opens a detour, a ` +
     `pause in the ${name}: no question is posted until the learner presses ` +
-    `"${button}", and nothing said in it is graded. Allowed now, as text, ` +
-    "with no tool: give the right answer and why it is right; then find " +
+    `"${button}", and nothing said in it is graded. Allowed now, ${textOnly(where)}: ` +
+    "give the right answer and why it is right; then find " +
     `where the confusion is, ${confusionFrom(entry)}by asking them one ` +
     "question, and work through it with them: a short refresher, not the " +
     `unit taught again. ${after} You may suggest pressing "${button}" once ` +
@@ -1144,6 +1149,15 @@ function turn(
           "Your proposed curriculum change waits for the learner's answer: " +
             "the curriculum is as it was until a header says they applied it.",
         ];
+  // Teaching from the segment already has its own read-first instruction.
+  const consulting =
+    where.context.sources.length > 0 &&
+    !allowedNow.startsWith("Allowed now: teach")
+      ? [
+          "You may consult the sources with read_section or view_page. " +
+            "This does not change what you may say or do for the learner.",
+        ]
+      : [];
   const header = [
     describe(where),
     event,
@@ -1151,8 +1165,12 @@ function turn(
     ...request,
     ...proposal,
     ...change,
+    ...consulting,
     allowedNow,
-  ].join(" ");
+  ]
+    .join(" ")
+    // A final bracket on a line ends the header, not a multiline note in it.
+    .replace(/\](?=\r?\n|$)/g, "] ");
   const handoff = where.notes.includes(JOINED_NOTE)
     ? handoffBlock(where)
     : undefined;
@@ -1198,7 +1216,8 @@ function handoffBlock(where: Where): string | undefined {
 function describe(where: Where): string {
   const { context, position } = where;
   const unitAt = context.units.findIndex((u) => u.id === context.unitId);
-  const unit = `Unit ${unitAt + 1} of ${context.units.length}, "${context.units[unitAt]?.title}"`;
+  const title = oneLine(context.units[unitAt]?.title ?? "undefined");
+  const unit = `Unit ${unitAt + 1} of ${context.units.length}, "${title}"`;
   if (where.finished !== undefined) {
     const { slipping } = where;
     const movedOn = where.notPassed.filter((id) => !slipping.includes(id));
@@ -1222,7 +1241,7 @@ function describe(where: Where): string {
   const which = segment.again
     ? `a segment after the plan's ${context.plan.segments.length}, going over ${quoted(segment.objectives)} again`
     : `segment ${position.segment + 1} of ${context.plan.segments.length}, ` +
-      `"${segment.title}", on ${quoted(segment.objectives)}${leaving}`;
+      `"${oneLine(segment.title)}", on ${quoted(segment.objectives)}${leaving}`;
   const stage = position.testOut?.stage;
   const run =
     where.assessment?.run.stage === "on"
@@ -1239,20 +1258,38 @@ function describe(where: Where): string {
   const sections =
     segment.sections.length === 0
       ? ""
-      : ` The segment draws on ${sectionsText(segment.sections, context.sources)}.`;
+      : `\n${SEGMENT_SECTION_REFS}${segment.sections.join(", ")}.\nThe segment draws on ${sectionsText(segment.sections, context.sources)}.`;
   return `${unit}; ${which}.${sections} Phase: ${position.phase}.${run}`;
+}
+
+function textOnly(where: Where): string {
+  return where.context.sources.length === 0
+    ? "as text, with no tool"
+    : "as text, with no tools except source reading";
+}
+
+function feedbackToolLimit(where: Where): string {
+  return where.context.sources.length === 0
+    ? "No tool may be called in this reply"
+    : "Only source-reading tools may be called in this reply";
+}
+
+function noTeachingTools(where: Where): string {
+  return where.context.sources.length === 0
+    ? "No teaching tools"
+    : "No tools except source reading";
 }
 
 function allowed(where: Where): string {
   const { position, context } = where;
   if (where.finished !== undefined) {
-    return "Allowed now: reply to the learner. No teaching tools.";
+    return `Allowed now: reply to the learner. ${noTeachingTools(where)}.`;
   }
   const stage = position.testOut?.stage;
   if (stage === "result" || stage === "due") {
     return (
       "Allowed now: reply to the learner, without teaching and without " +
-      "pressing them either way. No teaching tools until " +
+      `pressing them either way. ${noTeachingTools(where)} until ` +
       (stage === "result" ? "they answer the card." : "the test starts.")
     );
   }
@@ -1313,9 +1350,9 @@ function allowed(where: Where): string {
               ? `The unit's gate left ${quoted(where.goOver)} not passed.`
               : `Not passed: ${quoted(where.goOver)}.`) +
             " The learner chooses whether to go over them again or to move " +
-            "on without them. Allowed now: reply to the learner. No teaching tools."
+            `on without them. Allowed now: reply to the learner. ${noTeachingTools(where)}.`
         : "The segment is closed; the learner starts the next one when they " +
-            "choose. Allowed now: reply to the learner. No teaching tools " +
+            `choose. Allowed now: reply to the learner. ${noTeachingTools(where)} ` +
             "until the next segment starts.";
   }
 }
@@ -1397,6 +1434,9 @@ const ASKED_LISTED = 6;
 
 /** Separates question history from the scripted backend's control text. */
 export const QUESTION_HISTORY_START = "\nQuestions asked before:\n";
+
+/** Begins the dedicated, single-line list of validated section refs. */
+export const SEGMENT_SECTION_REFS = "Segment section refs: ";
 
 /**
  * For a turn that allows a question: the questions the evidence holds on

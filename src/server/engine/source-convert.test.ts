@@ -136,25 +136,27 @@ test("a PDF's page renders as a PNG image into the file given; a page the PDF la
   await writeFile(original, onePagePdf());
   const pages = join(source, "pages");
   await mkdir(pages);
+  const scratch = await mkdtemp(join(pages, ".render-"));
+  const output = join(scratch, "page.png");
   const converter = createSourceConverter({ sandbox });
 
-  expect(await converter.renderPage(original, 1, join(pages, "1.png"))).toEqual(
-    { result: "rendered" },
-  );
-  const png = await readFile(join(pages, "1.png"));
+  expect(await converter.renderPage(original, 1, output)).toEqual({
+    result: "rendered",
+  });
+  const png = await readFile(output);
   expect(png.subarray(0, 8)).toEqual(
     Buffer.from("\x89PNG\r\n\x1a\n", "latin1"),
   );
   // 72 points at 150 dpi.
   expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([150, 150]);
 
-  expect(await converter.renderPage(original, 2, join(pages, "2.png"))).toEqual(
-    {
-      result: "failed",
-      reason:
-        "it stopped with exit status 2: convert.py: the PDF has 1 pages, not a page 2",
-    },
-  );
+  expect(
+    await converter.renderPage(original, 2, join(scratch, "missing.png")),
+  ).toEqual({
+    result: "failed",
+    reason:
+      "it stopped with exit status 2: convert.py: the PDF has 1 pages, not a page 2",
+  });
 });
 
 test("without the sandbox, the converter says why it cannot convert", () => {
