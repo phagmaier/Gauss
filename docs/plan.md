@@ -42,26 +42,6 @@ if the learner's use shows too many plausible matches still need ranking.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.14 The grader's and help judge's sets in a source course
-
-- Status: todo
-- Depends on: 4.12
-- Why: the grader's hand-graded set is math proofs, and the help judge's
-  set math exchanges; neither has an explanation answer from a source
-  course.
-- Do: hand-graded written answers on the _Phenomenology_ and the Attention
-  paper in `scripts/grader-set.ts`: correct; wrong, with the flaw; mostly
-  right but vague (`brief.md`, "Mastery and evidence"); and one that
-  quotes the text without explaining it. Hand-judged exchanges in
-  `scripts/help-set.ts` while a question is open in a source course: what
-  a term of the passage means, where in the text the answer lies, a
-  section link given in reply, and the learner asking to see the passage.
-  Run `grade-set.ts` and `judge-set.ts` with `--runs 2` on their default
-  models; where they disagree with the hand grades, revise `grader.md` or
-  `help-judge.md` as `findings.md`, "Comparing prompt versions", says.
-- Done when: both sets run, with their agreement and any prompt change in
-  `findings.md`, "Grader" and "Help judge".
-
 ## Stage 6: later
 
 Codex backend (`findings.md`, "Codex"), self-test, cheat sheets, photo
@@ -136,7 +116,10 @@ Known and accepted for now; a task that closes one deletes it here.
 - The tutor can hint at an answer in free text outside a help exchange
   (teaching, feedback); only replies during an open question are judged.
   The help judge sees one exchange at a time, so a hint split over two
-  replies passes.
+  replies passes. While a question is open, a link to its passage, or the
+  place to read it named, is help to the judge, but neither `tutor.md`
+  (whose "Links" rule invites links) nor the open question's header says
+  so; untried on a real model.
 - Nothing refuses a code question whose tests or solution are in the
   workspace, and nothing stops the tutor writing tests there; only
   `tutor.md` forbids it. The engine does not check the arithmetic of the
@@ -149,13 +132,16 @@ Known and accepted for now; a task that closes one deletes it here.
 - The grader has no hand-graded set for math answers the symbolic check
   does not settle. The dispute set has no case where a learner disputes a
   grade of correct, and does not separate Sonnet from Haiku.
-- One Sonnet 5.5 notes call exceeded the 3-minute limit; cause unknown.
+- One Sonnet 5.5 notes call, and one grading in the grader's set (P2,
+  usually 3 s), exceeded the 3-minute limit; cause unknown.
 - Once, after a Stop mid-sentence, the next one-sentence reply took 10 to
   30 seconds. Not seen again, and not investigated.
 - In a source course the tutor still writes runs of the source's words
   into its own sentences, unquoted and unchecked (18 of eight words or
   more over six Opus runs, two of them titles), and Sonnet quotes clauses
-  outright. Nothing checks the tutor's text against the source.
+  outright. Nothing checks the tutor's text against the source, nor a
+  written answer: copied without quotation marks, the source's sentences
+  read to the grader as the learner's own.
 - Untried on a real model: a learner who keeps asking in a detour or
   presses "Ready" at once; idle closing and resuming end to end; the tutor
   offering a large course's next stretch; scratch work in `$TMPDIR`; a

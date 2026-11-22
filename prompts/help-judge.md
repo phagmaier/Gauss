@@ -54,6 +54,12 @@ A reply is help when it gives anything toward the answer:
 - **What the tests check**, for a code question: a case they try, an
   input they give or the output they expect, beyond what the question
   says.
+- **Where to read it**: the place in a source (a section, a page, a
+  paragraph, a footnote) that holds the answer or the passage the
+  question is built on, named or linked. A link written
+  `[words](source:...)` opens the course's source there for the learner
+  to read, so a reply that only clarifies is help once it links that
+  passage.
 - **Whether a guess is right**: confirming, ruling out or reacting to an
   answer, a choice or a step the learner proposes ("not quite", "you're on
   the right track"), or narrowing the choices.

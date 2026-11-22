@@ -1,10 +1,11 @@
-// The help judge's hand-judged set (plan task 2.21; what it showed about the
-// judge is in docs/findings.md, "Help judge"). Seven questions as a tutor
-// would post them, each with its answer key, expected answer, rubric, or
-// tests and solution, and exchanges during them: a message the learner sent
-// while the question was open and the tutor's reply, each judged by hand
-// against the rules in `prompts/help-judge.md`. `scripts/judge-set.ts`
-// judges them on a real model.
+// The help judge's hand-judged set (plan tasks 2.21 and 4.14; what it showed
+// about the judge is in docs/findings.md, "Help judge"). Nine questions as a
+// tutor would post them, the last two in a course with sources, each with
+// its answer key, expected answer, rubric, or tests and solution, and
+// exchanges during them: a message the learner sent while the question was
+// open and the tutor's reply, each judged by hand against the rules in
+// `prompts/help-judge.md`. `scripts/judge-set.ts` judges them on a real
+// model.
 //
 // Math is written as the learner and the tutor write it: `$` for inline
 // math.
@@ -117,6 +118,26 @@ def test_overlapping_run():
   command: [".venv/bin/python", "-m", "pytest", "-q", "test_bpe.py"],
 };
 
+// In a course with sources, the tutor links a passage as
+// `[words](source:<source>/<section>/p<page>)`, which opens the text there
+// (`prompts/tutor.md`, "Links"); these sources' ids are those the app gave
+// them. While a question is open, `quote_source` is refused.
+
+const explanation: Question = {
+  kind: "written",
+  prompt:
+    "Hegel's example of explanation is lightning: the understanding takes the single flash as a universal, states it as the law of electricity, and then explains that law by electricity as a force. In three or four sentences, explain why, for Hegel, this explanation says nothing beyond the law, and where the difference it draws between the law and the force lies.",
+  rubric: `A complete answer says why the explanation adds nothing: the force is constituted exactly like the law, since when it expresses itself opposite electricities emerge and disappear into each other, which is just what the law states; force and law have the same content, so the difference between them is drawn and at once withdrawn. And it says where that difference lies: only in the understanding, not in the Thing itself.
+Wrong: the force taken for a hidden cause that experience cannot reach; the conclusion stated without the reason; the difference placed in nature or in the Thing.`,
+};
+
+const scaling: Question = {
+  kind: "written",
+  prompt: tex`Scaled dot-product attention divides each dot product $q \cdot k$ of a query and a key by $\sqrt{d_k}$ before the softmax, where $d_k$ is the dimension of the queries and keys. In three or four sentences, explain why the dot products grow with $d_k$, what large dot products do to the softmax's gradients, and why the divisor is $\sqrt{d_k}$ in particular.`,
+  rubric: tex`A complete answer: $q \cdot k$ is a sum of $d_k$ terms, each of mean $0$ and variance $1$ if the components are independent with mean $0$ and variance $1$, so it has variance $d_k$ and a standard deviation that grows like $\sqrt{d_k}$; large inputs saturate the softmax, where its gradients are extremely small; dividing by $\sqrt{d_k}$ brings the variance back to $1$.
+Wrong: the variance miscomputed; the scaling said to make attention faster, or to make the weights sum to one; a part asserted without its reason.`,
+};
+
 export const HELP_SET: HandJudgedExchange[] = [
   // --- Clarification: only what the question asks, or nothing at all ------
   {
@@ -204,6 +225,26 @@ export const HELP_SET: HandJudgedExchange[] = [
     message: "Do I edit bpe.py where it is, or make a new file for my answer?",
     reply:
       "Edit bpe.py at the path the card shows, and keep the function's name: that is the file and the function the tests run.",
+    verdict: "clarification",
+  },
+  {
+    id: "C11",
+    tests:
+      "in a source course, a phrase of the passage that the question uses but does not test",
+    question: explanation,
+    message:
+      "Does 'the law of electricity' mean a particular law of physics, like Coulomb's law?",
+    reply:
+      "No particular law: it is just the general statement the understanding makes about lightning. Which law of physics it might be does not matter for the question.",
+    verdict: "clarification",
+  },
+  {
+    id: "C12",
+    tests: "in a source course, the learner asking to see the passage, refused",
+    question: scaling,
+    message: "Can you show me the paper's passage on the scaling again?",
+    reply:
+      "I can't show passages from the paper while the question is open. Answer from what you remember, or answer \"I don't know\" and say where you got stuck.",
     verdict: "clarification",
   },
   // --- Help: anything toward the answer -----------------------------------
@@ -336,6 +377,46 @@ export const HELP_SET: HandJudgedExchange[] = [
       "I wrote `return max(set(pairs), key=pairs.count)`. Does that handle ties?",
     reply:
       "Not the way the question asks: a set has no order, so a tie could go either way.",
+    verdict: "help",
+  },
+  {
+    id: "H16",
+    tests:
+      "in a source course, defining a term of the passage that the question tests",
+    question: explanation,
+    message: "What does Hegel mean by 'force' here?",
+    reply:
+      "In this passage force is the law drawn together into a single thing: electricity, as the one power behind positive and negative electricity.",
+    verdict: "help",
+  },
+  {
+    id: "H17",
+    tests: "in a source course, where in the text the answer lies",
+    question: scaling,
+    message: "Does the paper explain this, or do I have to work it out myself?",
+    reply:
+      "The paper gives its reason in section 3.2.1, and footnote 4 there shows why the dot products grow.",
+    verdict: "help",
+  },
+  {
+    id: "H18",
+    tests:
+      "the clarification of C11, with a link to the passage the question is built on",
+    question: explanation,
+    message:
+      "Does 'the law of electricity' mean a particular law of physics, like Coulomb's law?",
+    reply:
+      "No particular law: it is just the general statement the understanding makes about lightning, as in [the lightning example](source:hegel-the-phenomenology-of-spirit-translated-with/s29/p66). Which law of physics it might be does not matter for the question.",
+    verdict: "help",
+  },
+  {
+    id: "H19",
+    tests:
+      "the learner asking to see the passage, refused a quote but given a link to it",
+    question: scaling,
+    message: "Can you show me the paper's passage on the scaling again?",
+    reply:
+      "I can't quote the paper while the question is open, but you can reread [the passage on scaling](source:attention-is-all-you-need/s7/p4) yourself.",
     verdict: "help",
   },
 ];

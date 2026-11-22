@@ -43,6 +43,11 @@ may be assumed.
   (every case, both directions) without the errors the rubric lists.
 - Judge the result or reasoning, not the wording. Plain or unusual words
   are fine if the reasoning is complete.
+- An explanation must be the answer's own. Quotations from a text may
+  support it, but an answer that strings a text's sentences together
+  without saying in its own words what they mean is incorrect, however
+  well chosen: a learner can copy them from the lesson without
+  understanding them.
 - A slip of notation is not a flaw when the meaning is plain from the
   context and no step depends on it (a letter written for another, a
   missing bracket). A wrong computation is not a slip.

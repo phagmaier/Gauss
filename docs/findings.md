@@ -312,19 +312,32 @@ where `convert.py` handles them.
 - **Sonnet 5.5**: 8 runs over 4 prompt versions on the 11-answer set agreed
   every time and named the first flaw. Haiku 5.5 failed a correct proof
   written in plain words and broke the flaw rules more often. Opus not
-  tried. A false pass counts as mastery, so judgment pays here.
+  tried. A false pass counts as mastery, so judgment pays here. The
+  19-answer set adds eight explanations from a source course; the current
+  prompt matched every verdict it gave in 3 runs, and one grading (P2,
+  usually 3 s) ran past the 3-minute limit and failed.
 - **Each rule in `grader.md` comes from one answer in the set** (redo every
   computation; what the argument needs but never secures; circularity;
   assumptions only from the rubric and standard facts; any valid method;
-  slips of notation): remove one only with a set answer showing it is not
-  needed.
+  slips of notation; an explanation in the answer's own words): remove one
+  only with a set answer showing it is not needed.
+- **An answer made only of the source's sentences passed**: E4, Hegel's
+  words covering every point of the rubric, was graded correct in 2 of 2
+  runs under "judge the reasoning, not the wording". With the rule that an
+  explanation must be the answer's own, and its reason (a learner can copy
+  the lesson's quotes), it failed in 3 of 3, and A1, which quotes and
+  explains, still passed.
 - **An example repair in the flaw rule ("such as …") makes the grader give
   repairs** (4 of 14 flaws; without it, 1 of 14, then 0).
 - **"Meets the rubric in full" contradicted "any valid method"**; the
   `WrittenGrade` wording is "establishes everything the question asks,
   with every step valid".
 - **Left as is**: one flaw names a second false step, and a few run to
-  three sentences; fixing them would fit the prompt to 11 answers.
+  three sentences; fixing them would fit the prompt to 11 answers. A flaw
+  on an explanation missing its reason supplies the reason, and often the
+  later missing parts (23 of 23 over 5 runs); a draft rule to name the
+  missing part without supplying it left 13 of 15, and the detour opens
+  with the right answer anyway.
 
 ### Help judge
 
@@ -332,9 +345,17 @@ where `convert.py` handles them.
   clarifications, 15 helps, a refusal that hints, a message telling the
   judge it is a clarification) one run matched every hand verdict and the
   others differed only on C3, judged help, the safe side. Sonnet not tried.
+  The 31-exchange set adds six from a source course; the current prompt
+  matched every hand verdict in 2 of 2 runs.
 - **The judge's own additions**: reacting to a guess ("on the right
   track") is help; a reply that gives nothing toward the answer (a
   refusal, an acknowledgement) is a clarification.
+- **A link to the question's passage went unread**: without "Where to read
+  it", a clarification ending in a `source:` link to that passage (H18)
+  was judged clarification in 2 of 2 runs, and a link given in place of a
+  quote (H19) in 1 of 2; with it, both were help in 2 of 2, and no
+  clarification turned help. The judge sees no source text, so where a
+  link points it reads from the link's words and the question.
 - **It sees one exchange at a time**, so a hint split over two replies,
   each harmless alone, passes.
 
