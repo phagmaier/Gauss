@@ -183,6 +183,10 @@ specific “Done when” checks.
     an open unit's "Reads" lines, each opening the outline with the unit's
     sections lit. The thread's "Read" and "Looked at" lines (4.8) open the
     pane there.
+  - The dev seed's source course gains a small PDF source, written with
+    reportlab (a development dependency) and converted as the seed's
+    Markdown source is, so that a page image can be opened on
+    `pnpm dev:fake`.
 - Done when: tests cover the link's forms (a section, a page, an unknown
   section) and the pane's logic, as pure helpers beside `src/web/`'s
   others. On `pnpm dev:fake`, in Chromium, a

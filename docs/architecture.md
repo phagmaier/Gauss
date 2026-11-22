@@ -1655,7 +1655,9 @@ required by [`AGENTS.md`](../AGENTS.md#project-rules).
   seed and `--empty`, and [`scripted.ts`](../src/server/backends/scripted.ts)
   for scenario commands. Point `GAUSS_DATA_ROOT` at a fresh temporary
   directory for a clean run. Close the test browser before stopping the
-  server.
+  server. A file the browser uploads must lie inside the repository,
+  where the Playwright tool reads: put it in `.playwright-mcp/`, which git
+  ignores, and remove it afterwards.
 - **Chromium for browser checks.** On NixOS, get its path with
   `nix build nixpkgs#chromium --no-link --print-out-paths` and pass
   `app: "<that path>/bin/chromium"` to `browser.open`. Omp's managed
