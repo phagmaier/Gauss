@@ -334,6 +334,15 @@ test("a source's facts for its card: sections counted, the stretches cut, and th
   });
 });
 
+test("blank pages without printed labels use their physical page numbers", () => {
+  const facts = sourceFacts({
+    ...BOOK_OUTLINE,
+    pages: { count: 3, labels: ["", "", "i"], blank: [2, 3] },
+  });
+
+  expect(facts.pages?.blank.runs).toEqual([{ first: "2", last: "i" }]);
+});
+
 test("the text before any heading, cut, is named by the source's title", () => {
   const { pages: _, ...text } = BOOK_OUTLINE;
   const facts = sourceFacts({

@@ -1,6 +1,6 @@
 """Source conversion: a source's original into its outline and section files.
 
-    convert.py ingest <original> <folder> [--limit N]
+    convert.py ingest <original> <folder> [--limit N] [--status-only]
 
 reads the original, a file the learner attached, and writes into the folder,
 which must be empty and whose name is the source's id: a copy of the
@@ -12,6 +12,8 @@ title, format, number of sections, and each stretch cut into parts), or
 Gauss reads), "empty" (no text), "scanned" (a PDF most of whose pages have no
 text, needing text recognition) or "protected" (a PDF that needs a password,
 or an EPUB whose text documents are encrypted; obfuscated fonts are not).
+With --status-only, success reports only {"result": "converted"}; refusals
+are unchanged.
 Arguments it cannot use, an original it cannot read or a folder that is not
 empty are an error on standard error, with exit status 2.
 
@@ -2582,6 +2584,7 @@ def main(argv=None):
     ingest_command.add_argument("original", type=Path)
     ingest_command.add_argument("folder", type=Path)
     ingest_command.add_argument("--limit", type=_positive, default=SECTION_LIMIT, help="a section's characters")
+    ingest_command.add_argument("--status-only", action="store_true", help="omit the summary on success")
     page_command = commands.add_parser("page", help="render a PDF's page as a PNG image at 150 dpi")
     page_command.add_argument("original", type=Path)
     page_command.add_argument("page", type=_positive, help="the page's number, from 1")
@@ -2592,6 +2595,8 @@ def main(argv=None):
             result = render_page(arguments.original, arguments.page, arguments.png)
         else:
             result = ingest(arguments.original, arguments.folder, arguments.limit)
+            if arguments.status_only and result["result"] == "converted":
+                result = {"result": "converted"}
     except Unusable as error:
         print(f"convert.py: {error}", file=sys.stderr)
         return 2

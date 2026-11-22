@@ -20,8 +20,14 @@ import {
 import { FILE_NAME_HEADER, Hello, PageEvent } from "../shared/events.ts";
 import { compareSentences } from "../shared/profile.ts";
 import { formatBytes, SOURCE_SIZE_LIMIT } from "../shared/source.ts";
-import { emptyTimeline, type Item, reduce } from "../shared/timeline.ts";
-import { post, postFile } from "./api.ts";
+import {
+  emptyTimeline,
+  type Item,
+  reduce,
+  type Timeline,
+  type TimelineAction,
+} from "../shared/timeline.ts";
+import { post, postFile, type UploadAnswer } from "./api.ts";
 import { ChangedText } from "./ChangedText.tsx";
 import { Composer } from "./Composer.tsx";
 import { Diagram, UnitList } from "./Curriculum.tsx";
@@ -39,9 +45,78 @@ type Proposal = Extract<Item, { kind: "proposal" }>;
 const intakePath = (id: string, route: string) =>
   `/api/intakes/${encodeURIComponent(id)}/${route}`;
 
+type IntakeState = {
+  timeline: Timeline;
+  posting: number;
+  awaiting: string[];
+  uploadErrors: { key: number; name: string; error: string }[];
+};
+
+type IntakeAction =
+  | TimelineAction
+  | { type: "upload_start" }
+  | {
+      type: "upload_response";
+      key: number;
+      name: string;
+      result: UploadAnswer;
+    };
+
+const emptyIntake: IntakeState = {
+  timeline: emptyTimeline,
+  posting: 0,
+  awaiting: [],
+  uploadErrors: [],
+};
+
+function reduceIntake(state: IntakeState, action: IntakeAction): IntakeState {
+  if (action.type === "upload_start") {
+    return { ...state, posting: state.posting + 1 };
+  }
+  if (action.type === "upload_response") {
+    const { result, key, name } = action;
+    const next = { ...state, posting: state.posting - 1 };
+    if (!result.ok) {
+      if (!result.shown) {
+        next.uploadErrors = [
+          ...state.uploadErrors,
+          { key, name, error: result.error },
+        ];
+      }
+    } else if (
+      // The stream may have finished this conversion before the POST answered.
+      !state.timeline.items.some(
+        (i) =>
+          i.kind === "source" &&
+          i.attachment === result.attachment &&
+          i.state !== "converting",
+      )
+    ) {
+      next.awaiting = [...state.awaiting, result.attachment];
+    }
+    return next;
+  }
+  const timeline = reduce(state.timeline, action);
+  if (timeline === state.timeline) return state;
+  const next = { ...state, timeline };
+  if (action.type === "event") {
+    const { event } = action;
+    if (
+      (event.type === "source_attached" || event.type === "source_refused") &&
+      state.awaiting.includes(event.attachment)
+    ) {
+      next.awaiting = state.awaiting.filter((id) => id !== event.attachment);
+    }
+  }
+  return next;
+}
+
 export function Intake(props: { intakeId: string }) {
   const { intakeId } = props;
-  const [timeline, dispatch] = useReducer(reduce, emptyTimeline);
+  const [{ timeline, posting, awaiting, uploadErrors }, dispatch] = useReducer(
+    reduceIntake,
+    emptyIntake,
+  );
   const [connected, setConnected] = useState(false);
   const [lost, setLost] = useState(false);
   const [problem, setProblem] = useState<string>();
@@ -49,8 +124,7 @@ export function Intake(props: { intakeId: string }) {
   const closeDiagram = useCallback(() => setDiagramOpen(false), []);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
-  /** Files being sent to the server, before their cards show them. */
-  const [uploads, setUploads] = useState(0);
+  const nextUpload = useRef(0);
   const [dragging, setDragging] = useState(false);
   /** How deep in the page's elements a file is held, which enter and leave count. */
   const dragDepth = useRef(0);
@@ -97,22 +171,22 @@ export function Intake(props: { intakeId: string }) {
   }
 
   async function attach(file: File) {
-    setUploads((n) => n + 1);
-    const refused = await postFile(
+    const key = nextUpload.current++;
+    dispatch({ type: "upload_start" });
+    const result = await postFile(
       intakePath(intakeId, "sources"),
       file,
       FILE_NAME_HEADER,
     );
-    setUploads((n) => n - 1);
-    // A refusal its card shows needs no line of its own.
-    setProblem(refused?.shown === false ? refused.error : undefined);
+    dispatch({ type: "upload_response", key, name: file.name, result });
   }
 
   const latest = timeline.items.findLast((i) => i.kind === "proposal");
   const { approved } = timeline;
   const open = !lost && approved === null;
   const converting =
-    uploads > 0 ||
+    posting > 0 ||
+    awaiting.length > 0 ||
     timeline.items.some((i) => i.kind === "source" && i.state === "converting");
   /** A file held over the page, which can be dropped to attach it. */
   const holdsFiles = (e: DragEvent) =>
@@ -263,6 +337,11 @@ export function Intake(props: { intakeId: string }) {
             </>
           )}
           {problem === undefined ? null : <p className="ph-note">{problem}</p>}
+          {uploadErrors.map(({ key, name, error }) => (
+            <p key={key} className="ph-note">
+              {name}: {error}
+            </p>
+          ))}
           {lost ? (
             <p className="ph-note">
               This conversation ended when the server restarted. If it had

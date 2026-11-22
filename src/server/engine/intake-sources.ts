@@ -63,12 +63,12 @@ export interface SourcesTold {
 
 export interface IntakeSources {
   attach(upload: Upload): Promise<AttachResult>;
-  /** Deletes an attached source, while the course does not exist yet. */
+  /** Deletes an attached source before it becomes part of the course. */
   remove(attachment: string): Promise<ChatResult>;
   /**
-   * Moves every source waiting in the intake's uploads into the course,
-   * which the first proposal has just created. Asked again by each later
-   * proposal, so a move that failed is tried again.
+   * Moves the waiting uploads and switches the placement destination in one
+   * queue operation. If a move fails, it is retried before placing another
+   * source in the course or saving another proposal.
    */
   moveInto(courseId: Slug): Promise<void>;
   /** A file is being received or converted. */
@@ -96,12 +96,23 @@ interface Attachment {
   source?: Placed;
 }
 
+/** The card identifies a file even when a replacement takes the same slug. */
+interface IdentifiedSource {
+  outline: Outline;
+  attachment: string | undefined;
+}
+
+interface ToldSource {
+  title: string;
+  attachment: string | undefined;
+}
+
 export function createIntakeSources(options: {
   intakeId: string;
   dataRoot: DataRoot;
   converter: SourceConverter;
-  /** The course, once the first proposal has created it. */
-  courseId(): Slug | undefined;
+  /** The initial destination if a draft was reopened. */
+  courseId: Slug | undefined;
   emit(event: PageEvent): void;
   /** The largest file taken, in bytes; SOURCE_SIZE_LIMIT unless a test sets it. */
   sizeLimit?: number;
@@ -112,17 +123,32 @@ export function createIntakeSources(options: {
   /** The conversions under way, each resolving once its file is placed or refused. */
   const pending = new Set<Promise<void>>();
   const stop = new AbortController();
-  /** The sources the running session has been told of, by id, with their titles. */
-  let told = new Map<Slug, string>();
+  /** The sources the running session has been told of, by slug. */
+  let told = new Map<Slug, ToldSource>();
   /** The files refused since the planner was last told. */
   let refusals: { name: string; detail: string }[] = [];
   /** Placing, moving and removing run one at a time. */
   let placing: Promise<unknown> = Promise.resolve();
+  let course =
+    options.courseId === undefined
+      ? undefined
+      : { id: options.courseId, uploadsMoved: true };
 
   function serially<T>(work: () => Promise<T>): Promise<T> {
     const run = placing.then(work, work);
     placing = run.catch(() => {});
     return run;
+  }
+
+  /** Call on the placement queue before writing any new source to the course. */
+  async function moveWaitingUploads(destination: NonNullable<typeof course>) {
+    for (const found of attachments.values()) {
+      const { source } = found;
+      if (source?.place !== "upload") continue;
+      await dataRoot.moveUpload(intakeId, source.outline.id, destination.id);
+      source.place = "course";
+    }
+    destination.uploadsMoved = true;
   }
 
   function refuse(
@@ -178,24 +204,27 @@ export function createIntakeSources(options: {
         });
         return;
       }
-      const placed = await serially(async (): Promise<Placed> => {
-        const course = options.courseId();
-        return course === undefined
-          ? {
-              outline: await dataRoot.placeSource(folder, { intake: intakeId }),
-              place: "upload",
-            }
-          : {
-              outline: await dataRoot.placeSource(folder, { course }),
-              place: "course",
-            };
-      });
-      attachments.set(attachment, { name, state: "attached", source: placed });
-      emit({
-        type: "source_attached",
-        attachment,
-        size,
-        source: sourceFacts(placed.outline),
+      await serially(async () => {
+        if (course?.uploadsMoved === false) await moveWaitingUploads(course);
+        const courseId = course?.id;
+        const outline = await dataRoot.placeSource(
+          folder,
+          courseId === undefined ? { intake: intakeId } : { course: courseId },
+        );
+        attachments.set(attachment, {
+          name,
+          state: "attached",
+          source: {
+            outline,
+            place: courseId === undefined ? "upload" : "course",
+          },
+        });
+        emit({
+          type: "source_attached",
+          attachment,
+          size,
+          source: sourceFacts(outline),
+        });
       });
     } catch (error) {
       if (stop.signal.aborted) return;
@@ -217,16 +246,26 @@ export function createIntakeSources(options: {
   }
 
   /** The sources the course has now, or will have from the first proposal. */
-  async function current(): Promise<Outline[]> {
-    const waiting = [...attachments.values()].flatMap((a) =>
-      a.state === "attached" && a.source?.place === "upload"
-        ? [a.source.outline]
-        : [],
-    );
-    const course = options.courseId();
-    return course === undefined
-      ? waiting
-      : [...(await dataRoot.readSources(course)), ...waiting];
+  async function current(): Promise<IdentifiedSource[]> {
+    const waiting: IdentifiedSource[] = [];
+    const placedCards = new Map<Slug, string>();
+    for (const [attachment, { source }] of attachments) {
+      if (source === undefined) continue;
+      if (source.place === "upload") {
+        waiting.push({ outline: source.outline, attachment });
+      } else {
+        placedCards.set(source.outline.id, attachment);
+      }
+    }
+    if (course === undefined) return waiting;
+    const placed = await dataRoot.readSources(course.id);
+    return [
+      ...placed.map((outline) => ({
+        outline,
+        attachment: placedCards.get(outline.id),
+      })),
+      ...waiting,
+    ];
   }
 
   return {
@@ -291,18 +330,18 @@ export function createIntakeSources(options: {
     },
 
     async remove(attachment) {
-      const found = attachments.get(attachment);
-      if (found === undefined) {
-        return { ok: false, status: 404, error: "No such source." };
-      }
-      if (found.state === "converting") {
-        return {
-          ok: false,
-          status: 409,
-          error: "Wait until the file is converted.",
-        };
-      }
       return serially(async (): Promise<ChatResult> => {
+        const found = attachments.get(attachment);
+        if (found === undefined) {
+          return { ok: false, status: 404, error: "No such source." };
+        }
+        if (found.state === "converting") {
+          return {
+            ok: false,
+            status: 409,
+            error: "Wait until the file is converted.",
+          };
+        }
         const { source } = found;
         if (found.state !== "attached" || source === undefined) {
           return {
@@ -311,7 +350,7 @@ export function createIntakeSources(options: {
             error: "That file is not attached.",
           };
         }
-        if (options.courseId() !== undefined || source.place === "course") {
+        if (course !== undefined) {
           return {
             ok: false,
             status: 409,
@@ -328,12 +367,8 @@ export function createIntakeSources(options: {
 
     moveInto(courseId) {
       return serially(async () => {
-        for (const found of attachments.values()) {
-          const { source } = found;
-          if (source?.place !== "upload") continue;
-          await dataRoot.moveUpload(intakeId, source.outline.id, courseId);
-          found.source = { ...source, place: "course" };
-        }
+        course ??= { id: courseId, uploadsMoved: false };
+        if (!course.uploadsMoved) await moveWaitingUploads(course);
       });
     },
 
@@ -345,14 +380,21 @@ export function createIntakeSources(options: {
     },
 
     async forTurn(fresh) {
-      const known = fresh ? new Map<Slug, string>() : told;
-      const sources = await current();
-      const added = sources.filter((s) => !known.has(s.id));
-      const gone = [...known].filter(
-        ([id]) => !sources.some((s) => s.id === id),
-      );
+      const known = fresh ? new Map<Slug, ToldSource>() : told;
+      const now = new Map<Slug, ToldSource>();
+      const added: Outline[] = [];
+      for (const { outline, attachment } of await current()) {
+        now.set(outline.id, { title: outline.title, attachment });
+        const before = known.get(outline.id);
+        if (before === undefined || before.attachment !== attachment) {
+          added.push(outline);
+        }
+      }
+      const gone = [...known].filter(([id, before]) => {
+        const after = now.get(id);
+        return after === undefined || before.attachment !== after.attachment;
+      });
       const refused = [...refusals];
-      const now = new Map(sources.map((s) => [s.id, s.title]));
       const sent = () => {
         told = now;
         refusals = refusals.filter((r) => !refused.includes(r));
@@ -361,11 +403,11 @@ export function createIntakeSources(options: {
         return { block: undefined, sent };
       }
       const items = [
-        ...added.map(attachedText),
         ...gone.map(
-          ([id, title]) =>
+          ([id, { title }]) =>
             `Removed by the learner: ${JSON.stringify(title)} (source id "${id}"). It is not one of the course's sources.`,
         ),
+        ...added.map(attachedText),
         ...refused.map(
           ({ name, detail }) =>
             `Not attached: the learner's file ${JSON.stringify(name)}. ${detail} It is not one of the course's sources.`,

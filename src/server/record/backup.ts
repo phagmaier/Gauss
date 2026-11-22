@@ -11,8 +11,9 @@
 // Python environment and Python's caches), and a source's page images,
 // which are rendered again on request. A source's original and its text are
 // kept. The learner's files in the workspace are kept. One that is a
-// repository already is kept as it is, with its own rules; only a
-// `.gitignore` Gauss wrote that lacks a line of today's is brought up to it.
+// repository already is kept as it is, with its own rules except that
+// `uploads/` is never backed up. A `.gitignore` Gauss wrote that lacks a line
+// of today's is brought up to it.
 //
 // Commits run in the background, one at a time, in the order asked. Each
 // takes the record as it stands when it runs, so writes made since it was
@@ -125,7 +126,28 @@ export async function startBackup(options: {
 
   let queue = Promise.resolve();
   const stage = async () => {
-    await run(["add", "--all"]);
+    // An exact pathspec makes Git report an ignored uploads/ as an error
+    // even when the pathspec is an exclusion.
+    await run([
+      "add",
+      "--all",
+      "--",
+      ".",
+      ":(top,glob,exclude)upload[s]",
+      ":(top,glob,exclude)upload[s]/**",
+    ]);
+    // A previous backup or a manual `git add` may have left uploads staged.
+    // Remove them from the index, not from the working tree or old commits.
+    await run([
+      "rm",
+      "-r",
+      "-q",
+      "-f",
+      "--cached",
+      "--ignore-unmatch",
+      "--",
+      "uploads",
+    ]);
   };
   const backup: Backup = {
     commit(message) {
@@ -134,7 +156,12 @@ export async function startBackup(options: {
           await (options.stageSnapshot === undefined
             ? stage()
             : options.stageSnapshot(stage));
-          if ((await run(["status", "--porcelain"])).trim() === "") return;
+          const changes = await run([
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+          ]);
+          if (changes.trim() === "") return;
           await run([...AS_GAUSS, "commit", "--quiet", "--message", message]);
         })
         .catch((error: unknown) => {

@@ -140,7 +140,7 @@ export function createIntake(options: {
     intakeId: log.id,
     dataRoot,
     converter: options.converter ?? NO_CONVERTER,
-    courseId: () => courseId,
+    courseId: draft?.id,
     emit: log.emit,
     ...(options.sourceSizeLimit === undefined
       ? {}

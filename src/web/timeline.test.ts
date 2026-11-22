@@ -1728,3 +1728,29 @@ test("a source's card in the intake: converting, then attached, then removed, in
     refusal,
   });
 });
+
+test("source cards do not split streaming Markdown but a tutor's file still interrupts it", () => {
+  const state = play([
+    { type: "turn_start" },
+    { type: "tutor_text", text: "**Start" },
+    { type: "source_converting", attachment: "a", name: "notes.md" },
+    { type: "tutor_text", text: " here" },
+    {
+      type: "source_refused",
+      attachment: "b",
+      name: "image.png",
+      refusal: { reason: "format", detail: "PNG cannot be read as text." },
+    },
+    { type: "tutor_text", text: "**." },
+    { type: "file_written", path: "example.txt" },
+    { type: "tutor_text", text: "Now read it." },
+  ]);
+
+  expect(state.items).toMatchObject([
+    { kind: "tutor", text: "**Start here**." },
+    { kind: "source", attachment: "a", state: "converting" },
+    { kind: "source", attachment: "b", state: "refused" },
+    { kind: "file", path: "example.txt" },
+    { kind: "tutor", text: "Now read it." },
+  ]);
+});

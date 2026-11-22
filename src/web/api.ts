@@ -2,6 +2,7 @@
 // page can show it; an answer is checked against its schema in src/shared/.
 
 import type { z } from "zod";
+import { SourceUploaded } from "../shared/events.ts";
 
 export type Answer<T> =
   | { ok: true; data: T }
@@ -80,16 +81,20 @@ export async function post(
   return answer.ok ? undefined : answer.error;
 }
 
+export type UploadAnswer =
+  | { ok: true; attachment: string }
+  | { ok: false; error: string; shown: boolean };
+
 /**
- * Posts a file as the body, its name in a header. Undefined when the server
- * takes it; otherwise its reason, and whether a card of the thread already
- * shows the refusal, as it does when the answer names the file's card.
+ * Posts a file as the body, its name in a header. An accepted response names
+ * the attachment whose conversion the event stream reports. On refusal, the
+ * presence of an attachment ID means the thread shows its own refusal card.
  */
 export async function postFile(
   path: string,
   file: File,
   nameHeader: string,
-): Promise<{ error: string; shown: boolean } | undefined> {
+): Promise<UploadAnswer> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -98,12 +103,26 @@ export async function postFile(
       body: file,
     });
   } catch {
-    return { error: "The server could not be reached.", shown: false };
+    return {
+      ok: false,
+      error: "The server could not be reached.",
+      shown: false,
+    };
   }
-  if (response.ok) return undefined;
   const data: unknown = await response.json().catch(() => undefined);
+  if (response.ok) {
+    const parsed = SourceUploaded.safeParse(data);
+    return parsed.success
+      ? { ok: true, attachment: parsed.data.attachment }
+      : {
+          ok: false,
+          error: "The server's answer was not understood.",
+          shown: false,
+        };
+  }
   const said = typeof data === "object" && data !== null ? data : {};
   return {
+    ok: false,
     error:
       "error" in said && typeof said.error === "string"
         ? said.error

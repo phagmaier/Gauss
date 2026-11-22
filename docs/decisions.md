@@ -2675,12 +2675,14 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   under a second.
 - **The scratch folder is inside the data root**,
   `uploads/<intake id>/.<card id>.tmp/` (the agent's choice): putting a
-  source in place is then a rename on one file system, and the hidden
-  name keeps it out of the backup and of a course's sources.
+  source in place is then one rename on one file system, after the final
+  outline is written. A reservation at the final path could outlive a
+  crash and leave a directory that looks like a source but cannot be read.
 - **What a planner session was told is kept as the sources it was told
-  of** (the agent's choice): each turn tells the difference, so a source
-  attached and removed between two turns is never mentioned, and a new
-  session (after a lost one, or a reopened draft's) is told of them all.
+  of** (the agent's choice): each turn tells the difference, identifying
+  intake sources by their attachment rather than by a slug a replacement
+  can reuse. A source attached and removed between turns is never
+  mentioned, and a new session is told of all current sources.
 - **A message's turn waits for a conversion on the server too, and
   approval is refused while one runs** (the agent's choice): the page's
   Send waits, but no planner should plan, nor learner approve, without a
@@ -2689,6 +2691,9 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   outline makes a heading with no subheadings a section, so a count of
   its heading entries said "2 sections, under 1 heading" for a file with
   two headings.
+- **The sandboxed ingest prints status only** (the agent's choice): a
+  title or list of cuts can exceed the command's output cap even when
+  conversion succeeds. The outline on disk holds the metadata.
 - **The dev seed converts its fixture outside the sandbox** (the agent's
   choice): the text is the repository's own, and a process has one
   sandbox, which the server starts after seeding.

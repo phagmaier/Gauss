@@ -6,11 +6,12 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { PageEvent } from "../../shared/events.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
-import { openDataRoot } from "../record/data-root.ts";
+import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { fakeConverter, upload } from "./fake-converter.ts";
 import { createIntake, type Intake } from "./intake.ts";
 import type { SourceConverter } from "./source-convert.ts";
@@ -30,16 +31,16 @@ const KANT = "# The Transcendental Aesthetic\n\nSpace is no concept.\n";
 function setUp(
   script: FakeTurn[],
   converter: SourceConverter = fakeConverter(),
-  extra: { sourceSizeLimit?: number } = {},
+  extra: { sourceSizeLimit?: number; dataRoot?: DataRoot } = {},
 ) {
   const backend = createFakeBackend(script);
-  const dataRoot = openDataRoot({ path: dir });
+  const { dataRoot = openDataRoot({ path: dir }), ...limits } = extra;
   const intake = createIntake({
     backend,
     systemPrompt: "You are a test planner.",
     dataRoot,
     converter,
-    ...extra,
+    ...limits,
   });
   return { backend, intake, dataRoot };
 }
@@ -84,6 +85,136 @@ async function uploaded(intake: Intake): Promise<string[]> {
   const folder = join(dir, "uploads", intake.id);
   return existsSync(folder) ? (await readdir(folder)).sort() : [];
 }
+
+/** Waits until this file's result has reached the source placement queue. */
+function watchConversion(name: string) {
+  const ready = Promise.withResolvers<void>();
+  const base = fakeConverter();
+  const converter: SourceConverter = {
+    ...base,
+    async convert(original, folder) {
+      const result = await base.convert(original, folder);
+      if (basename(original) === name) ready.resolve();
+      return result;
+    },
+  };
+  return {
+    converter,
+    async queued() {
+      await ready.promise;
+      await setImmediate();
+    },
+  };
+}
+
+test("an upload queued during the first proposal cannot claim a waiting source's slug in the course", async () => {
+  const record = openDataRoot({ path: dir });
+  const created = Promise.withResolvers<void>();
+  const finishCreating = Promise.withResolvers<void>();
+  const removing = Promise.withResolvers<void>();
+  const finishRemoving = Promise.withResolvers<void>();
+  const conversion = watchConversion("second.md");
+  const { intake } = setUp([OPENING, PROPOSE], conversion.converter, {
+    dataRoot: {
+      ...record,
+      async createCourse(options) {
+        const course = await record.createCourse(options);
+        created.resolve();
+        await finishCreating.promise;
+        return course;
+      },
+      async removeUpload(intakeId, sourceId) {
+        removing.resolve();
+        await finishRemoving.promise;
+        return record.removeUpload(intakeId, sourceId);
+      },
+    },
+  });
+
+  await intake.attach(upload("first.md", HEGEL));
+  const disposable = await intake.attach(upload("kant.md", KANT));
+  if (!disposable.ok) throw new Error(disposable.error);
+  intake.say("Hegel.");
+  await intake.settled();
+  intake.say("Go ahead.");
+  await created.promise;
+  const remove = intake.removeSource(disposable.attachment);
+  await removing.promise;
+  try {
+    await intake.attach(upload("second.md", HEGEL));
+    await conversion.queued();
+  } finally {
+    finishCreating.resolve();
+    await setImmediate();
+    finishRemoving.resolve();
+  }
+  await remove;
+  await intake.settled();
+
+  expect(intake.events()).toContainEqual(
+    expect.objectContaining({ type: "curriculum_proposed", revision: 1 }),
+  );
+  expect(
+    (await record.readSources("reading-hegel")).map((s) => s.name),
+  ).toEqual(["first.md", "second.md"]);
+  expect(await uploaded(intake)).toEqual([]);
+});
+
+test("a duplicate removal queued behind a replacement cannot delete the replacement", async () => {
+  const record = openDataRoot({ path: dir });
+  const removing = Promise.withResolvers<void>();
+  const finishRemoving = Promise.withResolvers<void>();
+  const conversion = watchConversion("second.md");
+  const { intake } = setUp([], conversion.converter, {
+    dataRoot: {
+      ...record,
+      async removeUpload(intakeId, sourceId) {
+        removing.resolve();
+        await finishRemoving.promise;
+        return record.removeUpload(intakeId, sourceId);
+      },
+    },
+  });
+  const initial = await intake.attach(upload("first.md", HEGEL));
+  if (!initial.ok) throw new Error(initial.error);
+  await intake.settled();
+  const remove = intake.removeSource(initial.attachment);
+  await removing.promise;
+  try {
+    await intake.attach(upload("second.md", HEGEL));
+    await conversion.queued();
+    const stale = intake.removeSource(initial.attachment);
+    finishRemoving.resolve();
+    await remove;
+    expect(await stale).toMatchObject({ ok: false, status: 409 });
+  } finally {
+    finishRemoving.resolve();
+    await intake.settled();
+  }
+
+  const folder = join(dir, "uploads", intake.id, "force-and-understanding");
+  expect(
+    JSON.parse(await readFile(join(folder, "outline.json"), "utf8")),
+  ).toMatchObject({ name: "second.md" });
+});
+
+test("the planner is told when a replacement reuses a slug it already saw", async () => {
+  const { backend, intake } = setUp([OPENING, REPLY]);
+  const initial = await intake.attach(upload("first.md", HEGEL));
+  if (!initial.ok) throw new Error(initial.error);
+  intake.say("Here is my source.");
+  await intake.settled();
+  await intake.removeSource(initial.attachment);
+  await intake.attach(upload("second.md", `${HEGEL}\nA longer replacement.`));
+  intake.say("Use this one instead.");
+  await intake.settled();
+
+  const sent = bodyOf(backend.received[1]?.text);
+  expect(sent).toMatch(
+    /Removed by the learner: .*force-and-understanding.*\n+Attached: .*force-and-understanding.*"second\.md"/,
+  );
+  expect(sent).toContain("69 characters");
+});
 
 test("a file attached is converted into the intake's uploads, shown on its card, and its outline given to the planner's next turn, once", async () => {
   const { backend, intake } = setUp([OPENING, REPLY]);

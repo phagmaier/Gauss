@@ -10,7 +10,6 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { SourceFormat } from "../../shared/source.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import { duration } from "./grading.ts";
 import type { Sandbox } from "./sandbox.ts";
@@ -49,17 +48,9 @@ const script = fileURLToPath(
   new URL("../../../pytools/convert.py", import.meta.url),
 );
 
-/** The line convert.py writes on standard output. */
+/** The sandbox's status-only output; the full outline is read from disk. */
 const Output = z.discriminatedUnion("result", [
-  z.object({
-    result: z.literal("converted"),
-    title: z.string().min(1),
-    format: SourceFormat,
-    sections: z.number().int().positive(),
-    cut: z.array(
-      z.object({ title: z.string(), parts: z.number().int().min(2) }),
-    ),
-  }),
+  z.strictObject({ result: z.literal("converted") }),
   z.object({
     result: z.literal("refused"),
     reason: z.enum(["format", "empty", "scanned", "protected"]),
@@ -89,7 +80,15 @@ export function createSourceConverter(options: {
       let ran: Awaited<ReturnType<typeof run>>;
       try {
         ran = await run({
-          argv: [sandboxPython, "-I", script, "ingest", original, folder],
+          argv: [
+            sandboxPython,
+            "-I",
+            script,
+            "ingest",
+            "--status-only",
+            original,
+            folder,
+          ],
           cwd: "/",
           writable: [folder],
           readable: [dirname(original)],
@@ -113,15 +112,11 @@ export function createSourceConverter(options: {
           reason: `it stopped with exit status ${ran.exitCode}${said ? `: ${said}` : ""}`,
         };
       }
-      let out: z.infer<typeof Output>;
       try {
-        out = Output.parse(JSON.parse(ran.stdout));
+        return Output.parse(JSON.parse(ran.stdout));
       } catch {
         return { result: "failed", reason: "its output could not be read" };
       }
-      return out.result === "converted"
-        ? { result: "converted" }
-        : { result: "refused", reason: out.reason, detail: out.detail };
     },
   };
 }

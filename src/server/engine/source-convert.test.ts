@@ -41,10 +41,11 @@ async function place(name: string, contents: string) {
   return { original, folder };
 }
 
-test("a Markdown file converts in the sandbox, which reads it from inside the data root and writes the source's folder", async () => {
+test("a Markdown title larger than the sandbox output limit is preserved in the source's files", async () => {
+  const title = "A".repeat(70 * 1024);
   const { original, folder } = await place(
     "notes.md",
-    "# Notes\n\nOne paragraph.\n\n## Part\n\nAnother.\n",
+    `# ${title}\n\nOne paragraph.\n\nSecond paragraph.\n\n## Part\n\nAnother.\n`,
   );
 
   expect(
@@ -55,14 +56,17 @@ test("a Markdown file converts in the sandbox, which reads it from inside the da
   );
   expect(outline).toMatchObject({
     id: "source",
-    title: "Notes",
+    title,
     name: "notes.md",
     format: "markdown",
   });
   expect(await readFile(join(folder, "sections", "s1.md"), "utf8")).toBe(
-    "# Notes\n\nOne paragraph.\n\n",
+    `# ${title}\n\nOne paragraph.\n\n`,
   );
   expect(await readFile(join(folder, "sections", "s2.md"), "utf8")).toBe(
+    "Second paragraph.\n\n",
+  );
+  expect(await readFile(join(folder, "sections", "s3.md"), "utf8")).toBe(
     "## Part\n\nAnother.\n",
   );
 });

@@ -1462,15 +1462,12 @@ describe("sources (stage 4)", () => {
     const root = openDataRoot({ path: dir });
     const { id: course } = await root.createCourse({ title: "Hegel" });
 
-    const first = await root.placeSource(
-      await converted("Die Phänomenologie"),
-      {
-        course,
-      },
-    );
-    const second = await root.placeSource(
-      await converted("Die Phänomenologie"),
-      { course },
+    const copies = await Promise.all([
+      converted("Die Phänomenologie"),
+      converted("Die Phänomenologie"),
+    ]);
+    const placed = await Promise.all(
+      copies.map((folder) => root.placeSource(folder, { course })),
     );
     const waiting = await root.placeSource(
       await converted("Die Phänomenologie"),
@@ -1479,11 +1476,11 @@ describe("sources (stage 4)", () => {
       },
     );
 
-    expect([first.id, second.id, waiting.id]).toEqual([
+    expect(placed.map((outline) => outline.id).sort()).toEqual([
       "die-phanomenologie",
       "die-phanomenologie-2",
-      "die-phanomenologie",
     ]);
+    expect(waiting.id).toBe("die-phanomenologie");
     // Read back by id, each outline naming its own folder.
     expect((await root.readSources(course)).map((o) => o.id)).toEqual([
       "die-phanomenologie",
@@ -1497,6 +1494,55 @@ describe("sources (stage 4)", () => {
         ),
       ).id,
     ).toBe("die-phanomenologie");
+  });
+
+  test("a process that stops during its outline rewrite leaves no published source", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id: course } = await root.createCourse({ title: "Hegel" });
+    const folder = await converted("Preface");
+    const code = `
+      import fs from "node:fs/promises";
+      import { syncBuiltinESMExports } from "node:module";
+      import { join } from "node:path";
+      import { openDataRoot } from ${JSON.stringify(new URL("./data-root.ts", import.meta.url).href)};
+      const [dir, folder, course] = process.argv.slice(1);
+      const rename = fs.rename;
+      fs.rename = (from, to) => {
+        if (to === join(folder, "outline.json")) process.exit(73);
+        return rename(from, to);
+      };
+      syncBuiltinESMExports();
+      await openDataRoot({ path: dir }).placeSource(folder, { course });
+    `;
+    const child = spawn(
+      process.execPath,
+      ["--input-type=module", "--eval", code, dir, folder, course],
+      { stdio: ["ignore", "ignore", "inherit"] },
+    );
+    expect(await once(child, "exit")).toEqual([73, null]);
+
+    expect(await openDataRoot({ path: dir }).readSources(course)).toEqual([]);
+  });
+
+  test("an empty destination keeps its slug and is never overwritten by an upload", async () => {
+    const root = openDataRoot({ path: dir });
+    const { id: course } = await root.createCourse({ title: "Hegel" });
+    const reserved = join(dir, "courses", course, "sources", "preface");
+    await mkdir(reserved, { recursive: true });
+    await root.placeSource(await converted("Preface"), { intake: INTAKE });
+
+    await expect(root.moveUpload(INTAKE, "preface", course)).rejects.toThrow(
+      reserved,
+    );
+    expect(await readdir(reserved)).toEqual([]);
+    expect(await readdir(join(dir, "uploads", INTAKE, "preface"))).toContain(
+      "outline.json",
+    );
+    const placed = await root.placeSource(await converted("Preface"), {
+      course,
+    });
+    expect(placed.id).toBe("preface-2");
+    expect(await readdir(reserved)).toEqual([]);
   });
 
   test("an upload moves into the course under its id, and one removed is gone", async () => {

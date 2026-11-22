@@ -182,7 +182,7 @@ export function sourceFacts(outline: Outline): SourceFacts {
   };
   const { pages } = outline;
   if (pages === undefined) return facts;
-  const label = (page: number) => pages.labels?.[page - 1] ?? String(page);
+  const label = (page: number) => pages.labels?.[page - 1] || String(page);
   const runs: { first: string; last: string }[] = [];
   let start: number | undefined;
   const blank = [...pages.blank].sort((a, b) => a - b);

@@ -42,6 +42,7 @@ describe("starting", () => {
     await put("courses/limits/.state.json.0c1d.tmp");
     await put("profile.md", "A learner.\n");
     await put("intake/session.txt", "kept by the intake\n");
+    await put("uploads/current/source/outline.json");
     await put("courses/limits/workspace/count.py", "print(1)\n");
     await put("courses/limits/workspace/.venv/bin/python", "");
     await put("courses/limits/workspace/.venv/lib/site.py", "");
@@ -161,15 +162,64 @@ __pycache__/
     ]);
   });
 
-  test("a .gitignore of the learner's own is left as it is", async () => {
+  test("a custom .gitignore is kept and uploads stay out of startup and later snapshots", async () => {
     git("init", "-q");
-    await put(".gitignore", "/intake/\n");
-    await put("courses/limits/workspace/.venv/bin/python", "");
+    const rules = "/intake/\n!/uploads/\n";
+    const uploads = "uploads/current/source/outline.json";
+    const workspace = "courses/limits/workspace/uploads/notes.md";
+    await put(".gitignore", rules);
+    await put(uploads);
+    await put(workspace, "The learner's notes.\n");
 
     const backup = await startBackup({ path: dir, log });
-    await backup.settled();
+    expect(git("show", "HEAD:.gitignore")).toBe(rules.trimEnd());
+    expect(tracked()).toEqual([".gitignore", workspace]);
+    expect(subjects()).toEqual(["Gauss started"]);
 
-    expect(git("show", "HEAD:.gitignore")).toBe("/intake/");
+    await put("uploads/later/source/sections/s1.md");
+    backup.commit("Only temporary files changed");
+    await backup.settled();
+    expect(subjects()).toEqual(["Gauss started"]);
+    expect(said).toEqual([`The record is backed up with git in ${dir}.`]);
+
+    await put(workspace, "Updated notes.\n");
+    backup.commit("Workspace notes updated");
+    await backup.settled();
+    expect(subjects()).toEqual(["Workspace notes updated", "Gauss started"]);
+    expect(tracked()).toEqual([".gitignore", workspace]);
+    expect(existsSync(join(dir, uploads))).toBe(true);
+  });
+
+  test("previously tracked or already staged uploads are left out without changing history", async () => {
+    git("init", "-q");
+    const old = "uploads/old/source/original.md";
+    const staged = "uploads/staged/source/original.md";
+    await put(old, "Previously backed up.\n");
+    git("add", "--", old);
+    git(
+      "-c",
+      "user.name=Learner",
+      "-c",
+      "user.email=learner@example.com",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-qm",
+      "Previous history",
+    );
+    const previous = git("rev-parse", "HEAD");
+    await put(old, "Must not back up changes here.\n");
+    await put(staged, "Must not include this either.\n");
+    git("add", "--", staged);
+    await put("profile.md", "Learner profile.\n");
+
+    await startBackup({ path: dir, log });
+
+    expect(git("rev-parse", "HEAD^")).toBe(previous);
+    expect(git("show", `HEAD^:${old}`)).toBe("Previously backed up.");
+    expect(tracked()).toEqual(["profile.md"]);
+    expect(existsSync(join(dir, old))).toBe(true);
+    expect(existsSync(join(dir, staged))).toBe(true);
   });
 
   test("with nothing changed since the last run, starting commits nothing", async () => {

@@ -307,7 +307,7 @@ export interface Timeline {
   items: Item[];
   /** The tutor is writing. */
   busy: boolean;
-  /** The tutor's next text continues the last item. */
+  /** The tutor's next text continues the last item, skipping any source cards. */
   tutorOpen: boolean;
   /** The newest proposal's revision, the only one that can be approved; 0 if none. */
   latestRevision: number;
@@ -425,7 +425,6 @@ function withSource(
       ...state.items,
       { kind: "source", key, attachment, name, ...change },
     ],
-    tutorOpen: false,
   };
 }
 
@@ -615,15 +614,18 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
     case "turn_start":
       return { ...next, busy: true, tutorOpen: false };
     case "tutor_text": {
-      const lastItem = state.items.at(-1);
-      if (state.tutorOpen && lastItem?.kind === "tutor") {
-        return {
-          ...next,
-          items: [
-            ...state.items.slice(0, -1),
-            { ...lastItem, text: lastItem.text + event.text },
-          ],
-        };
+      if (state.tutorOpen) {
+        const at = state.items.findLastIndex((item) => item.kind !== "source");
+        const lastItem = state.items[at];
+        if (lastItem?.kind === "tutor") {
+          return {
+            ...next,
+            items: state.items.with(at, {
+              ...lastItem,
+              text: lastItem.text + event.text,
+            }),
+          };
+        }
       }
       return {
         ...next,
@@ -973,7 +975,6 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             state: "converting",
           },
         ],
-        tutorOpen: false,
       };
     case "source_attached":
       return withSource(next, index, event.attachment, event.source.name, {

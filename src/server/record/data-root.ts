@@ -19,12 +19,12 @@
 
 import { randomUUID } from "node:crypto";
 import {
+  lstat,
   mkdir,
   readdir,
   readFile,
   rename,
   rm,
-  rmdir,
   stat,
 } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -340,15 +340,15 @@ export interface DataRoot {
   /**
    * Puts a folder `convert.py ingest` wrote in place: in the course's
    * `sources/`, or in the intake's uploads, under a slug of its title
-   * unique there, which becomes its outline's id. The folder must be on the
-   * data root's file system, as a scratch folder inside it is. Returns the
-   * outline as written.
+   * unique there, which becomes its outline's id before it is published by
+   * rename. The folder must be on the data root's file system, as a scratch
+   * folder inside it is. Returns the outline as written.
    */
   placeSource(
     converted: string,
     into: { course: Slug } | { intake: string },
   ): Promise<Outline>;
-  /** Moves a source from the intake's uploads into the course's `sources/`, under its id. */
+  /** Moves an upload into the course's `sources/` under its id; throws if the path is taken. */
   moveUpload(intakeId: string, sourceId: Slug, courseId: Slug): Promise<void>;
   /** Deletes a source waiting in the intake's uploads. */
   removeUpload(intakeId: string, sourceId: Slug): Promise<void>;
@@ -748,7 +748,9 @@ export function openDataRoot(options: {
   async function courseSources(id: string): Promise<string> {
     await existingCourse(id);
     const folder = resolve(courseFile(id, "sources"));
-    await mkdir(folder, { recursive: true });
+    if ((await mkdir(folder, { recursive: true })) !== undefined) {
+      await syncFolder(dirname(folder));
+    }
     return folder;
   }
 
@@ -1433,31 +1435,30 @@ export function openDataRoot(options: {
         "course" in into
           ? await courseSources(into.course)
           : await intakeUploads(into.intake);
-      // Making the folder claims the id; the converted one is renamed onto
-      // it, which an empty folder allows.
-      const id = await makeFolder(
-        parent,
-        idFromTitle(outline.title, ID_LENGTH, "source"),
-      );
-      const placed: Outline = { ...outline, id };
-      const at = join(parent, id);
-      try {
-        await writeJson(file, Outline, placed);
-        await rename(converted, at);
-      } catch (error) {
-        await rmdir(at).catch(() => {});
-        throw error;
-      }
-      await syncFolder(parent);
-      return placed;
+      return withFileLock(parent, async () => {
+        const base = idFromTitle(outline.title, ID_LENGTH, "source");
+        for (let n = 1; ; n++) {
+          const id = n === 1 ? base : `${base}-${n}`;
+          const at = join(parent, id);
+          if (await sourcePathTaken(at)) continue;
+          const placed: Outline = { ...outline, id };
+          await writeJson(file, Outline, placed);
+          await publishSource(converted, at);
+          return placed;
+        }
+      });
     },
 
     async moveUpload(intakeId, sourceId, courseId) {
       const from = join(await intakeUploads(intakeId), Slug.parse(sourceId));
       const sources = await courseSources(courseId);
-      await rename(from, join(sources, sourceId));
-      await syncFolder(sources);
-      await syncFolder(dirname(from));
+      await withFileLock(sources, async () => {
+        const to = join(sources, sourceId);
+        if (await sourcePathTaken(to)) {
+          throw new Error(`The source path ${to} is already taken.`);
+        }
+        await publishSource(from, to);
+      });
     },
 
     async removeUpload(intakeId, sourceId) {
@@ -1659,6 +1660,26 @@ async function makeFolder(parent: string, base: string): Promise<Slug> {
       if (!hasCode(error, "EEXIST")) throw error;
     }
   }
+}
+
+/** Includes empty folders and dangling symlinks. */
+async function sourcePathTaken(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (hasCode(error, "ENOENT")) return false;
+    throw error;
+  }
+}
+
+/** Publishes a prepared directory at an unused path under its parent's lock. */
+async function publishSource(from: string, to: string): Promise<void> {
+  await rename(from, to);
+  const parent = dirname(to);
+  await syncFolder(parent);
+  const previous = dirname(from);
+  if (previous !== parent) await syncFolder(previous);
 }
 
 /** A text file's contents, trimmed; undefined if there is no file or it is blank. */

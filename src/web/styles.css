@@ -2723,6 +2723,7 @@ button.uo-head:focus-visible::after {
   border: 1px solid var(--rule-2);
   border-radius: 14px;
   padding: 14px 18px 15px;
+  overflow-wrap: anywhere;
 }
 .srcc-h {
   display: flex;
@@ -2752,7 +2753,6 @@ button.uo-head:focus-visible::after {
   align-items: center;
   font-size: 13.5px;
   color: var(--ink-3);
-  overflow-wrap: anywhere;
 }
 .srcc-file svg {
   flex: none;

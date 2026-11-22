@@ -80,6 +80,9 @@ export async function serve(options: {
     prompt("course-planner.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
+  // An intake ends with the server, so discard its uploads before taking
+  // the startup snapshot.
+  await dataRoot.clearUploads();
   // The engine's commands run in it (task 3.2); it says once if it cannot,
   // and tutors then get no file and shell tools, and math and code
   // questions are refused with the reason. Its commands read nothing in
@@ -95,9 +98,6 @@ export async function serve(options: {
         log: (line) => process.stdout.write(`${line}\n`),
       })
     : noBackup;
-  // An intake ends with the server, so the sources its learner attached
-  // before its first proposal go too.
-  await dataRoot.clearUploads();
   const intakes = createIntakes({
     backend,
     systemPrompt: plannerPrompt,

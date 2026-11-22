@@ -177,7 +177,8 @@ version: a field added later must be optional.
   on the first start if it is not one, with a `.gitignore` that keeps
   `courses/` and `profile.md`, the learner's files in workspaces and each
   source's original and text with them, and leaves out `.venv/`, Python's
-  caches and a source's `pages/`. A commit is asked for
+  caches and a source's `pages/`. Backup snapshots exclude `uploads/`
+  even in a repository with its own ignore rules. A commit is asked for
   once a segment's close, a unit's end, an approval, an applied style or
   curriculum change, a handoff note, unit notes or the end of an
   assessment that recorded answers is written, once the Profile page's
@@ -1223,14 +1224,19 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
   `record/data-root.ts`) under a slug of its title, unique where it goes,
   which becomes its outline's id: in `uploads/<intake id>/` until the
   first proposal creates the course and moves them into its `sources/`,
-  and in the course's `sources/` after. Placing, moving and removing run
-  one at a time. At each start `uploads/` is emptied, since an intake ends
+  and in the course's `sources/` after. The record publishes a complete
+  source by rename. Moving the waiting sources and switching the
+  destination share the queue with placement and removal. At each start
+  `uploads/` is emptied before the first backup, since an intake ends
   with the server.
 - Each step shows on the file's card through the intake's log
   (`source_converting`; then `source_attached` with `SourceFacts`, or
   `source_refused` with a `SourceRefusal`; `source_removed`). "Remove"
   (`POST /api/intakes/<id>/sources/<card id>/remove`) deletes an upload
   until the first proposal.
+  The page waits for each accepted upload's terminal event even if its
+  HTTP response arrives first. A source card does not interrupt the
+  planner's streamed reply.
 - The planner is told on its next turn (section 4, "The intake chat"):
   each source's outline as `outlineLines` in `engine/source-text.ts`
   writes it, one line per entry.
