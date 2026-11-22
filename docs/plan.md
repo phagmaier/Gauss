@@ -36,25 +36,52 @@ questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-### 4.21 A rehearsal of the user check
+### 4.22 Breakage the rehearsal of the user check found
 
 - Status: todo
-- Depends on: 4.18, 4.19, 4.20
-- Why: nothing in stage 4 has run end to end on the page with a real
-  model. 4.12 drove the engine in process, 4.13 made one notes call, and
-  4.14 ran one-shot sets. The user's check should find teaching problems,
-  not breakage.
-- Do: walk the user check's path on `pnpm dev:fake` first, then on
-  `pnpm dev` with the login's default model (Opus 5.5, as the user runs
-  it), on a fresh data root in Chromium. Do an intake with the
-  _Phenomenology_ PDF and one with the Attention paper. For one segment of
-  each: the lecture, a passage asked about by its words, the check with a
-  written answer, a miss and its detour, and a clarification while a
-  question is open. Open a citation, a section link and a page image, ask
-  for the unit's notes, and export the transcript. Fix what blocks the
-  walk; every other problem goes into the plan.
-- Done when: both walks finish on both sources, with screenshots or saved
-  events as evidence, and each problem is fixed or in the plan.
+- Why: walking the check's path on Opus 5.5 (the _Phenomenology_'s Force
+  and Understanding unit 1, the Attention paper's unit 1) and on
+  `dev:fake` found these. None blocks the user's check.
+  - Page: the segment headings' status words for screen readers (`.sr` in
+    `SegmentHead`, `src/web/Session.tsx`) are absolutely positioned with
+    no positioned ancestor inside the thread's scroller (`.th` is
+    positioned, `.th-scroll` is not). In a thread longer than the window
+    they sit far below it and the document itself scrolls (15,849 px in a
+    900 px window): a second scrollbar at the window's edge, and a click
+    can scroll the top bar away. `.cv-u` and `.vq figcaption` already
+    contain theirs.
+  - Reader: footnote references whose note is not in the section show
+    raw, "[^1]" and "[^1-2]" to "[^1-9]" in Force and Understanding
+    (Inwood's superscripts point at his commentary at the back). The page
+    view reads "Page 57 of 543", a printed label beside the PDF's count.
+  - Conversion: a line-end hyphen after a part that is already hyphenated
+    ("Being-for-|other") is dropped when the whole compound appears
+    nowhere else in the book (`_join` in `pytools/convert.py`;
+    `findings.md`, "Hyphens are joined by the document's own usage"):
+    "Being-forother" (p. 57), in a verified quote of the lecture too.
+- Do: fix the three, with a test where behaviour changes.
+- Done when: the reader and conversion fixes have tests, and all three are
+  seen on the page.
+
+### 4.23 Question rules the rehearsal saw broken
+
+- Status: todo
+- Depends on: the user's stage 4 check
+- Why: in the _Phenomenology_ unit on Opus, after a written miss on an
+  "explain" objective the next question was a choice whose right answer
+  restated the detour's summary (`tutor.md`: a choice never stands in for
+  another kind), and a check question asked what the lecture's ungraded
+  try had asked (`tutor.md`: a question is new). Three of its four
+  questions and the Attention unit's first asked for numbered parts
+  ("explain (1) ..., (2) ..., (3) ..."), against "asks one thing", though
+  `tutor.md` also has a question name each part its rubric requires.
+  For the user: the questions name the paragraphs they are built on ("At
+  the opening ... (¶132–133)", "In ¶134 ..."), so the answer can be
+  reread while the question is open, though the tutor refuses to say
+  where to read it. Wanted in a close-reading course, or not?
+- Do: take these with what the user's own check adds; a prompt change is
+  compared on Opus as `findings.md`, "Comparing prompt versions", says.
+- Done when: each is fixed or decided with the user.
 
 ## Stage 6: later
 
@@ -195,7 +222,9 @@ Known and accepted for now; a task that closes one deletes it here.
 - PDF: tables become short-line paragraphs; figure labels outside forms
   stay in the text; PDFium's reading order is trusted; notes continuing on
   the next page read as body; a bookmark title that differs from the
-  printed heading lands at the top of its page.
+  printed heading lands at the top of its page; PDFium drops a few spaces
+  in tightly set lines (the Inwood introduction's "whereaswith",
+  "clearwhat").
 - `tutor.md` sends the tutor to a page whose math reads garbled; Sonnet
   looked at it only when asked.
 - The notes writer's `<sections>` lists only the unit's sections: a

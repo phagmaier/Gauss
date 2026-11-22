@@ -1234,6 +1234,11 @@ a.nl-pos {
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
 }
+/* The frame fills the second row, with or without the error note above it:
+   alone in the auto row it would take an iframe's default 150 px. */
+.sv-aid > iframe {
+  grid-row: 2;
+}
 .sv-aid-error {
   padding: 12px 20px 14px;
   border-bottom: 1px solid var(--rule);
