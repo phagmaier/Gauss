@@ -133,8 +133,9 @@ export const systemTimer: Timer = {
 };
 
 /**
- * How long a kept session may be idle before it is closed (task 2.15). The
- * next turn then resumes it, which takes about half a second (task 2.14).
+ * How long a kept session may be idle before it is closed, since an idle
+ * process holds memory (task 2.15). The next turn then resumes it, which
+ * takes about half a second (task 2.14).
  */
 export const IDLE_MS = 10 * 60_000;
 
@@ -261,6 +262,9 @@ export function createConversation(options: {
     try {
       return await kept.resume(resumeId);
     } catch (error) {
+      // Only "session not found" starts a new session. Any other failure
+      // fails this turn and the next retries, so a passing fault does not
+      // cost the conversation.
       if (!(error instanceof SessionNotFound)) throw error;
       resumeId = undefined;
       kept.lost(learnerId);

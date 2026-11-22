@@ -1,5 +1,5 @@
-// The unit gate in a unit chat (task 5.5; docs/decisions.md, "Mastery
-// loop", "The gate"): its card once the last segment closes, the gate and
+// The unit gate in a unit chat (task 5.5; docs/brief.md, "Assessment
+// modes"): its card once the last segment closes, the gate and
 // its detours, the closing card after it, skipping it, restarts, and a unit
 // whose gate has nothing to ask. The fake backend's tutor does what each
 // header allows.

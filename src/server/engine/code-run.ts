@@ -1,4 +1,4 @@
-// Code questions in the engine (architecture.md section 6; task 3.7). A code
+// Code questions in the engine (task 3.7). A code
 // question names files in the course's workspace that the learner edits in
 // their own editor, and carries the grading material, which the record keeps
 // and the workspace never holds: the tests, the tutor's solution, and the
@@ -41,7 +41,11 @@ import type { Sandbox } from "./sandbox.ts";
 /** How long one run of a question's tests may take. */
 export const CODE_TIME_LIMIT_MS = 60_000;
 
-/** How much of a run's output's end is kept: lines, then characters. */
+/**
+ * How much of a run's output's end is kept: lines, then characters. Both
+ * streams come in order (merged in the sandbox), and the end is kept since
+ * pytest's summary and a traceback's error both come last.
+ */
 const OUTPUT_LINES = 40;
 const OUTPUT_CHARS = 8000;
 

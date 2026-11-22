@@ -1,6 +1,6 @@
-// Which objectives review and the unit gate ask about (docs/decisions.md,
-// "Mastery loop", "Review" and "The gate"). Pure: the caller reads the
-// record, and decides when each is offered.
+// Which objectives review and the unit gate ask about (docs/brief.md,
+// "Assessment modes"). Pure: the caller reads the record, and decides when
+// each is offered.
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import { SESSION_GAP_MS } from "../../shared/events.ts";
@@ -34,7 +34,8 @@ const INTERVALS_MS = [1, 3, 7, 21, 60].map((days) => days * DAY_MS);
  *   correct answers in a row in reviews and gates since its last miss, has
  *   gone by since its last correct answer given without help. The most
  *   overdue for its interval (the time since that answer over the
- *   interval) comes first.
+ *   interval) comes first: the lowest expected recall, not the most days
+ *   past due, which would favour safe long intervals.
  * - Among equals, in the course's order, by unit and then by the unit's
  *   plan.
  */

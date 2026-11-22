@@ -1,4 +1,4 @@
-// The backend adapter (architecture.md section 7). The engine talks only to
+// The backend adapter. The engine talks only to
 // these types; the SDKs stay inside the files of this folder.
 
 import { z } from "zod";
@@ -47,7 +47,7 @@ export interface SessionOptions {
  * session writes files only in its working folder, reads files only there,
  * and runs commands in a sandbox with no network that writes only there and
  * in a temporary folder of the course's and reads as `reads` says and in
- * the working folder (decisions.md, "Confinement").
+ * the working folder.
  */
 export interface WorkspaceTools {
   /**

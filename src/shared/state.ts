@@ -1,5 +1,5 @@
-// state.json: where the learner stands in each unit in progress
-// (architecture.md section 3). Several units can be in progress at once,
+// state.json: where the learner stands in each unit in progress. Several
+// units can be in progress at once,
 // each keeping its place (task 2.1, piece 12). A unit is in progress from
 // when it starts until it closes; the engine writes its position after every
 // change, so an open question, or an open detour (task 2.20), survives a
@@ -13,7 +13,7 @@ import { PackageCompletion, PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question } from "./question.ts";
 import { StyleDecision, StyleProposal } from "./style.ts";
 
-/** A segment's phases, in order (architecture.md section 4, "Phases"). */
+/** A segment's phases, in order. */
 export const Phase = z.enum(["teach", "discuss", "check", "closed"]);
 export type Phase = z.infer<typeof Phase>;
 
@@ -92,7 +92,7 @@ export type AssessedObjective = z.infer<typeof AssessedObjective>;
 
 /**
  * A run of questions without teaching, asked by the unit's tutor in the
- * unit's thread (docs/decisions.md, "Mastery loop"): review at the start of
+ * unit's thread: review at the start of
  * a sitting, the unit's gate once its last segment has closed, or the test
  * before the unit is taught, which is under way as soon as it starts. It is
  * kept beside the phase, which it leaves alone, so a restart reopens it;
@@ -122,8 +122,8 @@ export const AssessmentRun = z
 export type AssessmentRun = z.infer<typeof AssessmentRun>;
 
 /**
- * The test before the unit is taught (docs/decisions.md, "Mastery loop",
- * "Testing out"), beside the run it is while under way: chosen and not
+ * The test before the unit is taught (docs/brief.md, "Assessment modes"),
+ * beside the run it is while under way: chosen and not
  * started yet, over with its result card waiting, or what the learner chose
  * to skip once they answered it.
  */

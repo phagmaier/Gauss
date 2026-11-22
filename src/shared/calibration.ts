@@ -6,7 +6,7 @@
 //
 // Only answers given without help count, "I don't know" included; "I don't
 // know" asks no confidence, so it is counted apart. Answers given before
-// task 2.23 count too (docs/decisions.md, "Calibration").
+// task 2.23 count too (docs/brief.md, "Other features").
 
 import { z } from "zod";
 import { Confidence } from "./question.ts";

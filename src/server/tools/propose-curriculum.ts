@@ -1,5 +1,5 @@
-// The propose_curriculum teaching tool (architecture.md section 5). The tutor
-// sends the whole curriculum each time, with its style note (task 2.10),
+// The propose_curriculum teaching tool. The tutor sends the whole
+// curriculum each time, with its style note (task 2.10),
 // background note (task 2.22) and the learner profile (task 5.8); the intake
 // stores it as the draft and shows it to the learner as a card.
 // Posting ends the tutor's turn, so the card is the last thing in it, and

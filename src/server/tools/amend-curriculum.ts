@@ -1,5 +1,5 @@
-// The amend_curriculum teaching tool (task 5.12; architecture.md section 5):
-// the tutor proposes the whole revised unit list of the course, as
+// The amend_curriculum teaching tool (task 5.12): the tutor proposes the
+// whole revised unit list of the course, as
 // propose_curriculum does, with a line on why, and the learner sees it on a
 // card with Apply and "Keep the current one". Whether one may be proposed
 // now (not while a question is open, not while another proposal waits, not

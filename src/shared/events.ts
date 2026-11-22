@@ -361,7 +361,7 @@ export const PageEvent = z.discriminatedUnion("type", [
    */
   z.object({ type: z.literal("detour_end") }),
   /**
-   * An assessment (docs/decisions.md, "Mastery loop"; pieces 15 and 16):
+   * An assessment (pieces 15 and 16):
    * "offered", its card, with Start and Skip; "on", the learner started it,
    * and its questions follow, each with an `assessment` head. Sent again
    * when the chat opens with one offered or under way. The unit's own steps

@@ -2,8 +2,7 @@
 // units as they would be with new, edited and moved units marked and the
 // dropped ones listed, the diagram in the side pane, Apply and "Keep the
 // current one"; once answered, a record of the answer. Built from the
-// intake card's parts and the style card's foot, since no piece draws it
-// (docs/decisions.md, "Page design").
+// intake card's parts and the style card's foot, since no piece draws it.
 
 import { Fragment, useState } from "react";
 import { compareUnits } from "../shared/curriculum-change.ts";

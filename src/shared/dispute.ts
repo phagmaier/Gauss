@@ -1,5 +1,5 @@
-// Disputes (brief.md, "Mastery and evidence"; docs/decisions.md,
-// "Disputes"): the learner contests the grade of one recorded answer, once,
+// Disputes (brief.md, "Mastery and evidence"): the learner contests the
+// grade of one recorded answer, once,
 // with a reason, and a separate one-shot call, the dispute judge, decides.
 // After an "I don't know" to a choice or math question, the learner can
 // report the answer shown as wrong in the same way: the judge decides only

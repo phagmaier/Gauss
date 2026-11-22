@@ -1,4 +1,4 @@
-// A source as a model reads it (architecture.md section 8): its outline, one
+// A source as a model reads it: its outline, one
 // line per entry, indented by depth. A heading's line is its title; a
 // section's has its id, title, place and size. A section as a header or a
 // tool's result names it. And why the units a planner proposes cannot name

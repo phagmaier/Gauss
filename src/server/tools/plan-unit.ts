@@ -1,5 +1,5 @@
-// The plan_unit teaching tool (architecture.md section 5). A unit's planning
-// session (src/server/engine/unit-planning.ts) sends the unit's objectives
+// The plan_unit teaching tool. A unit's planning session
+// (src/server/engine/unit-planning.ts) sends the unit's objectives
 // and the segments that teach them, and the engine stores them on the unit.
 // Storing ends the turn, which ends the planning. A plan that the schema or
 // the record refuses goes back with the reasons, so the session can fix it.

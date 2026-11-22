@@ -11,11 +11,10 @@ Read only what the task needs.
 
 | Document | Holds | Read when |
 | --- | --- | --- |
-| [Plan](docs/plan.md) | Open tasks, dependencies, and user checks | First when taking a plan task or checking stage status |
-| [Product brief](docs/brief.md) | Intended behaviour and shared terms | When working on product behaviour or terminology; read the relevant sections |
-| [Architecture](docs/architecture.md) | How the system works now | Read the relevant sections; sections 1–2 orient new contributors |
-| [Decisions](docs/decisions.md) | Rationale, SDK findings, and known gaps | Follow the index to the relevant sections; don't load the whole file |
-| [Prompts](docs/architecture.md#9-prompts) | Model instructions, including [`prompts/`](prompts/) and engine-supplied text | When changing what a model is told |
+| [Plan](docs/plan.md) | Open tasks, dependencies, user checks, and known gaps | First when taking a plan task or checking stage status |
+| [Product brief](docs/brief.md) | Intended behaviour, the user's decisions, and shared terms | When working on product behaviour or terminology; read the relevant sections |
+| [Architecture](docs/architecture.md) | A short map: design rules, where things live, the data root, the prompts, and how to run and check things | Before a task that touches a part you have not read; "Working here" before running anything |
+| [Findings](docs/findings.md) | Outside-world facts the code depends on (SDKs, models, browsers, sandbox) and rejected designs | When touching that topic, or before trying an approach that may have been rejected |
 | [Mock index](docs/prototype/index.html) | Selected and historical page designs | When a task names a piece or changes a layout |
 
 Use the terms as `brief.md` defines them (course, unit, objective, segment,
@@ -60,9 +59,8 @@ starting a plan task, editing files, or committing.
    the next task only if the user asked for more than one.
 
 If a task's premise is wrong (an SDK behaves differently, a design rule does
-not work), stop, record the finding in `docs/decisions.md`, update the
-affected part of `architecture.md` and the plan, and tell the user. Do not
-build around a documented rule silently.
+not work), stop, record the finding in `docs/findings.md`, update the plan,
+and tell the user. Do not build around a documented rule silently.
 
 A stage is finished only when the user has tried its "user check"
 themselves. Do not start the next stage before that. When it passes, the
@@ -71,35 +69,38 @@ stage becomes one line under "Finished" in the plan.
 ## Keeping the documents
 
 Write what a later agent needs and cannot get more cheaply from the code.
+The code and its tests are the description of how the system behaves; a
+document never restates them.
 
 | What you learned | Where it goes |
 | --- | --- |
-| How the system now behaves | `architecture.md`, edited in place; product behaviour the user decided, `brief.md` |
-| Why it is so: a choice between real alternatives, the user's decision, an SDK or tool finding, a trap the code does not show | `decisions.md`, under its topic |
-| A gap left open | the plan, on the task or stage that will close it; otherwise `decisions.md`, "Known gaps" |
+| How the system behaves | nowhere: the code and its tests say it |
+| Why a piece of code is the way it is (a trap, a race, a rejected simpler version) | a short comment beside that code |
+| A new module, folder, prompt, or way of running and checking things | `architecture.md`, in place |
+| Product behaviour or a choice the user made | `brief.md`, as behaviour in the present tense |
+| An outside-world fact found by experiment with no single home in the code, or a rejected design that would be costly to try again | `findings.md`, under its heading |
+| A gap left open | the plan, on the task or stage that will close it; otherwise its "Known gaps" |
 | Proof the task was done | the commit message |
-| What the code does step by step | nowhere: the code and its tests say it |
 
 - **Describe the present.** Rewrite or delete text that a change makes
-  false. Do not append "since task 2.19" or "before this, ..." to
-  `architecture.md` or `brief.md`, and do not cite task ids there.
+  false. Do not append "since task 2.19" or "before this, ..." to a
+  document, and do not cite task ids in `architecture.md` or `brief.md`.
 - **One place per fact.** Elsewhere, point to it. Point at files and
   symbols rather than restating what the code shows.
-- **A `decisions.md` entry is a few lines**: what was decided, why, the
-  evidence in a line, and who chose. The user's decisions say so; the
-  agent's choices are open to change. When a decision is replaced, rewrite
-  its entry; keep the old choice only as one line on why it was dropped, if
-  someone might otherwise try it again.
+- **A `findings.md` entry is a line or two**: the finding, what follows
+  from it, and its evidence in a line. Rewrite it when a newer run
+  contradicts it.
 - **Not in any document**: test counts, lists of tests or injected faults,
-  narrations of browser runs, and which files a task touched. Those belong
-  in the commit.
+  narrations of runs, and which files a task touched. Those belong in the
+  commit.
 
 ## Working with the user
 
 The user delegates technical choices, and design choices they have no basis
 to judge. Ask only about the experience or a trade-off whose answer
-changes what gets built. Record a delegated choice in `decisions.md` when
-its rationale would help a later agent avoid repeating the investigation.
+changes what gets built. When a delegated choice's rationale would save a
+later agent the investigation, put it in a comment beside the code, or in
+`findings.md` if it has no single home.
 
 ## Project rules
 
@@ -107,8 +108,8 @@ its rationale would help a later agent avoid repeating the investigation.
   backend. Run a real model only for a task's required checks; use a cheap
   model unless the result depends on model judgment.
 - **Tests and trial runs never use the real data root.** Use a temporary
-  directory. See [Testing](docs/architecture.md#11-testing) for safe
-  commands.
+  directory. See [Working here](docs/architecture.md#working-here) for
+  safe commands.
 - **Browser checks use `pnpm dev:fake` unless a real model is required.**
   Use Chromium unless checking another engine. Close the test browser
   before stopping the server so a left-open tab cannot contact a later
@@ -123,9 +124,9 @@ its rationale would help a later agent avoid repeating the investigation.
   restate fields.
 - Keep static role prompts in `prompts/`. Turn headers, tool and field
   descriptions, results and refusals also instruct the model; see
-  [Prompts](docs/architecture.md#9-prompts).
-- Do not set or rely on `ANTHROPIC_API_KEY`. Use the
-  [plan login](docs/architecture.md#7-backends).
+  [Prompts](docs/architecture.md#prompts).
+- Do not set or rely on `ANTHROPIC_API_KEY`. Use the plan login
+  (`sdkEnvironment` in `src/server/backends/claude.ts`).
 
 ## Authorization
 
@@ -136,15 +137,14 @@ its rationale would help a later agent avoid repeating the investigation.
   task's commit are committed once checked, as their own commit, the
   message starting with the task id (`5.18: fix the review's four
   findings`). Never push, and never rewrite existing commits.
-- Do not add a dependency that `architecture.md` section 2 does not list
-  without saying why in your report.
+- Do not add a dependency without saying why in your report.
 - Leave `docs/brief.md` decisions alone unless the user changes them;
   propose changes instead.
 
 ## Tooling
 
 - Run commands under mise (`mise exec -- <command>`). Setup and check
-  commands are in [Testing](docs/architecture.md#11-testing).
+  commands are in [Working here](docs/architecture.md#working-here).
 - Import `.ts` files by their real extension and use only erasable
   TypeScript syntax (no `enum` or parameter properties).
 - Add dependencies with `pnpm add` or `uv add --directory pytools` and

@@ -6,10 +6,10 @@ import type { Confidence } from "../../shared/question.ts";
 import { dueCount, pickForGate, pickForReview } from "./review.ts";
 
 // Every expected pick below was worked out by hand from the rules in
-// docs/decisions.md, "Mastery loop" ("Review": due after 1, 3, 7, 21, then
+// docs/brief.md, "Assessment modes" (review is due after 1, 3, 7, 21, then
 // 60 days by the correct answers in a row in reviews and gates; the most
-// overdue for its interval first), and the statuses from "Objective
-// status", not by running the code.
+// overdue for its interval first), and the statuses from "Mastery and
+// evidence", not by running the code.
 
 const AT = new Date("2026-11-18T12:00:00.000Z");
 const MINUTE = 60 * 1000;

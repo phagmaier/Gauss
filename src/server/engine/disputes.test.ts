@@ -28,7 +28,7 @@ import { createUnitPlanner } from "./unit-planning.ts";
 // Disputes through the engine (task 3.8), on hand-made records and the fake
 // backend. Each test gets its own data root; none touches ~/gauss
 // (AGENTS.md). Every expected status was worked out by hand from the
-// passing rule (docs/decisions.md, "Objective status") with each disputed
+// passing rule (docs/brief.md, "Mastery and evidence") with each disputed
 // answer counted by its outcome's verdict.
 
 let dir: string;

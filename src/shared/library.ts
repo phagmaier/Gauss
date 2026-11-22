@@ -1,5 +1,5 @@
 // A course as the record holds it, and as the library routes send it to the
-// page with where each unit stands (architecture.md section 10); and what
+// page with where each unit stands; and what
 // deleting one asks (task 5.18).
 
 import { z } from "zod";

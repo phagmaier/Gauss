@@ -1,7 +1,7 @@
 // One unit's part of the course record, kept in memory by its unit chat
 // (unit-chat.ts; split out in task 2.8b): the unit's position, as state.json
 // has it, and the evidence on its objectives. Every change is written before
-// it is kept and the page hears of it (architecture.md section 4). An answer
+// it is kept and the page hears of it. An answer
 // is appended to the evidence before its question is closed, and a question
 // has one answer: one the evidence already holds is the one kept (task 2.8a).
 //

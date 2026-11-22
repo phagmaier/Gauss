@@ -1,8 +1,7 @@
 // Objective and unit status, derived from the evidence log and never stored
-// (architecture.md section 3). Pure: the caller reads the record. The rules,
-// with the reasons for them, are in docs/decisions.md, "Objective status"
-// and, for retained and slipping, "Mastery loop". A disputed answer counts
-// with its dispute's verdict (disputes.ts).
+// (docs/architecture.md, "Data root"). Pure: the caller reads the record.
+// The rules are in docs/brief.md, "Mastery and evidence". A disputed answer
+// counts with its dispute's verdict (disputes.ts).
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { DisputeEvidence, EvidenceEntry } from "../../shared/evidence.ts";
@@ -52,7 +51,7 @@ interface ObjectiveStanding {
   /**
    * One of the unassisted correct answers since the last miss was given
    * while testing out: the unit's gate leaves the objective out, since that
-   * answer was cold when given (docs/decisions.md, "Mastery loop").
+   * answer was cold when given (docs/brief.md, "Assessment modes").
    */
   tested: boolean;
 }

@@ -164,7 +164,7 @@ export function planSectionProblems(
 
 /**
  * What a segment of the plan is once the learner skips what the test before
- * the unit passed (docs/decisions.md, "Mastery loop", "Testing out"): the
+ * the unit passed (docs/brief.md, "Assessment modes"): the
  * objectives it still teaches and checks, and those it leaves out. A segment
  * that teaches none is skipped.
  */
@@ -203,7 +203,7 @@ export function firstTaught(
 
 /**
  * The objective to do now, marked with the accent's ringed form wherever a
- * unit's objectives are listed (docs/decisions.md, "Page design"): the
+ * unit's objectives are listed: the
  * first not passed among those the active segment teaches, in the
  * segment's order. The segment after the plan's last teaches its own; one
  * of the plan's teaches what the test let the learner skip left in. There

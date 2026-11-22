@@ -1,5 +1,5 @@
-// Disputes (task 3.8; architecture.md section 6; docs/decisions.md,
-// "Disputes"), raised from the graded card in a session or from an answer
+// Disputes (task 3.8; docs/brief.md, "Mastery and evidence"), raised from
+// the graded card in a session or from an answer
 // in "What I know", for any graded answer of the course, in a finished unit
 // too. What the answer was graded by is shown to the learner while they
 // dispute it. The dispute judge (dispute-judge.ts) decides, outside every

@@ -44,7 +44,9 @@ export const ARTIFACT_REPORTER =
 
 /**
  * The aid's document with the reporter first: after its doctype, so the
- * document keeps its mode, or at its start when it has none.
+ * document keeps its mode, or at its start when it has none. On the
+ * doctype's line, so the aid's line numbers stay the tutor's; the reporter
+ * sends the first error only, since a draw loop repeats one.
  */
 export function withReporter(html: string): string {
   const doctype = /^\s*(?:<!--[\s\S]*?-->\s*)*<!doctype[^>]*>/i.exec(html);

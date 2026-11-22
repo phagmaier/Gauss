@@ -4,7 +4,7 @@
 // unit's objective statuses and how many objectives are due for review
 // (task 5.24); and which courses are finished, which a new course's planner
 // is given with the learner profile (task 5.8).
-// Derived when asked, never stored (architecture.md section 3).
+// Derived when asked, never stored (docs/architecture.md, "Data root").
 
 import type { Curriculum } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";

@@ -1,5 +1,5 @@
 // The one way the engine runs a command whose input a model or the learner
-// wrote (decisions.md, "Confinement"): a code question's tests, the symbolic
+// wrote (docs/findings.md, "Sandbox and confinement"): a code question's tests, the symbolic
 // check, installing a course's packages. It runs on
 // `@anthropic-ai/sandbox-runtime`, the runtime of Claude Code's sandbox,
 // which on Linux is bubblewrap. A command has no network, unless its caller
@@ -147,7 +147,9 @@ export async function startSandbox(options: {
     return { available: false, reason, close: () => Promise.resolve() };
   };
 
-  // Only Linux has the verified PID namespace and inherited workload guard.
+  // Only Linux has the verified PID namespace and inherited workload guard:
+  // the macOS runtime can leave descendants alive after the direct command
+  // exits, and the deadline and workspace lock rely on that exit.
   if (process.platform !== "linux") {
     return unavailable(
       `process-tree containment is not verified on ${process.platform}`,

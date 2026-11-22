@@ -241,7 +241,8 @@ export function Session(props: { courseId: string; unitId: string }) {
 
   // The course's details name the unit and the one to start next. A failure to
   // load them is asked again until the server answers, so it never leaves
-  // the page thinking the course is empty.
+  // the page thinking the course is empty; until then the unit's place is
+  // unknown, never "the last unit" (a closing card once said "finished").
   // biome-ignore lint/correctness/useExhaustiveDependencies: refetch on Apply or after reopening
   useEffect(() => {
     const stop = new AbortController();
@@ -535,7 +536,9 @@ export function Session(props: { courseId: string; unitId: string }) {
       >
         <div className="th-col">
           {parts.map((part, p) => (
-            // The conversations before the last fresh start are dimmed.
+            // The conversations before the last fresh start are dimmed, item by
+            // item (styles.css, ".stale"): a child cannot be brighter than a
+            // dimmed parent, and a waiting card carries `live`.
             <div
               key={part.key}
               className={p < parts.length - 1 ? "stale" : undefined}
@@ -701,7 +704,8 @@ export function Session(props: { courseId: string; unitId: string }) {
       <div className="th-foot">
         {asked === undefined ? null : (
           // Kept in view while the conversation goes on below it (task 2.18).
-          // Hidden, it stays mounted, so a half-written answer survives.
+          // Hidden, it stays mounted with its keys off, so a half-written
+          // answer survives and its shortcuts answer no card out of sight.
           <div className="th-pin" hidden={hidden}>
             <button
               type="button"

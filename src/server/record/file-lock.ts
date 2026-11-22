@@ -6,7 +6,10 @@
 
 import { resolve } from "node:path";
 
-/** The end of the work queued on each file, while there is any. */
+/**
+ * The end of the work queued on each file, while there is any. Module-level,
+ * so two `openDataRoot` calls share it; other processes are not covered.
+ */
 const tails = new Map<string, Promise<void>>();
 
 /**

@@ -1,7 +1,7 @@
-// Source conversion as the engine runs it (architecture.md section 8):
+// Source conversion as the engine runs it:
 // `pytools/convert.py ingest`, in the engine's sandbox (sandbox.ts), since
 // the file comes from outside the machine and PDFium is native code that
-// parses it (decisions.md, "Sources"). The command reads the original, whose
+// parses it. The command reads the original, whose
 // folder its caller names, and writes only the source's folder. It runs on
 // the venv's own Python, isolated. `convert.py page`, which renders a PDF's
 // page for view_page (task 4.8), runs the same way and writes only the
@@ -177,6 +177,8 @@ export function createSourceConverter(options: {
   return {
     unavailable: undefined,
     convert: (original, folder, signal) =>
+      // Status only: titles and cuts can exceed the command output cap; the
+      // metadata is in the outline on disk.
       convertPy(
         ["ingest", "--status-only", original, folder],
         { writable: folder, readable: dirname(original) },

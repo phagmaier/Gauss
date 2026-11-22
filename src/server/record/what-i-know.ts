@@ -1,7 +1,7 @@
 // "What I know" (task 2.26): each unit of an approved curriculum, and for a
 // planned one each objective with its status and the evidence behind it, as
 // `GET /api/courses/<id>/what-i-know` sends it. Derived from the record when
-// asked, never stored (architecture.md section 3): statuses by
+// asked, never stored (docs/architecture.md, "Data root"): statuses by
 // objectiveStatus and unitStatus, as the course view's progress has them;
 // with the course's calibration (task 2.29). A disputed answer is shown
 // with its dispute, and counts with its verdict (task 3.8). Each objective

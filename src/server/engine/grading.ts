@@ -1,4 +1,4 @@
-// Grading dispatch (architecture.md section 6). Multiple choice is an exact
+// Grading dispatch. Multiple choice is an exact
 // match, done by the engine and never by a model. A written answer is graded
 // against its rubric in a one-shot request with the grader's own prompt
 // (`prompts/grader.md`, task 2.8): the request holds the question, the rubric
@@ -73,6 +73,8 @@ export async function gradeMath(
   by: { check: MathCheck; grader: Grader },
   signal?: AbortSignal,
 ): Promise<MathOutcome> {
+  // Symbolic grading is opt-in: scanning the prompt for keywords cannot prove
+  // it sets no other precision, form or domain rule.
   const checked =
     question.mathGrading === "symbolic"
       ? await by.check.compare(question.expected, answer.expression)

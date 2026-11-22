@@ -11,9 +11,9 @@ import { DisputeOutcome, DisputeReason } from "./dispute.ts";
 import { AnswerSubmission, Question, Unsettled, Verdict } from "./question.ts";
 
 /**
- * The runs of questions without teaching that a unit's tutor asks
- * (docs/decisions.md, "Mastery loop"): review at the start of a sitting,
- * the unit gate, and the test before a unit is taught.
+ * The runs of questions without teaching that a unit's tutor asks: review
+ * at the start of a sitting, the unit gate, and the test before a unit is
+ * taught.
  */
 export const AssessmentMode = z.enum(["review", "gate", "test-out"]);
 export type AssessmentMode = z.infer<typeof AssessmentMode>;

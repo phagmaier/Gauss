@@ -1,5 +1,5 @@
-// Deleting a course or a draft (task 5.18; docs/decisions.md, "Product
-// decisions"), from its course view: there is no archive, and the app has
+// Deleting a course or a draft (task 5.18; docs/brief.md, "Other
+// features"), from its course view: there is no archive, and the app has
 // no undo; the backup's history keeps what went. A course that has started
 // asks for its title to be typed (`deletionAsksTitle`).
 //

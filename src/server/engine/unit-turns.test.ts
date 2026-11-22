@@ -17,7 +17,7 @@ import {
 } from "./unit-turns.ts";
 
 // The list of questions asked before, in a turn that allows a question
-// (docs/decisions.md, "Mastery loop": fresh questions come from a list).
+// (fresh questions come from a list).
 // The chat's own tests see it in the turns it sends; these cover its form.
 
 const PLAN: Plan = {

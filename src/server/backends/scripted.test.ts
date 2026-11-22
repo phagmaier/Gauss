@@ -38,8 +38,8 @@ const NO_COMMANDS: CommandReads = { denied: [], allowed: [] };
 // The scripted backend runs the dev server with no model (scripts/dev-fake.ts).
 // These tests take it through the engine, as the server wires it, so a change
 // to the engine's headers or rules that the script cannot follow fails here.
-// What is expected comes from the engine's rules (docs/decisions.md,
-// "Objective status"), not from the script: a correct answer at 90% passes an
+// What is expected comes from the engine's rules (docs/brief.md, "Mastery and
+// evidence"), not from the script: a correct answer at 90% passes an
 // objective, a miss needs another question, and a unit whose objectives all
 // passed is finished.
 

@@ -1,6 +1,7 @@
-// The ask_question teaching tool (architecture.md section 4, "Question
-// flow"). It posts the question and returns at once; the answer arrives as the
-// tutor's next turn. Posting ends the tutor's turn, because the model does not
+// The ask_question teaching tool. It posts the question and returns at once,
+// since a tool call has a time limit and a learner may take twenty minutes or
+// close the tab; the answer arrives as the tutor's next turn. Posting ends
+// the tutor's turn, because the model does not
 // reliably stop on its own (task 0.3). Whether a question may be posted now
 // (the phase, a question already open, the objective it names) is the
 // engine's rule, so a refusal comes from the board with its reason. The

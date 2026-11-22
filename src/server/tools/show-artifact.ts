@@ -1,5 +1,5 @@
-// The show_artifact teaching tool (task 3.6; architecture.md section 5): an
-// HTML aid the tutor writes whole in the call, which the engine stores in
+// The show_artifact teaching tool (task 3.6): an HTML aid the tutor writes
+// whole in the call, which the engine stores in
 // the course's artifacts/ folder and the page shows in the side pane. The
 // pane's frame runs the aid's scripts but lets it load nothing (the route's
 // policy, http/app.ts), so a document that names something on the network is

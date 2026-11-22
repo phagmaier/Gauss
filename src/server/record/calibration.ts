@@ -2,9 +2,9 @@
 // confidence level, the answers given without help and how many were
 // correct, with "I don't know" counted apart. Derived when asked, never
 // stored; "What I know" sends it (what-i-know.ts). The schema and what
-// counts are in src/shared/calibration.ts; why answers from before task
-// 2.23 count is in docs/decisions.md, "Calibration". A disputed answer
-// counts with its dispute's verdict (task 3.8).
+// counts are in src/shared/calibration.ts; answers from before task 2.23
+// count too (docs/brief.md, "Other features"). A disputed answer counts with
+// its dispute's verdict (task 3.8).
 
 import type { Calibration } from "../../shared/calibration.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";

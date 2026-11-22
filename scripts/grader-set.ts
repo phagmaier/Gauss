@@ -1,5 +1,5 @@
 // The grader's hand-graded set (plan task 2.9; what it showed about the
-// grader's prompt and model is in docs/decisions.md, "Grader prompt"). Four
+// grader's prompt and model is in docs/findings.md, "Grader"). Four
 // questions as a tutor would post them, each with its rubric, and written
 // answers whose grades were worked out by hand, each saying what it tests.
 // `scripts/grade-set.ts` grades them on a real model.

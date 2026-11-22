@@ -1,5 +1,5 @@
-// The install_packages teaching tool (task 3.11; architecture.md section 5):
-// the tutor names the Python packages a course's code needs, and the learner
+// The install_packages teaching tool (task 3.11): the tutor names the
+// Python packages a course's code needs, and the learner
 // is asked, on a card, to install them into the course's workspace. Whether a
 // request may be made now (not while a question is open, not while another
 // waits) is the engine's rule, so that refusal comes from the desk with its

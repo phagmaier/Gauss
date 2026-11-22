@@ -1,7 +1,7 @@
 // Where the learner stands on each objective and unit. Status is derived from
 // the evidence (src/server/record/status.ts) and never stored, so it cannot
-// disagree with it (architecture.md section 3). The rules are in
-// docs/decisions.md, "Objective status" and "Mastery loop".
+// disagree with it (docs/architecture.md, "Data root"). The rules are in
+// docs/brief.md, "Mastery and evidence" and "Assessment modes".
 
 import { z } from "zod";
 

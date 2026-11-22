@@ -35,7 +35,7 @@ at each page's start, `<!-- page 3 label "ii" math images -->`. An EPUB's
 text is Markdown that Gauss writes from its XHTML in spine order
 (`_read_epub`), with a heading at each target of its table of contents.
 
-The sections (architecture.md section 8; decisions.md, "Sources"): a
+The sections: a
 heading's stretch runs to the next heading. Its text before a first
 subheading is a section of its own, under the heading's title; a heading
 with no text of its own goes into the next section, or the last. The
@@ -75,7 +75,7 @@ import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
 CONVERTER_VERSION = 8  # raised when the same original would give other files
-SECTION_LIMIT = 20_000  # characters of a section's text (decisions.md, "Sources")
+SECTION_LIMIT = 20_000  # characters of a section's text: ~5.5 printed pages (docs/findings.md, "Source conversion")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
 _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")  # `Slug` in src/shared/course.ts
@@ -317,10 +317,11 @@ def _title(name, blocks, headings):
     return Path(name).stem.strip() or name
 
 
-# PDF (decisions.md, "Sources"): lines from PDFium's characters, then
+# PDF (docs/findings.md, "Source conversion"): lines from PDFium's characters, then
 # furniture, footnotes, headings and paragraphs from the lines' geometry.
 
 _BOLD_FONT = re.compile(r"bold|black|heavy|semibold|demi|medi", re.IGNORECASE)
+# Not CMSY: Attention sets its footnote marks ∗ † ‡ in it.
 _MATH_FONT = re.compile(r"CMMI|CMEX|CMBSY|MSAM|MSBM|EUFM|EURM|EUSM|RSFS|Math")
 _NUMBERED = re.compile(r"(\d{1,2}(?:\.\d{1,2})*)\.?\s+[A-Z]")
 _PAGE_NUMBER = re.compile(r"[\[(–—-]?\s*(?:\d+|[ivxlcdm]+)\s*[\])–—-]?")
@@ -561,6 +562,7 @@ def _line_groups(chars):
         if line:
             previous, size = line[-1], max(base_size, char.font.size)
             # A line's next character is to the right; scripts, radicals and fractions move from the baseline.
+            # A lower threshold (0.7) split "divide each by √dk" into three paragraphs.
             moved = 2 if char.font.math or previous.font.math else 1.5
             if (
                 abs(char.y - base_y) >= moved * size
@@ -1177,7 +1179,7 @@ def render_page(original, number, png):
         document.close()
 
 
-# EPUB (decisions.md, "Sources"): the standard library reads the container,
+# EPUB (docs/findings.md, "Source conversion"): the standard library reads the container,
 # the package, the table of contents and the XHTML, which Gauss writes as
 # Markdown in spine order. The outline is the table of contents: a heading at
 # each entry's target, in place of the lines there that print its title, so

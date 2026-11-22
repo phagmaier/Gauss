@@ -1,5 +1,5 @@
 // What a sandboxed command gets, the engine's and the tutor's alike
-// (decisions.md, "Confinement"): the Linux workload filter, which must run
+// (docs/findings.md, "Sandbox and confinement"): the Linux workload filter, which must run
 // inside the runtime's sandbox after its relays and namespace helper; the
 // variables of the server's environment it keeps; and where it may read.
 import { constants } from "node:fs";

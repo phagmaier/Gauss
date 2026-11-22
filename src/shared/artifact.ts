@@ -1,7 +1,8 @@
 // Artifacts (task 3.6): HTML aids the tutor shows beside the conversation
 // with `show_artifact`. The engine stores each in the course's artifacts/
 // folder, and the session's side pane shows it in a frame that runs its
-// scripts but can reach nothing (architecture.md section 10).
+// scripts but lets it load nothing; WebRTC and DNS prefetch can still reach
+// the network (docs/brief.md, "Other features").
 
 import { z } from "zod";
 

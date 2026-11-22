@@ -3,8 +3,8 @@
 // to a row, with a line from each unit to the units that build on it. Lines
 // that cross a row sit side by side in it, so a large course's long lines do
 // not merge into one. When too many cross one row, a long line is drawn only
-// for the unit picked, in lanes of its own (docs/decisions.md, "Page
-// design"). Pure, so the proposal card and the course view draw the same
+// for the unit picked, in lanes of its own (docs/brief.md, "Page"). Pure,
+// so the proposal card and the course view draw the same
 // diagram.
 
 import type { Unit } from "../shared/curriculum.ts";

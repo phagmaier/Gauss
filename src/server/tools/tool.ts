@@ -1,6 +1,6 @@
-// A teaching tool, defined once and bound to each backend
-// (architecture.md section 5). It knows nothing of the transport: a backend
-// passes it the model's raw input and hands the result back to the model.
+// A teaching tool, defined once and bound to each backend. It knows nothing
+// of the transport: a backend passes it the model's raw input and hands the
+// result back to the model.
 
 import { z } from "zod";
 

@@ -1,5 +1,5 @@
-// Handoff notes and the misconception record in unit chats (task 5.7;
-// docs/decisions.md, "Mastery loop"): the handoff writer called when a
+// Handoff notes and the misconception record in unit chats (task 5.7):
+// the handoff writer called when a
 // segment closes and when the unit finishes, on the stretch since the call
 // before; its note replacing the one before and its misconceptions
 // appended; a failed call; and what reads them: a fresh session's first

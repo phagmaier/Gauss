@@ -183,7 +183,7 @@ export function createApp(options: {
     return c.json(course.settings satisfies CourseSettings);
   });
 
-  // The outlines of the course's sources (architecture.md section 8), which
+  // The outlines of the course's sources, which
   // the cards read a unit's sections by.
   app.get("/api/courses/:id/sources", async (c) => {
     const stored = await dataRoot.readCourse(c.req.param("id"));
@@ -474,7 +474,11 @@ export function createApp(options: {
     c.json({ intakeId: intakes.start().id } satisfies IntakeStarted, 201),
   );
 
-  /** Resolves the intake after the request body (if any) has arrived. */
+  /**
+   * Resolves the intake after the request body (if any) has arrived. A restart
+   * ends an intake; its routes answer 404 so the browser's EventSource stops
+   * retrying.
+   */
   async function withIntake(
     c: Context,
     handler: (intake: Intake) => Response | Promise<Response>,

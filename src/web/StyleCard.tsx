@@ -2,7 +2,7 @@
 // note with what changed marked against the current one, Apply and "Keep
 // the current one"; once answered, a record of the answer. Built from the
 // intake card's style section and the package card's foot, since no piece
-// draws it (docs/decisions.md, "Page design").
+// draws it.
 
 import { useState } from "react";
 import { compareSentences } from "../shared/profile.ts";

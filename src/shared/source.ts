@@ -1,6 +1,6 @@
 // A source's outline, `sources/<source id>/outline.json`, which
-// `pytools/convert.py` writes when the source is converted (architecture.md
-// section 8). A section is a leaf of the outline and the only entry with a
+// `pytools/convert.py` writes when the source is converted. A section is a
+// leaf of the outline and the only entry with a
 // file, `sections/<section id>.md`; the files in reading order are the
 // source's whole text. A course names a section `<source id>/<section id>`
 // (`SectionRef`): a unit, the sections it teaches, and a segment of its plan,
@@ -29,7 +29,7 @@ export type SectionRef = z.infer<typeof SectionRef>;
 
 /**
  * The most text a unit reads, in the unit of `OutlineSection.size`: its
- * sections' sizes summed (docs/decisions.md, "Sources").
+ * sections' sizes summed (docs/findings.md, "Source conversion").
  */
 export const UNIT_TEXT_LIMIT = 150_000;
 
@@ -230,7 +230,7 @@ export type QuoteSourceInput = z.infer<typeof QuoteSourceInput>;
 
 /**
  * A page marker in a PDF section's text, `<!-- page 31 label "5" math
- * images -->` (architecture.md section 8): the page, counted from 1, and
+ * images -->`: the page, counted from 1, and
  * whether its text lost math, and whether images cover some of it; and
  * where the marker starts and ends in the text.
  */

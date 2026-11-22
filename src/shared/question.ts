@@ -621,7 +621,7 @@ export type Unsettled = z.infer<typeof Unsettled>;
 // --- What the grader returns -------------------------------------------------
 
 /**
- * The grader's reply on a written answer (architecture.md section 6), asked
+ * The grader's reply on a written answer, asked
  * of the model as JSON in this shape and checked against it. A flaw named on
  * a correct answer is not kept.
  */
@@ -652,7 +652,7 @@ export type WrittenGrade = z.infer<typeof WrittenGrade>;
 
 /**
  * Whether the tutor's reply to a message the learner sent while a question
- * was open helped toward its answer (task 2.21; architecture.md section 4).
+ * was open helped toward its answer (task 2.21).
  * The judge sees the question with its answer key or rubric, the message
  * and the reply, and nothing else.
  */

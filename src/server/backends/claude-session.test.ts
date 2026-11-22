@@ -403,8 +403,8 @@ test("a tutor's session gets the file and shell tools confined to its workspace:
     expect(tmpDir).toMatch(/^\/tmp\/gauss-[0-9a-f]{8}$/);
     expect(workspaceTmpDir("/data/courses/other/workspace")).not.toBe(tmpDir);
     expect((await stat(tmpDir)).mode & 0o777).toBe(0o700);
-    // Sandboxed commands get <it>/claude-<uid> as $TMPDIR only if that path
-    // is at most 44 bytes (decisions.md, "Confinement"); the largest uid.
+    // Claude Code gives sandboxed commands <it>/claude-<uid> as $TMPDIR only
+    // if that path is at most 44 bytes; the largest uid.
     expect(
       Buffer.byteLength(`${tmpDir}/claude-4294967295`),
     ).toBeLessThanOrEqual(44);

@@ -7,9 +7,8 @@ import type { ObjectiveStatus, UnitStatus } from "../../shared/status.ts";
 import { objectiveStatus, takesPass, unitStatus } from "./status.ts";
 
 // Every expected status below was worked out by hand from the rules in
-// docs/decisions.md, "Objective status", with the passing rule of task 2.23
-// ("Passing without a confident answer"), and "Mastery loop" for retained
-// and slipping, not by running the code.
+// docs/brief.md, "Mastery and evidence", passing, retained and slipping
+// alike, not by running the code.
 
 const CHAIN = "chain-rule";
 const PRODUCT = "product-rule";

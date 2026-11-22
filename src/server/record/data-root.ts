@@ -1,5 +1,5 @@
-// The data root: the folder that holds every course (architecture.md
-// section 3). This module creates, lists, reads and marks opened courses
+// The data root: the folder that holds every course (docs/architecture.md,
+// "Data root"). This module creates, lists, reads and marks opened courses
 // and their units, stores and approves their curricula, each draft with its
 // style note and background note, reads those notes, stores the plans of
 // their units, keeps the position of each unit in progress in state.json,
@@ -1052,6 +1052,8 @@ export function openDataRoot(options: {
 
         // The journal is durable before either write; publishing the profile
         // last commits the pair. A crash before cleanup is recovered on access.
+        // Writing the profile first leaked it to other courses when the
+        // curriculum write then failed.
         const pending = {
           courseId: stored.id,
           approvedAt,
@@ -1285,6 +1287,8 @@ export function openDataRoot(options: {
             const current = (await readCourse(id))?.curriculum;
             const changed = changedCurriculum(id, current, state, units);
             if (current != null && sameUnits(current.units, units)) return;
+            // The rename of curriculum.json is the commit, and a change must
+            // differ, so a failure rolls forward; no undo record is kept.
             try {
               await writeJson(file, Curriculum, changed);
             } catch (error) {

@@ -1,4 +1,4 @@
-// Installing a course's packages (architecture.md section 5): the tutor names
+// Installing a course's packages: the tutor names
 // Python packages with `install_packages`, the page shows them on a card, and
 // on Install the engine runs a command it builds itself, the one command of a
 // course with network access, open to the package index alone. What the

@@ -1,5 +1,5 @@
-// What the tutor reads of its course's sources (task 4.8; architecture.md
-// section 8): a section's text for read_section, after a line naming it,
+// What the tutor reads of its course's sources (task 4.8): a section's
+// text for read_section, after a line naming it,
 // and a PDF page's image for view_page, rendered by `convert.py page` in the
 // engine's sandbox the first time it is asked for and kept in the source's
 // pages/ (DataRoot.pageImage). Each read and each page looked at is shown in

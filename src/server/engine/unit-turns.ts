@@ -1,9 +1,11 @@
-// What the tutor of a unit chat is told (architecture.md sections 4 and 9):
+// What the tutor of a unit chat is told (docs/architecture.md, "Prompts"):
 // the system prompt its session starts with, and every turn's header. A
 // header names the unit, the segment with the sections it draws on and the
 // phase, the event that prompted the turn, and what is allowed now; the
 // learner's text or the event's details follow it. Pure, so the wording is
 // tested without a chat.
+// Headers are the tutor's instructions, so tutor.md leaves out what they say
+// (docs/findings.md, "Comparing prompt versions").
 
 import {
   type StoredUnit,

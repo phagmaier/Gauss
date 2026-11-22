@@ -1,5 +1,5 @@
 /*
-  The redesign's look (docs/decisions.md, "Page design", "Look"), from
+  The redesign's look (docs/brief.md, "Page"), from
   docs/prototype/look.css, piece 19. Colours are reached only through the
   roles block below, so that a theme is one block of values; nothing else
   here names a colour. Type in four registers: the app's labels in IBM Plex

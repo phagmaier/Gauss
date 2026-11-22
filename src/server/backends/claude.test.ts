@@ -1,6 +1,6 @@
 // The mapping from Agent SDK messages to backend events, on hand-written
 // messages with only the fields the reader uses. The text, tool and
-// "hook_stopped" shapes follow the stage 0 runs (docs/decisions.md); the
+// "hook_stopped" shapes follow the stage 0 runs; the
 // interrupted and failed results are not recorded shapes, so those cases
 // check only that an interrupt request or an error decides the outcome. No
 // model is called.

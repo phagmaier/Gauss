@@ -596,7 +596,9 @@ test.each(["before rename", "after rename", "sync failed"])(
 // than the new version, so the kernel stops the write partway (Node turns
 // the limit into an EFBIG error rather than dying of SIGXFSZ). The record is
 // then reloaded from disk by a fresh openDataRoot. A writer that wrote the
-// file in place would leave the first 512 KB of the new version there.
+// file in place would leave the first 512 KB of the new version there. A
+// size limit stops the write partway every time; a SIGKILL hit the window
+// only 10–20% of the time.
 const WRITER = new URL("./write-in-child.ts", import.meta.url).pathname;
 /** In the 512-byte blocks of POSIX sh, 512 KB; where blocks are 1 KB, 1 MB. */
 const LIMIT_BLOCKS = 1024;

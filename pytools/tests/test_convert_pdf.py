@@ -1,4 +1,4 @@
-"""Conversion of PDF sources, on PDFs the tests write with reportlab (decisions.md, "Sources").
+"""Conversion of PDF sources, on PDFs the tests write with reportlab.
 
 Each page is drawn in Courier, a character 0.6 of the type size wide, so that
 a line's length is known; lines but a paragraph's last are spread to the

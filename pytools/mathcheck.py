@@ -20,9 +20,11 @@ rather than read as a product of letters. `e` is Euler's number, `\\log` the
 natural logarithm, `i` a variable; a letter before a parenthesis multiplies
 (`x(x+1)`); `a/bc` is refused as ambiguous; decimals are exact (`0.5` is 1/2).
 
-Comparing (decisions.md, "Symbolic check"):
+Comparing:
 - expressions: equal if their difference simplifies to zero; sample points
-  (real variables, complex values) may disprove equality, never prove it;
+  (real variables, complex values) may disprove equality, never prove it
+  (six points in [-3, 3] cannot tell x+4 from |x+4|, and a rational lattice
+  aliases periodic functions);
 - a `+ C` on both sides: a constant of integration, so they may differ by a
   constant;
 - numbers: a decimal of at least three significant figures matches a value

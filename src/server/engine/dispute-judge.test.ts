@@ -11,8 +11,7 @@ import { gradedBy } from "./disputes.ts";
 import { mathRubric } from "./grading.ts";
 
 // The answers below are hand-made records; every expected outcome was worked
-// out by hand from the rules in dispute-judge.ts and docs/decisions.md,
-// "Disputes".
+// out by hand from the rules in dispute-judge.ts.
 
 const AT = "2026-11-17T10:00:00.000Z";
 

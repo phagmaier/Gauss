@@ -1,5 +1,5 @@
-// Review questions in a unit chat (task 5.4; docs/decisions.md, "Mastery
-// loop"): the card offered when a sitting begins, Start and Skip, the
+// Review questions in a unit chat (task 5.4; docs/brief.md, "Assessment
+// modes"): the card offered when a sitting begins, Start and Skip, the
 // questions and their detours, the end, restarts, and the unit going on.
 // The fake backend's tutor does what each header allows.
 

@@ -1,4 +1,4 @@
-// The unit chat (architecture.md section 4; tasks 2.6 and 2.7): one tutor
+// The unit chat (tasks 2.6 and 2.7): one tutor
 // session bound to one unit, which runs each segment's teach / discuss /
 // check rhythm. Opening a unit not in progress plans it (task 2.5) and sends
 // segment 1's teaching turn. The engine enforces the phases:
@@ -69,7 +69,7 @@
 // phase: where the check rules would decide next (the end of a detour, a
 // check with nothing left to ask, the closing card), they decide with the
 // corrected verdict.
-// An assessment (task 5.4; docs/decisions.md, "Mastery loop") runs in the
+// An assessment (task 5.4) runs in the
 // unit's thread, asked by its tutor, kept in the position beside the phase,
 // which it leaves alone: review, offered on a card when a unit not finished
 // is opened in a new sitting with nothing waiting on the learner, at most
@@ -452,7 +452,9 @@ export type Proposed = { proposed: true } | { refused: string };
  * Where the course's planning conversation (engine/course-planning.ts)
  * proposes. Its proposal goes through the course's queue as a unit tutor's
  * does, so that one proposal, of a style note or a curriculum change, waits
- * in a course.
+ * in a course. The proposal waits in memory, not state.json: the planning
+ * conversation dies on restart, and a stored proposal would block tutors
+ * with no card.
  */
 export interface CourseDesk {
   /**
@@ -1210,7 +1212,8 @@ interface Running {
   answerStops?: number | undefined;
   /**
    * A review held because the sitting began in the middle of a segment: it
-   * is offered once that segment closes (task 5.25).
+   * is offered once that segment closes (task 5.25). Held in memory only, so
+   * a restart decides again.
    */
   reviewHeld?: boolean;
   /** The standing closing card's action and what the learner confirms with it. */
@@ -1264,7 +1267,7 @@ function createUnitChat(
    * the unit loads, and replaced when the learner applies a new one.
    */
   let style: string | undefined;
-  /** The code questions whose kept answer's tests have run past their limit once. */
+  /** The code questions whose kept answer's tests have run past their limit once; in memory only. */
   const timedOut = new Set<string>();
   const code = options.codeRunner ?? noCodeRunner;
   let codePosting:
@@ -1910,6 +1913,8 @@ function createUnitChat(
       await tellTestGrade(r, run, answered, stops);
       return;
     }
+    // Feedback blocks questions from the moment it is queued, not when it
+    // starts; otherwise a reply already running could post the next question first.
     const feedback = { number, started: false };
     r.feedback = feedback;
     r.agents.send({
@@ -2144,8 +2149,8 @@ function createUnitChat(
   }
 
   /**
-   * Offers review on a card, if it is due (docs/decisions.md, "Mastery
-   * loop", "Review"): the unit is not finished, it is between segments (in
+   * Offers review on a card, if it is due: the unit is not finished, it is
+   * between segments (in
    * a segment's discussion or check the card is held until the segment
    * closes, `offerHeld`), nothing waits on the learner (no open question,
    * detour, package request, style or curriculum proposal or closing card)
@@ -4318,7 +4323,7 @@ function view(
   }
 }
 
-/** How many objectives review asks about (docs/decisions.md, "Mastery loop"). */
+/** How many objectives review asks about (docs/brief.md, "Assessment modes"). */
 const REVIEW_COUNT = 3;
 
 /** Why "Review now" starts nothing. */

@@ -1,11 +1,11 @@
 // The read_section, view_page and quote_source teaching tools (tasks 4.8
-// and 4.9; architecture.md sections 5 and 8), given to the tutor of a
-// course with a source: a section's text, a PDF page as an image where the
-// text lost math or figures, and a passage shown to the learner as a quote
-// once it is found in the sources. Teaching tools rather than the tutor's
-// file tools (decisions.md, "Sources"). Reading is allowed at any time;
-// quoting, not while a question is open, which is the engine's rule. None
-// ends the tutor's turn.
+// and 4.9), given to the tutor of a course with a source: a section's text,
+// a PDF page as an image where the text lost math or figures, and a passage
+// shown to the learner as a quote once it is found in the sources. Teaching
+// tools, not file tools: they work with no sandbox or on another backend,
+// and keep the record out of the tutor's reach. Reading is allowed at any
+// time; quoting, not while a question is open, which is the engine's rule.
+// None ends the tutor's turn.
 
 import {
   QuoteSourceInput,

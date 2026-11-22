@@ -1,5 +1,4 @@
-// Planning from the course view (task 5.38; docs/decisions.md, "Page
-// design", "A curriculum change is asked for from the course view"): a
+// Planning from the course view (task 5.38; docs/brief.md, "Page"): a
 // conversation of an approved course with the planner, run as the intake is
 // (intake.ts). The page asks the opening question itself, so the session
 // starts with the learner's answer.

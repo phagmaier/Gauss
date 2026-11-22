@@ -1,4 +1,4 @@
-"""The symbolic check on pairs worked by hand (decisions.md, "Symbolic check")."""
+"""The symbolic check on pairs worked by hand."""
 
 import json
 import math

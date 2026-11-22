@@ -4,9 +4,8 @@ import { EvidenceEntry } from "../../shared/evidence.ts";
 import { courseProgress } from "./progress.ts";
 
 // The expected progress below was worked out by hand from the rules in
-// docs/decisions.md, "Objective status": what passes, and that a unit with a
-// position in state.json is in progress; and "Mastery loop": what is
-// retained and slipping.
+// docs/brief.md, "Mastery and evidence": what passes, what is retained and
+// slipping, and that a unit with a position in state.json is in progress.
 
 const planned = (id: string, objectives: string[]): StoredUnit => ({
   id,

@@ -1,4 +1,4 @@
-// One line of misconceptions.jsonl (task 5.7; architecture.md section 3): a
+// One line of misconceptions.jsonl (task 5.7): a
 // belief the learner held that is not so, found by the handoff writer
 // (engine/handoff.ts) in a stretch of a unit's thread. The log is appended
 // to, never rewritten. Whether a misconception is open is derived from its

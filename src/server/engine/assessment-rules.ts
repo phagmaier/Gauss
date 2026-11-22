@@ -1,4 +1,4 @@
-// How an assessment asks (docs/decisions.md, "Mastery loop"): review at the
+// How an assessment asks: review at the
 // start of a sitting, the unit's gate, and the test before a unit is
 // taught. Pure, as check-rules.ts is: the chat keeps the evidence and
 // passes it in.

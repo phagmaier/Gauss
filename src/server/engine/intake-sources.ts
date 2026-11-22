@@ -1,4 +1,4 @@
-// The sources of one intake (architecture.md section 8; piece 22). A file the
+// The sources of one intake (piece 22). A file the
 // learner attaches is received into a scratch folder in the intake's
 // uploads, `.<attachment>.tmp/`, converted there in the sandbox
 // (source-convert.ts), and put in place by the record under a slug of its

@@ -5,8 +5,9 @@
 // background note (task 2.22) and its curriculum, with how the learner stands on each objective planned so far,
 // and what earlier units showed (task 5.7): the last handoff notes of the
 // unit's prerequisites and the open misconceptions on other units'
-// objectives; then, for a unit that names sections, their whole text. It
-// stores the plan through plan_unit; then it closes. A session that ends
+// objectives; then, for a unit that names sections, their whole text, so
+// the tutor starts from a plan made from the text rather than carrying the
+// text from its first turn. It stores the plan through plan_unit; then it closes. A session that ends
 // without a plan is tried once more, in a new session told why; after that
 // the failure is the caller's to report to the learner.
 

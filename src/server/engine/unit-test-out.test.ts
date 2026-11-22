@@ -1,5 +1,5 @@
-// Testing out of a unit in a unit chat (task 5.6; docs/decisions.md,
-// "Mastery loop", "Testing out"): the unit opened for its test, planned
+// Testing out of a unit in a unit chat (task 5.6; docs/brief.md,
+// "Assessment modes"): the unit opened for its test, planned
 // first; questions with no feedback and no detour, and a second after an
 // unsure correct answer; the tutor's word on it and the result card, which
 // skips nothing until it is answered; skipping what passed, the whole unit

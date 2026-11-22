@@ -1,7 +1,7 @@
 // What the library says about each course (docs/prototype/21-library.html):
 // the group it is listed in, where it stands, a status form per unit, and
-// when it was last opened. Derived from the record, as architecture.md
-// section 3 asks, through the progress the server sends with each course
+// when it was last opened. Derived from the record (docs/architecture.md,
+// "Data root"), through the progress the server sends with each course
 // (progress.ts).
 
 import type { CourseWithProgress } from "../shared/library.ts";

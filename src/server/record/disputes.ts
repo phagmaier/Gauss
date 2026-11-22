@@ -1,4 +1,4 @@
-// Disputes in the evidence log (task 3.8; docs/decisions.md, "Disputes").
+// Disputes in the evidence log (task 3.8).
 // Pure: the caller reads the record. A dispute names an answer by its
 // question's id and holds the outcome; the answer's line keeps its first
 // grade. An answer counts with its dispute's verdict where the answer

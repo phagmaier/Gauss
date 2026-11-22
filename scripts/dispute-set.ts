@@ -1,5 +1,5 @@
 // The dispute judge's hand-judged set (plan task 3.9; what it showed about
-// the judge is in docs/decisions.md, "Disputes"). Recorded answers,
+// the judge is in docs/findings.md, "Dispute judge"). Recorded answers,
 // as the evidence keeps them, each with the learner's reason for disputing
 // its grade and the outcome worked out by hand against the rules in
 // `prompts/dispute-judge.md`. Half are grades that were wrong (a wrong key or

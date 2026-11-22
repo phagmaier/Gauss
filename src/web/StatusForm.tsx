@@ -1,7 +1,7 @@
 // An objective's or a unit's status drawn as a form as well as a colour
-// (docs/decisions.md, "Page design", "Status shows by form as well as
-// colour"), so that it reads in a light theme too. The status word stays
-// beside it, so the form is hidden from assistive technology.
+// (docs/brief.md, "Page"), so that it reads in a light theme too. The
+// status word stays beside it, so the form is hidden from assistive
+// technology.
 
 import type { ObjectiveStatus, UnitStatus } from "../shared/status.ts";
 

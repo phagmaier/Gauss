@@ -1,6 +1,6 @@
 // course.json: what Gauss keeps about a course besides its curriculum
-// (architecture.md section 3). Where a course stands (curriculum awaiting
-// review, a unit in progress, finished) and whether it is a one-off are
+// (docs/architecture.md, "Data root"). Where a course stands (curriculum
+// awaiting review, a unit in progress, finished) and whether it is a one-off are
 // derived from curriculum.json and the evidence log, never stored here.
 
 import { z } from "zod";
@@ -58,7 +58,7 @@ export const Course = z.object({
   /**
    * When review was last offered on a card, in any of the course's units.
    * No card is offered again within an hour of it, so two units opened
-   * together get one (docs/decisions.md, "Mastery loop"). Absent until a
+   * together get one (docs/brief.md, "Assessment modes"). Absent until a
    * review is offered.
    */
   reviewOfferedAt: Timestamp.optional(),

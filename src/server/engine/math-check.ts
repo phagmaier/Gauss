@@ -1,5 +1,5 @@
-// The symbolic check as the engine runs it (architecture.md section 6; task
-// 3.5): `pytools/mathcheck.py`, run in the engine's sandbox (sandbox.ts),
+// The symbolic check as the engine runs it (task 3.5):
+// `pytools/mathcheck.py`, run in the engine's sandbox (sandbox.ts),
 // since the expressions it reads were written by the tutor and the learner.
 // It is run with the venv's own Python, isolated, so it needs no uv cache
 // and writes nothing. Its header says what it reads and writes; this module
@@ -45,7 +45,7 @@ export const noMathCheck: MathCheck = {
 
 /**
  * The check's own limit is 8 seconds for the comparison, after start-up and
- * reading, which take about a second (decisions.md, "Symbolic check").
+ * reading, which take about a second.
  */
 export const MATH_CHECK_TIME_LIMIT_MS = 12_000;
 

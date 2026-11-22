@@ -1,4 +1,4 @@
-"""Conversion of text and Markdown sources, on files the tests write (decisions.md, "Sources").
+"""Conversion of text and Markdown sources, on files the tests write.
 
 Each expected section is written out by hand: its text, and so its size, and
 its place as the paragraphs it holds, numbered within its heading's stretch,

@@ -1,4 +1,4 @@
-// The help judge (task 2.21; architecture.md section 4, "Help"). A learner
+// The help judge (task 2.21). A learner
 // may write to the tutor while a question is open. Asking what the question
 // means is free; a reply that gives anything toward the answer is help, and
 // the answer then counts toward nothing. Which it was is decided by a

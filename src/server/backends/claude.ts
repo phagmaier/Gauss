@@ -1,5 +1,5 @@
 // The Claude backend, built on the Agent SDK with the options found in stage 0
-// (docs/decisions.md, "Claude backend"). One long-lived `query()` per
+// (docs/findings.md, "Claude Code and the Agent SDK"). One long-lived `query()` per
 // session: each engine turn is pushed onto its input stream, and the turn's
 // messages are read until its `result`.
 //
@@ -13,13 +13,13 @@
 // schema's shape.
 //
 // A tutor's session gets the file and shell tools, confined to its course's
-// workspace (task 3.3; decisions.md, "Confinement"): writes and reads by the
+// workspace: writes and reads by the
 // file tools only there, commands only in Claude Code's sandbox, reading
 // only what the engine allows, and a temporary folder of its own. The engine
 // can refuse a write or a command, which a PreToolUse hook asks it about.
 //
 // A tutor's session in a course that allows it gets web search, never
-// WebFetch (task 4.11; decisions.md, "Sources"); a hook refuses a query that
+// WebFetch (task 4.11; docs/brief.md, "Sources"); a hook refuses a query that
 // holds the account's email address.
 
 import { execFile } from "node:child_process";
@@ -74,7 +74,7 @@ export interface ClaudeBackendOptions {
 }
 
 /**
- * The grader's model (task 2.9; docs/decisions.md, "Grader prompt"). On the
+ * The grader's model (docs/findings.md, "Grader"). On the
  * hand-graded set, Sonnet 5.5 agreed with every hand grade and kept to the
  * prompt's rules for the flaw; Haiku 5.5 marked a correct answer in plain
  * words incorrect.
@@ -82,13 +82,13 @@ export interface ClaudeBackendOptions {
 export const GRADER_MODEL = "claude-sonnet-5-5";
 
 /**
- * The help judge's model (task 2.21; docs/decisions.md, "Help judge"),
+ * The help judge's model (task 2.21; docs/findings.md, "Help judge"),
  * picked on the hand-judged set in `scripts/help-set.ts`.
  */
 export const JUDGE_MODEL = "claude-haiku-5-5";
 
 /**
- * The dispute judge's model (task 3.9; docs/decisions.md, "Disputes"). On
+ * The dispute judge's model (task 3.9; docs/findings.md, "Dispute judge"). On
  * the hand-judged set in `scripts/dispute-set.ts` it agreed with every hand
  * outcome; so did Haiku 5.5, but a dispute reviews the grader's work, which
  * is Sonnet's.
@@ -96,8 +96,8 @@ export const JUDGE_MODEL = "claude-haiku-5-5";
 export const DISPUTE_MODEL = "claude-sonnet-5-5";
 
 /**
- * The handoff writer's model (task 5.13; docs/decisions.md, "Mastery
- * loop"). On the same stretches Haiku 5.5 put wrong counts in the
+ * The handoff writer's model (task 5.13; docs/findings.md, "Handoff and
+ * notes"). On the same stretches Haiku 5.5 put wrong counts in the
  * corrections the learner reads, and listed tested objectives as taught.
  */
 export const HANDOFF_MODEL = "claude-sonnet-5-5";
@@ -151,7 +151,11 @@ export function sdkEnvironment(
   return env;
 }
 
-/** The settings that keep the learner's own Claude Code setup out (task 0.2). */
+/**
+ * The settings that keep the learner's own Claude Code setup out (task 0.2).
+ * Never load the learner's settings: `settingSources` would also bring their
+ * `bypassPermissions` mode.
+ */
 const ISOLATED_SETTINGS = {
   autoMemoryEnabled: false,
   disableClaudeAiConnectors: true,
@@ -207,7 +211,7 @@ const SEARCH_HOLDS_EMAIL =
 
 /**
  * Why a search is refused, if it is: its input holds the account's email
- * address, in any case (decisions.md, "Claude backend"). An account that
+ * address, in any case (docs/findings.md, "Claude Code and the Agent SDK"). An account that
  * cannot be read refuses every search, since the query cannot be checked.
  */
 async function searchRefusal(
@@ -245,7 +249,7 @@ const SearchOutput = z.object({
 
 /**
  * The private temporary folder of the tutor working in `cwd`, one per
- * course (decisions.md, "Confinement"). Claude Code gives sandboxed
+ * course. Claude Code gives sandboxed
  * commands `<it>/claude-<uid>` as $TMPDIR only if that path is at most 44
  * bytes, and otherwise a folder shared by every Claude Code session of the
  * user; one in the course's folder would be longer. So it lies under /tmp,
@@ -440,7 +444,11 @@ export function sessionPlace(
   };
 }
 
-/** The start of the error Claude Code gives for a session id it cannot find (task 0.4). */
+/**
+ * The start of the error Claude Code gives for a session id it cannot find
+ * (task 0.4). Matched on its wording: if an SDK rewords it, sessions Claude
+ * Code swept away (cleanupPeriodDays) fail instead of starting fresh.
+ */
 const NOT_FOUND = "No conversation found with session ID";
 
 async function startSession(
@@ -581,8 +589,8 @@ async function startSession(
     }
     return {};
   };
-  // The account's email address reaches every session (decisions.md,
-  // "Claude backend"); a search must not carry it out.
+  // The account's email address reaches every session (docs/findings.md,
+  // "Claude Code and the Agent SDK"); a search must not carry it out.
   const guardSearch: HookCallback = async (input) => {
     if (input.hook_event_name !== "PreToolUse") return {};
     const reason =
@@ -621,6 +629,9 @@ async function startSession(
         ...(builtIn.allowedTools ?? []),
       ],
       hooks: {
+        // The SDK cannot cancel queued input; this hook and the second
+        // interrupt at `message_start` close most of the gap, but a request
+        // can still start after the hook, so Stop does not promise zero tokens.
         UserPromptSubmit: [{ hooks: [cancelPendingTurn], onFailure: "block" }],
         ...(beforeTools.length === 0 ? {} : { PreToolUse: beforeTools }),
         ...(workspace === undefined
@@ -637,7 +648,8 @@ async function startSession(
   if (options.resumeId !== undefined) {
     // An id Claude Code cannot find fails while it starts, before any input
     // and any model request; a session it finds is ready once it has started
-    // (task 2.14).
+    // (task 2.14). Claude Code deletes old session files itself (its 30-day
+    // sweep), so a kept tutor session can vanish; the engine then starts fresh.
     try {
       await session.initializationResult();
     } catch (error) {
@@ -823,7 +835,7 @@ export function createTurnReader(cwd?: string) {
  * A search's entry, from WebSearch's structured output: each page found
  * once, in the order given. A call that "stepped aside for a message the
  * user sent" carries `{ detachedToolCall: true }` in its place (`sdk.d.ts`),
- * but the engine sends nothing while a turn runs (decisions.md, "Sources").
+ * but the engine sends nothing while a turn runs.
  */
 function searchedEvent(output: unknown): BackendEvent | undefined {
   const parsed = SearchOutput.safeParse(output);

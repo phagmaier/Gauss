@@ -1,4 +1,4 @@
-// The dispute judge (task 3.8; architecture.md section 6, "Disputes"): one
+// The dispute judge (task 3.8): one
 // one-shot request with its own prompt (`prompts/dispute-judge.md`), which
 // sees the question as the learner saw it, what the answer was graded by,
 // the answer, the grade and the learner's reason, each between tags, and
@@ -228,6 +228,9 @@ export function disputeRequest(entry: AnswerEvidence, reason: string): string {
       ...(entry.flaw === undefined ? [] : tag("flaw", entry.flaw)),
     );
   } else if (question.kind === "code" && answer.kind === "code") {
+    // The tests and frozen inputs, not the tutor's solution: a fixture can
+    // decide the verdict, and the solution, already checked to pass, would
+    // argue for the tests.
     lines.push(
       ...tag(
         "graded_by",

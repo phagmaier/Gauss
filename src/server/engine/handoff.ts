@@ -1,4 +1,5 @@
-// The handoff writer (task 5.7; docs/decisions.md, "Mastery loop"). When a
+// The handoff writer (task 5.7). It runs on Sonnet: Haiku put wrong numbers
+// in learner-visible corrections (docs/findings.md, "Handoff and notes"). When a
 // segment closes, by passing or by moving on, and when a unit finishes, a
 // one-shot call with its own prompt (`prompts/handoff.md`) reads the unit's
 // thread since the call before, with the note before, the unit's

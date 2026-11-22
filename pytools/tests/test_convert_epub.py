@@ -1,4 +1,4 @@
-"""Conversion of EPUB sources, on EPUBs the tests build with zipfile (decisions.md, "Sources").
+"""Conversion of EPUB sources, on EPUBs the tests build with zipfile.
 
 Each book is a few XHTML documents in spine order, with an NCX (EPUB 2) or a
 navigation document (EPUB 3). Each expected section is written out by hand.

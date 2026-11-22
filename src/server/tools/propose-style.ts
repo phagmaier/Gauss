@@ -1,5 +1,5 @@
-// The propose_style teaching tool (task 5.11; architecture.md section 5):
-// the tutor proposes the whole revised style note of the course, with a line
+// The propose_style teaching tool (task 5.11): the tutor proposes the
+// whole revised style note of the course, with a line
 // on why, and the learner sees it on a card with Apply and "Keep the current
 // one". Whether one may be proposed now (not while a question is open, not
 // while another proposal waits) is the engine's rule, so that refusal comes

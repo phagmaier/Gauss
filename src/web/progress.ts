@@ -8,7 +8,7 @@
 // Any unit can be started at any time, so several can be in progress. The
 // card leads to the unit in progress most recently opened, or else to the
 // next unit in order: the first in the list not started whose prerequisites
-// are finished, passed or overridden (docs/decisions.md, "Page design").
+// are finished, passed or overridden.
 
 import type { StoredUnit } from "../shared/curriculum.ts";
 import type { CourseWithProgress, UnitProgress } from "../shared/library.ts";

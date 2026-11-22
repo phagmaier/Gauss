@@ -1,5 +1,5 @@
 // curriculum.json: a course's units, what each builds on, and one goal per
-// unit, plus whether the learner has approved it (architecture.md section 3).
+// unit, plus whether the learner has approved it.
 // A unit gains its plan, its objectives and segments, when it starts (task
 // 2.2). In a course with sources, a unit names the sections it teaches.
 //
