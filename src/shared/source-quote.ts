@@ -406,7 +406,8 @@ interface Markup {
 type Kind = SourceFormat | "quote";
 
 const NUMBER_LINE = /(?:^|(?<=\n))[ \t]*[0-9]{1,4}[ \t]*(?:\n|$)/g;
-const PDF_NOTE = /^\[\^[^\]\s]+\]:[^\n]*(?:\n|$)/gm;
+/** A PDF conversion's note definition: one `[^label]: …` line. */
+export const PDF_NOTE = /^\[\^[^\]\s]+\]:[^\n]*(?:\n|$)/gm;
 /** The backslashes the PDF conversion writes: before a line's leading mark, and before a printed page marker. */
 export const PDF_ESCAPE = /(?:^|(?<=\n))\\(?=[#><])|\\(?=<!-- page )/g;
 const REFERENCES = /\[\^[^\]\s]+\]/g;

@@ -3318,7 +3318,15 @@ function createUnitChat(
       (position.phase === "discuss" && position.assessment?.stage !== "on")
     )
       return;
-    return "Search is for discussion or a detour. For a planned lecture, read the passages named in the turn header.";
+    // Only under the teaching header: not while an assessment or the test's card waits.
+    if (
+      position.phase === "teach" &&
+      position.assessment === undefined &&
+      position.testOut?.stage !== "result" &&
+      position.testOut?.stage !== "due"
+    )
+      return "Search is for discussion or a detour. For a planned lecture, read the passages named in the turn header.";
+    return "search_source works only in discussion or a detour. Read a section with read_section.";
   }
 
   // Not while a question of the unit is open, where the card would sit

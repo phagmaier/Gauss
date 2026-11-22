@@ -709,3 +709,98 @@ test("outside the segment's teaching, as in its discussion or going over it agai
     dir = await mkdtemp(join(tmpdir(), "gauss-source-reading-"));
   }
 });
+
+test("a detour in the check finds a section that starts partway down a page and reads that page; an unknown source is refused with the course's sources", async () => {
+  const hit = {
+    section: "phenomenology/s2",
+    range: { pages: { first: 3, last: 3 } },
+  };
+  const { backend, chat, units } = await start(
+    [
+      [
+        { call: "search_source", input: { query: "universal" } },
+        { call: "read_section", input: hit },
+        { call: "search_source", input: { source: "nope", query: "true" } },
+      ],
+    ],
+    {
+      position: {
+        segment: 0,
+        phase: "check",
+        checkFrom: 0,
+        detour: { questionId: "q1", number: 1, objective: "whole" },
+      },
+    },
+  );
+  try {
+    if (backend.calls.length === 0) {
+      expect(chat.say("Where is the universal?")).toEqual({ ok: true });
+    }
+    await chat.settled();
+    expect(backend.calls[0]?.result).toMatchObject({
+      status: "done",
+      text: expect.stringContaining(JSON.stringify(hit)),
+    });
+    // The page's marker, inherited from s1, then s2's text up to page 4.
+    expect(backend.calls[1]?.result.text).toContain(
+      '<!-- page 3 label "iii" images -->\nis the universal.\n',
+    );
+    expect(backend.calls[1]?.result.text).not.toContain("page 4");
+    expect(backend.calls[2]?.result).toEqual({
+      status: "refused",
+      text: 'There is no source "nope" to search. This course has "notes", "phenomenology".',
+    });
+  } finally {
+    await units.close();
+  }
+});
+
+test("search is refused in teaching for the planned passages, and elsewhere outside discussion or a detour with where it works", async () => {
+  const lecture =
+    "Search is for discussion or a detour. For a planned lecture, read the passages named in the turn header.";
+  const elsewhere =
+    "search_source works only in discussion or a detour. Read a section with read_section.";
+  const cases: { position: UnitPosition; refused: string }[] = [
+    { position: { segment: 0, phase: "teach" }, refused: lecture },
+    {
+      // An assessment under way, between its questions.
+      position: {
+        segment: 0,
+        phase: "discuss",
+        assessment: {
+          mode: "review",
+          stage: "on",
+          objectives: [{ unit: "preface", objective: "whole" }],
+          from: 0,
+        },
+      },
+      refused: elsewhere,
+    },
+    { position: { segment: 0, phase: "closed" }, refused: elsewhere },
+    // The test's result card waits; nothing is taught until it is answered.
+    {
+      position: { segment: 0, phase: "teach", testOut: { stage: "result" } },
+      refused: elsewhere,
+    },
+  ];
+  for (const { position, refused } of cases) {
+    const { backend, chat, units } = await start(
+      [[{ call: "search_source", input: { query: "universal" } }]],
+      { position },
+    );
+    try {
+      if (backend.calls.length === 0) {
+        expect(chat.say("Where is the universal?")).toEqual({ ok: true });
+        await chat.settled();
+      }
+      expect(backend.calls[0]?.result, position.phase).toEqual({
+        status: "refused",
+        text: refused,
+      });
+    } finally {
+      await units.close();
+    }
+    await rm(dir, { recursive: true, force: true });
+    dir = await mkdtemp(join(tmpdir(), "gauss-source-reading-"));
+  }
+});

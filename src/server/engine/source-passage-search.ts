@@ -4,7 +4,11 @@ import type {
   ReadSectionInput,
   SearchSourceInput,
 } from "../../shared/source.ts";
-import { type QuotableSource, wordsOf } from "../../shared/source-quote.ts";
+import {
+  PDF_NOTE,
+  type QuotableSource,
+  wordsOf,
+} from "../../shared/source-quote.ts";
 
 const RESULT_LIMIT = 5;
 const PREVIEW_LIMIT = 320;
@@ -31,7 +35,8 @@ export function findPassages(
   { query, source }: SearchSourceInput,
   sources: readonly QuotableSource[],
 ): PassageHit[] {
-  const words = query.normalize("NFC").match(new RegExp(`${WORD}+`, "gu"));
+  // NFKC, as the quote checker folds: a PDF's "ﬁ" ligature is "fi".
+  const words = query.normalize("NFKC").match(new RegExp(`${WORD}+`, "gu"));
   if (words === null) return [];
   const bounded = (body: string) =>
     new RegExp(`(?<!${WORD})${body}(?!${WORD})`, "iu");
@@ -40,14 +45,39 @@ export function findPassages(
   const best: { hit: PassageHit; match: Match }[] = [];
   for (const book of sources) {
     if (source !== undefined && book.source.id !== source) continue;
+    const joins = [...book.markup.joins].sort((a, b) => a - b);
+    let joined: QuotableSource["markup"] | undefined;
     for (const { section, range, start, end } of spans(book)) {
-      const text = wordsOf(book, start, end).normalize("NFC");
-      const match = locate(text, phrase, terms);
+      // A PDF's note definitions are hidden from quotes but are the page's text.
+      let notes = "";
+      if (book.source.format === "pdf") {
+        for (const note of book.text.slice(start, end).matchAll(PDF_NOTE))
+          notes += `\n\n${note[0].replace(/^\[\^[^\]\s]+\]:\s*/, "").trim()}`;
+      }
+      let text = `${wordsOf(book, start, end)}${notes}`.normalize("NFKC");
+      let match = locate(text, phrase, terms);
+      // A word hyphenated at a line's end, also without its hyphen, as quotes match it.
+      if (match?.phrase !== true && holdsJoin(joins, start, end)) {
+        joined ??= joinedMarkup(book);
+        const whole =
+          `${wordsOf({ text: book.text, markup: joined }, start, end)}${notes}`.normalize(
+            "NFKC",
+          );
+        const other = locate(whole, phrase, terms);
+        if (
+          other !== undefined &&
+          (match === undefined || other.phrase || other.width < match.width)
+        ) {
+          text = whole;
+          match = other;
+        }
+      }
       if (match === undefined) continue;
+      const found = match;
       const before = best.findIndex(({ match: other }) =>
-        match.phrase !== other.phrase
-          ? match.phrase
-          : !match.phrase && match.width < other.width,
+        found.phrase !== other.phrase
+          ? found.phrase
+          : !found.phrase && found.width < other.width,
       );
       const index = before === -1 ? best.length : before;
       if (index >= RESULT_LIMIT) continue;
@@ -61,6 +91,26 @@ export function findPassages(
     }
   }
   return best.map(({ hit }) => hit);
+}
+
+/** Whether a joined hyphen, of the sorted `joins`, lies in [start, end). */
+function holdsJoin(joins: readonly number[], start: number, end: number) {
+  let low = 0;
+  let high = joins.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if ((joins[mid] ?? end) < start) low = mid + 1;
+    else high = mid;
+  }
+  return (joins[low] ?? end) < end;
+}
+
+/** The markup with each joined hyphen hidden too. */
+function joinedMarkup(book: QuotableSource): QuotableSource["markup"] {
+  const { markup } = book;
+  const hidden = markup.hidden.slice();
+  for (const hyphen of markup.joins) hidden[hyphen] = 1;
+  return { ...markup, hidden };
 }
 
 function locate(
