@@ -12,7 +12,7 @@
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { z } from "zod";
-import { Slug } from "../../shared/course.ts";
+import { CourseSettings, Slug } from "../../shared/course.ts";
 import { CurriculumChangeAnswer } from "../../shared/curriculum-change.ts";
 import {
   DisputePost,
@@ -163,6 +163,24 @@ export function createApp(options: {
       : c.json(
           (await withProgress(dataRoot, stored)) satisfies CourseWithProgress,
         );
+  });
+
+  // The course's web search setting (task 4.11), for an approved course:
+  // its open tutors' sessions are closed once between turns, and the next
+  // turn resumes each with the setting's tools.
+  app.post("/api/courses/:id/settings", async (c) => {
+    const body = await readBody(c, CourseSettings);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const stored = await dataRoot.readCourse(c.req.param("id"));
+    if (stored === undefined) return c.json({ error: "No such course." }, 404);
+    if (stored.curriculum?.approval.status !== "approved") {
+      return c.json(
+        { error: "The curriculum is not approved yet, so no tutor runs." },
+        409,
+      );
+    }
+    const course = await units.setWebSearch(stored.id, body.data.webSearch);
+    return c.json(course.settings satisfies CourseSettings);
   });
 
   // The outlines of the course's sources (architecture.md section 8), which

@@ -1181,6 +1181,58 @@ test("an export keeps the first grade beside a correction from a later sitting",
   expect(secondSitting).not.toContain("Round down");
 });
 
+test("an export shows a web search as its query and its pages' titles and sites, with no address", async () => {
+  const { app, dataRoot } = setUp([]);
+  await approvedCourse();
+  await dataRoot.appendTranscript(COURSE, "vectors", 1, [
+    { type: "session", startedAt: "2026-11-15T12:00:00.000Z" },
+    {
+      type: "web_searched",
+      query: "PCA <eigenvectors>",
+      results: [
+        {
+          title: "Principal component analysis",
+          url: "https://www.example.org/wiki/PCA?ref=gauss",
+        },
+      ],
+    },
+  ]);
+
+  const html = await (await app.request(`${UNIT}/transcript`)).text();
+  expect(html).toContain(
+    "The tutor searched the web for “PCA &lt;eigenvectors&gt;”",
+  );
+  expect(html).toContain("<li>Principal component analysis (example.org)</li>");
+  expect(html).not.toContain("/wiki/PCA");
+});
+
+test("the web search setting changes for an approved course and is answered as written, and is refused for a draft, which stays as it was", async () => {
+  const { app, dataRoot } = setUp([]);
+  await approvedCourse(true);
+  const path = `/api/courses/${COURSE}/settings`;
+  const refused = await post(app, path, { webSearch: true });
+  expect(refused.status).toBe(409);
+  expect((await dataRoot.readCourse(COURSE))?.course.settings).toEqual({
+    webSearch: false,
+  });
+
+  await openDataRoot({ path: dir }).approveCurriculum(COURSE, FIRST);
+  const on = await post(app, path, { webSearch: true });
+  expect(on.status).toBe(200);
+  expect(await on.json()).toEqual({ webSearch: true });
+  expect(
+    (await openDataRoot({ path: dir }).readCourse(COURSE))?.course.settings,
+  ).toEqual({ webSearch: true });
+  expect((await post(app, path, { webSearch: "yes" })).status).toBe(400);
+  expect(
+    (
+      await post(app, "/api/courses/no-such-course/settings", {
+        webSearch: true,
+      })
+    ).status,
+  ).toBe(404);
+});
+
 test("a finished unit writes only on request, retries a failure and replaces its notes", async () => {
   const first =
     "<!doctype html><html><head><title>First notes</title></head><body><h1>The images of a basis</h1><script>stop()</script></body></html>";

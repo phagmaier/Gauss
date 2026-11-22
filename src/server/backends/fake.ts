@@ -1,11 +1,13 @@
 // A scripted backend for automated tests, which never call a real model
 // (AGENTS.md). Each scripted turn lists what the "tutor" does in order: write
-// text, call a teaching tool, call a file or shell tool, or hold until it is
-// interrupted. Tool calls run the real teaching tool, and a call that ends
-// the turn ends it here too. A write or a command asks the engine first, as
-// Claude's hook does, and a file written is reported; nothing is written,
-// unless a Write gives the file's content (a code question's starter file,
-// task 3.7), which is written in the working folder.
+// text, call a teaching tool, call a file or shell tool, search the web, or
+// hold until it is interrupted. Tool calls run the real teaching tool, and a
+// call that ends the turn ends it here too. A write or a command asks the
+// engine first, as Claude's hook does, and a file written is reported;
+// nothing is written, unless a Write gives the file's content (a code
+// question's starter file, task 3.7), which is written in the working
+// folder. A search is reported with the pages scripted for it, in a session
+// given web search; in another, it is refused as a tool it does not have.
 // One-shot requests get the scripted replies in order, checked against the
 // request's schema as the real backends check theirs. In place of a list, a
 // function can answer every turn or request it is given, without end
@@ -21,6 +23,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { WebResult } from "../../shared/events.ts";
 import type { ToolResult } from "../tools/tool.ts";
 import {
   type BackendEvent,
@@ -47,6 +50,8 @@ export type FakeStep =
       /** Holds a successful mutation open, to exercise concurrent tools. */
       until?: Promise<void>;
     }
+  /** WebSearch, which reports the pages given (task 4.11). */
+  | { search: string; results: WebResult[] }
   /** Waits until the turn is interrupted or the session closed. */
   | { hold: true };
 
@@ -218,6 +223,23 @@ export function createFakeBackend(
               mutations.delete(reservation.release);
             }
           }
+        } else if ("search" in step) {
+          const { search: query, results } = step;
+          if (options.webSearch !== true) {
+            calls.push({
+              name: "WebSearch",
+              input: { query },
+              result: { status: "refused", text: "No such tool: WebSearch" },
+            });
+            continue;
+          }
+          yield { type: "tool_call", name: "WebSearch" };
+          calls.push({
+            name: "WebSearch",
+            input: { query },
+            result: { status: "done", text: "" },
+          });
+          yield { type: "web_searched", query, results };
         } else if ("call" in step) {
           yield { type: "tool_call", name: step.call };
           const tool = options.tools.find((t) => t.name === step.call);

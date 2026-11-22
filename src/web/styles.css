@@ -2197,6 +2197,52 @@ button.dn:hover {
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
+/* a web search: its query, then the pages found under it, three shown */
+.ws {
+  margin: 1.1em 0;
+}
+.ws .did {
+  margin: 0;
+}
+.ws q {
+  color: var(--ink);
+}
+.ws ul {
+  list-style: none;
+  margin: 0.35em 0 0 calc(15px + 0.55em);
+  padding: 0;
+  display: grid;
+  gap: 0.25em;
+  font-size: 13.5px;
+}
+.ws ul > li {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+  min-width: 0;
+}
+.ws li a,
+.ws li > span:first-child {
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws li a {
+  text-decoration: underline;
+  text-decoration-color: var(--rule-2);
+  text-underline-offset: 3px;
+}
+.ws li a:hover {
+  color: var(--ink);
+}
+.ws .pl {
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.ws .textbtn {
+  font-size: 13px;
+}
 /* a verified quote: the source's words in the reading type, its paragraphs
    and line breaks as the source has them, and a check before its citation */
 .vq {

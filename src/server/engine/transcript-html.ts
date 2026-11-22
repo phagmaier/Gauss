@@ -25,6 +25,7 @@ import {
   standing,
   verdictWord,
 } from "../../shared/dispute-view.ts";
+import { webSite } from "../../shared/events.ts";
 import { htmlAsText } from "../../shared/html-as-text.ts";
 import { requirement } from "../../shared/packages.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -266,6 +267,9 @@ function renderItem(
       return didNote("The tutor looked at", pageLine(item, sources));
     case "quote":
       return `<figure class="quote"><blockquote>${escapeHtml(item.text)}</blockquote><figcaption class="note">Verified in the source: ${escapeHtml(quoteCitation(item, sources))}</figcaption></figure>`;
+    case "search":
+      // Titles and sites as text, as the export keeps no link's address.
+      return `<p class="note">The tutor searched the web for “${escapeHtml(item.query)}”</p>${item.results.length === 0 ? "" : `<ul class="note">${item.results.map((r) => `<li>${escapeHtml(r.title)} (${escapeHtml(webSite(r.url).site)})</li>`).join("")}</ul>`}`;
     case "artifact":
       return `<p class="note">Aid shown: ${escapeHtml(item.title)}</p>`;
     case "note":

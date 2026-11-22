@@ -13,7 +13,7 @@ import type { Slug } from "./course.ts";
 import { changedUnits, type Unit } from "./curriculum.ts";
 import type { CurriculumChangeOutcome } from "./curriculum-change.ts";
 import type { ShownDispute } from "./dispute.ts";
-import type { PageEvent, TestShown } from "./events.ts";
+import type { PageEvent, TestShown, WebResult } from "./events.ts";
 import type { AssessmentMode } from "./evidence.ts";
 import type { PackageSpec, PackagesOutcome } from "./packages.ts";
 import { firstTaught, type Plan } from "./plan.ts";
@@ -176,6 +176,14 @@ export interface QuoteItem {
   at?: QuoteStart;
 }
 
+/** A web search the tutor made (task 4.11, piece 23): the query and the pages it found. */
+export interface SearchItem {
+  kind: "search";
+  key: number;
+  query: string;
+  results: WebResult[];
+}
+
 /** The tutor's request to install packages (task 3.11, piece 14), and its answer. */
 export interface PackagesItem {
   kind: "packages";
@@ -250,6 +258,7 @@ export type Item =
   | { kind: "read"; key: number; section: string }
   | PageItem
   | QuoteItem
+  | SearchItem
   | ArtifactItem
   | PackagesItem
   | StyleItem
@@ -707,6 +716,20 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             section: event.section,
             text: event.text,
             ...(event.at === undefined ? {} : { at: event.at }),
+          },
+        ],
+        tutorOpen: false,
+      };
+    case "web_searched":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "search",
+            key: index,
+            query: event.query,
+            results: event.results,
           },
         ],
         tutorOpen: false,

@@ -6,7 +6,7 @@
 // model is called.
 
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createTurnReader, sdkEnvironment, sessionPlace } from "./claude.ts";
 
 // Only the fields the reader looks at.
@@ -139,6 +139,73 @@ test("a file the file tools wrote is reported once its call succeeded, by its pa
     { type: "file_written", path: "src/bpe.py" },
     { type: "file_written", path: "/tmp/notes.md" },
   ]);
+});
+
+test("a web search is reported once its result came back, with the query searched and each page found once, in order; a refused search and one that stepped aside for a message are not", () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const search = (id: string, query: string) =>
+    sdk({
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: "tool_use", id, name: "WebSearch", input: { query } },
+        ],
+      },
+    });
+  const answered = (id: string, output: unknown, isError = false) =>
+    sdk({
+      ...(toolResult(id, isError, null) as object),
+      tool_use_result: output,
+    });
+  const page = (title: string, url: string) => ({ title, url });
+  try {
+    const events = readAll([
+      search("s1", "adorno whole false"),
+      // WebSearchOutput, as sdk-tools.d.ts gives it: hits among commentary,
+      // a page found twice by the searches it made.
+      answered("s1", {
+        query: "Adorno whole is the false",
+        results: [
+          "Here are the results.",
+          {
+            tool_use_id: "srvtoolu_1",
+            content: [
+              page("Theodor W. Adorno", "https://plato.stanford.edu/adorno"),
+              page("Minima Moralia", "https://en.wikipedia.org/wiki/Minima"),
+            ],
+          },
+          {
+            tool_use_id: "srvtoolu_2",
+            content: [
+              page("Theodor W. Adorno", "https://plato.stanford.edu/adorno"),
+              page("Hegel and Adorno", "https://philpapers.org/rec/HA"),
+            ],
+          },
+        ],
+        durationSeconds: 2.5,
+        searchCount: 2,
+      }),
+      search("s2", "learner@example.com"),
+      answered("s2", undefined, true),
+      search("s3", "a search set aside"),
+      answered("s3", { detachedToolCall: true }),
+    ]).filter((e) => e.type !== "tool_call");
+
+    expect(events).toEqual([
+      {
+        type: "web_searched",
+        query: "Adorno whole is the false",
+        results: [
+          page("Theodor W. Adorno", "https://plato.stanford.edu/adorno"),
+          page("Minima Moralia", "https://en.wikipedia.org/wiki/Minima"),
+          page("Hegel and Adorno", "https://philpapers.org/rec/HA"),
+        ],
+      },
+    ]);
+  } finally {
+    warn.mockRestore();
+  }
 });
 
 test.each([

@@ -53,6 +53,7 @@ import {
   PageEvent,
   type SkipTestedPost,
   UnitOpened,
+  webSite,
 } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
 import { currentObjective, type Plan } from "../shared/plan.ts";
@@ -77,6 +78,7 @@ import {
   type Item,
   offersSteps,
   reduce,
+  type SearchItem,
   standingCard,
   type TestResultItem,
   type Timeline,
@@ -1210,6 +1212,8 @@ function ThreadItem(props: {
         </figure>
       );
     }
+    case "search":
+      return <SearchLine item={item} />;
     case "artifact":
       return (
         <button
@@ -1549,6 +1553,79 @@ const CHECK_ICON = (
     <path d="m3 7.4 2.6 2.6L11 4.4" />
   </svg>
 );
+
+/** A globe, for the line of each web search the tutor makes (piece 23). */
+const GLOBE_ICON = (
+  <svg
+    width="15"
+    height="15"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    aria-hidden="true"
+  >
+    <circle cx="8" cy="8" r="6.2" />
+    <path d="M1.8 8h12.4M8 1.8c1.8 1.7 2.6 3.8 2.6 6.2S9.8 12.5 8 14.2C6.2 12.5 5.4 10.4 5.4 8S6.2 3.5 8 1.8z" />
+  </svg>
+);
+
+/** How many of a search's pages show before the rest are folded (piece 23). */
+const SEARCH_SHOWN = 3;
+
+/**
+ * A web search the tutor made (task 4.11, piece 23): the query, then the
+ * pages it found, each a web link with its site, three shown and the rest
+ * folded.
+ */
+function SearchLine(props: { item: SearchItem }) {
+  const { query, results } = props.item;
+  const [unfolded, setUnfolded] = useState(false);
+  const shown = unfolded ? results : results.slice(0, SEARCH_SHOWN);
+  return (
+    <div className="ws">
+      <p className="fw did">
+        {GLOBE_ICON}
+        <span>
+          Searched the web for <q>{query}</q>
+        </span>
+        {results.length === 0 ? (
+          <span className="pl">nothing found</span>
+        ) : null}
+      </p>
+      {results.length === 0 ? null : (
+        <ul>
+          {shown.map((result) => {
+            const { site, opens } = webSite(result.url);
+            return (
+              <li key={result.url}>
+                {opens ? (
+                  <a href={result.url} target="_blank" rel="noreferrer">
+                    {result.title}
+                  </a>
+                ) : (
+                  <span>{result.title}</span>
+                )}
+                <span className="pl">{site}</span>
+              </li>
+            );
+          })}
+          {results.length > shown.length ? (
+            <li>
+              <button
+                type="button"
+                className="textbtn"
+                onClick={() => setUnfolded(true)}
+              >
+                {results.length - shown.length} more
+              </button>
+            </li>
+          ) : null}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * A quiet line for what the tutor read of a source (piece 23): what it did,

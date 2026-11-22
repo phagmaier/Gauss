@@ -305,7 +305,11 @@ also before it reaches the backend.
   when a session starts or resumes, from the record as it is then (the
   style note and curriculum last applied), and sent afresh on every
   request, so a resumed session gets the current prompt; a running
-  session keeps the one it started with.
+  session keeps the one it started with. Whether a tutor's session has
+  web search is read from `course.json` then too, and a change of the
+  setting closes each open tutor session once it is between turns
+  (`renew` in `engine/conversation.ts`), so the next turn resumes it with
+  the setting's tools (section 8).
 - **Idle sessions.** A kept session is closed after ten minutes (`IDLE_MS`)
   with no turn queued or running and nothing waiting to send it a turn (a
   grading); the next turn resumes it.
@@ -817,8 +821,8 @@ workspace, is closed to both (`decisions.md`, "Confinement"). An open
 question in any unit of a course blocks every tutor's workspace changes,
 including after restart. Commands run in the foreground, and posting a
 question is refused while a write or command still runs. Reads stay allowed.
-In a course whose web search setting is on (stage 4), the tutor also has
-Claude Code's `WebSearch`, never `WebFetch` (section 8).
+In a course whose web search setting is on, the tutor also has Claude
+Code's `WebSearch`, never `WebFetch` (section 8).
 
 ## 6. Grading
 
@@ -960,13 +964,13 @@ The code is the reference: `src/server/backends/backend.ts` and
 
 ```ts
 interface TutorBackend {
-  startSession(opts: SessionOptions): Promise<TutorSession>;  // system prompt, tools, cwd, workspace tools, resumeId, title; rejects with SessionNotFound
+  startSession(opts: SessionOptions): Promise<TutorSession>;  // system prompt, tools, cwd, workspace tools, web search, resumeId, title; rejects with SessionNotFound
   hasSession(id: string, cwd: string): Promise<boolean>;      // a kept session is there, found without starting it
   oneShot<T>(req: OneShotRequest<T>): Promise<OneShotResult<T>>;  // system prompt, prompt, zod schema, signal
 }
 interface TutorSession {
   readonly backendSessionId: string;  // known from the start, before the first turn
-  send(turn: EngineTurn): AsyncIterable<BackendEvent>;  // text pieces, tool calls, then one turn_end
+  send(turn: EngineTurn): AsyncIterable<BackendEvent>;  // text pieces, tool calls, files written, searches, then one turn_end
   interrupt(): Promise<void>;
   close(): Promise<void>;
 }
@@ -1024,7 +1028,13 @@ backend".
   `PreToolUse` hook asks the engine before each `Write`, `Edit` and
   `Bash`, and its reason denies the call. A write is reported
   (`file_written`) once its tool result says it succeeded. The teaching
-  tools are an in-process MCP server with `alwaysLoad: true`.
+  tools are an in-process MCP server with `alwaysLoad: true`. A session
+  given web search (a tutor's, in a course that allows it) also gets
+  `WebSearch`, allowed under `dontAsk`, and never `WebFetch`; a
+  `PreToolUse` hook refuses a search whose input holds the account's
+  email address (`accountInfo()`), in any case, and every search if the
+  account cannot be read. A search is reported (`web_searched`) from the
+  tool's structured output (`tool_use_result`) once its result comes back.
 - **Ending the turn**: a `PostToolUse` hook stops the turn when a teaching
   tool returned `endTurn`, since the model does not reliably stop by
   itself.
@@ -1392,13 +1402,29 @@ Page images share `view_page`'s on-demand render and cache; a page that
 cannot be rendered is answered 503 with the reason. The pane keeps each
 section's text it has fetched while it stays on a source.
 
-### Planned: web search
+### Available now: web search
 
-**Web search** is a course's setting, off by default. With it on, the
-tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
-search shows in the thread with its links. A change applies from the
-learner's next message: the course's kept tutor sessions are closed,
-each once it is between turns, and resumed with the new tools.
+- **The setting** is `settings.webSearch` in `course.json` (`CourseSettings`
+  in `src/shared/course.ts`), off when a course is made. "The web", a
+  section of its own below the sources in the course view of an approved
+  course, has its switch, which posts the settings whole
+  (`POST /api/courses/<id>/settings`); a draft's is refused, since its
+  proposals rewrite `course.json` outside the file's lock.
+  `UnitChats.setWebSearch` writes it and has each of the course's open unit
+  chats renew its tutor session (section 4, "Kept sessions and resume"):
+  the setting applies from the learner's next message.
+- **The tutor** of a course with it on gets `WebSearch`, and no tool that
+  reads a page; the planners' sessions get no web tool.
+  `tutor.md`, "Web search", says when to search, to cite by link and to
+  quote nothing from the web. A query that holds the account's email
+  address is refused (section 7).
+- **In the thread**, each search is a line with its query and the pages
+  found, each once, as web links with their sites (`webSite` in
+  `src/shared/events.ts`, which opens only an `http` or `https` address),
+  three shown and the rest folded (`SearchLine` in `src/web/Session.tsx`).
+  A page the tutor cites is a link in its text. The transcript export lists
+  the query and the pages' titles and sites, without their addresses; the
+  handoff and notes writers read a line with the query.
 
 ## 9. Prompts
 
@@ -1534,7 +1560,9 @@ progress take the outline.
   selecting a unit still scrolls to it. The proposal and curriculum-change
   cards use the same diagram and fallback; when crowded, their nodes can
   be selected too. "Change the curriculum" at the right of the Units
-  heading of an approved course opens its planning conversation. At the
+  heading of an approved course opens its planning conversation. Below
+  the units come the course's sources and, for an approved course, "The
+  web" with its web search switch (section 8). At the
   foot, "Delete this course" (or "draft") asks in place: plainly, or with
   what goes and a box for the title, the button off until the title
   matches; a refusal shows the server's reason there, and a deletion

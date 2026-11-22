@@ -406,8 +406,8 @@ options as built are in `architecture.md` section 7.
   as the account's, or a workspace file the model chose to write it in
   (the agent's judgment, task 3.0). Web access is search only (the user's
   pick, 2026-11-21), so a query could carry it to Anthropic's search but
-  to no site, and a hook refuses a query that holds it (task 4.11). Look
-  again if an SDK adds a switch.
+  to no site, and a hook refuses a search that holds it ("Sources", "The
+  web and the channel out"). Look again if an SDK adds a switch.
 
 **Tools and ending a turn**
 
@@ -2797,7 +2797,34 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   address.
 - **The email address** reaches every session ("Claude backend"). A query
   could carry it to the search, not to a site; the hook that refuses a
-  query holding it (task 4.11) stops the plain case.
+  search whose input holds it, in any case, stops the plain case, and
+  refuses every search when the account cannot be read (the agent's
+  choice, task 4.11: the query cannot be checked then). `tutor.md` also
+  says never to search for the learner: in the Haiku run of task 4.11,
+  asked to search for the learner's own address, the tutor declined by
+  itself, so the hook is tested against a simulated SDK boundary only.
+- **A change applies by renewing the open tutor sessions** (the agent's
+  design, task 4.11): the setting is read from `course.json` whenever a
+  tutor session starts or resumes, and moving the switch closes each open
+  one when its running turn ends, or at once. Claude Code resumes a
+  session with a different tool set: in the Haiku run, after the switch
+  was turned off, the resumed session's requests had no `WebSearch`, and
+  the tutor answered from the earlier search's results in its context.
+- **Only an approved course's setting changes** (the agent's choice): a
+  draft's proposal writes `course.json` under the curriculum's lock, not
+  the file's, so a change made meanwhile could be lost; no tutor runs
+  before approval anyway.
+- **The thread's entry is the tool's structured output**
+  (`tool_use_result`, `WebSearchOutput` in the SDK's `sdk-tools.d.ts`), not
+  its text: in the Haiku run one search returned 18 pages and a line of
+  commentary. The tutor, teaching the 2026 Fields Medals, searched in its
+  teaching turn and cited three pages, all among those found.
+- **The detached search is ruled out**: the SDK gives
+  `{ detachedToolCall: true }` in place of a search's output when a message
+  from the user arrives while the search runs, and its result reaches the
+  model a turn later. The engine sends a turn only after the one before has
+  ended, so none arrives; none was seen in the Haiku run. One would show no
+  entry.
 - **WebRTC from an aid is accepted** (the user's decision, 2026-11-21),
   with reads confined ("Confinement"): what an aid could send out is the
   session's context (the learner's messages, profile and email address),

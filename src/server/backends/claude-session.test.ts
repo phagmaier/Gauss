@@ -433,6 +433,146 @@ test("sessions without the file and shell tools, an intake's and a unit's planni
   ).rejects.toThrow("The file and shell tools need a working folder.");
 });
 
+// --- Web search (task 4.11) --------------------------------------------------
+
+test("a session given web search gets WebSearch, allowed with nothing asked, beside the file and shell tools or alone, and never WebFetch; one not given it has no WebSearch", async () => {
+  const tmpDir = workspaceTmpDir(WORKSPACE);
+  try {
+    const withTools = await optionsOf({
+      cwd: WORKSPACE,
+      workspace: { acquire: async () => ({ release() {} }), reads: READS },
+      webSearch: true,
+    });
+    expect(withTools).toMatchObject({
+      tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash", "WebSearch"],
+      permissionMode: "dontAsk",
+      allowedTools: [
+        "mcp__gauss__ask_question",
+        `Edit(//data/courses/vectors/workspace/**)`,
+        "Bash",
+        "WebSearch",
+      ],
+      sandbox: { enabled: true, network: { allowedDomains: [] } },
+    });
+    expect(withTools.hooks?.PreToolUse?.map((m) => m.matcher)).toEqual([
+      "Write|Edit|Bash",
+      "WebSearch",
+    ]);
+
+    // Where the sandbox cannot run, a tutor has no file and shell tools.
+    const alone = await optionsOf({ cwd: WORKSPACE, webSearch: true });
+    expect(alone).toMatchObject({
+      tools: ["WebSearch"],
+      permissionMode: "dontAsk",
+      allowedTools: ["mcp__gauss__ask_question", "WebSearch"],
+    });
+    expect(alone.hooks?.PreToolUse?.map((m) => m.matcher)).toEqual([
+      "WebSearch",
+    ]);
+
+    const without = await optionsOf({
+      cwd: WORKSPACE,
+      workspace: { acquire: async () => ({ release() {} }), reads: READS },
+    });
+    for (const options of [withTools, alone, without]) {
+      expect(options.tools).not.toContain("WebFetch");
+      expect(options.allowedTools).not.toContain("WebFetch");
+    }
+    expect(without.tools).not.toContain("WebSearch");
+    expect(without.allowedTools).not.toContain("WebSearch");
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+/** A session given web search, on a query that reads the account as `account` says. */
+async function searchingSession(account: () => Promise<object>) {
+  vi.mocked(query).mockImplementation(
+    () =>
+      ({
+        initializationResult: async () => ({}),
+        accountInfo: account,
+        close() {},
+        async *[Symbol.asyncIterator]() {},
+      }) as unknown as Query,
+  );
+  const session = await createClaudeBackend().startSession({
+    systemPrompt: "Test tutor.",
+    tools: [],
+    cwd: WORKSPACE,
+    webSearch: true,
+  });
+  const options = vi.mocked(query).mock.lastCall?.[0].options;
+  if (options === undefined) throw new Error("query() was not called");
+  const hook = options.hooks?.PreToolUse?.find((m) => m.matcher === "WebSearch")
+    ?.hooks[0];
+  if (hook === undefined) throw new Error("no hook before a search");
+  const search = (input: object) =>
+    hook(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "WebSearch",
+        tool_input: input,
+        tool_use_id: "s1",
+        session_id: "test",
+        transcript_path: "",
+        cwd: WORKSPACE,
+      },
+      "s1",
+      { signal: new AbortController().signal },
+    );
+  return { session, search };
+}
+
+/** A hook's refusal, with the reason the model is given. */
+const refusal = (reason: string | RegExp) => ({
+  hookSpecificOutput: {
+    hookEventName: "PreToolUse",
+    permissionDecision: "deny",
+    permissionDecisionReason: expect.stringMatching(reason),
+  },
+});
+
+test("a search whose query or domains hold the account's email address, in any case, is refused before it runs, and says why; any other search goes on", async () => {
+  const { session, search } = await searchingSession(async () => ({
+    email: "Ada.Lovelace@Example.org",
+    subscriptionType: "max",
+  }));
+  try {
+    expect(await search({ query: "Hegel the true is the whole" })).toEqual({});
+    // The name alone is not the address.
+    expect(await search({ query: "Ada Lovelace notes" })).toEqual({});
+    for (const input of [
+      { query: "papers by ada.lovelace@example.org" },
+      { query: "ADA.LOVELACE@EXAMPLE.ORG Hegel" },
+      { query: "Hegel", allowed_domains: ["Ada.Lovelace@Example.org"] },
+    ]) {
+      expect(await search(input)).toEqual(refusal(/email address/));
+    }
+  } finally {
+    await session.close();
+  }
+});
+
+test("with no email address on the account every search goes on, and with an account that cannot be read every search is refused", async () => {
+  const none = await searchingSession(async () => ({ apiProvider: "bedrock" }));
+  try {
+    expect(await none.search({ query: "anything@example.org" })).toEqual({});
+  } finally {
+    await none.session.close();
+  }
+  const unread = await searchingSession(async () => {
+    throw new Error("Claude Code exited.");
+  });
+  try {
+    expect(await unread.search({ query: "Hegel" })).toEqual(
+      refusal(/could not be read/),
+    );
+  } finally {
+    await unread.session.close();
+  }
+});
+
 test("before each write and command the engine is asked, and its reason refuses the call; reads are not asked about", async () => {
   let reason: string | undefined;
   const acquire = vi.fn(async () =>

@@ -12,7 +12,9 @@
 // A session is closed once it has been idle for a while, with no turn queued
 // or running and no grading whose grade it will be sent, and resumed with
 // the next turn (task 2.15). A reopened unit resumes its tutor the same way:
-// opening it only asks the backend whether the session is there.
+// opening it only asks the backend whether the session is there. A change
+// of the course's web search setting closes the session once it is between
+// turns, and the next turn resumes it with the setting's tools (task 4.11).
 
 import type {
   GradedAnswer,
@@ -91,6 +93,11 @@ export interface UnitAgents {
    */
   startFresh(): void;
   /**
+   * Closes the tutor's session once it is between turns, so that the next
+   * turn resumes it with the course's settings as they are then (task 4.11).
+   */
+  renew(): void;
+  /**
    * Queues a turn for the tutor. The first one starts a session, unless one
    * was resumed. Nothing is sent once the agents are closed.
    */
@@ -139,6 +146,11 @@ export function createUnitAgents(options: {
   cwd: string;
   /** The file and shell tools in the workspace; none if not given. */
   workspace?: WorkspaceTools;
+  /**
+   * Whether the course allows web search, read whenever a session starts or
+   * resumes (task 4.11); none if not given.
+   */
+  webSearch?: () => Promise<boolean>;
   /** What the tutor's sessions are called among the backend's kept sessions. */
   title: string;
   /**
@@ -164,12 +176,18 @@ export function createUnitAgents(options: {
   const workspace =
     options.workspace === undefined ? {} : { workspace: options.workspace };
 
+  /** The course's settings as they are now, for a session starting or resuming. */
+  async function settings(): Promise<{ webSearch?: true }> {
+    return (await options.webSearch?.()) === true ? { webSearch: true } : {};
+  }
+
   async function startNew(): Promise<TutorSession> {
     const session = await backend.startSession({
       systemPrompt: systemPrompt(),
       tools,
       cwd,
       ...workspace,
+      ...(await settings()),
       title: options.title,
     });
     try {
@@ -193,6 +211,7 @@ export function createUnitAgents(options: {
               tools,
               cwd,
               ...workspace,
+              ...(await settings()),
               resumeId: id,
             });
           } catch (error) {
@@ -253,6 +272,8 @@ export function createUnitAgents(options: {
         }),
       );
     },
+
+    renew: () => tutor.renew(),
 
     send(turn) {
       if (closed) return;

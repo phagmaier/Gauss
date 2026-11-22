@@ -4438,6 +4438,128 @@ test("a lost resume associates the first queued message with the new conversatio
   }
 });
 
+// --- Task 4.11: web search ----------------------------------------------------
+
+const PAGES = [
+  {
+    title: "Theodor W. Adorno",
+    url: "https://plato.stanford.edu/entries/adorno/",
+  },
+  { title: "Minima Moralia", url: "https://en.wikipedia.org/wiki/Minima" },
+];
+const SEARCHING: FakeTurn = [
+  { search: "Adorno the whole is the false", results: PAGES },
+  { text: "Adorno turned it round ([SEP](https://plato.stanford.edu/))." },
+];
+
+test("moving the web search switch closes the tutor's session once the turn running ends, and the next message resumes it with WebSearch, whose search shows in the thread; moved back while idle, the session closes at once and resumes without it", async () => {
+  const timer = createFakeTimer();
+  const slow = Promise.withResolvers<void>();
+  const setup = setUp(
+    [TEACH, [{ text: "Slowly, then." }], SEARCHING, SEARCHING],
+    {
+      timer,
+      // A message saying "Slowly" is held until the test lets it go.
+      wrap: (backend) => ({
+        ...backend,
+        async startSession(options) {
+          const session = await backend.startSession(options);
+          return {
+            ...session,
+            async *send(turn, signal) {
+              if (turn.text.includes("Slowly")) await slow.promise;
+              yield* session.send(turn, signal);
+            },
+          };
+        },
+      }),
+    },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  const [id] = setup.backend.ids;
+  expect(setup.backend.sessions[0]?.webSearch).toBeUndefined();
+
+  chat.say("Slowly, please.");
+  const course = await setup.units.setWebSearch(COURSE, true);
+  expect(course.settings).toEqual({ webSearch: true });
+  expect((await reload().readCourse(COURSE))?.course.settings).toEqual({
+    webSearch: true,
+  });
+  await closing();
+  // Not in the middle of the turn.
+  expect(setup.backend.closed).toEqual([]);
+  slow.resolve();
+  await chat.settled();
+  await closing();
+  expect(setup.backend.closed).toEqual([id]);
+
+  chat.say("Who answered Hegel's line?");
+  await chat.settled();
+  expect(setup.backend.sessions).toHaveLength(2);
+  expect(setup.backend.sessions[1]).toMatchObject({
+    resumeId: id,
+    webSearch: true,
+  });
+  expect(since(chat, "learner")).toEqual([
+    expect.objectContaining({ type: "learner" }),
+    { type: "turn_start" },
+    {
+      type: "web_searched",
+      query: "Adorno the whole is the false",
+      results: PAGES,
+    },
+    expect.objectContaining({ type: "tutor_text" }),
+    { type: "turn_end", outcome: "done" },
+  ]);
+  expect(replay(chat).items).toContainEqual(
+    expect.objectContaining({
+      kind: "search",
+      query: "Adorno the whole is the false",
+      results: PAGES,
+    }),
+  );
+
+  await setup.units.setWebSearch(COURSE, false);
+  await closing();
+  expect(setup.backend.closed).toEqual([id, id]);
+  chat.say("And who else?");
+  await chat.settled();
+  expect(setup.backend.sessions).toHaveLength(3);
+  expect(setup.backend.sessions[2]?.resumeId).toBe(id);
+  expect(setup.backend.sessions[2]?.webSearch).toBeUndefined();
+  expect(setup.backend.calls.at(-1)).toMatchObject({
+    name: "WebSearch",
+    result: { status: "refused" },
+  });
+  expect(since(chat, "learner").map((e) => e.type)).not.toContain(
+    "web_searched",
+  );
+});
+
+test("a unit opened after the switch was turned on starts its tutor with WebSearch, and a search is kept in the transcript for after a restart", async () => {
+  const setup = setUp([TEACH, SEARCHING]);
+  await makeCourse();
+  await setup.units.setWebSearch(COURSE, true);
+  const chat = await open(setup);
+  expect(setup.backend.sessions[0]?.webSearch).toBe(true);
+  chat.say("Who answered Hegel's line?");
+  await chat.settled();
+  await setup.units.close();
+
+  const restarted = setUp([]);
+  try {
+    const reopened = await open(restarted);
+    expect(reopened.events()).toContainEqual({
+      type: "web_searched",
+      query: "Adorno the whole is the false",
+      results: PAGES,
+    });
+  } finally {
+    await restarted.units.close();
+  }
+});
+
 // --- Task 2.16a: the feedback turn after an answer ---------------------------
 
 /** Why ask_question is refused in the feedback on question `number`. */

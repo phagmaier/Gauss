@@ -43,36 +43,6 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.11 Web search
-
-- Status: todo
-- Depends on: 4.2
-- Why: web search is allowed per course, used only for material the tutor
-  lacks, and cited when used (`brief.md`, "Sources"). The user chose search
-  without reading pages (2026-11-21): what the tutor writes then goes to
-  Anthropic's search, not to a site of anyone's choosing.
-- Do: the course's setting, in `course.json` and off when absent, with its
-  switch in a section of its own, "The web", below the sources (piece 24).
-  A tutor session of a course with it on gets Claude Code's `WebSearch`,
-  allowed under `dontAsk`, and never `WebFetch`. The setting applies from
-  the learner's next message: moving the switch closes the course's kept
-  tutor sessions, each once it is between turns, and the next turn
-  resumes it with the setting's tools. Each search shows in the
-  thread with its query and result links, taken from the tool's
-  structured output. A `PreToolUse` hook refuses a query holding the
-  account's email address (`accountInfo()`), the piece of the learner's
-  identity every session has (`decisions.md`, "Claude backend").
-  `tutor.md`: search only for what the sources and the tutor's own
-  knowledge lack, cite what is used by its link, and quote nothing from
-  the web verbatim.
-- Done when: tests cover the tool given only with the setting on, a
-  switch that closes a session between turns and the next turn resuming
-  with the tool, a search's thread entry, and the hook's refusal.
-  A Haiku run on the plan login, in a course with the setting on, searches,
-  shows the entry and cites a link; with it off, the tool is absent. The
-  SDK's detached search (a call that "stepped aside for a message the user
-  sent", `sdk.d.ts`) is seen or ruled out.
-
 ### 4.12 The prompts in a source course
 
 - Status: todo

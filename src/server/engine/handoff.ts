@@ -363,6 +363,9 @@ export function readStretch(
           `[The tutor quoted the section "${event.section}", verified in the source:]\n${event.text}`,
         );
         break;
+      case "web_searched":
+        say(`[The tutor searched the web for "${event.query}".]`);
+        break;
       case "artifact":
         say(`[The tutor showed an aid: "${event.title}".]`);
         break;

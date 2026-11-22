@@ -17,6 +17,10 @@
 // file tools only there, commands only in Claude Code's sandbox, reading
 // only what the engine allows, and a temporary folder of its own. The engine
 // can refuse a write or a command, which a PreToolUse hook asks it about.
+//
+// A tutor's session in a course that allows it gets web search, never
+// WebFetch (task 4.11; decisions.md, "Sources"); a hook refuses a query that
+// holds the account's email address.
 
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -24,9 +28,11 @@ import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import {
+  type AccountInfo,
   createSdkMcpServer,
   getSessionInfo,
   type HookCallback,
+  type HookCallbackMatcher,
   type Options,
   query,
   type SDKMessage,
@@ -35,6 +41,7 @@ import {
   tool,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import type { WebResult } from "../../shared/events.ts";
 import { type CommandReads, sandboxCommand } from "../sandbox-command.ts";
 import {
   type BackendEvent,
@@ -177,6 +184,64 @@ const CHANGES = new Set(["Write", "Edit", "Bash"]);
 
 /** The file tools that write a file, whose path the thread shows. */
 const WRITES = new Set(["Write", "Edit"]);
+
+/** Claude Code's web search. Its WebFetch, which reads a page, is never given. */
+const WEB_SEARCH = "WebSearch";
+
+/**
+ * Adds web search to a session's built-in tools, allowed without asking,
+ * as dontAsk refuses whatever no rule allows.
+ */
+function withWebSearch(builtIn: Options): Options {
+  return {
+    ...builtIn,
+    tools: [...(Array.isArray(builtIn.tools) ? builtIn.tools : []), WEB_SEARCH],
+    permissionMode: "dontAsk",
+    allowedTools: [...(builtIn.allowedTools ?? []), WEB_SEARCH],
+  };
+}
+
+/** What the model is told when a search would send the learner's email address. */
+const SEARCH_HOLDS_EMAIL =
+  "Refused: this search holds the learner's email address, which a search must never send. Search without it.";
+
+/**
+ * Why a search is refused, if it is: its input holds the account's email
+ * address, in any case (decisions.md, "Claude backend"). An account that
+ * cannot be read refuses every search, since the query cannot be checked.
+ */
+async function searchRefusal(
+  input: unknown,
+  account: () => Promise<AccountInfo>,
+): Promise<string | undefined> {
+  let email: string | undefined;
+  try {
+    email = (await account()).email?.trim().toLowerCase();
+  } catch {
+    return "Web search is unavailable now: the learner's account could not be read to check the search.";
+  }
+  if (email === undefined || email === "") return undefined;
+  return String(JSON.stringify(input)).toLowerCase().includes(email)
+    ? SEARCH_HOLDS_EMAIL
+    : undefined;
+}
+
+/**
+ * The part of WebSearch's structured output the thread shows
+ * (`WebSearchOutput` in the SDK's `sdk-tools.d.ts`): the query searched,
+ * and the pages found among the model's commentary.
+ */
+const SearchOutput = z.object({
+  query: z.string(),
+  results: z.array(
+    z.union([
+      z.string(),
+      z.object({
+        content: z.array(z.object({ title: z.string(), url: z.string() })),
+      }),
+    ]),
+  ),
+});
 
 /**
  * The private temporary folder of the tutor working in `cwd`, one per
@@ -396,6 +461,8 @@ async function startSession(
     const realCwd = await realpath(cwd).catch(() => cwd);
     builtIn = workspaceOptions(cwd, realCwd, tmpDir, workspace.reads);
   }
+  const searching = options.webSearch === true;
+  if (searching) builtIn = withWebSearch(builtIn);
   const inbox = createInbox();
   let interruptRequested = false;
   let turnSignal: AbortSignal | undefined;
@@ -492,15 +559,7 @@ async function startSession(
         mutations.set(input.tool_use_id, reservation.release);
       }
     }
-    if (reason !== undefined) {
-      return {
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "deny",
-          permissionDecisionReason: reason,
-        },
-      };
-    }
+    if (reason !== undefined) return deny(reason);
     if (
       process.platform === "linux" &&
       input.tool_name === "Bash" &&
@@ -522,6 +581,31 @@ async function startSession(
     }
     return {};
   };
+  // The account's email address reaches every session (decisions.md,
+  // "Claude backend"); a search must not carry it out.
+  const guardSearch: HookCallback = async (input) => {
+    if (input.hook_event_name !== "PreToolUse") return {};
+    const reason =
+      interruptRequested || closed
+        ? "The learner stopped this turn."
+        : await searchRefusal(input.tool_input, () => session.accountInfo());
+    return reason === undefined ? {} : deny(reason);
+  };
+  const beforeTools: HookCallbackMatcher[] = [];
+  if (workspace !== undefined) {
+    beforeTools.push({
+      matcher: "Write|Edit|Bash",
+      hooks: [askEngine],
+      onFailure: "block",
+    });
+  }
+  if (searching) {
+    beforeTools.push({
+      matcher: WEB_SEARCH,
+      hooks: [guardSearch],
+      onFailure: "block",
+    });
+  }
 
   const session = query({
     prompt: inbox.messages,
@@ -538,16 +622,10 @@ async function startSession(
       ],
       hooks: {
         UserPromptSubmit: [{ hooks: [cancelPendingTurn], onFailure: "block" }],
+        ...(beforeTools.length === 0 ? {} : { PreToolUse: beforeTools }),
         ...(workspace === undefined
           ? {}
           : {
-              PreToolUse: [
-                {
-                  matcher: "Write|Edit|Bash",
-                  hooks: [askEngine],
-                  onFailure: "block",
-                },
-              ],
               PostToolUseFailure: [{ hooks: [endTurn], onFailure: "block" }],
               PermissionDenied: [{ hooks: [endTurn], onFailure: "block" }],
             }),
@@ -659,12 +737,14 @@ async function startSession(
  * Turns one turn's SDK messages into backend events. Separate text blocks in
  * a turn are joined with a blank line. Messages from subagents are skipped.
  * A file tool's write is reported once its result says it succeeded, with
- * the file's path in `cwd`.
+ * the file's path in `cwd`, and a web search once its result came back.
  */
 export function createTurnReader(cwd?: string) {
   let textBlocks = 0;
   /** The files that the file tools' calls not yet answered write, by call id. */
   const writing = new Map<string, string>();
+  /** The web searches not yet answered, by call id. */
+  const searching = new Set<string>();
   return {
     read(message: SDKMessage, interruptRequested: boolean): BackendEvent[] {
       switch (message.type) {
@@ -699,6 +779,7 @@ export function createTurnReader(cwd?: string) {
               if (WRITES.has(block.name) && path !== undefined) {
                 writing.set(block.id, path);
               }
+              if (block.name === WEB_SEARCH) searching.add(block.id);
             }
           }
           return events;
@@ -710,6 +791,16 @@ export function createTurnReader(cwd?: string) {
           const events: BackendEvent[] = [];
           for (const block of content) {
             if (block.type !== "tool_result") continue;
+            if (searching.delete(block.tool_use_id)) {
+              // Each tool result comes in a message of its own, with the
+              // tool's structured output beside it.
+              const searched =
+                block.is_error === true
+                  ? undefined
+                  : searchedEvent(message.tool_use_result);
+              if (searched !== undefined) events.push(searched);
+              continue;
+            }
             const path = writing.get(block.tool_use_id);
             if (path === undefined) continue;
             writing.delete(block.tool_use_id);
@@ -724,6 +815,43 @@ export function createTurnReader(cwd?: string) {
         default:
           return [];
       }
+    },
+  };
+}
+
+/**
+ * A search's entry, from WebSearch's structured output: each page found
+ * once, in the order given. A call that "stepped aside for a message the
+ * user sent" carries `{ detachedToolCall: true }` in its place (`sdk.d.ts`),
+ * but the engine sends nothing while a turn runs (decisions.md, "Sources").
+ */
+function searchedEvent(output: unknown): BackendEvent | undefined {
+  const parsed = SearchOutput.safeParse(output);
+  if (!parsed.success) {
+    console.warn("A web search's result could not be read:", output);
+    return undefined;
+  }
+  const results = new Map<string, WebResult>();
+  for (const part of parsed.data.results) {
+    if (typeof part === "string") continue;
+    for (const { title, url } of part.content) {
+      if (!results.has(url)) results.set(url, { title, url });
+    }
+  }
+  return {
+    type: "web_searched",
+    query: parsed.data.query,
+    results: [...results.values()],
+  };
+}
+
+/** Refuses a tool call, with the reason the model is given. */
+function deny(reason: string) {
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse" as const,
+      permissionDecision: "deny" as const,
+      permissionDecisionReason: reason,
     },
   };
 }

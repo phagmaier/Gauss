@@ -23,6 +23,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { CourseSettings } from "../shared/course.ts";
 import {
   type StoredUnit,
   type Unit,
@@ -400,6 +401,19 @@ export function Course(props: { courseId: string }) {
                   onOpen={openOutline}
                 />
               ) : null}
+              {approved ? (
+                <WebSetting
+                  courseId={courseId}
+                  on={stored.course.settings.webSearch}
+                  sources={sources !== undefined && sources.length > 0}
+                  onChange={(settings) =>
+                    setStored(
+                      (was) =>
+                        was && { ...was, course: { ...was.course, settings } },
+                    )
+                  }
+                />
+              ) : null}
               <DeleteOffer key={stored.id} course={stored} />
             </>
           )}
@@ -486,6 +500,71 @@ function CourseSources(props: {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * "The web" (piece 24): the course's web search setting, a switch off by
+ * default, saying what a search sends and when a change applies.
+ */
+function WebSetting(props: {
+  courseId: string;
+  on: boolean;
+  /** The course has sources, which the tutor searches only beyond. */
+  sources: boolean;
+  onChange(settings: CourseSettings): void;
+}) {
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState<string>();
+
+  async function toggle() {
+    setSending(true);
+    setProblem(undefined);
+    const answer = await postFor(
+      `/api/courses/${encodeURIComponent(props.courseId)}/settings`,
+      CourseSettings,
+      { webSearch: !props.on } satisfies CourseSettings,
+    );
+    setSending(false);
+    if (answer.ok) props.onChange(answer.data);
+    else setProblem(answer.error);
+  }
+
+  return (
+    <section aria-label="The web">
+      <div className="cv-hrow cv-sec">
+        <h2 className="pg-h">The web</h2>
+      </div>
+      <div className="sw">
+        <button
+          type="button"
+          className="tog"
+          role="switch"
+          aria-checked={props.on}
+          aria-labelledby="web-search"
+          disabled={sending}
+          onClick={() => void toggle()}
+        />
+        <div className="t">
+          <span id="web-search">Web search</span>
+          <span className="st">{props.on ? "On" : "Off"}</span>
+        </div>
+        <p>
+          The tutor may search the web for what{" "}
+          {props.sources
+            ? "the sources and its own knowledge lack"
+            : "its own knowledge lacks"}
+          {", and cites what it uses. "}A search sends the words the tutor
+          searches for to Anthropic's web search; the tutor never opens a page.
+        </p>
+        <p>Turning it on or off applies from your next message in each unit.</p>
+      </div>
+      {problem === undefined ? null : (
+        <p className="qa-error" role="alert">
+          {problem}
+        </p>
+      )}
     </section>
   );
 }

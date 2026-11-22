@@ -60,6 +60,22 @@ export const TestShown = z.object({
 });
 export type TestShown = z.infer<typeof TestShown>;
 
+/** A page a web search found (task 4.11): its title and address. */
+export const WebResult = z.object({ title: z.string(), url: z.string() });
+export type WebResult = z.infer<typeof WebResult>;
+
+/**
+ * The site a search result is on, as its line names it ("plato.stanford.edu"),
+ * and whether its address may be opened: only a web address is.
+ */
+export function webSite(url: string): { site: string; opens: boolean } {
+  const parsed = URL.parse(url);
+  return parsed !== null &&
+    (parsed.protocol === "https:" || parsed.protocol === "http:")
+    ? { site: parsed.hostname.replace(/^www\./, ""), opens: true }
+    : { site: url, opens: false };
+}
+
 /**
  * One entry in a chat's event log. The log is replayed to every page that
  * connects, so a reload rebuilds the thread. A unit chat's log is also its
@@ -148,6 +164,16 @@ export const PageEvent = z.discriminatedUnion("type", [
     /** The source's words, without its markup; paragraphs between blank lines, a line break as a newline. */
     text: z.string().min(1),
     at: QuoteStart.optional(),
+  }),
+  /**
+   * The tutor searched the web (task 4.11), in a course whose setting
+   * allows it: the query as searched and the pages found, in the order the
+   * search gave them. The tutor reads what the search returns, never a page.
+   */
+  z.object({
+    type: z.literal("web_searched"),
+    query: z.string(),
+    results: z.array(WebResult),
   }),
   /**
    * The tutor asked to install packages in the course's workspace (task

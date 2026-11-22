@@ -2,6 +2,7 @@
 // these types; the SDKs stay inside the files of this folder.
 
 import { z } from "zod";
+import type { WebResult } from "../../shared/events.ts";
 import type { CommandReads } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 
@@ -20,6 +21,13 @@ export interface SessionOptions {
    * must have: a tutor's (task 3.3). Absent: no built-in tools.
    */
   workspace?: WorkspaceTools;
+  /**
+   * Gives the session the backend's web search, and never a tool that
+   * reads a page (task 4.11): a tutor's in a course whose setting allows
+   * it. A query holding the account's email address is refused. Given
+   * again with each resume, as the setting stands then.
+   */
+  webSearch?: boolean;
   /**
    * The id of a kept session to resume, in the folder it ran in. Its
    * conversation goes on, and the system prompt given here replaces the one
@@ -80,6 +88,11 @@ export type BackendEvent =
    * absolute outside it. Only after the write succeeded.
    */
   | { type: "file_written"; path: string }
+  /**
+   * The web search tool searched: the query as searched and the pages
+   * found. Only once its result came back; a refused search is not one.
+   */
+  | { type: "web_searched"; query: string; results: WebResult[] }
   /** The last event of every turn. */
   | {
       type: "turn_end";

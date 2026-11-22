@@ -27,13 +27,23 @@ export type Timestamp = z.infer<typeof Timestamp>;
 export const BackendName = z.enum(["claude"]);
 export type BackendName = z.infer<typeof BackendName>;
 
+/**
+ * The course's settings, which the course view changes. Each change of one
+ * is posted whole, and answered with the settings as written.
+ */
+export const CourseSettings = z.object({
+  /**
+   * Whether the tutor may search the web for material it lacks (task 4.11):
+   * a search, never reading a page. Off when a course is made.
+   */
+  webSearch: z.boolean(),
+});
+export type CourseSettings = z.infer<typeof CourseSettings>;
+
 export const Course = z.object({
   title: z.string().trim().min(1).max(200),
   backend: BackendName,
-  settings: z.object({
-    /** Whether the tutor may search the web for material it lacks (stage 4). */
-    webSearch: z.boolean(),
-  }),
+  settings: CourseSettings,
   createdAt: Timestamp,
   /** Identity across slug reuse. Older records use their creation timestamp. */
   instance: z.uuid().optional(),

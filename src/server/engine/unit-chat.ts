@@ -115,7 +115,7 @@
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import type { Slug } from "../../shared/course.ts";
+import type { Course, Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import {
   type CurriculumChange,
@@ -435,6 +435,13 @@ export interface UnitChats extends CourseHolder {
   reviewNow(courseId: string): Promise<ReviewResult>;
   /** The course's side of its planning conversation (task 5.38). */
   courseDesk(courseId: Slug): CourseDesk;
+  /**
+   * Sets whether the course's tutors may search the web (task 4.11), and
+   * closes the tutor session of each of its open chats once it is between
+   * turns, so that the setting applies from the next turn. Answers the
+   * course as written; throws for a course not approved.
+   */
+  setWebSearch(courseId: Slug, on: boolean): Promise<Course>;
   /** Closes the tutor session of every chat. */
   close(): Promise<void>;
 }
@@ -703,6 +710,12 @@ export function createUnitChats(options: ChatOptions): UnitChats {
         ...workspace(courseId).desk,
         applied: () => recurriculum(courseId, undefined),
       };
+    },
+    async setWebSearch(courseId, on) {
+      const course = await dataRoot.setWebSearch(courseId, on);
+      // A session starting now reads the setting written; one open renews.
+      for (const chat of othersIn(courseId, undefined)) chat.renew();
+      return course;
     },
     async close() {
       await Promise.allSettled([...chats.values()].map((c) => c.close()));
@@ -1159,6 +1172,11 @@ interface OpenableChat extends UnitChat {
    * notifying the page and telling the tutor in its next header.
    */
   learnCurriculum(): Promise<void>;
+  /**
+   * Closes the tutor's session once it is between turns, so that the next
+   * turn resumes it with the course's settings as they are then (task 4.11).
+   */
+  renew(): void;
 }
 
 /** The chat once its unit is planned and its record read. */
@@ -1395,6 +1413,10 @@ function createUnitChat(
                 quoteSourceTool(sourceShelf),
               ]),
         ],
+        // Read whenever a session starts or resumes (task 4.11).
+        webSearch: async () =>
+          (await dataRoot.readCourse(courseId))?.course.settings.webSearch ===
+          true,
         cwd: workspace,
         ...(options.workspaceTools === undefined
           ? {}
@@ -4175,6 +4197,9 @@ function createUnitChat(
           r.notes.push(styleNote("changed", note));
         }
       });
+    },
+    renew() {
+      agents?.renew();
     },
     async learnCurriculum() {
       log.emit({ type: "curriculum_changed" });

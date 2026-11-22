@@ -145,6 +145,12 @@ export interface DataRoot {
     options?: { requested?: true },
   ): Promise<boolean>;
   /**
+   * Sets whether the course's tutors may search the web (task 4.11), under
+   * the course file's lock, and answers the course as written. Only for an
+   * approved course: a draft's proposals write course.json without it.
+   */
+  setWebSearch(id: string, on: boolean): Promise<Course>;
+  /**
    * The course's style note, style.md, trimmed, or undefined when it has
    * none (a course proposed before notes existed, task 2.10) or the file is
    * blank.
@@ -918,6 +924,24 @@ export function openDataRoot(options: {
         };
         await writeJson(path, Course, course);
         return true;
+      });
+    },
+
+    async setWebSearch(id, on) {
+      const path = courseFile(id, "course.json");
+      return withFileLock(path, async () => {
+        const stored = await existingCourse(id);
+        if (stored.curriculum?.approval.status !== "approved") {
+          throw new Error(
+            `The curriculum of "${id}" is not approved, so its settings cannot change.`,
+          );
+        }
+        const course: Course = {
+          ...stored.course,
+          settings: { ...stored.course.settings, webSearch: on },
+        };
+        await writeJson(path, Course, course);
+        return course;
       });
     },
 

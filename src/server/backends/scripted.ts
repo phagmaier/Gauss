@@ -61,6 +61,9 @@
 // - Quotes (task 4.9): a message with "/quote" in it quotes the rest of its
 //   line with quote_source, as the tutor of a course with a source can; the
 //   engine refuses it while a question is open, or when the sources lack it.
+// - Web search (task 4.11): a message with "/search" in it searches the web
+//   for the rest of its line, finding five pages, and cites the first, in a
+//   course that allows web search; in another, it says that it cannot.
 // - Packages (task 3.11): a message with "/packages" in it asks to install
 //   the names that follow it on its line, `pytest` if none, which the
 //   engine refuses while a question is open; Install really installs them,
@@ -241,6 +244,10 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   const historyAt = header.lastIndexOf(QUESTION_HISTORY_START);
   const controls = historyAt === -1 ? header : header.slice(0, historyAt);
   const history = historyAt === -1 ? "" : header.slice(historyAt);
+  const searching = /(?:^|\s)\/search\b(.*)$/m.exec(body);
+  if (searching !== null) {
+    return webSearch(searching[1] ?? "", session.webSearch === true);
+  }
   return teaching(
     controls,
     history,
@@ -250,6 +257,24 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     courseStyle(session.systemPrompt),
     course,
   );
+}
+
+/** "/search" in a tutor's session (task 4.11): five pages found, the first cited. */
+function webSearch(line: string, allowed: boolean): FakeStep[] {
+  if (!allowed) {
+    return [{ text: "Scripted: this course does not allow web search." }];
+  }
+  const query = line.trim() || "the true is the whole";
+  const results = [1, 2, 3, 4, 5].map((n) => ({
+    title: `Scripted page ${n} on ${query}`,
+    url: `https://example.org/scripted/${n}`,
+  }));
+  return [
+    { search: query, results },
+    {
+      text: `Scripted: from the search, [the first page](${results[0]?.url}).`,
+    },
+  ];
 }
 
 /** A turn's header, between its brackets, and what follows it. */

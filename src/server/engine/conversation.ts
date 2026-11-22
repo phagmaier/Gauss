@@ -100,6 +100,12 @@ export interface Conversation {
   send(turn: string | Turn): void;
   /** A turn is queued or running. */
   busy(): boolean;
+  /**
+   * Closes the kept session once it is between turns, at once if no turn
+   * is running, so that the next turn resumes it with the options as they
+   * are then (task 4.11). Nothing for a session not kept or not open.
+   */
+  renew(): void;
   /** Stops the tutor's turn in progress, if there is one. */
   interrupt(): Promise<void>;
   /**
@@ -185,6 +191,8 @@ export function createConversation(options: {
   let closed = false;
   let running: RunningTurn | undefined;
   let turnsWaiting = 0;
+  /** The session is to be closed when the turn running ends. */
+  let renewing = false;
   let queue: Promise<void> = Promise.resolve();
 
   async function runTurn(turn: Turn): Promise<void> {
@@ -196,8 +204,7 @@ export function createConversation(options: {
       console.error("A chat could not tell whether to skip a turn:", error);
     }
     if (skipped) {
-      turnsWaiting -= 1;
-      idleFromNow();
+      turnDone();
       return;
     }
     const current: RunningTurn = { stop: new AbortController(), reply: "" };
@@ -215,9 +222,18 @@ export function createConversation(options: {
         // The next turn must still run.
         console.error("A chat's end-of-turn work failed:", error);
       }
-      turnsWaiting -= 1;
-      idleFromNow();
+      turnDone();
     }
+  }
+
+  /** A turn ended or was skipped: the session is renewed, or idle from now. */
+  function turnDone(): void {
+    turnsWaiting -= 1;
+    if (renewing) {
+      renewing = false;
+      release();
+    }
+    idleFromNow();
   }
 
   /** The session for the turn about to be sent: the one running, or one started or resumed now. */
@@ -269,12 +285,20 @@ export function createConversation(options: {
       idleFromNow();
       return;
     }
-    const idle = session;
+    release();
+  }
+
+  /** Closes the session; the next turn resumes it. */
+  function release(): void {
+    if (closed || session === undefined) return;
+    cancelIdle?.();
+    cancelIdle = undefined;
+    const ending = session;
     session = undefined;
-    closing = idle
+    closing = ending
       .then((tutor) => tutor.close())
       .catch((error: unknown) => {
-        console.error("An idle tutor session could not be closed:", error);
+        console.error("A tutor session could not be closed:", error);
       });
   }
 
@@ -315,6 +339,12 @@ export function createConversation(options: {
             written.add(event.path);
             log.emit({ type: "file_written", path: event.path });
           }
+        } else if (event.type === "web_searched") {
+          log.emit({
+            type: "web_searched",
+            query: event.query,
+            results: event.results,
+          });
         } else if (event.type === "turn_end") {
           current.stop.abort();
           const outcome =
@@ -343,6 +373,11 @@ export function createConversation(options: {
       queue = queue.then(() => runTurn(queued));
     },
     busy: () => turnsWaiting > 0,
+    renew() {
+      if (kept === undefined || closed || session === undefined) return;
+      if (turnsWaiting > 0) renewing = true;
+      else release();
+    },
     async interrupt() {
       const turn = running;
       if (turn === undefined) return;
