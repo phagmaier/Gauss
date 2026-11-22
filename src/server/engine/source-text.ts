@@ -57,7 +57,10 @@ export function outlineLines(outline: Outline): string[] {
  * where the PDF has labels that differ; else its paragraphs, numbered
  * within its heading's stretch.
  */
-export function placeText(place: SectionPlace, outline: Outline): string {
+export function placeText(
+  place: SectionPlace,
+  outline: Pick<Outline, "pages">,
+): string {
   if ("paragraphs" in place) {
     const { first, last } = place.paragraphs;
     return first === last

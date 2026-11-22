@@ -9,6 +9,7 @@ import type { PageEvent } from "../../shared/events.ts";
 import type { HandoffReply } from "../../shared/handoff.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { QuestionView } from "../../shared/question.ts";
+import type { Outline } from "../../shared/source.ts";
 import type { Transcript } from "../record/data-root.ts";
 import {
   foundIn,
@@ -598,4 +599,49 @@ test("a code answer's reasoning can be quoted, but not the submitted file, which
   ];
   expect(quoteKept(events, "leave x unchanged")).toBe(true);
   expect(quoteKept(events, "return 0")).toBe(false);
+});
+
+test("a read of part of a section names the range it read, and a viewed page its page, by printed labels only when the outlines are given", () => {
+  const events: PageEvent[] = [
+    {
+      type: "section_read",
+      section: "phenomenology/s1",
+      range: { pages: { first: 2, last: 3 } },
+    },
+    { type: "section_read", section: "phenomenology/s2" },
+  ];
+  expect(readStretch(events, { plan: PLAN, answers }).text).toBe(
+    '[The tutor read the section "phenomenology/s1", pages 2–3.]\n\n' +
+      '[The tutor read the section "phenomenology/s2".]',
+  );
+  const book: Outline = {
+    id: "phenomenology",
+    title: "The Phenomenology of Spirit",
+    file: "original.pdf",
+    name: "hegel.pdf",
+    format: "pdf",
+    sha256: "a".repeat(64),
+    converter: 5,
+    limit: 20_000,
+    pages: { count: 4, labels: ["i", "ii", "1", "2"], blank: [] },
+    entries: [],
+  };
+  expect(
+    readStretch(events.slice(0, 1), { plan: PLAN, answers, sources: [book] })
+      .text,
+  ).toBe('[The tutor read the section "phenomenology/s1", pp. ii–1.]');
+  // The PDF's third page is printed 1; a second source adds no title to it.
+  const viewed: PageEvent[] = [
+    { type: "page_viewed", source: "phenomenology", page: 3 },
+  ];
+  expect(readStretch(viewed, { plan: PLAN, answers }).text).toBe(
+    '[The tutor looked at page 3 of the source "phenomenology".]',
+  );
+  expect(
+    readStretch(viewed, {
+      plan: PLAN,
+      answers,
+      sources: [book, { ...book, id: "logic", title: "Science of Logic" }],
+    }).text,
+  ).toBe('[The tutor looked at page 1 of the source "phenomenology".]');
 });

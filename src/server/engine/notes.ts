@@ -7,6 +7,7 @@ import {
   NotesReply,
   type NotesView,
 } from "../../shared/notes.ts";
+import type { Plan } from "../../shared/plan.ts";
 import { CHOICE_LETTERS } from "../../shared/question.ts";
 import { type Outline, sectionsByRef } from "../../shared/source.ts";
 import { placeSpan } from "../../shared/source-lines.ts";
@@ -285,7 +286,13 @@ async function request(
     tagged(
       "unit",
       JSON.stringify(
-        { courseTitle, title: unit.title, goal: unit.goal, testedOut, plan },
+        {
+          courseTitle,
+          title: unit.title,
+          goal: unit.goal,
+          testedOut,
+          plan: citedPlan(plan, sources),
+        },
         null,
         2,
       ),
@@ -303,6 +310,35 @@ async function request(
     tagged("misconceptions", JSON.stringify(localMisconceptions, null, 2)),
     tagged("instructions", instructions),
   ].join("\n\n");
+}
+
+/**
+ * The plan with each passage's range given as its printed pages or
+ * paragraphs: the stored range counts the PDF's pages from 1, which the
+ * writer, asked to cite printed pages, could take for them.
+ */
+function citedPlan(plan: Plan, sources: readonly Outline[]) {
+  const byRef = sectionsByRef(sources);
+  return {
+    ...plan,
+    segments: plan.segments.map(({ passages, ...segment }) =>
+      passages === undefined
+        ? segment
+        : {
+            ...segment,
+            passages: passages.map(({ section, range }) => {
+              const found = byRef.get(section);
+              return {
+                section,
+                place:
+                  found === undefined
+                    ? undefined
+                    : placeSpan(found.source, range),
+              };
+            }),
+          },
+    ),
+  };
 }
 
 /**

@@ -1405,6 +1405,8 @@ test("a finished unit writes only on request, retries a failure and replaces its
     expect(request?.prompt).not.toContain(
       "Find the directions a map only stretches",
     );
+    // A course with no source has no sections to cite.
+    expect(request?.prompt).not.toContain("<sections>");
 
     const turns = setup.backend.received.length;
     expect((await post(setup.app, notes, { instructions })).status).toBe(202);

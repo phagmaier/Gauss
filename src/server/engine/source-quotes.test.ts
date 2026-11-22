@@ -136,12 +136,16 @@ const PLAN: Plan = {
 };
 
 /** The course with its source, the preface planned, at the position given. */
-async function makeCourse(root: DataRoot, position?: UnitPosition) {
+async function makeCourse(
+  root: DataRoot,
+  position?: UnitPosition,
+  plan: Plan = PLAN,
+) {
   const { id } = await root.createCourse({ title: CURRICULUM.title });
   await placeTestSource(root, dir, id, BOOK, { s1: S1, s2: S2, s3: S3 });
   await root.saveProposal(id, CURRICULUM);
   await root.approveCurriculum(id, CURRICULUM);
-  await root.storePlan(id, "preface", PLAN, PREFACE.sections);
+  await root.storePlan(id, "preface", plan, PREFACE.sections);
   if (position !== undefined) await root.writePosition(id, "preface", position);
   return id;
 }
@@ -622,13 +626,14 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
 });
 
 /** The preface taught and finished: a passage read, linked and quoted. */
-async function taughtPreface(root: DataRoot) {
-  const id = await makeCourse(root);
+async function taughtPreface(root: DataRoot, plan: Plan = PLAN) {
+  const id = await makeCourse(root, undefined, plan);
   await root.appendTranscript(id, "preface", 1, [
     { type: "session", startedAt: NOW },
     { type: "phase", segment: 0, phase: "teach" },
     { type: "turn_start" },
     { type: "section_read", section: "phenomenology/s1" },
+    { type: "page_viewed", source: "phenomenology", page: 2 },
     {
       type: "tutor_text",
       text: "Hegel starts from [the whole](source:phenomenology/s1/p9). He says:",
@@ -656,7 +661,23 @@ async function taughtPreface(root: DataRoot) {
 
 test("the notes writer gets the unit's sections as the source prints them and each verified quote with its citation", async () => {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
-  const id = await taughtPreface(root);
+  // The second segment reads only the PDF's third page, printed 11.
+  const id = await taughtPreface(root, {
+    ...PLAN,
+    segments: PLAN.segments.map((segment, index) =>
+      index === 1
+        ? {
+            ...segment,
+            passages: [
+              {
+                section: "phenomenology/s2",
+                range: { pages: { first: 3, last: 3 } },
+              },
+            ],
+          }
+        : segment,
+    ),
+  });
   const backend = createFakeBackend([], [{ fail: "Capture the request." }]);
   const notes = createNotes({
     dataRoot: root,
@@ -690,6 +711,15 @@ test("the notes writer gets the unit's sections as the source prints them and ea
       '[The tutor quoted the section "phenomenology/s1", verified in the source, cited as "Preface, p. 10":]\nit is essentially a result.',
     );
     expect(prompt).toContain("[the whole](source:phenomenology/s1/p9)");
+    // The PDF's second page and the planned third, as printed: 10 and 11.
+    expect(prompt).toContain(
+      '[The tutor looked at page 10 of the source "phenomenology".]',
+    );
+    expect(prompt).not.toContain("page 2 of the source");
+    const unit = /<unit>\n([\s\S]*?)\n<\/unit>/.exec(prompt)?.[1];
+    expect(JSON.parse(unit ?? "null").plan.segments[1].passages).toEqual([
+      { section: "phenomenology/s2", place: "p. 11" },
+    ]);
   } finally {
     await notes.close();
   }

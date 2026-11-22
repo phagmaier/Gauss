@@ -30,12 +30,17 @@ import {
   type QuestionView,
 } from "../../shared/question.ts";
 import type { Outline } from "../../shared/source.ts";
-import { quoteCitation } from "../../shared/source-lines.ts";
+import {
+  pageLabel,
+  placeSpan,
+  quoteCitation,
+} from "../../shared/source-lines.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot, Transcript } from "../record/data-root.ts";
 import { objectiveStatus } from "../record/status.ts";
 import { duration } from "./grading.ts";
+import { placeText } from "./source-text.ts";
 import type { UnitContext } from "./unit-turns.ts";
 
 /** How long a call may take before it is stopped and fails. */
@@ -355,14 +360,27 @@ export function readStretch(
       case "file_written":
         say(`[The tutor wrote the file "${event.path}".]`);
         break;
-      case "section_read":
-        say(`[The tutor read the section "${event.section}".]`);
+      case "section_read": {
+        // Without the outlines (the handoff), pages count from the PDF's
+        // first; with them (notes, which cite printed pages), printed only.
+        const source = given.sources?.find(
+          (s) => s.id === event.section.split("/")[0],
+        );
+        const range =
+          event.range === undefined
+            ? ""
+            : `, ${(source && placeSpan(source, event.range)) ?? placeText(event.range, {})}`;
+        say(`[The tutor read the section "${event.section}"${range}.]`);
         break;
-      case "page_viewed":
+      }
+      case "page_viewed": {
+        // Notes cite printed pages, so name the page by its printed label.
+        const source = given.sources?.find((s) => s.id === event.source);
         say(
-          `[The tutor looked at page ${event.page} of the source "${event.source}".]`,
+          `[The tutor looked at page ${source === undefined ? event.page : pageLabel(source, event.page)} of the source "${event.source}".]`,
         );
         break;
+      }
       case "source_quoted": {
         const cited =
           given.sources === undefined
