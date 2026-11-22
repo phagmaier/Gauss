@@ -36,20 +36,6 @@ questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-### 4.20 A code review of 4.11, 4.13 and 4.15 to 4.17
-
-- Status: todo
-- Why: each stage 4 task from 4.3 to 4.10 had a review that found real
-  faults (4.5: thirteen, then six more). Web search (4.11), notes and the
-  transcript (4.13), bounded reads (4.15), lecture order (4.16) and
-  passage search (4.17), about 2,700 changed lines, have had none.
-- Do: review each commit's code and tests against its task text (recover
-  it as `AGENTS.md` says) and `brief.md`, "Sources". Fix concrete faults,
-  committed per task as `AGENTS.md`, "Authorization", says; anything
-  larger goes into the plan.
-- Done when: all five are reviewed, each fix has a test where behaviour
-  changed, and the findings and outcomes are in the commit messages.
-
 ### 4.21 A rehearsal of the user check
 
 - Status: todo
@@ -146,6 +132,9 @@ Known and accepted for now; a task that closes one deletes it here.
   planner still splits contexts into objectives ("a setting is not a
   skill" is unsettled) and names implementations ("using zip").
 - The fake backend's `hasSession` ignores the folder.
+- Under load (a full run beside other test runs), the notes tests in
+  `http/app.test.ts` can miss their `expect.poll` deadline; they pass
+  alone.
 
 **Tutor, grading and judging**
 
