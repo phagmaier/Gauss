@@ -1833,7 +1833,10 @@ required by [`AGENTS.md`](../AGENTS.md#project-rules).
   directory for a clean run. Close the test browser before stopping the
   server. A file the browser uploads must lie inside the repository,
   where the Playwright tool reads: put it in `.playwright-mcp/`, which git
-  ignores, and remove it afterwards.
+  ignores, and remove it afterwards. Section labels are uppercased by CSS,
+  and a page's text reads them so ("THE WEB"): wait on a selector or an
+  `aria-label` instead. After opening a unit, wait until Send is enabled
+  before sending: the message box sends nothing until the chat has opened.
 - **Chromium for browser checks.** On NixOS, get its path with
   `nix build nixpkgs#chromium --no-link --print-out-paths` and pass
   `app: "<that path>/bin/chromium"` to `browser.open`. Omp's managed
@@ -1841,7 +1844,11 @@ required by [`AGENTS.md`](../AGENTS.md#project-rules).
   ([Confinement](decisions.md#confinement)).
 - **Real-model checks**, only when required, use a fresh temporary data
   root. Opening a unit can spend plan usage before anyone sends a
-  message. A short smoke run on the plan login (port 4320 by default):
+  message. A course needs no intake: write it into the root with the
+  record's own operations (`createCourse`, `saveProposal`,
+  `approveCurriculum`, `storePlan` in `record/data-root.ts`), as
+  `record/dev-seed.ts` does, from a throwaway script run with `node`.
+  A short smoke run on the plan login (port 4320 by default):
 
   ```sh
   scratch=$(mktemp -d) &&
@@ -1858,7 +1865,14 @@ required by [`AGENTS.md`](../AGENTS.md#project-rules).
   in Claude Code's session log
   under `~/.claude/projects/<the course's workspace folder, every character
   but letters and digits made "-">/`; the page events are in the course's
-  `sessions/`.
+  `sessions/`. In the log, a user line's `toolUseResult` is a tool's
+  structured output, and `api-request-shape` lines, written when the
+  request's shape changes, list the session's tools:
+
+  ```sh
+  jq -r 'select(.type=="api-request-shape")
+    | [.timestamp, ([.shape.tools[].name] | join(","))] | @tsv' <log>.jsonl
+  ```
 
 ## 12. Build stages
 
