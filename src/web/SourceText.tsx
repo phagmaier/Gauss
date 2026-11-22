@@ -7,7 +7,7 @@ import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import { type PluggableList, unified } from "unified";
 import { displayMathLines } from "../shared/display-math-lines.ts";
-import { PDF_ESCAPE } from "../shared/source-quote.ts";
+import { PDF_ESCAPE, PDF_NOTE_ESCAPE } from "../shared/source-quote.ts";
 import { type Margin, pdfSyntax, type ReaderPart } from "./source-reader.ts";
 
 const parser = unified().use(remarkParse).freeze();
@@ -147,6 +147,17 @@ function isMath(node: ElementContent): boolean {
   );
 }
 
+// PDF conversion records every raised mark, even when its note is elsewhere
+// (e.g. in a commentary). Show the printed mark, not the internal collision
+// suffix or a link to a note we cannot identify. GFM handles resolved notes.
+const PDF_NOTE_MARKS: Readonly<Record<string, string>> = {
+  star: "*",
+  dagger: "†",
+  ddagger: "‡",
+  section: "§",
+  pilcrow: "¶",
+};
+
 /** Insert only trusted elements after parsing. An annotation never changes
  * how the original emphasis, links, code, math, or notes are parsed. */
 function annotations(part: ReaderPart) {
@@ -158,7 +169,12 @@ function annotations(part: ReaderPart) {
     // first, so that taking one out moves none still to be found.
     const escapes =
       part.format === "pdf"
-        ? [...part.text.matchAll(PDF_ESCAPE)].map((m) => m.index).reverse()
+        ? [
+            ...part.text.matchAll(PDF_ESCAPE),
+            ...(part.converter >= 9 ? part.text.matchAll(PDF_NOTE_ESCAPE) : []),
+          ]
+            .map((m) => m.index)
+            .sort((a, b) => b - a)
         : [];
     if (part.format === "text") {
       tree.children = [];
@@ -225,7 +241,11 @@ function annotations(part: ReaderPart) {
         part.mark && start < part.mark.end && end > part.mark.start
           ? part.mark
           : undefined;
-      if (!margins.length && !mark) continue;
+      const hasPdfNotes =
+        part.format === "pdf" &&
+        node.type === "text" &&
+        node.value.includes("[^");
+      if (!margins.length && !mark && !hasPdfNotes) continue;
       if (node.type !== "text" && node.type !== "raw") {
         replacements.set(node, [
           ...(margins.length ? [rail(margins)] : []),
@@ -252,11 +272,37 @@ function annotations(part: ReaderPart) {
         if (group) group.push(margin);
         else boundaries.set(at, [margin]);
       }
+      // Match the stored text so a printed `[\^…]` that we just unescaped
+      // cannot be confused with a generated, unresolved reference.
+      let notes: Map<number, { end: number; label: string }> | undefined;
+      if (hasPdfNotes) {
+        for (const match of raw.matchAll(
+          /\[\^(\p{N}+|star|dagger|ddagger|section|pilcrow)(?:-\d+)?\]/gu,
+        )) {
+          const label = match[1];
+          if (!label) continue;
+          const from = offset(start + match.index);
+          const to = offset(start + match.index + match[0].length);
+          if (from >= to) continue;
+          notes ??= new Map();
+          notes.set(from, {
+            end: to,
+            label: PDF_NOTE_MARKS[label] ?? label,
+          });
+          if (!boundaries.has(from)) boundaries.set(from, []);
+          if (!boundaries.has(to)) boundaries.set(to, []);
+        }
+      }
       const children: ElementContent[] = [];
       let before = 0;
+      let noteEnd = 0;
       for (const [at, group] of [...boundaries].sort((a, b) => a[0] - b[0])) {
-        if (at > before) {
-          const text = literal(node.value.slice(before, at));
+        if (at > before && before >= noteEnd) {
+          const note = notes?.get(before);
+          const text = note
+            ? element("sup", {}, [literal(note.label)])
+            : literal(node.value.slice(before, at));
+          if (note) noteEnd = note.end;
           children.push(
             lo <= before && before < hi ? element("mark", {}, [text]) : text,
           );

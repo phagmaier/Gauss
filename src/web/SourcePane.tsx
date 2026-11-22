@@ -298,9 +298,13 @@ function PageView({
   return (
     <div className="reader-scroll reader-page">
       <div className="reader-page-tools">
+        {/* The printed label is for citations; the count is in PDF order. */}
         <span>
           Page {label}
-          {source.pages && ` of ${source.pages.count}`}
+          {source.pages &&
+            (label === String(page)
+              ? ` of ${source.pages.count}`
+              : ` · PDF page ${page} of ${source.pages.count}`)}
         </span>
         <button
           type="button"

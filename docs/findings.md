@@ -163,7 +163,7 @@ where `convert.py` handles them.
   became 8 parts for nothing. 10 of Girard's 14 chapters split at 20,000.
 - **Bookmark titles are padded with spaces and point at page tops**, so a
   heading is found by its text.
-- **Hyphens are joined by the document's own usage**, with no dictionary:
+- **Hyphen joins prefer the document's own usage**, with no dictionary:
   Inwood keeps "self-consciousness" 1,112 times; the cost is ResNet's
   "high-level" read as "highlevel".
 - **Calibre EPUBs set headings as styled paragraphs and italics as

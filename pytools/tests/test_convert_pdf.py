@@ -17,6 +17,7 @@ from PIL import Image
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from test_convert import SCRIPT, heading, outline, run, section_files
+from convert import _PdfWriter
 
 LEFT, RIGHT, INDENT, LEADING = 72, 432, 90, 12  # the column, a paragraph's indent and the distance between lines
 _SCRIPT = re.compile(r"\^(\w+)")  # a superscript in a word: "Thing,^1"
@@ -267,6 +268,39 @@ after it.
 
 [^1-2]: The third note.
 """
+
+
+def test_a_break_after_an_existing_hyphen_prefers_the_compound_without_other_evidence(tmp_path):
+    page = Page()
+    y = page.paragraph(
+        ["Here the text introduces the distinction of Being-for-", "other as a concept."],
+        730,
+    )
+    page.paragraph(
+        ["The other example makes use of familiar and well-estab-", "lished terms such as the well-established one above."],
+        y,
+    )
+    _, folder = run(tmp_path, "compounds.pdf", write_pdf([page]))
+    assert section_files(folder) == {
+        "s1": "<!-- page 1 -->\nHere the text introduces the distinction of Being-for-other as a concept.\n\n"
+        "The other example makes use of familiar and well-established terms such as the well-established one above.\n",
+    }
+
+
+def test_a_discretionary_hyphen_inside_a_compound_does_not_create_another_hyphen():
+    writer = _PdfWriter([], [], [], {}, [])
+    joined, _ = writer._join("A case of self-regu-", "lation.", soft_hyphen=True)
+    assert joined == "A case of self-regulation."
+
+
+def test_a_printed_note_opener_does_not_become_a_reference(tmp_path):
+    page = Page()
+    page.text("The printed [^1] is not a reference.", 720)
+    page.line("But this mark^1 is.".split(), 690, x=INDENT)
+    _, folder = run(tmp_path, "literal.pdf", write_pdf([page]))
+    assert section_files(folder) == {
+        "s1": "<!-- page 1 -->\nThe printed [\\^1] is not a reference. But this mark[^1] is.\n",
+    }
 
 
 def test_a_book_s_pages_join_into_paragraphs_without_their_furniture_and_with_their_notes(tmp_path):

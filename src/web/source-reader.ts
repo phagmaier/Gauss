@@ -72,6 +72,7 @@ export interface ReaderPart {
   /** A separate document per stretch: GFM names its footnotes locally. */
   prefix: string;
   format: Outline["format"];
+  converter: number;
   text: string;
   margins: Margin[];
   mark?: { start: number; end: number };
@@ -402,6 +403,7 @@ export async function openSection(
       id: initial.id,
       prefix: `reader-${source.id}-${initial.id}-`,
       format: source.format,
+      converter: source.converter,
       text,
       margins,
       ...(mark && {

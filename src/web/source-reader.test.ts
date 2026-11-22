@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import type { Outline, OutlineSection } from "../shared/source.ts";
 import { orderedSections } from "../shared/source-quote.ts";
+import { SourcePane } from "./SourcePane.tsx";
 import { SourceText } from "./SourceText.tsx";
 import {
   keptTexts,
@@ -230,6 +231,51 @@ test("a PDF's text keeps the characters Markdown would read as emphasis, code, m
       (await open(source, { s1: text }, "s1", "Call __init__ on *starred*"))[0],
     ),
   ).toContain("<mark>Call __init__ on *starred*</mark>");
+});
+
+test("unresolved PDF references show the printed marks without inventing a link", async () => {
+  const source = {
+    ...book(
+      [{ ...section("s1"), place: { pages: { first: 1, last: 1 } } }],
+      "pdf",
+    ),
+    converter: 9,
+    pages: { count: 1, blank: [] },
+  };
+  const text =
+    "<!-- page 1 -->\nThe printed marker [\\^1] is literal. First[^1], repeated[^1-2], another[^dagger], and one more[^٢].";
+  const html = render((await open(source, { s1: text }, "s1"))[0]);
+  expect(html).toContain(
+    "The printed marker [^1] is literal. First<sup>1</sup>, repeated<sup>1</sup>, another<sup>†</sup>, and one more<sup>٢</sup>.",
+  );
+  expect(html).not.toContain("href=");
+  const quoted = await open(
+    source,
+    { s1: text },
+    "s1",
+    "The printed marker [^1] is literal.",
+  );
+  expect(render(quoted[0])).toContain(
+    "<mark>The printed marker [^1] is literal.</mark>",
+  );
+});
+
+test("the page reader separates a printed label from the position in the PDF", () => {
+  const source: Outline = {
+    ...book([], "pdf"),
+    pages: { count: 543, blank: [], labels: [...Array(74).fill(""), "57"] },
+  };
+  const renderPage = (page: number) =>
+    renderToStaticMarkup(
+      createElement(SourcePane, {
+        base: "/sources",
+        source,
+        target: { kind: "page", source: source.id, page },
+        onClose() {},
+      }),
+    );
+  expect(renderPage(75)).toContain("Page 57 · PDF page 75 of 543");
+  expect(renderPage(76)).toContain("Page 76 of 543");
 });
 
 test("dollar signs are math in a Markdown source and money in an EPUB", async () => {

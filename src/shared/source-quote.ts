@@ -125,7 +125,7 @@ export function quotableSource(
           (marker) => marker.page <= (source.pages?.count ?? Infinity),
         )
       : [];
-  const markup = markupOf(text, source.format, pages, source.converter < 7);
+  const markup = markupOf(text, source.format, pages, source.converter);
   return {
     source,
     text,
@@ -410,13 +410,15 @@ const NUMBER_LINE = /(?:^|(?<=\n))[ \t]*[0-9]{1,4}[ \t]*(?:\n|$)/g;
 export const PDF_NOTE = /^\[\^[^\]\s]+\]:[^\n]*(?:\n|$)/gm;
 /** The backslashes the PDF conversion writes: before a line's leading mark, and before a printed page marker. */
 export const PDF_ESCAPE = /(?:^|(?<=\n))\\(?=[#><])|\\(?=<!-- page )/g;
+/** Converter 9 protects a printed note opener by inserting a slash after `[`. */
+export const PDF_NOTE_ESCAPE = /(?<=\[)\\(?=\\*\^)/g;
 const REFERENCES = /\[\^[^\]\s]+\]/g;
 
 function markupOf(
   text: string,
   kind: Kind,
   markers: readonly PageMarker[] = [],
-  legacyHeadings = false,
+  converter?: number,
 ): Markup {
   const hidden = new Uint8Array(text.length);
   const hide = (start: number, end: number) => hidden.fill(1, start, end);
@@ -431,13 +433,14 @@ function markupOf(
   if (kind === "pdf") {
     hideAll(PDF_NOTE);
     hideAll(PDF_ESCAPE);
+    if ((converter ?? 0) >= 9) hideAll(PDF_NOTE_ESCAPE);
     hideAll(REFERENCES);
   } else if (kind !== "text") {
     ({ breaks, headings } = markdownQuoteMarkup(
       text,
       kind,
       hidden,
-      legacyHeadings,
+      (converter ?? Infinity) < 7,
     ));
   }
   const joins = joinSoftWraps(text, hidden, breaks);

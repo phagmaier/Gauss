@@ -350,6 +350,8 @@ code {
   height: 100dvh;
 }
 .th-scroll {
+  /* Keep absolutely positioned screen-reader text inside this scroller. */
+  position: relative;
   overflow: auto;
 }
 .th-col {

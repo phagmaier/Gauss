@@ -74,7 +74,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
-CONVERTER_VERSION = 8  # raised when the same original would give other files
+CONVERTER_VERSION = 9  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text: ~5.5 printed pages (docs/findings.md, "Source conversion")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
@@ -331,6 +331,8 @@ _WORD = re.compile(r"[^\W_]+(?:-[^\W_]+)*")
 _HYPHENATED_END = re.compile(r"([^\W\d_]+(?:-[^\W\d_]+)*)-$")
 # Footnote marks as labels: a Markdown footnote label holds no spaces, and `*` would read as emphasis.
 _SYMBOLS = {"*": "star", "∗": "star", "†": "dagger", "‡": "ddagger", "§": "section", "¶": "pilcrow"}
+# Escape inside the opener, since the PDF reader does not parse Markdown escapes.
+_LITERAL_NOTE = re.compile(r"\[(?=\\*\^)")
 _DPI = 150
 
 
@@ -373,6 +375,7 @@ class _Line:
     right: float
     first_word: float  # the first word's width
     count: int  # its characters
+    soft_hyphen: bool = False  # a discretionary hyphen at the right edge
     anchor: float = 0.0  # its column's left edge
     edge: float = 0.0  # its column's right edge
 
@@ -635,6 +638,7 @@ def _line(chars, page):
         right=max(char.right for char in chars),
         first_word=first_word - chars[0].left,
         count=len(chars),
+        soft_hyphen=chars[-1].text == "\xad",
     )
 
 
@@ -909,6 +913,7 @@ class _PdfWriter:
         self.out, self.length, self.blocks, self.marks = [], 0, [], []  # marks: (offset, page from 1)
         self.pending = []  # pages, from 0, whose markers wait for the next line
         self.paragraph = None  # the open paragraph's text
+        self.soft_hyphen = False
         self.paragraph_start = 0
         self.inline = []  # (offset in the open paragraph, page from 1) of its markers
         self.protected = []
@@ -989,6 +994,8 @@ class _PdfWriter:
         self.used = Counter()
         if any(isinstance(part, _Ref) for line in printed for part in line.parts):
             title = " ".join(self._render(line)[0] for line in printed)
+        else:
+            title = _LITERAL_NOTE.sub(r"[\\", title)
         self._emit("#" * min(level, 6) + " " + _escape_page_openers(title) + "\n")
         self._definitions()
         self._emit("\n")
@@ -1003,7 +1010,7 @@ class _PdfWriter:
         out, length, first = [], 0, None
         for part in line.parts:
             if isinstance(part, str):
-                text = part
+                text = _LITERAL_NOTE.sub(r"[\\", part)
             else:
                 label = self._unique(part.label)
                 text = f"[^{label}]"
@@ -1025,13 +1032,15 @@ class _PdfWriter:
             self._close()
             self.paragraph_start = self._markers()
             self.paragraph, self.note_start = self._render(line)
+            self.soft_hyphen = line.soft_hyphen
             if self.paragraph_start < self.length:
                 first_space = self.paragraph.find(" ")
                 word_end = len(self.paragraph) if first_space < 0 else first_space
                 self._protect(self.paragraph_start, self.length + word_end)
             return
         following, note = self._render(line)
-        joined, at = self._join(self.paragraph, following)
+        joined, at = self._join(self.paragraph, following, self.soft_hyphen)
+        self.soft_hyphen = line.soft_hyphen
         if note is not None:
             note += len(joined) - len(following)
         if self.pending:
@@ -1053,7 +1062,7 @@ class _PdfWriter:
             self.note_start = note
         self.paragraph = joined
 
-    def _join(self, text, following):
+    def _join(self, text, following, soft_hyphen=False):
         """The text with its next line, a word hyphenated at the line's end mended; where a page marker would go."""
         if not text.endswith("-"):
             return text + " " + following, len(text)
@@ -1066,8 +1075,14 @@ class _PdfWriter:
         if not (compound or following[0].islower()):
             return text + " " + following, len(text)
         head = right.split("-", 1)[0]
+        # With no evidence for closing the break, a hyphen on either side
+        # is evidence that the break belongs to a longer compound.
         keep = f"{left}{right}" not in self.words and (
-            compound or (f"{left}{head}" not in self.words and ("-" in right or f"{left}-{head}" in self.words))
+            compound
+            or (
+                f"{left}{head}" not in self.words
+                and (("-" in left and not soft_hyphen) or "-" in right or f"{left}-{head}" in self.words)
+            )
         )
         joined = (text if keep else text[:-1]) + following
         return joined, len(joined) - len(following) + len(following.split(" ", 1)[0])
@@ -1134,7 +1149,8 @@ class _PdfWriter:
 
     def _definitions(self):
         for label, note in self.notes:
-            self._emit(f"\n[^{label}]: {_escape_page_openers(self._note_text(note))}\n")
+            text = _LITERAL_NOTE.sub(r"[\\", self._note_text(note))
+            self._emit(f"\n[^{label}]: {_escape_page_openers(text)}\n")
         self.notes = []
 
     def _note_text(self, lines):
@@ -1146,9 +1162,11 @@ class _PdfWriter:
         else:
             parts[0] = parts[0][_NOTE_LABEL.match(parts[0]).end() :]
         text = "".join(parts).strip()
+        soft_hyphen = first.soft_hyphen
         for line in lines[1:]:
             following = "".join(part if isinstance(part, str) else part.label for part in line.parts).strip()
-            text = self._join(text, following)[0]
+            text = self._join(text, following, soft_hyphen)[0]
+            soft_hyphen = line.soft_hyphen
         return " ".join(text.split())
 
 

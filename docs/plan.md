@@ -36,33 +36,6 @@ questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-### 4.22 Breakage the rehearsal of the user check found
-
-- Status: todo
-- Why: walking the check's path on Opus 5.5 (the _Phenomenology_'s Force
-  and Understanding unit 1, the Attention paper's unit 1) and on
-  `dev:fake` found these. None blocks the user's check.
-  - Page: the segment headings' status words for screen readers (`.sr` in
-    `SegmentHead`, `src/web/Session.tsx`) are absolutely positioned with
-    no positioned ancestor inside the thread's scroller (`.th` is
-    positioned, `.th-scroll` is not). In a thread longer than the window
-    they sit far below it and the document itself scrolls (15,849 px in a
-    900 px window): a second scrollbar at the window's edge, and a click
-    can scroll the top bar away. `.cv-u` and `.vq figcaption` already
-    contain theirs.
-  - Reader: footnote references whose note is not in the section show
-    raw, "[^1]" and "[^1-2]" to "[^1-9]" in Force and Understanding
-    (Inwood's superscripts point at his commentary at the back). The page
-    view reads "Page 57 of 543", a printed label beside the PDF's count.
-  - Conversion: a line-end hyphen after a part that is already hyphenated
-    ("Being-for-|other") is dropped when the whole compound appears
-    nowhere else in the book (`_join` in `pytools/convert.py`;
-    `findings.md`, "Hyphens are joined by the document's own usage"):
-    "Being-forother" (p. 57), in a verified quote of the lecture too.
-- Do: fix the three, with a test where behaviour changes.
-- Done when: the reader and conversion fixes have tests, and all three are
-  seen on the page.
-
 ### 4.23 Question rules the rehearsal saw broken
 
 - Status: todo
