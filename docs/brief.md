@@ -175,7 +175,8 @@ stop anywhere and resume at the same segment and phase.
   answer, so a false start in it never makes an answer wrong. The tutor,
   the handoff writer, the dispute judge, "What I know" and the exported
   transcript see it.
-- **Written answers**: one that is mostly right but vague is a miss; no
+- **Written answers**: one that is mostly right but vague is a miss, and
+  so is one that gives a source's words without explaining them; no
   grade is held back for follow-up questions. A written question names
   every part its rubric requires, and after an answer that leaves one out,
   the detour says what was right and what was missing and names no
