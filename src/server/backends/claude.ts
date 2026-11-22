@@ -30,6 +30,7 @@ import { promisify } from "node:util";
 import {
   type AccountInfo,
   createSdkMcpServer,
+  type EffortLevel,
   getSessionInfo,
   type HookCallback,
   type HookCallbackMatcher,
@@ -71,6 +72,11 @@ export interface ClaudeBackendOptions {
    * check that something works use a cheap model (AGENTS.md).
    */
   model?: string;
+  /**
+   * The reasoning effort, such as "medium". Left out, the model's default.
+   * A real-model check names it rather than inheriting it (architecture.md).
+   */
+  effort?: EffortLevel;
 }
 
 /**
@@ -171,6 +177,9 @@ function isolated(backendOptions: ClaudeBackendOptions): Options {
     ...(backendOptions.model === undefined
       ? {}
       : { model: backendOptions.model }),
+    ...(backendOptions.effort === undefined
+      ? {}
+      : { effort: backendOptions.effort }),
     settingSources: [],
     skills: [],
     settings: ISOLATED_SETTINGS,

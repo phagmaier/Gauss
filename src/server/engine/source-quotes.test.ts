@@ -3,7 +3,9 @@
 // in the source's words and where it starts, in the transcript too; a
 // match in the section named, then in the segment's, comes first. It is
 // refused when the sources lack the passage, and while a question of the
-// unit is open, as an aid is. The tutor is the fake backend.
+// unit is open, as an aid is. The notes writer gets each quote with its
+// citation and the unit's sections, and the exported transcript names a
+// section link's section and page. The tutor is the fake backend.
 
 import { mkdtemp, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,6 +29,7 @@ import { placeTestSource } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
+import { createNotes } from "./notes.ts";
 import { createSourceShelf } from "./source-shelf.ts";
 import { renderTranscript } from "./transcript-html.ts";
 import { createUnitChats } from "./unit-chat.ts";
@@ -611,4 +614,101 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
   } finally {
     await units.close();
   }
+});
+
+/** The preface taught and finished: a passage read, linked and quoted. */
+async function taughtPreface(root: DataRoot) {
+  const id = await makeCourse(root);
+  await root.appendTranscript(id, "preface", 1, [
+    { type: "session", startedAt: NOW },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "turn_start" },
+    { type: "section_read", section: "phenomenology/s1" },
+    {
+      type: "tutor_text",
+      text: "Hegel starts from [the whole](source:phenomenology/s1/p9). He says:",
+    },
+    {
+      type: "source_quoted",
+      section: "phenomenology/s1",
+      text: "it is essentially a result.",
+      at: { page: 2 },
+    },
+    {
+      type: "tutor_text",
+      text: "Compare [the second part](source:phenomenology/s2) and [a lost one](source:phenomenology/s9).",
+    },
+    { type: "turn_end", outcome: "done" },
+    { type: "unit_closed", status: "overridden" },
+  ]);
+  await root.appendEvidence(id, {
+    kind: "override",
+    recordedAt: NOW,
+    objectives: ["whole", "result"],
+  });
+  return id;
+}
+
+test("the notes writer gets the unit's sections as the source prints them and each verified quote with its citation", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await taughtPreface(root);
+  const backend = createFakeBackend([], [{ fail: "Capture the request." }]);
+  const notes = createNotes({
+    dataRoot: root,
+    backend,
+    systemPrompt: "Notes.",
+    ready: () => undefined,
+  });
+  try {
+    expect((await notes.start(id, "preface", "", undefined)).ok).toBe(true);
+    await expect.poll(() => backend.oneShots.length).toBe(1);
+    const prompt = backend.oneShots[0]?.prompt ?? "";
+    const sections = /<sections>\n([\s\S]*?)\n<\/sections>/.exec(prompt)?.[1];
+    // Both parts under the heading the book prints, at their printed pages;
+    // the Introduction belongs to the next unit.
+    expect(JSON.parse(sections ?? "null")).toEqual([
+      {
+        section: "phenomenology/s1",
+        source: "Phenomenology",
+        title: "Preface",
+        place: "pp. 9–10",
+      },
+      {
+        section: "phenomenology/s2",
+        source: "Phenomenology",
+        title: "Preface",
+        place: "pp. 10–11",
+      },
+    ]);
+    // Quoted from the PDF's second page, printed 10.
+    expect(prompt).toContain(
+      '[The tutor quoted the section "phenomenology/s1", verified in the source, cited as "Preface, p. 10":]\nit is essentially a result.',
+    );
+    expect(prompt).toContain("[the whole](source:phenomenology/s1/p9)");
+  } finally {
+    await notes.close();
+  }
+});
+
+test("the exported transcript gives a section link's words with its section and page, and an unknown section's link its words alone", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await taughtPreface(root);
+  const html = renderTranscript(
+    CURRICULUM.title,
+    { ...PREFACE, plan: PLAN },
+    1,
+    await root.readTranscripts(id, "preface"),
+    [BOOK],
+  );
+  expect(html).toContain(
+    '<span>the whole <span class="note">(Preface (part 1 of 2), p. 9)</span></span>',
+  );
+  expect(html).toContain(
+    '<span>the second part <span class="note">(Preface (part 2 of 2), pp. 10–11)</span></span>',
+  );
+  expect(html).toContain("<span>a lost one</span>.");
+  expect(html).toContain(
+    '<blockquote>it is essentially a result.</blockquote><figcaption class="note">Verified in the source: Preface, p. 10</figcaption>',
+  );
+  expect(html).not.toContain("source:phenomenology");
 });

@@ -69,6 +69,7 @@ import {
   quoteCitation,
   readLine,
 } from "../shared/source-lines.ts";
+import type { SourceTarget } from "../shared/source-target.ts";
 import {
   type ArtifactItem,
   type AssessmentItem,
@@ -127,7 +128,6 @@ import {
   type UnitOutline,
   whereInUnit,
 } from "./session.ts";
-import type { SourceTarget } from "./source-target.ts";
 import { readsSources, useCourseSources } from "./sources.ts";
 import { objectiveMark } from "./what-i-know.ts";
 

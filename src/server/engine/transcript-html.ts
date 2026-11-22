@@ -35,13 +35,18 @@ import {
   confidenceLabel,
 } from "../../shared/question.ts";
 import { messageParts } from "../../shared/quote.ts";
-import type { Outline } from "../../shared/source.ts";
+import {
+  type Outline,
+  type SourceSection,
+  sectionsByRef,
+} from "../../shared/source.ts";
 import {
   type DidLine,
   pageLine,
   quoteCitation,
   readLine,
 } from "../../shared/source-lines.ts";
+import { resolveSourceLink } from "../../shared/source-target.ts";
 import {
   emptyTimeline,
   type Item,
@@ -51,7 +56,10 @@ import {
 import type { Transcript } from "../record/data-root.ts";
 import { embeddedKatexCss, STANDALONE_HTML_POLICY } from "./standalone-html.ts";
 
-function markdownProcessor(keepLiteralHtml: boolean) {
+function markdownProcessor(
+  keepLiteralHtml: boolean,
+  links?: ReadonlyMap<string, SourceSection>,
+) {
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -60,7 +68,7 @@ function markdownProcessor(keepLiteralHtml: boolean) {
   if (keepLiteralHtml) processor.use(htmlAsText);
   return processor
     .use(remarkRehype) // Drops raw HTML, including any not converted to text.
-    .use(inertReferences)
+    .use(inertReferences, links)
     .use(rehypeKatex, { trust: false, maxExpand: 200, maxSize: 25 })
     .use(rehypeStringify)
     .freeze();
@@ -69,7 +77,13 @@ function markdownProcessor(keepLiteralHtml: boolean) {
 const markdown = markdownProcessor(false);
 const learnerMarkdown = markdownProcessor(true);
 
-function inertReferences() {
+/**
+ * Keep a link's or an image's words, never its address. A section link the
+ * sources have also names its section and page, as the thread's tooltip does.
+ */
+function inertReferences(
+  links: ReadonlyMap<string, SourceSection> = new Map(),
+) {
   return (tree: Root) => {
     function visit(parent: Parent): void {
       for (const [i, node] of parent.children.entries()) {
@@ -83,8 +97,24 @@ function inertReferences() {
           continue;
         }
         if (node.tagName === "a") {
+          const { href } = node.properties;
+          const link =
+            typeof href === "string"
+              ? resolveSourceLink(href, links)
+              : undefined;
           node.tagName = "span";
           node.properties = {};
+          if (link !== undefined) {
+            node.children.push(
+              { type: "text", value: " " },
+              {
+                type: "element",
+                tagName: "span",
+                properties: { className: ["note"] },
+                children: [{ type: "text", value: `(${link.title})` }],
+              },
+            );
+          }
         }
         // GFM footnotes may use the same generated ids in separate replies.
         delete node.properties.id;
@@ -144,6 +174,8 @@ export function renderTranscript(
   const objectives = new Map(
     plan?.objectives.map(({ id, statement }) => [id, statement]),
   );
+  // As in the thread, only the tutor's replies read their section links.
+  const tutorMarkdown = markdownProcessor(false, sectionsByRef(sources));
   const title = escapeHtml(unit.title);
   const count = sessions.length;
   const exported = new Date();
@@ -176,7 +208,7 @@ export function renderTranscript(
     while (at < thread.items.length) {
       const item = thread.items[at];
       if (item === undefined || item.key >= session.end) break;
-      html.push(renderItem(item, plan, objectives, sources));
+      html.push(renderItem(item, plan, objectives, sources, tutorMarkdown));
       at += 1;
     }
     if (session.closed !== null) {
@@ -207,6 +239,7 @@ function renderItem(
   plan: Plan | undefined,
   objectives: ReadonlyMap<string, string>,
   sources: readonly Outline[],
+  tutorMarkdown: typeof markdown,
 ): string {
   switch (item.kind) {
     case "learner":
@@ -220,7 +253,7 @@ function renderItem(
         )
         .join("")}</div>`;
     case "tutor":
-      return `<div class="tutor" aria-label="Tutor">${prose(item.text)}</div>`;
+      return `<div class="tutor" aria-label="Tutor">${String(tutorMarkdown.processSync(item.text))}</div>`;
     case "phase":
       return marker(
         phase[item.phase],

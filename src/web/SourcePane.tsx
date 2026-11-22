@@ -10,6 +10,7 @@ import type { Unit } from "../shared/curriculum.ts";
 import type { Outline, OutlineSection } from "../shared/source.ts";
 import { pageLabel, placeSpan } from "../shared/source-lines.ts";
 import { orderedSections } from "../shared/source-quote.ts";
+import type { SourceTarget } from "../shared/source-target.ts";
 import { SidePane } from "./Frame.tsx";
 import { SourceText } from "./SourceText.tsx";
 import { FORMAT_NAMES } from "./source-card.ts";
@@ -21,7 +22,6 @@ import {
   type ReaderPart,
   type SectionRead,
 } from "./source-reader.ts";
-import type { SourceTarget } from "./source-target.ts";
 import "./source-pane.css";
 
 type SectionTarget = Extract<SourceTarget, { kind: "section" }>;

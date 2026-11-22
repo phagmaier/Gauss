@@ -36,6 +36,7 @@ import {
   deletionAsksTitle,
 } from "../shared/library.ts";
 import type { Outline } from "../shared/source.ts";
+import type { SourceTarget } from "../shared/source-target.ts";
 import { isFinished } from "../shared/status.ts";
 import { getJson, post, postFor } from "./api.ts";
 import { Diagram, UnitList, UnitReadLines } from "./Curriculum.tsx";
@@ -56,7 +57,6 @@ import { courseSourceLine } from "./reads.ts";
 import { navigate, paths } from "./route.ts";
 import { SourcePane } from "./SourcePane.tsx";
 import { StatusForm } from "./StatusForm.tsx";
-import type { SourceTarget } from "./source-target.ts";
 import { useCourseSources } from "./sources.ts";
 import { buildsOn, unitNumbers } from "./units.ts";
 import { objectiveMark, unitWord } from "./what-i-know.ts";

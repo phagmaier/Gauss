@@ -21,6 +21,7 @@ import type { Unit } from "../shared/curriculum.ts";
 import { FILE_NAME_HEADER, Hello, PageEvent } from "../shared/events.ts";
 import { compareSentences } from "../shared/profile.ts";
 import { formatBytes, Outline, SOURCE_SIZE_LIMIT } from "../shared/source.ts";
+import type { SourceTarget } from "../shared/source-target.ts";
 import {
   emptyTimeline,
   type Item,
@@ -43,7 +44,6 @@ import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
 import { SourceCard } from "./SourceCard.tsx";
 import { SourcePane } from "./SourcePane.tsx";
-import type { SourceTarget } from "./source-target.ts";
 import { readsSources, useCourseSources } from "./sources.ts";
 
 /** Asked by the page itself; the tutor's session starts with the answer. */

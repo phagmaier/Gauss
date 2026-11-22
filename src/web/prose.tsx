@@ -15,7 +15,10 @@ import { displayMathLines } from "../shared/display-math-lines.ts";
 import { htmlAsText } from "../shared/html-as-text.ts";
 import { CHOICE_LETTERS, type ChoiceLetter } from "../shared/question.ts";
 import type { SourceSection } from "../shared/source.ts";
-import { resolveSourceLink, type SourceTarget } from "./source-target.ts";
+import {
+  resolveSourceLink,
+  type SourceTarget,
+} from "../shared/source-target.ts";
 
 /** Only a tutor's prose in the thread has a reader to open. */
 export const SourceLinks = createContext<{

@@ -1,8 +1,5 @@
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
-import { type Outline, sectionsByRef } from "../shared/source.ts";
-import { Prose, SourceLinks } from "./prose.tsx";
+import { type Outline, sectionsByRef } from "./source.ts";
 import { resolveSourceLink } from "./source-target.ts";
 
 const source: Outline = {
@@ -53,20 +50,4 @@ test.each([
   "source:lectures/s2/p%ff",
 ])("no destination for %s", (url) => {
   expect(resolveSourceLink(url, sections)).toBeUndefined();
-});
-
-test("the thread renders an actionable section link but leaves an unknown section's words alone", () => {
-  const text =
-    "[the *passage*](source:lectures/s2/pi) or [the **missing** one](source:lectures/s9)";
-  const html = renderToStaticMarkup(
-    createElement(
-      SourceLinks.Provider,
-      { value: { sections, open() {} } },
-      createElement(Prose, { text }),
-    ),
-  );
-  expect(html).toContain(
-    'title="Afterword, p. i">the <em>passage</em></button> or the <strong>missing</strong> one',
-  );
-  expect(html).not.toContain("source:");
 });

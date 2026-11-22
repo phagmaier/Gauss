@@ -1,7 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
-import { AnswerPreview, InlineProse, Prose } from "./prose.tsx";
+import { sectionsByRef } from "../shared/source.ts";
+import { AnswerPreview, InlineProse, Prose, SourceLinks } from "./prose.tsx";
 
 const render = (text: string) =>
   renderToStaticMarkup(createElement(Prose, { text }));
@@ -52,6 +53,43 @@ describe("Markdown", () => {
     const html = render("![a sketch of the curve](https://example.com/x.png)");
 
     expect(html).toBe("<p>a sketch of the curve</p>");
+  });
+
+  test("the thread renders an actionable section link but leaves an unknown section's words alone", () => {
+    const sections = sectionsByRef([
+      {
+        id: "lectures",
+        title: "Lectures",
+        name: "lectures.pdf",
+        file: "original.pdf",
+        format: "pdf",
+        sha256: "0".repeat(64),
+        converter: 6,
+        limit: 20_000,
+        pages: { count: 3, labels: ["1", "i", "1"], blank: [] },
+        entries: [
+          {
+            id: "s2",
+            title: "Afterword",
+            size: 50,
+            place: { pages: { first: 2, last: 3 } },
+          },
+        ],
+      },
+    ]);
+    const text =
+      "[the *passage*](source:lectures/s2/pi) or [the **missing** one](source:lectures/s9)";
+    const html = renderToStaticMarkup(
+      createElement(
+        SourceLinks.Provider,
+        { value: { sections, open() {} } },
+        createElement(Prose, { text }),
+      ),
+    );
+    expect(html).toContain(
+      'title="Afterword, p. i">the <em>passage</em></button> or the <strong>missing</strong> one',
+    );
+    expect(html).not.toContain("source:");
   });
 });
 

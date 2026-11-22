@@ -1,4 +1,4 @@
-import type { StoredUnit } from "../../shared/curriculum.ts";
+import { type StoredUnit, unitSections } from "../../shared/curriculum.ts";
 import type { DisputeOutcome } from "../../shared/dispute.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence } from "../../shared/evidence.ts";
@@ -8,6 +8,8 @@ import {
   type NotesView,
 } from "../../shared/notes.ts";
 import { CHOICE_LETTERS } from "../../shared/question.ts";
+import { type Outline, sectionsByRef } from "../../shared/source.ts";
+import { placeSpan } from "../../shared/source-lines.ts";
 import { isFinished } from "../../shared/status.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
@@ -231,13 +233,14 @@ async function request(
   const plan = unit.plan;
 
   if (plan === undefined) throw new Error("The unit has no plan.");
-  const [transcripts, evidence, handoff, misconceptions, state] =
+  const [transcripts, evidence, handoff, misconceptions, state, sources] =
     await Promise.all([
       dataRoot.readTranscripts(courseId, unit.id),
       dataRoot.readEvidence(courseId),
       dataRoot.readHandoff(courseId, unit.id),
       dataRoot.readMisconceptions(courseId),
       dataRoot.readState(courseId),
+      dataRoot.readSources(courseId),
     ]);
   const own = new Set(plan.objectives.map((objective) => objective.id));
   const events = transcripts.flatMap((session) => session.events);
@@ -261,6 +264,7 @@ async function request(
     plan,
     answers: byId,
     whole: true,
+    sources,
   });
   const misses = countedAnswers(answers, evidence)
     .filter((entry) => entry.verdict !== "correct")
@@ -275,6 +279,7 @@ async function request(
       actually,
     }));
   const testedOut = Object.hasOwn(state.testedOut ?? {}, unit.id);
+  const sections = citedSections(unit, sources);
   return [
     `Write this unit's notes in one HTML document of at most ${STANDALONE_HTML_LIMIT_BYTES.toLocaleString("en-US")} UTF-8 bytes.`,
     tagged(
@@ -285,6 +290,9 @@ async function request(
         2,
       ),
     ),
+    ...(sections.length === 0
+      ? []
+      : [tagged("sections", JSON.stringify(sections, null, 2))]),
     tagged(
       "transcripts",
       stretch.text ||
@@ -295,6 +303,28 @@ async function request(
     tagged("misconceptions", JSON.stringify(localMisconceptions, null, 2)),
     tagged("instructions", instructions),
   ].join("\n\n");
+}
+
+/**
+ * The unit's sections as notes cite them: by their source, the heading as
+ * the source prints it (never Gauss's part of a cut stretch), and their
+ * printed pages or paragraphs.
+ */
+function citedSections(unit: StoredUnit, sources: readonly Outline[]) {
+  const byRef = sectionsByRef(sources);
+  return unitSections(unit).flatMap((ref) => {
+    const found = byRef.get(ref);
+    if (found === undefined) return [];
+    const { source, section, stretch } = found;
+    return [
+      {
+        section: ref,
+        source: source.title,
+        title: stretch,
+        place: placeSpan(source, section.place),
+      },
+    ];
+  });
 }
 
 function tagged(name: string, content: string): string {

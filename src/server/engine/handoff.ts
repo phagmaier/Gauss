@@ -29,6 +29,8 @@ import {
   isConfident,
   type QuestionView,
 } from "../../shared/question.ts";
+import type { Outline } from "../../shared/source.ts";
+import { quoteCitation } from "../../shared/source-lines.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
 import type { DataRoot, Transcript } from "../record/data-root.ts";
@@ -295,6 +297,8 @@ export function readStretch(
     >;
     /** Notes read the whole unit instead of keeping only a recent stretch. */
     whole?: boolean;
+    /** The course's sources, for notes, which cite each verified quote where it starts. */
+    sources?: readonly Outline[];
   },
 ): Stretch {
   const { plan, answers } = given;
@@ -359,11 +363,16 @@ export function readStretch(
           `[The tutor looked at page ${event.page} of the source "${event.source}".]`,
         );
         break;
-      case "source_quoted":
+      case "source_quoted": {
+        const cited =
+          given.sources === undefined
+            ? ""
+            : `, cited as "${quoteCitation(event, given.sources)}"`;
         say(
-          `[The tutor quoted the section "${event.section}", verified in the source:]\n${event.text}`,
+          `[The tutor quoted the section "${event.section}", verified in the source${cited}:]\n${event.text}`,
         );
         break;
+      }
       case "web_searched":
         say(`[The tutor searched the web for "${event.query}".]`);
         break;

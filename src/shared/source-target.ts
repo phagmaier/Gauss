@@ -1,5 +1,9 @@
-import type { SourceSection } from "../shared/source.ts";
-import { pageLabel, placeSpan } from "../shared/source-lines.ts";
+// A section link in a model's text, `source:<source>/<section>`, read once
+// for both the page's reader, which opens it, and the exported transcript,
+// which names its section and page in words.
+
+import type { SourceSection } from "./source.ts";
+import { pageLabel, placeSpan } from "./source-lines.ts";
 
 /** Page numbers inside the reader are physical, counted from one. Only links and labels use print numbering. */
 export type SourceTarget =

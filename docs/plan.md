@@ -42,26 +42,6 @@ if the learner's use shows too many plausible matches still need ranking.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.13 Notes and the transcript in a source course
-
-- Status: todo
-- Depends on: 4.9
-- Why: a unit's notes cite the source, and the exported transcript keeps
-  the quotes.
-- Do: the notes writer's request gains the unit's sections (titles and
-  places) and the verified quotes in its transcripts with their
-  citations; `notes.md` says to cite them as text, since the notes stand
-  alone. The transcript export shows a section link as its words with the
-  section's title and page: `resolveSourceLink`
-  (`src/web/source-target.ts`) reads a link's address and names its
-  place, and the export is the server's, so it moves to `src/shared/`
-  rather than the address being read twice. The export shows a quote as a
-  block quote with its citation already (`quoteCitation` in
-  `src/shared/source-lines.ts`).
-- Done when: tests on a seeded source course cover the request and the
-  export. One notes call on Sonnet 5.5 for a
-  source unit cites a quote by its place.
-
 ### 4.14 The grader's and help judge's sets in a source course
 
 - Status: todo
@@ -212,5 +192,10 @@ Known and accepted for now; a task that closes one deletes it here.
   when the section starts partway down that page (the Attention paper's
   3.2.1 on page 4). Bounded page reads recover the flags from the previous
   section.
+- The notes writer's `<sections>` lists only the unit's sections: a
+  tutor's link to another unit's section reaches it as a bare address.
+  Nothing checks the notes against the source: the one live run kept, in
+  quotation marks, three of the source's words that the tutor's text had
+  quoted unverified.
 - Sandboxed commands and artifact scripts have no budgets for peak disk,
   memory or CPU; the command deadline and output cap do not supply them.

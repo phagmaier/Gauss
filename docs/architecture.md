@@ -202,7 +202,8 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
 - **Real-model checks**, only when required, on a fresh temporary data
   root (`pnpm dev`, port 4320). Opening a unit can spend plan usage before
   anyone sends a message. Before a live comparison, specify the model,
-  effort and run count; do not inherit Opus from the login.
+  effort and run count (`model` and `effort` of `createClaudeBackend`); do
+  not inherit Opus from the login.
   A course needs no intake: write it into the root
   with the record's own operations (`createCourse`, `saveProposal`,
   `approveCurriculum`, `storePlan` in `record/data-root.ts`), as

@@ -63,6 +63,11 @@ follows the SDK's version.
   call, into thinking the page never shows. On Sonnet,
   `thinking: { type: "disabled" }` and `display: "summarized"` change
   nothing (see "Tutor").
+- **Effort is set only through the `effort` option**: it reaches Claude
+  Code as `--effort=<level>` (seen in the process's arguments in a notes
+  run). `CLAUDE_CODE_EFFORT_LEVEL` would be dropped with the other
+  `CLAUDE` variables (`sdkEnvironment`), so a run without the option
+  takes the model's default.
 - **Usage**: `rate_limit_event` reports the plan's windows; `total_cost_usd`
   is a list price, not a charge; each session makes one small Haiku
   request of its own (about 1,300 input tokens).

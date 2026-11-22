@@ -261,6 +261,10 @@ what is due, and on-demand self-test.
   numbers and a word split by a hyphen at a line's end. To refer to a
   passage it paraphrases, the tutor links its section in its own sentence;
   a link claims no quote.
+- Unit notes stand alone, so they cite the source as text, never as a
+  link, and quote it only in verified quotes' words, each with its
+  citation. The exported transcript keeps quote blocks with their
+  citations and gives a section link's words with its section and page.
 - Scanned PDFs need text recognition first and will contain errors.
 - Web search is allowed per course, used only when the tutor needs material it
   lacks, and cited when used. It is search only: the tutor reads the

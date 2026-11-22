@@ -116,7 +116,7 @@ export function pageLine(
  * reference when the outlines are unknown.
  */
 export function quoteCitation(
-  quote: { section: string; at?: QuoteStart },
+  quote: { section: string; at?: QuoteStart | undefined },
   outlines: readonly Outline[] | undefined,
 ): string {
   const { at } = quote;
