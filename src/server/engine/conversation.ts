@@ -83,6 +83,8 @@ export interface Turn {
    * page hears nothing of it, and `ended` does not run.
    */
   skip?(): boolean;
+  /** The reply is published by a tool, not as streamed text. Check that it was published. */
+  toolReplyProblem?(): string | undefined;
   /**
    * Runs once the turn has ended, before the next turn is sent, with the
    * text the tutor wrote in it, which is empty if it wrote none.
@@ -335,7 +337,7 @@ export function createConversation(options: {
       // The thread shows each file once a reply, however often it is written.
       const written = new Set<string>();
       for await (const event of tutor.send({ text }, current.stop.signal)) {
-        if (event.type === "text") {
+        if (event.type === "text" && turn.toolReplyProblem === undefined) {
           current.reply += event.text;
           log.emit({ type: "tutor_text", text: event.text });
         } else if (event.type === "file_written") {
@@ -353,6 +355,10 @@ export function createConversation(options: {
           current.stop.abort();
           const outcome =
             event.outcome === "ended_by_tool" ? "done" : event.outcome;
+          if (outcome === "done") {
+            const problem = turn.toolReplyProblem?.();
+            if (problem !== undefined) return fail(problem);
+          }
           log.emit({
             type: "turn_end",
             outcome,

@@ -249,12 +249,11 @@ where `convert.py` handles them.
   mathematical results only.
 - **Told to "acknowledge" app events, the tutor restates the page's
   lines.**
-- **Text written before a `quote_source` call goes into hidden thinking
-  on Opus 5.5 as on Sonnet**: a lecture alternating quotes and explanation
-  showed 112 to 169 words of its own in 2 of 3 Opus runs on Hegel, the
-  rest in thinking before each call. Quotes first, then the passages in
-  turn ("make your quote_source calls before you write"): no such thinking
-  in 18 Opus runs, lectures of 350 to 490 words of its own.
+- **Text before `quote_source` can go into hidden thinking** on Opus 5.5
+  and Sonnet: two of three Opus Hegel runs that alternated tool calls and
+  explanations showed 112 to 169 words. In discussion the tutor therefore
+  calls the tool before ordinary text; lectures put prose and quote
+  selectors in one `present_lecture` call instead.
 - **With the section read, the tutor quotes it in its own text,
   unchecked**: told to quote nothing verbatim, Opus put 62 of Hegel's
   phrases in quotation marks over 3 runs, 15 of six words or more; told to

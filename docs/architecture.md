@@ -116,7 +116,10 @@ Rules no single file shows:
   not the text returned to the tutor by a read.
   Test doubles: `fake-timer.ts`, `fake-converter.ts`.
 - **`src/server/tools/`**: the teaching tools, transport-free (`tool.ts`),
-  a file each; `sources.ts` holds `read_section`, `view_page`, `quote_source`.
+  a file each; `sources.ts` holds `read_section`, `view_page`, `quote_source`
+  and `present_lecture`. The lecture tool verifies all quote selectors
+  before the engine records any block. It records prose and quotes as
+  ordinary transcript events so live display, replay and export agree.
 - **`src/server/backends/`**: `backend.ts` (the adapter), `claude.ts`
   (Agent SDK on the plan login), `fake.ts` (tests), `scripted.ts` (the
   fake driven by turn headers, for `pnpm dev:fake`).

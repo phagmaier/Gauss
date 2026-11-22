@@ -36,6 +36,9 @@ questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
+Off-segment passage finding is separate from teaching. Try local search
+first; consider a cheap model only if too many plausible matches need ranking.
+
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
@@ -78,22 +81,6 @@ specific “Done when” checks.
   `help-judge.md` as `findings.md`, "Comparing prompt versions", says.
 - Done when: both sets run, with their agreement and any prompt change in
   `findings.md`, "Grader" and "Help judge".
-
-### 4.16 Show source lectures in passage order
-
-- Status: todo
-- Depends on: 4.15
-- Why: quotes first avoids lost text before tool calls but separates
-  each passage from its explanation.
-- Do: let source lectures specify ordered prose and quote references.
-  Resolve and render the source's words in place; preserve the order in
-  the session record, replay and transcript export. A missing reference
-  must not display an unverified quote.
-- Done when: the fake backend drives a lecture with two quotes in place,
-  both citations open the source, and replay and export keep the order.
-- Before any live comparison, specify model, effort and run count. A
-  cheap passage ranker is not part of teaching; consider it only if local
-  search is insufficient for finding off-segment passages.
 
 ## Stage 6: later
 

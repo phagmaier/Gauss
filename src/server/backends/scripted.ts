@@ -134,7 +134,10 @@ import { NotesReply } from "../../shared/notes.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { sentences } from "../../shared/profile.ts";
 import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
-import { UNIT_TEXT_LIMIT } from "../../shared/source.ts";
+import {
+  type PresentLectureInput,
+  UNIT_TEXT_LIMIT,
+} from "../../shared/source.ts";
 import {
   QUESTION_HISTORY_START,
   SEGMENT_SECTION_REFS,
@@ -717,21 +720,52 @@ function teaching(
           )
           .split(", ")
       : [];
-    return [
-      ...sections.map((section) => ({
-        call: "read_section",
-        input: { section },
-      })),
-      {
-        text:
-          `**Scripted teaching.** ${where}\n\n` +
-          "Inline math reads $e^{i\\pi} + 1 = 0$, and display math:\n\n" +
-          "$$\\int_0^1 x\\,dx = \\tfrac{1}{2}$$\n\n" +
-          (sections[0] ? `See [the section](source:${sections[0]}).\n\n` : ""),
-      },
-      ...(where.includes("; segment 1 of ") ? showArtifact() : []),
-      { text: 'Ask anything, or press "ready" for the check.' },
-    ];
+    const prose =
+      `**Scripted teaching.** ${where}\n\n` +
+      "Inline math reads $e^{i\\pi} + 1 = 0$, and display math:\n\n" +
+      "$$\\int_0^1 x\\,dx = \\tfrac{1}{2}$$\n\n" +
+      (sections[0] ? `See [the section](source:${sections[0]}).\n\n` : "");
+    const aid = where.includes("; segment 1 of ");
+    const invite = 'Ask anything, or press "ready" for the check.';
+    if (hasRefs) {
+      const blocks: PresentLectureInput["blocks"] = [
+        { kind: "prose", text: prose },
+      ];
+      // The dev seed's counting.md: two passages for exercising quote navigation.
+      const section = "three-ways-of-counting/s3";
+      if (sections.includes(section)) {
+        blocks.push(
+          {
+            kind: "quote",
+            section,
+            text: "Count one collection in two different ways, and the two counts must agree.",
+          },
+          {
+            kind: "prose",
+            text: "The two methods count the same objects. Only the way we group them changes.",
+          },
+          {
+            kind: "quote",
+            section,
+            text: "Every handshake is counted twice in that sum, once for each of its two people",
+          },
+          {
+            kind: "prose",
+            text: "Summing by person counts both ends of each handshake. For an ungraded try, count the handshakes when three people each shake hands with both others.",
+          },
+        );
+      }
+      blocks.push({ kind: "prose", text: invite });
+      return [
+        ...sections.map((section) => ({
+          call: "read_section",
+          input: { section },
+        })),
+        ...(aid ? showArtifact(false) : []),
+        { call: "present_lecture", input: { blocks } },
+      ];
+    }
+    return [{ text: prose }, ...(aid ? showArtifact() : []), { text: invite }];
   }
   const answered = /The learner answered question (\d+)\./.exec(header)?.[1];
   if (answered !== undefined && header.includes("The miss opens a detour")) {
@@ -942,10 +976,16 @@ function parseUnitLines(text: string): Unit[] {
   return units;
 }
 
-/** Shows the scripted artifact, with a line before it. */
-function showArtifact(): FakeStep[] {
+/** Shows the scripted artifact, with an introduction when writing ordinary text. */
+function showArtifact(introduce = true): FakeStep[] {
   return [
-    { text: "A scripted aid opens beside the conversation: drag the slider." },
+    ...(introduce
+      ? [
+          {
+            text: "A scripted aid opens beside the conversation: drag the slider.",
+          },
+        ]
+      : []),
     {
       call: "show_artifact",
       input: { title: "The tangent to y = x²", html: SCRIPTED_ARTIFACT },

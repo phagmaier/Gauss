@@ -18,9 +18,9 @@ import {
   type SectionRef,
   sectionsByRef,
 } from "../../shared/source.ts";
-import { QUOTE_NOT_FOUND } from "../../shared/source-quote.ts";
+import { type FoundQuote, QUOTE_NOT_FOUND } from "../../shared/source-quote.ts";
 import type { DataRoot } from "../record/data-root.ts";
-import type { SourceShelf } from "../tools/sources.ts";
+import type { SourceQuoted, SourceShelf } from "../tools/sources.ts";
 import {
   NotRendered,
   renderSourcePage,
@@ -34,8 +34,6 @@ import {
   placeText,
   sectionText,
 } from "./source-text.ts";
-
-export type SourceQuoted = Extract<PageEvent, { type: "source_quoted" }>;
 
 /** The unit's chat's part in a quote: whether one can be shown now, and where. */
 export interface QuoteDesk {
@@ -111,6 +109,38 @@ export function createSourceShelf(options: {
         return { ...marked, literal: text.slice(marked.start, marked.end) };
     }
     return undefined;
+  }
+
+  async function locateQuote(
+    text: string,
+    section: SectionRef | undefined,
+    signal?: AbortSignal,
+  ): Promise<{ found: FoundQuote } | { refused: string }> {
+    if (section !== undefined && !byRef.has(section)) {
+      return {
+        refused: `There is no section "${section}" to look in, since ${missingSection(section, sources)}.`,
+      };
+    }
+    const found = await findCourseQuote(
+      quoteCourse,
+      text,
+      () => ({
+        ...(section === undefined ? {} : { section }),
+        segment: quotes.segmentSections(),
+      }),
+      signal,
+    );
+    signal?.throwIfAborted();
+    return found === undefined ? { refused: QUOTE_NOT_FOUND } : { found };
+  }
+
+  function quoteEvent({ section, text, at }: FoundQuote): SourceQuoted {
+    return {
+      type: "source_quoted",
+      section,
+      text,
+      ...(at === undefined ? {} : { at }),
+    };
   }
 
   return {
@@ -216,37 +246,16 @@ export function createSourceShelf(options: {
     },
 
     async quote({ text, section }, signal) {
-      if (section !== undefined && !byRef.has(section)) {
-        return {
-          refused: `There is no section "${section}" to look in, since ${missingSection(section, sources)}.`,
-        };
-      }
       const closed = await quotes.closed();
       if (closed !== undefined) return { refused: closed };
-      const found = await findCourseQuote(
-        quoteCourse,
-        text,
-        () => ({
-          ...(section === undefined ? {} : { section }),
-          segment: quotes.segmentSections(),
-        }),
-        signal,
-      );
-      signal?.throwIfAborted();
-      if (found === undefined) return { refused: QUOTE_NOT_FOUND };
+      const result = await locateQuote(text, section, signal);
+      if ("refused" in result) return result;
+      const { found } = result;
       const where = byRef.get(found.section);
       if (where === undefined)
         throw new Error("The quote's section is not in the outlines.");
       const { at } = found;
-      const refused = await quotes.show(
-        {
-          type: "source_quoted",
-          section: found.section,
-          text: found.text,
-          ...(at === undefined ? {} : { at }),
-        },
-        signal,
-      );
+      const refused = await quotes.show(quoteEvent(found), signal);
       if (refused !== undefined) return { refused };
       const start =
         at === undefined
@@ -264,6 +273,16 @@ export function createSourceShelf(options: {
           "Shown to the learner in the source's own words, with its " +
           `citation: found in ${sectionText(where)}${start}. Go on with your reply.`,
       };
+    },
+
+    async verifyQuote({ section, text }, signal) {
+      const result = await locateQuote(text, section, signal);
+      if ("refused" in result) return result;
+      if (result.found.section !== section)
+        return {
+          refused: `The passage does not start in "${section}". Name the section where you copied its start.`,
+        };
+      return { quote: quoteEvent(result.found) };
     },
   };
 }

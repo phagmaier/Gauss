@@ -21,12 +21,14 @@ import {
   type FakeTurn,
 } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
+import type { SourceQuoted } from "../tools/sources.ts";
 import { givenOrder } from "./choice-order.ts";
 import { placeTestSource } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
-import { createSourceShelf, type SourceQuoted } from "./source-shelf.ts";
+import { createSourceShelf } from "./source-shelf.ts";
+import { renderTranscript } from "./transcript-html.ts";
 import { createUnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 
@@ -296,9 +298,113 @@ test("a failed course index can be retried; an abandoned queued quote does not r
   expect(other.shown).toEqual([]);
 });
 
-test("a quote across a cut is shown where the tutor made it, in the source's words, cited where it starts, and kept in the transcript for after a restart", async () => {
+test("a source lecture publishes only verified blocks, in order through replay and export", async () => {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const id = await makeCourse(root);
+  const section = "phenomenology/s1";
+  const prose = (text: string) => ({ kind: "prose", text });
+  const passage = (text: string) => ({ kind: "quote", section, text });
+  const blocks = [
+    prose("Start with the claim."),
+    prose("Consider it in two steps."),
+    passage("the true is the whole."),
+    prose("The first sentence sets the standard."),
+    passage("It is essentially a result."),
+    prose("The second says that the standard takes time to reach."),
+  ];
+  const expected = [
+    {
+      type: "tutor_text",
+      text: "Start with the claim.\n\nConsider it in two steps.",
+    },
+    {
+      type: "source_quoted",
+      section,
+      text: "The true is the whole.",
+      at: { page: 1 },
+    },
+    { type: "tutor_text", text: "The first sentence sets the standard." },
+    {
+      type: "source_quoted",
+      section,
+      text: "it is essentially a result.",
+      at: { page: 2 },
+    },
+    {
+      type: "tutor_text",
+      text: "The second says that the standard takes time to reach.",
+    },
+  ];
+  const first = await open(root, id, [
+    [
+      { text: "Draft not meant for the page." },
+      quote("The true is the whole.", section),
+      {
+        call: "present_lecture",
+        input: {
+          blocks: [
+            prose("Rejected draft."),
+            passage("The true is the whole."),
+            passage("Knowing is a test."),
+          ],
+        },
+      },
+      { call: "present_lecture", input: { blocks } },
+      { text: "After the lecture." },
+    ],
+  ]);
+  try {
+    expect(first.backend.calls.map(({ result }) => result.status)).toEqual([
+      "refused",
+      "refused",
+      "done",
+    ]);
+    expect(first.backend.calls[1]?.result.text).toContain(section);
+    expect(said(first.chat.events())).toEqual(expected);
+  } finally {
+    await first.units.close();
+  }
+
+  const reopened = await open(root, id, []);
+  try {
+    expect(said(reopened.chat.events())).toEqual(expected);
+    const html = renderTranscript(
+      CURRICULUM.title,
+      { ...PREFACE, plan: PLAN },
+      1,
+      await root.readTranscripts(id, "preface"),
+      [BOOK],
+    );
+    expect(html).toMatch(
+      /Start with the claim\.[\s\S]*<blockquote>The true is the whole\.<\/blockquote>[\s\S]*The first sentence sets the standard\.[\s\S]*<blockquote>it is essentially a result\.<\/blockquote>[\s\S]*The second says that the standard takes time to reach\./,
+    );
+    expect(html).not.toMatch(/Rejected draft|Knowing is a test/);
+  } finally {
+    await reopened.units.close();
+  }
+});
+
+test("a source teaching turn that never submits a lecture reports the failure", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const { chat, units } = await open(root, id, [
+    [{ text: "Unsubmitted lecture." }],
+  ]);
+  try {
+    expect(said(chat.events())).toEqual([]);
+    expect(chat.events()).toContainEqual({
+      type: "turn_end",
+      outcome: "error",
+      error: expect.stringContaining("lecture"),
+    });
+  } finally {
+    await units.close();
+  }
+});
+
+test("a quote across a cut is shown where the tutor made it, in the source's words, cited where it starts, and kept in the transcript for after a restart", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root, { segment: 0, phase: "discuss" });
   const first = await open(root, id, [
     [
       { text: "Hegel says:" },
@@ -308,6 +414,10 @@ test("a quote across a cut is shown where the tutor made it, in the source's wor
       { text: "So the Absolute is a result." },
     ],
   ]);
+  expect(first.chat.say("Where is the Absolute a result?")).toEqual({
+    ok: true,
+  });
+  await first.chat.settled();
   const shown = {
     type: "source_quoted",
     section: "phenomenology/s1",
@@ -378,7 +488,7 @@ test("of two matches, the one in the section named comes first, then the one in 
 
 test("a passage the sources lack, a section they lack, and a passage too short are refused, and nothing is shown", async () => {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
-  const id = await makeCourse(root);
+  const id = await makeCourse(root, { segment: 0, phase: "discuss" });
   const { backend, chat, units } = await open(root, id, [
     [
       quote("The true is the hole."),
@@ -388,6 +498,8 @@ test("a passage the sources lack, a section they lack, and a passage too short a
     ],
   ]);
   try {
+    expect(chat.say("Can you quote all three?")).toEqual({ ok: true });
+    await chat.settled();
     expect(backend.calls.map((c) => c.result)).toEqual([
       { status: "refused", text: QUOTE_NOT_FOUND },
       {
@@ -414,7 +526,12 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
     root,
     id,
     [
-      [{ text: "Teaching." }],
+      [
+        {
+          call: "present_lecture",
+          input: { blocks: [{ kind: "prose", text: "Teaching." }] },
+        },
+      ],
       [
         { text: "One question." },
         {
@@ -429,7 +546,14 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
         },
       ],
       // The reply to a message while question 1 is open.
-      [quote("The true is the whole."), { text: "Not now." }],
+      [
+        {
+          call: "present_lecture",
+          input: { blocks: [{ kind: "prose", text: "The answer is yes." }] },
+        },
+        quote("The true is the whole."),
+        { text: "Not now." },
+      ],
       // The feedback on the answer.
       [{ text: "Right." }, quote("The true is the whole.")],
     ],
@@ -447,6 +571,10 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
     await chat.settled();
     expect(chat.say("Where is this in the text?")).toEqual({ ok: true });
     await chat.settled();
+    expect(backend.calls.at(-2)?.result).toMatchObject({
+      status: "refused",
+      text: expect.stringContaining("Question 1 is open"),
+    });
     expect(backend.calls.at(-1)?.result).toEqual({
       status: "refused",
       text:

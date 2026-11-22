@@ -184,6 +184,8 @@ import {
   showArtifactTool,
 } from "../tools/show-artifact.ts";
 import {
+  type LectureDesk,
+  presentLectureTool,
   quoteSourceTool,
   readSectionTool,
   viewPageTool,
@@ -1239,6 +1241,8 @@ function createUnitChat(
   const log = createTranscribedLog({ dataRoot, courseId, unitId, now });
   const exclusive = createSerial();
   let running: Running | undefined;
+  /** Only the active teaching turn of a source segment can publish its lecture. */
+  let sourceLecture: { shown: boolean } | undefined;
   /** The agents of the last load, so closing the chat closes them while it loads too. */
   let agents: UnitAgents | undefined;
   /** The handoff writer's calls on this unit, once it has loaded. */
@@ -1429,6 +1433,7 @@ function createUnitChat(
                 readSectionTool(sourceShelf),
                 viewPageTool(sourceShelf),
                 quoteSourceTool(sourceShelf),
+                presentLectureTool(sourceShelf, lectureDesk),
               ]),
         ],
         // Read whenever a session starts or resumes (task 4.11).
@@ -1888,18 +1893,35 @@ function createUnitChat(
 
   function sendTeaching(r: Running, cutOff: boolean): void {
     const { segment } = r.record.position;
+    const lecture =
+      segmentOf(r.context.plan, r.record.position).sections.length === 0
+        ? undefined
+        : { shown: false };
     r.agents.send({
       text: () => teachTurn(where(r), cutOff),
+      ...(lecture === undefined
+        ? {}
+        : {
+            sent: () => {
+              sourceLecture = lecture;
+            },
+            toolReplyProblem: () =>
+              lecture.shown
+                ? undefined
+                : "The tutor did not submit the source lecture. Ask it to explain what was missed.",
+          }),
       // The end of the teaching turn, or Stop during it, opens the
       // discussion, whatever the outcome: after an error the learner can
       // ask for what was missed.
-      ended: () =>
-        exclusive(async () => {
+      ended: () => {
+        if (sourceLecture === lecture) sourceLecture = undefined;
+        return exclusive(async () => {
           const { position } = r.record;
           if (position.segment === segment && position.phase === "teach") {
             await r.record.move({ ...position, phase: "discuss" });
           }
-        }),
+        });
+      },
     });
   }
 
@@ -3210,13 +3232,18 @@ function createUnitChat(
       : `Question ${open.number} is open: nothing can be quoted until its ` +
           "answer is graded, since a passage could help with the answer.";
   };
+  const standaloneQuoteRefusal = () =>
+    quoteRefusal() ??
+    (sourceLecture === undefined
+      ? undefined
+      : "Put quotations in present_lecture in a source teaching turn.");
   const quoteDesk: QuoteDesk = {
-    closed: () => exclusive(async () => quoteRefusal()),
+    closed: () => exclusive(async () => standaloneQuoteRefusal()),
     show: (quote, signal) =>
       exclusive(async () => {
         // A turn stopped meanwhile shows nothing more.
         signal?.throwIfAborted();
-        const refused = quoteRefusal();
+        const refused = standaloneQuoteRefusal();
         if (refused === undefined) log.emit(quote);
         return refused;
       }),
@@ -3226,6 +3253,29 @@ function createUnitChat(
         ? []
         : segmentOf(r.context.plan, r.record.position).sections;
     },
+  };
+
+  const lectureRefusal = (): string | undefined =>
+    quoteRefusal() ??
+    (sourceLecture === undefined
+      ? "A lecture can only be shown in a source segment's teaching turn."
+      : sourceLecture.shown
+        ? "The lecture has already been shown. End your turn."
+        : undefined);
+  const lectureDesk: LectureDesk = {
+    closed: () => exclusive(async () => lectureRefusal()),
+    show: (events, signal) =>
+      exclusive(async () => {
+        signal?.throwIfAborted();
+        const refused = lectureRefusal();
+        if (refused !== undefined) return refused;
+        const lecture = sourceLecture;
+        if (lecture === undefined)
+          throw new Error("No source lecture is active.");
+        lecture.shown = true;
+        for (const event of events) log.emit(event);
+        return undefined;
+      }),
   };
 
   // Not while a question of the unit is open, where the card would sit

@@ -261,17 +261,22 @@ test("the tutor's instructions outline each source, and a segment's teaching tur
 });
 
 test("the tutor reads its segment's section and another unit's, each shown in the thread; a section the sources lack is refused with what they have", async () => {
-  const { backend, chat, units } = await start([
+  const { backend, chat, units } = await start(
     [
-      read("phenomenology/s1"),
-      { text: "The whole." },
-      read("phenomenology/s3"),
-      read("phenomenology/s9"),
-      read("critique/s1"),
-      { text: "Next." },
+      [
+        read("phenomenology/s1"),
+        { text: "The whole." },
+        read("phenomenology/s3"),
+        read("phenomenology/s9"),
+        read("critique/s1"),
+        { text: "Next." },
+      ],
     ],
-  ]);
+    { position: { segment: 0, phase: "discuss" } },
+  );
   try {
+    expect(chat.say("Check the other sections?")).toEqual({ ok: true });
+    await chat.settled();
     expect(backend.calls.map((c) => c.result)).toEqual([
       {
         status: "done",
@@ -349,8 +354,16 @@ test("the stored plan narrows teaching reads, with wider context and verified qu
           input: { ...part, range: { paragraphs: { first: 1, last: 1 } } },
         },
         {
-          call: "quote_source",
-          input: { section: part.section, text: "It is a result." },
+          call: "present_lecture",
+          input: {
+            blocks: [
+              { kind: "quote", section: part.section, text: "It is a result." },
+              {
+                kind: "prose",
+                text: "The passage distinguishes the starting point from the result.",
+              },
+            ],
+          },
         },
       ],
     ],

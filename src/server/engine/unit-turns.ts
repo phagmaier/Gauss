@@ -1304,8 +1304,11 @@ function allowed(where: Where): string {
       return (
         "Allowed now: teach the segment's objectives in this turn, " +
         (sections.length === 0 ? "" : readFirst) +
-        "within the length the style sets, then stop; the learner can ask " +
-        "anything next. No questions yet: ask_question is refused until the " +
+        "within the length the style sets" +
+        (sections.length === 0
+          ? ", then stop; the learner can ask anything next. "
+          : ", using present_lecture for the whole reply, not ordinary text. Finish reading, page views and any aids before calling it; it ends the turn. ") +
+        "No questions yet: ask_question is refused until the " +
         'learner presses "ready".'
       );
     }

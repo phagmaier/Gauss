@@ -157,9 +157,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     images: z.literal(true).optional(),
   }),
   /**
-   * The tutor quoted a passage of the course's sources with quote_source
-   * (task 4.9), found in its text: the thread's verified quote (piece 23),
-   * in the source's own words and the section where it starts, with the
+   * A verified quote from the course's sources, standalone or in a
+   * lecture, in the source's words and the section where it starts, with the
    * page, paragraph or heading where it starts when known.
    */
   z.object({

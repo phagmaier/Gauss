@@ -1,19 +1,28 @@
-// The read_section, view_page and quote_source teaching tools (tasks 4.8
-// and 4.9), given to the tutor of a course with a source: a section's text,
-// a PDF page as an image where the text lost math or figures, and a passage
-// shown to the learner as a quote once it is found in the sources. Teaching
-// tools, not file tools: they work with no sandbox or on another backend,
-// and keep the record out of the tutor's reach. Reading is allowed at any
-// time; quoting, not while a question is open, which is the engine's rule.
-// None ends the tutor's turn.
+// Source tools for a course with sources: read a section or passage, look
+// at a PDF page, show a verified standalone quote, or publish a source
+// lecture. The engine supplies the source and the chat's phase rules.
 
+import type { PageEvent } from "../../shared/events.ts";
 import {
+  PresentLectureInput,
   QuoteSourceInput,
   ReadSectionInput,
   ViewPageInput,
 } from "../../shared/source.ts";
 import { quoteTextProblem } from "../../shared/source-quote.ts";
 import { defineTool, type TeachingTool, type ToolImage } from "./tool.ts";
+
+export type SourceQuoted = Extract<PageEvent, { type: "source_quoted" }>;
+type LectureEvent = SourceQuoted | Extract<PageEvent, { type: "tutor_text" }>;
+
+/** The chat checks when a lecture is allowed, then publishes it in order. */
+export interface LectureDesk {
+  closed(): Promise<string | undefined>;
+  show(
+    events: readonly LectureEvent[],
+    signal?: AbortSignal,
+  ): Promise<string | undefined>;
+}
 
 /** Where the course's sources are read. The engine provides it. */
 export interface SourceShelf {
@@ -36,6 +45,11 @@ export interface SourceShelf {
     input: QuoteSourceInput,
     signal?: AbortSignal,
   ): Promise<{ text: string } | { refused: string }>;
+  /** Verifies a passage starting in the named section, without showing it. */
+  verifyQuote(
+    input: Required<QuoteSourceInput>,
+    signal?: AbortSignal,
+  ): Promise<{ quote: SourceQuoted } | { refused: string }>;
 }
 
 export function readSectionTool(shelf: SourceShelf): TeachingTool {
@@ -61,7 +75,7 @@ export function readSectionTool(shelf: SourceShelf): TeachingTool {
   });
 }
 
-export function viewPageTool(shelf: SourceShelf): TeachingTool {
+export function viewPageTool(shelf: Pick<SourceShelf, "view">): TeachingTool {
   return defineTool({
     name: "view_page",
     description:
@@ -85,7 +99,7 @@ export function quoteSourceTool(shelf: SourceShelf): TeachingTool {
   return defineTool({
     name: "quote_source",
     description:
-      "Quote a passage of the course's sources to the learner. It is looked " +
+      "Outside a source lecture, quote a passage of the course's sources to the learner. It is looked " +
       "for in the sources' text and, once found, shown in the conversation " +
       "where you call this, in the source's own words with its citation; " +
       "your text goes on below it. Copy the passage from a section you have " +
@@ -103,6 +117,56 @@ export function quoteSourceTool(shelf: SourceShelf): TeachingTool {
       if ("refused" in quoted)
         return { status: "refused", text: quoted.refused };
       return { status: "done", text: quoted.text };
+    },
+  });
+}
+
+export function presentLectureTool(
+  shelf: SourceShelf,
+  desk: LectureDesk,
+): TeachingTool {
+  return defineTool({
+    name: "present_lecture",
+    description:
+      "Publish the complete lecture for a segment taught from sources. Read the " +
+      "passages and show any aid first. Supply your prose and verified-quote " +
+      "selectors in the order the learner should see them. A quote must copy " +
+      "the words from the named section's passage, with no locator comments " +
+      "or surrounding quotation marks, at least three words and at most " +
+      "1,200 characters, no ellipsis. No lecture block is shown if any quote fails. " +
+      "Correct the block named in the refusal, or replace it with a paraphrase, " +
+      "then send the whole lecture again. Success ends the turn.",
+    input: PresentLectureInput,
+    async run({ blocks }, signal) {
+      const closed = await desk.closed();
+      if (closed !== undefined) return { status: "refused", text: closed };
+      const events: LectureEvent[] = [];
+      for (const [i, block] of blocks.entries()) {
+        if (block.kind === "prose") {
+          const last = events.at(-1);
+          if (last?.type === "tutor_text") last.text += `\n\n${block.text}`;
+          else events.push({ type: "tutor_text", text: block.text });
+          continue;
+        }
+        const problem = quoteTextProblem(block.text);
+        if (problem !== undefined)
+          return { status: "refused", text: `Block ${i + 1}: ${problem}` };
+        const found = await shelf.verifyQuote(block, signal);
+        if ("refused" in found)
+          return {
+            status: "refused",
+            text: `Block ${i + 1}: ${found.refused}`,
+          };
+        events.push(found.quote);
+      }
+      const refused = await desk.show(events, signal);
+      return refused === undefined
+        ? {
+            status: "done",
+            text: "The lecture is shown. End your turn.",
+            endTurn: true,
+          }
+        : { status: "refused", text: refused };
     },
   });
 }

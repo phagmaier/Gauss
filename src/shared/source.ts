@@ -264,6 +264,32 @@ export const QuoteSourceInput = z.object({
 });
 export type QuoteSourceInput = z.infer<typeof QuoteSourceInput>;
 
+/** Ordered blocks for a complete source lecture. A quote selects, never supplies, display text. */
+export const PresentLectureInput = z.object({
+  blocks: z
+    .array(
+      z.discriminatedUnion("kind", [
+        z.strictObject({
+          kind: z.literal("prose"),
+          text: z.string().trim().min(1).describe("Your own Markdown prose."),
+        }),
+        QuoteSourceInput.extend({
+          kind: z.literal("quote"),
+          section: SectionRef.describe(
+            "The section where this passage starts. Its text selects the exact span to display from that section.",
+          ),
+        }).strict(),
+      ]),
+    )
+    .refine((blocks) => blocks.some((block) => block.kind === "prose"), {
+      error: "A lecture needs at least one prose block.",
+    })
+    .describe(
+      "The lecture in reading order, with each quote next to its explanation.",
+    ),
+});
+export type PresentLectureInput = z.infer<typeof PresentLectureInput>;
+
 /**
  * A page marker in a PDF section's text, `<!-- page 31 label "5" math
  * images -->`: the page, counted from 1, and

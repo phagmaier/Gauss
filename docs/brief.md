@@ -252,11 +252,12 @@ what is due, and on-demand self-test.
   embedding search.
 - For pages where text extraction loses content (equations, figures) the tutor
   reads the page image.
-- Any passage the tutor quotes is verified to appear verbatim in the source,
-  and citations open the passage. Matching ignores what extraction adds:
-  margin line numbers and a word split by a hyphen at a line's end. To
-  refer to a passage it paraphrases, the tutor links its section in its own
-  sentence; a link claims no quote.
+- A source lecture puts verified quotes beside their explanations, in the
+  text's order. Quote blocks show the source's words, and their citations
+  open the passage. Matching ignores what extraction adds: margin line
+  numbers and a word split by a hyphen at a line's end. To refer to a
+  passage it paraphrases, the tutor links its section in its own sentence;
+  a link claims no quote.
 - Scanned PDFs need text recognition first and will contain errors.
 - Web search is allowed per course, used only when the tutor needs material it
   lacks, and cited when used. It is search only: the tutor reads the
