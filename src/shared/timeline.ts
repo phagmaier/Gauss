@@ -22,7 +22,7 @@ import type {
   GradedAnswer,
   QuestionView,
 } from "./question.ts";
-import type { SourceFacts, SourceRefusal } from "./source.ts";
+import type { QuoteStart, SourceFacts, SourceRefusal } from "./source.ts";
 import type { Phase } from "./state.ts";
 import type { ObjectiveStatus } from "./status.ts";
 import type { StyleOutcome } from "./style.ts";
@@ -164,6 +164,18 @@ export interface PageItem {
   images?: true;
 }
 
+/**
+ * A passage the tutor quoted, verified in the source (task 4.9, piece 23):
+ * the source's words, the section where it starts, and where in it.
+ */
+export interface QuoteItem {
+  kind: "quote";
+  key: number;
+  section: string;
+  text: string;
+  at?: QuoteStart;
+}
+
 /** The tutor's request to install packages (task 3.11, piece 14), and its answer. */
 export interface PackagesItem {
   kind: "packages";
@@ -237,6 +249,7 @@ export type Item =
   /** A section the tutor read (task 4.8, piece 23), as the course names it. */
   | { kind: "read"; key: number; section: string }
   | PageItem
+  | QuoteItem
   | ArtifactItem
   | PackagesItem
   | StyleItem
@@ -679,6 +692,21 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             page: event.page,
             ...(event.math ? { math: true } : {}),
             ...(event.images ? { images: true } : {}),
+          },
+        ],
+        tutorOpen: false,
+      };
+    case "source_quoted":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "quote",
+            key: index,
+            section: event.section,
+            text: event.text,
+            ...(event.at === undefined ? {} : { at: event.at }),
           },
         ],
         tutorOpen: false,

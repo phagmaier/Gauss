@@ -58,7 +58,12 @@ import { currentObjective, type Plan } from "../shared/plan.ts";
 import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
 import { messageParts } from "../shared/quote.ts";
 import type { Outline as SourceOutline } from "../shared/source.ts";
-import { type DidLine, pageLine, readLine } from "../shared/source-lines.ts";
+import {
+  type DidLine,
+  pageLine,
+  quoteCitation,
+  readLine,
+} from "../shared/source-lines.ts";
 import {
   type ArtifactItem,
   type AssessmentItem,
@@ -377,7 +382,10 @@ export function Session(props: { courseId: string; unitId: string }) {
     courseId,
     readsSources(
       timeline.items.flatMap((i) => (i.kind === "curriculum" ? i.units : [])),
-    ) || timeline.items.some((i) => i.kind === "read" || i.kind === "page"),
+    ) ||
+      timeline.items.some(
+        (i) => i.kind === "read" || i.kind === "page" || i.kind === "quote",
+      ),
   );
   // The objective to do now is marked in the heading of the segment the unit
   // is in, the thread's last.
@@ -1118,6 +1126,17 @@ function ThreadItem(props: {
           line={pageLine(item, props.sources)}
         />
       );
+    case "quote":
+      return (
+        <figure className="vq">
+          <blockquote>{item.text}</blockquote>
+          <figcaption>
+            {CHECK_ICON}
+            <span className="sr">Verified in the source: </span>
+            <span>{quoteCitation(item, props.sources)}</span>
+          </figcaption>
+        </figure>
+      );
     case "artifact":
       return (
         <button
@@ -1438,6 +1457,23 @@ const PAGE_ICON = (
   >
     <rect x="3" y="1.8" width="10" height="12.4" rx="1" />
     <path d="M5.5 5h5M5.5 7.5h5M5.5 10h3" />
+  </svg>
+);
+
+/** A check, before a verified quote's citation (piece 23). */
+const CHECK_ICON = (
+  <svg
+    width="13"
+    height="13"
+    viewBox="0 0 14 14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="m3 7.4 2.6 2.6L11 4.4" />
   </svg>
 );
 

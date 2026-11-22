@@ -1,7 +1,7 @@
 // The outlines of a course's sources, which the cards need to say what its
-// units read, and the thread to say what the tutor read. The endpoint gives
-// all outlines at once. Only the intake can change that set, by attaching a
-// source after its first proposal.
+// units read, and the thread to say what the tutor read and to cite what it
+// quoted. The endpoint gives all outlines at once. Only the intake can
+// change that set, by attaching a source after its first proposal.
 
 import { useEffect, useState } from "react";
 import { type Unit, unitSections } from "../shared/curriculum.ts";

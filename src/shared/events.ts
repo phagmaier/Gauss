@@ -19,7 +19,12 @@ import {
   Unsettled,
   Verdict,
 } from "./question.ts";
-import { SectionRef, SourceFacts, SourceRefusal } from "./source.ts";
+import {
+  QuoteStart,
+  SectionRef,
+  SourceFacts,
+  SourceRefusal,
+} from "./source.ts";
 import { Phase } from "./state.ts";
 import { ObjectiveStatus, UnitStatus } from "./status.ts";
 import { StyleOutcome } from "./style.ts";
@@ -130,6 +135,19 @@ export const PageEvent = z.discriminatedUnion("type", [
     page: z.number().int().positive(),
     math: z.literal(true).optional(),
     images: z.literal(true).optional(),
+  }),
+  /**
+   * The tutor quoted a passage of the course's sources with quote_source
+   * (task 4.9), found in its text: the thread's verified quote (piece 23),
+   * in the source's own words, and the section where it starts, with the
+   * page or paragraph where it starts when the outline can tell.
+   */
+  z.object({
+    type: z.literal("source_quoted"),
+    section: SectionRef,
+    /** The source's words, without its markup; paragraphs between blank lines, a line break as a newline. */
+    text: z.string().min(1),
+    at: QuoteStart.optional(),
   }),
   /**
    * The tutor asked to install packages in the course's workspace (task

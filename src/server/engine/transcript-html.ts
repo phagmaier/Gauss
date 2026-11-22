@@ -35,7 +35,12 @@ import {
 } from "../../shared/question.ts";
 import { messageParts } from "../../shared/quote.ts";
 import type { Outline } from "../../shared/source.ts";
-import { type DidLine, pageLine, readLine } from "../../shared/source-lines.ts";
+import {
+  type DidLine,
+  pageLine,
+  quoteCitation,
+  readLine,
+} from "../../shared/source-lines.ts";
 import {
   emptyTimeline,
   type Item,
@@ -259,6 +264,8 @@ function renderItem(
       return didNote("The tutor read", readLine(item.section, sources));
     case "page":
       return didNote("The tutor looked at", pageLine(item, sources));
+    case "quote":
+      return `<figure class="quote"><blockquote>${escapeHtml(item.text)}</blockquote><figcaption class="note">Verified in the source: ${escapeHtml(quoteCitation(item, sources))}</figcaption></figure>`;
     case "artifact":
       return `<p class="note">Aid shown: ${escapeHtml(item.title)}</p>`;
     case "note":
@@ -588,6 +595,8 @@ header h1{font-size:2em;line-height:1.15;margin:0 0 .3em;font-weight:600}
 .choices p{display:inline}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:.6em 1em;border:1px solid var(--line);border-radius:6px;font-size:.89em}
 blockquote{margin-inline:0;padding-left:1em;border-left:2px solid var(--line);color:var(--soft)}
+.quote{margin:1.2em 0}
+.quote blockquote{margin:0 0 .3em;white-space:pre-line;color:var(--ink)}
 table{border-collapse:collapse;font-size:.94em}
 th,td{border:1px solid var(--line);padding:.32em .65em;text-align:left}
 .katex-display{overflow:auto hidden;padding-block:.25em}

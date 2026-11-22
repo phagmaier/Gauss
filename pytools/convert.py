@@ -42,7 +42,8 @@ with no text of its own goes into the next section, or the last. The
 section files are slices of the source's text, which in order are the whole
 of it, so a section holds its heading. A stretch over the limit is cut
 (`_cut`), and its paragraphs are numbered before the cut, so that its parts
-continue the count. A PDF section's place is its pages instead.
+continue the count; each section lists where its paragraphs after its first
+start in its text. A PDF section's place is its pages instead.
 """
 
 import argparse
@@ -73,7 +74,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
-CONVERTER_VERSION = 5  # raised when the same original would give other files
+CONVERTER_VERSION = 6  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text (decisions.md, "Sources")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
@@ -2452,6 +2453,10 @@ def _outline(text, blocks, title, limit, place=_paragraph_place):
                 "size": end - start,
                 "place": place(start, end, first, last),
             }
+            if "paragraphs" in entry["place"]:
+                # Where each paragraph after its first starts, in its text: a quote's citation counts them.
+                entry["paragraphStarts"] = [paragraph.start - start for paragraph in stretch.paragraphs[first:last]]
+                assert all(0 < offset < end - start for offset in entry["paragraphStarts"])
             if len(parts) > 1:
                 entry["part"] = {"number": number, "of": len(parts)}
             stretch.sections.append(entry)

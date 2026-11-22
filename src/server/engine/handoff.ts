@@ -358,6 +358,11 @@ export function readStretch(
           `[The tutor looked at page ${event.page} of the source "${event.source}".]`,
         );
         break;
+      case "source_quoted":
+        say(
+          `[The tutor quoted the section "${event.section}", verified in the source:]\n${event.text}`,
+        );
+        break;
       case "artifact":
         say(`[The tutor showed an aid: "${event.title}".]`);
         break;

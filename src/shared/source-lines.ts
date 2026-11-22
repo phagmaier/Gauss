@@ -1,9 +1,14 @@
 // Where a source's text sits, as the learner reads it (pieces 22 and 23):
 // pages by their printed labels, paragraphs as "¶"; and the thread's lines
-// for what the tutor read of the sources, which the page and the exported
-// transcript both show.
+// for what the tutor read of the sources and the citation of a passage it
+// quoted, which the page and the exported transcript both show.
 
-import { type Outline, type SectionPlace, sectionsByRef } from "./source.ts";
+import {
+  type Outline,
+  type QuoteStart,
+  type SectionPlace,
+  sectionsByRef,
+} from "./source.ts";
 
 /** A source's title up to its first ": ", as a line names the source. */
 export function shortTitle(source: Outline): string {
@@ -101,4 +106,35 @@ export function pageLine(
         ? undefined
         : `its text lost its ${lost.join(" and ")}`,
   };
+}
+
+/**
+ * A verified quote's citation (piece 23): the stretch where it starts, never
+ * Gauss's part, after its source's short title when the course has several,
+ * then its page by the printed label or its paragraph: "Preface, p. 11",
+ * "Chapter I. Introductory, ¶ 9". Its section's name alone while the
+ * outlines are unknown, or when they lack it.
+ */
+export function quoteCitation(
+  quote: { section: string; at?: QuoteStart },
+  outlines: readonly Outline[] | undefined,
+): string {
+  const found =
+    outlines === undefined
+      ? undefined
+      : sectionsByRef(outlines).get(quote.section);
+  if (outlines === undefined || found === undefined) return quote.section;
+  const { source, stretch } = found;
+  const { at } = quote;
+  return [
+    ...(outlines.length > 1 ? [shortTitle(source)] : []),
+    stretch,
+    ...(at === undefined
+      ? []
+      : [
+          "page" in at
+            ? `p. ${pageLabel(source, at.page)}`
+            : `¶ ${at.paragraph}`,
+        ]),
+  ].join(", ");
 }

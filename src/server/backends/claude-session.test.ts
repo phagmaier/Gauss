@@ -218,6 +218,7 @@ test("a page tool sends text and raw base64 image content to Claude, or a text e
                 },
               }
             : { refused: "There is no such page." },
+        quote: async () => ({ refused: "No passage requested." }),
       }),
     ],
   });

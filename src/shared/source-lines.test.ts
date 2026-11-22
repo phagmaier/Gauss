@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Outline } from "./source.ts";
-import { pageLine, readLine } from "./source-lines.ts";
+import { pageLine, quoteCitation, readLine } from "./source-lines.ts";
 
 // The thread's "Read" and "Looked at" lines (piece 23), in the learner's
 // terms: printed page labels, paragraphs as ¶, and the source named only
@@ -108,6 +108,25 @@ test("a page looked at says what its text lost, by its marker, and a page with n
   });
 });
 
+test("a quote is cited by the stretch it starts in, never Gauss's part, then its printed page or its paragraph", () => {
+  expect(
+    quoteCitation({ section: "phenomenology/s2", at: { page: 4 } }, [BOOK]),
+  ).toBe("Preface, p. 2");
+  expect(
+    quoteCitation({ section: "on-liberty/s1", at: { paragraph: 12 } }, [ESSAY]),
+  ).toBe("Chapter I. Introductory, ¶ 12");
+  expect(
+    quoteCitation({ section: "phenomenology/s1", at: { page: 1 } }, [
+      ESSAY,
+      BOOK,
+    ]),
+  ).toBe("The Phenomenology of Spirit, Preface, p. i");
+  // An outline that cannot tell the paragraph names the stretch alone.
+  expect(quoteCitation({ section: "on-liberty/s1" }, [ESSAY])).toBe(
+    "Chapter I. Introductory",
+  );
+});
+
 test("until the outlines are known, or when they lack it, a line gives the name the tutor used", () => {
   expect(readLine("phenomenology/s1", undefined)).toEqual({
     text: "phenomenology/s1",
@@ -121,4 +140,7 @@ test("until the outlines are known, or when they lack it, a line gives the name 
     text: "page 5",
     aside: undefined,
   });
+  expect(
+    quoteCitation({ section: "phenomenology/s1", at: { page: 1 } }, undefined),
+  ).toBe("phenomenology/s1");
 });

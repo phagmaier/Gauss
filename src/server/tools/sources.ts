@@ -1,15 +1,19 @@
-// The read_section and view_page teaching tools (task 4.8; architecture.md
-// sections 5 and 8), given to the tutor of a course with a source: a
-// section's text, and a PDF page as an image where the text lost math or
-// figures. Teaching tools rather than the tutor's file tools (decisions.md,
-// "Sources"). Both are allowed at any time and neither ends the tutor's
-// turn.
+// The read_section, view_page and quote_source teaching tools (tasks 4.8
+// and 4.9; architecture.md sections 5 and 8), given to the tutor of a
+// course with a source: a section's text, a PDF page as an image where the
+// text lost math or figures, and a passage shown to the learner as a quote
+// once it is found in the sources. Teaching tools rather than the tutor's
+// file tools (decisions.md, "Sources"). Reading is allowed at any time;
+// quoting, not while a question is open, which is the engine's rule. None
+// ends the tutor's turn.
 
 import {
+  QuoteSourceInput,
   ReadSectionInput,
   type SectionRef,
   ViewPageInput,
 } from "../../shared/source.ts";
+import { quoteTextProblem } from "../../shared/source-quote.ts";
 import { defineTool, type TeachingTool, type ToolImage } from "./tool.ts";
 
 /** Where the course's sources are read. The engine provides it. */
@@ -25,6 +29,14 @@ export interface SourceShelf {
     page: number,
     signal?: AbortSignal,
   ): Promise<{ text: string; image: ToolImage } | { refused: string }>;
+  /**
+   * Shows the passage to the learner as a verified quote, with a line
+   * saying where it was found, or says why it cannot.
+   */
+  quote(
+    input: QuoteSourceInput,
+    signal?: AbortSignal,
+  ): Promise<{ text: string } | { refused: string }>;
 }
 
 export function readSectionTool(shelf: SourceShelf): TeachingTool {
@@ -66,6 +78,32 @@ export function viewPageTool(shelf: SourceShelf): TeachingTool {
         return { status: "refused", text: viewed.refused };
       }
       return { status: "done", text: viewed.text, image: viewed.image };
+    },
+  });
+}
+
+export function quoteSourceTool(shelf: SourceShelf): TeachingTool {
+  return defineTool({
+    name: "quote_source",
+    description:
+      "Quote a passage of the course's sources to the learner. It is looked " +
+      "for in the sources' text and, once found, shown in the conversation " +
+      "where you call this, in the source's own words with its citation; " +
+      "your text goes on below it. Copy the passage from a section you have " +
+      "read with read_section: one passage, its words in order, of at least " +
+      "three words and at most 1,200 characters, with no ellipsis (quote two " +
+      "passages with two calls) and no quotation marks around it. Case, " +
+      "spacing, hyphens, curly quotes, emphasis marks, page markers and " +
+      "footnote references do not matter. Refused while a question is open. " +
+      "Your turn goes on after it.",
+    input: QuoteSourceInput,
+    async run(input, signal) {
+      const problem = quoteTextProblem(input.text);
+      if (problem !== undefined) return { status: "refused", text: problem };
+      const quoted = await shelf.quote(input, signal);
+      if ("refused" in quoted)
+        return { status: "refused", text: quoted.refused };
+      return { status: "done", text: quoted.text };
     },
   });
 }

@@ -347,6 +347,7 @@ function unitEvents(
       case "file_written":
       case "section_read":
       case "page_viewed":
+      case "source_quoted":
       case "artifact":
       case "detour_end":
         if (foreign) continue;

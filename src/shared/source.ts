@@ -53,6 +53,16 @@ export const SectionPlace = z.union([
 ]);
 export type SectionPlace = z.infer<typeof SectionPlace>;
 
+/**
+ * Where a quote starts (task 4.9): in a PDF its page, counted from 1; else
+ * its paragraph, numbered within its heading's stretch as `SectionPlace`'s.
+ */
+export const QuoteStart = z.union([
+  z.strictObject({ page: Count }),
+  z.strictObject({ paragraph: Count }),
+]);
+export type QuoteStart = z.infer<typeof QuoteStart>;
+
 export const OutlineSection = z.strictObject({
   id: SectionId,
   /** For a part of a cut stretch, "<the stretch's title> (part n of m)". */
@@ -60,6 +70,12 @@ export const OutlineSection = z.strictObject({
   /** Unicode code points in the section's file, not UTF-16 code units. */
   size: Count,
   place: SectionPlace,
+  /**
+   * For a section placed by its paragraphs: where each of its paragraphs
+   * after its first starts in its text, in code points, so that a quote is
+   * cited at its paragraph. Absent from sources converted before version 6.
+   */
+  paragraphStarts: z.array(Count).optional(),
   /**
    * For a stretch cut into parts at the size limit: which part this is. The
    * parts sit in their stretch's heading, or at the top for the text before
@@ -184,14 +200,33 @@ export const ViewPageInput = z.object({
 export type ViewPageInput = z.infer<typeof ViewPageInput>;
 
 /**
+ * What the tutor gives quote_source (task 4.9): a passage of the course's
+ * sources, and the section it was copied from, whose match comes first.
+ */
+export const QuoteSourceInput = z.object({
+  text: z
+    .string()
+    .describe(
+      "The passage, copied from a section you have read: its words in order, without quotation marks around it.",
+    ),
+  section: SectionRef.optional().describe(
+    'The section you copied it from, as "<source id>/<section id>": where the passage is found there, that is the one shown.',
+  ),
+});
+export type QuoteSourceInput = z.infer<typeof QuoteSourceInput>;
+
+/**
  * A page marker in a PDF section's text, `<!-- page 31 label "5" math
  * images -->` (architecture.md section 8): the page, counted from 1, and
- * whether its text lost math, and whether images cover some of it.
+ * whether its text lost math, and whether images cover some of it; and
+ * where the marker starts and ends in the text.
  */
 export interface PageMarker {
   page: number;
   math: boolean;
   images: boolean;
+  start: number;
+  end: number;
 }
 
 /** The page markers in a section's text, in order. */
@@ -204,6 +239,8 @@ export function pageMarkers(text: string): PageMarker[] {
     page: Number(match[1]),
     math: match[2] !== undefined,
     images: match[3] !== undefined,
+    start: match.index,
+    end: match.index + match[0].length,
   }));
 }
 

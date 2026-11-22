@@ -58,6 +58,9 @@
 //   (task 5.23); so does a reply to a message with "/artifact" in it, which
 //   the engine refuses while a question is open. "/broken-aid" shows one
 //   whose script throws as it loads (task 5.20).
+// - Quotes (task 4.9): a message with "/quote" in it quotes the rest of its
+//   line with quote_source, as the tutor of a course with a source can; the
+//   engine refuses it while a question is open, or when the sources lack it.
 // - Packages (task 3.11): a message with "/packages" in it asks to install
 //   the names that follow it on its line, `pytest` if none, which the
 //   engine refuses while a question is open; Install really installs them,
@@ -762,6 +765,14 @@ function teaching(
         input: { title: "A plot that fails", html: BROKEN_ARTIFACT },
       },
       { text: "Scripted: that aid's script throws." },
+    ];
+  }
+  const quoting = /(?:^|\s)\/quote\b(.*)$/m.exec(body);
+  if (quoting !== null) {
+    return [
+      { text: "Scripted: the passage, from the source." },
+      { call: "quote_source", input: { text: (quoting[1] ?? "").trim() } },
+      { text: "Scripted: that was the passage." },
     ];
   }
   const packages = /(?:^|\s)\/packages\b(.*)$/m.exec(body);

@@ -1,7 +1,8 @@
 """Conversion of text and Markdown sources, on files the tests write (decisions.md, "Sources").
 
 Each expected section is written out by hand: its text, and so its size, and
-its place as the paragraphs it holds, numbered within its heading's stretch.
+its place as the paragraphs it holds, numbered within its heading's stretch,
+with the words that start each of its paragraphs after the first.
 """
 
 import hashlib
@@ -45,9 +46,16 @@ def section_files(folder):
     return {id: (folder / "sections" / f"{id}.md").read_text(encoding="utf-8") for id in sections}
 
 
-def section(id, title, text, first, last, part=None):
-    """An outline's section entry for a section file holding `text`."""
-    entry = {"id": id, "title": title, "size": len(text), "place": {"paragraphs": {"first": first, "last": last}}}
+def section(id, title, text, first, last, part=None, starts=()):
+    """An outline's section entry for a section file holding `text`, its later paragraphs starting with `starts`."""
+    assert len(starts) == last - first
+    entry = {
+        "id": id,
+        "title": title,
+        "size": len(text),
+        "place": {"paragraphs": {"first": first, "last": last}},
+        "paragraphStarts": [text.index(words) for words in starts],
+    }
     if part is not None:
         entry["part"] = {"number": part[0], "of": part[1]}
     return entry
@@ -103,7 +111,7 @@ def test_headings_nest_three_deep_and_a_heading_s_text_before_its_first_subheadi
             heading(
                 "Consciousness",
                 section("s2", "Consciousness", texts[1], 1, 1),
-                section("s3", "Sense-certainty", texts[2], 1, 2),
+                section("s3", "Sense-certainty", texts[2], 1, 2, starts=("Second paragraph",)),
                 section("s4", "Perception, or the Thing", texts[3], 1, 1),
             ),
             section("s5", "Self-consciousness", texts[4], 1, 1),
@@ -112,6 +120,14 @@ def test_headings_nest_three_deep_and_a_heading_s_text_before_its_first_subheadi
     assert list(section_files(folder).values()) == texts
     assert "".join(texts) == BOOK
     assert summary == {"result": "converted", "title": "Phenomenology", "format": "markdown", "sections": 5, "cut": []}
+
+
+def test_each_section_says_where_its_paragraphs_after_the_first_start(tmp_path):
+    # A Markdown paragraph is a CommonMark block: a line under a heading, each item of a list, a quote's text.
+    book = "# Notes\nFirst line.\n\n- one item\n- another\n\n> A quote.\n"
+    _, folder = run(tmp_path, "notes.md", book)
+
+    assert outline(folder)["entries"] == [section("s1", "Notes", book, 1, 4, starts=("- one", "- another", "> A"))]
 
 
 def test_a_heading_with_no_text_of_its_own_goes_into_the_next_section_or_else_the_last(tmp_path):
@@ -182,7 +198,7 @@ def test_plain_text_is_paragraphs_with_no_headings_and_its_original_is_kept(tmp_
         "sha256": hashlib.sha256(original).hexdigest(),
         "converter": CONVERTER_VERSION,
         "limit": SECTION_LIMIT,
-        "entries": [section("s1", "Hegel notes", "# Not a heading\n\nSecond line.\n", 1, 2)],
+        "entries": [section("s1", "Hegel notes", "# Not a heading\n\nSecond line.\n", 1, 2, starts=("Second",))],
     }
     assert (folder / "original.txt").read_bytes() == original
 
@@ -215,7 +231,15 @@ def test_a_long_stretch_is_cut_between_paragraphs_near_equal_shares_within_the_l
     assert all(len(part) <= 1000 for part in parts)
     n = len(groups)
     assert outline(folder)["entries"] == [
-        section(f"s{i}", f"notes (part {i} of {n})", part, first, last, part=(i, n))
+        section(
+            f"s{i}",
+            f"notes (part {i} of {n})",
+            part,
+            first,
+            last,
+            part=(i, n),
+            starts=tuple(f"P{number:02d}" for number in range(first + 1, last + 1)),
+        )
         for i, (part, (first, last)) in enumerate(zip(parts, groups, strict=True), 1)
     ]
     assert list(section_files(folder).values()) == parts
@@ -250,7 +274,7 @@ def test_the_parts_of_a_heading_s_stretch_sit_under_it_and_number_its_paragraphs
     assert outline(folder)["entries"] == [
         heading(
             "Long",
-            section("s1", "Long (part 1 of 2)", part_1, 1, 2, part=(1, 2)),
+            section("s1", "Long (part 1 of 2)", part_1, 1, 2, part=(1, 2), starts=("P02",)),
             section("s2", "Long (part 2 of 2)", texts[2], 3, 3, part=(2, 2)),
             section("s3", "Next", "## Next\n\nShort.\n", 1, 1),
         )

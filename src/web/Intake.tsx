@@ -611,6 +611,7 @@ function ItemView(props: {
     case "file":
     case "read":
     case "page":
+    case "quote":
     case "artifact":
     case "question":
     case "phase":

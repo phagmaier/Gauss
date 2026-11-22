@@ -43,45 +43,6 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.9 Verified quotes
-
-- Status: todo
-- Depends on: 4.8
-- Why: a passage the tutor quotes is verified to appear verbatim in the
-  source (`brief.md`, "Sources").
-- Do:
-  - `quote_source({ text, section? })` searches each of the course's
-    sources, its sections joined in order, so that a quote across a cut
-    verifies. A match is recorded and shown: a page event with the source,
-    the section, the source's own words for the span (not the tutor's),
-    and the page or paragraph where it starts, shown as piece 23's quote,
-    whose citation names the stretch where it starts, never Gauss's part
-    ("Preface, p. 11"). A match in the named section comes first, then in
-    the segment's sections, then the first in reading order. Refused: text
-    not found (saying to copy from a section read with `read_section`),
-    under three words, over 1,200 characters, holding an ellipsis (two quotes
-    instead), and while a question of the unit is open, as `show_artifact`
-    is. The result tells the tutor where the quote was found.
-  - Matching, with a map back to the text's positions: case folded;
-    whitespace, hyphens (U+002D, U+00AD, U+2010, U+2011) and Markdown's
-    emphasis marks removed; curly quotes as straight, dashes as one; page
-    markers, footnote references and the note definitions a PDF
-    paragraph carries after it (`[^label]: ...`) left out, and the
-    backslash before a PDF paragraph's leading `#`, `>` or `<`, and an
-    EPUB's backslashes (`_ESCAPED`, `_LINE_START` and a `<br>`'s line end
-    in `convert.py`) and the indent of a note's later paragraphs; lines that hold only a
-    number of up to four digits left out (margin line numbers, as
-    DeepTutor's `evidence_key` in `deeptutor/reading/_grounding.py`). A
-    quote never matches across two sources.
-- Done when: tests on fixture sections cover a quote across a cut, cited
-  at its first part's page; a line-end hyphen and a margin line number
-  inside a quote; curly quotes typed straight; a footnote reference inside
-  the passage; a first letter's case changed; text not found, too short,
-  too long, or with an ellipsis; two matches, in reading order and in the
-  named section; a refusal while a question is open; the quote shown and
-  restored after a restart. A Haiku run quotes a
-  passage from a section it read.
-
 ### 4.10 The citation view and section links
 
 - Status: todo
@@ -118,7 +79,11 @@ specific “Done when” checks.
     sections lit. The thread's "Read" and "Looked at" lines (4.8) open the
     pane there. The cards' "Reads" lines and the outlines' route are in
     place (`UnitList`'s `sources`, `useCourseSources`,
-    `GET /api/courses/<id>/sources`).
+    `GET /api/courses/<id>/sources`). A quote's event (`source_quoted`)
+    names the section where it starts and holds the source's words, not
+    offsets: mark the passage by matching them in that section's text with
+    `src/shared/source-quote.ts`. On `pnpm dev:fake`, "/quote <words>" in a
+    message has the scripted tutor quote them.
   - The dev seed's source course gains a small PDF source, written with
     reportlab (a development dependency) and converted as the seed's
     Markdown source is, so that a page image can be opened on
@@ -178,7 +143,9 @@ specific “Done when” checks.
   (`decisions.md`, "Prompts"): old against new on the same moves, the
   agent's judgment. "Quotations" still says the tutor has no text of the
   works it teaches from; in 4.8's Haiku run the tutor, having read the
-  section, quoted short phrases from it in its own text.
+  section, quoted short phrases from it in its own text, and in 4.9's,
+  asked for a passage, it called `quote_source` with the section named
+  and then quoted a further sentence in its own text.
 - Done when: Sonnet or Opus runs, since how well it teaches is what is
   checked, of a lecture on "Force and Understanding" in the Inwood
   _Phenomenology_ (4 parts) and of a unit on the Attention paper show
@@ -195,9 +162,9 @@ specific “Done when” checks.
 - Do: the notes writer's request gains the unit's sections (titles and
   places) and the verified quotes in its transcripts with their
   citations; `notes.md` says to cite them as text, since the notes stand
-  alone. The transcript export shows a quote as a block quote with its
-  citation, and a section link as its words with the section's title and
-  page.
+  alone. The transcript export shows a section link as its words with the
+  section's title and page; it shows a quote as a block quote with its
+  citation already (`quoteCitation` in `src/shared/source-lines.ts`).
 - Done when: tests on a seeded source course cover the request and the
   export. One notes call on Sonnet 5.5 for a
   source unit cites a quote by its place.

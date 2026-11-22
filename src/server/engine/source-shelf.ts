@@ -3,7 +3,10 @@
 // and a PDF page's image for view_page, rendered by `convert.py page` in the
 // engine's sandbox the first time it is asked for and kept in the source's
 // pages/ (DataRoot.pageImage). Each read and each page looked at is shown in
-// the thread. Neither depends on the unit's phase.
+// the thread. Neither depends on the unit's phase. And the passages it
+// quotes with quote_source (task 4.9), each looked for in the sources'
+// whole text (`findQuote`), read once for the chat, and shown in the thread
+// when found, as the unit's chat allows (`QuoteDesk`).
 
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";
@@ -13,13 +16,40 @@ import {
   type SectionRef,
   sectionsByRef,
 } from "../../shared/source.ts";
+import {
+  findQuote,
+  QUOTE_NOT_FOUND,
+  type QuotableSource,
+  quotableSource,
+  readingOrder,
+} from "../../shared/source-quote.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import type { SourceShelf } from "../tools/sources.ts";
 import type { SourceConverter } from "./source-convert.ts";
-import { formatText, missingSection, placeText } from "./source-text.ts";
+import {
+  formatText,
+  missingSection,
+  placeText,
+  sectionText,
+} from "./source-text.ts";
 
 /** A page that could not be rendered, with why, said to the tutor as a refusal. */
 class NotRendered extends Error {}
+
+export type SourceQuoted = Extract<PageEvent, { type: "source_quoted" }>;
+
+/** The unit's chat's part in a quote: whether one can be shown now, and where. */
+export interface QuoteDesk {
+  /** Why no quote can be shown now, or nothing. */
+  closed(): Promise<string | undefined>;
+  /**
+   * Shows the quote in the thread, unless that closed meanwhile: then why
+   * not. Nothing once the turn is stopped.
+   */
+  show(quote: SourceQuoted, signal?: AbortSignal): Promise<string | undefined>;
+  /** The sections the segment under way draws on, where a quote is looked for first. */
+  segmentSections(): readonly SectionRef[];
+}
 
 export function createSourceShelf(options: {
   dataRoot: DataRoot;
@@ -30,10 +60,44 @@ export function createSourceShelf(options: {
   converter: SourceConverter | undefined;
   /** Shows a read or a page looked at in the thread. */
   emit(event: PageEvent): void;
+  quotes: QuoteDesk;
 }): SourceShelf {
-  const { dataRoot, courseId, sources, converter, emit } = options;
+  const { dataRoot, courseId, sources, converter, emit, quotes } = options;
   const byRef = sectionsByRef(sources);
   const sourceIds = sources.map((s) => `"${s.id}"`).join(", ");
+
+  async function sectionFile(ref: SectionRef): Promise<string> {
+    const text = await dataRoot.readSection(courseId, ref);
+    if (text === undefined) {
+      throw new Error(`The file of the section "${ref}" is missing.`);
+    }
+    return text;
+  }
+
+  /** The sources' whole texts, read at the first quote and kept for the chat. */
+  let searching: Promise<QuotableSource[]> | undefined;
+  function searched(): Promise<QuotableSource[]> {
+    if (searching !== undefined) return searching;
+    const reading = Promise.all(
+      sources.map(async (source) =>
+        quotableSource(
+          source,
+          await Promise.all(
+            readingOrder(source).map(async (ref) => ({
+              ref,
+              text: await sectionFile(ref),
+            })),
+          ),
+        ),
+      ),
+    );
+    searching = reading;
+    // A failed read is tried again at the next quote.
+    reading.catch(() => {
+      if (searching === reading) searching = undefined;
+    });
+    return reading;
+  }
 
   /** What the page's marker says its text lost; nothing when no section carries it. */
   async function marker(source: Outline, page: number) {
@@ -88,11 +152,8 @@ export function createSourceShelf(options: {
           refused: `"${ref}" cannot be read, since ${missingSection(ref, sources)}.`,
         };
       }
-      const text = await dataRoot.readSection(courseId, ref);
+      const text = await sectionFile(ref);
       signal?.throwIfAborted();
-      if (text === undefined) {
-        throw new Error(`The file of the section "${ref}" is missing.`);
-      }
       emit({ type: "section_read", section: ref });
       const { source, section } = found;
       return {
@@ -149,6 +210,51 @@ export function createSourceShelf(options: {
       return {
         text: `The image of ${placeText({ pages: { first: page, last: page } }, source)} of ${JSON.stringify(source.title)}.`,
         image: { data: image, mimeType: "image/png" },
+      };
+    },
+
+    async quote({ text, section }, signal) {
+      if (section !== undefined && !byRef.has(section)) {
+        return {
+          refused: `There is no section "${section}" to look in, since ${missingSection(section, sources)}.`,
+        };
+      }
+      const closed = await quotes.closed();
+      if (closed !== undefined) return { refused: closed };
+      const texts = await searched();
+      signal?.throwIfAborted();
+      const found = findQuote(text, texts, {
+        ...(section === undefined ? {} : { section }),
+        segment: quotes.segmentSections(),
+      });
+      if (found === undefined) return { refused: QUOTE_NOT_FOUND };
+      const where = byRef.get(found.section);
+      if (where === undefined)
+        throw new Error("The quote's section is not in the outlines.");
+      const { at } = found;
+      const refused = await quotes.show(
+        {
+          type: "source_quoted",
+          section: found.section,
+          text: found.text,
+          ...(at === undefined ? {} : { at }),
+        },
+        signal,
+      );
+      if (refused !== undefined) return { refused };
+      const start =
+        at === undefined
+          ? ""
+          : `, starting at ${placeText(
+              "page" in at
+                ? { pages: { first: at.page, last: at.page } }
+                : { paragraphs: { first: at.paragraph, last: at.paragraph } },
+              where.source,
+            )}`;
+      return {
+        text:
+          "Shown to the learner in the source's own words, with its " +
+          `citation: found in ${sectionText(where)}${start}. Go on with your reply.`,
       };
     },
   };

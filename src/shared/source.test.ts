@@ -64,6 +64,7 @@ test("the schema reads the outline convert.py writes, every field of it", async 
             title: "Phenomenology",
             size: 33,
             place: { paragraphs: { first: 1, last: 1 } },
+            paragraphStarts: [],
           },
           {
             title: "Force and Understanding",
@@ -73,6 +74,7 @@ test("the schema reads the outline convert.py writes, every field of it", async 
                 title: "Force and Understanding (part 1 of 2)",
                 size: 128,
                 place: { paragraphs: { first: 1, last: 1 } },
+                paragraphStarts: [],
                 part: { number: 1, of: 2 },
               },
               {
@@ -80,6 +82,8 @@ test("the schema reads the outline convert.py writes, every field of it", async 
                 title: "Force and Understanding (part 2 of 2)",
                 size: 200,
                 place: { paragraphs: { first: 2, last: 3 } },
+                // Paragraph 3 starts after paragraph 2's 100 characters.
+                paragraphStarts: [100],
                 part: { number: 2, of: 2 },
               },
               {
@@ -87,6 +91,7 @@ test("the schema reads the outline convert.py writes, every field of it", async 
                 title: "Appearance",
                 size: 22,
                 place: { paragraphs: { first: 1, last: 1 } },
+                paragraphStarts: [],
               },
             ],
           },
@@ -210,6 +215,7 @@ test("the schema reads an EPUB's outline: its contents' entries, and sections pl
         title: "Book",
         size: 15,
         place: { paragraphs: { first: 1, last: 1 } },
+        paragraphStarts: [],
       },
       {
         title: "Part One",
@@ -219,6 +225,7 @@ test("the schema reads an EPUB's outline: its contents' entries, and sections pl
             title: "Chapter 1",
             size: 36,
             place: { paragraphs: { first: 1, last: 1 } },
+            paragraphStarts: [],
           },
         ],
       },

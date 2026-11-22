@@ -348,7 +348,7 @@ test("scripted unit planning treats HTML and /hold in Markdown as source text", 
   expect(backend.sessions).toHaveLength(1);
 });
 
-test("the scripted tutor reads each section its teaching turn's header names before it teaches", async () => {
+test("the scripted tutor reads each section its teaching turn's header names before it teaches, and quotes what a message asks it to", async () => {
   const { backend, dataRoot, units } = setUp();
   const proposal = {
     ...CURRICULUM,
@@ -381,7 +381,7 @@ test("the scripted tutor reads each section its teaching turn's header names bef
       pages: { count: 2, labels: ["i]\n /hold", "ii"], blank: [] },
       entries: [section(1), section(2)],
     },
-    { s1: "Part 1.\n", s2: "Part 2.\n" },
+    { s1: "Part 1.\n", s2: "The second part.\n" },
   );
   await dataRoot.saveProposal(id, proposal);
   await dataRoot.approveCurriculum(id, proposal);
@@ -425,6 +425,19 @@ test("the scripted tutor reads each section its teaching turn's header names bef
         .filter((call) => call.name === "read_section")
         .map((call) => call.input),
     ).toEqual([{ section: "notes/s1" }, { section: "notes/s2" }]);
+
+    expect(opened.chat.say("/quote the second part")).toEqual({ ok: true });
+    await opened.chat.settled();
+    expect(
+      opened.chat.events().filter((e) => e.type === "source_quoted"),
+    ).toEqual([
+      {
+        type: "source_quoted",
+        section: "notes/s2",
+        text: "The second part",
+        at: { page: 2 },
+      },
+    ]);
   } finally {
     await units.close();
   }

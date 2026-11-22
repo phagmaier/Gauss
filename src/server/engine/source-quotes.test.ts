@@ -1,0 +1,366 @@
+// Verified quotes through the unit chat (task 4.9): quote_source looks for
+// the tutor's passage in the course's sources and shows it in the thread,
+// in the source's words and where it starts, in the transcript too; a
+// match in the section named, then in the segment's, comes first. It is
+// refused when the sources lack the passage, and while a question of the
+// unit is open, as an aid is. The tutor is the fake backend.
+
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, expect, test } from "vitest";
+import type { CurriculumProposal, Unit } from "../../shared/curriculum.ts";
+import type { PageEvent } from "../../shared/events.ts";
+import type { Plan } from "../../shared/plan.ts";
+import type { Outline } from "../../shared/source.ts";
+import { QUOTE_NOT_FOUND } from "../../shared/source-quote.ts";
+import type { UnitPosition } from "../../shared/state.ts";
+import {
+  createFakeBackend,
+  type FakeReply,
+  type FakeTurn,
+} from "../backends/fake.ts";
+import { type DataRoot, openDataRoot } from "../record/data-root.ts";
+import { givenOrder } from "./choice-order.ts";
+import { placeTestSource } from "./fake-converter.ts";
+import { createFakeTimer } from "./fake-timer.ts";
+import { createGrader } from "./grading.ts";
+import { createHelpJudge } from "./help-judge.ts";
+import { createUnitChats } from "./unit-chat.ts";
+import { createUnitPlanner } from "./unit-planning.ts";
+
+// Each test gets its own data root; none touches ~/gauss (AGENTS.md).
+let dir: string;
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), "gauss-source-quotes-"));
+});
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+
+const NOW = "2026-11-21T10:00:00.000Z";
+
+// The Preface is cut in two between paragraphs; "it is essentially a
+// result" is in both parts.
+const S1 =
+  '<!-- page 1 label "9" -->\n# Preface\n\nThe true is the whole.\n\n' +
+  '<!-- page 2 label "10" -->\nOf the Absolute it must be said that it is essentially a result.\n\n';
+const S2 =
+  "Only at the end is it what it is in truth.\n\n" +
+  '<!-- page 3 label "11" -->\nIt is essentially a result, and the true is the whole.\n';
+const S3 = '<!-- page 4 label "12" -->\n# Introduction\n\nKnowing is a test.\n';
+const BOOK: Outline = {
+  id: "phenomenology",
+  title: "Phenomenology",
+  file: "original.pdf",
+  name: "hegel.pdf",
+  format: "pdf",
+  sha256: "a".repeat(64),
+  converter: 6,
+  limit: 20_000,
+  pages: { count: 4, labels: ["9", "10", "11", "12"], blank: [] },
+  entries: [
+    {
+      title: "Preface",
+      entries: [
+        {
+          id: "s1",
+          title: "Preface (part 1 of 2)",
+          size: S1.length,
+          place: { pages: { first: 1, last: 2 } },
+          part: { number: 1, of: 2 },
+        },
+        {
+          id: "s2",
+          title: "Preface (part 2 of 2)",
+          size: S2.length,
+          place: { pages: { first: 2, last: 3 } },
+          part: { number: 2, of: 2 },
+        },
+      ],
+    },
+    {
+      id: "s3",
+      title: "Introduction",
+      size: S3.length,
+      place: { pages: { first: 4, last: 4 } },
+    },
+  ],
+};
+
+const PREFACE: Unit = {
+  id: "preface",
+  title: "The Preface",
+  goal: "Say why the true is the whole.",
+  prerequisites: [],
+  sections: ["phenomenology/s1", "phenomenology/s2"],
+};
+const CURRICULUM: CurriculumProposal = {
+  title: "Reading Hegel",
+  units: [
+    PREFACE,
+    {
+      id: "introduction",
+      title: "The Introduction",
+      goal: "Say how knowing tests itself.",
+      prerequisites: ["preface"],
+      sections: ["phenomenology/s3"],
+    },
+  ],
+  style: "Close reading.",
+  background: "The learner has read Kant.",
+};
+const PLAN: Plan = {
+  objectives: [
+    { id: "whole", statement: "Explain why the true is the whole." },
+    { id: "result", statement: "Explain why the Absolute is a result." },
+  ],
+  segments: [
+    {
+      title: "The whole",
+      objectives: ["whole"],
+      sections: ["phenomenology/s1"],
+    },
+    {
+      title: "The result",
+      objectives: ["result"],
+      sections: ["phenomenology/s2"],
+    },
+  ],
+};
+
+/** The course with its source, the preface planned, at the position given. */
+async function makeCourse(root: DataRoot, position?: UnitPosition) {
+  const { id } = await root.createCourse({ title: CURRICULUM.title });
+  await placeTestSource(root, dir, id, BOOK, { s1: S1, s2: S2, s3: S3 });
+  await root.saveProposal(id, CURRICULUM);
+  await root.approveCurriculum(id, CURRICULUM);
+  await root.storePlan(id, "preface", PLAN, PREFACE.sections);
+  if (position !== undefined) await root.writePosition(id, "preface", position);
+  return id;
+}
+
+/** A server's unit chats on the record, with the preface opened and its first turn over. */
+async function open(
+  root: DataRoot,
+  id: string,
+  script: FakeTurn[],
+  replies: FakeReply[] = [],
+) {
+  const backend = createFakeBackend(script, replies);
+  const units = createUnitChats({
+    backend,
+    systemPrompt: "Tutor.",
+    dataRoot: root,
+    planner: createUnitPlanner({
+      backend,
+      systemPrompt: "Plan.",
+      dataRoot: root,
+    }),
+    grader: createGrader({ backend, systemPrompt: "Grader." }),
+    judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
+    now: () => new Date(NOW),
+    timer: createFakeTimer(),
+    order: givenOrder,
+  });
+  const opened = await units.open(id, "preface");
+  if (!opened.ok) throw new Error(opened.error);
+  await opened.chat.settled();
+  return { backend, units, chat: opened.chat };
+}
+
+const quote = (text: string, section?: string) => ({
+  call: "quote_source",
+  input: section === undefined ? { text } : { text, section },
+});
+
+/** The thread's tutor text and quotes, in order. */
+function said(events: readonly PageEvent[]): unknown[] {
+  return events.flatMap((e): unknown[] =>
+    e.type === "tutor_text" || e.type === "source_quoted" ? [e] : [],
+  );
+}
+
+test("a quote across a cut is shown where the tutor made it, in the source's words, cited where it starts, and kept in the transcript for after a restart", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const first = await open(root, id, [
+    [
+      { text: "Hegel says:" },
+      quote(
+        "It is essentially a result. Only at the end is it what it is in truth.",
+      ),
+      { text: "So the Absolute is a result." },
+    ],
+  ]);
+  const shown = {
+    type: "source_quoted",
+    section: "phenomenology/s1",
+    text: "it is essentially a result.\n\nOnly at the end is it what it is in truth.",
+    at: { page: 2 },
+  };
+  expect(first.backend.calls.map((c) => c.result)).toEqual([
+    {
+      status: "done",
+      text:
+        "Shown to the learner in the source's own words, with its citation: " +
+        'found in "phenomenology/s1", "Preface (part 1 of 2)", pages 1–2 (printed 9–10), ' +
+        "starting at page 2 (printed 10). Go on with your reply.",
+    },
+  ]);
+  expect(said(first.chat.events())).toEqual([
+    { type: "tutor_text", text: "Hegel says:" },
+    shown,
+    { type: "tutor_text", text: "So the Absolute is a result." },
+  ]);
+  await first.units.close();
+
+  const { chat, units } = await open(root, id, []);
+  try {
+    expect(said(chat.events())).toContainEqual(shown);
+    expect(
+      (await root.readTranscripts(id, "preface"))[0]?.events,
+    ).toContainEqual(shown);
+  } finally {
+    await units.close();
+  }
+});
+
+test("of two matches, the one in the section named comes first, then the one in the segment's sections, before the first in reading order", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  // In the second segment, which draws on the Preface's second part.
+  const id = await makeCourse(root, { segment: 1, phase: "discuss" });
+  const { chat, units } = await open(root, id, [
+    [
+      quote("it is essentially a result"),
+      quote("it is essentially a result", "phenomenology/s1"),
+      { text: "Twice." },
+    ],
+  ]);
+  try {
+    expect(chat.say("Where does he say it?")).toEqual({ ok: true });
+    await chat.settled();
+    expect(
+      chat.events().flatMap((e) => (e.type === "source_quoted" ? [e] : [])),
+    ).toEqual([
+      {
+        type: "source_quoted",
+        section: "phenomenology/s2",
+        text: "It is essentially a result",
+        at: { page: 3 },
+      },
+      {
+        type: "source_quoted",
+        section: "phenomenology/s1",
+        text: "it is essentially a result",
+        at: { page: 2 },
+      },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
+test("a passage the sources lack, a section they lack, and a passage too short are refused, and nothing is shown", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const { backend, chat, units } = await open(root, id, [
+    [
+      quote("The true is the hole."),
+      quote("The true is the whole.", "phenomenology/s9"),
+      quote("the whole"),
+      { text: "None of those." },
+    ],
+  ]);
+  try {
+    expect(backend.calls.map((c) => c.result)).toEqual([
+      { status: "refused", text: QUOTE_NOT_FOUND },
+      {
+        status: "refused",
+        text: 'There is no section "phenomenology/s9" to look in, since "phenomenology" has no such section: its sections are s1 to s3.',
+      },
+      {
+        status: "refused",
+        text: "The passage has fewer than 3 words: quote at least 3, the phrase with the words around it.",
+      },
+    ]);
+    expect(said(chat.events())).toEqual([
+      { type: "tutor_text", text: "None of those." },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
+test("while a question is open nothing is quoted, with the reason; once it is graded a passage can be quoted again", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const { backend, chat, units } = await open(
+    root,
+    id,
+    [
+      [{ text: "Teaching." }],
+      [
+        { text: "One question." },
+        {
+          call: "ask_question",
+          input: {
+            objective: "whole",
+            kind: "choice",
+            prompt: "Is the true the whole?",
+            choices: ["Yes", "No"],
+            answer: "A",
+          },
+        },
+      ],
+      // The reply to a message while question 1 is open.
+      [quote("The true is the whole."), { text: "Not now." }],
+      // The feedback on the answer.
+      [{ text: "Right." }, quote("The true is the whole.")],
+    ],
+    [
+      {
+        output: {
+          reason: "Nothing toward the answer.",
+          verdict: "clarification",
+        },
+      },
+    ],
+  );
+  try {
+    expect(await chat.ready()).toEqual({ ok: true });
+    await chat.settled();
+    expect(chat.say("Where is this in the text?")).toEqual({ ok: true });
+    await chat.settled();
+    expect(backend.calls.at(-1)?.result).toEqual({
+      status: "refused",
+      text:
+        "Question 1 is open: nothing can be quoted until its answer is " +
+        "graded, since a passage could help with the answer.",
+    });
+    expect(chat.events().filter((e) => e.type === "source_quoted")).toEqual([]);
+
+    const posted = chat.events().findLast((e) => e.type === "question");
+    if (posted?.type !== "question") throw new Error("no question posted");
+    expect(
+      await chat.answer({
+        kind: "choice",
+        questionId: posted.question.id,
+        choice: "A",
+        confidence: "90",
+      }),
+    ).toEqual({ ok: true });
+    await chat.settled();
+    expect(said(chat.events()).slice(-2)).toEqual([
+      { type: "tutor_text", text: "Right." },
+      {
+        type: "source_quoted",
+        section: "phenomenology/s1",
+        text: "The true is the whole.",
+        at: { page: 1 },
+      },
+    ]);
+  } finally {
+    await units.close();
+  }
+});

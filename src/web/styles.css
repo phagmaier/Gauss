@@ -2167,6 +2167,35 @@ button.dn:hover {
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
+/* a verified quote: the source's words in the reading type, its paragraphs
+   and line breaks as the source has them, and a check before its citation */
+.vq {
+  margin: 1.3em 0 1.5em;
+  padding-left: 1.1em;
+  border-left: 2px solid var(--ink-3);
+}
+.vq blockquote {
+  margin: 0;
+  font-family: var(--f-read);
+  font-size: var(--read);
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-line;
+}
+.vq figcaption {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  margin-top: 0.5em;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+.vq svg {
+  flex: none;
+}
+.vq figcaption span:last-child {
+  color: var(--ink-2);
+}
 
 /* ---- Retained and slipping, settled in piece 16: two more words, each with a colour of its own ---- */
 .kept {

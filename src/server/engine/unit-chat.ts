@@ -58,7 +58,9 @@
 // workspace closed to every other change, and the answer goes to the tutor
 // in a turn of its own. In a course with a source, the tutor reads its
 // sections with read_section and looks at a PDF's pages with view_page
-// (task 4.8) in any phase, each shown in the thread (source-shelf.ts).
+// (task 4.8) in any phase, each shown in the thread (source-shelf.ts), and
+// quotes a passage with quote_source (task 4.9), shown once it is found in
+// the sources, but not while a question of the unit is open, as an aid.
 // A dispute of an answer's grade (task 3.8) is decided outside the chat
 // (disputes.ts) and, when the chat is open, recorded inside its queue, so it
 // lands in order with the chat's own writes; one recorded while the chat
@@ -181,7 +183,11 @@ import {
   type ArtifactShelf,
   showArtifactTool,
 } from "../tools/show-artifact.ts";
-import { readSectionTool, viewPageTool } from "../tools/sources.ts";
+import {
+  quoteSourceTool,
+  readSectionTool,
+  viewPageTool,
+} from "../tools/sources.ts";
 import {
   nextInRun,
   type RunStep,
@@ -223,7 +229,7 @@ import {
   recoverPackageInstall,
 } from "./packages.ts";
 import type { SourceConverter } from "./source-convert.ts";
-import { createSourceShelf } from "./source-shelf.ts";
+import { createSourceShelf, type QuoteDesk } from "./source-shelf.ts";
 import { sectionsRefused } from "./source-text.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import {
@@ -1307,6 +1313,7 @@ function createUnitChat(
         sources,
         converter: options.converter,
         emit: log.emit,
+        quotes: quoteDesk,
       });
       const [
         readStyle,
@@ -1381,7 +1388,11 @@ function createUnitChat(
           amendCurriculumTool(curriculumDesk),
           ...(sources.length === 0
             ? []
-            : [readSectionTool(sourceShelf), viewPageTool(sourceShelf)]),
+            : [
+                readSectionTool(sourceShelf),
+                viewPageTool(sourceShelf),
+                quoteSourceTool(sourceShelf),
+              ]),
         ],
         cwd: workspace,
         ...(options.workspaceTools === undefined
@@ -3141,6 +3152,37 @@ function createUnitChat(
         });
         return stored;
       }),
+  };
+
+  // Not while a question of the unit is open, answered or not, as an aid: a
+  // passage could help with the answer, and the help judge reads only the
+  // tutor's text.
+  const quoteRefusal = (): string | undefined => {
+    const r = running;
+    if (r === undefined) return "The unit is not open.";
+    if (r.record.finished !== undefined) return UNIT_FINISHED;
+    const open = r.record.position.openQuestion;
+    return open === undefined
+      ? undefined
+      : `Question ${open.number} is open: nothing can be quoted until its ` +
+          "answer is graded, since a passage could help with the answer.";
+  };
+  const quoteDesk: QuoteDesk = {
+    closed: () => exclusive(async () => quoteRefusal()),
+    show: (quote, signal) =>
+      exclusive(async () => {
+        // A turn stopped meanwhile shows nothing more.
+        signal?.throwIfAborted();
+        const refused = quoteRefusal();
+        if (refused === undefined) log.emit(quote);
+        return refused;
+      }),
+    segmentSections: () => {
+      const r = running;
+      return r === undefined
+        ? []
+        : segmentOf(r.context.plan, r.record.position).sections;
+    },
   };
 
   // Not while a question of the unit is open, where the card would sit

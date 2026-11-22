@@ -2710,6 +2710,37 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   DeepTutor comparison): margin line numbers on lines of their own and a
   word split by a hyphen at a line's end. DeepTutor drops number-only
   lines and all spacing and hyphens before comparing.
+- **The converter records where each paragraph starts** (the agent's
+  choice, task 4.9): a quote in a source without pages is cited at its
+  paragraph, and only the converter knows its paragraphs (a Markdown
+  source's CommonMark blocks, a list's items among them; an EPUB's blocks,
+  a note's later paragraphs inside its first, a heading tag counted but a
+  contents entry's heading not). Rejected: counting blank-line blocks in
+  the section's text, wrong for a list, a line under a heading and an
+  EPUB's headings. A source converted before version 6 is cited by its
+  stretch alone.
+- **Matching beyond the list in the plan** (the agent's choices, task
+  4.9): Unicode's compatibility forms folded (NFKD), for a PDF's ligatures
+  and accents written either way; backslashes and a block quote's marks
+  left out, as the other markup is; and quotation marks around the
+  passage that the source lacks dropped, since a model wraps a quote in
+  them. These loosen matching only; the learner sees the source's span.
+  One tightens it: a match starts and ends where words do in the source,
+  since spacing is ignored and "he true is" would otherwise match inside
+  "The true is" and show half a word.
+- **Which of several matches** (the agent's choice): "in a section" is
+  first a match that starts there, then one that runs into it, or a match
+  across the cut from the part before would win over one wholly in the
+  section named.
+- **A quote's words are plain text** (the agent's choice): the source's
+  characters with the markup left out, emphasis too, rather than its
+  Markdown, which a span can cut inside an emphasis or a link. Paragraph
+  and `<br>` breaks stay; the pane (task 4.10) shows the passage in its
+  section with its emphasis. The event holds no offsets: the pane finds
+  the passage by matching the words in the section where it starts.
+- **The sources' texts are read at the first quote and kept for the
+  chat** (the agent's choice): the Inwood text, 2.1 million characters,
+  took 0.17 s to make ready and 2 ms to search.
 - **A section link claims no quote** (the user's pick): a Markdown link
   to `source:<source>/<section>`, since a paraphrase runs inside the
   tutor's sentences, where a tool call would break the text.

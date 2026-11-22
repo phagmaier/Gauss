@@ -798,7 +798,7 @@ tool server, for Codex an MCP server.
 | `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. Its units' sections are checked as `propose_curriculum`'s. A tutor's uses the proposal and feedback rules in section 4 and does not end the turn. The course planner's (`planCurriculumChangeTool`) ends its turn and replaces the proposal waiting (section 4, "The planning conversation") |
 | `read_section` | Reads a section of the course's sources (section 8) |
 | `view_page` | Looks at a PDF page as an image (section 8) |
-| `quote_source` | (stage 4) Shows a verified quote in the source's own words with its citation (section 8), or is refused with the reason: not in the sources, too short or long, an ellipsis, or a question of the unit open. Does not end the turn |
+| `quote_source` | Shows a passage found in the course's sources as a verified quote, in the source's own words with its citation (`QuoteSourceInput` in `src/shared/source.ts`; section 8), or is refused with the reason: not in the sources, too short or long, an ellipsis, or a question of the unit open. Does not end the turn |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
 | `propose_style` | Proposes the whole revised style note with a line on why (`StyleInput` in `src/shared/style.ts`), shown on a card; Apply writes `style.md`. Uses the proposal and feedback rules in section 4. Does not end the turn |
@@ -1197,7 +1197,12 @@ in spine order (`_read_epub`), with the standard library only:
   repeat the heading in later parts.
 - A PDF section is placed by its inclusive page range, counting pages
   whose markers it carries even if they are blank. Other formats use a
-  paragraph range numbered within the heading's stretch.
+  paragraph range numbered within the heading's stretch, and list where
+  each paragraph after the section's first starts in its text
+  (`OutlineSection.paragraphStarts`, from converter version 6), so that a
+  quote is cited at its paragraph. A paragraph is the converter's block: a
+  Markdown source's CommonMark block, an EPUB's block with a note's later
+  paragraphs in it, plain text between blank lines.
 - A stretch over 20,000 characters, in the unit defined by
   `OutlineSection.size`, is cut near equal shares, at paragraph
   boundaries. An oversized paragraph is cut at the safe sentence end
@@ -1316,17 +1321,48 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
   and `page_viewed` events; `src/shared/source-lines.ts` names them from the
   course's outlines. The handoff writer is told of each by its name.
 
-### Planned: quotes, links and the web
+### Available now: verified quotes
 
-1. **Quote**: `quote_source` checks the text against each source's whole
-   text, its sections in order, so a quote across a cut still verifies.
-   Matching ignores case, whitespace, hyphens, punctuation variants,
-   emphasis marks, page markers, footnote references and margin line
-   numbers. A match shows in the thread as a quote in the source's own
-   words, with its citation (the stretch it starts in, not Gauss's part,
-   and the page or paragraph), which opens the passage in the side pane.
-   A passage paraphrased is linked, claiming no quote, by a Markdown link
-   to `source:<source id>/<section id>`.
+- **`quote_source`** looks for the tutor's passage in each of the course's
+  sources (`findQuote` in `src/shared/source-quote.ts`, through
+  `engine/source-shelf.ts`), its sections joined in reading order, so that
+  a quote across a cut is found, and never across two sources. The texts
+  are read at the first quote and kept while the unit's chat is open.
+- **Matching** compares keys: case and Unicode's compatibility forms
+  folded (NFKD); whitespace, hyphens (U+002D, U+00AD, U+2010, U+2011),
+  `*`, `_` and backslashes dropped; curly quotes as straight, every dash as
+  one. The source's key also leaves out page markers, footnote
+  references, a PDF paragraph's note definitions, a block quote's and a
+  note definition's marks, Markdown's and an EPUB's escapes and emphasis,
+  and lines holding only a number of up to four digits (`Markup`). A match
+  starts and ends where words do in the source. A passage between
+  quotation marks the source lacks is looked for without them.
+- **Which match**: one that starts in the section the call names, else one
+  that runs into it; then the same for the segment's sections
+  (`SegmentView.sections`); then the first in reading order, the sources
+  in the course's order.
+- **Refused** (`quoteTextProblem`, the shelf, and the unit chat's
+  `QuoteDesk`): over 1,200 characters, holding an ellipsis, under three
+  words, a named section the sources lack, a passage not found (saying to
+  copy it from a section read with `read_section`), and while a question
+  of the unit is open, as `show_artifact` is.
+- **Shown** as a `source_quoted` event: the section where it starts; the
+  source's words for the span, its markup left out, paragraphs between
+  blank lines, an EPUB's `<br>` as a line break and a word hyphenated at a
+  line's end joined; and where it starts, a PDF's page (its last page
+  marker before it) or else its paragraph (`paragraphStarts`). The thread
+  shows piece 23's quote: the words in the reading type, a check, and the
+  citation (`quoteCitation` in `src/shared/source-lines.ts`), which names
+  the stretch where it starts, never Gauss's part, then the printed page
+  or the ¶ ("Preface, p. 11"). The export shows a block quote with the
+  citation; the handoff writer is told the words and the section. The
+  tool's result tells the tutor the section and the page or paragraph.
+
+### Planned: links, the citation view and the web
+
+1. **Links**: a passage paraphrased is linked, claiming no quote, by a
+   Markdown link to `source:<source id>/<section id>`. A quote's citation
+   and a link open the passage in the side pane.
 2. **Web search** is a course's setting, off by default. With it on, the
    tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
    search shows in the thread with its links. A change applies from the
