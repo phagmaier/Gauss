@@ -58,8 +58,9 @@ follows the SDK's version.
   sent while a turn runs, which the engine never does; none was seen.
 - **Structured output retries a reply out of shape by itself** and ends
   with `error_max_structured_output_retries`; a Haiku grading took 3.3 s.
-- **Sonnet 5.5's adaptive thinking runs in an "updates" mode** that writes
-  text meant for the learner into thinking the page never shows;
+- **The adaptive thinking of Sonnet 5.5 and Opus 5.5 runs in an "updates"
+  mode** that can put text meant for the learner, written before a tool
+  call, into thinking the page never shows. On Sonnet,
   `thinking: { type: "disabled" }` and `display: "summarized"` change
   nothing (see "Tutor").
 - **Usage**: `rate_limit_event` reports the plan's windows; `total_cost_usd`
@@ -187,6 +188,10 @@ where `convert.py` handles them.
   the go-ahead, a revision and a large topic. Cutting `tutor.md` from 634
   to 356 lines and `planner.md` from 214 to 133 this way found two and one
   regressions.
+- **Compare role prompts on the model the app runs them on**: with no
+  `GAUSS_CLAUDE_MODEL`, sessions take the login's default, Opus 5.5 on the
+  user's plan (the real courses' session logs). Sonnet follows the source
+  rules worse (see "Tutor"), so a Sonnet run alone misjudges a wording.
 - **A prompt says only what headers, tool and field descriptions and
   refusals do not**, and rewording any of those changes what the model is
   told.
@@ -244,9 +249,32 @@ where `convert.py` handles them.
   mathematical results only.
 - **Told to "acknowledge" app events, the tutor restates the page's
   lines.**
+- **Text written before a `quote_source` call goes into hidden thinking
+  on Opus 5.5 as on Sonnet**: a lecture alternating quotes and explanation
+  showed 112 to 169 words of its own in 2 of 3 Opus runs on Hegel, the
+  rest in thinking before each call. Quotes first, then the passages in
+  turn ("make your quote_source calls before you write"): no such thinking
+  in 18 Opus runs, lectures of 350 to 490 words of its own.
+- **With the section read, the tutor quotes it in its own text,
+  unchecked**: told to quote nothing verbatim, Opus put 62 of Hegel's
+  phrases in quotation marks over 3 runs, 15 of six words or more; told to
+  keep to its terms, "never more than five of its words in a row", 24 and
+  none, though runs of eight words without quotation marks remain. Sonnet,
+  told to keep to its terms, still quoted 32 of six words or more.
+- **Links and page views come only with the rule**: under the old prompt
+  no run linked a section (it named pages in text), and Sonnet looked at no
+  page even when asked for equation (1) "exactly as the paper prints it".
+  With the link's form, and a page "whose marker says `math` ..., or whose
+  math reads garbled", every Opus run linked pages (53 links, all opening)
+  and looked at the Attention paper's pages 4 and 5 while teaching.
+- **A lecture rule crowds out aids**: each of three drafts without "the
+  text does not replace an aid" showed one aid in 3 Opus runs on the
+  Attention paper, against four under the old prompt; with it, four.
 - **Accepted leftovers**: a written question sometimes asks two things;
   questions in a check can share one pattern; Haiku can post before
-  writing the starter, doubling the lead-in.
+  writing the starter, doubling the lead-in; a lecture with its quotes
+  reaches the 600-word limit on Opus (one Hegel lecture of nine at about
+  610 words).
 
 ### Planners
 
@@ -264,6 +292,16 @@ where `convert.py` handles them.
   under "Two quick questions".
 - **Haiku can say "I've proposed" without calling the tool**; planners
   often post the card with no text before it (left as is).
+- **"The segments follow the text's order" alone let a paper's plan go
+  back**: 2 of 3 Sonnet plans and 1 of 3 Opus on the Attention paper drew
+  on the decoder stack, for its masking, after multi-head attention. Stated
+  as "no segment draws on a section that comes earlier than the last of
+  the segment before", with its reason, 0 of 6; a Hegel chapter kept its
+  order either way.
+- **The intake planner copies the style-note sentence on sources into
+  every style note** (6 of 6 Sonnet runs). Without it, the notes still
+  spoke of lectures through the text, and 2 of 3 Attention proposals went
+  back to an earlier section (0 of 3 with it), so it stays.
 
 ### Grader
 

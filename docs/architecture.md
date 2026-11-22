@@ -194,8 +194,12 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   anyone sends a message. A course needs no intake: write it into the root
   with the record's own operations (`createCourse`, `saveProposal`,
   `approveCurriculum`, `storePlan` in `record/data-root.ts`), as
-  `record/dev-seed.ts` does, from a throwaway script run with `node`. A
-  short smoke run on the plan login:
+  `record/dev-seed.ts` does, from a throwaway script run with `node`. For
+  repeated runs of a role prompt, the same script can skip the server:
+  build `createUnitChats`, `createUnitPlanner`, `createIntakes` or
+  `createCoursePlannings` on `createClaudeBackend` with the prompt's text,
+  wired as `serve.ts` does, send the learner's moves, and save the chat's
+  `events()`. A short smoke run on the plan login:
 
   ```sh
   scratch=$(mktemp -d) &&

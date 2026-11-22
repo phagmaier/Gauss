@@ -39,39 +39,6 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.12 The prompts in a source course
-
-- Status: todo
-- Depends on: 4.10, 4.11
-- Why: until this stage a course quotes nothing verbatim from memory
-  (`tutor.md`, "Quotations"); with a source, `quote_source` verifies quotes
-  and the rule changes. Sources are taught lecture-style (`brief.md`,
-  "Session rhythm").
-- Do: `tutor.md`'s "Quotations": in a course with a source, quote it only
-  through `quote_source`, from a section read, and link the section of a
-  passage paraphrased, in the form the page opens
-  (`source:<source id>/<section id>`, optionally `/p<printed label>`;
-  `resolveSourceLink` in `src/web/source-target.ts`): a page by its printed
-  label, which its marker gives, else by its number. Until the prompt says
-  so only the scripted tutor writes a link. Another work, or the web, is
-  paraphrased and attributed, as in a course with no source. Teaching from
-  a source: go through the segment's passages in order, quoting the
-  sentences that carry the argument and explaining them, within the
-  teaching limit; use `view_page` where a page marker says equations or
-  figures were lost. Revise 4.7's drafts of the planners' prompts. The
-  method is `findings.md`, "Comparing prompt versions": old against new on
-  the same moves, the agent's judgment. "Quotations" still says the tutor
-  has no text of the works it teaches from; in 4.8's Haiku run the tutor,
-  having read the section, quoted short phrases from it in its own text,
-  and in 4.9's, asked for a passage, it called `quote_source` with the
-  section named and then quoted a further sentence in its own text.
-- Done when: Sonnet or Opus runs, since how well it teaches is what is
-  checked, of a lecture on "Force and Understanding" in the Inwood
-  _Phenomenology_ (4 parts) and of a unit on the Attention paper show
-  verified quotes, section links, no verbatim quote outside
-  `quote_source`, and a page viewed for the paper's equations. What the
-  runs show that justifies the wording goes in `findings.md`, "Tutor".
-
 ### 4.13 Notes and the transcript in a source course
 
 - Status: todo
@@ -202,6 +169,10 @@ Known and accepted for now; a task that closes one deletes it here.
 - One Sonnet 5.5 notes call exceeded the 3-minute limit; cause unknown.
 - Once, after a Stop mid-sentence, the next one-sentence reply took 10 to
   30 seconds. Not seen again, and not investigated.
+- In a source course the tutor still writes runs of the source's words
+  into its own sentences, unquoted and unchecked (18 of eight words or
+  more over six Opus runs, two of them titles), and Sonnet quotes clauses
+  outright. Nothing checks the tutor's text against the source.
 - Untried on a real model: a learner who keeps asking in a detour or
   presses "Ready" at once; idle closing and resuming end to end; the tutor
   offering a large course's next stretch; scratch work in `$TMPDIR`; a
@@ -234,5 +205,9 @@ Known and accepted for now; a task that closes one deletes it here.
   stay in the text; PDFium's reading order is trusted; notes continuing on
   the next page read as body; a bookmark title that differs from the
   printed heading lands at the top of its page.
+- A section that starts partway down a page carries no marker for that
+  page, so read alone it does not say the page lost math (the Attention
+  paper's 3.2.1 on page 4). `tutor.md` also sends the tutor to a page
+  whose math reads garbled; Sonnet looked at it only when asked.
 - Sandboxed commands and artifact scripts have no budgets for peak disk,
   memory or CPU; the command deadline and output cap do not supply them.

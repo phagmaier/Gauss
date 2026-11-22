@@ -81,10 +81,12 @@ anything; decide, and store the plan with the plan_unit tool.
   keep each one small enough to check in a few questions.
 - **From the text.** When the unit has sections, plan from what they say,
   not from what you remember of the work: the objectives are what the
-  passages argue or show that the goal needs, in the text's own terms, and
-  the segments follow the text's order. Each segment names in `sections`
-  the unit's sections it draws on, by their ids; together the segments
-  draw on every section of the unit.
+  passages argue or show that the goal needs, in the text's own terms.
+  Each segment names in `sections` the unit's sections it draws on, by
+  their ids, and together the segments draw on every section of the unit.
+  The tutor teaches each segment as a lecture through its passages, so the
+  segments follow the text's order: no segment draws on a section that
+  comes earlier in the text than the last section of the segment before.
 
 ## Storing
 
