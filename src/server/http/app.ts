@@ -45,6 +45,7 @@ import {
   type ProfileView,
 } from "../../shared/profile.ts";
 import { AnswerPost, OpenFilePost } from "../../shared/question.ts";
+import type { CourseSources } from "../../shared/source.ts";
 import { StyleAnswer } from "../../shared/style.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
@@ -146,6 +147,15 @@ export function createApp(options: {
       : c.json(
           (await withProgress(dataRoot, stored)) satisfies CourseWithProgress,
         );
+  });
+
+  // The outlines of the course's sources (architecture.md section 8), which
+  // the cards read a unit's sections by.
+  app.get("/api/courses/:id/sources", async (c) => {
+    const stored = await dataRoot.readCourse(c.req.param("id"));
+    if (stored === undefined) return c.json({ error: "No such course." }, 404);
+    const sources = await dataRoot.readSources(stored.id);
+    return c.json({ sources } satisfies CourseSources);
   });
 
   // "What I know" (task 2.26): every objective of the course's planned units

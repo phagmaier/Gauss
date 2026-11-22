@@ -10,9 +10,11 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal, Unit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
+import type { Outline } from "../../shared/source.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { givenOrder } from "./choice-order.ts";
+import { placeTestSource } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
@@ -219,6 +221,81 @@ test("Apply writes the new units, each kept unit with its plan, asks for a backu
   expect(backend.received.at(-1)?.text).not.toContain(
     "The learner applied the curriculum change",
   );
+});
+
+// Task 4.7: in a course with a source, units name their sections.
+test("in a course with a source, the tutor's instructions list the sections each unit reads; a change naming one the source lacks is refused, and Apply keeps each unit's sections", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const notes: Outline = {
+    id: "counting",
+    title: "Counting",
+    file: "original.md",
+    name: "counting.md",
+    format: "markdown",
+    sha256: "c".repeat(64),
+    converter: 5,
+    limit: 20_000,
+    entries: ["Loops", "Sets", "Maps"].map((title, i) => ({
+      id: `s${i + 1}`,
+      title,
+      size: 100,
+      place: { paragraphs: { first: 1, last: 2 } },
+    })),
+  };
+  const reading = UNITS.map((unit, i) => ({
+    ...unit,
+    sections: [`counting/s${i + 1}`],
+  }));
+  const curriculum = { ...CURRICULUM, units: reading };
+  const { id } = await root.createCourse({ title: CURRICULUM.title });
+  await placeTestSource(root, dir, id, notes, {
+    s1: "Loops.\n",
+    s2: "Sets.\n",
+    s3: "Maps.\n",
+  });
+  await root.saveProposal(id, curriculum);
+  await root.approveCurriculum(id, curriculum);
+  const plan: Plan = {
+    ...LOOP_PLAN,
+    segments: [
+      {
+        title: "Counting",
+        objectives: ["loop-count"],
+        sections: ["counting/s1"],
+      },
+    ],
+  };
+  await root.storePlan(id, "loops", plan);
+  const [loops, ...rest] = reading;
+  const added = (section: string) => ({ ...ADDED, sections: [section] });
+  const { backend, open, stored } = await server([
+    [
+      { text: "Teaching." },
+      amend([loops ?? LOOPS, added("counting/s4"), ...rest]),
+      amend([loops ?? LOOPS, added("counting/s1"), ...rest]),
+    ],
+  ]);
+  const chat = await open();
+
+  expect(backend.sessions[0]?.systemPrompt).toContain(
+    '1. Loops (id "loops"): Count with loops. Reads "counting/s1".\n' +
+      '2. Sets (id "sets"): Count with sets. Builds on "loops". Reads "counting/s2".\n',
+  );
+  expect(backend.calls.slice(-2).map((c) => c.result.status)).toEqual([
+    "refused",
+    "done",
+  ]);
+  expect(backend.calls.at(-2)?.result.text).toBe(
+    'Unit "counting-practice" names "counting/s4", but "counting" has no such section: its sections are s1 to s3.',
+  );
+  expect(await chat.applyCurriculum(proposalId(chat.events()))).toEqual({
+    ok: true,
+  });
+  expect(await stored()).toEqual([
+    { ...loops, plan },
+    added("counting/s1"),
+    ...rest,
+  ]);
 });
 
 test('"Keep the current one" leaves curriculum.json as it was and tells the tutor in its next header', async () => {

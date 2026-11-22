@@ -49,6 +49,8 @@ const converter = fileURLToPath(
 const SOURCE_FIXTURE = fileURLToPath(
   new URL("fixtures/counting.md", import.meta.url),
 );
+/** The id the record gives the seeded source, a slug of its title. */
+const SOURCE_ID = "three-ways-of-counting";
 
 /**
  * Seeds an empty data root with eight courses and returns their ids; a data
@@ -78,7 +80,8 @@ const SOURCE_FIXTURE = fileURLToPath(
  *   to 4 passed, 5 in progress, the rest not started.
  * - "Three ways of counting", three units, approved and not started, with
  *   a source: `fixtures/counting.md`, converted by `convert.py` and put in
- *   place by the record. The converter runs outside the sandbox here, on a
+ *   place by the record, each unit reading its section (the first, the
+ *   text's opening too). The converter runs outside the sandbox here, on a
  *   text the repository ships: the sandbox is for files from outside the
  *   machine, and the server starts the one sandbox a process can have.
  *
@@ -102,6 +105,11 @@ export async function seedCourses(options: {
     title,
     goal: `Work with ${title.toLowerCase()} in a small example.`,
     prerequisites,
+  });
+  /** The unit reading these sections of the seeded source, by number. */
+  const reading = (read: Unit, sections: number[]): Unit => ({
+    ...read,
+    sections: sections.map((n) => `${SOURCE_ID}/s${n}`),
   });
   const proposed = (title: string, units: Unit[]): CurriculumProposal => ({
     title,
@@ -397,9 +405,9 @@ export async function seedCourses(options: {
     course(
       "Three ways of counting",
       [
-        unit("pigeonhole", "The pigeonhole principle", []),
-        unit("double-counting", "Counting in two ways", []),
-        unit("invariants", "Invariants", ["pigeonhole"]),
+        reading(unit("pigeonhole", "The pigeonhole principle", []), [1, 2]),
+        reading(unit("double-counting", "Counting in two ways", []), [3]),
+        reading(unit("invariants", "Invariants", ["pigeonhole"]), [4]),
       ],
       3,
       async (c) => {

@@ -29,7 +29,7 @@ import {
 import type { DataRoot } from "../record/data-root.ts";
 import type { ChatResult } from "./conversation.ts";
 import type { SourceConverter } from "./source-convert.ts";
-import { formatText, outlineLines } from "./source-text.ts";
+import { sourceLines } from "./source-text.ts";
 
 /** A file the learner attached, as the route passes it on. */
 export interface Upload {
@@ -75,6 +75,8 @@ export interface IntakeSources {
   converting(): boolean;
   /** Resolves once no file is being received or converted. */
   settled(): Promise<void>;
+  /** The outlines of the sources the course has now, or will have from the first proposal. */
+  outlines(): Promise<Outline[]>;
   /**
    * What the planner's next turn is told: with `fresh`, for a session that
    * has been told nothing, every source the course has.
@@ -379,6 +381,8 @@ export function createIntakeSources(options: {
       while (pending.size > 0) await Promise.all(pending);
     },
 
+    outlines: async () => (await current()).map((s) => s.outline),
+
     async forTurn(fresh) {
       const known = fresh ? new Map<Slug, ToldSource>() : told;
       const now = new Map<Slug, ToldSource>();
@@ -424,13 +428,8 @@ export function createIntakeSources(options: {
 
 /** What a turn says of a source attached: what it is, then its outline. */
 function attachedText(outline: Outline): string {
-  return [
-    `Attached: ${JSON.stringify(outline.title)} (source id "${outline.id}"), ` +
-      `${formatText(outline)}, from the learner's file ${JSON.stringify(outline.name)}. ` +
-      "Its outline, one line per entry, indented by depth: a heading's " +
-      "title, or a section's id, title, place and size in characters.",
-    ...outlineLines(outline),
-  ].join("\n");
+  const [what, ...lines] = sourceLines(outline);
+  return [`Attached: ${what}`, ...lines].join("\n");
 }
 
 /** Why a file is too large: its size, where it is known and reads apart from the limit. */

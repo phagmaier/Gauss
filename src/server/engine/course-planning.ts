@@ -25,6 +25,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
+import { unitSections } from "../../shared/curriculum.ts";
 import {
   type CurriculumChange,
   type CurriculumChangeOutcome,
@@ -47,6 +48,7 @@ import {
 } from "./conversation.ts";
 import type { CourseHolder } from "./course-deletion.ts";
 import { conversationBefore, type Said } from "./intake.ts";
+import { sectionsRefused, sourceLines } from "./source-text.ts";
 import type { CourseDesk, UnitChats } from "./unit-chat.ts";
 
 export interface CoursePlanning {
@@ -121,6 +123,11 @@ export function createCoursePlanning(
         }
         const dropped = droppedStarted(current.units, units, state);
         if (dropped !== undefined) return { refused: dropped };
+        const sections = sectionsRefused(
+          units,
+          await dataRoot.readSources(courseId),
+        );
+        if (sections !== undefined) return { refused: sections };
         const change: CurriculumChange = {
           id: randomUUID(),
           units,
@@ -225,10 +232,16 @@ export function createCoursePlanning(
               conversationBefore(events, id),
               previousProposals(events),
               course.text,
+              await sourcesBlock(dataRoot, courseId),
             );
           }
           if (!planner.started()) {
-            return openingTurn(text, course.finished, course.text);
+            return openingTurn(
+              text,
+              course.finished,
+              course.text,
+              await sourcesBlock(dataRoot, courseId),
+            );
           }
           return messageTurn(text, waiting !== undefined, answered, changed);
         },
@@ -393,7 +406,8 @@ async function courseTitle(dataRoot: DataRoot, courseId: Slug) {
 }
 
 // --- Turns: a header saying what is allowed now, then the course when the
-// turn gives it, then the learner's text ---
+// turn gives it, and the sources in a session's first turn, then the
+// learner's text ---
 
 /**
  * The course as the planner sees it, in `<course>`, with what Gauss keeps
@@ -418,11 +432,13 @@ async function courseContext(
   const progress = courseProgress(curriculum, state, evidence);
   const units = curriculum.units.map((unit) => {
     const at = Object.hasOwn(progress, unit.id) ? progress[unit.id] : undefined;
+    const sections = unitSections(unit);
     return {
       id: unit.id,
       title: unit.title,
       goal: unit.goal,
       prerequisites: unit.prerequisites,
+      ...(sections.length === 0 ? {} : { sections }),
       status: at?.status ?? "not-started",
       ...(unit.plan === undefined
         ? {}
@@ -435,10 +451,13 @@ async function courseContext(
           }),
     };
   });
+  const reads = units.some((u) => u.sections !== undefined)
+    ? " and the sections of the sources it teaches"
+    : "";
   const text = [
     "<course>",
     `The course "${stored.course.title}". Its units, in order, as JSON, ` +
-      "each with its status, and a unit that has started with its " +
+      `each with its status${reads}, and a unit that has started with its ` +
       "objectives and their statuses:",
     JSON.stringify(units),
     style === undefined
@@ -464,20 +483,48 @@ async function courseContext(
   return { text, finished };
 }
 
+/**
+ * The course's sources, each with its outline, in `<sources>`; none for a
+ * course with no source. Given in a session's first turn only: a course's
+ * sources do not change once it is approved.
+ */
+async function sourcesBlock(
+  dataRoot: DataRoot,
+  courseId: Slug,
+): Promise<string | undefined> {
+  const sources = await dataRoot.readSources(courseId);
+  if (sources.length === 0) return undefined;
+  return [
+    "<sources>",
+    'The course\'s sources. A unit names a section it teaches as "<source id>/<section id>".',
+    ...sources.flatMap((source) => ["", ...sourceLines(source)]),
+    "</sources>",
+  ].join("\n");
+}
+
 /** Said in a header whose turn gives the planner the course. */
 const GIVEN =
   "Before their message come the course, in <course>, and what Gauss keeps " +
   "about the learner, in <about_the_learner>.";
 
-/** A turn: the header, then the course if the turn gives it, then their text. */
+/** Said in a header whose turn gives the planner the course's sources. */
+const SOURCES_GIVEN =
+  "After them come the course's sources, each with its outline, in <sources>.";
+
+/**
+ * A turn: the header, then the course if the turn gives it, and the sources
+ * if it gives them, then their text.
+ */
 function withCourse(
   header: string,
   course: string | undefined,
   text: string,
+  sources?: string,
 ): string {
-  return course === undefined
-    ? `[${header}]\n${text}`
-    : `[${header} ${GIVEN}]\n${course}\n\n${text}`;
+  if (course === undefined) return `[${header}]\n${text}`;
+  return sources === undefined
+    ? `[${header} ${GIVEN}]\n${course}\n\n${text}`
+    : `[${header} ${GIVEN} ${SOURCES_GIVEN}]\n${course}\n${sources}\n\n${text}`;
 }
 
 const ALLOWED =
@@ -490,7 +537,12 @@ const WAITING =
   "amend_curriculum with the whole revised list, which replaces it.";
 
 /** The page's opening question, which the learner's first message answers. */
-function openingTurn(text: string, finished: boolean, course: string): string {
+function openingTurn(
+  text: string,
+  finished: boolean,
+  course: string,
+  sources: string | undefined,
+): string {
   return withCourse(
     "Start of a planning conversation of this course. " +
       (finished
@@ -501,6 +553,7 @@ function openingTurn(text: string, finished: boolean, course: string): string {
       ALLOWED,
     course,
     text,
+    sources,
   );
 }
 
@@ -558,6 +611,7 @@ function lostTurn(
   said: readonly Said[],
   proposals: readonly PreviousProposal[],
   course: string,
+  sources: string | undefined,
 ): string {
   const allowed = proposals.at(-1)?.outcome === "waiting" ? WAITING : ALLOWED;
   return withCourse(
@@ -575,5 +629,6 @@ function lostTurn(
       `Their new message follows. ${allowed}`,
     course,
     text,
+    sources,
   );
 }

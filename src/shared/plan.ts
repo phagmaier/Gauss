@@ -1,12 +1,14 @@
 // A unit's plan: its objectives, and the segments that teach them in order
 // (brief.md, "Terms"). The unit's planning session sends it through
-// plan_unit (task 2.5), and it is stored on the unit in curriculum.json.
+// plan_unit (task 2.5), and it is stored on the unit in curriculum.json. In a
+// unit that names sections, each segment names those it draws on.
 //
 // The field descriptions and the error messages are written for that
 // session: a refused plan sends them back to it.
 
 import { z } from "zod";
 import { Slug } from "./course.ts";
+import { SectionRef } from "./source.ts";
 import { hasPassed, type ObjectiveStatus } from "./status.ts";
 import type { Position } from "./timeline.ts";
 
@@ -42,6 +44,12 @@ export const Segment = z.object({
     .min(1, { error: SEGMENT_SIZE })
     .max(2, { error: SEGMENT_SIZE })
     .describe("The ids of the one or two objectives the segment teaches"),
+  sections: z
+    .array(SectionRef)
+    .optional()
+    .describe(
+      'The unit\'s sections this segment draws on, as the unit names them ("<source id>/<section id>"), in reading order. Required when the unit names sections; leave it out when it names none.',
+    ),
 });
 export type Segment = z.infer<typeof Segment>;
 
@@ -115,6 +123,44 @@ export const Plan = z
     });
   });
 export type Plan = z.infer<typeof Plan>;
+
+/**
+ * Why the plan cannot be the plan of a unit that names these sections: in
+ * such a unit each segment names at least one of them and no other; in a
+ * unit that names none, a segment names none either. Empty when it can.
+ */
+export function planSectionProblems(
+  plan: Pick<Plan, "segments">,
+  unitSections: readonly string[],
+): string[] {
+  const ours = new Set(unitSections);
+  return plan.segments.flatMap((segment, i) => {
+    const named = segment.sections ?? [];
+    const which = `Segment ${i + 1} ("${segment.title}")`;
+    if (ours.size === 0) {
+      return named.length === 0
+        ? []
+        : [
+            `${which} names sections, but this unit teaches from no source: leave its sections out.`,
+          ];
+    }
+    if (named.length === 0) {
+      return [
+        `${which} names no section. Name the unit's sections it draws on: ${[...ours].map((ref) => `"${ref}"`).join(", ")}.`,
+      ];
+    }
+    return named.flatMap((ref, j) => {
+      if (named.indexOf(ref) < j) {
+        return [`${which} lists "${ref}" twice.`];
+      }
+      return ours.has(ref)
+        ? []
+        : [
+            `${which} names "${ref}", which is not one of this unit's sections. Name only the unit's: ${[...ours].map((r) => `"${r}"`).join(", ")}.`,
+          ];
+    });
+  });
+}
 
 /**
  * What a segment of the plan is once the learner skips what the test before

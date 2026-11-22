@@ -20,16 +20,32 @@ test.each([
   expect(buildsOn(unit("e", prerequisites), units)).toBe(says);
 });
 
-test("a revision changes the units that are new or whose title, goal or prerequisites differ, matched by id", () => {
-  const before = [unit("a"), unit("b", ["a"]), unit("c", ["b"]), unit("d")];
+test("a revision changes the units that are new or whose title, goal, prerequisites or sections differ, matched by id", () => {
+  const reads = (id: string, sections: string[]) => ({
+    ...unit(id),
+    sections,
+  });
+  const before = [
+    unit("a"),
+    unit("b", ["a"]),
+    unit("c", ["b"]),
+    unit("d"),
+    reads("f", ["book/s1"]),
+    unit("g"),
+  ];
   const after = [
     { ...unit("a"), title: "A shorter start" },
     unit("c", ["a"]),
     unit("d"),
     unit("e", ["d"]),
     { ...unit("b", ["a"]), goal: "Learn b well." },
+    reads("f", ["book/s2"]),
+    // An empty list of sections is none.
+    reads("g", []),
   ];
 
-  expect(changedUnits(after, before)).toEqual(new Set(["a", "c", "e", "b"]));
+  expect(changedUnits(after, before)).toEqual(
+    new Set(["a", "c", "e", "b", "f"]),
+  );
   expect(changedUnits(after, undefined)).toEqual(new Set());
 });

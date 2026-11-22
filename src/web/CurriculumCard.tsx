@@ -7,8 +7,9 @@
 
 import { Fragment, useState } from "react";
 import { compareUnits } from "../shared/curriculum-change.ts";
+import type { Outline } from "../shared/source.ts";
 import type { CurriculumItem } from "../shared/timeline.ts";
-import { UnitList } from "./Curriculum.tsx";
+import { SourceShare, UnitList } from "./Curriculum.tsx";
 
 export function CurriculumCard(props: {
   item: CurriculumItem;
@@ -17,6 +18,8 @@ export function CurriculumCard(props: {
   onToggleDiagram(): void;
   onApply(): Promise<string | undefined>;
   onKeep(): Promise<string | undefined>;
+  /** The course's sources, once loaded: the units' reads come from them. */
+  sources: readonly Outline[] | undefined;
 }) {
   const { item } = props;
   const [sending, setSending] = useState(false);
@@ -32,6 +35,7 @@ export function CurriculumCard(props: {
             ? undefined
             : { text: mark, className: "chg" };
         }}
+        sources={props.sources}
       />
       {dropped.length === 0 ? null : (
         <p className="cs-gone">
@@ -44,6 +48,7 @@ export function CurriculumCard(props: {
           ))}
         </p>
       )}
+      <SourceShare units={item.units} sources={props.sources} />
     </>
   );
   const diagram = (

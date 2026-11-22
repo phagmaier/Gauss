@@ -58,6 +58,7 @@ import {
   type Upload,
 } from "./intake-sources.ts";
 import type { SourceConverter } from "./source-convert.ts";
+import { sectionsRefused } from "./source-text.ts";
 
 export interface Intake {
   /** Changes when the server restarts, so a page can tell. */
@@ -154,6 +155,12 @@ export function createIntake(options: {
       }
       if (opening) return { refused: FIRST_TURN };
       if (courseId === undefined) {
+        // Checked before the course is made, so a refusal makes none.
+        const refused = sectionsRefused(
+          proposal.units,
+          await sources.outlines(),
+        );
+        if (refused !== undefined) return { refused };
         try {
           const created = await dataRoot.createCourse({
             title: proposal.title,
@@ -167,6 +174,13 @@ export function createIntake(options: {
         }
       }
       await sources.moveInto(courseId);
+      // Checked again once the sources are the course's, as they stay from
+      // now on: a source removed while the proposal was being made is gone.
+      const refused = sectionsRefused(
+        proposal.units,
+        await dataRoot.readSources(courseId),
+      );
+      if (refused !== undefined) return { refused };
       const profileWas = (await dataRoot.readProfile()) ?? null;
       const card = { ...proposal, profileWas };
       await dataRoot.saveProposal(courseId, card);

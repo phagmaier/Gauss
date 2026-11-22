@@ -4,7 +4,11 @@
 // the turn, and what is allowed now; the learner's text or the event's
 // details follow it. Pure, so the wording is tested without a chat.
 
-import type { StoredUnit, Unit } from "../../shared/curriculum.ts";
+import {
+  type StoredUnit,
+  type Unit,
+  unitSections,
+} from "../../shared/curriculum.ts";
 import type { TestShown } from "../../shared/events.ts";
 import type {
   AnswerEvidence,
@@ -1064,14 +1068,21 @@ export function curriculumNote(
   }
 }
 
-/** The course's units, one line each, as the tutor's instructions list them. */
+/**
+ * The course's units, one line each, as the tutor's instructions list them:
+ * with the sections each teaches, so that a change it proposes keeps them.
+ */
 function unitLines(units: readonly Unit[]): string[] {
+  const commas = (ids: readonly string[]) =>
+    ids.map((id) => `"${id}"`).join(", ");
   return units.map((u, i) => {
     const builds =
       u.prerequisites.length === 0
         ? ""
-        : ` Builds on ${u.prerequisites.map((id) => `"${id}"`).join(", ")}.`;
-    return `${i + 1}. ${u.title} (id "${u.id}"): ${u.goal}${builds}`;
+        : ` Builds on ${commas(u.prerequisites)}.`;
+    const sections = unitSections(u);
+    const reads = sections.length === 0 ? "" : ` Reads ${commas(sections)}.`;
+    return `${i + 1}. ${u.title} (id "${u.id}"): ${u.goal}${builds}${reads}`;
   });
 }
 

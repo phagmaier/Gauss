@@ -11,6 +11,7 @@ import type { CurriculumProposal, Unit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
+import type { Outline } from "../../shared/source.ts";
 import {
   createFakeBackend,
   type FakeBackend,
@@ -21,6 +22,7 @@ import { openDataRoot } from "../record/data-root.ts";
 import { givenOrder } from "./choice-order.ts";
 import { IDLE_MS } from "./conversation.ts";
 import { createCoursePlannings } from "./course-planning.ts";
+import { placeTestSource } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
@@ -87,10 +89,60 @@ const CURRICULUM: CurriculumProposal = {
   style: `Short explanations. ${STRETCH}`,
   background: "The learner knows Python and wants to go as far as Counting 2.",
 };
-const plan = (objective: string): Plan => ({
+const plan = (objective: string, sections?: string[]): Plan => ({
   objectives: [{ id: objective, statement: `Do ${objective}.` }],
-  segments: [{ title: "It", objectives: [objective] }],
+  segments: [
+    {
+      title: "It",
+      objectives: [objective],
+      ...(sections === undefined ? {} : { sections }),
+    },
+  ],
 });
+/** A Markdown source titled "Counting", so the record names it "counting". */
+const NOTES: Outline = {
+  id: "counting",
+  title: "Counting",
+  file: "original.md",
+  name: "counting.md",
+  format: "markdown",
+  sha256: "c".repeat(64),
+  converter: 5,
+  limit: 20_000,
+  entries: [
+    {
+      title: "Counting",
+      entries: [
+        {
+          id: "s1",
+          title: "Loops",
+          size: 1_000,
+          place: { paragraphs: { first: 1, last: 4 } },
+        },
+        {
+          id: "s2",
+          title: "Sets",
+          size: 2_500,
+          place: { paragraphs: { first: 1, last: 7 } },
+        },
+        {
+          id: "s3",
+          title: "Maps",
+          size: 800,
+          place: { paragraphs: { first: 1, last: 3 } },
+        },
+      ],
+    },
+  ],
+};
+/** "Counting" with its units reading the source's first two sections. */
+const READING: CurriculumProposal = {
+  ...CURRICULUM,
+  units: [
+    { ...LOOPS, sections: ["counting/s1"] },
+    { ...SETS, sections: ["counting/s2"] },
+  ],
+};
 /** An unassisted right answer at 100%, which passes the objective. */
 const passed = (objective: string): EvidenceEntry => ({
   kind: "answer",
@@ -141,13 +193,31 @@ async function setUp(options: {
   planner: FakeTurn[];
   tutor?: FakeTurn[];
   finished?: boolean;
+  /** The course has NOTES as its source, and its units read it (READING). */
+  source?: boolean;
 }) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
-  await root.saveProposal(id, CURRICULUM);
-  await root.approveCurriculum(id, CURRICULUM);
-  await root.storePlan(id, "loops", plan("loop-count"));
-  await root.storePlan(id, "sets", plan("set-count"));
+  const curriculum = options.source === true ? READING : CURRICULUM;
+  if (options.source === true) {
+    await placeTestSource(root, dir, id, NOTES, {
+      s1: "Loops.\n",
+      s2: "Sets.\n",
+      s3: "Maps.\n",
+    });
+  }
+  await root.saveProposal(id, curriculum);
+  await root.approveCurriculum(id, curriculum);
+  await root.storePlan(
+    id,
+    "loops",
+    plan("loop-count", curriculum.units[0]?.sections),
+  );
+  await root.storePlan(
+    id,
+    "sets",
+    plan("set-count", curriculum.units[1]?.sections),
+  );
   if (options.finished === true) {
     await root.appendEvidence(id, passed("loop-count"));
     await root.appendEvidence(id, passed("set-count"));
@@ -298,6 +368,69 @@ test("on a finished course the planner is given the course, asks, proposes the n
   const next = await planning();
   expect(next.id).not.toBe(chat.id);
   expect(plannings.get(COURSE, chat.id)).toBe(chat);
+});
+
+// Task 4.7: in a course with a source, units name their sections.
+test("in a course with a source, the planner is given each unit's sections and the source's outline once; a section the source lacks is refused, and Apply keeps each unit's sections and plan", async () => {
+  const maps = (section: string): Unit => ({ ...MAPS, sections: [section] });
+  const units = READING.units;
+  const { backend, planning, stored } = await setUp({
+    source: true,
+    planner: [
+      ASK,
+      [
+        amend([...units, maps("counting/s9")]),
+        amend([...units, maps("counting/s3")]),
+      ],
+    ],
+  });
+  const chat = await planning();
+  chat.say("Add maps.");
+  await chat.settled();
+  chat.say("Yes.");
+  await chat.settled();
+
+  const first = backend.received[0]?.text ?? "";
+  expect(first).toContain(
+    "After them come the course's sources, each with its outline, in <sources>.]",
+  );
+  expect(first).toContain(
+    "each with its status and the sections of the sources it teaches,",
+  );
+  expect(first).toContain(
+    '{"id":"loops","title":"Loops","goal":"Count with loops.","prerequisites":[],"sections":["counting/s1"],"status":"not-started"',
+  );
+  expect(first).toContain(
+    [
+      "</about_the_learner>",
+      "<sources>",
+      'The course\'s sources. A unit names a section it teaches as "<source id>/<section id>".',
+      "",
+      '"Counting" (source id "counting"), a Markdown file, from the learner\'s file "counting.md". Its outline, one line per entry, indented by depth: a heading\'s title, or a section\'s id, title, place and size in characters.',
+      '- "Counting"',
+      '  - s1: "Loops", paragraphs 1–4, 1,000 characters',
+      '  - s2: "Sets", paragraphs 1–7, 2,500 characters',
+      '  - s3: "Maps", paragraphs 1–3, 800 characters',
+      "</sources>",
+      "",
+      "Add maps.",
+    ].join("\n"),
+  );
+  // The sources do not change, so a later turn does not give them again.
+  expect(backend.received[1]?.text).not.toContain("<sources>");
+  expect(refusals(backend)).toEqual([
+    'Unit "maps" names "counting/s9", but "counting" has no such section: its sections are s1 to s3.',
+  ]);
+
+  const card = lastCard(chat.events());
+  expect(card.units).toEqual([...units, maps("counting/s3")]);
+  expect(card.was).toEqual(units);
+  expect(await chat.apply(card.proposalId)).toEqual({ ok: true });
+  expect(await stored()).toEqual([
+    { ...units[0], plan: plan("loop-count", ["counting/s1"]) },
+    { ...units[1], plan: plan("set-count", ["counting/s2"]) },
+    maps("counting/s3"),
+  ]);
 });
 
 test("a change that drops a started unit, changes its id or nothing, or breaks the curriculum's rules, is refused with the reason and shows no card", async () => {

@@ -39,6 +39,7 @@ import {
   PendingProfileApproval,
   type ShownProposal,
   type Unit,
+  unitSections,
 } from "../../shared/curriculum.ts";
 import {
   type CurriculumChange,
@@ -62,9 +63,9 @@ import {
   PendingNotes,
 } from "../../shared/notes.ts";
 import { PackageCompletion } from "../../shared/packages.ts";
-import { Plan } from "../../shared/plan.ts";
+import { Plan, planSectionProblems } from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
-import { Outline } from "../../shared/source.ts";
+import { Outline, SectionRef } from "../../shared/source.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { StyleDecision } from "../../shared/style.ts";
 import { syncFolder, writeFileAtomic, writeFileNew } from "./atomic-write.ts";
@@ -354,6 +355,12 @@ export interface DataRoot {
   removeUpload(intakeId: string, sourceId: Slug): Promise<void>;
   /** The outlines of the course's sources, by id; none when it has none. */
   readSources(id: string): Promise<Outline[]>;
+  /**
+   * The text of one of the course's sections, as its file holds it, named
+   * `<source id>/<section id>`; undefined when the course has no such
+   * section.
+   */
+  readSection(id: string, ref: SectionRef): Promise<string | undefined>;
 }
 
 /**
@@ -1007,6 +1014,8 @@ export function openDataRoot(options: {
         if (unit.plan !== undefined) {
           throw new Error(`Unit "${unitId}" already has a plan.`);
         }
+        const sections = planSectionProblems(checked, unitSections(unit));
+        if (sections.length > 0) throw new Error(sections.join("\n"));
         const parsed = Curriculum.safeParse({
           ...curriculum,
           units: curriculum.units.with(at, { ...unit, plan: checked }),
@@ -1495,6 +1504,17 @@ export function openDataRoot(options: {
           }
           return outline;
         }),
+      );
+    },
+
+    async readSection(id, ref) {
+      await existingCourse(id);
+      const [sourceId = "", sectionId = ""] = SectionRef.parse(ref).split("/");
+      return readFileText(
+        courseFile(
+          id,
+          join("sources", sourceId, "sections", `${sectionId}.md`),
+        ),
       );
     },
   };

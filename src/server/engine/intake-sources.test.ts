@@ -565,6 +565,100 @@ test("without a converter, attaching is refused with the reason, and a name that
   expect(await uploaded(intake)).toEqual([]);
 });
 
+// Task 4.7: units name the sections they teach.
+test("a proposal's units name the attached source's sections: the draft keeps them and the card shows them", async () => {
+  const reading = {
+    ...PROPOSAL,
+    units: PROPOSAL.units.map((unit) => ({
+      ...unit,
+      sections: ["force-and-understanding/s1"],
+    })),
+  };
+  const { intake, dataRoot } = setUp([
+    OPENING,
+    [{ call: "propose_curriculum", input: reading }],
+  ]);
+
+  await intake.attach(upload("hegel.md", HEGEL));
+  intake.say("Hegel.");
+  await intake.settled();
+  intake.say("Go ahead.");
+  await intake.settled();
+
+  const stored = await dataRoot.readCourse("reading-hegel");
+  expect(stored?.curriculum?.units).toEqual(reading.units);
+  expect(
+    intake.events().find((e) => e.type === "curriculum_proposed"),
+  ).toMatchObject({ units: reading.units });
+});
+
+test("a proposal naming a section the sources lack, or a unit over 150,000 characters, is refused with the reason: a first one makes no course, and a revision leaves the draft as it was", async () => {
+  // 9 + 149,990 + 1 characters: 150,000, the most a unit reads; with
+  // Hegel's 47, over it.
+  const whole = `# Whole\n\n${"a".repeat(149_990)}\n`;
+  const reads = (sections: string[], title = PROPOSAL.title) => ({
+    ...PROPOSAL,
+    title,
+    units: PROPOSAL.units.map((unit) => ({ ...unit, sections })),
+  });
+  const unknown = reads(["force-and-understanding/s2"], "Refused first");
+  const { intake, dataRoot, backend } = setUp([
+    OPENING,
+    [
+      { call: "propose_curriculum", input: unknown },
+      {
+        call: "propose_curriculum",
+        input: reads(
+          ["force-and-understanding/s1", "whole/s1"],
+          "Refused second",
+        ),
+      },
+      { call: "propose_curriculum", input: reads(["whole/s1"]) },
+    ],
+    [
+      {
+        call: "propose_curriculum",
+        input: reads(["force-and-understanding/s2"]),
+      },
+    ],
+  ]);
+  const unknownRefusal = {
+    status: "refused",
+    text: 'Unit "force" names "force-and-understanding/s2", but "force-and-understanding" has no such section: its one section is s1.',
+  };
+
+  await intake.attach(upload("hegel.md", HEGEL));
+  await intake.attach(upload("whole.md", whole));
+  intake.say("Hegel.");
+  await intake.settled();
+  intake.say("Go ahead.");
+  await intake.settled();
+
+  expect(backend.calls.map((c) => c.result)).toEqual([
+    unknownRefusal,
+    {
+      status: "refused",
+      text: 'Unit "force" reads 150,047 characters, more than the 150,000 a unit can read. Split it into units that each read fewer sections.',
+    },
+    expect.objectContaining({ status: "done" }),
+  ]);
+  // Had a refused proposal made the course, it would bear that one's title.
+  expect((await dataRoot.listCourses()).map((c) => c.id)).toEqual([
+    "reading-hegel",
+  ]);
+
+  intake.say("Read the other part.");
+  await intake.settled();
+
+  expect(backend.calls.at(-1)?.result).toEqual(unknownRefusal);
+  expect(
+    (await dataRoot.readCourse("reading-hegel"))?.curriculum?.units,
+  ).toEqual(reads(["whole/s1"]).units);
+  expect(
+    intake.events().filter((e) => e.type === "curriculum_proposed"),
+  ).toHaveLength(1);
+});
+
 /** A string as a regular expression that matches it alone. */
 function literally(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

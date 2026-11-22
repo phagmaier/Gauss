@@ -1,7 +1,7 @@
 // curriculum.json: a course's units, what each builds on, and one goal per
 // unit, plus whether the learner has approved it (architecture.md section 3).
 // A unit gains its plan, its objectives and segments, when it starts (task
-// 2.2), and the source sections it teaches in stage 4.
+// 2.2). In a course with sources, a unit names the sections it teaches.
 //
 // The field descriptions are written for the tutor, which proposes units
 // through a teaching tool (task 1.4), and so are the error messages: a
@@ -11,6 +11,7 @@ import { z } from "zod";
 import { Course, Slug, Timestamp } from "./course.ts";
 import { Plan } from "./plan.ts";
 import { LearnerProfile } from "./profile.ts";
+import { SectionRef } from "./source.ts";
 
 export const Unit = z.object({
   id: Slug.describe(
@@ -35,13 +36,24 @@ export const Unit = z.object({
     .describe(
       "The ids of the units this one builds on directly. Empty for a unit that starts the course.",
     ),
+  sections: z
+    .array(SectionRef)
+    .optional()
+    .describe(
+      'The sections of the course\'s sources this unit teaches, each as "<source id>/<section id>" from the source\'s outline, such as "phenomenology/s3", in reading order. Together at most 150,000 characters. Leave it out for a unit that teaches from no source.',
+    ),
 });
 export type Unit = z.infer<typeof Unit>;
 
+/** The sections a unit teaches; none in a course with no source. */
+export function unitSections(unit: Pick<Unit, "sections">): readonly string[] {
+  return unit.sections ?? [];
+}
+
 /**
  * The ids of the units a revision changed: new ones, and those whose title,
- * goal or prerequisites differ from the unit with the same id before. Units
- * are matched by id, which the tutor is asked to keep.
+ * goal, prerequisites or sections differ from the unit with the same id
+ * before. Units are matched by id, which the tutor is asked to keep.
  */
 export function changedUnits(
   units: readonly Unit[],
@@ -60,7 +72,8 @@ export function changedUnits(
           was === undefined ||
           was.title !== u.title ||
           was.goal !== u.goal ||
-          !same(was.prerequisites, u.prerequisites)
+          !same(was.prerequisites, u.prerequisites) ||
+          !same(unitSections(was), unitSections(u))
         );
       })
       .map((u) => u.id),
@@ -123,6 +136,15 @@ function checkUnits(units: Unit[], ctx: Context): void {
           code: "custom",
           path: [i, "prerequisites", j],
           message: `"${unit.id}" builds on "${id}", which is not a unit in this curriculum.`,
+        });
+      }
+    });
+    unitSections(unit).forEach((ref, j, refs) => {
+      if (refs.indexOf(ref) < j) {
+        ctx.addIssue({
+          code: "custom",
+          path: [i, "sections", j],
+          message: `"${unit.id}" lists the section "${ref}" more than once.`,
         });
       }
     });

@@ -15,9 +15,9 @@ export const CurriculumChangeInput = z.object({
   units: Units.describe(
     "The whole curriculum as it would be after the change, in the order " +
       "the learner should see it: every unit you keep, with its id, title, " +
-      "goal and prerequisites unchanged unless the change is to them, and " +
-      "each new unit. A unit the learner has started or finished must stay, " +
-      "with its id.",
+      "goal, prerequisites and sections unchanged unless the change is to " +
+      "them, and each new unit. A unit the learner has started or finished " +
+      "must stay, with its id.",
   ),
   why: z
     .string()
@@ -72,9 +72,21 @@ export const CurriculumDecision = CurriculumChangeAnswer.extend({
 });
 export type CurriculumDecision = z.infer<typeof CurriculumDecision>;
 
-/** The unit as a proposal gives it: without its plan. */
-export function withoutPlan({ id, title, goal, prerequisites }: Unit): Unit {
-  return { id, title, goal, prerequisites };
+/** The unit as a proposal gives it: without its plan, and an empty list of sections left out. */
+export function withoutPlan({
+  id,
+  title,
+  goal,
+  prerequisites,
+  sections,
+}: Unit): Unit {
+  return {
+    id,
+    title,
+    goal,
+    prerequisites,
+    ...(sections === undefined || sections.length === 0 ? {} : { sections }),
+  };
 }
 
 /** Whether the curriculum's units are these, in this order, plans aside. */

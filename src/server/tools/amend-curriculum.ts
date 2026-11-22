@@ -25,9 +25,10 @@ export function amendCurriculumTool(desk: CurriculumDesk): TeachingTool {
     description:
       "Propose a change to this course's curriculum, the units listed in " +
       "your instructions: give the whole revised list of units, each with " +
-      "its id, title, goal and the units it builds on, as the curriculum " +
-      "would be, and a line on why. Keep every unit you do not change as it " +
-      "is, with its id. The learner sees a card with the changes marked and " +
+      "its id, title, goal, the units it builds on and the sections it " +
+      "reads, if any, as the curriculum would be, and a line on why. Keep " +
+      "every unit you do not change as it is, with its id. The learner sees " +
+      "a card with the changes marked and " +
       'presses Apply or "Keep the current one". Nothing changes until they ' +
       "apply it. Refused if it drops a unit the learner has started or " +
       "finished, or changes its id, while a question is open, and while " +
@@ -60,9 +61,10 @@ export function planCurriculumChangeTool(desk: CurriculumDesk): TeachingTool {
     description:
       "Propose a change to this course's curriculum, the units given in " +
       "<course>: give the whole revised list of units, each with its id, " +
-      "title, goal and the units it builds on, as the curriculum would be, " +
-      "and a line on why. Keep every unit you do not change as it is, with " +
-      "its id. The learner sees a card with the changes marked and presses " +
+      "title, goal, the units it builds on and the sections it reads, if " +
+      "any, as the curriculum would be, and a line on why. Keep every unit " +
+      "you do not change as it is, with its id. The learner sees a card " +
+      "with the changes marked and presses " +
       'Apply or "Keep the current one". Nothing changes until they apply ' +
       "it. A new proposal replaces the one waiting. Refused if it drops a " +
       "unit the learner has started or finished, or changes its id, if it " +

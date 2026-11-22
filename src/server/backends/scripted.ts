@@ -18,8 +18,11 @@
 //   of its own when there was none. A turn that tells it of the sources
 //   (`<sources>`, task 4.6) starts its reply with what it was told: the
 //   title and number of sections of each source attached, each removed,
-//   and each file refused.
-// - A unit's planning (plan_unit): two segments of one objective each. The
+//   and each file refused. Its units read the sections of the sources it
+//   was told of, in order, each unit the next ones up to an even share and
+//   the most a unit reads.
+// - A unit's planning (plan_unit): two segments of one objective each,
+//   which split the unit's sections between them when it has any. The
 //   first objective is checked by choice questions, and every second
 //   question on it is a math question (task 3.5) when the session has the
 //   file and shell tools, which it has when the sandbox runs, as the
@@ -124,6 +127,7 @@ import { NotesReply } from "../../shared/notes.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { sentences } from "../../shared/profile.ts";
 import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
+import { UNIT_TEXT_LIMIT } from "../../shared/source.ts";
 import { QUESTION_HISTORY_START } from "../engine/unit-turns.ts";
 import { sandboxPython } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
@@ -157,12 +161,25 @@ export function createScriptedBackend(): FakeBackend {
 /** The id of the objective a unit's plan checks with written questions ends so. */
 const WRITTEN = "-proof";
 
-/** The plan the scripted planning gives a unit, and the seed gives its units. */
-export function scriptedPlan(unitId: string): Plan {
+/**
+ * The plan the scripted planning gives a unit, and the seed gives its units.
+ * Its two segments split the unit's sections, when it has any, in order:
+ * the first half to the first, the rest to the second, and a lone section
+ * to both.
+ */
+export function scriptedPlan(
+  unitId: string,
+  sections: readonly string[] = [],
+): Plan {
   // Room for the suffix within an id's 60 characters, and no hyphen doubled.
   const stem = unitId.slice(0, 50).replace(/-+$/, "");
   const idea = `${stem}-idea`;
   const proof = `${stem}${WRITTEN}`;
+  const half = Math.ceil(sections.length / 2);
+  const reads = (part: readonly string[]) =>
+    sections.length === 0
+      ? {}
+      : { sections: part.length === 0 ? [...sections] : [...part] };
   return {
     objectives: [
       {
@@ -175,8 +192,16 @@ export function scriptedPlan(unitId: string): Plan {
       },
     ],
     segments: [
-      { title: "The idea", objectives: [idea] },
-      { title: "Why it holds", objectives: [proof] },
+      {
+        title: "The idea",
+        objectives: [idea],
+        ...reads(sections.slice(0, half)),
+      },
+      {
+        title: "Why it holds",
+        objectives: [proof],
+        ...reads(sections.slice(half)),
+      },
     ],
   };
 }
@@ -194,7 +219,7 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
       { hold: true },
     ];
   }
-  if (has("plan_unit")) return planning(header);
+  if (has("plan_unit")) return planning(header, body);
   // The course's planner has the change tool, and no questions to ask.
   const amend = session.tools.find((t) => t.name === "amend_curriculum");
   if (amend !== undefined && !has("ask_question")) {
@@ -230,11 +255,15 @@ function parts(text: string): { header: string; body: string } {
 
 // --- Planning a unit -------------------------------------------------------
 
-function planning(header: string): FakeStep[] {
+function planning(header: string, body: string): FakeStep[] {
   const unitId = /\(id "([^"]+)"\)/.exec(header)?.[1];
+  // The planning turn gives the unit's sections, each in a tag of its own.
+  const sections = [...body.matchAll(/^<section id="([^"]+)"/gm)].map(
+    (m) => m[1] ?? "",
+  );
   return unitId === undefined
     ? [{ text: "The scripted planner could not find the unit in its turn." }]
-    : [{ call: "plan_unit", input: scriptedPlan(unitId) }];
+    : [{ call: "plan_unit", input: scriptedPlan(unitId, sections) }];
 }
 
 // --- The intake ------------------------------------------------------------
@@ -331,6 +360,66 @@ function sourcesSaid(block: string): string | undefined {
   return said.length === 0 ? undefined : said.join(" ");
 }
 
+/** A section a planner was told of: how the course names it, and its size. */
+interface ToldSection {
+  ref: string;
+  size: number;
+}
+
+/** The sections each intake's planner was told of, by its tool, by source id. */
+const toldSections = new WeakMap<TeachingTool, Map<string, ToldSection[]>>();
+
+/** Notes the sources a sources block attaches, with their sections, and those it removes. */
+function noteSources(tool: TeachingTool, block: string): void {
+  const known = toldSections.get(tool) ?? new Map<string, ToldSection[]>();
+  for (const item of block.split("\n\n")) {
+    const id = /\(source id "([^"]+)"\)/.exec(item)?.[1];
+    if (id === undefined) continue;
+    if (item.startsWith("Attached: ")) {
+      const lines = item.matchAll(/^\s*- (s\d+): .*, ([\d,]+) characters$/gm);
+      known.set(
+        id,
+        [...lines].map((m) => ({
+          ref: `${id}/${m[1]}`,
+          size: Number((m[2] ?? "").replaceAll(",", "")),
+        })),
+      );
+    } else if (item.startsWith("Removed by the learner: ")) {
+      known.delete(id);
+    }
+  }
+  toldSections.set(tool, known);
+}
+
+/**
+ * The units, each reading the next of the sections told, in order, as many
+ * as an even share and the most a unit reads allow; the sections left over
+ * are read by none.
+ */
+function withSections(
+  units: readonly Unit[],
+  told: readonly ToldSection[],
+): Unit[] {
+  const each = Math.ceil(told.length / units.length);
+  let next = 0;
+  return units.map((unit) => {
+    const sections: string[] = [];
+    let size = 0;
+    for (
+      let section = told[next];
+      section !== undefined;
+      section = told[next]
+    ) {
+      if (sections.length === each) break;
+      if (sections.length > 0 && size + section.size > UNIT_TEXT_LIMIT) break;
+      sections.push(section.ref);
+      size += section.size;
+      next += 1;
+    }
+    return sections.length === 0 ? unit : { ...unit, sections };
+  });
+}
+
 function proposal(
   title: string,
   kind: "first" | "revised" | "one-off" | "large",
@@ -389,6 +478,7 @@ function intake(
 ): FakeStep[] {
   const { text: body, profile: given, sources } = learnerPart(turnBody);
   if (given !== undefined) profiles.set(tool, given);
+  if (sources !== undefined) noteSources(tool, sources);
   const said = sources === undefined ? undefined : sourcesSaid(sources);
   const steps = intakeSteps(header, body, tool);
   return said === undefined ? steps : [{ text: `${said}\n\n` }, ...steps];
@@ -410,18 +500,22 @@ function intakeSteps(
   const propose = (
     kind: "first" | "revised" | "one-off" | "large",
     title: string,
-  ) => [
-    { text: "Here is a scripted curriculum." },
-    {
-      call: "propose_curriculum",
-      input: proposal(
-        title,
-        kind,
-        background,
-        scriptedProfile(profiles.get(tool)?.text, title),
-      ),
-    },
-  ];
+  ) => {
+    const made = proposal(
+      title,
+      kind,
+      background,
+      scriptedProfile(profiles.get(tool)?.text, title),
+    );
+    const told = [...(toldSections.get(tool)?.values() ?? [])].flat();
+    return [
+      { text: "Here is a scripted curriculum." },
+      {
+        call: "propose_curriculum",
+        input: { ...made, units: withSections(made.units, told) },
+      },
+    ];
+  };
   if (header.startsWith("[Start of the intake")) {
     firstMessages.set(tool, body);
     return [
@@ -478,11 +572,12 @@ function coursePlanning(
     plannedUnits.set(
       tool,
       (JSON.parse(given) as Unit[]).map(
-        ({ id, title, goal, prerequisites }) => ({
+        ({ id, title, goal, prerequisites, sections }) => ({
           id,
           title,
           goal,
           prerequisites,
+          ...(sections === undefined ? {} : { sections }),
         }),
       ),
     );
@@ -751,19 +846,21 @@ function listedCourse(session: SessionOptions, header: string): ListedCourse {
 /** Reads the numbered unit lines from a prompt or a curriculum update. */
 function parseUnitLines(text: string): Unit[] {
   const units: Unit[] = [];
+  const ids = (listed: string | undefined) =>
+    [...(listed ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1] ?? "");
   for (const line of text.split("\n")) {
     const unit =
-      /^\d+\. (.*) \(id "([^"]+)"\): (.*?)(?: Builds on ((?:"[^"]+"(?:, )?)+)\.)?$/.exec(
+      /^\d+\. (.*) \(id "([^"]+)"\): (.*?)(?: Builds on ((?:"[^"]+"(?:, )?)+)\.)?(?: Reads ((?:"[^"]+"(?:, )?)+)\.)?$/.exec(
         line,
       );
     if (unit === null) continue;
+    const sections = ids(unit[5]);
     units.push({
       id: unit[2] ?? "",
       title: unit[1] ?? "",
       goal: unit[3] ?? "",
-      prerequisites: [...(unit[4] ?? "").matchAll(/"([^"]+)"/g)].map(
-        (m) => m[1] ?? "",
-      ),
+      prerequisites: ids(unit[4]),
+      ...(sections.length === 0 ? {} : { sections }),
     });
   }
   return units;

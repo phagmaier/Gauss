@@ -2,13 +2,37 @@
 // source's folder as `convert.py ingest` would for a Markdown file whose
 // first line is `# <title>`, one section holding the whole text, and
 // refuses any other file as the converter refuses a format it does not
-// read. And an upload of a text, as the route passes one on.
+// read. And an upload of a text, as the route passes one on; and a source
+// put straight in a course, from an outline and its sections' texts.
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Outline } from "../../shared/source.ts";
+import type { DataRoot } from "../record/data-root.ts";
 import type { Upload } from "./intake-sources.ts";
 import type { Conversion, SourceConverter } from "./source-convert.ts";
+
+/**
+ * Puts a source in the course, as conversion and placement would: this
+ * outline, under the id the record gives it, a slug of its title, and each
+ * section's text by its id. `root` is the data root's folder, where the
+ * source is written first, as a scratch folder would be.
+ */
+export async function placeTestSource(
+  dataRoot: DataRoot,
+  root: string,
+  courseId: string,
+  outline: Outline,
+  texts: Readonly<Record<string, string>>,
+): Promise<Outline> {
+  const folder = await mkdtemp(join(root, ".test-source-"));
+  await mkdir(join(folder, "sections"));
+  for (const [id, text] of Object.entries(texts)) {
+    await writeFile(join(folder, "sections", `${id}.md`), text);
+  }
+  await writeFile(join(folder, "outline.json"), JSON.stringify(outline));
+  return dataRoot.placeSource(folder, { course: courseId });
+}
 
 /**
  * The converter. `result` stands in for a conversion that does not convert;

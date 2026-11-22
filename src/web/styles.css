@@ -1805,6 +1805,39 @@ button.dn:hover {
   color: var(--ink-2);
   font-size: 0.92em;
 }
+/* Piece 22: under a unit's goal, the sections it reads, each with its place */
+.reads {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.8em;
+  align-items: baseline;
+  margin-top: 0.4em;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.reads-k {
+  font: 500 10.5px var(--f-label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.reads ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.12em;
+}
+.reads-pl {
+  color: var(--ink-3);
+  margin-left: 0.45em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.reads .textbtn {
+  font-size: 13px;
+  margin-left: 0.6em;
+}
 
 /* ---- The end of a unit, piece 10: a closing card in the thread ---- */
 .warn {

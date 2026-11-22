@@ -5,20 +5,27 @@
 // background note (task 2.22) and its curriculum, with how the learner stands on each objective planned so far,
 // and what earlier units showed (task 5.7): the last handoff notes of the
 // unit's prerequisites and the open misconceptions on other units'
-// objectives. It stores the plan through plan_unit; then it closes. A session that ends
+// objectives; then, for a unit that names sections, their whole text. It
+// stores the plan through plan_unit; then it closes. A session that ends
 // without a plan is tried once more, in a new session told why; after that
 // the failure is the caller's to report to the learner.
 
-import type { Curriculum, StoredUnit } from "../../shared/curriculum.ts";
+import {
+  type Curriculum,
+  type StoredUnit,
+  unitSections,
+} from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
 import type { StoredCourse } from "../../shared/library.ts";
 import type { Plan } from "../../shared/plan.ts";
+import { sectionsByRef } from "../../shared/source.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { objectiveStatus } from "../record/status.ts";
 import { planUnitTool } from "../tools/plan-unit.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 import { type EarlierUnits, earlierText, readEarlier } from "./handoff.ts";
+import { placeText } from "./source-text.ts";
 
 export type PlanningResult =
   | { ok: true; plan: Plan }
@@ -93,6 +100,7 @@ export function createUnitPlanner(options: {
       evidence,
       misconceptions,
     );
+    const text = await unitText(dataRoot, courseId, unit);
     let problem: string | undefined;
     for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
       const outcome = await runSession(
@@ -103,6 +111,7 @@ export function createUnitPlanner(options: {
           background,
           profile,
           earlier,
+          text,
           earlierProblem: problem,
         }),
       );
@@ -214,6 +223,7 @@ function planningContext(
       title: u.title,
       goal: u.goal,
       prerequisites: u.prerequisites,
+      ...(unitSections(u).length === 0 ? {} : { sections: u.sections }),
       ...(u.plan === undefined
         ? {}
         : {
@@ -227,6 +237,39 @@ function planningContext(
   });
 }
 
+/**
+ * The sections the unit names, whole, each in a tag with its id, title and
+ * place, in the unit's order; none for a unit that names none. Throws when a
+ * section cannot be read: a plan made without its text would not be one.
+ */
+async function unitText(
+  dataRoot: DataRoot,
+  courseId: string,
+  unit: StoredUnit,
+): Promise<string | undefined> {
+  const refs = unitSections(unit);
+  if (refs.length === 0) return undefined;
+  const byRef = sectionsByRef(await dataRoot.readSources(courseId));
+  const tags = await Promise.all(
+    refs.map(async (ref) => {
+      const found = byRef.get(ref);
+      const text = await dataRoot.readSection(courseId, ref);
+      if (found === undefined || text === undefined) {
+        throw new Error(
+          `Unit "${unit.id}" names the section "${ref}", which the course's sources do not have.`,
+        );
+      }
+      return (
+        `<section id=${JSON.stringify(ref)} ` +
+        `title=${JSON.stringify(found.section.title)} ` +
+        `place=${JSON.stringify(placeText(found.section.place, found.source))}>\n` +
+        `${text.replace(/\n$/, "")}\n</section>`
+      );
+    }),
+  );
+  return tags.join("\n\n");
+}
+
 function planningTurn(
   stored: StoredCourse,
   curriculum: Curriculum,
@@ -238,28 +281,36 @@ function planningTurn(
     /** The learner profile (task 5.8); none until one is approved or written. */
     profile: string | undefined;
     earlier: EarlierUnits;
+    /** The unit's sections, whole; none for a unit that names none. */
+    text: string | undefined;
     earlierProblem: string | undefined;
   },
 ): string {
-  const { context, background, profile, earlierProblem } = given;
+  const { context, background, profile, text, earlierProblem } = given;
   const earlier = earlierText(given.earlier);
   const at = curriculum.units.indexOf(unit) + 1;
   const retry =
     earlierProblem === undefined
       ? ""
       : ` An earlier planning session for this unit stored nothing: ${earlierProblem}`;
+  const reads =
+    text === undefined
+      ? ""
+      : ' Last, under "# The unit\'s text", the sections it teaches, whole: ' +
+        "name in each segment those it draws on.";
   return (
     `[Plan unit ${at} of ${curriculum.units.length} of the course ` +
     `"${stored.course.title}": "${unit.title}" (id "${unit.id}"). Allowed ` +
     "now: plan_unit, once the plan is ready. Nobody reads your text or " +
-    `answers questions here.${retry}]\n` +
+    `answers questions here.${reads}${retry}]\n` +
     `# The learner\n\n${learnerSection(profile, background)}\n\n` +
     "The curriculum, in order, as JSON. Units already planned list their " +
     "objectives, each with how the learner stands on it.\n" +
     context +
     (earlier === undefined
       ? ""
-      : `\n\n# What earlier units showed\n\n${earlier}`)
+      : `\n\n# What earlier units showed\n\n${earlier}`) +
+    (text === undefined ? "" : `\n\n# The unit's text\n\n${text}`)
   );
 }
 

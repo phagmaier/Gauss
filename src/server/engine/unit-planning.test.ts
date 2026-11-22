@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
+import type { Outline } from "../../shared/source.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
+import { placeTestSource } from "./fake-converter.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
@@ -251,6 +253,127 @@ describe("the session's one turn", () => {
       `${profile}No background note was recorded for this course.\n\nThe curriculum, in order`,
     );
   });
+});
+
+// Task 4.7: a unit that names sections is planned from their text.
+test("a unit that names sections is planned from their whole text, after the curriculum; a segment naming another unit's section is refused, and the corrected plan names the unit's", async () => {
+  const book: Outline = {
+    id: "phenomenology",
+    title: "Phenomenology",
+    file: "original.pdf",
+    name: "hegel.pdf",
+    format: "pdf",
+    sha256: "a".repeat(64),
+    converter: 5,
+    limit: 20_000,
+    pages: {
+      count: 8,
+      labels: ["i", "ii", "iii", "1", "2", "3", "4", "5"],
+      blank: [],
+    },
+    entries: [
+      {
+        title: "Preface",
+        entries: [
+          {
+            id: "s1",
+            title: "Preface (part 1 of 2)",
+            size: 50,
+            place: { pages: { first: 1, last: 3 } },
+            part: { number: 1, of: 2 },
+          },
+          {
+            id: "s2",
+            title: "Preface (part 2 of 2)",
+            size: 22,
+            place: { pages: { first: 3, last: 4 } },
+            part: { number: 2, of: 2 },
+          },
+        ],
+      },
+      {
+        id: "s3",
+        title: "Introduction",
+        size: 19,
+        place: { pages: { first: 5, last: 8 } },
+      },
+    ],
+  };
+  const proposal = {
+    title: "Reading Hegel",
+    units: [
+      {
+        id: "preface",
+        title: "The Preface",
+        goal: "Say why the true is the whole.",
+        prerequisites: [],
+        sections: ["phenomenology/s1", "phenomenology/s2"],
+      },
+      {
+        id: "introduction",
+        title: "The Introduction",
+        goal: "Say how knowing tests itself.",
+        prerequisites: ["preface"],
+        sections: ["phenomenology/s3"],
+      },
+    ],
+    style: "Close reading.",
+    background: "The learner has read Kant.",
+  };
+  const { id } = await root.createCourse({ title: proposal.title });
+  await placeTestSource(root, dir, id, book, {
+    s1: '<!-- page 1 label "i" -->\nThe true is the whole.\n',
+    s2: "Substance is subject.\n",
+    s3: "Knowing is a test.\n",
+  });
+  await root.saveProposal(id, proposal);
+  await root.approveCurriculum(id, proposal);
+  const plan = (substance: string[]): Plan => ({
+    objectives: [
+      { id: "whole", statement: "Explain why the true is the whole." },
+      { id: "subject", statement: "Explain how substance is subject." },
+    ],
+    segments: [
+      {
+        title: "The whole",
+        objectives: ["whole"],
+        sections: ["phenomenology/s1"],
+      },
+      { title: "Substance", objectives: ["subject"], sections: substance },
+    ],
+  });
+  const { fake, planner } = setUp([
+    [
+      { call: "plan_unit", input: plan(["phenomenology/s3"]) },
+      { call: "plan_unit", input: plan(["phenomenology/s2"]) },
+    ],
+  ]);
+
+  const result = await planner.plan(id, "preface");
+
+  const text = fake.received[0]?.text ?? "";
+  expect(text).toMatch(
+    /^\[Plan unit 1 of 2 [^\n]* Last, under "# The unit's text", the sections it teaches, whole: name in each segment those it draws on\.\]\n/,
+  );
+  expect(text).toContain(
+    '"prerequisites":[],"sections":["phenomenology/s1","phenomenology/s2"]}',
+  );
+  expect(text.slice(text.lastIndexOf("# The unit's text"))).toBe(
+    "# The unit's text\n\n" +
+      '<section id="phenomenology/s1" title="Preface (part 1 of 2)" place="pages 1–3 (printed i–iii)">\n' +
+      '<!-- page 1 label "i" -->\nThe true is the whole.\n</section>\n\n' +
+      '<section id="phenomenology/s2" title="Preface (part 2 of 2)" place="pages 3–4 (printed iii–1)">\n' +
+      "Substance is subject.\n</section>",
+  );
+  expect(fake.calls.map((c) => c.result)).toEqual([
+    {
+      status: "refused",
+      text: 'Segment 2 ("Substance") names "phenomenology/s3", which is not one of this unit\'s sections. Name only the unit\'s: "phenomenology/s1", "phenomenology/s2".',
+    },
+    expect.objectContaining({ status: "done" }),
+  ]);
+  expect(result).toEqual({ ok: true, plan: plan(["phenomenology/s2"]) });
+  expect(await storedPlan(id, "preface")).toEqual(plan(["phenomenology/s2"]));
 });
 
 describe("a refused plan goes back with its reason and is corrected", () => {

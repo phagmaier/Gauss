@@ -43,39 +43,6 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.7 Units and segments name their sections
-
-- Status: todo
-- Depends on: 4.6
-- Why: units point at sections (`brief.md`, "Sources"), and the unit's
-  planning session reads the unit's whole text, so the tutor starts from a
-  plan made from the text (`architecture.md` section 8).
-- Do:
-  - `Unit` (`src/shared/curriculum.ts`) gains the sections it teaches.
-    `propose_curriculum` and `amend_curriculum` refuse an unknown section
-    and a unit whose sections' stored sizes sum to more than 150,000
-    characters (the Preface is 108,000), saying the total so the planner
-    splits it.
-    A course with no source has none.
-  - The course planner gets the outlines as the intake's planner does
-    (`<sources>`, with `outlineLines` in `engine/source-text.ts`); the
-    proposal and change cards show each unit's sections as piece 22 does
-    ("Reads", consecutive parts of a stretch as one line, folded above two
-    lines, and how much of the source the units read).
-  - Unit planning: the planning turn adds the unit's sections whole, each
-    in a tag with its id, title and place, after the curriculum. `Segment`
-    (`src/shared/plan.ts`) gains the sections it draws on: required when
-    the unit has sections, each one of the unit's.
-  - `planner.md`, `course-planner.md` and `unit-planner.md`: drafted here,
-    revised on real runs in 4.12.
-- Done when: tests cover a proposal with sections stored and shown, an
-  unknown section and a unit over the limit refused, an amended unit
-  keeping its sections, a planning turn holding the unit's text, and a
-  plan whose segment names a section outside its unit refused. One Haiku
-  run on `pnpm dev`, with a scratch data root,
-  plans a one-unit course on a chapter of the Inwood _Phenomenology_ and
-  then its unit, each segment naming its sections.
-
 ### 4.8 Teaching from the sections
 
 - Status: todo
@@ -182,7 +149,9 @@ specific “Done when” checks.
     except where a unit reads, each section with its place and its unit);
     an open unit's "Reads" lines, each opening the outline with the unit's
     sections lit. The thread's "Read" and "Looked at" lines (4.8) open the
-    pane there.
+    pane there. The cards' "Reads" lines and the outlines' route are in
+    place (`UnitList`'s `sources`, `useCourseSources`,
+    `GET /api/courses/<id>/sources`).
   - The dev seed's source course gains a small PDF source, written with
     reportlab (a development dependency) and converted as the seed's
     Markdown source is, so that a page image can be opened on

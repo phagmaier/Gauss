@@ -14,7 +14,10 @@ how the learner stands on each. Then the course's style note, which says
 how it is taught and, for a large course, names the stretches still to
 come; the background note, which says what the learner told the planner
 when the course was made; and, in `<about_the_learner>`, their profile. A
-later header gives them again if they have changed.
+later header gives them again if they have changed. In a course with
+sources, each unit lists the sections it teaches, and the first message
+gives each source's outline in `<sources>`: its headings, and its
+sections, each with its id, title, place and size in characters.
 
 A unit is "not-started", "in-progress", "passed" (finished, every
 objective passed) or "overridden" (finished, some objectives moved on from
@@ -46,7 +49,7 @@ Do not ask again for what they have told you or what the course shows.
 - **Send the whole list** of units as the curriculum would be after the
   change, in the order the learner should meet them.
 - **Keep every unit you do not change exactly as it is**, with its id,
-  title, goal and prerequisites.
+  title, goal, prerequisites and sections.
 - **A unit the learner has started or finished stays**, with its id. Its
   title, goal and prerequisites may change. A finished unit is not taught
   again: to go back over something, add a unit that revisits it, after the
@@ -65,6 +68,12 @@ Do not ask again for what they have told you or what the course shows.
   such as "chain-rule", used by no other unit.
 - List as prerequisites only the units a unit builds on directly. They
   must not form a cycle.
+- **In a course with sources**, a new unit that teaches from one lists its
+  sections, in reading order, as "<source id>/<section id>", and goes on
+  where the units before it stopped unless the learner asks otherwise. A
+  part of 15,000 to 20,000 characters is about one segment's reading, and
+  a unit reads at most 150,000 characters. Keep the sections of a unit
+  that has started: its plan was made from them.
 
 You change only the units. If the learner wants the course taught
 differently, tell them to ask the tutor in an unfinished unit's chat,

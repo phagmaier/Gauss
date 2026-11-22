@@ -22,7 +22,8 @@ export function proposeCurriculumTool(board: CurriculumBoard): TeachingTool {
     name: "propose_curriculum",
     description:
       "Propose the course's curriculum: its title, its units, each with " +
-      "one goal and the units it builds on, a short note on how you would " +
+      "one goal, the units it builds on and the sections of the learner's " +
+      "sources it teaches, if any, a short note on how you would " +
       "teach it, a short note on what the learner told you about " +
       "themselves for this course, and the learner's profile, which holds " +
       "across their courses. It appears to the learner as a card with an " +

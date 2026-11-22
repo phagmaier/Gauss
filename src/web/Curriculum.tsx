@@ -4,12 +4,14 @@
 
 import {
   type CSSProperties,
+  type ReactNode,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import type { Unit } from "../shared/curriculum.ts";
+import { type Unit, unitSections } from "../shared/curriculum.ts";
+import type { Outline } from "../shared/source.ts";
 import {
   type DiagramEdge,
   type Layout,
@@ -17,6 +19,7 @@ import {
   linesShown,
   NODE_WIDTH,
 } from "./diagram.ts";
+import { type ReadsLine, sourceShare, unitReads } from "./reads.ts";
 import { type FormOf, StatusForm } from "./StatusForm.tsx";
 import { buildsOn } from "./units.ts";
 
@@ -31,13 +34,27 @@ export function UnitList<U extends Unit>(props: {
   mark?: (unit: U) => UnitMark | undefined;
   /** The unit marked in the diagram, if any. */
   selected?: string | undefined;
+  /** The course's sources: with them, each unit lists what it reads. */
+  sources?: readonly Outline[] | undefined;
 }) {
-  const { units } = props;
+  const { units, sources } = props;
+  /** The units whose reads are shown in full, though more than two lines. */
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
+  const fold = (id: string, open: boolean) => {
+    const next = new Set(unfolded);
+    if (open) next.add(id);
+    else next.delete(id);
+    setUnfolded(next);
+  };
   return (
     <ol className="cu">
       {units.map((unit, i) => {
         const needs = buildsOn(unit, units);
         const mark = props.mark?.(unit);
+        const reads =
+          sources === undefined || unitSections(unit).length === 0
+            ? undefined
+            : unitReads(unit, sources);
         return (
           <li
             key={unit.id}
@@ -48,6 +65,44 @@ export function UnitList<U extends Unit>(props: {
             <div>
               <div className="cu-t">{unit.title}</div>
               <div className="cu-g">{unit.goal}</div>
+              {reads === undefined ? null : (
+                <div className="reads">
+                  <span className="reads-k">Reads</span>
+                  <ul>
+                    {reads.folded !== undefined && !unfolded.has(unit.id) ? (
+                      <ReadsItem line={reads.folded}>
+                        <button
+                          type="button"
+                          className="textbtn"
+                          onClick={() => fold(unit.id, true)}
+                        >
+                          Show them
+                        </button>
+                      </ReadsItem>
+                    ) : (
+                      reads.lines.map((line, j) => (
+                        <ReadsItem
+                          // Lines can repeat when a unit names a section twice.
+                          // biome-ignore lint/suspicious/noArrayIndexKey: the lines are fixed for the unit
+                          key={j}
+                          line={line}
+                        >
+                          {reads.folded !== undefined &&
+                          j === reads.lines.length - 1 ? (
+                            <button
+                              type="button"
+                              className="textbtn"
+                              onClick={() => fold(unit.id, false)}
+                            >
+                              Fold
+                            </button>
+                          ) : null}
+                        </ReadsItem>
+                      ))
+                    )}
+                  </ul>
+                </div>
+              )}
               {needs === null ? null : (
                 <div className="cu-m">
                   <span>{needs}</span>
@@ -61,6 +116,48 @@ export function UnitList<U extends Unit>(props: {
         );
       })}
     </ol>
+  );
+}
+
+function ReadsItem(props: { line: ReadsLine; children?: ReactNode }) {
+  const { line } = props;
+  return (
+    <li>
+      {line.text}
+      {line.place === undefined ? null : (
+        <span className="reads-pl">{line.place}</span>
+      )}
+      {props.children}
+    </li>
+  );
+}
+
+/**
+ * A card's section saying how much of each source its units read, when the
+ * sources are loaded and a unit names a section.
+ */
+export function SourceShare(props: {
+  units: readonly Unit[];
+  sources: readonly Outline[] | undefined;
+}) {
+  const { sources } = props;
+  const sentences =
+    sources === undefined ? [] : sourceShare(props.units, sources);
+  if (sources === undefined || sentences.length === 0) return null;
+  const label = sources.length === 1 ? "From the source" : "From the sources";
+  return (
+    <section className="cs" aria-label={label}>
+      <div className="cs-h">
+        <span>{label}</span>
+      </div>
+      {sentences.map((sentence) => (
+        <p key={sentence.source} className="cs-t">
+          {sentence.before}
+          <i>{sentence.title}</i>
+          {sentence.after}
+        </p>
+      ))}
+    </section>
   );
 }
 

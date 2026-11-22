@@ -19,7 +19,11 @@ import {
 } from "react";
 import { FILE_NAME_HEADER, Hello, PageEvent } from "../shared/events.ts";
 import { compareSentences } from "../shared/profile.ts";
-import { formatBytes, SOURCE_SIZE_LIMIT } from "../shared/source.ts";
+import {
+  formatBytes,
+  type Outline,
+  SOURCE_SIZE_LIMIT,
+} from "../shared/source.ts";
 import {
   emptyTimeline,
   type Item,
@@ -30,11 +34,12 @@ import {
 import { post, postFile, type UploadAnswer } from "./api.ts";
 import { ChangedText } from "./ChangedText.tsx";
 import { Composer } from "./Composer.tsx";
-import { Diagram, UnitList } from "./Curriculum.tsx";
+import { Diagram, SourceShare, UnitList } from "./Curriculum.tsx";
 import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
 import { SourceCard } from "./SourceCard.tsx";
+import { useCourseSources } from "./sources.ts";
 
 /** Asked by the page itself; the tutor's session starts with the answer. */
 const OPENING_QUESTION =
@@ -182,6 +187,8 @@ export function Intake(props: { intakeId: string }) {
   }
 
   const latest = timeline.items.findLast((i) => i.kind === "proposal");
+  // Only the latest proposal is drawn in full, so only its units read.
+  const sources = useCourseSources(latest?.courseId, latest?.units ?? []);
   const { approved } = timeline;
   const open = !lost && approved === null;
   const converting =
@@ -264,6 +271,7 @@ export function Intake(props: { intakeId: string }) {
                 <ProposalCard
                   key={item.key}
                   proposal={item}
+                  sources={sources}
                   approved={approved?.revision === item.revision}
                   canApprove={open && !timeline.busy && !converting}
                   diagramOpen={diagramOpen}
@@ -406,6 +414,8 @@ function ProposalCard(props: {
   diagramOpen: boolean;
   onToggleDiagram(): void;
   onApprove(): Promise<string | undefined>;
+  /** The course's sources, once loaded: the units' reads come from them. */
+  sources: readonly Outline[] | undefined;
 }) {
   const { proposal } = props;
   const [sending, setSending] = useState(false);
@@ -434,7 +444,9 @@ function ProposalCard(props: {
             ? { text: "Changed", className: "chg" }
             : undefined
         }
+        sources={props.sources}
       />
+      <SourceShare units={proposal.units} sources={props.sources} />
       <section className="cs" aria-label="How I would teach it">
         <div className="cs-h">
           <span>How I would teach it</span>

@@ -219,6 +219,7 @@ import {
   type PackageInstaller,
   recoverPackageInstall,
 } from "./packages.ts";
+import { sectionsRefused } from "./source-text.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import {
   createUnitAgents,
@@ -3238,6 +3239,11 @@ function createUnitChat(
           }
           const dropped = droppedStarted(current.units, units, state);
           if (dropped !== undefined) return { refused: dropped };
+          const sections = sectionsRefused(
+            units,
+            await dataRoot.readSources(courseId),
+          );
+          if (sections !== undefined) return { refused: sections };
           const change: CurriculumChange = {
             id: randomUUID(),
             units,

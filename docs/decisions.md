@@ -1929,6 +1929,14 @@ the denominator rule into a false "never use the full space".
   had less room to vary it. Told that a setting is its own objective only
   when it needs something the others do not, the next run still split a
   spam filter from a witness report. Not settled.
+- **From a source's text** (task 4.7, drafts for 4.12 to revise): in one
+  Haiku run, a unit reading the four parts of "Force and Understanding"
+  in the Inwood _Phenomenology_ (about 60,000 characters) got eight
+  objectives in the translation's own terms ("the stable image of
+  restless appearance", "inner difference"), eight segments each naming
+  one or two of the unit's parts, and a contrast with Kant's
+  thing-in-itself, which the learner had read. The last two segments went
+  back to part 2 after part 4 (left).
 
 ### Intake planner
 
@@ -1976,6 +1984,12 @@ the denominator rule into a false "never use the full space".
   topic to one unit where the old proposed two. A revision went without
   a sentence on what changed in the old prompt's run and the last run
   (left).
+- **Planning from an outline** (task 4.7): in one Haiku intake with the
+  Inwood _Phenomenology_ attached, asked for "Force and Understanding" as
+  one unit, the planner gave the chapter's parts and size from the
+  outline, asked two questions (the commentary or Hegel's text alone;
+  where to focus), and proposed one unit reading the chapter's four parts
+  in order, with a style note close to the text.
 
 ### Course planner
 
@@ -2641,7 +2655,33 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   read rule. The brief's "reads those files directly" is about no
   embedding search, which still holds.
 - **A unit's planning turn carries the unit's sections whole**, rather than
-  a tool to read them: one request, with nothing left unread.
+  a tool to read them: one request, with nothing left unread. The text
+  comes last in the turn, after the curriculum and what earlier units
+  showed (the agent's choice, task 4.7).
+- **A unit's sections are checked against the outlines in the engine**,
+  not by the schema, which cannot see the sources (the agent's choice,
+  task 4.7). The refusal names each unit and section at fault, and the
+  total of a unit over the limit, so the planner can split it. The intake
+  checks its first proposal before making the course, so a refused one
+  makes none, and every proposal again once the waiting uploads are the
+  course's, since a source can be removed until then; that second check
+  is the only one for a revision.
+- **A unit may name no section in a course with sources** (the agent's
+  choice), such as one on what the source assumes; its segments name none.
+- **A planned unit whose sections a change alters keeps its plan** (the
+  agent's choice): a change may reword a started unit, and its segments
+  still name what they were planned from. `course-planner.md` asks it to
+  keep a started unit's sections.
+- **The course planner is given the outlines in a session's first turn
+  only** (the agent's choice): a course's sources do not change after the
+  intake, and the _Phenomenology_'s outline is some 170 lines, which the
+  `<course>` block, sent again whenever a status changes, would repeat.
+- **The cards read the outlines through a route**
+  (`GET /api/courses/<id>/sources`), not from their events (the agent's
+  choice): the events already carry each unit's sections, the outlines do
+  not change once units name them, and the course view's sources (task
+  4.10) need the same route. Rejected: each card event carrying its units'
+  reads resolved, which a unit's transcript would then keep copies of.
 
 **Quotes and links**
 

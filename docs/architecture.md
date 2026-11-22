@@ -101,7 +101,7 @@ The server listens on `GAUSS_PORT`, or 4320 (`pnpm dev:fake`: 4330).
     course.json                   title, backend, settings, dates, when each unit was last opened, when review was last offered
     style.md                      the course's style note, proposed and approved with the curriculum; replaced when the learner applies a tutor's proposed change
     background.md                 the background note: what the learner told the planner, approved with the curriculum
-    curriculum.json               units, prerequisites, goals; each unit's plan (objectives, segments) once it starts; a draft's profile and its original comparison; replaced, each kept unit with its plan, when the learner applies a tutor's proposed change
+    curriculum.json               units, prerequisites, goals, and the sections each unit teaches; each unit's plan (objectives, segments, the sections each segment draws on) once it starts; a draft's profile and its original comparison; replaced, each kept unit with its plan, when the learner applies a tutor's proposed change
     state.json                    a position for each unit in progress
     evidence.jsonl                append-only: answers (with the assessment each was given in), grades, confidence, overrides, disputes with their outcomes
     misconceptions.jsonl          append-only: what the handoff writer found the learner believed, from detours and discussions
@@ -223,7 +223,10 @@ also before it reaches the backend.
   is told of every source the course has. The first
   proposal creates the course; each proposal replaces the draft with its
   style note, background note and the profile's whole text, and a reply
-  to one is a change request. A card compares its profile with `profile.md`
+  to one is a change request. A proposal whose units name a section the
+  course's sources lack, or more text than a unit reads, is refused
+  (section 8, "Units and their sections"), the first before it makes the
+  course. A card compares its profile with `profile.md`
   as it was when the proposal was made, even after reopening a draft.
   Approval is refused while a turn is queued or running, or a file
   converts; it checks that
@@ -245,15 +248,18 @@ also before it reaches the backend.
   asks the opening question, which says whether every unit is finished,
   and the session starts with the answer. The session's first turn gives
   the planner, after the header, the course in `<course>` (each unit with
-  its status, each started unit's objectives with theirs, the style note
-  and the background note) and the profile in `<about_the_learner>`; a
-  later turn gives them again if any has changed since the last turn sent.
+  its status and the sections it teaches, each started unit's objectives
+  with theirs, the style note and the background note), the profile in
+  `<about_the_learner>`, and each source's outline in `<sources>`; a later
+  turn gives the first two again if any has changed since the last turn
+  sent, and never the sources, which do not change.
   It proposes with its own `amend_curriculum`, whose card is the unit
   tutor's; posting ends its turn, and a new proposal replaces the one
   waiting. The proposal is checked as a unit tutor's is (nothing changed,
-  a started unit dropped) and goes through the course's queue with the
-  unit tutors' (`CourseDesk`): it is refused while a style or curriculum
-  proposal waits in a unit, and while it waits theirs are refused. It is
+  a started unit dropped, its units' sections) and goes through the
+  course's queue with the unit tutors' (`CourseDesk`): it is refused while
+  a style or curriculum proposal waits in a unit, and while it waits
+  theirs are refused. It is
   kept in memory only. Apply is refused while a turn is queued or running;
   it writes `curriculum.json` through `changeCurriculum` in
   `record/data-root.ts`, which checks again under the state and curriculum
@@ -269,8 +275,9 @@ also before it reaches the backend.
   planned when it is opened, in a session of its own: one turn with "#
   The learner" (the profile, when there is one, then the background
   note), the curriculum and the status of every objective planned so far,
-  and what earlier units showed (section 4, "Handoff notes"), the
-  `plan_unit` tool, then it closes. A session that ends without
+  what earlier units showed (section 4, "Handoff notes"), and, for a unit
+  that names sections, their whole text (section 8), the `plan_unit`
+  tool, then it closes. A session that ends without
   a plan is tried once more, told why; then the unit reports that it could
   not be planned.
 - **The unit chat** (`engine/unit-chat.ts`), one per unit, kept in memory
@@ -784,10 +791,10 @@ tool server, for Codex an MCP server.
 
 | Tool | Effect |
 | --- | --- |
-| `propose_curriculum` | Stores a draft curriculum with its style note, background note and the learner profile's whole text, and shows them for review; approval covers all four. Refused in the intake's first turn |
-| `plan_unit` | Sets the unit's objectives and segments, in its planning session |
+| `propose_curriculum` | Stores a draft curriculum with its style note, background note and the learner profile's whole text, and shows them for review; approval covers all four. Refused in the intake's first turn, and for units' sections as section 8 says |
+| `plan_unit` | Sets the unit's objectives and segments, in its planning session; in a unit that names sections, each segment names those it draws on, only the unit's (`planSectionProblems` in `src/shared/plan.ts`, checked by `storePlan`) |
 | `ask_question` | Posts a question on an objective of the segment, in the check, or on the one an assessment asks next: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
-| `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. A tutor's uses the proposal and feedback rules in section 4 and does not end the turn. The course planner's (`planCurriculumChangeTool`) ends its turn and replaces the proposal waiting (section 4, "The planning conversation") |
+| `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. Its units' sections are checked as `propose_curriculum`'s. A tutor's uses the proposal and feedback rules in section 4 and does not end the turn. The course planner's (`planCurriculumChangeTool`) ends its turn and replaces the proposal waiting (section 4, "The planning conversation") |
 | `read_section` | (stage 4) Returns a section's text, after a line naming it with its title and place; any section of the course's sources, at any time |
 | `view_page` | (stage 4) Returns a PDF page as an image, rendered in the engine's sandbox and kept in the source's `pages/` |
 | `quote_source` | (stage 4) Shows a verified quote in the source's own words with its citation (section 8), or is refused with the reason: not in the sources, too short or long, an ellipsis, or a question of the unit open. Does not end the turn |
@@ -1241,22 +1248,46 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
   each source's outline as `outlineLines` in `engine/source-text.ts`
   writes it, one line per entry.
 
+### Available now: units and their sections
+
+- **A unit names the sections it teaches** (`Unit.sections`, each a
+  `SectionRef`, `<source id>/<section id>`, in `src/shared/`). The
+  intake's planner and the course's planner read the outlines (`<sources>`,
+  `sourceLines`), and the tutor's instructions list each unit's sections,
+  so a change it proposes keeps them. A unit may name none; a course with
+  no source has none.
+- **What a proposal may name** (`sectionsRefused` in
+  `engine/source-text.ts`), for `propose_curriculum` and both
+  `amend_curriculum`s: a section of the course's sources, and at most
+  `UNIT_TEXT_LIMIT` (150,000) characters per unit, summed from the
+  outline's sizes; a refusal names each unit and section at fault and a
+  unit's total. A section named twice in a unit is refused by the schema.
+- **The cards** list under each unit what it reads, and say how much of
+  each source the units read (section 10, "Intake"); the page reads the
+  outlines from `GET /api/courses/<id>/sources` (`CourseSources`).
+- **Unit planning** reads the unit's sections whole (`readSection` in
+  `record/data-root.ts`) and gives them last in its one turn, under "# The
+  unit's text", each in a `<section>` tag with its id, title and place
+  (`placeText`), in the unit's order, so the tutor's session starts from a
+  plan made from the text rather than carrying the text from its first
+  turn. A section that cannot be read fails the planning.
+- **Each segment names the sections it draws on** (`Segment.sections`):
+  in a unit that names sections, at least one, each of them the unit's;
+  in a unit that names none, none (`planSectionProblems`, which
+  `storePlan` checks).
+  A change that alters a planned unit's sections leaves its plan as it was
+  made.
+
 ### Planned: teaching and source views
 
-1. **Map**: the planners are given each source's outline, and each unit
-   lists the sections it teaches, at most 150,000 characters in all. When
-   the unit is planned, each segment names the sections it draws on.
-2. **Plan**: the unit's planning turn carries the unit's sections whole,
-   so the tutor's session starts from a plan made from the text rather
-   than carrying the text from its first turn.
-3. **Teach**: the tutor's system prompt holds each source's outline. The
+1. **Teach**: the tutor's system prompt holds each source's outline. The
    engine names the current segment's sections in the turn header, and an
    assessed unit's for a review or gate question on another unit's
    objective. The tutor reads sections with `read_section`, the segment's
    and others when the discussion needs them, and looks at a PDF page with
    `view_page` where the page's marker says its text lost math or images.
    Each read and page view shows as a line in the thread.
-4. **Quote**: `quote_source` checks the text against each source's whole
+2. **Quote**: `quote_source` checks the text against each source's whole
    text, its sections in order, so a quote across a cut still verifies.
    Matching ignores case, whitespace, hyphens, punctuation variants,
    emphasis marks, page markers, footnote references and margin line
@@ -1265,7 +1296,7 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
    and the page or paragraph), which opens the passage in the side pane.
    A passage paraphrased is linked, claiming no quote, by a Markdown link
    to `source:<source id>/<section id>`.
-5. **Web search** is a course's setting, off by default. With it on, the
+3. **Web search** is a course's setting, off by default. With it on, the
    tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
    search shows in the thread with its links. A change applies from the
    learner's next message: the course's kept tutor sessions are closed,
@@ -1284,7 +1315,7 @@ See [prompt findings](decisions.md#prompts), [grader](decisions.md#grader-prompt
 
 - `tutor.md` is the start of the tutor's system prompt, which
   `engine/unit-turns.ts` assembles: `tutor.md`, the course's units with
-  their goals and prerequisites, the unit taught and its plan, "# The learner" with
+  their goals, prerequisites and sections, the unit taught and its plan, "# The learner" with
   `profile.md` when there is one, then `background.md` (or a line saying
   none was recorded), "# Earlier units"
   when it has anything (the last handoff notes of the unit's
@@ -1301,13 +1332,15 @@ See [prompt findings](decisions.md#prompts), [grader](decisions.md#grader-prompt
   names what follows before posting the proposal and in the style note.
   The tutor is instructed to offer each next stretch with
   `amend_curriculum` in the first teaching turn of the last unit or the
-  one before, before any check starts.
+  one before, before any check starts. With a source attached, each unit
+  names the sections it reads, from the outline (section 8).
 - `course-planner.md` drives the planning conversation of a course
   (section 4): what it is given and what the statuses mean, asking what
   the learner wants, offering the next stretch the style or background
   note names, the rules of a change, and proposing with
   `amend_curriculum`.
-- `unit-planner.md` drives a unit's planning session.
+- `unit-planner.md` drives a unit's planning session, from the unit's
+  text when it names sections.
 - `grader.md`, `help-judge.md` and `dispute-judge.md` are the one-shot
   calls of section 6; `handoff.md` is the one-shot call that writes
   handoff notes and finds misconceptions (section 4). Assessments have a
@@ -1323,7 +1356,7 @@ Thread text is Markdown with `$` math: `$...$` inline, `$$` for display,
 `src/web/`, React built by Vite. Each view's logic sits in a tested pure
 module beside it (`session.ts`, `progress.ts`, `library.ts`,
 `what-i-know.ts`, `diagram.ts`, `route.ts`, `profile.ts`, `units.ts`,
-`calibration.ts`, `api.ts`; the thread's timeline is
+`calibration.ts`, `source-card.ts`, `reads.ts`, `api.ts`; the thread's timeline is
 `src/shared/timeline.ts`). Of the components, only `PackagesCard.tsx` and
 `prose.tsx` have tests; `quote.ts`, which reads the page, is tested on
 the HTML `Prose` renders.
@@ -1346,9 +1379,16 @@ progress take the outline.
   course view. The top line has
   "Gauss", and "Profile" and "New course" at its right.
 - **Intake** (`/intakes/<id>`): the conversation, with each proposal as a
-  card (units, "How I would teach it", "What the tutor will know about
-  you", "What I would remember about you", the diagram, Approve); a
-  revision marks what changed. A source is attached with the clip first in
+  card (units, "From the source", "How I would teach it", "What the tutor
+  will know about you", "What I would remember about you", the diagram,
+  Approve); a revision marks what changed. Under each unit's goal,
+  "Reads" lists its sections (`unitReads` in `src/web/reads.ts`):
+  consecutive parts of a stretch as one line, each with its pages by
+  printed label or its paragraphs, a source's short title first when the
+  course has two, folded to a count above two lines with "Show them";
+  "From the source" says how many of each source's sections, and of a
+  PDF's pages, the units read (`sourceShare`). The curriculum change card
+  shows its units the same way. A source is attached with the clip first in
   the message box, or by dropping a file on the thread; its card, on the
   learner's side, shows it converting, then what was found (`factLines` in
   `src/web/source-card.ts`) with "Remove" until the first proposal, or why

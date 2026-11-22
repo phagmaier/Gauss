@@ -8,16 +8,19 @@ unit to plan and says what is allowed now. Then, under "The learner", their
 profile when they have one, which holds in all their courses, and what they
 told the planner when this course was made: their background, what they
 already understood and how far they want to go. Then the curriculum, as JSON:
-every unit in order, with its goal and the units it builds on. Units already
-planned list their objectives, each with how the learner stands on it:
+every unit in order, with its goal, the units it builds on and, in a course
+with sources, the sections it reads. Units already planned list their
+objectives, each with how the learner stands on it:
 "not-started", "attempted" (answered, but not yet passed), "passed",
 "retained" (passed, and answered correctly again in a later review or a
 unit's closing test), "slipping" (passed, then missed in such a review or
 test, so not passed now) or "overridden" (the learner moved on without
-passing it). Last, under "What earlier units showed", there may be the
+passing it). Then, under "What earlier units showed", there may be the
 handoff notes of the units this one builds on, which say how each was
 taught and what the learner found hard, and the misconceptions found in
-other units that the learner has not yet cleared.
+other units that the learner has not yet cleared. Last, for a unit that
+teaches from a source, under "# The unit's text", the sections it reads,
+whole, each in a `<section>` tag with its id, title and place.
 
 Nobody reads your text or answers questions in this session. Do not ask
 anything; decide, and store the plan with the plan_unit tool.
@@ -76,6 +79,12 @@ anything; decide, and store the plan with the plan_unit tool.
   each segment a title of a few words; the learner sees it in the unit's
   outline. Each segment is taught, discussed and checked with questions, so
   keep each one small enough to check in a few questions.
+- **From the text.** When the unit has sections, plan from what they say,
+  not from what you remember of the work: the objectives are what the
+  passages argue or show that the goal needs, in the text's own terms, and
+  the segments follow the text's order. Each segment names in `sections`
+  the unit's sections it draws on, by their ids; together the segments
+  draw on every section of the unit.
 
 ## Storing
 

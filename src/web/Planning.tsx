@@ -18,6 +18,7 @@ import {
 import { compareUnits } from "../shared/curriculum-change.ts";
 import { Hello, PageEvent, PlanningOpened } from "../shared/events.ts";
 import { CourseWithProgress } from "../shared/library.ts";
+import type { Outline } from "../shared/source.ts";
 import {
   type CurriculumItem,
   emptyTimeline,
@@ -32,6 +33,7 @@ import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { lead } from "./progress.ts";
 import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
+import { useCourseSources } from "./sources.ts";
 
 /** Asked by the page itself, so the planner's session starts with the answer. */
 const OPENING = {
@@ -132,6 +134,10 @@ export function Planning(props: { courseId: string }) {
   const changes = timeline.items.filter(
     (i): i is CurriculumItem => i.kind === "curriculum",
   );
+  const sources = useCourseSources(
+    courseId,
+    changes.flatMap((c) => c.units),
+  );
   const applied = changes.some((c) => c.outcome === "applied");
   const waits = changes.some(
     (c) => c.outcome === undefined && c.historical !== true,
@@ -197,6 +203,7 @@ export function Planning(props: { courseId: string }) {
               }
               onApply={apply}
               onKeep={(proposalId) => act("keep", { proposalId })}
+              sources={sources}
             />
           ))}
           {timeline.busy && !timeline.tutorOpen ? (
@@ -267,6 +274,8 @@ function ItemView(props: {
   onToggleDiagram(proposalId: string): void;
   onApply(proposalId: string): Promise<string | undefined>;
   onKeep(proposalId: string): Promise<string | undefined>;
+  /** The course's sources, once loaded, for a change's reads. */
+  sources: readonly Outline[] | undefined;
 }) {
   const { item } = props;
   switch (item.kind) {
@@ -296,6 +305,7 @@ function ItemView(props: {
           onToggleDiagram={() => props.onToggleDiagram(item.proposalId)}
           onApply={() => props.onApply(item.proposalId)}
           onKeep={() => props.onKeep(item.proposalId)}
+          sources={props.sources}
         />
       );
     // A unit chat's items: a planning conversation has none of them.

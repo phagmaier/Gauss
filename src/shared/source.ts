@@ -2,9 +2,11 @@
 // `pytools/convert.py` writes when the source is converted (architecture.md
 // section 8). A section is a leaf of the outline and the only entry with a
 // file, `sections/<section id>.md`; the files in reading order are the
-// source's whole text. A course names a section `<source id>/<section id>`.
-// Also what the intake's card shows of a file the learner attached (piece
-// 22): a converted source's facts, or why the file is not a source.
+// source's whole text. A course names a section `<source id>/<section id>`
+// (`SectionRef`): a unit, the sections it teaches, and a segment of its plan,
+// those it draws on. Also what the intake's card shows of a file the learner
+// attached (piece 22): a converted source's facts, or why the file is not a
+// source.
 
 import { z } from "zod";
 import { Slug } from "./course.ts";
@@ -15,6 +17,21 @@ export type SourceFormat = z.infer<typeof SourceFormat>;
 /** A section's id in its source: `s1`, `s2`, ... in reading order. */
 export const SectionId = z.string().regex(/^s[1-9][0-9]*$/);
 export type SectionId = z.infer<typeof SectionId>;
+
+/** A section as a course names it: `<source id>/<section id>`. */
+export const SectionRef = z
+  .string()
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*\/s[1-9][0-9]*$/, {
+    error:
+      'Name a section as "<source id>/<section id>", such as "phenomenology/s3".',
+  });
+export type SectionRef = z.infer<typeof SectionRef>;
+
+/**
+ * The most text a unit reads, in the unit of `OutlineSection.size`: its
+ * sections' sizes summed (docs/decisions.md, "Sources").
+ */
+export const UNIT_TEXT_LIMIT = 150_000;
 
 const Count = z.number().int().positive();
 
@@ -104,6 +121,48 @@ export const Outline = z.object({
   entries: z.array(OutlineEntry).min(1),
 });
 export type Outline = z.infer<typeof Outline>;
+
+/** The sources of a course, as the page reads them. */
+export const CourseSources = z.object({ sources: z.array(Outline) });
+export type CourseSources = z.infer<typeof CourseSources>;
+
+/**
+ * A section with what is needed to name it: its source, and the title of
+ * its stretch, its heading's for a part of a cut stretch (the source's for
+ * the text before any heading), else its own.
+ */
+export interface SourceSection {
+  ref: SectionRef;
+  source: Outline;
+  section: OutlineSection;
+  stretch: string;
+}
+
+/** The sections of the sources, each by its `SectionRef`. */
+export function sectionsByRef(
+  sources: readonly Outline[],
+): Map<SectionRef, SourceSection> {
+  const found = new Map<SectionRef, SourceSection>();
+  for (const source of sources) {
+    const walk = (entries: readonly OutlineEntry[], heading: string) => {
+      for (const entry of entries) {
+        if ("id" in entry) {
+          const ref = `${source.id}/${entry.id}`;
+          found.set(ref, {
+            ref,
+            source,
+            section: entry,
+            stretch: entry.part === undefined ? entry.title : heading,
+          });
+        } else {
+          walk(entry.entries, entry.title);
+        }
+      }
+    };
+    walk(source.entries, source.title);
+  }
+  return found;
+}
 
 /** The largest file the intake takes as a source (piece 22): 100 MB. */
 export const SOURCE_SIZE_LIMIT = 100 * 1024 * 1024;

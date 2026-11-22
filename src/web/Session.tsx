@@ -57,6 +57,7 @@ import { CourseWithProgress } from "../shared/library.ts";
 import { currentObjective, type Plan } from "../shared/plan.ts";
 import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
 import { messageParts } from "../shared/quote.ts";
+import type { Outline as SourceOutline } from "../shared/source.ts";
 import {
   type ArtifactItem,
   type AssessmentItem,
@@ -113,6 +114,7 @@ import {
   type UnitOutline,
   whereInUnit,
 } from "./session.ts";
+import { useCourseSources } from "./sources.ts";
 import { objectiveMark } from "./what-i-know.ts";
 
 const enc = encodeURIComponent;
@@ -370,6 +372,10 @@ export function Session(props: { courseId: string; unitId: string }) {
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
+  const sources = useCourseSources(
+    courseId,
+    timeline.items.flatMap((i) => (i.kind === "curriculum" ? i.units : [])),
+  );
   // The objective to do now is marked in the heading of the segment the unit
   // is in, the thread's last.
   const current =
@@ -602,6 +608,7 @@ export function Session(props: { courseId: string; unitId: string }) {
                       }
                       onTeachWhole={() => act("test-out/whole")}
                       confirmingSkip={confirming === "skip-gate"}
+                      sources={sources}
                       onConfirmSkip={(asking) =>
                         setConfirming(asking ? "skip-gate" : undefined)
                       }
@@ -1058,6 +1065,8 @@ function ThreadItem(props: {
   onSkipAssessment(): void;
   /** "Skip the gate" asks before it skips. */
   confirmingSkip: boolean;
+  /** The course's sources, once loaded, for a curriculum change's reads. */
+  sources: readonly SourceOutline[] | undefined;
   onConfirmSkip(asking: boolean): void;
   /** This is the test's result card that waits, whose steps can be taken. */
   answers: boolean;
@@ -1126,6 +1135,7 @@ function ThreadItem(props: {
           onToggleDiagram={() => props.onDiagram(item)}
           onApply={() => props.onApplyCurriculum(item.proposalId)}
           onKeep={() => props.onKeepCurriculum(item.proposalId)}
+          sources={props.sources}
         />
       );
     case "judgment": {
