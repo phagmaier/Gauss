@@ -36,11 +36,72 @@ questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-Off-segment passage finding uses local search. Consider a cheap model only
-if the learner's use shows too many plausible matches still need ranking.
+### 4.18 The tutor told that pointing to the passage is help
 
-For each stage 4 task, `mise run check` must pass in addition to its
-specific “Done when” checks.
+- Status: todo
+- Why: `help-judge.md` counts a link to a question's passage, or naming
+  where to read the answer, as help. `tutor.md`'s "Links" rule invites
+  links, and neither its "While a question is open" nor the open
+  question's header (`questionAllowed` in `engine/unit-turns.ts`) says so,
+  so a clarification with a link makes a correct answer count as helped.
+- Do: say it in both places, briefly, with its reason. The scripted
+  backend reads header wording (`backends/scripted.test.ts`). Compare old
+  and new on Opus 5.5 as `findings.md`, "Comparing prompt versions", says:
+  a seeded source course with a question open (the Attention unit, seeded
+  as 4.12's commit describes), the learner asking what a term means, where
+  in the paper this is, and to see the passage; 3 runs each. Count replies
+  that link or name the passage, and judge each reply with the help judge.
+- Done when: no reply under the new wording links or names the passage,
+  the term is still explained, the counts are in `findings.md`, "Tutor",
+  and the known gap is deleted.
+
+### 4.19 The first page's flags on a whole-section read
+
+- Status: todo
+- Why: a section that starts partway down a page (the Attention paper's
+  3.2.1 on page 4) has that page's marker in the section before, so a
+  whole-section read shows no `math` or `images` flag for its first page,
+  and the tutor is told to view a page by those flags. A bounded read
+  already inherits the marker (`read` in `engine/source-shelf.ts`).
+- Do: give a whole-section read the same inherited marker; a test on the
+  fake converter.
+- Done when: a test shows a whole-section read of a section that starts
+  mid-page opening with that page's marker and flags, one that starts at a
+  page top unchanged, and the known gap is deleted.
+
+### 4.20 A code review of 4.11, 4.13 and 4.15 to 4.17
+
+- Status: todo
+- Why: each stage 4 task from 4.3 to 4.10 had a review that found real
+  faults (4.5: thirteen, then six more). Web search (4.11), notes and the
+  transcript (4.13), bounded reads (4.15), lecture order (4.16) and
+  passage search (4.17), about 2,700 changed lines, have had none.
+- Do: review each commit's code and tests against its task text (recover
+  it as `AGENTS.md` says) and `brief.md`, "Sources". Fix concrete faults,
+  committed per task as `AGENTS.md`, "Authorization", says; anything
+  larger goes into the plan.
+- Done when: all five are reviewed, each fix has a test where behaviour
+  changed, and the findings and outcomes are in the commit messages.
+
+### 4.21 A rehearsal of the user check
+
+- Status: todo
+- Depends on: 4.18, 4.19, 4.20
+- Why: nothing in stage 4 has run end to end on the page with a real
+  model. 4.12 drove the engine in process, 4.13 made one notes call, and
+  4.14 ran one-shot sets. The user's check should find teaching problems,
+  not breakage.
+- Do: walk the user check's path on `pnpm dev:fake` first, then on
+  `pnpm dev` with the login's default model (Opus 5.5, as the user runs
+  it), on a fresh data root in Chromium. Do an intake with the
+  _Phenomenology_ PDF and one with the Attention paper. For one segment of
+  each: the lecture, a passage asked about by its words, the check with a
+  written answer, a miss and its detour, and a clarification while a
+  question is open. Open a citation, a section link and a page image, ask
+  for the unit's notes, and export the transcript. Fix what blocks the
+  walk; every other problem goes into the plan.
+- Done when: both walks finish on both sources, with screenshots or saved
+  events as evidence, and each problem is fixed or in the plan.
 
 ## Stage 6: later
 
@@ -50,7 +111,15 @@ learner wants kept; a model chosen in the app's settings, which the user
 wants eventually (2026-11-19); teaching instructions the learner can add
 to or edit (below); a source added to a course after its intake, text
 recognition for scanned PDFs, and questions on a source's figure (left out
-of stage 4). Each is planned when chosen.
+of stage 4); ranking passage matches with a cheap model, if the learner's
+use shows local search leaves too many plausible matches. Each is planned
+when chosen.
+
+Stage 6's breakdown starts by splitting `engine/unit-chat.ts` (4,500 lines,
+one closure of about 90 functions) along its marked parts (opening, turns,
+assessments, help, the teaching tools, the learner's actions) into modules
+that share the running chat's state, with no change of behaviour: the
+Codex backend and self-test both reach into it.
 
 Self-test, as the user described it on 2026-11-19 (optional, after
 everything else): the learner picks the scope (a segment, a unit, the
