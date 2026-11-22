@@ -43,40 +43,6 @@ quotes, and one unit taught from a paper.
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.
 
-### 4.8 Teaching from the sections
-
-- Status: todo
-- Depends on: 4.7
-- Why: the tutor reads the segment's sections and may read others, and
-  reads a PDF page as an image where the text lost equations or figures.
-- Do:
-  - Teaching tools `read_section` (a section's text, after a line naming
-    it with its title and place) and `view_page` (a PDF page's image,
-    rendered by `convert.py page` in the sandbox into the source's
-    `pages/` and kept there), allowed at any time in a course with a
-    source. Teaching tools rather than the tutor's file tools
-    (`decisions.md`, "Sources"). `ToolResult` gains an image.
-  - The tutor's system prompt gains "# Sources": each source's title and
-    outline, one line per entry.
-  - A segment's turn header names its sections with their titles and
-    places. A review or gate question on another unit's objective names
-    that unit's sections.
-  - Each `read_section` and `view_page` shows in the thread as a line
-    (piece 23: "Read" a section with its place, "Looked at" a page), a
-    page event; 4.10 makes it open the pane.
-  - The intake card's line on pages with no text (`factLines` in
-    `src/web/source-card.ts`) adds piece 22's "the tutor can look at them
-    as images", true once `view_page` is.
-  - The scripted backend reads a section its header names.
-- Done when: tests cover the header's sections in a segment, in a new
-  session's first turn and in an assessment of another unit; the thread's
-  lines for a read and a page view; `read_section` on another unit's
-  section and on an unknown one; `view_page` on a PDF
-  page (rendered once, then read from `pages/`), on a page out of range
-  and in a source that is not a PDF. A Haiku run
-  on a unit of the Inwood _Phenomenology_ reads the segment's sections
-  whole and views a page.
-
 ### 4.9 Verified quotes
 
 - Status: todo
@@ -140,7 +106,8 @@ specific “Done when” checks.
     text lost math or images; the previous and next section; "Outline".
     A PDF page's image opens from its number in the margin, with "Back to
     the text". Routes for a section's text and a page's image, rendered on
-    request as `view_page` does.
+    request as `view_page` does (`DataRoot.pageImage`; `pageMarkers` in
+    `src/shared/source.ts` reads a section's page markers).
   - The intake card's "Outline" (piece 22) opens the pane on the source's
     outline. Before the first proposal the source is in
     `uploads/<intake id>/`, so its route goes through the intake.
@@ -209,7 +176,9 @@ specific “Done when” checks.
   `view_page` where a page marker says equations or figures were lost.
   Revise 4.7's drafts of the planners' prompts. 5.29's method
   (`decisions.md`, "Prompts"): old against new on the same moves, the
-  agent's judgment.
+  agent's judgment. "Quotations" still says the tutor has no text of the
+  works it teaches from; in 4.8's Haiku run the tutor, having read the
+  section, quoted short phrases from it in its own text.
 - Done when: Sonnet or Opus runs, since how well it teaches is what is
   checked, of a lecture on "Force and Understanding" in the Inwood
   _Phenomenology_ (4 parts) and of a unit on the Attention paper show

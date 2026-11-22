@@ -58,6 +58,7 @@ import { currentObjective, type Plan } from "../shared/plan.ts";
 import type { AnswerPost, OpenFilePost } from "../shared/question.ts";
 import { messageParts } from "../shared/quote.ts";
 import type { Outline as SourceOutline } from "../shared/source.ts";
+import { type DidLine, pageLine, readLine } from "../shared/source-lines.ts";
 import {
   type ArtifactItem,
   type AssessmentItem,
@@ -114,7 +115,7 @@ import {
   type UnitOutline,
   whereInUnit,
 } from "./session.ts";
-import { useCourseSources } from "./sources.ts";
+import { readsSources, useCourseSources } from "./sources.ts";
 import { objectiveMark } from "./what-i-know.ts";
 
 const enc = encodeURIComponent;
@@ -374,7 +375,9 @@ export function Session(props: { courseId: string; unitId: string }) {
   const parts = conversations(timeline.items);
   const { sources, problem: sourceProblem } = useCourseSources(
     courseId,
-    timeline.items.flatMap((i) => (i.kind === "curriculum" ? i.units : [])),
+    readsSources(
+      timeline.items.flatMap((i) => (i.kind === "curriculum" ? i.units : [])),
+    ) || timeline.items.some((i) => i.kind === "read" || i.kind === "page"),
   );
   // The objective to do now is marked in the heading of the segment the unit
   // is in, the thread's last.
@@ -1068,7 +1071,7 @@ function ThreadItem(props: {
   onSkipAssessment(): void;
   /** "Skip the gate" asks before it skips. */
   confirmingSkip: boolean;
-  /** The course's sources, once loaded, for a curriculum change's reads. */
+  /** The course's sources, once loaded, for a curriculum change's reads and what the tutor read. */
   sources: readonly SourceOutline[] | undefined;
   onConfirmSkip(asking: boolean): void;
   /** This is the test's result card that waits, whose steps can be taken. */
@@ -1098,6 +1101,22 @@ function ThreadItem(props: {
             The tutor wrote <code>{item.path}</code>
           </span>
         </p>
+      );
+    case "read":
+      return (
+        <SourceLine
+          icon={BOOK_ICON}
+          verb="Read"
+          line={readLine(item.section, props.sources)}
+        />
+      );
+    case "page":
+      return (
+        <SourceLine
+          icon={PAGE_ICON}
+          verb="Looked at"
+          line={pageLine(item, props.sources)}
+        />
       );
     case "artifact":
       return (
@@ -1387,6 +1406,56 @@ const FILE_ICON = (
     <path d="M9 1.8V5.2h3.5" />
   </svg>
 );
+
+/** A book, for the line of each section the tutor reads (piece 23). */
+const BOOK_ICON = (
+  <svg
+    width="15"
+    height="15"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M2 3.2c2-.9 4-.9 6 .4 2-1.3 4-1.3 6-.4v9.6c-2-.9-4-.9-6 .4-2-1.3-4-1.3-6-.4z" />
+    <path d="M8 3.6v9.6" />
+  </svg>
+);
+
+/** A page, for the line of each PDF page the tutor looks at (piece 23). */
+const PAGE_ICON = (
+  <svg
+    width="15"
+    height="15"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3" y="1.8" width="10" height="12.4" rx="1" />
+    <path d="M5.5 5h5M5.5 7.5h5M5.5 10h3" />
+  </svg>
+);
+
+/**
+ * A quiet line for what the tutor read of a source (piece 23): what it did,
+ * what, and a section's place or what a page's text lost.
+ */
+function SourceLine(props: { icon: ReactNode; verb: string; line: DidLine }) {
+  const { aside } = props.line;
+  return (
+    <p className="fw did">
+      {props.icon}
+      <span>{props.verb}</span>
+      <span>{props.line.text}</span>
+      {aside === undefined ? null : <span className="pl">{aside}</span>}
+    </p>
+  );
+}
 
 /** The closing card (mock 10), shrunk to one line once a step is taken. */
 function ClosingCard(props: {

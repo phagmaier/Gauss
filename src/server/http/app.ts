@@ -522,9 +522,12 @@ export function createApp(options: {
       return c.json({ error: "The curriculum is not approved yet." }, 409);
     }
     await units.get(id, unit)?.flushTranscript();
-    const sessions = await dataRoot.readTranscripts(id, entry.id);
+    const [sessions, sources] = await Promise.all([
+      dataRoot.readTranscripts(id, entry.id),
+      dataRoot.readSources(id),
+    ]);
     return c.html(
-      renderTranscript(stored.course.title, entry, number, sessions),
+      renderTranscript(stored.course.title, entry, number, sessions, sources),
       200,
       {
         ...ARTIFACT_TEXT_HEADERS,

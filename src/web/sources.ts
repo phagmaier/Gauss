@@ -1,19 +1,27 @@
 // The outlines of a course's sources, which the cards need to say what its
-// units read. The endpoint gives all outlines at once. Only the intake can
-// change that set, by attaching a source after its first proposal.
+// units read, and the thread to say what the tutor read. The endpoint gives
+// all outlines at once. Only the intake can change that set, by attaching a
+// source after its first proposal.
 
 import { useEffect, useState } from "react";
 import { type Unit, unitSections } from "../shared/curriculum.ts";
 import { CourseSources, type Outline } from "../shared/source.ts";
 import { getJsonUntilAnswered } from "./api.ts";
 
+/** Whether a unit shown names a section, so the cards need the outlines. */
+export function readsSources(
+  units: readonly Pick<Unit, "sections">[],
+): boolean {
+  return units.some((unit) => unitSections(unit).length > 0);
+}
+
 /**
- * Loads once a unit shown names a section. A new version (a successful
- * intake attachment) refreshes the outlines without hiding the last read.
+ * Loads once `needed`. A new version (a successful intake attachment)
+ * refreshes the outlines without hiding the last read.
  */
 export function useCourseSources(
   courseId: string | undefined,
-  units: readonly Pick<Unit, "sections">[],
+  needed: boolean,
   version = 0,
 ): { sources: readonly Outline[] | undefined; problem: string | undefined } {
   const [held, setHeld] = useState<{
@@ -23,7 +31,6 @@ export function useCourseSources(
     sources: Outline[] | undefined;
     problem: string | undefined;
   }>();
-  const needed = units.some((unit) => unitSections(unit).length > 0);
   const current = held?.courseId === courseId ? held : undefined;
   const settled = current?.version === version && current.complete;
   const wanted = needed && !settled ? courseId : undefined;

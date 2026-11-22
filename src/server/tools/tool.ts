@@ -6,11 +6,17 @@ import { z } from "zod";
 
 /**
  * What a call returns to the model. A refused call tells the model why, so it
- * can try again; only a call that was carried out can end the turn.
+ * can try again; only a call that was carried out can end the turn. One that
+ * was carried out can give an image after its text (view_page's page).
  */
 export type ToolResult =
-  | { status: "done"; text: string; endTurn?: boolean }
+  | { status: "done"; text: string; endTurn?: boolean; image?: ToolImage }
   | { status: "refused"; text: string };
+
+export interface ToolImage {
+  data: Buffer;
+  mimeType: "image/png";
+}
 
 export interface TeachingTool {
   name: string;

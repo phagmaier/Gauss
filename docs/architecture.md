@@ -796,8 +796,8 @@ tool server, for Codex an MCP server.
 | `plan_unit` | Sets the unit's objectives and segments, in its planning session; in a unit that names sections, each segment names those it draws on, only the unit's (`planSectionProblems` in `src/shared/plan.ts`, checked by `storePlan`) |
 | `ask_question` | Posts a question on an objective of the segment, in the check, or on the one an assessment asks next: `choice` with an answer letter, `math` with an expected expression and grading policy, `written` with a rubric, or `code` with the files the learner edits, the tests, the solution and the command (`QuestionInput` in `src/shared/question.ts`) |
 | `amend_curriculum` | Proposes the whole revised unit list with a line on why (`CurriculumChangeInput` in `src/shared/curriculum-change.ts`), shown on a card; Apply writes `curriculum.json`, each kept unit with its plan. Its units' sections are checked as `propose_curriculum`'s. A tutor's uses the proposal and feedback rules in section 4 and does not end the turn. The course planner's (`planCurriculumChangeTool`) ends its turn and replaces the proposal waiting (section 4, "The planning conversation") |
-| `read_section` | (stage 4) Returns a section's text, after a line naming it with its title and place; any section of the course's sources, at any time |
-| `view_page` | (stage 4) Returns a PDF page as an image, rendered in the engine's sandbox and kept in the source's `pages/` |
+| `read_section` | Returns a section's text whole, after a line naming it with its source, title and place; any section of the course's sources, in any phase, and shows a "Read" line in the thread (section 8). Refused for a section the sources lack, saying what they have. Does not end the turn |
+| `view_page` | Returns a PDF page as an image, rendered in the engine's sandbox the first time and kept in the source's `pages/`; in any phase, with a "Looked at" line in the thread (section 8). Refused for a page out of range, a source that is not a PDF, and a page that cannot be rendered. Does not end the turn |
 | `quote_source` | (stage 4) Shows a verified quote in the source's own words with its citation (section 8), or is refused with the reason: not in the sources, too short or long, an ellipsis, or a question of the unit open. Does not end the turn |
 | `install_packages` | Asks the learner to approve Python packages with optional version ranges (`PackagesInput` in `src/shared/packages.ts`). Install runs the command on the card in the engine's sandbox, with access to PyPI and a fresh workspace `.venv`; the previous environment is restored if the install fails. The course's workspace is closed to tutor mutations and new questions while it runs. Does not end the turn |
 | `show_artifact` | Shows an HTML aid, given whole in the call (`ArtifactInput` in `src/shared/artifact.ts`), in the side pane; the engine writes it to `artifacts/` under a new number, and the thread keeps a reference to it. Refused over 100 KB and for a document that names an address on the web. Does not end the turn |
@@ -818,7 +818,8 @@ question in any unit of a course blocks every tutor's workspace changes,
 including after restart. Commands run in the foreground, and posting a
 question is refused while a write or command still runs. Reads stay allowed.
 In a course whose web search setting is on (stage 4), the tutor also has
-Claude Code's `WebSearch`, never `WebFetch` (section 8).
+Claude Code's `WebSearch`, never `WebFetch` (section 8). In a course with
+a source, it also has `read_section` and `view_page`.
 
 ## 6. Grading
 
@@ -1284,16 +1285,39 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
   A change that alters a planned unit's sections leaves its plan as it was
   made.
 
-### Planned: teaching and source views
+### Available now: teaching from the sections
 
-1. **Teach**: the tutor's system prompt holds each source's outline. The
-   engine names the current segment's sections in the turn header, and an
-   assessed unit's for a review or gate question on another unit's
-   objective. The tutor reads sections with `read_section`, the segment's
-   and others when the discussion needs them, and looks at a PDF page with
-   `view_page` where the page's marker says its text lost math or images.
-   Each read and page view shows as a line in the thread.
-2. **Quote**: `quote_source` checks the text against each source's whole
+- **The tutor's system prompt** has "# Sources" after the unit's plan:
+  a line saying `read_section` and `view_page` may be called in any
+  turn, even one whose header allows no teaching tools, then each
+  source as `sourceLines` gives it (its outline, one line per entry).
+- **The header names sections** (`sectionsText` in
+  `engine/source-text.ts`: each section's name, title and place, between
+  semicolons). Every turn of a segment names the sections it draws on
+  (`SegmentView.sections`; for the segment going over objectives again,
+  those of the plan's segments that taught them), so a new session's
+  first turn has them too; a segment's teaching turn asks for each to be
+  read whole first, unless the conversation has read it. A review's or a
+  gate's question on another unit's objective names that unit's sections.
+- **Reading** (`engine/source-shelf.ts`, behind the tools in
+  `tools/sources.ts`): `read_section` returns the section's file after a
+  line naming it; `view_page` returns the PNG of a PDF page, counted from
+  1 as its marker counts it. A page is rendered by `convert.py page` in
+  the engine's sandbox, which may read only the original and write only
+  the source's `pages/`, into a scratch file there that is put in place by
+  rename; later calls read the kept image (`DataRoot.pageImage`, one
+  render of a page at a time). Without a sandbox, a page not kept is
+  refused with the reason. Both work in any phase, since they change
+  nothing in the record.
+- **The thread** shows each read as a `section_read` event and each page
+  as `page_viewed`, with what the page's marker says its text lost
+  (`pageMarkers` in `src/shared/source.ts`); the page names them from the
+  course's outlines (section 10). The handoff writer is told of each by
+  its name, and the exported transcript shows each as the thread does.
+
+### Planned: quotes, links and the web
+
+1. **Quote**: `quote_source` checks the text against each source's whole
    text, its sections in order, so a quote across a cut still verifies.
    Matching ignores case, whitespace, hyphens, punctuation variants,
    emphasis marks, page markers, footnote references and margin line
@@ -1302,7 +1326,7 @@ URI-encoded in the `Gauss-File-Name` header (`FILE_NAME_HEADER` in
    and the page or paragraph), which opens the passage in the side pane.
    A passage paraphrased is linked, claiming no quote, by a Markdown link
    to `source:<source id>/<section id>`.
-3. **Web search** is a course's setting, off by default. With it on, the
+2. **Web search** is a course's setting, off by default. With it on, the
    tutor also gets Claude Code's `WebSearch`, never `WebFetch`, and each
    search shows in the thread with its links. A change applies from the
    learner's next message: the course's kept tutor sessions are closed,
@@ -1321,7 +1345,9 @@ See [prompt findings](decisions.md#prompts), [grader](decisions.md#grader-prompt
 
 - `tutor.md` is the start of the tutor's system prompt, which
   `engine/unit-turns.ts` assembles: `tutor.md`, the course's units with
-  their goals, prerequisites and sections, the unit taught and its plan, "# The learner" with
+  their goals, prerequisites and sections, the unit taught and its plan,
+  "# Sources" with each source's outline in a course with sources
+  (section 8), "# The learner" with
   `profile.md` when there is one, then `background.md` (or a line saying
   none was recorded), "# Earlier units"
   when it has anything (the last handoff notes of the unit's
@@ -1523,7 +1549,11 @@ progress take the outline.
   visible. The thread shows the help notice above the message box and
   the judge's call under each reply; a line for each file the tutor
   writes with its file tools, once a reply, with its path in the
-  workspace; a package request's card
+  workspace; a line for each section the tutor reads, "Read" with its
+  title and place, and each PDF page it looks at, "Looked at" with the
+  page's printed label and what its text lost (`readLine` and `pageLine`
+  in `src/shared/source-lines.ts`, from the course's outlines, which the
+  export uses too); a package request's card
   with its packages, Install and "Not now", and its commands
   and folder under a closed "Show the command"; then the outcome, with
   the output's end under "Show the output", open only when the install
@@ -1691,8 +1721,9 @@ required by [`AGENTS.md`](../AGENTS.md#project-rules).
   `pytools/.venv` standing in for a workspace's, run real commands in it,
   so they need what it needs and fail where it cannot run; so do those of
   source conversion and the upload route, which run `convert.py`. The
-  intake's handling of sources runs on a converter that writes a source's
-  folder itself (`engine/fake-converter.ts`). A test of code
+  intake's handling of sources, and `view_page` in a unit, run on a
+  converter that writes a source's folder and a page's image itself
+  (`engine/fake-converter.ts`). A test of code
   that reads the page's DOM, such as a selection's, runs in happy-dom,
   named in its file's first line (`// @vitest-environment happy-dom`).
 - **Python helpers (pytest via uv)**: equivalent and non-equivalent

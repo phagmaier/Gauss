@@ -460,14 +460,17 @@ const MESSAGES = new Set<Item["kind"]>([
   "unit_end",
 ]);
 
-/** The line for a file the tutor wrote, or the reference to an artifact it showed. */
+/** The lines for a file the tutor wrote and what it read, or the reference to an artifact it showed. */
 const inReply = (item: Item) =>
-  item.kind === "file" || item.kind === "artifact";
+  item.kind === "file" ||
+  item.kind === "read" ||
+  item.kind === "page" ||
+  item.kind === "artifact";
 
 /**
  * The line left where a question was posted stands for the question there,
- * and the lines for a file the tutor wrote and an artifact it showed belong
- * to the tutor's reply.
+ * and the lines for a file the tutor wrote, a section or page it read and an
+ * artifact it showed belong to the tutor's reply.
  */
 const asPosted = (item: Item) =>
   item.kind === "answered-below"

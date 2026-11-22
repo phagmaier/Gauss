@@ -153,6 +153,17 @@ export interface ArtifactItem {
   title: string;
 }
 
+/** A page of a PDF source the tutor looked at (task 4.8, piece 23), with what its text lost. */
+export interface PageItem {
+  kind: "page";
+  key: number;
+  source: string;
+  /** Counted from 1, as the page markers count. */
+  page: number;
+  math?: true;
+  images?: true;
+}
+
 /** The tutor's request to install packages (task 3.11, piece 14), and its answer. */
 export interface PackagesItem {
   kind: "packages";
@@ -223,6 +234,9 @@ export type Item =
   | { kind: "tutor"; key: number; text: string }
   /** A file the tutor wrote, by its path in the workspace (task 3.3, piece 14). */
   | { kind: "file"; key: number; path: string }
+  /** A section the tutor read (task 4.8, piece 23), as the course names it. */
+  | { kind: "read"; key: number; section: string }
+  | PageItem
   | ArtifactItem
   | PackagesItem
   | StyleItem
@@ -641,6 +655,32 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       return {
         ...next,
         items: [...state.items, { kind: "file", key: index, path: event.path }],
+        tutorOpen: false,
+      };
+    case "section_read":
+      // The tutor's text after it goes below it.
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          { kind: "read", key: index, section: event.section },
+        ],
+        tutorOpen: false,
+      };
+    case "page_viewed":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "page",
+            key: index,
+            source: event.source,
+            page: event.page,
+            ...(event.math ? { math: true } : {}),
+            ...(event.images ? { images: true } : {}),
+          },
+        ],
         tutorOpen: false,
       };
     case "artifact": {

@@ -399,6 +399,7 @@ const INTAKE_OVER = "The curriculum is approved; this intake is over.";
 const NO_CONVERTER: SourceConverter = {
   unavailable: "no converter was set up",
   convert: async () => ({ result: "failed", reason: "no converter" }),
+  renderPage: async () => ({ result: "failed", reason: "no converter" }),
 };
 
 /** Why propose_curriculum is refused in the intake's first turn. */

@@ -11,7 +11,8 @@
 // approved curriculum that the learner accepts (tasks 5.12 and 5.38),
 // deletes a course (task 5.18), and keeps sources: a converted folder put
 // in an intake's uploads or a course's sources/, moved from one to the
-// other, removed from uploads, and the outlines read.
+// other, removed from uploads, the outlines and sections read, and a PDF
+// page's image kept once rendered (task 4.8).
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -363,6 +364,19 @@ export interface DataRoot {
    * section.
    */
   readSection(id: string, ref: SectionRef): Promise<string | undefined>;
+  /**
+   * The PNG image of a page, counted from 1, of one of the course's PDF
+   * sources, kept in its `pages/<page>.png` once rendered. With none kept,
+   * `render` renders it from the original into the file it is given, a new
+   * one in `pages/`, which is then put in place by rename; a render that
+   * throws keeps nothing. Undefined when the course has no such source.
+   */
+  pageImage(
+    id: string,
+    sourceId: string,
+    page: number,
+    render: (original: string, png: string) => Promise<void>,
+  ): Promise<Buffer | undefined>;
 }
 
 /**
@@ -1533,6 +1547,32 @@ export function openDataRoot(options: {
           join("sources", sourceId, "sections", `${sectionId}.md`),
         ),
       );
+    },
+
+    async pageImage(id, sourceId, page, render) {
+      await existingCourse(id);
+      const folder = courseFile(id, join("sources", Slug.parse(sourceId)));
+      const outline = await readJson(join(folder, "outline.json"), Outline);
+      if (outline === undefined) return undefined;
+      const pages = join(folder, "pages");
+      const file = join(pages, `${z.int().positive().parse(page)}.png`);
+      // One render of a page at a time: a second request reads the first's.
+      return withFileLock(file, async () => {
+        try {
+          return await readFile(file);
+        } catch (error) {
+          if (!hasCode(error, "ENOENT")) throw error;
+        }
+        await mkdir(pages, { recursive: true });
+        const scratch = join(pages, `.${page}-${randomUUID()}.tmp.png`);
+        try {
+          await render(join(folder, outline.file), scratch);
+          await rename(scratch, file);
+        } finally {
+          await rm(scratch, { force: true });
+        }
+        return readFile(file);
+      });
     },
   };
 }

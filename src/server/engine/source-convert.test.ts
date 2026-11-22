@@ -109,6 +109,54 @@ test("a conversion past its time limit is stopped", async () => {
   ).toEqual({ result: "timed-out", limit: "20 ms" });
 });
 
+/** A PDF of one blank page an inch square, with its cross-reference table's offsets right. */
+function onePagePdf(): string {
+  const bodies = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 72] >>",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = bodies.map((body, i) => {
+    const at = pdf.length;
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+    return at;
+  });
+  const xref = pdf.length;
+  return (
+    `${pdf}xref\n0 ${bodies.length + 1}\n0000000000 65535 f \n` +
+    offsets.map((at) => `${String(at).padStart(10, "0")} 00000 n \n`).join("") +
+    `trailer\n<< /Size ${bodies.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  );
+}
+
+test("a PDF's page renders as a PNG image into the file given; a page the PDF lacks fails", async () => {
+  const source = await mkdtemp(join(root, "source-"));
+  const original = join(source, "original.pdf");
+  await writeFile(original, onePagePdf());
+  const pages = join(source, "pages");
+  await mkdir(pages);
+  const converter = createSourceConverter({ sandbox });
+
+  expect(await converter.renderPage(original, 1, join(pages, "1.png"))).toEqual(
+    { result: "rendered" },
+  );
+  const png = await readFile(join(pages, "1.png"));
+  expect(png.subarray(0, 8)).toEqual(
+    Buffer.from("\x89PNG\r\n\x1a\n", "latin1"),
+  );
+  // 72 points at 150 dpi.
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([150, 150]);
+
+  expect(await converter.renderPage(original, 2, join(pages, "2.png"))).toEqual(
+    {
+      result: "failed",
+      reason:
+        "it stopped with exit status 2: convert.py: the PDF has 1 pages, not a page 2",
+    },
+  );
+});
+
 test("without the sandbox, the converter says why it cannot convert", () => {
   const converter = createSourceConverter({
     sandbox: {

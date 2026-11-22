@@ -2,15 +2,20 @@
 // source's folder as `convert.py ingest` would for a Markdown file whose
 // first line is `# <title>`, one section holding the whole text, and
 // refuses any other file as the converter refuses a format it does not
-// read. And an upload of a text, as the route passes one on; and a source
-// put straight in a course, from an outline and its sections' texts.
+// read; and renders a page (task 4.8) as a small PNG of its own. And an
+// upload of a text, as the route passes one on; and a source put straight in
+// a course, from an outline and its sections' texts.
 
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Outline } from "../../shared/source.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import type { Upload } from "./intake-sources.ts";
-import type { Conversion, SourceConverter } from "./source-convert.ts";
+import type {
+  Conversion,
+  Rendering,
+  SourceConverter,
+} from "./source-convert.ts";
 
 /**
  * Puts a source in the course, as conversion and placement would: this
@@ -36,13 +41,27 @@ export async function placeTestSource(
 
 /**
  * The converter. `result` stands in for a conversion that does not convert;
- * `hold` keeps it converting until it resolves.
+ * `hold` keeps it converting until it resolves; `rendering` stands in for a
+ * page render that does not render. `renders` lists the pages rendered, in
+ * order.
  */
 export function fakeConverter(
-  options: { result?: Conversion; hold?: Promise<void> } = {},
-): SourceConverter {
+  options: {
+    result?: Conversion;
+    hold?: Promise<void>;
+    rendering?: Rendering;
+  } = {},
+): SourceConverter & { renders: number[] } {
+  const renders: number[] = [];
   return {
     unavailable: undefined,
+    renders,
+    async renderPage(_original, page, png) {
+      if (options.rendering !== undefined) return options.rendering;
+      renders.push(page);
+      await writeFile(png, fakePage(page));
+      return { result: "rendered" };
+    },
     async convert(original, folder) {
       await options.hold;
       if (options.result !== undefined) return options.result;
@@ -86,6 +105,14 @@ export function fakeConverter(
       return { result: "converted" };
     },
   };
+}
+
+/** The image the fake converter renders of a page. */
+export function fakePage(page: number): Buffer {
+  return Buffer.concat([
+    Buffer.from("\x89PNG\r\n\x1a\n", "latin1"),
+    Buffer.from(`fake page ${page}`),
+  ]);
 }
 
 /** The text as a file the learner attached, its size stated unless given. */

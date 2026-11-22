@@ -35,6 +35,7 @@ const CONTEXT: UnitContext = {
   ],
   unitId: "rules",
   plan: PLAN,
+  sources: [],
 };
 
 const CHECK: UnitPosition = { segment: 0, phase: "check", checkFrom: 0 };

@@ -989,6 +989,36 @@ test("the line for each file the tutor wrote, and the reference to each artifact
   ]);
 });
 
+test("the lines for a section the tutor read and a page it looked at stand where it read them, in its reply: no line around them inside it", () => {
+  const timeline = play([
+    planned,
+    phase(0, "teach"),
+    { type: "turn_start" },
+    { type: "section_read", section: "attention/s7" },
+    { type: "tutor_text", text: "The paper puts it in one sentence." },
+    { type: "page_viewed", source: "attention", page: 4, math: true },
+    { type: "tutor_text", text: "Written out, the formula is" },
+    { type: "turn_end", outcome: "done" },
+    { type: "learner", text: "Why the square root?" },
+  ]);
+  const items = timeline.items.slice(-5);
+
+  expect(items).toMatchObject([
+    { kind: "read", section: "attention/s7" },
+    { kind: "tutor", text: "The paper puts it in one sentence." },
+    { kind: "page", source: "attention", page: 4, math: true },
+    { kind: "tutor", text: "Written out, the formula is" },
+    { kind: "learner", text: "Why the square root?" },
+  ]);
+  expect(items.map((item, i) => divided(items[i - 1], item))).toEqual([
+    false,
+    false,
+    false,
+    false,
+    true,
+  ]);
+});
+
 test.each<[string, PageEvent[], string | undefined]>([
   [
     "while a question is being answered",

@@ -33,7 +33,7 @@ import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { lead } from "./progress.ts";
 import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
-import { useCourseSources } from "./sources.ts";
+import { readsSources, useCourseSources } from "./sources.ts";
 
 /** Asked by the page itself, so the planner's session starts with the answer. */
 const OPENING = {
@@ -136,7 +136,7 @@ export function Planning(props: { courseId: string }) {
   );
   const { sources, problem: sourceProblem } = useCourseSources(
     courseId,
-    changes.flatMap((c) => c.units),
+    readsSources(changes.flatMap((c) => c.units)),
   );
   const applied = changes.some((c) => c.outcome === "applied");
   const waits = changes.some(

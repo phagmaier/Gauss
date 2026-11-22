@@ -345,6 +345,8 @@ function unitEvents(
       case "learner":
       case "tutor_text":
       case "file_written":
+      case "section_read":
+      case "page_viewed":
       case "artifact":
       case "detour_end":
         if (foreign) continue;

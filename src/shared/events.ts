@@ -19,7 +19,7 @@ import {
   Unsettled,
   Verdict,
 } from "./question.ts";
-import { SourceFacts, SourceRefusal } from "./source.ts";
+import { SectionRef, SourceFacts, SourceRefusal } from "./source.ts";
 import { Phase } from "./state.ts";
 import { ObjectiveStatus, UnitStatus } from "./status.ts";
 import { StyleOutcome } from "./style.ts";
@@ -111,6 +111,25 @@ export const PageEvent = z.discriminatedUnion("type", [
     title: z.string(),
     /** Restored from a transcript: the thread refers to it without opening it. */
     historical: z.literal(true).optional(),
+  }),
+  /**
+   * The tutor read a section of the course's sources with read_section
+   * (task 4.8): the thread's "Read" line (piece 23), named by the page from
+   * the course's outlines.
+   */
+  z.object({ type: z.literal("section_read"), section: SectionRef }),
+  /**
+   * The tutor looked at a page of a PDF source with view_page (task 4.8):
+   * the thread's "Looked at" line (piece 23), with what the page's marker
+   * says its text lost.
+   */
+  z.object({
+    type: z.literal("page_viewed"),
+    source: Slug,
+    /** Counted from 1, as the page markers count. */
+    page: z.number().int().positive(),
+    math: z.literal(true).optional(),
+    images: z.literal(true).optional(),
   }),
   /**
    * The tutor asked to install packages in the course's workspace (task

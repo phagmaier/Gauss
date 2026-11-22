@@ -5,10 +5,15 @@
 import { type Unit, unitSections } from "../shared/curriculum.ts";
 import {
   type Outline,
-  type SectionPlace,
   type SourceSection,
   sectionsByRef,
 } from "../shared/source.ts";
+import {
+  pageLabel,
+  pagesPlace,
+  placeSpan,
+  shortTitle,
+} from "../shared/source-lines.ts";
 
 /** A line of a unit's reads: what it reads, and where that is, if known. */
 export interface ReadsLine {
@@ -23,40 +28,6 @@ export interface ReadsLine {
 export interface UnitReads {
   lines: ReadsLine[];
   folded: ReadsLine | undefined;
-}
-
-/** A source's title up to its first ": ", as a line names the source. */
-export function shortTitle(source: Outline): string {
-  const colon = source.title.indexOf(": ");
-  return colon === -1 ? source.title : source.title.slice(0, colon);
-}
-
-/** A page by its printed label where the PDF has labels, else its number. */
-function pageLabel(source: Outline, page: number): string {
-  return source.pages?.labels?.[page - 1] || String(page);
-}
-
-function pagesPlace(source: Outline, first: number, last: number): string {
-  return first === last
-    ? `p. ${pageLabel(source, first)}`
-    : `pp. ${pageLabel(source, first)}–${pageLabel(source, last)}`;
-}
-
-/** From the start of one place to the end of another, of the same kind. */
-function placeSpan(
-  source: Outline,
-  from: SectionPlace,
-  to: SectionPlace,
-): string | undefined {
-  if ("pages" in from && "pages" in to) {
-    return pagesPlace(source, from.pages.first, to.pages.last);
-  }
-  if ("paragraphs" in from && "paragraphs" in to) {
-    const { first } = from.paragraphs;
-    const { last } = to.paragraphs;
-    return first === last ? `¶ ${first}` : `¶ ${first}–${last}`;
-  }
-  return undefined;
 }
 
 /** Cut parts have consecutive section ids in the converter's reading order. */

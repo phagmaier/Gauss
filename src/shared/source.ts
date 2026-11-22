@@ -164,6 +164,49 @@ export function sectionsByRef(
   return found;
 }
 
+/** What the tutor asks read_section for (task 4.8): a section of the course's sources. */
+export const ReadSectionInput = z.object({
+  section: SectionRef.describe(
+    'The section, as "<source id>/<section id>" from the outlines under "# Sources" in your instructions, such as "phenomenology/s3".',
+  ),
+});
+export type ReadSectionInput = z.infer<typeof ReadSectionInput>;
+
+/** What the tutor asks view_page for (task 4.8): a page of a PDF source. */
+export const ViewPageInput = z.object({
+  source: Slug.describe(
+    'The source\'s id, as the outlines under "# Sources" in your instructions give it.',
+  ),
+  page: Count.describe(
+    "The page's number, counted from 1, as its page marker gives it: not its printed label.",
+  ),
+});
+export type ViewPageInput = z.infer<typeof ViewPageInput>;
+
+/**
+ * A page marker in a PDF section's text, `<!-- page 31 label "5" math
+ * images -->` (architecture.md section 8): the page, counted from 1, and
+ * whether its text lost math, and whether images cover some of it.
+ */
+export interface PageMarker {
+  page: number;
+  math: boolean;
+  images: boolean;
+}
+
+/** The page markers in a section's text, in order. */
+export function pageMarkers(text: string): PageMarker[] {
+  return [
+    ...text.matchAll(
+      /<!-- page ([1-9][0-9]*)(?: label "[^"]*")?( math)?( images)? -->/g,
+    ),
+  ].map((match) => ({
+    page: Number(match[1]),
+    math: match[2] !== undefined,
+    images: match[3] !== undefined,
+  }));
+}
+
 /** The largest file the intake takes as a source (piece 22): 100 MB. */
 export const SOURCE_SIZE_LIMIT = 100 * 1024 * 1024;
 

@@ -1,7 +1,8 @@
 // A source as a model reads it (architecture.md section 8): its outline, one
 // line per entry, indented by depth. A heading's line is its title; a
-// section's has its id, title, place and size. And why the units a planner
-// proposes cannot name the sections they name.
+// section's has its id, title, place and size. A section as a header or a
+// tool's result names it. And why the units a planner proposes cannot name
+// the sections they name.
 
 import { type Unit, unitSections } from "../../shared/curriculum.ts";
 import {
@@ -9,6 +10,7 @@ import {
   type OutlineEntry,
   type SectionPlace,
   type SourceFormat,
+  type SourceSection,
   sectionsByRef,
   UNIT_TEXT_LIMIT,
 } from "../../shared/source.ts";
@@ -74,6 +76,34 @@ export function placeText(place: SectionPlace, outline: Outline): string {
   return `${pages} (printed ${printed})`;
 }
 
+/**
+ * A section as the tutor's header names it: `"phenomenology/s2", "Preface
+ * (part 2 of 6)", pages 15–20 (printed 7–12)`.
+ */
+export function sectionText(found: SourceSection): string {
+  return (
+    `${JSON.stringify(found.ref)}, ${JSON.stringify(found.section.title)}, ` +
+    placeText(found.section.place, found.source)
+  );
+}
+
+/**
+ * Sections as the tutor's header lists them, in the order given, between
+ * semicolons, since titles have commas; a name the sources lack, alone.
+ */
+export function sectionsText(
+  refs: readonly string[],
+  sources: readonly Outline[],
+): string {
+  const byRef = sectionsByRef(sources);
+  return refs
+    .map((ref) => {
+      const found = byRef.get(ref);
+      return found === undefined ? JSON.stringify(ref) : sectionText(found);
+    })
+    .join("; ");
+}
+
 /** "a PDF of 543 pages", "an EPUB", "a plain text file", "a Markdown file". */
 export function formatText(outline: Outline): string {
   const names: Record<SourceFormat, string> = {
@@ -117,17 +147,8 @@ export function sectionsRefused(
         total += found.section.size;
         continue;
       }
-      const [sourceId = ""] = ref.split("/");
-      const source = sources.find((s) => s.id === sourceId);
-      const count = source === undefined ? 0 : sectionCount(source);
-      const has =
-        count === 1
-          ? "its one section is s1"
-          : `its sections are s1 to s${count}`;
       problems.push(
-        source === undefined
-          ? `Unit "${unit.id}" names "${ref}", but the course has no source "${sourceId}": its sources are ${sources.map((s) => `"${s.id}"`).join(", ")}.`
-          : `Unit "${unit.id}" names "${ref}", but "${sourceId}" has no such section: ${has}.`,
+        `Unit "${unit.id}" names "${ref}", but ${missingSection(ref, sources)}.`,
       );
     }
     if (total > UNIT_TEXT_LIMIT) {
@@ -139,6 +160,25 @@ export function sectionsRefused(
     }
   }
   return problems.length === 0 ? undefined : problems.join("\n");
+}
+
+/**
+ * Why the sources have no section by this name, for the model that named
+ * it: the course has no such source, or the source no such section.
+ */
+export function missingSection(
+  ref: string,
+  sources: readonly Outline[],
+): string {
+  const [sourceId = ""] = ref.split("/");
+  const source = sources.find((s) => s.id === sourceId);
+  if (source === undefined) {
+    return `the course has no source "${sourceId}": its sources are ${sources.map((s) => `"${s.id}"`).join(", ")}`;
+  }
+  const count = sectionCount(source);
+  return count === 1
+    ? `"${sourceId}" has no such section: its one section is s1`
+    : `"${sourceId}" has no such section: its sections are s1 to s${count}`;
 }
 
 function sectionCount(outline: Outline): number {

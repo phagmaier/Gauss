@@ -350,6 +350,14 @@ export function readStretch(
       case "file_written":
         say(`[The tutor wrote the file "${event.path}".]`);
         break;
+      case "section_read":
+        say(`[The tutor read the section "${event.section}".]`);
+        break;
+      case "page_viewed":
+        say(
+          `[The tutor looked at page ${event.page} of the source "${event.source}".]`,
+        );
+        break;
       case "artifact":
         say(`[The tutor showed an aid: "${event.title}".]`);
         break;

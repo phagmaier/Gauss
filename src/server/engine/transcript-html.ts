@@ -34,6 +34,8 @@ import {
   confidenceLabel,
 } from "../../shared/question.ts";
 import { messageParts } from "../../shared/quote.ts";
+import type { Outline } from "../../shared/source.ts";
+import { type DidLine, pageLine, readLine } from "../../shared/source-lines.ts";
 import {
   emptyTimeline,
   type Item,
@@ -99,6 +101,8 @@ export function renderTranscript(
   unit: StoredUnit,
   unitNumber: number,
   transcripts: readonly Transcript[],
+  /** The course's sources, which name what the tutor read. */
+  sources: readonly Outline[],
 ): string {
   let thread = emptyTimeline;
   let index = 0;
@@ -166,7 +170,7 @@ export function renderTranscript(
     while (at < thread.items.length) {
       const item = thread.items[at];
       if (item === undefined || item.key >= session.end) break;
-      html.push(renderItem(item, plan, objectives));
+      html.push(renderItem(item, plan, objectives, sources));
       at += 1;
     }
     if (session.closed !== null) {
@@ -196,6 +200,7 @@ function renderItem(
   item: Item,
   plan: Plan | undefined,
   objectives: ReadonlyMap<string, string>,
+  sources: readonly Outline[],
 ): string {
   switch (item.kind) {
     case "learner":
@@ -250,6 +255,10 @@ function renderItem(
       return `<p class="note">Question ${item.number} was answered further down.</p>`;
     case "file":
       return `<p class="note">The tutor wrote <code>${escapeHtml(item.path)}</code></p>`;
+    case "read":
+      return didNote("The tutor read", readLine(item.section, sources));
+    case "page":
+      return didNote("The tutor looked at", pageLine(item, sources));
     case "artifact":
       return `<p class="note">Aid shown: ${escapeHtml(item.title)}</p>`;
     case "note":
@@ -354,6 +363,11 @@ function optionalParagraph(text: string | undefined): string {
 
 function marker(label: string, detail: string): string {
   return `<p class="marker"><b>${escapeHtml(label)}</b>${detail === "" ? "" : ` ${escapeHtml(detail)}`}</p>`;
+}
+
+/** A line on what the tutor read of a source (piece 23): "The tutor read Preface (part 2 of 6), pp. 7–13". */
+function didNote(said: string, line: DidLine): string {
+  return `<p class="note">${escapeHtml(said)} ${escapeHtml(line.text)}${line.aside === undefined ? "" : `, ${escapeHtml(line.aside)}`}</p>`;
 }
 
 function renderQuestion({

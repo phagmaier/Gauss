@@ -1,8 +1,9 @@
 // What the tutor of a unit chat is told (architecture.md sections 4 and 9):
 // the system prompt its session starts with, and every turn's header. A
-// header names the unit, the segment and the phase, the event that prompted
-// the turn, and what is allowed now; the learner's text or the event's
-// details follow it. Pure, so the wording is tested without a chat.
+// header names the unit, the segment with the sections it draws on and the
+// phase, the event that prompted the turn, and what is allowed now; the
+// learner's text or the event's details follow it. Pure, so the wording is
+// tested without a chat.
 
 import {
   type StoredUnit,
@@ -24,6 +25,7 @@ import {
 } from "../../shared/packages.ts";
 import { type Plan, skipping } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, confidenceLabel } from "../../shared/question.ts";
+import type { Outline } from "../../shared/source.ts";
 import type { AssessmentRun, UnitPosition } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
 import type { RunObjective, RunStep } from "./assessment-rules.ts";
@@ -38,6 +40,7 @@ import {
   misconceptionLine,
   named,
 } from "./handoff.ts";
+import { sectionsText, sourceLines } from "./source-text.ts";
 
 /** The unit being taught, as the course record has it. */
 export interface UnitContext {
@@ -46,6 +49,8 @@ export interface UnitContext {
   units: readonly StoredUnit[];
   unitId: string;
   plan: Plan;
+  /** The course's sources, which the system prompt outlines and the headers' sections name. */
+  sources: readonly Outline[];
 }
 
 /**
@@ -63,13 +68,14 @@ export interface CourseNotes {
 
 /**
  * The tutor's system prompt: `prompts/tutor.md`, then the course and the
- * unit's plan, then under "The learner" the learner profile, when there is
- * one, and the course's background note, or a line saying none was
- * recorded, then what earlier units showed (task 5.7), when they showed
- * anything, then its style note, or the default style when it has none. A
- * session keeps the prompt it started with (task 0.4), so the position is in
- * every turn's header instead, and the unit's own handoff note goes into a
- * new session's first turn.
+ * unit's plan, then each of the course's sources with its outline (task
+ * 4.8), then under "The learner" the learner profile, when there is one,
+ * and the course's background note, or a line saying none was recorded,
+ * then what earlier units showed (task 5.7), when they showed anything,
+ * then its style note, or the default style when it has none. A session
+ * keeps the prompt it started with (task 0.4), so the position is in every
+ * turn's header instead, and the unit's own handoff note goes into a new
+ * session's first turn.
  */
 export function tutorSystemPrompt(
   tutor: string,
@@ -102,6 +108,18 @@ export function tutorSystemPrompt(
       ...segment.objectives.map((id) => `- "${id}": ${statement.get(id)}`),
     ]),
     "",
+    ...(context.sources.length === 0
+      ? []
+      : [
+          "# Sources",
+          "",
+          "The course is taught from these sources. Read a section with " +
+            "read_section, and look at a page of a PDF with view_page, in " +
+            "any turn, even one whose header allows no teaching tools: " +
+            "reading changes nothing.",
+          "",
+          ...context.sources.flatMap((source) => [...sourceLines(source), ""]),
+        ]),
     "# The learner",
     "",
     ...(profile === undefined
@@ -712,9 +730,14 @@ function aboutObjective(where: Where, step: RunStep): string {
   const statement = unit?.plan?.objectives.find(
     (o) => o.id === step.objective,
   )?.statement;
+  const sections = unit === undefined ? [] : unitSections(unit);
+  const reads =
+    sections.length === 0
+      ? ""
+      : ` That unit reads ${sectionsText(sections, context.sources)}.`;
   return (
     `"${step.objective}" is an objective of unit ${at + 1}, ` +
-    `"${unit?.title}", which this conversation may not have taught: ${statement}`
+    `"${unit?.title}", which this conversation may not have taught: ${statement}${reads}`
   );
 }
 
@@ -1213,7 +1236,11 @@ function describe(where: Where): string {
         : stage === "due"
           ? " The learner chose to test out of the unit before it is taught, and the test starts once nothing else waits."
           : "";
-  return `${unit}; ${which}. Phase: ${position.phase}.${run}`;
+  const sections =
+    segment.sections.length === 0
+      ? ""
+      : ` The segment draws on ${sectionsText(segment.sections, context.sources)}.`;
+  return `${unit}; ${which}.${sections} Phase: ${position.phase}.${run}`;
 }
 
 function allowed(where: Where): string {
@@ -1232,10 +1259,14 @@ function allowed(where: Where): string {
   switch (position.phase) {
     case "teach":
       return (
-        "Allowed now: teach the segment's objectives in this turn, within " +
-        "the length the style sets, then stop; the learner can ask anything " +
-        "next. No questions yet: ask_question is refused until the learner " +
-        'presses "ready".'
+        "Allowed now: teach the segment's objectives in this turn, " +
+        (segmentOf(context.plan, position).sections.length === 0
+          ? ""
+          : "from its sections: first read each whole with read_section, " +
+            "unless this conversation has read it already; teach ") +
+        "within the length the style sets, then stop; the learner can ask " +
+        "anything next. No questions yet: ask_question is refused until the " +
+        'learner presses "ready".'
       );
     case "discuss":
       return (

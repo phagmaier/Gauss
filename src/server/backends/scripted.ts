@@ -39,11 +39,12 @@
 //   task 2.16a), opens the detour a miss starts with a reply that repeats
 //   where an "I don't know" got stuck (the learner then asks for another
 //   question, task 2.20), posts a question when the header allows one, in a
-//   check or an assessment (task 5.4), teaches in the teach phase, and
-//   otherwise replies in text, which after a fresh start says where the unit
-//   stands. In the test before a unit (task 5.6), the turn with an answer's
-//   grade posts the next question with no feedback, and the turn that ends
-//   the test says in a line what it showed.
+//   check or an assessment (task 5.4), teaches in the teach phase, first
+//   reading with read_section each section the header says the segment
+//   draws on (task 4.8), and otherwise replies in text, which after a fresh
+//   start says where the unit stands. In the test before a unit (task 5.6),
+//   the turn with an answer's grade posts the next question with no
+//   feedback, and the turn that ends the test says in a line what it showed.
 //   Its questions on an objective are numbered past those the header lists
 //   as asked before, so none repeats one, whichever unit's thread asked it.
 //   A choice question asks for a sum, and the right choice is that sum; the
@@ -647,6 +648,9 @@ function coursePlanning(
 /** What the first objective's questions are besides choices, by the session's tools and course. */
 type Checked = "none" | "math" | "code";
 
+/** A section's name in a header, `"<source id>/<section id>"`. */
+const SECTION_NAME = /"([a-z0-9]+(?:-[a-z0-9]+)*\/s[1-9][0-9]*)"/g;
+
 function teaching(
   header: string,
   history: string,
@@ -662,9 +666,20 @@ function teaching(
   // A review can be under way in any phase, teach too: what it allows comes
   // before the phase.
   if (header.includes("Allowed now: teach")) {
-    // "Unit 1 of 6, "Limits"; segment 1 of 2, "The idea", on "limits-idea"."
-    const where = header.slice(1, header.indexOf(" Phase:"));
+    // "Unit 1 of 6, "Limits"; segment 1 of 2, "The idea", on "limits-idea".",
+    // then the sections it draws on, if it names any.
+    const described = header.slice(1, header.indexOf(" Phase:"));
+    const drawsAt = described.indexOf(" The segment draws on ");
+    const where = drawsAt === -1 ? described : described.slice(0, drawsAt);
+    const sections =
+      drawsAt === -1
+        ? []
+        : [...described.slice(drawsAt).matchAll(SECTION_NAME)].map((m) => m[1]);
     return [
+      ...sections.map((section) => ({
+        call: "read_section",
+        input: { section },
+      })),
       {
         text:
           `**Scripted teaching.** ${where}\n\n` +

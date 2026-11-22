@@ -1,0 +1,433 @@
+// Teaching from the sections (task 4.8): the tutor of a course with a
+// source has its outlines in its instructions, each segment's header names
+// the sections it draws on, and the tutor reads any section with
+// read_section and looks at a PDF's page with view_page, rendered once and
+// then read from the source's pages/. Each read and page shows in the
+// thread. The tutor is the fake backend; pages render on the fake converter.
+
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, expect, test } from "vitest";
+import type { CurriculumProposal, Unit } from "../../shared/curriculum.ts";
+import type { PageEvent } from "../../shared/events.ts";
+import type { Plan } from "../../shared/plan.ts";
+import type { Outline } from "../../shared/source.ts";
+import type { UnitPosition } from "../../shared/state.ts";
+import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
+import { openDataRoot } from "../record/data-root.ts";
+import { fakeConverter, fakePage, placeTestSource } from "./fake-converter.ts";
+import { createFakeTimer } from "./fake-timer.ts";
+import { createGrader } from "./grading.ts";
+import { createHelpJudge } from "./help-judge.ts";
+import type { Rendering } from "./source-convert.ts";
+import { createUnitChats } from "./unit-chat.ts";
+import { createUnitPlanner } from "./unit-planning.ts";
+import { JOINED_NOTE, runTurn, type Where } from "./unit-turns.ts";
+
+// Each test gets its own data root; none touches ~/gauss (AGENTS.md).
+let dir: string;
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), "gauss-source-reading-"));
+});
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+
+const NOW = "2026-11-21T10:00:00.000Z";
+
+const BOOK: Outline = {
+  id: "phenomenology",
+  title: "Phenomenology",
+  file: "original.pdf",
+  name: "hegel.pdf",
+  format: "pdf",
+  sha256: "a".repeat(64),
+  converter: 5,
+  limit: 20_000,
+  pages: {
+    count: 8,
+    labels: ["i", "ii", "iii", "1", "2", "3", "4", "5"],
+    blank: [4],
+  },
+  entries: [
+    {
+      title: "Preface",
+      entries: [
+        {
+          id: "s1",
+          title: "Preface (part 1 of 2)",
+          size: 50,
+          place: { pages: { first: 1, last: 3 } },
+          part: { number: 1, of: 2 },
+        },
+        {
+          id: "s2",
+          title: "Preface (part 2 of 2)",
+          size: 22,
+          place: { pages: { first: 3, last: 4 } },
+          part: { number: 2, of: 2 },
+        },
+      ],
+    },
+    {
+      id: "s3",
+      title: "Introduction",
+      size: 19,
+      place: { pages: { first: 5, last: 8 } },
+    },
+  ],
+};
+const S1 =
+  '<!-- page 1 label "i" -->\nThe true is the whole.\n\n' +
+  '<!-- page 2 label "ii" math images -->\nIt is a result.\n\n' +
+  '<!-- page 3 label "iii" -->\nThe beginning\n';
+const S2 = 'is the universal.\n\n<!-- page 4 label "1" -->\n';
+const S3 = '<!-- page 5 label "2" -->\nKnowing is a test.\n';
+
+const NOTES: Outline = {
+  id: "notes",
+  title: "Notes",
+  file: "original.md",
+  name: "notes.md",
+  format: "markdown",
+  sha256: "b".repeat(64),
+  converter: 5,
+  limit: 20_000,
+  entries: [
+    {
+      id: "s1",
+      title: "Notes",
+      size: 14,
+      place: { paragraphs: { first: 1, last: 1 } },
+    },
+  ],
+};
+
+const PREFACE: Unit = {
+  id: "preface",
+  title: "The Preface",
+  goal: "Say why the true is the whole.",
+  prerequisites: [],
+  sections: ["phenomenology/s1", "phenomenology/s2"],
+};
+const INTRODUCTION: Unit = {
+  id: "introduction",
+  title: "The Introduction",
+  goal: "Say how knowing tests itself.",
+  prerequisites: ["preface"],
+  sections: ["phenomenology/s3"],
+};
+const CURRICULUM: CurriculumProposal = {
+  title: "Reading Hegel",
+  units: [PREFACE, INTRODUCTION],
+  style: "Close reading.",
+  background: "The learner has read Kant.",
+};
+const PLAN: Plan = {
+  objectives: [
+    { id: "whole", statement: "Explain why the true is the whole." },
+    { id: "subject", statement: "Explain how substance is subject." },
+  ],
+  segments: [
+    {
+      title: "The whole",
+      objectives: ["whole"],
+      sections: ["phenomenology/s1"],
+    },
+    {
+      title: "Substance",
+      objectives: ["subject"],
+      sections: ["phenomenology/s2"],
+    },
+  ],
+};
+
+/**
+ * The course, made once in `dir`, and a server's unit chats on it, with the
+ * preface opened: at segment 1's teaching unless a position is given.
+ */
+async function start(
+  script: FakeTurn[],
+  given: { position?: UnitPosition; rendering?: Rendering } = {},
+) {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const { id } = await root.createCourse({ title: CURRICULUM.title });
+  await placeTestSource(root, dir, id, BOOK, { s1: S1, s2: S2, s3: S3 });
+  await placeTestSource(root, dir, id, NOTES, { s1: "Read slowly.\n" });
+  await root.saveProposal(id, CURRICULUM);
+  await root.approveCurriculum(id, CURRICULUM);
+  await root.storePlan(id, "preface", PLAN, PREFACE.sections);
+  if (given.position !== undefined) {
+    await root.writePosition(id, "preface", given.position);
+  }
+  const backend = createFakeBackend(script);
+  const converter = fakeConverter(
+    given.rendering === undefined ? {} : { rendering: given.rendering },
+  );
+  const units = createUnitChats({
+    backend,
+    systemPrompt: "Tutor.",
+    dataRoot: root,
+    planner: createUnitPlanner({
+      backend,
+      systemPrompt: "Plan.",
+      dataRoot: root,
+    }),
+    grader: createGrader({ backend, systemPrompt: "Grader." }),
+    judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
+    now: () => new Date(NOW),
+    timer: createFakeTimer(),
+    converter,
+  });
+  const opened = await units.open(id, "preface");
+  if (!opened.ok) throw new Error(opened.error);
+  await opened.chat.settled();
+  return { backend, converter, units, chat: opened.chat, id };
+}
+
+/** The thread's tutor text, reads and pages, in order. */
+function thread(events: readonly PageEvent[]): unknown[] {
+  return events.flatMap((e): unknown[] =>
+    e.type === "tutor_text" ||
+    e.type === "section_read" ||
+    e.type === "page_viewed"
+      ? [e]
+      : [],
+  );
+}
+
+const read = (section: string) => ({
+  call: "read_section",
+  input: { section },
+});
+const view = (source: string, page: number) => ({
+  call: "view_page",
+  input: { source, page },
+});
+
+test("the tutor's instructions outline each source, and a segment's teaching turn names its sections and asks for them read first", async () => {
+  const { backend, units } = await start([[{ text: "The whole." }]]);
+  try {
+    const session = backend.sessions[0];
+    expect(session?.tools.map((t) => t.name)).toEqual(
+      expect.arrayContaining(["read_section", "view_page"]),
+    );
+    const prompt = session?.systemPrompt ?? "";
+    expect(prompt).toContain(
+      "# Sources\n\nThe course is taught from these sources. Read a section with read_section",
+    );
+    expect(prompt).toContain(
+      '"Phenomenology" (source id "phenomenology"), a PDF of 8 pages, from the learner\'s file "hegel.pdf". ' +
+        "Its outline, one line per entry, indented by depth: a heading's title, or a section's id, title, place and size in characters.\n" +
+        '- "Preface"\n' +
+        '  - s1: "Preface (part 1 of 2)", pages 1–3 (printed i–iii), 50 characters\n' +
+        '  - s2: "Preface (part 2 of 2)", pages 3–4 (printed iii–1), 22 characters\n' +
+        '- s3: "Introduction", pages 5–8 (printed 2–5), 19 characters\n',
+    );
+    expect(prompt).toContain('"Notes" (source id "notes"), a Markdown file');
+    expect(prompt.indexOf("# Sources")).toBeLessThan(
+      prompt.indexOf("# The learner"),
+    );
+
+    expect(backend.received[0]?.text).toMatch(
+      /^\[Unit 1 of 2, "The Preface"; segment 1 of 2, "The whole", on "whole"\. The segment draws on "phenomenology\/s1", "Preface \(part 1 of 2\)", pages 1–3 \(printed i–iii\)\. Phase: teach\. Start of the segment\. Allowed now: teach the segment's objectives in this turn, from its sections: first read each whole with read_section, unless this conversation has read it already; teach within the length the style sets/,
+    );
+  } finally {
+    await units.close();
+  }
+});
+
+test("the tutor reads its segment's section and another unit's, each shown in the thread; a section the sources lack is refused with what they have", async () => {
+  const { backend, chat, units } = await start([
+    [
+      read("phenomenology/s1"),
+      { text: "The whole." },
+      read("phenomenology/s3"),
+      read("phenomenology/s9"),
+      read("critique/s1"),
+      { text: "Next." },
+    ],
+  ]);
+  try {
+    expect(backend.calls.map((c) => c.result)).toEqual([
+      {
+        status: "done",
+        text: `Section "phenomenology/s1" of "Phenomenology": "Preface (part 1 of 2)", pages 1–3 (printed i–iii).\n\n${S1}`,
+      },
+      {
+        status: "done",
+        text: `Section "phenomenology/s3" of "Phenomenology": "Introduction", pages 5–8 (printed 2–5).\n\n${S3}`,
+      },
+      {
+        status: "refused",
+        text: '"phenomenology/s9" cannot be read, since "phenomenology" has no such section: its sections are s1 to s3.',
+      },
+      {
+        status: "refused",
+        text: '"critique/s1" cannot be read, since the course has no source "critique": its sources are "notes", "phenomenology".',
+      },
+    ]);
+    expect(thread(chat.events())).toEqual([
+      { type: "section_read", section: "phenomenology/s1" },
+      { type: "tutor_text", text: "The whole." },
+      { type: "section_read", section: "phenomenology/s3" },
+      { type: "tutor_text", text: "Next." },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
+test("a page is rendered once and then read from the source's pages/, shown in the thread with what its text lost; a page out of range and a source with no pages are refused", async () => {
+  const { backend, chat, converter, units, id } = await start([
+    [
+      view("phenomenology", 2),
+      view("phenomenology", 2),
+      view("phenomenology", 4),
+      view("phenomenology", 9),
+      view("notes", 1),
+    ],
+  ]);
+  try {
+    const pages = join(dir, "courses", id, "sources", "phenomenology", "pages");
+    expect(backend.calls.map((c) => c.result)).toEqual([
+      {
+        status: "done",
+        text: 'The image of page 2 (printed ii) of "Phenomenology".',
+        image: { data: fakePage(2), mimeType: "image/png" },
+      },
+      {
+        status: "done",
+        text: 'The image of page 2 (printed ii) of "Phenomenology".',
+        image: { data: fakePage(2), mimeType: "image/png" },
+      },
+      {
+        status: "done",
+        text: 'The image of page 4 (printed 1) of "Phenomenology".',
+        image: { data: fakePage(4), mimeType: "image/png" },
+      },
+      {
+        status: "refused",
+        text: '"phenomenology" has 8 pages, so it has no page 9. Name a page by its number from 1, as its marker gives it.',
+      },
+      {
+        status: "refused",
+        text: '"notes" is a Markdown file, not a PDF, so it has no pages to look at. Read its sections with read_section.',
+      },
+    ]);
+    expect(converter.renders).toEqual([2, 4]);
+    expect((await readdir(pages)).sort()).toEqual(["2.png", "4.png"]);
+    expect(await readFile(join(pages, "2.png"))).toEqual(fakePage(2));
+    expect(thread(chat.events())).toEqual([
+      {
+        type: "page_viewed",
+        source: "phenomenology",
+        page: 2,
+        math: true,
+        images: true,
+      },
+      {
+        type: "page_viewed",
+        source: "phenomenology",
+        page: 2,
+        math: true,
+        images: true,
+      },
+      { type: "page_viewed", source: "phenomenology", page: 4 },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
+test("a page that cannot be rendered is refused with why, and nothing is kept or shown", async () => {
+  const { backend, chat, units, id } = await start(
+    [[view("phenomenology", 2)]],
+    {
+      rendering: { result: "failed", reason: "it stopped with exit status 1" },
+    },
+  );
+  try {
+    expect(backend.calls.map((c) => c.result)).toEqual([
+      {
+        status: "refused",
+        text: "The page could not be rendered: it stopped with exit status 1.",
+      },
+    ]);
+    expect(
+      await readdir(
+        join(dir, "courses", id, "sources", "phenomenology", "pages"),
+      ),
+    ).toEqual([]);
+    expect(thread(chat.events())).toEqual([]);
+  } finally {
+    await units.close();
+  }
+});
+
+test("a new session's first turn names the segment's sections", async () => {
+  // The position keeps no session of the tutor's to resume.
+  const { backend, chat, units } = await start([[{ text: "It is." }]], {
+    position: { segment: 1, phase: "discuss" },
+  });
+  try {
+    expect(chat.say("Is substance subject?")).toEqual({ ok: true });
+    await chat.settled();
+    const text = backend.received[0]?.text ?? "";
+    expect(text).toMatch(
+      /^\[Unit 1 of 2, "The Preface"; segment 2 of 2, "Substance", on "subject"\. The segment draws on "phenomenology\/s2", "Preface \(part 2 of 2\)", pages 3–4 \(printed iii–1\)\. Phase: discuss\. Message from the learner\./,
+    );
+    expect(text).toContain(JOINED_NOTE);
+  } finally {
+    await units.close();
+  }
+});
+
+test("a review's question on another unit's objective names that unit's sections", () => {
+  const testing: Plan = {
+    objectives: [{ id: "test", statement: "Say how knowing tests itself." }],
+    segments: [
+      {
+        title: "Testing",
+        objectives: ["test"],
+        sections: ["phenomenology/s3"],
+      },
+    ],
+  };
+  const where: Where = {
+    context: {
+      courseTitle: CURRICULUM.title,
+      units: [
+        { ...PREFACE, plan: PLAN },
+        { ...INTRODUCTION, plan: testing },
+      ],
+      unitId: "introduction",
+      plan: testing,
+      sources: [NOTES, BOOK],
+    },
+    position: { segment: 0, phase: "discuss" },
+    checks: new Map(),
+    notPassed: ["test"],
+    slipping: [],
+    goOver: ["test"],
+    notes: [],
+    evidence: [],
+    assessment: {
+      run: {
+        mode: "review",
+        stage: "on",
+        objectives: [{ unit: "preface", objective: "whole" }],
+        from: 0,
+      },
+      standing: [{ state: "unasked" }],
+      next: { index: 0, unit: "preface", objective: "whole", second: false },
+    },
+  };
+
+  expect(runTurn(where, { after: "start" })).toContain(
+    '"whole" is an objective of unit 1, "The Preface", which this conversation may not have taught: Explain why the true is the whole. ' +
+      'That unit reads "phenomenology/s1", "Preface (part 1 of 2)", pages 1–3 (printed i–iii); ' +
+      '"phenomenology/s2", "Preface (part 2 of 2)", pages 3–4 (printed iii–1). No teaching',
+  );
+});

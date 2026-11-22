@@ -56,7 +56,9 @@
 // learner installs or declines on a card; the request is kept in the unit's
 // position, the install runs outside the chat's queue with the course's
 // workspace closed to every other change, and the answer goes to the tutor
-// in a turn of its own.
+// in a turn of its own. In a course with a source, the tutor reads its
+// sections with read_section and looks at a PDF's pages with view_page
+// (task 4.8) in any phase, each shown in the thread (source-shelf.ts).
 // A dispute of an answer's grade (task 3.8) is decided outside the chat
 // (disputes.ts) and, when the chat is open, recorded inside its queue, so it
 // lands in order with the chat's own writes; one recorded while the chat
@@ -179,6 +181,7 @@ import {
   type ArtifactShelf,
   showArtifactTool,
 } from "../tools/show-artifact.ts";
+import { readSectionTool, viewPageTool } from "../tools/sources.ts";
 import {
   nextInRun,
   type RunStep,
@@ -219,6 +222,8 @@ import {
   type PackageInstaller,
   recoverPackageInstall,
 } from "./packages.ts";
+import type { SourceConverter } from "./source-convert.ts";
+import { createSourceShelf } from "./source-shelf.ts";
 import { sectionsRefused } from "./source-text.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import {
@@ -501,6 +506,12 @@ interface ChatOptions {
    * sandbox can run. Without it, tutors get no install_packages.
    */
   installer?: PackageInstaller;
+  /**
+   * Renders the PDF pages view_page asks for (task 4.8), once each. Without
+   * it, or without a sandbox to render in, a page not rendered before is
+   * refused with the reason.
+   */
+  converter?: SourceConverter;
 }
 
 export function createUnitChats(options: ChatOptions): UnitChats {
@@ -1281,12 +1292,22 @@ function createUnitChat(
         testOut,
         handoff: () => handoffs?.request(),
       });
+      // A course's sources do not change once it has units.
+      const sources = await dataRoot.readSources(courseId);
       const context: UnitContext = {
         courseTitle: stored.course.title,
         units,
         unitId,
         plan,
+        sources,
       };
+      const sourceShelf = createSourceShelf({
+        dataRoot,
+        courseId,
+        sources,
+        converter: options.converter,
+        emit: log.emit,
+      });
       const [
         readStyle,
         background,
@@ -1358,6 +1379,9 @@ function createUnitChat(
             : [installPackagesTool(packageDesk)]),
           proposeStyleTool(styleDesk),
           amendCurriculumTool(curriculumDesk),
+          ...(sources.length === 0
+            ? []
+            : [readSectionTool(sourceShelf), viewPageTool(sourceShelf)]),
         ],
         cwd: workspace,
         ...(options.workspaceTools === undefined

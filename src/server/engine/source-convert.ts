@@ -3,16 +3,18 @@
 // the file comes from outside the machine and PDFium is native code that
 // parses it (decisions.md, "Sources"). The command reads the original, whose
 // folder its caller names, and writes only the source's folder. It runs on
-// the venv's own Python, isolated. Its header says what it writes; this
-// module turns a run into a result, and a run that fails, runs out of time or
-// writes something out of shape into a failure, never an exception.
+// the venv's own Python, isolated. `convert.py page`, which renders a PDF's
+// page for view_page (task 4.8), runs the same way and writes only the
+// image's folder. Its header says what it writes; this module turns a run
+// into a result, and a run that fails, runs out of time or writes something
+// out of shape into a failure, never an exception.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { sandboxPython } from "../sandbox-command.ts";
 import { duration } from "./grading.ts";
-import type { Sandbox } from "./sandbox.ts";
+import type { Sandbox, SandboxResult } from "./sandbox.ts";
 
 /** What converting a file came to. */
 export type Conversion =
@@ -24,6 +26,12 @@ export type Conversion =
       reason: "format" | "empty" | "scanned" | "protected";
       detail: string;
     }
+  | { result: "failed"; reason: string }
+  | { result: "timed-out"; limit: string };
+
+/** What rendering a PDF's page came to. */
+export type Rendering =
+  | { result: "rendered" }
   | { result: "failed"; reason: string }
   | { result: "timed-out"; limit: string };
 
@@ -39,10 +47,23 @@ export interface SourceConverter {
     folder: string,
     signal?: AbortSignal,
   ): Promise<Conversion>;
+  /**
+   * Renders page `page`, counted from 1, of the PDF `original` as a PNG
+   * image into `png`, a file its folder does not have yet. Never throws.
+   */
+  renderPage(
+    original: string,
+    page: number,
+    png: string,
+    signal?: AbortSignal,
+  ): Promise<Rendering>;
 }
 
 /** Five minutes: the Inwood PDF, 543 pages, converts in about 11 seconds. */
 export const CONVERSION_TIME_LIMIT_MS = 5 * 60_000;
+
+/** A minute: a page of the Inwood PDF renders in about a quarter of a second. */
+export const PAGE_TIME_LIMIT_MS = 60_000;
 
 const script = fileURLToPath(
   new URL("../../../pytools/convert.py", import.meta.url),
@@ -58,65 +79,92 @@ const Output = z.discriminatedUnion("result", [
   }),
 ]);
 
+const Rendered = z.object({ result: z.literal("rendered") });
+
 export function createSourceConverter(options: {
   sandbox: Sandbox;
   timeLimitMs?: number;
+  pageTimeLimitMs?: number;
 }): SourceConverter {
   const { sandbox } = options;
   const timeLimitMs = options.timeLimitMs ?? CONVERSION_TIME_LIMIT_MS;
+  const pageTimeLimitMs = options.pageTimeLimitMs ?? PAGE_TIME_LIMIT_MS;
   if (!sandbox.available) {
-    return {
-      unavailable: sandbox.reason,
-      convert: async () => ({
-        result: "failed",
-        reason: `there is no sandbox to run it in (${sandbox.reason})`,
-      }),
-    };
+    const failed = async () => ({
+      result: "failed" as const,
+      reason: `there is no sandbox to run it in (${sandbox.reason})`,
+    });
+    return { unavailable: sandbox.reason, convert: failed, renderPage: failed };
   }
   const { run } = sandbox;
+
+  /** Runs convert.py with these arguments, and reads its line of output in the shape given. */
+  async function convertPy<T>(
+    args: string[],
+    within: { writable: string; readable: string },
+    shape: z.ZodType<T>,
+    limitMs: number,
+    signal: AbortSignal | undefined,
+  ): Promise<
+    | T
+    | { result: "failed"; reason: string }
+    | { result: "timed-out"; limit: string }
+  > {
+    let ran: SandboxResult;
+    try {
+      ran = await run({
+        argv: [sandboxPython, "-I", script, ...args],
+        cwd: "/",
+        writable: [within.writable],
+        readable: [within.readable],
+        timeLimitMs: limitMs,
+        outputLimit: 64 * 1024,
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (error) {
+      return {
+        result: "failed",
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+    if (ran.timedOut) {
+      return { result: "timed-out", limit: duration(limitMs) };
+    }
+    if (ran.exitCode !== 0) {
+      const said = ran.stderr.trim().split("\n").at(-1)?.trim();
+      return {
+        result: "failed",
+        reason: `it stopped with exit status ${ran.exitCode}${said ? `: ${said}` : ""}`,
+      };
+    }
+    try {
+      return shape.parse(JSON.parse(ran.stdout));
+    } catch {
+      return { result: "failed", reason: "its output could not be read" };
+    }
+  }
+
   return {
     unavailable: undefined,
-    async convert(original, folder, signal) {
-      let ran: Awaited<ReturnType<typeof run>>;
-      try {
-        ran = await run({
-          argv: [
-            sandboxPython,
-            "-I",
-            script,
-            "ingest",
-            "--status-only",
-            original,
-            folder,
-          ],
-          cwd: "/",
-          writable: [folder],
-          readable: [dirname(original)],
-          timeLimitMs,
-          outputLimit: 64 * 1024,
-          ...(signal === undefined ? {} : { signal }),
-        });
-      } catch (error) {
-        return {
-          result: "failed",
-          reason: error instanceof Error ? error.message : String(error),
-        };
-      }
-      if (ran.timedOut) {
-        return { result: "timed-out", limit: duration(timeLimitMs) };
-      }
-      if (ran.exitCode !== 0) {
-        const said = ran.stderr.trim().split("\n").at(-1)?.trim();
-        return {
-          result: "failed",
-          reason: `it stopped with exit status ${ran.exitCode}${said ? `: ${said}` : ""}`,
-        };
-      }
-      try {
-        return Output.parse(JSON.parse(ran.stdout));
-      } catch {
-        return { result: "failed", reason: "its output could not be read" };
-      }
+    convert: (original, folder, signal) =>
+      convertPy(
+        ["ingest", "--status-only", original, folder],
+        { writable: folder, readable: dirname(original) },
+        Output,
+        timeLimitMs,
+        signal,
+      ),
+    async renderPage(original, page, png, signal) {
+      // The original alone: its folder holds the image's, which a read-only
+      // folder around it would close to writes.
+      const rendered = await convertPy(
+        ["page", original, String(page), png],
+        { writable: dirname(png), readable: original },
+        Rendered,
+        pageTimeLimitMs,
+        signal,
+      );
+      return rendered.result === "rendered" ? { result: "rendered" } : rendered;
     },
   };
 }

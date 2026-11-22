@@ -2162,6 +2162,12 @@ button.dn:hover {
   margin-top: 1em;
 }
 
+/* ---- Sources, piece 23: a line in the thread for each section the tutor reads and each page it looks at ---- */
+.did .pl {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Retained and slipping, settled in piece 16: two more words, each with a colour of its own ---- */
 .kept {
   color: var(--kept);

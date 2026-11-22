@@ -505,7 +505,13 @@ test("a choice correction after the handoff mark reaches the writer with the ear
     dataRoot,
     courseId: COURSE,
     unitId: id,
-    context: () => ({ courseTitle: CURRICULUM.title, units, unitId: id, plan }),
+    context: () => ({
+      courseTitle: CURRICULUM.title,
+      units,
+      unitId: id,
+      plan,
+      sources: [],
+    }),
     flushed: () => Promise.resolve(),
     now: () => clock,
   });

@@ -39,7 +39,7 @@ import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
 import { SourceCard } from "./SourceCard.tsx";
-import { useCourseSources } from "./sources.ts";
+import { readsSources, useCourseSources } from "./sources.ts";
 
 /** Asked by the page itself; the tutor's session starts with the answer. */
 const OPENING_QUESTION =
@@ -194,7 +194,7 @@ export function Intake(props: { intakeId: string }) {
   // Only the latest proposal is drawn in full, so only its units read.
   const { sources, problem: sourceProblem } = useCourseSources(
     latest?.courseId,
-    latest?.units ?? [],
+    readsSources(latest?.units ?? []),
     sourceVersion,
   );
   const { approved } = timeline;
@@ -609,6 +609,8 @@ function ItemView(props: {
       );
     // A unit chat's items: the intake has none of them.
     case "file":
+    case "read":
+    case "page":
     case "artifact":
     case "question":
     case "phase":

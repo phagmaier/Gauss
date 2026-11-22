@@ -83,17 +83,28 @@ export interface SegmentView {
   leftOut: readonly string[];
   /** A segment after the plan's last, on objectives that did not pass. */
   again: boolean;
+  /**
+   * The unit's sections it draws on (task 4.8): its own, or for the
+   * segment going over objectives again, those of the plan's segments that
+   * taught them; none in a unit that names none.
+   */
+  sections: readonly string[];
 }
 
 export const AGAIN_TITLE = "Going over again";
 
 export function segmentOf(plan: Plan, position: UnitPosition): SegmentView {
-  if (position.again !== undefined) {
+  const { again } = position;
+  if (again !== undefined) {
+    const taught = plan.segments.filter((s) =>
+      s.objectives.some((o) => again.includes(o)),
+    );
     return {
       title: AGAIN_TITLE,
-      objectives: position.again,
+      objectives: again,
       leftOut: [],
       again: true,
+      sections: [...new Set(taught.flatMap((s) => s.sections ?? []))],
     };
   }
   const segment = plan.segments[position.segment];
@@ -108,6 +119,7 @@ export function segmentOf(plan: Plan, position: UnitPosition): SegmentView {
     objectives: left?.teaches ?? segment.objectives,
     leftOut: left?.leftOut ?? [],
     again: false,
+    sections: segment.sections ?? [],
   };
 }
 

@@ -348,6 +348,69 @@ test("scripted unit planning treats HTML and /hold in Markdown as source text", 
   expect(backend.sessions).toHaveLength(1);
 });
 
+test("the scripted tutor reads each section its teaching turn's header names before it teaches", async () => {
+  const { dataRoot, units } = setUp();
+  const proposal = {
+    ...CURRICULUM,
+    units: CURRICULUM.units.map((unit) =>
+      unit.id === "limits"
+        ? { ...unit, sections: ["notes/s1", "notes/s2"] }
+        : unit,
+    ),
+  };
+  const { id } = await dataRoot.createCourse({ title: proposal.title });
+  const section = (n: number) => ({
+    id: `s${n}`,
+    title: `Part ${n}`,
+    size: 8,
+    place: { paragraphs: { first: n, last: n } },
+  });
+  await placeTestSource(
+    dataRoot,
+    dir,
+    id,
+    {
+      id: "notes",
+      title: "Notes",
+      file: "original.md",
+      name: "notes.md",
+      format: "markdown",
+      sha256: "a".repeat(64),
+      converter: 5,
+      limit: 20_000,
+      entries: [section(1), section(2)],
+    },
+    { s1: "Part 1.\n", s2: "Part 2.\n" },
+  );
+  await dataRoot.saveProposal(id, proposal);
+  await dataRoot.approveCurriculum(id, proposal);
+  const sections = ["notes/s1", "notes/s2"];
+  await dataRoot.storePlan(
+    id,
+    "limits",
+    scriptedPlan("limits", sections),
+    sections,
+  );
+
+  const opened = await units.open(id, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  try {
+    await opened.chat.settled();
+    const turn = opened.chat
+      .events()
+      .filter((e) => e.type === "section_read" || e.type === "tutor_text");
+    expect(turn.slice(0, 2)).toEqual([
+      { type: "section_read", section: "notes/s1" },
+      {
+        type: "tutor_text",
+        text: expect.stringMatching(/^\*\*Scripted teaching\.\*\* Unit 1 /),
+      },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
 test("in a review, unit 2's scripted tutor asks about unit 1's objective, numbered past the question asked on it before, and the review ends before the teaching", async () => {
   const { dataRoot, units } = setUp();
   await approvedCourse(dataRoot);

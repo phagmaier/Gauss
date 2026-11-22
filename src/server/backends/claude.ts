@@ -422,7 +422,18 @@ async function startSession(
           endTurnRequested = true;
         }
         return {
-          content: [{ type: "text", text: result.text }],
+          content: [
+            { type: "text", text: result.text },
+            ...(result.status === "done" && result.image !== undefined
+              ? [
+                  {
+                    type: "image" as const,
+                    data: result.image.data.toString("base64"),
+                    mimeType: result.image.mimeType,
+                  },
+                ]
+              : []),
+          ],
           ...(result.status === "refused" ? { isError: true } : {}),
         };
       },

@@ -68,7 +68,7 @@ export function factLines(facts: SourceFacts): Fact[] {
     const more = runs.length > named.length ? ", and more" : "";
     lines.push({
       bold: `${count(pages.blank.count, "page")} with no text`,
-      rest: ` (${named.join(", ")}${more}): blank, or pictures`,
+      rest: ` (${named.join(", ")}${more}): blank, or pictures; the tutor can look at them as images`,
     });
   }
   return lines;

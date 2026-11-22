@@ -619,6 +619,7 @@ test("without a converter, attaching is refused with the reason, and a name that
   const { intake } = setUp([], {
     unavailable: "bwrap is missing",
     convert: async () => ({ result: "failed", reason: "unused" }),
+    renderPage: async () => ({ result: "failed", reason: "unused" }),
   });
 
   expect(await intake.attach(upload("hegel.md", HEGEL))).toMatchObject({

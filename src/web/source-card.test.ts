@@ -38,7 +38,7 @@ test("a book's card says its pages, sections, the stretches cut and the pages wi
     },
     {
       bold: "6 pages with no text",
-      rest: " (ii, iv, vi, 541 to 543): blank, or pictures",
+      rest: " (ii, iv, vi, 541 to 543): blank, or pictures; the tutor can look at them as images",
     },
   ]);
 });
@@ -76,7 +76,7 @@ test("more runs of pages with no text than the card names end in 'and more'", ()
   expect(lines[0]).toEqual({ bold: "12 pages", rest: "" });
   expect(lines.at(-1)).toEqual({
     bold: "5 pages with no text",
-    rest: " (2, 4, 6, 8, and more): blank, or pictures",
+    rest: " (2, 4, 6, 8, and more): blank, or pictures; the tutor can look at them as images",
   });
 });
 

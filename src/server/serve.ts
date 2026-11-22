@@ -98,13 +98,15 @@ export async function serve(options: {
         log: (line) => process.stdout.write(`${line}\n`),
       })
     : noBackup;
+  // Without the sandbox, attaching a source and rendering a page for
+  // view_page are refused with the reason.
+  const converter = createSourceConverter({ sandbox });
   const intakes = createIntakes({
     backend,
     systemPrompt: plannerPrompt,
     dataRoot,
     backup,
-    // Without the sandbox, attaching a source is refused with the reason.
-    converter: createSourceConverter({ sandbox }),
+    converter,
   });
   const planner = createUnitPlanner({
     backend,
@@ -131,6 +133,7 @@ export async function serve(options: {
     }),
     mathCheck: createMathCheck({ sandbox }),
     codeRunner: createCodeRunner({ sandbox }),
+    converter,
     // Tutors run commands only where the sandbox runs (task 3.3), reading
     // as its commands do, and ask for packages only where they can be
     // installed. The install cache is separate from the old workspace-based
