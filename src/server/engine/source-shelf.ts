@@ -8,7 +8,8 @@
 // depend on the phase. And the passages it
 // quotes with quote_source (task 4.9), looked for in a shared course index
 // off the server thread and shown when found, as the unit's chat allows
-// (`QuoteDesk`).
+// (`QuoteDesk`). verifyQuote checks a lecture's passage, which must start in
+// the section named, without showing it.
 
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";

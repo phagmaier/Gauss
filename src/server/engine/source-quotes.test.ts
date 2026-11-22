@@ -5,7 +5,8 @@
 // refused when the sources lack the passage, and while a question of the
 // unit is open, as an aid is. The notes writer gets each quote with its
 // citation and the unit's sections, and the exported transcript names a
-// section link's section and page. The tutor is the fake backend.
+// section link's section and page. A source teaching turn's lecture
+// (present_lecture) is checked here too. The tutor is the fake backend.
 
 import { mkdtemp, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,8 +18,10 @@ import type { Plan } from "../../shared/plan.ts";
 import type { Outline } from "../../shared/source.ts";
 import { QUOTE_NOT_FOUND } from "../../shared/source-quote.ts";
 import type { UnitPosition } from "../../shared/state.ts";
+import type { TutorBackend } from "../backends/backend.ts";
 import {
   createFakeBackend,
+  type FakeBackend,
   type FakeReply,
   type FakeTurn,
 } from "../backends/fake.ts";
@@ -34,6 +37,7 @@ import { createSourceShelf } from "./source-shelf.ts";
 import { renderTranscript } from "./transcript-html.ts";
 import { createUnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
+import { JOINED_NOTE, UNSHOWN_LECTURE_NOTE } from "./unit-turns.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
@@ -150,32 +154,41 @@ async function makeCourse(
   return id;
 }
 
-/** A server's unit chats on the record, with the preface opened and its first turn over. */
+/**
+ * A server's unit chats on the record, with the preface opened and, unless
+ * `settle` is false, its first turn over. `wrap` stands between the chats and
+ * the fake backend.
+ */
 async function open(
   root: DataRoot,
   id: string,
   script: FakeTurn[],
   replies: FakeReply[] = [],
+  given: {
+    wrap?: (backend: FakeBackend) => TutorBackend;
+    settle?: boolean;
+  } = {},
 ) {
   const backend = createFakeBackend(script, replies);
+  const tutor = given.wrap?.(backend) ?? backend;
   const units = createUnitChats({
-    backend,
+    backend: tutor,
     systemPrompt: "Tutor.",
     dataRoot: root,
     planner: createUnitPlanner({
-      backend,
+      backend: tutor,
       systemPrompt: "Plan.",
       dataRoot: root,
     }),
-    grader: createGrader({ backend, systemPrompt: "Grader." }),
-    judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
+    grader: createGrader({ backend: tutor, systemPrompt: "Grader." }),
+    judge: createHelpJudge({ backend: tutor, systemPrompt: "Judge." }),
     now: () => new Date(NOW),
     timer: createFakeTimer(),
     order: givenOrder,
   });
   const opened = await units.open(id, "preface");
   if (!opened.ok) throw new Error(opened.error);
-  await opened.chat.settled();
+  if (given.settle !== false) await opened.chat.settled();
   return { backend, units, chat: opened.chat };
 }
 
@@ -356,25 +369,43 @@ test("a source lecture publishes only verified blocks, in order through replay a
           ],
         },
       },
+      {
+        call: "present_lecture",
+        input: {
+          blocks: [prose("Two parts."), passage("The true is … a result.")],
+        },
+      },
       { call: "present_lecture", input: { blocks } },
       { text: "After the lecture." },
     ],
+    [{ text: "Yes." }],
   ]);
   try {
     expect(first.backend.calls.map(({ result }) => result.status)).toEqual([
       "refused",
       "refused",
+      "refused",
       "done",
     ]);
     expect(first.backend.calls[1]?.result.text).toContain(section);
+    // Advice the lecture can take: quote_source is refused in this turn.
+    expect(first.backend.calls[2]?.result.text).toContain(
+      "quote each part in a quote block of its own",
+    );
     expect(said(first.chat.events())).toEqual(expected);
+    expect(first.chat.say("Is that all?")).toEqual({ ok: true });
+    await first.chat.settled();
+    expect(first.backend.received[1]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
   } finally {
     await first.units.close();
   }
 
   const reopened = await open(root, id, []);
   try {
-    expect(said(reopened.chat.events())).toEqual(expected);
+    expect(said(reopened.chat.events())).toEqual([
+      ...expected,
+      { type: "tutor_text", text: "Yes." },
+    ]);
     const html = renderTranscript(
       CURRICULUM.title,
       { ...PREFACE, plan: PLAN },
@@ -394,8 +425,10 @@ test("a source lecture publishes only verified blocks, in order through replay a
 test("a source teaching turn that never submits a lecture reports the failure", async () => {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const id = await makeCourse(root);
-  const { chat, units } = await open(root, id, [
+  const { backend, chat, units } = await open(root, id, [
     [{ text: "Unsubmitted lecture." }],
+    [{ text: "The claim." }],
+    [{ text: "Yes." }],
   ]);
   try {
     expect(said(chat.events())).toEqual([]);
@@ -404,6 +437,106 @@ test("a source teaching turn that never submits a lecture reports the failure", 
       outcome: "error",
       error: expect.stringContaining("lecture"),
     });
+    // The tutor hears that its hidden text was not seen, once.
+    expect(chat.say("What did I miss?")).toEqual({ ok: true });
+    await chat.settled();
+    expect(chat.say("Is that all?")).toEqual({ ok: true });
+    await chat.settled();
+    expect(backend.received[1]?.text).toContain(UNSHOWN_LECTURE_NOTE);
+    expect(backend.received[2]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
+  } finally {
+    await units.close();
+  }
+});
+
+test("a lecture turn stopped after it reached the tutor tells the tutor the learner saw none of it", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const sent = Promise.withResolvers<void>();
+  const { backend, chat, units } = await open(
+    root,
+    id,
+    [[{ text: "Half a lecture." }, { hold: true }], [{ text: "Yes." }]],
+    [],
+    {
+      settle: false,
+      wrap: (fake) => ({
+        ...fake,
+        async startSession(options) {
+          const session = await fake.startSession(options);
+          return {
+            ...session,
+            send(turn, signal) {
+              sent.resolve();
+              return session.send(turn, signal);
+            },
+          };
+        },
+      }),
+    },
+  );
+  try {
+    await sent.promise;
+    await chat.interrupt();
+    await chat.settled();
+    expect(said(chat.events())).toEqual([]);
+    expect(chat.say("What did I miss?")).toEqual({ ok: true });
+    await chat.settled();
+    expect(backend.received[1]?.text).toContain(UNSHOWN_LECTURE_NOTE);
+  } finally {
+    await units.close();
+  }
+});
+
+test("a lecture turn stopped before it reached the tutor adds no note", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const starting = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const { backend, chat, units } = await open(
+    root,
+    id,
+    [[{ text: "Yes." }]],
+    [],
+    {
+      settle: false,
+      wrap: (fake) => ({
+        ...fake,
+        async startSession(options) {
+          starting.resolve();
+          await release.promise;
+          return fake.startSession(options);
+        },
+      }),
+    },
+  );
+  try {
+    await starting.promise;
+    await chat.interrupt();
+    release.resolve();
+    await chat.settled();
+    expect(chat.say("A question.")).toEqual({ ok: true });
+    await chat.settled();
+    // The message is the first turn the tutor gets.
+    expect(backend.received).toHaveLength(1);
+    expect(backend.received[0]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
+  } finally {
+    await units.close();
+  }
+});
+
+test("a fresh start after a lecture that showed nothing says the conversation is new, without the note on the old turn", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const { backend, chat, units } = await open(root, id, [
+    [{ text: "Unsubmitted lecture." }],
+    [{ text: "Fresh." }],
+  ]);
+  try {
+    expect(await chat.startFresh()).toEqual({ ok: true });
+    await chat.settled();
+    expect(backend.received[1]?.text).toContain(JOINED_NOTE);
+    expect(backend.received[1]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
   } finally {
     await units.close();
   }

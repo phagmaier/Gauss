@@ -1120,6 +1120,10 @@ function unitLines(units: readonly Unit[]): string[] {
 export const JOINED_NOTE =
   "This conversation is new: the earlier conversation in this unit is not available to you, so do not refer to it.";
 
+/** The note after a source teaching turn that showed no lecture. */
+export const UNSHOWN_LECTURE_NOTE =
+  "The learner saw none of your last teaching turn: only a lecture shown with present_lecture reaches them there, and none was. Do not refer to it as seen.";
+
 // --- The header ------------------------------------------------------------
 
 function turn(
@@ -1307,7 +1311,7 @@ function allowed(where: Where): string {
         "within the length the style sets" +
         (sections.length === 0
           ? ", then stop; the learner can ask anything next. "
-          : ", using present_lecture for the whole reply, not ordinary text. Finish reading, page views and any aids before calling it; it ends the turn. ") +
+          : ", using present_lecture for the whole reply, not ordinary text, which this turn does not show. Finish reading, page views and any aids before calling it; it ends the turn. ") +
         "No questions yet: ask_question is refused until the " +
         'learner presses "ready".'
       );

@@ -22,8 +22,13 @@ export const QUOTE_MAX_CHARACTERS = 1_200;
 /**
  * Why the tutor's passage cannot be quoted as it is, before it is looked
  * for: too long, holding an ellipsis, or too short. Nothing if it can.
+ * `ownPart` says where each part of an elided passage goes instead, as the
+ * caller can take it: a lecture refuses quote_source.
  */
-export function quoteTextProblem(text: string): string | undefined {
+export function quoteTextProblem(
+  text: string,
+  ownPart = "with a call of its own",
+): string | undefined {
   const trimmed = text.trim();
   const characters = codePoints(trimmed, 0, trimmed.length);
   if (characters > QUOTE_MAX_CHARACTERS) {
@@ -36,7 +41,7 @@ export function quoteTextProblem(text: string): string | undefined {
   if (/…|\.\s*\.\s*\./.test(text)) {
     return (
       "The passage holds an ellipsis, so it is not one passage as the source " +
-      "has it: quote each part with a call of its own."
+      `has it: quote each part ${ownPart}.`
     );
   }
   if (wordCount(text) < QUOTE_MIN_WORDS) {

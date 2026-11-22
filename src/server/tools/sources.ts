@@ -179,7 +179,10 @@ export function presentLectureTool(
           else events.push({ type: "tutor_text", text: block.text });
           continue;
         }
-        const problem = quoteTextProblem(block.text);
+        const problem = quoteTextProblem(
+          block.text,
+          "in a quote block of its own",
+        );
         if (problem !== undefined)
           return { status: "refused", text: `Block ${i + 1}: ${problem}` };
         const found = await shelf.verifyQuote(block, signal);

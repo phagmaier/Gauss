@@ -25,6 +25,7 @@ import { startSandbox } from "../engine/sandbox.ts";
 import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import { openDataRoot } from "../record/data-root.ts";
+import { seedCourses } from "../record/dev-seed.ts";
 import { withProgress } from "../record/progress.ts";
 import type { CommandReads } from "../sandbox-command.ts";
 import {
@@ -437,6 +438,45 @@ test("the scripted tutor reads each section its teaching turn's header names bef
         text: "The second part",
         at: { page: 2 },
       },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
+// The dev seed's counting.md is what `pnpm dev:fake` teaches "Counting in two
+// ways" from: if its s3 lost either passage, the lecture would be refused.
+test("the dev seed's double-counting unit is taught through a lecture quoting s3 twice, each quote between explanations", {
+  timeout: 30_000,
+}, async () => {
+  await seedCourses({ path: dir, plan: scriptedPlan });
+  const { units } = setUp();
+  const opened = await units.open("three-ways-of-counting", "double-counting");
+  if (!opened.ok) throw new Error(opened.error);
+  try {
+    await opened.chat.settled();
+    const section = "three-ways-of-counting/s3";
+    const prose = { type: "tutor_text", text: expect.any(String) };
+    expect(
+      opened.chat
+        .events()
+        .filter((e) => e.type === "tutor_text" || e.type === "source_quoted"),
+    ).toEqual([
+      prose,
+      expect.objectContaining({
+        type: "source_quoted",
+        section,
+        text: expect.stringMatching(
+          /^Count one collection in two different ways/,
+        ),
+      }),
+      prose,
+      expect.objectContaining({
+        type: "source_quoted",
+        section,
+        text: expect.stringMatching(/^Every handshake is counted twice/),
+      }),
+      prose,
     ]);
   } finally {
     await units.close();

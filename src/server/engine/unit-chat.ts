@@ -60,7 +60,9 @@
 // sections with read_section and looks at a PDF's pages with view_page
 // (task 4.8) in any phase, each shown in the thread (source-shelf.ts), and
 // quotes a passage with quote_source (task 4.9), shown once it is found in
-// the sources, but not while a question of the unit is open, as an aid.
+// the sources, but not while a question of the unit is open, as an aid, nor
+// in a source segment's teaching turn, which shows only what present_lecture
+// publishes (its ordinary text is hidden).
 // A dispute of an answer's grade (task 3.8) is decided outside the chat
 // (disputes.ts) and, when the chat is open, recorded inside its queue, so it
 // lands in order with the chat's own writes; one recorded while the chat
@@ -278,6 +280,7 @@ import {
   testAnsweredNote,
   testEndTurn,
   tutorSystemPrompt,
+  UNSHOWN_LECTURE_NOTE,
   type UnitContext,
   type Where,
   workspaceReadyTurn,
@@ -1667,11 +1670,20 @@ function createUnitChat(
   }
 
   /**
+   * Tells the next header that the conversation is new. A note about a turn
+   * of the old conversation is dropped: the new one has no such turn.
+   */
+  function joined(r: Running): void {
+    r.notes = r.notes.filter((note) => note !== UNSHOWN_LECTURE_NOTE);
+    if (!r.notes.includes(JOINED_NOTE)) r.notes.push(JOINED_NOTE);
+  }
+
+  /**
    * The tutor's conversation could not be resumed: a new session takes over,
    * told in its first header that it is new, and the thread says so.
    */
   function fallBack(r: Running, learnerId?: string): void {
-    if (!r.notes.includes(JOINED_NOTE)) r.notes.push(JOINED_NOTE);
+    joined(r);
     log.emit({
       type: "fresh_start",
       reason: "not-resumed",
@@ -1917,7 +1929,13 @@ function createUnitChat(
       // discussion, whatever the outcome: after an error the learner can
       // ask for what was missed.
       ended: () => {
-        if (sourceLecture === lecture) sourceLecture = undefined;
+        // Set once the turn reached the tutor; a Stop or failure before
+        // that leaves the tutor nothing it could think was seen.
+        const sent = lecture !== undefined && sourceLecture === lecture;
+        if (sent) sourceLecture = undefined;
+        // The turn's ordinary text was hidden, so with no lecture shown,
+        // after a Stop too, the learner saw nothing the tutor wrote.
+        if (sent && !lecture.shown) r.notes.push(UNSHOWN_LECTURE_NOTE);
         return exclusive(async () => {
           const { position } = r.record;
           if (position.segment === segment && position.phase === "teach") {
@@ -2329,12 +2347,8 @@ function createUnitChat(
         ...r.context,
         units: stored?.curriculum?.units ?? r.context.units,
       };
-      if (
-        finished !== undefined &&
-        position.tutorSessionId === undefined &&
-        !r.notes.includes(JOINED_NOTE)
-      ) {
-        r.notes.push(JOINED_NOTE);
+      if (finished !== undefined && position.tutorSessionId === undefined) {
+        joined(r);
       }
       const run: AssessmentRun = {
         mode: "review",
@@ -4265,7 +4279,7 @@ function createUnitChat(
         // not resume the old one.
         await r.record.keepSession(undefined);
         r.agents.startFresh();
-        if (!r.notes.includes(JOINED_NOTE)) r.notes.push(JOINED_NOTE);
+        joined(r);
         log.emit({ type: "fresh_start", reason: "learner" });
         r.agents.send({ text: () => freshTurn(where(r)) });
         return { ok: true };

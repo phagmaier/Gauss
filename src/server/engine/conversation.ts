@@ -87,7 +87,8 @@ export interface Turn {
   toolReplyProblem?(): string | undefined;
   /**
    * Runs once the turn has ended, before the next turn is sent, with the
-   * text the tutor wrote in it, which is empty if it wrote none.
+   * text the tutor wrote in it, which is empty if it wrote none or the turn
+   * has `toolReplyProblem` (its text is not shown).
    */
   ended?(outcome: TurnOutcome, reply: string): Promise<void> | void;
 }
