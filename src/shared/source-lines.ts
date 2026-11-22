@@ -64,6 +64,7 @@ export interface DidLine {
 export function readLine(
   ref: string,
   outlines: readonly Outline[] | undefined,
+  range?: SectionPlace,
 ): DidLine {
   const found =
     outlines === undefined ? undefined : sectionsByRef(outlines).get(ref);
@@ -73,7 +74,7 @@ export function readLine(
   const { source, section } = found;
   return {
     text: `${outlines.length > 1 ? `${shortTitle(source)}, ` : ""}${section.title}`,
-    aside: placeSpan(source, section.place),
+    aside: placeSpan(source, range ?? section.place),
   };
 }
 

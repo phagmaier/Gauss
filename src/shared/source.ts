@@ -193,13 +193,49 @@ export function sectionsByRef(
   return found;
 }
 
-/** What the tutor asks read_section for (task 4.8): a section of the course's sources. */
-export const ReadSectionInput = z.object({
+/** A stable passage within a converted section, named in the section's coordinates. */
+export const PassageRef = z.object({
   section: SectionRef.describe(
     'The section, as "<source id>/<section id>" from the outlines under "# Sources" in your instructions, such as "phenomenology/s3".',
   ),
+  range: SectionPlace.describe(
+    "An inclusive range within the section: pages counted from 1, not printed labels, or the numbered paragraphs in its heading.",
+  ),
+});
+export type PassageRef = z.infer<typeof PassageRef>;
+
+/** What the tutor asks read_section for: a section or a passage within it. */
+export const ReadSectionInput = PassageRef.extend({
+  range: SectionPlace.optional().describe(
+    "An explicit page or paragraph range within the section, using its own numbering. Omit it to use the current teaching segment's planned range, or to read the whole section if none is planned.",
+  ),
 });
 export type ReadSectionInput = z.infer<typeof ReadSectionInput>;
+
+/** Why a range cannot be read from this section, or nothing when it can. */
+export function passageRangeProblem(
+  { place, paragraphStarts }: OutlineSection,
+  range: SectionPlace,
+): string | undefined {
+  if ("pages" in range && "pages" in place) {
+    const { first, last } = place.pages;
+    if (range.pages.first < first || range.pages.last > last)
+      return `Use physical page numbers within ${first}–${last}.`;
+    return;
+  }
+  if ("paragraphs" in range && "paragraphs" in place) {
+    const { first, last } = place.paragraphs;
+    if (range.paragraphs.first < first || range.paragraphs.last > last)
+      return `Use paragraph numbers within ${first}–${last}.`;
+    if (
+      (range.paragraphs.first !== first || range.paragraphs.last !== last) &&
+      paragraphStarts?.length !== last - first
+    )
+      return "This section has no paragraph boundaries recorded. Read it whole instead.";
+    return;
+  }
+  return `Use ${"pages" in place ? "pages" : "paragraphs"}, not ${"pages" in range ? "pages" : "paragraphs"}.`;
+}
 
 /** What the tutor asks view_page for (task 4.8): a page of a PDF source. */
 export const ViewPageInput = z.object({

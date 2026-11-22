@@ -1157,7 +1157,7 @@ function ThreadItem(props: {
         <SourceLine
           icon={BOOK_ICON}
           verb="Read"
-          line={readLine(item.section, props.sources)}
+          line={readLine(item.section, props.sources, item.range)}
           onOpen={
             found &&
             (() =>
@@ -1165,6 +1165,9 @@ function ThreadItem(props: {
                 kind: "section",
                 source: found.source.id,
                 section: found.section.id,
+                ...(item.range && "pages" in item.range
+                  ? { page: item.range.pages.first }
+                  : {}),
               }))
           }
         />

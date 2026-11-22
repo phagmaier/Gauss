@@ -14,6 +14,7 @@
 
 import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
 import { firstTaught, type Plan, skipping } from "../../shared/plan.ts";
+import type { PassageRef } from "../../shared/source.ts";
 import type { UnitPosition } from "../../shared/state.ts";
 import { hasPassed } from "../../shared/status.ts";
 import { countedAnswers } from "../record/disputes.ts";
@@ -89,6 +90,8 @@ export interface SegmentView {
    * taught them; none in a unit that names none.
    */
   sections: readonly string[];
+  /** Ranges of its sections, for a planned segment. */
+  passages?: readonly PassageRef[];
 }
 
 export const AGAIN_TITLE = "Going over again";
@@ -120,6 +123,7 @@ export function segmentOf(plan: Plan, position: UnitPosition): SegmentView {
     leftOut: left?.leftOut ?? [],
     again: false,
     sections: segment.sections ?? [],
+    ...(segment.passages === undefined ? {} : { passages: segment.passages }),
   };
 }
 

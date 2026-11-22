@@ -8,7 +8,13 @@
 
 import { z } from "zod";
 import { Slug } from "./course.ts";
-import { SectionRef } from "./source.ts";
+import {
+  type Outline,
+  PassageRef,
+  passageRangeProblem,
+  SectionRef,
+  sectionsByRef,
+} from "./source.ts";
 import { hasPassed, type ObjectiveStatus } from "./status.ts";
 import type { Position } from "./timeline.ts";
 
@@ -49,6 +55,12 @@ export const Segment = z.object({
     .optional()
     .describe(
       'The unit\'s sections this segment draws on, as the unit names them ("<source id>/<section id>"), in reading order. Required when the unit names sections; leave it out when it names none.',
+    ),
+  passages: z
+    .array(PassageRef)
+    .optional()
+    .describe(
+      "Narrow the text the tutor reads: at most one range per section in sections. Use the smallest page or paragraph range that still contains the argument. Omit a range only when the whole section is needed or there are no boundaries.",
     ),
 });
 export type Segment = z.infer<typeof Segment>;
@@ -160,6 +172,31 @@ export function planSectionProblems(
           ];
     });
   });
+}
+
+/** Passage refs narrow the segment's own sections, never add to them. */
+export function planPassageProblems(plan: Plan, sources: Outline[]): string[] {
+  const byRef = sectionsByRef(sources);
+  const problems: string[] = [];
+  for (const segment of plan.segments) {
+    const seen = new Set<SectionRef>();
+    for (const { section, range } of segment.passages ?? []) {
+      const where = `Segment "${segment.title}", passage in "${section}"`;
+      const found = byRef.get(section);
+      if (!segment.sections?.includes(section)) {
+        problems.push(`${where}: name only the segment's own sections.`);
+      } else if (seen.has(section)) {
+        problems.push(`${where}: give at most one range per section.`);
+      } else if (found === undefined) {
+        problems.push(`${where}: the source section is missing.`);
+      } else {
+        const problem = passageRangeProblem(found.section, range);
+        if (problem !== undefined) problems.push(`${where}: ${problem}`);
+      }
+      seen.add(section);
+    }
+  }
+  return problems;
 }
 
 /**

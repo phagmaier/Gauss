@@ -247,7 +247,9 @@ what is due, and on-demand self-test.
 - Accepted: PDF, EPUB, TXT, Markdown, attached in the intake, when a course
   starts. Adding a source to a course later is not offered yet.
 - Converted once into per-section text files with an outline. Units point at
-  sections; the tutor reads those files directly. No embedding search.
+  sections. A segment can narrow its reading to specific pages or paragraphs;
+  the tutor starts there and can read surrounding text as needed. No
+  embedding search.
 - For pages where text extraction loses content (equations, figures) the tutor
   reads the page image.
 - Any passage the tutor quotes is verified to appear verbatim in the source,

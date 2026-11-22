@@ -26,7 +26,7 @@ import { objectiveStatus } from "../record/status.ts";
 import { planUnitTool } from "../tools/plan-unit.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 import { type EarlierUnits, earlierText, readEarlier } from "./handoff.ts";
-import { placeText } from "./source-text.ts";
+import { numberedParagraphs, placeText } from "./source-text.ts";
 
 export type PlanningResult =
   | { ok: true; plan: Plan }
@@ -285,7 +285,7 @@ async function unitText(
         `<section id=${JSON.stringify(ref)} ` +
         `title=${JSON.stringify(found.section.title)} ` +
         `place=${JSON.stringify(placeText(found.section.place, found.source))}>\n` +
-        `${text.replace(/\n$/, "")}\n</section>`
+        `${numberedParagraphs(text, found.section).replace(/\n$/, "")}\n</section>`
       );
     }),
   );

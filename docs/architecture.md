@@ -110,6 +110,10 @@ Rules no single file shows:
   `dispute-judge.ts`. Commands: `sandbox.ts` (the only way the engine runs
   model- or learner-written input), `source-convert.ts`, `packages.ts`.
   Sources: `source-text.ts`, `source-shelf.ts`, `source-quote-worker.ts`.
+  A planned passage is a range in a converted section, stable because a
+  course's sources do not change after intake. Its coordinates come from
+  `shared/source.ts`; the quote verifier still checks the converted source,
+  not the text returned to the tutor by a read.
   Test doubles: `fake-timer.ts`, `fake-converter.ts`.
 - **`src/server/tools/`**: the teaching tools, transport-free (`tool.ts`),
   a file each; `sources.ts` holds `read_section`, `view_page`, `quote_source`.
@@ -191,7 +195,9 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   "Script error.".
 - **Real-model checks**, only when required, on a fresh temporary data
   root (`pnpm dev`, port 4320). Opening a unit can spend plan usage before
-  anyone sends a message. A course needs no intake: write it into the root
+  anyone sends a message. Before a live comparison, specify the model,
+  effort and run count; do not inherit Opus from the login.
+  A course needs no intake: write it into the root
   with the record's own operations (`createCourse`, `saveProposal`,
   `approveCurriculum`, `storePlan` in `record/data-root.ts`), as
   `record/dev-seed.ts` does, from a throwaway script run with `node`. For

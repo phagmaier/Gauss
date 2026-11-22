@@ -69,7 +69,11 @@ import {
   PendingNotes,
 } from "../../shared/notes.ts";
 import { PackageCompletion } from "../../shared/packages.ts";
-import { Plan, planSectionProblems } from "../../shared/plan.ts";
+import {
+  Plan,
+  planPassageProblems,
+  planSectionProblems,
+} from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
 import { Outline, SectionRef } from "../../shared/source.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
@@ -817,6 +821,29 @@ export function openDataRoot(options: {
     return folder;
   }
 
+  async function readSources(id: string): Promise<Outline[]> {
+    await existingCourse(id);
+    const folder = courseFile(id, "sources");
+    let ids: string[];
+    try {
+      ids = (await readdir(folder, { withFileTypes: true }))
+        .filter((e) => e.isDirectory() && Slug.safeParse(e.name).success)
+        .map((e) => e.name)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    } catch (error) {
+      if (hasCode(error, "ENOENT")) return [];
+      throw error;
+    }
+    return Promise.all(
+      ids.map(async (sourceId) => {
+        const file = join(folder, sourceId, "outline.json");
+        const outline = await readOutline(file, sourceId);
+        if (outline === undefined) throw new Error(`${file} is missing.`);
+        return outline;
+      }),
+    );
+  }
+
   return {
     async createCourse({ title, reserved }) {
       const stamp = now().toISOString();
@@ -1099,6 +1126,10 @@ export function openDataRoot(options: {
         }
         const sections = planSectionProblems(checked, refs);
         if (sections.length > 0) throw new Error(sections.join("\n"));
+        if (checked.segments.some((segment) => segment.passages?.length)) {
+          const problems = planPassageProblems(checked, await readSources(id));
+          if (problems.length > 0) throw new Error(problems.join("\n"));
+        }
         const parsed = Curriculum.safeParse({
           ...curriculum,
           units: curriculum.units.with(at, { ...unit, plan: checked }),
@@ -1564,28 +1595,7 @@ export function openDataRoot(options: {
       await syncFolder(folder);
     },
 
-    async readSources(id) {
-      await existingCourse(id);
-      const folder = courseFile(id, "sources");
-      let ids: string[];
-      try {
-        ids = (await readdir(folder, { withFileTypes: true }))
-          .filter((e) => e.isDirectory() && Slug.safeParse(e.name).success)
-          .map((e) => e.name)
-          .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-      } catch (error) {
-        if (hasCode(error, "ENOENT")) return [];
-        throw error;
-      }
-      return Promise.all(
-        ids.map(async (sourceId) => {
-          const file = join(folder, sourceId, "outline.json");
-          const outline = await readOutline(file, sourceId);
-          if (outline === undefined) throw new Error(`${file} is missing.`);
-          return outline;
-        }),
-      );
-    },
+    readSources,
 
     readSource(home, sourceId) {
       return readOutline(

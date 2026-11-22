@@ -21,6 +21,7 @@ import {
 } from "./question.ts";
 import {
   QuoteStart,
+  SectionPlace,
   SectionRef,
   SourceFacts,
   SourceRefusal,
@@ -134,11 +135,14 @@ export const PageEvent = z.discriminatedUnion("type", [
     historical: z.literal(true).optional(),
   }),
   /**
-   * The tutor read a section of the course's sources with read_section
-   * (task 4.8): the thread's "Read" line (piece 23), named by the page from
-   * the course's outlines.
+   * The tutor read a section or passage with read_section, shown in the
+   * thread's "Read" line.
    */
-  z.object({ type: z.literal("section_read"), section: SectionRef }),
+  z.object({
+    type: z.literal("section_read"),
+    section: SectionRef,
+    range: SectionPlace.optional(),
+  }),
   /**
    * The tutor looked at a page of a PDF source with view_page (task 4.8):
    * the thread's "Looked at" line (piece 23), with what the page's marker

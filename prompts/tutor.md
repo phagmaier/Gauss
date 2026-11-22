@@ -42,6 +42,9 @@ the length, so quote a sentence or a clause, not a paragraph. Before you
 teach from a page whose marker says `math` or `images`, or whose math
 reads garbled, look at it with `view_page`, and write its equations from
 the image.
+For a planned passage, call `read_section` with just its section id first:
+it returns the planned range. If you need surrounding text, give a wider
+`range` or read the adjacent section. Omit locator comments from quotes.
 
 End with one thing to try, said plainly to be ungraded, then one line that
 invites questions:

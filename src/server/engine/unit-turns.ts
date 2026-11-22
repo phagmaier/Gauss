@@ -1260,7 +1260,7 @@ function describe(where: Where): string {
   const sections =
     segment.sections.length === 0
       ? ""
-      : `\n${SEGMENT_SECTION_REFS}${segment.sections.join(", ")}.\nThe segment draws on ${sectionsText(segment.sections, context.sources)}.`;
+      : `\n${SEGMENT_SECTION_REFS}${segment.sections.join(", ")}.\nThe segment draws on ${sectionsText(segment.sections, context.sources, segment.passages)}.`;
   return `${unit}; ${which}.${sections} Phase: ${position.phase}.${run}`;
 }
 
@@ -1296,17 +1296,19 @@ function allowed(where: Where): string {
     );
   }
   switch (position.phase) {
-    case "teach":
+    case "teach": {
+      const { sections, passages } = segmentOf(context.plan, position);
+      const readFirst = passages?.length
+        ? "from its passages: first call read_section with just the section id for each (it uses the planned range, or the whole section if no range was planned), unless this conversation has read that passage already; teach "
+        : "from its sections: first read each whole with read_section, unless this conversation has read it already; teach ";
       return (
         "Allowed now: teach the segment's objectives in this turn, " +
-        (segmentOf(context.plan, position).sections.length === 0
-          ? ""
-          : "from its sections: first read each whole with read_section, " +
-            "unless this conversation has read it already; teach ") +
+        (sections.length === 0 ? "" : readFirst) +
         "within the length the style sets, then stop; the learner can ask " +
         "anything next. No questions yet: ask_question is refused until the " +
         'learner presses "ready".'
       );
+    }
     case "discuss":
       return (
         "Allowed now: answer the learner; nothing here is graded. You may " +

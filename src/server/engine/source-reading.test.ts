@@ -81,7 +81,7 @@ const BOOK: Outline = {
 const S1 =
   '<!-- page 1 label "i" -->\nThe true is the whole.\n\n' +
   '<!-- page 2 label "ii" math images -->\nIt is a result.\n\n' +
-  '<!-- page 3 label "iii" -->\nThe beginning\n';
+  '<!-- page 3 label "iii" images -->\nThe beginning\n';
 const S2 = 'is the universal.\n\n<!-- page 4 label "1" -->\n';
 const S3 = '<!-- page 5 label "2" -->\nKnowing is a test.\n';
 
@@ -98,8 +98,9 @@ const NOTES: Outline = {
     {
       id: "s1",
       title: "Notes",
-      size: 14,
-      place: { paragraphs: { first: 1, last: 1 } },
+      size: 53,
+      place: { paragraphs: { first: 1, last: 3 } },
+      paragraphStarts: [16, 33],
     },
   ],
 };
@@ -153,15 +154,29 @@ async function start(
     position?: UnitPosition;
     rendering?: Rendering;
     renderPage?: SourceConverter["renderPage"];
+    planThroughModel?: boolean;
   } = {},
 ) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
   await placeTestSource(root, dir, id, BOOK, { s1: S1, s2: S2, s3: S3 });
-  await placeTestSource(root, dir, id, NOTES, { s1: "Read slowly.\n" });
-  await root.saveProposal(id, CURRICULUM);
-  await root.approveCurriculum(id, CURRICULUM);
-  await root.storePlan(id, "preface", PLAN, PREFACE.sections);
+  await placeTestSource(root, dir, id, NOTES, {
+    s1: "Read slowly 📖.\n\nRead the claim.\n\nRead the objection.\n",
+  });
+  const proposal = given.planThroughModel
+    ? {
+        ...CURRICULUM,
+        units: [
+          { ...PREFACE, sections: [...(PREFACE.sections ?? []), "notes/s1"] },
+          INTRODUCTION,
+        ],
+      }
+    : CURRICULUM;
+  await root.saveProposal(id, proposal);
+  await root.approveCurriculum(id, proposal);
+  if (!given.planThroughModel) {
+    await root.storePlan(id, "preface", PLAN, PREFACE.sections);
+  }
   if (given.position !== undefined) {
     await root.writePosition(id, "preface", given.position);
   }
@@ -281,6 +296,104 @@ test("the tutor reads its segment's section and another unit's, each shown in th
       { type: "section_read", section: "phenomenology/s3" },
       { type: "tutor_text", text: "Next." },
     ]);
+  } finally {
+    await units.close();
+  }
+});
+
+test("the stored plan narrows teaching reads, with wider context and verified quotes still available", async () => {
+  const part = {
+    section: "phenomenology/s1",
+    range: { pages: { first: 2, last: 2 } },
+  };
+  const paragraph = {
+    section: "notes/s1",
+    range: { paragraphs: { first: 2, last: 2 } },
+  };
+  const proposed = (passage: typeof part) => ({
+    ...PLAN,
+    segments: [
+      {
+        ...PLAN.segments[0],
+        sections: [part.section, paragraph.section],
+        passages: [passage, paragraph],
+      },
+      PLAN.segments[1],
+    ],
+  });
+  const { backend, chat, units } = await start(
+    [
+      [
+        {
+          call: "plan_unit",
+          input: proposed({ ...part, range: { pages: { first: 2, last: 4 } } }),
+        },
+        { call: "plan_unit", input: proposed(part) },
+      ],
+      [
+        read(part.section),
+        {
+          call: "read_section",
+          input: { ...part, range: { pages: { first: 1, last: 2 } } },
+        },
+        {
+          call: "read_section",
+          input: {
+            section: "phenomenology/s2",
+            range: { pages: { first: 3, last: 3 } },
+          },
+        },
+        read(paragraph.section),
+        {
+          call: "read_section",
+          input: { ...part, range: { paragraphs: { first: 1, last: 1 } } },
+        },
+        {
+          call: "quote_source",
+          input: { section: part.section, text: "It is a result." },
+        },
+      ],
+    ],
+    { planThroughModel: true },
+  );
+  try {
+    const results = backend.calls.map((call) => call.result);
+    expect(results[0]).toMatchObject({
+      status: "refused",
+      text: expect.stringContaining("phenomenology/s1"),
+    });
+    expect(results[1]?.status).toBe("done");
+    expect(backend.received[0]?.text).toContain(
+      "<!-- paragraph 2 -->\nRead the claim.",
+    );
+    expect(backend.received[1]?.text).toContain("page 2 (printed ii)");
+    expect(results[2]).toMatchObject({
+      status: "done",
+      text: expect.stringMatching(
+        /page 2 \(printed ii\)\.\n\n<!-- page 2 label "ii" math images -->\nIt is a result\.\s*$/,
+      ),
+    });
+    expect(results[3]?.text).toMatch(
+      /The true is the whole\.[\s\S]*It is a result\.\s*$/,
+    );
+    expect(results[4]?.text).toMatch(
+      /<!-- page 3 label "iii" images -->\nis the universal\.\s*$/,
+    );
+    expect(results[5]?.text).toMatch(
+      /paragraph 2\.\n\n<!-- paragraph 2 -->\nRead the claim\.\s*$/,
+    );
+    expect(results[6]?.status).toBe("refused");
+    expect(chat.events()).toContainEqual({ type: "section_read", ...part });
+    expect(chat.events()).toContainEqual({
+      type: "section_read",
+      ...paragraph,
+    });
+    expect(chat.events()).toContainEqual({
+      type: "source_quoted",
+      section: part.section,
+      at: { page: 2 },
+      text: "It is a result.",
+    });
   } finally {
     await units.close();
   }

@@ -84,6 +84,12 @@ anything; decide, and store the plan with the plan_unit tool.
   passages argue or show that the goal needs, in the text's own terms.
   Each segment names in `sections` the unit's sections it draws on, by
   their ids, and together the segments draw on every section of the unit.
+  In `passages`, give one inclusive range per section where you can narrow
+  the reading. Use the physical page numbers in PDF page markers (not the
+  printed labels), or the numbered paragraph markers in other sections.
+  Use just enough text to explain the objective without losing the argument
+  around it. Leave out the range when you need the whole section or it has
+  no usable markers.
   The tutor teaches each segment as a lecture through its passages, so the
   segments follow the text's order: no segment draws on a section that
   comes earlier in the text than the last section of the segment before.

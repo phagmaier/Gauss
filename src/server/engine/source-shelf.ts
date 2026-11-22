@@ -13,6 +13,8 @@ import type { PageEvent } from "../../shared/events.ts";
 import {
   type Outline,
   pageMarkers,
+  passageRangeProblem,
+  type SectionPlace,
   type SectionRef,
   sectionsByRef,
 } from "../../shared/source.ts";
@@ -28,6 +30,7 @@ import { findCourseQuote } from "./source-quote-index.ts";
 import {
   formatText,
   missingSection,
+  numberedParagraphs,
   placeText,
   sectionText,
 } from "./source-text.ts";
@@ -57,6 +60,8 @@ export function createSourceShelf(options: {
   converter: SourceConverter | undefined;
   /** Shows a read or a page looked at in the thread. */
   emit(event: PageEvent): void;
+  /** The default range while teaching a planned segment. */
+  plannedRange?(section: SectionRef): SectionPlace | undefined;
   quotes: QuoteDesk;
 }): SourceShelf {
   const {
@@ -100,28 +105,63 @@ export function createSourceShelf(options: {
         continue;
       }
       const text = await dataRoot.readSection(home, found.ref);
-      const marked = pageMarkers(text ?? "").find((m) => m.page === page);
-      if (marked !== undefined) return marked;
+      if (text === undefined) continue;
+      const marked = pageMarkers(text).find((m) => m.page === page);
+      if (marked !== undefined)
+        return { ...marked, literal: text.slice(marked.start, marked.end) };
     }
     return undefined;
   }
 
   return {
-    async read(ref: SectionRef, signal) {
+    async read({ section: ref, range: explicit }, signal) {
       const found = byRef.get(ref);
       if (found === undefined) {
         return {
           refused: `"${ref}" cannot be read, since ${missingSection(ref, sources)}.`,
         };
       }
-      const text = await sectionFile(ref);
-      signal?.throwIfAborted();
-      emit({ type: "section_read", section: ref });
+      const range = explicit ?? options.plannedRange?.(ref);
       const { source, section } = found;
+      if (range !== undefined) {
+        const problem = passageRangeProblem(section, range);
+        if (problem !== undefined) return { refused: `"${ref}": ${problem}` };
+      }
+      let text = await sectionFile(ref);
+      if (range !== undefined) {
+        if ("pages" in range && "pages" in section.place) {
+          const { first, last } = range.pages;
+          const markers = pageMarkers(text);
+          const at = markers.find((m) => m.page >= first);
+          const end = markers.find((m) => m.page > last)?.start;
+          if (first === section.place.pages.first && at?.page !== first) {
+            // Sections can start halfway down a page whose marker is in
+            // the previous section. Keep its flags for view_page.
+            const inherited = await marker(source, first);
+            text =
+              `${inherited?.literal ?? `<!-- page ${first} -->`}\n` +
+              text.slice(0, end);
+          } else if (at !== undefined && at.page <= last) {
+            text = text.slice(at.start, end);
+          } else {
+            return {
+              refused: `"${ref}" has no extracted text in that page range. Look at the pages with view_page.`,
+            };
+          }
+        } else if ("paragraphs" in range) {
+          text = numberedParagraphs(text, section, range.paragraphs);
+        }
+      }
+      signal?.throwIfAborted();
+      emit({
+        type: "section_read",
+        section: ref,
+        ...(range === undefined ? {} : { range }),
+      });
       return {
         text:
           `Section "${ref}" of ${JSON.stringify(source.title)}: ` +
-          `${JSON.stringify(section.title)}, ${placeText(section.place, source)}.` +
+          `${JSON.stringify(section.title)}, ${placeText(range ?? section.place, source)}.` +
           `\n\n${text}`,
       };
     },

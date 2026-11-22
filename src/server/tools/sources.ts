@@ -10,7 +10,6 @@
 import {
   QuoteSourceInput,
   ReadSectionInput,
-  type SectionRef,
   ViewPageInput,
 } from "../../shared/source.ts";
 import { quoteTextProblem } from "../../shared/source-quote.ts";
@@ -18,9 +17,9 @@ import { defineTool, type TeachingTool, type ToolImage } from "./tool.ts";
 
 /** Where the course's sources are read. The engine provides it. */
 export interface SourceShelf {
-  /** The section's text after a line naming it, or why it cannot be read. */
+  /** The text after a line naming its place, or why it cannot be read. */
   read(
-    section: SectionRef,
+    input: ReadSectionInput,
     signal?: AbortSignal,
   ): Promise<{ text: string } | { refused: string }>;
   /** The page as an image, with a line naming it, or why it cannot be shown. */
@@ -43,19 +42,19 @@ export function readSectionTool(shelf: SourceShelf): TeachingTool {
   return defineTool({
     name: "read_section",
     description:
-      "Read a section of the course's sources, whole: its text, after a " +
-      "line naming it with its title and place. Name it as the outlines " +
-      'under "# Sources" give it, "<source id>/<section id>". Read the ' +
-      "sections a segment draws on, which its header names, before teaching " +
-      "it, and any other section when the conversation needs it. In a PDF's " +
+      "Read a section or a passage from the course's sources. Name the " +
+      'section as "<source id>/<section id>". Before teaching, read each ' +
+      "section the segment header names; when a range is planned, omit " +
+      "the range to read just that passage. Give an explicit wider range " +
+      "when you need adjacent context. In a PDF's " +
       'text, a comment such as `<!-- page 31 label "5" math images -->` ' +
       "starts each page: its number from 1, its printed label, `math` where " +
       "its text lost math and `images` where images cover some of it; look " +
       "at such a page with view_page. Allowed at any time; your turn goes " +
       "on after it.",
     input: ReadSectionInput,
-    async run({ section }, signal) {
-      const read = await shelf.read(section, signal);
+    async run(input, signal) {
+      const read = await shelf.read(input, signal);
       if ("refused" in read) return { status: "refused", text: read.refused };
       return { status: "done", text: read.text };
     },

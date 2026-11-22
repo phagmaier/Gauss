@@ -8,6 +8,7 @@ import { type Unit, unitSections } from "../../shared/curriculum.ts";
 import {
   type Outline,
   type OutlineEntry,
+  type PassageRef,
   type SectionPlace,
   type SourceFormat,
   type SourceSection,
@@ -79,10 +80,13 @@ export function placeText(place: SectionPlace, outline: Outline): string {
  * A section as the tutor's header names it: `"phenomenology/s2", "Preface
  * (part 2 of 6)", pages 15–20 (printed 7–12)`.
  */
-export function sectionText(found: SourceSection): string {
+export function sectionText(
+  found: SourceSection,
+  range = found.section.place,
+): string {
   return (
     `${JSON.stringify(found.ref)}, ${JSON.stringify(found.section.title)}, ` +
-    placeText(found.section.place, found.source)
+    placeText(range, found.source)
   );
 }
 
@@ -93,14 +97,50 @@ export function sectionText(found: SourceSection): string {
 export function sectionsText(
   refs: readonly string[],
   sources: readonly Outline[],
+  passages?: readonly PassageRef[],
 ): string {
   const byRef = sectionsByRef(sources);
   return refs
     .map((ref) => {
       const found = byRef.get(ref);
-      return found === undefined ? JSON.stringify(ref) : sectionText(found);
+      return found === undefined
+        ? JSON.stringify(ref)
+        : sectionText(found, passages?.find((p) => p.section === ref)?.range);
     })
     .join("; ");
+}
+
+/** Number the converted paragraphs without guessing boundaries from Markdown. */
+export function numberedParagraphs(
+  text: string,
+  section: SourceSection["section"],
+  range?: Extract<SectionPlace, { paragraphs: unknown }>["paragraphs"],
+): string {
+  if (!("paragraphs" in section.place)) return text;
+  const { first, last } = section.place.paragraphs;
+  const offsets = section.paragraphStarts;
+  if (last !== first && offsets?.length !== last - first) return text;
+  const wanted = range ?? section.place.paragraphs;
+  // Outline offsets count code points; JS slices use UTF-16 code units.
+  let point = 0;
+  let unit = 0;
+  const at = (paragraph: number) => {
+    if (paragraph > last) return text.length;
+    const target = offsets?.[paragraph - first - 1] ?? 0;
+    while (point < target && unit < text.length) {
+      unit += (text.codePointAt(unit) ?? 0) > 0xffff ? 2 : 1;
+      point++;
+    }
+    return unit;
+  };
+  let numbered = "";
+  let start = at(wanted.first);
+  for (let n = wanted.first; n <= wanted.last; n++) {
+    const end = at(n + 1);
+    numbered += `<!-- paragraph ${n} -->\n${text.slice(start, end)}`;
+    start = end;
+  }
+  return numbered;
 }
 
 /** "a PDF of 543 pages", "an EPUB", "a plain text file", "a Markdown file". */

@@ -262,7 +262,10 @@ function renderItem(
     case "file":
       return `<p class="note">The tutor wrote <code>${escapeHtml(item.path)}</code></p>`;
     case "read":
-      return didNote("The tutor read", readLine(item.section, sources));
+      return didNote(
+        "The tutor read",
+        readLine(item.section, sources, item.range),
+      );
     case "page":
       return didNote("The tutor looked at", pageLine(item, sources));
     case "quote":

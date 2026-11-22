@@ -79,6 +79,22 @@ specific “Done when” checks.
 - Done when: both sets run, with their agreement and any prompt change in
   `findings.md`, "Grader" and "Help judge".
 
+### 4.16 Show source lectures in passage order
+
+- Status: todo
+- Depends on: 4.15
+- Why: quotes first avoids lost text before tool calls but separates
+  each passage from its explanation.
+- Do: let source lectures specify ordered prose and quote references.
+  Resolve and render the source's words in place; preserve the order in
+  the session record, replay and transcript export. A missing reference
+  must not display an unverified quote.
+- Done when: the fake backend drives a lecture with two quotes in place,
+  both citations open the source, and replay and export keep the order.
+- Before any live comparison, specify model, effort and run count. A
+  cheap passage ranker is not part of teaching; consider it only if local
+  search is insufficient for finding off-segment passages.
+
 ## Stage 6: later
 
 Codex backend (`findings.md`, "Codex"), self-test, cheat sheets, photo
@@ -205,9 +221,9 @@ Known and accepted for now; a task that closes one deletes it here.
   stay in the text; PDFium's reading order is trusted; notes continuing on
   the next page read as body; a bookmark title that differs from the
   printed heading lands at the top of its page.
-- A section that starts partway down a page carries no marker for that
-  page, so read alone it does not say the page lost math (the Attention
-  paper's 3.2.1 on page 4). `tutor.md` also sends the tutor to a page
-  whose math reads garbled; Sonnet looked at it only when asked.
+- A whole-section read can omit the first page's math and image flags
+  when the section starts partway down that page (the Attention paper's
+  3.2.1 on page 4). Bounded page reads recover the flags from the previous
+  section.
 - Sandboxed commands and artifact scripts have no budgets for peak disk,
   memory or CPU; the command deadline and output cap do not supply them.

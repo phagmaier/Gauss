@@ -1336,6 +1336,21 @@ function createUnitChat(
         converter: options.converter,
         emit: log.emit,
         quotes: quoteDesk,
+        plannedRange(section) {
+          const { position } = record;
+          if (
+            record.finished !== undefined ||
+            position.phase !== "teach" ||
+            position.assessment !== undefined ||
+            (position.testOut !== undefined &&
+              position.testOut.stage !== "skip") ||
+            position.again !== undefined
+          )
+            return;
+          return plan.segments[position.segment]?.passages?.find(
+            (passage) => passage.section === section,
+          )?.range;
+        },
       });
       const [
         readStyle,

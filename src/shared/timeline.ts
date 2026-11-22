@@ -22,7 +22,12 @@ import type {
   GradedAnswer,
   QuestionView,
 } from "./question.ts";
-import type { QuoteStart, SourceFacts, SourceRefusal } from "./source.ts";
+import type {
+  QuoteStart,
+  SectionPlace,
+  SourceFacts,
+  SourceRefusal,
+} from "./source.ts";
 import type { Phase } from "./state.ts";
 import type { ObjectiveStatus } from "./status.ts";
 import type { StyleOutcome } from "./style.ts";
@@ -254,8 +259,8 @@ export type Item =
   | { kind: "tutor"; key: number; text: string }
   /** A file the tutor wrote, by its path in the workspace (task 3.3, piece 14). */
   | { kind: "file"; key: number; path: string }
-  /** A section the tutor read (task 4.8, piece 23), as the course names it. */
-  | { kind: "read"; key: number; section: string }
+  /** The section the tutor read, narrowed to its passage when it read one. */
+  | { kind: "read"; key: number; section: string; range?: SectionPlace }
   | PageItem
   | QuoteItem
   | SearchItem
@@ -685,7 +690,12 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ...next,
         items: [
           ...state.items,
-          { kind: "read", key: index, section: event.section },
+          {
+            kind: "read",
+            key: index,
+            section: event.section,
+            ...(event.range === undefined ? {} : { range: event.range }),
+          },
         ],
         tutorOpen: false,
       };
