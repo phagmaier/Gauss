@@ -248,8 +248,11 @@ what is due, and on-demand self-test.
   starts. Adding a source to a course later is not offered yet.
 - Converted once into per-section text files with an outline. Units point at
   sections. A segment can narrow its reading to specific pages or paragraphs;
-  the tutor starts there and can read surrounding text as needed. No
-  embedding search.
+  the tutor starts there and can read surrounding text as needed. In
+  discussion or a detour, it can find an unfamiliar passage by searching
+  the attached text for a phrase or keywords. Search returns short
+  previews for the tutor to follow up, not quotes for the learner.
+  No embedding search.
 - For pages where text extraction loses content (equations, figures) the tutor
   reads the page image.
 - A source lecture puts verified quotes beside their explanations, in the

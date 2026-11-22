@@ -547,6 +547,7 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
       ],
       // The reply to a message while question 1 is open.
       [
+        { call: "search_source", input: { query: "the true is the whole" } },
         {
           call: "present_lecture",
           input: { blocks: [{ kind: "prose", text: "The answer is yes." }] },
@@ -571,6 +572,10 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
     await chat.settled();
     expect(chat.say("Where is this in the text?")).toEqual({ ok: true });
     await chat.settled();
+    expect(backend.calls.at(-3)?.result).toMatchObject({
+      status: "refused",
+      text: expect.stringContaining("A graded question is open"),
+    });
     expect(backend.calls.at(-2)?.result).toMatchObject({
       status: "refused",
       text: expect.stringContaining("Question 1 is open"),

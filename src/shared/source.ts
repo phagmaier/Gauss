@@ -212,6 +212,22 @@ export const ReadSectionInput = PassageRef.extend({
 });
 export type ReadSectionInput = z.infer<typeof ReadSectionInput>;
 
+/** Find a passage without reading a whole section into the conversation. */
+export const SearchSourceInput = z.object({
+  query: z
+    .string()
+    .trim()
+    .max(120)
+    .regex(/[\p{L}\p{N}]/u, "Give a few words from the passage.")
+    .describe(
+      "A phrase or a few keywords likely to appear in the source, not the learner's full question.",
+    ),
+  source: Slug.optional().describe(
+    "If known, the id of the one course source to search. Omit to search all attached sources.",
+  ),
+});
+export type SearchSourceInput = z.infer<typeof SearchSourceInput>;
+
 /** Why a range cannot be read from this section, or nothing when it can. */
 export function passageRangeProblem(
   { place, paragraphStarts }: OutlineSection,

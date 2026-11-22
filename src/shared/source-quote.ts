@@ -601,7 +601,7 @@ function wholeWords(
  * line break as a newline, a word hyphenated at a line's end joined with its
  * hyphen, and other whitespace as a space.
  */
-function wordsOf(
+export function wordsOf(
   { text, markup }: Pick<QuotableSource, "text" | "markup">,
   start: number,
   end: number,

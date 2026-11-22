@@ -306,6 +306,59 @@ test("the tutor reads its segment's section and another unit's, each shown in th
   }
 });
 
+test("discussion can find an off-segment passage, read its page, then quote it", async () => {
+  const hit = {
+    section: "phenomenology/s3",
+    range: { pages: { first: 5, last: 5 } },
+  };
+  const { backend, chat, units } = await start(
+    [
+      [
+        { call: "search_source", input: { query: "KNOWING test" } },
+        {
+          call: "search_source",
+          input: { source: "notes", query: "knowing test" },
+        },
+        { call: "read_section", input: hit },
+        {
+          call: "quote_source",
+          input: { section: hit.section, text: "Knowing is a test." },
+        },
+      ],
+    ],
+    { position: { segment: 0, phase: "discuss" } },
+  );
+  try {
+    expect(chat.say("Where does he discuss knowing as a test?")).toEqual({
+      ok: true,
+    });
+    await chat.settled();
+    expect(backend.calls[0]?.result).toMatchObject({
+      status: "done",
+      text: expect.stringContaining(JSON.stringify(hit)),
+    });
+    expect(backend.calls[0]?.result.text).toContain("Knowing is a test.");
+    expect(backend.calls[1]?.result).toMatchObject({
+      status: "done",
+      text: expect.stringContaining("No passage matched"),
+    });
+    expect(backend.calls[2]?.result).toMatchObject({
+      status: "done",
+      text: expect.stringContaining(S3),
+    });
+    expect(chat.events().filter((e) => e.type === "source_quoted")).toEqual([
+      {
+        type: "source_quoted",
+        section: hit.section,
+        at: { page: 5 },
+        text: "Knowing is a test.",
+      },
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
 test("the stored plan narrows teaching reads, with wider context and verified quotes still available", async () => {
   const part = {
     section: "phenomenology/s1",

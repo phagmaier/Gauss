@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { parentPort } from "node:worker_threads";
-import type { Outline, SectionRef } from "../../shared/source.ts";
+import type {
+  Outline,
+  SearchSourceInput,
+  SectionRef,
+} from "../../shared/source.ts";
 import {
   type FoundQuote,
   findQuote,
@@ -9,6 +13,7 @@ import {
   quotableSourceBytes,
   readingOrder,
 } from "../../shared/source-quote.ts";
+import { findPassages, type PassageHit } from "./source-passage-search.ts";
 
 export type QuotePreference = NonNullable<Parameters<typeof findQuote>[2]>;
 
@@ -21,12 +26,14 @@ export type QuoteRequest =
       files: ReadonlyMap<SectionRef, string>;
     }
   | { type: "find"; text: string; preference: QuotePreference }
+  | { type: "search"; input: SearchSourceInput }
   | { type: "release" };
 
 export type QuoteReply =
   | { type: "selected"; hit: boolean }
   | { type: "prepared" }
   | { type: "found"; quote: FoundQuote | undefined }
+  | { type: "passages"; hits: PassageHit[] }
   | { type: "failed"; error: Error };
 
 // Bound retained indexes, not the working memory of constructing or searching
@@ -79,6 +86,10 @@ port.on("message", async (request: QuoteRequest) => {
           type: "found",
           quote: findQuote(request.text, active, request.preference),
         });
+        break;
+      case "search":
+        if (active === undefined) throw new Error("No source index is active.");
+        reply({ type: "passages", hits: findPassages(request.input, active) });
         break;
       case "release":
         active = undefined;

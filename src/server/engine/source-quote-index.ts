@@ -1,9 +1,14 @@
 import { addAbortListener } from "node:events";
 import { Worker } from "node:worker_threads";
 import type { Slug } from "../../shared/course.ts";
-import type { Outline, SectionRef } from "../../shared/source.ts";
+import type {
+  Outline,
+  SearchSourceInput,
+  SectionRef,
+} from "../../shared/source.ts";
 import type { FoundQuote } from "../../shared/source-quote.ts";
 import type { DataRoot } from "../record/data-root.ts";
+import type { PassageHit } from "./source-passage-search.ts";
 import type {
   QuotePreference,
   QuoteReply,
@@ -18,13 +23,12 @@ type Course = {
   sections: ReadonlyMap<SectionRef, unknown>;
 };
 
-type Outcome =
-  | { type: "found"; quote: FoundQuote | undefined }
-  | { type: "failed"; error: unknown };
+type LookupRequest = Extract<QuoteRequest, { type: "find" | "search" }>;
+type LookupReply = Extract<QuoteReply, { type: "found" | "passages" }>;
+type Outcome = LookupReply | { type: "failed"; error: unknown };
 
 type Search = {
-  text: string;
-  preference(): QuotePreference;
+  request(): LookupRequest;
   finish(outcome: Outcome): void;
 };
 
@@ -57,6 +61,30 @@ export async function findCourseQuote(
   preference: () => QuotePreference,
   signal?: AbortSignal,
 ): Promise<FoundQuote | undefined> {
+  const reply = await lookup(
+    course,
+    () => ({ type: "find", text, preference: preference() }),
+    signal,
+  );
+  if (reply.type !== "found") throw new Error("Expected a quote match result.");
+  return reply.quote;
+}
+
+export async function searchCoursePassages(
+  course: Course,
+  input: SearchSourceInput,
+  signal?: AbortSignal,
+): Promise<PassageHit[]> {
+  const reply = await lookup(course, () => ({ type: "search", input }), signal);
+  if (reply.type !== "passages") throw new Error("Expected passage results.");
+  return reply.hits;
+}
+
+async function lookup(
+  course: Course,
+  request: () => LookupRequest,
+  signal?: AbortSignal,
+): Promise<LookupReply> {
   signal?.throwIfAborted();
   let root = roots.get(course.dataRoot);
   if (root === undefined) {
@@ -66,12 +94,9 @@ export async function findCourseQuote(
   const key = `${root}/${course.courseId}/${course.courseInstance ?? ""}`;
   const batch = batches.get(key) ?? { course, searches: new Set<Search>() };
   batches.set(key, batch);
-  const { promise, resolve, reject } = Promise.withResolvers<
-    FoundQuote | undefined
-  >();
+  const { promise, resolve, reject } = Promise.withResolvers<LookupReply>();
   const search: Search = {
-    text,
-    preference,
+    request,
     finish(outcome) {
       if (!batch.searches.delete(search)) return;
       stop?.[Symbol.dispose]();
@@ -84,7 +109,7 @@ export async function findCourseQuote(
         batches.delete(key);
       }
       if (outcome.type === "failed") reject(outcome.error);
-      else resolve(outcome.quote);
+      else resolve(outcome);
     },
   };
   const stop =
@@ -123,13 +148,9 @@ async function drain() {
       loading = undefined;
       for (const search of batch.searches) {
         try {
-          const reply = await owner.ask({
-            type: "find",
-            text: search.text,
-            preference: search.preference(),
-          });
-          if (reply.type !== "found")
-            throw new Error("Expected a quote match result.");
+          const reply = await owner.ask(search.request());
+          if (reply.type !== "found" && reply.type !== "passages")
+            throw new Error("Expected a source lookup result.");
           search.finish(reply);
         } catch (error) {
           search.finish({ type: "failed", error });

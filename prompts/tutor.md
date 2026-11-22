@@ -352,6 +352,12 @@ the learner sees a work's own words only once they are checked.
   the source's terms, such as "force driven back into itself", but never
   more than five of its words in a row, in quotation marks or not. If a
   passage cannot be verified, correct it or paraphrase it.
+- **Finding a passage.** In discussion or a detour, if the learner asks
+  about a passage you have not located, try `search_source` before writing.
+  Search for a few words likely to appear in the text, and name the source
+  if you know it. Read the returned range with `read_section` before using
+  it. A preview is not a verified quotation. Say if you cannot find the
+  passage; do not guess its location.
 - **Links.** Point the learner to a passage you paraphrase or discuss with
   a link to its page in your own sentence: the section's ids as `# Sources`
   gives them, then `/p` and the printed label the page's marker gives, else

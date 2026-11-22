@@ -110,16 +110,19 @@ Rules no single file shows:
   `dispute-judge.ts`. Commands: `sandbox.ts` (the only way the engine runs
   model- or learner-written input), `source-convert.ts`, `packages.ts`.
   Sources: `source-text.ts`, `source-shelf.ts`, `source-quote-worker.ts`.
+  `source-passage-search.ts` runs lexical searches on the same worker and
+  converted text as quote verification. Only passage previews and their
+  coordinates cross back to the server thread.
   A planned passage is a range in a converted section, stable because a
   course's sources do not change after intake. Its coordinates come from
   `shared/source.ts`; the quote verifier still checks the converted source,
   not the text returned to the tutor by a read.
   Test doubles: `fake-timer.ts`, `fake-converter.ts`.
 - **`src/server/tools/`**: the teaching tools, transport-free (`tool.ts`),
-  a file each; `sources.ts` holds `read_section`, `view_page`, `quote_source`
-  and `present_lecture`. The lecture tool verifies all quote selectors
-  before the engine records any block. It records prose and quotes as
-  ordinary transcript events so live display, replay and export agree.
+  a file each; `sources.ts` holds `read_section`, `view_page`, `quote_source`,
+  `present_lecture` and `search_source`. A lecture is only recorded after
+  all quote selectors verify. It uses ordinary transcript events so
+  live display, replay and export agree.
 - **`src/server/backends/`**: `backend.ts` (the adapter), `claude.ts`
   (Agent SDK on the plan login), `fake.ts` (tests), `scripted.ts` (the
   fake driven by turn headers, for `pnpm dev:fake`).

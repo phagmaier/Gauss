@@ -36,8 +36,8 @@ questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-Off-segment passage finding is separate from teaching. Try local search
-first; consider a cheap model only if too many plausible matches need ranking.
+Off-segment passage finding uses local search. Consider a cheap model only
+if the learner's use shows too many plausible matches still need ranking.
 
 For each stage 4 task, `mise run check` must pass in addition to its
 specific “Done when” checks.

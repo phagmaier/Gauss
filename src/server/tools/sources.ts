@@ -7,6 +7,7 @@ import {
   PresentLectureInput,
   QuoteSourceInput,
   ReadSectionInput,
+  SearchSourceInput,
   ViewPageInput,
 } from "../../shared/source.ts";
 import { quoteTextProblem } from "../../shared/source-quote.ts";
@@ -50,6 +51,11 @@ export interface SourceShelf {
     input: Required<QuoteSourceInput>,
     signal?: AbortSignal,
   ): Promise<{ quote: SourceQuoted } | { refused: string }>;
+  /** A short list of candidate passages, for the tutor only. */
+  search(
+    input: SearchSourceInput,
+    signal?: AbortSignal,
+  ): Promise<{ text: string } | { refused: string }>;
 }
 
 export function readSectionTool(shelf: SourceShelf): TeachingTool {
@@ -91,6 +97,31 @@ export function viewPageTool(shelf: Pick<SourceShelf, "view">): TeachingTool {
         return { status: "refused", text: viewed.refused };
       }
       return { status: "done", text: viewed.text, image: viewed.image };
+    },
+  });
+}
+
+export function searchSourceTool(
+  shelf: Pick<SourceShelf, "search">,
+  closed: () => string | undefined,
+): TeachingTool {
+  return defineTool({
+    name: "search_source",
+    description:
+      "Find a passage in the course's attached sources when discussion or " +
+      "a detour needs text beyond what you have read. Searches locally for " +
+      "the phrase or all keywords in one passage. Results are previews, " +
+      "not verified quotes. Use the returned read_section input for context " +
+      "before citing or quoting a new passage. Not for planned lectures or " +
+      "while a graded question is open.",
+    input: SearchSourceInput,
+    async run(input, signal) {
+      const refused = closed();
+      if (refused !== undefined) return { status: "refused", text: refused };
+      const found = await shelf.search(input, signal);
+      return "refused" in found
+        ? { status: "refused", text: found.refused }
+        : { status: "done", text: found.text };
     },
   });
 }

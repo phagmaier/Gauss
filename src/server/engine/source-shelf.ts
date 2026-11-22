@@ -26,7 +26,7 @@ import {
   renderSourcePage,
   type SourceConverter,
 } from "./source-convert.ts";
-import { findCourseQuote } from "./source-quote-index.ts";
+import { findCourseQuote, searchCoursePassages } from "./source-quote-index.ts";
 import {
   formatText,
   missingSection,
@@ -144,6 +144,36 @@ export function createSourceShelf(options: {
   }
 
   return {
+    async search(input, signal) {
+      if (
+        input.source !== undefined &&
+        !sources.some((s) => s.id === input.source)
+      ) {
+        return {
+          refused: `There is no source "${input.source}" to search. This course has ${sourceIds}.`,
+        };
+      }
+      const hits = await searchCoursePassages(quoteCourse, input, signal);
+      if (hits.length === 0) {
+        return {
+          text: "No passage matched. Try fewer or different words from the source, or say you did not find it.",
+        };
+      }
+      const lines = [
+        "Local passage matches. Previews are not verified quotes.",
+      ];
+      for (const [i, { preview, ...read }] of hits.entries()) {
+        const found = byRef.get(read.section);
+        if (found === undefined)
+          throw new Error("Search returned an unknown section.");
+        lines.push(
+          `${i + 1}. ${sectionText(found, read.range)}\n` +
+            `   read_section: ${JSON.stringify(read)}\n   Preview: ${preview}`,
+        );
+      }
+      return { text: lines.join("\n\n") };
+    },
+
     async read({ section: ref, range: explicit }, signal) {
       const found = byRef.get(ref);
       if (found === undefined) {

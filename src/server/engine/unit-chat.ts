@@ -188,6 +188,7 @@ import {
   presentLectureTool,
   quoteSourceTool,
   readSectionTool,
+  searchSourceTool,
   viewPageTool,
 } from "../tools/sources.ts";
 import {
@@ -1434,6 +1435,7 @@ function createUnitChat(
                 viewPageTool(sourceShelf),
                 quoteSourceTool(sourceShelf),
                 presentLectureTool(sourceShelf, lectureDesk),
+                searchSourceTool(sourceShelf, sourceSearchRefusal),
               ]),
         ],
         // Read whenever a session starts or resumes (task 4.11).
@@ -3277,6 +3279,20 @@ function createUnitChat(
         return undefined;
       }),
   };
+
+  function sourceSearchRefusal(): string | undefined {
+    const r = running;
+    if (r === undefined) return "The unit is not open.";
+    const { position } = r.record;
+    if (position.openQuestion !== undefined)
+      return "A graded question is open. Search after its answer is graded.";
+    if (
+      position.detour !== undefined ||
+      (position.phase === "discuss" && position.assessment?.stage !== "on")
+    )
+      return;
+    return "Search is for discussion or a detour. For a planned lecture, read the passages named in the turn header.";
+  }
 
   // Not while a question of the unit is open, where the card would sit
   // beside the question; one proposal waits in a course at a time.
