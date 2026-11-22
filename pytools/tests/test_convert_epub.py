@@ -129,9 +129,14 @@ def test_an_ncx_outline_nests_its_entries_and_a_document_it_leaves_out_stays_in_
         section("s1", "The Book", front, 1, 1),
         heading(
             "Part One Beginnings",
-            section("s2", "Chapter 1 The First", first, 1, 4, starts=("More,", "**Chapter 2**", "Text the")),
+            section(
+                "s2", "Chapter 1 The First", first, 1, 4, starts=("More,", "**Chapter 2**", "Text the"),
+                headings=(("# Part One Beginnings\n", "Part One Beginnings"),
+                          ("## Chapter 1 The First\n", "Chapter 1 The First")),
+            ),  # fmt: skip
         ),
-        section("s3", "Chapter 3 The End", last, 1, 2, starts=("Last words",)),
+        section("s3", "Chapter 3 The End", last, 1, 2, starts=("Last words",),
+                headings=(("# Chapter 3 The End\n", "Chapter 3 The End"),)),  # fmt: skip
     ]
     assert section_files(folder) == {"s1": front, "s2": first, "s3": last}
     assert (folder / "original.epub").read_bytes() == data
@@ -149,8 +154,12 @@ def test_a_navigation_document_s_anchors_divide_one_file_and_win_over_the_ncx(tm
 
     one, one_a, two = "# One\n\nAlpha.\n\n", "## One A\n\nBeta.\n\n", "# Two\n\nGamma[^1].\n\n[^1]: The note.\n"
     assert outline(folder)["entries"] == [
-        heading("One", section("s1", "One", one, 1, 1), section("s2", "One A", one_a, 1, 1)),
-        section("s3", "Two", two, 1, 2, starts=("[^1]:",)),
+        heading(
+            "One",
+            section("s1", "One", one, 1, 1, headings=(("# One\n", "One"),)),
+            section("s2", "One A", one_a, 1, 1, headings=(("## One A\n", "One A"),)),
+        ),
+        section("s3", "Two", two, 1, 2, starts=("[^1]:",), headings=(("# Two\n", "Two"),)),
     ]
     assert section_files(folder) == {"s1": one, "s2": one_a, "s3": two}
 
@@ -212,7 +221,9 @@ def test_xhtml_becomes_markdown(tmp_path):
     # A paragraph is a block: each list item, each paragraph of a quote, a table, a fence.
     starts = ("- First", "- Second", "  3. Third", "> Quoted", "> Twice", "Sizes", "A figure", "Line one", "\\# not")
     starts += ("Page break", "````")
-    assert outline(folder)["entries"] == [section("s1", "Forms", FORMS_TEXT, 1, 12, starts=starts)]
+    assert outline(folder)["entries"] == [
+        section("s1", "Forms", FORMS_TEXT, 1, 12, starts=starts, headings=(("# Forms\n", "Forms"),))
+    ]
 
 
 def test_footnote_references_and_their_notes_get_labels_unique_where_they_are_read(tmp_path):
@@ -254,7 +265,8 @@ def test_a_long_chapter_is_cut_between_paragraphs_and_its_parts_sit_under_its_he
     assert outline(folder)["entries"] == [
         heading(
             "Long",
-            section("s1", "Long (part 1 of 2)", first, 1, 2, part=(1, 2), starts=("Paragraph two",)),
+            section("s1", "Long (part 1 of 2)", first, 1, 2, part=(1, 2), starts=("Paragraph two",),
+                    headings=(("# Long\n", "Long"),)),  # fmt: skip
             section("s2", "Long (part 2 of 2)", second, 3, 4, part=(2, 2), starts=("Paragraph ten",)),
         )
     ]
@@ -379,9 +391,9 @@ def test_an_anchor_inside_a_paragraph_starts_its_entry_there(tmp_path):
     assert section_files(folder) == {"s1": front, "s2": first, "s3": second, "s4": third}
     assert outline(folder)["entries"] == [
         section("s1", "The Book", front, 1, 1),
-        section("s2", "First", first, 1, 2, starts=("It *goes*",)),
-        section("s3", "Second", second, 1, 1),
-        section("s4", "Third", third, 1, 1),
+        section("s2", "First", first, 1, 2, starts=("It *goes*",), headings=(("# First\n", "First"),)),
+        section("s3", "Second", second, 1, 1, headings=(("# Second\n", "Second"),)),
+        section("s4", "Third", third, 1, 1, headings=(("# Third\n", "Third"),)),
     ]
 
 
@@ -402,7 +414,10 @@ def test_a_title_s_lines_are_looked_for_in_its_target_s_document_only(tmp_path):
 
     text = "# Alpha\n\n# Beta\n\nBeta\n\nText.\n"
     assert section_files(folder) == {"s1": text}
-    assert outline(folder)["entries"] == [heading("Alpha"), section("s1", "Beta", text, 1, 2, starts=("Text.",))]
+    assert outline(folder)["entries"] == [
+        heading("Alpha"),
+        section("s1", "Beta", text, 1, 2, starts=("Text.",), headings=(("# Alpha\n", "Alpha"), ("# Beta\n", "Beta"))),
+    ]
 
 
 def test_a_heading_tag_stands_for_an_entry_only_when_it_prints_its_title_s_words(tmp_path):
@@ -425,9 +440,13 @@ def test_a_heading_tag_stands_for_an_entry_only_when_it_prints_its_title_s_words
     third = "# The Licence Agreement\n\nTerms.\n"
     assert section_files(folder) == {"s1": first, "s2": second, "s3": third}
     assert outline(folder)["entries"] == [
-        heading("Parent Part", section("s1", "Child Chapter", first, 1, 1)),
-        section("s2", "Chapter One", second, 1, 2, starts=("Words.",)),
-        section("s3", "Licence", third, 1, 1),
+        heading(
+            "Parent Part",
+            section("s1", "Child Chapter", first, 1, 1,
+                    headings=(("# Parent Part\n", "Parent Part"), ("## Child Chapter\n", "Child Chapter"))),  # fmt: skip
+        ),
+        section("s2", "Chapter One", second, 1, 2, starts=("Words.",), headings=(("# Chapter One\n", "Chapter One"),)),
+        section("s3", "Licence", third, 1, 1, headings=(("# The Licence Agreement\n", "Licence"),)),
     ]
 
 
@@ -445,7 +464,9 @@ def test_a_note_s_references_share_its_label_and_its_paragraphs_stay_in_it(tmp_p
     text = "# One\n\nOnce[^1]; again[^1]; thrice[^1].\n\n[^1]: The note.\n\n    Its second paragraph.\n\nAfter.\n"
     assert section_files(folder) == {"s1": text}
     # The note is one paragraph, its second paragraph in it.
-    assert outline(folder)["entries"] == [section("s1", "One", text, 1, 3, starts=("[^1]:", "After."))]
+    assert outline(folder)["entries"] == [
+        section("s1", "One", text, 1, 3, starts=("[^1]:", "After."), headings=(("# One\n", "One"),))
+    ]
 
 
 def test_a_contents_target_inside_a_note_starts_its_entry_at_the_note(tmp_path):

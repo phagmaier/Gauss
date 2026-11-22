@@ -301,8 +301,9 @@ def test_a_cut_pdf_stretch_gives_each_part_its_pages(tmp_path):
 
 def test_a_cut_inside_a_pdf_paragraph_keeps_page_markers_intact(tmp_path):
     one, two = Page(), Page()
-    one.text("The first line keeps on going onto the next page of text", 720)
-    two.text("and the second line finishes the rather long paragraph.", 720)
+    one.text(r"<!-- page 99 --> and \<!-- page 98 --> before the break", 720)
+    two.text("and <!-- page arbitrary --> ends with <!--", 720)
+    two.text("page 97 --> after the break.", 708)
     label = "A long page label for the opening text"
     data = write_pdf([one, two], labels=[(0, None, label)])
 
@@ -310,11 +311,38 @@ def test_a_cut_inside_a_pdf_paragraph_keeps_page_markers_intact(tmp_path):
     files = list(section_files(folder).values())
 
     assert len(files) > 1
-    assert all(part.count("<!--") == part.count("-->") for part in files)
+    assert [number for part in files for number in re.findall(r'(?<!\\)<!-- page (\d+) label "[^"]+" -->', part)] == [
+        "1",
+        "2",
+    ]
+    assert all(part.count("\\<!--") == part.count("\\<!-- page ") for part in files)
     assert "".join(files) == (
-        f'<!-- page 1 label "{label}" -->\nThe first line keeps on going onto the next page of text '
-        f'<!-- page 2 label "{label}" --> and the second line finishes the rather long paragraph.\n'
+        f'<!-- page 1 label "{label}" -->\n\\<!-- page 99 --> and \\\\<!-- page 98 --> before the break '
+        f'<!-- page 2 label "{label}" --> and \\<!-- page arbitrary --> ends with \\<!-- page 97 --> after the break.\n'
     )
+
+
+def test_literal_page_openers_are_escaped_in_pdf_headings_and_notes(tmp_path):
+    first, second = Page(), Page()
+    first.bookmark("Printed <!-- page 8 -->", 0)
+    first.text("Printed <!-- page 8 -->", 740, font="Courier-Bold", size=14)
+    first.line("Body with <!-- page 7 --> before the reference^1.".split(), 720)
+    first.text("1 Note with <!-- page 6 -->.", 60, size=8)
+    second.bookmark("Fallback <!-- page 5 -->", 0)
+    second.text("Other body.", 720)
+
+    _, folder = run(tmp_path, "paper.pdf", write_pdf([first, second]))
+
+    printed = (
+        "<!-- page 1 -->\n# Printed \\<!-- page 8 -->\n\n"
+        "Body with \\<!-- page 7 --> before the reference[^1].\n\n[^1]: Note with \\<!-- page 6 -->.\n\n"
+    )
+    fallback = "<!-- page 2 -->\n# Fallback \\<!-- page 5 -->\n\nOther body.\n"
+    assert section_files(folder) == {"s1": printed, "s2": fallback}
+    assert outline(folder)["entries"] == [
+        pdf_section("s1", "Printed <!-- page 8 -->", printed, 1, 1),
+        pdf_section("s2", "Fallback <!-- page 5 -->", fallback, 2, 2),
+    ]
 
 
 def test_a_cut_inside_a_pdf_paragraph_keeps_a_note_with_its_reference(tmp_path):

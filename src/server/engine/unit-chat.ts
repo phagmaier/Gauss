@@ -1310,6 +1310,7 @@ function createUnitChat(
       const sourceShelf = createSourceShelf({
         dataRoot,
         courseId,
+        courseInstance: stored.course.instance,
         sources,
         converter: options.converter,
         emit: log.emit,

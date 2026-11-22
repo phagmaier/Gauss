@@ -109,27 +109,28 @@ export function pageLine(
 }
 
 /**
- * A verified quote's citation (piece 23): the stretch where it starts, never
+ * A verified quote's citation: the heading or stretch where it starts, never
  * Gauss's part, after its source's short title when the course has several,
- * then its page by the printed label or its paragraph: "Preface, p. 11",
- * "Chapter I. Introductory, ¶ 9". Its section's name alone while the
- * outlines are unknown, or when they lack it.
+ * then its printed page or paragraph, if known. Fall back to the section's
+ * reference when the outlines are unknown.
  */
 export function quoteCitation(
   quote: { section: string; at?: QuoteStart },
   outlines: readonly Outline[] | undefined,
 ): string {
+  const { at } = quote;
+  const heading = at !== undefined && "heading" in at ? at.heading : undefined;
   const found =
     outlines === undefined
       ? undefined
       : sectionsByRef(outlines).get(quote.section);
-  if (outlines === undefined || found === undefined) return quote.section;
+  if (outlines === undefined || found === undefined)
+    return heading ?? quote.section;
   const { source, stretch } = found;
-  const { at } = quote;
   return [
     ...(outlines.length > 1 ? [shortTitle(source)] : []),
-    stretch,
-    ...(at === undefined
+    heading ?? stretch,
+    ...(at === undefined || "heading" in at
       ? []
       : [
           "page" in at

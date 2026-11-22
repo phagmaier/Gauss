@@ -54,12 +54,13 @@ export const SectionPlace = z.union([
 export type SectionPlace = z.infer<typeof SectionPlace>;
 
 /**
- * Where a quote starts (task 4.9): in a PDF its page, counted from 1; else
- * its paragraph, numbered within its heading's stretch as `SectionPlace`'s.
+ * Where a quote starts: its PDF page (counted from 1), its paragraph
+ * within the stretch, or a heading that is outside its numbered paragraphs.
  */
 export const QuoteStart = z.union([
   z.strictObject({ page: Count }),
   z.strictObject({ paragraph: Count }),
+  z.strictObject({ heading: z.string().min(1) }),
 ]);
 export type QuoteStart = z.infer<typeof QuoteStart>;
 
@@ -76,6 +77,16 @@ export const OutlineSection = z.strictObject({
    * cited at its paragraph. Absent from sources converted before version 6.
    */
   paragraphStarts: z.array(Count).optional(),
+  /** Non-paragraph headings in this file, with section-relative code-point spans. */
+  headings: z
+    .array(
+      z.strictObject({
+        start: z.number().int().nonnegative(),
+        end: Count,
+        title: z.string().min(1),
+      }),
+    )
+    .optional(),
   /**
    * For a stretch cut into parts at the size limit: which part this is. The
    * parts sit in their stretch's heading, or at the top for the text before
@@ -229,11 +240,11 @@ export interface PageMarker {
   end: number;
 }
 
-/** The page markers in a section's text, in order. */
+/** The PDF's inserted page markers, excluding literal comments escaped by the converter. */
 export function pageMarkers(text: string): PageMarker[] {
   return [
     ...text.matchAll(
-      /<!-- page ([1-9][0-9]*)(?: label "[^"]*")?( math)?( images)? -->/g,
+      /(?<!\\)<!-- page ([1-9][0-9]*)(?: label "[^"]*")?( math)?( images)? -->/g,
     ),
   ].map((match) => ({
     page: Number(match[1]),

@@ -369,6 +369,11 @@ export interface DataRoot {
    * section.
    */
   readSection(id: string, ref: SectionRef): Promise<string | undefined>;
+  /** The paths of the course's named section files, for a reader in a worker. */
+  sourceSectionFiles(
+    id: string,
+    refs: Iterable<SectionRef>,
+  ): Promise<ReadonlyMap<SectionRef, string>>;
   /**
    * The PNG image of a page, counted from 1, of one of the course's PDF
    * sources, kept in its `pages/<page>.png` once rendered. With none kept,
@@ -769,6 +774,14 @@ export function openDataRoot(options: {
   function courseFile(id: string, name: string): string {
     if (!Slug.safeParse(id).success) throw new Error(noCourse(id));
     return join(courses, id, name);
+  }
+
+  function sectionFile(id: string, ref: SectionRef): string {
+    const [sourceId = "", sectionId = ""] = SectionRef.parse(ref).split("/");
+    return courseFile(
+      id,
+      join("sources", sourceId, "sections", `${sectionId}.md`),
+    );
   }
 
   /** The intake's folder in uploads/, made if it is missing. */
@@ -1546,13 +1559,14 @@ export function openDataRoot(options: {
 
     async readSection(id, ref) {
       await existingCourse(id);
-      const [sourceId = "", sectionId = ""] = SectionRef.parse(ref).split("/");
-      return readFileText(
-        courseFile(
-          id,
-          join("sources", sourceId, "sections", `${sectionId}.md`),
-        ),
-      );
+      return readFileText(sectionFile(id, ref));
+    },
+
+    async sourceSectionFiles(id, refs) {
+      await existingCourse(id);
+      const files = new Map<SectionRef, string>();
+      for (const ref of refs) files.set(ref, resolve(sectionFile(id, ref)));
+      return files;
     },
 
     async pageImage(id, sourceId, page, render) {

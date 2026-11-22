@@ -46,7 +46,7 @@ def section_files(folder):
     return {id: (folder / "sections" / f"{id}.md").read_text(encoding="utf-8") for id in sections}
 
 
-def section(id, title, text, first, last, part=None, starts=()):
+def section(id, title, text, first, last, part=None, starts=(), headings=()):
     """An outline's section entry for a section file holding `text`, its later paragraphs starting with `starts`."""
     assert len(starts) == last - first
     entry = {
@@ -56,6 +56,10 @@ def section(id, title, text, first, last, part=None, starts=()):
         "place": {"paragraphs": {"first": first, "last": last}},
         "paragraphStarts": [text.index(words) for words in starts],
     }
+    if headings:
+        entry["headings"] = [
+            {"start": text.index(raw), "end": text.index(raw) + len(raw), "title": name} for raw, name in headings
+        ]
     if part is not None:
         entry["part"] = {"number": part[0], "of": part[1]}
     return entry
@@ -107,14 +111,18 @@ def test_headings_nest_three_deep_and_a_heading_s_text_before_its_first_subheadi
     assert written["entries"] == [
         heading(
             "Phenomenology",
-            section("s1", "Phenomenology", texts[0], 1, 1),
+            section("s1", "Phenomenology", texts[0], 1, 1, headings=(("# Phenomenology\n", "Phenomenology"),)),
             heading(
                 "Consciousness",
-                section("s2", "Consciousness", texts[1], 1, 1),
-                section("s3", "Sense-certainty", texts[2], 1, 2, starts=("Second paragraph",)),
-                section("s4", "Perception, or the Thing", texts[3], 1, 1),
+                section("s2", "Consciousness", texts[1], 1, 1,
+                        headings=(("Consciousness\n-------------\n", "Consciousness"),)),  # fmt: skip
+                section("s3", "Sense-certainty", texts[2], 1, 2, starts=("Second paragraph",),
+                        headings=(("### Sense-certainty\n", "Sense-certainty"),)),  # fmt: skip
+                section("s4", "Perception, or the Thing", texts[3], 1, 1,
+                        headings=(("### Perception, or *the Thing*\n", "Perception, or the Thing"),)),  # fmt: skip
             ),
-            section("s5", "Self-consciousness", texts[4], 1, 1),
+            section("s5", "Self-consciousness", texts[4], 1, 1,
+                    headings=(("## Self-consciousness\n", "Self-consciousness"),)),  # fmt: skip
         )
     ]
     assert list(section_files(folder).values()) == texts
@@ -127,17 +135,29 @@ def test_each_section_says_where_its_paragraphs_after_the_first_start(tmp_path):
     book = "# Notes\nFirst line.\n\n- one item\n- another\n\n> A quote.\n"
     _, folder = run(tmp_path, "notes.md", book)
 
-    assert outline(folder)["entries"] == [section("s1", "Notes", book, 1, 4, starts=("- one", "- another", "> A"))]
+    assert outline(folder)["entries"] == [
+        section("s1", "Notes", book, 1, 4, starts=("- one", "- another", "> A"), headings=(("# Notes\n", "Notes"),))
+    ]
 
 
 def test_a_heading_with_no_text_of_its_own_goes_into_the_next_section_or_else_the_last(tmp_path):
-    book = "# Book\n\n## Part One\n\n### Chapter 1\n\nText one.\n\n# Appendix\n"
+    book = "# Book\n\n## Part One\n\n### Chapter 1\n\nText 🐈.\n\n# Appendix\n"
     _, folder = run(tmp_path, "book.md", book)
 
     written = outline(folder)
     assert written["title"] == "book"  # two top headings: its file's name
     assert written["entries"] == [
-        heading("Book", heading("Part One", section("s1", "Chapter 1", book, 1, 1))),
+        heading(
+            "Book",
+            heading(
+                "Part One",
+                section(
+                    "s1", "Chapter 1", book, 1, 1,
+                    headings=(("# Book\n", "Book"), ("## Part One\n", "Part One"),
+                              ("### Chapter 1\n", "Chapter 1"), ("# Appendix\n", "Appendix")),
+                ),  # fmt: skip
+            ),
+        ),
         heading("Appendix"),
     ]
 
@@ -147,7 +167,7 @@ def test_text_before_the_first_heading_is_a_section_under_the_source_s_title(tmp
 
     assert outline(folder)["entries"] == [
         section("s1", "notes", "Before any heading.\n\n", 1, 1),
-        section("s2", "Chapter", "# Chapter\n\nText.\n", 1, 1),
+        section("s2", "Chapter", "# Chapter\n\nText.\n", 1, 1, headings=(("# Chapter\n", "Chapter"),)),
     ]
 
 
@@ -274,9 +294,10 @@ def test_the_parts_of_a_heading_s_stretch_sit_under_it_and_number_its_paragraphs
     assert outline(folder)["entries"] == [
         heading(
             "Long",
-            section("s1", "Long (part 1 of 2)", part_1, 1, 2, part=(1, 2), starts=("P02",)),
+            section("s1", "Long (part 1 of 2)", part_1, 1, 2, part=(1, 2), starts=("P02",),
+                    headings=(("# Long\n", "Long"),)),  # fmt: skip
             section("s2", "Long (part 2 of 2)", texts[2], 3, 3, part=(2, 2)),
-            section("s3", "Next", "## Next\n\nShort.\n", 1, 1),
+            section("s3", "Next", "## Next\n\nShort.\n", 1, 1, headings=(("## Next\n", "Next"),)),
         )
     ]
 
@@ -318,7 +339,8 @@ def test_a_fenced_block_is_never_cut_and_holds_no_heading(tmp_path):
     assert outline(folder)["entries"] == [
         heading(
             "Code",
-            section("s1", "Code (part 1 of 3)", "# Code\n\nIntro paragraph.\n\n", 1, 1, part=(1, 3)),
+            section("s1", "Code (part 1 of 3)", "# Code\n\nIntro paragraph.\n\n", 1, 1, part=(1, 3),
+                    headings=(("# Code\n", "Code"),)),  # fmt: skip
             section("s2", "Code (part 2 of 3)", fence + "\n", 2, 2, part=(2, 3)),
             section("s3", "Code (part 3 of 3)", "After the code.\n", 3, 3, part=(3, 3)),
         )

@@ -116,6 +116,11 @@ test("a quote is cited by the stretch it starts in, never Gauss's part, then its
     quoteCitation({ section: "on-liberty/s1", at: { paragraph: 12 } }, [ESSAY]),
   ).toBe("Chapter I. Introductory, ¶ 12");
   expect(
+    quoteCitation({ section: "on-liberty/s1", at: { heading: "On Liberty" } }, [
+      ESSAY,
+    ]),
+  ).toBe("On Liberty");
+  expect(
     quoteCitation({ section: "phenomenology/s1", at: { page: 1 } }, [
       ESSAY,
       BOOK,

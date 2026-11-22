@@ -74,7 +74,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from markdown_it import MarkdownIt
 
-CONVERTER_VERSION = 6  # raised when the same original would give other files
+CONVERTER_VERSION = 7  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text (decisions.md, "Sources")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
@@ -87,6 +87,7 @@ _BLANK = re.compile(r"[ \t]*")
 _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 _LEAF_BLOCKS = {"heading_open", "paragraph_open", "fence", "code_block", "html_block", "hr"}
 _SENTENCE_END = re.compile(r"[.!?…][\"'”’»)\]]*\s+")
+_PAGE_OPENER = "<!-- page "
 _SPACE = re.compile(r"\s+")
 
 
@@ -118,6 +119,7 @@ class Heading:
     title: str
     start: int  # where the heading's lines start in the text
     bookmark: "_Bookmark | _TocEntry | None" = None  # its place in a PDF's bookmarks or an EPUB's contents
+    end: int | None = None  # after the heading's final LF; not needed for PDF headings
 
 
 @dataclass(frozen=True)
@@ -280,7 +282,7 @@ def _markdown_blocks(text):
             blocks.extend(_text_blocks(text, previous, start))
         if token.type == "heading_open" and token.level == 0:
             title = _plain(tokens[index + 1].content, env)
-            blocks.append(Heading(int(token.tag[1:]), title, start))
+            blocks.append(Heading(int(token.tag[1:]), title, start, end=end))
         else:
             blocks.append(Paragraph(start, end, whole=token.type == "fence"))
         previous = end
@@ -983,7 +985,7 @@ class _PdfWriter:
         self.used = Counter()
         if any(isinstance(part, _Ref) for line in printed for part in line.parts):
             title = " ".join(self._render(line)[0] for line in printed)
-        self._emit("#" * min(level, 6) + " " + title + "\n")
+        self._emit("#" * min(level, 6) + " " + _escape_page_openers(title) + "\n")
         self._definitions()
         self._emit("\n")
 
@@ -1018,15 +1020,11 @@ class _PdfWriter:
         if self.paragraph is None or self.starts[id(line)]:
             self._close()
             self.paragraph_start = self._markers()
-            text, note = self._render(line)
-            # A line starting so would be a heading, a quote or HTML.
-            escape = text.startswith(("#", ">", "<"))
-            self.paragraph = "\\" + text if escape else text
+            self.paragraph, self.note_start = self._render(line)
             if self.paragraph_start < self.length:
                 first_space = self.paragraph.find(" ")
                 word_end = len(self.paragraph) if first_space < 0 else first_space
                 self._protect(self.paragraph_start, self.length + word_end)
-            self.note_start = note + escape if note is not None else None
             return
         following, note = self._render(line)
         joined, at = self._join(self.paragraph, following)
@@ -1073,20 +1071,57 @@ class _PdfWriter:
     def _protect(self, start, end):
         """Adds an indivisible span, coalescing any overlapping spans at the end."""
         while self.protected and self.protected[-1][1] > start:
-            start = min(start, self.protected.pop()[0])
+            previous_start, previous_end = self.protected.pop()
+            start, end = min(start, previous_start), max(end, previous_end)
         self.protected.append((start, end))
 
     def _close(self):
         if self.paragraph is None:
             return
+        origin = self.length
+        # Do this after joining lines, which can itself create a literal opener.
+        # Generated inline markers are already recorded at their exact offsets.
+        real = {offset - origin for offset, _ in self.inline}
+        literal = [match.start() for match in re.finditer(_PAGE_OPENER, self.paragraph) if match.start() not in real]
+        escapes = literal
+        # Other leading Markdown metacharacters still need protection, but
+        # not a second slash for a literal opener at the start.
+        if self.paragraph.startswith(("#", ">", "<")) and (not literal or literal[0] != 0):
+            escapes = [0, *literal]
+        guards = []
+        if escapes:
+
+            def offset(at):
+                return at + bisect_left(escapes, at)
+
+            pieces, previous = [], 0
+            for at in escapes:
+                pieces.extend((self.paragraph[previous:at], "\\"))
+                previous = at
+            pieces.append(self.paragraph[previous:])
+            self.paragraph = "".join(pieces)
+            self.inline = [(origin + offset(at - origin), page) for at, page in self.inline]
+            self.protected = [
+                (origin + offset(start - origin), origin + offset(end - origin)) for start, end in self.protected
+            ]
+            if self.note_start is not None:
+                self.note_start = offset(self.note_start)
+            for at in literal:
+                start = offset(at)
+                while start > 0 and self.paragraph[start - 1] == "\\":
+                    start -= 1
+                guards.append((origin + start, origin + offset(at + len(_PAGE_OPENER))))
         self.marks.extend(self.inline)
         self.inline = []
-        origin = self.length
         self._emit(self.paragraph + "\n")
         self._definitions()
         if self.note_start is not None:
             word_start = self.paragraph.rfind(" ", 0, self.note_start) + 1
             self._protect(origin + word_start, self.length)
+        if guards:
+            protected, self.protected = sorted(self.protected + guards), []
+            for start, end in protected:
+                self._protect(start, end)
         self.blocks.append(Paragraph(self.paragraph_start, self.length, protected=tuple(self.protected)))
         self.protected = []
         self.note_start = None
@@ -1095,7 +1130,7 @@ class _PdfWriter:
 
     def _definitions(self):
         for label, note in self.notes:
-            self._emit(f"\n[^{label}]: {self._note_text(note)}\n")
+            self._emit(f"\n[^{label}]: {_escape_page_openers(self._note_text(note))}\n")
         self.notes = []
 
     def _note_text(self, lines):
@@ -1111,6 +1146,10 @@ class _PdfWriter:
             following = "".join(part if isinstance(part, str) else part.label for part in line.parts).strip()
             text = self._join(text, following)[0]
         return " ".join(text.split())
+
+
+def _escape_page_openers(text):
+    return text.replace(_PAGE_OPENER, "\\" + _PAGE_OPENER)
 
 
 def render_page(original, number, png):
@@ -2218,7 +2257,7 @@ class _EpubWriter:
                 if out:
                     out.append("\n")
                     length += 1
-                blocks.append(Heading(entry.level, entry.title, length, entry))
+                blocks.append(Heading(entry.level, entry.title, length, entry, length + len(heading)))
                 out.append(heading)
                 length += len(heading)
                 before = note = None
@@ -2439,6 +2478,8 @@ def _outline(text, blocks, title, limit, place=_paragraph_place):
     assert with_text[0].start == 0
 
     sections, cut = {}, []
+    headings = iter(block for block in blocks if isinstance(block, Heading) and block.end is not None)
+    next_heading = next(headings, None)
     for stretch in with_text:
         name = stretch.heading.title if stretch.heading else title
         parts = _cut(text, stretch, limit)
@@ -2457,6 +2498,17 @@ def _outline(text, blocks, title, limit, place=_paragraph_place):
                 # Where each paragraph after its first starts, in its text: a quote's citation counts them.
                 entry["paragraphStarts"] = [paragraph.start - start for paragraph in stretch.paragraphs[first:last]]
                 assert all(0 < offset < end - start for offset in entry["paragraphStarts"])
+                spans = []
+                while next_heading is not None and next_heading.start < end:
+                    assert start <= next_heading.start < next_heading.end <= end
+                    spans.append({
+                        "start": next_heading.start - start,
+                        "end": next_heading.end - start,
+                        "title": next_heading.title,
+                    })
+                    next_heading = next(headings, None)
+                if spans:
+                    entry["headings"] = spans
             if len(parts) > 1:
                 entry["part"] = {"number": number, "of": len(parts)}
             stretch.sections.append(entry)

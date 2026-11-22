@@ -81,8 +81,9 @@ specific “Done when” checks.
     place (`UnitList`'s `sources`, `useCourseSources`,
     `GET /api/courses/<id>/sources`). A quote's event (`source_quoted`)
     names the section where it starts and holds the source's words, not
-    offsets: mark the passage by matching them in that section's text with
-    `src/shared/source-quote.ts`. On `pnpm dev:fake`, "/quote <words>" in a
+    offsets. Match in that section and its successors in reading order
+    within the same source, constraining the match to start in the named
+    section. On `pnpm dev:fake`, "/quote <words>" in a
     message has the scripted tutor quote them.
   - The dev seed's source course gains a small PDF source, written with
     reportlab (a development dependency) and converted as the seed's

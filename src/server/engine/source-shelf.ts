@@ -4,9 +4,9 @@
 // engine's sandbox the first time it is asked for and kept in the source's
 // pages/ (DataRoot.pageImage). Each read and each page looked at is shown in
 // the thread. Neither depends on the unit's phase. And the passages it
-// quotes with quote_source (task 4.9), each looked for in the sources'
-// whole text (`findQuote`), read once for the chat, and shown in the thread
-// when found, as the unit's chat allows (`QuoteDesk`).
+// quotes with quote_source (task 4.9), looked for in a shared course index
+// off the server thread and shown when found, as the unit's chat allows
+// (`QuoteDesk`).
 
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";
@@ -16,16 +16,11 @@ import {
   type SectionRef,
   sectionsByRef,
 } from "../../shared/source.ts";
-import {
-  findQuote,
-  QUOTE_NOT_FOUND,
-  type QuotableSource,
-  quotableSource,
-  readingOrder,
-} from "../../shared/source-quote.ts";
+import { QUOTE_NOT_FOUND } from "../../shared/source-quote.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import type { SourceShelf } from "../tools/sources.ts";
 import type { SourceConverter } from "./source-convert.ts";
+import { findCourseQuote } from "./source-quote-index.ts";
 import {
   formatText,
   missingSection,
@@ -54,6 +49,7 @@ export interface QuoteDesk {
 export function createSourceShelf(options: {
   dataRoot: DataRoot;
   courseId: Slug;
+  courseInstance: string | undefined;
   /** The course's sources, which do not change once it has units. */
   sources: readonly Outline[];
   /** Renders pages not kept yet; none when nothing can be rendered. */
@@ -62,8 +58,23 @@ export function createSourceShelf(options: {
   emit(event: PageEvent): void;
   quotes: QuoteDesk;
 }): SourceShelf {
-  const { dataRoot, courseId, sources, converter, emit, quotes } = options;
+  const {
+    dataRoot,
+    courseId,
+    courseInstance,
+    sources,
+    converter,
+    emit,
+    quotes,
+  } = options;
   const byRef = sectionsByRef(sources);
+  const quoteCourse = {
+    dataRoot,
+    courseId,
+    courseInstance,
+    sources,
+    sections: byRef,
+  };
   const sourceIds = sources.map((s) => `"${s.id}"`).join(", ");
 
   async function sectionFile(ref: SectionRef): Promise<string> {
@@ -72,31 +83,6 @@ export function createSourceShelf(options: {
       throw new Error(`The file of the section "${ref}" is missing.`);
     }
     return text;
-  }
-
-  /** The sources' whole texts, read at the first quote and kept for the chat. */
-  let searching: Promise<QuotableSource[]> | undefined;
-  function searched(): Promise<QuotableSource[]> {
-    if (searching !== undefined) return searching;
-    const reading = Promise.all(
-      sources.map(async (source) =>
-        quotableSource(
-          source,
-          await Promise.all(
-            readingOrder(source).map(async (ref) => ({
-              ref,
-              text: await sectionFile(ref),
-            })),
-          ),
-        ),
-      ),
-    );
-    searching = reading;
-    // A failed read is tried again at the next quote.
-    reading.catch(() => {
-      if (searching === reading) searching = undefined;
-    });
-    return reading;
   }
 
   /** What the page's marker says its text lost; nothing when no section carries it. */
@@ -221,12 +207,16 @@ export function createSourceShelf(options: {
       }
       const closed = await quotes.closed();
       if (closed !== undefined) return { refused: closed };
-      const texts = await searched();
+      const found = await findCourseQuote(
+        quoteCourse,
+        text,
+        () => ({
+          ...(section === undefined ? {} : { section }),
+          segment: quotes.segmentSections(),
+        }),
+        signal,
+      );
       signal?.throwIfAborted();
-      const found = findQuote(text, texts, {
-        ...(section === undefined ? {} : { section }),
-        segment: quotes.segmentSections(),
-      });
       if (found === undefined) return { refused: QUOTE_NOT_FOUND };
       const where = byRef.get(found.section);
       if (where === undefined)
@@ -245,12 +235,14 @@ export function createSourceShelf(options: {
       const start =
         at === undefined
           ? ""
-          : `, starting at ${placeText(
-              "page" in at
-                ? { pages: { first: at.page, last: at.page } }
-                : { paragraphs: { first: at.paragraph, last: at.paragraph } },
-              where.source,
-            )}`;
+          : "heading" in at
+            ? `, starting at the heading ${JSON.stringify(at.heading)}`
+            : `, starting at ${placeText(
+                "page" in at
+                  ? { pages: { first: at.page, last: at.page } }
+                  : { paragraphs: { first: at.paragraph, last: at.paragraph } },
+                where.source,
+              )}`;
       return {
         text:
           "Shown to the learner in the source's own words, with its " +

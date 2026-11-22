@@ -5,10 +5,10 @@
 // refused when the sources lack the passage, and while a question of the
 // unit is open, as an aid is. The tutor is the fake backend.
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CurriculumProposal, Unit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -26,6 +26,7 @@ import { placeTestSource } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
+import { createSourceShelf, type SourceQuoted } from "./source-shelf.ts";
 import { createUnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 
@@ -180,6 +181,120 @@ function said(events: readonly PageEvent[]): unknown[] {
     e.type === "tutor_text" || e.type === "source_quoted" ? [e] : [],
   );
 }
+
+async function shelfFor(root: DataRoot, id: string) {
+  const shown: SourceQuoted[] = [];
+  const shelf = createSourceShelf({
+    dataRoot: root,
+    courseId: id,
+    courseInstance: (await root.readCourse(id))?.course.instance,
+    sources: await root.readSources(id),
+    converter: undefined,
+    emit: () => {},
+    quotes: {
+      closed: async () => undefined,
+      show: async (event) => {
+        shown.push(event);
+        return undefined;
+      },
+      segmentSections: () => [],
+    },
+  });
+  return { shelf, shown };
+}
+
+test("concurrent shelves share one course index, but a recreated course does not", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const [{ shelf: first, shown }, { shelf: second }] = await Promise.all([
+    shelfFor(root, id),
+    shelfFor(root, id),
+  ]);
+  const paths = vi.spyOn(root, "sourceSectionFiles");
+  const passage = { text: "it is essentially a result" };
+  const result = await Promise.all([
+    first.quote(passage),
+    second.quote({ ...passage, section: "phenomenology/s2" }),
+  ]);
+  expect(result[0]).toEqual({
+    text: expect.stringContaining("starting at page 2 (printed 10)"),
+  });
+  expect(result[1]).toEqual({
+    text: expect.stringContaining("starting at page 3 (printed 11)"),
+  });
+  expect(await second.quote(passage)).toEqual(result[0]);
+  expect(paths).toHaveBeenCalledTimes(1);
+  expect(shown).toEqual([
+    {
+      type: "source_quoted",
+      section: "phenomenology/s1",
+      text: "it is essentially a result",
+      at: { page: 2 },
+    },
+  ]);
+
+  await root.deleteCourse(id);
+  const replacement = await root.createCourse({ title: CURRICULUM.title });
+  expect(replacement.id).toBe(id);
+  await placeTestSource(root, dir, id, BOOK, { s1: "", s2: "", s3: S3 });
+  const { shelf, shown: replacementShown } = await shelfFor(root, id);
+  expect(await shelf.quote(passage)).toEqual({ refused: QUOTE_NOT_FOUND });
+  expect(replacementShown).toEqual([]);
+  expect(paths).toHaveBeenCalledTimes(2);
+});
+
+test("a failed course index can be retried; an abandoned queued quote does not read its course", async () => {
+  const root = openDataRoot({ path: dir });
+  const id = await makeCourse(root);
+  const { shelf, shown } = await shelfFor(root, id);
+  const { id: otherId } = await root.createCourse({ title: "Other course" });
+  await placeTestSource(root, dir, otherId, BOOK, { s1: S1, s2: S2, s3: S3 });
+  const other = await shelfFor(root, otherId);
+  const ref = "phenomenology/s3";
+  const file = (await root.sourceSectionFiles(id, [ref])).get(ref);
+  if (file === undefined) throw new Error("The test section has no path.");
+  const entered = Promise.withResolvers<void>();
+  const proceed = Promise.withResolvers<void>();
+  const sourceSectionFiles = root.sourceSectionFiles;
+  const paths = vi
+    .spyOn(root, "sourceSectionFiles")
+    .mockImplementationOnce(async (...args) => {
+      entered.resolve();
+      await proceed.promise;
+      return sourceSectionFiles(...args);
+    });
+  const passage = { text: "knowing is a test" };
+
+  await rename(file, `${file}.away`);
+  const failed = expect(shelf.quote(passage)).rejects.toThrow(
+    `The file of the section "${ref}" is missing.`,
+  );
+  await entered.promise;
+  try {
+    const stop = new AbortController();
+    const reason = new Error("Turn stopped");
+    const abandoned = expect(
+      other.shelf.quote(passage, stop.signal),
+    ).rejects.toBe(reason);
+    await Promise.resolve(); // Let the authorized quote enter the queue.
+    stop.abort(reason);
+    await abandoned;
+  } finally {
+    proceed.resolve();
+    try {
+      await failed;
+    } finally {
+      await rename(`${file}.away`, file);
+    }
+  }
+
+  expect(await shelf.quote(passage)).toEqual({
+    text: expect.stringContaining("starting at page 4 (printed 12)"),
+  });
+  expect(paths.mock.calls.map(([course]) => course)).toEqual([id, id]);
+  expect(shown).toHaveLength(1);
+  expect(other.shown).toEqual([]);
+});
 
 test("a quote across a cut is shown where the tutor made it, in the source's words, cited where it starts, and kept in the transcript for after a restart", async () => {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });

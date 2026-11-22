@@ -314,8 +314,137 @@ test("a paragraph is not cited from an outline converted before paragraphs' star
   expect(
     findQuote("His own good is not a sufficient warrant.", [
       quotable(old, { "on-liberty/s1": LIBERTY_TEXT }),
-    ])?.at,
-  ).toBeUndefined();
+    ]),
+  ).toEqual({
+    section: "on-liberty/s1",
+    text: "His own good is not a sufficient warrant.",
+    at: undefined,
+  });
+});
+
+function oneSection(format: Outline["format"], text: string): QuotableSource {
+  const source = outline({
+    id: "words",
+    format,
+    converter: 7,
+    ...(format === "pdf" ? { pages: { count: 2, blank: [] } } : {}),
+    entries: [
+      {
+        id: "s1",
+        title: "Words",
+        size: [...text].length,
+        ...(format === "pdf"
+          ? { place: { pages: { first: 1, last: 2 } } }
+          : {
+              place: { paragraphs: { first: 1, last: 1 } },
+              paragraphStarts: [],
+            }),
+      },
+    ],
+  });
+  return quotable(source, { "words/s1": text });
+}
+
+test("printed page comments remain visible; only real PDF markers change the page", () => {
+  const literal = "Start here <!-- page 2 --> then finish this line.";
+  const pdf = oneSection(
+    "pdf",
+    `<!-- page 1 -->\n${literal.replace("<", "\\<")}\n\n<!-- page 2 -->\nContinue until the end.\n`,
+  );
+  const epub = oneSection("epub", `${literal.replace("<", "\\<")}\n`);
+  for (const book of [pdf, epub]) {
+    expect(findQuote(literal, [book])?.text).toBe(literal);
+    expect(
+      findQuote("Start here then finish this line.", [book]),
+    ).toBeUndefined();
+  }
+  expect(findQuote("then finish this line.", [pdf])?.at).toEqual({ page: 1 });
+  expect(findQuote("Continue until the end.", [pdf])?.at).toEqual({ page: 2 });
+  expect(
+    findQuote(
+      "then finish this line. <!-- page 2 --> Continue until the end.",
+      [pdf],
+    )?.text,
+  ).toBe("then finish this line.\n\nContinue until the end.");
+});
+
+test("a soft hyphenated line wrap does not create a word boundary or extra words", () => {
+  const book = oneSection(
+    "text",
+    "Come see the trans-\nformation changes everything.\n",
+  );
+  expect(findQuote("formation changes everything.", [book])).toBeUndefined();
+  expect(findQuote("Come see the trans", [book])).toBeUndefined();
+  expect(
+    findQuote("The transformation changes everything.", [book])?.text,
+  ).toBe("the trans-formation changes everything.");
+  expect(quoteTextProblem("pre-\npro-\ncessing.")).toContain(
+    "fewer than 3 words",
+  );
+});
+
+test("links and list marks are not words, but printed stars and code punctuation are", () => {
+  const markdown = oneSection(
+    "markdown",
+    "Take [the long way](https://example.org) home.\n\nWrite a*b to multiply and `a_b` to index.\n",
+  );
+  expect(findQuote("Take the long way home.", [markdown])?.text).toBe(
+    "Take the long way home.",
+  );
+  expect(
+    findQuote("Write a*b to multiply and a_b to index.", [markdown])?.text,
+  ).toBe("Write a*b to multiply and a_b to index.");
+  const epub = oneSection(
+    "epub",
+    "- Choose the first option.\n\n- Choose the second option.\n",
+  );
+  expect(
+    findQuote("Choose the first option. Choose the second option.", [epub])
+      ?.text,
+  ).toBe("Choose the first option.\n\nChoose the second option.");
+});
+
+test("a carried heading is cited as a heading, not the child section's first paragraph", () => {
+  const text =
+    "# 😀 Parent Chapter Title\n\n## Child Chapter Title\n\nTake the long way home.\n";
+  const source = outline({
+    id: "words",
+    format: "markdown",
+    converter: 7,
+    entries: [
+      {
+        id: "s1",
+        title: "Child Chapter Title",
+        size: [...text].length,
+        place: { paragraphs: { first: 1, last: 1 } },
+        paragraphStarts: [],
+        headings: [
+          { start: 0, end: 25, title: "😀 Parent Chapter Title" },
+          { start: 26, end: 49, title: "Child Chapter Title" },
+        ],
+      },
+    ],
+  });
+  const book = quotable(source, { "words/s1": text });
+  expect(findQuote("Parent Chapter Title", [book])?.at).toEqual({
+    heading: "😀 Parent Chapter Title",
+  });
+  expect(findQuote("Take the long way home.", [book])?.at).toEqual({
+    paragraph: 1,
+  });
+});
+
+test("paired single quotes can wrap a quote and Unicode final sigma folds with other sigma", () => {
+  const book = oneSection(
+    "text",
+    "The true is the whole. ΟΔΥΣΣΕΎΣ comes home.\n",
+  );
+  expect(findQuote("‘The true is the whole.’", [book])?.text).toBe(
+    "The true is the whole.",
+  );
+  expect(findQuote("οδυσσεύς comes home.", [book])?.text).toBe(
+    "ΟΔΥΣΣΕΎΣ comes home.",
+  );
 });
 
 test("a passage is refused before it is looked for when it is too long, holds an ellipsis, or has fewer than three words", () => {
