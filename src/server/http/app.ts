@@ -67,6 +67,7 @@ import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { Notes } from "../engine/notes.ts";
 import {
+  NotRendered,
   renderSourcePage,
   type SourceConverter,
 } from "../engine/source-convert.ts";
@@ -230,19 +231,33 @@ export function createApp(options: {
         if (!/^[1-9][0-9]*$/.test(number))
           return c.json({ error: "No such page." }, 404);
         const page = Number(number);
-        const image = await dataRoot.pageImage(
-          home,
-          source,
-          page,
-          (original, png) =>
-            renderSourcePage(
-              options.converter,
-              original,
-              page,
-              png,
-              c.req.raw.signal,
-            ),
-        );
+        let image: Buffer<ArrayBuffer> | undefined;
+        try {
+          image = await dataRoot.pageImage(
+            home,
+            source,
+            page,
+            (original, png) =>
+              renderSourcePage(
+                options.converter,
+                original,
+                page,
+                png,
+                c.req.raw.signal,
+              ),
+          );
+        } catch (error) {
+          // Neither is the server's fault: a page that cannot be rendered
+          // here, as the tutor's `view_page` is told, or a reader who has
+          // turned to another page before this one came.
+          if (error instanceof NotRendered) {
+            return c.json({ error: error.message }, 503);
+          }
+          if (c.req.raw.signal.aborted) {
+            return c.json({ error: "The request was cancelled." }, 503);
+          }
+          throw error;
+        }
         return image === undefined
           ? c.json({ error: "No such page." }, 404)
           : c.body(image, 200, { "Content-Type": "image/png" });

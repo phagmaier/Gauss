@@ -196,16 +196,33 @@ export function findQuote(
   };
 }
 
-/** Raw UTF-16 span for a stored quote's already-verified words. Unlike the
- * tutor's search, a citation cannot fall back to a different start section. */
+/**
+ * Where a stored quote's words, which a search verified, are in the source,
+ * as a span of UTF-16 units. Unlike the tutor's search, a citation starts
+ * in its section or nowhere. `more`: text after the source's could change
+ * the answer, by ending the span inside a word or by holding the words' end.
+ */
 export function citedSpan(
   passage: string,
   quotable: QuotableSource,
   section: SectionRef,
-): { start: number; end: number } | undefined {
-  const key = keyOf(passage, markupOf(passage, "text").hidden, false).key;
+): { span: { start: number; end: number } | undefined; more: boolean } {
+  // The words are the source's already: a number on a line of its own is
+  // one of them, where in a passage typed from a page it is a line's number.
+  const { key } = keyOf(passage, new Uint8Array(passage.length), false);
   const match = bestMatch(key, [quotable], { section }, 1);
-  return match && { start: match.start, end: match.end };
+  if (match !== undefined) {
+    return {
+      span: { start: match.start, end: match.end },
+      more: match.end === quotable.text.length,
+    };
+  }
+  // Words that start in the section end within their own length of its end.
+  const end = quotable.sections.find((s) => s.ref === section)?.end;
+  const { from } = quotable.key;
+  let after = from.length;
+  while (after > 0 && (from[after - 1] ?? 0) >= (end ?? 0)) after -= 1;
+  return { span: undefined, more: from.length - after < key.length };
 }
 
 function withoutQuotePair(key: string): string | undefined {
@@ -384,7 +401,8 @@ type Kind = SourceFormat | "quote";
 
 const NUMBER_LINE = /(?:^|(?<=\n))[ \t]*[0-9]{1,4}[ \t]*(?:\n|$)/g;
 const PDF_NOTE = /^\[\^[^\]\s]+\]:[^\n]*(?:\n|$)/gm;
-const PDF_ESCAPE = /(?:^|(?<=\n))\\(?=[#><])|\\(?=<!-- page )/g;
+/** The backslashes the PDF conversion writes: before a line's leading mark, and before a printed page marker. */
+export const PDF_ESCAPE = /(?:^|(?<=\n))\\(?=[#><])|\\(?=<!-- page )/g;
 const REFERENCES = /\[\^[^\]\s]+\]/g;
 
 function markupOf(

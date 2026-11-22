@@ -1377,10 +1377,20 @@ part of the tutor's text, not a tool call or a record of reading.
 PDF page numbers in the margin open the image, including where the
 conversion marked a page as having lost math or images.
 
+A section's text is read as its format's conversion wrote it
+(`SYNTAX` in `src/web/SourceText.tsx`): a Markdown source as Markdown
+with math; an EPUB as Markdown without math, since the conversion escapes
+Markdown's marks but not a dollar sign; a PDF as its characters, with only
+headings, notes and the conversion's own backslashes as syntax (`pdfSyntax`
+in `src/web/source-reader.ts`); plain text as paragraphs. A link opens only
+a web or mail address.
+
 The reader requests an outline, a section's Markdown, or a PDF page PNG
 under `/api/courses/<id>/sources/<source id>` (under
 `/api/intakes/<id>/sources/<source id>` for waiting uploads).
-Page images share `view_page`'s on-demand render and cache.
+Page images share `view_page`'s on-demand render and cache; a page that
+cannot be rendered is answered 503 with the reason. The pane keeps each
+section's text it has fetched while it stays on a source.
 
 ### Planned: web search
 

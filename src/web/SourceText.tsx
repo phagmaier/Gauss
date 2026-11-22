@@ -5,9 +5,10 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
-import { unified } from "unified";
+import { type PluggableList, unified } from "unified";
 import { displayMathLines } from "../shared/display-math-lines.ts";
-import type { Margin, ReaderPart } from "./source-reader.ts";
+import { PDF_ESCAPE } from "../shared/source-quote.ts";
+import { type Margin, pdfSyntax, type ReaderPart } from "./source-reader.ts";
 
 const parser = unified().use(remarkParse).freeze();
 type MarkdownTree = ReturnType<typeof parser.parse>;
@@ -99,7 +100,8 @@ function displayedOffset(raw: string, value: string, boundary: number): number {
       const entity = /^&(?:#\d+|#x[\da-f]+|[a-z][\da-z]+);/i.exec(
         raw.slice(i),
       )?.[0];
-      if (entity) {
+      // In a PDF's text an entity is its own characters, shown as written.
+      if (entity && !value.startsWith(entity, visible)) {
         const paragraph = parser.parse(`x${entity}`).children[0];
         const node = paragraph?.type === "paragraph" && paragraph.children[0];
         const decoded = node && node.type === "text" && node.value.slice(1);
@@ -126,6 +128,25 @@ interface Site {
   margins: Margin[];
 }
 
+/**
+ * What each format's conversion writes, and no more: a dollar sign is math
+ * only in a Markdown source, and a PDF's text is its characters.
+ */
+const SYNTAX: Record<ReaderPart["format"], PluggableList> = {
+  markdown: [remarkGfm, remarkMath, displayMathLines, keepNotes],
+  epub: [remarkGfm, keepNotes],
+  pdf: [remarkGfm, pdfSyntax, keepNotes],
+  text: [],
+};
+
+function isMath(node: ElementContent): boolean {
+  return (
+    node.type === "element" &&
+    node.tagName === "code" &&
+    String(node.properties.className).includes("math")
+  );
+}
+
 /** Insert only trusted elements after parsing. An annotation never changes
  * how the original emphasis, links, code, math, or notes are parsed. */
 function annotations(part: ReaderPart) {
@@ -133,6 +154,12 @@ function annotations(part: ReaderPart) {
     const sites: Site[] = [];
     const remember = (node: ElementContent, start: number, end: number) =>
       sites.push({ node, start, end, margins: [] });
+    // The conversion's own backslashes are not the page's characters. Last
+    // first, so that taking one out moves none still to be found.
+    const escapes =
+      part.format === "pdf"
+        ? [...part.text.matchAll(PDF_ESCAPE)].map((m) => m.index).reverse()
+        : [];
     if (part.format === "text") {
       tree.children = [];
       for (const paragraph of part.text.matchAll(
@@ -152,10 +179,12 @@ function annotations(part: ReaderPart) {
             node.properties.id = `${part.prefix}footnotes`;
           if (node.properties.dataFootnoteRef)
             node.properties.ariaDescribedBy = [`${part.prefix}footnotes`];
+          // A display equation is its whole block, whose text KaTeX reads
+          // as TeX: a margin's label goes before the block, not into it.
           const atom =
             node.tagName === "img" ||
-            (node.tagName === "code" &&
-              String(node.properties.className).includes("math"));
+            isMath(node) ||
+            (node.tagName === "pre" && node.children.some(isMath));
           if (atom && start !== undefined && end !== undefined) {
             remember(node, start, end);
           } else {
@@ -167,6 +196,15 @@ function annotations(part: ReaderPart) {
           end !== undefined &&
           (node.position || parent?.tagName === "code")
         ) {
+          if (node.type === "text") {
+            const raw = part.text.slice(start, end);
+            for (const slash of escapes) {
+              if (slash < start || slash >= end) continue;
+              const at = displayedOffset(raw, node.value, slash - start);
+              if (node.value[at] === "\\")
+                node.value = node.value.slice(0, at) + node.value.slice(at + 1);
+            }
+          }
           remember(node, start, end);
         }
       };
@@ -258,7 +296,7 @@ export const SourceText = memo(function SourceText({
       }
     >
       <Markdown
-        remarkPlugins={[remarkGfm, remarkMath, displayMathLines, keepNotes]}
+        remarkPlugins={SYNTAX[part.format]}
         remarkRehypeOptions={{ clobberPrefix: part.prefix }}
         rehypePlugins={[
           [annotations, part],
@@ -266,14 +304,12 @@ export const SourceText = memo(function SourceText({
         ]}
         components={{
           a: ({ node: _, href, children, ...props }) =>
-            !href ? (
-              children
-            ) : href.startsWith("#") ? (
+            href?.startsWith(`#${part.prefix}`) ? (
               <a
                 {...props}
                 href={href}
                 onClick={(event) => {
-                  // Local footnote links should not write the app's URL or scroll the thread.
+                  // A note's link should not write the app's URL or scroll the thread.
                   event.preventDefault();
                   const to = document.getElementById(href.slice(1));
                   if (
@@ -288,10 +324,13 @@ export const SourceText = memo(function SourceText({
               >
                 {children}
               </a>
-            ) : (
+            ) : href !== undefined && /^(?:https?|mailto):/i.test(href) ? (
               <a {...props} href={href} target="_blank" rel="noreferrer">
                 {children}
               </a>
+            ) : (
+              // A link into the source's own file or folder leads nowhere here.
+              children
             ),
           img: ({ alt }) => alt ?? null,
           button: ({ node, ...props }) => (

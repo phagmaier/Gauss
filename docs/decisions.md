@@ -2742,6 +2742,15 @@ decisions" (2026-11-21). The design is `architecture.md` section 8.
   preserves the link across section cuts rather than renumbering the text.
   When an older conversion leaves multiple plausible external definitions,
   the reader leaves the reference unresolved.
+- **The reader reads a PDF's text as characters, and math only in
+  Markdown** (the agent's choice, from the review of the reader): a PDF's
+  conversion escapes nothing inside a line and `quote_source` matches its
+  text as characters, so read as Markdown `$5 … $10` became a formula and
+  `__init__` bold "init". Fixed in the reader, by turning Markdown's other
+  constructs off, rather than by escaping in the conversion, which would
+  leave sources already converted wrong and change what the tutor reads.
+  A literal backslash before a paragraph's leading `#`, `>` or `<` cannot
+  be told from the conversion's and is dropped, as the matcher drops it.
 
 **Sources in a course**
 

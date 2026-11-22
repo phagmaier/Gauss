@@ -5,7 +5,14 @@
 // intake's handling of sources on a converter of its own.
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,7 +37,10 @@ import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
 import { createNotes } from "../engine/notes.ts";
 import { type Sandbox, startSandbox } from "../engine/sandbox.ts";
-import { createSourceConverter } from "../engine/source-convert.ts";
+import {
+  createSourceConverter,
+  type SourceConverter,
+} from "../engine/source-convert.ts";
 import { createUnitChats } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import type { FileOpener } from "../open-file.ts";
@@ -65,7 +75,8 @@ afterEach(async () => {
 
 const ORIGIN = "http://localhost";
 
-function setUp(script: FakeTurn[] = []) {
+/** `pages` renders the reader's page images in place of the real converter. */
+function setUp(script: FakeTurn[] = [], pages?: SourceConverter) {
   const backend = createFakeBackend(script);
   const dataRoot = openDataRoot({ path: dir });
   const converter = createSourceConverter({ sandbox });
@@ -88,7 +99,7 @@ function setUp(script: FakeTurn[] = []) {
   });
   const app = createApp({
     dataRoot,
-    converter,
+    converter: pages ?? converter,
     intakes,
     plannings: createCoursePlannings({
       backend,
@@ -305,6 +316,67 @@ test("a PDF is browsable in its intake before and after the first proposal and i
     }
   }
   expect(await image(`${after}/pages/2`)).not.toEqual(pageOne);
+});
+
+test("a page that cannot be rendered, or whose reader has left, is answered without a server fault", async () => {
+  const pages = {
+    unavailable: "no sandbox on this machine" as string | undefined,
+    convert: createSourceConverter({ sandbox }).convert,
+    renderPage: vi.fn<SourceConverter["renderPage"]>(async () => ({
+      result: "failed",
+      reason: "the page is damaged",
+    })),
+  };
+  const setup = setUp([], pages);
+  const { id } = await setup.dataRoot.createCourse({ title: "Calculus" });
+  const folder = join(dir, "courses", id, "sources", "notes");
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, "original.pdf"), "never read by these renders");
+  await writeFile(
+    join(folder, "outline.json"),
+    JSON.stringify({
+      id: "notes",
+      title: "Notes",
+      file: "original.pdf",
+      name: "notes.pdf",
+      format: "pdf",
+      sha256: "a".repeat(64),
+      converter: 8,
+      limit: 20_000,
+      pages: { count: 1, blank: [] },
+      entries: [
+        {
+          id: "s1",
+          title: "Notes",
+          size: 1,
+          place: { pages: { first: 1, last: 1 } },
+        },
+      ],
+    } satisfies Outline),
+  );
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const url = `/api/courses/${id}/sources/notes/pages/1`;
+    const answer = async (init?: RequestInit) => {
+      const response = await setup.app.request(url, init);
+      return [response.status, await response.json()];
+    };
+    expect(await answer()).toEqual([
+      503,
+      { error: "Pages cannot be rendered here: no sandbox on this machine." },
+    ]);
+    pages.unavailable = undefined;
+    expect(await answer()).toEqual([
+      503,
+      { error: "The page could not be rendered: the page is damaged." },
+    ]);
+    expect(pages.renderPage).toHaveBeenCalledTimes(1);
+    expect((await answer({ signal: AbortSignal.abort() }))[0]).toBe(503);
+    expect(pages.renderPage).toHaveBeenCalledTimes(1);
+    expect(logged).not.toHaveBeenCalled();
+  } finally {
+    logged.mockRestore();
+  }
 });
 
 test("a file of a format Gauss does not read is refused by the converter, and its card says why", async () => {

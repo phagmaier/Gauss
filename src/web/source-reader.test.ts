@@ -4,7 +4,12 @@ import { expect, test } from "vitest";
 import type { Outline, OutlineSection } from "../shared/source.ts";
 import { orderedSections } from "../shared/source-quote.ts";
 import { SourceText } from "./SourceText.tsx";
-import { openSection, outlineRows, type ReaderPart } from "./source-reader.ts";
+import {
+  keptTexts,
+  openSection,
+  outlineRows,
+  type ReaderPart,
+} from "./source-reader.ts";
 
 function section(id: string, first = 1): OutlineSection {
   return {
@@ -168,6 +173,137 @@ test("a mid-page start inherits the marker and its loss flag; inline and escaped
   expect(html).toContain("lost images");
   expect(html).toContain("&lt;!-- page 99 --&gt;");
   expect(html).not.toContain('data-page="99"');
+});
+
+test("a display equation keeps its paragraph's number in the margin and its own TeX", async () => {
+  const text =
+    "# Integrals\n\nThe area is a triangle.\n\n$$\n\\int_0^1 x\\,dx\n$$\n\nSo it is one half.\n";
+  const source = book(
+    [
+      {
+        ...section("s1"),
+        headings: [{ start: 0, end: 12, title: "Integrals" }],
+        place: { paragraphs: { first: 1, last: 3 } },
+        paragraphStarts: [text.indexOf("$$"), text.indexOf("So it")],
+      },
+    ],
+    "markdown",
+  );
+  const html = render((await open(source, { s1: text }, "s1"))[0]);
+  expect(
+    [...html.matchAll(/class="reader-rail"><span>(¶ \d)</g)].map((m) => m[1]),
+  ).toEqual(["¶ 1", "¶ 2", "¶ 3"]);
+  expect(html).toContain(
+    '<annotation encoding="application/x-tex">\\int_0^1 x\\,dx</annotation>',
+  );
+});
+
+test("a PDF's text keeps the characters Markdown would read as emphasis, code, math or links", async () => {
+  const source = {
+    ...book(
+      [{ ...section("s1"), place: { pages: { first: 1, last: 1 } } }],
+      "pdf",
+    ),
+    pages: { count: 1, blank: [] },
+  };
+  // As `convert.py` writes a PDF: a heading, a note after its paragraph, and
+  // a backslash only before a paragraph's leading `#` and a printed marker.
+  const text =
+    "<!-- page 1 -->\n# Costs and Code\n\n" +
+    "A ticket costs $5 for children and $10 for adults.[^1] Call __init__ on *starred* `terms`, or write to a@b.example.\n\n" +
+    "[^1]: Twice ~~that~~ abroad.\n\n" +
+    "\\# is no heading and \\<!-- page 9 --> no page; a\\*b &amp; c stays as printed.\n";
+  const html = render((await open(source, { s1: text }, "s1"))[0]);
+  expect(html).toContain("Costs and Code</h1>");
+  expect(html).toContain("A ticket costs $5 for children and $10 for adults.");
+  expect(html).toContain(
+    "Call __init__ on *starred* `terms`, or write to a@b.example.",
+  );
+  expect(html).toContain("data-footnote-ref");
+  expect(html).toContain("Twice ~~that~~ abroad.");
+  expect(html).toContain(
+    "# is no heading and &lt;!-- page 9 --&gt; no page; a\\*b &amp;amp; c stays as printed.",
+  );
+  expect(html).not.toMatch(/katex|<strong>|<em>|<code>|<del>|mailto:/);
+  expect(
+    render(
+      (await open(source, { s1: text }, "s1", "Call __init__ on *starred*"))[0],
+    ),
+  ).toContain("<mark>Call __init__ on *starred*</mark>");
+});
+
+test("dollar signs are math in a Markdown source and money in an EPUB", async () => {
+  const texts = { s1: "It costs $5 here and $10 there.\n" };
+  const html = (format: Outline["format"]) =>
+    open(book([section("s1")], format), texts, "s1").then(([part]) =>
+      render(part),
+    );
+  expect(await html("markdown")).toContain("katex");
+  const epub = await html("epub");
+  expect(epub).toContain("It costs $5 here and $10 there.");
+  expect(epub).not.toContain("katex");
+});
+
+test("a Markdown source's link opens the web; one into its own file or folder is its words", async () => {
+  const text =
+    "See [the site](https://example.com/a), [a neighbour](other.md) and [the top](#top).\n";
+  const html = render(
+    (await open(book([section("s1")], "markdown"), { s1: text }, "s1"))[0],
+  );
+  expect(html).toContain('href="https://example.com/a"');
+  expect(html).toContain("the site</a>, a neighbour and the top.");
+  expect(html.match(/<a /g)).toHaveLength(1);
+});
+
+test("a quoted line that is only a number is marked with the lines around it", async () => {
+  const texts = { s1: "In the year\\\n12\\\nthe sum was known.\n" };
+  const html = render(
+    (
+      await open(book([section("s1")]), texts, "s1", "In the year\n12\nthe sum")
+    )[0],
+  );
+  const marked = [...html.matchAll(/<mark>(.*?)<\/mark>/gs)].map((m) => m[1]);
+  expect(marked).toEqual(["In the year", "12", "the sum"]);
+});
+
+test("a quote that cannot be found reads no further than its words could reach", async () => {
+  const source = book(
+    ["s1", "s2", "s3", "s4", "s5", "s6"].map((id) => section(id)),
+  );
+  const read: string[] = [];
+  const parts = await openSection(
+    source,
+    orderedSections(source),
+    "s1",
+    "words never written",
+    async (id) => {
+      read.push(id);
+      return `Section ${id} holds a sentence of its own.\n\n`;
+    },
+  );
+  expect(read).toEqual(["s1", "s2"]);
+  expect(parts.map((part) => [part.id, part.mark])).toEqual([
+    ["s1", undefined],
+  ]);
+});
+
+test("a section's text is fetched once while the pane stays on its source, and again after a failure", async () => {
+  const asked: string[] = [];
+  let failing = true;
+  const load = keptTexts(async (id) => {
+    asked.push(id);
+    if (id === "s2" && failing) {
+      failing = false;
+      throw new Error("503 Service Unavailable");
+    }
+    return `The text of ${id}.`;
+  });
+  const { signal } = new AbortController();
+  expect(await load("s1", signal)).toBe("The text of s1.");
+  expect(await load("s1", signal)).toBe("The text of s1.");
+  await expect(load("s2", signal)).rejects.toThrow("503");
+  expect(await load("s2", signal)).toBe("The text of s2.");
+  expect(asked).toEqual(["s1", "s2", "s2"]);
 });
 
 test("the nested outline opens only the branches containing reads and identifies every unit reading a section", () => {

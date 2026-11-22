@@ -14,10 +14,12 @@ import { SidePane } from "./Frame.tsx";
 import { SourceText } from "./SourceText.tsx";
 import { FORMAT_NAMES } from "./source-card.ts";
 import {
+  keptTexts,
   type OutlineRow,
   openSection,
   outlineRows,
   type ReaderPart,
+  type SectionRead,
 } from "./source-reader.ts";
 import type { SourceTarget } from "./source-target.ts";
 import "./source-pane.css";
@@ -37,19 +39,40 @@ export function SourcePane(props: Props) {
   const [opened, setOpened] = useState({ target: props.target, key: 0 });
   if (opened.target !== props.target)
     setOpened({ target: props.target, key: opened.key + 1 });
+  const url = `${props.base}/${encodeURIComponent(props.source.id)}`;
+  // Kept across the reader's views and reopenings, while the pane is open.
+  const load = useMemo(
+    () =>
+      keptTexts(async (id, signal) => {
+        const response = await fetch(
+          `${url}/sections/${encodeURIComponent(id)}`,
+          { signal },
+        );
+        if (!response.ok)
+          throw new Error(`${response.status} ${response.statusText}`);
+        return response.text();
+      }),
+    [url],
+  );
   return (
-    <Reader key={`${props.base}/${props.source.id}/${opened.key}`} {...props} />
+    <Reader key={`${url}/${opened.key}`} {...props} url={url} load={load} />
   );
 }
 
 const NO_UNITS: readonly Unit[] = [];
 
-function Reader({ base, source, units = NO_UNITS, target, onClose }: Props) {
+function Reader({
+  url,
+  load,
+  source,
+  units = NO_UNITS,
+  target,
+  onClose,
+}: Props & { url: string; load: SectionRead }) {
   const order = useMemo(() => orderedSections(source), [source]);
   const [view, setView] = useState(target);
   const [origin, setOrigin] = useState<SectionTarget>();
   const [backPage, setBackPage] = useState<number>();
-  const url = `${base}/${encodeURIComponent(source.id)}`;
   const index =
     view.kind === "section"
       ? order.findIndex((s) => s.id === view.section)
@@ -145,7 +168,7 @@ function Reader({ base, source, units = NO_UNITS, target, onClose }: Props) {
             key={view.section}
             target={view}
             source={source}
-            url={url}
+            load={load}
             order={order}
             backPage={backPage}
             onPage={showPage}
@@ -315,14 +338,14 @@ function PageView({
 function SectionView({
   target,
   source,
-  url,
+  load,
   order,
   onPage,
   backPage,
 }: {
   target: SectionTarget;
   source: Outline;
-  url: string;
+  load: SectionRead;
   order: readonly OutlineSection[];
   onPage(page: number): void;
   backPage: number | undefined;
@@ -331,16 +354,9 @@ function SectionView({
   const pane = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const stop = new AbortController();
-    const load = async (id: string) => {
-      const response = await fetch(
-        `${url}/sections/${encodeURIComponent(id)}`,
-        { signal: stop.signal },
-      );
-      if (!response.ok)
-        throw new Error(`${response.status} ${response.statusText}`);
-      return response.text();
-    };
-    void openSection(source, order, target.section, target.quote, load).then(
+    void openSection(source, order, target.section, target.quote, (id) =>
+      load(id, stop.signal),
+    ).then(
       (parts) => {
         if (!stop.signal.aborted) setRead(parts);
       },
@@ -350,7 +366,7 @@ function SectionView({
       },
     );
     return () => stop.abort();
-  }, [url, source, order, target.section, target.quote]);
+  }, [load, source, order, target.section, target.quote]);
   useLayoutEffect(() => {
     const box = pane.current;
     if (!Array.isArray(read) || !box) return;

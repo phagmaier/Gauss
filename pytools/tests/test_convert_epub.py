@@ -279,6 +279,24 @@ def test_a_long_chapter_is_cut_between_paragraphs_and_its_parts_sit_under_its_he
     assert summary["cut"] == [{"title": "Long", "parts": 2}]
 
 
+def test_a_note_cut_from_its_reference_inside_one_chapter_keeps_its_destination(tmp_path):
+    paragraphs = "".join(f"<p>Paragraph {word}, a sentence.</p>" for word in ("two", "six", "ten"))
+    chapter = (
+        '<h1>Long</h1><p>See this.<sup><a href="#ft1" id="fn1">1</a></sup></p>'
+        f'{paragraphs}<aside epub:type="rearnote"><a href="#fn1" id="ft1">1</a>. The first note.</aside>'
+    )
+    data = write_epub([("long.xhtml", chapter)], ncx=[("Long", "long.xhtml", [])])
+    _, folder = run(tmp_path, "book.epub", data, limit=70)
+
+    assert section_files(folder) == {
+        "s1": "# Long\n\nSee this.[^1]\n\nParagraph two, a sentence.\n\n",
+        "s2": "Paragraph six, a sentence.\n\n",
+        "s3": "Paragraph ten, a sentence.\n\n[^1]: The first note.\n",
+    }
+    [long] = outline(folder)["entries"]
+    assert [part.get("noteDefinitions") for part in long["entries"]] == [{"1": "s3"}, None, None]
+
+
 def encryption(algorithm, uri):
     return (
         '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '

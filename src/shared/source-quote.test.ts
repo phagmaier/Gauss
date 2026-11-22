@@ -7,6 +7,7 @@
 import { expect, test } from "vitest";
 import type { Outline, SectionRef } from "./source.ts";
 import {
+  citedSpan,
   findQuote,
   type QuotableSource,
   quotableSource,
@@ -445,6 +446,54 @@ test("paired single quotes can wrap a quote and Unicode final sigma folds with o
   expect(findQuote("οδυσσεύς comes home.", [book])?.text).toBe(
     "ΟΔΥΣΣΕΎΣ comes home.",
   );
+});
+
+test("a stored quote is found again where it was verified, and says whether text after the source's could change that", () => {
+  // An EPUB writes a `<br>` as a backslash before the line's end.
+  const first = "In the year\\\n12\\\nthe sum was known";
+  const second = ". Then it was lost again for an age.\n";
+  const leaf = (id: string, text: string) => ({
+    id,
+    title: id,
+    size: text.length,
+    place: { paragraphs: { first: 1, last: 1 } },
+  });
+  const verse = outline({
+    id: "verse",
+    format: "epub",
+    converter: 8,
+    entries: [leaf("s1", first), leaf("s2", second)],
+  });
+  const whole = quotable(verse, { "verse/s1": first, "verse/s2": second });
+  const opened = quotableSource(verse, [{ ref: "verse/s1", text: first }]);
+
+  // A number alone between two line breaks is the source's word, not a
+  // margin's line number.
+  expect(findQuote("In the year 12 the sum", [whole])?.text).toBe(
+    "In the year\n12\nthe sum",
+  );
+  expect(citedSpan("In the year\n12\nthe sum", whole, "verse/s1")).toEqual({
+    span: { start: 0, end: 24 },
+    more: false,
+  });
+  // At the text's end the last word may go on in the next section.
+  expect(citedSpan("the sum was known", opened, "verse/s1")).toEqual({
+    span: { start: 17, end: first.length },
+    more: true,
+  });
+  expect(citedSpan("was known. Then it", opened, "verse/s1")).toEqual({
+    span: undefined,
+    more: true,
+  });
+  // Words that start in the named section end within their own length of it.
+  expect(citedSpan("was unknown. Then it", whole, "verse/s1")).toEqual({
+    span: undefined,
+    more: false,
+  });
+  // A citation never moves to another section.
+  expect(
+    citedSpan("it was lost again", whole, "verse/s1").span,
+  ).toBeUndefined();
 });
 
 test("a passage is refused before it is looked for when it is too long, holds an ellipsis, or has fewer than three words", () => {

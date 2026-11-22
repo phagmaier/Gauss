@@ -1,6 +1,6 @@
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
-import { unified } from "unified";
+import { type Processor, unified } from "unified";
 import { type Unit, unitSections } from "../shared/curriculum.ts";
 import {
   type Outline,
@@ -77,7 +77,61 @@ export interface ReaderPart {
   mark?: { start: number; end: number };
 }
 
+/**
+ * A PDF's text is its printed characters. Of Markdown the conversion writes
+ * only headings and notes, and its own backslashes (`PDF_ESCAPE`), so
+ * nothing else in the text is read as syntax: not emphasis, code, links,
+ * lists, quotes, tables, entities or other escapes. Used after `remarkGfm`,
+ * whose notes it keeps.
+ */
+export function pdfSyntax(this: Processor) {
+  const data = this.data();
+  data.micromarkExtensions = [
+    ...(data.micromarkExtensions ?? []),
+    {
+      disable: {
+        null: [
+          "attention",
+          "autolink",
+          "blockQuote",
+          "characterEscape",
+          "characterReference",
+          "codeFenced",
+          "codeIndented",
+          "codeText",
+          "definition",
+          "emailAutolink",
+          "hardBreakEscape",
+          "htmlFlow",
+          "htmlText",
+          "labelEnd",
+          "labelStartImage",
+          "labelStartLink",
+          "list",
+          "protocolAutolink",
+          "setextUnderline",
+          "strikethrough",
+          "table",
+          "tasklistCheck",
+          "thematicBreak",
+          "wwwAutolink",
+        ],
+      },
+    },
+  ];
+  // GFM also looks through the finished text for addresses to link.
+  data.fromMarkdownExtensions = (data.fromMarkdownExtensions ?? []).map(
+    (extension) =>
+      [extension].flat().map((one) => ({ ...one, transforms: [] })),
+  );
+}
+
 const parser = unified().use(remarkParse).use(remarkGfm).freeze();
+const pdfParser = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(pdfSyntax)
+  .freeze();
 
 /** Extract definitions as Markdown (including all their indented blocks).
  * A reference without a local definition is ordinarily just text to GFM;
@@ -86,14 +140,14 @@ interface SectionNotes {
   definitions: Map<string, string>;
   references: Set<string>;
 }
-function notesOf(text: string): SectionNotes {
+function notesOf(text: string, format: Outline["format"]): SectionNotes {
   const definitions = new Map<string, string>();
   const references = new Set<string>();
   if (!text.includes("[^")) return { definitions, references };
   const candidates = new Set(
     [...text.matchAll(/\[\^((?:\\.|[^\s[\]\\])+)\]/g)].map((m) => m[0]),
   );
-  const tree = parser.parse(
+  const tree = (format === "pdf" ? pdfParser : parser).parse(
     text + [...candidates].map((label) => `\n\n${label}: note`).join(""),
   );
   function visit(node: (typeof tree.children)[number]): void {
@@ -113,6 +167,24 @@ function notesOf(text: string): SectionNotes {
 
 function stretch(section: OutlineSection): number {
   return Number(section.id.slice(1)) - (section.part?.number ?? 1) + 1;
+}
+
+export type SectionRead = (id: string, signal: AbortSignal) => Promise<string>;
+
+/**
+ * Reads of a source's sections that keep each text once it has come, for as
+ * long as a pane stays on the source: a converted source does not change.
+ * A read that failed or was cancelled is asked for again.
+ */
+export function keptTexts(read: SectionRead): SectionRead {
+  const kept = new Map<string, string>();
+  return async (id, signal) => {
+    const saved = kept.get(id);
+    if (saved !== undefined) return saved;
+    const text = await read(id, signal);
+    kept.set(id, text);
+    return text;
+  };
 }
 
 /** Offsets in the outline count code points; Markdown positions count UTF-16. */
@@ -189,18 +261,13 @@ export async function openSection(
           })),
         ),
       );
-      const match = citedSpan(quote, candidate, `${source.id}/${id}`);
-      // If the match reaches the slice's very end, inspect the next part
-      // before accepting it as a whole word.
-      if (
-        match &&
-        (match.end < candidate.text.length ||
-          start + shown.length >= order.length)
-      ) {
-        mark = { start: match.start - shift, end: match.end - shift };
+      const { span, more } = citedSpan(quote, candidate, `${source.id}/${id}`);
+      // A span that reaches the slice's very end may stop inside a word, and
+      // words not found yet may end in the next part: only then read on.
+      if (!more || start + shown.length >= order.length) {
+        if (span) mark = { start: span.start - shift, end: span.end - shift };
         break;
       }
-      if (start + shown.length >= order.length) break;
       // Grow geometrically: even a passage spanning many tiny sections is not
       // reparsed once per cut. Only the matching sections will be displayed.
       for (const section of order.slice(
@@ -217,7 +284,7 @@ export async function openSection(
   async function sectionNotes(section: OutlineSection) {
     let notes = noteCache.get(section.id);
     if (!notes) {
-      notes = notesOf(await textOf(section));
+      notes = notesOf(await textOf(section), source.format);
       noteCache.set(section.id, notes);
     }
     return notes;
@@ -297,7 +364,7 @@ export async function openSection(
     );
     let text = pieces.join("");
     if (source.format !== "text" && text.includes("[^")) {
-      const local = notesOf(text);
+      const local = notesOf(text, source.format);
       for (const label of local.references) {
         if (local.definitions.has(label)) continue;
         let definition: string | undefined;
@@ -307,24 +374,19 @@ export async function openSection(
           if (entry)
             definition = (await sectionNotes(entry)).definitions.get(label);
         } else if (source.format !== "epub" || source.converter < 8) {
-          const same = order.filter((s) => stretch(s) === stretch(initial));
-          for (const s of same) {
-            definition = (await sectionNotes(s)).definitions.get(label);
-            if (definition) break;
-          }
+          const inStretch = (s: OutlineSection) =>
+            stretch(s) === stretch(initial);
+          // Read together: a search through a whole source is one wait.
+          const defined = async (sections: readonly OutlineSection[]) =>
+            (await Promise.all(sections.map(sectionNotes))).flatMap(
+              (notes) => notes.definitions.get(label) ?? [],
+            );
+          [definition] = await defined(order.filter(inStretch));
           if (!definition && source.format !== "pdf") {
             // Legacy EPUBs do not preserve external targets. Never silently
             // attach the first note in a different stretch with this label.
-            for (const s of order) {
-              if (stretch(s) === stretch(initial)) continue;
-              const candidate = (await sectionNotes(s)).definitions.get(label);
-              if (candidate === undefined) continue;
-              if (definition !== undefined) {
-                definition = undefined;
-                break;
-              }
-              definition = candidate;
-            }
+            const elsewhere = await defined(order.filter((s) => !inStretch(s)));
+            if (elsewhere.length === 1) [definition] = elsewhere;
           }
         }
         if (definition) text += `\n\n${definition}`;
