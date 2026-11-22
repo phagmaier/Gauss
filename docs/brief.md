@@ -256,9 +256,10 @@ what is due, and on-demand self-test.
   No embedding search.
 - For pages where text extraction loses content (equations, figures) the tutor
   reads the page image.
-- A source lecture puts verified quotes beside their explanations, in the
-  text's order. Quote blocks show the source's words, and their citations
-  open the passage. Matching ignores what extraction adds: margin line
+- Every passage the tutor quotes, in a lecture or in discussion, is
+  verified to appear verbatim in the source, and its citation opens the
+  passage. A source lecture puts its quotes beside their explanations,
+  in the text's order. Matching ignores what extraction adds: margin line
   numbers and a word split by a hyphen at a line's end. To refer to a
   passage it paraphrases, the tutor links its section in its own sentence;
   a link claims no quote.

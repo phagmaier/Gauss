@@ -66,7 +66,6 @@ quotes, and one unit taught from a paper.
 ### 4.23 Question rules the rehearsal saw broken
 
 - Status: todo
-- Depends on: the user's stage 4 check
 - Why: in the _Phenomenology_ unit on Opus, after a written miss on an
   "explain" objective the next question was a choice whose right answer
   restated the detour's summary (`tutor.md`: a choice never stands in for
@@ -75,13 +74,15 @@ quotes, and one unit taught from a paper.
   questions and the Attention unit's first asked for numbered parts
   ("explain (1) ..., (2) ..., (3) ..."), against "asks one thing", though
   `tutor.md` also has a question name each part its rubric requires.
-  For the user: the questions name the paragraphs they are built on ("At
-  the opening ... (¶132–133)", "In ¶134 ..."), so the answer can be
-  reread while the question is open, though the tutor refuses to say
-  where to read it. Wanted in a close-reading course, or not?
-- Do: take these with what the user's own check adds; a prompt change is
-  compared on Opus as `findings.md`, "Comparing prompt versions", says.
-- Done when: each is fixed or decided with the user.
+  Decide whether source questions should name the paragraphs they are
+  built on: it lets the learner reread while the question is open, though
+  the tutor otherwise refuses to say where to read the answer.
+- Do: fix and evaluate the teaching items without waiting for the user's
+  stage check. Try questions with and without paragraph references on Opus
+  before deciding, considering close reading and what the grader and help
+  judge already do. Compare prompt versions as `findings.md` describes.
+- Done when: the teaching items are fixed and the citation decision is
+  made and explained in the commit, with the Opus comparison.
 
 ## Stage 6: later
 
