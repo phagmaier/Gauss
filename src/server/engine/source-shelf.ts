@@ -111,6 +111,16 @@ export function createSourceShelf(options: {
     return undefined;
   }
 
+  /**
+   * The marker a read opens with when its section starts partway down its
+   * first page, whose marker is in a section before: its flags are what
+   * the tutor goes by to look at the page with view_page.
+   */
+  async function startMarker(source: Outline, page: number) {
+    const inherited = await marker(source, page);
+    return `${inherited?.literal ?? `<!-- page ${page} -->`}\n`;
+  }
+
   async function locateQuote(
     text: string,
     section: SectionRef | undefined,
@@ -188,29 +198,29 @@ export function createSourceShelf(options: {
         if (problem !== undefined) return { refused: `"${ref}": ${problem}` };
       }
       let text = await sectionFile(ref);
-      if (range !== undefined) {
-        if ("pages" in range && "pages" in section.place) {
-          const { first, last } = range.pages;
-          const markers = pageMarkers(text);
-          const at = markers.find((m) => m.page >= first);
-          const end = markers.find((m) => m.page > last)?.start;
-          if (first === section.place.pages.first && at?.page !== first) {
-            // Sections can start halfway down a page whose marker is in
-            // the previous section. Keep its flags for view_page.
-            const inherited = await marker(source, first);
-            text =
-              `${inherited?.literal ?? `<!-- page ${first} -->`}\n` +
-              text.slice(0, end);
-          } else if (at !== undefined && at.page <= last) {
-            text = text.slice(at.start, end);
-          } else {
-            return {
-              refused: `"${ref}" has no extracted text in that page range. Look at the pages with view_page.`,
-            };
-          }
-        } else if ("paragraphs" in range) {
-          text = numberedParagraphs(text, section, range.paragraphs);
+      if (range === undefined) {
+        if (
+          "pages" in section.place &&
+          pageMarkers(text)[0]?.page !== section.place.pages.first
+        ) {
+          text = (await startMarker(source, section.place.pages.first)) + text;
         }
+      } else if ("pages" in range && "pages" in section.place) {
+        const { first, last } = range.pages;
+        const markers = pageMarkers(text);
+        const at = markers.find((m) => m.page >= first);
+        const end = markers.find((m) => m.page > last)?.start;
+        if (first === section.place.pages.first && at?.page !== first) {
+          text = (await startMarker(source, first)) + text.slice(0, end);
+        } else if (at !== undefined && at.page <= last) {
+          text = text.slice(at.start, end);
+        } else {
+          return {
+            refused: `"${ref}" has no extracted text in that page range. Look at the pages with view_page.`,
+          };
+        }
+      } else if ("paragraphs" in range) {
+        text = numberedParagraphs(text, section, range.paragraphs);
       }
       signal?.throwIfAborted();
       emit({

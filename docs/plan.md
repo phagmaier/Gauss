@@ -36,20 +36,6 @@ questions on a source's figure.
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
 quotes, and one unit taught from a paper.
 
-### 4.19 The first page's flags on a whole-section read
-
-- Status: todo
-- Why: a section that starts partway down a page (the Attention paper's
-  3.2.1 on page 4) has that page's marker in the section before, so a
-  whole-section read shows no `math` or `images` flag for its first page,
-  and the tutor is told to view a page by those flags. A bounded read
-  already inherits the marker (`read` in `engine/source-shelf.ts`).
-- Do: give a whole-section read the same inherited marker; a test on the
-  fake converter.
-- Done when: a test shows a whole-section read of a section that starts
-  mid-page opening with that page's marker and flags, one that starts at a
-  page top unchanged, and the known gap is deleted.
-
 ### 4.20 A code review of 4.11, 4.13 and 4.15 to 4.17
 
 - Status: todo
@@ -221,10 +207,6 @@ Known and accepted for now; a task that closes one deletes it here.
   stay in the text; PDFium's reading order is trusted; notes continuing on
   the next page read as body; a bookmark title that differs from the
   printed heading lands at the top of its page.
-- A whole-section read can omit the first page's math and image flags
-  when the section starts partway down that page (the Attention paper's
-  3.2.1 on page 4). Bounded page reads recover the flags from the previous
-  section.
 - The notes writer's `<sections>` lists only the unit's sections: a
   tutor's link to another unit's section reaches it as a bare address.
   Nothing checks the notes against the source: the one live run kept, in

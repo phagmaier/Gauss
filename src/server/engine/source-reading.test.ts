@@ -260,12 +260,13 @@ test("the tutor's instructions outline each source, and a segment's teaching tur
   }
 });
 
-test("the tutor reads its segment's section and another unit's, each shown in the thread; a section the sources lack is refused with what they have", async () => {
+test("the tutor reads its segment's section, another segment's that starts partway down a page (opening with that page's marker), and another unit's, each shown in the thread; a section the sources lack is refused with what they have", async () => {
   const { backend, chat, units } = await start(
     [
       [
         read("phenomenology/s1"),
         { text: "The whole." },
+        read("phenomenology/s2"),
         read("phenomenology/s3"),
         read("phenomenology/s9"),
         read("critique/s1"),
@@ -278,9 +279,16 @@ test("the tutor reads its segment's section and another unit's, each shown in th
     expect(chat.say("Check the other sections?")).toEqual({ ok: true });
     await chat.settled();
     expect(backend.calls.map((c) => c.result)).toEqual([
+      // s1 and s3 start at a page's top, with its marker.
       {
         status: "done",
         text: `Section "phenomenology/s1" of "Phenomenology": "Preface (part 1 of 2)", pages 1–3 (printed i–iii).\n\n${S1}`,
+      },
+      // s2 starts partway down page 3, whose marker, with its flags, is in
+      // s1: the read opens with it.
+      {
+        status: "done",
+        text: `Section "phenomenology/s2" of "Phenomenology": "Preface (part 2 of 2)", pages 3–4 (printed iii–1).\n\n<!-- page 3 label "iii" images -->\n${S2}`,
       },
       {
         status: "done",
@@ -298,6 +306,7 @@ test("the tutor reads its segment's section and another unit's, each shown in th
     expect(thread(chat.events())).toEqual([
       { type: "section_read", section: "phenomenology/s1" },
       { type: "tutor_text", text: "The whole." },
+      { type: "section_read", section: "phenomenology/s2" },
       { type: "section_read", section: "phenomenology/s3" },
       { type: "tutor_text", text: "Next." },
     ]);
