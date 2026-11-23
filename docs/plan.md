@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.11 Keep scripted commands out of grading feedback — todo
-
-**Why:** The scripted backend parses commands in text that never came from the message box.
-**Do:** Interpret commands only in learner messages, not grading feedback.
-**Done when:** Scripted feedback with command tokens in the submission or result still completes normally, and explicit learner commands work.
-
 ### K.12 Show test and skip progress accurately — todo
 
 **Why:** The course card marks skipped work done and a review before a test says teaching resumes next.
@@ -192,7 +186,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   the record's. Decide whether to resolve answered ones from the evidence.
 - **B:** Only “What I know” shows the contents of submitted files.
   Decide whether to show them on the question card as well.
-- **A (K.11):** The scripted backend can take grading feedback for a command.
 - **C:** There is no hand-graded set for math answers the symbolic check
   does not settle. The dispute set lacks disputes of a correct grade and
   does not separate Sonnet from Haiku.

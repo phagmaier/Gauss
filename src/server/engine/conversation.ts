@@ -71,6 +71,8 @@ type TurnEnd = Extract<PageEvent, { type: "turn_end" }>;
 export interface Turn {
   /** The learner event this turn delivers, if any, kept across transcript replay. */
   learnerId?: string;
+  /** The message itself, separate from the composed text sent to the tutor. */
+  learnerMessage?: string;
   /**
    * What the tutor receives. A function is called when the turn is sent to
    * the tutor, after the turns before it, so its header says how things
@@ -356,7 +358,11 @@ export function createConversation(options: {
       begun = true;
       // The thread shows each file once a reply, however often it is written.
       const written = new Set<string>();
-      for await (const event of tutor.send({ text }, current.stop.signal)) {
+      const { learnerMessage } = turn;
+      for await (const event of tutor.send(
+        learnerMessage === undefined ? { text } : { text, learnerMessage },
+        current.stop.signal,
+      )) {
         if (event.type === "text" && turn.toolReplyProblem === undefined) {
           current.reply += event.text;
           log.emit({ type: "tutor_text", text: event.text });

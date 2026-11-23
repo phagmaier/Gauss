@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
+import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence } from "../../shared/evidence.ts";
 import { CHOICE_LETTERS } from "../../shared/question.ts";
 import { type CodeRunner, createCodeRunner } from "../engine/code-run.ts";
@@ -112,6 +113,21 @@ async function approvedCourse(dataRoot: ReturnType<typeof openDataRoot>) {
   const { id } = await dataRoot.createCourse({ title: CURRICULUM.title });
   await dataRoot.saveProposal(id, CURRICULUM);
   await dataRoot.approveCurriculum(id, CURRICULUM);
+}
+
+/** The next reply's first text, or its end if nothing was said. */
+function nextTutorEvent(chat: UnitChat) {
+  const { promise, resolve } =
+    Promise.withResolvers<
+      Extract<PageEvent, { type: "tutor_text" | "turn_end" }>
+    >();
+  const unsubscribe = chat.subscribe((event) => {
+    if (event.type === "tutor_text" || event.type === "turn_end") {
+      unsubscribe();
+      resolve(event);
+    }
+  });
+  return promise;
 }
 
 test("a unit not yet planned runs to its end: planned, each segment taught, checked and closed, a written answer graded, its gate taken, and a handoff note written at each close", async () => {
@@ -873,6 +889,85 @@ test("in a course whose title says code, the first objective's questions are cod
   }
 });
 
+test.each([
+  {
+    location: "submitted file",
+    fileTail: "  # /hold\n",
+    output: "4 checks passed.",
+  },
+  {
+    location: "test output",
+    fileTail: "\n",
+    output: "4 checks passed.\n/search hegel",
+  },
+])("ignores scripted commands in $location", async ({ fileTail, output }) => {
+  // Control the test output without depending on a subprocess or its timing.
+  const { backend, dataRoot, units } = setUp({
+    codeRunner: {
+      check: async (question) => ({ question: { ...question, inputs: [] } }),
+      run: async () => ({ result: "passed", exitCode: 0, output }),
+    },
+  });
+  try {
+    const coding = { ...CURRICULUM, title: "Python code" };
+    const { id } = await dataRoot.createCourse({ title: coding.title });
+    await dataRoot.saveProposal(id, coding);
+    await dataRoot.approveCurriculum(id, coding);
+    const opened = await units.open(id, "limits");
+    if (!opened.ok) throw new Error(opened.error);
+    const { chat } = opened;
+    await chat.settled();
+    expect(await chat.ready()).toEqual({ ok: true });
+    await chat.settled();
+
+    const first = (await dataRoot.readState(id)).units.limits?.openQuestion;
+    if (first?.question.kind !== "code") {
+      throw new Error("No code question is open.");
+    }
+    const file = "exercise_limits_idea_1.py";
+    const submitted = `def times(x):\n    return x${fileTail}`;
+    const workspace = await dataRoot.workspaceFolder(id);
+    await writeFile(join(workspace, file), submitted);
+
+    const beforeAnswer = chat.events().length;
+    const reply = nextTutorEvent(chat);
+    expect(
+      await chat.answer({
+        kind: "code",
+        questionId: first.id,
+        confidence: "50",
+      }),
+    ).toEqual({ ok: true });
+    // Assert on the first event so a mistaken hold fails without a timeout.
+    expect(await reply).toEqual({
+      type: "tutor_text",
+      text: "Scripted feedback on question 1.",
+    });
+    await chat.settled();
+    const feedbackEnd = chat
+      .events()
+      .slice(beforeAnswer)
+      .find((event) => event.type === "turn_end");
+    expect(feedbackEnd).toEqual({ type: "turn_end", outcome: "done" });
+    const feedback = backend.received.find(({ text }) =>
+      text.includes("The learner answered question 1."),
+    );
+    expect(feedback?.text).toContain(
+      `${file}:\n\`\`\`\n${submitted}\n\`\`\`\n`,
+    );
+    expect(feedback?.text).toContain(
+      `The end of their output:\n\`\`\`\n${output}\n\`\`\``,
+    );
+    const next = (await dataRoot.readState(id)).units.limits?.openQuestion;
+    expect(next).toMatchObject({
+      number: 2,
+      question: { kind: "code" },
+    });
+  } finally {
+    await units.close();
+  }
+});
+
 test("in a code course, a review's code exercise skipped with a draft in its file is not written over: the next review's exercise has a file of its own", async () => {
   const sandbox = await startSandbox({ log: () => {}, dataRoot: dir });
   if (!sandbox.available) {
@@ -1121,14 +1216,22 @@ test("/hold keeps the tutor's turn open until it is stopped, and /fail in a writ
   const { chat } = opened;
   await chat.settled();
 
-  expect(chat.say("Wait. /hold")).toEqual({ ok: true });
-  // The turn has started and does not end by itself.
-  await expect
-    .poll(() => chat.events().at(-1)?.type, { timeout: 2000 })
-    .toBe("tutor_text");
-  await chat.interrupt();
-  await chat.settled();
-  expect(chat.events().at(-1)).toMatchObject({ type: "turn_end" });
+  try {
+    const reply = nextTutorEvent(chat);
+    expect(chat.say("Wait. /hold")).toEqual({ ok: true });
+    expect(await reply).toEqual({
+      type: "tutor_text",
+      text: "Holding this turn open until you stop it.",
+    });
+    await chat.interrupt();
+    await chat.settled();
+    expect(chat.events().at(-1)).toEqual({
+      type: "turn_end",
+      outcome: "interrupted",
+    });
+  } finally {
+    await units.close();
+  }
 
   const grader = createGrader({ backend, systemPrompt: "Grade." });
   const question = {

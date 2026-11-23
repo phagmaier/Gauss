@@ -285,6 +285,7 @@ export function createIntake(options: {
       let sourcesTold: SourcesTold | undefined;
       tutor.send({
         learnerId: id,
+        learnerMessage: text,
         // Composed when sent, since a lost session is found then.
         async text() {
           opening = false;

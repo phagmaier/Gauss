@@ -3638,6 +3638,7 @@ function createUnitChat(
       const send = () =>
         r.agents.send({
           learnerId: id,
+          learnerMessage: text,
           // Help is judged on what the tutor received while a question was
           // open (task 2.21), so the exchange begins when the message is sent
           // to the tutor, not when the learner wrote it, and is kept in

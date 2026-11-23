@@ -218,6 +218,7 @@ export function createCoursePlanning(
       let answered = false;
       planner.send({
         learnerId: id,
+        learnerMessage: text,
         // Composed when sent, so it says how the course stands then.
         async text() {
           const course = await courseContext(dataRoot, courseId);

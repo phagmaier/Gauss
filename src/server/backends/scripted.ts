@@ -222,15 +222,19 @@ export function scriptedPlan(
   };
 }
 
-function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
-  const { header, body } = parts(turn.text);
+function scriptedTurn(
+  { text, learnerMessage = "" }: EngineTurn,
+  session: SessionOptions,
+): FakeStep[] {
+  const { header, body } = parts(text);
   const has = (tool: string) => session.tools.some((t) => t.name === tool);
   if (has("plan_unit")) return planning(body);
   const course =
     has("amend_curriculum") && has("ask_question")
       ? listedCourse(session, header)
       : undefined;
-  if (/(^|\s)\/hold\b/.test(body)) {
+  // A composed body can include files, test output or other engine context.
+  if (/(^|\s)\/hold\b/.test(learnerMessage)) {
     return [
       { text: "Holding this turn open until you stop it." },
       { hold: true },
@@ -239,10 +243,12 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   // The course's planner has the change tool, and no questions to ask.
   const amend = session.tools.find((t) => t.name === "amend_curriculum");
   if (amend !== undefined && !has("ask_question")) {
-    return coursePlanning(header, body, amend);
+    return coursePlanning(header, body, learnerMessage, amend);
   }
   const propose = session.tools.find((t) => t.name === "propose_curriculum");
-  if (propose !== undefined) return intake(header, body, propose);
+  if (propose !== undefined) {
+    return intake(header, body, learnerMessage, propose);
+  }
   const tools = session.workspace !== undefined;
   const coding =
     tools &&
@@ -250,7 +256,7 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
   const historyAt = header.lastIndexOf(QUESTION_HISTORY_START);
   const controls = historyAt === -1 ? header : header.slice(0, historyAt);
   const history = historyAt === -1 ? "" : header.slice(historyAt);
-  const searching = /(?:^|\s)\/search\b(.*)$/m.exec(body);
+  const searching = /(?:^|\s)\/search\b(.*)$/m.exec(learnerMessage);
   if (searching !== null) {
     return webSearch(searching[1] ?? "", session.webSearch === true);
   }
@@ -258,6 +264,7 @@ function scriptedTurn(turn: EngineTurn, session: SessionOptions): FakeStep[] {
     controls,
     history,
     body,
+    learnerMessage,
     tools ? (coding ? "code" : "math") : "none",
     session.cwd,
     courseStyle(session.systemPrompt),
@@ -341,13 +348,8 @@ function scriptedProfile(given: string | undefined, title: string): string {
   ].join(" ");
 }
 
-/**
- * The body without the blocks a turn can put before the learner's text: the
- * one about the learner, in a first turn or one after the profile changed,
- * with the profile it gives, if it gives one; then the sources'.
- */
-function learnerPart(body: string): {
-  text: string;
+/** The profile and source blocks that can precede an intake message. */
+function intakeContext(body: string): {
   profile?: { text: string | undefined };
   sources?: string;
 } {
@@ -359,7 +361,6 @@ function learnerPart(body: string): {
       ? undefined
       : /<profile>\n([\s\S]*)\n<\/profile>/.exec(learner.block)?.[1];
   return {
-    text: sources?.after ?? rest,
     ...(learner === undefined ? {} : { profile: { text: given } }),
     ...(sources === undefined ? {} : { sources: sources.block }),
   };
@@ -522,13 +523,14 @@ function proposal(
 function intake(
   header: string,
   turnBody: string,
+  message: string,
   tool: TeachingTool,
 ): FakeStep[] {
-  const { text: body, profile: given, sources } = learnerPart(turnBody);
+  const { profile: given, sources } = intakeContext(turnBody);
   if (given !== undefined) profiles.set(tool, given);
   if (sources !== undefined) noteSources(tool, sources);
   const said = sources === undefined ? undefined : sourcesSaid(sources);
-  const steps = intakeSteps(header, body, tool);
+  const steps = intakeSteps(header, message, tool);
   return said === undefined ? steps : [{ text: `${said}\n\n` }, ...steps];
 }
 
@@ -613,6 +615,7 @@ const plannedUnits = new WeakMap<TeachingTool, Unit[]>();
 function coursePlanning(
   header: string,
   body: string,
+  message: string,
   tool: TeachingTool,
 ): FakeStep[] {
   const given = /<course>\n[^\n]*\n(\[.*\])\n/.exec(body)?.[1];
@@ -651,7 +654,7 @@ function coursePlanning(
     { text: "Here is a scripted change to the course's units." },
     { call: "amend_curriculum", input: { units: proposed, why } },
   ];
-  if (/(^|\s)\/drop\b/.test(body)) {
+  if (/(^|\s)\/drop\b/.test(message)) {
     return amend(units.slice(1), "You asked to drop the first unit.");
   }
   if (header.startsWith("[Start of a planning conversation")) {
@@ -664,7 +667,7 @@ function coursePlanning(
       },
     ];
   }
-  if (/(^|\s)\/revise\b/.test(body)) {
+  if (/(^|\s)\/revise\b/.test(message)) {
     return amend([...units, ...added(1)], "You asked for a shorter stretch.");
   }
   if (header.includes("Your last proposal waits on its card")) {
@@ -689,6 +692,7 @@ function teaching(
   header: string,
   history: string,
   body: string,
+  message: string,
   kinds: Checked,
   /** The session's folder, the course's workspace. */
   cwd: string | undefined,
@@ -818,10 +822,10 @@ function teaching(
       ? [posting]
       : [{ text: "Scripted lead-in to a question." }, posting];
   }
-  if (/(^|\s)\/artifact\b/.test(body)) {
+  if (/(^|\s)\/artifact\b/.test(message)) {
     return [...showArtifact(), { text: "Scripted: that was the aid." }];
   }
-  if (/(^|\s)\/broken-aid\b/.test(body)) {
+  if (/(^|\s)\/broken-aid\b/.test(message)) {
     return [
       {
         call: "show_artifact",
@@ -830,7 +834,7 @@ function teaching(
       { text: "Scripted: that aid's script throws." },
     ];
   }
-  const quoting = /(?:^|\s)\/quote\b(.*)$/m.exec(body);
+  const quoting = /(?:^|\s)\/quote\b(.*)$/m.exec(message);
   if (quoting !== null) {
     return [
       { text: "Scripted: the passage, from the source." },
@@ -838,7 +842,7 @@ function teaching(
       { text: "Scripted: that was the passage." },
     ];
   }
-  const packages = /(?:^|\s)\/packages\b(.*)$/m.exec(body);
+  const packages = /(?:^|\s)\/packages\b(.*)$/m.exec(message);
   if (packages !== null) {
     const names = (packages[1] ?? "").trim().split(/\s+/).filter(Boolean);
     return [
@@ -853,7 +857,7 @@ function teaching(
       },
     ];
   }
-  if (/(^|\s)\/style\b/.test(body)) {
+  if (/(^|\s)\/style\b/.test(message)) {
     const kept = sentences(style);
     if (kept.length > 1) kept.pop();
     return [
@@ -867,7 +871,7 @@ function teaching(
       },
     ];
   }
-  if (course !== undefined && /(^|\s)\/amend\b/.test(body)) {
+  if (course !== undefined && /(^|\s)\/amend\b/.test(message)) {
     const { units, taught } = course;
     let n = units.length + 1;
     const ids = new Set(units.map((unit) => unit.id));

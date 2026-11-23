@@ -81,6 +81,8 @@ export class SessionNotFound extends Error {
 /** One message from the engine: a header and the learner's text or an event. */
 export interface EngineTurn {
   text: string;
+  /** Raw text from the message box, when the turn delivers a learner message. */
+  learnerMessage?: string;
 }
 
 export type BackendEvent =
