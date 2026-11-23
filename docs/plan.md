@@ -34,28 +34,9 @@ added to a course after its intake, text recognition for scanned PDFs, and
 questions on a source's figure.
 
 **User check:** a lecture on one chapter of the _Phenomenology_ with verified
-quotes, and one unit taught from a paper.
-
-### 4.23 Question rules the rehearsal saw broken
-
-- Status: todo
-- Why: in the _Phenomenology_ unit on Opus, after a written miss on an
-  "explain" objective the next question was a choice whose right answer
-  restated the detour's summary (`tutor.md`: a choice never stands in for
-  another kind), and a check question asked what the lecture's ungraded
-  try had asked (`tutor.md`: a question is new). Three of its four
-  questions and the Attention unit's first asked for numbered parts
-  ("explain (1) ..., (2) ..., (3) ..."), against "asks one thing", though
-  `tutor.md` also has a question name each part its rubric requires.
-  Decide whether source questions should name the paragraphs they are
-  built on: it lets the learner reread while the question is open, though
-  the tutor otherwise refuses to say where to read the answer.
-- Do: fix and evaluate the teaching items without waiting for the user's
-  stage check. Try questions with and without paragraph references on Opus
-  before deciding, considering close reading and what the grader and help
-  judge already do. Compare prompt versions as `findings.md` describes.
-- Done when: the teaching items are fixed and the citation decision is
-  made and explained in the commit, with the Opus comparison.
+quotes, and one unit taught from a paper. Its tasks are done; it waits on
+the user's own run. Watch for the question gap under "Known gaps"
+("Tutor, grading and judging").
 
 ## Stage 6: later
 
@@ -139,6 +120,14 @@ Known and accepted for now; a task that closes one deletes it here.
 
 **Tutor, grading and judging**
 
+- A check question on a one-claim explanation objective can ask for
+  reasoning the lesson or detour already gave (`findings.md`, "Tutor"),
+  and a rubric can reject an answer the card's premises allow (a zero
+  weight, in the 4.23 runs). Accepted by the user on 2026-11-22: such an
+  objective may leave nothing new to ask. If the user check shows a
+  question after a detour answered by repeating the detour, the proposed
+  fix is to ask again later, after other material, which changes
+  "Session rhythm" in `brief.md`.
 - The tutor can hint at an answer in free text outside a help exchange
   (teaching, feedback); only replies during an open question are judged.
   The help judge sees one exchange at a time, so a hint split over two

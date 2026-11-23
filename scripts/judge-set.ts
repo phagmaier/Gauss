@@ -1,21 +1,18 @@
 // Judges the hand-judged set (`scripts/help-set.ts`) through `createHelpJudge`
 // and the Claude backend's `oneShot`, as the app does, and prints each call
 // beside the hand verdict (plan task 2.21). It calls a real model and spends
-// plan usage: run it by hand when `prompts/help-judge.md`, the judgment's
-// schema or the judge's model changes, never from a test.
+// plan usage: run only an authorized check (AGENTS.md), never from a test.
 //
-//   node scripts/judge-set.ts [--model <id>] [--runs <n>] [--prompt <file>]
-//                             [--only <id>,<id>]
+//   mise exec -- pnpm check:live node scripts/judge-set.ts --runs 2
 //
-// The model defaults to the judge's (`JUDGE_MODEL`), the prompt to
-// `prompts/help-judge.md`, and `--only` picks exchanges by id.
+// The prompt defaults to `prompts/help-judge.md`; `--only` picks exchanges by id.
 
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
   createClaudeBackend,
-  JUDGE_MODEL,
+  LIVE_CHECK_OPTIONS,
 } from "../src/server/backends/claude.ts";
 import {
   createHelpJudge,
@@ -25,12 +22,17 @@ import { type HandJudgedExchange, HELP_SET } from "./help-set.ts";
 
 const { values } = parseArgs({
   options: {
-    model: { type: "string" },
     runs: { type: "string", default: "1" },
     prompt: { type: "string" },
     only: { type: "string" },
   },
 });
+// Only the launcher's pinned model and effort may run here (AGENTS.md).
+if (process.env.GAUSS_LIVE_CHECK !== "1") {
+  throw new Error(
+    "Run this through `mise exec -- pnpm check:live` (AGENTS.md).",
+  );
+}
 const runs = Number(values.runs);
 if (!Number.isInteger(runs) || runs < 1) {
   throw new Error(`--runs takes a whole number from 1: ${values.runs}`);
@@ -48,9 +50,9 @@ const promptFile =
   values.prompt ??
   fileURLToPath(new URL("../prompts/help-judge.md", import.meta.url));
 const systemPrompt = await readFile(promptFile, "utf8");
-const model = values.model ?? JUDGE_MODEL;
+const model = `${LIVE_CHECK_OPTIONS.model}, ${LIVE_CHECK_OPTIONS.effort} effort`;
 const judge = createHelpJudge({
-  backend: createClaudeBackend({ model }),
+  backend: createClaudeBackend(),
   systemPrompt,
 });
 

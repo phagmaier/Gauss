@@ -68,13 +68,12 @@ const SESSION_LOOKUP = `
 export interface ClaudeBackendOptions {
   /**
    * The model, such as "claude-haiku-5-5". Left out, the session uses the
-   * default of the learner's Claude Code login. Development runs that only
-   * check that something works use a cheap model (AGENTS.md).
+   * default of the learner's Claude Code login.
    */
   model?: string;
   /**
    * The reasoning effort, such as "medium". Left out, the model's default.
-   * A real-model check names it rather than inheriting it (architecture.md).
+   * The live-check launcher pins both model and effort (AGENTS.md).
    */
   effort?: EffortLevel;
 }
@@ -111,13 +110,22 @@ export const HANDOFF_MODEL = "claude-sonnet-5-5";
 /** The notes writer's model: the learner keeps the document. */
 export const NOTES_MODEL = "claude-sonnet-5-5";
 
+/** The one model and effort a live check runs on (AGENTS.md). */
+export const LIVE_CHECK_OPTIONS = {
+  model: "claude-sonnet-5-5",
+  effort: "medium",
+} satisfies ClaudeBackendOptions;
+
 export function createClaudeBackend(
   backendOptions: ClaudeBackendOptions = {},
 ): TutorBackend {
+  // Apply to every role, even if an older harness passes its own options.
+  const settings =
+    process.env.GAUSS_LIVE_CHECK === "1" ? LIVE_CHECK_OPTIONS : backendOptions;
   return {
-    startSession: (options) => startSession(options, backendOptions),
+    startSession: (options) => startSession(options, settings),
     hasSession,
-    oneShot: (request) => oneShot(request, backendOptions),
+    oneShot: (request) => oneShot(request, settings),
   };
 }
 

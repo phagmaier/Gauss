@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node src/server/main.ts",
     "dev:fake": "node scripts/dev-fake.ts",
+    "check:live": "bash scripts/check-live.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check --error-on-warnings",

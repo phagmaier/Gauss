@@ -91,6 +91,21 @@ test("a one-shot request is one query with its own system prompt, no tools, noth
   expect(names).toContain("PATH");
 });
 
+test("live checks cannot inherit a caller's more expensive model or effort", async () => {
+  vi.stubEnv("GAUSS_LIVE_CHECK", "1");
+  const seen = replay([success({ structured_output: { verdict: "correct" } })]);
+
+  await createClaudeBackend({
+    model: "claude-opus-5-5",
+    effort: "high",
+  }).oneShot(REQUEST);
+
+  expect(seen[0]?.options).toMatchObject({
+    model: "claude-sonnet-5-5",
+    effort: "medium",
+  });
+});
+
 test.each<{
   name: string;
   messages: SDKMessage[];

@@ -1,15 +1,12 @@
 // Decides the dispute judge's hand-judged set (`scripts/dispute-set.ts`)
 // through `createDisputeJudge` and the Claude backend's `oneShot`, as the app
 // does, and prints each outcome beside the hand outcome (plan task 3.9). It
-// calls a real model and spends plan usage: run it by hand when
-// `prompts/dispute-judge.md`, the request, `DisputeJudgment` or the judge's
-// model changes, never from a test.
+// calls a real model and spends plan usage: run only an authorized check
+// (AGENTS.md), never from a test.
 //
-//   node scripts/decide-set.ts [--model <id>] [--runs <n>] [--prompt <file>]
-//                              [--only <id>,<id>]
+//   mise exec -- pnpm check:live node scripts/decide-set.ts --runs 2
 //
-// The model defaults to the judge's (`DISPUTE_MODEL`), the prompt to
-// `prompts/dispute-judge.md`, and `--only` picks disputes by id.
+// The prompt defaults to `prompts/dispute-judge.md`; `--only` picks disputes by id.
 //
 // An outcome agrees when its verdict is the hand verdict, a choice
 // question's right letter is the hand key, and a math question's expected
@@ -22,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
   createClaudeBackend,
-  DISPUTE_MODEL,
+  LIVE_CHECK_OPTIONS,
 } from "../src/server/backends/claude.ts";
 import {
   createDisputeJudge,
@@ -33,12 +30,17 @@ import { DISPUTE_SET, type HandJudgedDispute } from "./dispute-set.ts";
 
 const { values } = parseArgs({
   options: {
-    model: { type: "string" },
     runs: { type: "string", default: "1" },
     prompt: { type: "string" },
     only: { type: "string" },
   },
 });
+// Only the launcher's pinned model and effort may run here (AGENTS.md).
+if (process.env.GAUSS_LIVE_CHECK !== "1") {
+  throw new Error(
+    "Run this through `mise exec -- pnpm check:live` (AGENTS.md).",
+  );
+}
 const runs = Number(values.runs);
 if (!Number.isInteger(runs) || runs < 1) {
   throw new Error(`--runs takes a whole number from 1: ${values.runs}`);
@@ -66,9 +68,9 @@ const promptFile =
   values.prompt ??
   fileURLToPath(new URL("../prompts/dispute-judge.md", import.meta.url));
 const systemPrompt = await readFile(promptFile, "utf8");
-const model = values.model ?? DISPUTE_MODEL;
+const model = `${LIVE_CHECK_OPTIONS.model}, ${LIVE_CHECK_OPTIONS.effort} effort`;
 const judge = createDisputeJudge({
-  backend: createClaudeBackend({ model }),
+  backend: createClaudeBackend(),
   systemPrompt,
 });
 

@@ -12,9 +12,8 @@ import {
 import { resolveDataRoot } from "./record/data-root.ts";
 import { serve } from "./serve.ts";
 
-// GAUSS_CLAUDE_MODEL picks a cheap model for development runs (AGENTS.md),
-// for every session and one-shot call. Left unset, the sessions use the
-// learner's Claude Code default, and each one-shot call uses its own model.
+// GAUSS_CLAUDE_MODEL overrides the model for all roles in the normal app.
+// Otherwise, the tutor uses the login's default and each helper has its own.
 const model = process.env.GAUSS_CLAUDE_MODEL;
 
 await serve({

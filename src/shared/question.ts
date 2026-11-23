@@ -54,7 +54,7 @@ const rubric = z
   .string()
   .min(1)
   .describe(
-    "Written questions only: how to grade the answer, for a grader who sees only the question, this rubric and the answer. Say what a complete, correct answer must establish, step by step, and the errors or gaps that make it wrong. Never shown to the learner.",
+    "Written questions only. The grader sees only the card, rubric and answer. Describe what makes an answer complete under the card's stated premises. A sound explanation of the requested claim must pass even if it omits a related result or uses a different valid method. Check that every example and reason to reject an answer is valid under those premises. Never shown to the learner.",
   );
 
 const expected = z

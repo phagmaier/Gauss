@@ -1,14 +1,11 @@
 // Grades the hand-graded set (`scripts/grader-set.ts`) through `createGrader`
 // and the Claude backend's `oneShot`, as the app does, and prints each grade
 // beside the hand grade (plan task 2.9). It calls a real model and spends
-// plan usage: run it by hand when `prompts/grader.md` or the grader's model
-// changes, never from a test.
+// plan usage: run only an authorized check (AGENTS.md), never from a test.
 //
-//   node scripts/grade-set.ts [--model <id>] [--runs <n>] [--prompt <file>]
-//                             [--only <id>,<id>]
+//   mise exec -- pnpm check:live node scripts/grade-set.ts --runs 2
 //
-// The model defaults to the grader's (`GRADER_MODEL`), the prompt to
-// `prompts/grader.md`, and `--only` picks answers by id.
+// The prompt defaults to `prompts/grader.md`; `--only` picks answers by id.
 //
 // Whether the verdicts agree is counted here. Whether a flaw names the right
 // step is for the reader to judge, so the hand-written flaw is printed with
@@ -19,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
   createClaudeBackend,
-  GRADER_MODEL,
+  LIVE_CHECK_OPTIONS,
 } from "../src/server/backends/claude.ts";
 import {
   createGrader,
@@ -29,12 +26,17 @@ import { GRADER_SET, type HandGradedAnswer } from "./grader-set.ts";
 
 const { values } = parseArgs({
   options: {
-    model: { type: "string" },
     runs: { type: "string", default: "1" },
     prompt: { type: "string" },
     only: { type: "string" },
   },
 });
+// Only the launcher's pinned model and effort may run here (AGENTS.md).
+if (process.env.GAUSS_LIVE_CHECK !== "1") {
+  throw new Error(
+    "Run this through `mise exec -- pnpm check:live` (AGENTS.md).",
+  );
+}
 const runs = Number(values.runs);
 if (!Number.isInteger(runs) || runs < 1) {
   throw new Error(`--runs takes a whole number from 1: ${values.runs}`);
@@ -52,8 +54,9 @@ const promptFile =
   values.prompt ??
   fileURLToPath(new URL("../prompts/grader.md", import.meta.url));
 const systemPrompt = await readFile(promptFile, "utf8");
+const model = `${LIVE_CHECK_OPTIONS.model}, ${LIVE_CHECK_OPTIONS.effort} effort`;
 const grader = createGrader({
-  backend: createClaudeBackend({ model: values.model ?? GRADER_MODEL }),
+  backend: createClaudeBackend(),
   systemPrompt,
 });
 
@@ -80,7 +83,9 @@ for (let run = 1; run <= runs; run++) {
   }
 
   let agree = 0;
-  process.stdout.write(`\n=== Run ${run} of ${runs} (${promptFile}) ===\n`);
+  process.stdout.write(
+    `\n=== Run ${run} of ${runs} (${model}, ${promptFile}) ===\n`,
+  );
   for (const { item, outcome, seconds } of results) {
     const verdict = outcome.ok ? outcome.verdict : "failed";
     const same = verdict === item.grade;

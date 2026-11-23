@@ -159,10 +159,10 @@ instructions:
   `pnpm dev:fake` (`backends/scripted.test.ts` catches most of it).
 - Thread text is Markdown with `$...$` and `$$` math and `\$` for a
   dollar; no `\(...\)`, HTML or images.
-- One-shot models are constants in `backends/claude.ts`;
-  `GAUSS_CLAUDE_MODEL` replaces every model, the tutor's included. Fake
-  backend tests cover routing and validation, not judgment: compare a
-  consequential wording change on the same cases (below).
+- In the normal app, one-shot models are constants in `backends/claude.ts`;
+  `GAUSS_CLAUDE_MODEL` overrides all roles. The live-check launcher pins
+  model and effort instead. Fake backend tests cover routing and
+  validation, not judgment.
 
 ## Working here
 
@@ -199,11 +199,12 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   `app: "<that path>/bin/chromium"` to `browser.open`. Omp's managed
   Chromium does not start here; WebKit reports an aid's errors only as
   "Script error.".
-- **Real-model checks**, only when required, on a fresh temporary data
-  root (`pnpm dev`, port 4320). Opening a unit can spend plan usage before
-  anyone sends a message. Before a live comparison, specify the model,
-  effort and run count (`model` and `effort` of `createClaudeBackend`); do
-  not inherit Opus from the login. Test sources: the user's Inwood
+- **Authorized real-model checks** use `mise exec -- pnpm check:live`.
+  It starts the app on port 4320 in a fresh temporary data root.
+  `createClaudeBackend` pins every role to the `AGENTS.md` model and
+  effort, overriding both login defaults and harness options. Opening a
+  unit can spend plan usage; specify the run count before a comparison.
+  Test sources: the user's Inwood
   _Phenomenology_ at `~/Books/Philosophy/Hegel/The Phenomenology of
   Spirit.pdf`, and arXiv 1706.03762 (Attention) and 1512.03385 (ResNet),
   downloaded. A course needs no intake: write it into the root
@@ -214,20 +215,21 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   build `createUnitChats`, `createUnitPlanner`, `createIntakes` or
   `createCoursePlannings` on `createClaudeBackend` with the prompt's text,
   wired as `serve.ts` does, send the learner's moves, and save the chat's
-  `events()`. A short smoke run on the plan login:
+  `events()`. Pass the script to the launcher, for example
+  `mise exec -- pnpm check:live node /tmp/trial.ts`, and use its
+  `GAUSS_DATA_ROOT`. For isolated live sessions, launch a separate
+  process through it for each root. Await `chat.settled()` after each
+  `turn_end` before taking the next action.
 
-  ```sh
-  scratch=$(mktemp -d) &&
-    GAUSS_DATA_ROOT="$scratch" GAUSS_CLAUDE_MODEL=claude-haiku-5-5 \
-    mise exec -- pnpm dev
-  ```
-
-- **Prompt and model changes**: re-run `node scripts/grade-set.ts --runs 2`
-  when `grader.md`, `WrittenGrade` or `GRADER_MODEL` changes;
-  `judge-set.ts` for `help-judge.md`, `HelpJudgment` or `JUDGE_MODEL`;
-  `decide-set.ts` for `dispute-judge.md`, `disputeRequest`,
-  `DisputeJudgment` or `DISPUTE_MODEL`. With `--prompt` and `--only` they
-  run the same cases against an old and a new version.
+- **Grader and judge prompts and schemas**: for authorized live
+  comparisons use `mise exec -- pnpm check:live node scripts/grade-set.ts
+  --runs 2`, or substitute `judge-set.ts` for help and `decide-set.ts` for
+  disputes. `--prompt` and `--only` compare the same cases against an old
+  and a new prompt. They run on the launcher's model and effort, not the
+  role's own (`JUDGE_MODEL` is Haiku), and refuse to run without it.
+- **A live script reaches the model only through `createClaudeBackend`**,
+  where the launcher's pin is applied; a direct `query()` or `claude -p`
+  would run on the login's default.
 - **What a run sent and got**: request headers, tool inputs, results and
   thinking are in Claude Code's session log under
   `~/.claude/projects/<the course's workspace folder, every character but

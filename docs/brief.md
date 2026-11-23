@@ -177,10 +177,12 @@ stop anywhere and resume at the same segment and phase.
   transcript see it.
 - **Written answers**: one that is mostly right but vague is a miss, and
   so is one that gives a source's words without explaining them; no
-  grade is held back for follow-up questions. A written question names
-  every part its rubric requires, and after an answer that leaves one out,
-  the detour says what was right and what was missing and names no
-  misconception.
+  grade is held back for follow-up questions. A written question asks for
+  one result or piece of reasoning and states its scope. The rubric
+  describes what makes that answer complete; it does not require
+  separate work the question did not ask for. When an answer leaves a
+  necessary part out, the detour says what was right and what was missing
+  and names no misconception.
 - **Code answers**: a run whose tests fail is a miss; it starts a detour,
   and the check goes on with a different exercise. A run that times out
   twice on the same files is a miss; the first time-out fails only the
@@ -260,9 +262,13 @@ what is due, and on-demand self-test.
   verified to appear verbatim in the source, and its citation opens the
   passage. A source lecture puts its quotes beside their explanations,
   in the text's order. Matching ignores what extraction adds: margin line
-  numbers and a word split by a hyphen at a line's end. To refer to a
-  passage it paraphrases, the tutor links its section in its own sentence;
+  numbers and a word split by a hyphen at a line's end. Outside an open
+  question, the tutor links a passage it paraphrases in its own sentence;
   a link claims no quote.
+- A source question gives the context needed to answer. It may name a
+  work or chapter but does not give a location or wording that points
+  to where the answer can be read. The learner can reread on their own;
+  the tutor does not locate the passage for them while the question is open.
 - Unit notes stand alone, so they cite the source as text, never as a
   link, and quote it only in verified quotes' words, each with its
   citation. The exported transcript keeps quote blocks with their

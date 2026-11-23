@@ -193,10 +193,11 @@ where `convert.py` handles them.
   the go-ahead, a revision and a large topic. Cutting `tutor.md` from 634
   to 356 lines and `planner.md` from 214 to 133 this way found two and one
   regressions.
-- **Compare role prompts on the model the app runs them on**: with no
-  `GAUSS_CLAUDE_MODEL`, sessions take the login's default, Opus 5.5 on the
-  user's plan (the real courses' session logs). Sonnet follows the source
-  rules worse (see "Tutor"), so a Sonnet run alone misjudges a wording.
+- **Live checks run on Sonnet 5.5 at medium effort (`AGENTS.md`), not the
+  models the app uses**: the tutor takes the login's default, Opus 5.5 on
+  the user's plan, and the help judge Haiku. Sonnet follows the source rules
+  worse (see "Tutor"), so a live result is evidence for a wording, not proof
+  of how Opus or Haiku will take it.
 - **A prompt says only what headers, tool and field descriptions and
   refusals do not**, and rewording any of those changes what the model is
   told.
@@ -230,6 +231,14 @@ where `convert.py` handles them.
   method**: "name at most the unit" alone, 4 of 6 named it; with its reason
   and the example "One more from the same unit.", 0 of 3. Lead-ins and
   hint replies also leaked the point missed before.
+- **Opus can locate a passage without a numbered citation**: a chapter-opening
+  cue paired with source wording points back to the lecture's verified quote.
+  The help judge judges the reply, not whether the card itself gave help.
+- **Once a lesson and detour explain a one-claim objective in full, the
+  tutor seldom finds a question both new and sound** (Hegel's result of
+  Perception: never both cards, on Opus or Sonnet; the Attention lookup:
+  mostly): it restates them, or writes the answer into the card's premises.
+  Evidence: the 4.23 commit.
 - **Without the rule in the teaching phase, the tutor teaches the very
   function the check then asks for** (Haiku, Sonnet and a digit-sum run);
   the rule says the objective's task is not written out, set or hinted.
@@ -462,6 +471,10 @@ without new evidence.
   printed "Psychopolitics" under "Halftitle Page". **Bookmark parentage
   from sorted destinations**: lost parents when a child links back.
   **Erasing form bounding boxes in PDFs**: erased prose set in forms.
+- **Extra calls or rules to keep each check question new** (a reviewer or
+  reminder before posting, a separate writer, a target selector, a list of
+  what was taught, a ledger checked by recall, applications reserved before
+  teaching): none made Hegel questions reliably new and sound (see "Tutor").
 - **A synchronous quote index per chat**: it duplicated large texts and
   blocked other requests. **The course planner given every outline in each
   `<course>` block**: the Inwood outline repeated about 170 lines.

@@ -261,6 +261,30 @@ test("a session resumed by its id runs in the folder given, under that id, and i
   await session.close();
 });
 
+test("a live check's tutor session runs on the pinned model and effort, whatever the caller asks for", async () => {
+  vi.stubEnv("GAUSS_LIVE_CHECK", "1");
+  startingQuery(Promise.resolve({}));
+  try {
+    const session = await createClaudeBackend({
+      model: "claude-opus-5-5",
+      effort: "high",
+    }).startSession({
+      systemPrompt: "Test tutor.",
+      tools: [],
+      cwd: "/data/courses/vectors",
+      resumeId: RESUMED,
+    });
+
+    expect(vi.mocked(query).mock.lastCall?.[0].options).toMatchObject({
+      model: "claude-sonnet-5-5",
+      effort: "medium",
+    });
+    await session.close();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
 test("a session Claude Code cannot find is a failure of its own, and its query is closed", async () => {
   const { closed } = startingQuery(
     Promise.reject(
