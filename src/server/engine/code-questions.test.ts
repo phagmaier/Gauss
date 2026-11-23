@@ -538,7 +538,7 @@ test("an open code question cannot accept a new submission without a sandbox", a
       (await root.readState(COURSE)).units.bpe?.openQuestion?.answer,
     ).toBeUndefined();
     expect(await chat.override()).toEqual({ ok: true });
-    expect(await root.readEvidence(COURSE)).toEqual([
+    expect(await root.readEvidence(COURSE)).toMatchObject([
       { kind: "override", recordedAt: NOW, objectives: ["count-pairs"] },
     ]);
   } finally {
@@ -596,7 +596,7 @@ test("shutdown stops grading; an infrastructure failure after reopen allows movi
       );
     expect(nextStep(page)).toBe("move-on");
     expect(await chat.override()).toEqual({ ok: true });
-    expect(await root.readEvidence(COURSE)).toEqual([
+    expect(await root.readEvidence(COURSE)).toMatchObject([
       { kind: "override", recordedAt: NOW, objectives: ["count-pairs"] },
     ]);
   } finally {

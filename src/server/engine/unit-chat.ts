@@ -1257,6 +1257,8 @@ function createUnitChat(
   let closing = false;
   /** A Stop cancels automatic next-question turns, including ones still queued. */
   let stopCount = 0;
+  /** A message cannot be admitted while the override is entering the queue. */
+  let overrideWrite: Promise<ChatResult> | undefined;
   /**
    * Set while review is being offered, from the checks until its card is
    * kept: a message sent meanwhile waits for the card, which it skips.
@@ -1488,6 +1490,9 @@ function createUnitChat(
         const resumes = id !== undefined && (await loaded.resume(id));
         if (!resumes) fallBack(r);
       }
+      const recoveringOverride =
+        record.position.pendingSegmentOverride !== undefined;
+      if (recoveringOverride) await closeOverriddenSegment(r);
       running = r;
       restoreQuestions(record);
       restoreDisputes(r);
@@ -1512,7 +1517,7 @@ function createUnitChat(
         }
       }
       if (pendingInstall !== undefined) showSaveFailure(pendingInstall);
-      log.emit(record.status());
+      if (!recoveringOverride) log.emit(record.status());
       if (record.finished !== undefined) {
         if (
           record.testedOut &&
@@ -1547,7 +1552,7 @@ function createUnitChat(
       ) {
         log.emit({ type: "test_answered", skipped: phase.skipping ?? [] });
       }
-      log.emit(phase);
+      if (!recoveringOverride) log.emit(phase);
       // An assessment offered or under way says so before its question.
       if (position.assessment !== undefined) {
         showRun(r, position.assessment);
@@ -1786,6 +1791,7 @@ function createUnitChat(
     const { position, finished } = r.record;
     // An assessment's answers are its own rules', read when it next moves.
     if (finished !== undefined || position.assessment !== undefined) return;
+    if (position.pendingSegmentOverride !== undefined) return;
     // The test's result card shows what passed as it now stands.
     if (position.testOut?.stage === "result") {
       showTestResult(r);
@@ -2280,6 +2286,12 @@ function createUnitChat(
     }
   }
 
+  async function closeOverriddenSegment(r: Running): Promise<void> {
+    const { objectives, withdrawn } = await r.record.overrideSegment();
+    // Told with the next turn, so moving on costs no reply.
+    r.notes.push(overrideNote(objectives, withdrawn?.number));
+  }
+
   /**
    * A segment has just closed: the review its sitting held is offered once
    * the tutor is done, unless the unit has come to its end. Runs inside
@@ -2367,6 +2379,7 @@ function createUnitChat(
   /** Why "Review now" cannot start a review in this thread now, if it cannot. */
   function reviewWaits(r: Running): string | undefined {
     const { position, finished } = r.record;
+    if (position.pendingSegmentOverride !== undefined) return OVERRIDE_PENDING;
     if (r.agents.busy() || r.feedback !== undefined) {
       return "The tutor is writing. Wait until it has finished, or stop it.";
     }
@@ -3698,11 +3711,17 @@ function createUnitChat(
    */
   function act(
     work: (r: Running) => Promise<ChatResult>,
-    { whileWriting = false, inRun = false } = {},
+    { whileWriting = false, inRun = false, overriding = false } = {},
   ): Promise<ChatResult> {
     return exclusive(async () => {
       const r = running;
       if (r === undefined) return notOpen();
+      if (
+        !overriding &&
+        r.record.position.pendingSegmentOverride !== undefined
+      ) {
+        return refused(OVERRIDE_PENDING);
+      }
       if (
         r.record.finished !== undefined &&
         !(inRun && r.record.position.assessment !== undefined)
@@ -3802,6 +3821,12 @@ function createUnitChat(
     say(text) {
       const r = running;
       if (r === undefined) return notOpen();
+      if (overrideWrite !== undefined) {
+        return refused("Wait for Move on to finish.");
+      }
+      if (r.record.position.pendingSegmentOverride !== undefined) {
+        return refused(OVERRIDE_PENDING);
+      }
       const id = randomUUID();
       log.emit({ type: "learner", id, text });
       /** Set if the tutor received the message while a question waited for its answer. */
@@ -4072,34 +4097,40 @@ function createUnitChat(
     applyCurriculum: (proposalId) => answerCurriculum(proposalId, "applied"),
     keepCurriculum: (proposalId) => answerCurriculum(proposalId, "kept"),
 
-    override: () =>
-      act(async (r) => {
-        const waits = runWaits(r);
-        if (waits !== undefined) return waits;
-        const { phase, openQuestion } = r.record.position;
-        if (phase !== "discuss" && phase !== "check") {
-          return refused(NOT_NOW.override[phase]);
-        }
-        // Only an infrastructure failure lets a kept answer be withdrawn.
-        if (
-          openQuestion?.answer !== undefined &&
-          !r.agents.canMoveOn(openQuestion.id)
-        ) {
-          return refused(
-            openQuestion.judging !== undefined || r.agents.grading()
-              ? "An answer is being graded. Wait for its grade, then move on."
-              : "An answer is kept and waits to be graded again. Grade it again, then move on.",
-          );
-        }
-        const { objectives, withdrawn } = await r.record.overrideSegment();
-        // Told with the next turn, so moving on costs no reply.
-        r.notes.push(overrideNote(objectives, withdrawn?.number));
-        offerHeld(r);
-        if (isLastSegment(r.context.plan, r.record.position)) {
-          await endUnit(r, true);
-        }
-        return { ok: true };
-      }),
+    override() {
+      if (overrideWrite !== undefined) return overrideWrite;
+      overrideWrite = act(
+        async (r) => {
+          const waits = runWaits(r);
+          if (waits !== undefined) return waits;
+          const { phase, openQuestion } = r.record.position;
+          if (phase !== "discuss" && phase !== "check") {
+            return refused(NOT_NOW.override[phase]);
+          }
+          // Only an infrastructure failure lets a kept answer be withdrawn.
+          if (
+            openQuestion?.answer !== undefined &&
+            !r.agents.canMoveOn(openQuestion.id)
+          ) {
+            return refused(
+              openQuestion.judging !== undefined || r.agents.grading()
+                ? "An answer is being graded. Wait for its grade, then move on."
+                : "An answer is kept and waits to be graded again. Grade it again, then move on.",
+            );
+          }
+          await closeOverriddenSegment(r);
+          offerHeld(r);
+          if (isLastSegment(r.context.plan, r.record.position)) {
+            await endUnit(r, true);
+          }
+          return { ok: true };
+        },
+        { overriding: true },
+      ).finally(() => {
+        overrideWrite = undefined;
+      });
+      return overrideWrite;
+    },
 
     startAssessment: () =>
       act(
@@ -4403,6 +4434,7 @@ function createUnitChat(
 }
 
 const UNIT_FINISHED = "The unit is finished.";
+const OVERRIDE_PENDING = "Choose Move on again to finish the override.";
 const QUESTION_STOPPED = { refused: "Stop canceled posting this question." };
 
 /** An answer kept while the tutor's replies during its question are judged (task 2.21). */

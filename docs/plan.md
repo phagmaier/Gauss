@@ -79,12 +79,6 @@ task.
 
 ## Known-gap fixes
 
-### K.1 Segment override recovery — todo
-
-**Why:** Evidence and position can disagree after an interrupted override.
-**Do:** Make a segment override recoverable and idempotent across the log and position writes.
-**Done when:** Reopening at the interrupted write closes the segment, withdraws the question, and leaves one override.
-
 ### K.2 First intake proposal recovery — todo
 
 **Why:** An interrupted first proposal can leave a draft with only some of its sources.
@@ -204,8 +198,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **B:** A finished unit opened after a restart starts a new tutor session
   without the note saying the conversation is new. Decide what reopening a
   finished unit should do with its conversation.
-- **A (K.1):** A crash between a segment override's evidence and position
-  writes leaves its check and question open. Seen in the code, not reproduced.
 - **A (K.2):** The first proposal is saved after the sources move, but the
   course is created before the moves. A crash there leaves a partial draft
   and startup discards the uploads that did not move.

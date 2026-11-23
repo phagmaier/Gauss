@@ -115,7 +115,7 @@ export const OverrideEvidence = z.object({
   kind: z.literal("override"),
   recordedAt: Timestamp,
   objectives: z.array(Slug).min(1),
-  /** Identifies a closing-card override so retrying it cannot record it twice. */
+  /** Identifies a pending move-on so retrying it cannot record it twice. */
   moveOnId: z.uuid().optional(),
 });
 export type OverrideEvidence = z.infer<typeof OverrideEvidence>;

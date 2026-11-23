@@ -182,6 +182,10 @@ export const UnitPosition = z
     testOut: TestOut.optional(),
     /** Another unit's objective with an open question withdrawn when the gate was skipped. */
     gateUnanswered: Slug.optional(),
+    /** A segment override whose evidence or closed position has not been saved yet. */
+    pendingSegmentOverride: OverrideEvidence.required({
+      moveOnId: true,
+    }).optional(),
     /** A closing-card override whose gate or finish has not been saved yet. */
     pendingMoveOn: OverrideEvidence.required({ moveOnId: true })
       .extend({
@@ -216,6 +220,17 @@ export const UnitPosition = z
       "Where the check began in the evidence is kept in the check, and only there.",
     path: ["checkFrom"],
   })
+  .refine(
+    (p) =>
+      p.pendingSegmentOverride === undefined ||
+      ((p.phase === "discuss" || p.phase === "check") &&
+        p.assessment === undefined),
+    {
+      message:
+        "A segment override is pending only during discussion or a check.",
+      path: ["pendingSegmentOverride"],
+    },
+  )
   .refine((p) => p.openQuestion === undefined || asking(p), {
     message:
       "A question can be open only in the check, or in an assessment under way.",

@@ -261,6 +261,11 @@ export interface DataRoot {
   changeCurriculum(id: string, units: readonly Unit[]): Promise<void>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
   appendEvidence(id: string, entry: EvidenceEntry): Promise<void>;
+  /** Makes a pending override durable without appending its id twice. Returns the current log. */
+  recoverOverride(
+    id: string,
+    entry: OverrideEvidence & { moveOnId: string },
+  ): Promise<EvidenceEntry[]>;
   /** The evidence, oldest first, without a last line a crash cut short. */
   readEvidence(id: string): Promise<EvidenceEntry[]>;
   /**
@@ -1343,6 +1348,34 @@ export function openDataRoot(options: {
       await withFileLock(path, async () => {
         await existingCourse(id);
         await appendJsonLine(path, checked);
+      });
+    },
+
+    async recoverOverride(id, entry) {
+      const checked = OverrideEvidence.parse(entry);
+      const path = courseFile(id, "evidence.jsonl");
+      return withFileLock(path, async () => {
+        await existingCourse(id);
+        const log = await readJsonLines(path, EvidenceEntry);
+        if (
+          log.some(
+            (e) => e.kind === "override" && e.moveOnId === entry.moveOnId,
+          )
+        ) {
+          // A complete line can be readable after a process crash before
+          // it or its directory entry reached disk.
+          const file = await open(path, "r");
+          try {
+            await file.sync();
+          } finally {
+            await file.close();
+          }
+          await syncFolder(dirname(path));
+        } else {
+          await appendJsonLine(path, checked);
+          log.push(checked);
+        }
+        return log;
       });
     },
 

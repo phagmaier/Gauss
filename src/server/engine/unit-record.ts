@@ -248,9 +248,8 @@ export interface UnitRecord {
   /** Ends the open detour, and tells the page: the learner asks for another question. */
   endDetour(): Promise<void>;
   /**
-   * The learner moves on without the check: records an override of the
-   * segment's objectives and closes the segment, withdrawing any open
-   * question and ending any detour.
+   * Records or recovers an override of the segment's objectives and closes
+   * the segment, withdrawing any open question and ending any detour.
    */
   overrideSegment(): Promise<{
     objectives: string[];
@@ -938,14 +937,28 @@ export async function openUnitRecord(options: {
 
     async overrideSegment() {
       const { segment } = position;
-      const objectives = [...segmentOf(plan, position).objectives];
-      await append({
-        kind: "override",
-        recordedAt: now().toISOString(),
-        objectives,
-      });
+      let entry = position.pendingSegmentOverride;
+      if (entry === undefined) {
+        entry = {
+          kind: "override",
+          recordedAt: now().toISOString(),
+          objectives: [...segmentOf(plan, position).objectives],
+          moveOnId: randomUUID(),
+        };
+        await move({ ...position, pendingSegmentOverride: entry });
+        await append(entry);
+      } else {
+        readAgain(await dataRoot.recoverOverride(courseId, entry));
+      }
+      const { objectives } = entry;
       const withdrawn = position.openQuestion;
-      const { checkFrom: _, openQuestion: __, detour: ___, ...rest } = position;
+      const {
+        checkFrom: _,
+        openQuestion: __,
+        detour: ___,
+        pendingSegmentOverride: ____,
+        ...rest
+      } = position;
       await move({ ...rest, phase: "closed" }, () => {
         emit({
           type: "overridden",
@@ -976,16 +989,7 @@ export async function openUnitRecord(options: {
         await append(entry);
       } else {
         const { gate: _, ...entry } = pending;
-        const id = entry.moveOnId;
-        if (!evidence.some((e) => e.kind === "override" && e.moveOnId === id)) {
-          // The append may have reached disk before its failure was reported.
-          const log = await dataRoot.readEvidence(courseId);
-          if (log.some((e) => e.kind === "override" && e.moveOnId === id)) {
-            readAgain(log);
-          } else {
-            await append(entry);
-          }
-        }
+        readAgain(await dataRoot.recoverOverride(courseId, entry));
       }
       emit(status());
       return pending;

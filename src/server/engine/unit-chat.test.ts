@@ -1005,7 +1005,7 @@ test("moving on from a detour ends it, records the override and closes the segme
     status("in-progress", "overridden", "overridden"),
     { type: "phase", segment: 0, phase: "closed" },
   ]);
-  expect((await reload().readEvidence(COURSE)).at(-1)).toEqual({
+  expect((await reload().readEvidence(COURSE)).at(-1)).toMatchObject({
     kind: "override",
     recordedAt: NOW,
     objectives: ["difference-quotient", "secant-slope"],
@@ -1278,7 +1278,7 @@ test("the learner's override closes the segment, is recorded as evidence, withdr
     status("in-progress", "overridden", "overridden"),
     { type: "phase", segment: 0, phase: "closed" },
   ]);
-  expect(await reload().readEvidence(COURSE)).toEqual([
+  expect(await reload().readEvidence(COURSE)).toMatchObject([
     {
       kind: "override",
       recordedAt: NOW,
@@ -1298,6 +1298,57 @@ test("the learner's override closes the segment, is recorded as evidence, withdr
     /^\[Unit 1 of 2, "The derivative"; segment 2 of 2, "The limit", on "derivative-limit"\. Phase: teach\. Start of the segment\. The learner moved on without finishing the check of the segment just closed, which is recorded as an override of "difference-quotient" and "secant-slope"\. Question 1 was withdrawn\. Allowed now: teach/,
   );
 });
+
+test.each(["before", "after"])(
+  "reopening %s the override evidence append closes the segment and records one override",
+  async (when) => {
+    let atAppend: UnitPosition | undefined;
+    const before = setUp([TEACH, ask(Q_QUOTIENT)], {
+      record: (root) => ({
+        ...root,
+        async appendEvidence(...args) {
+          await root.appendEvidence(...args);
+          atAppend = await positionWritten();
+        },
+      }),
+    });
+    await makeCourse();
+    const first = await open(before);
+    await toCheck(first);
+    const id = openQuestionId(first);
+    const transcript = join(SESSIONS(), "derivative.1.jsonl");
+    const beforeOverride = await readFile(transcript, "utf8");
+    expect(await first.override()).toEqual({ ok: true });
+    await stopBeforeClosing(before, atAppend);
+    // Keep the position at the append, not the later events.
+    await writeFile(transcript, beforeOverride);
+    if (when === "before") {
+      await rm(join(dir, "courses", COURSE, "evidence.jsonl"));
+    }
+
+    const after = setUp([]);
+    try {
+      const reopened = await open(after);
+      expect(await position()).toEqual({
+        derivative: { segment: 0, phase: "closed" },
+      });
+      expect(reopened.events()).toContainEqual({
+        type: "overridden",
+        segment: 0,
+        objectives: ["difference-quotient", "secant-slope"],
+        withdrawnQuestionId: id,
+      });
+      expect(await reload().readEvidence(COURSE)).toMatchObject([
+        {
+          kind: "override",
+          objectives: ["difference-quotient", "secant-slope"],
+        },
+      ]);
+    } finally {
+      await after.units.close();
+    }
+  },
+);
 
 test("the learner can also move on from the discussion, without pressing ready", async () => {
   const setup = setUp([TEACH]);
