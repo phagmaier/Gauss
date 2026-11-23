@@ -269,13 +269,17 @@ test("a code question is posted once its tests fail on the starter and pass on t
   expect(backend.calls.at(-1)?.result).toMatchObject({ status: "done" });
 });
 
-test("a passing run is recorded correct, with the files as run and the output's end, for the tutor and 'What I know'", async () => {
+test.each([
+  { ending: "with a final newline", tail: "  \n\n" },
+  { ending: "without a final newline", tail: "  \n\n  " },
+])("preserves submitted code $ending in feedback", async ({ tail }) => {
   const { backend, root, chat, workspace } = await setUp([
     TEACH,
     ask(CODE),
     FEEDBACK,
   ]);
-  await edit(workspace, SOLUTION);
+  const submitted = SOLUTION + tail;
+  await edit(workspace, submitted);
 
   await runTests(chat, "90");
 
@@ -284,7 +288,7 @@ test("a passing run is recorded correct, with the files as run and the output's 
     kind: "code",
     questionId,
     confidence: "90",
-    files: [{ path: "bpe.py", content: SOLUTION }],
+    files: [{ path: "bpe.py", content: submitted }],
   };
   expect(chat.events()).toContainEqual({
     type: "grading",
@@ -314,9 +318,14 @@ test("a passing run is recorded correct, with the files as run and the output's 
   // No model graded it.
   expect(backend.oneShots).toEqual([]);
   const turn = answerTurn(backend);
+  const fileBlock = /^bpe\.py:\n```\n(.*?)\n```\n\n/ms.exec(turn);
+  expect(fileBlock?.[1]).toBe(submitted);
   expect(turn).toContain(
     "The learner ran the tests, at 90% confidence, on their files as they were then:\n\n" +
-      `bpe.py:\n\`\`\`\n${SOLUTION.trimEnd()}\n\`\`\`\n\n` +
+      "bpe.py:\n```\n",
+  );
+  expect(turn).toContain(
+    "\n```\n\n" +
       "They gave no reasoning.\n" +
       "The tests passed: correct. The end of their output:",
   );

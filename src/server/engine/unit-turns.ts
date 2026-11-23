@@ -320,7 +320,7 @@ export function answerTurn(
       entry.verdict === "correct"
         ? "The tests passed: correct. The end of their output:"
         : "The tests failed: incorrect. The end of their output:",
-      fenced(entry.output ?? ""),
+      fenced((entry.output ?? "").trimEnd()),
     );
   } else if (answer.kind === "written") {
     lines.push(
@@ -1542,7 +1542,8 @@ function fenced(text: string): string {
     ...(text.match(/`+/g) ?? []).map((r) => r.length),
   );
   const fence = "`".repeat(Math.max(3, longest + 1));
-  return `${fence}\n${text.trimEnd()}\n${fence}`;
+  // Both newlines frame the text; neither belongs to the file.
+  return `${fence}\n${text}\n${fence}`;
 }
 
 /** "a", or "a" and "b", or "a", "b" and "c". */

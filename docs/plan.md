@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.10 Preserve submitted code in tutor feedback — todo
-
-**Why:** The tutor's copy of a submission loses trailing whitespace.
-**Do:** Preserve the exact file content when formatting the grading feedback turn.
-**Done when:** A submission ending in spaces and blank lines arrives unchanged in the tutor's file block.
-
 ### K.11 Keep scripted commands out of grading feedback — todo
 
 **Why:** The scripted backend parses commands in text that never came from the message box.
@@ -198,7 +192,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   the record's. Decide whether to resolve answered ones from the evidence.
 - **B:** Only “What I know” shows the contents of submitted files.
   Decide whether to show them on the question card as well.
-- **A (K.10):** The tutor's copy of a submitted file drops trailing whitespace.
 - **A (K.11):** The scripted backend can take grading feedback for a command.
 - **C:** There is no hand-graded set for math answers the symbolic check
   does not settle. The dispute set lacks disputes of a correct grade and
