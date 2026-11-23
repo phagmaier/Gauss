@@ -70,6 +70,12 @@ task.
 **Do:** Honor the turn cancellation when the write finishes before presenting the aid.
 **Done when:** A controlled write that resolves after Stop opens no aid; a normal write still opens it.
 
+### K.21 Remove the remaining 1-second waits from tests — todo
+
+**Why:** Some tests still wait on Vitest's 1-second `expect.poll` or `vi.waitFor` deadline, which load can exceed as the K.19 notes test did; none has failed yet, so it follows K.13. Move it first if one fails a check.
+**Do:** In `engine/source-quotes.test.ts`, await the notes write (`Notes.settled()`); in `engine/disputes.test.ts` and `engine/unit-chat.test.ts`, await the request or tool call reaching the fake rather than poll for it; give `engine/sandbox.test.ts`'s wait on a real process an explicit limit.
+**Done when:** A controlled delay past one second fails each current wait, and the revised tests pass with it, keeping their assertions.
+
 ### K.14 Show the right step after a detour dispute — todo
 
 **Why:** A detour card can still promise a question the engine will no longer ask.
@@ -151,6 +157,9 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **C:** The unit planner splits contexts into objectives (“a setting is
   not a skill” is unsettled) and names implementations (“using zip”).
 - **A (K.18):** The fake backend's `hasSession` ignores the working folder.
+- **A (K.21):** Tests in `engine/source-quotes.test.ts`, `disputes.test.ts`,
+  `unit-chat.test.ts` and `sandbox.test.ts` wait on a 1-second deadline
+  that load can exceed.
 
 **Tutor, grading and judging**
 
