@@ -52,7 +52,8 @@ starting a plan task, editing files, or committing.
    these rules before committing. For a code change, a reviewer with fresh
    context (a subagent) finds more than rereading your own diff: in stage
    4, every separate review found faults. Fix concrete findings and check
-   again.
+   again. After a fix that changes only comments or documents,
+   `mise exec -- pnpm lint` is the recheck.
 5. Update the documents, as "Keeping the documents" says.
 6. Delete the task's entry from the plan. Anything a later task needs goes
    into that task's or stage's note in the plan, or into the document where

@@ -67,7 +67,7 @@ task.
 ### K.21 Remove the remaining 1-second waits from tests — todo
 
 **Why:** Some tests still wait on Vitest's 1-second `expect.poll` or `vi.waitFor` deadline, which load can exceed as the K.19 notes test did; none has failed yet.
-**Do:** In `engine/source-quotes.test.ts`, await the notes write (`Notes.settled()`); in `engine/disputes.test.ts` and `engine/unit-chat.test.ts`, await the request or tool call reaching the fake rather than poll for it; give `engine/sandbox.test.ts`'s wait on a real process an explicit limit.
+**Do:** In `engine/source-quotes.test.ts`, await the notes write (`Notes.settled()`); in `engine/disputes.test.ts` and `engine/unit-chat.test.ts`, await the request or tool call reaching the fake rather than poll for it; give `engine/sandbox.test.ts`'s wait on a real process an explicit limit. Add to the Vitest bullet of "Working here" in `architecture.md`: "Wait for engine work through its `settled()` or a fake reply the test releases (`{ later }`), not `expect.poll` or `vi.waitFor`, whose 1-second default fails under load."
 **Done when:** A controlled delay past one second fails each current wait, and the revised tests pass with it, keeping their assertions.
 
 ### K.14 Show the right step after a detour dispute — todo
