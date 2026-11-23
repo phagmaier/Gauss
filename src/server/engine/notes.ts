@@ -1,3 +1,9 @@
+import type { Element, Root } from "hast";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import { unified } from "unified";
 import { type StoredUnit, unitSections } from "../../shared/curriculum.ts";
 import type { DisputeOutcome } from "../../shared/dispute.ts";
 import type { PageEvent } from "../../shared/events.ts";
@@ -9,8 +15,13 @@ import {
 } from "../../shared/notes.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { CHOICE_LETTERS } from "../../shared/question.ts";
-import { type Outline, sectionsByRef } from "../../shared/source.ts";
+import {
+  type Outline,
+  type SourceSection,
+  sectionsByRef,
+} from "../../shared/source.ts";
 import { placeSpan } from "../../shared/source-lines.ts";
+import { resolveSourceLink } from "../../shared/source-target.ts";
 import { isFinished } from "../../shared/status.ts";
 import type { TutorBackend } from "../backends/backend.ts";
 import { type Backup, noBackup } from "../record/backup.ts";
@@ -271,7 +282,8 @@ async function request(
     answers.map((entry) => [entry.answer.questionId, entry]),
   );
   const disputes = disputesIn(evidence);
-  const stretch = readStretch(unitEvents(events, byId), {
+  const kept = unitEvents(events, byId);
+  const stretch = readStretch(kept, {
     plan,
     answers: byId,
     whole: true,
@@ -290,7 +302,7 @@ async function request(
       actually,
     }));
   const testedOut = Object.hasOwn(state.testedOut ?? {}, unit.id);
-  const sections = citedSections(unit, sources);
+  const sections = citedSections(unit, kept, sources);
   return [
     `Write this unit's notes in one HTML document of at most ${STANDALONE_HTML_LIMIT_BYTES.toLocaleString("en-US")} UTF-8 bytes.`,
     tagged(
@@ -352,13 +364,22 @@ function citedPlan(plan: Plan, sources: readonly Outline[]) {
 }
 
 /**
- * The unit's sections as notes cite them: by their source, the heading as
- * the source prints it (never Gauss's part of a cut stretch), and their
- * printed pages or paragraphs.
+ * The sections notes may cite: the unit's, then any other the tutor's
+ * replies link to. Each is given by its source, the heading as the source
+ * prints it (never Gauss's part of a cut stretch), and its printed pages
+ * or paragraphs, which the transcript's link addresses lack.
  */
-function citedSections(unit: StoredUnit, sources: readonly Outline[]) {
+function citedSections(
+  unit: StoredUnit,
+  events: readonly PageEvent[],
+  sources: readonly Outline[],
+) {
   const byRef = sectionsByRef(sources);
-  return unitSections(unit).flatMap((ref) => {
+  const refs = new Set([
+    ...unitSections(unit),
+    ...linkedSections(events, byRef),
+  ]);
+  return [...refs].flatMap((ref) => {
     const found = byRef.get(ref);
     if (found === undefined) return [];
     const { source, section, stretch } = found;
@@ -371,6 +392,52 @@ function citedSections(unit: StoredUnit, sources: readonly Outline[]) {
       },
     ];
   });
+}
+
+// The thread's Markdown up to its links (`prose.tsx`): a reference link
+// becomes one only with its definition, and brackets in math are no link.
+const linkReader = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkMath)
+  .use(remarkRehype)
+  .freeze();
+
+/**
+ * The sections the tutor's replies link to, as the thread reads its links:
+ * one it would not open, to a section the sources lack or a page outside
+ * the section, names none.
+ */
+function linkedSections(
+  events: readonly PageEvent[],
+  sections: ReadonlyMap<string, SourceSection>,
+): string[] {
+  const refs: string[] = [];
+  const visit = (node: Root | Element) => {
+    for (const child of node.children) {
+      if (child.type !== "element") continue;
+      const { href } = child.properties;
+      if (child.tagName === "a" && typeof href === "string") {
+        const link = resolveSourceLink(href, sections);
+        if (link !== undefined) {
+          refs.push(`${link.target.source}/${link.target.section}`);
+        }
+      }
+      visit(child);
+    }
+  };
+  // A reply arrives in pieces, which can split a link.
+  let reply = "";
+  const read = () => {
+    if (reply !== "") visit(linkReader.runSync(linkReader.parse(reply)));
+    reply = "";
+  };
+  for (const event of events) {
+    if (event.type === "tutor_text") reply += event.text;
+    else read();
+  }
+  read();
+  return refs;
 }
 
 function tagged(name: string, content: string): string {

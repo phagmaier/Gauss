@@ -4,9 +4,10 @@
 // match in the section named, then in the segment's, comes first. It is
 // refused when the sources lack the passage, and while a question of the
 // unit is open, as an aid is. The notes writer gets each quote with its
-// citation and the unit's sections, and the exported transcript names a
-// section link's section and page. A source teaching turn's lecture
-// (present_lecture) is checked here too. The tutor is the fake backend.
+// citation, the unit's sections and those the tutor links to, and the
+// exported transcript names a section link's section and page. A source
+// teaching turn's lecture (present_lecture) is checked here too. The tutor
+// is the fake backend.
 
 import { mkdtemp, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -933,6 +934,101 @@ test("the notes writer gets the unit's sections as the source prints them and ea
     const unit = /<unit>\n([\s\S]*?)\n<\/unit>/.exec(prompt)?.[1];
     expect(JSON.parse(unit ?? "null").plan.segments[1].passages).toEqual([
       { section: "phenomenology/s2", place: "p. 11" },
+    ]);
+  } finally {
+    await notes.close();
+  }
+});
+
+test("the notes writer gets the citation of a section the tutor links to in another unit, and of no section it does not", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  await root.storePlan(
+    id,
+    "introduction",
+    {
+      objectives: [
+        { id: "test", statement: "Explain how knowing tests itself." },
+      ],
+      segments: [
+        {
+          title: "The test",
+          objectives: ["test"],
+          sections: ["phenomenology/s3"],
+        },
+      ],
+    },
+    ["phenomenology/s3"],
+  );
+  await root.appendTranscript(id, "introduction", 1, [
+    { type: "session", startedAt: NOW },
+    { type: "phase", segment: 0, phase: "teach" },
+    { type: "learner", text: "Is [this](source:phenomenology/s2) the same?" },
+    { type: "turn_start" },
+    // A reply's pieces can split a link.
+    { type: "tutor_text", text: "As the Preface has it, [the true is " },
+    { type: "tutor_text", text: "the whole](source:phenomenology/s1/p9)." },
+    { type: "section_read", section: "phenomenology/s3" },
+    {
+      type: "tutor_text",
+      text:
+        "Not [a page it lacks](source:phenomenology/s2/p12), " +
+        "[a lost one](source:phenomenology/s9), or $[0, 1](source:phenomenology/s2)$.",
+    },
+    { type: "turn_end", outcome: "done" },
+    // The notes leave out another unit's review question and its lead-in.
+    { type: "turn_start" },
+    {
+      type: "tutor_text",
+      text: "Back to [the Preface's end](source:phenomenology/s2) first.",
+    },
+    {
+      type: "question",
+      question: {
+        kind: "written",
+        id: "review-1",
+        number: 1,
+        prompt: "Why is the Absolute a result?",
+        assessment: { of: 1, from: { number: 1, title: "The Preface" } },
+      },
+    },
+    { type: "turn_end", outcome: "done" },
+    { type: "unit_closed", status: "overridden" },
+  ]);
+  await root.appendEvidence(id, {
+    kind: "override",
+    recordedAt: NOW,
+    objectives: ["test"],
+  });
+  const backend = createFakeBackend([], [{ fail: "Capture the request." }]);
+  const notes = createNotes({
+    dataRoot: root,
+    backend,
+    systemPrompt: "Notes.",
+    ready: () => undefined,
+  });
+  try {
+    expect((await notes.start(id, "introduction", "", undefined)).ok).toBe(
+      true,
+    );
+    await notes.settled();
+    const prompt = backend.oneShots[0]?.prompt ?? "";
+    const sections = /<sections>\n([\s\S]*?)\n<\/sections>/.exec(prompt)?.[1];
+    // The Preface's second part is linked only by the learner, by a page
+    // outside it, inside math, and before another unit's question.
+    expect(JSON.parse(sections ?? "null")).toEqual([
+      {
+        section: "phenomenology/s3",
+        source: "Phenomenology",
+        title: "Introduction",
+        place: "p. 12",
+      },
+      {
+        section: "phenomenology/s1",
+        source: "Phenomenology",
+        title: "Preface",
+        place: "pp. 9–10",
+      },
     ]);
   } finally {
     await notes.close();

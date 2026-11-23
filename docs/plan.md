@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.16 Give notes the citation details of links they receive — todo
-
-**Why:** The notes writer can see a tutor's link to another unit's section only as an address.
-**Do:** Supply citation details for valid section links in the transcript without changing the notes prompt.
-**Done when:** A scripted notes request contains citation details for a cross-unit link but not for unrelated sections.
-
 ### K.17 Keep Markdown front matter out of the outline — todo
 
 **Why:** A metadata delimiter can be taken as a setext heading.
@@ -224,8 +218,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   page. Decide how much uncertain layout inference is acceptable.
 - **C:** `tutor.md` sends the tutor to a page whose math reads garbled;
   Sonnet looked at it only when asked.
-- **A (K.16):** A link to another unit's section reaches the notes
-  writer as a bare address.
 - **C:** Notes are not checked against the source; one live run kept, in
   quotation marks, three of the source's words quoted unverified by the tutor.
 - **D:** Sandboxed commands and artifact scripts have no peak disk,
