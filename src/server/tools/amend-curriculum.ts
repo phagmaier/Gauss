@@ -13,9 +13,10 @@ import { defineTool, type TeachingTool } from "./tool.ts";
 
 /** Where proposed curriculum changes go. The engine provides it. */
 export interface CurriculumDesk {
-  /** Shows the proposal to the learner, or says why not. */
+  /** Shows the proposal to the learner, or says why not; given the turn's stop signal, a stopped turn shows nothing. */
   propose(
     input: CurriculumChangeInput,
+    signal?: AbortSignal,
   ): Promise<{ proposed: true } | { refused: string }>;
 }
 
@@ -35,8 +36,8 @@ export function amendCurriculumTool(desk: CurriculumDesk): TeachingTool {
       "another proposal waits. Your turn goes on after it; the learner's " +
       "answer comes in a later header.",
     input: CurriculumChangeInput,
-    async run(input) {
-      const asked = await desk.propose(input);
+    async run(input, signal) {
+      const asked = await desk.propose(input, signal);
       if ("refused" in asked) return { status: "refused", text: asked.refused };
       return {
         status: "done",

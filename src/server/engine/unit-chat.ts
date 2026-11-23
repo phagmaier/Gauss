@@ -3151,7 +3151,7 @@ function createUnitChat(
   // Not while a question of the unit is open, where the card would sit
   // beside the question; one proposal waits in a course at a time.
   const styleDesk: StyleDesk = {
-    propose: ({ note, why }) =>
+    propose: ({ note, why }, signal) =>
       exclusive(async () => {
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
@@ -3186,6 +3186,10 @@ function createUnitChat(
             why,
             proposedAt: now().toISOString(),
           };
+          // A turn stopped while this waited for the unit or the course
+          // shows and keeps nothing; one stopped during the save below
+          // shows its card, as one stopped just after it would.
+          signal?.throwIfAborted();
           await r.record.keepStyleProposal(proposal, () =>
             log.emit(proposedEvent(proposal)),
           );
@@ -3239,7 +3243,7 @@ function createUnitChat(
   // As the style desk: not while a question of the unit is open, nor in a
   // feedback-only turn; one proposal of either kind waits in a course.
   const curriculumDesk: CurriculumDesk = {
-    propose: ({ units, why }) =>
+    propose: ({ units, why }, signal) =>
       exclusive(async () => {
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
@@ -3284,6 +3288,8 @@ function createUnitChat(
             why,
             proposedAt: now().toISOString(),
           };
+          // As for the style: a turn stopped meanwhile keeps nothing.
+          signal?.throwIfAborted();
           await r.record.keepCurriculumChange(change, () =>
             log.emit(changeProposedEvent(change)),
           );
@@ -3368,7 +3374,7 @@ function createUnitChat(
   // Not while a question of the course is open: the install closes the
   // workspace, which an open question has closed already.
   const packageDesk: PackageDesk = {
-    request: (packages) =>
+    request: (packages, signal) =>
       exclusive(async () => {
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
@@ -3381,6 +3387,8 @@ function createUnitChat(
             packages: [...packages],
             requestedAt: now().toISOString(),
           };
+          // As for a proposal: a turn stopped meanwhile keeps nothing.
+          signal?.throwIfAborted();
           await r.record.keepPackageRequest(request, () =>
             log.emit(requestedEvent(request)),
           );

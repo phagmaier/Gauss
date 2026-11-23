@@ -425,6 +425,58 @@ test("a request shows its card with the commands and the workspace, and is kept 
   });
 });
 
+test.each([
+  {
+    stopped: true,
+    outcome:
+      "released after a Stop shows no card and keeps none, and the next one shows",
+  },
+  { stopped: false, outcome: "released without a Stop shows its card" },
+])(
+  "a request held while it reads the course's state, $outcome",
+  async ({ stopped }) => {
+    const reading = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    // Armed when the turn starts, so the turn's own reads are not held.
+    let hold = () => {};
+    const { root, chat } = await start([
+      [{ text: "Teaching." }],
+      () => {
+        hold();
+        return [ask([{ name: "pytest" }]), { text: "After the card." }];
+      },
+      [ask([{ name: "pytest" }]), { text: "After the card." }],
+    ]);
+    const readState = root.readState;
+    hold = () =>
+      void vi.spyOn(root, "readState").mockImplementationOnce(async (id) => {
+        reading.resolve();
+        await release.promise;
+        return readState(id);
+      });
+    const waiting = async () =>
+      (await root.readState(COURSE)).units.loops?.packageRequest;
+
+    expect(chat.say("Can we test it?")).toEqual({ ok: true });
+    await reading.promise;
+    if (stopped) await chat.interrupt();
+    release.resolve();
+    await chat.settled();
+    if (stopped) {
+      expect.soft(cards(chat.events())).toEqual([]);
+      expect.soft(await waiting()).toBeUndefined();
+      // Nothing the stopped call held is left blocking the next.
+      expect(chat.say("Please.")).toEqual({ ok: true });
+      await chat.settled();
+    }
+
+    expect(cards(chat.events())).toMatchObject([
+      { type: "packages_requested", packages: [{ name: "pytest" }] },
+    ]);
+    expect(await waiting()).toMatchObject({ packages: [{ name: "pytest" }] });
+  },
+);
+
 test("what is not a package name is refused with the reason, and nothing is asked", async () => {
   const { backend, chat } = await start([
     [

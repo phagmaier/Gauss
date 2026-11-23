@@ -11,9 +11,10 @@ import { defineTool, type TeachingTool } from "./tool.ts";
 
 /** Where requests to install packages go. The engine provides it. */
 export interface PackageDesk {
-  /** Shows the request to the learner, or says why not. */
+  /** Shows the request to the learner, or says why not; a stopped turn shows nothing. */
   request(
     packages: readonly PackageSpec[],
+    signal?: AbortSignal,
   ): Promise<{ requested: true } | { refused: string }>;
 }
 
@@ -29,8 +30,8 @@ export function installPackagesTool(desk: PackageDesk): TeachingTool {
       "question is open and while another request waits. Your turn goes " +
       "on after it; the learner's answer comes in a message of its own.",
     input: PackagesInput,
-    async run({ packages }) {
-      const asked = await desk.request(packages);
+    async run({ packages }, signal) {
+      const asked = await desk.request(packages, signal);
       if ("refused" in asked) return { status: "refused", text: asked.refused };
       return {
         status: "done",

@@ -64,11 +64,7 @@ task.
 
 ## Known-gap fixes
 
-### K.22 Show no proposal or request card after a Stop — todo
-
-**Why:** `propose_style`, `amend_curriculum` and `install_packages` ignore the turn's stop signal, so a Stop while one waits for the unit or the course may still show its card. Found by reading the code, not reproduced.
-**Do:** Reproduce it first. If it holds, pass the turn's stop signal to the style, curriculum and package desks and check it before a card is recorded or shown, as the artifact shelf does.
-**Done when:** For each of the three tools, a call held until after a Stop leaves no card shown or waiting, and a call that is not stopped still shows its card.
+None open.
 
 ## Known gaps
 
@@ -92,6 +88,10 @@ work for Stage 6. A task that closes a gap deletes it here.
   but a resumed tutor session can still remember the refusal. Decide
   whether to clear that stale instruction or recover an undelivered
   planner decision.
+- **A:** The course planner's `amend_curriculum` ignores the turn's stop
+  signal, as the unit tutor's did: a Stop while it waits for the course
+  may still show its card and replace one waiting (found by review, not
+  reproduced).
 - **B:** Nothing stops two servers from opening one data root (on
   different ports): the second's start clears the first's uploads and the
   temporary files of its writes in progress. Decide whether a data root in
@@ -173,8 +173,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   leaves the card on “Finish the review” (or the gate) while the engine
   asks that objective again (found by review). Decide whether so rare a
   case needs the card to read the whole run.
-- **A (K.22):** A Stop while a style, curriculum or package card is on
-  its way may still show the card (found by reading the code).
 - **D:** WebKit reports opaque aid errors; recovering callback errors
   needs a reporter design and WebKit checks. DNS-prefetch is also untested
   in WebKit.

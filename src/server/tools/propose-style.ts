@@ -11,8 +11,11 @@ import { defineTool, type TeachingTool } from "./tool.ts";
 
 /** Where proposals to change the style note go. The engine provides it. */
 export interface StyleDesk {
-  /** Shows the proposal to the learner, or says why not. */
-  propose(input: StyleInput): Promise<{ proposed: true } | { refused: string }>;
+  /** Shows the proposal to the learner, or says why not; a stopped turn shows nothing. */
+  propose(
+    input: StyleInput,
+    signal?: AbortSignal,
+  ): Promise<{ proposed: true } | { refused: string }>;
 }
 
 export function proposeStyleTool(desk: StyleDesk): TeachingTool {
@@ -26,8 +29,8 @@ export function proposeStyleTool(desk: StyleDesk): TeachingTool {
       "while a question is open and while another proposal waits. Your turn " +
       "goes on after it; the learner's answer comes in a later header.",
     input: StyleInput,
-    async run(input) {
-      const asked = await desk.propose(input);
+    async run(input, signal) {
+      const asked = await desk.propose(input, signal);
       if ("refused" in asked) return { status: "refused", text: asked.refused };
       return {
         status: "done",

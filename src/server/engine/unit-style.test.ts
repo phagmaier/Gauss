@@ -14,7 +14,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -170,6 +170,49 @@ test("a proposal shows its card against the current note, is kept in the positio
     "Your proposed style note waits for the learner's answer",
   );
   expect(await styleFile()).toBe(`${STYLE}\n`);
+});
+
+test.each([
+  {
+    stopped: true,
+    outcome:
+      "released after a Stop shows no card and keeps none, and the next one shows",
+  },
+  { stopped: false, outcome: "released without a Stop shows its card" },
+])("a proposal held while it reads the note, $outcome", async ({ stopped }) => {
+  const { root, open } = await server([
+    [{ text: "Teaching." }],
+    [propose(), { text: "After the card." }],
+    [propose(), { text: "After the card." }],
+  ]);
+  const chat = await open();
+  const reading = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const readStyle = root.readStyle;
+  vi.spyOn(root, "readStyle").mockImplementationOnce(async (id) => {
+    reading.resolve();
+    await release.promise;
+    return readStyle(id);
+  });
+  const cards = () => chat.events().filter((e) => e.type === "style_proposed");
+  const waiting = async () =>
+    (await root.readState(COURSE)).units.loops?.styleProposal;
+
+  expect(chat.say("More examples, please.")).toEqual({ ok: true });
+  await reading.promise;
+  if (stopped) await chat.interrupt();
+  release.resolve();
+  await chat.settled();
+  if (stopped) {
+    expect.soft(cards()).toEqual([]);
+    expect.soft(await waiting()).toBeUndefined();
+    // Nothing the stopped call held is left blocking the next.
+    expect(chat.say("Please.")).toEqual({ ok: true });
+    await chat.settled();
+  }
+
+  expect(cards()).toMatchObject([{ note: NOTE, was: STYLE }]);
+  expect(await waiting()).toMatchObject({ note: NOTE });
 });
 
 test("Apply writes style.md and asks for a backup commit; the running session is told the note in its next header, and one started after has it in its system prompt", async () => {
