@@ -106,6 +106,12 @@ task.
 **Do:** Give the course view no current objective while the unit's progress says it is before its test.
 **Done when:** A unit whose test is chosen, under way or waiting on its result has no objective marked Next in the course view, and a unit being taught still has one.
 
+### K.22 Show no proposal or request card after a Stop — todo
+
+**Why:** `propose_style`, `amend_curriculum` and `install_packages` ignore the turn's stop signal, so a Stop while one waits for the unit or the course may still show its card. Found by reading the code, not reproduced.
+**Do:** Reproduce it first. If it holds, pass the turn's stop signal to the style, curriculum and package desks and check it before a card is recorded or shown, as the artifact shelf does.
+**Done when:** For each of the three tools, a call held until after a Stop leaves no card shown or waiting, and a call that is not stopped still shows its card.
+
 ## Known gaps
 
 **A:** ready for a focused code fix (task above). **B:** product or design
@@ -209,6 +215,8 @@ work for Stage 6. A task that closes a gap deletes it here.
   pinned card. Decide where focus should go after sending.
 - **A (K.14):** After a dispute overturns a detour's opening miss,
   its control still reads “Ready for another question”.
+- **A (K.22):** A Stop while a style, curriculum or package card is on
+  its way may still show the card (found by reading the code).
 - **D:** WebKit reports opaque aid errors; recovering callback errors
   needs a reporter design and WebKit checks. DNS-prefetch is also untested
   in WebKit.
