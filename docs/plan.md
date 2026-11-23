@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.20 Mark no objective Next before a unit's test is answered — todo
-
-**Why:** The course view rings segment 1's first objective as Next while the unit's test is pending; the session outline rings none.
-**Do:** Give the course view no current objective while the unit's progress says it is before its test.
-**Done when:** A unit whose test is chosen, under way or waiting on its result has no objective marked Next in the course view, and a unit being taught still has one.
-
 ### K.22 Show no proposal or request card after a Stop — todo
 
 **Why:** `propose_style`, `amend_curriculum` and `install_packages` ignore the turn's stop signal, so a Stop while one waits for the unit or the course may still show its card. Found by reading the code, not reproduced.
@@ -111,8 +105,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **B:** A test skip is fixed at confirmation: a later miss in another
   unit's review can leave a still-upcoming objective skipped. Decide whether
   and when to reopen confirmed skips.
-- **A (K.20):** Before a unit's test is answered, the course view rings
-  segment 1's first objective as Next; the session outline rings none.
 - **B:** A misconception quoting the learner in a review or a gate outside
   its detours, or between the test's end and the teaching (a reply to the
   tutor's word on it, a message while its result card waits), appears in

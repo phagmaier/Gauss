@@ -244,16 +244,16 @@ export function firstTaught(
  * first not passed among those the active segment teaches, in the
  * segment's order. The segment after the plan's last teaches its own; one
  * of the plan's teaches what the test let the learner skip left in. There
- * is no active segment, and so none, in a unit not in progress, which has
- * no position, and once the segment has closed, until the learner starts
- * the next.
+ * is no active segment, and so none, before the unit's test is answered,
+ * in a unit with no position, or once the segment has closed, until the
+ * learner starts the next.
  */
 export function currentObjective(
   plan: Pick<Plan, "segments">,
   at: Position | null | undefined,
   statuses: Readonly<Record<string, ObjectiveStatus>>,
 ): string | undefined {
-  if (at == null || at.phase === "closed") return undefined;
+  if (at == null || at.beforeTest || at.phase === "closed") return undefined;
   const teaches =
     at.again ?? skipping(plan, at.skipping ?? [])[at.segment]?.teaches ?? [];
   return teaches.find((id) => !hasPassed(statuses[id] ?? "not-started"));

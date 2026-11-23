@@ -303,13 +303,14 @@ export interface UnitRow extends Numbered {
 
 /** Where a unit in progress is, as `currentObjective` reads it; none without a position. */
 function positionOf(progress: UnitProgress): Position | undefined {
-  const { segment, phase, again, skipping } = progress;
+  const { segment, phase, again, skipping, beforeTest } = progress;
   if (segment === undefined || phase === undefined) return undefined;
   return {
     segment,
     phase,
     ...(again === undefined ? {} : { again }),
     ...(skipping === undefined ? {} : { skipping }),
+    ...(beforeTest === undefined ? {} : { beforeTest }),
   };
 }
 

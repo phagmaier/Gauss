@@ -264,6 +264,27 @@ test("each started unit lists its objectives, and Next marks the card's unit's c
   ]);
 });
 
+test("the course lists objectives during the unit's test but marks Next only when teaching begins", () => {
+  const teaching: UnitProgress = {
+    status: "in-progress",
+    segment: 0,
+    phase: "teach",
+    objectives: { "limits-0": "not-started" },
+  };
+  const objectives = (progress: UnitProgress) =>
+    unitRows(course({ limits: progress }))[0]?.objectives?.map((o) => [
+      o.id,
+      o.next,
+    ]);
+
+  // Course progress represents the chosen test, its run, and its pending
+  // result with the same flag (server/record/progress.test.ts).
+  expect(objectives({ ...teaching, beforeTest: true })).toEqual([
+    ["limits-0", false],
+  ]);
+  expect(objectives(teaching)).toEqual([["limits-0", true]]);
+});
+
 test("with no unit in progress, the next one in order is marked up next, and current", () => {
   // A course just approved sends no progress for its units.
   expect(UNITS.map((u) => unitMark(course({}), u).text)).toEqual([
