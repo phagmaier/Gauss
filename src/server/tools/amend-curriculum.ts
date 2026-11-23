@@ -73,8 +73,8 @@ export function planCurriculumChangeTool(desk: CurriculumDesk): TeachingTool {
       "Posting ends your turn, so say what you want to say before calling " +
       "this.",
     input: CurriculumChangeInput,
-    async run(input) {
-      const asked = await desk.propose(input);
+    async run(input, signal) {
+      const asked = await desk.propose(input, signal);
       if ("refused" in asked) return { status: "refused", text: asked.refused };
       return {
         status: "done",

@@ -107,7 +107,7 @@ export function createCoursePlanning(
   let told: string | undefined;
 
   const amend = planCurriculumChangeTool({
-    async propose({ units, why }) {
+    async propose({ units, why }, signal) {
       const refused = notOpen();
       if (refused !== undefined) return { refused: refused.error };
       return desk.propose(async (state) => {
@@ -127,6 +127,9 @@ export function createCoursePlanning(
           await dataRoot.readSources(courseId),
         );
         if (sections !== undefined) return { refused: sections };
+        // A turn stopped while this waited for the course shows nothing,
+        // replaces nothing and blocks no unit tutor, as in a unit's chat.
+        signal?.throwIfAborted();
         const change: CurriculumChange = {
           id: randomUUID(),
           units,

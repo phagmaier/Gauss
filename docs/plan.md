@@ -64,11 +64,7 @@ task.
 
 ## Known-gap fixes
 
-### K.23 Show no planner proposal after a Stop — todo
-
-**Why:** The course planner's `amend_curriculum` (`planCurriculumChangeTool` in `src/server/tools/amend-curriculum.ts`, its desk in `src/server/engine/course-planning.ts`) ignores the turn's stop signal. A Stop while it waits for the course may still show its card, replace a proposal already waiting, and block the unit tutors' proposals. Found by K.22's review, not reproduced.
-**Do:** Reproduce it first. If it holds, pass the turn's stop signal from the planner's tool to its desk and check it before anything is emitted or set, including the "replaced" event for a waiting proposal, as the unit desks do since K.22.
-**Done when:** A planner call held until after a Stop leaves no new card, keeps any waiting proposal on screen, and leaves the unit tutors free to propose. A call that is not stopped still shows its card.
+None open.
 
 ## Known gaps
 
@@ -92,10 +88,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   but a resumed tutor session can still remember the refusal. Decide
   whether to clear that stale instruction or recover an undelivered
   planner decision.
-- **A (K.23):** The course planner's `amend_curriculum` ignores the
-  turn's stop signal, as the unit tutor's did: a Stop while it waits for
-  the course may still show its card and replace one waiting (found by
-  review, not reproduced).
 - **B:** Nothing stops two servers from opening one data root (on
   different ports): the second's start clears the first's uploads and the
   temporary files of its writes in progress. Decide whether a data root in

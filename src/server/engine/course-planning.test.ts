@@ -20,7 +20,7 @@ import {
 } from "../backends/fake.ts";
 import { createScriptedBackend } from "../backends/scripted.ts";
 import type * as AtomicWrite from "../record/atomic-write.ts";
-import { openDataRoot } from "../record/data-root.ts";
+import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { givenOrder } from "./choice-order.ts";
 import { IDLE_MS } from "./conversation.ts";
 import { createCoursePlannings } from "./course-planning.ts";
@@ -642,6 +642,133 @@ test('"Keep the current one" is said in the planner\'s next header; a new propos
   expect(await chat.apply(latest.proposalId)).toEqual({ ok: true });
   expect((await stored())?.map((u) => u.id)).toEqual(["loops", "sets", "maps"]);
 });
+
+/**
+ * Holds the next read of the course's sources, which the planner's desk
+ * makes before its card, until `release`; `reading` resolves once it starts.
+ */
+function holdSources(root: DataRoot) {
+  const reading = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const readSources = root.readSources;
+  vi.spyOn(root, "readSources").mockImplementationOnce(async (id) => {
+    reading.resolve();
+    await release.promise;
+    return readSources(id);
+  });
+  return { reading: reading.promise, release: () => release.resolve() };
+}
+
+test.each([
+  {
+    stopped: true,
+    outcome:
+      "released after a Stop shows no card and blocks no unit tutor's proposal",
+  },
+  { stopped: false, outcome: "released without a Stop shows its card" },
+])(
+  "a planner proposal with none waiting, held while it reads the sources, $outcome",
+  async ({ stopped }) => {
+    const { root, tutorBackend, planning, open } = await setUp({
+      planner: [ASK, [amend([LOOPS, SETS, MAPS])]],
+      tutor: [
+        [{ text: "Teaching loops." }],
+        [amend([LOOPS, SETS, { ...MAPS, id: "maps-2" }])],
+      ],
+    });
+    const chat = await planning();
+    chat.say("Plan more.");
+    await chat.settled();
+    // The session's first turn read the sources; the desk's read is next.
+    const held = holdSources(root);
+
+    expect(chat.say("Add maps.")).toEqual({ ok: true });
+    await held.reading;
+    if (stopped) await chat.interrupt();
+    held.release();
+    await chat.settled();
+
+    if (!stopped) {
+      expect(cards(chat.events())).toMatchObject([
+        { units: [LOOPS, SETS, MAPS] },
+      ]);
+      return;
+    }
+    expect.soft(cards(chat.events())).toEqual([]);
+    const loops = await open("loops");
+    loops.say("Add a unit on maps.");
+    await loops.settled();
+    expect.soft(refusals(tutorBackend)).toEqual([]);
+    expect(cards(loops.events())).toHaveLength(1);
+  },
+);
+
+test.each([
+  {
+    stopped: true,
+    outcome:
+      "released after a Stop keeps the waiting one, which the next proposal replaces",
+  },
+  {
+    stopped: false,
+    outcome: "released without a Stop replaces the waiting one",
+  },
+])(
+  "a planner proposal with one waiting, held while it reads the sources, $outcome",
+  async ({ stopped }) => {
+    const { root, planning } = await setUp({
+      planner: [
+        [amend([LOOPS, SETS, MAPS])],
+        [amend([LOOPS, SETS, ...NEXT])],
+        [amend([LOOPS, SETS, NEXT[0] as Unit])],
+      ],
+    });
+    const chat = await planning();
+    chat.say("Add maps.");
+    await chat.settled();
+    const first = lastCard(chat.events());
+    const held = holdSources(root);
+
+    expect(chat.say("Plan Counting 2.")).toEqual({ ok: true });
+    await held.reading;
+    if (stopped) await chat.interrupt();
+    held.release();
+    await chat.settled();
+    const answered = () =>
+      chat.events().filter((e) => e.type === "curriculum_change_answered");
+
+    if (!stopped) {
+      expect(cards(chat.events())).toMatchObject([
+        { proposalId: first.proposalId },
+        { units: [LOOPS, SETS, ...NEXT] },
+      ]);
+      expect(answered()).toEqual([
+        {
+          type: "curriculum_change_answered",
+          proposalId: first.proposalId,
+          outcome: "replaced",
+        },
+      ]);
+      return;
+    }
+    expect.soft(cards(chat.events())).toEqual([first]);
+    expect.soft(answered()).toEqual([]);
+    // The first proposal is still the one waiting: the next replaces it.
+    chat.say("Just the first unit of Counting 2.");
+    await chat.settled();
+    expect(cards(chat.events())).toMatchObject([
+      { proposalId: first.proposalId },
+      { units: [LOOPS, SETS, NEXT[0]] },
+    ]);
+    expect(answered()).toEqual([
+      {
+        type: "curriculum_change_answered",
+        proposalId: first.proposalId,
+        outcome: "replaced",
+      },
+    ]);
+  },
+);
 
 test("reopening during Apply keeps the original conversation and card when a unit has since started", async () => {
   const { root, planning, stored } = await setUp({
