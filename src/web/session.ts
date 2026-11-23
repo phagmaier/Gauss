@@ -7,6 +7,7 @@
 
 import { assessmentTitle } from "../shared/assessment-view.ts";
 import { capital, word } from "../shared/display-words.ts";
+import { countedVerdict } from "../shared/dispute.ts";
 import type { CourseWithProgress } from "../shared/library.ts";
 import {
   currentObjective,
@@ -654,8 +655,10 @@ export function skipGatePartway(timeline: Timeline): SkipGateAsks {
 
 /**
  * What ends a detour in an assessment: another question on its objective
- * after a first miss; after a second, going on to the next objective, or
- * the end. Skip stays beside it, but for the end.
+ * after a first miss; after a second, or a first that a dispute overturned,
+ * going on to the next objective, or the end. Skip stays beside it, but for
+ * the end. The engine decides the same from the counted verdicts
+ * (`runObjective` in assessment-rules.ts).
  */
 export function assessmentDetourStep(timeline: Timeline): {
   label: string;
@@ -665,15 +668,18 @@ export function assessmentDetourStep(timeline: Timeline): {
     timeline.assessment?.mode ?? "review",
   ).toLowerCase();
   const missed = timeline.items.findLast(
-    (i) =>
+    (i): i is QuestionItem =>
       i.kind === "question" && i.question.id === timeline.detour?.questionId,
   );
-  const head =
-    missed?.kind === "question" ? missed.question.assessment : undefined;
-  if (head?.second !== true) {
+  const head = missed?.question.assessment;
+  const verdict =
+    missed?.graded === undefined
+      ? undefined
+      : countedVerdict(missed.graded.verdict, missed.dispute);
+  if (head === undefined || (head.second !== true && verdict !== "correct")) {
     return { label: "Ready for another question", skip: true };
   }
-  return missed?.kind === "question" && missed.question.number >= head.of
+  return missed !== undefined && missed.question.number >= head.of
     ? { label: `Finish the ${title}`, skip: false }
     : { label: `Go on with the ${title}`, skip: true };
 }

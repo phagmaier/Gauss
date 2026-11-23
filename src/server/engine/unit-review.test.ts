@@ -798,18 +798,20 @@ test("a miss opens a detour; once the learner ends it the objective is asked onc
   expect(nextStep(replay(chat))).toBe("ready");
 });
 
-test("a dispute that overturns the first miss on another unit's objective counts in the review: no second question follows, and the review's thread and tutor are told", async () => {
+test("a dispute that overturns the first miss on another unit's objective counts in the review: its card goes on with the review, no second question follows, and the review's thread and tutor are told; a dispute that upholds a miss still offers another question", async () => {
   await makeCourse();
   const setup = setUp();
-  const overturning: DisputeJudge = {
-    decide: async () => ({
-      ok: true,
-      outcome: { verdict: "correct", reason: "The answer is right." },
-    }),
+  const verdicts = ["correct", "incorrect"] as const;
+  let decided = 0;
+  const judge: DisputeJudge = {
+    decide: async () => {
+      const verdict = verdicts[decided++] ?? "incorrect";
+      return { ok: true, outcome: { verdict, reason: `Decided ${verdict}.` } };
+    },
   };
   const disputes = createDisputes({
     dataRoot: setup.dataRoot,
-    judge: overturning,
+    judge,
     units: setup.units,
     now: () => clock,
   });
@@ -819,12 +821,21 @@ test("a dispute that overturns the first miss on another unit's objective counts
   await step(chat.startAssessment(), chat);
   const missed = lastQuestion(chat);
   await answer(chat, "B");
+  expect(assessmentDetourStep(replay(chat))).toEqual({
+    label: "Ready for another question",
+    skip: true,
+  });
 
   expect(
     await disputes.raise(COURSE, missed.id, "B is the same as A."),
   ).toMatchObject({ ok: true });
   await chat.settled();
   expect(ofType(chat, "disputed")).toMatchObject([{ questionId: missed.id }]);
+  // The overturned miss leaves no second question on its objective.
+  expect(assessmentDetourStep(replay(chat))).toEqual({
+    label: "Go on with the review",
+    skip: true,
+  });
 
   await step(chat.anotherQuestion(), chat);
   expect(sent(setup.backend).at(-1)).toContain(
@@ -835,6 +846,26 @@ test("a dispute that overturns the first miss on another unit's objective counts
   );
   expect(lastQuestion(chat)).toMatchObject({ number: 2 });
   expect(lastQuestion(chat).assessment?.second).toBeUndefined();
+
+  // A miss the dispute upholds still gets its second question.
+  const upheld = lastQuestion(chat);
+  await answer(chat, "B");
+  expect(
+    await disputes.raise(COURSE, upheld.id, "B is the same as A."),
+  ).toMatchObject({ ok: true, dispute: { outcome: { verdict: "incorrect" } } });
+  await chat.settled();
+  expect(ofType(chat, "disputed").at(-1)).toMatchObject({
+    questionId: upheld.id,
+  });
+  expect(assessmentDetourStep(replay(chat))).toEqual({
+    label: "Ready for another question",
+    skip: true,
+  });
+  await step(chat.anotherQuestion(), chat);
+  expect(lastQuestion(chat)).toMatchObject({
+    number: 2,
+    assessment: { of: 2, second: true },
+  });
 });
 
 test("answers other units' chats record on its objectives while its card waits count in the review's end", async () => {

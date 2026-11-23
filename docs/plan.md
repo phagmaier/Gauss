@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.14 Show the right step after a detour dispute — todo
-
-**Why:** A detour card can still promise a question the engine will no longer ask.
-**Do:** Render its control from the effective assessment result.
-**Done when:** An overturned opening miss shows the actual next step, and an unchanged miss still offers another question.
-
 ### K.15 Do not submit a composing answer — todo
 
 **Why:** Enter can submit the question card during IME composition.
@@ -204,8 +198,15 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **A (K.15):** The math field's Enter can submit during IME composition.
 - **B:** After sending a message, keys go to the message box, not the
   pinned card. Decide where focus should go after sending.
-- **A (K.14):** After a dispute overturns a detour's opening miss,
-  its control still reads “Ready for another question”.
+- **B:** In a check's detour, a dispute that overturns the miss and
+  leaves the check done keeps “Ready for another question”, which then
+  closes the segment; the tutor's header and refusals name the same
+  label. Decide what the control should say there.
+- **B:** A dispute that turns an earlier objective's correct answer into
+  a miss, made in the detour after the last objective's second miss,
+  leaves the card on “Finish the review” (or the gate) while the engine
+  asks that objective again (found by review). Decide whether so rare a
+  case needs the card to read the whole run.
 - **A (K.22):** A Stop while a style, curriculum or package card is on
   its way may still show the card (found by reading the code).
 - **D:** WebKit reports opaque aid errors; recovering callback errors
