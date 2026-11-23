@@ -157,7 +157,7 @@ async function makeCourse(
 /**
  * A server's unit chats on the record, with the preface opened and, unless
  * `settle` is false, its first turn over. `wrap` stands between the chats and
- * the fake backend.
+ * the fake backend; `kept` lets a later server resume its sessions.
  */
 async function open(
   root: DataRoot,
@@ -167,9 +167,14 @@ async function open(
   given: {
     wrap?: (backend: FakeBackend) => TutorBackend;
     settle?: boolean;
+    kept?: Set<string>;
   } = {},
 ) {
-  const backend = createFakeBackend(script, replies);
+  const backend = createFakeBackend(
+    script,
+    replies,
+    given.kept === undefined ? {} : { kept: given.kept },
+  );
   const tutor = given.wrap?.(backend) ?? backend;
   const units = createUnitChats({
     backend: tutor,
@@ -488,6 +493,74 @@ test("a lecture turn stopped after it reached the tutor tells the tutor the lear
   }
 });
 
+test("a restart before the tutor hears that a stopped lecture went unseen tells it in the next header, and not again after the next restart", async () => {
+  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const id = await makeCourse(root);
+  const kept = new Set<string>();
+  const sent = Promise.withResolvers<void>();
+  const first = await open(
+    root,
+    id,
+    [[{ text: "Half a lecture." }, { hold: true }]],
+    [],
+    {
+      settle: false,
+      kept,
+      wrap: (fake) => ({
+        ...fake,
+        async startSession(options) {
+          const session = await fake.startSession(options);
+          return {
+            ...session,
+            send(turn, signal) {
+              sent.resolve();
+              return session.send(turn, signal);
+            },
+          };
+        },
+      }),
+    },
+  );
+  try {
+    await sent.promise;
+    await first.chat.interrupt();
+    await first.chat.settled();
+  } finally {
+    await first.units.close();
+  }
+  expect((await root.readState(id)).units.preface).toMatchObject({
+    phase: "discuss",
+    tutorNotices: [{ id: expect.any(String), kind: "unshown-lecture" }],
+  });
+
+  const middle = await open(root, id, [[{ text: "The claim." }]], [], {
+    kept,
+  });
+  try {
+    expect(middle.backend.received).toEqual([]);
+    expect(middle.chat.say("What did I miss?")).toEqual({ ok: true });
+    await middle.chat.settled();
+    expect(middle.backend.received).toHaveLength(1);
+    expect(middle.backend.received[0]?.text).toContain(UNSHOWN_LECTURE_NOTE);
+    expect(middle.backend.received[0]?.text).not.toContain(JOINED_NOTE);
+  } finally {
+    await middle.units.close();
+  }
+  expect(
+    (await root.readState(id)).units.preface?.tutorNotices,
+  ).toBeUndefined();
+
+  const after = await open(root, id, [[{ text: "Yes." }]], [], { kept });
+  try {
+    expect(after.chat.say("Is that all?")).toEqual({ ok: true });
+    await after.chat.settled();
+    expect(after.backend.received).toHaveLength(1);
+    expect(after.backend.received[0]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
+  } finally {
+    await after.units.close();
+  }
+});
+
 test("a lecture turn stopped before it reached the tutor adds no note", async () => {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const id = await makeCourse(root);
@@ -533,10 +606,17 @@ test("a fresh start after a lecture that showed nothing says the conversation is
     [{ text: "Fresh." }],
   ]);
   try {
+    expect((await root.readState(id)).units.preface?.tutorNotices).toEqual([
+      { id: expect.any(String), kind: "unshown-lecture" },
+    ]);
     expect(await chat.startFresh()).toEqual({ ok: true });
     await chat.settled();
     expect(backend.received[1]?.text).toContain(JOINED_NOTE);
     expect(backend.received[1]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
+    // Dropped from the record too, so a restart does not tell the new session.
+    expect(
+      (await root.readState(id)).units.preface?.tutorNotices,
+    ).toBeUndefined();
   } finally {
     await units.close();
   }

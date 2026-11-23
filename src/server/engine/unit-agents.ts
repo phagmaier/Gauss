@@ -166,7 +166,13 @@ export function createUnitAgents(options: {
    * Called before the turn's text is composed.
    */
   lost: (learnerId?: string) => void;
-  /** Called before a turn's own end work, to acknowledge notices it delivered. */
+  /**
+   * Called as a turn is dispatched to the backend, before the turn's own
+   * `sent`: from here the tutor has its header, whether the turn then ends,
+   * fails or is stopped. A turn stopped before it is sent does not call it.
+   */
+  turnSent?: () => void;
+  /** Called before a turn's own end work, to acknowledge what its header delivered. */
   turnEnded?: (outcome: TurnOutcome) => Promise<void> | void;
   judge: HelpJudge;
   log: EventLog;
@@ -285,20 +291,31 @@ export function createUnitAgents(options: {
 
     send(turn) {
       if (closed) return;
-      const { turnEnded } = options;
-      if (turnEnded === undefined) {
-        tutor.send(turn);
-        return;
-      }
+      const { turnSent, turnEnded } = options;
       tutor.send({
         ...turn,
-        async ended(outcome, reply) {
-          try {
-            await turnEnded(outcome);
-          } finally {
-            await turn.ended?.(outcome, reply);
-          }
-        },
+        ...(turnSent === undefined
+          ? {}
+          : {
+              sent() {
+                try {
+                  turnSent();
+                } finally {
+                  turn.sent?.();
+                }
+              },
+            }),
+        ...(turnEnded === undefined
+          ? {}
+          : {
+              async ended(outcome, reply) {
+                try {
+                  await turnEnded(outcome);
+                } finally {
+                  await turn.ended?.(outcome, reply);
+                }
+              },
+            }),
       });
     },
     busy: () => tutor.busy(),

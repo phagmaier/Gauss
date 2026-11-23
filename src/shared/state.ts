@@ -144,6 +144,24 @@ export const TestOut = z.discriminatedUnion("stage", [
 ]);
 export type TestOut = z.infer<typeof TestOut>;
 
+/**
+ * Something the tutor is told in its next header, kept until a turn
+ * carrying it is sent, so a restart does not lose it: the learner moved on
+ * without the check (with the question withdrawn, if one was open), or saw
+ * none of a source teaching turn that reached the tutor. The wording is the
+ * engine's (`noticeText` in `engine/unit-turns.ts`).
+ */
+export const TutorNotice = z.discriminatedUnion("kind", [
+  z.object({
+    id: z.uuid(),
+    kind: z.literal("override"),
+    objectives: z.array(Slug).min(1),
+    withdrawn: z.number().int().positive().optional(),
+  }),
+  z.object({ id: z.uuid(), kind: z.literal("unshown-lecture") }),
+]);
+export type TutorNotice = z.infer<typeof TutorNotice>;
+
 export const UnitPosition = z
   .object({
     /**
@@ -226,6 +244,8 @@ export const UnitPosition = z
      * unit's moves, as a style proposal is.
      */
     curriculumChange: CurriculumChange.optional(),
+    /** Notices waiting for the tutor's next header, in order. Kept across moves, as the session's id is. */
+    tutorNotices: z.array(TutorNotice).min(1).optional(),
   })
   .refine((p) => (p.phase === "check") === (p.checkFrom !== undefined), {
     message:

@@ -551,7 +551,9 @@ async function startSession(
     return { continue: false, stopReason: "A teaching tool ended the turn." };
   };
   // interrupt() alone leaves pending SDK input runnable. Stop it at pickup
-  // instead; continue:false still produces the result send() must drain.
+  // instead; continue:false still produces the result send() must drain,
+  // and keeps the prompt in the conversation (Claude Code's hook docs), so
+  // the engine counts a header as received once it is sent (`turnSent`).
   const cancelPendingTurn: HookCallback = async () =>
     interruptRequested
       ? { continue: false, stopReason: "The learner stopped this turn." }

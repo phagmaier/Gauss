@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.4 Keep pending Stop and move-on notices — todo
-
-**Why:** A restart forgets notices not yet delivered to the tutor.
-**Do:** Keep the pending notices durably until a turn receives them.
-**Done when:** Reopening sends each pending notice in the next applicable header, and another reopen does not resend delivered notices.
-
 ### K.5 Record misconceptions at the test — todo
 
 **Why:** “What I know” calls a misconception found in a test answer a discussion finding.
@@ -171,7 +165,13 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **B:** A finished unit opened after a restart starts a new tutor session
   without the note saying the conversation is new. Decide what reopening a
   finished unit should do with its conversation.
-- **A (K.4):** A Stop or move-on notice waiting for a tutor header is lost on restart.
+- **B:** Header notes other than the move-on and unseen-lecture notices
+  are kept in memory and taken when a header is composed. A Stop after
+  composing, before sending, loses them (with "This conversation is new"
+  and its handoff block); a restart before the next turn loses an
+  assessment's end, a dispute's outcome and the answer to the test's
+  result card. After a restart the test's "Start learning instead" summary
+  says only that a restart came. Decide which must survive.
 - **A (K.7):** Atomic-write temporary files left by a crash are not cleaned up.
 - **B:** Deleting a course leaves Claude Code's sessions outside the data root.
   Decide whether deletion should remove them; identify ownership before doing so.

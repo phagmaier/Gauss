@@ -270,7 +270,7 @@ import {
   freshTurn,
   JOINED_NOTE,
   messageTurn,
-  overrideNote,
+  noticeText,
   packagesNote,
   packagesTurn,
   quoted,
@@ -283,7 +283,6 @@ import {
   testAnsweredNote,
   testEndTurn,
   tutorSystemPrompt,
-  UNSHOWN_LECTURE_NOTE,
   type UnitContext,
   type Where,
   workspaceReadyTurn,
@@ -1198,11 +1197,23 @@ interface Running {
   agents: UnitAgents;
   /** Said once, in the next turn's header. */
   notes: string[];
-  /** Decisions in the current turn's header, if it got as far as composing one. */
+  /**
+   * Decisions and the record's notices in the current turn's header, if it
+   * got as far as composing one, with the write of the notices' delivery
+   * once the turn is sent.
+   */
   inHeader?: {
     style: readonly StyleDecision[];
     curriculum: readonly CurriculumDecision[];
+    notices: readonly string[];
+    delivered?: Promise<void>;
   };
+  /**
+   * The record's notices sent to the tutor, or dropped for a new session,
+   * which no later header carries, though the record's write may not have
+   * landed yet.
+   */
+  noticesTaken: Set<string>;
   /**
    * The unit's handoff note and the course's misconceptions (task 5.7),
    * read when the chat opens, with what this unit's calls write since; the
@@ -1452,10 +1463,23 @@ function createUnitChat(
         keep: (id) => exclusive(() => record.keepSession(id)),
         // Only a turn calls it, once `r` is set.
         lost: (learnerId) => fallBack(r, learnerId),
+        // A notice is delivered once its header is dispatched, so a Stop
+        // or restart after that does not send it again; a decision only
+        // once a turn carrying it completes.
+        turnSent() {
+          const header = r.inHeader;
+          if (header === undefined || header.notices.length === 0) return;
+          header.delivered = takeNotices(r, header.notices);
+        },
         async turnEnded(outcome) {
           const sent = r.inHeader;
           delete r.inHeader;
-          if (outcome === "done" && sent !== undefined) {
+          await sent?.delivered;
+          if (
+            outcome === "done" &&
+            sent !== undefined &&
+            (sent.style.length > 0 || sent.curriculum.length > 0)
+          ) {
             await exclusive(() => record.deliverDecisions(sent));
           }
         },
@@ -1470,6 +1494,7 @@ function createUnitChat(
         record,
         agents: loaded,
         notes: [],
+        noticesTaken: new Set(),
         handoff: { note: handoffNote?.note, misconceptions },
         assessmentHandoffs,
         progression: createUnitProgression({
@@ -1537,7 +1562,7 @@ function createUnitChat(
       }
       const recoveringOverride =
         record.position.pendingSegmentOverride !== undefined;
-      if (recoveringOverride) await closeOverriddenSegment(r);
+      if (recoveringOverride) await record.overrideSegment();
       running = r;
       restoreQuestions(record);
       restoreDisputes(r);
@@ -1726,12 +1751,33 @@ function createUnitChat(
   }
 
   /**
-   * Tells the next header that the conversation is new. A note about a turn
-   * of the old conversation is dropped: the new one has no such turn.
+   * Tells the next header that the conversation is new. A notice about a
+   * turn of the old conversation is dropped: the new one has no such turn.
    */
   function joined(r: Running): void {
-    r.notes = r.notes.filter((note) => note !== UNSHOWN_LECTURE_NOTE);
+    const old = r.record.tutorNotices.flatMap((notice) =>
+      notice.kind === "unshown-lecture" ? [notice.id] : [],
+    );
+    if (old.length > 0) void takeNotices(r, old);
     if (!r.notes.includes(JOINED_NOTE)) r.notes.push(JOINED_NOTE);
+  }
+
+  /**
+   * Keeps the notices out of every later header at once, and out of the
+   * record once the write, which waits its turn in the queue, lands. A
+   * failed write is logged; the record's next write takes them out, and
+   * only a restart before then tells them again.
+   */
+  function takeNotices(r: Running, ids: readonly string[]): Promise<void> {
+    for (const id of ids) r.noticesTaken.add(id);
+    return exclusive(() => r.record.deliverNotices(ids)).catch(
+      (error: unknown) => {
+        console.error(
+          "The tutor's notices could not be marked delivered:",
+          error,
+        );
+      },
+    );
   }
 
   /**
@@ -1899,15 +1945,26 @@ function createUnitChat(
 
   // --- Turns -----------------------------------------------------------------
 
-  /** Where the unit stands now, with the notes not yet given, which this takes. */
+  /**
+   * Where the unit stands now, with the notes not yet given, which this
+   * takes. The record's notices stay in the record until the turn is sent
+   * (`turnSent`), so a turn stopped before then leaves them for the next.
+   */
   function where(r: Running): Where {
-    const notes = r.notes;
-    r.notes = [];
     const { record } = r;
+    const notices = record.tutorNotices.filter(
+      (notice) => !r.noticesTaken.has(notice.id),
+    );
+    const notes = [...notices.map(noticeText), ...r.notes];
+    r.notes = [];
     const decisions = record.pendingStyleDecisions;
     const answers = record.pendingCurriculumDecisions;
-    if (decisions.length > 0 || answers.length > 0) {
-      r.inHeader = { style: decisions, curriculum: answers };
+    if (notices.length > 0 || decisions.length > 0 || answers.length > 0) {
+      r.inHeader = {
+        style: decisions,
+        curriculum: answers,
+        notices: notices.map((notice) => notice.id),
+      };
       for (const decision of decisions) {
         notes.push(
           decision.outcome === "applied"
@@ -1993,11 +2050,19 @@ function createUnitChat(
         if (sent) sourceLecture = undefined;
         // The turn's ordinary text was hidden, so with no lecture shown,
         // after a Stop too, the learner saw nothing the tutor wrote.
-        if (sent && !lecture.shown) r.notes.push(UNSHOWN_LECTURE_NOTE);
+        const unshown = sent && !lecture.shown;
         return exclusive(async () => {
           const { position } = r.record;
-          if (position.segment === segment && position.phase === "teach") {
-            await r.record.move({ ...position, phase: "discuss" });
+          const discussion: UnitPosition | undefined =
+            position.segment === segment && position.phase === "teach"
+              ? { ...position, phase: "discuss" }
+              : undefined;
+          // In one write with the discussion, so a restart before it
+          // teaches the segment again instead.
+          if (unshown) {
+            await r.record.keepNotice({ kind: "unshown-lecture" }, discussion);
+          } else if (discussion !== undefined) {
+            await r.record.move(discussion);
           }
         });
       },
@@ -2112,12 +2177,6 @@ function createUnitChat(
     }
     if (nextOf(r, run) === undefined) await endRun(r, false);
     else r.progression.askInRun({ after: "reopened" });
-  }
-
-  async function closeOverriddenSegment(r: Running): Promise<void> {
-    const { objectives, withdrawn } = await r.record.overrideSegment();
-    // Told with the next turn, so moving on costs no reply.
-    r.notes.push(overrideNote(objectives, withdrawn?.number));
   }
 
   /** Starts the assessment offered: the tutor is asked for its first question. Runs inside `exclusive`. */
@@ -3786,7 +3845,7 @@ function createUnitChat(
                 : "An answer is kept and waits to be graded again. Grade it again, then move on.",
             );
           }
-          await closeOverriddenSegment(r);
+          await r.record.overrideSegment();
           const last = isLastSegment(r.context.plan, r.record.position);
           r.review.segmentClosed(last);
           if (last) await endUnit(r, true);

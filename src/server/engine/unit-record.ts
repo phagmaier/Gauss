@@ -10,7 +10,9 @@
 //
 // The position also keeps the id of the unit's tutor session, so a unit
 // reopened after a restart resumes it (task 2.14). A finished unit without
-// a review keeps the id only in memory.
+// a review keeps the id only in memory. The notices waiting for the tutor's
+// next header are kept the same way, from the write that makes them due
+// until a turn carrying them is sent.
 //
 // Once a segment's close or the unit's end is written, the backup is asked
 // for a commit (task 2.25), and the handoff writer for a note (task 5.7).
@@ -67,6 +69,7 @@ import type {
   AssessmentRun,
   Detour,
   OpenQuestion,
+  TutorNotice,
   UnitPosition,
 } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
@@ -82,6 +85,13 @@ import {
   consumesAnswerCheckpoint,
   feedbackCheckpoint,
 } from "./unit-progression.ts";
+
+/** A notice as the chat gives it, before the record names it. */
+export type NewNotice = TutorNotice extends infer N
+  ? N extends TutorNotice
+    ? Omit<N, "id">
+    : never
+  : never;
 
 /** A question closed with its answer, as the tutor is to be told it. */
 export interface Answered {
@@ -110,6 +120,8 @@ export interface UnitRecord {
   readonly pendingStyleDecisions: readonly StyleDecision[];
   /** The learner's curriculum decisions not yet delivered to the tutor. */
   readonly pendingCurriculumDecisions: readonly CurriculumDecision[];
+  /** The notices waiting for the tutor's next header, in order. */
+  readonly tutorNotices: readonly TutorNotice[];
   /** Set once the unit is finished and taken out of state.json. */
   readonly finished: "passed" | "overridden" | undefined;
   /** The learner skipped every segment and finished at the test's result. */
@@ -185,6 +197,18 @@ export interface UnitRecord {
   answerCurriculumChange(
     decision: CurriculumDecision,
   ): Promise<CurriculumDecision>;
+  /**
+   * Keeps a notice for the tutor's next header, written with `next`, as
+   * `move` writes it, or with the position as it stands. It is kept in
+   * memory even if the write fails, and the next write saves it.
+   */
+  keepNotice(notice: NewNotice, next?: UnitPosition): Promise<void>;
+  /**
+   * Takes out the notices a header carried to the tutor, or that no longer
+   * apply. Taken out of memory even if the write fails, and the next write
+   * takes them out of state.json.
+   */
+  deliverNotices(ids: readonly string[]): Promise<void>;
   /** Marks only the decisions that were in a completed turn's header. */
   deliverDecisions(sent: {
     style: readonly StyleDecision[];
@@ -254,12 +278,11 @@ export interface UnitRecord {
   endDetour(next: NonNullable<UnitPosition["afterAnswer"]>): Promise<void>;
   /**
    * Records or recovers an override of the segment's objectives and closes
-   * the segment, withdrawing any open question and ending any detour.
+   * the segment, withdrawing any open question and ending any detour. The
+   * write that closes it keeps the notice for the tutor's next header, so
+   * moving on costs no reply.
    */
-  overrideSegment(): Promise<{
-    objectives: string[];
-    withdrawn: OpenQuestion | undefined;
-  }>;
+  overrideSegment(): Promise<void>;
   /**
    * Keeps and records the closing-card override, or resumes a pending one.
    * The caller tells the page once its gate or finish is saved.
@@ -345,13 +368,22 @@ export async function openUnitRecord(options: {
   const kept = reviewing ?? stored;
   if (kept !== undefined) checkPosition(plan, kept);
   let sessionId = kept?.tutorSessionId;
+  let notices: readonly TutorNotice[] = kept?.tutorNotices ?? [];
+
+  /** The position with the notices as they stand: none, or at least one. */
+  function withNotices(given: UnitPosition): UnitPosition {
+    const { tutorNotices: _, ...rest } = given;
+    return notices.length === 0
+      ? rest
+      : { ...rest, tutorNotices: [...notices] };
+  }
 
   function closedPosition(): UnitPosition {
-    return {
+    return withNotices({
       segment: plan.segments.length - 1,
       phase: "closed",
       ...(sessionId === undefined ? {} : { tutorSessionId: sessionId }),
-    };
+    });
   }
 
   if (reviewing !== undefined && stored !== undefined) {
@@ -385,11 +417,14 @@ export async function openUnitRecord(options: {
    * `finishedReviews`; null leaves it as it is.
    */
   async function savePosition(
-    next: UnitPosition | null,
+    given: UnitPosition | null,
     outcome?: Parameters<DataRoot["writePosition"]>[3],
   ) {
+    // Every write keeps the notices as they stand, whichever position it
+    // was given, so a write after a failed delivery takes them out too.
+    const next = given === null ? null : withNotices(given);
     if (finished !== undefined) {
-      const kept = next ?? position;
+      const kept = next ?? withNotices(position);
       const review = kept.assessment?.mode === "review" ? kept : null;
       const saved = await dataRoot.writePosition(courseId, unitId, review, {
         ...outcome,
@@ -649,6 +684,9 @@ export async function openUnitRecord(options: {
     get pendingCurriculumDecisions() {
       return pendingCurriculum;
     },
+    get tutorNotices() {
+      return notices;
+    },
     get finished() {
       return finished;
     },
@@ -789,6 +827,22 @@ export async function openUnitRecord(options: {
         throw new Error("The curriculum decision was not recorded.");
       }
       return recorded;
+    },
+
+    async keepNotice(notice, next = position) {
+      notices = [...notices, { ...notice, id: randomUUID() }];
+      await move(next);
+    },
+
+    async deliverNotices(ids) {
+      const left = notices.filter((notice) => !ids.includes(notice.id));
+      if (left.length === notices.length) return;
+      notices = left;
+      if (finished !== undefined && position.assessment === undefined) {
+        position = closedPosition();
+        return;
+      }
+      await move(position);
     },
 
     async deliverDecisions({ style, curriculum }) {
@@ -981,19 +1035,33 @@ export async function openUnitRecord(options: {
         pendingSegmentOverride: ____,
         ...rest
       } = position;
-      await move({ ...rest, phase: "closed" }, () => {
-        emit({
-          type: "overridden",
-          segment,
+      const was = notices;
+      notices = [
+        ...notices,
+        {
+          id: randomUUID(),
+          kind: "override",
           objectives,
-          ...(withdrawn === undefined
-            ? {}
-            : { withdrawnQuestionId: withdrawn.id }),
+          ...(withdrawn === undefined ? {} : { withdrawn: withdrawn.number }),
+        },
+      ];
+      try {
+        await move({ ...rest, phase: "closed" }, () => {
+          emit({
+            type: "overridden",
+            segment,
+            objectives,
+            ...(withdrawn === undefined
+              ? {}
+              : { withdrawnQuestionId: withdrawn.id }),
+          });
+          emit(status());
         });
-        emit(status());
-      });
+      } catch (error) {
+        notices = was;
+        throw error;
+      }
       checkAnswers = [];
-      return { objectives, withdrawn };
     },
 
     async moveOn(action) {

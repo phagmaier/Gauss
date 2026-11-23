@@ -28,7 +28,11 @@ import {
 import { type Plan, skipping } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, confidenceLabel } from "../../shared/question.ts";
 import type { Outline } from "../../shared/source.ts";
-import type { AssessmentRun, UnitPosition } from "../../shared/state.ts";
+import type {
+  AssessmentRun,
+  TutorNotice,
+  UnitPosition,
+} from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
 import type { RunObjective, RunStep } from "./assessment-rules.ts";
 import {
@@ -1131,6 +1135,13 @@ export const JOINED_NOTE =
 /** The note after a source teaching turn that showed no lecture. */
 export const UNSHOWN_LECTURE_NOTE =
   "The learner saw none of your last teaching turn: only a lecture shown with present_lecture reaches them there, and none was. Do not refer to it as seen.";
+
+/** The header note for a notice the record keeps until a turn carries it. */
+export function noticeText(notice: TutorNotice): string {
+  return notice.kind === "override"
+    ? overrideNote(notice.objectives, notice.withdrawn)
+    : UNSHOWN_LECTURE_NOTE;
+}
 
 // --- The header ------------------------------------------------------------
 

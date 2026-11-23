@@ -306,6 +306,20 @@ const positionNow = (): unknown => {
   return rest;
 };
 
+/**
+ * The notice the write that closes segment 1 on a move-on keeps for the
+ * tutor's next header, with the number of the question withdrawn, if any.
+ */
+const overrideNotice = (withdrawn?: number) => ({
+  id: expect.any(String),
+  kind: "override",
+  objectives: ["difference-quotient", "secant-slope"],
+  ...(withdrawn === undefined ? {} : { withdrawn }),
+});
+/** The tutor's note for that notice, as its next header says it. */
+const OVERRIDE_TOLD =
+  'The learner moved on without finishing the check of the segment just closed, which is recorded as an override of "difference-quotient" and "secant-slope".';
+
 /** The thread the page builds from the chat's events. */
 function replay(chat: UnitChat): Timeline {
   return chat
@@ -1017,16 +1031,21 @@ test("moving on from a detour ends it, records the override and closes the segme
     objectives: ["difference-quotient", "secant-slope"],
   });
   expect(await position()).toEqual({
-    derivative: { segment: 0, phase: "closed" },
+    derivative: {
+      segment: 0,
+      phase: "closed",
+      tutorNotices: [overrideNotice()],
+    },
   });
   expect(nextStep(replay(chat))).toBe("next-segment");
 
   chat.say("Fine.");
   await chat.settled();
 
-  expect(setup.backend.received[3]?.text).toContain(
-    'The learner moved on without finishing the check of the segment just closed, which is recorded as an override of "difference-quotient" and "secant-slope".',
-  );
+  expect(setup.backend.received[3]?.text).toContain(OVERRIDE_TOLD);
+  expect(await position()).toEqual({
+    derivative: { segment: 0, phase: "closed" },
+  });
 });
 
 test("a restart reopens a detour: the thread shows it once, nothing is sent, and the learner ends it as before", async () => {
@@ -1272,8 +1291,13 @@ test("the learner's override closes the segment, is recorded as evidence, withdr
   expect(await chat.override()).toEqual({ ok: true });
   await chat.settled();
 
-  // The segment was closed on disk before the page heard of it.
-  expect(whenTold).toEqual({ segment: 0, phase: "closed" });
+  // The segment was closed on disk, with the notice for the tutor, before
+  // the page heard of it.
+  expect(whenTold).toEqual({
+    segment: 0,
+    phase: "closed",
+    tutorNotices: [overrideNotice(1)],
+  });
   expect(since(chat, "overridden")).toEqual([
     {
       type: "overridden",
@@ -1292,7 +1316,11 @@ test("the learner's override closes the segment, is recorded as evidence, withdr
     },
   ]);
   expect(await position()).toEqual({
-    derivative: { segment: 0, phase: "closed" },
+    derivative: {
+      segment: 0,
+      phase: "closed",
+      tutorNotices: [overrideNotice(1)],
+    },
   });
   // Moving on costs no reply from the tutor.
   expect(setup.backend.received).toHaveLength(turnsBefore);
@@ -1336,7 +1364,11 @@ test.each(["before", "after"])(
     try {
       const reopened = await open(after);
       expect(await position()).toEqual({
-        derivative: { segment: 0, phase: "closed" },
+        derivative: {
+          segment: 0,
+          phase: "closed",
+          tutorNotices: [overrideNotice(1)],
+        },
       });
       expect(reopened.events()).toContainEqual({
         type: "overridden",
@@ -1355,6 +1387,167 @@ test.each(["before", "after"])(
     }
   },
 );
+
+test("a move-on notice a restart came before is told in the next header, and not again after the next restart", async () => {
+  const before = setUp([TEACH, ask(Q_QUOTIENT)]);
+  await makeCourse();
+  const first = await open(before);
+  await toCheck(first);
+  expect(await first.override()).toEqual({ ok: true });
+  await first.settled();
+  await before.units.close();
+
+  const middle = setUp([[{ text: "The limit." }]]);
+  try {
+    const chat = await open(middle);
+    expect(middle.backend.received).toEqual([]);
+    expect(await chat.nextSegment()).toEqual({ ok: true });
+    await chat.settled();
+    expect(middle.backend.received).toHaveLength(1);
+    expect(middle.backend.received[0]?.text).toContain(
+      `Start of the segment. ${OVERRIDE_TOLD} Question 1 was withdrawn. Allowed now: teach`,
+    );
+    expect((await positionWritten())?.tutorNotices).toBeUndefined();
+  } finally {
+    await middle.units.close();
+  }
+
+  const after = setUp([[{ text: "Yes." }]]);
+  try {
+    const chat = await open(after);
+    expect(chat.say("Go on.")).toEqual({ ok: true });
+    await chat.settled();
+    expect(after.backend.received).toHaveLength(1);
+    expect(after.backend.received[0]?.text).not.toContain("moved on");
+  } finally {
+    await after.units.close();
+  }
+});
+
+test("a turn stopped once its header was composed, before it was sent, leaves the move-on notice for the next turn", async () => {
+  let hold: Promise<void> | undefined;
+  const held = Promise.withResolvers<void>();
+  const setup = setUp(
+    [
+      [
+        ...TEACH,
+        {
+          call: "propose_style",
+          input: { note: "Worked examples first.", why: "Asked for." },
+        },
+      ],
+      ask(Q_QUOTIENT),
+      [{ text: "Yes." }],
+    ],
+    {
+      record: (root) => ({
+        ...root,
+        async writePosition(...args) {
+          const wait = hold;
+          hold = undefined;
+          if (wait !== undefined) {
+            held.resolve();
+            await wait;
+          }
+          return root.writePosition(...args);
+        },
+      }),
+    },
+  );
+  await makeCourse();
+  const chat = await open(setup);
+  await toCheck(chat);
+  expect(await chat.override()).toEqual({ ok: true });
+  await chat.settled();
+  const sent = setup.backend.received.length;
+  const card = chat.events().findLast((e) => e.type === "style_proposed");
+  if (card?.type !== "style_proposed") throw new Error("no style proposal");
+
+  // "Keep the current one" holds the chat's queue on its write, so the
+  // message's header waits there; Stop comes while it waits.
+  const release = Promise.withResolvers<void>();
+  hold = release.promise;
+  const keep = chat.keepStyle(card.proposalId);
+  await held.promise;
+  const started = waitFor(chat, "turn_start", chat.events().length);
+  expect(chat.say("Hello?")).toEqual({ ok: true });
+  await started;
+  // The session is running, so from turn_start to the message's header
+  // waiting in the queue there are only settled promises: a macrotask later
+  // it waits there, and Stop lands after the check before composing. If
+  // that stretch ever waits on I/O, this tests a Stop before composing.
+  await new Promise((resolve) => setImmediate(resolve));
+  await chat.interrupt();
+  release.resolve();
+  expect(await keep).toEqual({ ok: true });
+  await chat.settled();
+
+  expect(chat.events().findLast((e) => e.type === "turn_end")).toEqual({
+    type: "turn_end",
+    outcome: "interrupted",
+  });
+  expect(setup.backend.received).toHaveLength(sent);
+  expect((await positionWritten())?.tutorNotices).toEqual([overrideNotice(1)]);
+
+  expect(chat.say("Are you there?")).toEqual({ ok: true });
+  await chat.settled();
+  expect(setup.backend.received).toHaveLength(sent + 1);
+  const header = setup.backend.received.at(-1)?.text;
+  expect(header).toContain(`${OVERRIDE_TOLD} Question 1 was withdrawn.`);
+  expect(header).toContain('The learner chose "Keep the current one"');
+  expect((await positionWritten())?.tutorNotices).toBeUndefined();
+});
+
+test("a Stop after the header carrying a move-on notice was sent does not tell it again, after a restart either", async () => {
+  const teaching = Promise.withResolvers<void>();
+  const before = setUp(
+    [TEACH, ask(Q_QUOTIENT), [{ text: "The limit" }, { hold: true }]],
+    {
+      wrap: (fake) => ({
+        ...fake,
+        async startSession(options) {
+          const session = await fake.startSession(options);
+          return {
+            ...session,
+            send(turn, signal) {
+              if (turn.text.includes("Start of the segment."))
+                teaching.resolve();
+              return session.send(turn, signal);
+            },
+          };
+        },
+      }),
+    },
+  );
+  await makeCourse();
+  const chat = await open(before);
+  await toCheck(chat);
+  expect(await chat.override()).toEqual({ ok: true });
+  await chat.settled();
+  expect(await chat.nextSegment()).toEqual({ ok: true });
+  await teaching.promise;
+  await chat.interrupt();
+  await chat.settled();
+
+  expect(chat.events().findLast((e) => e.type === "turn_end")).toEqual({
+    type: "turn_end",
+    outcome: "interrupted",
+  });
+  expect(before.backend.received.at(-1)?.text).toContain(OVERRIDE_TOLD);
+  expect((await positionWritten())?.tutorNotices).toBeUndefined();
+  await before.units.close();
+
+  const after = setUp([[{ text: "Yes." }]]);
+  try {
+    const reopened = await open(after);
+    expect(reopened.say("Go on.")).toEqual({ ok: true });
+    await reopened.settled();
+    expect(after.backend.received).toHaveLength(1);
+    expect(after.backend.received[0]?.text).not.toContain("moved on");
+  } finally {
+    await after.units.close();
+  }
+});
 
 test("the learner can also move on from the discussion, without pressing ready", async () => {
   const setup = setUp([TEACH]);
@@ -1971,7 +2164,11 @@ test("there is no limit: an objective not passed is asked again until it passes 
   });
   // The unit stays in progress while its closing card waits.
   expect(await position()).toEqual({
-    derivative: { segment: 0, phase: "closed" },
+    derivative: {
+      segment: 0,
+      phase: "closed",
+      tutorNotices: [overrideNotice(4)],
+    },
   });
 });
 
