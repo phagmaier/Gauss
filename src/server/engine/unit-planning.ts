@@ -24,7 +24,7 @@ import type { TutorBackend } from "../backends/backend.ts";
 import { type DataRoot, PlanSectionsChanged } from "../record/data-root.ts";
 import { objectiveStatus } from "../record/status.ts";
 import { planUnitTool } from "../tools/plan-unit.ts";
-import type { TeachingTool } from "../tools/tool.ts";
+import type { TeachingTool, ToolResult } from "../tools/tool.ts";
 import { type EarlierUnits, earlierText, readEarlier } from "./handoff.ts";
 import { numberedParagraphs, placeText } from "./source-text.ts";
 
@@ -50,6 +50,7 @@ export interface UnitPlanner {
 }
 
 const ATTEMPTS = 2;
+const REFUSAL_LIMIT_PER_TURN = 2; // Leave room to correct the first refusal.
 
 export function createUnitPlanner(options: {
   backend: TutorBackend;
@@ -169,13 +170,21 @@ export function createUnitPlanner(options: {
       },
     });
     // The last refusal, whether the input's check or the record refused it.
-    let refusal: string | undefined;
+    let refusal: Extract<ToolResult, { status: "refused" }> | undefined;
+    let refusals = 0;
     const tool: TeachingTool = {
       ...planUnit,
-      async run(input) {
-        const result = await planUnit.run(input);
-        if (result.status === "refused") refusal = result.text;
-        return result;
+      async run(input, signal) {
+        // Claude can still have calls queued in the batch that is ending.
+        if (refusal?.endTurn === true) return refusal;
+        const result = await planUnit.run(input, signal);
+        if (result.status !== "refused") return result;
+        refusals += 1;
+        refusal =
+          refusals === REFUSAL_LIMIT_PER_TURN && sectionsChanged === undefined
+            ? { ...result, endTurn: true }
+            : result;
+        return refusal;
       },
     };
 
@@ -206,7 +215,7 @@ export function createUnitPlanner(options: {
     }
     if (refusal !== undefined) {
       return {
-        problem: `the planning session ended with its plan refused: ${refusal}`,
+        problem: `the planning session ended with its plan refused: ${refusal.text}`,
       };
     }
     return { problem: "the planning session ended without a plan." };

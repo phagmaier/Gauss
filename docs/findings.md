@@ -33,10 +33,12 @@ follows the SDK's version.
 - **The model does not stop after posting a question**: in 4 of 4 calls
   it went on writing. A `PostToolUse` hook returning `continue: false` ends
   the turn cleanly. Not tried: `_meta['claude/endTurn']`.
-- **A tool input that fails its schema is refused before the tool runs**
-  (`MCP error -32602` with zod's messages), so schema messages are written
-  for the model, and a planning session that ends without a plan cannot be
-  told what was wrong with the plan it tried.
+- **`PostToolUseFailure` ignores `continue: false`.** The bundled Claude
+  Code dispatcher drops `preventContinuation` on MCP errors; `PostToolBatch`
+  honors it, but only after already-queued calls have drained.
+- **Input rejected by MCP's field schema never reaches the teaching tool**
+  (`MCP error -32602` with zod's messages), so the engine cannot count that
+  refusal or pass its reason to the next planning session.
 - **Resuming from another working folder finds the session and moves it
   there**, so a session is always resumed in the folder it ran in:
   confinement follows the working folder. A resumed session takes the tool

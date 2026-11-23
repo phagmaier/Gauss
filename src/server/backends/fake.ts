@@ -256,7 +256,7 @@ export function createFakeBackend(
               ? { status: "refused", text: `No such tool: ${step.call}` }
               : await tool.run(step.input, signal);
           calls.push({ name: step.call, input: step.input, result });
-          if (result.status === "done" && result.endTurn === true) {
+          if (result.endTurn === true) {
             yield { type: "turn_end", outcome: "ended_by_tool" };
             return;
           }

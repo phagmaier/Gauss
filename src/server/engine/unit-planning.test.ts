@@ -5,9 +5,10 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { EvidenceEntry } from "../../shared/evidence.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { Outline } from "../../shared/source.ts";
-import type { TutorBackend } from "../backends/backend.ts";
+import type { SessionOptions, TutorBackend } from "../backends/backend.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
+import type { ToolResult } from "../tools/tool.ts";
 import { placeTestSource } from "./fake-converter.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
@@ -88,7 +89,11 @@ async function course(approved = true): Promise<string> {
 }
 
 /** The fake backend, counting the sessions closed. */
-function setUp(script: FakeTurn[], beforeToolCall?: () => Promise<void>) {
+function setUp(
+  script: FakeTurn[],
+  beforeToolCall?: () => Promise<void>,
+  beforeToolEnd?: (tools: SessionOptions["tools"]) => Promise<void>,
+) {
   const fake = createFakeBackend(script);
   let closed = 0;
   const backend: TutorBackend = {
@@ -99,6 +104,12 @@ function setUp(script: FakeTurn[], beforeToolCall?: () => Promise<void>) {
         async *send(turn) {
           for await (const event of session.send(turn)) {
             if (event.type === "tool_call") await beforeToolCall?.();
+            if (
+              event.type === "turn_end" &&
+              event.outcome === "ended_by_tool"
+            ) {
+              await beforeToolEnd?.(options.tools);
+            }
             yield event;
           }
         },
@@ -559,6 +570,56 @@ describe("a refused plan goes back with its reason and is corrected", () => {
     expect(result).toEqual({ ok: true, plan: RULES_PLAN });
     expect(await storedPlan(id, "rules")).toEqual(RULES_PLAN);
     expect(fake.sessions).toHaveLength(1);
+  });
+
+  test("two refusals end the turn before a third call, but a new session can correct its plan", async () => {
+    const id = await course();
+    await root.storePlan(id, "derivative", DERIVATIVE_PLAN);
+    let queuedResult: ToolResult | undefined;
+    const { fake, planner, closed } = setUp(
+      [
+        [
+          { call: "plan_unit", input: NO_SEGMENT },
+          { call: "plan_unit", input: CLASH },
+          { call: "plan_unit", input: RULES_PLAN },
+        ],
+        [
+          { call: "plan_unit", input: NO_SEGMENT },
+          { call: "plan_unit", input: RULES_PLAN },
+        ],
+      ],
+      undefined,
+      async ([tool]) => {
+        // Claude can dispatch a call already queued before the batch ends.
+        if (queuedResult === undefined && tool !== undefined) {
+          queuedResult = await tool.run(RULES_PLAN);
+        }
+      },
+    );
+
+    expect(await planner.plan(id, "rules")).toEqual({
+      ok: true,
+      plan: RULES_PLAN,
+    });
+    expect(
+      fake.calls.map(({ input, result }) => [input, result.status]),
+    ).toEqual([
+      [NO_SEGMENT, "refused"],
+      [CLASH, "refused"],
+      [NO_SEGMENT, "refused"],
+      [RULES_PLAN, "done"],
+    ]);
+    const reason =
+      '"rate" is the id of an objective in both "derivative" and "rules"';
+    expect(queuedResult).toMatchObject({
+      status: "refused",
+      text: expect.stringContaining(reason),
+    });
+    expect(fake.received[1]?.text).toContain(
+      `the planning session ended with its plan refused: ${reason}`,
+    );
+    expect(await storedPlan(id, "rules")).toEqual(RULES_PLAN);
+    expect(closed()).toBe(2);
   });
 });
 

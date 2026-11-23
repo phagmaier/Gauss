@@ -494,10 +494,9 @@ async function startSession(
   let closed = false;
   const mutations = new Map<string, () => void>();
 
-  // A teaching tool asks for the end of the turn through its result; the
-  // PostToolUse hook carries it out (task 0.3). A refused call leaves the
-  // flag unset, so the model sees the reason and can try again.
-  let endTurnRequested = false;
+  // PostToolUseFailure releases reservations but ignores continue:false.
+  // A refused teaching tool has to request the stop at the end of the batch.
+  let endTurnAfter: "PostToolUse" | "PostToolBatch" | undefined;
   const tools = options.tools.map((teachingTool) =>
     tool(
       teachingTool.name,
@@ -512,8 +511,9 @@ async function startSession(
           };
         }
         const result = await teachingTool.run(args, signal);
-        if (result.status === "done" && result.endTurn === true) {
-          endTurnRequested = true;
+        if (result.endTurn === true) {
+          endTurnAfter =
+            result.status === "done" ? "PostToolUse" : "PostToolBatch";
         }
         return {
           content: [
@@ -546,8 +546,8 @@ async function startSession(
     if (interruptRequested) {
       return { continue: false, stopReason: "The learner stopped this turn." };
     }
-    if (!endTurnRequested) return {};
-    endTurnRequested = false;
+    if (input.hook_event_name !== endTurnAfter) return {};
+    endTurnAfter = undefined;
     return { continue: false, stopReason: "A teaching tool ended the turn." };
   };
   // interrupt() alone leaves pending SDK input runnable. Stop it at pickup
@@ -663,6 +663,7 @@ async function startSession(
               PermissionDenied: [{ hooks: [endTurn], onFailure: "block" }],
             }),
         PostToolUse: [{ hooks: [endTurn], onFailure: "block" }],
+        PostToolBatch: [{ hooks: [endTurn], onFailure: "block" }],
       },
       includePartialMessages: true,
     },
@@ -699,7 +700,7 @@ async function startSession(
       return;
     }
     interruptRequested = false;
-    endTurnRequested = false;
+    endTurnAfter = undefined;
     turnSignal = signal;
     inbox.push(turn.text);
     const reader = createTurnReader(cwd);

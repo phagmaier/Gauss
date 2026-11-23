@@ -681,6 +681,62 @@ async function postToolUse(
   );
 }
 
+test("a teaching tool can end a planning turn with a refusal that stays an MCP error", async () => {
+  let endTurn = false;
+  const reason = "Name only the sections assigned to this unit.";
+  const { options, session } = await sessionOptions({
+    tools: [
+      {
+        name: "plan_unit",
+        description: "Store the unit plan.",
+        inputShape: {},
+        async run() {
+          return { status: "refused", text: reason, endTurn };
+        },
+      },
+    ],
+  });
+  try {
+    const tool = vi.mocked(createSdkMcpServer).mock.lastCall?.[0].tools?.[0];
+    if (tool === undefined) throw new Error("No planning tool.");
+    const hook = options.hooks?.PostToolBatch?.[0]?.hooks[0];
+    if (hook === undefined) throw new Error("No PostToolBatch hook.");
+    for (const stop of [false, true]) {
+      endTurn = stop;
+      const result = await tool.handler({}, undefined);
+      expect(result).toEqual({
+        content: [{ type: "text", text: reason }],
+        isError: true,
+      });
+      const decision = await hook(
+        {
+          hook_event_name: "PostToolBatch",
+          session_id: "test",
+          transcript_path: "",
+          cwd: WORKSPACE,
+          tool_calls: [
+            {
+              tool_name: "mcp__gauss__plan_unit",
+              tool_input: {},
+              tool_use_id: "plan",
+              tool_response: result,
+            },
+          ],
+        },
+        undefined,
+        { signal: new AbortController().signal },
+      );
+      expect(decision).toEqual(
+        stop
+          ? { continue: false, stopReason: "A teaching tool ended the turn." }
+          : {},
+      );
+    }
+  } finally {
+    await session.close();
+  }
+});
+
 test("concurrent mutations remain reserved until their own success or failure, even after close, and background Bash never starts", async () => {
   const releases = [vi.fn(), vi.fn(), vi.fn()];
   let next = 0;

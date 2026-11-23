@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.9 Bound refused unit-planning calls — todo
-
-**Why:** An individual planning turn can keep retrying refused tool calls.
-**Do:** End the turn at a finite refusal limit without preventing an ordinary correction.
-**Done when:** A scripted planner cannot keep calling after the limit and the existing corrected-plan path still succeeds.
-
 ### K.10 Preserve submitted code in tutor feedback — todo
 
 **Why:** The tutor's copy of a submission loses trailing whitespace.
@@ -172,7 +166,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   tutor's word on it, a message while its result card waits), appears in
   “What I know” as found “in the discussion”. Decide whether those get
   places of their own.
-- **A (K.9):** No limit on refused `plan_unit` calls within one turn.
 - **C:** The unit planner splits contexts into objectives (“a setting is
   not a skill” is unsettled) and names implementations (“using zip”).
 - **A (K.18):** The fake backend's `hasSession` ignores the working folder.
