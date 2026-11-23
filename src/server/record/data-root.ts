@@ -12,14 +12,15 @@
 // deletes a course (task 5.18), and keeps sources: a converted folder put
 // in an intake's uploads or a course's sources/, moved from one to the
 // other, removed from uploads, the outlines and sections read, and a PDF
-// page's image kept once rendered (task 4.8).
+// page's image kept once rendered (task 4.8). At start it removes what
+// interrupted writes left, and an intake's uploads.
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
 // append, runs through withFileLock, so it lands in the order called.
 
 import { randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, type Dirent } from "node:fs";
 import {
   type FileHandle,
   lstat,
@@ -31,6 +32,7 @@ import {
   rename,
   rm,
   stat,
+  unlink,
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -80,7 +82,12 @@ import { WorkspacePath } from "../../shared/question.ts";
 import { Outline, SectionRef } from "../../shared/source.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { StyleDecision } from "../../shared/style.ts";
-import { syncFolder, writeFileAtomic, writeFileNew } from "./atomic-write.ts";
+import {
+  isTemporaryName,
+  syncFolder,
+  writeFileAtomic,
+  writeFileNew,
+} from "./atomic-write.ts";
 import { disputable } from "./disputes.ts";
 import { withFileLock } from "./file-lock.ts";
 import {
@@ -372,6 +379,18 @@ export interface DataRoot {
    * running: an intake ends with the server.
    */
   clearUploads(): Promise<void>;
+  /**
+   * Removes the temporary files of whole-file writes a crash interrupted
+   * (`isTemporaryName`): plain files only, and only in these of the
+   * record's folders: the root, each course's folder, its units' folders,
+   * notes/ and artifacts/. It never looks in a course's workspace/,
+   * packages/, sources/, sessions/ or install journal, in courses/ itself,
+   * where a deleted course is parked, or in uploads/, which clearUploads
+   * removes. A temporary file of a write still running would go too, so it
+   * is called at start, before anything writes. What cannot be read or
+   * removed is logged and left; it never throws.
+   */
+  clearInterruptedWrites(log: (line: string) => void): Promise<void>;
   /**
    * Puts a folder `convert.py ingest` wrote in place: in the course's
    * `sources/`, or in the intake's uploads, under a slug of its title
@@ -1737,6 +1756,54 @@ export function openDataRoot(options: {
         await record.saveProposal(pending.id, pending.proposal, intake.name);
       }
       await rm(uploads, { recursive: true, force: true });
+    },
+
+    async clearInterruptedWrites(log) {
+      const entries = async (folder: string): Promise<Dirent[]> => {
+        try {
+          return await readdir(folder, { withFileTypes: true });
+        } catch (error) {
+          if (!hasCode(error, "ENOENT")) {
+            const why = error instanceof Error ? error.message : String(error);
+            log(`Could not look for interrupted writes in ${folder}: ${why}`);
+          }
+          return [];
+        }
+      };
+      // Courses' and units' folders; a symlink is not followed, nor is a
+      // parked course, whose hidden name is no slug.
+      const slugFolders = async (folder: string) =>
+        (await entries(folder))
+          .filter((e) => e.isDirectory() && Slug.safeParse(e.name).success)
+          .map((e) => join(folder, e.name));
+      // Every whole-file write of the record lands in one of these, except in
+      // uploads/ (an intake's journal, and a source's outline.json before its
+      // folder is published) and in an install's journal, whose receipt.json
+      // goes with the journal (packages.ts).
+      const folders = [options.path];
+      for (const course of await slugFolders(courses)) {
+        folders.push(course, join(course, "notes"), join(course, "artifacts"));
+        folders.push(...(await slugFolders(join(course, "units"))));
+      }
+      for (const folder of folders) {
+        for (const entry of await entries(folder)) {
+          if (!entry.isFile() || !isTemporaryName(entry.name)) continue;
+          const path = join(folder, entry.name);
+          try {
+            // A temporary file writeFileNew had linked is a second name of
+            // the published file; unlinking it leaves the file as it is.
+            await unlink(path);
+          } catch (error) {
+            if (!hasCode(error, "ENOENT")) {
+              const why =
+                error instanceof Error ? error.message : String(error);
+              log(
+                `Could not remove ${path}, left by an interrupted write: ${why}`,
+              );
+            }
+          }
+        }
+      }
     },
 
     async placeSource(converted, into) {

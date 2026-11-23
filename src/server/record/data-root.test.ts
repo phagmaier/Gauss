@@ -1,17 +1,21 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
+  chmod,
   type FileHandle,
+  link,
   mkdir,
   mkdtemp,
   open,
   readdir,
   readFile,
+  readlink,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Curriculum, ShownProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
@@ -1661,4 +1665,206 @@ describe("sources (stage 4)", () => {
       "cannot be an intake's id",
     );
   });
+});
+
+describe("what interrupted writes left, cleared at start", () => {
+  /** A UUID as randomUUID writes it, as in a temporary file's name. */
+  const UUID = "3f2b8c1e-9d4a-4e6b-8a1f-5c7d2e9b0a64";
+  /** The name writeFileAtomic gives the temporary file of a write of `name`. */
+  const leftover = (name: string) => `.${name}.${UUID}.tmp`;
+
+  /** Every entry under the folder by its path there: a file's text, a folder, or a link's target. */
+  async function tree(folder: string): Promise<Map<string, string>> {
+    const found = new Map<string, string>();
+    const entries = await readdir(folder, {
+      withFileTypes: true,
+      recursive: true,
+    });
+    for (const entry of entries) {
+      const path = join(entry.parentPath, entry.name);
+      found.set(
+        relative(folder, path),
+        entry.isDirectory()
+          ? "(folder)"
+          : entry.isSymbolicLink()
+            ? `(link to ${await readlink(path)})`
+            : await readFile(path, "utf8"),
+      );
+    }
+    return found;
+  }
+
+  async function put(path: string, contents = "partly written") {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, contents);
+  }
+
+  /** A course with a curriculum, a position, a unit's handoff, notes and an aid, and a profile. */
+  async function wholeRecord(root: DataRoot) {
+    const id = await courseWithCurriculum(root);
+    await root.writePosition(id, "eigen", DISCUSSING);
+    await root.writeHandoff(id, "eigen", "A note.", {
+      writtenAt: "2026-11-18T10:00:00.000Z",
+      through: { session: 1, events: 4 },
+    });
+    await root.writeNotes(id, "eigen", "<p>Notes</p>", {
+      html: "<p>Notes</p>",
+      instructions: "Short.",
+      writtenAt: "2026-11-19T09:00:00.000Z",
+    });
+    const { file } = await root.writeArtifact(id, {
+      title: "A graph",
+      html: "<p>graph</p>",
+    });
+    await root.writeProfile("Knows calculus.", undefined);
+    const course = join(dir, "courses", id);
+    return {
+      id,
+      course,
+      unit: join(course, "units", "eigen"),
+      artifact: join(course, "artifacts", file),
+    };
+  }
+
+  test("start removes the temporary files of interrupted record writes, and nothing else", async () => {
+    const { course, unit, artifact } = await wholeRecord(
+      openDataRoot({ path: dir }),
+    );
+    const leftovers = [
+      join(dir, leftover("profile.md")),
+      join(dir, leftover(".notes-write.json")),
+      join(course, leftover("course.json")),
+      join(course, leftover("state.json")),
+      join(course, leftover(".first-proposal-instance.tmp")),
+      join(unit, leftover("handoff.md")),
+      join(unit, leftover("handoff.json")),
+      join(course, "notes", leftover("eigen.html")),
+    ];
+    for (const path of leftovers) await put(path);
+    // writeFileNew stopped after linking the aid's name, before removing
+    // its temporary file: two names of one file.
+    const linked = join(dirname(artifact), leftover(basename(artifact)));
+    await link(artifact, linked);
+    leftovers.push(linked);
+
+    // Named like a temporary file, or like a journal or reservation, but
+    // not a record write's leftover in a folder the record writes in.
+    const learnerFile = join(course, "workspace", leftover("bpe.py"));
+    for (const path of [
+      join(course, ".first-proposal-instance.tmp"),
+      join(course, ".package-install.tmp", "running", "receipt.json"),
+      join(course, ".package-install.tmp", "running", leftover("receipt.json")),
+      join(dir, "courses", leftover("calculus-i"), "course.json"),
+      join(
+        dir,
+        "uploads",
+        "0f8fad5b-d9cb-469f-a165-70867728950e",
+        ".9b2c4d6e-1f3a-4b5c-8d7e-0a1b2c3d4e5f.tmp",
+        "original",
+        "notes.md",
+      ),
+      join(dir, "uploads", `.seed-${UUID}.tmp`, "source", "outline.json"),
+      learnerFile,
+      join(course, "workspace", ".venv", leftover("pyvenv.cfg")),
+      join(course, "packages", leftover("uv.lock")),
+      join(course, "sources", "preface", leftover("outline.json")),
+      join(dir, "intake", leftover("plan.md")),
+      join(course, leftover("curriculum.json"), "inside.txt"),
+      join(course, ".state.json.tmp"),
+      join(unit, ".handoff.md.swp"),
+    ]) {
+      await put(path);
+    }
+    await symlink(learnerFile, join(course, leftover("style.md")));
+    const before = await tree(dir);
+    const logged: string[] = [];
+
+    await openDataRoot({ path: dir }).clearInterruptedWrites((line) =>
+      logged.push(line),
+    );
+
+    const expected = new Map(before);
+    for (const path of leftovers) {
+      expect(expected.delete(relative(dir, path))).toBe(true);
+    }
+    expect(await tree(dir)).toEqual(expected);
+    expect(logged).toEqual([]);
+  });
+
+  test("a write stopped before its rename leaves a file start removes, and the file it was replacing stays", async () => {
+    const { id, course } = await wholeRecord(openDataRoot({ path: dir }));
+    const state = await readFile(join(course, "state.json"), "utf8");
+    const code = `
+      import fs from "node:fs/promises";
+      import { syncBuiltinESMExports } from "node:module";
+      import { openDataRoot } from ${JSON.stringify(new URL("./data-root.ts", import.meta.url).href)};
+      const [dir, id] = process.argv.slice(1);
+      const { rename } = fs;
+      fs.rename = async (from, to) => {
+        if (to.endsWith("state.json")) process.exit(73);
+        await rename(from, to);
+      };
+      syncBuiltinESMExports();
+      await openDataRoot({ path: dir }).writePosition(id, "eigen", null);
+    `;
+    const child = spawn(
+      process.execPath,
+      ["--input-type=module", "--eval", code, dir, id],
+      { stdio: ["ignore", "ignore", "inherit"] },
+    );
+    expect(await once(child, "exit")).toEqual([73, null]);
+    const names = async () =>
+      (await readdir(course)).filter((name) => name.startsWith(".state.json"));
+    expect(await names()).toHaveLength(1);
+
+    await openDataRoot({ path: dir }).clearInterruptedWrites(() => {});
+
+    expect(await names()).toEqual([]);
+    expect(await readFile(join(course, "state.json"), "utf8")).toBe(state);
+  });
+
+  test.skipIf(process.getuid?.() === 0)(
+    "a folder it cannot read and a file it cannot remove are logged and left, and the rest is still removed",
+    async () => {
+      const { course, unit, artifact } = await wholeRecord(
+        openDataRoot({ path: dir }),
+      );
+      // The course folder is scanned before notes/, notes/ before
+      // artifacts/ and the units' folders, so both failures come before
+      // files that must still go.
+      const notes = join(course, "notes");
+      const held = join(course, leftover("state.json"));
+      const removable = [
+        join(dir, leftover("profile.md")),
+        join(dirname(artifact), leftover(basename(artifact))),
+        join(unit, leftover("handoff.md")),
+      ];
+      for (const path of [held, ...removable]) await put(path);
+      await chmod(course, 0o555);
+      await chmod(notes, 0o000);
+      const logged: string[] = [];
+      try {
+        await openDataRoot({ path: dir }).clearInterruptedWrites((line) =>
+          logged.push(line),
+        );
+      } finally {
+        await chmod(notes, 0o755);
+        await chmod(course, 0o755);
+      }
+
+      expect(logged).toEqual([
+        expect.stringContaining(
+          `Could not remove ${held}, left by an interrupted write: EACCES`,
+        ),
+        expect.stringContaining(
+          `Could not look for interrupted writes in ${notes}: EACCES`,
+        ),
+      ]);
+      const left = await tree(dir);
+      expect(left.has(relative(dir, held))).toBe(true);
+      for (const path of removable) {
+        expect(left.has(relative(dir, path))).toBe(false);
+      }
+    },
+  );
 });

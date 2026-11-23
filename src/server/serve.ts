@@ -80,6 +80,11 @@ export async function serve(options: {
     prompt("course-planner.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
+  // The first use of the record, before the recovery below writes and
+  // before any chat or route exists, so no write of this server is running.
+  await dataRoot.clearInterruptedWrites((line) =>
+    process.stdout.write(`${line}\n`),
+  );
   // Recover a first proposal before taking the startup snapshot. An intake
   // that had not made a proposal ends with the server, along with its uploads.
   await dataRoot.clearUploads();

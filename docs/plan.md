@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.7 Clean up interrupted atomic writes — todo
-
-**Why:** Temporary files from interrupted record writes accumulate.
-**Do:** Remove only the record's own abandoned atomic-write files at startup, not learner workspace files.
-**Done when:** Startup removes seeded crash leftovers while preserving the committed record and unrelated files.
-
 ### K.8 Notify a blocked tutor of a planner decision — todo
 
 **Why:** A tutor refused while the planner's proposal waits is not told when that restriction lifts.
@@ -160,7 +154,14 @@ work for Stage 6. A task that closes a gap deletes it here.
   assessment's end, a dispute's outcome and the answer to the test's
   result card. After a restart the test's "Start learning instead" summary
   says only that a restart came. Decide which must survive.
-- **A (K.7):** Atomic-write temporary files left by a crash are not cleaned up.
+- **B:** Nothing stops two servers from opening one data root (on
+  different ports): the second's start clears the first's uploads and the
+  temporary files of its writes in progress. Decide whether a data root in
+  use should be refused.
+- **B:** Startup clears only interrupted record writes and uploads. A crash
+  while a page image renders leaves its `.render-*` scratch folder in the
+  source's `pages/`, and a deleted course whose removal failed stays parked
+  in `courses/`; nothing removes either later. Decide whether startup should.
 - **B:** Deleting a course leaves Claude Code's sessions outside the data root.
   Decide whether deletion should remove them; identify ownership before doing so.
 - **A (K.12):** The course card ticks a skipped segment as done; a review

@@ -83,10 +83,13 @@ Rules no single file shows:
   the evidence names an objective by id alone. No file has a schema
   version: a field added later must be optional.
 - **Writes.** Every file but the logs is written whole: temporary file,
-  flush, rename (`record/atomic-write.ts`). Logs are appended a line at a
-  time (`record/json-lines.ts`); each file's writes queue behind each
-  other (`record/file-lock.ts`). State is written before the page hears
-  of a change; an answer is appended before its question closes.
+  flush, rename (`record/atomic-write.ts`). Startup, before anything
+  writes, removes the temporary files a crash left in the record's own
+  folders, never a workspace's (`clearInterruptedWrites`). Logs are
+  appended a line at a time (`record/json-lines.ts`); each file's writes
+  queue behind each other (`record/file-lock.ts`). State is written before
+  the page hears of a change; an answer is appended before its question
+  closes.
 - **Backup.** The root is a git repository (`record/backup.ts`) keeping
   `courses/` and `profile.md`, without `.venv/`, Python caches, a source's
   `pages/` or `uploads/`. Commits follow each durable step and never fail
