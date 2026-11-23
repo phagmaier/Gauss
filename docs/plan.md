@@ -23,20 +23,7 @@ because code and documents use them.
   check, and the comparisons with LearnHarness and DeepTutor the same day,
   added tasks 5.14 to 5.29, all done on 2026-11-20.
 
-## Stage 4: sources (built after stage 5)
-
-The scope: ingestion for the four formats, the outline, unit mapping,
-`quote_source`, the citation view, page images and the web search setting.
-The user's picks are in `brief.md`, "Sources" and "Page"; the trials on the
-user's files are in `findings.md`, "Source conversion". The pages are mocks
-22 to 24 in `docs/prototype/`. Not in this stage (stage 6's list): a source
-added to a course after its intake, text recognition for scanned PDFs, and
-questions on a source's figure.
-
-**User check:** a lecture on one chapter of the _Phenomenology_ with verified
-quotes, and one unit taught from a paper. Its tasks are done; it waits on
-the user's own run. Watch for the question gap under "Known gaps"
-("Tutor, grading and judging").
+- Stage 4, sources: the user's check passed on 2026-11-22.
 
 ## Stage 6: later
 
