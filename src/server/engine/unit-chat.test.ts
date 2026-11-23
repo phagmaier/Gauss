@@ -2765,7 +2765,13 @@ async function write(chat: UnitChat, confidence: Confidence = "100") {
   await chat.settled();
 }
 
-test.each(["interrupted", "completed", "detour", "queued-stop"] as const)(
+test.each([
+  "interrupted",
+  "completed",
+  "detour",
+  "queued-stop",
+  "shutdown",
+] as const)(
   "answer restart with %s feedback resumes only the remaining step",
   async (point) => {
     const held = Promise.withResolvers<void>();
@@ -2796,7 +2802,7 @@ test.each(["interrupted", "completed", "detour", "queued-stop"] as const)(
     await makeCourse();
     const first = await open(before);
     await toCheck(first);
-    const path = join(dir, "restarted");
+    const path = point === "shutdown" ? dir : join(dir, "restarted");
     try {
       if (stopped) {
         first.say("What does the question mean?");
@@ -2805,15 +2811,17 @@ test.each(["interrupted", "completed", "detour", "queued-stop"] as const)(
       expect(await first.answer(written(first))).toEqual({ ok: true });
       if (stopped) await first.interrupt();
       await held.promise;
-      await first.flushTranscript();
-      // Snapshot the pending step while its turn is held, then shut
-      // down the original separately.
-      await cp(join(dir, "courses"), join(path, "courses"), {
-        recursive: true,
-      });
+      if (point !== "shutdown") {
+        await first.flushTranscript();
+        // Snapshot the held turn to model a crash before shutdown can run.
+        await cp(join(dir, "courses"), join(path, "courses"), {
+          recursive: true,
+        });
+      }
     } finally {
       await before.units.close();
     }
+    if (point === "shutdown") await first.settled();
     expect(before.backend.oneShots).toHaveLength(1);
 
     const after = setUp(
@@ -2824,7 +2832,9 @@ test.each(["interrupted", "completed", "detour", "queued-stop"] as const)(
     expect(evidence).toHaveLength(1);
     const chat = await open(after);
     const turns = after.backend.received.map((turn) => turn.text);
-    expect(turns).toHaveLength(point === "interrupted" ? 2 : 1);
+    expect(turns).toHaveLength(
+      point === "interrupted" || point === "shutdown" ? 2 : 1,
+    );
     if (point !== "completed") {
       expect(turns[0]).toContain(PROOF);
     }

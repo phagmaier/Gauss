@@ -104,7 +104,8 @@ Rules no single file shows:
   (event log and turn queue under every chat); `intake.ts`,
   `intake-sources.ts`, `course-planning.ts`, `unit-planning.ts`;
   `unit-chat.ts` (phases, assessments, proposals, the learner's actions)
-  with `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
+  with `unit-progression.ts` (post-answer checkpoints and continuation),
+  `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,
   `math-check.ts`, `code-run.ts`, `help-judge.ts`, `disputes.ts`,

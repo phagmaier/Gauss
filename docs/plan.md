@@ -22,10 +22,9 @@ because code and documents use them.
 - Stage 5, mastery loop: passed on 2026-11-19. The user's notes from the
   check, and the comparisons with LearnHarness and DeepTutor the same day,
   added tasks 5.14 to 5.29, all done on 2026-11-20.
-
 - Stage 4, sources: the user's check passed on 2026-11-22.
 
-## Stage 6: later
+## Stage 6
 
 Codex backend (`findings.md`, "Codex"), self-test, cheat sheets, photo
 input; starred messages for the notes, if the generated notes miss what the
@@ -37,11 +36,10 @@ of stage 4); ranking passage matches with a cheap model, if the learner's
 use shows local search leaves too many plausible matches. Each is planned
 when chosen.
 
-Stage 6's breakdown starts by splitting `engine/unit-chat.ts` (4,500 lines,
-one closure of about 90 functions) along its marked parts (opening, turns,
-assessments, help, the teaching tools, the learner's actions) into modules
-that share the running chat's state, with no change of behaviour: the
-Codex backend and self-test both reach into it.
+The rest of the `src/server/engine/unit-chat.ts` split is open: separate
+opening, turns, assessments, help, teaching tools and learner actions
+without changing behaviour. The Codex backend and self-test both reach
+into this code.
 
 Self-test, as the user described it on 2026-11-19 (optional, after
 everything else): the learner picks the scope (a segment, a unit, the

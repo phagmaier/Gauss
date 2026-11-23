@@ -245,7 +245,10 @@ import {
 } from "./unit-agents.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
-  type Answered,
+  createUnitProgression,
+  type UnitProgression,
+} from "./unit-progression.ts";
+import {
   assessmentEvent,
   detourEvent,
   disputedEvent,
@@ -256,8 +259,6 @@ import {
   type UnitRecord,
 } from "./unit-record.ts";
 import {
-  answerTurn,
-  checkGoesOnTurn,
   checkText,
   curriculumNote,
   detourButton,
@@ -265,7 +266,6 @@ import {
   freshTurn,
   JOINED_NOTE,
   messageTurn,
-  nextQuestionTurn,
   overrideNote,
   packagesNote,
   packagesTurn,
@@ -274,7 +274,6 @@ import {
   readyTurn,
   runEndNote,
   runName,
-  runTurn,
   styleNote,
   teachTurn,
   testAnsweredNote,
@@ -1208,8 +1207,7 @@ interface Running {
   handoff: { note: string | undefined; misconceptions: Misconception[] };
   /** The other units' handoff notes, read when an assessment starts or resumes. */
   assessmentHandoffs: ReadonlyMap<string, string> | undefined;
-  /** Blocks new questions from when feedback is queued until it ends. */
-  feedback?: { number: number; started: boolean } | undefined;
+  progression: UnitProgression;
   /**
    * How many Stops there had been when the answer kept for the judging was
    * sent, so a Stop after it cancels the automatic next question as it does
@@ -1225,8 +1223,6 @@ interface Running {
   /** The standing closing card's action and what the learner confirms with it. */
   finishAction?: { id: string; objectives: string[]; gateFollows: boolean };
 }
-
-type AfterAnswer = NonNullable<UnitPosition["afterAnswer"]>;
 
 function createUnitChat(
   options: ChatOptions & {
@@ -1484,6 +1480,19 @@ function createUnitChat(
         notes: [],
         handoff: { note: handoffNote?.note, misconceptions },
         assessmentHandoffs,
+        progression: createUnitProgression({
+          record,
+          tutor: loaded,
+          where: () => where(r),
+          exclusive,
+          flush: log.flushed,
+          stopCount: () => stopCount,
+          closing: () => closing,
+          checkDone: () => checkDone(r),
+          closeSegment: () => closeSegment(r),
+          endRun: () => endRun(r, false),
+          sendTestSummary: (text) => sendTestSummary(r, text),
+        }),
       };
       if (record.reopened) {
         // A unit under way resumes its tutor's conversation with its first
@@ -1539,7 +1548,7 @@ function createUnitChat(
           const question = await reopenAsked(r);
           if (!question && held.stage === "on") {
             await exclusive(async () => {
-              if (!(await resumeAfterAnswer(r))) await goOnInRun(r);
+              if (!(await r.progression.resume())) await goOnInRun(r);
             });
           }
         }
@@ -1582,7 +1591,7 @@ function createUnitChat(
       await exclusive(() => offerReview(r));
       if (question) return;
       if (record.position.afterAnswer !== undefined) {
-        await exclusive(() => resumeAfterAnswer(r));
+        await exclusive(r.progression.resume);
         return;
       }
       const test = record.position.testOut?.stage;
@@ -1657,11 +1666,7 @@ function createUnitChat(
     });
     await exclusive(async () => {
       if (record.recordedAnswer(open.id) !== undefined) {
-        // A restart came between recording the answer and closing its
-        // question: the question is closed with the answer recorded, as
-        // recording it would have gone on to do.
-        const answered = await record.closeAnswered();
-        if (answered !== undefined) await tellGrade(r, answered);
+        await r.progression.reopenRecordedAnswer();
       } else if (open.judging !== undefined) {
         // The replies a restart kept from the judge cannot be judged
         // now, so they count as help (task 2.21), and an answer kept
@@ -1814,7 +1819,7 @@ function createUnitChat(
       position.phase === "check" &&
       position.openQuestion === undefined &&
       position.detour === undefined &&
-      r.feedback === undefined &&
+      r.progression.feedback === undefined &&
       checkDone(r)
     ) {
       await closeSegment(r);
@@ -1885,6 +1890,7 @@ function createUnitChat(
         notes.push(curriculumNote(answer.outcome, r.context.units));
       }
     }
+    const { feedback } = r.progression;
     return {
       context: r.context,
       position: record.position,
@@ -1897,8 +1903,8 @@ function createUnitChat(
         record.position.gated === true,
       ),
       ...(record.finished === undefined ? {} : { finished: record.finished }),
-      ...(r.feedback !== undefined && !r.feedback.started
-        ? { feedbackPending: r.feedback.number }
+      ...(feedback !== undefined && !feedback.started
+        ? { feedbackPending: feedback.number }
         : {}),
       notes,
       evidence: record.evidence,
@@ -1965,198 +1971,13 @@ function createUnitChat(
     });
   }
 
-  /** Resumes only the step still owed by the recorded answer. Runs in the queue. */
-  async function resumeAfterAnswer(r: Running): Promise<boolean> {
-    const pending = r.record.position.afterAnswer;
-    if (pending === undefined) return false;
-    if (pending.step === "feedback") {
-      const entry = r.record.recordedAnswer(pending.questionId);
-      if (entry === undefined)
-        throw new Error("Feedback is missing its recorded answer.");
-      await tellGrade(r, { number: pending.number, entry });
-    } else if (
-      r.record.position.assessment === undefined &&
-      pending.feedbackFailed === true &&
-      r.record.recordedAnswer(pending.questionId)?.assessment?.mode === "review"
-    ) {
-      await continueCheckAfterReview(r, pending.step !== "stopped");
-    } else {
-      await continueAfterAnswer(r, pending, stopCount);
-    }
-    return true;
-  }
-
-  /**
-   * Sends the tutor the grade of the answer its question was closed with,
-   * in a turn for feedback only: no tool may be called in it (task 2.16a).
-   * Given the next question to plan in the same reply, the tutor wrote its
-   * feedback in its thinking, which the learner never sees (task 2.16).
-   * When the turn ends, the segment closes if the check is done; otherwise,
-   * unless the learner stopped it, the next question is asked for. After a
-   * miss the turn opens the detour the miss opened (task 2.20), and nothing
-   * follows it: the learner asks for the next question. A Stop after
-   * `stops` cancels that next question.
-   */
-  async function tellGrade(
-    r: Running,
-    answered: Answered,
-    stops = stopCount,
-  ): Promise<void> {
-    const { number, entry } = answered;
-    const questionId = entry.answer.questionId;
-    // An answer in an assessment goes on by the assessment's rules.
-    const run = entry.assessment === undefined ? undefined : runOn(r);
-    if (run?.mode === "test-out") {
-      await tellTestGrade(r, run, answered, stops);
-      return;
-    }
-    // Feedback blocks questions from the moment it is queued, not when it
-    // starts; otherwise a reply already running could post the next question first.
-    const feedback = { number, started: false };
-    r.feedback = feedback;
-    r.agents.send({
-      started: () => {
-        feedback.started = true;
-      },
-      text: () => answerTurn(where(r), entry, number),
-      async beforeEnd(outcome) {
-        if (closing) return "interrupted";
-        // Keep the feedback text before marking it complete. Mark its
-        // outcome before publishing turn_end, so a completed turn isn't replayed.
-        await log.flushed();
-        return exclusive(async () => {
-          if (closing) return "interrupted";
-          const { afterAnswer: pending, ...rest } = r.record.position;
-          if (pending?.questionId !== questionId || pending.step !== "feedback")
-            return outcome;
-          if (rest.detour !== undefined && outcome !== "error") {
-            await r.record.move(rest);
-            return outcome;
-          }
-          const step =
-            outcome === "interrupted" ||
-            pending.stopAfterFeedback === true ||
-            stopCount !== stops
-              ? "stopped"
-              : "next";
-          await r.record.move({
-            ...rest,
-            afterAnswer: {
-              questionId,
-              number,
-              step,
-              ...(outcome === "error" ? { feedbackFailed: true as const } : {}),
-            },
-          });
-          return outcome;
-        });
-      },
-      ended: () =>
-        exclusive(async () => {
-          r.feedback = undefined;
-          const pending = r.record.position.afterAnswer;
-          if (!closing && pending?.questionId === questionId) {
-            await continueAfterAnswer(r, pending, stops);
-          }
-        }),
-    });
-  }
-
-  /** Settles or queues what follows feedback (or the learner ending a detour). */
-  async function continueAfterAnswer(
-    r: Running,
-    pending: AfterAnswer,
-    stops: number,
-  ): Promise<void> {
-    if (pending.step === "feedback" || r.record.position.detour !== undefined)
-      return;
-    const { number } = pending;
-    const after = pending.step === "detour-ended" ? "detour" : "feedback";
-    const run = runOn(r);
-    if (run !== undefined) {
-      if (!waitingInRun(r, run, r.record.runAnswers.length)) return;
-      if (nextOf(r, run) === undefined) await endRun(r, false);
-      else if (pending.step !== "stopped") {
-        const objective =
-          after === "detour"
-            ? r.record.recordedAnswer(pending.questionId)?.objective
-            : undefined;
-        askInRun(
-          r,
-          { after, number, ...(objective === undefined ? {} : { objective }) },
-          stops,
-        );
-      }
-    } else if (nextAfter(r, number)) {
-      if (checkDone(r)) await closeSegment(r);
-      else if (pending.step !== "stopped") askNext(r, number, stops, after);
-    }
-  }
-
-  /**
-   * Whether the check still waits for what follows question `number`: no
-   * question has been posted since it was answered.
-   */
-  function nextAfter(r: Running, number: number): boolean {
-    const { position, checkAnswers, finished } = r.record;
-    return (
-      finished === undefined &&
-      position.phase === "check" &&
-      position.openQuestion === undefined &&
-      checkAnswers.length === number
-    );
-  }
-
-  /**
-   * Asks the tutor for the check's next question, after feedback on question
-   * `number` or the learner ending its detour. Skipped if an intervening
-   * reply has posted one, even if already answered, or the learner pressed
-   * Stop since the feedback or detour-ending action began.
-   */
-  function askNext(
-    r: Running,
-    number: number,
-    stops: number,
-    after: NonNullable<Parameters<typeof nextQuestionTurn>[2]>,
-  ): void {
-    r.agents.send({
-      skip: () => stopCount !== stops || !nextAfter(r, number),
-      text: () => nextQuestionTurn(where(r), number, after),
-    });
-  }
-
   // --- Assessments (task 5.4) --------------------------------------------------
-
-  /**
-   * Sends the tutor the grade of a test's answer in the turn that asks for
-   * the test's next question (task 5.6): no feedback, and no detour after a
-   * miss. After its last question the test ends, and the turn asks what it
-   * showed instead. A Stop after `stops` cancels the turn, as it cancels a
-   * check's next question. Runs inside `exclusive`.
-   */
-  async function tellTestGrade(
-    r: Running,
-    run: AssessmentRun,
-    { number, entry }: Answered,
-    stops: number,
-  ): Promise<void> {
-    if (nextOf(r, run) === undefined) {
-      await r.record.endAssessment(false);
-      sendTestSummary(r, () => answerTurn(where(r), entry, number));
-      return;
-    }
-    const count = r.record.runAnswers.length;
-    r.agents.send({
-      skip: () => stopCount !== stops || !waitingInRun(r, run, count),
-      text: () => answerTurn(where(r), entry, number),
-    });
-  }
 
   /** Starts the test that is due, in place of the teaching turn. Runs inside `exclusive`. */
   async function startTest(r: Running): Promise<void> {
     const stops = stopCount;
     await r.record.startTest((run) => showRun(r, run));
-    askInRun(r, { after: "start" }, stops);
+    r.progression.askInRun({ after: "start" }, stops);
   }
 
   /** What the test before the unit showed on each objective, as it stands now. */
@@ -2241,41 +2062,6 @@ function createUnitChat(
   }
 
   /**
-   * Whether the assessment `run` still waits for its next question: nothing
-   * posted or answered in it since it had `count` answers, and no detour.
-   */
-  function waitingInRun(r: Running, run: AssessmentRun, count: number) {
-    const { position, runAnswers, finished } = r.record;
-    return (
-      (finished === undefined || run.mode === "review") &&
-      position.assessment?.stage === "on" &&
-      position.assessment.from === run.from &&
-      position.openQuestion === undefined &&
-      position.detour === undefined &&
-      runAnswers.length === count
-    );
-  }
-
-  /**
-   * Asks the tutor for the assessment's next question. Skipped if a reply
-   * has posted one since, even if already answered, or the learner pressed
-   * Stop since `stops`.
-   */
-  function askInRun(
-    r: Running,
-    event: Parameters<typeof runTurn>[1],
-    stops = stopCount,
-  ): void {
-    const run = runOn(r);
-    if (run === undefined) return;
-    const count = r.record.runAnswers.length;
-    r.agents.send({
-      skip: () => stopCount !== stops || !waitingInRun(r, run, count),
-      text: () => runTurn(where(r), event),
-    });
-  }
-
-  /**
    * An assessment under way with nothing open, no detour and no feedback to
    * come, as a restart leaves one: it asks on, or ends if it has asked all.
    * Runs inside `exclusive`.
@@ -2287,12 +2073,12 @@ function createUnitChat(
       run === undefined ||
       position.openQuestion !== undefined ||
       position.detour !== undefined ||
-      r.feedback !== undefined
+      r.progression.feedback !== undefined
     ) {
       return;
     }
     if (nextOf(r, run) === undefined) await endRun(r, false);
-    else askInRun(r, { after: "reopened" });
+    else r.progression.askInRun({ after: "reopened" });
   }
 
   /**
@@ -2323,7 +2109,7 @@ function createUnitChat(
     }
     if (
       // Feedback, or any other turn, still to come.
-      r.feedback !== undefined ||
+      r.progression.feedback !== undefined ||
       r.agents.busy() ||
       position.openQuestion !== undefined ||
       position.detour !== undefined ||
@@ -2399,7 +2185,7 @@ function createUnitChat(
     const stops = stopCount;
     r.assessmentHandoffs = await readAssessmentHandoffs(offered);
     await r.record.startAssessment((run) => showRun(r, run));
-    askInRun(r, { after: "start" }, stops);
+    r.progression.askInRun({ after: "start" }, stops);
   }
 
   /**
@@ -2463,7 +2249,7 @@ function createUnitChat(
   function reviewWaits(r: Running): string | undefined {
     const { position, finished } = r.record;
     if (position.pendingSegmentOverride !== undefined) return OVERRIDE_PENDING;
-    if (r.agents.busy() || r.feedback !== undefined) {
+    if (r.agents.busy() || r.progression.feedback !== undefined) {
       return "The tutor is writing. Wait until it has finished, or stop it.";
     }
     const run = position.assessment;
@@ -2543,24 +2329,7 @@ function createUnitChat(
     } else if (position.phase === "teach") {
       sendTeaching(r, r.record.reopened);
     } else {
-      await continueCheckAfterReview(r);
-    }
-  }
-
-  async function continueCheckAfterReview(
-    r: Running,
-    ask = true,
-  ): Promise<void> {
-    const number = r.record.checkAnswers.length;
-    if (!nextAfter(r, number) || r.record.position.detour !== undefined) return;
-    if (checkDone(r)) {
-      await closeSegment(r);
-    } else if (ask) {
-      const stops = stopCount;
-      r.agents.send({
-        skip: () => stopCount !== stops || !nextAfter(r, number),
-        text: () => checkGoesOnTurn(where(r)),
-      });
+      await r.progression.afterReview();
     }
   }
 
@@ -2620,8 +2389,8 @@ function createUnitChat(
     const skip = () =>
       closing ||
       stopped() ||
-      !waitingInRun(r, run, count) ||
-      r.feedback !== undefined;
+      !r.progression.waitingInRun(run, count) ||
+      r.progression.feedback !== undefined;
     if (skip()) return;
     r.agents.send({ skip, text: () => workspaceReadyTurn(where(r)) });
   }
@@ -2636,11 +2405,11 @@ function createUnitChat(
     const skip = () =>
       closing ||
       stopped() ||
-      !nextAfter(r, number) ||
+      !r.progression.waitingInCheck(number) ||
       r.record.position.segment !== check.segment ||
       r.record.position.checkFrom !== check.checkFrom ||
       r.record.position.detour !== undefined ||
-      r.feedback !== undefined;
+      r.progression.feedback !== undefined;
     if (skip()) return;
     r.agents.send({ skip, text: () => workspaceReadyTurn(where(r)) });
   }
@@ -2684,7 +2453,7 @@ function createUnitChat(
     if (owner !== undefined && owner !== unitId) {
       options.tell?.(owner, answered.entry);
     }
-    await tellGrade(r, answered, stops);
+    await r.progression.answered(answered, stops);
   }
 
   /**
@@ -3144,8 +2913,9 @@ function createUnitChat(
               ),
             };
           }
-          if (r.feedback !== undefined) {
-            const { number, started } = r.feedback;
+          const feedback = r.progression.feedback;
+          if (feedback !== undefined) {
+            const { number, started } = feedback;
             return {
               refused: started ? feedbackOnly(number) : feedbackPending(number),
             };
@@ -3445,7 +3215,7 @@ function createUnitChat(
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
         if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
-        if (r.feedback?.started === true) {
+        if (r.progression.feedback?.started === true) {
           return {
             refused:
               "This turn is for feedback only. Propose a style change in a later reply.",
@@ -3533,7 +3303,7 @@ function createUnitChat(
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
         if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
-        if (r.feedback?.started === true) {
+        if (r.progression.feedback?.started === true) {
           return {
             refused:
               "This turn is for feedback only. Propose a curriculum change in a later reply.",
@@ -3996,14 +3766,9 @@ function createUnitChat(
     anotherQuestion: () =>
       act(
         async (r) => {
-          if (r.record.position.detour === undefined) {
+          if (!(await r.progression.endDetour())) {
             return refused("No detour is open, so there is nothing to end.");
           }
-          const stops = stopCount;
-          await r.record.endDetour();
-          const pending = r.record.position.afterAnswer;
-          if (pending !== undefined)
-            await continueAfterAnswer(r, pending, stops);
           return { ok: true };
         },
         { inRun: true },
@@ -4415,47 +4180,7 @@ function createUnitChat(
       codePosting?.stop.abort();
       const r = running;
       if (r === undefined) return;
-      const { afterAnswer, openQuestion } = r.record.position;
-      const questionId = afterAnswer?.questionId ?? openQuestion?.id;
-      const feedbackStarted = r.feedback?.started === true;
-      const awaitingJudge =
-        r.answerStops !== undefined && runOn(r)?.mode !== "test-out";
-      const interrupted = r.agents.interrupt();
-      if (
-        questionId === undefined ||
-        (afterAnswer === undefined && !awaitingJudge)
-      ) {
-        await interrupted;
-        return;
-      }
-      const saved = exclusive(async () => {
-        const { afterAnswer: pending, ...rest } = r.record.position;
-        if (pending?.questionId === questionId) {
-          if (pending.step === "feedback" && !feedbackStarted) {
-            if (!pending.stopAfterFeedback) {
-              await r.record.move({
-                ...rest,
-                afterAnswer: { ...pending, stopAfterFeedback: true },
-              });
-            }
-          } else if (pending.step !== "stopped") {
-            await r.record.move({
-              ...rest,
-              afterAnswer: { ...pending, step: "stopped" },
-            });
-          }
-        } else if (
-          rest.openQuestion?.id === questionId &&
-          rest.openQuestion.answer !== undefined &&
-          !rest.openQuestion.stopAfterAnswer
-        ) {
-          await r.record.move({
-            ...rest,
-            openQuestion: { ...rest.openQuestion, stopAfterAnswer: true },
-          });
-        }
-      });
-      await Promise.all([interrupted, saved]);
+      await r.progression.interrupt(r.answerStops !== undefined);
     },
     async recordDispute(entry) {
       await loading;
