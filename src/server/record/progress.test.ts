@@ -193,6 +193,74 @@ test("each started unit's objective statuses, and where a unit in progress is: i
   });
 });
 
+test("a unit whose test is chosen behind a review, under way, or waiting on its result is before its test; one taught after it is not", () => {
+  const curriculum = approved([
+    planned("limits", ["limit-law"]),
+    planned("rules", ["power", "chain"]),
+    planned("integral", ["riemann"]),
+    planned("series", ["ratio", "root"]),
+  ]);
+  const teach = { segment: 0, phase: "teach" as const };
+  const state = {
+    units: {
+      // A review offered first holds the test.
+      limits: {
+        ...teach,
+        testOut: { stage: "due" as const },
+        assessment: {
+          mode: "review" as const,
+          stage: "offered" as const,
+          objectives: [{ unit: "earlier", objective: "earlier-one" }],
+        },
+      },
+      rules: {
+        ...teach,
+        assessment: {
+          mode: "test-out" as const,
+          stage: "on" as const,
+          objectives: [{ unit: "rules", objective: "power" }],
+          from: 0,
+        },
+      },
+      integral: { ...teach, testOut: { stage: "result" as const } },
+      // Answered: the learner skipped what passed, and teaching began.
+      series: {
+        segment: 0,
+        phase: "discuss" as const,
+        testOut: { stage: "skip" as const, passed: ["ratio"] },
+      },
+    },
+  };
+
+  expect(courseProgress(curriculum, state, [])).toEqual({
+    limits: {
+      status: "in-progress",
+      ...teach,
+      beforeTest: true,
+      objectives: { "limit-law": "not-started" },
+    },
+    rules: {
+      status: "in-progress",
+      ...teach,
+      beforeTest: true,
+      objectives: { power: "not-started", chain: "not-started" },
+    },
+    integral: {
+      status: "in-progress",
+      ...teach,
+      beforeTest: true,
+      objectives: { riemann: "not-started" },
+    },
+    series: {
+      status: "in-progress",
+      segment: 0,
+      phase: "discuss",
+      skipping: ["ratio"],
+      objectives: { ratio: "not-started", root: "not-started" },
+    },
+  });
+});
+
 test("a draft, or no curriculum, has no progress", () => {
   const units = [planned("limits", ["limit-law"])];
   const state = { units: { limits: { segment: 0, phase: "teach" as const } } };

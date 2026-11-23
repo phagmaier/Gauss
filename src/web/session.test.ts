@@ -91,6 +91,14 @@ const run = (
   count: number,
 ): PageEvent => ({ type: "assessment", mode, stage, count });
 
+/** Where a unit opened for its test is, while the test is due, under way, or waits on its result. */
+const beforeTest: PageEvent = {
+  type: "phase",
+  segment: 0,
+  phase: "teach",
+  beforeTest: true,
+};
+
 test.each<[string, PageEvent[], WhereInUnit | null]>([
   [
     "the first segment",
@@ -126,6 +134,33 @@ test.each<[string, PageEvent[], WhereInUnit | null]>([
     "a review started, before its first question",
     [planned, phase(1, "discuss"), run("review", "on", 3)],
     { label: "Review", ticks: ["past", "now", ""] },
+  ],
+  [
+    "a review offered while the test before the unit waits behind it",
+    [planned, beforeTest, run("review", "offered", 2)],
+    { label: "Testing out", ticks: ["", "", ""] },
+  ],
+  [
+    "a review at its first question while the test waits behind it",
+    [
+      planned,
+      beforeTest,
+      run("review", "offered", 2),
+      run("review", "on", 2),
+      assessed("r1", 1, 2),
+    ],
+    { label: "Review", title: "Question 1 of 2", ticks: ["", "", ""] },
+  ],
+  [
+    "a review over while the test waits behind it, before the test starts",
+    [
+      planned,
+      beforeTest,
+      run("review", "on", 2),
+      assessed("r1", 1, 2),
+      { type: "assessment_end", mode: "review", skipped: false, statuses: {} },
+    ],
+    { label: "Testing out", ticks: ["", "", ""] },
   ],
   [
     "the gate started, before its first question, after a review's",
@@ -1550,6 +1585,48 @@ test.each<[string, Record<string, ObjectiveStatus>, string]>([
   const marker = state.items.at(-1);
   if (marker?.kind !== "assessment_end") throw new Error("No end marker.");
   expect(assessmentEndMarker(marker)).toEqual({ name: "Review over", says });
+});
+
+test("a review before the unit's test says the test comes next, on its card, skipped there, and at its end; no segment is here", () => {
+  const offered = [planned, beforeTest, run("review", "offered", 2)];
+  const card = play(offered).items.at(-1);
+  if (card?.kind !== "assessment") throw new Error("No card.");
+  expect(assessmentCard(card).says[1]).toBe(
+    "The test of this unit follows, before anything is taught.",
+  );
+  expect(outline(PLAN, play(offered)).segments.map((s) => s.state)).toEqual([
+    "",
+    "",
+    "",
+  ]);
+
+  const skipped = play([
+    ...offered,
+    { type: "assessment_end", mode: "review", skipped: true, statuses: {} },
+  ]).items.at(-1);
+  if (skipped?.kind !== "assessment") throw new Error("No marker.");
+  expect(assessmentMarker(skipped)).toEqual({
+    name: "Review skipped",
+    says: "The test of this unit comes next.",
+  });
+
+  const ended = play([
+    ...offered,
+    run("review", "on", 2),
+    assessed("r1", 1, 2),
+    assessed("r2", 2, 2),
+    {
+      type: "assessment_end",
+      mode: "review",
+      skipped: false,
+      statuses: { a: "retained", b: "slipping" },
+    },
+  ]).items.at(-1);
+  if (ended?.kind !== "assessment_end") throw new Error("No end marker.");
+  expect(assessmentEndMarker(ended)).toEqual({
+    name: "Review over",
+    says: "One retained, one slipping. The test of this unit comes next.",
+  });
 });
 
 // --- The gate (piece 16) ------------------------------------------------------

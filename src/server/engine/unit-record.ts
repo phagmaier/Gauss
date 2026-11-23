@@ -64,13 +64,14 @@ import type {
   Unsettled,
   Verdict,
 } from "../../shared/question.ts";
-import type {
-  AssessedObjective,
-  AssessmentRun,
-  Detour,
-  OpenQuestion,
-  TutorNotice,
-  UnitPosition,
+import {
+  type AssessedObjective,
+  type AssessmentRun,
+  type Detour,
+  isBeforeTest,
+  type OpenQuestion,
+  type TutorNotice,
+  type UnitPosition,
 } from "../../shared/state.ts";
 import type { ObjectiveStatus } from "../../shared/status.ts";
 import type { StyleDecision, StyleProposal } from "../../shared/style.ts";
@@ -1176,11 +1177,8 @@ export function assessmentEvent(
 export function phaseEvent(
   position: UnitPosition,
 ): Extract<PageEvent, { type: "phase" }> {
-  const { testOut, assessment } = position;
-  const beforeTest =
-    testOut?.stage === "due" ||
-    testOut?.stage === "result" ||
-    assessment?.mode === "test-out";
+  const { testOut } = position;
+  const beforeTest = isBeforeTest(position);
   return {
     type: "phase",
     segment: position.segment,

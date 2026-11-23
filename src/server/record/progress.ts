@@ -14,7 +14,7 @@ import type {
   UnitProgress,
 } from "../../shared/library.ts";
 import type { FinishedCourse } from "../../shared/profile.ts";
-import type { State } from "../../shared/state.ts";
+import { isBeforeTest, type State } from "../../shared/state.ts";
 import { isFinished, type ObjectiveStatus } from "../../shared/status.ts";
 import type { DataRoot } from "./data-root.ts";
 import { dueCount } from "./review.ts";
@@ -63,6 +63,7 @@ export function courseProgress(
             segment,
             phase,
             ...(again === undefined ? {} : { again }),
+            ...(isBeforeTest(position) ? { beforeTest: true } : {}),
             ...(testOut?.stage === "skip" ? { skipping: testOut.passed } : {}),
             ...objectives,
           },

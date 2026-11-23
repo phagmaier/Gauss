@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.12 Show test and skip progress accurately — todo
-
-**Why:** The course card marks skipped work done and a review before a test says teaching resumes next.
-**Do:** Render skips and the pending test from the record in the course and session views.
-**Done when:** The course distinguishes a skipped segment from a completed one, and a review before the test neither shows “Segment 1” nor says teaching resumes next.
-
 ### K.13 Stop an aid from opening after cancellation — todo
 
 **Why:** A Stop while an aid is being saved can still open it.
@@ -144,8 +138,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   in `courses/`; nothing removes either later. Decide whether startup should.
 - **B:** Deleting a course leaves Claude Code's sessions outside the data root.
   Decide whether deletion should remove them; identify ownership before doing so.
-- **A (K.12):** The course card ticks a skipped segment as done; a review
-  holding the pre-unit test shows “Segment 1” and misstates what follows.
 - **B:** A test skip is fixed at confirmation: a later miss in another
   unit's review can leave a still-upcoming objective skipped. Decide whether
   and when to reopen confirmed skips.

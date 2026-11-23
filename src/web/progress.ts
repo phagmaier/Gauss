@@ -12,7 +12,7 @@
 
 import type { StoredUnit } from "../shared/curriculum.ts";
 import type { CourseWithProgress, UnitProgress } from "../shared/library.ts";
-import { currentObjective } from "../shared/plan.ts";
+import { currentObjective, type Plan, skipping } from "../shared/plan.ts";
 import {
   hasPassed,
   isFinished,
@@ -33,6 +33,12 @@ export type Mark = "past" | "now" | "skip" | "";
 
 /** The name of the segment after the plan's last, as the server gives it. */
 export const AGAIN = "Going over again";
+
+/**
+ * Where the unit is from the learner's choice of its test until they answer
+ * its result: before any segment, with no tick lit.
+ */
+export const TESTING = "Testing out";
 
 /**
  * "Segment 2 of 5", or "Going over again" for the segment after the plan's
@@ -59,6 +65,21 @@ export function segmentStand(
       i < segment ? "past" : i === segment ? "now" : "",
     ),
   };
+}
+
+/**
+ * The ticks, each segment the test let the learner skip hollow: one left
+ * with nothing to teach (`skipping` in plan.ts).
+ */
+export function markSkipped(
+  plan: Pick<Plan, "segments">,
+  skipped: readonly string[] | undefined,
+  ticks: readonly Mark[],
+): Mark[] {
+  const left = skipping(plan, skipped ?? []);
+  return ticks.map((mark, i) =>
+    left[i]?.teaches.length === 0 ? "skip" : mark,
+  );
 }
 
 /** A unit and its number in the course's list, from 1. */
@@ -127,21 +148,27 @@ export interface WhereInUnit {
   ticks: Mark[];
 }
 
-/** Null when the unit's segment is not known: its position is gone, or it has no plan. */
+/**
+ * Null when the unit's segment is not known: its position is gone, or it
+ * has no plan.
+ */
 export function whereInProgress(
   unit: StoredUnit,
   progress: UnitProgress,
 ): WhereInUnit | null {
   const { segment } = progress;
-  const segments = unit.plan?.segments;
-  if (segment === undefined || segments === undefined) return null;
-  const stand = segmentStand(
-    segments.length,
-    segment,
-    segment >= segments.length,
-  );
-  const title = segments[segment]?.title;
-  return title === undefined ? stand : { ...stand, title };
+  const { plan } = unit;
+  if (segment === undefined || plan === undefined) return null;
+  const count = plan.segments.length;
+  if (progress.beforeTest) {
+    return { label: TESTING, ticks: Array<Mark>(count).fill("") };
+  }
+  const stand = segmentStand(count, segment, segment >= count);
+  const ticks = markSkipped(plan, progress.skipping, stand.ticks);
+  const title = plan.segments[segment]?.title;
+  return title === undefined
+    ? { label: stand.label, ticks }
+    : { label: stand.label, title, ticks };
 }
 
 /** What the card at the top of the course view leads to. */

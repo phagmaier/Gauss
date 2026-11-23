@@ -35,6 +35,8 @@ export const UnitProgress = z.object({
   phase: Phase.optional(),
   /** With `segment`, for the segment that goes over objectives again: those objectives. */
   again: z.array(Slug).optional(),
+  /** With `segment`, until the test before the unit is answered (`isBeforeTest` in state.ts): no segment has begun. */
+  beforeTest: z.literal(true).optional(),
   /** With `segment`, once the learner chose to skip what the test before the unit passed: those objectives. */
   skipping: z.array(Slug).optional(),
   /** For a started unit with a plan: each of its objectives' status, by id. */

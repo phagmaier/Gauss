@@ -317,6 +317,21 @@ function asking(p: { phase: Phase; assessment?: AssessmentRun | undefined }) {
   return p.phase === "check" || p.assessment?.stage === "on";
 }
 
+/**
+ * Whether the unit is before its test is answered: the test before the unit
+ * is due (behind a review offered first), under way, or its result card
+ * waits. No segment has begun.
+ */
+export function isBeforeTest(
+  p: Pick<UnitPosition, "testOut" | "assessment">,
+): boolean {
+  return (
+    p.testOut?.stage === "due" ||
+    p.testOut?.stage === "result" ||
+    p.assessment?.mode === "test-out"
+  );
+}
+
 export const State = z.object({
   /** The units in progress, by id. */
   units: z.record(Slug, UnitPosition),

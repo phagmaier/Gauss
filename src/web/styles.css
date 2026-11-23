@@ -2438,7 +2438,8 @@ button.dn:hover {
 .ue-rows .st.skip {
   color: var(--ink-3);
 }
-/* a segment the test let the learner skip: in the top line's ticks and in the outline */
+/* a segment the test let the learner skip: in the ticks of the top line and
+   the course card, and in the outline */
 .ticks .skip {
   background: none;
   box-shadow: inset 0 0 0 1px var(--rule-2);

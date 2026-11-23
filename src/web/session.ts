@@ -34,19 +34,14 @@ import {
 import {
   AGAIN,
   type Mark,
+  markSkipped,
   type Numbered,
   nextInOrder,
   progressOf,
   segmentStand,
+  TESTING,
   type WhereInUnit,
 } from "./progress.ts";
-
-/** Whether each of the plan's segments is skipped, since the learner skips what the test passed. */
-function skippedSegments(plan: Plan, position: Position | null): boolean[] {
-  return skipping(plan, position?.skipping ?? []).map(
-    (s) => s.teaches.length === 0,
-  );
-}
 
 /** What the position and the outline read from the thread. */
 type Where = Pick<
@@ -54,8 +49,14 @@ type Where = Pick<
   "items" | "position" | "finished" | "assessment" | "testWaits" | "statuses"
 >;
 
-/** The test runs, the tutor summarizes it, or the result waits for the learner. */
-const testing = (t: Where) => t.testWaits || t.assessment?.mode === "test-out";
+/**
+ * The test is due behind a review offered first, runs, the tutor
+ * summarizes it, or the result waits for the learner.
+ */
+const testing = (t: Where) =>
+  t.position?.beforeTest === true ||
+  t.testWaits ||
+  t.assessment?.mode === "test-out";
 
 function latestGateIndex(items: readonly Item[]): number {
   return items.findLastIndex(
@@ -92,16 +93,16 @@ function assessmentCount(items: readonly Item[]): string | undefined {
  * The position in the top line (piece 19): "Segment 2 of 5" with the
  * segment's title, "Going over again", "Review" while a review runs,
  * "Unit gate" from its card through the decision after it, "Testing out"
- * through the test's summary and result, or "Finished". An assessment
+ * from the test's choice through its summary and result (a review that
+ * holds the test is "Review" while it runs), or "Finished". An assessment
  * gives its count while asking questions. One tick per segment of the
  * plan, a hollow one for a segment skipped. Null until the unit is open.
  */
 export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
   const { position, assessment } = t;
   const count = plan.segments.length;
-  const skipped = skippedSegments(plan, position);
   const marked = (ticks: Mark[]) =>
-    ticks.map((mark, i) => (skipped[i] === true ? "skip" : mark));
+    markSkipped(plan, position?.skipping, ticks);
   const at = (label: string, ticks: Mark[]): WhereInUnit => {
     const title = assessmentCount(t.items);
     return title === undefined ? { label, ticks } : { label, title, ticks };
@@ -124,10 +125,15 @@ export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
     return { label: "Unit gate", ticks: marked(Array(count).fill("past")) };
   }
   if (testing(t)) {
-    const ticks = Array(count).fill("");
-    return t.testWaits
-      ? { label: "Testing out", ticks }
-      : at("Testing out", ticks);
+    // No segment is reached before the test, nor in a review held first.
+    const ticks = Array<Mark>(count).fill("");
+    if (assessment?.mode === "review" && assessment.stage === "on") {
+      return at(assessmentTitle("review"), ticks);
+    }
+    // The count is the test's own: none from a review held first that ended.
+    return assessment?.mode === "test-out"
+      ? at(TESTING, ticks)
+      : { label: TESTING, ticks };
   }
   const stand = segmentStand(
     count,
@@ -184,8 +190,8 @@ export interface UnitOutline {
 /**
  * The unit's outline: the plan's segments, numbered, with their objectives
  * as they stand, then going over again once the unit has, and the gate.
- * While the test before the unit runs, no segment is here yet; once the
- * gate's card is offered, every segment is past.
+ * Until the test before the unit is answered, no segment is here yet; once
+ * the gate's card is offered, every segment is past.
  */
 export function outline(plan: Plan, t: Where): UnitOutline {
   const { position, statuses, items } = t;

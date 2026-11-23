@@ -70,6 +70,8 @@ export interface Position {
   again?: string[];
   /** The objectives the test before the unit passed, which the learner chose to skip. */
   skipping?: string[];
+  /** Until the test before the unit is answered: no segment has begun (`isBeforeTest` in state.ts). */
+  beforeTest?: true;
 }
 
 /** The closing card at a unit's end (task 2.1, piece 10; after the gate, piece 16). */
@@ -123,6 +125,8 @@ export interface AssessmentItem {
   from?: number[];
   /** "offered": the card waits; "on": started; "skipped": skipped on the card. */
   stage: "offered" | "on" | "skipped";
+  /** A review offered first, which the test before the unit waits behind. */
+  testFollows?: true;
 }
 
 /** The marker an assessment leaves once it ends, or is skipped partway (piece 15). */
@@ -1154,6 +1158,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         phase: event.phase,
         ...(event.again === undefined ? {} : { again: event.again }),
         ...(event.skipping === undefined ? {} : { skipping: event.skipping }),
+        ...(event.beforeTest ? { beforeTest: true } : {}),
       };
       if (event.beforeTest) {
         return {
@@ -1255,6 +1260,9 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             count: event.count,
             ...split,
             stage: event.stage,
+            ...(event.mode === "review" && state.position?.beforeTest
+              ? { testFollows: true }
+              : {}),
           },
         ],
         tutorOpen: false,
@@ -1382,7 +1390,11 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
           tutorOpen: false,
         };
       }
-      const { skipping: _, ...rest } = state.position ?? {
+      const {
+        skipping: _,
+        beforeTest: __,
+        ...rest
+      } = state.position ?? {
         segment: 0,
         phase: "teach" as const,
       };

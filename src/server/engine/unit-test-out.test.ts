@@ -12,7 +12,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { testResultCard } from "../../shared/assessment-view.ts";
+import {
+  assessmentCard,
+  assessmentMarker,
+  testResultCard,
+} from "../../shared/assessment-view.ts";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { AnswerEvidence } from "../../shared/evidence.ts";
@@ -1147,7 +1151,7 @@ test("a restart after saving the last test answer but before closing its questio
   ]);
 });
 
-test("a review that is due is offered first; the test waits behind its card, across a restart, and starts once it is skipped", async () => {
+test("a review that is due is offered first; the test waits behind its card, across a restart, and starts once it is skipped; the page puts the test, not the first segment, after the review", async () => {
   await makeCourse({ reviewDue: true });
   const first = setUp();
   const before = await testOut(first);
@@ -1169,12 +1173,27 @@ test("a review that is due is offered first; the test waits behind its card, acr
   expect(replay(before).items.some((item) => item.kind === "phase")).toBe(
     false,
   );
+  // No segment is reached, and the card names the test as what follows.
+  const held = (chat: UnitChat) => {
+    const timeline = replay(chat);
+    const card = timeline.items.findLast((i) => i.kind === "assessment");
+    if (card?.kind !== "assessment") throw new Error("No review card.");
+    return { top: whereInUnit(DERIVATIVE_PLAN, timeline), card };
+  };
+  expect(held(before).top).toEqual({ label: "Testing out", ticks: ["", ""] });
+  expect(assessmentCard(held(before).card).says[1]).toBe(
+    "The test of this unit follows, before anything is taught.",
+  );
   await first.units.close();
 
   const second = setUp();
   const chat = await open(second);
   expect(sent(second.backend)).toEqual([]);
   expect(replay(chat).items.some((item) => item.kind === "phase")).toBe(false);
+  expect(held(chat).top).toEqual({ label: "Testing out", ticks: ["", ""] });
+  expect(assessmentCard(held(chat).card).says[1]).toBe(
+    "The test of this unit follows, before anything is taught.",
+  );
   await step(chat.skipAssessment(), chat);
 
   expect(await positionOf()).toEqual({
@@ -1193,6 +1212,14 @@ test("a review that is due is offered first; the test waits behind its card, acr
   expect(
     sent(second.backend).some((t) => t.includes("Allowed now: teach")),
   ).toBe(false);
+  const skipped = replay(chat).items.find(
+    (i) => i.kind === "assessment" && i.mode === "review",
+  );
+  if (skipped?.kind !== "assessment") throw new Error("No review marker.");
+  expect(assessmentMarker(skipped)).toEqual({
+    name: "Review skipped",
+    says: "The test of this unit comes next.",
+  });
 });
 
 test("a test chosen for a unit whose planning failed is not kept: Start, opened again, teaches the unit", async () => {

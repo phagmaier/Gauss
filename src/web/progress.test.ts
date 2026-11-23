@@ -388,6 +388,39 @@ test("going over again, and a unit in progress whose position is gone, say so on
   expect(lead(course({ rules: at() }))).toMatchObject({ where: null });
 });
 
+test("a segment the test let the learner skip is hollow on the card, not ticked done; a unit whose test is not answered yet is testing out, no segment reached", () => {
+  // Unit 3's test passed its first and last objectives, which the learner
+  // skipped: the first segment was not done, and the last will not be.
+  const skipped = course({
+    rules: {
+      status: "in-progress",
+      segment: 1,
+      phase: "teach",
+      skipping: ["rules-0", "rules-2"],
+    },
+  });
+  expect(lead(skipped)).toMatchObject({
+    where: {
+      label: "Segment 2 of 3",
+      title: "Products",
+      ticks: ["skip", "now", "skip"],
+    },
+  });
+  const testing = course({
+    rules: {
+      status: "in-progress",
+      segment: 0,
+      phase: "teach",
+      beforeTest: true,
+    },
+  });
+  expect(lead(testing)).toMatchObject({
+    where: { label: "Testing out", ticks: ["", "", ""] },
+  });
+  expect(lead(testing)).not.toHaveProperty("where.title");
+  expect(unitMark(testing, UNITS[2] as StoredUnit).text).toBe("Testing out");
+});
+
 test("with none in progress, the card leads to the first unit not started whose prerequisites are finished", () => {
   expect(lead(course({}))).toEqual({
     kind: "up-next",

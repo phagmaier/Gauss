@@ -35,9 +35,12 @@ function gateSplit(item: Pick<AssessmentItem, "count" | "own">): {
   return { own, others: item.count - own };
 }
 
+/** What a review that holds the test before the unit says comes after it. */
+const TEST_NEXT = "The test of this unit comes next.";
+
 /** What an assessment's card says while it waits for Start or Skip. */
 export function assessmentCard(
-  item: Pick<AssessmentItem, "mode" | "count" | "own" | "from">,
+  item: Pick<AssessmentItem, "mode" | "count" | "own" | "from" | "testFollows">,
 ): {
   title: string;
   questions: string;
@@ -79,7 +82,9 @@ export function assessmentCard(
       "Questions on objectives you passed in earlier sittings, to see what " +
         "has stayed. Nothing is taught first, and a right answer marks its " +
         "objective retained.",
-      "The unit goes on afterwards, where you left it.",
+      item.testFollows
+        ? "The test of this unit follows, before anything is taught."
+        : "The unit goes on afterwards, where you left it.",
     ],
     start: "Start the review",
     skip: "Skip",
@@ -104,7 +109,9 @@ export function assessmentMarker(item: AssessmentItem): {
       name: `${title} skipped`,
       says: gate
         ? "What you passed stays passed. Nothing more is marked retained."
-        : "The unit goes on where it was.",
+        : item.testFollows
+          ? TEST_NEXT
+          : "The unit goes on where it was.",
     };
   }
   const count =
@@ -179,6 +186,7 @@ export function assessmentEndMarker(item: AssessmentEndItem): {
 function goesOn(at: Position | "finished" | null): string {
   if (at === "finished") return "The unit stays finished.";
   if (at === null) return "The unit goes on where it was.";
+  if (at.beforeTest) return TEST_NEXT;
   const segment =
     at.again === undefined
       ? `segment ${at.segment + 1}`
