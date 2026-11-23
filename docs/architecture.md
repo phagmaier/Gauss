@@ -214,7 +214,10 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   `nix build nixpkgs#chromium --no-link --print-out-paths` and pass
   `app: "<that path>/bin/chromium"` to `browser.open`. Omp's managed
   Chromium does not start here; WebKit reports an aid's errors only as
-  "Script error.".
+  "Script error.". With no input method, DevTools'
+  `Input.imeSetComposition` (a CDP session from `tab.run`'s `page`) opens
+  a composition, and an Enter sent then by `Input.dispatchKeyEvent`
+  arrives with `isComposing` set.
 - **Authorized real-model checks** use `mise exec -- pnpm check:live`.
   It starts the app on port 4320 in a fresh temporary data root.
   `createClaudeBackend` pins every role to the `AGENTS.md` model and

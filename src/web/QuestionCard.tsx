@@ -302,7 +302,14 @@ function OpenCard(props: {
                 }}
                 onKeyDown={(e) => {
                   // Enter submits, as in the message box; Shift+Enter is a new line.
-                  if (e.key !== "Enter" || e.shiftKey || sending) return;
+                  if (
+                    e.key !== "Enter" ||
+                    e.shiftKey ||
+                    e.nativeEvent.isComposing ||
+                    sending
+                  ) {
+                    return;
+                  }
                   e.preventDefault();
                   if (ready !== undefined) void send(ready);
                   else if (confidence === undefined)
@@ -379,7 +386,12 @@ function OpenCard(props: {
             onChange={(e) => setStuck(e.target.value)}
             onKeyDown={(e) => {
               // Enter sends, as in the message box; Shift+Enter is a new line.
-              if (e.key === "Enter" && !e.shiftKey && !sending) {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing &&
+                !sending
+              ) {
                 e.preventDefault();
                 sendUnknown();
               }

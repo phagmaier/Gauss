@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.15 Do not submit a composing answer — todo
-
-**Why:** Enter can submit the question card during IME composition.
-**Do:** Apply the message box's composition guard to the card's Enter actions.
-**Done when:** A composing Enter neither submits nor advances focus, and an ordinary Enter still works.
-
 ### K.16 Give notes the citation details of links they receive — todo
 
 **Why:** The notes writer can see a tutor's link to another unit's section only as an address.
@@ -195,7 +189,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 
 - **B:** Opening a long history renders the whole thread (about 3 s at
   1,200 formulas). Decide how earlier sessions should fold.
-- **A (K.15):** The math field's Enter can submit during IME composition.
 - **B:** After sending a message, keys go to the message box, not the
   pinned card. Decide where focus should go after sending.
 - **B:** In a check's detour, a dispute that overturns the miss and
@@ -211,6 +204,10 @@ work for Stage 6. A task that closes a gap deletes it here.
   its way may still show the card (found by reading the code).
 - **D:** WebKit reports opaque aid errors; recovering callback errors
   needs a reporter design and WebKit checks. DNS-prefetch is also untested
+  in WebKit.
+- **D:** Safari is reported to send the Enter that ends an IME
+  composition after the composition ends, with `isComposing` false, which
+  the message box's and question card's guard would let submit. Untested
   in WebKit.
 
 **Sources and sandbox**
