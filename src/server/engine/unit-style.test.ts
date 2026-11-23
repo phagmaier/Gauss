@@ -18,7 +18,11 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
-import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
+import {
+  createFakeBackend,
+  type FakeTurn,
+  KeptSessions,
+} from "../backends/fake.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { givenOrder } from "./choice-order.ts";
 import { createFakeTimer } from "./fake-timer.ts";
@@ -72,7 +76,7 @@ const propose = (note = NOTE) => ({
 const STYLE_SECTION = (note: string) => `# This course's style\n\n${note}\n`;
 
 /** A server's unit chats on the record in `dir`; no unit is opened yet. */
-async function server(script: FakeTurn[], kept?: Set<string>) {
+async function server(script: FakeTurn[], kept?: KeptSessions) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   if ((await root.readCourse(COURSE)) === undefined) {
     const { id } = await root.createCourse({ title: CURRICULUM.title });
@@ -306,7 +310,7 @@ test.each([`${STYLE}\n\n`, null])(
 test.each(["applied", "kept"] as const)(
   "a decision that was %s is delivered to the resumed tutor, even if its first reply fails",
   async (outcome) => {
-    const kept = new Set<string>();
+    const kept = new KeptSessions();
     const first = await server([[propose()]], kept);
     const before = await first.open();
     const id = proposalId(before.events());

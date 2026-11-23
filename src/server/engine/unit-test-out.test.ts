@@ -41,6 +41,7 @@ import {
   type FakeBackend,
   type FakeReply,
   type FakeStep,
+  KeptSessions,
 } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
@@ -55,10 +56,10 @@ import { createUnitPlanner } from "./unit-planning.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
-let kept: Set<string>;
+let kept: KeptSessions;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gauss-unit-test-out-"));
-  kept = new Set();
+  kept = new KeptSessions();
 });
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });

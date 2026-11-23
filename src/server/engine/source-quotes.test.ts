@@ -25,6 +25,7 @@ import {
   type FakeBackend,
   type FakeReply,
   type FakeTurn,
+  KeptSessions,
 } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import type { SourceQuoted } from "../tools/sources.ts";
@@ -168,7 +169,7 @@ async function open(
   given: {
     wrap?: (backend: FakeBackend) => TutorBackend;
     settle?: boolean;
-    kept?: Set<string>;
+    kept?: KeptSessions;
   } = {},
 ) {
   const backend = createFakeBackend(
@@ -497,7 +498,7 @@ test("a lecture turn stopped after it reached the tutor tells the tutor the lear
 test("a restart before the tutor hears that a stopped lecture went unseen tells it in the next header, and not again after the next restart", async () => {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const id = await makeCourse(root);
-  const kept = new Set<string>();
+  const kept = new KeptSessions();
   const sent = Promise.withResolvers<void>();
   const first = await open(
     root,

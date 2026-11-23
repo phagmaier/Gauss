@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.18 Scope fake session lookup to its working folder — todo
-
-**Why:** Tests can accidentally look up a saved session in the wrong workspace.
-**Do:** Keep the working folder with fake sessions and use it for lookups.
-**Done when:** A fresh fake sharing saved sessions finds an id only in the recorded folder.
-
 ### K.20 Mark no objective Next before a unit's test is answered — todo
 
 **Why:** The course view rings segment 1's first objective as Next while the unit's test is pending; the session outline rings none.
@@ -126,7 +120,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   places of their own.
 - **C:** The unit planner splits contexts into objectives (“a setting is
   not a skill” is unsettled) and names implementations (“using zip”).
-- **A (K.18):** The fake backend's `hasSession` ignores the working folder.
 
 **Tutor, grading and judging**
 

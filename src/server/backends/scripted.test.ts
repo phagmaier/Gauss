@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -30,7 +30,7 @@ import { seedCourses } from "../record/dev-seed.ts";
 import { withProgress } from "../record/progress.ts";
 import type { CommandReads } from "../sandbox-command.ts";
 import {
-  BROKEN_SESSION,
+  brokenSessionId,
   createScriptedBackend,
   scriptedPlan,
 } from "./scripted.ts";
@@ -1310,16 +1310,39 @@ test("a unit reopened after a restart resumes its scripted tutor; one whose sess
   if (!first.ok) throw new Error(first.error);
   await first.chat.settled();
   await before.units.close();
+  const position = (await before.dataRoot.readState(COURSE)).units.limits;
+  if (position?.tutorSessionId === undefined) throw new Error("No session.");
   const fresh = (chat: UnitChat) =>
     chat.events().filter((e) => e.type === "fresh_start");
 
-  const resumed = await setUp().units.open(COURSE, "limits");
+  const afterRestart = setUp();
+  const resumed = await afterRestart.units.open(COURSE, "limits");
   if (!resumed.ok) throw new Error(resumed.error);
   await resumed.chat.settled();
+  const beforeMessage = resumed.chat.events().length;
+  expect(resumed.chat.say("Tell me more.")).toEqual({ ok: true });
+  await resumed.chat.settled();
+  expect(
+    resumed.chat
+      .events()
+      .slice(beforeMessage)
+      .find((e) => e.type === "turn_end"),
+  ).toEqual({ type: "turn_end", outcome: "done" });
   expect(fresh(resumed.chat)).toEqual([]);
 
-  const position = (await before.dataRoot.readState(COURSE)).units.limits;
-  if (position === undefined) throw new Error("No position.");
+  expect(
+    (await afterRestart.dataRoot.readState(COURSE)).units.limits
+      ?.tutorSessionId,
+  ).toBe(position.tutorSessionId);
+  const otherWorkspace = join(dir, "other-workspace");
+  await mkdir(otherWorkspace);
+  expect(
+    await afterRestart.backend.hasSession(
+      position.tutorSessionId,
+      otherWorkspace,
+    ),
+  ).toBe(false);
+  await afterRestart.units.close();
   await before.dataRoot.writePosition(COURSE, "limits", {
     ...position,
     tutorSessionId: "lost",
@@ -1352,7 +1375,9 @@ test("a unit whose session is the script's broken one opens, and every message f
   if (position === undefined) throw new Error("No position.");
   await before.dataRoot.writePosition(COURSE, "limits", {
     ...position,
-    tutorSessionId: BROKEN_SESSION,
+    tutorSessionId: brokenSessionId(
+      await before.dataRoot.workspaceFolder(COURSE),
+    ),
   });
 
   const after = setUp();

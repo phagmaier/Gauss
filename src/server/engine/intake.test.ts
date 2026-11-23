@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { PageEvent } from "../../shared/events.ts";
-import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
+import {
+  createFakeBackend,
+  type FakeTurn,
+  KeptSessions,
+} from "../backends/fake.ts";
 import type { Backup } from "../record/backup.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { IDLE_MS } from "./conversation.ts";
@@ -878,7 +882,7 @@ describe("a draft reopened for review, its first conversation lost in a restart"
 });
 
 describe("an intake left idle (task 2.15)", () => {
-  function setUpIdle(script: FakeTurn[], kept = new Set<string>()) {
+  function setUpIdle(script: FakeTurn[], kept = new KeptSessions()) {
     const backend = createFakeBackend(script, [], { kept });
     const timer = createFakeTimer();
     const intake = createIntake({
@@ -936,7 +940,7 @@ describe("an intake left idle (task 2.15)", () => {
   });
 
   test("whose session is then lost gives way to a new one, which is given the latest proposal, and the thread says so", async () => {
-    const kept = new Set<string>();
+    const kept = new KeptSessions();
     const { backend, timer, intake } = setUpIdle(
       [
         OPENING,
@@ -985,7 +989,7 @@ describe("an intake left idle (task 2.15)", () => {
   });
 
   test("whose session is lost before any proposal has the new one given the conversation so far, and not the messages after", async () => {
-    const kept = new Set<string>();
+    const kept = new KeptSessions();
     const { backend, timer, intake } = setUpIdle(
       [
         [{ text: "What do you know " }, { text: "already?" }],

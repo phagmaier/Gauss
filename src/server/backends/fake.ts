@@ -14,12 +14,11 @@
 // function can answer every turn or request it is given, without end
 // (scripted.ts, which runs the dev server of task 2.12b).
 //
-// A session started with a working directory is kept, as the SDK keeps it
-// on disk, and can be resumed by its id; resuming an id that was not kept
-// fails with SessionNotFound (task 2.14), and `hasSession` says whether an
-// id is kept, whatever the folder (task 2.15). Backends given one set of kept ids
-// resume each other's sessions, as a server does after a restart. The
-// script goes on across a resume: the fake has no conversation to carry.
+// A session started with a working directory is kept and can be found and
+// resumed by its id only in that folder. An unavailable resume fails with
+// SessionNotFound. Backends sharing their kept sessions can resume each
+// other's sessions, as a server does after a restart. The script goes on
+// across a resume: the fake has no conversation to carry.
 
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -103,10 +102,27 @@ export interface FakeBackend extends TutorBackend {
 /** How the id of every session the fake starts begins. */
 export const FAKE_SESSION = "fake-session-";
 
-/** The ids of the sessions kept, which a session can be resumed by. A Set will do. */
-export interface KeptSessions {
-  has(id: string): boolean;
-  add(id: string): void;
+/** Saved fake sessions; share the store to simulate a restart. */
+export class KeptSessions {
+  readonly #folders = new Map<string, string>();
+
+  create(cwd: string): string {
+    const id = `${FAKE_SESSION}${randomUUID()}`;
+    this.#folders.set(id, cwd);
+    return id;
+  }
+
+  has(id: string, cwd: string): boolean {
+    return this.#folders.get(id) === cwd;
+  }
+
+  delete(id: string): void {
+    this.#folders.delete(id);
+  }
+
+  clear(): void {
+    this.#folders.clear();
+  }
 }
 
 export function createFakeBackend(
@@ -114,7 +130,7 @@ export function createFakeBackend(
   replies: FakeReply[] | ((request: OneShotRequest<unknown>) => FakeReply) = [],
   options: {
     /** Shared between backends to resume across a restart; its own if not given. */
-    kept?: KeptSessions;
+    kept?: Pick<KeptSessions, "create" | "has">;
   } = {},
 ): FakeBackend {
   const received: EngineTurn[] = [];
@@ -123,7 +139,7 @@ export function createFakeBackend(
   const ids: string[] = [];
   const closedIds: string[] = [];
   const oneShots: OneShotRequest<unknown>[] = [];
-  const kept = options.kept ?? new Set<string>();
+  const kept = options.kept ?? new KeptSessions();
   let nextTurn = 0;
   let nextReply = 0;
 
@@ -158,13 +174,16 @@ export function createFakeBackend(
 
   async function startSession(options: SessionOptions): Promise<TutorSession> {
     sessions.push(options);
-    const { resumeId } = options;
-    if (resumeId !== undefined && !kept.has(resumeId)) {
+    const { cwd, resumeId } = options;
+    if (
+      resumeId !== undefined &&
+      (cwd === undefined || !kept.has(resumeId, cwd))
+    ) {
       throw new SessionNotFound(resumeId);
     }
-    // Unique across backends that share their kept sessions.
-    const id = resumeId ?? `${FAKE_SESSION}${randomUUID()}`;
-    if (options.cwd !== undefined) kept.add(id);
+    const id =
+      resumeId ??
+      (cwd === undefined ? `${FAKE_SESSION}${randomUUID()}` : kept.create(cwd));
     ids.push(id);
     let interrupted = false;
     let ended = false;
@@ -299,7 +318,7 @@ export function createFakeBackend(
     closed: closedIds,
     oneShots,
     startSession,
-    hasSession: async (id) => kept.has(id),
+    hasSession: async (id, cwd) => kept.has(id, cwd),
     oneShot,
   };
 }

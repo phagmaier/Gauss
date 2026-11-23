@@ -120,13 +120,13 @@
 //
 // Every session it starts in a folder (a unit's tutor, an intake) is kept,
 // across restarts too, so a unit reopened after a restart resumes its tutor
-// (task 2.14), and an idle session closed is resumed (task 2.15). A session id it
-// did not make cannot be found: put another in a unit's `tutorSessionId` in
-// state.json, with the server stopped, to see a unit start fresh because its
-// conversation could not be resumed. Put BROKEN_SESSION there to see resuming
-// fail another way: the unit opens, and every message fails to resume its
-// tutor, until the learner starts fresh.
+// (task 2.14), and an idle session closed is resumed (task 2.15). Replace a
+// unit's `tutorSessionId` in state.json with an unknown id, with the server
+// stopped, to see it start fresh. Replace the trailing UUID with `broken`
+// to see another failure: the unit opens, but messages fail to resume its
+// tutor until the learner starts fresh.
 
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { PlannerProposal, Unit } from "../../shared/curriculum.ts";
@@ -156,17 +156,32 @@ import {
   type FakeStep,
 } from "./fake.ts";
 
-/** A session id that is found and cannot be resumed, however often it is tried. */
-export const BROKEN_SESSION = `${FAKE_SESSION}broken`;
+// Dev restarts need no separate session log: the id carries its folder's
+// fingerprint and a unique suffix. Same-folder lookup survives a restart.
+function sessionPrefix(cwd: string): string {
+  return `${FAKE_SESSION}${createHash("sha256").update(cwd).digest("hex")}-`;
+}
+
+/** A session id found in this folder that always fails to resume. */
+export function brokenSessionId(cwd: string): string {
+  return `${sessionPrefix(cwd)}broken`;
+}
 
 export function createScriptedBackend(): FakeBackend {
   const backend = createFakeBackend(scriptedTurn, scriptedReply, {
-    kept: { has: (id) => id.startsWith(FAKE_SESSION), add: () => {} },
+    kept: {
+      create: (cwd) => `${sessionPrefix(cwd)}${randomUUID()}`,
+      has: (id, cwd) => id.startsWith(sessionPrefix(cwd)),
+    },
   });
   return {
     ...backend,
     async startSession(options) {
-      if (options.resumeId === BROKEN_SESSION) {
+      if (
+        options.resumeId?.endsWith("-broken") &&
+        options.cwd !== undefined &&
+        options.resumeId === brokenSessionId(options.cwd)
+      ) {
         throw new Error("The scripted backend cannot resume this session.");
       }
       return backend.startSession(options);

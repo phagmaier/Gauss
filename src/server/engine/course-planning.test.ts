@@ -16,6 +16,7 @@ import {
   createFakeBackend,
   type FakeBackend,
   type FakeTurn,
+  KeptSessions,
 } from "../backends/fake.ts";
 import { createScriptedBackend } from "../backends/scripted.ts";
 import type * as AtomicWrite from "../record/atomic-write.ts";
@@ -251,7 +252,7 @@ async function setUp(options: {
     order: givenOrder,
     backup,
   });
-  const keptSessions = new Set<string>();
+  const keptSessions = new KeptSessions();
   const backend = createFakeBackend(options.planner, [], {
     kept: keptSessions,
   });

@@ -33,6 +33,7 @@ import {
   type FakeReply,
   type FakeStep,
   type FakeTurn,
+  KeptSessions,
 } from "../backends/fake.ts";
 import { type Backup, startBackup } from "../record/backup.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
@@ -49,10 +50,10 @@ import { JOINED_NOTE } from "./unit-turns.ts";
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
 /** The tutor sessions kept, as the SDK keeps them on disk, so a restart resumes them. */
-let keptSessions: Set<string>;
+let keptSessions: KeptSessions;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gauss-unit-chat-"));
-  keptSessions = new Set();
+  keptSessions = new KeptSessions();
 });
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
@@ -223,7 +224,7 @@ function setUp(
     /** The chats' clock; NOW unless given. */
     now?: () => Date;
     /** The sessions the backend can resume; the test's own unless given. */
-    kept?: Set<string>;
+    kept?: KeptSessions;
     /** Changes the backend the chats are given, to make it fail. */
     wrap?: (backend: FakeBackend) => TutorBackend;
     /** Closes idle tutor sessions; one the test never moves on unless given. */
@@ -4440,7 +4441,7 @@ test("a session the backend cannot find, as after Claude Code's 30-day cleanup, 
 
   // The backend no longer has the session.
   const after = setUp([[{ text: "Let us look at it together." }]], {
-    kept: new Set(),
+    kept: new KeptSessions(),
   });
   const chat = await open(after);
 

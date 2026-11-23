@@ -26,6 +26,7 @@ import {
   type FakeBackend,
   type FakeReply,
   type FakeStep,
+  KeptSessions,
 } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { objectiveStatus } from "../record/status.ts";
@@ -41,12 +42,12 @@ import { JOINED_NOTE } from "./unit-turns.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
-let kept: Set<string>;
+let kept: KeptSessions;
 /** The chats' clock, which a test moves on. */
 let clock: Date;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gauss-unit-review-"));
-  kept = new Set();
+  kept = new KeptSessions();
   clock = new Date(NOW);
 });
 afterEach(async () => {

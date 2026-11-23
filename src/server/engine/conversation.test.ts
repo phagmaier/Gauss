@@ -450,9 +450,7 @@ test("a session is not closed while something outside the conversation will send
 });
 
 test("a resume that fails is an error and is tried again by the next turn; a session the backend cannot find gives way to a new one, after lost()", async () => {
-  const fake = createFakeBackend([[{ text: "New here." }]], [], {
-    kept: new Set(["kept-1"]),
-  });
+  const fake = createFakeBackend([[{ text: "New here." }]]);
   let failures = 1;
   const resumes: string[] = [];
   const { log, tutor, lost } = setUpKept(
