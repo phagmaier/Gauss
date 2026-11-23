@@ -4,6 +4,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -13,7 +14,14 @@ import { dirname, join } from "node:path";
 import type { Root, RootContent } from "hast";
 import rehypeParse from "rehype-parse";
 import { unified } from "unified";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 import { Hello, PageEvent, UnitOpened } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
 import { CourseWithProgress } from "../../shared/library.ts";
@@ -24,6 +32,7 @@ import type {
   WrittenQuestion,
 } from "../../shared/question.ts";
 import { emptyTimeline, reduce } from "../../shared/timeline.ts";
+import { openQuestion } from "../../web/session.ts";
 import {
   createFakeBackend,
   type FakeReply,
@@ -3223,6 +3232,58 @@ test('"Open" refuses a listed file that is now a link or gone, with why, and pas
   expect(await failed.json()).toEqual({
     error: "xdg-open: no method available (xdg-open exited with status 3).",
   });
+});
+
+test("in a data root that has moved, an open code question's card names, copies and opens its files in the workspace as it is now, as the exported transcript names them", async () => {
+  await approvedCourse();
+  const files = ["maps.py", "lib/basis.py"];
+  const posted = await withCodeQuestion(COURSE, "q1", files);
+  // The question as the page heard of it when it was posted.
+  await openDataRoot({ path: dir }).appendTranscript(COURSE, "vectors", 1, [
+    { type: "session", startedAt: NOW },
+    {
+      type: "question",
+      question: {
+        kind: "code",
+        id: "q1",
+        number: 1,
+        prompt: codeQuestion(files).prompt,
+        files: files.map((path) => join(posted, path)),
+      },
+    },
+  ]);
+  const old = dir;
+  const parent = await mkdtemp(join(tmpdir(), "gauss-moved-"));
+  onTestFinished(() => rm(parent, { recursive: true, force: true }));
+  await rename(old, join(parent, "gauss"));
+  // The helpers below use the root where it is now; afterEach removes it.
+  dir = join(parent, "gauss");
+  const setup = setUp([]);
+  await openUnit(setup);
+
+  const workspace = join(dir, "courses", COURSE, "workspace");
+  const page = (setup.units.get(COURSE, "vectors")?.events() ?? []).reduce(
+    (state, event, index) => reduce(state, { type: "event", index, event }),
+    emptyTimeline,
+  );
+  const card = openQuestion(page)?.question;
+  expect(card).toMatchObject({
+    id: "q1",
+    files: [join(workspace, "maps.py"), join(workspace, "lib", "basis.py")],
+  });
+  const shown = card?.kind === "code" ? card.files : [];
+  for (const file of shown.keys()) {
+    expect((await openPost(setup.app, COURSE, "q1", { file })).status).toBe(
+      200,
+    );
+  }
+  // "Open" opens the very files "Copy path" copies.
+  expect(setup.openFile.mock.calls).toEqual(
+    await Promise.all(shown.map(async (path) => [await realpath(path)])),
+  );
+  const exported = await (await setup.app.request(`${UNIT}/transcript`)).text();
+  expect(exported).toContain(`<code>${join(workspace, "maps.py")}</code>`);
+  expect(exported).not.toContain(old);
 });
 
 // --- Deleting a course (task 5.18) ------------------------------------------

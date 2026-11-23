@@ -1220,6 +1220,65 @@ describe("transcripts", () => {
     ]);
   });
 
+  test("a code question's files are read in the course's workspace as it is now, from a root that has moved, and the transcript on disk keeps what was written", async () => {
+    const root = openDataRoot({ path: dir });
+    const id = await courseWithCurriculum(root);
+    const workspace = join(dir, "courses", id, "workspace");
+    // The workspace where the data root was when the question was posted.
+    const old = `/media/old-disk/gauss/courses/${id}/workspace`;
+    const code = (files: string[]): PageEvent => ({
+      type: "question",
+      question: { kind: "code", id: "q1", number: 1, prompt: "Edit.", files },
+    });
+    const choice: PageEvent = {
+      type: "question",
+      question: {
+        kind: "choice",
+        id: "q2",
+        number: 2,
+        prompt: `Which is ${old}/bpe.py?`,
+        choices: [`${old}/bpe.py`, "Neither"],
+      },
+    };
+    const stored = code([
+      join(workspace, "bpe.py"),
+      `${old}/lib/bpe.py`,
+      // The old root holds the workspace's folders, but what follows them
+      // there is no path in a workspace: only the last split is one.
+      `/media/courses/${id}/workspace/My Data/gauss/courses/${id}/workspace/bpe.py`,
+      // In no workspace of this course, or no file a question can have.
+      "/etc/passwd",
+      `/media/old-disk/gauss/courses/other/workspace/bpe.py`,
+      `/media/old-disk/gauss/courses/${id}-2/workspace/bpe.py`,
+      `${old}/../../../etc/passwd`,
+      `${old}/.venv/bin/python`,
+      // Two ways to read it: the old root, or the file's own path, holds
+      // the workspace's folders again.
+      `/media/courses/${id}/workspace/gauss/courses/${id}/workspace/bpe.py`,
+    ]);
+    await root.appendTranscript(id, "eigen", 1, [stored, choice]);
+
+    const [transcript] = await root.readTranscripts(id, "eigen");
+
+    expect(transcript?.events).toEqual([
+      code([
+        join(workspace, "bpe.py"),
+        join(workspace, "lib", "bpe.py"),
+        join(workspace, "bpe.py"),
+        "/etc/passwd",
+        `/media/old-disk/gauss/courses/other/workspace/bpe.py`,
+        `/media/old-disk/gauss/courses/${id}-2/workspace/bpe.py`,
+        `${old}/../../../etc/passwd`,
+        `${old}/.venv/bin/python`,
+        `/media/courses/${id}/workspace/gauss/courses/${id}/workspace/bpe.py`,
+      ]),
+      choice,
+    ]);
+    expect(await readFile(join(sessions(id), "eigen.1.jsonl"), "utf8")).toBe(
+      `${JSON.stringify(stored)}\n${JSON.stringify(choice)}\n`,
+    );
+  });
+
   test("an event that fails its schema is refused and not appended", async () => {
     const root = openDataRoot({ path: dir });
     const id = await courseWithCurriculum(root);

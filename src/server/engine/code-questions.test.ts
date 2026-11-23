@@ -7,7 +7,15 @@
 // the workspace's `.venv` links to here, as an install would leave it), so
 // these tests need what the sandbox needs and fail where it cannot run.
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -16,12 +24,13 @@ import {
   beforeAll,
   beforeEach,
   expect,
+  onTestFinished,
   test,
 } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { emptyTimeline, reduce } from "../../shared/timeline.ts";
-import { nextStep } from "../../web/session.ts";
+import { nextStep, openQuestion } from "../../web/session.ts";
 import { answerLine } from "../../web/what-i-know.ts";
 import {
   createFakeBackend,
@@ -155,8 +164,12 @@ async function setUp(script: FakeTurn[], codeRunner: CodeRunner = runner) {
   return { ...opened, workspace };
 }
 
-async function openChat(script: FakeTurn[], codeRunner: CodeRunner) {
-  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+async function openChat(
+  script: FakeTurn[],
+  codeRunner: CodeRunner,
+  path: string = dir,
+) {
+  const root = openDataRoot({ path, now: () => new Date(NOW) });
   const backend = createFakeBackend(script);
   const units = createUnitChats({
     backend,
@@ -481,6 +494,61 @@ test("'Run the tests' with a file gone from the workspace is refused, nothing re
   expect(await root.readEvidence(COURSE)).toMatchObject([
     { verdict: "correct" },
   ]);
+});
+
+test("after the data root moves, the reopened thread names the files of an answered and an open code question in the workspace as it is now, and the transcripts keep what was written", async () => {
+  const old = await setUp([
+    TEACH,
+    ask(CODE),
+    [{ text: "Ties keep the first pair." }],
+    ask(CODE),
+  ]);
+  await edit(old.workspace, LAST_OF_TIED);
+  await runTests(old.chat);
+  const answered = openQuestionId(old.chat);
+  expect(await old.chat.anotherQuestion()).toEqual({ ok: true });
+  await old.chat.settled();
+  const asked = openQuestionId(old.chat);
+  expect(asked).not.toBe(answered);
+  await old.units.close();
+
+  const parent = await mkdtemp(join(tmpdir(), "gauss-moved-"));
+  onTestFinished(() => rm(parent, { recursive: true, force: true }));
+  const moved = join(parent, "gauss");
+  await rename(dir, moved);
+  const { chat, units } = await openChat([], runner, moved);
+  try {
+    const now = join(moved, "courses", COURSE, "workspace", "bpe.py");
+    const page = chat
+      .events()
+      .reduce(
+        (state, event, index) => reduce(state, { type: "event", index, event }),
+        emptyTimeline,
+      );
+    expect(
+      page.items.flatMap((item) =>
+        item.kind === "question" && item.question.kind === "code"
+          ? [[item.question.id, item.question.files, item.graded?.verdict]]
+          : [],
+      ),
+    ).toEqual([
+      [answered, [now], "incorrect"],
+      [asked, [now], undefined],
+    ]);
+    // The pinned card, whose "Copy path" copies the path it shows.
+    expect(openQuestion(page)?.question).toMatchObject({
+      id: asked,
+      files: [now],
+    });
+    expect(JSON.stringify(chat.events())).not.toContain(dir);
+    const stored = await readFile(
+      join(moved, "courses", COURSE, "sessions", "bpe.1.jsonl"),
+      "utf8",
+    );
+    expect(stored).toContain(JSON.stringify([join(old.workspace, "bpe.py")]));
+  } finally {
+    await units.close();
+  }
 });
 
 test("without the sandbox a code question is refused, saying to ask another kind", async () => {

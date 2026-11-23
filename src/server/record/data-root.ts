@@ -33,7 +33,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { crc32 } from "node:zlib";
 import { z } from "zod";
@@ -76,6 +76,7 @@ import {
   planSectionProblems,
 } from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
+import { WorkspacePath } from "../../shared/question.ts";
 import { Outline, SectionRef } from "../../shared/source.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { StyleDecision } from "../../shared/style.ts";
@@ -302,7 +303,9 @@ export interface DataRoot {
    * without a last line a crash cut short; none when the unit has none. A
    * line that cannot be read is left out and named in `unreadable`, so a
    * damaged transcript, or an event of a shape the page no longer has, costs
-   * that line and not the unit.
+   * that line and not the unit. A code question's files are named in the
+   * course's workspace as it is now (`inCurrentWorkspace`); the transcript
+   * lines on disk are kept as written.
    */
   readTranscripts(id: string, unitId: string): Promise<Transcript[]>;
   /**
@@ -1690,6 +1693,8 @@ export function openDataRoot(options: {
         .map((name) => sessionOf(unit, name))
         .filter((session) => session !== undefined)
         .sort((a, b) => a - b);
+      const workspace = resolve(courseFile(id, "workspace"));
+      const inRoot = relative(resolve(options.path), workspace);
       return Promise.all(
         sessions.map(async (session) => {
           const unreadable: string[] = [];
@@ -1698,7 +1703,13 @@ export function openDataRoot(options: {
             PageEvent,
             (problem) => unreadable.push(problem),
           );
-          return { session, events, unreadable };
+          return {
+            session,
+            events: events.map((event) =>
+              inCurrentWorkspace(event, workspace, inRoot),
+            ),
+            unreadable,
+          };
         }),
       );
     },
@@ -1846,6 +1857,53 @@ function transcriptName(unitId: Slug, session: number): string {
 function sessionOf(unitId: Slug, name: string): number | undefined {
   const match = /^(.+)\.([1-9][0-9]*)\.jsonl$/.exec(name);
   return match?.[1] === unitId ? Number(match[2]) : undefined;
+}
+
+/**
+ * A transcript's event with a code question's files named in the course's
+ * workspace as it is now. The page's question event names each file by its
+ * full path when the question was posted, and the data root may have moved
+ * since, so a replayed card would copy a path in a workspace that is gone.
+ * `inRoot` is the workspace's place in a data root, `courses/<id>/workspace`.
+ */
+function inCurrentWorkspace(
+  event: PageEvent,
+  workspace: string,
+  inRoot: string,
+): PageEvent {
+  if (event.type !== "question" || event.question.kind !== "code") {
+    return event;
+  }
+  const files = event.question.files.map((path) =>
+    currentPath(path, workspace, inRoot),
+  );
+  return { ...event, question: { ...event.question, files } };
+}
+
+/**
+ * The file's full path in the workspace now: what follows the stored path's
+ * `<old root>/courses/<id>/workspace/`, if that is a path in a workspace
+ * (`WorkspacePath`). A stored path stays as it is when that is not certain:
+ * no part of it is such a path, or several are, when the old root or the
+ * file's own path holds the same folders again. So a path in no workspace
+ * is never taken for one, and in a root that has not moved every path is
+ * found again as itself.
+ */
+function currentPath(stored: string, workspace: string, inRoot: string) {
+  const marker = `${sep}${inRoot}${sep}`;
+  const found: string[] = [];
+  for (
+    let at = stored.indexOf(marker);
+    at !== -1;
+    at = stored.indexOf(marker, at + 1)
+  ) {
+    const rest = stored.slice(at + marker.length);
+    if (WorkspacePath.safeParse(rest).success) found.push(rest);
+  }
+  const [only] = found;
+  return found.length === 1 && only !== undefined
+    ? join(workspace, only)
+    : stored;
 }
 
 function noCourse(id: string): string {

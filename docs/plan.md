@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.6 Resolve historical code paths in the current workspace — todo
-
-**Why:** A historical question card can copy a path from the old data root.
-**Do:** Resolve replayed code-file paths against the current course workspace.
-**Done when:** After relocating a temporary data root, replay and copying use the new paths, including for a closed question.
-
 ### K.7 Clean up interrupted atomic writes — todo
 
 **Why:** Temporary files from interrupted record writes accumulate.
@@ -206,8 +200,12 @@ work for Stage 6. A task that closes a gap deletes it here.
   or posting a question with its tests or solution there, and does not
   verify answer-key arithmetic. Define what counts as exposed material
   and which kinds of answer keys must be mechanically checkable.
-- **A (K.6):** “Copy path” on a historical code question goes stale after
-  the data root moves.
+- **B:** After the data root moves, a code question's file whose stored
+  path splits into a workspace path two ways (the old root's path, or the
+  file's own, holds `courses/<id>/workspace/` again) keeps its old path
+  (`currentPath` in `record/data-root.ts`): in the export of a withdrawn
+  question and for the handoff and notes writers. An open question takes
+  the record's. Decide whether to resolve answered ones from the evidence.
 - **B:** Only “What I know” shows the contents of submitted files.
   Decide whether to show them on the question card as well.
 - **A (K.10):** The tutor's copy of a submitted file drops trailing whitespace.

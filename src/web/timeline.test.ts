@@ -918,6 +918,30 @@ test("a unit reopened where its thread is shows nothing twice: not its phase, it
   });
 });
 
+test("an open question posted again when its unit reopens keeps its card's place and takes the view posted now, a code question's files where the workspace is now", () => {
+  const posted = {
+    kind: "code" as const,
+    id: "q1",
+    number: 1,
+    prompt: "Finish `bpe.py`.",
+    files: ["/old/gauss/courses/bpe/workspace/bpe.py"],
+  };
+  const now = { ...posted, files: ["/new/gauss/courses/bpe/workspace/bpe.py"] };
+
+  const state = play([
+    began(MONDAY),
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: posted },
+    began(TUESDAY),
+    { type: "phase", segment: 0, phase: "check" },
+    { type: "question", question: now },
+  ]);
+
+  expect(state.items.filter((i) => i.kind === "question")).toEqual([
+    { kind: "question", key: 2, question: now },
+  ]);
+});
+
 // --- Disputes (task 3.8) -------------------------------------------------------
 
 test("a dispute's outcome attaches to its question's card, wherever the card is, and a closing card standing is shown again with the statuses a dispute changed", () => {

@@ -911,13 +911,20 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       };
     case "question":
       // A unit opened again, after a failure or a restart, posts its open
-      // question again.
+      // question again from the record, with a code question's files in the
+      // workspace as it is now. The card stays where it was and takes that view.
       if (
         state.items.some(
           (i) => i.kind === "question" && i.question.id === event.question.id,
         )
       ) {
-        return next;
+        return {
+          ...next,
+          items: withQuestion(state.items, event.question.id, (item) => ({
+            ...item,
+            question: event.question,
+          })),
+        };
       }
       return {
         ...next,

@@ -483,7 +483,11 @@ export const QuestionView = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("code"),
     ...ViewBase,
-    /** The files the learner edits, by their full paths. */
+    /**
+     * The files the learner edits, by their full paths. A transcript keeps
+     * them as posted; reading it names them in the workspace as it is now
+     * (`readTranscripts` in server/record/data-root.ts).
+     */
     files: z.array(z.string()),
   }),
 ]);
