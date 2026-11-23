@@ -23,7 +23,10 @@ export interface MathCheck {
    * Whether the expected expression reads, as posting a symbolic math
    * question needs: nothing, or the reason it cannot be used.
    */
-  read(expected: string): Promise<{ refused: string } | undefined>;
+  read(
+    expected: string,
+    signal?: AbortSignal,
+  ): Promise<{ refused: string } | undefined>;
   /** Compares an answer with the expected expression. Never throws. */
   compare(expected: string, answer: string): Promise<MathResult>;
 }
@@ -73,10 +76,10 @@ export function createMathCheck(options: {
   const timeLimitMs = options.timeLimitMs ?? MATH_CHECK_TIME_LIMIT_MS;
 
   /** One run of the check, or why it gave no result. */
-  async function run(request: {
-    expected: string;
-    answer?: string;
-  }): Promise<Output | { failed: string }> {
+  async function run(
+    request: { expected: string; answer?: string },
+    signal?: AbortSignal,
+  ): Promise<Output | { failed: string }> {
     if (!sandbox.available) {
       return { failed: `there is no sandbox to run it in (${sandbox.reason})` };
     }
@@ -89,6 +92,7 @@ export function createMathCheck(options: {
         input: JSON.stringify(request),
         timeLimitMs,
         outputLimit: 16 * 1024,
+        ...(signal === undefined ? {} : { signal }),
       });
     } catch (error) {
       return { failed: error instanceof Error ? error.message : String(error) };
@@ -110,8 +114,8 @@ export function createMathCheck(options: {
   }
 
   return {
-    async read(expected) {
-      const out = await run({ expected });
+    async read(expected, signal) {
+      const out = await run({ expected }, signal);
       if ("failed" in out) {
         return {
           refused: `The symbolic check could not read the expected answer: ${out.failed}. Repost with mathGrading: "grader" or ask a written question.`,

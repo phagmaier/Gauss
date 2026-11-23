@@ -65,6 +65,8 @@ export function createEventLog(): EventLog {
 /** How a turn ended, as the page is told. */
 export type TurnOutcome = "done" | "interrupted" | "error";
 
+type TurnEnd = Extract<PageEvent, { type: "turn_end" }>;
+
 /** A turn for the tutor, when its text or its end matters to the chat. */
 export interface Turn {
   /** The learner event this turn delivers, if any, kept across transcript replay. */
@@ -75,6 +77,8 @@ export interface Turn {
    * stand then, and the chat can note what the tutor received when.
    */
   text: string | (() => string | Promise<string>);
+  /** Runs when the turn starts, even before it can reach the backend. */
+  started?(): void;
   /** Runs just before dispatch, only if the turn is sent to the backend. */
   sent?(): void;
   /**
@@ -85,6 +89,8 @@ export interface Turn {
   skip?(): boolean;
   /** The reply is published by a tool, not as streamed text. Check that it was published. */
   toolReplyProblem?(): string | undefined;
+  /** Saves a turn's outcome, when needed, before the page sees its end. */
+  beforeEnd?(outcome: TurnOutcome): Promise<TurnOutcome>;
   /**
    * Runs once the turn has ended, before the next turn is sent, with the
    * text the tutor wrote in it, which is empty if it wrote none or the turn
@@ -213,10 +219,21 @@ export function createConversation(options: {
     }
     const current: RunningTurn = { stop: new AbortController(), reply: "" };
     running = current;
-    log.emit({ type: "turn_start" });
     let outcome: TurnOutcome = "error";
     try {
-      outcome = await relay(turn, current);
+      turn.started?.();
+      log.emit({ type: "turn_start" });
+      let end = await relay(turn, current);
+      if (turn.beforeEnd !== undefined) {
+        try {
+          const saved = await turn.beforeEnd(end.outcome);
+          if (saved !== end.outcome) end = { type: "turn_end", outcome: saved };
+        } catch (error) {
+          end = turnError(error);
+        }
+      }
+      outcome = end.outcome;
+      log.emit(end);
     } finally {
       current.stop.abort();
       running = undefined;
@@ -309,26 +326,28 @@ export function createConversation(options: {
       });
   }
 
-  /** Sends the turn and writes the reply into the log, to its turn_end. */
-  async function relay(turn: Turn, current: RunningTurn): Promise<TurnOutcome> {
-    const fail = (error: string): TurnOutcome => {
-      log.emit({ type: "turn_end", outcome: "error", error });
-      return "error";
+  function turnError(error: unknown): TurnEnd {
+    return {
+      type: "turn_end",
+      outcome: "error",
+      error: error instanceof Error ? error.message : String(error),
     };
-    // A Stop before the turn reaches the backend is kept here: the backend
-    // clears its own stop flag when it is sent a turn.
-    const stoppedBeforeSending = (): TurnOutcome => {
-      log.emit({ type: "turn_end", outcome: "interrupted" });
-      return "interrupted";
+  }
+
+  /** Sends the turn and streams its reply into the log. */
+  async function relay(turn: Turn, current: RunningTurn): Promise<TurnEnd> {
+    const stoppedBeforeSending: TurnEnd = {
+      type: "turn_end",
+      outcome: "interrupted",
     };
     try {
       const tutor = await tutorSession(turn.learnerId);
       // Checked before composing, which can have effects (help is noted
       // then), and again after, since composing can wait.
-      if (current.stop.signal.aborted) return stoppedBeforeSending();
+      if (current.stop.signal.aborted) return stoppedBeforeSending;
       const text =
         typeof turn.text === "string" ? turn.text : await turn.text();
-      if (current.stop.signal.aborted) return stoppedBeforeSending();
+      if (current.stop.signal.aborted) return stoppedBeforeSending;
       // From here a Stop goes to the backend. Setting this, sending, and the
       // backend clearing its flag happen without a pause between them, so a
       // Stop lands either before (seen above) or after (seen by the backend).
@@ -358,19 +377,18 @@ export function createConversation(options: {
             event.outcome === "ended_by_tool" ? "done" : event.outcome;
           if (outcome === "done") {
             const problem = turn.toolReplyProblem?.();
-            if (problem !== undefined) return fail(problem);
+            if (problem !== undefined) return turnError(problem);
           }
-          log.emit({
+          return {
             type: "turn_end",
             outcome,
             ...(event.error === undefined ? {} : { error: event.error }),
-          });
-          return outcome;
+          };
         }
       }
-      return fail("The tutor's reply ended early.");
+      return turnError("The tutor's reply ended early.");
     } catch (error) {
-      return fail(error instanceof Error ? error.message : String(error));
+      return turnError(error);
     }
   }
 

@@ -79,12 +79,6 @@ task.
 
 ## Known-gap fixes
 
-### K.3 Resume a check after an answer — todo
-
-**Why:** Reopening an unfinished check can strand it between turns and lose feedback.
-**Do:** Recover uncompleted feedback or the next question from the record and distinguish failed feedback in the subsequent turn.
-**Done when:** A restart during feedback or before the next question resumes the correct step without regrading, repeating completed feedback, or resuming a detour unasked; a failed feedback turn is identified as such.
-
 ### K.4 Keep pending Stop and move-on notices — todo
 
 **Why:** A restart forgets notices not yet delivered to the tutor.
@@ -192,9 +186,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **B:** A finished unit opened after a restart starts a new tutor session
   without the note saying the conversation is new. Decide what reopening a
   finished unit should do with its conversation.
-- **A (K.3):** A restart between an answer and the next question can strand
-  a check or lose feedback; the next-question turn after failed feedback
-  does not say it failed.
 - **A (K.4):** A Stop or move-on notice waiting for a tutor header is lost on restart.
 - **A (K.7):** Atomic-write temporary files left by a crash are not cleaned up.
 - **B:** Deleting a course leaves Claude Code's sessions outside the data root.

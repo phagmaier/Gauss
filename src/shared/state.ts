@@ -52,6 +52,8 @@ export const OpenQuestion = z
      * judged (task 2.21). The answer is final once sent.
      */
     answer: AnswerSubmission.optional(),
+    /** Stop canceled the next question while the kept answer waited for judging. */
+    stopAfterAnswer: z.literal(true).optional(),
   })
   .refine(
     (q) =>
@@ -171,6 +173,16 @@ export const UnitPosition = z
      * learner asks for another question.
      */
     detour: Detour.optional(),
+    /** The step owed for a closed question; its grade lives in evidence. */
+    afterAnswer: z
+      .object({
+        questionId: z.string().min(1),
+        number: z.number().int().positive(),
+        step: z.enum(["feedback", "next", "detour-ended", "stopped"]),
+        stopAfterFeedback: z.literal(true).optional(),
+        feedbackFailed: z.literal(true).optional(),
+      })
+      .optional(),
     /** An assessment offered or under way, until it ends or is skipped. */
     assessment: AssessmentRun.optional(),
     /**

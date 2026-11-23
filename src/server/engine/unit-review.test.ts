@@ -1169,6 +1169,61 @@ test("after a review asked for in the check, the check goes on: the tutor is ask
   });
 });
 
+test("failed final review feedback reaches the resumed check before and after reopening", async () => {
+  await makeCourse();
+  await reload().writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "check",
+    checkFrom: 2,
+  });
+  const returning = Promise.withResolvers<string>();
+  const scripted = tutor();
+  const before = setUp((turn) => {
+    if (turn.text.includes("The learner answered question 2.")) {
+      throw new Error("Review feedback unavailable");
+    }
+    if (turn.text.includes("The check goes on.")) {
+      returning.resolve(turn.text);
+      return [{ hold: true }];
+    }
+    return scripted(turn);
+  });
+  const first = await open(before);
+  try {
+    expect(await before.units.reviewNow(COURSE)).toEqual({
+      ok: true,
+      unitId: "derivative",
+    });
+    await first.settled();
+    await answer(first, "A");
+    expect(
+      await first.answer({
+        kind: "choice",
+        questionId: lastQuestion(first).id,
+        choice: "A",
+        confidence: "75",
+      }),
+    ).toEqual({ ok: true });
+    expect(await returning.promise).toContain(
+      "Your feedback on question 2 failed.",
+    );
+  } finally {
+    await before.units.close();
+  }
+
+  const after = setUp();
+  const chat = await open(after);
+  expect(sent(after.backend)).toHaveLength(1);
+  expect(sent(after.backend)[0]).toContain(
+    "Your feedback on question 2 failed.",
+  );
+  expect(lastQuestion(chat)).toMatchObject({
+    number: 1,
+    prompt: "Question 1 on slope?",
+  });
+  expect(lastQuestion(chat).assessment).toBeUndefined();
+});
+
 test("after a review at a closed segment nothing is sent, and the learner starts the next segment", async () => {
   await makeCourse();
   await reload().appendEvidence(COURSE, correct("slope", NOW));

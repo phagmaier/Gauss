@@ -80,7 +80,7 @@ import { segmentOf } from "./check-rules.ts";
 
 /** A question closed with its answer, as the tutor is to be told it. */
 export interface Answered {
-  question: OpenQuestion;
+  number: number;
   entry: AnswerEvidence;
 }
 
@@ -440,6 +440,15 @@ export async function openUnitRecord(options: {
         ? {}
         : { gateUnanswered: position.gateUnanswered }),
     };
+    // A posted question or a move out of this check consumes its next step.
+    if (
+      next.openQuestion !== undefined ||
+      (next.afterAnswer === position.afterAnswer &&
+        (next.phase !== position.phase ||
+          next.assessment !== position.assessment))
+    ) {
+      delete next.afterAnswer;
+    }
     const was = position;
     await savePosition(next);
     tell?.();
@@ -549,11 +558,26 @@ export async function openUnitRecord(options: {
             number: question.number,
             objective: question.objective,
           };
-    await move(detour === undefined ? rest : { ...rest, detour });
+    await move({
+      ...rest,
+      ...(detour === undefined ? {} : { detour }),
+      ...(entry.assessment?.mode === "test-out"
+        ? {}
+        : {
+            afterAnswer: {
+              questionId: question.id,
+              number: question.number,
+              step: "feedback",
+              ...(question.stopAfterAnswer === true
+                ? { stopAfterFeedback: true as const }
+                : {}),
+            },
+          }),
+    });
     emit(gradedEvent(entry));
     tellStatus();
     if (detour !== undefined) emit(detourEvent(detour));
-    return { question, entry };
+    return { number: question.number, entry };
   }
 
   async function finish(
@@ -859,8 +883,17 @@ export async function openUnitRecord(options: {
         assessment: _,
         openQuestion: __,
         detour: ___,
+        afterAnswer,
         ...rest
       } = position;
+      // A review's final feedback error belongs in the resumed check's turn.
+      const resume =
+        !skipped &&
+        run.mode === "review" &&
+        rest.phase === "check" &&
+        afterAnswer?.feedbackFailed === true
+          ? { ...afterAnswer, step: "next" as const }
+          : undefined;
       const statuses = Object.fromEntries(
         answered.map((id) => [id, objectiveStatus(evidence, id)]),
       );
@@ -868,7 +901,10 @@ export async function openUnitRecord(options: {
         run.mode === "test-out"
           ? { ...rest, testOut: { stage: "result" } }
           : gateUnanswered === undefined
-            ? rest
+            ? {
+                ...rest,
+                ...(resume === undefined ? {} : { afterAnswer: resume }),
+              }
             : { ...rest, gateUnanswered },
         () =>
           emit({
@@ -931,8 +967,23 @@ export async function openUnitRecord(options: {
     },
 
     async endDetour() {
-      const { detour: _, ...rest } = position;
-      await move(rest, () => emit({ type: "detour_end" }));
+      const { detour, afterAnswer, ...rest } = position;
+      if (detour === undefined) throw new Error("No detour is open.");
+      const { questionId, number } = detour;
+      await move(
+        {
+          ...rest,
+          afterAnswer: {
+            questionId,
+            number,
+            step: "detour-ended",
+            ...(afterAnswer?.feedbackFailed === true
+              ? { feedbackFailed: true as const }
+              : {}),
+          },
+        },
+        () => emit({ type: "detour_end" }),
+      );
     },
 
     async overrideSegment() {

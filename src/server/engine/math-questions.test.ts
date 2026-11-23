@@ -346,36 +346,71 @@ test("an expected expression the check cannot read is refused when posted, with 
   expect(questions).toHaveLength(1);
 });
 
-test("Stop during held math preflight neither stores nor posts the question", async () => {
-  const reading = Promise.withResolvers<string>();
-  const held = Promise.withResolvers<undefined>();
-  await seedCourse();
-  const { chat, root, units } = await start([TEACH, ask(MATH)], {
-    mathCheck: {
-      read(expected) {
-        reading.resolve(expected);
-        return held.promise;
+test.each(["first", "next"] as const)(
+  "Stop during held math preflight neither stores nor posts the %s question",
+  async (when) => {
+    const reading = Promise.withResolvers<string>();
+    const held = Promise.withResolvers<undefined>();
+    const next = when === "next";
+    const first = {
+      objective: MATH.objective,
+      kind: "choice",
+      prompt: "Which rule differentiates a composition?",
+      choices: ["The chain rule", "The sum rule"],
+      answer: "A",
+    };
+    await seedCourse();
+    const { chat, root, units } = await start(
+      [TEACH, ...(next ? [ask(first), FEEDBACK] : []), ask(MATH)],
+      {
+        mathCheck: {
+          read(expected, signal) {
+            reading.resolve(expected);
+            signal?.addEventListener("abort", () => held.resolve(undefined), {
+              once: true,
+            });
+            return held.promise;
+          },
+          compare: check.compare,
+        },
       },
-      compare: check.compare,
-    },
-  });
+    );
 
-  expect(await chat.ready()).toEqual({ ok: true });
-  const expected = await reading.promise;
-  try {
-    await chat.interrupt();
-  } finally {
-    held.resolve(undefined);
-  }
-  await chat.settled();
+    expect(await chat.ready()).toEqual({ ok: true });
+    if (next) {
+      await chat.settled();
+      expect(
+        await chat.answer({
+          kind: "choice",
+          questionId: openQuestionId(chat),
+          choice: "A",
+          confidence: "75",
+        }),
+      ).toEqual({ ok: true });
+    }
+    const expected = await reading.promise;
+    try {
+      await chat.interrupt();
+      const saved = (await root.readState(COURSE)).units.chain;
+      expect(saved?.openQuestion).toBeUndefined();
+      if (next) expect(saved?.afterAnswer?.step).toBe("stopped");
+    } finally {
+      held.resolve(undefined);
+    }
+    await chat.settled();
 
-  expect(expected).toBe(EXPECTED);
-  expect(
-    (await root.readState(COURSE)).units.chain?.openQuestion,
-  ).toBeUndefined();
-  expect(chat.events().filter((e) => e.type === "question")).toEqual([]);
-  await units.close();
-});
+    expect(expected).toBe(EXPECTED);
+    expect(chat.events().filter((e) => e.type === "question")).toHaveLength(
+      next ? 1 : 0,
+    );
+    await units.close();
+    if (next) {
+      const restarted = await start([]);
+      expect(restarted.backend.received).toEqual([]);
+      await restarted.units.close();
+    }
+  },
+);
 
 test("an answer the check cannot read goes to the grader with a rubric made from the expression, and the evidence keeps why and the flaw", async () => {
   const { backend, root, chat } = await setUp(

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import {
+  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -210,6 +211,7 @@ const READS: CommandReads = {
 function setUp(
   script: FakeTurn[],
   given: {
+    path?: string;
     planner?: UnitPlanner;
     /** The grader's replies, in order. */
     replies?: FakeReply[];
@@ -238,7 +240,10 @@ function setUp(
     kept: given.kept ?? keptSessions,
   });
   const judgeBackend = createFakeBackend([], given.judgments);
-  const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
+  const root = openDataRoot({
+    path: given.path ?? dir,
+    now: () => new Date(NOW),
+  });
   const dataRoot = given.record?.(root) ?? root;
   const units = createUnitChats({
     backend: given.wrap?.(backend) ?? backend,
@@ -943,11 +948,12 @@ test.each(["open", "missed", "stopped"] as const)(
       } else if (outcome === "open") {
         expect((await position()).derivative?.openQuestion?.number).toBe(2);
       } else {
-        expect((await position()).derivative).toEqual({
+        expect((await position()).derivative).toMatchObject({
           segment: 0,
           phase: "check",
           checkFrom: 0,
         });
+        expect((await positionWritten())?.openQuestion).toBeUndefined();
         chat.say("Ask the next question now.");
         await chat.settled();
         expect((await position()).derivative?.openQuestion?.number).toBe(2);
@@ -2759,6 +2765,148 @@ async function write(chat: UnitChat, confidence: Confidence = "100") {
   await chat.settled();
 }
 
+test.each(["interrupted", "completed", "detour", "queued-stop"] as const)(
+  "answer restart with %s feedback resumes only the remaining step",
+  async (point) => {
+    const held = Promise.withResolvers<void>();
+    const hold: FakeTurn = () => {
+      held.resolve();
+      return [{ hold: true }];
+    };
+    const miss = point === "detour";
+    const stopped = point === "queued-stop";
+    const replying = Promise.withResolvers<void>();
+    const reply: FakeTurn = () => {
+      replying.resolve();
+      return [{ hold: true }];
+    };
+    const before = setUp(
+      [
+        TEACH,
+        ask(Q_PROOF),
+        ...(stopped ? [reply] : []),
+        ...(point === "completed" ? [FEEDBACK, hold] : [hold]),
+      ],
+      {
+        replies: [
+          miss ? { output: { verdict: "incorrect", flaw: FLAW } } : CORRECT,
+        ],
+      },
+    );
+    await makeCourse();
+    const first = await open(before);
+    await toCheck(first);
+    const path = join(dir, "restarted");
+    try {
+      if (stopped) {
+        first.say("What does the question mean?");
+        await replying.promise;
+      }
+      expect(await first.answer(written(first))).toEqual({ ok: true });
+      if (stopped) await first.interrupt();
+      await held.promise;
+      await first.flushTranscript();
+      // Snapshot the pending step while its turn is held, then shut
+      // down the original separately.
+      await cp(join(dir, "courses"), join(path, "courses"), {
+        recursive: true,
+      });
+    } finally {
+      await before.units.close();
+    }
+    expect(before.backend.oneShots).toHaveLength(1);
+
+    const after = setUp(
+      [...(point === "completed" ? [] : [FEEDBACK]), ask(Q_SECANT)],
+      { path },
+    );
+    const evidence = await after.dataRoot.readEvidence(COURSE);
+    expect(evidence).toHaveLength(1);
+    const chat = await open(after);
+    const turns = after.backend.received.map((turn) => turn.text);
+    expect(turns).toHaveLength(point === "interrupted" ? 2 : 1);
+    if (point !== "completed") {
+      expect(turns[0]).toContain(PROOF);
+    }
+    if (miss) {
+      expect(turns[0]).toContain("The miss opens a detour");
+      expect(nextStep(replay(chat))).toBe("detour");
+      expect(
+        chat.events().filter((event) => event.type === "question"),
+      ).toHaveLength(1);
+      await anotherQuestion(chat);
+      expect(after.backend.received[1]?.text).toContain(
+        "the detour after question 1 is over",
+      );
+    } else if (stopped) {
+      expect(
+        chat.events().filter((event) => event.type === "question"),
+      ).toHaveLength(1);
+      chat.say("Next question, please.");
+      await chat.settled();
+    } else {
+      expect(turns.at(-1)).toContain("after your feedback on question 1");
+      expect(
+        chat
+          .events()
+          .filter(
+            (event) =>
+              event.type === "tutor_text" && event.text === "Well done.",
+          ),
+      ).toHaveLength(1);
+    }
+    expect(
+      chat.events().findLast((event) => event.type === "question"),
+    ).toMatchObject({
+      question: { number: 2, prompt: Q_SECANT.prompt },
+    });
+    expect(after.backend.oneShots).toEqual([]);
+    expect(await after.dataRoot.readEvidence(COURSE)).toEqual(evidence);
+  },
+);
+
+test.each(["automatic", "learner message", "Ready"] as const)(
+  "an answer's feedback error is reported when the next question follows a %s",
+  async (next) => {
+    let chat: UnitChat | undefined;
+    const setup = setUp([
+      TEACH,
+      ask(Q_QUOTIENT),
+      () => {
+        if (next === "learner message") chat?.say("Can we continue?");
+        throw new Error("Feedback unavailable");
+      },
+      ask(Q_SECANT),
+    ]);
+    await makeCourse();
+    chat = await open(setup);
+    await toCheck(chat);
+    await answer(chat, next === "Ready" ? "B" : "A");
+    if (next === "Ready") {
+      expect(nextStep(replay(chat))).toBe("detour");
+      expect(setup.backend.received).toHaveLength(3);
+      await anotherQuestion(chat);
+    }
+
+    expect(chat.events()).toContainEqual({
+      type: "turn_end",
+      outcome: "error",
+      error: "Feedback unavailable",
+    });
+    expect(setup.backend.received[3]?.text).toMatch(
+      /feedback on question 1 failed/i,
+    );
+    expect(setup.backend.received[3]?.text).not.toContain(
+      "after your feedback",
+    );
+    expect(
+      chat.events().findLast((event) => event.type === "question"),
+    ).toMatchObject({
+      question: { number: 2, prompt: Q_SECANT.prompt },
+    });
+  },
+);
+
 test("a written answer is kept, graded by the grader, and recorded with its grade, which the tutor is sent; the page never sees the rubric", async () => {
   const setup = setUp(
     [
@@ -2813,7 +2961,12 @@ test("a written answer is kept, graded by the grader, and recorded with its grad
     },
   ]);
   expect(await position()).toEqual({
-    derivative: { segment: 0, phase: "check", checkFrom: 0 },
+    derivative: {
+      segment: 0,
+      phase: "check",
+      checkFrom: 0,
+      afterAnswer: { questionId: sent.questionId, number: 1, step: "next" },
+    },
   });
   expect(setup.backend.received[2]?.text).toBe(
     '[Unit 1 of 2, "The derivative"; segment 1 of 2, "Difference quotients", on "difference-quotient" and "secant-slope". Phase: check. The learner answered question 1. In this check, "difference-quotient": passed; "secant-slope": not asked yet. Allowed now: your feedback on this answer, written as text, and nothing else. No tool may be called in this reply: once it ends, the app asks you for the next question in a message of its own.]\n' +
@@ -3245,7 +3398,12 @@ test("a written answer graded before a restart that left its question open is no
     expect.objectContaining({ answer: written(chat), verdict: "correct" }),
   ]);
   expect(await position()).toEqual({
-    derivative: { segment: 0, phase: "check", checkFrom: 0 },
+    derivative: {
+      segment: 0,
+      phase: "check",
+      checkFrom: 0,
+      afterAnswer: { questionId: id, number: 1, step: "next" },
+    },
   });
   expect(after.backend.received[0]?.text).toContain(
     "Phase: check. The learner answered question 1. In this check,",
@@ -4843,7 +5001,6 @@ test("Stop during the feedback sends no next question; the learner's next messag
     TEACH,
     ask(Q_QUOTIENT),
     [{ text: "Right, because" }, { hold: true }],
-    [{ text: "Here it is." }, { call: "ask_question", input: Q_SECANT }],
   ]);
   await makeCourse();
   const chat = await open(setup);
@@ -4869,14 +5026,23 @@ test("Stop during the feedback sends no next question; the learner's next messag
     "turn_end",
   ]);
   expect(setup.backend.received).toHaveLength(3);
-  expect(await position()).toEqual({
-    derivative: { segment: 0, phase: "check", checkFrom: 0 },
+  expect(await positionWritten()).toMatchObject({
+    segment: 0,
+    phase: "check",
+    checkFrom: 0,
   });
+  expect((await positionWritten())?.openQuestion).toBeUndefined();
 
-  chat.say("Next question, please.");
-  await chat.settled();
+  await setup.units.close();
+  const reopened = setUp([
+    [{ text: "Here it is." }, { call: "ask_question", input: Q_SECANT }],
+  ]);
+  const resumed = await open(reopened);
+  expect(reopened.backend.received).toEqual([]);
+  resumed.say("Next question, please.");
+  await resumed.settled();
 
-  expect(setup.backend.received[3]?.text).toContain(
+  expect(reopened.backend.received[0]?.text).toContain(
     'Message from the learner. In this check, "difference-quotient": passed; "secant-slope": not asked yet. Allowed now: post a question on "secant-slope" with ask_question',
   );
   expect(await position()).toMatchObject({
@@ -4935,9 +5101,10 @@ test.each(["before", "after"] as const)(
         1,
       );
       expect(setup.backend.received).toHaveLength(4);
-      expect(await position()).toEqual({
+      expect(await position()).toMatchObject({
         derivative: { segment: 0, phase: "check", checkFrom: 0 },
       });
+      expect((await positionWritten())?.openQuestion).toBeUndefined();
 
       chat.say("Next question, please.");
       await chat.settled();

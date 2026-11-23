@@ -482,20 +482,25 @@ export function nextQuestionTurn(
   number: number,
   after: "feedback" | "detour" = "feedback",
 ): string {
+  const failed = where.position.afterAnswer?.feedbackFailed === true;
   const { standing, toAsk } = checkStanding(where);
   return turn(
     where,
-    after === "feedback"
-      ? `The check goes on after your feedback on question ${number}.`
-      : 'The learner pressed "Ready for another question": the detour ' +
-          `after question ${number} is over, and the check goes on.`,
+    after === "detour"
+      ? 'The learner pressed "Ready for another question": the detour ' +
+          `after question ${number} is over, and the check goes on.`
+      : failed
+        ? "The check goes on."
+        : `The check goes on after your feedback on question ${number}.`,
     undefined,
     `In this check, ${standing}. Allowed now: a lead-in of one sentence, ` +
       `then a question on ${quoted(toAsk)} with ask_question, unlike the ` +
       "ones asked before. " +
-      (after === "feedback"
-        ? "Do not repeat your feedback."
-        : "Do not go back over the detour.") +
+      (after === "detour"
+        ? "Do not go back over the detour."
+        : failed
+          ? "Do not give feedback in this turn."
+          : "Do not repeat your feedback.") +
       " Posting ends your turn." +
       askedBefore(where, toAsk),
   );
@@ -543,7 +548,10 @@ export function runTurn(
       said = `The ${name} goes on where it was.`;
       break;
     case "feedback":
-      said = `The ${name} goes on after your feedback on question ${event.number}.`;
+      said =
+        where.position.afterAnswer?.feedbackFailed === true
+          ? `The ${name} goes on.`
+          : `The ${name} goes on after your feedback on question ${event.number}.`;
       break;
     case "detour":
       said =
@@ -1164,9 +1172,15 @@ function turn(
             "This does not change what you may say or do for the learner.",
         ]
       : [];
+  const { afterAnswer, detour } = where.position;
+  const failed =
+    afterAnswer?.feedbackFailed === true && detour === undefined
+      ? `Your feedback on question ${afterAnswer.number} failed.`
+      : undefined;
   const header = [
     describe(where),
     event,
+    ...(failed === undefined ? [] : [failed]),
     ...where.notes,
     ...request,
     ...proposal,
