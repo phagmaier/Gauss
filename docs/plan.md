@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.5 Record misconceptions at the test — todo
-
-**Why:** “What I know” calls a misconception found in a test answer a discussion finding.
-**Do:** Identify findings from test answers by their recorded location without changing extraction or adding a detour.
-**Done when:** A scripted handoff from a quoted test answer displays it as found in the test, and discussion findings still say discussion.
-
 ### K.6 Resolve historical code paths in the current workspace — todo
 
 **Why:** A historical question card can copy a path from the old data root.
@@ -180,8 +174,11 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **B:** A test skip is fixed at confirmation: a later miss in another
   unit's review can leave a still-upcoming objective skipped. Decide whether
   and when to reopen confirmed skips.
-- **A (K.5):** A misconception found in a test answer appears in “What I
-  know” as found “in the discussion”. The test deliberately has no detour.
+- **B:** A misconception quoting the learner in a review or a gate outside
+  its detours, or between the test's end and the teaching (a reply to the
+  tutor's word on it, a message while its result card waits), appears in
+  “What I know” as found “in the discussion”. Decide whether those get
+  places of their own.
 - **A (K.8):** A tutor refused while the planner's proposal waits is not
   told when it is answered.
 - **A (K.9):** No limit on refused `plan_unit` calls within one turn.

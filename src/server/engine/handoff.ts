@@ -18,7 +18,11 @@
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { ShownDispute } from "../../shared/dispute.ts";
 import type { PageEvent } from "../../shared/events.ts";
-import type { AnswerEvidence, EvidenceEntry } from "../../shared/evidence.ts";
+import type {
+  AnswerEvidence,
+  AssessmentMode,
+  EvidenceEntry,
+} from "../../shared/evidence.ts";
 import { type HandoffMark, HandoffReply } from "../../shared/handoff.ts";
 import { isOpen, Misconception } from "../../shared/misconception.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -267,6 +271,12 @@ export interface StretchDetour {
 
 type QuoteSource = { text: string; formula?: true };
 
+/** Words of the learner's in the stretch, as `Stretch.said` holds them. */
+type SaidWords = QuoteSource & {
+  /** Written while the test before the unit ran: an answer to it, or a message. */
+  inTest?: true;
+};
+
 export interface Stretch {
   text: string;
   detours: ReadonlyMap<number, StretchDetour>;
@@ -278,7 +288,7 @@ export interface Stretch {
    * where they got stuck. Not the page's "I don't know" or submitted code
    * files, which can contain tutor-written starter code.
    */
-  said: readonly QuoteSource[];
+  said: readonly SaidWords[];
   /** It holds the tutor's text, a learner's message, an answer or a correction to an answer shown. */
   worthReading: boolean;
 }
@@ -310,7 +320,7 @@ export function readStretch(
   const objectiveOf = (id: string) => answers.get(id)?.objective;
   const parts: string[] = [];
   /** The learner's words, by the part that holds them. */
-  const said: { part: number; words: QuoteSource }[] = [];
+  const said: { part: number; words: SaidWords }[] = [];
   const views = new Map<string, QuestionView>();
   const detours = new Map<number, StretchDetour>();
   const objectives = new Set<string>();
@@ -318,10 +328,15 @@ export function readStretch(
   let text = "";
   let detour: number | undefined;
   let lastPhase: string | undefined;
-  let run: string | undefined;
+  let run: AssessmentMode | undefined;
 
   const say = (part: string, sources: readonly QuoteSource[] = []) => {
-    for (const words of sources) said.push({ part: parts.length, words });
+    for (const words of sources) {
+      said.push({
+        part: parts.length,
+        words: run === "test-out" ? { ...words, inTest: true } : words,
+      });
+    }
     parts.push(part);
   };
   const flush = () => {
@@ -508,7 +523,13 @@ export function readStretch(
           `[${capital(runWords[event.mode])} ${event.skipped ? "was skipped by the learner" : "ends"}.]`,
         );
         break;
+      // Only after the test. Its end's line comes after its last answer is
+      // saved and can be lost to a restart; the result card always follows.
+      case "test_result":
+        if (run === "test-out") run = undefined;
+        break;
       case "test_answered":
+        if (run === "test-out") run = undefined;
         say(
           event.skipped.length === 0
             ? "[After the test, the learner chose to be taught the whole unit.]"
@@ -849,7 +870,7 @@ export function foundIn(
 ): { found: Misconception[]; dropped: string[] } {
   const found: Misconception[] = [];
   const dropped: string[] = [];
-  let said: QuoteToken[][] | undefined;
+  let said: { tokens: QuoteToken[]; inTest: boolean }[] | undefined;
   for (const m of reply.misconceptions) {
     if (!given.objectives.has(m.objective)) {
       dropped.push(
@@ -873,8 +894,12 @@ export function foundIn(
       continue;
     }
     const words = quote.data;
-    said ??= given.stretch.said.map(quoteTokens);
-    if (!quotes(said, words)) {
+    said ??= given.stretch.said.map((s) => ({
+      tokens: quoteTokens(s),
+      inTest: s.inTest === true,
+    }));
+    const holding = holdingQuote(said, words);
+    if (holding.length === 0) {
       dropped.push(
         `it quotes the learner as writing "${oneLine(words)}", which no message or answer of theirs in the stretch has; it was on "${m.objective}": "${oneLine(m.believed)}"`,
       );
@@ -887,14 +912,18 @@ export function foundIn(
       believed: m.believed,
       actually: m.actually,
       words,
+      // A named detour decides; the test has none. Words the learner wrote
+      // in the test and again after it keep the discussion's place.
       where:
-        detour === undefined
-          ? { in: "discussion" }
-          : {
+        detour !== undefined
+          ? {
               in: "detour",
               questionId: detour.questionId,
               number: detour.number,
-            },
+            }
+          : holding.every((s) => s.inTest)
+            ? { in: "test" }
+            : { in: "discussion" },
     });
   }
   return { found, dropped };
@@ -984,8 +1013,14 @@ function quoteTokens(source: QuoteSource): QuoteToken[] {
   return tokens;
 }
 
-/** One run of whole tokens; case and both ends of a formula are significant. */
-function quotes(said: readonly QuoteToken[][], words: string): boolean {
+/**
+ * The sources that hold the words as one run of whole tokens; case and both
+ * ends of a formula are significant.
+ */
+function holdingQuote<S extends { tokens: readonly QuoteToken[] }>(
+  said: readonly S[],
+  words: string,
+): S[] {
   const tokens = quoteTokens({ text: words });
   const decoration = (token: QuoteToken | undefined) =>
     token !== undefined && !token.math && END_MARK.test(token.text);
@@ -993,9 +1028,9 @@ function quotes(said: readonly QuoteToken[][], words: string): boolean {
   let to = tokens.length;
   while (from < to && decoration(tokens[from])) from += 1;
   while (to > from && decoration(tokens[to - 1])) to -= 1;
-  if (from === to) return false;
+  if (from === to) return [];
   const quote = tokens.slice(from, to);
-  return said.some((source) =>
+  return said.filter(({ tokens: source }) =>
     source.some((_, at) => {
       const end = at + quote.length;
       if (end > source.length || source[at]?.joined || source[end]?.joined) {

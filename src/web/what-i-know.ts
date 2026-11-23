@@ -212,7 +212,9 @@ export function misconceptionHead(
   const place =
     where.in === "detour"
       ? `in the detour after question ${where.number}`
-      : "in the discussion";
+      : where.in === "test"
+        ? "in the test"
+        : "in the discussion";
   const other =
     misconception.unit === unit.id
       ? undefined

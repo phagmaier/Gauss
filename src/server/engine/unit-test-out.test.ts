@@ -3,9 +3,10 @@
 // first; questions with no feedback and no detour, and a second after an
 // unsure correct answer; the tutor's word on it and the result card, which
 // skips nothing until it is answered; skipping what passed, the whole unit
-// taught, "Start learning instead", restarts, a review offered first, and the
-// gate later leaving out what the test passed. The fake backend's tutor does
-// what each header allows.
+// taught, "Start learning instead", restarts, a review offered first, the
+// gate later leaving out what the test passed, and a misconception an
+// answer in it showed. The fake backend's tutor does what each header
+// allows.
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -29,17 +30,21 @@ import {
   outline,
   whereInUnit,
 } from "../../web/session.ts";
+import { misconceptionHead } from "../../web/what-i-know.ts";
 import type { EngineTurn, SessionOptions } from "../backends/backend.ts";
 import {
   createFakeBackend,
   type FakeBackend,
+  type FakeReply,
   type FakeStep,
 } from "../backends/fake.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
+import { whatIKnow } from "../record/what-i-know.ts";
 import { givenOrder } from "./choice-order.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
+import { createHandoffWriter } from "./handoff.ts";
 import { createHelpJudge } from "./help-judge.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
@@ -197,7 +202,13 @@ function tutor(quiet: (text: string) => boolean = () => false) {
   };
 }
 
-function setUp(script = tutor(), at = NOW, root?: DataRoot) {
+function setUp(
+  script = tutor(),
+  at = NOW,
+  root?: DataRoot,
+  /** The handoff writer's replies; without them, the chat has no handoff writer. */
+  handoff?: () => FakeReply,
+) {
   const backend = createFakeBackend(script, [], { kept });
   const clock = new Date(at);
   const dataRoot = root ?? openDataRoot({ path: dir, now: () => clock });
@@ -211,6 +222,14 @@ function setUp(script = tutor(), at = NOW, root?: DataRoot) {
       backend: createFakeBackend([]),
       systemPrompt: "Judge.",
     }),
+    ...(handoff === undefined
+      ? {}
+      : {
+          handoff: createHandoffWriter({
+            backend: createFakeBackend([], handoff),
+            systemPrompt: "Handoff.",
+          }),
+        }),
     now: () => clock,
     timer: createFakeTimer(),
     order: givenOrder,
@@ -888,6 +907,100 @@ test("an unsure correct answer gets a second question at once; a miss opens no d
   ).toBe("passed");
   expect(sent(setup.backend).at(-1)).toContain('"power-rule": passed');
   expect(posted.prompt).toContain("power-rule");
+});
+
+test("a misconception the handoff writer quotes from a test answer is found in the test, and one quoted from the discussion after it is found in the discussion", async () => {
+  await makeCourse();
+  const slope = {
+    objective: "slope",
+    actually: "It is the limit of the slopes of secants.",
+  };
+  let calls = 0;
+  const setup = setUp(tutor(), NOW, undefined, () => {
+    calls += 1;
+    return {
+      output: {
+        note: `Note ${calls}.`,
+        misconceptions:
+          calls > 1
+            ? []
+            : [
+                {
+                  ...slope,
+                  believed: "A tangent's slope is an average rate.",
+                  words: "the average rate over an interval",
+                },
+                {
+                  ...slope,
+                  believed: "A tangent's slope is taken between two points.",
+                  words: "rise over the run between two points",
+                },
+              ],
+      },
+    };
+  });
+  const chat = await testOut(setup);
+
+  // The test: "slope" missed, with its reasoning; the others passed.
+  await step(
+    chat.answer({
+      kind: "choice",
+      questionId: lastQuestion(chat).id,
+      choice: "B",
+      confidence: "75",
+      reasoning: "A tangent's slope is the average rate over an interval.",
+    }),
+    chat,
+  );
+  await answer(chat, "A", "90");
+  await answer(chat, "A", "90");
+  expect(ofType(chat, "detour")).toEqual([]);
+
+  // Segment 1 taught: a message in its discussion, then its check, which
+  // passes and closes it, so the writer reads the test and the segment.
+  await step(chat.skipTested(["power-rule", "chain-rule"]), chat);
+  await step(
+    Promise.resolve(
+      chat.say("So it is the rise over the run between two points?"),
+    ),
+    chat,
+  );
+  await step(chat.ready(), chat);
+  await answer(chat, "A", "90");
+  expect(calls).toBe(1);
+
+  const root = reload();
+  expect(
+    (await root.readMisconceptions(COURSE)).map((m) => [m.words, m.where]),
+  ).toEqual([
+    ["the average rate over an interval", { in: "test" }],
+    ["rise over the run between two points", { in: "discussion" }],
+  ]);
+  const view = whatIKnow(
+    CURRICULUM.title,
+    (await root.readCourse(COURSE))?.curriculum ?? {
+      approval: { status: "draft" },
+      units: [],
+    },
+    await root.readState(COURSE),
+    await root.readEvidence(COURSE),
+    await root.readMisconceptions(COURSE),
+  );
+  const known = view.units[1]?.objectives?.find((o) => o.id === "slope");
+  if (known === undefined) throw new Error('No "slope" in "What I know".');
+  expect(
+    known.misconceptions.map(
+      (m) =>
+        misconceptionHead(m, known.status, {
+          id: "derivative",
+          number: (id) => view.units.find((u) => u.id === id)?.number,
+        }).found,
+    ),
+  ).toEqual([
+    "Found 18 November 2026, in the test",
+    "Found 18 November 2026, in the discussion",
+  ]);
+  await setup.units.close();
 });
 
 test('"Start learning instead" partway withdraws the open question; the tutor says what the test showed, then the card, which with nothing passed only starts the unit', async () => {

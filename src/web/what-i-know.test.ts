@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import type { MisconceptionPlace } from "../shared/misconception.ts";
 import type { ObjectiveStatus } from "../shared/status.ts";
 import type {
   ShownEvidence,
@@ -582,23 +583,30 @@ test.each([
   },
 );
 
-test("a misconception says where it showed: the detour after its question, and another unit's thread by its number", () => {
-  const found = (unit: string) =>
+test("a misconception says where it showed: the detour after its question, the test before the unit, and another unit's thread by its number", () => {
+  const found = (unit: string, where: MisconceptionPlace) =>
     misconceptionHead(
       {
         recordedAt: AT,
         unit,
         believed: "Believed.",
         actually: "So.",
-        where: { in: "detour", questionId: "q-3", number: 3 },
+        where,
       },
       "attempted",
       { id: "unit-1", number: (id) => (id === "unit-3" ? 3 : undefined) },
     ).found;
-  expect(found("unit-1")).toBe(
+  const detour = { in: "detour", questionId: "q-3", number: 3 } as const;
+  expect(found("unit-1", detour)).toBe(
     "Found 14 November 2026, in the detour after question 3",
   );
-  expect(found("unit-3")).toBe(
+  expect(found("unit-3", detour)).toBe(
     "Found 14 November 2026, in unit 3, in the detour after question 3",
+  );
+  expect(found("unit-1", { in: "test" })).toBe(
+    "Found 14 November 2026, in the test",
+  );
+  expect(found("unit-3", { in: "test" })).toBe(
+    "Found 14 November 2026, in unit 3, in the test",
   );
 });

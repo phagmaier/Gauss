@@ -17,7 +17,13 @@ export const MisconceptionPlace = z.discriminatedUnion("in", [
     /** The question's number, as the thread showed it. */
     number: z.number().int().positive(),
   }),
-  /** Outside a detour: the discussion, where the question on intuition is, or the teaching. */
+  /** The test before the unit, which has no detour: every place its quote was found is in the test. */
+  z.object({ in: z.literal("test") }),
+  /**
+   * Elsewhere: the discussion, where the question on intuition is, or the
+   * teaching. One recorded before the test had its own place can be the
+   * test's; the log is not rewritten.
+   */
   z.object({ in: z.literal("discussion") }),
 ]);
 export type MisconceptionPlace = z.infer<typeof MisconceptionPlace>;

@@ -6,7 +6,9 @@
 
 import { expect, test } from "vitest";
 import type { PageEvent } from "../../shared/events.ts";
+import type { AnswerEvidence } from "../../shared/evidence.ts";
 import type { HandoffReply } from "../../shared/handoff.ts";
+import type { MisconceptionPlace } from "../../shared/misconception.ts";
 import type { Plan } from "../../shared/plan.ts";
 import type { QuestionView } from "../../shared/question.ts";
 import type { Outline } from "../../shared/source.ts";
@@ -463,6 +465,185 @@ test("a misconception is kept with its detour's question and the learner's words
   expect(dropped[3]).toBe(
     'it quotes the learner as writing "A limit is the value at the point.", which no message or answer of theirs in the stretch has; it was on "limit-value": "B6"',
   );
+});
+
+/** A question of the test before the unit, and one of a review. */
+const TESTED: Extract<QuestionView, { kind: "choice" }> = {
+  kind: "choice",
+  id: "t-1",
+  number: 1,
+  prompt: "What is the limit of $x + 1$ as $x \\to 1$?",
+  choices: ["1", "2"],
+};
+const REVIEWED: Extract<QuestionView, { kind: "choice" }> = {
+  kind: "choice",
+  id: "r-1",
+  number: 1,
+  prompt: "When does a two-sided limit exist?",
+  choices: ["When both sides agree", "Always"],
+};
+
+/** The test begun: its question, a message while it is open, and a miss with reasoning. */
+const TEST_ANSWERED: PageEvent[] = [
+  { type: "assessment", mode: "test-out", stage: "offered", count: 2 },
+  { type: "assessment", mode: "test-out", stage: "on", count: 2 },
+  { type: "question", question: TESTED },
+  { type: "learner", text: "Does the order of the choices matter?", id: "l-0" },
+  {
+    type: "graded",
+    questionId: TESTED.id,
+    verdict: "incorrect",
+    answer: {
+      kind: "choice",
+      questionId: TESTED.id,
+      choice: "A",
+      confidence: "75",
+      reasoning: "The limit is the value at the point, so it is 1.",
+    },
+    correctChoice: "B",
+    assisted: false,
+  },
+];
+
+/**
+ * Each misconception named on "limit-value", by its `believed`, with the
+ * place it is kept with; every one must be kept.
+ */
+function placed(
+  events: PageEvent[],
+  named: { believed: string; words: string; detour?: number }[],
+): [string, MisconceptionPlace][] {
+  const stretch = readStretch(events, {
+    plan: PLAN,
+    answers: new Map<string, Pick<AnswerEvidence, "objective" | "question">>([
+      ...answers,
+      [
+        TESTED.id,
+        {
+          objective: "limit-value",
+          question: { ...TESTED, answer: "B" as const },
+        },
+      ],
+      [
+        REVIEWED.id,
+        {
+          objective: "limit-value",
+          question: { ...REVIEWED, answer: "A" as const },
+        },
+      ],
+    ]),
+  });
+  const { found, dropped } = foundIn(
+    {
+      note: "Note.",
+      misconceptions: named.map((m) => ({
+        objective: "limit-value",
+        actually: "So.",
+        ...m,
+      })),
+    },
+    {
+      stretch,
+      objectives: new Set(["limit-value"]),
+      unitId: "limits",
+      recordedAt: "2026-11-18T10:00:00.000Z",
+    },
+  );
+  expect(dropped).toEqual([]);
+  return found.map((m) => [m.believed, m.where]);
+}
+
+test("a misconception quoting only what the learner wrote in the test before the unit, an answer or a message, is the test's; words written after it too, or in a review, keep the discussion's place, and a named detour still decides", () => {
+  // The test, then segment 1 taught: its discussion, a miss and its
+  // detour; then a review, answered with reasoning.
+  const events: PageEvent[] = [
+    ...TEST_ANSWERED,
+    {
+      type: "assessment_end",
+      mode: "test-out",
+      skipped: false,
+      statuses: { "limit-value": "attempted" },
+    },
+    { type: "test_answered", skipped: [] },
+    ...CHECK,
+    { type: "assessment", mode: "review", stage: "on", count: 1 },
+    { type: "question", question: REVIEWED },
+    {
+      type: "graded",
+      questionId: REVIEWED.id,
+      verdict: "correct",
+      answer: {
+        kind: "choice",
+        questionId: REVIEWED.id,
+        choice: "A",
+        confidence: "90",
+        reasoning: "Both sides must head to one value.",
+      },
+      assisted: false,
+    },
+    {
+      type: "assessment_end",
+      mode: "review",
+      skipped: false,
+      statuses: { "limit-value": "passed" },
+    },
+  ];
+  expect(
+    placed(events, [
+      // The test answer's reasoning, and a message sent during the test.
+      { believed: "test answer", words: "The limit is the value at the point" },
+      {
+        believed: "test message",
+        words: "does the order of the choices matter",
+      },
+      // In the test's reasoning and the discussion's message both.
+      { believed: "both", words: "the value at the point" },
+      { believed: "discussion", words: "Is it the value at the point?" },
+      { believed: "review", words: "Both sides must head to one value" },
+      // The test's words, under a detour the writer named.
+      { believed: "detour", words: "so it is 1", detour: 1 },
+    ]),
+  ).toEqual([
+    ["test answer", { in: "test" }],
+    ["test message", { in: "test" }],
+    ["both", { in: "discussion" }],
+    ["discussion", { in: "discussion" }],
+    ["review", { in: "discussion" }],
+    ["detour", { in: "detour", questionId: "q-1", number: 1 }],
+  ]);
+});
+
+test("a test whose end's line a restart lost is over once its result card shows", () => {
+  const events: PageEvent[] = [
+    ...TEST_ANSWERED,
+    { type: "session", startedAt: "2026-11-18T11:00:00.000Z" },
+    {
+      type: "test_result",
+      objectives: [
+        {
+          objective: "limit-value",
+          passed: false,
+          answers: [
+            { verdict: "incorrect", confidence: "75", assisted: false },
+          ],
+        },
+      ],
+    },
+    { type: "learner", text: "What do I skip now?", id: "l-1" },
+    { type: "test_answered", skipped: [] },
+    ...CHECK,
+  ];
+  expect(
+    placed(events, [
+      { believed: "test answer", words: "The limit is the value at the point" },
+      { believed: "at the card", words: "What do I skip now?" },
+      { believed: "discussion", words: "Is it the value at the point?" },
+    ]),
+  ).toEqual([
+    ["test answer", { in: "test" }],
+    ["at the card", { in: "discussion" }],
+    ["discussion", { in: "discussion" }],
+  ]);
 });
 
 test("the learner's words are their messages, answers, reasoning, the choice they picked and where they got stuck, math markup ignored; an \"I don't know\" and a part the stretch left out are not", () => {
