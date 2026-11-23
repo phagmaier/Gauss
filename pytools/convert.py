@@ -72,9 +72,10 @@ from xml.etree import ElementTree
 
 import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
+import yaml
 from markdown_it import MarkdownIt
 
-CONVERTER_VERSION = 9  # raised when the same original would give other files
+CONVERTER_VERSION = 10  # raised when the same original would give other files
 SECTION_LIMIT = 20_000  # characters of a section's text: ~5.5 printed pages (docs/findings.md, "Source conversion")
 _MAX_LIMIT = (1 << 53) - 1  # Outline.limit must be a JavaScript safe integer
 
@@ -84,6 +85,7 @@ _COPY = {"pdf": "original.pdf", "epub": "original.epub", "text": "original.txt",
 
 _LINE = re.compile(r"[^\n]*\n")
 _BLANK = re.compile(r"[ \t]*")
+_FRONT_MATTER_FENCE = re.compile(r"^---[ \t]*\n", re.MULTILINE)
 _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 _LEAF_BLOCKS = {"heading_open", "paragraph_open", "fence", "code_block", "html_block", "hr"}
 _SENTENCE_END = re.compile(r"[.!?…][\"'”’»)\]]*\s+")
@@ -268,12 +270,35 @@ def _text_blocks(text, low=0, high=None):
     return blocks
 
 
+def _front_matter_end(text):
+    opener = _FRONT_MATTER_FENCE.match(text)
+    closer = _FRONT_MATTER_FENCE.search(text, opener.end()) if opener else None
+    if closer is None:
+        return 0
+    # Two fences alone could be a thematic break followed by a setext underline.
+    # Validate that the prefix is one YAML mapping, without constructing its values.
+    try:
+        events = yaml.parse(text[opener.end() : closer.start()], Loader=yaml.SafeLoader)
+        next(events)  # stream start
+        next(events)  # document start, or stream end if there is no document
+        if isinstance(next(events, None), yaml.MappingStartEvent) and all(
+            not isinstance(event, yaml.DocumentStartEvent) for event in events
+        ):
+            return closer.end()
+    except yaml.YAMLError:
+        pass  # Not metadata: parse the entire source as Markdown.
+    return 0
+
+
 def _markdown_blocks(text):
     """Use CommonMark block ranges, never rendered text, to locate headings and paragraphs."""
-    offsets = [0, *(line.end() for line in _LINE.finditer(text))]
+    # Keep closed front matter in the section text, but do not parse it as Markdown.
+    body_start = _front_matter_end(text)
+    offsets = [body_start, *(line.end() for line in _LINE.finditer(text, body_start))]
     env = {}
-    tokens = _MARKDOWN.parse(text, env)
-    blocks, previous = [], 0
+    tokens = _MARKDOWN.parse(text[body_start:], env)
+    blocks = [Paragraph(0, body_start)] if body_start else []
+    previous = body_start
     for index, token in enumerate(tokens):
         if token.type not in _LEAF_BLOCKS:
             continue

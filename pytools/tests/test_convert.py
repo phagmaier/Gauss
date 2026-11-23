@@ -171,6 +171,41 @@ def test_text_before_the_first_heading_is_a_section_under_the_source_s_title(tmp
     ]
 
 
+def test_closed_front_matter_stays_in_the_text_but_not_the_outline(tmp_path):
+    metadata = "---\n# Source metadata\ntags:\n- reading\n\ntitle: Notes on sources\n---\n"
+    chapter = "# Chapter\n\nIntroduction.\n\n"
+    section_text = "Actual heading\n---\nBody.\n"
+    text = metadata + "\n" + chapter + section_text
+    _, folder = run(tmp_path, "notes.md", text)
+
+    entries = outline(folder)["entries"]
+    assert [entry["title"] for entry in entries] == ["notes", "Chapter"]
+    assert [entry["title"] for entry in entries[1]["entries"]] == ["Chapter", "Actual heading"]
+    assert list(section_files(folder).values()) == [metadata + "\n", chapter, section_text]
+    assert (folder / "original.md").read_text(encoding="utf-8") == text
+
+
+def test_unclosed_front_matter_opener_is_ordinary_markdown(tmp_path):
+    preface = "---\ntitle: Notes on sources\n\n"
+    chapter = "# Chapter\n\nBody.\n"
+    _, folder = run(tmp_path, "notes.md", preface + chapter)
+
+    assert [entry["title"] for entry in outline(folder)["entries"]] == ["notes", "Chapter"]
+    assert list(section_files(folder).values()) == [preface, chapter]
+
+
+@pytest.mark.parametrize(("heading_text", "title"), [("Details", "Details"), ("Note: `code`", "Note: code")])
+def test_leading_thematic_break_does_not_hide_headings(tmp_path, heading_text, title):
+    chapter = "# Chapter\n\n"
+    section_text = f"{heading_text}\n---\n\nBody.\n"
+    _, folder = run(tmp_path, "notes.md", "---\n\n" + chapter + section_text)
+
+    entries = outline(folder)["entries"]
+    assert [entry["title"] for entry in entries] == ["notes", "Chapter"]
+    assert [entry["title"] for entry in entries[1]["entries"]] == [title]
+    assert list(section_files(folder).values()) == ["---\n\n", chapter + section_text]
+
+
 @pytest.mark.parametrize(
     ("before", "title"),
     [

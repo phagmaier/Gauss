@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.17 Keep Markdown front matter out of the outline — todo
-
-**Why:** A metadata delimiter can be taken as a setext heading.
-**Do:** Recognize closed front matter at the start without losing source text or changing ordinary headings.
-**Done when:** A conversion fixture keeps the metadata but outlines only the real headings, and an ordinary setext heading still works.
-
 ### K.18 Scope fake session lookup to its working folder — todo
 
 **Why:** Tests can accidentally look up a saved session in the wrong workspace.
@@ -208,8 +202,8 @@ work for Stage 6. A task that closes a gap deletes it here.
 
 - **B:** EPUB spine items marked `linear="no"` are written inside the
   preceding entry. Decide whether they should get an entry of their own.
-- **A (K.17):** Markdown front matter is not recognized; the closing
-  `---` can produce a setext heading.
+- **B:** The source reader can still render a Markdown metadata field as a
+  heading in the section body (found by review). Decide how to display it.
 - **D:** PDF fidelity: tables become short-line paragraphs; figure labels
   outside forms stay in the text; reading order comes from PDFium; tightly
   set lines can lose spaces (Inwood's “whereaswith”, “clearwhat”).
