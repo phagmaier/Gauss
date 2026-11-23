@@ -42,6 +42,7 @@ import { Course, Slug } from "../../shared/course.ts";
 import {
   Curriculum,
   CurriculumProposal,
+  PendingIntakeProposal,
   PendingProfileApproval,
   type ShownProposal,
   type Unit,
@@ -104,6 +105,9 @@ export interface DataRoot {
   createCourse(input: {
     title: string;
     reserved?: (id: Slug) => void;
+    firstProposal?: Pick<PendingIntakeProposal, "sources" | "proposal"> & {
+      intakeId: string;
+    };
   }): Promise<StoredCourse>;
   /**
    * Every course, most recently opened first. A folder without course.json
@@ -190,6 +194,7 @@ export interface DataRoot {
   saveProposal(
     id: string,
     proposal: CurriculumProposal & Pick<ShownProposal, "profileWas">,
+    intakeId?: string,
   ): Promise<StoredCourse & { curriculum: Curriculum }>;
   /**
    * Approves the draft curriculum, at the clock's time, if the record holds
@@ -374,8 +379,8 @@ export interface DataRoot {
   placeSource(converted: string, into: SourceHome): Promise<Outline>;
   /** Moves an upload into the course's `sources/` under its id; throws if the path is taken. */
   moveUpload(intakeId: string, sourceId: Slug, courseId: Slug): Promise<void>;
-  /** Deletes a source waiting in the intake's uploads. */
-  removeUpload(intakeId: string, sourceId: Slug): Promise<void>;
+  /** Deletes an upload, or returns false if the first proposal has claimed it. */
+  removeUpload(intakeId: string, sourceId: Slug): Promise<boolean>;
   /** The outlines of the course's sources, by id; none when it has none. */
   readSources(id: string): Promise<Outline[]>;
   /** One checked outline, or undefined if the source is absent. */
@@ -849,20 +854,106 @@ export function openDataRoot(options: {
     );
   }
 
-  return {
-    async createCourse({ title, reserved }) {
+  function intakeProposalFile(intakeId: string): string {
+    return join(uploadsPath(intakeId), ".first-proposal.json");
+  }
+
+  async function writeIntakeProposal(
+    journal: string,
+    pending: PendingIntakeProposal,
+  ): Promise<void> {
+    await writeJson(journal, PendingIntakeProposal, pending);
+    await syncFolder(uploads);
+    await syncFolder(dirname(uploads));
+  }
+
+  /** Course creation can have stopped after journaling but before publishing course.json. */
+  async function keepIntakeCourse(
+    pending: PendingIntakeProposal,
+  ): Promise<StoredCourse | undefined> {
+    const { id, course } = pending;
+    const path = courseFile(id, "course.json");
+    const marker = courseFile(id, INTAKE_RESERVATION);
+    const stored = await readCourse(id);
+    if (stored !== undefined) {
+      return stored.course.instance === course.instance ? stored : undefined;
+    }
+    // A newer intake can have reserved the same slug without publishing it yet.
+    if ((await readFileText(marker)) !== course.instance) return undefined;
+    await writeJson(path, Course, course);
+    return { id, course, curriculum: null };
+  }
+
+  async function moveUpload(
+    intakeId: string,
+    sourceId: Slug,
+    courseId: Slug,
+    recover = false,
+  ) {
+    const from = join(await intakeUploads(intakeId), Slug.parse(sourceId));
+    const sources = await courseSources(courseId);
+    await withFileLock(sources, async () => {
+      const to = join(sources, sourceId);
+      if (await sourcePathTaken(to)) {
+        if (!recover || (await sourcePathTaken(from))) {
+          throw new Error(`The source path ${to} is already taken.`);
+        }
+        // A rename can have reached its new name before both parents were synced.
+        await syncFolder(sources);
+        await syncFolder(dirname(from));
+        return;
+      }
+      await publishSource(from, to);
+    });
+  }
+
+  const record: DataRoot = {
+    async createCourse({ title, reserved, firstProposal }) {
+      const journal =
+        firstProposal === undefined
+          ? undefined
+          : intakeProposalFile(firstProposal.intakeId);
+      if (journal !== undefined && firstProposal !== undefined) {
+        const pending = await readJson(journal, PendingIntakeProposal);
+        if (pending !== undefined) {
+          reserved?.(pending.id);
+          await writeIntakeProposal(journal, {
+            ...pending,
+            sources: firstProposal.sources,
+            proposal: firstProposal.proposal,
+          });
+          const stored = await keepIntakeCourse(pending);
+          if (stored === undefined) {
+            throw new Error(
+              `The intake's reserved course "${pending.id}" is gone.`,
+            );
+          }
+          return stored;
+        }
+      }
       const stamp = now().toISOString();
+      const instance = randomUUID();
       const course = Course.parse({
         title,
         backend: "claude",
         settings: { webSearch: false },
         createdAt: stamp,
-        instance: randomUUID(),
+        instance,
         lastOpenedAt: stamp,
       });
       await mkdir(courses, { recursive: true });
       const id = await makeFolder(courses, idFromTitle(course.title));
       reserved?.(id);
+      if (journal !== undefined && firstProposal !== undefined) {
+        await syncFolder(courses);
+        await writeFileAtomic(courseFile(id, INTAKE_RESERVATION), instance);
+        await writeIntakeProposal(journal, {
+          id,
+          course: { ...course, instance },
+          sources: firstProposal.sources,
+          proposal: firstProposal.proposal,
+        });
+      }
       await writeJson(join(courses, id, "course.json"), Course, course);
       return { id, course, curriculum: null };
     },
@@ -999,7 +1090,7 @@ export function openDataRoot(options: {
 
     withConsistentSnapshot,
 
-    async saveProposal(id, proposal) {
+    async saveProposal(id, proposal, intakeId) {
       const { title, units, style, background, profile } =
         CurriculumProposal.parse(proposal);
       const path = courseFile(id, "curriculum.json");
@@ -1009,6 +1100,28 @@ export function openDataRoot(options: {
           throw new Error(
             `The curriculum of "${id}" is approved, so a draft cannot replace it.`,
           );
+        }
+        const journal =
+          intakeId === undefined ? undefined : intakeProposalFile(intakeId);
+        const pending =
+          journal === undefined
+            ? undefined
+            : await readJson(journal, PendingIntakeProposal);
+        if (pending !== undefined && journal !== undefined) {
+          if (
+            pending.id !== id ||
+            pending.course.instance !== stored.course.instance
+          ) {
+            throw new Error(
+              `The first proposal does not belong to course "${id}".`,
+            );
+          }
+          if (!isDeepStrictEqual(pending.proposal, proposal)) {
+            await writeJson(journal, PendingIntakeProposal, {
+              ...pending,
+              proposal,
+            });
+          }
         }
         const curriculum: Curriculum = {
           approval: {
@@ -1029,6 +1142,17 @@ export function openDataRoot(options: {
         const course = { ...stored.course, title };
         if (title !== stored.course.title) {
           await writeJson(courseFile(id, "course.json"), Course, course);
+        }
+        if (journal !== undefined) {
+          if (pending !== undefined) {
+            await rm(courseFile(id, INTAKE_RESERVATION), { force: true });
+            await syncFolder(dirname(path));
+            await rm(journal);
+          }
+          // A previous unlink may have succeeded but its directory sync failed.
+          await syncFolder(dirname(journal)).catch((error: unknown) => {
+            if (!hasCode(error, "ENOENT")) throw error;
+          });
         }
         return { id, course, curriculum };
       });
@@ -1582,6 +1706,25 @@ export function openDataRoot(options: {
     uploadsFolder: intakeUploads,
 
     async clearUploads() {
+      const intakes = await readdir(uploads, { withFileTypes: true }).catch(
+        (error: unknown) => {
+          if (hasCode(error, "ENOENT")) return [];
+          throw error;
+        },
+      );
+      for (const intake of intakes) {
+        if (!intake.isDirectory() || !INTAKE_ID.test(intake.name)) continue;
+        const pending = await readJson(
+          intakeProposalFile(intake.name),
+          PendingIntakeProposal,
+        );
+        if (pending === undefined) continue;
+        if ((await keepIntakeCourse(pending)) === undefined) continue;
+        for (const source of pending.sources) {
+          await moveUpload(intake.name, source, pending.id, true);
+        }
+        await record.saveProposal(pending.id, pending.proposal, intake.name);
+      }
       await rm(uploads, { recursive: true, force: true });
     },
 
@@ -1607,25 +1750,21 @@ export function openDataRoot(options: {
       });
     },
 
-    async moveUpload(intakeId, sourceId, courseId) {
-      const from = join(await intakeUploads(intakeId), Slug.parse(sourceId));
-      const sources = await courseSources(courseId);
-      await withFileLock(sources, async () => {
-        const to = join(sources, sourceId);
-        if (await sourcePathTaken(to)) {
-          throw new Error(`The source path ${to} is already taken.`);
-        }
-        await publishSource(from, to);
-      });
-    },
+    moveUpload,
 
     async removeUpload(intakeId, sourceId) {
+      const pending = await readJson(
+        intakeProposalFile(intakeId),
+        PendingIntakeProposal,
+      );
+      if (pending?.sources.includes(sourceId)) return false;
       const folder = await intakeUploads(intakeId);
       await rm(join(folder, Slug.parse(sourceId)), {
         recursive: true,
         force: true,
       });
       await syncFolder(folder);
+      return true;
     },
 
     readSources,
@@ -1689,6 +1828,7 @@ export function openDataRoot(options: {
       });
     },
   };
+  return record;
 }
 
 function notesRevisionMarker(revision: string): string {
@@ -1808,6 +1948,7 @@ const ID_LENGTH = 50;
 /** An intake's id, its event log's: a UUID as `randomUUID` writes it. */
 const INTAKE_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const INTAKE_RESERVATION = ".first-proposal-instance.tmp";
 
 /** Enough of an artifact's title for its file to be found by eye. */
 const ARTIFACT_SLUG_LENGTH = 40;

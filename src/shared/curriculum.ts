@@ -297,6 +297,17 @@ export type ShownProposal = Omit<
   profileWas?: string | null | undefined;
 };
 
+/** The first source-based proposal while its uploads are being moved into the course. */
+export const PendingIntakeProposal = z.object({
+  id: Slug,
+  course: Course.required({ instance: true }),
+  sources: z.array(Slug).min(1),
+  proposal: CurriculumProposal.extend({
+    profileWas: z.string().nullable().optional(),
+  }),
+});
+export type PendingIntakeProposal = z.infer<typeof PendingIntakeProposal>;
+
 /** One prerequisite entry: `units[at].prerequisites[slot]`. */
 interface Link {
   at: number;

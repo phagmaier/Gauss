@@ -56,10 +56,11 @@ the root as an argument). File shapes are the schemas in `src/shared/`
   .profile-approval.json       journal, only while a profile-changing approval is unfinished
   .notes-write.json            journal, only while unit notes are being published
   intake/                      working folder of intake and planning sessions; Gauss writes nothing here
-  uploads/<intake-id>/         sources attached before the course exists; emptied at each start
+  uploads/<intake-id>/         staged sources; .first-proposal.json journals promotion before startup clears uploads
   cache/package-uv/            uv's install cache
   courses/<course-id>/
     course.json  style.md  background.md  curriculum.json  state.json
+    .first-proposal-instance.tmp                  identifies the reservation until its first proposal is saved
     evidence.jsonl  misconceptions.jsonl          append-only logs
     units/<unit-id>/handoff.md, handoff.json      handoff note, and how far into the transcripts it reads
     sessions/<unit-id>.<n>.jsonl                  a unit's session n: its page events

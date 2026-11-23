@@ -79,12 +79,6 @@ task.
 
 ## Known-gap fixes
 
-### K.2 First intake proposal recovery — todo
-
-**Why:** An interrupted first proposal can leave a draft with only some of its sources.
-**Do:** Recover the interrupted publication before startup discards abandoned uploads.
-**Done when:** Restarting after some but not all sources have moved preserves the sources and a reopenable draft; abandoned uploads are still discarded.
-
 ### K.3 Resume a check after an answer — todo
 
 **Why:** Reopening an unfinished check can strand it between turns and lose feedback.
@@ -198,9 +192,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **B:** A finished unit opened after a restart starts a new tutor session
   without the note saying the conversation is new. Decide what reopening a
   finished unit should do with its conversation.
-- **A (K.2):** The first proposal is saved after the sources move, but the
-  course is created before the moves. A crash there leaves a partial draft
-  and startup discards the uploads that did not move.
 - **A (K.3):** A restart between an answer and the next question can strand
   a check or lose feedback; the next-question turn after failed feedback
   does not say it failed.

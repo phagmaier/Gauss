@@ -4,7 +4,7 @@
 // sandbox is run by the route's upload test (`http/app-sources.test.ts`).
 
 import { existsSync } from "node:fs";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { setImmediate } from "node:timers/promises";
@@ -164,6 +164,82 @@ test("the first proposal keeps its sources stable while the course is made, even
     (await record.readSources("reading-hegel")).map((s) => s.name),
   ).toEqual(["first.md", "second.md", "kant.md"]);
   expect(await uploaded(intake)).toEqual([]);
+});
+
+test("startup completes a first proposal interrupted between source moves, but does not revive a deleted draft", async () => {
+  const snapshot = await mkdtemp(join(tmpdir(), "gauss-intake-restart-"));
+  const interrupted = join(snapshot, "interrupted");
+  const reused = join(snapshot, "reused");
+  const record = openDataRoot({ path: dir });
+  const reading = {
+    ...PROPOSAL,
+    units: PROPOSAL.units.map((unit) => ({
+      ...unit,
+      sections: [
+        "force-and-understanding/s1",
+        "the-transcendental-aesthetic/s1",
+      ],
+    })),
+  };
+  let captured = false;
+  const { intake } = setUp(
+    [OPENING, [{ call: "propose_curriculum", input: reading }]],
+    fakeConverter(),
+    {
+      dataRoot: {
+        ...record,
+        async moveUpload(...args) {
+          await record.moveUpload(...args);
+          if (captured) return;
+          await cp(dir, interrupted, { recursive: true });
+          captured = true;
+        },
+      },
+    },
+  );
+  const abandoned = setUp([]);
+  try {
+    await abandoned.intake.attach(upload("unused.md", HEGEL));
+    await abandoned.intake.settled();
+    await intake.attach(upload("hegel.md", HEGEL));
+    await intake.attach(upload("kant.md", KANT));
+    intake.say("Hegel and Kant.");
+    await intake.settled();
+    intake.say("Go ahead.");
+    await intake.settled();
+    expect(captured).toBe(true);
+
+    await cp(interrupted, reused, { recursive: true });
+    const restarted = openDataRoot({ path: interrupted });
+    await restarted.clearUploads();
+    expect(
+      (await restarted.readSources("reading-hegel")).map((s) => s.name),
+    ).toEqual(["hegel.md", "kant.md"]);
+    expect(
+      await restarted.readSection(
+        { course: "reading-hegel" },
+        "the-transcendental-aesthetic/s1",
+      ),
+    ).toBe(KANT);
+    expect(
+      (await restarted.readCourse("reading-hegel"))?.curriculum,
+    ).toMatchObject({
+      approval: { status: "draft" },
+      units: reading.units,
+    });
+    expect(existsSync(join(interrupted, "uploads"))).toBe(false);
+
+    const deleted = openDataRoot({ path: reused });
+    expect(await deleted.deleteCourse("reading-hegel")).toBe(true);
+    // A different intake reserved the slug but had not published its course.
+    await mkdir(join(reused, "courses", "reading-hegel"));
+    await deleted.clearUploads();
+    expect(await deleted.readCourse("reading-hegel")).toBeUndefined();
+    expect(existsSync(join(reused, "uploads"))).toBe(false);
+  } finally {
+    await Promise.all([intake.close(), abandoned.intake.close()]);
+    await rm(snapshot, { recursive: true, force: true });
+  }
 });
 
 test("a duplicate removal queued behind a replacement cannot delete the replacement", async () => {

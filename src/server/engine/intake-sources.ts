@@ -77,7 +77,7 @@ export interface IntakeSources {
    */
   prepareProposal(
     units: readonly Unit[],
-    createCourse: () => Promise<Slug>,
+    createCourse: (sources: Slug[]) => Promise<Slug>,
   ): Promise<{ courseId: Slug } | { refused: string }>;
   /** A file is being received or converted. */
   converting(): boolean;
@@ -377,7 +377,10 @@ export function createIntakeSources(options: {
             error: "That file is not attached.",
           };
         }
-        if (course !== undefined) {
+        if (
+          course !== undefined ||
+          !(await dataRoot.removeUpload(intakeId, source.outline.id))
+        ) {
           return {
             ok: false,
             status: 409,
@@ -385,7 +388,6 @@ export function createIntakeSources(options: {
               "The first proposal has made the course, so the source stays with it.",
           };
         }
-        await dataRoot.removeUpload(intakeId, source.outline.id);
         attachments.set(attachment, { name: found.name, state: "removed" });
         emit({ type: "source_removed", attachment });
         return { ok: true };
@@ -421,7 +423,10 @@ export function createIntakeSources(options: {
               "Wait for the updated outline on the next learner turn before proposing units that read it.",
           };
         }
-        course ??= { id: await createCourse(), uploadsMoved: false };
+        course ??= {
+          id: await createCourse(sources.map(({ outline }) => outline.id)),
+          uploadsMoved: false,
+        };
         if (!course.uploadsMoved) await moveWaitingUploads(course);
         return { courseId: course.id };
       });

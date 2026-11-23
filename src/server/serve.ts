@@ -80,8 +80,8 @@ export async function serve(options: {
     prompt("course-planner.md"),
   ]);
   const dataRoot = openDataRoot({ path: dataRootPath });
-  // An intake ends with the server, so discard its uploads before taking
-  // the startup snapshot.
+  // Recover a first proposal before taking the startup snapshot. An intake
+  // that had not made a proposal ends with the server, along with its uploads.
   await dataRoot.clearUploads();
   // The engine's commands run in it (task 3.2); it says once if it cannot,
   // and tutors then get no file and shell tools, and math and code

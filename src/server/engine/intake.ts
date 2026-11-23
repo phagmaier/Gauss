@@ -155,12 +155,23 @@ export function createIntake(options: {
         return { refused: "The learner has approved the curriculum." };
       }
       if (opening) return { refused: FIRST_TURN };
+      const profileWas = (await dataRoot.readProfile()) ?? null;
+      const card = { ...proposal, profileWas };
       const prepared = await sources.prepareProposal(
         proposal.units,
-        async () => {
+        async (sourceIds) => {
           try {
             const created = await dataRoot.createCourse({
               title: proposal.title,
+              ...(sourceIds.length === 0
+                ? {}
+                : {
+                    firstProposal: {
+                      intakeId: log.id,
+                      sources: sourceIds,
+                      proposal: card,
+                    },
+                  }),
               reserved: (id) => {
                 reservedCourseId = id;
               },
@@ -173,9 +184,11 @@ export function createIntake(options: {
         },
       );
       if ("refused" in prepared) return prepared;
-      const profileWas = (await dataRoot.readProfile()) ?? null;
-      const card = { ...proposal, profileWas };
-      await dataRoot.saveProposal(prepared.courseId, card);
+      await dataRoot.saveProposal(
+        prepared.courseId,
+        card,
+        latest === 0 ? log.id : undefined,
+      );
       latest += 1;
       shown = card;
       emitProposal(prepared.courseId, shown);
