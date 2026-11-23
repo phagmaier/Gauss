@@ -64,6 +64,12 @@ task.
 
 ## Known-gap fixes
 
+### K.19 Make the notes HTTP tests independent of polling deadlines — todo
+
+**Why:** Under load those tests can time out while the expected work is still settling, failing the standalone check every other task needs; so it comes first.
+**Do:** Replace wall-clock polling of notes completion with deterministic synchronization.
+**Done when:** Controlled deferred completions exercise the original deadline dependency and the revised tests verify the same responses and persisted notes without polling.
+
 ### K.13 Stop an aid from opening after cancellation — todo
 
 **Why:** A Stop while an aid is being saved can still open it.
@@ -100,11 +106,11 @@ task.
 **Do:** Keep the working folder with fake sessions and use it for lookups.
 **Done when:** A fresh fake sharing saved sessions finds an id only in the recorded folder.
 
-### K.19 Make the notes HTTP tests independent of polling deadlines — todo
+### K.20 Mark no objective Next before a unit's test is answered — todo
 
-**Why:** Under load those tests can time out while the expected work is still settling.
-**Do:** Replace wall-clock polling of notes completion with deterministic synchronization.
-**Done when:** Controlled deferred completions exercise the original deadline dependency and the revised tests verify the same responses and persisted notes without polling.
+**Why:** The course view rings segment 1's first objective as Next while the unit's test is pending; the session outline rings none.
+**Do:** Give the course view no current objective while the unit's progress says it is before its test.
+**Done when:** A unit whose test is chosen, under way or waiting on its result has no objective marked Next in the course view, and a unit being taught still has one.
 
 ## Known gaps
 
@@ -141,6 +147,8 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **B:** A test skip is fixed at confirmation: a later miss in another
   unit's review can leave a still-upcoming objective skipped. Decide whether
   and when to reopen confirmed skips.
+- **A (K.20):** Before a unit's test is answered, the course view rings
+  segment 1's first objective as Next; the session outline rings none.
 - **B:** A misconception quoting the learner in a review or a gate outside
   its detours, or between the test's end and the teaching (a reply to the
   tutor's word on it, a message while its result card waits), appears in

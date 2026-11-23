@@ -191,6 +191,12 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
 - **pytest**: expression pairs and expected sections worked out by hand;
   test PDFs are written with reportlab in Courier (so line lengths are
   known), EPUBs with `zipfile`.
+- **Worktrees** (fault injection, or a check at an older revision):
+  `git worktree add --detach <dir> <rev>`, link the repository's
+  `node_modules` into it, then in it run `mise trust` and
+  `mise exec -- uv sync --directory pytools --locked`; without that
+  environment the sandbox, math, code and conversion tests fail. Remove
+  the link before `git worktree remove --force <dir>`.
 - **Browser checks with no model**: `pnpm dev:fake`, port 4330
   (`GAUSS_PORT`); seed and `--empty` in `scripts/dev-fake.ts`, scenario
   commands in `backends/scripted.ts`. Point `GAUSS_DATA_ROOT` at a fresh
