@@ -233,6 +233,10 @@ import {
   type PackageInstaller,
   recoverPackageInstall,
 } from "./packages.ts";
+import {
+  createReviewAdmission,
+  type ReviewAdmission,
+} from "./review-admission.ts";
 import type { SourceConverter } from "./source-convert.ts";
 import { createSourceShelf, type QuoteDesk } from "./source-shelf.ts";
 import { sectionsRefused } from "./source-text.ts";
@@ -1208,18 +1212,13 @@ interface Running {
   /** The other units' handoff notes, read when an assessment starts or resumes. */
   assessmentHandoffs: ReadonlyMap<string, string> | undefined;
   progression: UnitProgression;
+  review: ReviewAdmission;
   /**
    * How many Stops there had been when the answer kept for the judging was
    * sent, so a Stop after it cancels the automatic next question as it does
    * for an answer recorded at once (task 2.17a).
    */
   answerStops?: number | undefined;
-  /**
-   * A review held because the sitting began in the middle of a segment: it
-   * is offered once that segment closes (task 5.25). Held in memory only, so
-   * a restart decides again.
-   */
-  reviewHeld?: boolean;
   /** The standing closing card's action and what the learner confirms with it. */
   finishAction?: { id: string; objectives: string[]; gateFollows: boolean };
 }
@@ -1257,13 +1256,6 @@ function createUnitChat(
   let stopCount = 0;
   /** A message cannot be admitted while the override is entering the queue. */
   let overrideWrite: Promise<ChatResult> | undefined;
-  /**
-   * Set while review is being offered, from the checks until its card is
-   * kept: a message sent meanwhile waits for the card, which it skips.
-   */
-  let offering = false;
-  /** The review held for a segment's close, offered once the tutor is done; `settled` waits for it. */
-  let heldOffer: Promise<void> | undefined;
   /** The course's workspace, where the tutor works and packages go. */
   let folder: string | undefined;
   /** The install that runs, by its request's id; `settled` waits for it. */
@@ -1493,6 +1485,47 @@ function createUnitChat(
           endRun: () => endRun(r, false),
           sendTestSummary: (text) => sendTestSummary(r, text),
         }),
+        review: createReviewAdmission({
+          record,
+          plan,
+          tutor: loaded,
+          exclusive,
+          now,
+          count: REVIEW_COUNT,
+          closing: () => closing,
+          feedbackPending: () => r.progression.feedback !== undefined,
+          installing: () => install !== undefined,
+          unsavedInstall: () =>
+            pendingInstall === undefined ? undefined : PACKAGE_SAVE_FAILED,
+          overridePending: OVERRIDE_PENDING,
+          async readOfferContext() {
+            const [stored, evidence, misconceptions] = await Promise.all([
+              dataRoot.readCourse(courseId),
+              dataRoot.readEvidence(courseId),
+              dataRoot.readMisconceptions(courseId),
+            ]);
+            // Other units' calls write misconceptions on the objectives it asks.
+            r.handoff.misconceptions = misconceptions;
+            return {
+              units: stored?.curriculum?.units ?? r.context.units,
+              evidence,
+            };
+          },
+          markOffered: (at, options) =>
+            dataRoot.markReviewOffered(courseId, at, options),
+          async saveOffer(run, { units, evidence }) {
+            r.context = { ...r.context, units };
+            if (
+              record.finished !== undefined &&
+              record.position.tutorSessionId === undefined
+            ) {
+              joined(r);
+            }
+            await record.offerAssessment(run, evidence, () => showRun(r, run));
+          },
+          start: (run) => startRun(r, run),
+          skip: () => endRun(r, true),
+        }),
       };
       if (record.reopened) {
         // A unit under way resumes its tutor's conversation with its first
@@ -1588,7 +1621,7 @@ function createUnitChat(
       }
       const question = await reopenAsked(r);
       // A new sitting can open with review; the chat is new.
-      await exclusive(() => offerReview(r));
+      await r.review.sittingOpened();
       if (question) return;
       if (record.position.afterAnswer !== undefined) {
         await exclusive(r.progression.resume);
@@ -2081,103 +2114,10 @@ function createUnitChat(
     else r.progression.askInRun({ after: "reopened" });
   }
 
-  /**
-   * Offers review on a card, if it is due: the unit is not finished, it is
-   * between segments (in
-   * a segment's discussion or check the card is held until the segment
-   * closes, `offerHeld`), nothing waits on the learner (no open question,
-   * detour, package request, style or curriculum proposal or closing card)
-   * or the tutor (no turn queued or running), the pick over the whole course
-   * is not empty, and the course was offered none within the hour. The
-   * caller knows that a sitting begins: the chat is new, or has been quiet,
-   * or a segment held the card. Nothing is sent to the tutor. A failure is
-   * logged: the unit goes on without review. Runs inside `exclusive`.
-   */
-  async function offerReview(r: Running): Promise<void> {
-    const { position, finished } = r.record;
-    if (
-      closing ||
-      finished !== undefined ||
-      position.assessment !== undefined
-    ) {
-      return;
-    }
-    // Never between a segment's teaching and its check.
-    if (position.phase === "discuss" || position.phase === "check") {
-      r.reviewHeld = true;
-      return;
-    }
-    if (
-      // Feedback, or any other turn, still to come.
-      r.progression.feedback !== undefined ||
-      r.agents.busy() ||
-      position.openQuestion !== undefined ||
-      position.detour !== undefined ||
-      position.packageRequest !== undefined ||
-      position.styleProposal !== undefined ||
-      position.curriculumChange !== undefined ||
-      pendingInstall !== undefined ||
-      position.testOut?.stage === "result" ||
-      (position.phase === "closed" && isLastSegment(r.context.plan, position))
-    ) {
-      return;
-    }
-    r.reviewHeld = false;
-    offering = true;
-    try {
-      const at = now();
-      const [stored, log, misconceptions] = await Promise.all([
-        dataRoot.readCourse(courseId),
-        dataRoot.readEvidence(courseId),
-        dataRoot.readMisconceptions(courseId),
-      ]);
-      const units = stored?.curriculum?.units ?? r.context.units;
-      // Other units' calls write misconceptions on the objectives it asks.
-      r.handoff.misconceptions = misconceptions;
-      const objectives = pickForReview(units, log, {
-        at,
-        count: REVIEW_COUNT,
-        leaveOut: [],
-      });
-      if (objectives.length === 0) return;
-      if (!(await dataRoot.markReviewOffered(courseId, at))) return;
-      r.context = { ...r.context, units };
-      const run: AssessmentRun = {
-        mode: "review",
-        stage: "offered",
-        objectives,
-      };
-      await r.record.offerAssessment(run, log, () => showRun(r, run));
-    } catch (error) {
-      console.error("Review could not be offered:", error);
-    } finally {
-      offering = false;
-    }
-  }
-
   async function closeOverriddenSegment(r: Running): Promise<void> {
     const { objectives, withdrawn } = await r.record.overrideSegment();
     // Told with the next turn, so moving on costs no reply.
     r.notes.push(overrideNote(objectives, withdrawn?.number));
-  }
-
-  /**
-   * A segment has just closed: the review its sitting held is offered once
-   * the tutor is done, unless the unit has come to its end. Runs inside
-   * `exclusive`.
-   */
-  function offerHeld(r: Running): void {
-    if (r.reviewHeld !== true) return;
-    if (isLastSegment(r.context.plan, r.record.position)) {
-      r.reviewHeld = false;
-      return;
-    }
-    heldOffer = r.agents
-      .settled()
-      .then(() => exclusive(() => offerReview(r)))
-      .catch((error: unknown) => {
-        console.error("Review could not be offered:", error);
-      });
   }
 
   /** Starts the assessment offered: the tutor is asked for its first question. Runs inside `exclusive`. */
@@ -2186,104 +2126,6 @@ function createUnitChat(
     r.assessmentHandoffs = await readAssessmentHandoffs(offered);
     await r.record.startAssessment((run) => showRun(r, run));
     r.progression.askInRun({ after: "start" }, stops);
-  }
-
-  /**
-   * "Review now" (task 5.25): a review of what is due in the course,
-   * offered and started at once in this thread, at any phase; in a finished
-   * unit too, which stays finished. A review offered on its card is
-   * started, and one under way goes on. Refused while something waits here
-   * on the learner or the tutor, or when nothing is due. Runs inside
-   * `exclusive`.
-   */
-  async function requestReview(
-    r: Running,
-    objectives: ReviewPick[] | undefined,
-  ): Promise<ChatResult> {
-    const { position, finished } = r.record;
-    let offered = position.assessment;
-    if (offered?.mode === "review" && offered.stage === "on") {
-      return { ok: true };
-    }
-    if (install !== undefined) {
-      return refused(
-        "Packages are being installed. Wait until the install finishes.",
-      );
-    }
-    if (pendingInstall !== undefined) return refused(PACKAGE_SAVE_FAILED);
-    if (offered?.mode !== "review") {
-      const waits = reviewWaits(r);
-      if (waits !== undefined) return refused(waits);
-      if (objectives === undefined) {
-        return refused("That review has already ended.");
-      }
-      // The pick chose this thread. Refresh the context, not the pick.
-      const [stored, log, misconceptions] = await Promise.all([
-        dataRoot.readCourse(courseId),
-        dataRoot.readEvidence(courseId),
-        dataRoot.readMisconceptions(courseId),
-      ]);
-      r.handoff.misconceptions = misconceptions;
-      r.context = {
-        ...r.context,
-        units: stored?.curriculum?.units ?? r.context.units,
-      };
-      if (finished !== undefined && position.tutorSessionId === undefined) {
-        joined(r);
-      }
-      const run: AssessmentRun = {
-        mode: "review",
-        stage: "offered",
-        objectives,
-      };
-      await r.record.offerAssessment(run, log, () => showRun(r, run));
-      offered = run;
-    }
-    await startRun(r, offered);
-    r.reviewHeld = false;
-    await dataRoot.markReviewOffered(courseId, now(), { requested: true });
-    return { ok: true };
-  }
-
-  /** Why "Review now" cannot start a review in this thread now, if it cannot. */
-  function reviewWaits(r: Running): string | undefined {
-    const { position, finished } = r.record;
-    if (position.pendingSegmentOverride !== undefined) return OVERRIDE_PENDING;
-    if (r.agents.busy() || r.progression.feedback !== undefined) {
-      return "The tutor is writing. Wait until it has finished, or stop it.";
-    }
-    const run = position.assessment;
-    if (run !== undefined) {
-      return run.stage === "offered"
-        ? `Start or skip the ${runName(run.mode)} first.`
-        : `Finish or skip the ${runName(run.mode)} first.`;
-    }
-    if (finished !== undefined) return undefined;
-    if (position.testOut?.stage === "result") {
-      return "Answer the test's result card first.";
-    }
-    if (position.openQuestion !== undefined) {
-      return `Question ${position.openQuestion.number} is open: answer it first.`;
-    }
-    if (position.detour !== undefined) {
-      return `A detour is open after question ${position.detour.number}: end it first.`;
-    }
-    if (position.packageRequest !== undefined) {
-      return "A request to install packages waits for your answer.";
-    }
-    if (position.styleProposal !== undefined) {
-      return "A proposed style note waits for your answer.";
-    }
-    if (position.curriculumChange !== undefined) {
-      return "A proposed curriculum change waits for your answer.";
-    }
-    if (
-      position.phase === "closed" &&
-      isLastSegment(r.context.plan, position)
-    ) {
-      return "The unit's closing card waits for you.";
-    }
-    return undefined;
   }
 
   /**
@@ -2429,10 +2271,9 @@ function createUnitChat(
   async function closeSegment(r: Running): Promise<void> {
     const { checkFrom: _, ...rest } = r.record.position;
     await r.record.move({ ...rest, phase: "closed" });
-    offerHeld(r);
-    if (isLastSegment(r.context.plan, r.record.position)) {
-      await endUnit(r, true);
-    }
+    const last = isLastSegment(r.context.plan, r.record.position);
+    r.review.segmentClosed(last);
+    if (last) await endUnit(r, true);
   }
 
   /**
@@ -3657,12 +3498,6 @@ function createUnitChat(
       .filter((id) => hasPassed(objectiveStatus(r.record.evidence, id)));
   }
 
-  /** A review's card waits for the learner's Start or Skip. */
-  function reviewOffered(r: Running): boolean {
-    const run = r.record.position.assessment;
-    return run?.stage === "offered" && run.mode === "review";
-  }
-
   const chat: OpenableChat = {
     id: log.id,
     events: log.events,
@@ -3674,7 +3509,7 @@ function createUnitChat(
         if (testOut) return false;
         // Opened again after a quiet hour: a new sitting, which can open
         // with review.
-        if (log.quiet()) void exclusive(() => offerReview(r));
+        if (log.quiet()) void r.review.sittingOpened();
         return true;
       }
       if (loading !== undefined) return !testOut;
@@ -3732,23 +3567,7 @@ function createUnitChat(
             return exclusive(() => replyEnded(r, asked, reply));
           },
         });
-      if (!offering && !reviewOffered(r)) {
-        send();
-        return { ok: true };
-      }
-      // A message sent while a review's card waits, or while it is being
-      // offered, skips it: the learner has gone on. A teaching turn that
-      // waited goes first, as it would have. The gate's card is offered once,
-      // and skipped only when the learner says so: it waits.
-      void exclusive(async () => {
-        try {
-          if (reviewOffered(r)) await endRun(r, true);
-        } finally {
-          send();
-        }
-      }).catch((error: unknown) =>
-        console.error("The card could not be skipped:", error),
-      );
+      r.review.sendMessage(send);
       return { ok: true };
     },
 
@@ -3968,10 +3787,9 @@ function createUnitChat(
             );
           }
           await closeOverriddenSegment(r);
-          offerHeld(r);
-          if (isLastSegment(r.context.plan, r.record.position)) {
-            await endUnit(r, true);
-          }
+          const last = isLastSegment(r.context.plan, r.record.position);
+          r.review.segmentClosed(last);
+          if (last) await endUnit(r, true);
           return { ok: true };
         },
         { overriding: true },
@@ -4027,7 +3845,7 @@ function createUnitChat(
       return exclusive(async () => {
         const r = running;
         if (r === undefined) return notOpen();
-        return requestReview(r, objectives);
+        return r.review.request(objectives);
       });
     },
 
@@ -4257,7 +4075,7 @@ function createUnitChat(
       await exclusive(async () => {});
       await running?.agents.settled();
       // A review held for a segment's close is offered after the tutor's turn.
-      await heldOffer;
+      await running?.review.settled();
       await handoffs?.settled();
       await log.flushed();
     },

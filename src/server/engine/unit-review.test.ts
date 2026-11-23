@@ -946,44 +946,61 @@ test("a message sent while the card waits skips it; the teaching that waited goe
   );
 });
 
-test("a message sent while the card is being offered waits for the card and skips it; the teaching that waited goes first, then the message", async () => {
-  await makeCourse();
-  let reached = () => {};
-  const atStamp = new Promise<void>((resolve) => {
-    reached = resolve;
-  });
-  let release = () => {};
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  // The offer is held as it stamps the course, before its card is kept.
-  const setup = setUp(tutor(), [], (root) => ({
-    ...root,
-    async markReviewOffered(courseId, at) {
-      reached();
-      await held;
-      return root.markReviewOffered(courseId, at);
-    },
-  }));
-  const opened = await setup.units.open(COURSE, "derivative");
-  if (!opened.ok) throw new Error(opened.error);
-  const chat = opened.chat;
-  await atStamp;
+test.each(["cooldown mark", "card write"])(
+  "a message sent during the automatic offer's %s skips its card; the teaching that waited goes first, then the message",
+  async (heldAt) => {
+    await makeCourse();
+    const saving = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    async function pauseOffer() {
+      saving.resolve();
+      await release.promise;
+    }
+    let cooldownAtCardWrite: string | undefined;
+    const setup = setUp(tutor(), [], (root) => ({
+      ...root,
+      async markReviewOffered(...args) {
+        if (heldAt === "cooldown mark") await pauseOffer();
+        return root.markReviewOffered(...args);
+      },
+      async writePosition(...args) {
+        if (args[2]?.assessment?.stage === "offered") {
+          cooldownAtCardWrite = (await root.readCourse(COURSE))?.course
+            .reviewOfferedAt;
+          if (heldAt === "card write") await pauseOffer();
+        }
+        return root.writePosition(...args);
+      },
+    }));
+    const opened = await setup.units.open(COURSE, "derivative");
+    if (!opened.ok) throw new Error(opened.error);
+    const chat = opened.chat;
+    await saving.promise;
+    try {
+      expect(ofType(chat, "assessment")).toEqual([]);
+      expect(chat.say("Can we start learning?")).toEqual({ ok: true });
+    } finally {
+      release.resolve();
+      await chat.settled();
+    }
 
-  expect(chat.say("Can we start learning?")).toEqual({ ok: true });
-  release();
-  await chat.settled();
-
-  expect(ofType(chat, "assessment_end")).toEqual([
-    { type: "assessment_end", mode: "review", skipped: true, statuses: {} },
-  ]);
-  expect(sent(setup.backend)).toHaveLength(2);
-  expect(sent(setup.backend)[0]).toContain("Allowed now: teach");
-  expect(sent(setup.backend)[1]).toMatch(
-    /Message from the learner\..*\]\nCan we start learning\?$/s,
-  );
-  expect(nextStep(replay(chat))).toBe("ready");
-});
+    expect(cooldownAtCardWrite).toBe(NOW);
+    expect(
+      chat
+        .events()
+        .filter((e) => e.type === "assessment" || e.type === "assessment_end"),
+    ).toEqual([
+      OFFERED,
+      { type: "assessment_end", mode: "review", skipped: true, statuses: {} },
+    ]);
+    expect(sent(setup.backend)).toHaveLength(2);
+    expect(sent(setup.backend)[0]).toContain("Allowed now: teach");
+    expect(sent(setup.backend)[1]).toMatch(
+      /Message from the learner\..*\]\nCan we start learning\?$/s,
+    );
+    expect(nextStep(replay(chat))).toBe("ready");
+  },
+);
 
 // --- Restarts --------------------------------------------------------------
 
@@ -1619,16 +1636,31 @@ test("the review keeps the pick that chose its finished thread while opening it"
 });
 
 test.each(["a new run", "an offered card"])(
-  "starting %s from Review now resets the automatic-card cooldown",
+  "Review now saves and shows the start of %s before resetting the automatic-card cooldown",
   async (start) => {
     const root = await makeCourse();
-    const setup = setUp();
+    let chat: UnitChat;
+    const setup = setUp(tutor(), [], (root) => ({
+      ...root,
+      async markReviewOffered(...args) {
+        if (args[2]?.requested) {
+          expect((await positionOf())?.assessment).toMatchObject({
+            mode: "review",
+            stage: "on",
+          });
+          expect(ofType(chat, "assessment").map((e) => e.stage)).toEqual([
+            "offered",
+            "on",
+          ]);
+        }
+        return root.markReviewOffered(...args);
+      },
+    }));
     if (start === "an offered card") {
       await root.writePosition(COURSE, "derivative", {
         segment: 0,
         phase: "closed",
       });
-      expect(ofType(await open(setup), "assessment")).toEqual([OFFERED]);
     } else {
       await root.markReviewOffered(COURSE, clock);
       await root.writePosition(COURSE, "derivative", {
@@ -1636,6 +1668,10 @@ test.each(["a new run", "an offered card"])(
         phase: "discuss",
       });
     }
+    chat = await open(setup);
+    expect(ofType(chat, "assessment")).toEqual(
+      start === "an offered card" ? [OFFERED] : [],
+    );
 
     clock = new Date(Date.parse(NOW) + 59 * 60_000);
     expect(await setup.units.reviewNow(COURSE)).toEqual({
