@@ -472,10 +472,12 @@ export interface CourseDesk {
    * refused until `answered`.
    */
   propose(work: (state: State) => Promise<Proposed>): Promise<Proposed>;
-  /** The planning conversation's proposal no longer waits. */
-  answered(): void;
-  /** Tells the course's open unit chats a curriculum the learner applied. */
-  applied(): void;
+  /** Lifts the block and tells refused tutors; Apply also refreshes the open chats. */
+  answered(
+    decision:
+      | { outcome: "applied"; units: readonly StoredUnit[] }
+      | { outcome: "kept" },
+  ): void;
 }
 
 interface ChatOptions {
@@ -570,11 +572,21 @@ export function createUnitChats(options: ChatOptions): UnitChats {
   }
 
   /** Tells the open chats of the course's units, but this one, a curriculum the learner applied. */
-  function recurriculum(courseId: string, unitId: string | undefined) {
+  function recurriculum(
+    courseId: string,
+    unitId: string | undefined,
+    units?: readonly StoredUnit[],
+    blocked?: ReadonlySet<OpenableChat>,
+  ) {
     for (const other of othersIn(courseId, unitId)) {
-      void other.learnCurriculum().catch((error: unknown) => {
-        console.error("The chat could not refresh its curriculum:", error);
-      });
+      void other
+        .learnCurriculum(
+          units,
+          blocked?.has(other) ? "planner-applied" : "changed",
+        )
+        .catch((error: unknown) => {
+          console.error("The chat could not refresh its curriculum:", error);
+        });
     }
   }
 
@@ -716,9 +728,17 @@ export function createUnitChats(options: ChatOptions): UnitChats {
       return request;
     },
     courseDesk(courseId) {
+      const desk = workspace(courseId).desk;
       return {
-        ...workspace(courseId).desk,
-        applied: () => recurriculum(courseId, undefined),
+        propose: desk.propose,
+        answered(decision) {
+          const blocked = desk.answered();
+          if (decision.outcome === "applied") {
+            recurriculum(courseId, undefined, decision.units, blocked);
+          } else if (blocked !== undefined) {
+            for (const chat of blocked) chat.learnPlannerKept();
+          }
+        },
       };
     },
     async setWebSearch(courseId, on) {
@@ -806,8 +826,9 @@ function reviewThread(
   return "No unit can hold a review now.";
 }
 
-/** The course's desk without the open chats, which `createUnitChats` adds. */
-type WorkspaceDesk = Omit<CourseDesk, "applied">;
+type WorkspaceDesk = Pick<CourseDesk, "propose"> & {
+  answered(): ReadonlySet<OpenableChat> | undefined;
+};
 
 interface CourseWorkspace {
   tools: Omit<WorkspaceTools, "reads">;
@@ -834,6 +855,7 @@ interface CourseWorkspace {
    * or in its planning conversation.
    */
   propose<T>(
+    chat: OpenableChat,
     work: (state: State) => Promise<T>,
   ): Promise<T | { refused: string }>;
   /** The course planning conversation's side of the proposals (task 5.38). */
@@ -876,8 +898,8 @@ function waitingProposal(
 /** Why a unit's tutor cannot propose while the course's planning conversation's proposal waits. */
 const PLANNED =
   "A curriculum change proposed from the course view waits for the " +
-  "learner's answer there. Propose no style note or curriculum change " +
-  "until it is answered; you are not told when it is.";
+  "learner's answer there. While it waits, do not propose a style note or " +
+  "curriculum change. Look for the learner's decision in a later turn header.";
 
 const INSTALLING =
   "Packages are being installed in the workspace: no file may be written " +
@@ -901,8 +923,8 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
   let recoveryBlocked = false;
   let pending: PackageReceipt | undefined;
   let cleanupNeeded: string | undefined;
-  /** The course planning conversation's proposal waits (task 5.38). */
-  let planned = false;
+  /** Present while the planner's proposal waits, with the chats it has blocked. */
+  let planned: Set<OpenableChat> | undefined;
 
   async function clearSavedInstall(folder: string) {
     try {
@@ -1074,10 +1096,14 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
       });
     },
     propose<T>(
+      chat: OpenableChat,
       work: (state: State) => Promise<T>,
     ): Promise<T | { refused: string }> {
       return exclusive(async () => {
-        if (planned) return { refused: PLANNED };
+        if (planned !== undefined) {
+          planned.add(chat);
+          return { refused: PLANNED };
+        }
         const state = await dataRoot.readState(courseId);
         const waiting = waitingProposal(state);
         if (waiting !== undefined) {
@@ -1104,11 +1130,13 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
             };
           }
           const result = await work(state);
-          if ("proposed" in result) planned = true;
+          if ("proposed" in result) planned ??= new Set();
           return result;
         }),
       answered() {
-        planned = false;
+        const blocked = planned;
+        planned = undefined;
+        return blocked;
       },
     },
     beginInstall(owner) {
@@ -1178,10 +1206,15 @@ interface OpenableChat extends UnitChat {
    */
   learnStyle(note: string): Promise<void>;
   /**
-   * Refreshes the course's curriculum after an Apply in another unit,
+   * Refreshes the course's curriculum after an Apply elsewhere,
    * notifying the page and telling the tutor in its next header.
    */
-  learnCurriculum(): Promise<void>;
+  learnCurriculum(
+    units?: readonly StoredUnit[],
+    outcome?: "changed" | "planner-applied",
+  ): Promise<void>;
+  /** Tells a refused tutor the learner kept the curriculum from the course view. */
+  learnPlannerKept(): void;
   /**
    * Closes the tutor's session once it is between turns, so that the next
    * turn resumes it with the course's settings as they are then (task 4.11).
@@ -1193,6 +1226,8 @@ interface OpenableChat extends UnitChat {
 interface Running {
   /** Its units' plans are read again when an assessment is offered. */
   context: UnitContext;
+  /** The course planner's committed curriculum for headers, until the chat queue catches up. */
+  plannerContext?: UnitContext;
   record: UnitRecord;
   agents: UnitAgents;
   /** Said once, in the next turn's header. */
@@ -1423,7 +1458,7 @@ function createUnitChat(
         systemPrompt: () =>
           tutorSystemPrompt(
             options.systemPrompt,
-            running?.context ?? context,
+            running?.plannerContext ?? running?.context ?? context,
             { style, background, profile },
             earlier,
           ),
@@ -1952,6 +1987,7 @@ function createUnitChat(
    */
   function where(r: Running): Where {
     const { record } = r;
+    const context = r.plannerContext ?? r.context;
     const notices = record.tutorNotices.filter(
       (notice) => !r.noticesTaken.has(notice.id),
     );
@@ -1977,12 +2013,12 @@ function createUnitChat(
       }
       // An applied change is told with the units as they now are.
       for (const answer of answers) {
-        notes.push(curriculumNote(answer.outcome, r.context.units));
+        notes.push(curriculumNote(answer.outcome, context.units));
       }
     }
     const { feedback } = r.progression;
     return {
-      context: r.context,
+      context,
       position: record.position,
       checks: checks(r),
       notPassed: notPassed(r.context.plan, record.evidence),
@@ -3131,7 +3167,7 @@ function createUnitChat(
         }
         // Read once no other proposal waits, so an Apply in another unit
         // has written style.md before this one compares with it.
-        return options.workspace.propose(async () => {
+        return options.workspace.propose(chat, async () => {
           const current = await dataRoot.readStyle(courseId);
           if (note === current) {
             return {
@@ -3219,7 +3255,7 @@ function createUnitChat(
         }
         // Read once no other proposal waits, so an Apply in another unit
         // has written curriculum.json before this one compares with it.
-        return options.workspace.propose(async (state) => {
+        return options.workspace.propose(chat, async (state) => {
           const current = (await dataRoot.readCourse(courseId))?.curriculum;
           if (current === null || current === undefined) {
             return { refused: "The course has no curriculum." };
@@ -3273,7 +3309,14 @@ function createUnitChat(
     const stored = await dataRoot.readCourse(courseId);
     const units = stored?.curriculum?.units ?? r.context.units;
     r.context = { ...r.context, units };
-    return units;
+  }
+
+  function tellCurriculum(r: Running, outcome: "changed" | "planner-applied") {
+    if (outcome === "planner-applied" || r.record.finished === undefined) {
+      r.notes.push(
+        curriculumNote(outcome, (r.plannerContext ?? r.context).units),
+      );
+    }
   }
 
   async function publishCurriculumDecision(
@@ -4082,16 +4125,36 @@ function createUnitChat(
     renew() {
       agents?.renew();
     },
-    async learnCurriculum() {
+    learnPlannerKept() {
+      const r = running;
+      if (r !== undefined && !closing) {
+        r.notes.push(curriculumNote("planner-kept", r.context.units));
+      }
+    },
+    async learnCurriculum(units, outcome = "changed") {
+      const r = running;
+      let update: Promise<void> | undefined;
+      if (units !== undefined && r !== undefined && !closing) {
+        // Ready and other queued turns can compose outside the chat queue.
+        // Keep the snapshot visible while an earlier assessment writes back
+        // its older context, then install it in queue order.
+        const context = { ...r.context, units };
+        r.plannerContext = context;
+        tellCurriculum(r, outcome);
+        update = exclusive(async () => {
+          if (r.plannerContext !== context) return;
+          r.context = context;
+          delete r.plannerContext;
+        });
+      }
       log.emit({ type: "curriculum_changed" });
-      await loading;
+      if (update !== undefined) return update;
+      if (loading !== undefined) await loading;
       await exclusive(async () => {
-        const r = running;
-        if (r === undefined) return;
-        const units = await refreshCurriculum(r);
-        if (r.record.finished === undefined) {
-          r.notes.push(curriculumNote("changed", units));
-        }
+        const loaded = running;
+        if (loaded === undefined || closing) return;
+        await refreshCurriculum(loaded);
+        tellCurriculum(loaded, outcome);
       });
     },
     async learnAnswer(entry) {

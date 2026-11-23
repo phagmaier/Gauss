@@ -17,6 +17,7 @@ import {
   type FakeBackend,
   type FakeTurn,
 } from "../backends/fake.ts";
+import { createScriptedBackend } from "../backends/scripted.ts";
 import type * as AtomicWrite from "../record/atomic-write.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { givenOrder } from "./choice-order.ts";
@@ -191,7 +192,7 @@ const ASK: FakeTurn = [{ text: "Shall I plan Counting 2?" }];
  */
 async function setUp(options: {
   planner: FakeTurn[];
-  tutor?: FakeTurn[];
+  tutor?: FakeTurn[] | FakeBackend;
   finished?: boolean;
   /** The course has NOTES as its source, and its units read it (READING). */
   source?: boolean;
@@ -229,7 +230,11 @@ async function setUp(options: {
     commit: (message: string) => void commits.push(message),
     settled: () => Promise.resolve(),
   };
-  const tutorBackend = createFakeBackend(options.tutor ?? [], []);
+  const tutorBackend =
+    Array.isArray(options.tutor) || options.tutor === undefined
+      ? createFakeBackend(options.tutor ?? [], [])
+      : options.tutor;
+  const tutorTimer = createFakeTimer();
   const units = createUnitChats({
     backend: tutorBackend,
     systemPrompt: "Tutor.",
@@ -242,7 +247,7 @@ async function setUp(options: {
     grader: createGrader({ backend: tutorBackend, systemPrompt: "Grader." }),
     judge: createHelpJudge({ backend: tutorBackend, systemPrompt: "Judge." }),
     now: () => new Date(NOW),
-    timer: createFakeTimer(),
+    timer: tutorTimer,
     order: givenOrder,
     backup,
   });
@@ -280,8 +285,10 @@ async function setUp(options: {
     keptSessions,
     timer,
     tutorBackend,
+    tutorTimer,
     root,
     plannings,
+    units,
     commits,
     planning,
     open,
@@ -470,6 +477,7 @@ test("one proposal waits in a course: a unit's waiting change blocks the planner
       [{ text: "Teaching sets." }],
       [amend([LOOPS, SETS, { ...MAPS, id: "maps-2" }])],
       [amend([LOOPS, SETS, { ...MAPS, id: "maps-3" }])],
+      [{ text: "Teaching goes on." }],
     ],
   });
   const loops = await open("loops");
@@ -503,6 +511,77 @@ test("one proposal waits in a course: a unit's waiting change blocks the planner
   await sets.settled();
   expect(refusals(tutorBackend)).toHaveLength(1);
   expect(cards(sets.events())).toHaveLength(1);
+  loops.say("Go on.");
+  await loops.settled();
+  expect(tutorBackend.received.at(-1)?.text).not.toContain(PLANNER_KEPT);
+});
+
+const PLANNER_BLOCK = "A curriculum change proposed from the course view waits";
+const CAN_PROPOSE =
+  "It no longer blocks your proposals. You may propose a style note or curriculum change again if appropriate.";
+const PLANNER_KEPT =
+  'The learner chose "Keep the current one" on the curriculum change proposed from the course view. ' +
+  CAN_PROPOSE;
+const PLANNER_APPLIED =
+  "The learner applied the curriculum change proposed from the course view. " +
+  CAN_PROPOSE;
+
+test("Keep tells the tutor refused before replacement once, even after idle close, and it can propose again", async () => {
+  const { tutorBackend, tutorTimer, planning, open } = await setUp({
+    planner: [[amend([LOOPS, SETS, MAPS])], [amend([LOOPS, SETS, ...NEXT])]],
+    tutor: createScriptedBackend(),
+  });
+  const loops = await open("loops");
+  const sets = await open("sets");
+  const chat = await planning();
+  chat.say("Add maps.");
+  await chat.settled();
+  const first = lastCard(chat.events());
+
+  sets.say("/style");
+  await sets.settled();
+  const refused = expect.stringContaining(PLANNER_BLOCK);
+  expect(refusals(tutorBackend)).toEqual([refused]);
+
+  chat.say("Plan the next stretch instead.");
+  await chat.settled();
+  expect(chat.events()).toContainEqual({
+    type: "curriculum_change_answered",
+    proposalId: first.proposalId,
+    outcome: "replaced",
+  });
+  sets.say("Go on.");
+  await sets.settled();
+  const waitingHeader = tutorBackend.received.at(-1)?.text;
+  expect(waitingHeader).not.toContain("The learner chose");
+  expect(waitingHeader).not.toContain("The learner applied");
+  loops.say("/style");
+  await loops.settled();
+  expect(refusals(tutorBackend)).toEqual([refused, refused]);
+  expect(
+    loops.events().find((e) => e.type === "style_proposed"),
+  ).toBeUndefined();
+
+  tutorTimer.advance(IDLE_MS);
+  expect(await chat.keep(lastCard(chat.events()).proposalId)).toEqual({
+    ok: true,
+  });
+  sets.say("/style");
+  await sets.settled();
+  const header = tutorBackend.received.at(-1)?.text ?? "";
+  expect(header.split(PLANNER_KEPT)).toHaveLength(2);
+  expect(tutorBackend.sessions.at(-1)?.resumeId).toBeDefined();
+  const advice = expect.stringContaining(
+    "Look for the learner's decision in a later turn header.",
+  );
+  expect(refusals(tutorBackend)).toEqual([advice, advice]);
+  expect(sets.events()).toContainEqual(
+    expect.objectContaining({ type: "style_proposed" }),
+  );
+
+  sets.say("Go on.");
+  await sets.settled();
+  expect(tutorBackend.received.at(-1)?.text).not.toContain(PLANNER_KEPT);
 });
 
 test('"Keep the current one" is said in the planner\'s next header; a new proposal replaces the one waiting; Apply is refused while the planner writes', async () => {
@@ -679,37 +758,184 @@ test("a replacement planner is told which proposals were replaced, kept, and sti
   expect(turn).toContain(JSON.stringify(proposals));
 });
 
-test("an open unit chat is told an applied change in its next header, and its next session lists the units", async () => {
+test("Apply tells the refused tutor the decision and new units once, and it can propose from that curriculum", async () => {
   const { tutorBackend, planning, open } = await setUp({
     planner: [[amend([LOOPS, SETS, MAPS])]],
-    tutor: [
-      [{ text: "Teaching sets." }],
-      [{ text: "A reply." }],
-      [{ text: "Fresh." }],
-    ],
+    tutor: createScriptedBackend(),
   });
+  const loops = await open("loops");
   const sets = await open("sets");
   const chat = await planning();
   chat.say("Add maps.");
   await chat.settled();
+  sets.say("/amend");
+  await sets.settled();
+  expect(refusals(tutorBackend)).toEqual([
+    expect.stringContaining(PLANNER_BLOCK),
+  ]);
+  expect(cards(sets.events())).toEqual([]);
   expect(await chat.apply(lastCard(chat.events()).proposalId)).toEqual({
     ok: true,
   });
+  await loops.settled();
+  expect(loops.events()).toContainEqual({ type: "curriculum_changed" });
+
+  loops.say("Go on.");
+  await loops.settled();
+  const header = tutorBackend.received.at(-1)?.text ?? "";
+  const asUsual =
+    "The learner applied a change to this course's curriculum, in another unit or from the course view.";
+  const maps = '3. Maps (id "maps"): Count with maps.';
+  expect(header).toContain(asUsual);
+  expect(header).not.toContain(CAN_PROPOSE);
+  expect(header).toContain(maps);
+
+  sets.say("/amend");
   await sets.settled();
-  expect(sets.events()).toContainEqual({ type: "curriculum_changed" });
+  const unblocked = tutorBackend.received.at(-1)?.text ?? "";
+  expect(unblocked.split(PLANNER_APPLIED)).toHaveLength(2);
+  expect(unblocked).not.toContain(asUsual);
+  expect(unblocked.split(maps)).toHaveLength(2);
+  expect(lastCard(sets.events()).units).toEqual([
+    LOOPS,
+    SETS,
+    MAPS,
+    {
+      id: "practice-4",
+      title: "Practice 4",
+      goal: "Practise what the course has covered so far.",
+      prerequisites: ["sets"],
+    },
+  ]);
+  expect(refusals(tutorBackend)).toHaveLength(1);
 
   sets.say("Go on.");
   await sets.settled();
-  const header = tutorBackend.received.at(-1)?.text ?? "";
-  expect(header).toContain(
-    "The learner applied a change to this course's curriculum, in another unit or from the course view.",
-  );
-  expect(header).toContain('3. Maps (id "maps"): Count with maps.');
+  const later = tutorBackend.received.at(-1)?.text;
+  expect(later).not.toContain(PLANNER_APPLIED);
+  expect(later).not.toContain(asUsual);
+  expect(later).not.toContain(maps);
   expect(await sets.startFresh()).toEqual({ ok: true });
   await sets.settled();
   expect(tutorBackend.sessions.at(-1)?.systemPrompt).toContain(
     '3. Maps (id "maps"): Count with maps.',
   );
+});
+
+test("a Ready turn still resuming at Apply carries the decision in its header", async () => {
+  const { tutorBackend, tutorTimer, root, planning, open } = await setUp({
+    planner: [[amend([LOOPS, { ...MAPS, prerequisites: ["loops"] }, SETS])]],
+    tutor: createScriptedBackend(),
+  });
+  const sets = await open("sets");
+  const chat = await planning();
+  chat.say("Add maps.");
+  await chat.settled();
+  sets.say("/style");
+  await sets.settled();
+  expect(refusals(tutorBackend)).toEqual([
+    expect.stringContaining(PLANNER_BLOCK),
+  ]);
+  tutorTimer.advance(IDLE_MS);
+
+  const resuming = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  const sent = Promise.withResolvers<string>();
+  const startSession = tutorBackend.startSession;
+  vi.spyOn(tutorBackend, "startSession").mockImplementationOnce(
+    async (options) => {
+      resuming.resolve();
+      await resume.promise;
+      const session = await startSession(options);
+      return {
+        ...session,
+        send(turn, signal) {
+          sent.resolve(turn.text);
+          return session.send(turn, signal);
+        },
+      };
+    },
+  );
+  expect(await sets.ready()).toEqual({ ok: true });
+  await resuming.promise;
+
+  // A read after Apply must not hold up (or lose) the decision's header.
+  const read = Promise.withResolvers<void>();
+  const readCourse = root.readCourse;
+  const deferred = vi
+    .spyOn(root, "readCourse")
+    .mockImplementationOnce(async (id) => {
+      await read.promise;
+      return readCourse(id);
+    });
+  try {
+    expect(await chat.apply(lastCard(chat.events()).proposalId)).toEqual({
+      ok: true,
+    });
+    resume.resolve();
+    const header = await sent.promise;
+    expect(header).toMatch(/^\[Unit 3 of 3, "Sets"/);
+    expect(header).toContain(PLANNER_APPLIED);
+    expect(header).toContain('2. Maps (id "maps"): Count with maps.');
+  } finally {
+    resume.resolve();
+    read.resolve();
+    deferred.mockRestore();
+    await sets.settled();
+  }
+});
+
+test("an in-flight review cannot restore the unit order from before Apply", async () => {
+  const { tutorBackend, root, units, planning, open } = await setUp({
+    planner: [[amend([LOOPS, { ...MAPS, prerequisites: ["loops"] }, SETS])]],
+    tutor: createScriptedBackend(),
+  });
+  const sets = await open("sets");
+  await root.appendEvidence(COURSE, {
+    ...passed("loop-count"),
+    recordedAt: "2026-11-01T10:00:00.000Z",
+  });
+  const chat = await planning();
+  chat.say("Add maps.");
+  await chat.settled();
+  sets.say("/style");
+  await sets.settled();
+
+  const read = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const readCourse = root.readCourse;
+  vi.spyOn(root, "readCourse")
+    .mockImplementationOnce(readCourse) // Choose the review's thread.
+    .mockImplementationOnce(readCourse) // Open the selected chat.
+    .mockImplementationOnce(async (id) => {
+      const old = await readCourse(id);
+      read.resolve();
+      await release.promise;
+      return old;
+    });
+  const reviewing = units.reviewNow(COURSE);
+  try {
+    expect(
+      await Promise.race([
+        read.promise.then(() => "snapshot"),
+        reviewing.then(() => "review completed"),
+      ]),
+    ).toBe("snapshot");
+    expect(await chat.apply(lastCard(chat.events()).proposalId)).toEqual({
+      ok: true,
+    });
+  } finally {
+    release.resolve();
+  }
+  expect(await reviewing).toEqual({ ok: true, unitId: "sets" });
+  await sets.settled();
+  const header = tutorBackend.received.at(-1)?.text;
+  expect(header).toMatch(/^\[Unit 3 of 3, "Sets"/);
+  expect(header).toContain(PLANNER_APPLIED);
+
+  sets.say("Go on.");
+  await sets.settled();
+  expect(tutorBackend.received.at(-1)?.text).toMatch(/^\[Unit 3 of 3, "Sets"/);
 });
 
 test("a later turn gives the course again once it has changed, and a draft cannot be planned from the course view", async () => {

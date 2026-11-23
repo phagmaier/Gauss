@@ -47,6 +47,7 @@ import {
   PendingIntakeProposal,
   PendingProfileApproval,
   type ShownProposal,
+  type StoredUnit,
   type Unit,
   unitSections,
 } from "../../shared/curriculum.ts";
@@ -270,8 +271,9 @@ export interface DataRoot {
    * writing nothing, if it would drop a unit that has started or breaks the
    * curriculum's rules. The write counts as applied if the curriculum on
    * disk already has these units, including after an error following rename.
+   * Returns the committed units with their plans.
    */
-  changeCurriculum(id: string, units: readonly Unit[]): Promise<void>;
+  changeCurriculum(id: string, units: readonly Unit[]): Promise<StoredUnit[]>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
   appendEvidence(id: string, entry: EvidenceEntry): Promise<void>;
   /** Makes a pending override durable without appending its id twice. Returns the current log. */
@@ -1457,18 +1459,20 @@ export function openDataRoot(options: {
       const file = courseFile(id, "curriculum.json");
       // The state's lock first, as writePosition takes it, so no unit's
       // position or plan can start one between the check and the write.
-      await withFileLock(path, async () => {
+      return withFileLock(path, async () => {
         const stored = await existingCourse(id);
         const state = await recoverCurriculum(
           path,
           await recoverStyle(id, path),
           stored.curriculum,
         );
-        await withCurriculumLock(file, () =>
+        return withCurriculumLock(file, () =>
           withFileLock(courses, async () => {
             const current = (await readCourse(id))?.curriculum;
             const changed = changedCurriculum(id, current, state, units);
-            if (current != null && sameUnits(current.units, units)) return;
+            if (current != null && sameUnits(current.units, units)) {
+              return current.units;
+            }
             // The rename of curriculum.json is the commit, and a change must
             // differ, so a failure rolls forward; no undo record is kept.
             try {
@@ -1482,7 +1486,9 @@ export function openDataRoot(options: {
               ) {
                 throw error;
               }
+              return published.units;
             }
+            return changed.units;
           }),
         );
       });

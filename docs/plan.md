@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.8 Notify a blocked tutor of a planner decision — todo
-
-**Why:** A tutor refused while the planner's proposal waits is not told when that restriction lifts.
-**Do:** Deliver the decision in the refused tutor's next header.
-**Done when:** A scripted tutor refused during planning receives the correct outcome after Apply or Keep and can propose again.
-
 ### K.9 Bound refused unit-planning calls — todo
 
 **Why:** An individual planning turn can keep retrying refused tool calls.
@@ -154,6 +148,10 @@ work for Stage 6. A task that closes a gap deletes it here.
   assessment's end, a dispute's outcome and the answer to the test's
   result card. After a restart the test's "Start learning instead" summary
   says only that a restart came. Decide which must survive.
+- **B:** A restart ends course planning and clears its proposal block,
+  but a resumed tutor session can still remember the refusal. Decide
+  whether to clear that stale instruction or recover an undelivered
+  planner decision.
 - **B:** Nothing stops two servers from opening one data root (on
   different ports): the second's start clears the first's uploads and the
   temporary files of its writes in progress. Decide whether a data root in
@@ -174,8 +172,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   tutor's word on it, a message while its result card waits), appears in
   “What I know” as found “in the discussion”. Decide whether those get
   places of their own.
-- **A (K.8):** A tutor refused while the planner's proposal waits is not
-  told when it is answered.
 - **A (K.9):** No limit on refused `plan_unit` calls within one turn.
 - **C:** The unit planner splits contexts into objectives (“a setting is
   not a skill” is unsettled) and names implementations (“using zip”).

@@ -24,7 +24,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
-import { unitSections } from "../../shared/curriculum.ts";
+import { type StoredUnit, unitSections } from "../../shared/curriculum.ts";
 import {
   type CurriculumChange,
   type CurriculumChangeOutcome,
@@ -267,8 +267,9 @@ export function createCoursePlanning(
       // Block new work without letting open() create a second conversation
       // before the write succeeds.
       status = "applying";
+      let units: StoredUnit[];
       try {
-        await dataRoot.changeCurriculum(courseId, change.units);
+        units = await dataRoot.changeCurriculum(courseId, change.units);
       } catch (error) {
         status = "open";
         if (error instanceof CurriculumChangeRefused) {
@@ -282,8 +283,7 @@ export function createCoursePlanning(
       }
       status = "applied";
       waiting = undefined;
-      desk.answered();
-      desk.applied();
+      desk.answered({ outcome: "applied", units });
       options.backup?.commit(`${courseId}: curriculum changed`);
       log.emit({
         type: "curriculum_change_answered",
@@ -298,7 +298,7 @@ export function createCoursePlanning(
       if (refused !== undefined) return refused;
       waiting = undefined;
       kept = true;
-      desk.answered();
+      desk.answered({ outcome: "kept" });
       log.emit({
         type: "curriculum_change_answered",
         proposalId,

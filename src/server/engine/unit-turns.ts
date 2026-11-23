@@ -1076,6 +1076,10 @@ export function styleNote(
   }
 }
 
+const PLANNER_UNBLOCKED =
+  "It no longer blocks your proposals. You may propose a style note or " +
+  "curriculum change again if appropriate.";
+
 /**
  * The note that tells the tutor how the learner answered its proposed
  * curriculum change (task 5.12), with the units as they now are once one is
@@ -1083,23 +1087,28 @@ export function styleNote(
  * with.
  */
 export function curriculumNote(
-  outcome: "applied" | "kept" | "changed",
+  outcome: "applied" | "kept" | "changed" | "planner-applied" | "planner-kept",
   units: readonly Unit[],
 ): string {
-  const list = `\n<curriculum>\n${unitLines(units).join("\n")}\n</curriculum>\n`;
+  let opening: string;
   switch (outcome) {
     case "applied":
-      return (
-        "The learner applied the curriculum change you proposed. The " +
-        "course's units are now these, in order; they replace the list in " +
-        `your instructions:${list}`
-      );
+      opening = "The learner applied the curriculum change you proposed.";
+      break;
     case "changed":
-      return (
+      opening =
         "The learner applied a change to this course's curriculum, in " +
-        "another unit or from the course view. The course's units are now " +
-        "these, in order; they " +
-        `replace the list in your instructions:${list}`
+        "another unit or from the course view.";
+      break;
+    case "planner-applied":
+      opening =
+        "The learner applied the curriculum change proposed from the course view. " +
+        PLANNER_UNBLOCKED;
+      break;
+    case "planner-kept":
+      return (
+        'The learner chose "Keep the current one" on the curriculum change ' +
+        `proposed from the course view. ${PLANNER_UNBLOCKED}`
       );
     case "kept":
       return (
@@ -1108,6 +1117,11 @@ export function curriculumNote(
         "propose the same change again unless the learner asks for it."
       );
   }
+  return (
+    `${opening} The course's units are now these, in order; they ` +
+    "replace the list in your instructions:\n" +
+    `<curriculum>\n${unitLines(units).join("\n")}\n</curriculum>\n`
+  );
 }
 
 /**
