@@ -174,11 +174,14 @@ describe("a command", () => {
       .catch((error: unknown) => error);
     let temporary: string;
     try {
-      temporary = await vi.waitFor(async () => {
-        const path = await readFile(ready, "utf8");
-        expect(path).not.toBe("");
-        return path;
-      }, 2000);
+      temporary = await vi.waitFor(
+        async () => {
+          const path = await readFile(ready, "utf8");
+          expect(path).not.toBe("");
+          return path;
+        },
+        { timeout: 5_000 },
+      );
     } finally {
       controller.abort(reason);
       expect(await result).toBe(reason);

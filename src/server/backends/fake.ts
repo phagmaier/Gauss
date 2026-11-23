@@ -48,8 +48,11 @@ export type FakeStep =
       /** A Write's content: given, the file is written, once the engine allows it. */
       content?: string;
       run_in_background?: boolean;
-      /** Holds a successful mutation open, to exercise concurrent tools. */
-      until?: Promise<void>;
+      /**
+       * Called after a mutation is admitted and logged, so tests can observe
+       * its start. The returned promise holds the mutation open.
+       */
+      until?: () => Promise<void>;
     }
   /** WebSearch, which reports the pages given (task 4.11). */
   | { search: string; results: WebResult[] }
@@ -206,7 +209,7 @@ export function createFakeBackend(
             if (result.status === "done" && step.until !== undefined) {
               const stopped = Promise.withResolvers<void>();
               release = stopped.resolve;
-              await Promise.race([step.until, stopped.promise]);
+              await Promise.race([step.until(), stopped.promise]);
               release = undefined;
             }
             if (

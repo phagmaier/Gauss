@@ -183,6 +183,9 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
 - **Vitest**: tests sit beside the code; expected results are worked out
   by hand. Engine flows run on the fake backend; idle closing on
   `engine/fake-timer.ts`; choice order is fixed with `order: givenOrder`.
+  Wait for engine work through its `settled()` or a fake reply the test
+  releases (`{ later }`), not `expect.poll` or `vi.waitFor`, whose 1-second
+  default fails under load.
   Tests of the sandbox, math and code questions, source conversion and
   the upload route run real commands, so they fail where the sandbox
   cannot run; the intake's sources and `view_page` use

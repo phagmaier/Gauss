@@ -4277,12 +4277,21 @@ test("an unopened persisted question locks every tutor in the course after resta
 });
 
 test("a running command in another unit prevents posting a question until it finishes; the question then blocks late mutations", async () => {
+  const started = Promise.withResolvers<void>();
   const command = Promise.withResolvers<void>();
   const setup = setUp(
     [
       TEACH,
       TEACH,
-      [{ builtIn: "Bash", until: command.promise }],
+      [
+        {
+          builtIn: "Bash",
+          until: () => {
+            started.resolve();
+            return command.promise;
+          },
+        },
+      ],
       ask(Q_QUOTIENT),
       ask(Q_QUOTIENT),
       [{ builtIn: "Write", path: "late.py" }],
@@ -4295,9 +4304,8 @@ test("a running command in another unit prevents posting a question until it fin
     const first = await open(setup);
     const other = await open(setup, "rules");
     other.say("Run the calculation.");
-    await vi.waitFor(() =>
-      expect(setup.backend.calls.at(-1)?.name).toBe("Bash"),
-    );
+    await Promise.race([started.promise, other.settled()]);
+    expect(setup.backend.calls.at(-1)?.name).toBe("Bash");
     await toCheck(first);
     expect(setup.backend.calls.at(-1)?.result).toMatchObject({
       status: "refused",

@@ -108,7 +108,7 @@ function choiceAnswer(
   };
 }
 
-function setUp(script: FakeTurn[], rulings: FakeReply[]) {
+function setUp(script: FakeTurn[], rulings: FakeReply[] | (() => FakeReply)) {
   const backend = createFakeBackend(script, []);
   const judgeBackend = createFakeBackend([], rulings);
   const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
@@ -306,18 +306,33 @@ test("an overturned miss with a corrected key keeps the first grade, passes the 
 test("a second dispute of one answer is refused, and so is one sent while the first is being decided", async () => {
   await makeCourse();
   await reload().appendEvidence(COURSE, choiceAnswer("q1", "quotient", "A"));
-  let decide: (reply: FakeReply) => void = () => {};
-  const setup = setUp([], [{ later: new Promise((r) => (decide = r)) }]);
+  const asked = Promise.withResolvers<void>();
+  const decision = Promise.withResolvers<FakeReply>();
+  const reply = vi
+    .fn<() => FakeReply>(() => ({
+      fail: "Unexpected additional judge request.",
+    }))
+    .mockImplementationOnce(() => {
+      asked.resolve();
+      return { later: decision.promise };
+    });
+  const setup = setUp([], reply);
 
   const first = setup.disputes.raise(COURSE, "q1", "B is right.");
-  await vi.waitFor(() => expect(setup.judgeBackend.oneShots).toHaveLength(1));
-  expect(await setup.disputes.raise(COURSE, "q1", "Again.")).toEqual({
-    ok: false,
-    status: 409,
-    error: "A dispute of this grade is being decided.",
-  });
-  decide(ruling("incorrect"));
-  expect((await first).ok).toBe(true);
+  let outcome: Awaited<typeof first>;
+  try {
+    await Promise.race([asked.promise, first]);
+    expect(setup.judgeBackend.oneShots).toHaveLength(1);
+    expect(await setup.disputes.raise(COURSE, "q1", "Again.")).toEqual({
+      ok: false,
+      status: 409,
+      error: "A dispute of this grade is being decided.",
+    });
+  } finally {
+    decision.resolve(ruling("incorrect"));
+    outcome = await first;
+  }
+  expect(outcome.ok).toBe(true);
   expect(await setup.disputes.raise(COURSE, "q1", "Again.")).toEqual({
     ok: false,
     status: 409,

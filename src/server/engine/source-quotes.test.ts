@@ -900,7 +900,8 @@ test("the notes writer gets the unit's sections as the source prints them and ea
   });
   try {
     expect((await notes.start(id, "preface", "", undefined)).ok).toBe(true);
-    await expect.poll(() => backend.oneShots.length).toBe(1);
+    await notes.settled();
+    expect(backend.oneShots.length).toBe(1);
     const prompt = backend.oneShots[0]?.prompt ?? "";
     const sections = /<sections>\n([\s\S]*?)\n<\/sections>/.exec(prompt)?.[1];
     // Both parts under the heading the book prints, at their printed pages;
