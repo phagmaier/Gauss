@@ -13,9 +13,10 @@ import { defineTool, type TeachingTool } from "./tool.ts";
 
 /** Where artifacts are kept and shown. The engine provides it. */
 export interface ArtifactShelf {
-  /** Stores the artifact and shows it beside the conversation, or says why not. */
+  /** Stores the artifact and shows it beside the conversation, or says why not; a stopped turn shows nothing. */
   show(
     artifact: ArtifactInput,
+    signal?: AbortSignal,
   ): Promise<{ number: number; file: string } | { refused: string }>;
 }
 
@@ -30,10 +31,10 @@ export function showArtifactTool(shelf: ArtifactShelf): TeachingTool {
       "whole document, self-contained. Refused while a question is open. " +
       "Your turn goes on after it.",
     input: ArtifactInput,
-    async run(artifact) {
+    async run(artifact, signal) {
       const problem = artifactProblem(artifact.html);
       if (problem !== undefined) return { status: "refused", text: problem };
-      const shown = await shelf.show(artifact);
+      const shown = await shelf.show(artifact, signal);
       if ("refused" in shown) return { status: "refused", text: shown.refused };
       return {
         status: "done",

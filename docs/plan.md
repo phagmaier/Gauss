@@ -64,15 +64,9 @@ task.
 
 ## Known-gap fixes
 
-### K.13 Stop an aid from opening after cancellation — todo
-
-**Why:** A Stop while an aid is being saved can still open it.
-**Do:** Honor the turn cancellation when the write finishes before presenting the aid.
-**Done when:** A controlled write that resolves after Stop opens no aid; a normal write still opens it.
-
 ### K.21 Remove the remaining 1-second waits from tests — todo
 
-**Why:** Some tests still wait on Vitest's 1-second `expect.poll` or `vi.waitFor` deadline, which load can exceed as the K.19 notes test did; none has failed yet, so it follows K.13. Move it first if one fails a check.
+**Why:** Some tests still wait on Vitest's 1-second `expect.poll` or `vi.waitFor` deadline, which load can exceed as the K.19 notes test did; none has failed yet.
 **Do:** In `engine/source-quotes.test.ts`, await the notes write (`Notes.settled()`); in `engine/disputes.test.ts` and `engine/unit-chat.test.ts`, await the request or tool call reaching the fake rather than poll for it; give `engine/sandbox.test.ts`'s wait on a real process an explicit limit.
 **Done when:** A controlled delay past one second fails each current wait, and the revised tests pass with it, keeping their assertions.
 
@@ -210,7 +204,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 
 - **B:** Opening a long history renders the whole thread (about 3 s at
   1,200 formulas). Decide how earlier sessions should fold.
-- **A (K.13):** Stop during an artifact write can still open the aid.
 - **A (K.15):** The math field's Enter can submit during IME composition.
 - **B:** After sending a message, keys go to the message box, not the
   pinned card. Decide where focus should go after sending.

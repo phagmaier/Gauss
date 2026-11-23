@@ -3026,8 +3026,10 @@ function createUnitChat(
   // Not while a question of the unit is open, answered or not: an aid could
   // help with the answer, and the help judge reads only the tutor's text.
   const artifactShelf: ArtifactShelf = {
-    show: (artifact) =>
+    show: (artifact, signal) =>
       exclusive(async () => {
+        // A turn stopped meanwhile shows nothing more.
+        signal?.throwIfAborted();
         const r = running;
         if (r === undefined) return { refused: "The unit is not open." };
         if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
@@ -3041,6 +3043,9 @@ function createUnitChat(
           };
         }
         const stored = await dataRoot.writeArtifact(courseId, artifact);
+        // A Stop during the write: the file stays, referred to by nothing,
+        // and only moves the next aid's number on.
+        signal?.throwIfAborted();
         log.emit({
           type: "artifact",
           file: stored.file,

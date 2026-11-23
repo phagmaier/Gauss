@@ -6,7 +6,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CurriculumProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { Plan } from "../../shared/plan.ts";
@@ -226,6 +226,38 @@ test("while a question is open nothing is shown, with the reason; once it is gra
     "Right.",
     { file: "1-why-it-is-right.html", title: "Why it is right" },
   ]);
+});
+
+test("an aid whose write ends after a Stop is not shown, and the next one is", async () => {
+  const { root, chat } = await start([
+    [{ text: "Teaching." }],
+    [show("Stopped"), { text: "Not reached." }],
+    [show("Shown"), { text: "Here." }],
+  ]);
+  const writing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const writeArtifact = root.writeArtifact;
+  vi.spyOn(root, "writeArtifact").mockImplementationOnce(
+    async (id, artifact) => {
+      writing.resolve();
+      await release.promise;
+      return writeArtifact(id, artifact);
+    },
+  );
+
+  expect(chat.say("Can you draw it?")).toEqual({ ok: true });
+  await writing.promise;
+  await chat.interrupt();
+  release.resolve();
+  await chat.settled();
+  expect(said(chat.events())).toEqual(["Teaching."]);
+
+  expect(chat.say("Draw it again?")).toEqual({ ok: true });
+  await chat.settled();
+  const shown = chat.events().filter((event) => event.type === "artifact");
+  expect(shown).toMatchObject([{ title: "Shown" }]);
+  expect(await root.readArtifact(COURSE, shown[0]?.file ?? "")).toBe(GRAPH);
+  expect(said(chat.events()).at(-1)).toBe("Here.");
 });
 
 test("a finished unit can still reply but cannot store a new artifact", async () => {
