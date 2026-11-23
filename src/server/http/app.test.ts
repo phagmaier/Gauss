@@ -1388,13 +1388,12 @@ test("a finished unit writes only on request, retries a failure and replaces its
       state: "writing",
       instructions,
     });
-    await expect
-      .poll(async () => (await readStatus()).attempt)
-      .toEqual({
-        state: "failed",
-        instructions,
-        error: "The reply was cut off.",
-      });
+    await setup.notes.settled();
+    expect((await readStatus()).attempt).toEqual({
+      state: "failed",
+      instructions,
+      error: "The reply was cut off.",
+    });
     expect((await setup.app.request(`${notes}/html`)).status).toBe(404);
     const request = setup.notesBackend.oneShots[0];
     for (const sent of [
@@ -1420,9 +1419,8 @@ test("a finished unit writes only on request, retries a failure and replaces its
     const turns = setup.backend.received.length;
     expect((await post(setup.app, notes, { instructions })).status).toBe(202);
     const path = join(dir, "courses", COURSE, "notes", "vectors.html");
-    await expect
-      .poll(async () => (await readStatus()).saved)
-      .toMatchObject({ instructions, path });
+    await setup.notes.settled();
+    expect((await readStatus()).saved).toMatchObject({ instructions, path });
     expect(setup.notesBackend.oneShots[1]?.prompt).toBe(request?.prompt);
     expect(setup.backend.received).toHaveLength(turns);
     const saved = await readFile(path, "utf8");
@@ -1472,9 +1470,8 @@ test("a finished unit writes only on request, retries a failure and replaces its
         })
       ).status,
     ).toBe(202);
-    await expect
-      .poll(async () => (await readStatus()).saved?.instructions)
-      .toBe("Make it shorter.");
+    await setup.notes.settled();
+    expect((await readStatus()).saved?.instructions).toBe("Make it shorter.");
     expect(
       (
         await post(setup.app, notes, {
@@ -1560,12 +1557,10 @@ test("a unit tested out of whole can write notes without instructions or another
     expect(setup.notesBackend.oneShots).toEqual([]);
     const turns = setup.backend.received.length;
     expect((await post(setup.app, `${UNIT}/notes`, {})).status).toBe(202);
-    await expect
-      .poll(
-        async () =>
-          (await setup.dataRoot.readNotes(COURSE, "vectors"))?.instructions,
-      )
-      .toBe("");
+    await setup.notes.settled();
+    expect(
+      (await setup.dataRoot.readNotes(COURSE, "vectors"))?.instructions,
+    ).toBe("");
     const request = setup.notesBackend.oneShots[0]?.prompt;
     expect(request).toContain('"testedOut": true');
     expect(request).toContain(second.prompt);
@@ -1627,7 +1622,8 @@ test("the notes writer excludes another unit's detour discussion after a restart
   ]);
   try {
     expect((await post(setup.app, `${UNIT}/notes`, {})).status).toBe(202);
-    await expect.poll(() => setup.notesBackend.oneShots.length).toBe(1);
+    await setup.notes.settled();
+    expect(setup.notesBackend.oneShots.length).toBe(1);
     const prompt = setup.notesBackend.oneShots[0]?.prompt;
     expect(prompt).toContain("The basis images are the columns.");
     expect(prompt).not.toContain("Which eigenvalue belongs to this vector?");

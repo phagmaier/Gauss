@@ -64,12 +64,6 @@ task.
 
 ## Known-gap fixes
 
-### K.19 Make the notes HTTP tests independent of polling deadlines — todo
-
-**Why:** Under load those tests can time out while the expected work is still settling, failing the standalone check every other task needs; so it comes first.
-**Do:** Replace wall-clock polling of notes completion with deterministic synchronization.
-**Done when:** Controlled deferred completions exercise the original deadline dependency and the revised tests verify the same responses and persisted notes without polling.
-
 ### K.13 Stop an aid from opening after cancellation — todo
 
 **Why:** A Stop while an aid is being saved can still open it.
@@ -157,9 +151,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **C:** The unit planner splits contexts into objectives (“a setting is
   not a skill” is unsettled) and names implementations (“using zip”).
 - **A (K.18):** The fake backend's `hasSession` ignores the working folder.
-- **A (K.19):** Under load (a full run beside other test runs), the notes
-  tests in `http/app.test.ts` can miss their `expect.poll` deadline; they
-  pass alone.
 
 **Tutor, grading and judging**
 

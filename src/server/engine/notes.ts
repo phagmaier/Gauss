@@ -48,6 +48,13 @@ export interface Notes extends CourseHolder {
     instructions: string,
     expectedRevision: string | undefined,
   ): Promise<Result>;
+  /**
+   * Resolves once every write started so far has ended, its attempt
+   * cleared or marked failed. For tests: the route answers before the
+   * write ends, and that end comes after the write's last outside call,
+   * so nothing else marks it; polling for it missed its deadline under load.
+   */
+  settled(): Promise<void>;
   close(): Promise<void>;
 }
 /** One explicit write at a time per unit. The request outlives the page that started it. */
@@ -217,6 +224,9 @@ export function createNotes(options: NotesOptions): Notes {
       for (const key of [...attempts.keys()]) {
         if (key.startsWith(`${courseId}/`)) attempts.delete(key);
       }
+    },
+    async settled() {
+      await Promise.all(jobs);
     },
     async close() {
       stop.abort();
