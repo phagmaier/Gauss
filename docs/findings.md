@@ -203,11 +203,15 @@ counts trial runs.
   kept the result too (direct 3/3), with the `<turn_aborted>` message.
   A second tool call in the same response, after the one that ends the
   turn, is untried.
+  Codex 0.171 (source: `core/src/session/turn.rs`) records tool outputs
+  after draining the response, before its token-usage update. An item
+  after `dynamicToolCall` completion alone is not a new response.
 - **Stop mid-reply**: `turn/interrupt` ends the turn `interrupted`, the
   reply's message gets no `item/completed`, and its text is not in the
   thread; the next turn's model knows only that it was interrupted (3/3).
-  Every completed message's text equals its joined
-  `item/agentMessage/delta`s.
+  Every completed message in the trial had matching deltas. Codex can
+  also send a complete message as an item without deltas (source:
+  `core/src/stream_events_utils.rs`).
 - **A declined approval tells the model only that it was rejected**: a
   file change gets `patch rejected by user`, a command `exec_command
   failed: CreateProcess { message: "Rejected(\"rejected by user\")" }`

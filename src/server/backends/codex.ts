@@ -1,26 +1,29 @@
-// The model and effort a Codex session runs on, the live-check pin, and
-// whether a Codex course can be made here (docs/findings.md, "Codex").
+// Codex's pinned app-server, the live-check pin and the login check (docs/findings.md, "Codex").
 
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { createInterface } from "node:readline";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
+import {
+  type BackendEvent,
+  type EngineTurn,
+  type SessionBackend,
+  SessionNotFound,
+  type TutorSession,
+} from "./backend.ts";
+import { CodexRpcError, messageOf, openCodexAppServer } from "./codex-rpc.ts";
+import { runCodexTurn } from "./codex-turn.ts";
 
 export interface CodexBackendOptions {
-  /** The model, such as "gpt-6.1-terra". Left out, the login's default. */
+  /** Executable on the PATH by default; tests supply a scripted peer. */
+  command?: string;
+  /** Gauss's isolated Codex home by default. */
+  home?: string;
   model?: string;
-  /**
-   * The reasoning effort, such as "medium". Left out, the model's default.
-   * A resume can fall back to the effort the thread saved, or to none, so
-   * a caller gives both on every `turn/start` (docs/findings.md, "Codex").
-   */
+  /** A caller cannot change the course's medium effort or standard tier. */
   effort?: string;
-  /**
-   * The service tier; "default" is standard speed. Left out, the model's
-   * catalog default, which for gpt-6.1-terra is the faster "priority".
-   */
   serviceTier?: string;
 }
 
@@ -31,17 +34,16 @@ export const CODEX_LIVE_CHECK_OPTIONS = {
   serviceTier: "default",
 } as const satisfies CodexBackendOptions;
 
-/**
- * The model, effort and tier Codex runs on: under the live-check launcher
- * always the pinned ones, whatever the caller asks for, so that a trial or
- * an older harness cannot run another.
- */
-export function codexOptions(
-  requested: CodexBackendOptions = {},
-): CodexBackendOptions {
-  return process.env.GAUSS_LIVE_CHECK === "1"
-    ? CODEX_LIVE_CHECK_OPTIONS
-    : requested;
+/** A live check also pins the model, bypassing every override. */
+export function codexOptions(requested: CodexBackendOptions = {}) {
+  if (process.env.GAUSS_LIVE_CHECK === "1") return CODEX_LIVE_CHECK_OPTIONS;
+  return {
+    ...CODEX_LIVE_CHECK_OPTIONS,
+    model:
+      process.env.GAUSS_CODEX_MODEL ??
+      requested.model ??
+      CODEX_LIVE_CHECK_OPTIONS.model,
+  };
 }
 
 /**
@@ -69,6 +71,237 @@ export function codexEnvironment(
     ([name]) => !name.startsWith("OPENAI_") && !name.startsWith("CODEX_"),
   );
   return { ...Object.fromEntries(kept), CODEX_HOME: home };
+}
+
+const NAMESPACE = "gauss";
+const PROFILE = "gauss";
+
+// Leave out Codex's optional prompts, web search and autonomous features
+// (docs/findings.md, "Codex"). Direct calls return results and images to
+// the model itself, not to a script that would have to forward them.
+const APP_CONFIG = [
+  "features.multi_agent=false",
+  "features.multi_agent_v2=false",
+  "agents.enabled=false",
+  "skills.bundled.enabled=false",
+  "skills.include_instructions=false",
+  "features.skip_host_skill_discovery=true",
+  "tools.experimental_request_user_input.enabled=false",
+  "include_collaboration_mode_instructions=false",
+  "include_apps_instructions=false",
+  "include_permissions_instructions=false",
+  "features.apps=false",
+  "features.plugins=false",
+  "features.memories=false",
+  "features.image_generation=false",
+  "features.view_image=false",
+  "features.sleep_tool=false",
+  "features.hooks=false",
+  "features.shell_snapshot=false",
+  "allow_login_shell=false",
+  'web_search="disabled"',
+  "project_doc_max_bytes=0",
+  "suppress_unstable_features_warning=true",
+  "features.goals=false",
+  `features.code_mode.direct_only_tool_namespaces=["${NAMESPACE}"]`,
+  "thread_unload_delay_secs=0",
+].flatMap((setting) => ["-c", setting]);
+
+function isMissingThread(error: unknown): boolean {
+  return (
+    error instanceof CodexRpcError &&
+    error.code === -32600 &&
+    /^(no rollout found for thread id|invalid session id:|thread not loaded:)/i.test(
+      error.message,
+    )
+  );
+}
+
+type ThreadResponse = { thread: { id: string; cwd: string } };
+
+export function createCodexBackend(
+  options: CodexBackendOptions = {},
+): SessionBackend {
+  const { command = "codex", home = GAUSS_CODEX_HOME } = options;
+  const model = codexOptions(options);
+  const open = () =>
+    openCodexAppServer({
+      command,
+      home,
+      env: codexEnvironment(home),
+      config: APP_CONFIG,
+    });
+  const profile = {
+    approvalPolicy: "never",
+    permissions: PROFILE,
+    config: {
+      // ChatGPT workspace routing rebuilds the config without the thread's
+      // permissions choice, so the named profile also needs to be default.
+      default_permissions: PROFILE,
+      permissions: {
+        [PROFILE]: {
+          filesystem: { ":minimal": "read" },
+          network: { enabled: false },
+        },
+      },
+      model_reasoning_effort: model.effort,
+    },
+  };
+  return {
+    async startSession(session): Promise<TutorSession> {
+      const { cwd, resumeId, title, systemPrompt } = session;
+      const tools = new Map(session.tools.map((tool) => [tool.name, tool]));
+      const app = await open();
+      let threadId: string;
+      try {
+        // No workspace tools are bound here. Even for a tutor, Codex's
+        // own sandbox has no writable paths, workspace reads or network.
+        const place = {
+          ...profile,
+          model: model.model,
+          serviceTier: model.serviceTier,
+          cwd: cwd ?? home,
+          baseInstructions: systemPrompt,
+        };
+        const { thread } =
+          resumeId === undefined
+            ? await app.request<ThreadResponse>("thread/start", {
+                ...place,
+                ephemeral: cwd === undefined,
+                dynamicTools:
+                  tools.size === 0
+                    ? []
+                    : [
+                        {
+                          type: "namespace",
+                          name: NAMESPACE,
+                          description: "Gauss teaching tools.",
+                          tools: Array.from(tools.values(), (tool) => ({
+                            type: "function",
+                            name: tool.name,
+                            description: tool.description,
+                            inputSchema: z.toJSONSchema(
+                              z.object(tool.inputShape),
+                              { io: "input" },
+                            ),
+                          })),
+                        },
+                      ],
+              })
+            : await app.request<ThreadResponse>("thread/resume", {
+                ...place,
+                threadId: resumeId,
+                excludeTurns: true,
+              });
+        threadId = thread.id;
+        // Naming a kept thread persists it even if the first turn never runs.
+        if (
+          resumeId === undefined &&
+          cwd !== undefined &&
+          title !== undefined
+        ) {
+          await app.request("thread/name/set", { threadId, name: title });
+        }
+      } catch (error) {
+        await app.close();
+        if (resumeId !== undefined && isMissingThread(error))
+          throw new SessionNotFound(resumeId);
+        throw error;
+      }
+
+      let active: ReturnType<typeof runCodexTurn> | undefined;
+      let closing: Promise<void> | undefined;
+      app.listen(
+        (message) => {
+          if (active !== undefined) active.dispatch(message);
+          else if (message.id !== undefined) app.unsupported(message);
+        },
+        (error) => active?.failed(error),
+      );
+
+      return {
+        backendSessionId: threadId,
+        async *send(
+          turn: EngineTurn,
+          signal?: AbortSignal,
+        ): AsyncGenerator<BackendEvent> {
+          const failure =
+            app.failure?.message ??
+            (closing !== undefined
+              ? "The Codex session is closed."
+              : active !== undefined
+                ? "A Codex turn is already running."
+                : undefined);
+          if (failure !== undefined) {
+            yield { type: "turn_end", outcome: "error", error: failure };
+            return;
+          }
+          if (signal?.aborted === true) {
+            yield { type: "turn_end", outcome: "interrupted" };
+            return;
+          }
+          const running = runCodexTurn({
+            app,
+            threadId,
+            model,
+            namespace: NAMESPACE,
+            tools,
+            turn,
+            signal,
+          });
+          active = running;
+          try {
+            for await (const event of running.events()) {
+              if (event.type === "turn_end") active = undefined;
+              yield event;
+            }
+          } finally {
+            // An abandoned stream must not let a later turn steer it.
+            if (active === running) {
+              await close();
+              active = undefined;
+            }
+          }
+        },
+        async interrupt() {
+          await active?.stop();
+        },
+        close,
+      };
+
+      function close(): Promise<void> {
+        closing ??= (async () => {
+          try {
+            await active?.stop();
+            if (app.failure === undefined) {
+              // A loaded thread ignores new resume instructions. Unsubscribe
+              // with zero unload delay, then finish closing this session's peer.
+              await app.request("thread/unsubscribe", { threadId });
+            }
+          } finally {
+            await app.close();
+          }
+        })();
+        return closing;
+      }
+    },
+
+    async hasSession(id, cwd) {
+      const app = await open();
+      try {
+        const { thread } = await app.request<ThreadResponse>("thread/read", {
+          threadId: id,
+          includeTurns: false,
+        });
+        return resolve(thread.cwd) === resolve(cwd);
+      } catch (error) {
+        if (isMissingThread(error)) return false;
+        throw error;
+      } finally {
+        await app.close();
+      }
+    },
+  };
 }
 
 /** The Codex CLI version `mise.toml` pins, whose app-server protocol Gauss speaks. */
@@ -113,110 +346,61 @@ export async function codexUnavailable(
   } catch (error) {
     return (
       `Codex could not be run (${messageOf(error)}). Gauss needs the ` +
-      `Codex CLI ${pinned}, which \`mise install\` in Gauss's folder installs.`
+      `Codex CLI ${pinned}, which \`mise install\` in Gauss's folder installs. ` +
+      "If Gauss was not started through mise, restart it through mise. " +
+      signInInstructions(home)
     );
   }
   if (said.split(/\s+/).at(-1) !== pinned) {
     return (
       `Gauss needs the Codex CLI ${pinned}, but \`codex --version\` says ` +
-      `"${said}". Start Gauss through mise, which runs the version it pins.`
+      `"${said}". Restart Gauss through mise, which runs the version it pins. ` +
+      signInInstructions(home)
     );
   }
   // Codex refuses a home that does not exist, with an error of its own.
-  const isFolder = await stat(home).then(
-    (s) => s.isDirectory(),
-    () => false,
-  );
-  if (!isFolder) return notSignedIn(home);
+  const folder = `Gauss's Codex home, ${shownHome(home)},`;
   try {
-    return (await readAccount(command, home, env, timeoutMs)) === null
-      ? notSignedIn(home)
-      : undefined;
+    if (!(await stat(home)).isDirectory()) {
+      return `${folder} is not a folder. Move the existing file aside first. ${signInInstructions(home)}`;
+    }
   } catch (error) {
-    return `Codex did not say whether it is signed in: ${messageOf(error)}`;
+    const detail =
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+        ? "does not exist"
+        : `could not be opened (${messageOf(error)})`;
+    return `${folder} ${detail}. ${signInInstructions(home)}`;
+  }
+  try {
+    const app = await openCodexAppServer({ command, home, env, timeoutMs });
+    try {
+      const { account } = await app.request<{ account: unknown }>(
+        "account/read",
+        {
+          refreshToken: false,
+        },
+      );
+      return account === null || account === undefined
+        ? `${folder} is not signed in. ${signInInstructions(home)}`
+        : undefined;
+    } finally {
+      await app.close();
+    }
+  } catch (error) {
+    return `Codex did not say whether it is signed in: ${messageOf(error)} ${signInInstructions(home)}`;
   }
 }
 
-function notSignedIn(home: string): string {
-  const shown = home.startsWith(`${homedir()}/`)
+function shownHome(home: string): string {
+  return home.startsWith(`${homedir()}/`)
     ? `~${home.slice(homedir().length)}`
     : home;
+}
+
+function signInInstructions(home: string): string {
+  const shown = shownHome(home);
   return (
-    `Gauss's Codex home, ${shown}, is not signed in. Sign in once, from ` +
-    `Gauss's folder: \`mkdir -p -m 700 ${shown}\`, then ` +
+    `Sign in once, from Gauss's folder: \`mkdir -p -m 700 ${shown}\`, then ` +
     `\`CODEX_HOME=${shown} mise exec -- codex login\`.`
   );
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/** The account `account/read` reports through `codex app-server`, null when signed out. */
-function readAccount(
-  command: string,
-  home: string,
-  env: NodeJS.ProcessEnv,
-  timeoutMs: number,
-): Promise<unknown> {
-  const { promise, resolve, reject } = Promise.withResolvers<unknown>();
-  // In the home, so that no project's files are near.
-  const child = spawn(command, ["app-server"], { cwd: home, env });
-  let stderr = "";
-  child.stderr.setEncoding("utf8");
-  child.stderr.on("data", (chunk: string) => {
-    stderr = (stderr + chunk).slice(-500);
-  });
-  child.on("error", reject);
-  child.on("close", (code) =>
-    reject(
-      new Error(
-        `codex app-server ended (exit ${code}) before answering` +
-          (stderr.trim() === "" ? "." : `: ${stderr.trim()}`),
-      ),
-    ),
-  );
-  // Writing to a process that has ended is reported by "close" above.
-  child.stdin.on("error", () => {});
-  const timer = setTimeout(
-    () =>
-      reject(new Error(`no answer within ${Math.round(timeoutMs / 1000)} s.`)),
-    timeoutMs,
-  );
-  createInterface({ input: child.stdout }).on("line", (line) => {
-    let message: {
-      id?: unknown;
-      result?: { account?: unknown };
-      error?: { message?: string };
-    };
-    try {
-      message = JSON.parse(line);
-    } catch {
-      return;
-    }
-    if (message.id !== 2) return;
-    if (message.error !== undefined) {
-      reject(new Error(message.error.message ?? "account/read failed."));
-    } else {
-      resolve(message.result?.account ?? null);
-    }
-  });
-  for (const message of [
-    {
-      id: 1,
-      method: "initialize",
-      params: {
-        clientInfo: { name: "gauss", title: null, version: "0" },
-        capabilities: null,
-      },
-    },
-    { method: "initialized" },
-    { id: 2, method: "account/read", params: { refreshToken: false } },
-  ]) {
-    child.stdin.write(`${JSON.stringify(message)}\n`);
-  }
-  return promise.finally(() => {
-    clearTimeout(timer);
-    child.kill();
-  });
 }

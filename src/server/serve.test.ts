@@ -11,7 +11,7 @@ import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import type { BackendName } from "../shared/course.ts";
 import type { CurriculumProposal } from "../shared/curriculum.ts";
 import type { SessionBackends, TutorBackend } from "./backends/backend.ts";
-import { createScriptedBackend } from "./backends/scripted.ts";
+import { createScriptedBackend, scriptedPlan } from "./backends/scripted.ts";
 import type { Sandbox } from "./engine/sandbox.ts";
 import type { UnitChat } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
@@ -91,6 +91,7 @@ function wire(
   dataRoot: DataRoot,
   claude: TutorBackend,
   sessionBackends: SessionBackends,
+  codexUnavailable: () => Promise<string | undefined> = async () => undefined,
 ) {
   return wireEngine({
     sessionBackends: { ...sessionBackends, claude },
@@ -99,7 +100,7 @@ function wire(
     disputeBackend: claude,
     handoffBackend: claude,
     notesBackend: claude,
-    codexUnavailable: () => Promise.resolve(undefined),
+    codexUnavailable,
     dataRoot,
     dataRootPath: dir,
     sandbox: NO_SANDBOX,
@@ -286,7 +287,9 @@ test("a unit of a course whose backend the server lacks fails to open with the r
   const claude = recorded(claudeCalls);
   const dataRoot = openDataRoot({ path: dir });
   const courseId = await makeCourse(dataRoot, "codex");
-  const engine = await wire(dataRoot, claude, {});
+  const engine = await wire(dataRoot, claude, {}, async () => {
+    throw new Error("No availability check is needed without a backend.");
+  });
 
   const chat = await opened(engine, courseId);
   const reason = "This course runs on Codex, which this server cannot run.";
@@ -306,4 +309,110 @@ test("a unit of a course whose backend the server lacks fails to open with the r
   });
   expect(claudeCalls).toEqual([]);
   await close(engine);
+});
+
+test.each(["unplanned", "planned"] as const)(
+  "a Codex course's %s unit can be opened after signing in without restarting",
+  async (kind) => {
+    const claudeCalls: string[] = [];
+    const codexCalls: string[] = [];
+    const { startSession, hasSession } = recorded(codexCalls);
+    const dataRoot = openDataRoot({ path: dir });
+    const courseId = await makeCourse(dataRoot, "codex");
+    if (kind === "planned") {
+      await dataRoot.storePlan(courseId, "limits", scriptedPlan("limits"));
+    }
+    const reason =
+      "Gauss's Codex home is not signed in.\n" +
+      "Run `CODEX_HOME=~/.local/state/gauss/codex mise exec -- codex login`.";
+    let unavailable: string | undefined = reason;
+    const engine = await wire(
+      dataRoot,
+      recorded(claudeCalls),
+      { codex: { startSession, hasSession } },
+      async () => unavailable,
+    );
+
+    expect(await engine.units.open(courseId, "limits")).toEqual({
+      ok: false,
+      status: 409,
+      error: `This course runs on Codex. ${reason} After signing in, open the unit again.`,
+    });
+    expect(engine.units.get(courseId, "limits")).toBeUndefined();
+    expect(codexCalls).toEqual([]);
+    expect(claudeCalls).toEqual([]);
+
+    unavailable = undefined;
+    const reopened = await opened(engine, courseId);
+    expect(reopened.events()).toContainEqual(
+      expect.objectContaining({ type: "unit_plan" }),
+    );
+    expect(reopened.events()).toContainEqual(
+      expect.objectContaining({ type: "phase", phase: "discuss" }),
+    );
+    expect(codexCalls).toEqual(
+      kind === "planned"
+        ? ["start tutor"]
+        : ["start unit-planner", "start tutor"],
+    );
+
+    unavailable = reason;
+    const refusedReopen = await engine.units.open(courseId, "limits");
+    expect(refusedReopen).toMatchObject({
+      ok: false,
+      status: 409,
+      error: expect.stringContaining(reason),
+    });
+    unavailable = undefined;
+    expect(await opened(engine, courseId)).toBe(reopened);
+    expect(claudeCalls).toEqual([]);
+    await close(engine);
+  },
+);
+
+test("Review now reports why a Codex unit cannot open", async () => {
+  const dataRoot = openDataRoot({ path: dir });
+  const courseId = await makeCourse(dataRoot, "codex");
+  const plan = scriptedPlan("limits");
+  await dataRoot.storePlan(courseId, "limits", plan);
+  for (const { id: objective } of plan.objectives) {
+    await dataRoot.appendEvidence(courseId, {
+      kind: "answer",
+      recordedAt: "2020-01-01T00:00:00.000Z",
+      objective,
+      question: {
+        kind: "choice",
+        prompt: "What is two plus two?",
+        choices: ["Four", "Five"],
+        answer: "A",
+      },
+      answer: {
+        kind: "choice",
+        questionId: objective,
+        choice: "A",
+        confidence: "90",
+      },
+      assisted: false,
+      verdict: "correct",
+    });
+  }
+  const reason =
+    "Sign in with `CODEX_HOME=~/.local/state/gauss/codex mise exec -- codex login`.";
+  const calls: string[] = [];
+  const engine = await wire(
+    dataRoot,
+    recorded(calls),
+    { codex: recorded(calls) },
+    async () => reason,
+  );
+  try {
+    expect(await engine.units.reviewNow(courseId)).toEqual({
+      ok: false,
+      status: 409,
+      error: `This course runs on Codex. ${reason} After signing in, open the unit again.`,
+    });
+    expect(calls).toEqual([]);
+  } finally {
+    await close(engine);
+  }
 });

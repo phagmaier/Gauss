@@ -357,6 +357,10 @@ what is due, and on-demand self-test.
   tools, not Codex's, so that the engine can refuse each one with its
   reason and no command can be granted wider access (the user's choice,
   2026-11-24).
+- If Codex is unavailable when the learner opens a unit of a Codex
+  course, the unit does not open. Gauss shows why and how to sign in to
+  Gauss's Codex home. After signing in, the learner can open the unit
+  again without restarting Gauss.
 - Local web app. TypeScript for server and interface, with small Python helper
   scripts (run through `uv`) for document conversion and symbolic math. The
   language choice was delegated to the agent by the learner.

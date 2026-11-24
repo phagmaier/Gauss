@@ -21,6 +21,7 @@ const PINNED = {
 
 test("a live check runs Codex on gpt-6.1-terra at medium on the standard tier, whatever the caller asks for", () => {
   vi.stubEnv("GAUSS_LIVE_CHECK", "1");
+  vi.stubEnv("GAUSS_CODEX_MODEL", "not-the-live-model");
 
   expect(
     codexOptions({
@@ -32,12 +33,20 @@ test("a live check runs Codex on gpt-6.1-terra at medium on the standard tier, w
   expect(codexOptions()).toEqual(PINNED);
 });
 
-test("outside a live check the caller's model and effort stand", () => {
-  vi.stubEnv("GAUSS_LIVE_CHECK", "");
-
-  expect(codexOptions({ model: "gpt-6.2-sol", effort: "high" })).toEqual({
-    model: "gpt-6.2-sol",
+test("normal Codex sessions default to terra or the model override, but stay on medium and the standard tier", () => {
+  vi.stubEnv("GAUSS_LIVE_CHECK", undefined);
+  vi.stubEnv("GAUSS_CODEX_MODEL", undefined);
+  expect(codexOptions()).toEqual(PINNED);
+  const requested = {
+    model: "caller-model",
     effort: "high",
+    serviceTier: "priority",
+  };
+  expect(codexOptions(requested)).toEqual({ ...PINNED, model: "caller-model" });
+  vi.stubEnv("GAUSS_CODEX_MODEL", "configured-model");
+  expect(codexOptions(requested)).toEqual({
+    ...PINNED,
+    model: "configured-model",
   });
 });
 
@@ -110,7 +119,7 @@ test.each([
     case: "a home signed out",
     version: "codex-cli 0.171.0",
     signedIn: false,
-    says: /^Gauss's Codex home, .*\/home, is not signed in\. Sign in once, from Gauss's folder: `mkdir -p -m 700 .*\/home`, then `CODEX_HOME=.*\/home mise exec -- codex login`\.$/,
+    says: /^Gauss's Codex home, .*\/home, is not signed in\./,
   },
   {
     case: "a CLI of another version",
@@ -123,33 +132,58 @@ test.each([
     version: "codex-cli 0.171.0",
     signedIn: true,
     appServer: "dies" as const,
-    says: /^Codex did not say whether it is signed in: codex app-server ended \(exit 1\) before answering: Error: the state database is locked$/,
+    says: /^Codex did not say whether it is signed in: codex app-server ended \(exit 1\): Error: the state database is locked/,
   },
 ])("Codex is refused with the reason for $case", async (given) => {
-  expect(
-    await codexUnavailable({
-      command: await fakeCodex(given.version, given.appServer),
-      home: await home(given.signedIn),
-      version: "0.171.0",
-    }),
-  ).toMatch(given.says);
+  const folder = await home(given.signedIn);
+  const reason = await codexUnavailable({
+    command: await fakeCodex(given.version, given.appServer),
+    home: folder,
+    version: "0.171.0",
+  });
+  expect(reason).toMatch(given.says);
+  expectSignInCommands(reason, folder);
 });
 
-test("Codex is refused with the reason when its home does not exist, or the CLI is not installed", async () => {
-  expect(
-    await codexUnavailable({
-      command: await fakeCodex("codex-cli 0.171.0"),
-      home: join(dir, "never-made"),
-      version: "0.171.0",
-    }),
-  ).toMatch(/^Gauss's Codex home, .*\/never-made, is not signed in\./);
-  expect(
-    await codexUnavailable({
-      command: join(dir, "not-installed"),
-      home: await home(true),
-      version: "0.171.0",
-    }),
-  ).toMatch(
-    /^Codex could not be run \(.*ENOENT.*\)\. Gauss needs the Codex CLI 0\.171\.0, which `mise install` in Gauss's folder installs\.$/,
+test("Codex says when its home does not exist or the CLI is missing, with the sign-in commands in either case", async () => {
+  const missingHome = join(dir, "never-made");
+  const noHome = await codexUnavailable({
+    command: await fakeCodex("codex-cli 0.171.0"),
+    home: missingHome,
+    version: "0.171.0",
+  });
+  expect(noHome).toMatch(
+    /^Gauss's Codex home, .*\/never-made, does not exist\./,
   );
+  expectSignInCommands(noHome, missingHome);
+
+  const folder = await home(true);
+  const noCli = await codexUnavailable({
+    command: join(dir, "not-installed"),
+    home: folder,
+    version: "0.171.0",
+  });
+  expect(noCli).toMatch(
+    /^Codex could not be run \(.*ENOENT.*\)\. Gauss needs the Codex CLI 0\.171\.0, which `mise install` in Gauss's folder installs\./,
+  );
+  expectSignInCommands(noCli, folder);
 });
+
+test("an existing file where Codex needs a folder is not reported as a missing home", async () => {
+  const file = join(dir, "not-a-folder");
+  await writeFile(file, "");
+  const reason = await codexUnavailable({
+    command: await fakeCodex("codex-cli 0.171.0"),
+    home: file,
+    version: "0.171.0",
+  });
+  expect(reason).toMatch(
+    /is not a folder\. Move the existing file aside first\./,
+  );
+  expectSignInCommands(reason, file);
+});
+
+function expectSignInCommands(reason: string | undefined, folder: string) {
+  expect(reason).toContain(`\`mkdir -p -m 700 ${folder}\``);
+  expect(reason).toContain(`\`CODEX_HOME=${folder} mise exec -- codex login\``);
+}

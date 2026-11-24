@@ -38,7 +38,7 @@ import { projectPython } from "./sandbox-command.ts";
 const root = new URL("../../", import.meta.url);
 const host = "127.0.0.1";
 
-/** What runs each model role, and the check an intake makes before Codex. */
+/** What runs each model role, and how the engine checks Codex availability. */
 export interface EngineBackends {
   /**
    * The session backends by name (`Course.backend`). A course's tutors and
@@ -59,7 +59,7 @@ export interface EngineBackends {
   notesBackend: TutorBackend;
   /**
    * Why a course cannot run on Codex now, or undefined when it can; the
-   * intake asks when the learner picks Codex.
+   * engine asks when the learner picks Codex or loads a Codex unit.
    */
   codexUnavailable: () => Promise<string | undefined>;
 }
@@ -206,6 +206,7 @@ export async function wireEngine(
   });
   const units = createUnitChats({
     backends: sessionBackends,
+    codexUnavailable: options.codexUnavailable,
     systemPrompt: tutorPrompt,
     dataRoot,
     backup,

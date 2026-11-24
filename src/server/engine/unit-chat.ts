@@ -359,6 +359,8 @@ export interface CourseDesk {
 interface ChatOptions {
   /** The tutor of a course runs on the course's backend; a course whose backend is absent does not open. */
   backends: SessionBackends;
+  /** Checks whether Codex can run now; undefined means the unit can open. */
+  codexUnavailable?: () => Promise<string | undefined>;
   /** `prompts/tutor.md`. */
   systemPrompt: string;
   dataRoot: DataRoot;
@@ -502,6 +504,19 @@ export function createUnitChats(options: ChatOptions): UnitChats {
         unitStatus(unit, evidence, undefined) !== "not-started"
       ) {
         return testStarted;
+      }
+    }
+    if (
+      stored?.course.backend === "codex" &&
+      options.backends.codex !== undefined
+    ) {
+      const reason = await options.codexUnavailable?.();
+      if (reason !== undefined) {
+        return {
+          ok: false,
+          status: 409,
+          error: `This course runs on Codex. ${reason} After signing in, open the unit again.`,
+        };
       }
     }
     await dataRoot.markOpened(courseId, unitId);

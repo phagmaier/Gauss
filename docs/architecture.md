@@ -176,9 +176,10 @@ Rules no single file shows:
   every quote verifies, as ordinary thread events, so live display, replay
   and export agree.
 - **`src/server/backends/`**: `backend.ts` (the adapter), `claude.ts`
-  (Agent SDK on the plan login), `codex.ts` (Codex's model and effort,
-  with the live-check pin, and `codexUnavailable`, the check an intake
-  makes before a course is made for Codex), `fake.ts` (tests),
+  (Agent SDK on the plan login), `codex.ts` (app-server sessions and
+  `codexUnavailable`, the login check for intake and unit opening),
+  `codex-rpc.ts` (stdio transport), `codex-turn.ts` (streaming and
+  teaching calls), `fake.ts` (tests),
   `scripted.ts` (the fake driven by turn headers, for `pnpm dev:fake`).
 - **`src/server/http/`**: `app.ts` (every route, the event stream, the
   host and origin checks), `artifact-frame.ts` (an aid served to its frame).
@@ -211,6 +212,10 @@ every other role on Claude. Each prompt starts one model's instructions:
   `src/shared/`), and tool results and refusals. Before removing a
   repeated rule, check that the same model receives it on every turn
   where it applies.
+- Codex receives the role prompt as base instructions when a thread
+  starts or resumes and its teaching tools in the direct `gauss`
+  namespace. `codexOptions` sets the model, effort and tier on each turn;
+  `GAUSS_CODEX_MODEL` changes the model outside the live-check launcher.
 - The scripted backend reads header wording; changing it can break
   `pnpm dev:fake` (`backends/scripted.test.ts` catches most of it).
 - Thread text is Markdown with `$...$` and `$$` math and `\$` for a
@@ -321,9 +326,8 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
 - **A live Claude script reaches the model only through
   `createClaudeBackend`**, where the launcher's pin is applied; a direct
   `query()` or `claude -p` would run on the login's default. A live Codex
-  script drives `codex app-server` in Gauss's Codex home with the
-  configuration in `findings.md`, "Codex", and gives the model and effort
-  `codexOptions` returns on every `turn/start`.
+  script uses `createCodexBackend`, which applies `codexOptions` on every
+  turn in Gauss's Codex home.
 - **What a run sent and got**: request headers, tool inputs, results and
   thinking are in Claude Code's session log under
   `~/.claude/projects/<the course's workspace folder, every character but
