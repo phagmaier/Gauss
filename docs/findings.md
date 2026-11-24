@@ -127,7 +127,7 @@ counts trial runs.
   every resume or `turn/start`; a resume's `config.model_reasoning_effort`
   reported medium. Signed in, the catalog fetched into the home's
   `models_cache.json` gives gpt-6.2-sol medium by default; signed out, low.
-- **gpt-6.1-terra, the live checks' model, matches gpt-6.2-sol's catalog
+- **gpt-6.1-terra, the model Codex runs on, matches gpt-6.2-sol's catalog
   entry** in code mode, Codex's base instructions, shell and patch tools
   and image input, but defaults to low effort and to the `priority`
   service tier ("Fast, 1.5x speed"), and asks for `send_user_message_async`

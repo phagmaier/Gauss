@@ -350,6 +350,13 @@ what is due, and on-demand self-test.
   judges and the writers stay on Claude, whose evaluations chose them, so a
   Codex course needs both logins. A Codex course has no web search:
   Codex's search opens and reads pages, which a tutor never does here.
+- A Codex course's tutor and unit planner run on gpt-6.1-terra at medium
+  effort, always on the standard service tier, never the faster priority
+  tier (the user's choice, 2026-11-24, for cost). A Codex tutor writes and
+  runs commands in its workspace through Gauss's own file and command
+  tools, not Codex's, so that the engine can refuse each one with its
+  reason and no command can be granted wider access (the user's choice,
+  2026-11-24).
 - Local web app. TypeScript for server and interface, with small Python helper
   scripts (run through `uv`) for document conversion and symbolic math. The
   language choice was delegated to the agent by the learner.
