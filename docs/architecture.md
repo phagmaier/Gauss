@@ -176,7 +176,8 @@ Rules no single file shows:
   every quote verifies, as ordinary thread events, so live display, replay
   and export agree.
 - **`src/server/backends/`**: `backend.ts` (the adapter), `claude.ts`
-  (Agent SDK on the plan login), `fake.ts` (tests), `scripted.ts` (the
+  (Agent SDK on the plan login), `codex.ts` (Codex's model and effort,
+  with the live-check pin), `fake.ts` (tests), `scripted.ts` (the
   fake driven by turn headers, for `pnpm dev:fake`).
 - **`src/server/http/`**: `app.ts` (every route, the event stream, the
   host and origin checks), `artifact-frame.ts` (an aid served to its frame).
@@ -247,8 +248,10 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   the link before `git worktree remove --force <dir>`.
 - **Gauss's Codex home** is `~/.local/state/gauss/codex`: outside every
   data root, so a fresh test root needs no new login, and holding only the
-  login and the threads, since a home's `AGENTS.md` and configuration
-  reach the model (`findings.md`, "Codex"). The CLI is pinned in
+  login, the threads and the state Codex writes beside them (SQLite files,
+  `models_cache.json`), never an `AGENTS.md` or configuration, since a
+  home's `AGENTS.md` and configuration reach the model (`findings.md`,
+  "Codex"). The CLI is pinned in
   `mise.toml`. The learner signs in once, from the repository so that
   mise runs the pinned version: `mkdir -p -m 700
   ~/.local/state/gauss/codex` (Codex refuses a home that does not exist),
@@ -286,7 +289,8 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
 - **Authorized real-model checks** use `mise exec -- pnpm check:live`.
   It starts the app on port 4320 in a fresh temporary data root.
   `createClaudeBackend` pins every role to the `AGENTS.md` model and
-  effort, overriding both login defaults and harness options. Opening a
+  effort, overriding both login defaults and harness options; for Codex,
+  `codexOptions` in `backends/codex.ts` does the same. Opening a
   unit can spend plan usage; specify the run count before a comparison.
   Test sources: the user's Inwood
   _Phenomenology_ at `~/Books/Philosophy/Hegel/The Phenomenology of
@@ -311,9 +315,12 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   disputes. `--prompt` and `--only` compare the same cases against an old
   and a new prompt. They run on the launcher's model and effort, not the
   role's own (`JUDGE_MODEL` is Haiku), and refuse to run without it.
-- **A live script reaches the model only through `createClaudeBackend`**,
-  where the launcher's pin is applied; a direct `query()` or `claude -p`
-  would run on the login's default.
+- **A live Claude script reaches the model only through
+  `createClaudeBackend`**, where the launcher's pin is applied; a direct
+  `query()` or `claude -p` would run on the login's default. A live Codex
+  script drives `codex app-server` in Gauss's Codex home with the
+  configuration in `findings.md`, "Codex", and gives the model and effort
+  `codexOptions` returns on every `turn/start`.
 - **What a run sent and got**: request headers, tool inputs, results and
   thinking are in Claude Code's session log under
   `~/.claude/projects/<the course's workspace folder, every character but
@@ -326,3 +333,8 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   jq -r 'select(.type=="api-request-shape")
     | [.timestamp, ([.shape.tools[].name] | join(","))] | @tsv' <log>.jsonl
   ```
+
+  For Codex, a thread's rollout in Gauss's Codex home
+  (`sessions/<yyyy>/<mm>/<dd>/rollout-*-<thread id>.jsonl`) holds every
+  item the model was given and gave; Codex's own log is the `logs` table
+  of `logs_2.sqlite` there, by `thread_id`.

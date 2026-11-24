@@ -77,11 +77,15 @@ follows the SDK's version.
 ## Codex
 
 From the stage 0 spike with `@openai/codex-sdk` 0.169 on the ChatGPT login,
-SDK 0.172 read, and, with no model call (2026-11-24), Codex CLI 0.171
-(pinned in `mise.toml`) on scratch `CODEX_HOME`s: `codex debug
-prompt-input`, `codex app-server` thread calls (never `turn/start`) and
-`codex sandbox`. "Source" marks what rests on Codex's code (tag
-`rust-v0.171.0`), not a run.
+SDK 0.172 read, Codex CLI 0.171 (pinned in `mise.toml`) with no model call
+on scratch `CODEX_HOME`s (`codex debug prompt-input`, `codex app-server`
+thread calls, `codex sandbox`), and 30 trial runs (72 turns) of `codex
+app-server` on gpt-6.2-sol at medium in Gauss's signed-in Codex home
+(2026-11-24), in a scratch workspace with every approval declined, the
+configuration below (the first 15 runs without `features.goals=false`)
+and the permission profile in "Sandbox and confinement". "Source" marks
+what rests on Codex's code (tag `rust-v0.171.0`), not a run; "n/3"
+counts trial runs.
 
 - **The SDK runs each turn as a new `codex exec`** (still in 0.172): no
   system-prompt option, no in-process tool, no hook, no streamed text, and
@@ -92,7 +96,7 @@ prompt-input`, `codex app-server` thread calls (never `turn/start`) and
   `thread/resume`, in-process tools (`dynamicTools`, answered through the
   `item/tool/call` request; experimental), `item/agentMessage/delta`,
   `turn/interrupt`, and approval requests for commands and file changes,
-  answered accept or decline with no reason field. Untried with a model.
+  answered accept or decline with no reason field.
 - **Teaching tools work over MCP** with the override
   `mcp_servers.gauss = { url, default_tools_approval_mode = "approve" }`;
   without it `approval_policy = "never"` refuses the calls. A tool ends the
@@ -111,16 +115,27 @@ prompt-input`, `codex app-server` thread calls (never `turn/start`) and
 - **Resuming a thread still loaded ignores `cwd`, `baseInstructions` and
   `config`, without an error.** After `thread/unsubscribe` a thread
   unloads once `thread_unload_delay_secs` passes (60 by default, at once
-  at 0), and a resume then applies them. That the next turn then runs on
-  the new instructions is from the source (given base instructions win
-  over the rollout's, which keeps the first); seeing it needs a turn.
+  at 0), and a resume then applies them: new base instructions arrive as a
+  developer message, "The following instructions replace the previous base
+  instructions: …", added at the next turn, and that turn followed them
+  (3/3).
 - **A resume without `permissions` falls back to `:read-only`** (the
   whole disk readable) with `on-request` approval, so the profile and
   approval policy are given on every resume. **A resume without a model
   or effort takes the effort the rollout saved** (source), none for a
-  thread with no turn yet (it reported null; gpt-6.2-sol's default is
-  low), so the effort is given on every resume or `turn/start`; a
-  resume's `config.model_reasoning_effort` reported medium.
+  thread with no turn yet (it reported null), so the effort is given on
+  every resume or `turn/start`; a resume's `config.model_reasoning_effort`
+  reported medium. Signed in, the catalog fetched into the home's
+  `models_cache.json` gives gpt-6.2-sol medium by default; signed out, low.
+- **A thread's `config` that defines a permission profile must also set
+  `default_permissions` to it.** Otherwise, on a ChatGPT login, every turn
+  fails before any request, after five retries (ten on the first turn,
+  which falls back to HTTP; 6 to 13 s): "failed to
+  load workspace requirements: invalid input parameter". The account's
+  workspace routing rebuilds the configuration without the thread's
+  `permissions` choice, and the rebuild refuses profiles with no
+  default (source: `workspace_routing.rs`, `config/mod.rs`). Signed out,
+  the error is ignored.
 - **Configuration that leaves gpt-6.2-sol only Gauss's base instructions,
   the environment context and the shell and file tools, beside what is
   listed below** (the model's input in `codex debug prompt-input`, which
@@ -138,21 +153,65 @@ prompt-input`, `codex app-server` thread calls (never `turn/start`) and
   `features.sleep_tool=false`, `features.hooks=false`,
   `features.shell_snapshot=false`, `allow_login_shell=false`,
   `web_search="disabled"`, `project_doc_max_bytes=0` and
-  `suppress_unstable_features_warning=true`. Left, as no setting removes
+  `suppress_unstable_features_warning=true`, and `features.goals=false`:
+  under app-server the model also gets `create_goal`, `get_goal` and
+  `update_goal` (goals that continue by themselves; on by default), which
+  `prompt-input` does not show, and the setting removes them (the tools a
+  trial's model was given, in its rollout). Left, as no setting removes
   them: `send_message_to_user_async` and `clock.curr_time` (gpt-6.2-sol's
   catalog entry asks for them; a trimmed `model_catalog_json` drops them
   but freezes that entry, so it is not used) and three MCP resource tools
-  with no server to read. Apps and plugins are untried on a signed-in home.
+  with no server to read. Signed in, `prompt-input` gives the same tools;
+  only Codex's own default instructions differ. The model never called
+  `send_message_to_user_async` in the 72 turns.
 - **gpt-6.2-sol runs in code mode** (catalog `tool_mode:
   "code_mode_only"`): its tools are `exec`, JavaScript calling the nested
   `exec_command`, `write_stdin`, `apply_patch` and the rest, and `wait`.
-  Dynamic tools are nested too unless their namespace is listed in
-  `features.code_mode.direct_only_tool_namespaces` (source).
+  A dynamic tool given without a namespace is nested too, called as
+  `tools.ask_question({...})` in a script: its result reaches the model
+  only if the script prints it (1/3, model told its turn was over), and
+  an image result reaches the script as a data-URL string after the
+  text, which the model saw as an image 1/3 (when its script passed it to
+  `image()`; otherwise "No image reached me"). A command the script runs
+  without an approval request shows no protocol item (3/3); one that asks
+  gets its `commandExecution` item with the request. **Teaching tools
+  are therefore direct calls**: given as a `namespace` dynamic tool whose
+  name is listed in `features.code_mode.direct_only_tool_namespaces`, a
+  tool is called outside `exec`, its result is a `function_call_output`,
+  and an `inputImage` item reaches the model as an image (it read the
+  digits in a page image 3/3).
+- **A tool cannot end the turn by `turn/interrupt`.** An interrupt sent
+  just after the tool's answer, before or once its `dynamicToolCall` item
+  completes, replaces its result with "aborted by user after 0.1s" and
+  adds a user message `<turn_aborted>` "The user interrupted the previous
+  turn on purpose. …" (nested 3/3, direct 3/3, each in both orders; asked
+  next, the model saw no result or quoted that). An interrupt while a
+  tool still runs is untried. With no interrupt and a result saying the
+  turn is over, the model ended it with an empty message (no deltas)
+  about 1.2 s later, and the result stayed in the thread (direct 3/3;
+  nested, it stopped too, 3/3, but the result was there only if its
+  script printed it). An interrupt at the start of that closing message
+  kept the result too (direct 3/3), with the `<turn_aborted>` message.
+  A second tool call in the same response, after the one that ends the
+  turn, is untried.
+- **Stop mid-reply**: `turn/interrupt` ends the turn `interrupted`, the
+  reply's message gets no `item/completed`, and its text is not in the
+  thread; the next turn's model knows only that it was interrupted (3/3).
+  Every completed message's text equals its joined
+  `item/agentMessage/delta`s.
+- **A declined approval tells the model only that it was rejected**: a
+  file change gets `patch rejected by user`, a command `exec_command
+  failed: CreateProcess { message: "Rejected(\"rejected by user\")" }`
+  (3/3 each, under `untrusted`); the item completes with status
+  `declined` and nothing is written. A command's request lists
+  `availableDecisions` without `decline`, which is honoured all the same;
+  a file change's request carries no path (its `fileChange` item's
+  `changes` do).
 - **The home's `AGENTS.md` and `config.toml` instructions reach the model
   whatever the configuration**, and by default so do its skills and every
   `AGENTS.md` from the working folder up to the git root (the data root
   is one); a project's `.codex/config.toml` only if the home trusts it.
-  Hence Gauss's own `CODEX_HOME` holding only the login and its threads.
+  Hence Gauss's own `CODEX_HOME` (`architecture.md`, "Working here").
   Copying `auth.json` into another home can sign the learner out.
 - **An approved escalation widens a tutor's sandbox, and its approval
   request cannot be told from another** (source). `exec_command` always
@@ -169,18 +228,22 @@ prompt-input`, `codex app-server` thread calls (never `turn/start`) and
   extra permissions; `never`, or `granular` with `sandbox_approval:
   false`, refuses escalations unasked and asks about no sandboxed
   command. `turn/start` can change a thread's profile, approval policy
-  and effort from that turn on (protocol types).
+  and effort from that turn on (protocol types). Under `on-request`, told
+  to append to `../probe.txt` (the course folder) and to do what it
+  needed if that failed, the model reported "zsh:1: read-only file
+  system: ../probe.txt" and asked for nothing (3/3).
 - **`thread/start` opens the provider's websocket** and sends a
   `generate: false` request with empty input (seen at a local capture
   endpoint); signed out, it logs a connection error and the thread starts.
-- **Signed out, `account/read` answers `account: null`,
-  `requiresOpenaiAuth: true`.** `codex login status` reads the login of
-  `CODEX_HOME` ("Not logged in" in a scratch home while `~/.codex` was
-  signed in). A `CODEX_HOME` under `/tmp` warns that Codex makes no
-  helper links there.
-- **No account email address is in the model's input** with the default
-  configuration (`codex debug prompt-input`); what the server adds is not
-  visible there.
+- **`account/read` answers `account: null` signed out; signed in,
+  `account: { type: "chatgpt", email, planType, workspaceName }`**, with
+  `userId` and `workspaceRouting`; `requiresOpenaiAuth` is `true` either
+  way, so a home is signed in when `account` is set. `codex login status`
+  reads the login of `CODEX_HOME` ("Not logged in" in a scratch home
+  while `~/.codex` was signed in). A `CODEX_HOME` under `/tmp` warns that
+  Codex makes no helper links there.
+- **No account email address is in the model's input**: not in
+  `codex debug prompt-input`, nor in any trial's rollout.
 - **Codex's web search can open a page and search in it** (the protocol's
   `WebSearchAction`: `openPage`, `findInPage`); `exec`'s search item
   carries the query, not the pages found.
