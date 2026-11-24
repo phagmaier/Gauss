@@ -71,15 +71,16 @@ for state that stays, callbacks for closures still in `unit-chat.ts`),
 and an interface for what it returns. A module never imports from
 `unit-chat.ts`: a text the file shares, such as `UNIT_FINISHED`, is passed
 in, as review admission takes `OVERRIDE_PENDING`. A tool's desk is made
-with the chat, before `load`, and reads `running` at each call, as the
-desks do now; code that runs only on a loaded unit is made in `load` and
-held on `Running`, as progression and review admission are. The learner's
-actions are not a module of their own: the chat object keeps each action's
-guard (`act`, its waits for `loading`, its entry into the queue), and the
-task that owns an action's concern moves its body. A move keeps the order
-of awaits inside queues, when each closure reads what it captures, every
-stop-signal check and error path, and every event, tool name and text; the
-matching part of the file's header comment moves with the code.
+with the chat, before `load`, and reads `running` at each call, as
+`unit-aids.ts`'s are; code that runs only on a loaded unit is made in
+`load` and held on `Running`, as progression and review admission are.
+The learner's actions are not a module of their own: the chat object keeps
+each action's guard (`act`, its waits for `loading`, its entry into the
+queue), and the task that owns an action's concern moves its body. A move
+keeps the order of awaits inside queues, when each closure reads what it
+captures, every stop-signal check and error path, and every event, tool
+name and text; the matching part of the file's header comment moves with
+the code.
 
 What stays in `unit-chat.ts`: the course level (`createUnitChats` with its
 map of open chats, `reviewThread`, and `courseWorkspace` with the course's
@@ -103,12 +104,6 @@ the closing card and the gate. In another course: the test before a unit
 and its result card, "Review now", "/packages" installed where the sandbox
 runs, and a server restart while an answer waits for the judge ("/hold"
 in a message, then answer) followed by reopening the unit.
-
-### 6.1 Aids: artifacts, quotes, lectures and searches — todo
-
-**Why:** The aids are the smallest closed concern among the teaching tools: desks that read the unit's position and emit, with no state of their own. Moving them first sets the pattern the other desks follow.
-**Do:** Move `artifactShelf`, `quoteRefusal`, `standaloneQuoteRefusal`, `quoteDesk`, `lectureRefusal`, `lectureDesk`, `webSearchRefusal` and `sourceSearchRefusal` into `src/server/engine/unit-aids.ts`, made with the chat. It takes the chat's queue, `running()` (the record's `position` and `finished` and the plan, read at each call), `lecture()` (the active teaching turn's `sourceLecture`), `emit`, `writeArtifact` bound to the course, and `UNIT_FINISHED`. It returns the artifact shelf, the quote and lecture desks and both search refusals, which `load` wires into `createSourceShelf` and `createUnitAgents` as now. Stays: `running`; `sourceLecture`, which `sendTeaching` sets and clears and the lecture desk marks shown; the queue and the log.
-**Done when:** `artifacts.test.ts`, `source-quotes.test.ts`, `source-reading.test.ts`, `unit-chat.test.ts` and the rest of the existing tests pass with at most import-path changes; `mise run check` passes; the moved code is gone from `unit-chat.ts`.
 
 ### 6.2 Proposals: style notes and curriculum changes — todo
 

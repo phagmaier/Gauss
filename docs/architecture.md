@@ -109,7 +109,8 @@ Rules no single file shows:
   `unit-chat.ts` (phases, assessments, proposals, the learner's actions)
   with `unit-progression.ts` (post-answer checkpoints and continuation),
   `review-admission.ts` (admission to one unit chat; course-wide thread
-  selection stays in `unit-chat.ts`),
+  selection stays in `unit-chat.ts`), `unit-aids.ts` (the tutor's aids,
+  quotes, lecture and searches, refused while a question is open),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,

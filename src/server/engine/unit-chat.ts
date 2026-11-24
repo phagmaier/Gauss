@@ -49,20 +49,15 @@
 //
 // A tool called out of phase is refused with a reason the tutor can act on;
 // so are the tutor's file writes and commands while a question is open
-// (task 3.3), when it has them, and an artifact while a question of the
-// unit is open (task 3.6): show_artifact stores the aid in the course's
-// artifacts/ folder, and the thread keeps a reference to it. With
-// install_packages (task 3.11) the tutor asks for packages, which the
+// (task 3.3), when it has them, and its aids (an HTML aid, a quote, a
+// lecture, a search) while a question of the unit is open (unit-aids.ts).
+// With install_packages (task 3.11) the tutor asks for packages, which the
 // learner installs or declines on a card; the request is kept in the unit's
 // position, the install runs outside the chat's queue with the course's
 // workspace closed to every other change, and the answer goes to the tutor
 // in a turn of its own. In a course with a source, the tutor reads its
 // sections with read_section and looks at a PDF's pages with view_page
-// (task 4.8) in any phase, each shown in the thread (source-shelf.ts), and
-// quotes a passage with quote_source (task 4.9), shown once it is found in
-// the sources, but not while a question of the unit is open, as an aid, nor
-// in a source segment's teaching turn, which shows only what present_lecture
-// publishes (its ordinary text is hidden).
+// (task 4.8) in any phase, each shown in the thread (source-shelf.ts).
 // A dispute of an answer's grade (task 3.8) is decided outside the chat
 // (disputes.ts) and, when the chat is open, recorded inside its queue, so it
 // lands in order with the chat's own writes; one recorded while the chat
@@ -181,12 +176,8 @@ import {
   type PackageDesk,
 } from "../tools/install-packages.ts";
 import { proposeStyleTool, type StyleDesk } from "../tools/propose-style.ts";
+import { showArtifactTool } from "../tools/show-artifact.ts";
 import {
-  type ArtifactShelf,
-  showArtifactTool,
-} from "../tools/show-artifact.ts";
-import {
-  type LectureDesk,
   presentLectureTool,
   quoteSourceTool,
   readSectionTool,
@@ -238,7 +229,7 @@ import {
   type ReviewAdmission,
 } from "./review-admission.ts";
 import type { SourceConverter } from "./source-convert.ts";
-import { createSourceShelf, type QuoteDesk } from "./source-shelf.ts";
+import { createSourceShelf } from "./source-shelf.ts";
 import { sectionsRefused } from "./source-text.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import {
@@ -247,6 +238,7 @@ import {
   type Grading,
   type UnitAgents,
 } from "./unit-agents.ts";
+import { createUnitAids } from "./unit-aids.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
   createUnitProgression,
@@ -1382,7 +1374,7 @@ function createUnitChat(
         sources,
         converter: options.converter,
         emit: log.emit,
-        quotes: quoteDesk,
+        quotes: aids.quoteDesk,
         plannedRange(section) {
           const { position } = record;
           if (
@@ -1464,7 +1456,7 @@ function createUnitChat(
           ),
         tools: [
           askQuestionTool(questionBoard),
-          showArtifactTool(artifactShelf),
+          showArtifactTool(aids.artifactShelf),
           ...(options.installer === undefined
             ? []
             : [installPackagesTool(packageDesk)]),
@@ -1476,15 +1468,15 @@ function createUnitChat(
                 readSectionTool(sourceShelf),
                 viewPageTool(sourceShelf),
                 quoteSourceTool(sourceShelf),
-                presentLectureTool(sourceShelf, lectureDesk),
-                searchSourceTool(sourceShelf, sourceSearchRefusal),
+                presentLectureTool(sourceShelf, aids.lectureDesk),
+                searchSourceTool(sourceShelf, aids.sourceSearchRefusal),
               ]),
         ],
         // Read whenever a session starts or resumes (task 4.11).
         webSearch: async () =>
           (await dataRoot.readCourse(courseId))?.course.settings.webSearch ===
           true,
-        searchRefusal: webSearchRefusal,
+        searchRefusal: aids.webSearchRefusal,
         cwd: workspace,
         ...(options.workspaceTools === undefined
           ? {}
@@ -3023,130 +3015,14 @@ function createUnitChat(
     };
   }
 
-  // Not while a question of the unit is open, answered or not: an aid could
-  // help with the answer, and the help judge reads only the tutor's text.
-  const artifactShelf: ArtifactShelf = {
-    show: (artifact, signal) =>
-      exclusive(async () => {
-        // A turn stopped meanwhile shows nothing more.
-        signal?.throwIfAborted();
-        const r = running;
-        if (r === undefined) return { refused: "The unit is not open." };
-        if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
-        const open = r.record.position.openQuestion;
-        if (open !== undefined) {
-          return {
-            refused:
-              `Question ${open.number} is open: nothing can be shown beside ` +
-              "the conversation until its answer is graded, since an aid " +
-              "could help with the answer.",
-          };
-        }
-        const stored = await dataRoot.writeArtifact(courseId, artifact);
-        // A Stop during the write: the file stays, referred to by nothing,
-        // and only moves the next aid's number on.
-        signal?.throwIfAborted();
-        log.emit({
-          type: "artifact",
-          file: stored.file,
-          title: artifact.title,
-        });
-        return stored;
-      }),
-  };
-
-  // Not while a question of the unit is open, answered or not, as an aid: a
-  // passage could help with the answer, and the help judge reads only the
-  // tutor's text.
-  const quoteRefusal = (): string | undefined => {
-    const r = running;
-    if (r === undefined) return "The unit is not open.";
-    if (r.record.finished !== undefined) return UNIT_FINISHED;
-    const open = r.record.position.openQuestion;
-    return open === undefined
-      ? undefined
-      : `Question ${open.number} is open: nothing can be quoted until its ` +
-          "answer is graded, since a passage could help with the answer.";
-  };
-  const standaloneQuoteRefusal = () =>
-    quoteRefusal() ??
-    (sourceLecture === undefined
-      ? undefined
-      : "Put quotations in present_lecture in a source teaching turn.");
-  const quoteDesk: QuoteDesk = {
-    closed: () => exclusive(async () => standaloneQuoteRefusal()),
-    show: (quote, signal) =>
-      exclusive(async () => {
-        // A turn stopped meanwhile shows nothing more.
-        signal?.throwIfAborted();
-        const refused = standaloneQuoteRefusal();
-        if (refused === undefined) log.emit(quote);
-        return refused;
-      }),
-    segmentSections: () => {
-      const r = running;
-      return r === undefined
-        ? []
-        : segmentOf(r.context.plan, r.record.position).sections;
-    },
-  };
-
-  const lectureRefusal = (): string | undefined =>
-    quoteRefusal() ??
-    (sourceLecture === undefined
-      ? "A lecture can only be shown in a source segment's teaching turn."
-      : sourceLecture.shown
-        ? "The lecture has already been shown. End your turn."
-        : undefined);
-  const lectureDesk: LectureDesk = {
-    closed: () => exclusive(async () => lectureRefusal()),
-    show: (events, signal) =>
-      exclusive(async () => {
-        signal?.throwIfAborted();
-        const refused = lectureRefusal();
-        if (refused !== undefined) return refused;
-        const lecture = sourceLecture;
-        if (lecture === undefined)
-          throw new Error("No source lecture is active.");
-        lecture.shown = true;
-        for (const event of events) log.emit(event);
-        return undefined;
-      }),
-  };
-
-  // Not while a question of the unit is open, answered or not, as an aid: a
-  // page found could help with the answer, and the help judge reads only the
-  // tutor's text.
-  const webSearchRefusal = () =>
-    exclusive(async (): Promise<string | undefined> => {
-      const open = running?.record.position.openQuestion;
-      return open === undefined
-        ? undefined
-        : `Question ${open.number} is open: nothing can be searched until ` +
-            "its answer is graded, since a page found could help with the answer.";
-    });
-
-  function sourceSearchRefusal(): string | undefined {
-    const r = running;
-    if (r === undefined) return "The unit is not open.";
-    const { position } = r.record;
-    if (position.openQuestion !== undefined)
-      return "A graded question is open. Search after its answer is graded.";
-    if (
-      position.detour !== undefined ||
-      (position.phase === "discuss" && position.assessment?.stage !== "on")
-    )
-      return;
-    // Only under the teaching header: not while an assessment or the test's card waits.
-    if (
-      position.phase === "teach" &&
-      position.assessment === undefined &&
-      position.testOut?.stage !== "result" &&
-      position.testOut?.stage !== "due"
-    )
-      return "Search is for discussion or a detour. For a planned lecture, read the passages named in the turn header.";
-    return "search_source works only in discussion or a detour. Read a section with read_section.";
-  }
+  const aids = createUnitAids({
+    exclusive,
+    running: () => running,
+    sourceLecture: () => sourceLecture,
+    emit: log.emit,
+    writeArtifact: (artifact) => dataRoot.writeArtifact(courseId, artifact),
+    unitFinished: UNIT_FINISHED,
+  });
 
   // Not while a question of the unit is open, where the card would sit
   // beside the question; one proposal waits in a course at a time.
