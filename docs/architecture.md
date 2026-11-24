@@ -134,6 +134,10 @@ Rules no single file shows:
   review, the gate and the test before a unit, the test's result card and
   the learner's answer to it, and why the unit's own steps wait meanwhile;
   made for each loaded unit),
+  `unit-header.ts` (each turn's header: where the unit stands and what it
+  says once, the notes, the record's notices and the learner's decisions,
+  each delivered once; the new session that takes over when the tutor's
+  conversation cannot be resumed; made for each loaded unit),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,

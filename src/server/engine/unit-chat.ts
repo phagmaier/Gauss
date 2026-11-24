@@ -54,17 +54,18 @@
 // unit-assessments.ts's. A message sent while a review's card waits skips
 // it, and one sent while the gate's waits leaves it waiting. An answer on
 // another unit's objective is told to that unit's chat if it is open.
-// The engine composes every turn's header (unit-turns.ts) and writes the
-// unit's position to state.json after every change, before the page is told,
-// so a restart reopens the unit where it was. The chat's events are its
-// transcripts too (transcript.ts, task 2.13), so a reopened unit shows the
-// thread of its earlier sessions. The tutor's conversation survives a
-// restart too (task 2.14): its session's id is kept in the unit's position,
-// and a reopened unit resumes it with its first turn. The tutor's session is
-// closed while idle and resumed with the next turn (task 2.15). If it cannot
-// be found, as the opening asks the backend, or as a turn finds, the unit
-// starts fresh: a new session, seeded from the record and told that it joins
-// a unit under way, and the thread says so. The learner can start fresh too.
+// The engine composes every turn's header (unit-header.ts, in unit-turns.ts's
+// words) and writes the unit's position to state.json after every change,
+// before the page is told, so a restart reopens the unit where it was. The
+// chat's events are its transcripts too (transcript.ts, task 2.13), so a
+// reopened unit shows the thread of its earlier sessions. The tutor's
+// conversation survives a restart too (task 2.14): its session's id is kept
+// in the unit's position, and a reopened unit resumes it with its first
+// turn. The tutor's session is closed while idle and resumed with the next
+// turn (task 2.15). If it cannot be found, as the opening asks the backend,
+// or as a turn finds, the unit starts fresh: a new session, seeded from the
+// record and told that it joins a unit under way (unit-header.ts), and the
+// thread says so. The learner can start fresh too.
 // Resuming that fails another way fails the turn, since the fault may pass;
 // the next turn tries again, and the learner can start fresh instead.
 //
@@ -77,7 +78,6 @@
 import { randomUUID } from "node:crypto";
 import type { Course, Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
-import type { CurriculumDecision } from "../../shared/curriculum-change.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type {
   AnswerEvidence,
@@ -89,7 +89,6 @@ import type { Misconception } from "../../shared/misconception.ts";
 import type { PackageReceipt } from "../../shared/packages.ts";
 import type { AnswerPost } from "../../shared/question.ts";
 import type { OpenQuestion, State, UnitPosition } from "../../shared/state.ts";
-import type { StyleDecision } from "../../shared/style.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
@@ -111,12 +110,9 @@ import {
 import {
   isLastSegment,
   nextSegment,
-  notPassed,
   type ObjectiveCheck,
   objectiveCheck,
   segmentOf,
-  slipping,
-  toGoOver,
 } from "./check-rules.ts";
 import { type ChoiceOrder, randomOrder } from "./choice-order.ts";
 import { type CodeRunner, noCodeRunner } from "./code-run.ts";
@@ -152,6 +148,7 @@ import {
   type UnitAssessments,
 } from "./unit-assessments.ts";
 import { createUnitEnd, type UnitEnd } from "./unit-end.ts";
+import { createUnitHeader, type UnitHeader } from "./unit-header.ts";
 import { createUnitPackages } from "./unit-packages.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
@@ -173,18 +170,13 @@ import {
   type UnitRecord,
 } from "./unit-record.ts";
 import {
-  curriculumNote,
   disputeNote,
   freshTurn,
-  JOINED_NOTE,
-  noticeText,
   readyTurn,
-  styleNote,
   teachTurn,
   testEndTurn,
   tutorSystemPrompt,
   type UnitContext,
-  type Where,
 } from "./unit-turns.ts";
 
 export interface UnitChat {
@@ -1132,28 +1124,12 @@ interface Running {
   /** Said once, in the next turn's header. */
   notes: string[];
   /**
-   * Decisions and the record's notices in the current turn's header, if it
-   * got as far as composing one, with the write of the notices' delivery
-   * once the turn is sent.
-   */
-  inHeader?: {
-    style: readonly StyleDecision[];
-    curriculum: readonly CurriculumDecision[];
-    notices: readonly string[];
-    delivered?: Promise<void>;
-  };
-  /**
-   * The record's notices sent to the tutor, or dropped for a new session,
-   * which no later header carries, though the record's write may not have
-   * landed yet.
-   */
-  noticesTaken: Set<string>;
-  /**
    * The unit's handoff note and the course's misconceptions (task 5.7),
    * read when the chat opens, with what this unit's calls write since; the
    * misconceptions are read again when an assessment is offered.
    */
   handoff: { note: string | undefined; misconceptions: Misconception[] };
+  header: UnitHeader;
   progression: UnitProgression;
   review: ReviewAdmission;
   answers: UnitAnswers;
@@ -1383,28 +1359,10 @@ function createUnitChat(
             }),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
         keep: (id) => exclusive(() => record.keepSession(id)),
-        // Only a turn calls it, once `r` is set.
-        lost: (learnerId) => fallBack(r, learnerId),
-        // A notice is delivered once its header is dispatched, so a Stop
-        // or restart after that does not send it again; a decision only
-        // once a turn carrying it completes.
-        turnSent() {
-          const header = r.inHeader;
-          if (header === undefined || header.notices.length === 0) return;
-          header.delivered = takeNotices(r, header.notices);
-        },
-        async turnEnded(outcome) {
-          const sent = r.inHeader;
-          delete r.inHeader;
-          await sent?.delivered;
-          if (
-            outcome === "done" &&
-            sent !== undefined &&
-            (sent.style.length > 0 || sent.curriculum.length > 0)
-          ) {
-            await exclusive(() => record.deliverDecisions(sent));
-          }
-        },
+        // Only a turn calls these, once `r` is set.
+        lost: (learnerId) => r.header.fallBack(learnerId),
+        turnSent: () => r.header.turnSent(),
+        turnEnded: (outcome) => r.header.turnEnded(outcome),
         judge: options.judge,
         log,
         exclusive,
@@ -1416,12 +1374,28 @@ function createUnitChat(
         record,
         agents: loaded,
         notes: [],
-        noticesTaken: new Set(),
         handoff: { note: handoffNote?.note, misconceptions },
+        header: createUnitHeader({
+          record,
+          exclusive,
+          emit: log.emit,
+          context: () => r.context,
+          plannerContext: () => r.plannerContext,
+          notes: () => r.notes,
+          clearNotes: () => {
+            r.notes = [];
+          },
+          style: () => style,
+          checks: () => checks(r),
+          feedback: () => r.progression.feedback,
+          runWhere: (run) => r.assessments.runWhere(run),
+          shownByTest: () => r.assessments.shownByTest(),
+          handoff: () => r.handoff,
+        }),
         progression: createUnitProgression({
           record,
           tutor: loaded,
-          where: () => where(r),
+          where: () => r.header.where(),
           exclusive,
           flush: log.flushed,
           stopCount: () => stopCount,
@@ -1464,7 +1438,7 @@ function createUnitChat(
               record.finished !== undefined &&
               record.position.tutorSessionId === undefined
             ) {
-              joined(r);
+              r.header.joined();
             }
             await record.offerAssessment(run, evidence, () =>
               r.assessments.showRun(run),
@@ -1485,7 +1459,7 @@ function createUnitChat(
           closing: () => closing,
           stopCount: () => stopCount,
           unitId,
-          where: () => where(r),
+          where: () => r.header.where(),
           runOn: () => r.assessments.runOn(),
           progression: {
             answered: (answered, stops) =>
@@ -1517,7 +1491,7 @@ function createUnitChat(
           agents: loaded,
           exclusive,
           emit: log.emit,
-          where: () => where(r),
+          where: () => r.header.where(),
           progression: {
             askInRun: (event, stops) => r.progression.askInRun(event, stops),
             afterReview: () => r.progression.afterReview(),
@@ -1541,7 +1515,7 @@ function createUnitChat(
         // new session at once, so the thread says so before anything else.
         const id = record.position.tutorSessionId;
         const resumes = id !== undefined && (await loaded.resume(id));
-        if (!resumes) fallBack(r);
+        if (!resumes) r.header.fallBack();
       }
       const recoveringOverride =
         record.position.pendingSegmentOverride !== undefined;
@@ -1631,7 +1605,7 @@ function createUnitChat(
           r.assessments.showTestResult();
         } else {
           r.assessments.sendTestSummary(() =>
-            testEndTurn(where(r), { stopped: false }),
+            testEndTurn(r.header.where(), { stopped: false }),
           );
         }
       } else if (position.phase === "teach") {
@@ -1707,49 +1681,6 @@ function createUnitChat(
       }
     });
     return true;
-  }
-
-  /**
-   * Tells the next header that the conversation is new. A notice about a
-   * turn of the old conversation is dropped: the new one has no such turn.
-   */
-  function joined(r: Running): void {
-    const old = r.record.tutorNotices.flatMap((notice) =>
-      notice.kind === "unshown-lecture" ? [notice.id] : [],
-    );
-    if (old.length > 0) void takeNotices(r, old);
-    if (!r.notes.includes(JOINED_NOTE)) r.notes.push(JOINED_NOTE);
-  }
-
-  /**
-   * Keeps the notices out of every later header at once, and out of the
-   * record once the write, which waits its turn in the queue, lands. A
-   * failed write is logged; the record's next write takes them out, and
-   * only a restart before then tells them again.
-   */
-  function takeNotices(r: Running, ids: readonly string[]): Promise<void> {
-    for (const id of ids) r.noticesTaken.add(id);
-    return exclusive(() => r.record.deliverNotices(ids)).catch(
-      (error: unknown) => {
-        console.error(
-          "The tutor's notices could not be marked delivered:",
-          error,
-        );
-      },
-    );
-  }
-
-  /**
-   * The tutor's conversation could not be resumed: a new session takes over,
-   * told in its first header that it is new, and the thread says so.
-   */
-  function fallBack(r: Running, learnerId?: string): void {
-    joined(r);
-    log.emit({
-      type: "fresh_start",
-      reason: "not-resumed",
-      ...(learnerId === undefined ? {} : { learnerId }),
-    });
   }
 
   /**
@@ -1871,71 +1802,6 @@ function createUnitChat(
 
   // --- Turns -----------------------------------------------------------------
 
-  /**
-   * Where the unit stands now, with the notes not yet given, which this
-   * takes. The record's notices stay in the record until the turn is sent
-   * (`turnSent`), so a turn stopped before then leaves them for the next.
-   */
-  function where(r: Running): Where {
-    const { record } = r;
-    const context = r.plannerContext ?? r.context;
-    const notices = record.tutorNotices.filter(
-      (notice) => !r.noticesTaken.has(notice.id),
-    );
-    const notes = [...notices.map(noticeText), ...r.notes];
-    r.notes = [];
-    const decisions = record.pendingStyleDecisions;
-    const answers = record.pendingCurriculumDecisions;
-    if (notices.length > 0 || decisions.length > 0 || answers.length > 0) {
-      r.inHeader = {
-        style: decisions,
-        curriculum: answers,
-        notices: notices.map((notice) => notice.id),
-      };
-      for (const decision of decisions) {
-        notes.push(
-          decision.outcome === "applied"
-            ? styleNote(
-                decision.note === style ? "applied" : "superseded",
-                decision.note,
-              )
-            : styleNote("kept", ""),
-        );
-      }
-      // An applied change is told with the units as they now are.
-      for (const answer of answers) {
-        notes.push(curriculumNote(answer.outcome, context.units));
-      }
-    }
-    const { feedback } = r.progression;
-    return {
-      context,
-      position: record.position,
-      checks: checks(r),
-      notPassed: notPassed(r.context.plan, record.evidence),
-      slipping: slipping(r.context.plan, record.evidence),
-      goOver: toGoOver(
-        r.context.plan,
-        record.evidence,
-        record.position.gated === true,
-      ),
-      ...(record.finished === undefined ? {} : { finished: record.finished }),
-      ...(feedback !== undefined && !feedback.started
-        ? { feedbackPending: feedback.number }
-        : {}),
-      notes,
-      evidence: record.evidence,
-      ...(record.position.assessment === undefined
-        ? {}
-        : { assessment: r.assessments.runWhere(record.position.assessment) }),
-      ...(record.position.testOut?.stage === "result"
-        ? { test: r.assessments.shownByTest() }
-        : {}),
-      misconceptions: r.handoff.misconceptions,
-      ...(r.handoff.note === undefined ? {} : { handoffNote: r.handoff.note }),
-    };
-  }
-
   /** Where each objective of the segment stands in the check; none outside it. */
   function checks(r: Running): Map<string, ObjectiveCheck> {
     const { position, evidence, checkAnswers } = r.record;
@@ -1955,7 +1821,7 @@ function createUnitChat(
         ? undefined
         : { shown: false };
     r.agents.send({
-      text: () => teachTurn(where(r), cutOff),
+      text: () => teachTurn(r.header.where(), cutOff),
       ...(lecture === undefined
         ? {}
         : {
@@ -2036,7 +1902,7 @@ function createUnitChat(
     emit: log.emit,
     unitId,
     unitFinished: UNIT_FINISHED,
-    where: (r) => where(r),
+    where: (r) => r.header.where(),
     checks: (r) => checks(r),
     segmentObjectives: (r) => segmentObjectives(r),
     runOn: (r) => r.assessments.runOn(),
@@ -2086,7 +1952,7 @@ function createUnitChat(
     now,
     installer: options.installer,
     course: options.workspace,
-    where: (r) => where(r),
+    where: (r) => r.header.where(),
     unitFinished: UNIT_FINISHED,
     saveFailed: PACKAGE_SAVE_FAILED,
   });
@@ -2189,7 +2055,7 @@ function createUnitChat(
         const { phase } = r.record.position;
         if (phase !== "discuss") return refused(NOT_NOW.ready[phase]);
         await r.record.startCheck();
-        r.agents.send({ text: () => readyTurn(where(r)) });
+        r.agents.send({ text: () => readyTurn(r.header.where()) });
         return { ok: true };
       }),
 
@@ -2326,9 +2192,9 @@ function createUnitChat(
         // not resume the old one.
         await r.record.keepSession(undefined);
         r.agents.startFresh();
-        joined(r);
+        r.header.joined();
         log.emit({ type: "fresh_start", reason: "learner" });
-        r.agents.send({ text: () => freshTurn(where(r)) });
+        r.agents.send({ text: () => freshTurn(r.header.where()) });
         return { ok: true };
       });
     },
