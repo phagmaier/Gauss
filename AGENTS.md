@@ -114,9 +114,11 @@ later agent the investigation, put it in a comment beside the code, or in
 - **Automated tests never call a real model backend.** Use the fake
   backend. Run a real model only when the user has authorized the check.
   For every such run, including scratch harnesses and helper calls, use
-  **Claude Sonnet 5.5 at medium effort only** via `mise exec -- pnpm
-  check:live`. Do not run another model or effort, inherit the login's
-  defaults, or rerun old experiment commands outside this launcher.
+  **Claude Sonnet 5.5 at medium effort only**, or for a Codex session
+  **gpt-6.2-sol at medium effort only** (the user's choice, 2026-11-24),
+  via `mise exec -- pnpm check:live`. Do not run another model or effort,
+  inherit the login's defaults, or rerun old experiment commands outside
+  this launcher. No Codex run is made before the launcher pins Codex.
   See [Working here](docs/architecture.md#working-here).
 - **Tests and trial runs never use the real data root.** Use a temporary
   directory. See [Working here](docs/architecture.md#working-here) for

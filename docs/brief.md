@@ -344,6 +344,12 @@ what is due, and on-demand self-test.
 - Teaching tools (ask a question, show an artifact, propose a curriculum or
   style change, install packages) are provided once and shared by both
   backends.
+- Each course runs on one backend, Claude or Codex, picked when its intake
+  makes the course and fixed after. On Codex, only the course's tutor and
+  its unit planner run there; the intake, course planning, the grader, the
+  judges and the writers stay on Claude, whose evaluations chose them, so a
+  Codex course needs both logins. A Codex course has no web search:
+  Codex's search opens and reads pages, which a tutor never does here.
 - Local web app. TypeScript for server and interface, with small Python helper
   scripts (run through `uv`) for document conversion and symbolic math. The
   language choice was delegated to the agent by the learner.

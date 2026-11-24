@@ -60,6 +60,67 @@ the shipped prompt is kept, and the learner can revert to it. Where the
 line between fixed and editable falls in `prompts/tutor.md` is for that
 task.
 
+The Codex backend, broken down on 2026-11-24. The user's choices are in
+`brief.md`, "Backends and stack": a course runs on Codex or Claude, picked
+at its intake and fixed after; on Codex only its tutor and unit planner
+run there. The adapter drives Codex's app-server protocol, not the SDK,
+which runs each turn as a new `codex exec` with no system prompt, hook or
+streamed text (`findings.md`, "Codex"); if 6.10 or 6.11 shows the protocol
+cannot carry `backend.ts`'s contract, stop and replan with the user. The
+engine learns nothing of which backend runs a session beyond the choice
+per course in 6.13. Live runs use gpt-6.2-sol at medium through
+`check:live` once 6.11 pins it, each asked of the user before it runs.
+
+### 6.10 Codex: isolation, threads and confinement without a model — todo
+
+**Why:** The adapter rests on an experimental protocol and on keeping both the learner's Codex setup and the record out of the tutor's reach. All of that can be settled with no model call (`codex debug prompt-input`, `codex app-server`, `codex sandbox`).
+**Do:** Pin the Codex CLI in `mise.toml`: the protocol is experimental and the adapter speaks one version. On a scratch `CODEX_HOME`: find the configuration that leaves the model only Gauss's instructions, its dynamic tools, the shell and file-change tools and the environment context (no bundled skills, multi-agent tools, `request_user_input`, apps, plugins or memories), or list what cannot be removed; check that `thread/start` with `baseInstructions`, `dynamicTools`, `cwd`, a sandbox and an approval policy returns the thread's id before any turn, that `thread/resume` finds the thread from its own folder and from another and replaces its instructions, and what an unknown id answers; decide where Gauss's own `CODEX_HOME` lives (outside every data root, so a fresh test root needs no new login) and how the learner signs in to it once without copying `auth.json`, read back with `account/read`. With `codex sandbox linux` and the permission profile a tutor will get, show that a command in the workspace cannot read what `sandbox.reads.denied` denies (the course's `state.json` and `evidence.jsonl`), can read what `reads.allowed` allows (mise's Python and uv, the workspace's `.venv`), writes only in the workspace and a temporary folder of its own, and reaches no network; say whether Gauss's seccomp layer (`sandbox_exec.py`) can wrap Codex's commands, or what stands in for it.
+**Done when:** `findings.md`, "Codex" and "Sandbox and confinement", give each answer with its evidence, replacing what it contradicts; `architecture.md`, "Working here", says how to sign in Gauss's Codex home. If isolation or confinement cannot be met, the piece stops and the plan is changed with the user.
+
+### 6.11 Codex: the live-check pin and a protocol trial — todo
+
+**Why:** Only a model shows what decides the adapter's design: whether a dynamic tool can end the turn and leave its result in the thread, what the model is told when an approval is declined, and whether an image a tool returns reaches it.
+**Do:** Add `src/server/backends/codex.ts` holding the live-check pin (gpt-6.2-sol, medium) and make `GAUSS_LIVE_CHECK` apply it, as `LIVE_CHECK_OPTIONS` does for Claude; update `architecture.md`, "Working here". Then, asked of the user first, run a throwaway script under `mise exec -- pnpm check:live` that drives `codex app-server` with 6.10's configuration in a scratch workspace, three times each: a tool shaped like `ask_question` answered and then `turn/interrupt`, with the next turn asked to name the tool's result; a tool shaped like `view_page` returning an image; a command and a file change declined; text deltas compared with the final message; a Stop mid-reply.
+**Done when:** `findings.md`, "Codex", records each behaviour with its runs' evidence; tasks 6.14 and 6.15 are corrected where a finding changes them, or the piece stops for the user if a premise fails.
+
+### 6.12 A course's backend, chosen at intake — todo
+
+**Why:** The user's choice: a course runs on Claude or Codex, picked when its intake makes it and fixed after. `course.json` already has a `backend` field, with Claude its only value, and nothing reads it.
+**Do:** Add "codex" to `BackendName`. The intake offers the choice before the course is made, Claude preselected, and `createCourse` and the intake's reservation take it; where the choice sits follows the intake's selected mock (`docs/prototype/index.html`). A Codex choice is refused with its reason when Codex is not installed at the pinned version or Gauss's Codex home is not signed in (6.10's check, in `codex.ts`, answered by a route the page asks). The course view shows the backend. In a Codex course the web search switch is off and disabled, with the reason, and the setting's route refuses it. Under `pnpm dev:fake` the check passes and both names run on the scripted backend.
+**Done when:** tests show a course made for Codex keeps its backend through intake and a restart, an older `course.json` still reads as Claude, a Codex choice is refused when Codex is unavailable, and web search is refused in a Codex course; in Chromium under `pnpm dev:fake`, an intake makes a Codex course whose course view says so; `mise run check` passes.
+
+### 6.13 The tutor and unit planner run on the course's backend — todo
+
+**Why:** One backend serves the whole app now. In a Codex course the tutor and the unit planner must run on Codex, while the intake, course planning, the grader, the judges and the writers stay on Claude.
+**Do:** `serve()` takes the session backends by name (`Record<BackendName, ...>` of `startSession` and `hasSession` only, so a backend no one-shot role uses needs no `oneShot`); `createUnitChats` and `createUnitPlanner` take a course's by its `backend`, and every other role keeps its own. A unit of a course whose backend the server lacks fails to open with the reason, as other load errors do. `main.ts` passes Claude alone until 6.14; `dev-fake.ts` maps both names to the scripted backend.
+**Done when:** tests with two fake backends show a Codex course's tutor sessions, resumes and unit planning reach the Codex one and its grading, judging, handoffs, notes and course planning the Claude one, and a Claude course reaches only Claude; `mise run check` passes.
+
+### 6.14 The Codex adapter: sessions, turns and teaching tools — todo
+
+**Why:** The engine needs Codex sessions under the same contract as Claude's (`backend.ts`): kept and resumed sessions, streamed text, teaching tools that can end a turn, Stop, and every failure a `turn_end` error.
+**Do:** `createCodexBackend` in `codex.ts` drives the pinned `codex app-server` over stdio, with 6.10's configuration and home and an environment without `OPENAI_` and `CODEX_` variables other than the home (as `sdkEnvironment` strips Claude's). `startSession`: `thread/start` with the system prompt as base instructions, the teaching tools as dynamic tools (each `inputShape` as JSON Schema) and the working folder; kept only when given a `cwd`, otherwise ephemeral (the unit planner's); `backendSessionId` is the thread's id; `resumeId` resumes with the current prompt, and an unknown one rejects with `SessionNotFound`; `title` names the thread. `send`: `turn/start`; text deltas become `text`, with separate messages joined by a blank line; tool calls become `tool_call`; an `item/tool/call` runs the teaching tool with the turn's signal and answers it, a carried-out image as an image item; a result with `endTurn` ends the turn `ended_by_tool` in the order 6.11 found; `turn/completed` maps to done, interrupted or error, and the process's exit fails the turn and the session. `interrupt` is `turn/interrupt`; `hasSession` reads the thread without starting a turn. `main.ts` adds it to 6.13's map when 6.12's check passes, with `GAUSS_CODEX_MODEL` overriding its model as `GAUSS_CLAUDE_MODEL` does Claude's. Update `architecture.md`, "Modules" and "Prompts".
+**Done when:** tests against a scripted app-server peer (a small Node script speaking the protocol, in the way `claude-session.test.ts` simulates the Agent SDK) cover start, resume and an unknown id, streamed text, a teaching tool carried out, refused and ending the turn, an image result, Stop mid-text and mid-tool, the process dying mid-turn, and the environment passed; `mise run check` passes.
+
+### 6.15 Codex: the workspace's file and shell tools — todo
+
+**Why:** A tutor's file and shell tools are confined and asked about: the engine refuses a write or a command by phase (`WorkspaceTools.acquire`), and commands run with no network, reading only what the engine allows. On Codex these are its own shell and file-change tools, its sandbox and its approval requests.
+**Do:** A session given `workspace` gets 6.10's permission profile for its `cwd` and `reads` and a private temporary folder (as `workspaceTmpDir`). Every command and file change that writes asks for approval, which `acquire` answers: accepted, its reservation is released once the item completes or fails; refused, declined, with the reason reaching the model as 6.11 found. Reads run without a reservation. A file change reports `file_written` for each path once it succeeds. Background processes are refused or ended with the turn, as far as 6.10 and 6.11 show it can be done. In `prompts/tutor.md`, the lines that name Claude's tools ("your Write tool", `WebSearch`) say what holds on either backend, so one prompt serves both; `scripted.test.ts` checks the header and tool wording the scripted backend reads.
+**Done when:** tests against the scripted peer show approvals acquiring and releasing, a refusal declined with its reason and nothing written, and `file_written` events; a test running the real `codex sandbox` (no model) shows a workspace command cannot read a denied record file or reach the network and can write in its workspace; `mise run check` passes.
+
+### 6.16 A Codex course, live — todo
+
+**Why:** The scripted peer shows the adapter follows the protocol, not that a Codex tutor teaches within Gauss's rules: prompts, tool descriptions, headers and refusals written for Claude now reach another model.
+**Do:** Asked of the user first, through `mise exec -- pnpm check:live` on gpt-6.2-sol at medium: in a Codex course written into the root as `record/dev-seed.ts` does, two runs of a unit from its planning through its lecture (`read_section`, `present_lecture`), a discussion message, Ready, a choice and a written question each ending the turn, a miss and its detour, a code question's starter written in the workspace and its tests run, a Stop mid-reply, and a server restart followed by reopening the unit (a resumed thread). Compare what the tutor did with `prompts/tutor.md`'s rules, and with a Claude tutor's known behaviour (`findings.md`, "Tutor").
+**Done when:** `findings.md`, "Codex", records what the runs showed, with evidence from Gauss's Codex home's session logs and the course's `sessions/`; each break of the engine's rules or the adapter's contract becomes a task here, and model behaviour a known gap (C).
+
+User check for the Codex backend, after 6.16: with `pnpm dev` (the
+learner's Claude login, and Gauss's Codex home signed in), make a course
+on Codex at intake; its course view says so and web search is off. Take a
+unit through its planning and lecture, a discussion message, Ready, a
+question answered right and one missed with its detour, a code question
+in a course about code, a Stop mid-reply, and a server restart followed
+by reopening the unit. A Claude course behaves as before.
+
 ## Known-gap fixes
 
 None open.

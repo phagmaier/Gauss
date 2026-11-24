@@ -76,24 +76,42 @@ follows the SDK's version.
 
 ## Codex
 
-From the stage 0 spike with `@openai/codex-sdk` 0.169 on the ChatGPT login.
+From the stage 0 spike with `@openai/codex-sdk` 0.169 on the ChatGPT login,
+and Codex CLI 0.171 and SDK 0.172 read with no model call (2026-11-24).
 
-- **Each turn is a new `codex exec`**; there is no system-prompt option, no
-  in-process tool and no hook, and text does not stream (the app-server
-  protocol's `item/agentMessage/delta` is untried).
-  `model_instructions_file` replaces Codex's own instructions.
+- **The SDK runs each turn as a new `codex exec`** (still in 0.172): no
+  system-prompt option, no in-process tool, no hook, no streamed text, and
+  it cannot pass `exec`'s `--ignore-user-config`. `model_instructions_file`
+  replaces Codex's own instructions. Hence the app-server protocol
+  (`codex app-server`, JSON-RPC over stdio; types from `codex app-server
+  generate-ts --experimental`): `baseInstructions` on `thread/start` and
+  `thread/resume`, in-process tools (`dynamicTools`, answered through the
+  `item/tool/call` request; experimental), `item/agentMessage/delta`,
+  `turn/interrupt`, and approval requests for commands and file changes,
+  answered accept or decline with no reason field. Untried with a model.
 - **Teaching tools work over MCP** with the override
   `mcp_servers.gauss = { url, default_tools_approval_mode = "approve" }`;
   without it `approval_policy = "never"` refuses the calls. A tool ends the
   turn by aborting the turn's `AbortSignal`, and the thread resumes.
-- **The thread id arrives with the first turn**, not from `startThread()`,
-  which the adapter's `backendSessionId` cannot take as it stands. Every
-  thread is saved under `~/.codex/sessions/`.
-- **The learner's setup leaks in**: the global `AGENTS.md`, skills and
-  collaboration tools survive overrides (`features.apps = false` works).
-  The ways out are a `CODEX_HOME` of Gauss's own with a login (copying
-  `auth.json` can sign the learner out) or `--ignore-user-config`, which
-  the SDK cannot pass.
+- **Under `exec` the thread id arrives with the first turn**
+  (`thread.started`), which the adapter's `backendSessionId` cannot take;
+  app-server's `thread/start` response holds the thread (protocol types,
+  untried). Threads are saved under `$CODEX_HOME/sessions/`.
+- **The learner's setup reaches the model**: with their `CODEX_HOME`, their
+  global `AGENTS.md`, their skills and plugin suggestions, whatever
+  `--disable`, `project_doc_max_bytes=0` or `model_instructions_file` says.
+  An empty `CODEX_HOME` drops those, but Codex's bundled skills (imagegen,
+  openai-docs, skill-creator, skill-installer), its multi-agent
+  instructions and tools (`spawn_agent` and others) and
+  `request_user_input` remain. Copying `auth.json` into another home can
+  sign the learner out. Evidence: `codex debug prompt-input`, which prints
+  the model's input without calling it.
+- **No account email address is in the model's input** with the default
+  configuration (`codex debug prompt-input`); what the server adds is not
+  visible there.
+- **Codex's web search can open a page and search in it** (the protocol's
+  `WebSearchAction`: `openPage`, `findInPage`); `exec`'s search item
+  carries the query, not the pages found.
 
 ## Sandbox and confinement
 
