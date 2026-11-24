@@ -50,6 +50,11 @@ export async function serve(options: {
   handoffBackend: TutorBackend;
   /** Writes the learner's standalone unit notes. */
   notesBackend: TutorBackend;
+  /**
+   * Why a course cannot run on Codex now, or undefined when it can; the
+   * intake asks when the learner picks Codex.
+   */
+  codexUnavailable: () => Promise<string | undefined>;
   dataRootPath: string;
   port: number;
   /** Keeps the record's history in git (task 2.25). */
@@ -112,6 +117,7 @@ export async function serve(options: {
     dataRoot,
     backup,
     converter,
+    codexUnavailable: options.codexUnavailable,
   });
   const planner = createUnitPlanner({
     backend,

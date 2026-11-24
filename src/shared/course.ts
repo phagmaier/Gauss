@@ -23,9 +23,23 @@ export type Slug = z.infer<typeof Slug>;
 export const Timestamp = z.iso.datetime();
 export type Timestamp = z.infer<typeof Timestamp>;
 
-/** The backends a course can run on. Codex joins in stage 6. */
-export const BackendName = z.enum(["claude"]);
+/**
+ * The backends a course can run on, picked at its intake and fixed after
+ * (docs/brief.md, "Backends and stack").
+ */
+export const BackendName = z.enum(["claude", "codex"]);
 export type BackendName = z.infer<typeof BackendName>;
+
+/** Each backend's name, as the learner reads it. */
+export const BACKEND_TITLES: Record<BackendName, string> = {
+  claude: "Claude",
+  codex: "Codex",
+};
+
+/** Why a Codex course has no web search, as its course view and its settings route say. */
+export const NO_WEB_SEARCH_ON_CODEX =
+  "A course on Codex has no web search: Codex's search opens and reads " +
+  "pages, which a tutor here never does.";
 
 /**
  * The course's settings, which the course view changes. Each change of one

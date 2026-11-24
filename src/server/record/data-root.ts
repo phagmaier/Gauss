@@ -40,7 +40,7 @@ import { isDeepStrictEqual } from "node:util";
 import { crc32 } from "node:zlib";
 import { z } from "zod";
 import { ArtifactFile } from "../../shared/artifact.ts";
-import { Course, Slug } from "../../shared/course.ts";
+import { type BackendName, Course, Slug } from "../../shared/course.ts";
 import {
   Curriculum,
   CurriculumProposal,
@@ -110,9 +110,13 @@ export function resolveDataRoot(
 export type SourceHome = { course: Slug } | { intake: string };
 
 export interface DataRoot {
-  /** Makes the folder, reports its reserved id, then publishes course.json. */
+  /**
+   * Makes the folder, reports its reserved id, then publishes course.json.
+   * The course runs on `backend`, Claude if none is given.
+   */
   createCourse(input: {
     title: string;
+    backend?: BackendName;
     reserved?: (id: Slug) => void;
     firstProposal?: Pick<PendingIntakeProposal, "sources" | "proposal"> & {
       intakeId: string;
@@ -932,7 +936,7 @@ export function openDataRoot(options: {
   }
 
   const record: DataRoot = {
-    async createCourse({ title, reserved, firstProposal }) {
+    async createCourse({ title, backend = "claude", reserved, firstProposal }) {
       const journal =
         firstProposal === undefined
           ? undefined
@@ -959,7 +963,7 @@ export function openDataRoot(options: {
       const instance = randomUUID();
       const course = Course.parse({
         title,
-        backend: "claude",
+        backend,
         settings: { webSearch: false },
         createdAt: stamp,
         instance,

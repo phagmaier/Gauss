@@ -9,7 +9,7 @@
 // conversation is replaced by a new one (task 2.14), a marker says so, and
 // the thread before it is shown as earlier conversations.
 
-import type { Slug } from "./course.ts";
+import type { BackendName, Slug } from "./course.ts";
 import { changedUnits, type Unit } from "./curriculum.ts";
 import type { CurriculumChangeOutcome } from "./curriculum-change.ts";
 import type { ShownDispute } from "./dispute.ts";
@@ -359,6 +359,8 @@ export interface Timeline {
   approved: { courseId: Slug; revision: number } | null;
   /** The intake started from a stored draft, its conversation lost. */
   reopened: boolean;
+  /** The intake: the backend its course runs on. */
+  backend: BackendName;
   // A unit chat's own (tasks 2.6 to 2.8):
   /** The index of the latest live curriculum update, or -1. */
   curriculumChangedAt: number;
@@ -400,6 +402,7 @@ export const emptyTimeline: Timeline = {
   latestRevision: 0,
   approved: null,
   reopened: false,
+  backend: "claude",
   inSession: false,
   plan: null,
   statuses: {},
@@ -1072,6 +1075,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
     }
     case "draft_reopened":
       return { ...next, reopened: true };
+    case "backend_chosen":
+      return { ...next, backend: event.backend };
     // The intake's sources (piece 22): one card per file attached.
     case "source_converting":
       return {

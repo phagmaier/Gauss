@@ -23,7 +23,11 @@ import {
   useMemo,
   useState,
 } from "react";
-import { CourseSettings } from "../shared/course.ts";
+import {
+  BACKEND_TITLES,
+  CourseSettings,
+  NO_WEB_SEARCH_ON_CODEX,
+} from "../shared/course.ts";
 import {
   type StoredUnit,
   type Unit,
@@ -310,6 +314,11 @@ export function Course(props: { courseId: string }) {
                     : "No curriculum was proposed."}
                 </p>
               )}
+              <p className="cv-meta cv-on">
+                <span>
+                  Runs on <b>{BACKEND_TITLES[stored.course.backend]}</b>
+                </span>
+              </p>
               {stored.due === undefined ? null : (
                 <DueCount
                   due={stored.due}
@@ -405,6 +414,7 @@ export function Course(props: { courseId: string }) {
                 <WebSetting
                   courseId={courseId}
                   on={stored.course.settings.webSearch}
+                  codex={stored.course.backend === "codex"}
                   sources={sources !== undefined && sources.length > 0}
                   onChange={(settings) =>
                     setStored(
@@ -506,11 +516,13 @@ function CourseSources(props: {
 
 /**
  * "The web" (piece 24): the course's web search setting, a switch off by
- * default, saying what a search sends and when a change applies.
+ * default, saying what a search sends and when a change applies. A Codex
+ * course has none: its switch stays off, with the reason.
  */
 function WebSetting(props: {
   courseId: string;
   on: boolean;
+  codex: boolean;
   /** The course has sources, which the tutor searches only beyond. */
   sources: boolean;
   onChange(settings: CourseSettings): void;
@@ -541,24 +553,33 @@ function WebSetting(props: {
           type="button"
           className="tog"
           role="switch"
-          aria-checked={props.on}
+          aria-checked={props.on && !props.codex}
           aria-labelledby="web-search"
-          disabled={sending}
+          disabled={sending || props.codex}
           onClick={() => void toggle()}
         />
         <div className="t">
           <span id="web-search">Web search</span>
-          <span className="st">{props.on ? "On" : "Off"}</span>
+          <span className="st">{props.on && !props.codex ? "On" : "Off"}</span>
         </div>
-        <p>
-          The tutor may search the web for what{" "}
-          {props.sources
-            ? "the sources and its own knowledge lack"
-            : "its own knowledge lacks"}
-          {", and cites what it uses. "}A search sends the words the tutor
-          searches for to Anthropic's web search; the tutor never opens a page.
-        </p>
-        <p>Turning it on or off applies from your next message in each unit.</p>
+        {props.codex ? (
+          <p>{NO_WEB_SEARCH_ON_CODEX}</p>
+        ) : (
+          <>
+            <p>
+              The tutor may search the web for what{" "}
+              {props.sources
+                ? "the sources and its own knowledge lack"
+                : "its own knowledge lacks"}
+              {", and cites what it uses. "}A search sends the words the tutor
+              searches for to Anthropic's web search; the tutor never opens a
+              page.
+            </p>
+            <p>
+              Turning it on or off applies from your next message in each unit.
+            </p>
+          </>
+        )}
       </div>
       {problem === undefined ? null : (
         <p className="qa-error" role="alert">

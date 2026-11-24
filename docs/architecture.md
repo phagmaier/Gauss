@@ -177,8 +177,9 @@ Rules no single file shows:
   and export agree.
 - **`src/server/backends/`**: `backend.ts` (the adapter), `claude.ts`
   (Agent SDK on the plan login), `codex.ts` (Codex's model and effort,
-  with the live-check pin), `fake.ts` (tests), `scripted.ts` (the
-  fake driven by turn headers, for `pnpm dev:fake`).
+  with the live-check pin, and `codexUnavailable`, the check an intake
+  makes before a course is made for Codex), `fake.ts` (tests),
+  `scripted.ts` (the fake driven by turn headers, for `pnpm dev:fake`).
 - **`src/server/http/`**: `app.ts` (every route, the event stream, the
   host and origin checks), `artifact-frame.ts` (an aid served to its frame).
 - **`src/web/`**: a component per view (`Library`, `Intake`, `Profile`,

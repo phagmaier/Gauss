@@ -109,6 +109,35 @@ test("a created course is written as course.json and reads back", async () => {
   ).toEqual(expected.course);
 });
 
+test("a course made for Codex reads back on Codex after a restart, and a course.json written before Codex existed reads as Claude", async () => {
+  const { id } = await openDataRoot({ path: dir }).createCourse({
+    title: "Calculus I",
+    backend: "codex",
+  });
+  // As stage 5 wrote it, when Claude was the only backend.
+  const older = join(dir, "courses", "older");
+  await mkdir(older, { recursive: true });
+  await writeFile(
+    join(older, "course.json"),
+    `{
+  "title": "Linear algebra",
+  "backend": "claude",
+  "settings": { "webSearch": true },
+  "createdAt": "2026-11-19T09:00:00.000Z",
+  "instance": "0b6f6f53-7a49-4c5e-9d7b-0d9f3b1c2a10",
+  "lastOpenedAt": "2026-11-20T09:00:00.000Z"
+}
+`,
+  );
+
+  const restarted = openDataRoot({ path: dir });
+  expect((await restarted.readCourse(id))?.course.backend).toBe("codex");
+  expect((await restarted.readCourse("older"))?.course).toMatchObject({
+    backend: "claude",
+    settings: { webSearch: true },
+  });
+});
+
 test.each([
   { title: "Bayes' theorem", id: "bayes-theorem" },
   { title: "Éléments d'analyse", id: "elements-d-analyse" },

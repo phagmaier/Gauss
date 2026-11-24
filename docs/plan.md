@@ -71,12 +71,6 @@ gpt-6.1-terra at medium on the standard service tier through
 `check:live` (`codexOptions` in `backends/codex.ts`), each asked of the
 user before it runs.
 
-### 6.12 A course's backend, chosen at intake — todo
-
-**Why:** The user's choice: a course runs on Claude or Codex, picked when its intake makes it and fixed after. `course.json` already has a `backend` field, with Claude its only value, and nothing reads it.
-**Do:** Add "codex" to `BackendName`. The intake offers the choice before the course is made, Claude preselected, and `createCourse` and the intake's reservation take it; where the choice sits follows the intake's selected mock (`docs/prototype/index.html`). A Codex choice is refused with its reason when Codex is not installed at the pinned version or Gauss's Codex home is not signed in (`account/read`, in `codex.ts`, answered by a route the page asks). The course view shows the backend. In a Codex course the web search switch is off and disabled, with the reason, and the setting's route refuses it. Under `pnpm dev:fake` the check passes and both names run on the scripted backend.
-**Done when:** tests show a course made for Codex keeps its backend through intake and a restart, an older `course.json` still reads as Claude, a Codex choice is refused when Codex is unavailable, and web search is refused in a Codex course; in Chromium under `pnpm dev:fake`, an intake makes a Codex course whose course view says so; `mise run check` passes.
-
 ### 6.13 The tutor and unit planner run on the course's backend — todo
 
 **Why:** One backend serves the whole app now. In a Codex course the tutor and the unit planner must run on Codex, while the intake, course planning, the grader, the judges and the writers stay on Claude.

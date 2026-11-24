@@ -250,7 +250,11 @@ counts trial runs.
   way, so a home is signed in when `account` is set. `codex login status`
   reads the login of `CODEX_HOME` ("Not logged in" in a scratch home
   while `~/.codex` was signed in). A `CODEX_HOME` under `/tmp` warns that
-  Codex makes no helper links there.
+  Codex makes no helper links there. A fresh `codex app-server` answers
+  `initialize` and `account/read` (`refreshToken: false`) in about 2 s
+  signed in, 0.2 s signed out, and ends when its stdin closes; given a
+  `CODEX_HOME` that does not exist, it exits 1 before answering
+  (2026-11-24, `codexUnavailable` run by hand).
 - **No account email address is in the model's input**: not in
   `codex debug prompt-input`, nor in any trial's rollout.
 - **Codex's web search can open a page and search in it** (the protocol's

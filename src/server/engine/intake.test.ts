@@ -10,8 +10,9 @@ import {
   KeptSessions,
 } from "../backends/fake.ts";
 import type { Backup } from "../record/backup.ts";
-import { openDataRoot } from "../record/data-root.ts";
+import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { IDLE_MS } from "./conversation.ts";
+import { fakeConverter, upload } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createIntake, createIntakes, type Intake } from "./intake.ts";
 
@@ -725,6 +726,7 @@ describe("the learner profile (task 5.8)", () => {
 describe("a draft reopened for review, its first conversation lost in a restart", () => {
   const DRAFT = {
     id: "linear-algebra-for-pca",
+    backend: "claude" as const,
     proposal: { ...FIRST, profileWas: null },
   };
 
@@ -761,6 +763,7 @@ describe("a draft reopened for review, its first conversation lost in a restart"
 
     expect(intake.events()).toEqual([
       { type: "draft_reopened" },
+      { type: "backend_chosen", backend: "claude" },
       {
         type: "curriculum_proposed",
         courseId: "linear-algebra-for-pca",
@@ -1023,5 +1026,113 @@ describe("an intake left idle (task 2.15)", () => {
       "[Message from the learner. Allowed now: reply, or propose a curriculum with propose_curriculum.]\nAnd I want to read PCA papers.",
     );
     expect(proposals(intake)).toHaveLength(1);
+  });
+});
+
+describe("the backend the course runs on", () => {
+  /** An intake whose Codex check is the test's to answer. */
+  function setUpCodex(
+    script: FakeTurn[],
+    codexUnavailable: () => Promise<string | undefined>,
+    dataRoot: DataRoot = openDataRoot({ path: dir }),
+  ) {
+    return createIntake({
+      backend: createFakeBackend(script),
+      systemPrompt: "You are a test planner.",
+      dataRoot,
+      converter: fakeConverter(),
+      codexUnavailable,
+    });
+  }
+
+  test("cannot change once the first proposal has started making the course, before its id is reserved", async () => {
+    const record = openDataRoot({ path: dir });
+    const creating = Promise.withResolvers<void>();
+    const finishCreating = Promise.withResolvers<void>();
+    const intake = setUpCodex(
+      [OPENING, [{ call: "propose_curriculum", input: FIRST }]],
+      async () => undefined,
+      {
+        ...record,
+        async createCourse(input) {
+          creating.resolve();
+          await finishCreating.promise;
+          return record.createCourse(input);
+        },
+      },
+    );
+    expect(await intake.chooseBackend("codex")).toEqual({ ok: true });
+    intake.say(ASK);
+    await intake.settled();
+    intake.say(ANSWER);
+    await creating.promise;
+
+    expect(await intake.chooseBackend("claude")).toEqual({
+      ok: false,
+      status: 409,
+      error: "The course is made, and it runs on Codex.",
+    });
+    finishCreating.resolve();
+    await intake.settled();
+    expect(
+      (await reload().readCourse("linear-algebra-for-pca"))?.course.backend,
+    ).toBe("codex");
+    await intake.close();
+  });
+
+  test("survives the intake's reservation: a first proposal stopped before course.json is published is made on Codex at startup", async () => {
+    const intake = setUpCodex(
+      [OPENING, [{ call: "propose_curriculum", input: FIRST }]],
+      async () => undefined,
+    );
+    expect(await intake.chooseBackend("codex")).toEqual({ ok: true });
+    await intake.attach(upload("pca.md", "# PCA\n\nDirections of variance.\n"));
+    disk.refuses = "course.json";
+    await opened(intake);
+    disk.refuses = undefined;
+    await intake.close();
+
+    expect(proposals(intake)).toEqual([]);
+    const restarted = reload();
+    expect(
+      await restarted.readCourse("linear-algebra-for-pca"),
+    ).toBeUndefined();
+    await restarted.clearUploads();
+    expect(
+      (await restarted.readCourse("linear-algebra-for-pca"))?.course.backend,
+    ).toBe("codex");
+  });
+
+  test("a Codex check that ends after the course is made, or after a later pick, changes nothing", async () => {
+    const checks: PromiseWithResolvers<string | undefined>[] = [];
+    const intake = setUpCodex(
+      [OPENING, [{ call: "propose_curriculum", input: FIRST }]],
+      () => {
+        const check = Promise.withResolvers<string | undefined>();
+        checks.push(check);
+        return check.promise;
+      },
+    );
+
+    const overtaken = intake.chooseBackend("codex");
+    expect(await intake.chooseBackend("claude")).toEqual({ ok: true });
+    checks[0]?.resolve(undefined);
+    expect(await overtaken).toMatchObject({ ok: false, status: 409 });
+
+    const late = intake.chooseBackend("codex");
+    await opened(intake);
+    checks[1]?.resolve(undefined);
+    expect(await late).toEqual({
+      ok: false,
+      status: 409,
+      error: "The course is made, and it runs on Claude.",
+    });
+    expect(intake.events().some((e) => e.type === "backend_chosen")).toBe(
+      false,
+    );
+    expect(
+      (await reload().readCourse("linear-algebra-for-pca"))?.course.backend,
+    ).toBe("claude");
+    await intake.close();
   });
 });

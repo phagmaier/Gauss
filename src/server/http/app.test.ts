@@ -22,6 +22,10 @@ import {
   test,
   vi,
 } from "vitest";
+import {
+  type BackendName,
+  NO_WEB_SEARCH_ON_CODEX,
+} from "../../shared/course.ts";
 import { Hello, PageEvent, UnitOpened } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
 import { CourseWithProgress } from "../../shared/library.ts";
@@ -108,6 +112,8 @@ function setUp(
   /** The dispute judge's replies, in order, on a backend of its own. */
   rulings: FakeReply[] = [],
   notesReplies: FakeReply[] = [],
+  /** Why Codex cannot run; without it, Codex is refused. */
+  codexUnavailable?: () => Promise<string | undefined>,
 ) {
   const backend = createFakeBackend(script, replies);
   const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
@@ -115,6 +121,7 @@ function setUp(
     backend,
     systemPrompt: "You are a test planner.",
     dataRoot,
+    ...(codexUnavailable === undefined ? {} : { codexUnavailable }),
   });
   const units = createUnitChats({
     backend,
@@ -296,6 +303,88 @@ test("a new course starts as an intake, and its first proposal puts it in the li
   const missing = await app.request("/api/courses/linear-algebra");
   expect(missing.status).toBe(404);
   expect(await missing.json()).toHaveProperty("error");
+});
+
+test("a course picked for Codex at its intake is made on Codex and stays on it through a restart and a reopened draft", async () => {
+  const before = setUp(
+    [OPENING, [{ call: "propose_curriculum", input: PROPOSED }]],
+    [],
+    undefined,
+    [],
+    [],
+    async () => undefined,
+  );
+  const intakeId = await startIntake(before.app);
+  const pick = `/api/intakes/${intakeId}/backend`;
+  expect((await post(before.app, pick, { backend: "gpt" })).status).toBe(400);
+  expect((await post(before.app, pick, { backend: "codex" })).status).toBe(200);
+  await opened(before, intakeId);
+
+  const course = "/api/courses/linear-algebra-for-pca";
+  expect(await (await before.app.request(course)).json()).toMatchObject({
+    course: { backend: "codex" },
+  });
+  const late = await post(before.app, pick, { backend: "claude" });
+  expect(late.status).toBe(409);
+  expect(await late.json()).toEqual({
+    error: "The course is made, and it runs on Codex.",
+  });
+  await before.intakes.close();
+
+  const after = setUp([]);
+  expect(await (await after.app.request(course)).json()).toMatchObject({
+    course: { backend: "codex" },
+  });
+  const reopened = await post(after.app, `${course}/review`);
+  const { intakeId: newId } = (await reopened.json()) as { intakeId: string };
+  const stream = await readFrames(
+    await after.app.request(`/api/intakes/${newId}/events`),
+    4,
+  );
+  expect(stream.first.slice(1, 3).map((f) => f.data)).toEqual([
+    { type: "draft_reopened" },
+    { type: "backend_chosen", backend: "codex" },
+  ]);
+  await stream.close();
+  expect(
+    (
+      await post(after.app, `/api/intakes/${newId}/backend`, {
+        backend: "claude",
+      })
+    ).status,
+  ).toBe(409);
+  await after.intakes.close();
+});
+
+test("Codex is refused at the intake with the reason when it cannot run here, and the course is made on Claude", async () => {
+  const reason = "Gauss's Codex home is not signed in.";
+  const setup = setUp(
+    [OPENING, [{ call: "propose_curriculum", input: PROPOSED }]],
+    [],
+    undefined,
+    [],
+    [],
+    async () => reason,
+  );
+  const intakeId = await startIntake(setup.app);
+
+  const refused = await post(setup.app, `/api/intakes/${intakeId}/backend`, {
+    backend: "codex",
+  });
+  expect(refused.status).toBe(409);
+  expect(await refused.json()).toEqual({ error: reason });
+  await opened(setup, intakeId);
+
+  expect(
+    setup.intakes
+      .get(intakeId)
+      ?.events()
+      .some((e) => e.type === "backend_chosen"),
+  ).toBe(false);
+  expect(
+    (await setup.dataRoot.readCourse("linear-algebra-for-pca"))?.course.backend,
+  ).toBe("claude");
+  await setup.intakes.close();
 });
 
 test("an intake's event stream says hello, replays its log with ids, then sends live events", async () => {
@@ -528,10 +617,11 @@ test("a draft opens for review in its running intake, or after a restart in a ne
   expect(newId).not.toBe(intakeId);
   const stream = await readFrames(
     await after.app.request(`/api/intakes/${newId}/events`),
-    3,
+    4,
   );
   expect(stream.first.slice(1).map((f) => f.data)).toEqual([
     { type: "draft_reopened" },
+    { type: "backend_chosen", backend: "claude" },
     {
       type: "curriculum_proposed",
       courseId: "linear-algebra-for-pca",
@@ -616,10 +706,10 @@ test("a draft stored before style and background notes and profiles existed reop
   const { intakeId } = (await reopened.json()) as { intakeId: string };
   const stream = await readFrames(
     await after.app.request(`/api/intakes/${intakeId}/events`),
-    3,
+    4,
   );
   const { style: _, background: __, ...withoutNotes } = FIRST;
-  expect(stream.first[2]?.data).toEqual({
+  expect(stream.first[3]?.data).toEqual({
     type: "curriculum_proposed",
     courseId: "linear-algebra-for-pca",
     revision: 1,
@@ -833,9 +923,9 @@ const QUESTION = {
 };
 
 /** An approved course, made the day before, with its first unit planned. */
-async function approvedCourse(draft = false) {
+async function approvedCourse(draft = false, backend: BackendName = "claude") {
   const root = openDataRoot({ path: dir, now: () => new Date(CREATED) });
-  const { id } = await root.createCourse({ title: FIRST.title });
+  const { id } = await root.createCourse({ title: FIRST.title, backend });
   await root.saveProposal(id, FIRST);
   if (draft) return;
   await root.approveCurriculum(id, FIRST);
@@ -1240,6 +1330,22 @@ test("the web search setting changes for an approved course and is answered as w
       })
     ).status,
   ).toBe(404);
+});
+
+test("web search is refused in a Codex course with the reason, writing nothing, and turning it off is taken", async () => {
+  const { app, dataRoot } = setUp([]);
+  await approvedCourse(false, "codex");
+  const path = `/api/courses/${COURSE}/settings`;
+
+  const on = await post(app, path, { webSearch: true });
+  expect(on.status).toBe(409);
+  expect(await on.json()).toEqual({ error: NO_WEB_SEARCH_ON_CODEX });
+  expect((await dataRoot.readCourse(COURSE))?.course.settings).toEqual({
+    webSearch: false,
+  });
+  const off = await post(app, path, { webSearch: false });
+  expect(off.status).toBe(200);
+  expect(await off.json()).toEqual({ webSearch: false });
 });
 
 test("turning web search on through the settings route closes an open unit's tutor session, and the next message resumes it with web search", async () => {

@@ -52,6 +52,8 @@ await serve({
   disputeBackend: backend,
   handoffBackend: backend,
   notesBackend: backend,
+  // A Codex course needs no Codex here: every role runs on the scripted backend.
+  codexUnavailable: async () => undefined,
   dataRootPath,
   port: Number(process.env.GAUSS_PORT ?? 4330),
   // Off unless asked for with GAUSS_BACKUP=on (task 2.25).

@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { ArtifactFile } from "./artifact.ts";
-import { Slug, Timestamp } from "./course.ts";
+import { BackendName, Slug, Timestamp } from "./course.ts";
 import { Unit } from "./curriculum.ts";
 import { CurriculumChangeOutcome } from "./curriculum-change.ts";
 import { ShownDispute } from "./dispute.ts";
@@ -422,6 +422,12 @@ export const PageEvent = z.discriminatedUnion("type", [
    */
   z.object({ type: z.literal("draft_reopened") }),
   /**
+   * The intake: the backend the course runs on, Claude until the learner
+   * picks another before the first proposal makes the course. A reopened
+   * draft's intake says its course's after `draft_reopened`.
+   */
+  z.object({ type: z.literal("backend_chosen"), backend: BackendName }),
+  /**
    * The intake: a file the learner attached (piece 22) is being received and
    * converted. Its card follows `attachment`, an id of the intake's own,
    * through `source_attached` or `source_refused`.
@@ -668,3 +674,7 @@ export const Approval = z.object({
   revision: z.number().int().positive(),
 });
 export type Approval = z.infer<typeof Approval>;
+
+/** The learner picks the backend the intake's course will run on. */
+export const BackendChoice = z.object({ backend: BackendName });
+export type BackendChoice = z.infer<typeof BackendChoice>;

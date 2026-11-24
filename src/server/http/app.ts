@@ -12,7 +12,11 @@
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { z } from "zod";
-import { CourseSettings, Slug } from "../../shared/course.ts";
+import {
+  CourseSettings,
+  NO_WEB_SEARCH_ON_CODEX,
+  Slug,
+} from "../../shared/course.ts";
 import { CurriculumChangeAnswer } from "../../shared/curriculum-change.ts";
 import {
   DisputePost,
@@ -21,6 +25,7 @@ import {
 } from "../../shared/dispute.ts";
 import {
   Approval,
+  BackendChoice,
   FILE_NAME_HEADER,
   FinishUnitPost,
   type Hello,
@@ -178,6 +183,9 @@ export function createApp(options: {
         { error: "The curriculum is not approved yet, so no tutor runs." },
         409,
       );
+    }
+    if (stored.course.backend === "codex" && body.data.webSearch) {
+      return c.json({ error: NO_WEB_SEARCH_ON_CODEX }, 409);
     }
     const course = await units.setWebSearch(stored.id, body.data.webSearch);
     return c.json(course.settings satisfies CourseSettings);
@@ -423,6 +431,7 @@ export function createApp(options: {
     const { profile, profileWas } = curriculum.approval;
     const intake = intakes.review({
       id: stored.id,
+      backend: stored.course.backend,
       proposal: {
         title: stored.course.title,
         units: curriculum.units,
@@ -520,6 +529,17 @@ export function createApp(options: {
       return c.json({ ok: true });
     }),
   );
+
+  // The backend the intake's course will run on, until its first proposal
+  // makes the course. Picking Codex checks that it runs here and is signed
+  // in, and is refused with the reason otherwise.
+  app.post("/api/intakes/:id/backend", async (c) => {
+    const body = await readBody(c, BackendChoice);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    return withIntake(c, async (intake) =>
+      reply(c, await intake.chooseBackend(body.data.backend), 200),
+    );
+  });
 
   // A source attached in the intake (piece 22): the body is the file, its
   // name in a header. The answer comes once the file is received; its card

@@ -7,6 +7,8 @@
 // sentence by sentence with the profile it would replace. A source is
 // attached with the clip in the message box or by dropping a file on the
 // thread (piece 22); its card shows the conversion, and Send waits for it.
+// Under the opening question the learner picks the backend the course runs
+// on, until the first proposal makes the course.
 
 import {
   type DragEvent,
@@ -17,6 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { BACKEND_TITLES, type BackendName } from "../shared/course.ts";
 import type { Unit } from "../shared/curriculum.ts";
 import { FILE_NAME_HEADER, Hello, PageEvent } from "../shared/events.ts";
 import { compareSentences } from "../shared/profile.ts";
@@ -300,6 +303,17 @@ export function Intake(props: { intakeId: string }) {
               <p>{OPENING_QUESTION}</p>
             </div>
           )}
+          {lost && timeline.chatId === null ? null : (
+            <BackendChoice
+              key={timeline.chatId}
+              backend={timeline.backend}
+              made={timeline.latestRevision > 0 || timeline.reopened}
+              open={open}
+              onChoose={(backend) =>
+                post(intakePath(intakeId, "backend"), { backend })
+              }
+            />
+          )}
           {timeline.items.map((item) =>
             item.kind === "proposal" ? (
               item.revision === timeline.latestRevision ? (
@@ -460,6 +474,82 @@ export function Intake(props: { intakeId: string }) {
         />
       ) : null}
     </div>
+  );
+}
+
+/** What each backend means for the course, beside its name. */
+const BACKEND_ABOUT: Record<BackendName, string> = {
+  claude: "Claude Code, on your Claude plan.",
+  codex:
+    "Codex, on your ChatGPT plan: gpt-6.1-terra teaches and plans each " +
+    "unit, and the rest stays on Claude. No web search.",
+};
+
+/**
+ * The backend the course runs on, Claude preselected. Codex is checked when
+ * picked, and refused with the reason when it cannot run here; the first
+ * proposal makes the course, and the choice stays.
+ */
+function BackendChoice(props: {
+  backend: BackendName;
+  /** The first proposal has made the course. */
+  made: boolean;
+  /** The intake has not ended. */
+  open: boolean;
+  /** Posts the choice; the reason it was refused, if it was. */
+  onChoose(backend: BackendName): Promise<string | undefined>;
+}) {
+  const [asking, setAsking] = useState<BackendName>();
+  /** A pick the server took, shown until its event arrives on the stream. */
+  const [accepted, setAccepted] = useState<BackendName>();
+  const [problem, setProblem] = useState<string>();
+
+  async function choose(backend: BackendName) {
+    setAsking(backend);
+    setAccepted(undefined);
+    setProblem(undefined);
+    const refused = await props.onChoose(backend);
+    setProblem(refused);
+    if (refused === undefined) setAccepted(backend);
+    setAsking(undefined);
+  }
+
+  // Once the course is made, the record's backend is the one shown.
+  const shown = props.made
+    ? props.backend
+    : (asking ?? accepted ?? props.backend);
+  return (
+    <fieldset
+      className="bk"
+      disabled={props.made || !props.open || asking !== undefined}
+    >
+      <legend className="bk-k">Tutor</legend>
+      {(["claude", "codex"] as const).map((name) => (
+        <label key={name} className="bk-o">
+          <input
+            type="radio"
+            name="backend"
+            value={name}
+            checked={shown === name}
+            onChange={() => void choose(name)}
+          />
+          <span className="bk-t">{BACKEND_TITLES[name]}</span>
+          <span className="bk-d">{BACKEND_ABOUT[name]}</span>
+        </label>
+      ))}
+      <p className="bk-n" aria-live="polite">
+        {asking === "codex"
+          ? "Checking that Codex runs here and is signed in…"
+          : props.made
+            ? "Fixed now that the course is made."
+            : "Pick before the tutor first proposes a curriculum, which makes the course; it stays after."}
+      </p>
+      {problem === undefined ? null : (
+        <p className="qa-error" role="alert">
+          {problem}
+        </p>
+      )}
+    </fieldset>
   );
 }
 

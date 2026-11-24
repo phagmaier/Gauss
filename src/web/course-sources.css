@@ -112,3 +112,7 @@
   transform: translateX(16px);
   background: var(--bg);
 }
+/* a switch that cannot move: a Codex course's, or one whose change is being sent */
+.tog:disabled {
+  opacity: 0.5;
+}

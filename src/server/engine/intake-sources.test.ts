@@ -582,6 +582,7 @@ test("a reopened draft's intake tells its first turn of the course's sources", a
     converter: fakeConverter(),
     draft: {
       id: "reading-hegel",
+      backend: "claude",
       proposal: {
         title: stored?.course.title ?? "",
         units: stored?.curriculum?.units ?? [],

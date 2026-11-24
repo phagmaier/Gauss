@@ -22,8 +22,8 @@ describe("rejects", () => {
       path: ["title"],
     },
     {
-      name: "a backend that is not built",
-      input: { ...COURSE, backend: "codex" },
+      name: "a backend Gauss does not have",
+      input: { ...COURSE, backend: "gemini" },
       path: ["backend"],
     },
     {

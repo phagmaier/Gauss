@@ -9,6 +9,8 @@
 // The first proposal creates the course, named by the proposal's title, and
 // every proposal is stored as its draft curriculum, style note (task 2.10)
 // and background note (task 2.22). Before the first one, nothing is stored.
+// The learner can pick the backend the course runs on until then; the first
+// proposal makes the course on it, and it stays.
 // Revision numbers and the conversation are in memory, so a restart loses
 // them; the stored draft can then be reopened for review in a new intake,
 // which starts from it as proposal 1 (task 1.6).
@@ -32,7 +34,11 @@
 // the sources into the course it creates. Approval waits for a conversion.
 
 import { randomUUID } from "node:crypto";
-import type { Slug } from "../../shared/course.ts";
+import {
+  BACKEND_TITLES,
+  type BackendName,
+  type Slug,
+} from "../../shared/course.ts";
 import type { ShownProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type { TutorBackend } from "../backends/backend.ts";
@@ -77,6 +83,11 @@ export interface Intake {
   attach(upload: Upload): Promise<AttachResult>;
   /** Removes an attached source, until the first proposal. */
   removeSource(attachment: string): Promise<ChatResult>;
+  /**
+   * The backend the course will run on, until the first proposal makes the
+   * course. Codex is refused with the reason when it cannot run here.
+   */
+  chooseBackend(backend: BackendName): Promise<ChatResult>;
   withSourceHome: IntakeSources["withSourceHome"];
   /**
    * Approves the proposal with this revision number, which must be the
@@ -99,6 +110,7 @@ export interface Intake {
  */
 export interface StoredDraft {
   id: Slug;
+  backend: BackendName;
   proposal: ShownProposal;
 }
 
@@ -116,9 +128,24 @@ export function createIntake(options: {
   converter?: SourceConverter;
   /** The largest source taken, in bytes; SOURCE_SIZE_LIMIT unless a test sets it. */
   sourceSizeLimit?: number;
+  /**
+   * Why a course cannot run on Codex now, or undefined when it can
+   * (`codexUnavailable` in `backends/codex.ts`). Without it Codex is refused.
+   */
+  codexUnavailable?: () => Promise<string | undefined>;
 }): Intake {
   const { backend, systemPrompt, dataRoot, draft } = options;
   const log = createEventLog();
+  /** The backend the course runs on, picked by the learner until the course is made. */
+  let courseBackend: BackendName = draft?.backend ?? "claude";
+  /** Counts the learner's picks, so that a check that ends late does not undo a later one. */
+  let picks = 0;
+  /**
+   * The first proposal has started making the course, so its backend is
+   * taken. It stays set after an attempt with sources fails: its journal
+   * keeps the backend for the next attempt and for a restart.
+   */
+  let backendTaken = false;
   let courseId: Slug | undefined;
   /** The first proposal has reserved the id but not published the course yet. */
   let reservedCourseId: Slug | undefined;
@@ -160,9 +187,11 @@ export function createIntake(options: {
       const prepared = await sources.prepareProposal(
         proposal.units,
         async (sourceIds) => {
+          backendTaken = true;
           try {
             const created = await dataRoot.createCourse({
               title: proposal.title,
+              backend: courseBackend,
               ...(sourceIds.length === 0
                 ? {}
                 : {
@@ -177,7 +206,15 @@ export function createIntake(options: {
               },
             });
             courseId = created.id;
+            // A journal from an earlier attempt decides, as a restart would.
+            if (created.course.backend !== courseBackend) {
+              courseBackend = created.course.backend;
+              log.emit({ type: "backend_chosen", backend: courseBackend });
+            }
             return created.id;
+          } catch (error) {
+            if (sourceIds.length === 0) backendTaken = false;
+            throw error;
           } finally {
             reservedCourseId = undefined;
           }
@@ -266,6 +303,7 @@ export function createIntake(options: {
     latest = 1;
     shown = draft.proposal;
     log.emit({ type: "draft_reopened" });
+    log.emit({ type: "backend_chosen", backend: courseBackend });
     emitProposal(courseId, draft.proposal);
   }
 
@@ -329,6 +367,28 @@ export function createIntake(options: {
         return { ok: false, status: 409, error: INTAKE_OVER };
       }
       return sources.remove(attachment);
+    },
+    async chooseBackend(choice) {
+      const refused = (error: string): ChatResult => ({
+        ok: false,
+        status: 409,
+        error,
+      });
+      const made = () => approved || backendTaken || courseId !== undefined;
+      if (made()) return refused(backendFixed(courseBackend));
+      const pick = ++picks;
+      if (choice === "codex") {
+        const reason = await (options.codexUnavailable?.() ??
+          Promise.resolve("Codex is not set up in this server."));
+        if (reason !== undefined) return refused(reason);
+        if (made()) return refused(backendFixed(courseBackend));
+        if (pick !== picks) return refused("A later choice replaced this one.");
+      }
+      if (choice !== courseBackend) {
+        courseBackend = choice;
+        log.emit({ type: "backend_chosen", backend: choice });
+      }
+      return { ok: true };
     },
     withSourceHome: sources.withSourceHome,
     async approve(revision) {
@@ -412,6 +472,10 @@ export function createIntake(options: {
 
 const INTAKE_OVER = "The curriculum is approved; this intake is over.";
 
+function backendFixed(backend: BackendName): string {
+  return `The course is made, and it runs on ${BACKEND_TITLES[backend]}.`;
+}
+
 /** For an intake given no converter: attaching is refused, as without the sandbox. */
 const NO_CONVERTER: SourceConverter = {
   unavailable: "no converter was set up",
@@ -468,6 +532,7 @@ export function createIntakes(options: {
   timer?: Timer;
   backup?: Backup;
   converter?: SourceConverter;
+  codexUnavailable?: () => Promise<string | undefined>;
 }): Intakes {
   const byId = new Map<string, Intake>();
   function keep(intake: Intake): Intake {
