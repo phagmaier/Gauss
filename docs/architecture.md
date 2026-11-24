@@ -106,11 +106,15 @@ Rules no single file shows:
 - **`src/server/engine/`**: the chats and their rules. `conversation.ts`
   (event log and turn queue under every chat); `intake.ts`,
   `intake-sources.ts`, `course-planning.ts`, `unit-planning.ts`;
-  `unit-chat.ts` (phases, assessments, proposals, the learner's actions)
-  with `unit-progression.ts` (post-answer checkpoints and continuation),
+  `unit-chat.ts` (phases, assessments, the learner's actions) with
+  `unit-progression.ts` (post-answer checkpoints and continuation),
   `review-admission.ts` (admission to one unit chat; course-wide thread
   selection stays in `unit-chat.ts`), `unit-aids.ts` (the tutor's aids,
   quotes, lecture and searches, refused while a question is open),
+  `unit-proposals.ts` (the tutor's style note and curriculum change
+  proposals, their cards, and the changes other chats and the course
+  planner tell a chat; the course's one-proposal block stays in
+  `unit-chat.ts`),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,

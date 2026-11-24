@@ -105,12 +105,6 @@ and its result card, "Review now", "/packages" installed where the sandbox
 runs, and a server restart while an answer waits for the judge ("/hold"
 in a message, then answer) followed by reopening the unit.
 
-### 6.2 Proposals: style notes and curriculum changes — todo
-
-**Why:** Proposals reach across the file: two desks, four cards, Apply and Keep, the replay on opening, and what other chats and the course planner tell this one. The Codex backend's tools go through the same desks.
-**Do:** Move `styleDesk`, `curriculumDesk`, `proposedEvent`, `styleAnsweredEvent`, `changeProposedEvent`, `changeAnsweredEvent`, `refreshCurriculum`, `tellCurriculum`, `publishCurriculumDecision`, the bodies of `answerStyle`, `answerCurriculum`, `learnStyle`, `learnPlannerKept` and `learnCurriculum`, and `load`'s replay of answered decisions and waiting cards into `unit-proposals.ts`, made with the chat. It takes the queue, `running()`, `closing()`, `emit` and `events`, `propose(work)` (the course workspace's, bound in `unit-chat.ts` to this chat, so the chat object stays there), `now`, `readStyle`, `readCourse` and `readSources` bound to the course, `restyle`, `recurriculum`, `backup`, `setStyle` and `UNIT_FINISHED`. It returns both desks, the action bodies for `act`, `publish` for `openUnitRecord`'s recovered decision, the learn bodies, and the replays `load` calls where it emits those cards now. Stays: `style` (the system prompt and the header read it); `Running`'s `context`, `plannerContext` and `notes`, which the module writes on the unit it is given; `act` with `whileWriting`; each wait for `loading` and entry into the queue in the chat methods.
-**Done when:** `unit-style.test.ts`, `unit-curriculum.test.ts`, `course-planning.test.ts` and the rest of the existing tests pass with at most import-path changes; `mise run check` passes; the moved code is gone from `unit-chat.ts`.
-
 ### 6.3 Packages: requests and installs — todo
 
 **Why:** A package request's life (the desk, the card, Install or Not now, the install outside the queue, a failed save and its retry, the replay after a restart) is spread over four parts of the file and owns two pieces of the chat's state.

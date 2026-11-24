@@ -114,13 +114,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { Course, Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
-import {
-  type CurriculumChange,
-  type CurriculumDecision,
-  droppedStarted,
-  sameUnits,
-  withoutPlan,
-} from "../../shared/curriculum-change.ts";
+import type { CurriculumDecision } from "../../shared/curriculum-change.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type {
   AnswerEvidence,
@@ -155,10 +149,10 @@ import type {
   UnitPosition,
 } from "../../shared/state.ts";
 import { hasPassed } from "../../shared/status.ts";
-import type { StyleDecision, StyleProposal } from "../../shared/style.ts";
+import type { StyleDecision } from "../../shared/style.ts";
 import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
-import { CurriculumChangeRefused, type DataRoot } from "../record/data-root.ts";
+import type { DataRoot } from "../record/data-root.ts";
 import {
   pickForGate,
   pickForReview,
@@ -166,16 +160,13 @@ import {
 } from "../record/review.ts";
 import { objectiveStatus, unitStatus } from "../record/status.ts";
 import type { CommandReads } from "../sandbox-command.ts";
-import {
-  amendCurriculumTool,
-  type CurriculumDesk,
-} from "../tools/amend-curriculum.ts";
+import { amendCurriculumTool } from "../tools/amend-curriculum.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import {
   installPackagesTool,
   type PackageDesk,
 } from "../tools/install-packages.ts";
-import { proposeStyleTool, type StyleDesk } from "../tools/propose-style.ts";
+import { proposeStyleTool } from "../tools/propose-style.ts";
 import { showArtifactTool } from "../tools/show-artifact.ts";
 import {
   presentLectureTool,
@@ -230,7 +221,6 @@ import {
 } from "./review-admission.ts";
 import type { SourceConverter } from "./source-convert.ts";
 import { createSourceShelf } from "./source-shelf.ts";
-import { sectionsRefused } from "./source-text.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import {
   createUnitAgents,
@@ -244,6 +234,7 @@ import {
   createUnitProgression,
   type UnitProgression,
 } from "./unit-progression.ts";
+import { createUnitProposals } from "./unit-proposals.ts";
 import {
   assessmentEvent,
   detourEvent,
@@ -1347,7 +1338,7 @@ function createUnitChat(
         emit: log.emit,
         recoveredCurriculumChange: async (decision) => {
           if (running !== undefined) {
-            await publishCurriculumDecision(running, decision);
+            await proposals.publish(running, decision);
           }
         },
         packagePreview,
@@ -1460,8 +1451,8 @@ function createUnitChat(
           ...(options.installer === undefined
             ? []
             : [installPackagesTool(packageDesk)]),
-          proposeStyleTool(styleDesk),
-          amendCurriculumTool(curriculumDesk),
+          proposeStyleTool(proposals.styleDesk),
+          amendCurriculumTool(proposals.curriculumDesk),
           ...(sources.length === 0
             ? []
             : [
@@ -1594,25 +1585,7 @@ function createUnitChat(
       restoreQuestions(record);
       restoreDisputes(r);
       restorePackages(record.packageCompletions);
-      const shown = (type: PageEvent["type"], proposalId: string) =>
-        log
-          .events()
-          .some(
-            (event) =>
-              event.type === type &&
-              "proposalId" in event &&
-              event.proposalId === proposalId,
-          );
-      for (const decision of record.pendingStyleDecisions) {
-        if (!shown("style_answered", decision.proposalId)) {
-          log.emit(styleAnsweredEvent(decision));
-        }
-      }
-      for (const decision of record.pendingCurriculumDecisions) {
-        if (!shown("curriculum_change_answered", decision.proposalId)) {
-          log.emit(changeAnsweredEvent(decision));
-        }
-      }
+      proposals.showAnswered(record);
       if (pendingInstall !== undefined) showSaveFailure(pendingInstall);
       if (!recoveringOverride) log.emit(record.status());
       if (record.finished !== undefined) {
@@ -1665,12 +1638,7 @@ function createUnitChat(
       ) {
         log.emit(requestedEvent(position.packageRequest));
       }
-      if (position.styleProposal !== undefined) {
-        log.emit(proposedEvent(position.styleProposal));
-      }
-      if (position.curriculumChange !== undefined) {
-        log.emit(changeProposedEvent(position.curriculumChange));
-      }
+      proposals.showWaiting(position);
       const question = await reopenAsked(r);
       // A new sitting can open with review; the chat is new.
       await r.review.sittingOpened();
@@ -3024,228 +2992,27 @@ function createUnitChat(
     unitFinished: UNIT_FINISHED,
   });
 
-  // Not while a question of the unit is open, where the card would sit
-  // beside the question; one proposal waits in a course at a time.
-  const styleDesk: StyleDesk = {
-    propose: ({ note, why }, signal) =>
-      exclusive(async () => {
-        const r = running;
-        if (r === undefined) return { refused: "The unit is not open." };
-        if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
-        if (r.progression.feedback?.started === true) {
-          return {
-            refused:
-              "This turn is for feedback only. Propose a style change in a later reply.",
-          };
-        }
-        const open = r.record.position.openQuestion;
-        if (open !== undefined) {
-          return {
-            refused:
-              `Question ${open.number} is open: propose a change to the ` +
-              "style once its answer is graded.",
-          };
-        }
-        // Read once no other proposal waits, so an Apply in another unit
-        // has written style.md before this one compares with it.
-        return options.workspace.propose(chat, async () => {
-          const current = await dataRoot.readStyle(courseId);
-          if (note === current) {
-            return {
-              refused: "That is the current style note: nothing would change.",
-            };
-          }
-          const proposal: StyleProposal = {
-            id: randomUUID(),
-            note,
-            ...(current === undefined ? {} : { was: current }),
-            why,
-            proposedAt: now().toISOString(),
-          };
-          // A turn stopped while this waited for the unit or the course
-          // shows and keeps nothing; one stopped during the save below
-          // shows its card, as one stopped just after it would.
-          signal?.throwIfAborted();
-          await r.record.keepStyleProposal(proposal, () =>
-            log.emit(proposedEvent(proposal)),
-          );
-          return { proposed: true as const };
-        });
-      }),
-  };
-
-  /** The card that presents a proposed style note. */
-  function proposedEvent(proposal: StyleProposal): PageEvent {
-    return {
-      type: "style_proposed",
-      proposalId: proposal.id,
-      note: proposal.note,
-      ...(proposal.was === undefined ? {} : { was: proposal.was }),
-      why: proposal.why,
-    };
-  }
-
-  function styleAnsweredEvent({
-    proposalId,
-    outcome,
-  }: StyleDecision): PageEvent {
-    return { type: "style_answered", proposalId, outcome };
-  }
-
-  function answerStyle(proposalId: string, outcome: StyleDecision["outcome"]) {
-    return act(
-      async (r) => {
-        const proposal = r.record.position.styleProposal;
-        if (proposal?.id !== proposalId) {
-          return refused("That proposed style note is not waiting.");
-        }
-        const decision = await r.record.answerStyleProposal(
-          outcome === "applied"
-            ? { proposalId, outcome, note: proposal.note }
-            : { proposalId, outcome },
-        );
-        if (decision.outcome === "applied") {
-          style = decision.note;
-          options.restyle?.(decision.note);
-          options.backup?.commit(`${courseId}: style note changed`);
-        }
-        log.emit(styleAnsweredEvent(decision));
-        return { ok: true };
-      },
-      { whileWriting: true },
-    );
-  }
-
-  // As the style desk: not while a question of the unit is open, nor in a
-  // feedback-only turn; one proposal of either kind waits in a course.
-  const curriculumDesk: CurriculumDesk = {
-    propose: ({ units, why }, signal) =>
-      exclusive(async () => {
-        const r = running;
-        if (r === undefined) return { refused: "The unit is not open." };
-        if (r.record.finished !== undefined) return { refused: UNIT_FINISHED };
-        if (r.progression.feedback?.started === true) {
-          return {
-            refused:
-              "This turn is for feedback only. Propose a curriculum change in a later reply.",
-          };
-        }
-        const open = r.record.position.openQuestion;
-        if (open !== undefined) {
-          return {
-            refused:
-              `Question ${open.number} is open: propose a change to the ` +
-              "curriculum once its answer is graded.",
-          };
-        }
-        // Read once no other proposal waits, so an Apply in another unit
-        // has written curriculum.json before this one compares with it.
-        return options.workspace.propose(chat, async (state) => {
-          const current = (await dataRoot.readCourse(courseId))?.curriculum;
-          if (current === null || current === undefined) {
-            return { refused: "The course has no curriculum." };
-          }
-          if (sameUnits(current.units, units)) {
-            return {
-              refused: "That is the current curriculum: nothing would change.",
-            };
-          }
-          const dropped = droppedStarted(current.units, units, state);
-          if (dropped !== undefined) return { refused: dropped };
-          const sections = sectionsRefused(
-            units,
-            await dataRoot.readSources(courseId),
-          );
-          if (sections !== undefined) return { refused: sections };
-          const change: CurriculumChange = {
-            id: randomUUID(),
-            units,
-            was: current.units.map(withoutPlan),
-            why,
-            proposedAt: now().toISOString(),
-          };
-          // As for the style: a turn stopped meanwhile keeps nothing.
-          signal?.throwIfAborted();
-          await r.record.keepCurriculumChange(change, () =>
-            log.emit(changeProposedEvent(change)),
-          );
-          return { proposed: true as const };
-        });
-      }),
-  };
-
-  /** The card that presents a proposed curriculum change. */
-  function changeProposedEvent(change: CurriculumChange): PageEvent {
-    return {
-      type: "curriculum_change_proposed",
-      proposalId: change.id,
-      units: change.units,
-      was: change.was,
-      why: change.why,
-    };
-  }
-
-  function changeAnsweredEvent({
-    proposalId,
-    outcome,
-  }: CurriculumDecision): PageEvent {
-    return { type: "curriculum_change_answered", proposalId, outcome };
-  }
-
-  async function refreshCurriculum(r: Running) {
-    const stored = await dataRoot.readCourse(courseId);
-    const units = stored?.curriculum?.units ?? r.context.units;
-    r.context = { ...r.context, units };
-  }
-
-  function tellCurriculum(r: Running, outcome: "changed" | "planner-applied") {
-    if (outcome === "planner-applied" || r.record.finished === undefined) {
-      r.notes.push(
-        curriculumNote(outcome, (r.plannerContext ?? r.context).units),
-      );
-    }
-  }
-
-  async function publishCurriculumDecision(
-    r: Running,
-    decision: CurriculumDecision,
-  ) {
-    if (decision.outcome === "applied") {
-      await refreshCurriculum(r);
-      options.recurriculum?.();
-      options.backup?.commit(`${courseId}: curriculum changed`);
-      log.emit({ type: "curriculum_changed" });
-    }
-    log.emit(changeAnsweredEvent(decision));
-  }
-
-  function answerCurriculum(
-    proposalId: string,
-    outcome: CurriculumDecision["outcome"],
-  ) {
-    return act(
-      async (r) => {
-        if (r.record.position.curriculumChange?.id !== proposalId) {
-          return refused("That proposed curriculum change is not waiting.");
-        }
-        let decision: CurriculumDecision;
-        try {
-          decision = await r.record.answerCurriculumChange({
-            proposalId,
-            outcome,
-          });
-        } catch (error) {
-          if (!(error instanceof CurriculumChangeRefused)) throw error;
-          return refused(
-            `This change can no longer be applied. ${error.message}`,
-          );
-        }
-        await publishCurriculumDecision(r, decision);
-        return { ok: true };
-      },
-      { whileWriting: true },
-    );
-  }
+  const proposals = createUnitProposals({
+    exclusive,
+    running: () => running,
+    closing: () => closing,
+    emit: log.emit,
+    events: log.events,
+    // The course's queue keeps this chat, to tell it when its block lifts.
+    propose: (work) => options.workspace.propose(chat, work),
+    courseId,
+    now,
+    readStyle: () => dataRoot.readStyle(courseId),
+    readCourse: () => dataRoot.readCourse(courseId),
+    readSources: () => dataRoot.readSources(courseId),
+    restyle: (note) => options.restyle?.(note),
+    recurriculum: () => options.recurriculum?.(),
+    backup: options.backup,
+    setStyle: (note) => {
+      style = note;
+    },
+    unitFinished: UNIT_FINISHED,
+  });
 
   // Not while a question of the course is open: the install closes the
   // workspace, which an open question has closed already.
@@ -3752,10 +3519,22 @@ function createUnitChat(
         return { ok: true };
       }),
 
-    applyStyle: (proposalId) => answerStyle(proposalId, "applied"),
-    keepStyle: (proposalId) => answerStyle(proposalId, "kept"),
-    applyCurriculum: (proposalId) => answerCurriculum(proposalId, "applied"),
-    keepCurriculum: (proposalId) => answerCurriculum(proposalId, "kept"),
+    applyStyle: (proposalId) =>
+      act((r) => proposals.answerStyle(r, proposalId, "applied"), {
+        whileWriting: true,
+      }),
+    keepStyle: (proposalId) =>
+      act((r) => proposals.answerStyle(r, proposalId, "kept"), {
+        whileWriting: true,
+      }),
+    applyCurriculum: (proposalId) =>
+      act((r) => proposals.answerCurriculum(r, proposalId, "applied"), {
+        whileWriting: true,
+      }),
+    keepCurriculum: (proposalId) =>
+      act((r) => proposals.answerCurriculum(r, proposalId, "kept"), {
+        whileWriting: true,
+      }),
 
     override() {
       if (overrideWrite !== undefined) return overrideWrite;
@@ -4005,47 +3784,23 @@ function createUnitChat(
     async learnStyle(note) {
       await loading;
       await exclusive(async () => {
-        style = note;
-        const r = running;
-        if (r !== undefined && r.record.finished === undefined) {
-          r.notes.push(styleNote("changed", note));
-        }
+        proposals.learnStyle(note);
       });
     },
     renew() {
       agents?.renew();
     },
     learnPlannerKept() {
-      const r = running;
-      if (r !== undefined && !closing) {
-        r.notes.push(curriculumNote("planner-kept", r.context.units));
-      }
+      proposals.learnPlannerKept();
     },
     async learnCurriculum(units, outcome = "changed") {
-      const r = running;
-      let update: Promise<void> | undefined;
-      if (units !== undefined && r !== undefined && !closing) {
-        // Ready and other queued turns can compose outside the chat queue.
-        // Keep the snapshot visible while an earlier assessment writes back
-        // its older context, then install it in queue order.
-        const context = { ...r.context, units };
-        r.plannerContext = context;
-        tellCurriculum(r, outcome);
-        update = exclusive(async () => {
-          if (r.plannerContext !== context) return;
-          r.context = context;
-          delete r.plannerContext;
-        });
-      }
+      const install = proposals.takeUnits(units, outcome);
+      const update = install === undefined ? undefined : exclusive(install);
+      // The page hears of it only once the install, if any, is queued.
       log.emit({ type: "curriculum_changed" });
       if (update !== undefined) return update;
       if (loading !== undefined) await loading;
-      await exclusive(async () => {
-        const loaded = running;
-        if (loaded === undefined || closing) return;
-        await refreshCurriculum(loaded);
-        tellCurriculum(loaded, outcome);
-      });
+      await exclusive(() => proposals.refreshUnits(outcome));
     },
     async learnAnswer(entry) {
       await loading;
