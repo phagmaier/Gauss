@@ -119,6 +119,10 @@ Rules no single file shows:
   Not now, the install outside the chat's queue, a failed save's retry,
   and the cards replayed on reopening; the course's queue that admits
   requests and installs stays in `unit-chat.ts`),
+  `unit-questions.ts` (ask_question's board: its refusals, the math read
+  and code check a question must pass, the turn that asks again after
+  another unit's install, and Stop's and close's aborts; the course's
+  queue that admits a question stays in `unit-chat.ts`),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,

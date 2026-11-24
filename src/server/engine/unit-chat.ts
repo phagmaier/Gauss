@@ -16,14 +16,13 @@
 //   another one. A choice is graded at once; a written answer is kept
 //   in state.json and graded by the grader (grading.ts), outside the
 //   chat's queue, and if the grading fails it can be graded again. A math
-//   question's expected expression must read when it is posted, and its
-//   answer is kept and graded the same way, by the symbolic check
-//   (math-check.ts, task 3.5), or by the grader when the check does not
-//   settle it. A code question names files in the workspace that the
-//   learner edits (task 3.7); its tests must fail on the starter files and
-//   pass on the tutor's solution when it is posted, and its answer, the
-//   learner's files as they are when "Run the tests" is pressed, is kept and
-//   graded the same way, by running the tests on them (code-run.ts).
+//   question's answer is kept and graded the same way, by the symbolic
+//   check (math-check.ts, task 3.5), or by the grader when the check does
+//   not settle it. A code question names files in the workspace that the
+//   learner edits (task 3.7); its answer, the learner's files as they are
+//   when "Run the tests" is pressed, is kept and graded the same way, by
+//   running the tests on them (code-run.ts). What a math or code question
+//   must pass when it is posted is unit-questions.ts's.
 //   A message the tutor receives while a question waits for its answer
 //   has the tutor's reply judged, once it ends, by the help judge
 //   (help-judge.ts, task 2.21): clarification leaves the answer counting,
@@ -130,15 +129,10 @@ import {
   CHOICE_LETTERS,
   type CodeFile,
   type GradedAnswer,
-  postedQuestion,
-  type Question,
-  type QuestionInput,
-  type QuestionView,
 } from "../../shared/question.ts";
 import type {
   AssessmentRun,
   OpenQuestion,
-  Phase,
   State,
   UnitPosition,
 } from "../../shared/state.ts";
@@ -182,7 +176,7 @@ import {
   slipping,
   toGoOver,
 } from "./check-rules.ts";
-import { type ChoiceOrder, randomOrder, reorder } from "./choice-order.ts";
+import { type ChoiceOrder, randomOrder } from "./choice-order.ts";
 import {
   type CodeRunner,
   fileProblem,
@@ -228,6 +222,11 @@ import {
 } from "./unit-progression.ts";
 import { createUnitProposals } from "./unit-proposals.ts";
 import {
+  createUnitQuestions,
+  QUESTION_STOPPED,
+  view,
+} from "./unit-questions.ts";
+import {
   assessmentEvent,
   detourEvent,
   disputedEvent,
@@ -237,15 +236,12 @@ import {
   type UnitRecord,
 } from "./unit-record.ts";
 import {
-  checkText,
   curriculumNote,
-  detourButton,
   disputeNote,
   freshTurn,
   JOINED_NOTE,
   messageTurn,
   noticeText,
-  quoted,
   type RunWhere,
   readyTurn,
   runEndNote,
@@ -257,7 +253,6 @@ import {
   tutorSystemPrompt,
   type UnitContext,
   type Where,
-  workspaceReadyTurn,
 } from "./unit-turns.ts";
 
 export interface UnitChat {
@@ -1284,10 +1279,6 @@ function createUnitChat(
   /** The code questions whose kept answer's tests have run past their limit once; in memory only. */
   const timedOut = new Set<string>();
   const code = options.codeRunner ?? noCodeRunner;
-  let mathPosting: AbortController | undefined;
-  let codePosting:
-    | { stop: AbortController; done: Promise<unknown> }
-    | undefined;
 
   // --- Opening ---------------------------------------------------------------
 
@@ -1430,7 +1421,7 @@ function createUnitChat(
             earlier,
           ),
         tools: [
-          askQuestionTool(questionBoard),
+          askQuestionTool(questions.board),
           showArtifactTool(aids.artifactShelf),
           ...(options.installer === undefined
             ? []
@@ -2221,41 +2212,6 @@ function createUnitChat(
     };
   }
 
-  /** Asks again for the assessment's question an install blocked. */
-  function retryRunAfterInstall(
-    r: Running,
-    run: AssessmentRun,
-    count: number,
-    stopped: () => boolean,
-  ): void {
-    const skip = () =>
-      closing ||
-      stopped() ||
-      !r.progression.waitingInRun(run, count) ||
-      r.progression.feedback !== undefined;
-    if (skip()) return;
-    r.agents.send({ skip, text: () => workspaceReadyTurn(where(r)) });
-  }
-
-  /** Continues the same check after another unit's workspace install. */
-  function retryAfterInstall(
-    r: Running,
-    check: UnitPosition,
-    number: number,
-    stopped: () => boolean,
-  ): void {
-    const skip = () =>
-      closing ||
-      stopped() ||
-      !r.progression.waitingInCheck(number) ||
-      r.record.position.segment !== check.segment ||
-      r.record.position.checkFrom !== check.checkFrom ||
-      r.record.position.detour !== undefined ||
-      r.progression.feedback !== undefined;
-    if (skip()) return;
-    r.agents.send({ skip, text: () => workspaceReadyTurn(where(r)) });
-  }
-
   /** Every objective of the segment is done in this check. */
   function checkDone(r: Running): boolean {
     const standing = checks(r);
@@ -2718,215 +2674,28 @@ function createUnitChat(
 
   // --- The teaching tools ----------------------------------------------------
 
-  const questionBoard = {
-    post(question: QuestionInput) {
-      const stops = stopCount;
-      const stopped = () => closing || stopCount !== stops;
-      return exclusive(
-        async (): Promise<
-          | { id: string; number: number; question: Question }
-          | { refused: string }
-        > => {
-          const r = running;
-          if (stopped()) return QUESTION_STOPPED;
-          if (r === undefined) return { refused: "The unit is not open." };
-          if (r.record.finished !== undefined && runOn(r) === undefined) {
-            return { refused: UNIT_FINISHED };
-          }
-          const { position } = r.record;
-          const offered = position.assessment;
-          if (offered?.stage === "offered") {
-            return {
-              refused:
-                `A ${runName(offered.mode)} waits on its card for the learner to start or skip; ` +
-                "no question is posted until they do. Reply to the learner without one.",
-            };
-          }
-          const run = runOn(r);
-          if (position.detour !== undefined) {
-            const { number, objective } = position.detour;
-            return {
-              refused: inDetour(
-                number,
-                run === undefined
-                  ? "Ready for another question"
-                  : detourButton(runWhere(r, run), objective),
-              ),
-            };
-          }
-          const feedback = r.progression.feedback;
-          if (feedback !== undefined) {
-            const { number, started } = feedback;
-            return {
-              refused: started ? feedbackOnly(number) : feedbackPending(number),
-            };
-          }
-          const test = position.testOut?.stage;
-          if (run === undefined && (test === "result" || test === "due")) {
-            return {
-              refused:
-                test === "result"
-                  ? "The test is over, and its result card waits for the learner: no question is posted until they answer it. Reply to the learner without one."
-                  : "The test has not started yet: no question is posted until it does. Reply to the learner without one.",
-            };
-          }
-          if (run === undefined && position.phase !== "check") {
-            return { refused: outOfPhase(position.phase) };
-          }
-          if (position.openQuestion !== undefined) {
-            const { number, answer } = position.openQuestion;
-            return {
-              refused:
-                answer === undefined
-                  ? `Question ${number} is still open. End your turn and wait for the learner's answer.`
-                  : `Question ${number} is answered and its answer is being graded. End your turn; the grade arrives in a message of its own.`,
-            };
-          }
-          const asked =
-            run === undefined
-              ? checkAsks(r, question.objective)
-              : runAsks(r, run, question.objective);
-          if ("refused" in asked) return asked;
-          const posted = postedQuestion(question);
-          const workspace = folder;
-          if (workspace === undefined)
-            return { refused: "The unit is not open." };
-          if (posted.kind === "math" && posted.mathGrading === "symbolic") {
-            // Only symbolic questions need an expected answer the check reads.
-            const stop = new AbortController();
-            mathPosting = stop;
-            try {
-              const unread = await (options.mathCheck ?? noMathCheck).read(
-                posted.expected,
-                stop.signal,
-              );
-              if (stopped()) return QUESTION_STOPPED;
-              if (unread !== undefined) return unread;
-            } finally {
-              mathPosting = undefined;
-            }
-          }
-          const since = r.record.checkAnswers.length;
-          const count = r.record.runAnswers.length;
-          return options.workspace.post(
-            {
-              unitId,
-              stopped,
-              retry: () =>
-                run === undefined
-                  ? retryAfterInstall(r, position, since, stopped)
-                  : retryRunAfterInstall(r, run, count, stopped),
-            },
-            async () => {
-              let checked = posted;
-              if (posted.kind === "code") {
-                // Hold the course queue until both runs and their cleanup finish.
-                const stop = new AbortController();
-                const done = code.check(
-                  posted,
-                  workspace,
-                  question.dependencies ?? [],
-                  stop.signal,
-                );
-                codePosting = { stop, done };
-                try {
-                  const result = await done;
-                  if (stopped()) return QUESTION_STOPPED;
-                  if ("refused" in result) return result;
-                  checked = result.question;
-                } finally {
-                  codePosting = undefined;
-                }
-              }
-              const open: OpenQuestion = {
-                id: randomUUID(),
-                number: asked.number,
-                objective: question.objective,
-                postedAt: now().toISOString(),
-                // Shown and stored in the engine's order (task 2.17).
-                question:
-                  checked.kind === "choice"
-                    ? reorder(checked, order(checked.choices.length))
-                    : checked,
-              };
-              await r.record.move({ ...position, openQuestion: open });
-              log.emit({
-                type: "question",
-                question: view(open, workspace, headOf(r, open)),
-              });
-              return {
-                id: open.id,
-                number: open.number,
-                question: open.question,
-              };
-            },
-          );
-        },
-      );
-    },
-  };
-
-  /**
-   * Whether the check may ask about the objective now, and the number its
-   * question gets, or why not.
-   */
-  function checkAsks(
-    r: Running,
-    objective: string,
-  ): { number: number } | { refused: string } {
-    const objectives = segmentObjectives(r);
-    if (!objectives.includes(objective)) {
-      return {
-        refused: `"${objective}" is not an objective of this segment. Name one of ${quoted(objectives)}.`,
-      };
-    }
-    const standing = checks(r);
-    const check = standing.get(objective);
-    if (check?.state === "done") {
-      const open = objectives.filter(
-        (id) => standing.get(id)?.state !== "done",
-      );
-      return {
-        refused:
-          `"${objective}" needs no more questions in this check: ${checkText(check)}. ` +
-          (open.length > 0
-            ? `Ask about ${quoted(open)} instead.`
-            : "Every objective is done, and the segment is closing: no more questions."),
-      };
-    }
-    return { number: r.record.checkAnswers.length + 1 };
-  }
-
-  /**
-   * Whether the assessment may ask about the objective now: only the one it
-   * asks next. Its question is numbered by the objective's place in it.
-   */
-  function runAsks(
-    r: Running,
-    run: AssessmentRun,
-    objective: string,
-  ): { number: number } | { refused: string } {
-    const next = nextOf(r, run);
-    const name = runName(run.mode);
-    if (next === undefined) {
-      return {
-        refused: `Every objective of the ${name} has been asked, and it is ending: no more questions.`,
-      };
-    }
-    if (next.objective !== objective) {
-      return {
-        refused: `The ${name} asks about "${next.objective}" now, and about no other objective: post the question on it.`,
-      };
-    }
-    // A test counts its questions, one or two on each objective; the others
-    // number a question by its objective's place.
-    return {
-      number:
-        run.mode === "test-out"
-          ? r.record.runAnswers.length + 1
-          : next.index + 1,
-    };
-  }
+  const questions = createUnitQuestions({
+    exclusive,
+    running: () => running,
+    stopCount: () => stopCount,
+    closing: () => closing,
+    folder: () => folder,
+    course: options.workspace,
+    mathCheck: options.mathCheck ?? noMathCheck,
+    code,
+    order,
+    now,
+    emit: log.emit,
+    unitId,
+    unitFinished: UNIT_FINISHED,
+    where: (r) => where(r),
+    checks: (r) => checks(r),
+    segmentObjectives: (r) => segmentObjectives(r),
+    runOn: (r) => runOn(r),
+    runWhere: (r, run) => runWhere(r, run),
+    nextOf: (r, run) => nextOf(r, run),
+    headOf: (r, open) => headOf(r, open),
+  });
 
   const aids = createUnitAids({
     exclusive,
@@ -3536,8 +3305,7 @@ function createUnitChat(
 
     async interrupt() {
       stopCount += 1;
-      mathPosting?.abort();
-      codePosting?.stop.abort();
+      questions.stop();
       const r = running;
       if (r === undefined) return;
       await r.progression.interrupt(r.answerStops !== undefined);
@@ -3630,10 +3398,8 @@ function createUnitChat(
     },
     async close() {
       closing = true;
-      mathPosting?.abort();
-      const posting = codePosting;
-      posting?.stop.abort();
-      await Promise.all([agents?.close(), posting?.done, handoffs?.close()]);
+      const posting = questions.stop();
+      await Promise.all([agents?.close(), posting, handoffs?.close()]);
       // An install under way is not waited for. Reopening reconciles its
       // journal before the course workspace can be used again.
       await log.flushed();
@@ -3644,41 +3410,10 @@ function createUnitChat(
 
 const UNIT_FINISHED = "The unit is finished.";
 const OVERRIDE_PENDING = "Choose Move on again to finish the override.";
-const QUESTION_STOPPED = { refused: "Stop canceled posting this question." };
 
 /** An answer kept while the tutor's replies during its question are judged (task 2.21). */
 const WAITS_FOR_JUDGE =
   "Your answer to this question is kept, and is graded once the tutor's replies while it was open have been judged.";
-
-/**
- * The question as the page sees it: never its grading material. A code
- * question's files are named by their full paths in the workspace.
- */
-function view(
-  open: OpenQuestion,
-  workspace: string | undefined,
-  head: AssessmentHead | undefined,
-): QuestionView {
-  const { id, number, question } = open;
-  const base = {
-    id,
-    number,
-    prompt: question.prompt,
-    ...(head === undefined ? {} : { assessment: head }),
-  };
-  switch (question.kind) {
-    case "choice":
-      return { kind: "choice", ...base, choices: question.choices };
-    case "code":
-      return {
-        kind: "code",
-        ...base,
-        files: question.files.map((path) => join(workspace ?? "", path)),
-      };
-    default:
-      return { kind: question.kind, ...base };
-  }
-}
 
 /** How many objectives review asks about (docs/brief.md, "Assessment modes"). */
 const REVIEW_COUNT = 3;
@@ -3688,57 +3423,6 @@ const NOTHING_DUE = "Nothing is due for review.";
 
 function refused(error: string): ChatResult {
   return { ok: false, status: 409, error };
-}
-
-/** Why ask_question is refused in a detour (task 2.20), in its first turn or later. */
-function inDetour(number: number, button: string): string {
-  return (
-    `A detour is open after the miss on question ${number}: no question ` +
-    `may be posted until the learner presses "${button}". ` +
-    "The learner sees only the text you write, never your thinking: work " +
-    "through the confusion with them as text, suggest pressing it if they " +
-    "seem ready, then end your reply."
-  );
-}
-
-/** A learner's earlier message must not post a question before feedback. */
-function feedbackPending(number: number): string {
-  return (
-    `The feedback on question ${number} is queued in a message of its own. ` +
-    "Reply to the learner without posting a question, then end your reply " +
-    "so that feedback can be sent."
-  );
-}
-
-/** Why ask_question is refused during the feedback turn itself (task 2.16a). */
-function feedbackOnly(number: number): string {
-  return (
-    `This reply is for your feedback on question ${number} only, and no ` +
-    "tool may be called in it. The learner sees only the text you write, " +
-    "never your thinking: write your feedback as text if you have not, " +
-    "then end your reply. The app then asks you for the next question in " +
-    "a message of its own, or closes the segment if the check is done."
-  );
-}
-
-/** Why ask_question is refused outside the check, said so it can act on it. */
-function outOfPhase(phase: Exclude<Phase, "check">): string {
-  switch (phase) {
-    case "teach":
-      return (
-        "The check has not started: the segment is in its teach phase. " +
-        'Teach now; the learner moves to the check by pressing "ready" ' +
-        "after the discussion."
-      );
-    case "discuss":
-      return (
-        'The check has not started: the learner has not pressed "ready". ' +
-        'Answer their questions; you may suggest they press "ready" when ' +
-        "they seem ready."
-      );
-    case "closed":
-      return "The segment is closed, so its check is over. The learner starts the next segment.";
-  }
 }
 
 /** Why the learner's action is refused in the phase the segment is in. */
