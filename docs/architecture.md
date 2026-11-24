@@ -128,6 +128,8 @@ Rules no single file shows:
   after a failure; the help judge's calls on the tutor's replies to a
   message sent while a question is open, and an answer that waits for
   them; made for each loaded unit),
+  `unit-end.ts` (the closing card, Move on, going over again, and the
+  gate; made for each loaded unit),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,

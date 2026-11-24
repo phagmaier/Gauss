@@ -105,12 +105,6 @@ and its result card, "Review now", "/packages" installed where the sandbox
 runs, and a server restart while an answer waits for the judge ("/hold"
 in a message, then answer) followed by reopening the unit.
 
-### 6.6 Unit end: closing card and gate — todo
-
-**Why:** The unit's end (the closing card, Move on, going over again, the gate's offer and the card after it) is one sequence called from six places, and the card's confirmed action is state of its own.
-**Do:** Move `endUnit`, `showClosingCard`, `gateOrFinish`, `gateRecord`, `gatePicks`, `offerGate`, `closeAfterGate`, `gateOthers`, `moveOnAtEnd`, `atUnitEnd`, `sameObjectives` (exported; `skipTested` uses it), the bodies of `goOverAgain` and `finishUnit`, and `Running`'s `finishAction` into `unit-end.ts`, made in `load` and held on `Running`. It takes the record (`position`, `evidence`, `move`, `moveOn`, `finish`, `offerAssessment`, `objectiveStatuses`), the unit's context with a setter for its units, a setter for the misconceptions the gate reads, `emit`, `showRun`, `sendTeaching`, `runWaits`, `readCourse`, `readEvidence` and `readMisconceptions` bound to the course, `now` and `unitId`. It returns `end(closedNow?)` for closing a segment, the override, a dispute, the gate's end, another unit's answer and reopening, and the two action bodies. Stays: `Running`'s `context` and `handoff`, which the module writes through the setters.
-**Done when:** `unit-gate.test.ts`, `unit-chat.test.ts` and the rest of the existing tests pass with at most import-path changes; `mise run check` passes; the moved code is gone from `unit-chat.ts`.
-
 ### 6.7 Assessments: review, gate and test runs — todo
 
 **Why:** Self-test is a new kind of assessment run, and the runs (review, the gate, the test before a unit) are spread over the assessments part, the actions and the header.
