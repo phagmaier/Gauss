@@ -71,13 +71,7 @@ availability, even when the unit's chat is already loaded (`brief.md`,
 standard service tier through `check:live` (`codexOptions` in
 `backends/codex.ts`), each asked of the user before it runs.
 
-### 6.16 A Codex course, live — todo
-
-**Why:** The scripted peer shows the adapter follows the protocol, not that a Codex tutor teaches within Gauss's rules: prompts, tool descriptions, headers and refusals written for Claude now reach another model.
-**Do:** Asked of the user first, through `mise exec -- pnpm check:live` on gpt-6.1-terra at medium: in a Codex course written into the root as `record/dev-seed.ts` does, two runs of a unit from its planning through its lecture (`read_section`, `present_lecture`), a discussion message, Ready, a choice and a written question each ending the turn, a miss and its detour, a code question's starter written in the workspace and its tests run, a Stop mid-reply, and a server restart followed by reopening the unit (a resumed thread). Compare what the tutor did with `prompts/tutor.md`'s rules, and with a Claude tutor's known behaviour (`findings.md`, "Tutor"). The protocol trial ran on gpt-6.2-sol: check that gpt-6.1-terra also ends its turn when a tool's result says so and reads a page image. Codex now runs on the catalog Gauss writes, with no shell or patch tool of its own (`findings.md`, "Codex"): check that a signed-in turn runs on it, that the tutor writes the starter with `write_file` and runs commands only with `run_command` (in the session log, no `exec` script tries a shell), and that a refused write's reason reaches it.
-**Done when:** `findings.md`, "Codex", records what the runs showed, with evidence from Gauss's Codex home's session logs and the course's `sessions/`; each break of the engine's rules or the adapter's contract becomes a task here, and model behaviour a known gap (C).
-
-User check for the Codex backend, after 6.16: with `pnpm dev` (the
+User check for the Codex backend: with `pnpm dev` (the
 learner's Claude login, and Gauss's Codex home signed in), make a course
 on Codex at intake; its course view says so and web search is off. Take a
 unit through its planning and lecture, a discussion message, Ready, a
@@ -135,7 +129,8 @@ work for Stage 6. A task that closes a gap deletes it here.
 **Tutor, grading and judging**
 
 - A check question on a one-claim explanation objective can ask for
-  reasoning the lesson or detour already gave (`findings.md`, "Tutor"),
+  reasoning the lesson or detour already gave (`findings.md`, "Tutor";
+  a Codex tutor too, "Codex"),
   and a rubric can reject an answer the card's premises allow (a zero
   weight, in the 4.23 runs). Accepted by the user on 2026-11-22: such an
   objective may leave nothing new to ask. If the user check shows a
@@ -164,6 +159,17 @@ work for Stage 6. A task that closes a gap deletes it here.
   exceeded the 3-minute limit; the cause is unknown.
 - **C:** Once after Stop mid-sentence, the next one-sentence reply took
   10 to 30 seconds. Not seen again.
+- **C:** A Codex tutor (gpt-6.1-terra) declined, without calling a tool,
+  to write a workspace file the learner asked for in a discussion (a line
+  in their notes, which `tutor.md` allows, and a script to run; 2 of 2 in
+  one run), saying it could not write "during this discussion". A refused
+  write's reason, and any command (`run_command` or an `exec` script),
+  are untried on a Codex tutor live (`findings.md`, "Codex").
+- **C:** A Codex tutor's code-question tests passed a wrong answer
+  (distinct partners counted, not handshakes; 1 of 3 code questions), so
+  the record holds a correct grade for it, and the tutor's feedback then
+  called the answer wrong (`findings.md`, "Codex"; mechanically checked
+  keys are the B gap above).
 - **B:** The engine does not check tutor prose or written answers for
   unattributed copying from course sources. Decide how to treat ordinary
   phrasing, titles, attribution, and copied answers that also explain.

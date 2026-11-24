@@ -85,7 +85,16 @@ app-server` on gpt-6.2-sol at medium in Gauss's signed-in Codex home
 configuration below (the first 15 runs without `features.goals=false`)
 and the permission profile in "Sandbox and confinement". "Source" marks
 what rests on Codex's code (tag `rust-v0.171.0`), not a run; "n/3"
-counts trial runs.
+counts trial runs. "Course runs" are two runs of a Codex course through
+`check:live` on gpt-6.1-terra at medium, standard tier (2026-11-24): the
+engine wired as `serve.ts` does, a unit from its planning through three
+segments, a Stop, and a process restart on the same root, 53 tutor turns
+in all; the tutors' rollouts are `rollout-2026-11-24T14-52-16-…` and
+`…T15-01-46-…` in Gauss's Codex home. The unit planner ran on Codex too,
+in an ephemeral thread with no rollout, 9 to 11 s per plan (run 1's
+thread is in `logs_2.sqlite`: one turn calling `plan_unit`, gpt-6.1-terra,
+default tier; run 2's left no log lines); each plan had four objectives,
+one idea each, in three segments.
 
 - **The SDK runs each turn as a new `codex exec`** (still in 0.172): no
   system-prompt option, no in-process tool, no hook, no streamed text, and
@@ -133,9 +142,13 @@ counts trial runs.
   service tier ("Fast, 1.5x speed"), and asks for `send_user_message_async`
   and `clock` instead of gpt-6.2-sol's extra tools. A `thread/start` given
   no tier reports `serviceTier: null`; given `"default"` (standard speed,
-  the protocol types say), it reports `"default"` (no turn). Which tier a
-  turn then uses, and whether gpt-6.1-terra behaves as gpt-6.2-sol did in
-  the trial below, is untried.
+  the protocol types say), it reports `"default"`. In the course runs every
+  tutor turn's thread settings and model request logged `service_tier:
+  "default"`, none `priority`, and the trial's model-dependent results
+  held on terra: it ended the turn with an empty message after every
+  result that said so (6 lectures, 15 questions), and asked about the
+  page image it had viewed, it named three people and three handshake
+  lines in a triangle (2/2).
 - **A thread's `config` that defines a permission profile must also set
   `default_permissions` to it.** Otherwise, on a ChatGPT login, every turn
   fails before any request, after five retries (ten on the first turn,
@@ -187,7 +200,10 @@ counts trial runs.
   (source: `StaticModelsManager`): the pinned CLI's entry, not the
   signed-in one (which differs at least in default effort, above). The
   user chose this (2026-11-24); `writeCodexCatalog` in `backends/codex.ts`
-  writes it. Untried: a ChatGPT login's turn with it.
+  writes it. Signed-in turns run on it (the course runs): the model's
+  tools were Gauss's namespace, `exec` and `wait`, with only the MCP
+  resource tools and `clock.curr_time` nested, and it never called `exec`
+  in 53 turns.
 - **gpt-6.2-sol runs in code mode** (catalog `tool_mode:
   "code_mode_only"`): its tools are `exec`, JavaScript calling the nested
   `exec_command`, `write_stdin`, `apply_patch` and the rest, and `wait`.
@@ -223,10 +239,31 @@ counts trial runs.
   after `dynamicToolCall` completion alone is not a new response.
 - **Stop mid-reply**: `turn/interrupt` ends the turn `interrupted`, the
   reply's message gets no `item/completed`, and its text is not in the
-  thread; the next turn's model knows only that it was interrupted (3/3).
+  thread; the next turn's model knows only that it was interrupted (3/3;
+  neither course run's rollout held the partial reply, and asked once,
+  terra said it had not begun the example the learner had seen begin).
   Every completed message in the trial had matching deltas. Codex can
   also send a complete message as an item without deltas (source:
   `core/src/stream_events_utils.rs`).
+- **A thread resumed by a new app-server process after a restart keeps
+  the conversation** (course runs): the same rollout grew, and the tutor
+  recalled the learner's earlier miss and their mistake (2/2).
+- **A Codex tutor wrote files only as starters and ran no command**
+  (course runs): `write_file` for each starter (3/3, each a
+  `file_written`); the app ran the tests. It declined, without a call,
+  each write the learner asked for, saying it could not write "during
+  this discussion" for a line in `notes.md` and a `hello.py`, both
+  planted links out of the workspace that `write_file` refuses. So no
+  call was refused, and a command (`run_command` or an `exec` script) is
+  untried live. The discussion header names only `read_section` and
+  `view_page` as callable.
+- **A Codex tutor kept `tutor.md`'s form** (course runs): read before
+  each lecture (6/6), aids unasked starting with the opening block (3),
+  detours opening with the answer and the mistake (2/2). As with Claude
+  ("Tutor"), 4 of 7 written questions asked again for reasoning the
+  lecture or, once, the detour just before had given. One code question's
+  tests passed a wrong answer (distinct partners, not handshakes); its
+  feedback then called the answer wrong while the grade stood correct.
 - **A declined approval tells the model only that it was rejected**: a
   file change gets `patch rejected by user`, a command `exec_command
   failed: CreateProcess { message: "Rejected(\"rejected by user\")" }`
