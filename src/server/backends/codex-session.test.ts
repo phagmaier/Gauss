@@ -213,14 +213,6 @@ test("a kept thread is named before the first turn, read without resuming, and r
     {
       cwd,
       title: "Unit one",
-      workspace: {
-        reads: { allowed: [cwd], denied: [dir] },
-        acquire: async () => {
-          throw new Error(
-            "No workspace tools are bound to Codex sessions yet.",
-          );
-        },
-      },
       webSearch: true,
       tools: [
         viewPage(() => ({ status: "done", text: "Read." })),
@@ -294,6 +286,7 @@ test("a kept thread is named before the first turn, read without resuming, and r
       'features.code_mode.direct_only_tool_namespaces=["gauss"]',
       "thread_unload_delay_secs=0",
       'web_search="disabled"',
+      "features.shell_tool=false",
     ]),
   );
   expect(start.message.params?.dynamicTools).toMatchObject([
@@ -388,6 +381,101 @@ test("an unknown Codex thread cannot be resumed", async () => {
     "initialized",
     "thread/resume",
   ]);
+});
+
+test("a session given a workspace gets Gauss's file and command tools beside its teaching tools, and reports each file written; one without gets none", async () => {
+  const desk = { acquired: 0, released: 0 };
+  const driver = backend();
+  const tutor = await open(
+    {
+      cwd,
+      tools: [viewPage(() => ({ status: "done", text: "Read." }))],
+      workspace: {
+        reads: { allowed: [], denied: [dir] },
+        acquire: async () => {
+          desk.acquired += 1;
+          return {
+            release: () => {
+              desk.released += 1;
+            },
+          };
+        },
+        run: () => Promise.reject(new Error("No command is run here.")),
+      },
+    },
+    driver,
+  );
+  const afterWrite = (name: string) => [
+    { type: "tool_call", name },
+    { type: "file_written", path: "notes/hello.py" },
+    { type: "text", text: "Back to the lesson." },
+    { type: "turn_end", outcome: "done" },
+  ];
+  expect(await readTurn(tutor, "workspace-write")).toEqual(
+    afterWrite("write_file"),
+  );
+  expect(await readTurn(tutor, "workspace-edit")).toEqual(
+    afterWrite("edit_file"),
+  );
+  expect(await readFile(join(cwd, "notes", "hello.py"), "utf8")).toBe(
+    "print('hello')\n",
+  );
+  expect(desk).toEqual({ acquired: 2, released: 2 });
+  await close(tutor);
+  const planner = await open(
+    { cwd, tools: [viewPage(() => ({ status: "done", text: "Read." }))] },
+    driver,
+  );
+  await close(planner);
+
+  const log = await trace();
+  const names = requests(log, "thread/start").map(({ message }) =>
+    (
+      (message.params?.dynamicTools ?? []) as { tools: { name: string }[] }[]
+    ).flatMap(({ tools }) => tools.map(({ name }) => name)),
+  );
+  expect(names).toEqual([
+    [
+      "view_page",
+      "read_file",
+      "list_files",
+      "search_files",
+      "write_file",
+      "edit_file",
+      "run_command",
+    ],
+    ["view_page"],
+  ]);
+  // Codex's patch tool goes with its catalog entry: the catalog given is
+  // the CLI's own, dumped once for the backend, with no patch tool.
+  const dumps = log.filter(
+    (entry) => !("message" in entry) && !("cwd" in entry),
+  );
+  expect(dumps.map(({ argv }) => argv)).toEqual([
+    ["debug", "models", "--bundled"],
+  ]);
+  const boots = log.filter((entry): entry is BootEntry => "cwd" in entry);
+  const catalogs = boots.map(({ argv }) =>
+    argv.find((setting) => setting.startsWith("model_catalog_json=")),
+  );
+  // Beside the home, named by its content.
+  const [setting] = catalogs;
+  const catalog = JSON.parse(
+    setting?.slice("model_catalog_json=".length) ?? "null",
+  );
+  expect(catalog).toMatch(
+    new RegExp(`^${join(dir, "codex-home-models-")}[0-9a-f]{12}\\.json$`),
+  );
+  expect(catalogs).toEqual([setting, setting]);
+  expect(JSON.parse(await readFile(catalog, "utf8"))).toEqual({
+    models: [
+      {
+        slug: "gpt-6.1-terra",
+        apply_patch_tool_type: null,
+        tool_mode: "code_mode_only",
+      },
+    ],
+  });
 });
 
 test.each<{

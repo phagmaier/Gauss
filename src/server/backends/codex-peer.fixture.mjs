@@ -18,6 +18,26 @@ const home = join(dirname(fileURLToPath(import.meta.url)), "codex-home");
 assert.equal(process.env.CODEX_HOME, home);
 const trace = join(home, "wire.jsonl");
 const saved = join(home, "kept-thread.json");
+const BUNDLED_CATALOG = {
+  models: [
+    {
+      slug: "gpt-6.1-terra",
+      apply_patch_tool_type: "freeform",
+      tool_mode: "code_mode_only",
+    },
+  ],
+};
+// Turn scripts that call Gauss's workspace tools, and the call each makes.
+const WORKSPACE_CALLS = {
+  "workspace-write": {
+    tool: "write_file",
+    arguments: { path: "notes/hello.py", content: "print('hi')\n" },
+  },
+  "workspace-edit": {
+    tool: "edit_file",
+    arguments: { path: "notes/hello.py", old_text: "hi", new_text: "hello" },
+  },
+};
 const cwd = process.cwd();
 const threadId = "019a0000-0000-7000-8000-000000000001";
 let handshake = "new";
@@ -97,11 +117,13 @@ function callTool() {
   const id = `server-${active.id}`;
   const call = {
     namespace: "gauss",
-    tool: "view_page",
-    arguments: {
-      source: "book",
-      page: active.script === "tool-refusal" ? 3 : 2,
-    },
+    ...(WORKSPACE_CALLS[active.script] ?? {
+      tool: "view_page",
+      arguments: {
+        source: "book",
+        page: active.script === "tool-refusal" ? 3 : 2,
+      },
+    }),
   };
   const item = {
     type: "dynamicToolCall",
@@ -196,7 +218,11 @@ function startTurn(id, params) {
   active = { id: `turn-${++nextTurn}`, script };
   notify("turn/started", { turn: turn("inProgress") });
   reply(id, { turn: turn("inProgress") });
-  if (script.startsWith("tool-") || script === "hold-tool") {
+  if (
+    script.startsWith("tool-") ||
+    script === "hold-tool" ||
+    script in WORKSPACE_CALLS
+  ) {
     callTool();
     return;
   }
@@ -322,20 +348,26 @@ async function receive(line) {
   }
 }
 
-assert.equal(process.argv[2], "app-server");
-
-record({
-  cwd,
-  home,
-  argv: process.argv.slice(2),
-  envNames: Object.keys(process.env)
-    .filter((name) => /^(OPENAI_|CODEX_)/.test(name))
-    .sort(),
-  inherited: process.env.GAUSS_CODEX_PEER_SENTINEL,
-});
-const input = createInterface({ input: process.stdin });
-input.on("line", (line) => {
-  // Fail fast for unreadable/incorrect requests rather than leave the client
-  // hanging. The rejection exits Node and reaches the adapter's error path.
-  void receive(line);
-});
+// The bundled catalog, for the adapter to write the catalog it gives Codex.
+if (process.argv[2] === "debug") {
+  assert.deepEqual(process.argv.slice(3), ["models", "--bundled"]);
+  record({ argv: process.argv.slice(2) });
+  process.stdout.write(JSON.stringify(BUNDLED_CATALOG));
+} else {
+  assert.equal(process.argv[2], "app-server");
+  record({
+    cwd,
+    home,
+    argv: process.argv.slice(2),
+    envNames: Object.keys(process.env)
+      .filter((name) => /^(OPENAI_|CODEX_)/.test(name))
+      .sort(),
+    inherited: process.env.GAUSS_CODEX_PEER_SENTINEL,
+  });
+  const input = createInterface({ input: process.stdin });
+  input.on("line", (line) => {
+    // Fail fast for unreadable/incorrect requests rather than leave the client
+    // hanging. The rejection exits Node and reaches the adapter's error path.
+    void receive(line);
+  });
+}

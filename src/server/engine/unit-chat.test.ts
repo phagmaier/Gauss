@@ -208,6 +208,9 @@ const READS: CommandReads = {
   denied: ["/home/learner", "/data"],
   allowed: ["/opt/gauss/pytools"],
 };
+/** The fake backend runs no command. */
+const NO_RUN = () =>
+  Promise.reject(new Error("The fake tutor runs no command."));
 
 function setUp(
   script: FakeTurn[],
@@ -269,7 +272,9 @@ function setUp(
     timer: given.timer ?? createFakeTimer(),
     order: given.order ?? givenOrder,
     ...(given.backup === undefined ? {} : { backup: given.backup }),
-    ...(given.workspaceTools === true ? { workspaceTools: READS } : {}),
+    ...(given.workspaceTools === true
+      ? { workspaceTools: { reads: READS, run: NO_RUN } }
+      : {}),
   });
   return { backend, judgeBackend, dataRoot, units };
 }

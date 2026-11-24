@@ -206,8 +206,8 @@ export function createCodeRunner(options: {
         return {
           refused:
             starter.problem === "missing"
-              ? `"${starter.path}" is not in the workspace. Write its starter version there with your Write tool first, then post the question.`
-              : `The starter version of ${fileProblem(starter)} Write it again with your Write tool, then post the question.`,
+              ? `"${starter.path}" is not in the workspace. Write its starter version there first, with your tool that writes a file, then post the question.`
+              : `The starter version of ${fileProblem(starter)} Write it again with your tool that writes a file, then post the question.`,
         };
       }
       let inputs: WorkspaceFilesResult;

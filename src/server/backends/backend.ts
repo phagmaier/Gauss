@@ -4,6 +4,7 @@
 import { z } from "zod";
 import type { BackendName } from "../../shared/course.ts";
 import type { WebResult } from "../../shared/events.ts";
+import type { SandboxCommand, SandboxResult } from "../engine/sandbox.ts";
 import type { CommandReads } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
 
@@ -49,11 +50,12 @@ export interface SessionOptions {
 }
 
 /**
- * The file and shell tools (Read, Glob, Grep, Write, Edit, Bash). The
- * session writes files only in its working folder, reads files only there,
- * and runs commands in a sandbox with no network that writes only there and
- * in a temporary folder of the course's and reads as `reads` says and in
- * the working folder.
+ * The file and shell tools: the backend's own where they can be confined
+ * and refused (Claude's Read, Glob, Grep, Write, Edit, Bash), otherwise
+ * Gauss's (`tools/workspace.ts`). The session writes files only in its
+ * working folder, reads files only there, and runs commands in a sandbox
+ * with no network that writes only there and in a temporary folder of the
+ * course's and reads as `reads` says and in the working folder.
  */
 export interface WorkspaceTools {
   /**
@@ -65,6 +67,8 @@ export interface WorkspaceTools {
   acquire(): Promise<{ refused: string } | { release(): void }>;
   /** Where its commands may read, beside the working folder. */
   reads: CommandReads;
+  /** Runs a command of Gauss's own tools: the engine's sandbox (`engine/sandbox.ts`). */
+  run(command: SandboxCommand): Promise<SandboxResult>;
 }
 
 /**

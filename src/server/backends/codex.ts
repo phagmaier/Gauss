@@ -1,11 +1,13 @@
 // Codex's pinned app-server, the live-check pin and the login check (docs/findings.md, "Codex").
 
 import { execFile } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { workspaceTools } from "../tools/workspace.ts";
 import {
   type BackendEvent,
   type EngineTurn,
@@ -76,7 +78,9 @@ export function codexEnvironment(
 const NAMESPACE = "gauss";
 const PROFILE = "gauss";
 
-// Leave out Codex's optional prompts, web search and autonomous features
+// Leave out Codex's optional prompts, web search, autonomous features and
+// its shell, which a tutor's commands do not use: they are Gauss's own
+// (`tools/workspace.ts`). The patch tool goes with the catalog below
 // (docs/findings.md, "Codex"). Direct calls return results and images to
 // the model itself, not to a script that would have to forward them.
 const APP_CONFIG = [
@@ -103,9 +107,15 @@ const APP_CONFIG = [
   "project_doc_max_bytes=0",
   "suppress_unstable_features_warning=true",
   "features.goals=false",
+  "features.shell_tool=false",
   `features.code_mode.direct_only_tool_namespaces=["${NAMESPACE}"]`,
   "thread_unload_delay_secs=0",
 ].flatMap((setting) => ["-c", setting]);
+
+/** The app-server's `-c` arguments, given the catalog `writeCodexCatalog` wrote. */
+export function codexAppConfig(catalog: string): string[] {
+  return [...APP_CONFIG, "-c", `model_catalog_json=${JSON.stringify(catalog)}`];
+}
 
 function isMissingThread(error: unknown): boolean {
   return (
@@ -119,18 +129,68 @@ function isMissingThread(error: unknown): boolean {
 
 type ThreadResponse = { thread: { id: string; cwd: string } };
 
+const Catalog = z.object({
+  models: z
+    .array(
+      z.looseObject({ slug: z.string(), apply_patch_tool_type: z.unknown() }),
+    )
+    .min(1),
+});
+
+/**
+ * Writes the model catalog Codex is given, beside its home (which holds only
+ * what Codex writes) and returns its path: the catalog this CLI ships with,
+ * with no model's patch tool, which only a catalog entry can remove
+ * (docs/findings.md, "Codex"). It replaces the catalog Codex fetches, so a
+ * model's entry is the pinned CLI's own.
+ */
+export async function writeCodexCatalog(
+  command: string,
+  home: string,
+): Promise<string> {
+  const { stdout } = await promisify(execFile)(
+    command,
+    ["debug", "models", "--bundled"],
+    {
+      cwd: home,
+      env: codexEnvironment(home),
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 20_000,
+    },
+  );
+  const catalog = Catalog.parse(JSON.parse(stdout));
+  for (const model of catalog.models) model.apply_patch_tool_type = null;
+  const text = JSON.stringify(catalog);
+  // Named by its content, so that a Gauss running another Codex version
+  // (a worktree's) does not replace the one this server's Codex reads.
+  const hash = createHash("sha256").update(text).digest("hex").slice(0, 12);
+  const path = join(dirname(home), `${basename(home)}-models-${hash}.json`);
+  // Whole or not at all, for an app-server of another Gauss reading it.
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  await writeFile(temporary, text);
+  await rename(temporary, path);
+  return path;
+}
+
 export function createCodexBackend(
   options: CodexBackendOptions = {},
 ): SessionBackend {
   const { command = "codex", home = GAUSS_CODEX_HOME } = options;
   const model = codexOptions(options);
-  const open = () =>
-    openCodexAppServer({
+  // Written once per backend; a failure (a home not made yet) is tried again.
+  let catalog: Promise<string> | undefined;
+  const open = async () => {
+    catalog ??= writeCodexCatalog(command, home).catch((error: unknown) => {
+      catalog = undefined;
+      throw error;
+    });
+    return openCodexAppServer({
       command,
       home,
       env: codexEnvironment(home),
-      config: APP_CONFIG,
+      config: codexAppConfig(await catalog),
     });
+  };
   const profile = {
     approvalPolicy: "never",
     permissions: PROFILE,
@@ -149,13 +209,23 @@ export function createCodexBackend(
   };
   return {
     async startSession(session): Promise<TutorSession> {
-      const { cwd, resumeId, title, systemPrompt } = session;
-      const tools = new Map(session.tools.map((tool) => [tool.name, tool]));
+      const { cwd, resumeId, title, systemPrompt, workspace } = session;
+      if (workspace !== undefined && cwd === undefined) {
+        throw new Error("The file and shell tools need a working folder.");
+      }
+      // A tutor's file and command tools are Gauss's, beside its teaching
+      // tools; Codex's own sandbox gives it no writable path or network.
+      const tools = new Map(
+        [
+          ...session.tools,
+          ...(workspace === undefined || cwd === undefined
+            ? []
+            : workspaceTools(cwd, workspace)),
+        ].map((tool) => [tool.name, tool]),
+      );
       const app = await open();
       let threadId: string;
       try {
-        // No workspace tools are bound here. Even for a tutor, Codex's
-        // own sandbox has no writable paths, workspace reads or network.
         const place = {
           ...profile,
           model: model.model,
@@ -175,7 +245,10 @@ export function createCodexBackend(
                         {
                           type: "namespace",
                           name: NAMESPACE,
-                          description: "Gauss teaching tools.",
+                          description:
+                            workspace === undefined
+                              ? "Gauss teaching tools."
+                              : "Gauss teaching tools, and file and command tools for the workspace.",
                           tools: Array.from(tools.values(), (tool) => ({
                             type: "function",
                             name: tool.name,

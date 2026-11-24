@@ -227,12 +227,12 @@ export async function wireEngine(
     codeRunner: createCodeRunner({ sandbox }),
     converter,
     // Tutors run commands only where the sandbox runs (task 3.3), reading
-    // as its commands do, and ask for packages only where they can be
-    // installed. The install cache is separate from the old workspace-based
-    // installer's cache and the backup.
+    // as its commands do (a Codex tutor's commands run in it), and ask for
+    // packages only where they can be installed. The install cache is
+    // separate from the old workspace-based installer's cache and the backup.
     ...(sandbox.available
       ? {
-          workspaceTools: sandbox.reads,
+          workspaceTools: { reads: sandbox.reads, run: sandbox.run },
           installer: createPackageInstaller({
             dataRoot,
             run: sandbox.run,

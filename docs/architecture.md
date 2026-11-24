@@ -172,12 +172,14 @@ Rules no single file shows:
   the queue); the module that owns the action's concern holds its body.
 - **`src/server/tools/`**: the teaching tools, transport-free (`tool.ts`),
   a file each; `sources.ts` holds `read_section`, `view_page`, `quote_source`,
-  `present_lecture` and `search_source`. A lecture is recorded only once
-  every quote verifies, as ordinary thread events, so live display, replay
-  and export agree.
+  `present_lecture` and `search_source`; `workspace.ts` holds Gauss's own
+  file and command tools, which a Codex tutor gets in place of Codex's. A
+  lecture is recorded only once every quote verifies, as ordinary thread
+  events, so live display, replay and export agree.
 - **`src/server/backends/`**: `backend.ts` (the adapter), `claude.ts`
-  (Agent SDK on the plan login), `codex.ts` (app-server sessions and
-  `codexUnavailable`, the login check for intake and unit opening),
+  (Agent SDK on the plan login), `codex.ts` (app-server sessions, the
+  model catalog it gives Codex, and `codexUnavailable`, the login check
+  for intake and unit opening),
   `codex-rpc.ts` (stdio transport), `codex-turn.ts` (streaming and
   teaching calls), `fake.ts` (tests),
   `scripted.ts` (the fake driven by turn headers, for `pnpm dev:fake`).
@@ -213,8 +215,10 @@ every other role on Claude. Each prompt starts one model's instructions:
   repeated rule, check that the same model receives it on every turn
   where it applies.
 - Codex receives the role prompt as base instructions when a thread
-  starts or resumes and its teaching tools in the direct `gauss`
-  namespace. `codexOptions` sets the model, effort and tier on each turn;
+  starts or resumes, and its teaching tools, with a tutor's file and
+  command tools (`tools/workspace.ts`), in the direct `gauss` namespace;
+  Codex's own shell and patch tools are removed. `prompts/tutor.md` names
+  no backend's tools. `codexOptions` sets the model, effort and tier on each turn;
   `GAUSS_CODEX_MODEL` changes the model outside the live-check launcher.
 - The scripted backend reads header wording; changing it can break
   `pnpm dev:fake` (`backends/scripted.test.ts` catches most of it).
@@ -266,7 +270,9 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   then `CODEX_HOME=~/.local/state/gauss/codex mise exec -- codex login`
   (`--device-auth` without a browser). `codex login status` with the same
   `CODEX_HOME` reports the login, and the app reads it with
-  `account/read`. Never copy `auth.json` from `~/.codex`.
+  `account/read`. Never copy `auth.json` from `~/.codex`. Beside the home,
+  `codex-models-<hash>.json` is the catalog Gauss gives Codex, named by its
+  content and written again each time the server first opens Codex.
 - **Codex trials with no model** use a scratch `CODEX_HOME` outside
   `/tmp`, never Gauss's or `~/.codex`, and a fresh data root, and run the
   pinned binary (`mise which codex` in the repository) from the trial's

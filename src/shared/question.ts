@@ -122,7 +122,7 @@ const files = z
   .min(1)
   .max(5)
   .describe(
-    "Code questions only: the files the learner edits, by their paths in the course's workspace, your working folder (`bpe.py`). Write the starter version of each there with your Write tool before you post: what the learner starts from, which the tests must fail on. The card shows each with its full path.",
+    "Code questions only: the files the learner edits, by their paths in the course's workspace, your working folder (`bpe.py`). Write the starter version of each there, with your tool that writes a file, before you post: what the learner starts from, which the tests must fail on. The card shows each with its full path.",
   );
 const tests = z
   .array(CodeFile)

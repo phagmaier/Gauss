@@ -7,10 +7,17 @@ import { z } from "zod";
 /**
  * What a call returns to the model. A refusal explains what went wrong.
  * Either result can end the turn; only a carried-out call can give an
- * image after its text (view_page's page).
+ * image after its text (view_page's page), or name the file it wrote, by
+ * its path in the working folder, for the backend's `file_written`.
  */
 export type ToolResult =
-  | { status: "done"; text: string; endTurn?: boolean; image?: ToolImage }
+  | {
+      status: "done";
+      text: string;
+      endTurn?: boolean;
+      image?: ToolImage;
+      fileWritten?: string;
+    }
   | { status: "refused"; text: string; endTurn?: boolean };
 
 export interface ToolImage {

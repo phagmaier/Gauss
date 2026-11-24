@@ -166,13 +166,28 @@ counts trial runs.
   under app-server the model also gets `create_goal`, `get_goal` and
   `update_goal` (goals that continue by themselves; on by default), which
   `prompt-input` does not show, and the setting removes them (the tools a
-  trial's model was given, in its rollout). Left, as no setting removes
-  them: `send_message_to_user_async` and `clock.curr_time` (gpt-6.2-sol's
-  catalog entry asks for them; a trimmed `model_catalog_json` drops them
-  but freezes that entry, so it is not used) and three MCP resource tools
-  with no server to read. Signed in, `prompt-input` gives the same tools;
-  only Codex's own default instructions differ. The model never called
-  `send_message_to_user_async` in the 72 turns.
+  trial's model was given, in its rollout). Left: `send_message_to_user_async`
+  and `clock.curr_time` (the catalog entry asks for them; Gauss's catalog,
+  below, keeps them) and three MCP resource tools with no server to read.
+  Signed in, `prompt-input` gives the same tools; only Codex's own default
+  instructions differ. The model never called `send_message_to_user_async`
+  in the 72 turns.
+- **Codex's shell and patch tools go only with `features.shell_tool=false`
+  and a replaced model catalog** (0.171, gpt-6.1-terra, the configuration
+  above, `prompt-input`'s nested list, 2026-11-24). The setting removes
+  `exec_command` and `write_stdin`. `apply_patch` is added whenever the
+  model's catalog entry names a patch type (source:
+  `core/src/tools/spec_plan.rs`), as every bundled entry does; no feature,
+  tool policy or other setting drops it. `model_catalog_json` pointing at
+  `codex debug models --bundled`'s output (0.04 s, no network) with
+  `apply_patch_tool_type` set to null removes it, leaving `exec`, `wait`,
+  the MCP resource tools and `clock.curr_time`; the rest of the input is
+  unchanged, and `thread/start` with it and Gauss's tools succeeds. Such a
+  catalog replaces the fetched one for the whole process with no refresh
+  (source: `StaticModelsManager`): the pinned CLI's entry, not the
+  signed-in one (which differs at least in default effort, above). The
+  user chose this (2026-11-24); `writeCodexCatalog` in `backends/codex.ts`
+  writes it. Untried: a ChatGPT login's turn with it.
 - **gpt-6.2-sol runs in code mode** (catalog `tool_mode:
   "code_mode_only"`): its tools are `exec`, JavaScript calling the nested
   `exec_command`, `write_stdin`, `apply_patch` and the rest, and `wait`.
@@ -282,7 +297,12 @@ counts trial runs.
   only for a real path, not one reached through a link into a denied
   folder (as in Claude Code's sandbox); it needs a network section to
   start and its seccomp helper readable; it sets `TMPDIR=/tmp/claude` for
-  every command.
+  every command. Its writes it always denies (`.git/hooks`, `.git/config`,
+  `.vscode`, `.bashrc` and the like) follow the server's own folder, not
+  the command's (source: `linuxGetCwdMandatoryDenyPaths`, and a review's
+  probe that wrote all four in a workspace). A denied path that does not
+  exist gets an empty placeholder file on the host, removed only once no
+  sandboxed command of the server runs (seen; a crash leaves it).
 - **The runtime blocks `socket(AF_UNIX)` but not `socketpair`.** Refusing
   every pair panics uv (tokio) and breaks asyncio, so `sandbox_exec.py`
   allows connected stream pairs only.
@@ -300,7 +320,7 @@ counts trial runs.
 - **Codex's sandbox (0.171, bubblewrap) reopens a path inside a denied
   folder only for writing**: a `read` entry left Codex's own binary, which
   the sandbox re-executes inside, unreadable under the home folder's
-  denial. So a tutor's permission profile is an allowlist: `":minimal"`
+  denial. So a profile that confines Codex's commands is an allowlist: `":minimal"`
   (`/bin`, `/sbin`, `/usr`, `/etc`, `/lib`, `/lib64`, `/nix/store`,
   `/run/current-system/sw`), `reads.allowed` and Codex's install folder to
   read, the data root denied, the workspace and a private temporary folder
@@ -310,8 +330,7 @@ counts trial runs.
   link, nor any Codex home or `/run/user/<uid>`; mise's Python, uv and the
   workspace's `.venv` run; writes elsewhere than the two folders go to a
   private tmpfs dropped with the command; there is no network; background
-  processes die with the command. Under app-server, `exec_command` keeps a
-  process running between calls (`write_stdin`), untried. `.git`, `.codex`
+  processes die with the command. `.git`, `.codex`
   and `.agents` in the workspace are read-only empty mounts.
   `/proc/1/environ` shows the environment Codex was started with.
 - **`sandbox_exec.py` cannot wrap Codex's commands**: Codex starts the
@@ -321,7 +340,8 @@ counts trial runs.
   `listen`, `accept` and `sendmmsg` (source). `sendmsg` with an
   address still reaches a visible datagram socket; the readable roots
   but `/nix/store` (not searched) hold none, leaving the workspace and
-  the temporary folder.
+  the temporary folder. Hence a Codex tutor's commands are Gauss's,
+  run in the engine's sandbox, and Codex's shell is removed ("Codex").
 - **A permission profile is per thread**: `permissions` names one defined
   in `thread/start`'s `config` (`permissions.<id>.filesystem` and
   `.network`); `codex sandbox -P <id>` takes the same definition by `-c`.

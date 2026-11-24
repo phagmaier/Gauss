@@ -23,8 +23,8 @@
 // holds the account's email address.
 
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, realpath } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -44,6 +44,7 @@ import {
 import { z } from "zod";
 import type { WebResult } from "../../shared/events.ts";
 import { type CommandReads, sandboxCommand } from "../sandbox-command.ts";
+import { makePrivateFolder, workspaceTmpDir } from "../tools/workspace.ts";
 import {
   type BackendEvent,
   checkReply,
@@ -265,19 +266,6 @@ const SearchOutput = z.object({
 });
 
 /**
- * The private temporary folder of the tutor working in `cwd`, one per
- * course. Claude Code gives sandboxed
- * commands `<it>/claude-<uid>` as $TMPDIR only if that path is at most 44
- * bytes, and otherwise a folder shared by every Claude Code session of the
- * user; one in the course's folder would be longer. So it lies under /tmp,
- * named from the workspace's path.
- */
-export function workspaceTmpDir(cwd: string): string {
-  const name = createHash("sha256").update(cwd).digest("hex").slice(0, 8);
-  return `/tmp/gauss-${name}`;
-}
-
-/**
  * The options that give a session the file and shell tools in `cwd`, which
  * replace the isolation options' tools, settings and environment and keep
  * their isolation. Anything not allowed is refused, never asked about.
@@ -321,33 +309,6 @@ function workspaceOptions(
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
     },
   };
-}
-
-/**
- * Makes the folder, closed to other users, or checks that the one there is:
- * a folder and not a link, this user's, closed to others. /tmp is shared,
- * so another user could have made it first.
- */
-async function makePrivateFolder(path: string): Promise<void> {
-  try {
-    await mkdir(path, { mode: 0o700 });
-  } catch (error) {
-    if (
-      !(error instanceof Error && "code" in error && error.code === "EEXIST")
-    ) {
-      throw error;
-    }
-  }
-  const found = await lstat(path);
-  if (
-    !found.isDirectory() ||
-    found.uid !== process.getuid?.() ||
-    (found.mode & 0o077) !== 0
-  ) {
-    throw new Error(
-      `The tutor's temporary folder ${path} is not closed to other users.`,
-    );
-  }
 }
 
 async function oneShot<T>(

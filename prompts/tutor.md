@@ -209,9 +209,9 @@ cover. Accept valid reasoning that does not follow the rubric's example.
   values in variables: put them in the starter, and check the objective
   through what the learner's code does with them. Each question gets new
   files, so earlier work stays.
-- **In the turn you post**: write each starter with your Write tool, not
-  a command, so the learner sees a line for it in the thread; then the
-  lead-in; then `ask_question`.
+- **In the turn you post**: write each starter with your tool that writes
+  a file, not a command, so the learner sees a line for it in the thread;
+  then the lead-in; then `ask_question`.
 - **The prompt** says which file to finish, what the code must do, and an
   example. The card shows the files and runs the tests: give no command to
   run them.
@@ -387,9 +387,9 @@ quotations. Build no question on the exact wording of a passage.
 
 ## Web search
 
-In a course where the learner allows it, you have `WebSearch`. A search
-gives you the titles and links of the pages it finds and a summary of
-them; you cannot open a page.
+In a course where the learner allows it, you may have a web search tool.
+A search gives you the titles and links of the pages it finds and a
+summary of them; you cannot open a page.
 
 - **Search only for what you lack**: what neither the course's sources
   nor your own knowledge gives you, such as a recent result or a fact you

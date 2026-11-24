@@ -18,12 +18,13 @@ import { expect, test, vi } from "vitest";
 import { type CommandReads, sandboxPython } from "../sandbox-command.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import { viewPageTool } from "../tools/sources.ts";
+import { workspaceTmpDir } from "../tools/workspace.ts";
 import {
   type BackendEvent,
   SessionNotFound,
   type SessionOptions,
 } from "./backend.ts";
-import { createClaudeBackend, workspaceTmpDir } from "./claude.ts";
+import { createClaudeBackend } from "./claude.ts";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof AgentSdk>();
@@ -327,10 +328,13 @@ test("resuming that fails another way keeps its own error", async () => {
 // --- The tutor's file and shell tools (task 3.3) ------------------------------
 
 const WORKSPACE = "/data/courses/vectors/workspace";
-/** Where the engine says the tutor's commands may read. */
-const READS: CommandReads = {
-  denied: ["/home/learner", "/data"],
-  allowed: ["/opt/gauss/pytools"],
+/** Where the engine says the tutor's commands may read; Claude runs its own. */
+const COMMANDS = {
+  reads: {
+    denied: ["/home/learner", "/data"],
+    allowed: ["/opt/gauss/pytools"],
+  } satisfies CommandReads,
+  run: () => Promise.reject(new Error("A Claude tutor runs its own commands.")),
 };
 
 /** Starts a new session on the stand-in query and returns the options it got. */
@@ -384,7 +388,7 @@ test("a tutor's session gets the file and shell tools confined to its workspace:
   try {
     const options = await optionsOf({
       cwd: WORKSPACE,
-      workspace: { acquire: async () => ({ release() {} }), reads: READS },
+      workspace: { acquire: async () => ({ release() {} }), ...COMMANDS },
     });
 
     expect(options).toMatchObject({
@@ -450,7 +454,7 @@ test("sessions without the file and shell tools, an intake's and a unit's planni
     createClaudeBackend().startSession({
       systemPrompt: "Test tutor.",
       tools: [],
-      workspace: { acquire: async () => ({ release() {} }), reads: READS },
+      workspace: { acquire: async () => ({ release() {} }), ...COMMANDS },
     }),
   ).rejects.toThrow("The file and shell tools need a working folder.");
 });
@@ -462,7 +466,7 @@ test("a session given web search gets WebSearch, allowed with nothing asked, bes
   try {
     const withTools = await optionsOf({
       cwd: WORKSPACE,
-      workspace: { acquire: async () => ({ release() {} }), reads: READS },
+      workspace: { acquire: async () => ({ release() {} }), ...COMMANDS },
       webSearch: true,
     });
     expect(withTools).toMatchObject({
@@ -494,7 +498,7 @@ test("a session given web search gets WebSearch, allowed with nothing asked, bes
 
     const without = await optionsOf({
       cwd: WORKSPACE,
-      workspace: { acquire: async () => ({ release() {} }), reads: READS },
+      workspace: { acquire: async () => ({ release() {} }), ...COMMANDS },
     });
     for (const options of [withTools, alone, without]) {
       expect(options.tools).not.toContain("WebFetch");
@@ -632,7 +636,7 @@ test("before each write and command the engine is asked, and its reason refuses 
   try {
     const { options, session } = await sessionOptions({
       cwd: WORKSPACE,
-      workspace: { acquire, reads: READS },
+      workspace: { acquire, ...COMMANDS },
     });
     expect(options.hooks?.PreToolUse?.[0]?.matcher).toBe("Write|Edit|Bash");
 
@@ -747,7 +751,7 @@ test("concurrent mutations remain reserved until their own success or failure, e
   });
   const { options, session } = await sessionOptions({
     cwd: WORKSPACE,
-    workspace: { acquire, reads: READS },
+    workspace: { acquire, ...COMMANDS },
   });
   try {
     expect(options.hooks?.PreToolUse?.[0]?.onFailure).toBe("block");
@@ -801,7 +805,7 @@ test("a permission-denied write releases only its unstarted mutation without ret
     .mockResolvedValueOnce({ release: running });
   const { options, session } = await sessionOptions({
     cwd: WORKSPACE,
-    workspace: { acquire, reads: READS },
+    workspace: { acquire, ...COMMANDS },
   });
   try {
     await preToolUse(options, "Write", "outside", {
@@ -848,7 +852,7 @@ test("a failed safety hook blocks execution, and closing during an asynchronous 
     .mockReturnValueOnce(pending.promise);
   const { options, session } = await sessionOptions({
     cwd: WORKSPACE,
-    workspace: { acquire, reads: READS },
+    workspace: { acquire, ...COMMANDS },
   });
   try {
     expect(options.hooks?.PreToolUse?.[0]?.onFailure).toBe("block");
@@ -877,7 +881,7 @@ test.skipIf(process.platform !== "linux")(
     const release = vi.fn();
     const { options, session } = await sessionOptions({
       cwd,
-      workspace: { acquire: async () => ({ release }), reads: READS },
+      workspace: { acquire: async () => ({ release }), ...COMMANDS },
     });
     const program = [
       "import os, socket",
@@ -940,7 +944,7 @@ test("a temporary folder another user could reach refuses the session", async ()
         systemPrompt: "Test tutor.",
         tools: [],
         cwd,
-        workspace: { acquire: async () => ({ release() {} }), reads: READS },
+        workspace: { acquire: async () => ({ release() {} }), ...COMMANDS },
       }),
     ).rejects.toThrow(
       `The tutor's temporary folder ${tmpDir} is not closed to other users.`,

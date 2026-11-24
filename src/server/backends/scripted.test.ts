@@ -35,7 +35,10 @@ import {
   scriptedPlan,
 } from "./scripted.ts";
 
-const NO_COMMANDS: CommandReads = { denied: [], allowed: [] };
+const NO_COMMANDS = {
+  reads: { denied: [], allowed: [] } satisfies CommandReads,
+  run: () => Promise.reject(new Error("The scripted tutor runs no command.")),
+};
 
 // The scripted backend runs the dev server with no model (scripts/dev-fake.ts).
 // These tests take it through the engine, as the server wires it, so a change
@@ -100,7 +103,7 @@ function setUp(
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
     handoff: createHandoffWriter({ backend, systemPrompt: "Handoff." }),
     // As the server has it where the sandbox runs (serve.ts). The scripted
-    // tutor runs no command, so where one may read is not used.
+    // tutor runs no command, so where one may read and its runner are not used.
     ...(given.mathCheck === undefined
       ? {}
       : { mathCheck: given.mathCheck, workspaceTools: NO_COMMANDS }),

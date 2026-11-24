@@ -91,7 +91,6 @@ import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { pickForReview, type ReviewPick } from "../record/review.ts";
 import { unitStatus } from "../record/status.ts";
-import type { CommandReads } from "../sandbox-command.ts";
 import { amendCurriculumTool } from "../tools/amend-curriculum.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import { installPackagesTool } from "../tools/install-packages.ts";
@@ -401,10 +400,11 @@ interface ChatOptions {
   backup?: Backup;
   /**
    * Gives tutors the file and shell tools in the course's workspace (task
-   * 3.3), their commands reading as this says (the sandbox's `reads`); only
-   * when the sandbox can run. None if not given.
+   * 3.3), their commands reading as `reads` says and run, where the backend
+   * has no confined commands of its own, by `run`: the sandbox's. Only when
+   * the sandbox can run. None if not given.
    */
-  workspaceTools?: CommandReads;
+  workspaceTools?: Pick<WorkspaceTools, "reads" | "run">;
   /**
    * Installs the packages a tutor asks for (task 3.11); only when the
    * sandbox can run. Without it, tutors get no install_packages.
@@ -723,7 +723,7 @@ type WorkspaceDesk = Pick<CourseDesk, "propose"> & {
 };
 
 interface CourseWorkspace {
-  tools: Omit<WorkspaceTools, "reads">;
+  tools: Pick<WorkspaceTools, "acquire">;
   /** Restores the workspace before the course's first chat uses it. */
   prepare(folder: string): Promise<PackageReceipt | undefined>;
   /** Saves a live or previously unsaved install result. */
@@ -1368,7 +1368,7 @@ function createUnitChat(
           : {
               workspace: {
                 ...options.workspace.tools,
-                reads: options.workspaceTools,
+                ...options.workspaceTools,
               },
             }),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,

@@ -183,7 +183,7 @@ async function openChat(
     grader: createGrader({ backend, systemPrompt: "Grader." }),
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
     codeRunner,
-    workspaceTools: sandbox.reads,
+    workspaceTools: { reads: sandbox.reads, run: sandbox.run },
     now: () => new Date(NOW),
     timer: createFakeTimer(),
     order: givenOrder,

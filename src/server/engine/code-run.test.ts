@@ -256,7 +256,7 @@ test("a question whose starter file is not in the workspace is refused, saying t
   const refused = await runner.check(QUESTION, workspace, DEPENDENCIES);
   expect(refused).toHaveProperty(
     "refused",
-    '"bpe.py" is not in the workspace. Write its starter version there with your Write tool first, then post the question.',
+    '"bpe.py" is not in the workspace. Write its starter version there first, with your tool that writes a file, then post the question.',
   );
 });
 

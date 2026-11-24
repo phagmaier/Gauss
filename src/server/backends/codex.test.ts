@@ -1,8 +1,18 @@
+import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { codexOptions, codexUnavailable } from "./codex.ts";
+import {
+  CODEX_LIVE_CHECK_OPTIONS,
+  codexAppConfig,
+  codexEnvironment,
+  codexOptions,
+  codexUnavailable,
+  pinnedCodexVersion,
+  writeCodexCatalog,
+} from "./codex.ts";
 
 let dir: string;
 beforeEach(async () => {
@@ -187,3 +197,43 @@ function expectSignInCommands(reason: string | undefined, folder: string) {
   expect(reason).toContain(`\`mkdir -p -m 700 ${folder}\``);
   expect(reason).toContain(`\`CODEX_HOME=${folder} mise exec -- codex login\``);
 }
+
+// The pinned CLI itself, which mise puts on the PATH: `prompt-input` prints
+// the model's input and calls no model, in a scratch home signed out.
+test("the pinned Codex CLI, as Gauss configures it, gives the model none of its shell or patch tools", async () => {
+  const run = promisify(execFile);
+  const { stdout: version } = await run("codex", ["--version"]);
+  expect(version.trim().split(/\s+/).at(-1)).toBe(await pinnedCodexVersion());
+  const scratchHome = join(dir, "codex-home");
+  const work = join(dir, "work");
+  await mkdir(scratchHome, { mode: 0o700 });
+  await mkdir(work);
+  const catalog = await writeCodexCatalog("codex", scratchHome);
+
+  const { stdout } = await run(
+    "codex",
+    [
+      "debug",
+      "prompt-input",
+      ...codexAppConfig(catalog),
+      "-c",
+      `model=${JSON.stringify(CODEX_LIVE_CHECK_OPTIONS.model)}`,
+    ],
+    { cwd: work, env: codexEnvironment(scratchHome), maxBuffer: 16 << 20 },
+  );
+  type Tool = { name: string; description?: string; tools?: Tool[] };
+  const input: { type: string; tools?: Tool[] }[] = JSON.parse(stdout);
+  const direct = input
+    .flatMap((item) => item.tools ?? [])
+    .flatMap((namespace) => namespace.tools ?? [namespace]);
+  // In code mode the rest are nested in `exec`, each under a heading.
+  const exec = direct.find((tool) => tool.name === "exec");
+  const nested = [...(exec?.description ?? "").matchAll(/^### `(\w+)`$/gm)].map(
+    ([, name]) => name,
+  );
+  expect(direct.map((tool) => tool.name)).toEqual(["exec", "wait"]);
+  expect(nested).toContain("list_mcp_resources");
+  for (const name of ["exec_command", "write_stdin", "apply_patch"]) {
+    expect(nested).not.toContain(name);
+  }
+});

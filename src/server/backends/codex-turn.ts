@@ -12,7 +12,7 @@ type TurnMessage = {
   threadId: string;
   turnId?: string;
   turn?: { id: string; status: string; error?: { message: string } | null };
-  item?: { id: string; type: string; tool?: string; text?: string };
+  item?: { id: string; type: string; text?: string };
   itemId?: string;
   delta?: string;
 };
@@ -140,6 +140,10 @@ export function runCodexTurn(options: {
       emit({ type: "tool_call", name: call.tool });
       result = await tool.run(call.arguments, controller.signal);
     }
+    // The file is written even if Stop came meanwhile: the thread shows it.
+    if (result.status === "done" && result.fileWritten !== undefined) {
+      emit({ type: "file_written", path: result.fileWritten });
+    }
     if (outcome !== undefined || controller.signal.aborted) return;
     if (result.endTurn === true) endingCall ??= call.callId;
     const image = result.status === "done" ? result.image : undefined;
@@ -232,23 +236,13 @@ export function runCodexTurn(options: {
       }
       case "item/started": {
         const item = params.item;
-        if (item === undefined) break;
         if (
+          item !== undefined &&
           endingOutputRecorded &&
           item.type !== "agentMessage" &&
           item.type !== "functionCallOutput"
         ) {
           stopContinuation();
-        } else if (endingCall === undefined) {
-          const name =
-            item.type === "commandExecution"
-              ? "exec_command"
-              : item.type === "fileChange"
-                ? "apply_patch"
-                : item.type === "mcpToolCall"
-                  ? item.tool
-                  : undefined;
-          if (name !== undefined) emit({ type: "tool_call", name });
         }
         break;
       }

@@ -45,6 +45,12 @@ export interface SandboxCommand {
    */
   writable: readonly string[];
   /**
+   * Paths inside `writable` it may not write, absolute; one that does not
+   * exist it cannot make. The runtime's own such list follows the server's
+   * folder, not the command's.
+   */
+  unwritable?: readonly string[];
+  /**
    * What it may read beyond what every command may, inside the folders
    * closed to reads (the home folder, the data root), absolute paths. The
    * runtime allows back a link there only where it really lies, so a path
@@ -228,6 +234,7 @@ function configFor(
   reads: CommandReads,
   writable: readonly string[],
   readable: readonly string[],
+  unwritable: readonly string[] = [],
 ): SandboxRuntimeConfig {
   return {
     network: { allowedDomains: [], deniedDomains: [] },
@@ -235,7 +242,7 @@ function configFor(
       denyRead: [...reads.denied],
       allowRead: [...reads.allowed, ...readable],
       allowWrite: [...writable],
-      denyWrite: ["/tmp/claude"],
+      denyWrite: ["/tmp/claude", ...unwritable],
     },
   };
 }
@@ -249,6 +256,7 @@ async function run(
     command.cwd,
     ...command.writable,
     ...(command.readable ?? []),
+    ...(command.unwritable ?? []),
   ]) {
     if (!isAbsolute(path)) throw new Error(`Not an absolute path: ${path}`);
   }
@@ -286,6 +294,7 @@ async function run(
         reads,
         [...command.writable, temporary],
         command.readable ?? [],
+        command.unwritable,
       ),
       command.signal,
       { commandId },

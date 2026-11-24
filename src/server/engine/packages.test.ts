@@ -354,7 +354,15 @@ async function start(
     now,
     timer: createFakeTimer(),
     order: givenOrder,
-    ...(workspaceTools ? { workspaceTools: READS } : {}),
+    ...(workspaceTools
+      ? {
+          workspaceTools: {
+            reads: READS,
+            run: () =>
+              Promise.reject(new Error("The fake tutor runs no command.")),
+          },
+        }
+      : {}),
     ...(codeRunner === undefined ? {} : { codeRunner }),
     ...(withoutInstaller
       ? {}
