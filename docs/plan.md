@@ -105,12 +105,6 @@ and its result card, "Review now", "/packages" installed where the sandbox
 runs, and a server restart while an answer waits for the judge ("/hold"
 in a message, then answer) followed by reopening the unit.
 
-### 6.5 Answers: grading and help — todo
-
-**Why:** Grading and help judging decide what an answer counts as, and self-test grades the same way. They sit in three parts of the file and inside `say`, `answer` and `gradeAgain`.
-**Do:** Move `grade`, `startGrading`, `recordAnswer`, `readFiles`, `replyEnded`, `judged`, `settleJudging`, `WAITS_FOR_JUDGE`, the bodies of `answer` and `gradeAgain`, the exchange `say` keeps for a message that reaches the tutor while a question is open (its turn's `text` and `ended`), the state `timedOut` and `Running`'s `answerStops` into `unit-answers.ts`, made in `load` and held on `Running` as progression is. It takes the record (`position`, `move`, `answer`, `finished`), the agents' `grade`, `judge` and `grading`, `emit`, the grader, math check and code runner, `folder()`, `closing()`, `stopCount()`, `runOn`, the progression's `answered`, `tell` (another unit's open chat), `unitId` and `where`. It returns `grade`, `settleJudging` and `startGrading` for reopening, the message's `text` and `ended` for `say`, the two action bodies, and whether an answer waits for the judge, for `interrupt`. Stays: `say`'s admission (`overrideWrite`, a pending override, `review.sendMessage`); `stopCount`, `closing` and `folder`. `timedOut` moves from the chat to the loaded unit, which changes nothing, since `running` is assigned once per chat.
-**Done when:** `unit-chat.test.ts`, `math-questions.test.ts`, `code-questions.test.ts`, `disputes.test.ts` and the rest of the existing tests pass with at most import-path changes; `mise run check` passes; the moved code is gone from `unit-chat.ts`.
-
 ### 6.6 Unit end: closing card and gate — todo
 
 **Why:** The unit's end (the closing card, Move on, going over again, the gate's offer and the card after it) is one sequence called from six places, and the card's confirmed action is state of its own.

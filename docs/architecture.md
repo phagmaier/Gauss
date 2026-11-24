@@ -123,6 +123,11 @@ Rules no single file shows:
   and code check a question must pass, the turn that asks again after
   another unit's install, and Stop's and close's aborts; the course's
   queue that admits a question stays in `unit-chat.ts`),
+  `unit-answers.ts` (grading an answer: a choice at once, a written, math
+  or code one kept and graded outside the chat's queue, and graded again
+  after a failure; the help judge's calls on the tutor's replies to a
+  message sent while a question is open, and an answer that waits for
+  them; made for each loaded unit),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,

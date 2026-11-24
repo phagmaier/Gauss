@@ -13,21 +13,10 @@
 //   own (task 2.16a). A miss opens a detour instead (task 2.20): its first
 //   turn takes the feedback's place, the tutor works through the confusion
 //   with the learner, and no question is posted until the learner asks for
-//   another one. A choice is graded at once; a written answer is kept
-//   in state.json and graded by the grader (grading.ts), outside the
-//   chat's queue, and if the grading fails it can be graded again. A math
-//   question's answer is kept and graded the same way, by the symbolic
-//   check (math-check.ts, task 3.5), or by the grader when the check does
-//   not settle it. A code question names files in the workspace that the
-//   learner edits (task 3.7); its answer, the learner's files as they are
-//   when "Run the tests" is pressed, is kept and graded the same way, by
-//   running the tests on them (code-run.ts). What a math or code question
-//   must pass when it is posted is unit-questions.ts's.
-//   A message the tutor receives while a question waits for its answer
-//   has the tutor's reply judged, once it ends, by the help judge
-//   (help-judge.ts, task 2.21): clarification leaves the answer counting,
-//   help, or a call that fails, makes it given with help. An answer sent
-//   before the judge's calls are in is kept and waits for them;
+//   another one. Grading an answer, and judging whether the tutor's replies
+//   to messages while a question is open gave help, are unit-answers.ts's;
+//   what a math or code question must pass when it is posted is
+//   unit-questions.ts's;
 // - check to closed: the engine closes the segment when the feedback on the
 //   answer that leaves every objective done in this check ends (task
 //   2.16a), or the learner moves on without the check, recorded as
@@ -108,7 +97,6 @@
 // (`exclusive`), which the agents are given for recording a grade.
 
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import type { Course, Slug } from "../../shared/course.ts";
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { CurriculumDecision } from "../../shared/curriculum-change.ts";
@@ -122,14 +110,7 @@ import type {
 import type { Misconception } from "../../shared/misconception.ts";
 import type { PackageReceipt } from "../../shared/packages.ts";
 import { firstTaught } from "../../shared/plan.ts";
-import {
-  type AnswerPost,
-  type AnswerSubmission,
-  type AssessmentHead,
-  CHOICE_LETTERS,
-  type CodeFile,
-  type GradedAnswer,
-} from "../../shared/question.ts";
+import type { AnswerPost, AssessmentHead } from "../../shared/question.ts";
 import type {
   AssessmentRun,
   OpenQuestion,
@@ -177,23 +158,17 @@ import {
   toGoOver,
 } from "./check-rules.ts";
 import { type ChoiceOrder, randomOrder } from "./choice-order.ts";
-import {
-  type CodeRunner,
-  fileProblem,
-  gradeCode,
-  noCodeRunner,
-  readWorkspaceFiles,
-} from "./code-run.ts";
+import { type CodeRunner, noCodeRunner } from "./code-run.ts";
 import type { ChatResult, Timer } from "./conversation.ts";
 import type { CourseHolder, Doing } from "./course-deletion.ts";
-import { type Grader, gradeChoice, gradeMath } from "./grading.ts";
+import type { Grader } from "./grading.ts";
 import {
   createHandoffs,
   type Handoffs,
   type HandoffWriter,
   readEarlier,
 } from "./handoff.ts";
-import type { HelpJudge, HelpOutcome } from "./help-judge.ts";
+import type { HelpJudge } from "./help-judge.ts";
 import { type MathCheck, noMathCheck } from "./math-check.ts";
 import {
   clearPackageInstall,
@@ -207,13 +182,9 @@ import {
 import type { SourceConverter } from "./source-convert.ts";
 import { createSourceShelf } from "./source-shelf.ts";
 import { createTranscribedLog } from "./transcript.ts";
-import {
-  createUnitAgents,
-  type Grade,
-  type Grading,
-  type UnitAgents,
-} from "./unit-agents.ts";
+import { createUnitAgents, type UnitAgents } from "./unit-agents.ts";
 import { createUnitAids } from "./unit-aids.ts";
+import { createUnitAnswers, type UnitAnswers } from "./unit-answers.ts";
 import { createUnitPackages } from "./unit-packages.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
@@ -240,7 +211,6 @@ import {
   disputeNote,
   freshTurn,
   JOINED_NOTE,
-  messageTurn,
   noticeText,
   type RunWhere,
   readyTurn,
@@ -1226,12 +1196,7 @@ interface Running {
   assessmentHandoffs: ReadonlyMap<string, string> | undefined;
   progression: UnitProgression;
   review: ReviewAdmission;
-  /**
-   * How many Stops there had been when the answer kept for the judging was
-   * sent, so a Stop after it cancels the automatic next question as it does
-   * for an answer recorded at once (task 2.17a).
-   */
-  answerStops?: number | undefined;
+  answers: UnitAnswers;
   /** The standing closing card's action and what the learner confirms with it. */
   finishAction?: { id: string; objectives: string[]; gateFollows: boolean };
 }
@@ -1276,8 +1241,6 @@ function createUnitChat(
    * the unit loads, and replaced when the learner applies a new one.
    */
   let style: string | undefined;
-  /** The code questions whose kept answer's tests have run past their limit once; in memory only. */
-  const timedOut = new Set<string>();
   const code = options.codeRunner ?? noCodeRunner;
 
   // --- Opening ---------------------------------------------------------------
@@ -1543,6 +1506,26 @@ function createUnitChat(
           start: (run) => startRun(r, run),
           skip: () => endRun(r, true),
         }),
+        answers: createUnitAnswers({
+          record,
+          agents: loaded,
+          exclusive,
+          emit: log.emit,
+          grader: options.grader,
+          mathCheck: options.mathCheck ?? noMathCheck,
+          code,
+          folder: () => folder,
+          closing: () => closing,
+          stopCount: () => stopCount,
+          unitId,
+          where: () => where(r),
+          runOn: () => runOn(r),
+          progression: {
+            answered: (answered, stops) =>
+              r.progression.answered(answered, stops),
+          },
+          tell: (unit, entry) => options.tell?.(unit, entry),
+        }),
       };
       if (record.reopened) {
         // A unit under way resumes its tutor's conversation with its first
@@ -1694,7 +1677,7 @@ function createUnitChat(
         // now, so they count as help (task 2.21), and an answer kept
         // for them is graded.
         const { judging, number } = open;
-        await settleJudging(r, open, judging, "help", () => {
+        await r.answers.settleJudging(open, judging, "help", () => {
           for (const learnerId of judging) {
             log.emit({
               type: "judged",
@@ -1708,7 +1691,7 @@ function createUnitChat(
       } else if (open.answer !== undefined) {
         // An answer that a restart kept from its grade is graded now,
         // as a teaching turn a restart cut off is taught again.
-        await grade(r, open, open.answer);
+        await r.answers.grade(open, open.answer);
       }
     });
     return true;
@@ -2233,246 +2216,6 @@ function createUnitChat(
   }
 
   /**
-   * Records the graded answer to the open question, closes the question, and
-   * sends the grade to the tutor. Runs inside `exclusive`.
-   */
-  async function recordAnswer(
-    r: Running,
-    submission: AnswerSubmission,
-    grade: Grade,
-    stops?: number,
-  ): Promise<void> {
-    const answered = await r.record.answer(submission, grade);
-    // Another unit's chat, open with its own record, learns the answer.
-    const owner = runOn(r)?.objectives.find(
-      (o) => o.objective === answered.entry.objective,
-    )?.unit;
-    if (owner !== undefined && owner !== unitId) {
-      options.tell?.(owner, answered.entry);
-    }
-    await r.progression.answered(answered, stops);
-  }
-
-  /**
-   * Grades an answer to the open question once no reply during it waits
-   * for the judge: a written, math or code one outside the queue, kept in
-   * state.json first, and any other at once. Runs inside `exclusive`.
-   */
-  async function grade(
-    r: Running,
-    open: OpenQuestion,
-    answer: AnswerSubmission,
-    stops?: number,
-  ): Promise<void> {
-    const { question } = open;
-    if (
-      answer.kind === "written" ||
-      answer.kind === "math" ||
-      answer.kind === "code"
-    ) {
-      // Kept before it is graded, so a restart does not lose it.
-      const kept: OpenQuestion = { ...open, answer };
-      if (open.answer === undefined) {
-        await r.record.move({ ...r.record.position, openQuestion: kept });
-      }
-      startGrading(r, kept, answer, stops);
-      return;
-    }
-    await recordAnswer(
-      r,
-      answer,
-      {
-        verdict:
-          question.kind === "choice"
-            ? gradeChoice(question.answer, answer)
-            : "unknown",
-      },
-      stops,
-    );
-  }
-
-  /**
-   * The learner's files of a code question as they are now, read from the
-   * workspace, or why the tests cannot be run on them.
-   */
-  async function readFiles(
-    paths: readonly string[],
-  ): Promise<CodeFile[] | string> {
-    if (folder === undefined) return "The unit is not open.";
-    try {
-      const read = await readWorkspaceFiles(folder, paths);
-      if ("files" in read) return read.files;
-      return (
-        `${fileProblem(read)} Nothing was run or recorded: put it right ` +
-        `at ${join(folder, read.path)} and run the tests again, or answer "I don't know".`
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return `Your files could not be read: ${message}`;
-    }
-  }
-
-  // --- Help (task 2.21) ------------------------------------------------------
-
-  /**
-   * The tutor's reply to the learner's message `learnerId`, received while
-   * the question `questionId` was open, has ended: it is judged, unless the
-   * question has been withdrawn since. A reply with no text gave the learner
-   * nothing, so it is not judged and is no help. Runs inside `exclusive`.
-   */
-  async function replyEnded(
-    r: Running,
-    exchange: { learnerId: string; questionId: string; message: string },
-    reply: string,
-  ): Promise<void> {
-    if (closing) return;
-    const { learnerId, questionId, message } = exchange;
-    const open = r.record.position.openQuestion;
-    if (open?.id !== questionId || !open.judging?.includes(learnerId)) return;
-    if (reply.trim() === "") {
-      await settleJudging(r, open, [learnerId], "clarification");
-      return;
-    }
-    const { number, question } = open;
-    r.agents.judge({
-      learnerId,
-      number,
-      question,
-      message,
-      reply,
-      record: (outcome) => judged(r, questionId, learnerId, number, outcome),
-    });
-  }
-
-  /**
-   * Records the judge's call on a reply, and tells the page. A failed call
-   * counts as help. A question withdrawn since keeps nothing of it. Runs
-   * inside `exclusive`.
-   */
-  async function judged(
-    r: Running,
-    questionId: string,
-    learnerId: string,
-    number: number,
-    outcome: HelpOutcome,
-  ): Promise<void> {
-    if (!outcome.ok) {
-      console.error(
-        "A reply could not be judged, so it counts as help:",
-        outcome.error,
-      );
-    }
-    const verdict = outcome.ok ? outcome.verdict : "help";
-    const tell = () =>
-      log.emit({
-        type: "judged",
-        learnerId,
-        number,
-        verdict,
-        ...(outcome.ok ? {} : { unjudged: "failed" as const }),
-      });
-    const open = r.record.position.openQuestion;
-    if (open?.id !== questionId || !open.judging?.includes(learnerId)) {
-      tell();
-      return;
-    }
-    await settleJudging(r, open, [learnerId], verdict, tell);
-  }
-
-  /**
-   * Takes these replies out of those the open question waits on, with
-   * their verdict, and once none is left grades the answer kept for them.
-   * Runs inside `exclusive`.
-   */
-  async function settleJudging(
-    r: Running,
-    open: OpenQuestion,
-    learnerIds: readonly string[],
-    verdict: "clarification" | "help",
-    tell?: () => void,
-  ): Promise<void> {
-    const judging = (open.judging ?? []).filter(
-      (id) => !learnerIds.includes(id),
-    );
-    const { judging: _, ...rest } = open;
-    const next: OpenQuestion = {
-      ...rest,
-      ...(verdict === "help" ? { assisted: true } : {}),
-      ...(judging.length > 0 ? { judging } : {}),
-    };
-    await r.record.move({ ...r.record.position, openQuestion: next }, tell);
-    if (judging.length === 0 && next.answer !== undefined) {
-      const stops = r.answerStops;
-      r.answerStops = undefined;
-      await grade(r, next, next.answer, stops);
-    }
-  }
-
-  /**
-   * Grades the open question's kept written, math or code answer. The
-   * grading runs outside `exclusive`, so the chat goes on while it works;
-   * its grade is recorded inside, if the question is still open.
-   */
-  function startGrading(
-    r: Running,
-    open: OpenQuestion,
-    answer: GradedAnswer,
-    stops?: number,
-  ): void {
-    const { question } = open;
-    const { grader } = options;
-    const check = options.mathCheck ?? noMathCheck;
-    let run: Grading["run"];
-    if (answer.kind === "written" && question.kind === "written") {
-      run = (signal) => grader.grade(question, answer.text, signal);
-    } else if (answer.kind === "math" && question.kind === "math") {
-      run = (signal) => gradeMath(question, answer, { check, grader }, signal);
-    } else if (answer.kind === "code" && question.kind === "code") {
-      const workspace = folder;
-      if (workspace === undefined) throw new Error("The unit is not open.");
-      run = async (signal) => {
-        const graded = await gradeCode(
-          code,
-          question,
-          answer,
-          workspace,
-          signal,
-        );
-        if (graded.ok) return graded;
-        if (graded.timedOut === undefined) {
-          return { ok: false, error: graded.error, canMoveOn: true };
-        }
-        // Past the limit a second time on the same files: the code, not a
-        // slow moment, kept the tests from ending, so it is a miss.
-        if (timedOut.has(open.id)) {
-          return {
-            ok: true,
-            verdict: "incorrect",
-            output: graded.timedOut.output,
-          };
-        }
-        timedOut.add(open.id);
-        return {
-          ok: false,
-          error: `${graded.error} Run them again; if they run past it again, the answer is graded as a miss.`,
-        };
-      };
-    } else {
-      // The answer's kind is its question's: `answer` and the schema check it.
-      throw new Error("The answer is not of its question's kind.");
-    }
-    r.agents.grade({
-      questionId: open.id,
-      answer,
-      run,
-      applies: () =>
-        r.record.position.openQuestion?.id === open.id &&
-        (r.record.finished === undefined || runOn(r) !== undefined),
-      record: (grade: Grade) => recordAnswer(r, answer, grade, stops),
-    });
-  }
-
-  /**
    * The last segment has closed (`closedNow`), or the unit's end is shown
    * again with the statuses as they now are. Before the gate: the closing
    * card while objectives are not passed; once every one has passed, the
@@ -2864,44 +2607,14 @@ function createUnitChat(
       }
       const id = randomUUID();
       log.emit({ type: "learner", id, text });
-      /** Set if the tutor received the message while a question waited for its answer. */
-      let exchange:
-        | { learnerId: string; questionId: string; message: string }
-        | undefined;
+      // One per message, shared by its turn's text and end.
+      const turn = r.answers.message(id, text);
       const send = () =>
         r.agents.send({
           learnerId: id,
           learnerMessage: text,
-          // Help is judged on what the tutor received while a question was
-          // open (task 2.21), so the exchange begins when the message is sent
-          // to the tutor, not when the learner wrote it, and is kept in
-          // state.json until the judge's call on the reply. Once an answer is
-          // sent, it is final, and help no longer applies.
-          text: () =>
-            exclusive(async () => {
-              const { position } = r.record;
-              const open = position.openQuestion;
-              if (open !== undefined && open.answer === undefined) {
-                await r.record.move({
-                  ...position,
-                  openQuestion: {
-                    ...open,
-                    judging: [...(open.judging ?? []), id],
-                  },
-                });
-                exchange = {
-                  learnerId: id,
-                  questionId: open.id,
-                  message: text,
-                };
-              }
-              return messageTurn(where(r), text);
-            }),
-          ended: (_, reply) => {
-            const asked = exchange;
-            if (asked === undefined) return;
-            return exclusive(() => replyEnded(r, asked, reply));
-          },
+          text: turn.text,
+          ended: turn.ended,
         });
       r.review.sendMessage(send);
       return { ok: true };
@@ -2931,118 +2644,10 @@ function createUnitChat(
 
     answer: (sent) =>
       // An answer is taken while the tutor replies to a message.
-      act(
-        async (r) => {
-          const open = r.record.position.openQuestion;
-          if (open === undefined) return refused("No question is open.");
-          if (sent.questionId !== open.id) {
-            return refused(
-              `That question is not open; question ${open.number} is.`,
-            );
-          }
-          if (open.answer !== undefined) {
-            return refused(
-              open.judging !== undefined
-                ? WAITS_FOR_JUDGE
-                : r.agents.grading()
-                  ? "Your answer to this question is being graded."
-                  : "Your answer to this question is kept and waits to be graded again.",
-            );
-          }
-          const { question } = open;
-          if (sent.kind !== "unknown" && sent.kind !== question.kind) {
-            return {
-              ok: false,
-              status: 400,
-              error:
-                question.kind === "choice"
-                  ? `Question ${open.number} is answered with one of its choices.`
-                  : question.kind === "math"
-                    ? `Question ${open.number} is answered with an expression.`
-                    : question.kind === "code"
-                      ? `Question ${open.number} is answered by running the tests on your files.`
-                      : `Question ${open.number} is answered in writing.`,
-            };
-          }
-          let submission: AnswerSubmission;
-          if (sent.kind !== "code") {
-            submission = sent;
-          } else {
-            if (question.kind !== "code")
-              throw new Error("Expected a code question.");
-            const unavailable =
-              code.unavailable ??
-              (question.inputs === undefined
-                ? "This question predates saved exercise inputs."
-                : undefined);
-            if (unavailable !== undefined) {
-              return refused(
-                `${unavailable} Nothing was run or recorded. Move on without the check.`,
-              );
-            }
-            // The files as they are now are the answer, final once sent.
-            const read = await readFiles(question.files);
-            if (typeof read === "string") return refused(read);
-            submission = { ...sent, files: read };
-          }
-          if (
-            submission.kind === "choice" &&
-            question.kind === "choice" &&
-            CHOICE_LETTERS.indexOf(submission.choice) >= question.choices.length
-          ) {
-            return {
-              ok: false,
-              status: 400,
-              error: `Question ${open.number} has no choice ${submission.choice}.`,
-            };
-          }
-          if (open.judging !== undefined) {
-            // Replies during the question still wait for the judge, whose
-            // calls say whether the answer had help (task 2.21): the answer
-            // waits for them, kept so a restart does not lose it.
-            r.answerStops = stopCount;
-            await r.record.move(
-              {
-                ...r.record.position,
-                openQuestion: { ...open, answer: submission },
-              },
-              () =>
-                log.emit({
-                  type: "answer_waiting",
-                  questionId: open.id,
-                  answer: submission,
-                }),
-            );
-            return { ok: true };
-          }
-          await grade(r, open, submission);
-          return { ok: true };
-        },
-        { whileWriting: true, inRun: true },
-      ),
+      act((r) => r.answers.answer(sent), { whileWriting: true, inRun: true }),
 
     gradeAgain: () =>
-      act(
-        async (r) => {
-          const open = r.record.position.openQuestion;
-          const kept = open?.answer;
-          if (
-            open === undefined ||
-            (kept?.kind !== "written" &&
-              kept?.kind !== "math" &&
-              kept?.kind !== "code")
-          ) {
-            return refused("No answer is waiting to be graded again.");
-          }
-          if (open.judging !== undefined) return refused(WAITS_FOR_JUDGE);
-          if (r.agents.grading()) {
-            return refused("The answer is being graded.");
-          }
-          startGrading(r, open, kept);
-          return { ok: true };
-        },
-        { whileWriting: true, inRun: true },
-      ),
+      act((r) => r.answers.gradeAgain(), { whileWriting: true, inRun: true }),
 
     installPackages: (requestId) =>
       act((r) => packages.installPackages(r, requestId)),
@@ -3308,7 +2913,7 @@ function createUnitChat(
       questions.stop();
       const r = running;
       if (r === undefined) return;
-      await r.progression.interrupt(r.answerStops !== undefined);
+      await r.progression.interrupt(r.answers.answerAwaitingJudge());
     },
     async recordDispute(entry) {
       await loading;
@@ -3410,10 +3015,6 @@ function createUnitChat(
 
 const UNIT_FINISHED = "The unit is finished.";
 const OVERRIDE_PENDING = "Choose Move on again to finish the override.";
-
-/** An answer kept while the tutor's replies during its question are judged (task 2.21). */
-const WAITS_FOR_JUDGE =
-  "Your answer to this question is kept, and is graded once the tutor's replies while it was open have been judged.";
 
 /** How many objectives review asks about (docs/brief.md, "Assessment modes"). */
 const REVIEW_COUNT = 3;
