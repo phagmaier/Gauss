@@ -77,7 +77,11 @@ follows the SDK's version.
 ## Codex
 
 From the stage 0 spike with `@openai/codex-sdk` 0.169 on the ChatGPT login,
-and Codex CLI 0.171 and SDK 0.172 read with no model call (2026-11-24).
+SDK 0.172 read, and, with no model call (2026-11-24), Codex CLI 0.171
+(pinned in `mise.toml`) on scratch `CODEX_HOME`s: `codex debug
+prompt-input`, `codex app-server` thread calls (never `turn/start`) and
+`codex sandbox`. "Source" marks what rests on Codex's code (tag
+`rust-v0.171.0`), not a run.
 
 - **The SDK runs each turn as a new `codex exec`** (still in 0.172): no
   system-prompt option, no in-process tool, no hook, no streamed text, and
@@ -93,19 +97,87 @@ and Codex CLI 0.171 and SDK 0.172 read with no model call (2026-11-24).
   `mcp_servers.gauss = { url, default_tools_approval_mode = "approve" }`;
   without it `approval_policy = "never"` refuses the calls. A tool ends the
   turn by aborting the turn's `AbortSignal`, and the thread resumes.
-- **Under `exec` the thread id arrives with the first turn**
-  (`thread.started`), which the adapter's `backendSessionId` cannot take;
-  app-server's `thread/start` response holds the thread (protocol types,
-  untried). Threads are saved under `$CODEX_HOME/sessions/`.
-- **The learner's setup reaches the model**: with their `CODEX_HOME`, their
-  global `AGENTS.md`, their skills and plugin suggestions, whatever
-  `--disable`, `project_doc_max_bytes=0` or `model_instructions_file` says.
-  An empty `CODEX_HOME` drops those, but Codex's bundled skills (imagegen,
-  openai-docs, skill-creator, skill-installer), its multi-agent
-  instructions and tools (`spawn_agent` and others) and
-  `request_user_input` remain. Copying `auth.json` into another home can
-  sign the learner out. Evidence: `codex debug prompt-input`, which prints
-  the model's input without calling it.
+- **`thread/start` returns the thread's id before any turn**, given
+  `baseInstructions`, `dynamicTools`, `cwd`, a permission profile and an
+  approval policy. The thread is written to `$CODEX_HOME/sessions/` at its
+  first turn or when named (`thread/name/set`); until then another
+  app-server process cannot resume it. An `ephemeral` thread writes
+  nothing and refuses a name.
+- **`thread/resume` finds a written thread from its own folder or
+  another** and moves it to the `cwd` given. An unknown id answers error
+  -32600 "no rollout found for thread id <id>"; a malformed one, -32600
+  "invalid session id: …". `thread/read` reads a written thread without
+  loading it, and answers an unknown id -32600 "thread not loaded: <id>".
+- **Resuming a thread still loaded ignores `cwd`, `baseInstructions` and
+  `config`, without an error.** After `thread/unsubscribe` a thread
+  unloads once `thread_unload_delay_secs` passes (60 by default, at once
+  at 0), and a resume then applies them. That the next turn then runs on
+  the new instructions is from the source (given base instructions win
+  over the rollout's, which keeps the first); seeing it needs a turn.
+- **A resume without `permissions` falls back to `:read-only`** (the
+  whole disk readable) with `on-request` approval, so the profile and
+  approval policy are given on every resume. **A resume without a model
+  or effort takes the effort the rollout saved** (source), none for a
+  thread with no turn yet (it reported null; gpt-6.2-sol's default is
+  low), so the effort is given on every resume or `turn/start`; a
+  resume's `config.model_reasoning_effort` reported medium.
+- **Configuration that leaves gpt-6.2-sol only Gauss's base instructions,
+  the environment context and the shell and file tools, beside what is
+  listed below** (the model's input in `codex debug prompt-input`, which
+  cannot show dynamic tools): on
+  `codex app-server`, `-c` with `features.multi_agent=false`,
+  `features.multi_agent_v2=false`, `agents.enabled=false`,
+  `skills.bundled.enabled=false`, `skills.include_instructions=false`,
+  `features.skip_host_skill_discovery=true`,
+  `tools.experimental_request_user_input.enabled=false`,
+  `include_collaboration_mode_instructions=false`,
+  `include_apps_instructions=false`, `include_permissions_instructions=false`,
+  `features.apps=false`, `features.plugins=false`,
+  `features.memories=false`, `features.image_generation=false`,
+  `features.view_image=false`,
+  `features.sleep_tool=false`, `features.hooks=false`,
+  `features.shell_snapshot=false`, `allow_login_shell=false`,
+  `web_search="disabled"`, `project_doc_max_bytes=0` and
+  `suppress_unstable_features_warning=true`. Left, as no setting removes
+  them: `send_message_to_user_async` and `clock.curr_time` (gpt-6.2-sol's
+  catalog entry asks for them; a trimmed `model_catalog_json` drops them
+  but freezes that entry, so it is not used) and three MCP resource tools
+  with no server to read. Apps and plugins are untried on a signed-in home.
+- **gpt-6.2-sol runs in code mode** (catalog `tool_mode:
+  "code_mode_only"`): its tools are `exec`, JavaScript calling the nested
+  `exec_command`, `write_stdin`, `apply_patch` and the rest, and `wait`.
+  Dynamic tools are nested too unless their namespace is listed in
+  `features.code_mode.direct_only_tool_namespaces` (source).
+- **The home's `AGENTS.md` and `config.toml` instructions reach the model
+  whatever the configuration**, and by default so do its skills and every
+  `AGENTS.md` from the working folder up to the git root (the data root
+  is one); a project's `.codex/config.toml` only if the home trusts it.
+  Hence Gauss's own `CODEX_HOME` holding only the login and its threads.
+  Copying `auth.json` into another home can sign the learner out.
+- **An approved escalation widens a tutor's sandbox, and its approval
+  request cannot be told from another** (source). `exec_command` always
+  offers `sandbox_permissions: "require_escalated"`, whatever the
+  configuration; the approval request carries no such field, only the
+  command, its folder and an optional reason. Under a profile that denies
+  a read, an accepted escalation runs with every path writable but the
+  denied ones, network still off: the home folder, `~/.codex` and Gauss's
+  Codex home included, since denying the home folder leaves the reads the
+  profile allows back unreadable (seen in `codex sandbox`). `untrusted`
+  (refused in configuration, taken per thread) asks about every command
+  no exec-policy rule allows, escalations included, and about every
+  patch; `on-request` asks only about escalations, dangerous commands and
+  extra permissions; `never`, or `granular` with `sandbox_approval:
+  false`, refuses escalations unasked and asks about no sandboxed
+  command. `turn/start` can change a thread's profile, approval policy
+  and effort from that turn on (protocol types).
+- **`thread/start` opens the provider's websocket** and sends a
+  `generate: false` request with empty input (seen at a local capture
+  endpoint); signed out, it logs a connection error and the thread starts.
+- **Signed out, `account/read` answers `account: null`,
+  `requiresOpenaiAuth: true`.** `codex login status` reads the login of
+  `CODEX_HOME` ("Not logged in" in a scratch home while `~/.codex` was
+  signed in). A `CODEX_HOME` under `/tmp` warns that Codex makes no
+  helper links there.
 - **No account email address is in the model's input** with the default
   configuration (`codex debug prompt-input`); what the server adds is not
   visible there.
@@ -140,11 +212,39 @@ and Codex CLI 0.171 and SDK 0.172 read with no model call (2026-11-24).
   read the workspace project's dependencies, `--no-build` does not forbid
   every build, and uv writes the new environment at its final path; hence
   Gauss's own uv project per course.
-- **No sandboxed process can read the server's environment**
-  (`/proc/1/environ` included). The NixOS loader adds `LD_LIBRARY_PATH`
-  and Python `LC_CTYPE` to what a command sees.
+- **No command in the runtime's or Claude Code's sandbox can read the
+  server's environment** (`/proc/1/environ` included). The NixOS loader
+  adds `LD_LIBRARY_PATH` and Python `LC_CTYPE` to what a command sees.
 - **Claude Code leaves an empty `.claude/.cc-writes/`** in the working
   folder; it is harmless and comes back.
+- **Codex's sandbox (0.171, bubblewrap) reopens a path inside a denied
+  folder only for writing**: a `read` entry left Codex's own binary, which
+  the sandbox re-executes inside, unreadable under the home folder's
+  denial. So a tutor's permission profile is an allowlist: `":minimal"`
+  (`/bin`, `/sbin`, `/usr`, `/etc`, `/lib`, `/lib64`, `/nix/store`,
+  `/run/current-system/sw`), `reads.allowed` and Codex's install folder to
+  read, the data root denied, the workspace and a private temporary folder
+  to write, `network.enabled = false`. Nothing else is readable.
+- **That profile confines a command in the workspace** (`codex sandbox
+  -P`): the record files cannot be read directly, by `../` or through a
+  link, nor any Codex home or `/run/user/<uid>`; mise's Python, uv and the
+  workspace's `.venv` run; writes elsewhere than the two folders go to a
+  private tmpfs dropped with the command; there is no network; background
+  processes die with the command. Under app-server, `exec_command` keeps a
+  process running between calls (`write_stdin`), untried. `.git`, `.codex`
+  and `.agents` in the workspace are read-only empty mounts.
+  `/proc/1/environ` shows the environment Codex was started with.
+- **`sandbox_exec.py` cannot wrap Codex's commands**: Codex starts the
+  shell in its own sandbox, and an approval only accepts or declines.
+  Codex's seccomp for a profile without network stands in: it refuses
+  `connect` and `sendto` on Unix sockets too (seen), and `bind`,
+  `listen`, `accept` and `sendmmsg` (source). `sendmsg` with an
+  address still reaches a visible datagram socket; the readable roots
+  but `/nix/store` (not searched) hold none, leaving the workspace and
+  the temporary folder.
+- **A permission profile is per thread**: `permissions` names one defined
+  in `thread/start`'s `config` (`permissions.<id>.filesystem` and
+  `.network`); `codex sandbox -P <id>` takes the same definition by `-c`.
 
 ## Browsers and the page
 

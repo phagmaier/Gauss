@@ -5,6 +5,9 @@ node = "24.22.2"
 pnpm = "12.18.0"
 python = "3.14.10"
 uv = "0.13.7"
+# The Codex CLI the Codex backend drives over `codex app-server`, whose
+# protocol is experimental: the adapter speaks this version's.
+codex = "0.171.0"
 
 [tasks.setup]
 description = "Install the JavaScript and Python dependencies"

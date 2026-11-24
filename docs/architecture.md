@@ -37,7 +37,7 @@ pytools/       convert.py (a source into outline and sections; PDF page images),
                sandbox_exec.py (seccomp workload filter), sandbox_verify.py (exit status apart from output); tests/
 scripts/       dev-fake.ts (server with no model); faults.ts (fault injection);
                grade-set.ts, judge-set.ts, decide-set.ts run grader-set.ts, help-set.ts, dispute-set.ts on a real model
-mise.toml      pinned node, pnpm, python, uv; `mise run setup`, `mise run check`
+mise.toml      pinned node, pnpm, python, uv, codex; `mise run setup`, `mise run check`
 ```
 
 ## Data root
@@ -245,6 +245,26 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   `mise exec -- uv sync --directory pytools --locked`; without that
   environment the sandbox, math, code and conversion tests fail. Remove
   the link before `git worktree remove --force <dir>`.
+- **Gauss's Codex home** is `~/.local/state/gauss/codex`: outside every
+  data root, so a fresh test root needs no new login, and holding only the
+  login and the threads, since a home's `AGENTS.md` and configuration
+  reach the model (`findings.md`, "Codex"). The CLI is pinned in
+  `mise.toml`. The learner signs in once, from the repository so that
+  mise runs the pinned version: `mkdir -p -m 700
+  ~/.local/state/gauss/codex` (Codex refuses a home that does not exist),
+  then `CODEX_HOME=~/.local/state/gauss/codex mise exec -- codex login`
+  (`--device-auth` without a browser). `codex login status` with the same
+  `CODEX_HOME` reports the login, and the app reads it with
+  `account/read`. Never copy `auth.json` from `~/.codex`.
+- **Codex trials with no model** use a scratch `CODEX_HOME` outside
+  `/tmp`, never Gauss's or `~/.codex`, and a fresh data root, and run the
+  pinned binary (`mise which codex` in the repository) from the trial's
+  own folder, since the working folder's `AGENTS.md` files reach the
+  model. `codex debug prompt-input` prints a model's input; `codex sandbox
+  -P <profile> -C <folder> -- <command>` runs a command under a
+  permission profile given by `-c`; `codex app-server generate-ts
+  --experimental --out <folder>` writes the protocol's types.
+  `turn/start` and `codex exec` call the model.
 - **Browser checks with no model**: `pnpm dev:fake`, port 4330
   (`GAUSS_PORT`); seed and `--empty` in `scripts/dev-fake.ts`, scenario
   commands in `backends/scripted.ts`. Point `GAUSS_DATA_ROOT` at a fresh
