@@ -124,10 +124,14 @@ function setUp(
     ...(codexUnavailable === undefined ? {} : { codexUnavailable }),
   });
   const units = createUnitChats({
-    backend,
+    backends: { claude: backend },
     systemPrompt: "You are a test tutor.",
     dataRoot,
-    planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+    planner: createUnitPlanner({
+      backends: { claude: backend },
+      systemPrompt: "Plan.",
+      dataRoot,
+    }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
     judge: createHelpJudge({
       backend: createFakeBackend([]),

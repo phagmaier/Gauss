@@ -1,7 +1,7 @@
 // Planning a unit when it starts (brief.md, "How a course runs"; task 2.5).
-// A unit without a plan is planned in a backend session of its own, with
-// prompts/unit-planner.md, before the tutor's session starts. The session
-// gets one turn holding the learner profile (task 5.8), the course's
+// A unit without a plan is planned in a session of its own on the course's
+// backend, with prompts/unit-planner.md, before the tutor's session starts.
+// The session gets one turn holding the learner profile (task 5.8), the course's
 // background note (task 2.22) and its curriculum, with how the learner stands on each objective planned so far,
 // and what earlier units showed (task 5.7): the last handoff notes of the
 // unit's prerequisites and the open misconceptions on other units'
@@ -11,6 +11,7 @@
 // without a plan is tried once more, in a new session told why; after that
 // the failure is the caller's to report to the learner.
 
+import { BACKEND_TITLES, type BackendName } from "../../shared/course.ts";
 import {
   type Curriculum,
   type StoredUnit,
@@ -20,7 +21,7 @@ import type { EvidenceEntry } from "../../shared/evidence.ts";
 import type { StoredCourse } from "../../shared/library.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { sectionsByRef } from "../../shared/source.ts";
-import type { TutorBackend } from "../backends/backend.ts";
+import type { SessionBackend, SessionBackends } from "../backends/backend.ts";
 import { type DataRoot, PlanSectionsChanged } from "../record/data-root.ts";
 import { objectiveStatus } from "../record/status.ts";
 import { planUnitTool } from "../tools/plan-unit.ts";
@@ -34,9 +35,10 @@ export type PlanningResult =
       ok: false;
       /**
        * "not-found": no such course or unit. "not-approved": the curriculum
-       * is a draft. "failed": two planning sessions ended without a plan.
+       * is a draft. "no-backend": the server lacks the course's backend.
+       * "failed": two planning sessions ended without a plan.
        */
-      problem: "not-found" | "not-approved" | "failed";
+      problem: "not-found" | "not-approved" | "no-backend" | "failed";
       /** Written for the learner. */
       error: string;
     };
@@ -52,12 +54,29 @@ export interface UnitPlanner {
 const ATTEMPTS = 2;
 const REFUSAL_LIMIT_PER_TURN = 2; // Leave room to correct the first refusal.
 
+/**
+ * The backend a course's unit planner and tutor run on, the one it was
+ * made for at intake; or, written for the learner, why this server cannot
+ * run them. The other roles never run on it (brief.md, "Backends and stack").
+ */
+export function courseBackend(
+  backends: SessionBackends,
+  name: BackendName,
+): { backend: SessionBackend } | { lacking: string } {
+  const backend = backends[name];
+  return backend === undefined
+    ? {
+        lacking: `This course runs on ${BACKEND_TITLES[name]}, which this server cannot run.`,
+      }
+    : { backend };
+}
+
 export function createUnitPlanner(options: {
-  backend: TutorBackend;
+  backends: SessionBackends;
   systemPrompt: string;
   dataRoot: DataRoot;
 }): UnitPlanner {
-  const { backend, systemPrompt, dataRoot } = options;
+  const { backends, systemPrompt, dataRoot } = options;
   const running = new Map<string, Promise<PlanningResult>>();
 
   async function planUnit(
@@ -89,6 +108,10 @@ export function createUnitPlanner(options: {
         };
       }
       if (unit.plan !== undefined) return { ok: true, plan: unit.plan };
+      const runsOn = courseBackend(backends, stored.course.backend);
+      if ("lacking" in runsOn) {
+        return { ok: false, problem: "no-backend", error: runsOn.lacking };
+      }
 
       const [evidence, background, profile, misconceptions] = await Promise.all(
         [
@@ -110,6 +133,7 @@ export function createUnitPlanner(options: {
       const refs = unitSections(unit);
       const text = await unitText(dataRoot, courseId, unitId, refs);
       const outcome = await runSession(
+        runsOn.backend,
         courseId,
         unitId,
         refs,
@@ -134,6 +158,7 @@ export function createUnitPlanner(options: {
 
   /** One planning session: the plan it stored, or what went wrong. */
   async function runSession(
+    backend: SessionBackend,
     courseId: string,
     unitId: string,
     refs: readonly string[],

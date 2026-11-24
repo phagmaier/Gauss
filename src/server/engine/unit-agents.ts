@@ -23,9 +23,9 @@ import type {
   Verdict,
 } from "../../shared/question.ts";
 import {
+  type SessionBackend,
   SessionNotFound,
   type SessionOptions,
-  type TutorBackend,
   type TutorSession,
   type WorkspaceTools,
 } from "../backends/backend.ts";
@@ -136,7 +136,7 @@ export interface UnitAgents {
 }
 
 export function createUnitAgents(options: {
-  backend: TutorBackend;
+  backend: SessionBackend;
   /**
    * The tutor's whole system prompt, read whenever a session starts or
    * resumes, so one started after the style note changed gets the new one.

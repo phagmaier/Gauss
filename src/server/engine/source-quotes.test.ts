@@ -179,11 +179,11 @@ async function open(
   );
   const tutor = given.wrap?.(backend) ?? backend;
   const units = createUnitChats({
-    backend: tutor,
+    backends: { claude: tutor },
     systemPrompt: "Tutor.",
     dataRoot: root,
     planner: createUnitPlanner({
-      backend: tutor,
+      backends: { claude: tutor },
       systemPrompt: "Plan.",
       dataRoot: root,
     }),

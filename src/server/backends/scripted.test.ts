@@ -88,10 +88,14 @@ function setUp(
   const dataRoot = openDataRoot({ path: dir, ...clock });
   const units = createUnitChats({
     ...clock,
-    backend,
+    backends: { claude: backend },
     systemPrompt: "Tutor.",
     dataRoot,
-    planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+    planner: createUnitPlanner({
+      backends: { claude: backend },
+      systemPrompt: "Plan.",
+      dataRoot,
+    }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
     judge: createHelpJudge({ backend, systemPrompt: "Judge." }),
     handoff: createHandoffWriter({ backend, systemPrompt: "Handoff." }),
@@ -337,20 +341,22 @@ test("scripted unit planning treats HTML and /hold in Markdown as source text", 
   const planner = createUnitPlanner({
     dataRoot,
     systemPrompt: "Plan.",
-    backend: {
-      ...backend,
-      async startSession(options) {
-        const session = await backend.startSession(options);
-        return {
-          ...session,
-          async *send(turn) {
-            for await (const event of session.send(turn)) {
-              // Do not hang the test if the script starts a hold.
-              if (event.type === "text") await session.interrupt();
-              yield event;
-            }
-          },
-        };
+    backends: {
+      claude: {
+        ...backend,
+        async startSession(options) {
+          const session = await backend.startSession(options);
+          return {
+            ...session,
+            async *send(turn) {
+              for await (const event of session.send(turn)) {
+                // Do not hang the test if the script starts a hold.
+                if (event.type === "text") await session.interrupt();
+                yield event;
+              }
+            },
+          };
+        },
       },
     },
   });

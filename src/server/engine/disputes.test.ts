@@ -113,10 +113,14 @@ function setUp(script: FakeTurn[], rulings: FakeReply[] | (() => FakeReply)) {
   const judgeBackend = createFakeBackend([], rulings);
   const dataRoot = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const units = createUnitChats({
-    backend,
+    backends: { claude: backend },
     systemPrompt: "You are a test tutor.",
     dataRoot,
-    planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+    planner: createUnitPlanner({
+      backends: { claude: backend },
+      systemPrompt: "Plan.",
+      dataRoot,
+    }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
     judge: createHelpJudge({
       backend: createFakeBackend([]),

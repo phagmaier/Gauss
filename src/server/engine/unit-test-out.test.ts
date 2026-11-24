@@ -218,10 +218,14 @@ function setUp(
   const clock = new Date(at);
   const dataRoot = root ?? openDataRoot({ path: dir, now: () => clock });
   const units = createUnitChats({
-    backend,
+    backends: { claude: backend },
     systemPrompt: "Tutor.",
     dataRoot,
-    planner: createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+    planner: createUnitPlanner({
+      backends: { claude: backend },
+      systemPrompt: "Plan.",
+      dataRoot,
+    }),
     grader: createGrader({ backend, systemPrompt: "Grade." }),
     judge: createHelpJudge({
       backend: createFakeBackend([]),

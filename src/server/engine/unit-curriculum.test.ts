@@ -103,11 +103,11 @@ async function server(script: FakeTurn[]) {
   const backend = createFakeBackend(script, []);
   const commits: string[] = [];
   const units = createUnitChats({
-    backend,
+    backends: { claude: backend },
     systemPrompt: "Tutor.",
     dataRoot: root,
     planner: createUnitPlanner({
-      backend,
+      backends: { claude: backend },
       systemPrompt: "Plan.",
       dataRoot: root,
     }),

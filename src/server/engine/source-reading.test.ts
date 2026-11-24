@@ -186,11 +186,11 @@ async function start(
     given.rendering === undefined ? {} : { rendering: given.rendering },
   );
   const units = createUnitChats({
-    backend,
+    backends: { claude: backend },
     systemPrompt: "Tutor.",
     dataRoot: root,
     planner: createUnitPlanner({
-      backend,
+      backends: { claude: backend },
       systemPrompt: "Plan.",
       dataRoot: root,
     }),

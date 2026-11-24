@@ -123,7 +123,7 @@ function setUp(
     oneShot: fake.oneShot,
   };
   const planner = createUnitPlanner({
-    backend,
+    backends: { claude: backend },
     systemPrompt: PROMPT,
     dataRoot: root,
   });
@@ -478,7 +478,7 @@ test.each([
   const tutor = createFakeBackend([[{ text: "Teaching rates." }]]);
   const chats = createUnitChats({
     dataRoot: root,
-    backend: tutor,
+    backends: { claude: tutor },
     planner,
     systemPrompt: "Tutor.",
     grader: createGrader({ backend: tutor, systemPrompt: "Grade." }),

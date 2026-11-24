@@ -247,12 +247,16 @@ function setUp(
   });
   const dataRoot = given.record?.(root) ?? root;
   const units = createUnitChats({
-    backend: given.wrap?.(backend) ?? backend,
+    backends: { claude: given.wrap?.(backend) ?? backend },
     systemPrompt: TUTOR,
     dataRoot,
     planner:
       given.planner ??
-      createUnitPlanner({ backend, systemPrompt: "Plan.", dataRoot }),
+      createUnitPlanner({
+        backends: { claude: backend },
+        systemPrompt: "Plan.",
+        dataRoot,
+      }),
     grader: createGrader({
       backend,
       systemPrompt: GRADER,

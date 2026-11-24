@@ -46,7 +46,8 @@ if (values.empty !== true) {
 const backend = createScriptedBackend();
 process.stdout.write("Scripted backend: no model is called.\n");
 await serve({
-  backend,
+  // A Codex course's tutor and unit planner run here too, as on Claude.
+  sessionBackends: { claude: backend, codex: backend },
   graderBackend: backend,
   judgeBackend: backend,
   disputeBackend: backend,

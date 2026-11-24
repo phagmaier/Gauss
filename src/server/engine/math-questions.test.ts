@@ -137,11 +137,11 @@ async function start(
   const backend = createFakeBackend(script, given.replies);
   const mathCheck = given.mathCheck === undefined ? check : given.mathCheck;
   const units = createUnitChats({
-    backend,
+    backends: { claude: backend },
     systemPrompt: "Tutor.",
     dataRoot: root,
     planner: createUnitPlanner({
-      backend,
+      backends: { claude: backend },
       systemPrompt: "Plan.",
       dataRoot: root,
     }),

@@ -41,7 +41,7 @@ import {
 } from "../../shared/course.ts";
 import type { ShownProposal } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
-import type { TutorBackend } from "../backends/backend.ts";
+import type { SessionBackend } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import {
   type DataRoot,
@@ -115,7 +115,7 @@ export interface StoredDraft {
 }
 
 export function createIntake(options: {
-  backend: TutorBackend;
+  backend: SessionBackend;
   systemPrompt: string;
   dataRoot: DataRoot;
   /** Starts the intake from this draft, as its proposal 1. */
@@ -526,7 +526,7 @@ export interface Intakes extends CourseHolder {
 }
 
 export function createIntakes(options: {
-  backend: TutorBackend;
+  backend: SessionBackend;
   systemPrompt: string;
   dataRoot: DataRoot;
   timer?: Timer;

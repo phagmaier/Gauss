@@ -192,8 +192,10 @@ Rules no single file shows:
 
 ## Prompts
 
-`serve.ts` loads every file in `prompts/`; each starts one model's
-instructions:
+`wireEngine` in `serve.ts` loads every file in `prompts/` and gives each
+role its backend: a course's tutor and unit planner run on the course's
+(`Course.backend`, through `courseBackend` in `engine/unit-planning.ts`),
+every other role on Claude. Each prompt starts one model's instructions:
 
 | Prompt | Model | Assembled in |
 | --- | --- | --- |
@@ -303,8 +305,8 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   repeated runs of a role prompt, the same script can skip the server:
   build `createUnitChats`, `createUnitPlanner`, `createIntakes` or
   `createCoursePlannings` on `createClaudeBackend` with the prompt's text,
-  wired as `serve.ts` does, send the learner's moves, and save the chat's
-  `events()`. Pass the script to the launcher, for example
+  wired as `wireEngine` in `serve.ts` does, send the learner's moves, and
+  save the chat's `events()`. Pass the script to the launcher, for example
   `mise exec -- pnpm check:live node /tmp/trial.ts`, and use its
   `GAUSS_DATA_ROOT`. For isolated live sessions, launch a separate
   process through it for each root. Await `chat.settled()` after each

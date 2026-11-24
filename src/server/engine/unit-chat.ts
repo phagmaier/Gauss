@@ -86,7 +86,7 @@ import type { Misconception } from "../../shared/misconception.ts";
 import type { PackageReceipt } from "../../shared/packages.ts";
 import type { AnswerPost } from "../../shared/question.ts";
 import type { OpenQuestion, State, UnitPosition } from "../../shared/state.ts";
-import type { TutorBackend, WorkspaceTools } from "../backends/backend.ts";
+import type { SessionBackends, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { pickForReview, type ReviewPick } from "../record/review.ts";
@@ -148,7 +148,7 @@ import { createUnitEnd, type UnitEnd } from "./unit-end.ts";
 import { createUnitHeader, type UnitHeader } from "./unit-header.ts";
 import { createUnitOpening, type UnitOpening } from "./unit-opening.ts";
 import { createUnitPackages } from "./unit-packages.ts";
-import type { UnitPlanner } from "./unit-planning.ts";
+import { courseBackend, type UnitPlanner } from "./unit-planning.ts";
 import {
   createUnitProgression,
   type UnitProgression,
@@ -357,7 +357,8 @@ export interface CourseDesk {
 }
 
 interface ChatOptions {
-  backend: TutorBackend;
+  /** The tutor of a course runs on the course's backend; a course whose backend is absent does not open. */
+  backends: SessionBackends;
   /** `prompts/tutor.md`. */
   systemPrompt: string;
   dataRoot: DataRoot;
@@ -1176,6 +1177,14 @@ function createUnitChat(
       // The earlier sessions' thread first, then this session's.
       await log.open();
       const before = await dataRoot.readCourse(courseId);
+      // A course's backend is fixed when it is made, so this one stays.
+      const runsOn =
+        before === undefined
+          ? undefined
+          : courseBackend(options.backends, before.course.backend);
+      if (runsOn !== undefined && "lacking" in runsOn) {
+        throw new Error(runsOn.lacking);
+      }
       const prior = before?.curriculum?.units.find((u) => u.id === unitId);
       const needsPlan = prior?.plan === undefined;
       if (prior !== undefined && needsPlan) log.emit({ type: "unit_planning" });
@@ -1186,7 +1195,11 @@ function createUnitChat(
       const stored = needsPlan ? await dataRoot.readCourse(courseId) : before;
       const units = stored?.curriculum?.units ?? [];
       const storedUnit = needsPlan ? units.find((u) => u.id === unitId) : prior;
-      if (stored === undefined || storedUnit === undefined) {
+      if (
+        stored === undefined ||
+        storedUnit === undefined ||
+        runsOn === undefined
+      ) {
         throw new Error(`There is no unit "${unitId}" in "${courseId}".`);
       }
       log.emit({ type: "unit_plan", plan });
@@ -1301,7 +1314,7 @@ function createUnitChat(
         });
       }
       const loaded = createUnitAgents({
-        backend: options.backend,
+        backend: runsOn.backend,
         // A session started after a new style note or curriculum is applied
         // starts with it.
         systemPrompt: () =>

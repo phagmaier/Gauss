@@ -2,6 +2,7 @@
 // these types; the SDKs stay inside the files of this folder.
 
 import { z } from "zod";
+import type { BackendName } from "../../shared/course.ts";
 import type { WebResult } from "../../shared/events.ts";
 import type { CommandReads } from "../sandbox-command.ts";
 import type { TeachingTool } from "../tools/tool.ts";
@@ -141,7 +142,8 @@ export type OneShotResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: string };
 
-export interface TutorBackend {
+/** What runs a conversation: a tutor's, a planner's or an intake's. */
+export interface SessionBackend {
   /**
    * Starts a session, or resumes one. A resumed session is ready when this
    * resolves; one that cannot be found rejects with SessionNotFound.
@@ -152,6 +154,17 @@ export interface TutorBackend {
    * folder, to resume. Found without starting it (task 2.15).
    */
   hasSession(id: string, cwd: string): Promise<boolean>;
+}
+
+/**
+ * The session backends a server has, by the name a course gives
+ * (`Course.backend`). A course's tutor and unit planner run on its own; one
+ * the server lacks is absent, and that course's units do not open.
+ */
+export type SessionBackends = Partial<Record<BackendName, SessionBackend>>;
+
+/** A whole backend: its sessions, and the one-shot requests of the grader, judges and writers. */
+export interface TutorBackend extends SessionBackend {
   /** Never throws: a failed request, or a reply not in the schema's shape, is a failure. */
   oneShot<T>(request: OneShotRequest<T>): Promise<OneShotResult<T>>;
 }

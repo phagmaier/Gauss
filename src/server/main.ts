@@ -18,7 +18,11 @@ import { serve } from "./serve.ts";
 const model = process.env.GAUSS_CLAUDE_MODEL;
 
 await serve({
-  backend: createClaudeBackend(model === undefined ? {} : { model }),
+  // Codex has no adapter yet (plan task 6.14), so a Codex course's units
+  // fail to open with the reason.
+  sessionBackends: {
+    claude: createClaudeBackend(model === undefined ? {} : { model }),
+  },
   graderBackend: createClaudeBackend({ model: model ?? GRADER_MODEL }),
   judgeBackend: createClaudeBackend({ model: model ?? JUDGE_MODEL }),
   disputeBackend: createClaudeBackend({ model: model ?? DISPUTE_MODEL }),

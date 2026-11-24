@@ -237,11 +237,11 @@ async function setUp(options: {
       : options.tutor;
   const tutorTimer = createFakeTimer();
   const units = createUnitChats({
-    backend: tutorBackend,
+    backends: { claude: tutorBackend },
     systemPrompt: "Tutor.",
     dataRoot: root,
     planner: createUnitPlanner({
-      backend: tutorBackend,
+      backends: { claude: tutorBackend },
       systemPrompt: "Plan.",
       dataRoot: root,
     }),

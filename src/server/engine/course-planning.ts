@@ -34,7 +34,7 @@ import {
 } from "../../shared/curriculum-change.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import { isFinished } from "../../shared/status.ts";
-import type { TutorBackend } from "../backends/backend.ts";
+import type { SessionBackend } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import { CurriculumChangeRefused, type DataRoot } from "../record/data-root.ts";
 import { courseProgress } from "../record/progress.ts";
@@ -75,7 +75,7 @@ export interface CoursePlanning {
 }
 
 interface PlanningOptions {
-  backend: TutorBackend;
+  backend: SessionBackend;
   /** `prompts/course-planner.md`. */
   systemPrompt: string;
   dataRoot: DataRoot;

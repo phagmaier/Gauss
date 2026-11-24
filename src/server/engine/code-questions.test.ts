@@ -172,11 +172,11 @@ async function openChat(
   const root = openDataRoot({ path, now: () => new Date(NOW) });
   const backend = createFakeBackend(script);
   const units = createUnitChats({
-    backend,
+    backends: { claude: backend },
     systemPrompt: "Tutor.",
     dataRoot: root,
     planner: createUnitPlanner({
-      backend,
+      backends: { claude: backend },
       systemPrompt: "Plan.",
       dataRoot: root,
     }),
