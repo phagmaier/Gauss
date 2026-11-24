@@ -115,6 +115,10 @@ Rules no single file shows:
   proposals, their cards, and the changes other chats and the course
   planner tell a chat; the course's one-proposal block stays in
   `unit-chat.ts`),
+  `unit-packages.ts` (the tutor's package requests: the card, Install and
+  Not now, the install outside the chat's queue, a failed save's retry,
+  and the cards replayed on reopening; the course's queue that admits
+  requests and installs stays in `unit-chat.ts`),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,
