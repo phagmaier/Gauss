@@ -62,7 +62,7 @@ The rest of the `src/server/engine/unit-chat.ts` split, broken down by
 learner actions without changing behaviour. The Codex backend and
 self-test both reach into this code. Commits 98b4f97 and 75bffef, numbered
 6.1 and 6.2 before this breakdown, moved post-answer progression and
-review admission out; the numbers below start again.
+review admission out; the split's own tasks are numbered from 6.0 again.
 
 Each task moves one concern into a module of its own, as those two did: a
 `createX({ ... })` factory whose argument names what it takes from the
@@ -93,23 +93,18 @@ path; the segment's own steps (`checks`, `checkDone`, `closeSegment`,
 `segmentObjectives`, `sendTeaching`, and the actions `ready`, `override`,
 `nextSegment` and `startFresh`); and `act`.
 
-User check for the split, after 6.9: with `pnpm dev:fake` on a fresh
-`GAUSS_DATA_ROOT`, a full session behaves as it did before. In "Three ways
-of counting", take a unit from its source lecture through the discussion
-(a message with "/quote", one with "/artifact"), Ready, a question answered
-right and one answered "I don't know" with its detour and "Ready for
-another question", a message while a question is open, "/style" applied
-and "/amend" kept, the segment's close and the next segment, to Move on at
-the closing card and the gate. In another course: the test before a unit
-and its result card, "Review now", "/packages" installed where the sandbox
-runs, and a server restart while an answer waits for the judge ("/hold"
-in a message, then answer) followed by reopening the unit.
-
-### 6.9 Opening: picking up where the record left the unit — todo
-
-**Why:** Reopening a unit settles whatever a restart left (questions, judgings and grades, disputes, cards) and resumes the step that waits. It calls into every other part, so it moves last.
-**Do:** Move the part of `load` after `running = r` (restoring the thread's questions, disputes and packages, the cards, the status and phase, and resuming the step that waits), `reopenAsked`, `restoreQuestions`, `restoreDisputes`, `tellDispute`, `askedHere`, `disputeKept`, and the bodies of `recordDispute`, `learnDispute` and `learnAnswer` into `unit-opening.ts`, made in `load` and held on `Running`. It takes `emit` and `events`, the record, the queue, the progression and review admission, `folder()`, `checkDone`, `closeSegment`, `sendTeaching`, the unit's notes, and the other modules' functions it calls (`grade`, `settleJudging`, `end`, the header's `where` for the test's summary turn, the assessment functions, the proposals' and packages' replays); it imports `view` from `unit-questions.ts`, which exports it on its own. It returns `resume(recoveringOverride)` for `load` and the three bodies. Stays: `load`'s composition (the record, source shelf, handoffs, agents and modules, the tutor session's resume with the header's `fallBack` when it fails, the override's recovery, `running = r`), its error path (`failed`, `unit_failed`, closing unused agents) and `loading`.
-**Done when:** `unit-chat.test.ts`, `disputes.test.ts`, `unit-handoff.test.ts`, `unit-test-out.test.ts` and the rest of the existing tests pass with at most import-path changes; `mise run check` passes; the moved code is gone from `unit-chat.ts`.
+User check for the split, due now that every split task (6.0 to 6.9) is
+done: with `pnpm dev:fake` on a fresh `GAUSS_DATA_ROOT`, a full session
+behaves as it did before. In "Three ways of counting", take a unit from
+its source lecture through the discussion (a message with "/quote", one
+with "/artifact"), Ready, a question answered right and one answered "I
+don't know" with its detour and "Ready for another question", a message
+while a question is open, "/style" applied and "/amend" kept, the
+segment's close and the next segment, to Move on at the closing card and
+the gate. In another course: the test before a unit and its result card,
+"Review now", "/packages" installed where the sandbox runs, and a server
+restart while an answer waits for the judge ("/hold" in a message, then
+answer) followed by reopening the unit.
 
 ## Known-gap fixes
 

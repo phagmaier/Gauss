@@ -1,7 +1,8 @@
 // The unit chat (tasks 2.6 and 2.7): one tutor
 // session bound to one unit, which runs each segment's teach / discuss /
-// check rhythm. Opening a unit not in progress plans it (task 2.5) and sends
-// segment 1's teaching turn. The engine enforces the phases:
+// check rhythm. Opening a unit not in progress plans it (task 2.5) and
+// sends segment 1's teaching turn (unit-opening.ts). The engine enforces
+// the phases:
 //
 // - teach to discuss: the teaching turn ends, or the learner stops it;
 // - discuss to check: the learner presses "ready";
@@ -33,13 +34,8 @@
 // PDF's pages with view_page (task 4.8) in any phase, each shown in the
 // thread (source-shelf.ts).
 // A dispute of an answer's grade (task 3.8) is decided outside the chat
-// (disputes.ts) and, when the chat is open, recorded inside its queue, so it
-// lands in order with the chat's own writes; one recorded while the chat
-// was not open is shown, and told, when it opens. The tutor of a unit in
-// progress is told the outcome in its next header. An outcome changes no
-// phase: where the check rules would decide next (the end of a detour, a
-// check with nothing left to ask, the closing card), they decide with the
-// corrected verdict.
+// (disputes.ts) and, when the chat is open, recorded inside its queue; what
+// follows from its outcome is unit-opening.ts's.
 // An assessment (task 5.4) runs in the
 // unit's thread, asked by its tutor, kept in the position beside the phase,
 // which it leaves alone: review, offered on a card when a unit not finished
@@ -56,16 +52,17 @@
 // another unit's objective is told to that unit's chat if it is open.
 // The engine composes every turn's header (unit-header.ts, in unit-turns.ts's
 // words) and writes the unit's position to state.json after every change,
-// before the page is told, so a restart reopens the unit where it was. The
-// chat's events are its transcripts too (transcript.ts, task 2.13), so a
-// reopened unit shows the thread of its earlier sessions. The tutor's
-// conversation survives a restart too (task 2.14): its session's id is kept
-// in the unit's position, and a reopened unit resumes it with its first
-// turn. The tutor's session is closed while idle and resumed with the next
-// turn (task 2.15). If it cannot be found, as the opening asks the backend,
-// or as a turn finds, the unit starts fresh: a new session, seeded from the
-// record and told that it joins a unit under way (unit-header.ts), and the
-// thread says so. The learner can start fresh too.
+// before the page is told, so a restart reopens the unit where it was
+// (unit-opening.ts). The chat's events are its transcripts too
+// (transcript.ts, task 2.13), so a reopened unit shows the thread of its
+// earlier sessions. The tutor's conversation survives a restart too (task
+// 2.14): its session's id is kept in the unit's position, and a reopened
+// unit resumes it with its first turn. The tutor's session is closed while
+// idle and resumed with the next turn (task 2.15). If it cannot be found,
+// as `load` asks the backend, or as a turn finds, the unit starts fresh: a
+// new session, seeded from the record and told that it joins a unit under
+// way (unit-header.ts), and the thread says so. The learner can start fresh
+// too.
 // Resuming that fails another way fails the turn, since the fault may pass;
 // the next turn tries again, and the learner can start fresh instead.
 //
@@ -149,6 +146,7 @@ import {
 } from "./unit-assessments.ts";
 import { createUnitEnd, type UnitEnd } from "./unit-end.ts";
 import { createUnitHeader, type UnitHeader } from "./unit-header.ts";
+import { createUnitOpening, type UnitOpening } from "./unit-opening.ts";
 import { createUnitPackages } from "./unit-packages.ts";
 import type { UnitPlanner } from "./unit-planning.ts";
 import {
@@ -156,25 +154,12 @@ import {
   type UnitProgression,
 } from "./unit-progression.ts";
 import { createUnitProposals } from "./unit-proposals.ts";
+import { createUnitQuestions, QUESTION_STOPPED } from "./unit-questions.ts";
+import { openUnitRecord, type UnitRecord } from "./unit-record.ts";
 import {
-  createUnitQuestions,
-  QUESTION_STOPPED,
-  view,
-} from "./unit-questions.ts";
-import {
-  detourEvent,
-  disputedEvent,
-  gradedEvent,
-  openUnitRecord,
-  phaseEvent,
-  type UnitRecord,
-} from "./unit-record.ts";
-import {
-  disputeNote,
   freshTurn,
   readyTurn,
   teachTurn,
-  testEndTurn,
   tutorSystemPrompt,
   type UnitContext,
 } from "./unit-turns.ts";
@@ -1135,6 +1120,7 @@ interface Running {
   answers: UnitAnswers;
   unitEnd: UnitEnd;
   assessments: UnitAssessments;
+  opening: UnitOpening;
 }
 
 function createUnitChat(
@@ -1508,6 +1494,53 @@ function createUnitChat(
           handoffs: assessmentHandoffs,
           unitId,
         }),
+        opening: createUnitOpening({
+          record,
+          exclusive,
+          emit: log.emit,
+          events: log.events,
+          plan,
+          context: () => r.context,
+          folder: () => folder,
+          unitId,
+          note: (text) => {
+            r.notes.push(text);
+          },
+          checkDone: () => checkDone(r),
+          closeSegment: () => closeSegment(r),
+          sendTeaching: (cutOff) => sendTeaching(r, cutOff),
+          progression: {
+            resume: () => r.progression.resume(),
+            reopenRecordedAnswer: () => r.progression.reopenRecordedAnswer(),
+            feedback: () => r.progression.feedback,
+          },
+          sittingOpened: () => r.review.sittingOpened(),
+          answers: {
+            grade: (open, answer) => r.answers.grade(open, answer),
+            settleJudging: (open, learnerIds, verdict, tell) =>
+              r.answers.settleJudging(open, learnerIds, verdict, tell),
+          },
+          end: () => r.unitEnd.end(),
+          where: () => r.header.where(),
+          assessments: {
+            showRun: (run) => r.assessments.showRun(run),
+            headOf: (open) => r.assessments.headOf(open),
+            showTestResult: () => r.assessments.showTestResult(),
+            sendTestSummary: (text) => r.assessments.sendTestSummary(text),
+            goOnInRun: () => r.assessments.goOnInRun(),
+            startTest: () => r.assessments.startTest(),
+          },
+          packages: {
+            restorePackages: (completions) =>
+              packages.restorePackages(completions),
+            showUnsaved: () => packages.showUnsaved(),
+            showWaiting: (position) => packages.showWaiting(position),
+          },
+          proposals: {
+            showAnswered: () => proposals.showAnswered(record),
+            showWaiting: (position) => proposals.showWaiting(position),
+          },
+        }),
       };
       if (record.reopened) {
         // A unit under way resumes its tutor's conversation with its first
@@ -1521,109 +1554,7 @@ function createUnitChat(
         record.position.pendingSegmentOverride !== undefined;
       if (recoveringOverride) await record.overrideSegment();
       running = r;
-      restoreQuestions(record);
-      restoreDisputes(r);
-      packages.restorePackages(record.packageCompletions);
-      proposals.showAnswered(record);
-      packages.showUnsaved();
-      if (!recoveringOverride) log.emit(record.status());
-      if (record.finished !== undefined) {
-        if (
-          record.testedOut &&
-          !log.events().some((event) => event.type === "test_answered")
-        ) {
-          log.emit({
-            type: "test_answered",
-            skipped: plan.objectives.map((o) => o.id),
-          });
-        }
-        log.emit({ type: "unit_closed", status: record.finished });
-        // A review the learner asked for here runs on.
-        const held = record.position.assessment;
-        if (held !== undefined) {
-          r.assessments.showRun(held);
-          const question = await reopenAsked(r);
-          if (!question && held.stage === "on") {
-            await exclusive(async () => {
-              if (!(await r.progression.resume())) {
-                await r.assessments.goOnInRun();
-              }
-            });
-          }
-        }
-        return;
-      }
-      const { position } = record;
-      const phase = phaseEvent(position);
-      // The record can save a test choice before the transcript gets it.
-      // Restore the choice before saying where teaching resumed.
-      if (
-        !phase.beforeTest &&
-        log
-          .events()
-          .findLast(
-            (e) => e.type === "test_result" || e.type === "test_answered",
-          )?.type === "test_result"
-      ) {
-        log.emit({ type: "test_answered", skipped: phase.skipping ?? [] });
-      }
-      if (!recoveringOverride) log.emit(phase);
-      // An assessment offered or under way says so before its question.
-      if (position.assessment !== undefined) {
-        r.assessments.showRun(position.assessment);
-      }
-      // A request waits on the learner, as an open question does.
-      packages.showWaiting(position);
-      proposals.showWaiting(position);
-      const question = await reopenAsked(r);
-      // A new sitting can open with review; the chat is new.
-      await r.review.sittingOpened();
-      if (question) return;
-      if (record.position.afterAnswer !== undefined) {
-        await exclusive(r.progression.resume);
-        return;
-      }
-      const test = record.position.testOut?.stage;
-      if (record.position.assessment !== undefined) {
-        // The unit's steps wait for it, and a teaching turn, or the test
-        // due, is sent once it ends. One reopened under way with nothing
-        // open asks on.
-        if (record.position.assessment.stage === "on") {
-          await exclusive(() => r.assessments.goOnInRun());
-        }
-      } else if (test === "due") {
-        // The test goes in place of the teaching turn.
-        await exclusive(() => r.assessments.startTest());
-      } else if (test === "result") {
-        // Closing a saved answer above can end the test and schedule its
-        // summary. Only recover a result that was already waiting on disk.
-        if (position.testOut?.stage !== "result") return;
-        // The result card waits on the learner. If a restart cut off the
-        // tutor's word on the test, before the card was shown, it is asked
-        // for again, and the card follows it.
-        if (log.events().some((e) => e.type === "test_result")) {
-          r.assessments.showTestResult();
-        } else {
-          r.assessments.sendTestSummary(() =>
-            testEndTurn(r.header.where(), { stopped: false }),
-          );
-        }
-      } else if (position.phase === "teach") {
-        // A teaching turn that a restart cut off is sent again.
-        sendTeaching(r, record.reopened);
-      } else if (
-        position.phase === "check" &&
-        position.openQuestion === undefined &&
-        position.detour === undefined &&
-        checkDone(r)
-      ) {
-        // A position written before afterAnswer was kept can still be done.
-        await exclusive(() => closeSegment(r));
-      } else if (position.phase === "closed" && isLastSegment(plan, position)) {
-        // The closing card was waiting on the learner, or a restart came
-        // between closing the last segment and closing the unit.
-        await exclusive(() => r.unitEnd.end());
-      }
+      await r.opening.resume(recoveringOverride);
     } catch (error) {
       failed = true;
       const message = error instanceof Error ? error.message : String(error);
@@ -1636,167 +1567,6 @@ function createUnitChat(
       }
     } finally {
       loading = undefined;
-    }
-  }
-
-  /**
-   * Shows the detour or the open question the position holds again, and
-   * settles what a restart left of the question: its answer recorded and
-   * not closed, its replies not judged, or its answer not graded.
-   */
-  async function reopenAsked(r: Running): Promise<boolean> {
-    const { record } = r;
-    const { position } = record;
-    // A detour waits on the learner, as an open question does.
-    if (position.detour !== undefined) log.emit(detourEvent(position.detour));
-    const open = position.openQuestion;
-    if (open === undefined) return false;
-    log.emit({
-      type: "question",
-      question: view(open, folder, r.assessments.headOf(open)),
-    });
-    await exclusive(async () => {
-      if (record.recordedAnswer(open.id) !== undefined) {
-        await r.progression.reopenRecordedAnswer();
-      } else if (open.judging !== undefined) {
-        // The replies a restart kept from the judge cannot be judged
-        // now, so they count as help (task 2.21), and an answer kept
-        // for them is graded.
-        const { judging, number } = open;
-        await r.answers.settleJudging(open, judging, "help", () => {
-          for (const learnerId of judging) {
-            log.emit({
-              type: "judged",
-              learnerId,
-              number,
-              verdict: "help",
-              unjudged: "restart",
-            });
-          }
-        });
-      } else if (open.answer !== undefined) {
-        // An answer that a restart kept from its grade is graded now,
-        // as a teaching turn a restart cut off is taught again.
-        await r.answers.grade(open, open.answer);
-      }
-    });
-    return true;
-  }
-
-  /**
-   * Reconciles questions left open by the thread: restore a lost grade
-   * from the evidence, or mark the question withdrawn if the position no
-   * longer holds it. The question still open is handled by `load`.
-   */
-  function restoreQuestions(record: UnitRecord): void {
-    const posted = new Set<string>();
-    const settled = new Set<string>();
-    for (const event of log.events()) {
-      if (event.type === "question") posted.add(event.question.id);
-      else if (event.type === "graded" || event.type === "question_withdrawn") {
-        settled.add(event.questionId);
-      } else if (
-        (event.type === "assessment_end" || event.type === "overridden") &&
-        event.withdrawnQuestionId !== undefined
-      ) {
-        settled.add(event.withdrawnQuestionId);
-      }
-    }
-    const open = record.position.openQuestion?.id;
-    for (const id of posted) {
-      if (id === open || settled.has(id)) continue;
-      const entry = record.recordedAnswer(id);
-      log.emit(
-        entry === undefined
-          ? { type: "question_withdrawn", questionId: id }
-          : gradedEvent(entry),
-      );
-    }
-  }
-
-  /**
-   * Shows the outcome of each dispute of the unit's answers that the earlier
-   * sessions' thread does not: one raised from "What I know" while the chat
-   * was not open, or whose line was lost. In a unit in progress, the tutor
-   * is told it in its next header.
-   */
-  function restoreDisputes(r: Running): void {
-    const shown = new Set<string>();
-    for (const event of log.events()) {
-      if (event.type === "disputed") shown.add(event.questionId);
-    }
-    for (const entry of r.record.evidence) {
-      if (entry.kind !== "dispute" || shown.has(entry.questionId)) continue;
-      if (r.record.disputeOf(entry.questionId) !== entry) continue;
-      const answered = r.record.recordedAnswer(entry.questionId);
-      if (answered === undefined || !askedHere(r, answered)) continue;
-      shown.add(entry.questionId);
-      log.emit(disputedEvent(entry));
-      tellDispute(r, entry);
-    }
-  }
-
-  /**
-   * Tells the tutor of a unit in progress the outcome, in its next header,
-   * of a dispute of an answer given in this unit's thread.
-   */
-  function tellDispute(r: Running, entry: DisputeEvidence): void {
-    const answered = r.record.recordedAnswer(entry.questionId);
-    if (
-      r.record.finished === undefined &&
-      answered !== undefined &&
-      askedHere(r, answered)
-    ) {
-      r.notes.push(disputeNote(answered, entry));
-    }
-  }
-
-  /**
-   * Whether the answer was given in this unit's thread: in an assessment it
-   * held, or in a check of its own, which asks only its own objectives.
-   */
-  function askedHere(r: Running, answered: AnswerEvidence): boolean {
-    return answered.assessment === undefined
-      ? r.context.plan.objectives.some((o) => o.id === answered.objective)
-      : answered.assessment.unit === unitId;
-  }
-
-  /**
-   * After a dispute's outcome is kept: the tutor is told, and the check rules
-   * decide with the corrected verdict where nothing else is waiting for
-   * them. A check with no question open, no detour and no feedback to come
-   * closes if nothing is left to ask; at the unit's end, the closing card is
-   * shown again with the statuses as they are now, and the unit finishes if
-   * every objective has passed. A detour stays open until the learner asks
-   * for another question. Runs inside `exclusive`.
-   */
-  async function disputeKept(
-    r: Running,
-    entry: DisputeEvidence,
-  ): Promise<void> {
-    tellDispute(r, entry);
-    const { position, finished } = r.record;
-    // An assessment's answers are its own rules', read when it next moves.
-    if (finished !== undefined || position.assessment !== undefined) return;
-    if (position.pendingSegmentOverride !== undefined) return;
-    // The test's result card shows what passed as it now stands.
-    if (position.testOut?.stage === "result") {
-      r.assessments.showTestResult();
-      return;
-    }
-    if (
-      position.phase === "check" &&
-      position.openQuestion === undefined &&
-      position.detour === undefined &&
-      r.progression.feedback === undefined &&
-      checkDone(r)
-    ) {
-      await closeSegment(r);
-    } else if (
-      position.phase === "closed" &&
-      isLastSegment(r.context.plan, position)
-    ) {
-      await r.unitEnd.end();
     }
   }
 
@@ -2211,9 +1981,7 @@ function createUnitChat(
       return exclusive(async () => {
         const r = running;
         if (r === undefined) return false;
-        const override = await r.record.dispute(entry);
-        await disputeKept(r, entry);
-        return { override };
+        return r.opening.recordDispute(entry);
       });
     },
     async learnStyle(note) {
@@ -2241,20 +2009,8 @@ function createUnitChat(
       await loading;
       await exclusive(async () => {
         const r = running;
-        if (r === undefined || !r.record.learnAnswer(entry)) return;
-        // A closing card that waits shows the statuses as they now are, and
-        // so does the test's result card.
-        const { position, finished } = r.record;
-        if (finished === undefined && position.testOut?.stage === "result") {
-          r.assessments.showTestResult();
-        } else if (
-          finished === undefined &&
-          position.assessment === undefined &&
-          position.phase === "closed" &&
-          isLastSegment(r.context.plan, position)
-        ) {
-          await r.unitEnd.end();
-        }
+        if (r === undefined) return;
+        await r.opening.learnAnswer(entry);
       });
     },
     async learnDispute(entry, override) {
@@ -2262,7 +2018,7 @@ function createUnitChat(
       await exclusive(async () => {
         const r = running;
         if (r === undefined) return;
-        if (r.record.learnDispute(entry, override)) await disputeKept(r, entry);
+        await r.opening.learnDispute(entry, override);
       });
     },
     async settleNotesContext() {

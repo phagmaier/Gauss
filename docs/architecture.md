@@ -106,7 +106,10 @@ Rules no single file shows:
 - **`src/server/engine/`**: the chats and their rules. `conversation.ts`
   (event log and turn queue under every chat); `intake.ts`,
   `intake-sources.ts`, `course-planning.ts`, `unit-planning.ts`;
-  `unit-chat.ts` (phases, the learner's actions) with
+  `unit-chat.ts` (the course level: open chats, the course's queue and
+  desks; each chat's state and queue, `load`'s composition of the record,
+  agents and modules with its error path, the segment's phases and own
+  steps, and each learner action's guard) with
   `unit-progression.ts` (post-answer checkpoints and continuation),
   `review-admission.ts` (admission to one unit chat; course-wide thread
   selection stays in `unit-chat.ts`), `unit-aids.ts` (the tutor's aids,
@@ -138,6 +141,11 @@ Rules no single file shows:
   says once, the notes, the record's notices and the learner's decisions,
   each delivered once; the new session that takes over when the tutor's
   conversation cannot be resumed; made for each loaded unit),
+  `unit-opening.ts` (reopening a unit: the thread's questions, disputes,
+  cards, status and phase shown again, what a restart left of the open
+  question settled, and the step that waits resumed; a dispute's outcome,
+  or an answer another unit's assessment recorded, taken in once the unit
+  is open; made for each loaded unit),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,
