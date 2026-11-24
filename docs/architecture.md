@@ -161,6 +161,15 @@ Rules no single file shows:
   course's sources do not change after intake; quotes are verified against
   the converted text, never against what a read returned. Test doubles:
   `fake-timer.ts`, `fake-converter.ts`.
+  Each of `unit-chat.ts`'s modules is a `createX({ ... })` factory whose
+  argument names what it takes from the chat (a `Pick<UnitRecord, ...>`,
+  the chat's queue as `exclusive`, getters for state the chat keeps,
+  callbacks for what stays in `unit-chat.ts`); none imports from
+  `unit-chat.ts`, which passes in any text they share. A tool's desk is
+  made with the chat and reads `running` at each call; code for a loaded
+  unit is made in `load` and held on `Running`. The chat keeps each
+  learner action's guard (`act`, its wait for `loading`, its entry into
+  the queue); the module that owns the action's concern holds its body.
 - **`src/server/tools/`**: the teaching tools, transport-free (`tool.ts`),
   a file each; `sources.ts` holds `read_section`, `view_page`, `quote_source`,
   `present_lecture` and `search_source`. A lecture is recorded only once

@@ -23,6 +23,9 @@ because code and documents use them.
   check, and the comparisons with LearnHarness and DeepTutor the same day,
   added tasks 5.14 to 5.29, all done on 2026-11-20.
 - Stage 4, sources: the user's check passed on 2026-11-22.
+- Stage 6, the `unit-chat.ts` split (6.0 to 6.9): its user check passed on
+  2026-11-23, walked through in Chromium on `pnpm dev:fake` by the agent at
+  the user's direction.
 
 ## Stage 6
 
@@ -56,55 +59,6 @@ fixed (the tools, the assessment and help rules, the question formats);
 the shipped prompt is kept, and the learner can revert to it. Where the
 line between fixed and editable falls in `prompts/tutor.md` is for that
 task.
-
-The rest of the `src/server/engine/unit-chat.ts` split, broken down by
-6.0: separate opening, turns, assessments, help, teaching tools and
-learner actions without changing behaviour. The Codex backend and
-self-test both reach into this code. Commits 98b4f97 and 75bffef, numbered
-6.1 and 6.2 before this breakdown, moved post-answer progression and
-review admission out; the split's own tasks are numbered from 6.0 again.
-
-Each task moves one concern into a module of its own, as those two did: a
-`createX({ ... })` factory whose argument names what it takes from the
-chat (a `Pick<UnitRecord, ...>`, the chat's queue as `exclusive`, getters
-for state that stays, callbacks for closures still in `unit-chat.ts`),
-and an interface for what it returns. A module never imports from
-`unit-chat.ts`: a text the file shares, such as `UNIT_FINISHED`, is passed
-in, as review admission takes `OVERRIDE_PENDING`. A tool's desk is made
-with the chat, before `load`, and reads `running` at each call, as
-`unit-aids.ts`'s are; code that runs only on a loaded unit is made in
-`load` and held on `Running`, as progression and review admission are.
-The learner's actions are not a module of their own: the chat object keeps
-each action's guard (`act`, its waits for `loading`, its entry into the
-queue), and the task that owns an action's concern moves its body. A move
-keeps the order of awaits inside queues, when each closure reads what it
-captures, every stop-signal check and error path, and every event, tool
-name and text; the matching part of the file's header comment moves with
-the code.
-
-What stays in `unit-chat.ts`: the course level (`createUnitChats` with its
-map of open chats, `reviewThread`, and `courseWorkspace` with the course's
-queue and desks); the chat's state that several modules read (`running`,
-`folder`, `stopCount`, `closing`, `loading`, `overrideWrite`, `style`,
-`sourceLecture`, the queue and the log) and `Running`'s shared fields
-(`context`, `plannerContext`, `notes`, `handoff`); `load`'s composition of
-the record, source shelf, handoffs, agents and modules, with its error
-path; the segment's own steps (`checks`, `checkDone`, `closeSegment`,
-`segmentObjectives`, `sendTeaching`, and the actions `ready`, `override`,
-`nextSegment` and `startFresh`); and `act`.
-
-User check for the split, due now that every split task (6.0 to 6.9) is
-done: with `pnpm dev:fake` on a fresh `GAUSS_DATA_ROOT`, a full session
-behaves as it did before. In "Three ways of counting", take a unit from
-its source lecture through the discussion (a message with "/quote", one
-with "/artifact"), Ready, a question answered right and one answered "I
-don't know" with its detour and "Ready for another question", a message
-while a question is open, "/style" applied and "/amend" kept, the
-segment's close and the next segment, to Move on at the closing card and
-the gate. In another course: the test before a unit and its result card,
-"Review now", "/packages" installed where the sandbox runs, and a server
-restart while an answer waits for the judge ("/hold" in a message, then
-answer) followed by reopening the unit.
 
 ## Known-gap fixes
 
