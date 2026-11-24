@@ -115,7 +115,8 @@ later agent the investigation, put it in a comment beside the code, or in
   backend. Run a real model only when the user has authorized the check.
   For every such run, including scratch harnesses and helper calls, use
   **Claude Sonnet 5.5 at medium effort only**, or for a Codex session
-  **gpt-6.2-sol at medium effort only** (the user's choice, 2026-11-24),
+  **gpt-6.1-terra at medium effort on the standard service tier only**
+  (the user's choice, 2026-11-24, as the cheaper model),
   via `mise exec -- pnpm check:live`. Do not run another model or effort,
   inherit the login's defaults, or rerun old experiment commands outside
   this launcher. No Codex run is made before the launcher pins Codex.

@@ -2,7 +2,7 @@
 // (docs/findings.md, "Codex").
 
 export interface CodexBackendOptions {
-  /** The model, such as "gpt-6.2-sol". Left out, the login's default. */
+  /** The model, such as "gpt-6.1-terra". Left out, the login's default. */
   model?: string;
   /**
    * The reasoning effort, such as "medium". Left out, the model's default.
@@ -10,18 +10,24 @@ export interface CodexBackendOptions {
    * a caller gives both on every `turn/start` (docs/findings.md, "Codex").
    */
   effort?: string;
+  /**
+   * The service tier; "default" is standard speed. Left out, the model's
+   * catalog default, which for gpt-6.1-terra is the faster "priority".
+   */
+  serviceTier?: string;
 }
 
-/** The one model and effort a live check runs Codex on (AGENTS.md). */
+/** The one model, effort and tier a live check runs Codex on (AGENTS.md). */
 export const CODEX_LIVE_CHECK_OPTIONS = {
-  model: "gpt-6.2-sol",
+  model: "gpt-6.1-terra",
   effort: "medium",
+  serviceTier: "default",
 } as const satisfies CodexBackendOptions;
 
 /**
- * The model and effort Codex runs on: under the live-check launcher always
- * the pinned ones, whatever the caller asks for, so that a trial or an older
- * harness cannot run another model or effort.
+ * The model, effort and tier Codex runs on: under the live-check launcher
+ * always the pinned ones, whatever the caller asks for, so that a trial or
+ * an older harness cannot run another.
  */
 export function codexOptions(
   requested: CodexBackendOptions = {},
