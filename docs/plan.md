@@ -105,12 +105,6 @@ and its result card, "Review now", "/packages" installed where the sandbox
 runs, and a server restart while an answer waits for the judge ("/hold"
 in a message, then answer) followed by reopening the unit.
 
-### 6.7 Assessments: review, gate and test runs — todo
-
-**Why:** Self-test is a new kind of assessment run, and the runs (review, the gate, the test before a unit) are spread over the assessments part, the actions and the header.
-**Do:** Move `startTest`, `shownByTest`, `showTestResult`, `sendTestSummary`, `runOn`, `showRun`, `runWhere`, `nextOf`, `goOnInRun`, `startRun`, `endRun`, `runWaits`, `headOf`, `answersResult`, `passedNow`, the bodies of `startAssessment`, `skipAssessment`, `skipTested` and `teachWhole`, and `Running`'s `assessmentHandoffs` into `unit-assessments.ts`, made in `load` and held on `Running`; `readAssessmentHandoffs` is exported on its own, since `load` reads it before `Running` exists. It takes the record, the agents' `send`, `canMoveOn` and `grading`, `emit`, `where`, the progression's `askInRun`, `afterReview` and `feedback`, `stopCount()`, the unit end's `end`, `sendTeaching`, the unit's context and notes, `readHandoff` bound to the course, and `unitId`. It returns those functions to the header, question posting, answers, unit end, review admission, progression and reopening. `unit-questions.ts`, made with the chat before any `Running` exists, takes `runOn`, `runWhere`, `nextOf` and `headOf` for the unit it is given, bound in `unit-chat.ts` as `(r) => runOn(r)` and the like: rebind them to that unit's assessments. Stays: `stopCount`, which a run's start captures as now; `Running`'s `context` and `notes`; `sendTeaching`.
-**Done when:** `unit-review.test.ts`, `unit-test-out.test.ts`, `unit-gate.test.ts` and the rest of the existing tests pass with at most import-path changes; `mise run check` passes; the moved code is gone from `unit-chat.ts`.
-
 ### 6.8 Turns: the header and what it says once — todo
 
 **Why:** What each turn's header says once (notes, the record's notices, the learner's decisions) is taken in `where` and delivered by the agents' hooks; a note taken twice or lost is what this code guards against, and the Codex backend's turns need the same delivery.

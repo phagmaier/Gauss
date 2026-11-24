@@ -11,8 +11,9 @@
 // it. A Stop, or the chat's close, cancels a posting under way and aborts
 // its math read or code check; the close waits for the code check to end.
 // The unit chat keeps the running unit, the Stop count, whether it is
-// closing, and the workspace's folder, read at each call; the check's and
-// the assessment's rules (`checks`, `runOn`, `nextOf` and the rest); and
+// closing, and the workspace's folder, read at each call; the check's rules
+// (`checks` and the rest); the assessment's rules from the unit's
+// assessments (`runOn`, `nextOf` and the rest, unit-assessments.ts); and
 // the course's workspace, whose queue admits a question.
 
 import { randomUUID } from "node:crypto";
