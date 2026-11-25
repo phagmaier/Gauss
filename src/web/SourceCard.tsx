@@ -1,7 +1,7 @@
-// A source the learner attached in the intake (piece 22): a card on the
-// learner's side of the thread, converting, then what was found or why the
-// file was refused. "Remove" deletes an attached source until the first
-// proposal makes the course; then a line says it was removed.
+// A source the learner attached in a conversation with a planner (pieces 22
+// and 26): a card on the learner's side of the thread, converting, then what
+// was found or why the file was refused. "Remove" deletes an attached source
+// until it joins the course; then a line says it was removed.
 
 import { useState } from "react";
 import { formatBytes } from "../shared/source.ts";
@@ -28,9 +28,13 @@ export function SourceCard(props: {
   item: SourceItem;
   outlineOpen: boolean;
   onOutline(source: string): void;
-  /** No proposal has made the course yet. */
+  /** The source has not joined the course yet. */
   canRemove: boolean;
   onRemove(): Promise<string | undefined>;
+  /** Where an attached source stands: "Attached" unless given. */
+  status?: string | undefined;
+  /** Why it cannot be removed now though it has not joined the course. */
+  kept?: string | undefined;
 }) {
   const { item } = props;
   const [removing, setRemoving] = useState(false);
@@ -110,7 +114,7 @@ export function SourceCard(props: {
       <div className="srcc-h">
         <b className="srcc-k">Source</b>
         <span>{FORMAT_NAMES[facts.format]}</span>
-        <span className="r">Attached</span>
+        <span className="r">{props.status ?? "Attached"}</span>
       </div>
       <div className="srcc-t">{facts.title}</div>
       {file}
@@ -132,7 +136,7 @@ export function SourceCard(props: {
         >
           {props.outlineOpen ? "Hide the outline" : "Outline"}
         </button>
-        {props.canRemove ? (
+        {!props.canRemove ? null : props.kept === undefined ? (
           <button
             type="button"
             className="textbtn"
@@ -141,7 +145,9 @@ export function SourceCard(props: {
           >
             Remove
           </button>
-        ) : null}
+        ) : (
+          <span className="srcc-kept">{props.kept}</span>
+        )}
       </div>
     </div>
   );

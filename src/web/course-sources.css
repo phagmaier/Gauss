@@ -60,6 +60,12 @@
 .cv-sources button[aria-pressed="true"] .cv-src-go {
   color: var(--accent);
 }
+/* Piece 26: where a source is added, under the list */
+.cv-src-add {
+  margin: 0.9em 0 0;
+  color: var(--ink-3);
+  font-size: 13.5px;
+}
 /* "The web" (piece 24): the web search switch, in the text colour when on */
 .sw {
   display: grid;

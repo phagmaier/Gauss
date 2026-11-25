@@ -402,6 +402,8 @@ export function Session(props: { courseId: string; unitId: string }) {
           i.kind === "quote" ||
           (i.kind === "tutor" && i.text.includes("source:")),
       ),
+    // An Apply in the course's planning conversation can add sources.
+    timeline.curriculumChangedAt,
   );
   const reader = useMemo(
     () => ({

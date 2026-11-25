@@ -225,9 +225,9 @@ export interface StyleItem {
 }
 
 /**
- * A file the learner attached in the intake (piece 22): converting, then
- * attached with what was found, or refused with why; and removed once the
- * learner removes it.
+ * A file the learner attached in the intake or a planning conversation
+ * (pieces 22 and 26): converting, then attached with what was found, or
+ * refused with why; and removed once the learner removes it.
  */
 export interface SourceItem {
   kind: "source";
@@ -1077,7 +1077,8 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       return { ...next, reopened: true };
     case "backend_chosen":
       return { ...next, backend: event.backend };
-    // The intake's sources (piece 22): one card per file attached.
+    // The sources attached in the intake or a planning conversation (pieces
+    // 22 and 26): one card per file attached.
     case "source_converting":
       return {
         ...next,

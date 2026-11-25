@@ -3109,3 +3109,7 @@ button.uo-head:focus-visible::after {
   align-items: baseline;
   margin-top: 0.8em;
 }
+.srcc-kept {
+  font-size: 13.5px;
+  color: var(--ink-3);
+}

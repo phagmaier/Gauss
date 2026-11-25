@@ -85,6 +85,9 @@
 //   proposal waits, messages are answered in text; "/revise" proposes one
 //   unit more instead of two. "/drop" in any message proposes the units
 //   without the first, which the engine refuses once that unit has started.
+//   "/read" proposes the units with one more that reads the first section
+//   of the newest source attached in the conversation and not removed
+//   (piece 26).
 // - "/hold" in any message from the learner keeps the turn open until it is
 //   stopped.
 //
@@ -627,6 +630,12 @@ function intakeSteps(
  */
 const plannedUnits = new WeakMap<TeachingTool, Unit[]>();
 
+/** Each planning conversation's waiting sources, each with its first section. */
+const attachedSources = new WeakMap<
+  TeachingTool,
+  { id: string; title: string; section: string }[]
+>();
+
 function coursePlanning(
   header: string,
   body: string,
@@ -647,6 +656,30 @@ function coursePlanning(
         }),
       ),
     );
+  }
+  const attached = /<attached_sources>\n([\s\S]*?)\n<\/attached_sources>/.exec(
+    body,
+  )?.[1];
+  if (attached !== undefined) {
+    // The block lists removals, then attachments, then refusals.
+    let waiting = attachedSources.get(tool) ?? [];
+    for (const [, id] of attached.matchAll(
+      /^Removed by the learner: "(?:[^"\\]|\\.)*" \(source id "([^"]+)"\)/gm,
+    )) {
+      waiting = waiting.filter((source) => source.id !== id);
+    }
+    for (const [, title = '""', id = "", rest = ""] of attached.matchAll(
+      /^Attached: ("(?:[^"\\]|\\.)*") \(source id "([^"]+)"\)[^\n]*\n((?:[ -][^\n]*\n?)*)/gm,
+    )) {
+      const section = /- (s\d+): /.exec(rest)?.[1];
+      if (section !== undefined) {
+        waiting = [
+          ...waiting.filter((source) => source.id !== id),
+          { id, title: JSON.parse(title) as string, section },
+        ];
+      }
+    }
+    attachedSources.set(tool, waiting);
   }
   const units = plannedUnits.get(tool) ?? [];
   const last = units.at(-1)?.id;
@@ -671,6 +704,25 @@ function coursePlanning(
   ];
   if (/(^|\s)\/drop\b/.test(message)) {
     return amend(units.slice(1), "You asked to drop the first unit.");
+  }
+  const newest = attachedSources.get(tool)?.at(-1);
+  if (/(^|\s)\/read\b/.test(message) && newest !== undefined) {
+    const ids = new Set(units.map((unit) => unit.id));
+    let id = "reading";
+    for (let n = 2; ids.has(id); n += 1) id = `reading-${n}`;
+    return amend(
+      [
+        ...units,
+        {
+          id,
+          title: `Reading ${newest.title}`,
+          goal: "Say what the new source's first section argues.",
+          prerequisites: last === undefined ? [] : [last],
+          sections: [`${newest.id}/${newest.section}`],
+        },
+      ],
+      "You asked for a unit on the source you attached.",
+    );
   }
   if (header.startsWith("[Start of a planning conversation")) {
     return [

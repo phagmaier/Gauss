@@ -3,12 +3,16 @@
 // dropped ones listed, the diagram in the side pane, Apply and "Keep the
 // current one"; once answered, a record of the answer. Built from the
 // intake card's parts and the style card's foot, since no piece draws it.
+// In a planning conversation, the sources attached there, which join the
+// course with the change, are listed under "Sources it adds" (piece 26).
 
 import { Fragment, useState } from "react";
+import { unitSections } from "../shared/curriculum.ts";
 import { compareUnits } from "../shared/curriculum-change.ts";
 import type { Outline } from "../shared/source.ts";
 import type { CurriculumItem } from "../shared/timeline.ts";
 import { SourceShare, UnitList } from "./Curriculum.tsx";
+import { courseSourceLine } from "./reads.ts";
 
 export function CurriculumCard(props: {
   item: CurriculumItem;
@@ -19,6 +23,8 @@ export function CurriculumCard(props: {
   onKeep(): Promise<string | undefined>;
   /** The course's sources, once loaded: the units' reads come from them. */
   sources: readonly Outline[] | undefined;
+  /** The sources that join the course when the change is applied; none if not given. */
+  adds?: readonly Outline[];
 }) {
   const { item } = props;
   const [sending, setSending] = useState(false);
@@ -100,6 +106,22 @@ export function CurriculumCard(props: {
       </div>
       <div className="qa-prompt">{item.why}</div>
       {units}
+      {props.adds === undefined || props.adds.length === 0 ? null : (
+        <section className="cs" aria-label="Sources it adds">
+          <div className="cs-h">
+            <span>Sources it adds</span>
+          </div>
+          {props.adds.map((source) => (
+            <p key={source.id} className="cs-t">
+              <i>{source.title}</i>:{" "}
+              {courseSourceLine(
+                source,
+                new Set(item.units.flatMap((unit) => unitSections(unit))),
+              )}
+            </p>
+          ))}
+        </section>
+      )}
       <p className="qa-aside">
         Nothing changes until you apply it. Units you have started keep their
         plans and progress.

@@ -11,7 +11,6 @@
 // on, until the first proposal makes the course.
 
 import {
-  type DragEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -20,10 +19,9 @@ import {
   useState,
 } from "react";
 import { BACKEND_TITLES, type BackendName } from "../shared/course.ts";
-import type { Unit } from "../shared/curriculum.ts";
-import { FILE_NAME_HEADER, Hello, PageEvent } from "../shared/events.ts";
+import { Hello, PageEvent } from "../shared/events.ts";
 import { compareSentences } from "../shared/profile.ts";
-import { formatBytes, Outline, SOURCE_SIZE_LIMIT } from "../shared/source.ts";
+import type { Outline } from "../shared/source.ts";
 import type { SourceTarget } from "../shared/source-target.ts";
 import {
   emptyTimeline,
@@ -32,13 +30,13 @@ import {
   type Timeline,
   type TimelineAction,
 } from "../shared/timeline.ts";
+import { post } from "./api.ts";
 import {
-  type Answer,
-  getJson,
-  post,
-  postFile,
-  type UploadAnswer,
-} from "./api.ts";
+  AttachmentOutline,
+  DropHint,
+  useFileDrop,
+  useSourceUploads,
+} from "./attach.tsx";
 import { ChangedText } from "./ChangedText.tsx";
 import { Composer } from "./Composer.tsx";
 import { Diagram, SourceShare, UnitList } from "./Curriculum.tsx";
@@ -46,7 +44,6 @@ import { Link, SidePane, TopLine } from "./Frame.tsx";
 import { Prose } from "./prose.tsx";
 import { navigate, paths } from "./route.ts";
 import { SourceCard } from "./SourceCard.tsx";
-import { SourcePane } from "./SourcePane.tsx";
 import { readsSources, useCourseSources } from "./sources.ts";
 
 /** Asked by the page itself; the tutor's session starts with the answer. */
@@ -63,70 +60,23 @@ type IntakeState = {
   timeline: Timeline;
   /** Increments only when a converted source is attached. */
   sourceVersion: number;
-  posting: number;
-  awaiting: string[];
-  uploadErrors: { key: number; name: string; error: string }[];
 };
-
-type IntakeAction =
-  | TimelineAction
-  | { type: "upload_start" }
-  | {
-      type: "upload_response";
-      key: number;
-      name: string;
-      result: UploadAnswer;
-    };
 
 const emptyIntake: IntakeState = {
   timeline: emptyTimeline,
   sourceVersion: 0,
-  posting: 0,
-  awaiting: [],
-  uploadErrors: [],
 };
 
-function reduceIntake(state: IntakeState, action: IntakeAction): IntakeState {
-  if (action.type === "upload_start") {
-    return { ...state, posting: state.posting + 1 };
-  }
-  if (action.type === "upload_response") {
-    const { result, key, name } = action;
-    const next = { ...state, posting: state.posting - 1 };
-    if (!result.ok) {
-      if (!result.shown) {
-        next.uploadErrors = [
-          ...state.uploadErrors,
-          { key, name, error: result.error },
-        ];
-      }
-    } else if (
-      // The stream may have finished this conversion before the POST answered.
-      !state.timeline.items.some(
-        (i) =>
-          i.kind === "source" &&
-          i.attachment === result.attachment &&
-          i.state !== "converting",
-      )
-    ) {
-      next.awaiting = [...state.awaiting, result.attachment];
-    }
-    return next;
-  }
+function reduceIntake(state: IntakeState, action: TimelineAction): IntakeState {
   const timeline = reduce(state.timeline, action);
   if (timeline === state.timeline) return state;
   const next = { ...state, timeline };
-  if (action.type === "event") {
-    const { event } = action;
-    if (event.type === "source_attached" && state.timeline.approved === null) {
-      next.sourceVersion += 1;
-    }
-    if (
-      (event.type === "source_attached" || event.type === "source_refused") &&
-      state.awaiting.includes(event.attachment)
-    ) {
-      next.awaiting = state.awaiting.filter((id) => id !== event.attachment);
-    }
+  if (
+    action.type === "event" &&
+    action.event.type === "source_attached" &&
+    state.timeline.approved === null
+  ) {
+    next.sourceVersion += 1;
   }
   return next;
 }
@@ -134,7 +84,7 @@ function reduceIntake(state: IntakeState, action: IntakeAction): IntakeState {
 export function Intake(props: { intakeId: string }) {
   const { intakeId } = props;
   const [state, dispatch] = useReducer(reduceIntake, emptyIntake);
-  const { timeline, sourceVersion, posting, awaiting, uploadErrors } = state;
+  const { timeline, sourceVersion } = state;
   const [connected, setConnected] = useState(false);
   const [lost, setLost] = useState(false);
   const [problem, setProblem] = useState<string>();
@@ -145,10 +95,6 @@ export function Intake(props: { intakeId: string }) {
   const closePane = useCallback(() => setPane(undefined), []);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
-  const nextUpload = useRef(0);
-  const [dragging, setDragging] = useState(false);
-  /** How deep in the page's elements a file is held, which enter and leave count. */
-  const dragDepth = useRef(0);
 
   useEffect(() => {
     const source = new EventSource(intakePath(intakeId, "events"));
@@ -191,17 +137,6 @@ export function Intake(props: { intakeId: string }) {
     return refused;
   }
 
-  async function attach(file: File) {
-    const key = nextUpload.current++;
-    dispatch({ type: "upload_start" });
-    const result = await postFile(
-      intakePath(intakeId, "sources"),
-      file,
-      FILE_NAME_HEADER,
-    );
-    dispatch({ type: "upload_response", key, name: file.name, result });
-  }
-
   const latest = timeline.items.findLast((i) => i.kind === "proposal");
   // Only the latest proposal is drawn in full, so only its units read.
   const { sources, problem: sourceProblem } = useCourseSources(
@@ -225,13 +160,12 @@ export function Intake(props: { intakeId: string }) {
   const sourceTitle = card?.kind === "source" ? card.facts?.title : undefined;
   const { approved } = timeline;
   const open = !lost && approved === null;
-  const converting =
-    posting > 0 ||
-    awaiting.length > 0 ||
-    timeline.items.some((i) => i.kind === "source" && i.state === "converting");
-  /** A file held over the page, which can be dropped to attach it. */
-  const holdsFiles = (e: DragEvent) =>
-    open && e.dataTransfer.types.includes("Files");
+  const uploads = useSourceUploads(
+    intakePath(intakeId, "sources"),
+    timeline.items,
+  );
+  const { converting } = uploads;
+  const drop = useFileDrop(open, uploads.attach);
   // Mock 8: once approved, the course starts with its first unit.
   const approvedProposal = timeline.items.find(
     (i) => i.kind === "proposal" && i.revision === approved?.revision,
@@ -248,35 +182,13 @@ export function Intake(props: { intakeId: string }) {
         compareSentences(approvedProposal.profileWas, approvedProposal.profile)
           .changed));
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: dropping a file is a shortcut; the clip in the message box attaches one from the keyboard
     <div
       className={
         diagramOpen || sourceTitle !== undefined
           ? "th has-top has-pane"
           : "th has-top"
       }
-      onDragEnter={(e) => {
-        if (!holdsFiles(e)) return;
-        e.preventDefault();
-        dragDepth.current += 1;
-        setDragging(true);
-      }}
-      onDragOver={(e) => {
-        if (!holdsFiles(e)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
-      }}
-      onDragLeave={() => {
-        dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (dragDepth.current === 0) setDragging(false);
-      }}
-      onDrop={(e) => {
-        dragDepth.current = 0;
-        setDragging(false);
-        if (!holdsFiles(e)) return;
-        e.preventDefault();
-        for (const file of e.dataTransfer.files) void attach(file);
-      }}
+      {...drop.handlers}
     >
       <TopLine
         trail={[{ label: "Library", to: paths.library }]}
@@ -409,7 +321,7 @@ export function Intake(props: { intakeId: string }) {
             </>
           )}
           {problem === undefined ? null : <p className="ph-note">{problem}</p>}
-          {uploadErrors.map(({ key, name, error }) => (
+          {uploads.errors.map(({ key, name, error }) => (
             <p key={key} className="ph-note">
               {name}: {error}
             </p>
@@ -432,7 +344,7 @@ export function Intake(props: { intakeId: string }) {
           enabled={open}
           busy={timeline.busy}
           holdSend={converting}
-          onAttach={(file) => void attach(file)}
+          onAttach={uploads.attach}
           placeholder={
             latest === undefined
               ? "Message the tutor"
@@ -442,15 +354,7 @@ export function Intake(props: { intakeId: string }) {
           onStop={() => void act("interrupt")}
         />
       </div>
-      {dragging ? (
-        <div className="drop">
-          <div className="drop-t">Drop the file to attach it</div>
-          <p className="drop-p">
-            PDF, EPUB, plain text or Markdown, up to{" "}
-            {formatBytes(SOURCE_SIZE_LIMIT)}
-          </p>
-        </div>
-      ) : null}
+      {drop.dragging ? <DropHint /> : null}
       {diagramOpen && latest !== undefined ? (
         <SidePane
           title="Curriculum"
@@ -463,7 +367,7 @@ export function Intake(props: { intakeId: string }) {
           />
         </SidePane>
       ) : typeof pane === "object" && sourceTitle !== undefined ? (
-        <IntakeOutline
+        <AttachmentOutline
           key={`${sourceBase}/${pane.source}`}
           base={sourceBase}
           target={pane}
@@ -550,57 +454,6 @@ function BackendChoice(props: {
         </p>
       )}
     </fieldset>
-  );
-}
-
-/** An attachment can be read before a course or its collection of outlines exists. */
-function IntakeOutline(props: {
-  target: OutlineTarget;
-  base: string;
-  title: string;
-  known: Outline | undefined;
-  units: readonly Unit[];
-  onClose(): void;
-}) {
-  const { target, base, known } = props;
-  const [answer, setAnswer] = useState<Answer<Outline>>();
-  useEffect(() => {
-    if (known !== undefined) return;
-    const stop = new AbortController();
-    void getJson(
-      `${base}/${encodeURIComponent(target.source)}`,
-      Outline,
-      stop.signal,
-    ).then((result) => {
-      if (!stop.signal.aborted) setAnswer(result);
-    });
-    return () => stop.abort();
-  }, [base, target.source, known]);
-
-  const source = known ?? (answer?.ok ? answer.data : undefined);
-  if (source !== undefined) {
-    return (
-      <SourcePane
-        base={base}
-        source={source}
-        target={target}
-        units={props.units}
-        onClose={props.onClose}
-      />
-    );
-  }
-  return (
-    <SidePane title="Outline" subtitle={props.title} onClose={props.onClose}>
-      {answer !== undefined && !answer.ok ? (
-        <p className="qa-error" role="alert">
-          The source's outline could not be loaded: {answer.error}
-        </p>
-      ) : (
-        <p className="ph-note" role="status">
-          Loading the outline…
-        </p>
-      )}
-    </SidePane>
   );
 }
 

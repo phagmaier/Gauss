@@ -195,7 +195,8 @@ Rules no single file shows:
   `Settings`, `Course`, `Planning`, `Session`, `WhatIKnow`, `Notes`,
   `SourcePane`), its logic in a tested pure module beside it (`session.ts`,
   `progress.ts`, `diagram.ts`, ...); the thread's timeline is
-  `src/shared/timeline.ts`.
+  `src/shared/timeline.ts`. `attach.tsx` holds attaching a source, shared
+  by the intake and the planning conversation.
   `prose.tsx` renders model and learner text as React elements, never
   HTML. `styles.css`: colours as named roles in one block, type registers
   near the top. CMU Serif is in `fonts/`; IBM Plex comes from Google Fonts.

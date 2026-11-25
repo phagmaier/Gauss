@@ -1,7 +1,9 @@
 // The outlines of a course's sources, which the cards need to say what its
 // units read, and the thread to say what the tutor read and to cite what it
-// quoted. The endpoint gives all outlines at once. Only the intake can
-// change that set, by attaching a source after its first proposal.
+// quoted. The endpoint gives all outlines at once. The set grows when the
+// intake attaches a source after its first proposal, or a planning
+// conversation's Apply adds some; a page that can see either passes a new
+// version.
 
 import { useEffect, useState } from "react";
 import { type Unit, unitSections } from "../shared/curriculum.ts";
@@ -16,8 +18,9 @@ export function readsSources(
 }
 
 /**
- * Loads once `needed`. A new version (a successful intake attachment)
- * refreshes the outlines without hiding the last read.
+ * Loads once `needed`. A new version (a source attached in the intake, or
+ * an Apply that can add sources) refreshes the outlines without hiding the
+ * last read.
  */
 export function useCourseSources(
   courseId: string | undefined,

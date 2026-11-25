@@ -402,12 +402,13 @@ export function Course(props: { courseId: string }) {
                   {sourceProblem}
                 </p>
               )}
-              {sources !== undefined && sources.length > 0 ? (
+              {sources !== undefined && (sources.length > 0 || approved) ? (
                 <CourseSources
                   sources={sources}
                   units={curriculum?.units}
                   showing={openSource?.id}
                   onOpen={openOutline}
+                  {...(approved ? { planning: paths.planning(courseId) } : {})}
                 />
               ) : null}
               {approved ? (
@@ -461,12 +462,17 @@ export function Course(props: { courseId: string }) {
   );
 }
 
-/** The sources belong to the course even when no unit names one of their sections. */
+/**
+ * The sources belong to the course even when no unit names one of their
+ * sections. An approved course says where another is added (piece 26).
+ */
 function CourseSources(props: {
   sources: readonly Outline[];
   units: readonly Unit[] | undefined;
   showing: string | undefined;
   onOpen(source: string): void;
+  /** The planning conversation's path, where a source is added. */
+  planning?: string;
 }) {
   const { sources, units } = props;
   const rows = useMemo(() => {
@@ -481,35 +487,44 @@ function CourseSources(props: {
       <div className="cv-hrow cv-sec">
         <h2 className="pg-h">Sources</h2>
       </div>
-      <ul className="cv-sources">
-        {rows.map(({ source, line }) => (
-          <li key={source.id}>
-            <button
-              type="button"
-              aria-pressed={props.showing === source.id}
-              onClick={() => props.onOpen(source.id)}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinejoin="round"
-                aria-hidden="true"
+      {sources.length === 0 ? null : (
+        <ul className="cv-sources">
+          {rows.map(({ source, line }) => (
+            <li key={source.id}>
+              <button
+                type="button"
+                aria-pressed={props.showing === source.id}
+                onClick={() => props.onOpen(source.id)}
               >
-                <path d="M2 3.2c2-.9 4-.9 6 .4 2-1.3 4-1.3 6-.4v9.6c-2-.9-4-.9-6 .4-2-1.3-4-1.3-6-.4zM8 3.6v9.6" />
-              </svg>
-              <span className="cv-src-title">{source.title}</span>
-              <span className="cv-src-go">
-                {props.showing === source.id ? "Showing" : "Outline"}
-              </span>
-              <span className="cv-src-facts">{line}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M2 3.2c2-.9 4-.9 6 .4 2-1.3 4-1.3 6-.4v9.6c-2-.9-4-.9-6 .4-2-1.3-4-1.3-6-.4zM8 3.6v9.6" />
+                </svg>
+                <span className="cv-src-title">{source.title}</span>
+                <span className="cv-src-go">
+                  {props.showing === source.id ? "Showing" : "Outline"}
+                </span>
+                <span className="cv-src-facts">{line}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {props.planning === undefined ? null : (
+        <p className="cv-src-add">
+          To add a book or paper, attach it in{" "}
+          <Link to={props.planning}>Change the curriculum</Link>. It joins the
+          course when you apply a change.
+        </p>
+      )}
     </section>
   );
 }

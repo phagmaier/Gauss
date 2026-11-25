@@ -55,30 +55,30 @@ after feedback is a fresh problem; before posing, fix the model solution
 and look for a shortcut that skips the target; give the smallest hint
 that unblocks, one per request.
 
-A source added after the intake (6.20 to 6.22): `brief.md`, "Sources" and
-"Page"; piece 26, direction A. No shipped prompt text is moved or
-reworded: `course-planner.md` still says the first message gives the
-sources; what a later source is and when it joins is said in the header
-that delivers its `<attached_sources>` block (`ATTACHED_GIVEN` in
+A source added after the intake (6.20 to 6.22) is built (`brief.md`,
+"Sources" and "Page"; piece 26, direction A). No shipped prompt text is
+moved or reworded: `course-planner.md` still says the first message gives
+the sources; what a later source is and when it joins is said in the
+header that delivers its `<attached_sources>` block (`ATTACHED_GIVEN` in
 `engine/course-planning.ts`), reusing the intake's wording for a removed
-or refused file. The new text is tried on a real model only in
-the user check (the user's choice, 2026-11-24).
+or refused file, and an open unit's tutor is told in its next header
+(`addedSourcesNote` in `engine/unit-chat.ts`). The new text is tried on a
+real model only in the user check (the user's choice, 2026-11-24).
 
-### 6.22 The page for a source added later — todo
-
-**Needs:** 6.20; 6.21 for the user check.
-**Why:** The learner attaches a source in "Change the curriculum" or "Plan what comes next" (piece 26, direction A).
-**Do:** In `Planning.tsx`: the clip in the message box and a dropped file, as `Intake.tsx` has them; piece 22's card, saying "Joins when you apply" with Remove (none while the proposal waiting reads it), and "Added to the course" after Apply; its outline in the side pane. The page's opening question says a source can be attached there. The change card, in the planning conversation, has "Sources it adds", and its "Reads" lines name a waiting source's sections. The course view's Sources section ends with the line to "Change the curriculum", alone in a course with no source. A scripted-backend command proposes a unit reading the newest waiting source, for `pnpm dev:fake`.
-**Done when:** in Chromium on `pnpm dev:fake` with a fresh root: in "Change the curriculum" a file is attached, converts, is removed, is attached again; a scripted proposal reads it and lists it under "Sources it adds"; its card shows no Remove then; Apply returns to the course view, which lists the source and the line. The page reads as piece 26 shows. `mise run check` passes.
-
-User check for a source added later, after 6.22: with `pnpm dev:fake`,
-walk 6.22's steps and see that the pages read as piece 26 shows. Then
-with `pnpm dev` on your own logins: in a course with a unit in progress,
-open "Change the curriculum", attach a paper, ask for units on it, and
-Apply. In the unit open across the Apply, your next message finds a tutor
-that knows the paper and can read from it; a new unit that reads it
-quotes it with verified quotes. The planner's and the tutor's new header
-lines have not run on a real model before this check.
+User check for a source added later: with `pnpm dev:fake`, open "Change
+the curriculum" in a course, attach a file and watch it convert, remove
+it, and attach it again. Send a message with "/read" in it: the scripted
+planner proposes a unit reading the file, the card lists it under
+"Sources it adds", and the file's card shows "The proposal waiting reads
+it" in place of Remove. Apply: the course view lists the source, with
+the line pointing to "Change the curriculum" (a course with no source
+shows that line alone). The pages read as piece 26 shows. Then with
+`pnpm dev` on your own logins: in a course with a unit in progress, open
+"Change the curriculum", attach a paper, ask for units on it, and Apply.
+In the unit open across the Apply, your next message finds a tutor that
+knows the paper and can read from it; a new unit that reads it quotes it
+with verified quotes. The planner's and the tutor's new header lines have
+not run on a real model before this check.
 
 ## Known-gap fixes
 
