@@ -34,6 +34,8 @@ because code and documents use them.
   user check passed on 2026-11-24, walked by the user.
 - Stage 6, a source added after the intake (6.20 to 6.22): its user check
   passed on 2026-11-25, walked by the user.
+- Stage 6, self-test (6.23 to 6.26): the user confirmed on 2026-11-25
+  that both the scripted and live Claude checks passed.
 
 ## Stage 6
 
@@ -43,42 +45,6 @@ scanned PDFs, and questions on a source's figure (left out of stage 4);
 ranking passage matches with a cheap model, if the learner's use shows
 local search leaves too many plausible matches. Each is planned when
 chosen.
-
-Self-test (6.23 to 6.26): `brief.md`, "Assessment modes" and "Page";
-piece 27, direction A. It is a fourth assessment mode, run in a unit's
-thread by its tutor, as review is (a separate examiner session is a
-rejected design, `findings.md`). No shipped prompt text is moved or
-reworded: what a self-test asks of the tutor is said in the header of its
-turns, and in the new pass-over tool's description and fields, all of it
-model-facing and new. LearnHarness's practice prompt
-(`src/agent/prompts/practice/10-doctrine.md` there, AGPL: ideas only, no
-text) is the input for that header: mix objectives; a retry after
-feedback is a fresh problem; before posing, fix the model solution and
-look for a shortcut that skips the target; give the smallest hint that
-unblocks, one per request. The new text is tried on a real model only in
-the user check (the user's choice, 2026-11-25).
-
-User check for the self-test, after 6.26. First, with `pnpm dev:fake`
-on a fresh root, open "Calculus I" and press "Self-test" beside "Review
-now". Pick unit 1 with only choice questions: the panel says how many
-objectives it will ask. Start it. Answer the first question wrong: a
-detour follows, and after "Ready for another question" the next question
-is on unit 1's other objective; the missed one comes back after it. Read
-the end marker. Back on the course view, pick unit 1 again: the panel
-says its objectives were answered within the hour and are left out.
-Self-test unit 2 with only code questions: the scripted tutor passes
-over each objective with its reason, and the end marker counts them.
-Then self-test the whole course: it runs in unit 5, where "Review now"
-would; end it after one answer and read its end marker. Then, with
-`pnpm dev` on your own logins, in a Claude course with a unit you passed
-more than an hour ago, self-test that unit with choice and written
-questions. The lead-ins name no subject, and a missed objective's fresh
-question comes after another objective. A message asking for a hint
-gets the smallest one, and the answer is marked as helped. Self-test
-again with only math or only code, on a scope where some objective fits
-neither: the tutor passes it over and says why. The self-test's header
-lines and the pass-over tool have not run on a real model before this
-check.
 
 ## Known-gap fixes
 
