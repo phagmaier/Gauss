@@ -34,13 +34,11 @@ because code and documents use them.
 ## Stage 6
 
 Self-test, cheat sheets, photo input; starred messages for the notes, if
-the generated notes miss what the learner wants kept; a model chosen in
-the app's settings, which the user wants eventually (2026-11-19);
-teaching instructions the learner can add to or edit (below); a source
-added to a course after its intake, text recognition for scanned PDFs,
-and questions on a source's figure (left out of stage 4); ranking passage
-matches with a cheap model, if the learner's use shows local search
-leaves too many plausible matches. Each is planned when chosen.
+the generated notes miss what the learner wants kept; a source added to a
+course after its intake, text recognition for scanned PDFs, and questions
+on a source's figure (left out of stage 4); ranking passage matches with a
+cheap model, if the learner's use shows local search leaves too many
+plausible matches. Each is planned when chosen.
 
 Self-test, as the user described it on 2026-11-19 (optional, after
 everything else): the learner picks the scope (a segment, a unit, the
@@ -55,13 +53,48 @@ after feedback is a fresh problem; before posing, fix the model solution
 and look for a shortcut that skips the target; give the smallest hint
 that unblocks, one per request.
 
-Teaching instructions the learner can change (the user's request,
-2026-11-19): add to or edit the tutor's instructions on how it teaches,
-app-wide, beyond a course's style note. What the app relies on stays
-fixed (the tools, the assessment and help rules, the question formats);
-the shipped prompt is kept, and the learner can revert to it. Where the
-line between fixed and editable falls in `prompts/tutor.md` is for that
-task.
+The tutor's model and teaching instructions (6.17 to 6.19): `brief.md`,
+"Teaching style", "Backends and stack" and "Page"; piece 25, direction A.
+Every task keeps one order of precedence for a model: under
+`GAUSS_LIVE_CHECK=1`, `LIVE_CHECK_OPTIONS` and `CODEX_LIVE_CHECK_OPTIONS`
+override everything; otherwise `GAUSS_CLAUDE_MODEL` and `GAUSS_CODEX_MODEL`
+override the setting, and the setting overrides the default. Settings
+live in the data root only, never in a Codex home or `~/.claude`.
+
+### 6.17 The tutor's model, chosen in the record — todo
+
+**Needs:** nothing open.
+**Why:** The tutor's model is fixed when its backend is made: the Claude login's default (`createClaudeBackend({})` in `main.ts`) and gpt-6.1-terra (`codexOptions`). The learner chooses it app-wide, one choice per backend.
+**Do:** In `src/shared/settings.ts`, the zod schema of `settings.json` in the data root: the tutor's model for Claude courses and for Codex courses, each absent until chosen, with the models offered and their defaults (`brief.md`). The record reads it and writes it whole, and the backup keeps it. `SessionOptions` takes the model a session runs on; `createClaudeBackend` and `createCodexBackend` apply it below the overrides above, and Codex keeps medium effort and the standard tier. A unit's tutor sessions take the chosen model for their course's backend whenever they start or resume. The unit planner, the intake, course planning and the one-shot roles take none. Saving a model renews the open units of that backend's courses, as the web search setting does, so the change applies from the next message.
+**Done when:** fake-backend tests show a unit's tutor session starting on the chosen model, and the next message after a save resuming on the new one; the planners' sessions get no model. Backend tests show that under `GAUSS_LIVE_CHECK=1` a session given a model still runs on `LIVE_CHECK_OPTIONS` (Claude) and `CODEX_LIVE_CHECK_OPTIONS` (Codex), and that `GAUSS_CLAUDE_MODEL` and `GAUSS_CODEX_MODEL` win over the setting. `mise run check` passes.
+
+### 6.18 Teaching instructions the learner can edit — todo
+
+**Needs:** 6.17 (the settings record, and renewing open units on a save).
+**Why:** The learner can rewrite or add to the tutor's default style app-wide, while the rules the app relies on stay fixed and Gauss's text is kept to revert to.
+**Do:** Mark the first paragraph of "Default style" in `prompts/tutor.md` as the editable part. The loader splits the prompt there, refuses to start if the marks are missing, and never sends them to a model. The learner's text is `teaching.md` in the data root, with its schema and length limit in `src/shared/settings.ts` as the profile's are, and the backup keeps it. Saving text identical to Gauss's removes the file. A save is refused if the file changed since the page read it, as the Profile page's `was` does. `tutorSystemPrompt` puts the learner's text in place of Gauss's paragraph, for Claude and Codex courses alike. A save renews every open unit.
+**Done when:** tests show that with no edit the tutor's system prompt holds `tutor.md`'s text unchanged, without the marks; that an edit replaces only that paragraph, with the fixed paragraph and every other section unchanged; that a Codex course's tutor session receives the edited prompt; that after a save an open unit's next message resumes on the new prompt; that saving Gauss's text removes the edit; and that a stale `was` is refused. `mise run check` passes.
+
+### 6.19 The Settings page — todo
+
+**Needs:** 6.17, 6.18.
+**Why:** The learner reaches both settings from one page (piece 25, direction A).
+**Do:** Routes to read the settings (each backend's chosen and offered models with their descriptions; the learner's text if any, Gauss's text, the fixed paragraph and the limit), to save a model and to save the instructions. The page at `/settings`, opened by "Settings" beside "Profile" in the library's top line, as piece 25's direction A shows it. Remove the pair from `brief.md`'s "Later".
+**Done when:** in Chromium on `pnpm dev:fake` with a fresh root: Settings opens from the library. Picking Sonnet 5.5 and gpt-6.2-sol saves them: `settings.json` holds them and a reload shows them. An edited text saves, shows "Your edit" and Gauss's text in its fold, survives a reload, and `teaching.md` holds it. "Restore Gauss's text" then Save removes `teaching.md`. Text over the limit cannot be saved. `mise run check` passes.
+
+User check for the tutor's model and teaching instructions, after 6.19:
+with `pnpm dev:fake`, open Settings from the library, pick each model,
+edit the instructions, reload, and restore Gauss's text; the page reads
+as piece 25 shows. Then with `pnpm dev` on your own logins (not
+`check:live`, which pins the model): in a Claude course's unit in
+progress, switch to Sonnet 5.5, add a line to the instructions (say,
+"Use British spelling"), and send a message. The tutor goes on with the
+conversation and follows the line, and Claude Code's session log for the
+course's workspace shows the new model. The same in a Codex course with
+gpt-6.2-sol, if you want to spend the turns: its rollout's
+`turn_context` shows the model. A conversation switching model
+mid-unit has never run in Gauss, and no automated or live check can try
+it.
 
 ## Known-gap fixes
 

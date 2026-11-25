@@ -1,0 +1,258 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Stage 6, piece 25: the app's settings page, with the
+  tutor's model and the teaching instructions the learner can edit, in the
+  redesign's look (look.css).
+  SETTLED 2026-11-24: the user took direction A, as shown. Rejected: B (one
+  form with one Save) and C (models as menus, the box and Gauss's text side
+  by side with the changes marked).
+
+  What it answers, from the user's decisions of 2026-11-24 (brief.md,
+  "Teaching style", "Backends and stack" and "Page"):
+  - The tutor's model, one choice for Claude courses (Opus 5.5, Gauss's
+    default, or Sonnet 5.5) and one for Codex courses (gpt-6.1-terra,
+    Gauss's default, or gpt-6.2-sol), with effort and tier not offered.
+    The page says that the planners, the grader and the judges keep their
+    own models.
+  - "How the tutor teaches": the first paragraph of the default style in
+    prompts/tutor.md, in one box to rewrite or add to. The paragraph after
+    it, which lets a course's style note adjust the style and keeps the
+    600-word limit, is shown as fixed. The rules the app relies on are not
+    on the page at all.
+  - "Restore Gauss's text" puts Gauss's current text in the box, and Save
+    applies it. Gauss's text is shown under an edit, for comparison.
+  - Every change applies from the learner's next message in each open
+    unit.
+
+  The directions (the bar still switches them):
+  - A, sections that save on their own (chosen): a model applies when it
+    is picked, as the web search switch does; the instructions have the
+    Profile page's box, count, "Undo my changes" and Save. Gauss's text
+    sits in a fold under an edit.
+  - B, one form, one Save: nothing applies until "Save changes" in a foot
+    that lists what changed, with "Discard". The models are two-way
+    switches.
+  - C, side by side: the models are a line of facts under the title, with
+    menus; the instructions take a wider column with the box on the left
+    and Gauss's text on the right, each sentence the learner dropped struck
+    through and each one added marked "New", as the proposal card marks a
+    changed profile.
+
+  The controls work: the model choices, the box, its count, Save, Restore,
+  the fold. "Saved" is simulated. The bar at the bottom left switches the
+  direction, starts the box edited or not, and switches the theme. H hides
+  the bar.
+
+  Everything is simulated: Gauss's text is the paragraph in tutor.md today.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 25: settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="look.css">
+<style>
+.lead{margin:.9em 0 0;color:var(--ink-2);font-size:15px;max-width:36em}
+.sec+.lead,.sec+.say{margin-top:0}
+.say{margin:.2em 0 1em;color:var(--ink-2);font-size:14.5px;max-width:36em}
+/* a model choice: one backend, its options as rows to pick */
+.mc{display:grid;grid-template-columns:9.5em minmax(0,1fr);column-gap:1.2em;padding:.7em 0 .9em;border-bottom:1px solid var(--rule)}
+.mc>.k{font-weight:500;padding-top:.45em}
+.mc .opts{gap:6px}
+.mc .opt{font-family:var(--f-ui);font-size:15px;display:grid;grid-template-columns:14px minmax(0,1fr);column-gap:.8em;padding:.55em .85em .6em}
+.mc .opt .dot{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--rule-2);transform:translateY(3px)}
+.mc .opt[aria-pressed=true] .dot{border:4px solid var(--accent)}
+.mc .opt b{font-weight:500}
+.mc .opt .d{grid-column:2;color:var(--ink-2);font-size:13.5px;margin-top:.1em}
+.mc .opt .tag{font:500 10px/1.5 var(--f-label);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-left:.7em}
+.mc .seg2{margin-top:.25em}
+.mc .seg2 button{padding:.3em .9em;font-size:14px}
+.mc .d2{grid-column:2;color:var(--ink-2);font-size:13.5px;margin-top:.4em}
+.applied{display:flex;align-items:center;gap:.5em;margin:.8em 0 0;font-size:13.5px;color:var(--ink-3)}
+.applied.on{color:var(--ink-2)}
+/* the instructions box, as the Profile page's */
+.field{display:block;width:100%;min-height:12.5em;resize:vertical;background:var(--raised);border:1px solid var(--rule-2);border-radius:var(--r);
+  padding:.8em 1em;font-family:var(--f-read);font-size:18px;line-height:1.55;color:var(--ink)}
+.field:focus{outline:0;border-color:var(--ink-3)}
+.foot{display:flex;align-items:center;gap:1em;margin:.6em 0 0;font-size:13.5px;color:var(--ink-3)}
+.foot .r{margin-left:auto;display:flex;align-items:center;gap:1.2em}
+.foot .state{color:var(--ink-2)}
+.fixed{margin:1.3em 0 0;padding:.7em 1em;border:1px dashed var(--rule-2);border-radius:var(--r);font-size:14px;color:var(--ink-2)}
+.fixed .lbl{display:block;margin-bottom:.35em}
+.fold{margin:1.1em 0 0}
+.fold>.link{font-size:13.5px}
+.shipped{margin:.6em 0 0;padding:.1em 0 .1em 1em;border-left:2px solid var(--rule-2);font-family:var(--f-read);font-size:17px;line-height:1.55;color:var(--ink-2)}
+/* B: the form's foot */
+.formfoot{position:sticky;bottom:0;display:flex;align-items:center;gap:1.2em;margin:2.4em -14px 0;padding:12px 14px;background:var(--raised);
+  border:1px solid var(--rule-2);border-radius:var(--r);font-size:14px;color:var(--ink-2)}
+.formfoot .r{margin-left:auto;display:flex;gap:1em;align-items:center}
+/* C: a wider column, the box and Gauss's text side by side */
+.pg-col.wide{max-width:1080px}
+.facts{display:flex;flex-wrap:wrap;gap:.6em 2em;margin:1em 0 0;font-size:14.5px;color:var(--ink-2)}
+.facts label{display:flex;align-items:center;gap:.6em}
+.facts select{font:inherit;color:var(--ink);background:var(--raised);border:1px solid var(--rule-2);border-radius:7px;padding:.2em .5em}
+.facts .q{font-size:13.5px;color:var(--ink-3);flex-basis:100%}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}
+.two .shipped{margin:0;border:1px solid var(--rule);border-radius:var(--r);padding:.8em 1em;min-height:12.5em}
+.two .lbl{display:block;margin:0 0 .5em}
+.shipped s{text-decoration-color:var(--miss);color:var(--ink-3)}
+.shipped ins{text-decoration:none;color:var(--ink);background:var(--wash);border-radius:3px;padding:0 .15em}
+.shipped ins::before{content:"New";font:500 9.5px/1 var(--f-label);letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-right:.45em;vertical-align:.25em}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="bar"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const GAUSS = 'Plain, direct and warm, like a good tutor at a whiteboard. Short paragraphs, one idea at a time. A concrete example comes before the general statement, and every new term is defined where it first appears. Show the steps of a computation rather than only its result. No filler praise ("Great question!") and no summary of what you are about to say.';
+const EDITED = 'Plain, direct and warm, like a good tutor at a whiteboard. Short paragraphs, one idea at a time. A concrete example comes before the general statement, and every new term is defined where it first appears. Show the steps of a computation rather than only its result. Before a proof, say its idea in one sentence. Use British spelling.';
+const FIXED = 'A course\'s own style note adjusts this where they differ: the length of explanations, the kinds of questions, the pace. It never lifts the 600-word limit on teaching.';
+const LIMIT = 2000;
+const MODELS = {
+  claude: ['Claude courses', [
+    ['opus', 'Opus 5.5', 'Gauss\'s default.'],
+    ['sonnet', 'Sonnet 5.5', 'Quicker and lighter on your plan; in Gauss\'s trials it kept to the rules on quoting sources less well.'],
+  ]],
+  codex: ['Codex courses', [
+    ['terra', 'gpt-6.1-terra', 'Gauss\'s default. Medium effort, standard tier.'],
+    ['sol', 'gpt-6.2-sol', 'The model Gauss\'s Codex trials ran on. Medium effort, standard tier.'],
+  ]],
+};
+const NAME = {opus: 'Opus 5.5', sonnet: 'Sonnet 5.5', terra: 'gpt-6.1-terra', sol: 'gpt-6.2-sol'};
+
+/* ---------------- state ---------------- */
+const st = {dir: 'a', start: 'gauss', theme: 'frappe'};
+let saved, form, text, justSaved, fold;
+function reset() {
+  saved = {claude: 'opus', codex: 'terra', text: st.start === 'edited' ? EDITED : GAUSS};
+  form = {claude: saved.claude, codex: saved.codex};
+  text = saved.text; justSaved = ''; fold = false;
+}
+const $ = s => document.querySelector(s);
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const n = x => x.toLocaleString('en-GB');
+const sentences = s => s.trim().match(/[^.!?]+[.!?]+(?:["”)]+)?/g)?.map(x => x.trim()) ?? [];
+
+function topLine() {
+  return `<header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span>
+    <span class="here"><span class="t">Settings</span></span></nav></header>`;
+}
+/* what the box's foot says, as the Profile page's */
+function boxFoot() {
+  const len = text.trim().length, over = len > LIMIT, changed = text.trim() !== saved.text.trim();
+  const isGauss = text.trim() === GAUSS;
+  const state = changed ? (over ? 'Too long to save' : 'Not saved') : justSaved === 'text' ? 'Saved' : '';
+  const whose = isGauss ? 'Gauss\'s text' : 'Your edit';
+  return {len, over, changed, isGauss, state, whose};
+}
+function shippedText() {
+  if (st.dir !== 'c') return esc(GAUSS);
+  const mine = new Set(sentences(text)), gauss = sentences(GAUSS), had = new Set(gauss);
+  return gauss.map(s => mine.has(s) ? esc(s) : `<s>${esc(s)}</s>`).join(' ')
+    + sentences(text).filter(s => !had.has(s)).map(s => ` <ins>${esc(s)}</ins>`).join('');
+}
+function instructions(saveHere) {
+  const f = boxFoot();
+  const box = `<textarea class="field" id="box" aria-label="How the tutor teaches" spellcheck="true">${esc(text)}</textarea>`;
+  const foot = `<div class="foot"><span>${f.whose}</span><span class="${f.over ? 'st slip' : ''}">${n(f.len)} of ${n(LIMIT)} characters</span>${f.state ? `<span class="state">· ${f.state}</span>` : ''}
+    <span class="r">${f.isGauss ? '' : '<button class="link" type="button" data-act="restore">Restore Gauss\'s text</button>'}
+    ${saveHere ? `${f.changed ? '<button class="link" type="button" data-act="undo">Undo my changes</button>' : ''}<button class="btn sm" type="button" data-act="save-text" ${f.changed && !f.over && f.len ? '' : 'disabled'}>Save</button>` : ''}</span></div>`;
+  const fixed = `<div class="fixed"><span class="lbl">Always follows it, and cannot be changed</span>${FIXED}</div>`;
+  const head = `<div class="sec"><span class="lbl">How the tutor teaches</span></div>
+    <p class="say">Gauss's default style, which every course's tutor follows. Rewrite it or add to it. A course's own style note still adjusts it for that course. The rules Gauss relies on (its questions, grading, what counts as help, its tools) are not here and do not change.</p>`;
+  if (st.dir === 'c') {
+    return `${head}<div class="two"><div><span class="lbl">Yours</span>${box}${foot}</div>
+      <div><span class="lbl">Gauss's text${f.isGauss ? '' : ', with your changes marked'}</span><div class="shipped">${shippedText()}</div></div></div>${fixed}`;
+  }
+  const gaussFold = f.isGauss ? '' : `<div class="fold"><button class="link" type="button" data-act="fold" aria-expanded="${fold}">${fold ? 'Hide' : 'Show'} Gauss's text</button>
+    ${fold ? `<div class="shipped">${shippedText()}</div>` : ''}</div>`;
+  return `${head}${box}${foot}${gaussFold}${fixed}`;
+}
+function modelsA() {
+  return `<div class="sec"><span class="lbl">The tutor's model</span></div>
+    <p class="say">Each course's tutor runs on its course's backend. The planners, the grader and the judges keep their own models.</p>
+    ${Object.entries(MODELS).map(([b, [k, opts]]) => `<div class="mc"><span class="k">${k}</span><div class="opts">
+      ${opts.map(([v, t, d]) => `<button class="opt" type="button" data-model="${b}:${v}" aria-pressed="${form[b] === v}"><span class="dot"></span><span><b>${t}</b></span><span class="d">${d}</span></button>`).join('')}
+    </div></div>`).join('')}
+    <p class="applied ${justSaved === 'model' ? 'on' : ''}">${justSaved === 'model' ? 'Saved. ' : ''}A change applies from your next message in each open unit.</p>`;
+}
+function modelsB() {
+  return `<div class="sec"><span class="lbl">The tutor's model</span></div>
+    <p class="say">Each course's tutor runs on its course's backend. The planners, the grader and the judges keep their own models.</p>
+    ${Object.entries(MODELS).map(([b, [k, opts]]) => `<div class="mc"><span class="k">${k}</span><div><div class="seg2" role="group" aria-label="${k}">
+      ${opts.map(([v, t]) => `<button type="button" data-model="${b}:${v}" aria-pressed="${form[b] === v}">${t}</button>`).join('')}</div>
+      <p class="d2">${opts.find(([v]) => v === form[b])[2]}</p></div></div>`).join('')}`;
+}
+function modelsC() {
+  return `<div class="facts">${Object.entries(MODELS).map(([b, [k, opts]]) => `<label>${k}' tutor
+      <select data-select="${b}">${opts.map(([v, t]) => `<option value="${v}" ${form[b] === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`).join('')}
+    <span class="q">${justSaved === 'model' ? 'Saved. ' : ''}A model applies from your next message in each open unit. The planners, the grader and the judges keep their own.</span></div>`;
+}
+function formFoot() {
+  const changes = [];
+  if (form.claude !== saved.claude) changes.push(`Claude courses: ${NAME[form.claude]}`);
+  if (form.codex !== saved.codex) changes.push(`Codex courses: ${NAME[form.codex]}`);
+  if (text.trim() !== saved.text.trim()) changes.push('how the tutor teaches');
+  const over = text.trim().length > LIMIT;
+  return `<div class="formfoot">${changes.length ? `<span>Not saved: ${changes.join('; ')}.</span>` : `<span>${justSaved === 'all' ? 'Saved. ' : ''}Changes apply from your next message in each open unit.</span>`}
+    <span class="r">${changes.length ? '<button class="link" type="button" data-act="discard">Discard</button>' : ''}
+    <button class="btn sm" type="button" data-act="save-all" ${changes.length && !over ? '' : 'disabled'}>Save changes</button></span></div>`;
+}
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  const keep = document.activeElement?.id === 'box' ? [$('#box').selectionStart, $('#box').selectionEnd] : null;
+  const lead = '<p class="lead">How Gauss\'s tutors work in every course.</p>';
+  let body;
+  if (st.dir === 'a') body = `${lead}${modelsA()}${instructions(true)}`;
+  else if (st.dir === 'b') body = `${lead}${modelsB()}${instructions(false)}${formFoot()}`;
+  else body = `${modelsC()}${instructions(true)}`;
+  $('#app').innerHTML = `<div class="pg">${topLine()}<div class="pg-scroll"><div class="pg-col ${st.dir === 'c' ? 'wide' : ''}">
+    <h1 class="title">Settings</h1>${body}</div></div></div>`;
+  if (keep) { const b = $('#box'); b.focus(); b.setSelectionRange(...keep); }
+  bar();
+}
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'box') { text = e.target.value; justSaved = ''; render(); }
+});
+document.addEventListener('change', e => {
+  const s = e.target.closest?.('[data-select]');
+  if (s) { form[s.dataset.select] = s.value; saved[s.dataset.select] = s.value; justSaved = 'model'; render(); }
+});
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-act],[data-model],[data-bar]');
+  if (!t) return;
+  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; if (k !== 'theme') reset(); render(); return; }
+  if (t.dataset.model) {
+    const [b, v] = t.dataset.model.split(':'); form[b] = v;
+    if (st.dir !== 'b') { saved[b] = v; justSaved = 'model'; }
+    render(); return;
+  }
+  const act = t.dataset.act;
+  if (act === 'restore') { text = GAUSS; justSaved = ''; }
+  if (act === 'undo') text = saved.text;
+  if (act === 'fold') fold = !fold;
+  if (act === 'save-text') { saved.text = text.trim(); text = saved.text; justSaved = 'text'; }
+  if (act === 'discard') { form = {claude: saved.claude, codex: saved.codex}; text = saved.text; }
+  if (act === 'save-all') { saved = {...form, text: text.trim()}; text = saved.text; justSaved = 'all'; }
+  render();
+});
+document.addEventListener('keydown', e => { if (e.key === 'h' && e.target.tagName !== 'TEXTAREA') document.body.classList.toggle('nobar'); });
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, nm]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${st[k] === v}">${nm}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('dir', 'Direction', [['a', 'A: sections save on their own (chosen)'], ['b', 'B: one form, one Save (rejected)'], ['c', 'C: side by side (rejected)']])
+    + grp('start', 'The box', [['gauss', 'Gauss\'s text'], ['edited', 'Edited']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">H hides this</div>';
+}
+reset();
+render();
+</script>
+</body>
+</html>

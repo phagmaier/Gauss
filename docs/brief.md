@@ -116,9 +116,17 @@ stop anywhere and resume at the same segment and phase.
 
 ## Teaching style
 
-- A global default style, kept in a prompt file. Later, the learner can add
-  to or edit the teaching instructions in the app; the rules the app relies
-  on stay fixed, and the original is kept to revert to.
+- A global default style, kept in `prompts/tutor.md`. On the Settings page
+  the learner can rewrite or add to its first paragraph, app-wide: the
+  tone, examples first, terms defined, steps shown. The rest of the tutor's
+  instructions stay fixed: the tools, the assessment and help rules, the
+  question formats, and the paragraph saying that a course's style note
+  adjusts the default style and never lifts the 600-word limit. Gauss's own
+  text is kept. "Restore Gauss's text" puts it back in the box, and saving
+  text identical to it keeps no edit, so later changes to Gauss's text
+  reach the learner. A saved change reaches Claude and Codex tutors alike,
+  from the learner's next message in each open unit (the user's choices,
+  2026-11-24).
 - A per-course style note in plain text: how long explanations run, the mix of
   question kinds (many small exercises for code, written reconstruction for
   philosophy), and pace. The tutor proposes it at intake and the learner
@@ -350,13 +358,20 @@ what is due, and on-demand self-test.
   judges and the writers stay on Claude, whose evaluations chose them, so a
   Codex course needs both logins. A Codex course has no web search:
   Codex's search opens and reads pages, which a tutor never does here.
-- A Codex course's tutor and unit planner run on gpt-6.1-terra at medium
-  effort, always on the standard service tier, never the faster priority
-  tier (the user's choice, 2026-11-24, for cost). A Codex tutor writes and
-  runs commands in its workspace through Gauss's own file and command
-  tools, not Codex's, so that the engine can refuse each one with its
-  reason and no command can be granted wider access (the user's choice,
-  2026-11-24).
+- A Codex course's unit planner runs on gpt-6.1-terra, and its tutor on
+  the model chosen in Settings, gpt-6.1-terra by default; both run at
+  medium effort, always on the standard service tier, never the faster
+  priority tier (the user's choice, 2026-11-24, for cost). A Codex tutor
+  writes and runs commands in its workspace through Gauss's own file and
+  command tools, not Codex's, so that the engine can refuse each one with
+  its reason and no command can be granted wider access (the user's
+  choice, 2026-11-24).
+- The tutor's model is chosen app-wide on the Settings page: one choice for
+  Claude courses (Opus 5.5, the default, or Sonnet 5.5) and one for Codex
+  courses (gpt-6.1-terra, the default, or gpt-6.2-sol). Effort and tier
+  are not offered. The planners, the grader, the judges and the writers
+  keep their own models. A change applies from the learner's next message
+  in each open unit (the user's choices, 2026-11-24).
 - If Codex is unavailable when the learner opens a unit of a Codex
   course, the unit does not open. Gauss shows why and how to sign in to
   Gauss's Codex home. After signing in, the learner can open the unit
@@ -379,8 +394,7 @@ what it tried and what was turned down. Beyond them:
 - **Look**: Catppuccin Frappé, dark first, colours only through named roles
   so that a theme is one block. Reading text (titles, the tutor's text,
   questions) is CMU Serif with math at the same size; labels are IBM Plex
-  Mono small capitals. Not designed yet: a light theme, settings, narrow
-  screens.
+  Mono small capitals. Not designed yet: a light theme, narrow screens.
 - **Status** shows by form as well as colour, with its word beside it where
   there is room.
 - **Names**: segments and units are named by kind ("Segment 2 of 3",
@@ -411,6 +425,11 @@ what it tried and what was turned down. Beyond them:
   curriculum" ("Plan what comes next" once the course is finished). An
   attached source can be removed until the first proposal; a verified
   quote's citation carries a check.
+- **Settings**: one app-wide page, opened by "Settings" beside "Profile"
+  in the library's top line (piece 25, direction A). Picking a model
+  saves it at once. The instructions box works as the Profile page's,
+  with "Restore Gauss's text" added, and under an edit Gauss's text in a
+  fold. The paragraph that cannot be changed is shown apart from the box.
 
 ## Scope
 
@@ -421,9 +440,9 @@ and calibration, unit gates, testing out of a unit, review of what is due,
 detours, source ingestion with verified quotes, artifacts, workspace,
 transcripts, unit notes, library view, backup.
 
-Later: Codex backend, on-demand self-test on a scope the learner picks,
-cheat sheets, handwritten-work photos, teaching instructions the learner can
-edit, a model chosen in the app's settings; starred messages for the notes,
+Later: on-demand self-test on a scope the learner picks, cheat sheets,
+handwritten-work photos, teaching instructions the learner can edit, a
+model chosen in the app's settings; starred messages for the notes,
 if the generated notes miss what the learner wants kept. A desktop app only
 once everything else works, if at all.
 
