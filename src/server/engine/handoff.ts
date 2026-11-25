@@ -519,8 +519,9 @@ export function readStretch(
       case "assessment_end":
         run = undefined;
         detour = undefined;
+        // A self-test is ended by the learner, never skipped.
         say(
-          `[${capital(runWords[event.mode])} ${event.skipped ? "was skipped by the learner" : "ends"}.]`,
+          `[${capital(runWords[event.mode])} ${!event.skipped ? "ends" : event.mode === "self-test" ? "was ended partway by the learner" : "was skipped by the learner"}.]`,
         );
         break;
       // Only after the test. Its end's line comes after its last answer is

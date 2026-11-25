@@ -58,13 +58,6 @@ look for a shortcut that skips the target; give the smallest hint that
 unblocks, one per request. The new text is tried on a real model only in
 the user check (the user's choice, 2026-11-25).
 
-### 6.24 Running a self-test — todo
-
-**Needs:** 6.23.
-**Why:** An assessment runs in a unit's thread, offered on a card or started by "Review now" (`reviewThread` and `reviewCourse` in `engine/unit-chat.ts`, `engine/review-admission.ts`). Its rules are in `engine/assessment-rules.ts` (`runObjective`, `nextInRun`), and its header words in `engine/unit-turns.ts` (`runName` and the assessment header). A review in a finished unit is kept in `finishedReviews` (`shared/state.ts`, `engine/unit-record.ts`). A self-test starts at once from the course view, on the learner's scope, and asks a missed objective again only after another.
-**Do:** `UnitChats.selfTest`, and two routes under `/api/courses/:id/self-test`: one starts it, the other answers the setup's counts for a request (`SelfTestPick` from `record/review.ts`, as a schema in `shared/self-test.ts`). Thread choice: a segment or unit scope runs in that unit's thread, and the course or a mix where "Review now" would (`reviewThread`, made general). It is refused for Review now's reasons and when there is nothing to ask. In a finished unit it runs as a review does there, with `finishedReviews` made general to any assessment kept for a finished unit. In a self-test, `nextInRun` holds a missed objective's second question back until another objective has been asked since the miss, when one is still undone. Ending is the existing skip partway (`skipAssessment`). The header of a self-test turn is new model-facing text. It says what is under way and where it stands, and gives the lead-in rule: say only that a question follows, or the unit it comes from, never its subject. Before posing, fix the model solution and look for a shortcut that skips the target. When the learner writes while a question is open, give the smallest hint that unblocks, one per request. Feedback and the detour are as in review. Model-facing words that name only a review or a gate change with it: the finished unit's header lines on slipping and on the learner asking for a review (`unit-turns.ts`), and the handoff's lines for a run (`runWords` and "was skipped by the learner" in `handoff.ts`: a self-test is ended, not skipped). `tutor.md`'s "In a review or a gate" lines are shipped text and stay; the self-test's header gives their rules for it. The scripted backend runs a self-test, for `pnpm dev:fake`.
-**Done when:** engine tests on the fake backend with a temporary root show the following. A unit-scope self-test starts in that unit's thread, and a course one where Review now would. It is refused with a question or detour open, and with nothing to ask. After a miss, the next question is on another objective and the missed one comes back later; with one objective left, its second question follows the detour. Ending partway keeps what was answered and leaves the unit where it was. In a finished unit, the unit stays finished. A restart mid-run resumes it. The header's new lines arrive where they apply. `mise run check` passes.
-
 ### 6.25 The kinds picked, and passing over — todo
 
 **Needs:** 6.24.
@@ -81,7 +74,8 @@ the user check (the user's choice, 2026-11-25).
 - "End the self-test" beside the question or the detour's control, with its confirmation;
 - the head of a missed objective's second question ("A second question, after question N's miss");
 - the passed-over line;
-- the top line's position.
+- the top line's position;
+- the detour's control: `assessmentDetourStep` decides "Finish" by the question's number reaching `head.of`, which the self-test's interleave breaks (with a missed, b right, then a's second missed, it must read "Finish the self-test"); take it from the engine's next step, as the header's `detourButton` does.
 "What I know" and the exported transcript name a self-test answer; the slipping reason reads "missed in a review, a gate or a self-test".
 **Done when:** in Chromium on `pnpm dev:fake` with a fresh root, on "Calculus I": a self-test of unit 1 with choice questions runs in unit 1's thread, through a miss, its detour, the other objective, the second question and the end marker. The panel then leaves unit 1's objectives out for the hour, and its counts match the record. A self-test of unit 2 with only code passes over each objective, each with its line. A course self-test starts where Review now would, and ending it partway works. The pages read as piece 27, direction A shows. `mise run check` passes.
 

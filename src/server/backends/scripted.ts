@@ -39,9 +39,11 @@
 //   task 2.16a), opens the detour a miss starts with a reply that repeats
 //   where an "I don't know" got stuck (the learner then asks for another
 //   question, task 2.20), posts a question when the header allows one, in a
-//   check or an assessment (task 5.4), teaches in the teach phase, first
-//   reading with read_section each section the header says the segment
-//   draws on (task 4.8) and, in a source segment, presenting a lecture with
+//   check or an assessment (task 5.4: review, a gate or a self-test, whose
+//   kinds picked it does not read: it asks as it would in a review),
+//   teaches in the teach phase, first reading with read_section each
+//   section the header says the segment draws on (task 4.8) and, in a
+//   source segment, presenting a lecture with
 //   present_lecture, quoting counting.md's s3 twice when it reads that
 //   section, and otherwise replies in text, which after a fresh start says
 //   where the unit stands. In the test before a unit (task 5.6),

@@ -272,9 +272,9 @@ export interface DataRoot {
    * marked delivered. An applied curriculum decision writes curriculum.json
    * first, with each kept unit's plan, and throws CurriculumChangeRefused
    * if the change would now drop a unit that has started. With `finished`,
-   * the position is a finished unit's, held for a review the learner asked
-   * for: it goes in `finishedReviews`, and null takes it out, while the
-   * units in progress stay as they are.
+   * the position is a finished unit's, held for a review or a self-test
+   * the learner asked for: it goes in `finishedReviews`, and null takes it
+   * out, while the units in progress stay as they are.
    * Writes land in the order they were called, each on the one before.
    */
   writePosition(
@@ -2124,7 +2124,7 @@ function changeWaits(state: State): boolean {
   );
 }
 
-/** The state with the finished unit's review position set, or taken out with null. */
+/** The state with the finished unit's position, held for a review or a self-test, set, or taken out with null. */
 function withReview(
   state: State,
   unit: Slug,

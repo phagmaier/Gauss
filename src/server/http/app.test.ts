@@ -1051,6 +1051,81 @@ async function unitState() {
   return rest;
 }
 
+test("the self-test routes check the request, answer the setup's counts, start it in the unit's thread, and refuse with the engine's reason", async () => {
+  await approvedCourse();
+  const setup = setUp([[{ text: "A question follows." }]]);
+  await setup.dataRoot.appendEvidence(COURSE, {
+    kind: "answer",
+    recordedAt: CREATED,
+    objective: "basis-image",
+    question: {
+      kind: "choice",
+      prompt: QUESTION.prompt,
+      choices: QUESTION.choices,
+      answer: "A",
+    },
+    answer: {
+      kind: "choice",
+      questionId: "earlier",
+      choice: "A",
+      confidence: "90",
+    },
+    assisted: false,
+    verdict: "correct",
+  });
+  const path = `/api/courses/${COURSE}/self-test`;
+  const vectors = {
+    scope: { kind: "unit", unit: "vectors" },
+    kinds: ["choice"],
+    count: 5,
+  };
+
+  const none = await post(setup.app, `${path}/counts`, {
+    ...vectors,
+    kinds: [],
+  });
+  expect(none.status).toBe(400);
+  expect(await none.json()).toEqual({
+    error: "Pick at least one kind of question.",
+  });
+  expect(
+    (await post(setup.app, `${path}/counts`, { ...vectors, count: 7 })).status,
+  ).toBe(400);
+
+  const counts = await post(setup.app, `${path}/counts`, vectors);
+  expect(counts.status).toBe(200);
+  expect(await counts.json()).toEqual({ asks: 1, holds: 1, withinHour: 0 });
+
+  const nothing = await post(setup.app, path, {
+    ...vectors,
+    scope: { kind: "segment", unit: "vectors", segment: 1 },
+  });
+  expect(nothing.status).toBe(409);
+  expect(await nothing.json()).toEqual({
+    error: "There is nothing to ask in this scope yet.",
+  });
+  const gone = await post(setup.app, path, {
+    ...vectors,
+    scope: { kind: "unit", unit: "gone" },
+  });
+  expect(gone.status).toBe(404);
+
+  const start = await post(setup.app, path, vectors);
+  expect(start.status).toBe(200);
+  expect(await start.json()).toEqual({ ok: true, unit: "vectors" });
+  await settle(setup);
+  // Opening the unit in a new sitting offered review; the self-test took its place.
+  expect(
+    setup.units
+      .get(COURSE, "vectors")
+      ?.events()
+      .filter((e) => e.type === "assessment"),
+  ).toEqual([
+    { type: "assessment", mode: "review", stage: "offered", count: 1 },
+    { type: "assessment", mode: "self-test", stage: "on", count: 1 },
+  ]);
+});
+
 test("downloads the recorded thread of a finished unit without opening a chat", async () => {
   const { app, dataRoot, units } = setUp([]);
   await approvedCourse();

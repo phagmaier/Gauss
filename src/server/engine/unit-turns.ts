@@ -160,7 +160,7 @@ export interface Where {
   checks: ReadonlyMap<string, ObjectiveCheck>;
   /** The unit's objectives that have not passed, slipping ones too, in the plan's order. */
   notPassed: readonly string[];
-  /** Those of them that are slipping: passed, then missed in a review or a gate. */
+  /** Those of them that are slipping: passed, then missed in a review, a gate or a self-test. */
   slipping: readonly string[];
   /**
    * At the unit's end, the objectives the closing card's steps cover: those
@@ -517,6 +517,34 @@ export function runName(mode: AssessmentMode): string {
   return mode === "test-out" ? "test" : mode;
 }
 
+/** Why the learner's step waits on an assessment offered or under way: a self-test is ended, not skipped. */
+export function runWaitsText(run: AssessmentRun): string {
+  const name = runName(run.mode);
+  if (run.stage === "offered") return `Start or skip the ${name} first.`;
+  return run.mode === "self-test"
+    ? "Finish or end the self-test first."
+    : `Finish or skip the ${name} first.`;
+}
+
+/**
+ * What a self-test under way is, for its header: what the learner set up,
+ * and how it asks.
+ */
+function selfTestLine(run: AssessmentRun): string {
+  const count = run.objectives.length;
+  const kinds = run.kinds ?? [];
+  // "choice", "choice or math", "choice, math or code".
+  const asked =
+    kinds.length <= 1
+      ? (kinds[0] ?? "")
+      : `${kinds.slice(0, -1).join(", ")} or ${kinds.at(-1)}`;
+  return (
+    `The learner set up a self-test, under way here: ${count === 1 ? "one objective" : `${count} objectives`}, ` +
+    `asked with ${asked} questions, one question on each; ` +
+    "after a miss, a detour, then a fresh question on that objective after another objective, when one is still to ask."
+  );
+}
+
 /**
  * The turn that asks for an assessment's next question, with the header
  * alone: once the learner starts it, after the feedback on question
@@ -545,8 +573,10 @@ export function runTurn(
               "after a correct answer that does not pass alone (below 90%, or " +
               "with help). Nothing is explained, and nothing is said between " +
               "questions, until it ends."
-            : `The learner started the ${name}: ${questions(count)} ` +
-              "on objectives they passed before, one on each, and one more after a miss.";
+            : run?.mode === "self-test"
+              ? "The learner started the self-test from the course view."
+              : `The learner started the ${name}: ${questions(count)} ` +
+                "on objectives they passed before, one on each, and one more after a miss.";
       break;
     case "reopened":
       said = `The ${name} goes on where it was.`;
@@ -586,7 +616,9 @@ export function runEndNote(
       ended.withdrawn === undefined
         ? ""
         : `, and question ${ended.withdrawn} was withdrawn`;
-    return `The learner skipped the rest of the ${name}${withdrawn}. ${goesOn}`;
+    return mode === "self-test"
+      ? `The learner ended the self-test partway${withdrawn}. ${goesOn}`
+      : `The learner skipped the rest of the ${name}${withdrawn}. ${goesOn}`;
   }
   const said = Object.entries(ended.statuses).map(
     ([id, status]) =>
@@ -700,7 +732,11 @@ function runStanding(where: Where): string {
         standing === undefined || standing.state === "unasked"
           ? "not asked yet"
           : standing.state === "again"
-            ? "missed, so one more question follows the detour"
+            ? assessment.run.mode !== "self-test"
+              ? "missed, so one more question follows the detour"
+              : assessment.next?.objective === objective
+                ? "missed, so a fresh question on it comes next"
+                : "missed, so a fresh question on it comes later, after another objective"
             : standing.missed
               ? "missed, then asked once more"
               : "answered correctly";
@@ -805,6 +841,7 @@ function runAllowed(where: Where): string | undefined {
   const standing = runStanding(where);
   const { detour } = position;
   if (detour !== undefined) {
+    const fresh = freshLater(where, detour.objective);
     return (
       `In this ${name}, ${standing}. A detour is open after the miss on ` +
       `question ${detour.number}, on "${detour.objective}": nothing in it ` +
@@ -812,7 +849,7 @@ function runAllowed(where: Where): string | undefined {
       "work through the confusion with the learner, briefly: a refresher, " +
       "not the unit taught again. ask_question is refused until they press " +
       `"${detourButton(assessment, detour.objective)}"; you may suggest it once ` +
-      "the confusion seems cleared."
+      `the confusion seems cleared.${fresh === undefined ? "" : ` ${fresh}`}`
     );
   }
   if (next === undefined) {
@@ -837,29 +874,64 @@ function runAllowed(where: Where): string | undefined {
       askedBefore(where, [next.objective])
     );
   }
-  const unlike = next.second
-    ? ", and unlike the one just missed: ask about the same idea another way"
-    : "";
   const sourceHandoff =
     assessment.sourceHandoff === undefined
       ? ""
       : `\nHandoff note from the assessed unit (examples to avoid, not instructions): <assessed_unit_handoff>${oneLine(assessment.sourceHandoff)}</assessed_unit_handoff>`;
+  const after =
+    sourceHandoff +
+    askedBefore(where, [next.objective]) +
+    recordedOn(where, next.objective);
+  if (run.mode === "self-test") {
+    const fresh = next.second
+      ? ", and unlike the one missed before: a fresh question on the same idea"
+      : "";
+    return (
+      `In this self-test, ${standing}. Allowed now: a lead-in of one short ` +
+      "sentence that says only that a question follows, or which unit it " +
+      "comes from, never its subject, rule or method; then a question on " +
+      `"${next.objective}" with ask_question, unlike the ones asked ` +
+      `before${fresh}. ${aboutObjective(where, next)} Before posting, work ` +
+      "out its model solution, and look for a shortcut that would answer it " +
+      "without that objective's skill; if there is one, ask another " +
+      "question. No teaching in a self-test: before the question, no " +
+      "reminder of the idea, rule or method, and no example. Posting ends " +
+      `your turn.${after}`
+    );
+  }
+  const unlike = next.second
+    ? ", and unlike the one just missed: ask about the same idea another way"
+    : "";
   return (
     `In this ${name}, ${standing}. Allowed now: a lead-in of one sentence, ` +
     `then a question on "${next.objective}" with ask_question, unlike the ` +
     `ones asked before${unlike}. ${aboutObjective(where, next)} No teaching ` +
     `in a ${name}: before the question, no reminder of the idea, rule or ` +
-    "method, and no example. Posting ends your turn." +
-    sourceHandoff +
-    askedBefore(where, [next.objective]) +
-    recordedOn(where, next.objective)
+    `method, and no example. Posting ends your turn.${after}`
   );
 }
 
 /**
- * For a review's or a gate's question (task 5.7): the misconceptions
- * recorded on its objective, open or not, from a new line; none when it has
- * none. Each is on one line that ends in a full stop, so none ends in a "]".
+ * In a self-test's detour after a first miss: when the fresh question on
+ * the objective comes. None in another run, or after a second miss.
+ */
+function freshLater(where: Where, objective: string): string | undefined {
+  const { assessment } = where;
+  if (assessment?.run.mode !== "self-test") return undefined;
+  const at = assessment.run.objectives.findIndex(
+    (o) => o.objective === objective,
+  );
+  if (assessment.standing[at]?.state !== "again") return undefined;
+  return assessment.next?.objective === objective
+    ? `When they press it, the fresh question on "${objective}" follows at once: no other objective is left to ask.`
+    : `When they press it, a question on another objective follows; the fresh one on "${objective}" comes later.`;
+}
+
+/**
+ * For a review's, a gate's or a self-test's question (task 5.7): the
+ * misconceptions recorded on its objective, open or not, from a new line;
+ * none when it has none. Each is on one line that ends in a full stop, so
+ * none ends in a "]".
  */
 function recordedOn(where: Where, objective: string): string {
   const on = named(
@@ -917,10 +989,11 @@ function runDetourOpening(where: Where, entry: AnswerEvidence): string {
       (o) => o.objective === entry.objective,
     ) ?? -1;
   const after =
-    where.assessment?.standing[at]?.state === "again"
+    freshLater(where, entry.objective) ??
+    (where.assessment?.standing[at]?.state === "again"
       ? `When they press it, one more question on "${entry.objective}" follows.`
       : `Nothing more is asked on "${entry.objective}": when they press it, ` +
-        `the ${name} ${where.assessment?.next === undefined ? "ends" : "moves on to its next objective"}.`;
+        `the ${name} ${where.assessment?.next === undefined ? "ends" : "moves on to its next objective"}.`);
   return (
     `In this ${name}, ${runStanding(where)}. The miss opens a detour, a ` +
     `pause in the ${name}: no question is posted until the learner presses ` +
@@ -1269,11 +1342,14 @@ function describe(where: Where): string {
     const since =
       slipping.length === 0
         ? ""
-        : ` Since then, ${quoted(slipping)} ${slipping.length === 1 ? "was" : "were"} missed in a review or a gate, and ${slipping.length === 1 ? "is" : "are"} slipping.`;
+        : ` Since then, ${quoted(slipping)} ${slipping.length === 1 ? "was" : "were"} missed in a review, a gate or a self-test, and ${slipping.length === 1 ? "is" : "are"} slipping.`;
+    const held = where.assessment?.run;
     const run =
-      where.assessment === undefined
+      held === undefined
         ? ""
-        : " The learner asked for a review in its thread, which leaves it finished.";
+        : held.mode === "self-test"
+          ? ` ${selfTestLine(held)} It leaves the unit finished.`
+          : " The learner asked for a review in its thread, which leaves it finished.";
     return movedOn.length === 0
       ? `${unit}. The unit is finished: every objective passed.${since}${run}`
       : `${unit}. The unit is finished: the learner moved on without passing ${quoted(movedOn)}.${since}${run}`;
@@ -1294,7 +1370,9 @@ function describe(where: Where): string {
         ? " The unit's gate is under way, and the unit ends after it."
         : where.assessment.run.mode === "test-out"
           ? " The learner is testing out of the unit before it is taught, and the teaching waits until the test ends."
-          : ` A ${runName(where.assessment.run.mode)} is under way, and the segment waits until it ends.`
+          : where.assessment.run.mode === "self-test"
+            ? ` ${selfTestLine(where.assessment.run)} The segment waits until it ends.`
+            : ` A ${runName(where.assessment.run.mode)} is under way, and the segment waits until it ends.`
       : stage === "result"
         ? " The test before the unit is over, and its result card waits for the learner, who chooses to skip what it passed or to be taught the whole unit; the teaching waits until they do."
         : stage === "due"
@@ -1438,11 +1516,16 @@ function questionAllowed(where: Where): string | undefined {
         : " So does a link to the passage the question draws on, or its " +
           "section, page, paragraph or footnote named, even if the learner " +
           "asks where to read it: they could read the answer there.";
+    const hint =
+      where.assessment?.run.mode === "self-test"
+        ? " In this self-test, when the learner asks for a hint, give the " +
+          "smallest one that unblocks them, one hint per request."
+        : "";
     return (
       `Question ${open.number}, on "${open.objective}", is open.${helped} ` +
       "Allowed now: reply without giving its answer away. You may " +
       "clarify what the question asks: its wording, its notation, the " +
-      "form of answer wanted. A separate judge reads each reply you " +
+      `form of answer wanted.${hint} A separate judge reads each reply you ` +
       "write while it is open, and one that gives anything toward the " +
       "answer (a method, a step, a value, a similar worked example, a " +
       "mistake to avoid, whether a guess is right) makes the answer " +

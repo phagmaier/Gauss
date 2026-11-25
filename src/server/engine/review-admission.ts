@@ -1,5 +1,6 @@
-// Admits review to one unit chat. Owns the held offer and the message
-// barrier; uses the chat's queue, record and assessment lifecycle.
+// Admits review, and a self-test the learner sets up, to one unit chat.
+// Owns the held offer and the message barrier; uses the chat's queue,
+// record and assessment lifecycle.
 
 import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
@@ -8,8 +9,8 @@ import type { AssessmentRun } from "../../shared/state.ts";
 import { pickForReview, type ReviewPick } from "../record/review.ts";
 import { isLastSegment } from "./check-rules.ts";
 import type { ChatResult } from "./conversation.ts";
-import type { UnitRecord } from "./unit-record.ts";
-import { runName } from "./unit-turns.ts";
+import type { SelfTestSetUp, UnitRecord } from "./unit-record.ts";
+import { runWaitsText } from "./unit-turns.ts";
 
 interface OfferContext {
   units: readonly StoredUnit[];
@@ -22,6 +23,13 @@ export interface ReviewAdmission {
   segmentClosed(last: boolean): void;
   /** Inside the chat queue; the requested pick has already chosen this thread. */
   request(objectives: ReviewPick[] | undefined): Promise<ChatResult>;
+  /**
+   * Inside the chat queue; the self-test's pick has already chosen this
+   * thread. Refused for Review now's reasons, but a review card offered
+   * here, as opening the thread can offer one, gives way to it, as it does
+   * to a message: it is withdrawn, and what it held waits on the self-test.
+   */
+  selfTest(setUp: SelfTestSetUp): Promise<ChatResult>;
   sendMessage(send: () => void): void;
   settled(): Promise<void> | undefined;
 }
@@ -43,6 +51,8 @@ export function createReviewAdmission({
   saveOffer,
   start,
   skip,
+  withdrawCard,
+  startSelfTest,
 }: {
   record: Pick<UnitRecord, "position" | "finished">;
   plan: Plan;
@@ -60,6 +70,9 @@ export function createReviewAdmission({
   saveOffer(run: AssessmentRun, context: OfferContext): Promise<void>;
   start(run: AssessmentRun): Promise<void>;
   skip(): Promise<void>;
+  /** Takes the card offered out, with nothing else moving on. */
+  withdrawCard(): Promise<void>;
+  startSelfTest(setUp: SelfTestSetUp, context: OfferContext): Promise<void>;
 }): ReviewAdmission {
   let held = false;
   let offering = false;
@@ -121,17 +134,19 @@ export function createReviewAdmission({
     }
   }
 
-  function requestBlocker(): string | undefined {
+  /**
+   * Why the learner cannot start a run here now, if they cannot.
+   * `cardGivesWay`: a review card offered is no reason.
+   */
+  function requestBlocker(cardGivesWay = false): string | undefined {
     const { position, finished } = record;
     if (position.pendingSegmentOverride !== undefined) return overridePending;
     if (tutor.busy() || feedbackPending()) {
       return "The tutor is writing. Wait until it has finished, or stop it.";
     }
     const run = position.assessment;
-    if (run !== undefined) {
-      return run.stage === "offered"
-        ? `Start or skip the ${runName(run.mode)} first.`
-        : `Finish or skip the ${runName(run.mode)} first.`;
+    if (run !== undefined && !(cardGivesWay && reviewOffered())) {
+      return runWaitsText(run);
     }
     if (finished !== undefined) return undefined;
     if (position.testOut?.stage === "result") {
@@ -158,6 +173,13 @@ export function createReviewAdmission({
     return undefined;
   }
 
+  /** Why nothing can start while packages install, or an install's result is unsaved. */
+  function installBlocked(): string | undefined {
+    return installing()
+      ? "Packages are being installed. Wait until the install finishes."
+      : unsavedInstall();
+  }
+
   function sittingOpened(): Promise<void> {
     return exclusive(offer);
   }
@@ -176,13 +198,8 @@ export function createReviewAdmission({
       const run = record.position.assessment;
       let offered = run?.mode === "review" ? run : undefined;
       if (offered?.stage === "on") return { ok: true };
-      if (installing()) {
-        return refused(
-          "Packages are being installed. Wait until the install finishes.",
-        );
-      }
-      const installFailure = unsavedInstall();
-      if (installFailure !== undefined) return refused(installFailure);
+      const installBlocker = installBlocked();
+      if (installBlocker !== undefined) return refused(installBlocker);
       if (offered === undefined) {
         const blocker = requestBlocker();
         if (blocker !== undefined) return refused(blocker);
@@ -199,6 +216,15 @@ export function createReviewAdmission({
       // Unlike an automatic offer, Review now refreshes the cooldown after
       // saving and showing the start and queuing its first tutor turn.
       await markOffered(now(), { requested: true });
+      return { ok: true };
+    },
+    async selfTest(setUp) {
+      const blocker = installBlocked() ?? requestBlocker(true);
+      if (blocker !== undefined) return refused(blocker);
+      if (reviewOffered()) await withdrawCard();
+      // A review held for the segment's close stays held: the self-test's
+      // scope is the learner's, not what is due.
+      await startSelfTest(setUp, await readOfferContext());
       return { ok: true };
     },
     sendMessage(send) {

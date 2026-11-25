@@ -3,11 +3,11 @@
 // calibration (tasks 2.26 and 2.29), the artifacts the tutor shows (task
 // 3.6), disputes of recorded answers' grades (task 3.8), "Open" on a code
 // question's files (task 3.22), the learner profile (task 5.8), the
-// course's planning conversation (task 5.38), deleting a course (task
-// 5.18), and the sources attached in an intake (piece 22). Each chat has an
-// event stream from the server to the page, and a
-// POST for each thing the learner does in it. Only Gauss's own page may use
-// any of them.
+// course's planning conversation (task 5.38), Review now and the self-test
+// from the course view, deleting a course (task 5.18), and the sources
+// attached in an intake (piece 22). Each chat has an event stream from the
+// server to the page, and a POST for each thing the learner does in it.
+// Only Gauss's own page may use any of them.
 
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -51,6 +51,10 @@ import {
   type ProfileView,
 } from "../../shared/profile.ts";
 import { AnswerPost, OpenFilePost } from "../../shared/question.ts";
+import {
+  type SelfTestCounts,
+  SelfTestRequest,
+} from "../../shared/self-test.ts";
 import {
   type AppSettings,
   type SettingsView,
@@ -867,6 +871,31 @@ export function createApp(options: {
     return started.ok
       ? c.json({ ok: true, unit: started.unitId } satisfies ReviewStarted)
       : c.json({ error: started.error }, started.status);
+  });
+
+  // "Start the self-test" on the course view: starts the self-test the body
+  // sets up in a unit's thread, which the page then opens, answered as
+  // Review now is.
+  app.post("/api/courses/:id/self-test", async (c) => {
+    const body = await readBody(c, SelfTestRequest);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const started = await units.selfTest(c.req.param("id"), body.data);
+    return started.ok
+      ? c.json({ ok: true, unit: started.unitId } satisfies ReviewStarted)
+      : c.json({ error: started.error }, started.status);
+  });
+
+  // The self-test setup's line: for the same body as the start, which the
+  // panel holds as the learner sets it up, how many objectives it would
+  // ask, how many the scope holds, and how many the hour leaves out. The
+  // kinds picked do not change the counts, but are checked as for a start.
+  app.post("/api/courses/:id/self-test/counts", async (c) => {
+    const body = await readBody(c, SelfTestRequest);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const read = await units.selfTestCounts(c.req.param("id"), body.data);
+    return read.ok
+      ? c.json(read.counts satisfies SelfTestCounts)
+      : c.json({ error: read.error }, read.status);
   });
 
   /** Runs the handler with the open chat of the unit the path names, or answers 404. */

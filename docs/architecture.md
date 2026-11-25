@@ -116,9 +116,10 @@ Rules no single file shows:
   agents and modules with its error path, the segment's phases and own
   steps, and each learner action's guard) with
   `unit-progression.ts` (post-answer checkpoints and continuation),
-  `review-admission.ts` (admission to one unit chat; course-wide thread
-  selection stays in `unit-chat.ts`), `unit-aids.ts` (the tutor's aids,
-  quotes, lecture and searches, refused while a question is open),
+  `review-admission.ts` (admission of review and a self-test to one unit
+  chat; course-wide thread selection stays in `unit-chat.ts`),
+  `unit-aids.ts` (the tutor's aids, quotes, lecture and searches, refused
+  while a question is open),
   `unit-proposals.ts` (the tutor's style note and curriculum change
   proposals, their cards, and the changes other chats and the course
   planner tell a chat; the course's one-proposal block stays in
@@ -139,9 +140,9 @@ Rules no single file shows:
   `unit-end.ts` (the closing card, Move on, going over again, and the
   gate; made for each loaded unit),
   `unit-assessments.ts` (an assessment run from its start to its end:
-  review, the gate and the test before a unit, the test's result card and
-  the learner's answer to it, and why the unit's own steps wait meanwhile;
-  made for each loaded unit),
+  review, the gate, the test before a unit and a self-test, the test's
+  result card and the learner's answer to it, and why the unit's own
+  steps wait meanwhile; made for each loaded unit),
   `unit-header.ts` (each turn's header: where the unit stands and what it
   says once, the notes, the record's notices and the learner's decisions,
   each delivered once; the new session that takes over when the tutor's

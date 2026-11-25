@@ -2903,7 +2903,7 @@ test("a finished unit missed since in another unit's review stays finished, and 
   expect(chat.say("Hello.")).toEqual({ ok: true });
   await chat.settled();
   expect(after.backend.received[0]?.text).toBe(
-    '[Unit 1 of 2, "The derivative". The unit is finished: every objective passed. Since then, "secant-slope" was missed in a review or a gate, and is slipping. Message from the learner. Allowed now: reply to the learner. No teaching tools.]\nHello.',
+    '[Unit 1 of 2, "The derivative". The unit is finished: every objective passed. Since then, "secant-slope" was missed in a review, a gate or a self-test, and is slipping. Message from the learner. Allowed now: reply to the learner. No teaching tools.]\nHello.',
   );
 });
 

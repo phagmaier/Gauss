@@ -7,7 +7,7 @@ import type {
   OpenQuestion,
   UnitPosition,
 } from "../../shared/state.ts";
-import { nextInRun } from "./assessment-rules.ts";
+import { leavesUnitAsWas, nextInRun } from "./assessment-rules.ts";
 import type { Turn } from "./conversation.ts";
 import type { Answered, UnitRecord } from "./unit-record.ts";
 import {
@@ -54,14 +54,14 @@ export function feedbackCheckpoint({
   };
 }
 
-/** Saved with the end of review so the resumed check can report the failure. */
+/** Saved with the end of a review or self-test so the resumed check can report the failure. */
 export function checkpointAfterAssessment(
   { assessment, phase, afterAnswer }: UnitPosition,
   skipped: boolean,
 ): Checkpoint | undefined {
   if (
     !skipped &&
-    assessment?.mode === "review" &&
+    leavesUnitAsWas(assessment?.mode) &&
     phase === "check" &&
     afterAnswer?.feedbackFailed === true
   ) {
@@ -138,7 +138,7 @@ export function createUnitProgression({
   function waitingInRun(run: AssessmentRun, count: number): boolean {
     const { position, runAnswers, finished } = record;
     return (
-      (finished === undefined || run.mode === "review") &&
+      (finished === undefined || leavesUnitAsWas(run.mode)) &&
       position.assessment?.stage === "on" &&
       position.assessment.from === run.from &&
       position.openQuestion === undefined &&
@@ -311,7 +311,9 @@ export function createUnitProgression({
       } else if (
         record.position.assessment === undefined &&
         pending.feedbackFailed === true &&
-        record.recordedAnswer(pending.questionId)?.assessment?.mode === "review"
+        leavesUnitAsWas(
+          record.recordedAnswer(pending.questionId)?.assessment?.mode,
+        )
       ) {
         await afterReview(pending.step !== "stopped");
       } else {

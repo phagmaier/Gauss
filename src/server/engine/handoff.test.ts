@@ -138,6 +138,31 @@ test("a stretch is written out with the tutor's text joined, the learner's messa
   expect(stretch.worthReading).toBe(true);
 });
 
+test("a self-test the learner ends partway is said to be ended, and a review skipped to be skipped", () => {
+  const stretch = readStretch(
+    [
+      { type: "assessment", mode: "self-test", stage: "on", count: 2 },
+      {
+        type: "assessment_end",
+        mode: "self-test",
+        skipped: true,
+        statuses: {},
+      },
+      { type: "assessment", mode: "review", stage: "on", count: 1 },
+      { type: "assessment_end", mode: "review", skipped: true, statuses: {} },
+    ],
+    { plan: PLAN, answers: new Map() },
+  );
+  expect(stretch.text).toBe(
+    [
+      "[A self-test the learner set up begins: questions without teaching, 2 objectives.]",
+      "[A self-test the learner set up was ended partway by the learner.]",
+      "[A review begins: questions without teaching, one objective.]",
+      "[A review was skipped by the learner.]",
+    ].join("\n\n"),
+  );
+});
+
 test("an unsure miss is not named confident, a miss with help says so, and a detour reopened after a restart keeps its number", () => {
   const stretch = readStretch(
     [

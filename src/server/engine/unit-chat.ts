@@ -45,11 +45,15 @@
 // until the segment closes (task 5.25); review the learner asks for with
 // "Review now", started at once in the unit in progress opened last, or
 // in a finished unit, which stays finished; the unit's gate (unit-end.ts);
-// or the test before a unit. Its rules are assessment-rules.ts's; a run
+// the test before a unit; or a self-test the learner sets up on the course
+// view, started at once with no card in the unit its scope names, or for
+// the course or a mix where "Review now" would run, and kept in a finished
+// unit as a review is. Its rules are assessment-rules.ts's; a run
 // from its start to its end, and the test's result card, are
 // unit-assessments.ts's. A message sent while a review's card waits skips
-// it, and one sent while the gate's waits leaves it waiting. An answer on
-// another unit's objective is told to that unit's chat if it is open.
+// it, and so does a self-test; one sent while the gate's waits leaves it
+// waiting. An answer on another unit's objective is told to that unit's
+// chat if it is open.
 // The engine composes every turn's header (unit-header.ts, in unit-turns.ts's
 // words) and writes the unit's position to state.json after every change,
 // before the page is told, so a restart reopens the unit where it was
@@ -78,6 +82,7 @@ import type { StoredUnit } from "../../shared/curriculum.ts";
 import type { PageEvent } from "../../shared/events.ts";
 import type {
   AnswerEvidence,
+  AssessmentMode,
   DisputeEvidence,
   EvidenceEntry,
   OverrideEvidence,
@@ -85,6 +90,10 @@ import type {
 import type { Misconception } from "../../shared/misconception.ts";
 import type { PackageReceipt } from "../../shared/packages.ts";
 import type { AnswerPost } from "../../shared/question.ts";
+import type {
+  SelfTestCounts,
+  SelfTestRequest,
+} from "../../shared/self-test.ts";
 import {
   type AppSettings,
   type TutorModelPost,
@@ -95,7 +104,12 @@ import type { OpenQuestion, State, UnitPosition } from "../../shared/state.ts";
 import type { SessionBackends, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
 import type { DataRoot } from "../record/data-root.ts";
-import { pickForReview, type ReviewPick } from "../record/review.ts";
+import {
+  pickForReview,
+  pickForSelfTest,
+  type ReviewPick,
+  type SelfTestPick,
+} from "../record/review.ts";
 import { unitStatus } from "../record/status.ts";
 import { amendCurriculumTool } from "../tools/amend-curriculum.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
@@ -109,6 +123,7 @@ import {
   searchSourceTool,
   viewPageTool,
 } from "../tools/sources.ts";
+import { leavesUnitAsWas } from "./assessment-rules.ts";
 import {
   isLastSegment,
   nextSegment,
@@ -167,7 +182,11 @@ import {
 } from "./unit-progression.ts";
 import { createUnitProposals } from "./unit-proposals.ts";
 import { createUnitQuestions, QUESTION_STOPPED } from "./unit-questions.ts";
-import { openUnitRecord, type UnitRecord } from "./unit-record.ts";
+import {
+  openUnitRecord,
+  type SelfTestSetUp,
+  type UnitRecord,
+} from "./unit-record.ts";
 import {
   freshTurn,
   readyTurn,
@@ -299,9 +318,10 @@ export type OpenResult =
   | { ok: true; chat: UnitChat }
   | { ok: false; status: 404 | 409; error: string };
 
-export type ReviewResult =
-  | { ok: true; unitId: Slug }
-  | { ok: false; status: 404 | 409; error: string };
+export type ReviewResult = { ok: true; unitId: Slug } | Refusal;
+
+/** Why the course view's request is refused, as the route answers it. */
+type Refusal = { ok: false; status: 404 | 409; error: string };
 
 /**
  * The unit chats opened since the server started, one per unit. A chat
@@ -329,6 +349,18 @@ export interface UnitChats extends CourseHolder {
    * with the unit's reason.
    */
   reviewNow(courseId: string): Promise<ReviewResult>;
+  /**
+   * "Start the self-test" on the course view: opens the unit whose thread
+   * holds it (`selfTestThread`) and starts there, at once and with no card,
+   * a self-test of what `pickForSelfTest` picks for the request. Refused
+   * with nothing to ask, or with the unit's reason, as Review now is.
+   */
+  selfTest(courseId: string, request: SelfTestRequest): Promise<ReviewResult>;
+  /** What the self-test's setup says of a request: how many it would ask, and of how many. */
+  selfTestCounts(
+    courseId: string,
+    request: SelfTestRequest,
+  ): Promise<{ ok: true; counts: SelfTestCounts } | Refusal>;
   /** The course's side of its planning conversation (task 5.38). */
   courseDesk(courseId: Slug): CourseDesk;
   /**
@@ -432,6 +464,8 @@ interface ChatOptions {
    * if not given.
    */
   order?: ChoiceOrder;
+  /** The random source a self-test's pick draws on, in [0, 1); Math.random if not given. */
+  random?: () => number;
   /** Commits the record once a segment closes or a unit ends (task 2.25); none if not given. */
   backup?: Backup;
   /**
@@ -598,7 +632,16 @@ export function createUnitChats(options: ChatOptions): UnitChats {
     }
   }
 
-  async function reviewCourse(courseId: string): Promise<ReviewResult> {
+  const now = options.now ?? (() => new Date());
+  const random = options.random ?? Math.random;
+
+  /** The course's approved units, and when each was opened, or why there are none. */
+  async function approvedUnits(
+    courseId: string,
+    notApproved: string,
+  ): Promise<
+    { units: readonly StoredUnit[]; openedAt: Record<string, string> } | Refusal
+  > {
     const stored = await dataRoot.readCourse(courseId);
     const curriculum = stored?.curriculum ?? undefined;
     if (curriculum === undefined) {
@@ -609,32 +652,25 @@ export function createUnitChats(options: ChatOptions): UnitChats {
       };
     }
     if (curriculum.approval.status !== "approved") {
-      return {
-        ok: false,
-        status: 409,
-        error: "The curriculum is not approved yet, so nothing is reviewed.",
-      };
+      return { ok: false, status: 409, error: notApproved };
     }
-    const [state, evidence] = await Promise.all([
-      dataRoot.readState(courseId),
-      dataRoot.readEvidence(courseId),
-    ]);
-    const thread = reviewThread(
-      curriculum.units,
-      stored?.course.unitsOpenedAt ?? {},
-      state,
-      evidence,
-      (options.now ?? (() => new Date()))(),
-    );
-    if (typeof thread === "string") {
-      return { ok: false, status: 409, error: thread };
-    }
-    const { unit, number, objectives } = thread;
+    return {
+      units: curriculum.units,
+      openedAt: stored?.course.unitsOpenedAt ?? {},
+    };
+  }
+
+  /** Opens the thread's unit and starts the run there, its refusal named by the unit. */
+  async function startIn(
+    courseId: string,
+    { unit, number }: { unit: StoredUnit; number: number },
+    start: (chat: OpenableChat) => Promise<ChatResult>,
+  ): Promise<ReviewResult> {
     const opened = await open(courseId, unit.id);
     if (!opened.ok) return opened;
     const chat = chats.get(key(courseId, unit.id));
     if (chat === undefined) throw new Error("The unit's chat was not kept.");
-    const started = await chat.reviewNow(objectives);
+    const started = await start(chat);
     return started.ok
       ? { ok: true, unitId: unit.id }
       : {
@@ -642,6 +678,114 @@ export function createUnitChats(options: ChatOptions): UnitChats {
           status: 409,
           error: `In unit ${number}, ${unit.title}: ${started.error}`,
         };
+  }
+
+  async function reviewCourse(courseId: string): Promise<ReviewResult> {
+    const course = await approvedUnits(
+      courseId,
+      "The curriculum is not approved yet, so nothing is reviewed.",
+    );
+    if ("error" in course) return course;
+    const [state, evidence] = await Promise.all([
+      dataRoot.readState(courseId),
+      dataRoot.readEvidence(courseId),
+    ]);
+    const thread = reviewThread(
+      course.units,
+      course.openedAt,
+      state,
+      evidence,
+      now(),
+    );
+    if (typeof thread === "string") {
+      return { ok: false, status: 409, error: thread };
+    }
+    return startIn(courseId, thread, (chat) =>
+      chat.reviewNow(thread.objectives),
+    );
+  }
+
+  /** What a self-test of the request would ask now, with the course as read for it. */
+  async function pickSelfTest(
+    courseId: string,
+    { scope, count }: SelfTestRequest,
+  ): Promise<
+    | {
+        units: readonly StoredUnit[];
+        openedAt: Record<string, string>;
+        state: State;
+        evidence: EvidenceEntry[];
+        pick: SelfTestPick;
+      }
+    | Refusal
+  > {
+    const course = await approvedUnits(
+      courseId,
+      "The curriculum is not approved yet, so nothing can be self-tested.",
+    );
+    if ("error" in course) return course;
+    if (scope.kind === "unit" || scope.kind === "segment") {
+      const unit = course.units.find((u) => u.id === scope.unit);
+      if (unit === undefined) {
+        return {
+          ok: false,
+          status: 404,
+          error: `There is no unit "${scope.unit}" in the course "${courseId}".`,
+        };
+      }
+      const segments = unit.plan?.segments.length ?? 0;
+      if (scope.kind === "segment" && scope.segment >= segments) {
+        return {
+          ok: false,
+          status: 404,
+          error: `The unit "${unit.title}" has no segment ${scope.segment + 1} planned.`,
+        };
+      }
+    }
+    const [state, evidence] = await Promise.all([
+      dataRoot.readState(courseId),
+      dataRoot.readEvidence(courseId),
+    ]);
+    const pick = pickForSelfTest(course.units, evidence, {
+      scope,
+      count,
+      at: now(),
+      random,
+    });
+    return { ...course, state, evidence, pick };
+  }
+
+  async function selfTestCourse(
+    courseId: string,
+    request: SelfTestRequest,
+  ): Promise<ReviewResult> {
+    const picked = await pickSelfTest(courseId, request);
+    if ("error" in picked) return picked;
+    const { pick } = picked;
+    if (pick.objectives.length === 0) {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          pick.holds === 0
+            ? "There is nothing to ask in this scope yet."
+            : "There is nothing to ask in this scope now: its objectives were all answered within the hour.",
+      };
+    }
+    const thread = selfTestThread(
+      picked.units,
+      picked.openedAt,
+      picked.state,
+      picked.evidence,
+      request.scope,
+      pick.objectives,
+    );
+    if (typeof thread === "string") {
+      return { ok: false, status: 409, error: thread };
+    }
+    return startIn(courseId, thread, (chat) =>
+      chat.selfTest({ objectives: pick.objectives, kinds: request.kinds }),
+    );
   }
 
   return {
@@ -656,6 +800,16 @@ export function createUnitChats(options: ChatOptions): UnitChats {
       });
       reviewRequests.set(courseId, request);
       return request;
+    },
+    selfTest: selfTestCourse,
+    async selfTestCounts(courseId, request) {
+      const picked = await pickSelfTest(courseId, request);
+      if ("error" in picked) return picked;
+      const { objectives, holds, withinHour } = picked.pick;
+      return {
+        ok: true,
+        counts: { asks: objectives.length, holds, withinHour },
+      };
     },
     courseDesk(courseId) {
       const desk = workspace(courseId).desk;
@@ -736,8 +890,7 @@ export function createUnitChats(options: ChatOptions): UnitChats {
 
 /**
  * The thread and objective pick from one course snapshot. Continue an
- * existing review first; otherwise use the unit in progress opened last
- * or the finished unit that holds the first due objective.
+ * existing review first; otherwise go where `requestedThread` says.
  */
 function reviewThread(
   units: readonly StoredUnit[],
@@ -746,15 +899,7 @@ function reviewThread(
   evidence: readonly EvidenceEntry[],
   at: Date,
 ): { unit: StoredUnit; number: number; objectives?: ReviewPick[] } | string {
-  const numbered = units.map((unit, i) => ({ unit, number: i + 1 }));
-  const active = numbered.find(({ unit }) => {
-    const kept = state.finishedReviews?.[unit.id]?.assessment;
-    const running = state.units[unit.id]?.assessment;
-    return (
-      kept?.mode === "review" ||
-      (running?.mode === "review" && running.stage === "on")
-    );
-  });
+  const active = threadRunning(units, state, (mode) => mode === "review");
   if (active !== undefined) return active;
   const objectives = pickForReview(units, evidence, {
     at,
@@ -762,13 +907,81 @@ function reviewThread(
     leaveOut: [],
   });
   if (objectives.length === 0) return NOTHING_DUE;
+  const thread = requestedThread(units, openedAt, state, evidence, objectives);
+  return thread === undefined
+    ? "No unit can hold a review now."
+    : { ...thread, objectives };
+}
+
+/**
+ * The thread of a self-test of `picked`: the unit a segment or unit scope
+ * names, or for the course or a mix, where Review now would run. A review
+ * or self-test under way in a unit's thread holds that thread, as Review
+ * now continues a review there, so the self-test is refused with its reason
+ * rather than run elsewhere.
+ */
+function selfTestThread(
+  units: readonly StoredUnit[],
+  openedAt: Readonly<Record<string, string>>,
+  state: State,
+  evidence: readonly EvidenceEntry[],
+  scope: SelfTestRequest["scope"],
+  picked: readonly ReviewPick[],
+): { unit: StoredUnit; number: number } | string {
+  if (scope.kind === "unit" || scope.kind === "segment") {
+    const at = units.findIndex((u) => u.id === scope.unit);
+    const unit = units[at];
+    if (unit === undefined) throw new Error("The scope's unit is gone.");
+    return { unit, number: at + 1 };
+  }
+  return (
+    threadRunning(units, state, leavesUnitAsWas) ??
+    requestedThread(units, openedAt, state, evidence, picked) ??
+    "No unit can hold a self-test now."
+  );
+}
+
+/**
+ * The unit whose thread holds a run under way of a mode `counts` takes, a
+ * finished unit's included, if one does.
+ */
+function threadRunning(
+  units: readonly StoredUnit[],
+  state: State,
+  counts: (mode: AssessmentMode) => boolean,
+): { unit: StoredUnit; number: number } | undefined {
+  const at = units.findIndex(({ id }) => {
+    const kept = state.finishedReviews?.[id]?.assessment;
+    const running = state.units[id]?.assessment;
+    return (
+      (kept !== undefined && counts(kept.mode)) ||
+      (running?.stage === "on" && counts(running.mode))
+    );
+  });
+  const unit = units[at];
+  return unit === undefined ? undefined : { unit, number: at + 1 };
+}
+
+/**
+ * Where a run the learner asks for on the course view goes when no unit is
+ * named: the unit in progress opened last, or else the finished unit that
+ * holds the first of the `picked` objectives a finished unit holds.
+ */
+function requestedThread(
+  units: readonly StoredUnit[],
+  openedAt: Readonly<Record<string, string>>,
+  state: State,
+  evidence: readonly EvidenceEntry[],
+  picked: readonly ReviewPick[],
+): { unit: StoredUnit; number: number } | undefined {
+  const numbered = units.map((unit, i) => ({ unit, number: i + 1 }));
   const time = (id: string) =>
     Object.hasOwn(openedAt, id) ? Date.parse(openedAt[id] ?? "") : -Infinity;
   const [inProgress] = numbered
     .filter(({ unit }) => Object.hasOwn(state.units, unit.id))
     .sort((a, b) => time(b.unit.id) - time(a.unit.id) || a.number - b.number);
-  if (inProgress !== undefined) return { ...inProgress, objectives };
-  for (const { unit: id } of objectives) {
+  if (inProgress !== undefined) return inProgress;
+  for (const { unit: id } of picked) {
     const found = numbered.find(({ unit }) => unit.id === id);
     const status =
       found === undefined
@@ -778,10 +991,10 @@ function reviewThread(
       found !== undefined &&
       (status === "passed" || status === "overridden")
     ) {
-      return { ...found, objectives };
+      return found;
     }
   }
-  return "No unit can hold a review now.";
+  return undefined;
 }
 
 type WorkspaceDesk = Pick<CourseDesk, "propose"> & {
@@ -826,7 +1039,7 @@ interface CourseWorkspace {
   beginInstall(owner: Slug): Promise<{ done(): void } | { refused: string }>;
 }
 
-/** The question open in a unit of the course, a finished unit's review included, if there is one. */
+/** The question open in a unit of the course, a finished unit's review or self-test included, if there is one. */
 function openInCourse(state: State): OpenQuestion | undefined {
   const positions = [
     ...Object.values(state.units),
@@ -1158,6 +1371,12 @@ interface OpenableChat extends UnitChat {
    * A review offered on its card starts; one under way is left to go on.
    */
   reviewNow(objectives: ReviewPick[] | undefined): Promise<ChatResult>;
+  /**
+   * A self-test from the course view, once the chat is open: starts it at
+   * once in this unit's thread, a finished unit's too, unless something
+   * waits on the learner or the tutor here, as for Review now.
+   */
+  selfTest(setUp: SelfTestSetUp): Promise<ChatResult>;
   /**
    * Takes in a style note the learner applied in another unit's chat: the
    * tutor's next session starts with it, and its next header gives it.
@@ -1493,6 +1712,20 @@ function createUnitChat(
         ...(options.timer === undefined ? {} : { timer: options.timer }),
       });
       agents = loaded;
+      /**
+       * A review offered, or a self-test started, reads the units as they
+       * now are; in a finished unit with no tutor session, the new session
+       * is told it joins the unit.
+       */
+      const runBegins = (units: readonly StoredUnit[]) => {
+        r.context = { ...r.context, units };
+        if (
+          record.finished !== undefined &&
+          record.position.tutorSessionId === undefined
+        ) {
+          r.header.joined();
+        }
+      };
       const r: Running = {
         context,
         record,
@@ -1558,19 +1791,20 @@ function createUnitChat(
           markOffered: (at, options) =>
             dataRoot.markReviewOffered(courseId, at, options),
           async saveOffer(run, { units, evidence }) {
-            r.context = { ...r.context, units };
-            if (
-              record.finished !== undefined &&
-              record.position.tutorSessionId === undefined
-            ) {
-              r.header.joined();
-            }
+            runBegins(units);
             await record.offerAssessment(run, evidence, () =>
               r.assessments.showRun(run),
             );
           },
           start: (run) => r.assessments.startRun(run),
           skip: () => r.assessments.endRun(true),
+          async withdrawCard() {
+            await record.endAssessment(true);
+          },
+          async startSelfTest(setUp, { units, evidence }) {
+            runBegins(units);
+            await r.assessments.startSelfTest(setUp, evidence);
+          },
         }),
         answers: createUnitAnswers({
           record,
@@ -2089,6 +2323,15 @@ function createUnitChat(
         const r = running;
         if (r === undefined) return notOpen();
         return r.review.request(objectives);
+      });
+    },
+
+    async selfTest(setUp) {
+      await loading;
+      return exclusive(async () => {
+        const r = running;
+        if (r === undefined) return notOpen();
+        return r.review.selfTest(setUp);
       });
     },
 

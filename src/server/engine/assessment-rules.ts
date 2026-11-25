@@ -1,13 +1,16 @@
 // How an assessment asks: review at the
-// start of a sitting, the unit's gate, and the test before a unit is
-// taught. Pure, as check-rules.ts is: the chat keeps the evidence and
-// passes it in.
+// start of a sitting, the unit's gate, the test before a unit is
+// taught, and a self-test the learner sets up. Pure, as check-rules.ts is:
+// the chat keeps the evidence and passes it in.
 //
-// Each objective gets one question, in the assessment's order. In a review
-// or a gate, a correct answer ends its questions. A miss opens a detour;
-// when the learner ends it, the objective is asked once more, and the
-// assessment then moves on whatever the answer: a second miss opens its
-// detour too, and no third question follows.
+// Each objective gets one question, in the assessment's order. In a review,
+// a gate or a self-test, a correct answer ends its questions. A miss opens a
+// detour; when the learner ends it, the objective is asked once more, and
+// the assessment then moves on whatever the answer: a second miss opens its
+// detour too, and no third question follows. In a self-test that second
+// question waits until another objective has been answered since the miss,
+// while another is still to ask, so that it does not follow the detour
+// that worked through the miss.
 //
 // A test has no feedback and no detour. A correct answer that passes its
 // objective alone (at 90% or 100%, without help) ends its questions; any
@@ -32,9 +35,10 @@ import { objectiveStatus } from "../record/status.ts";
 export type RunObjective =
   | { state: "unasked" }
   /**
-   * One more question follows: in a review or a gate after a miss at its
-   * first, once its detour ends; in a test at once, after a correct answer
-   * that does not pass alone.
+   * One more question follows: in a review, a gate or a self-test after a
+   * miss at its first, once its detour ends (in a self-test, once another
+   * objective has been answered since, while another is left); in a test at
+   * once, after a correct answer that does not pass alone.
    */
   | { state: "again" }
   /**
@@ -89,19 +93,47 @@ export interface RunStep {
   second: boolean;
 }
 
-/** The question the assessment asks next, or undefined once it has asked all it will. */
+/**
+ * The question the assessment asks next, or undefined once it has asked all
+ * it will: the first objective in its order still to ask, but in a
+ * self-test, a missed objective's second question waits until another
+ * objective has been answered since the miss, while another is still to ask.
+ */
 export function nextInRun(
   run: AssessmentRun,
   answers: readonly AnswerEvidence[],
   evidence: readonly EvidenceEntry[],
 ): RunStep | undefined {
-  for (const [index, { unit, objective }] of run.objectives.entries()) {
+  const steps = run.objectives.flatMap(({ unit, objective }, index) => {
     const standing = runObjective(objective, answers, evidence, run.mode);
-    if (standing.state !== "done") {
-      return { index, unit, objective, second: standing.state === "again" };
-    }
-  }
-  return undefined;
+    return standing.state === "done"
+      ? []
+      : [{ index, unit, objective, second: standing.state === "again" }];
+  });
+  if (run.mode !== "self-test" || steps.length <= 1) return steps[0];
+  // Of two held back, the later miss was answered after the earlier one,
+  // so the earliest miss is never held: some step is always found.
+  return steps.find(
+    (step) => !step.second || answeredSince(step.objective, answers),
+  );
+}
+
+/** Whether another objective has been answered since the last answer on this one. */
+function answeredSince(
+  objective: string,
+  answers: readonly AnswerEvidence[],
+): boolean {
+  const last = answers.findLastIndex((a) => a.objective === objective);
+  return answers.slice(last + 1).some((a) => a.objective !== objective);
+}
+
+/**
+ * Whether a run of this mode is one the learner asks for that leaves the
+ * unit where it was, a review or a self-test: it goes on where the unit
+ * stood once it ends, and can run in a finished unit, which stays finished.
+ */
+export function leavesUnitAsWas(mode: AssessmentMode | undefined): boolean {
+  return mode === "review" || mode === "self-test";
 }
 
 /**

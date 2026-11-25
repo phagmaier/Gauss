@@ -35,3 +35,16 @@ export const SelfTestRequest = z.object({
   count: z.literal(SELF_TEST_COUNTS),
 });
 export type SelfTestRequest = z.infer<typeof SelfTestRequest>;
+
+/**
+ * What the setup says of a request, before it starts (`SelfTestPick` in
+ * record/review.ts): how many objectives it would ask, how many the scope
+ * holds, and how many of those were answered within the hour and are left
+ * out.
+ */
+export const SelfTestCounts = z.object({
+  asks: z.number().int().nonnegative(),
+  holds: z.number().int().nonnegative(),
+  withinHour: z.number().int().nonnegative(),
+});
+export type SelfTestCounts = z.infer<typeof SelfTestCounts>;

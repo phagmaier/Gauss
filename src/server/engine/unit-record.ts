@@ -10,9 +10,9 @@
 //
 // The position also keeps the id of the unit's tutor session, so a unit
 // reopened after a restart resumes it (task 2.14). A finished unit without
-// a review keeps the id only in memory. The notices waiting for the tutor's
-// next header are kept the same way, from the write that makes them due
-// until a turn carrying them is sent.
+// a review or self-test keeps the id only in memory. The notices waiting
+// for the tutor's next header are kept the same way, from the write that
+// makes them due until a turn carrying them is sent.
 //
 // Once a segment's close or the unit's end is written, the backup is asked
 // for a commit (task 2.25), and the handoff writer for a note (task 5.7).
@@ -61,6 +61,7 @@ import type {
 import type { Plan } from "../../shared/plan.ts";
 import type {
   AnswerSubmission,
+  QuestionKind,
   Unsettled,
   Verdict,
 } from "../../shared/question.ts";
@@ -100,6 +101,12 @@ export interface Answered {
   entry: AnswerEvidence;
 }
 
+/** A self-test as the learner set it up: its objectives, in the order asked, and the kinds of question picked. */
+export interface SelfTestSetUp {
+  objectives: AssessedObjective[];
+  kinds: QuestionKind[];
+}
+
 export interface UnitRecord {
   /**
    * Where the unit stands, with its tutor session's id once one is kept;
@@ -127,7 +134,7 @@ export interface UnitRecord {
   readonly finished: "passed" | "overridden" | undefined;
   /** The learner skipped every segment and finished at the test's result. */
   readonly testedOut: boolean;
-  /** A position was read from state.json, in progress or for a review. */
+  /** A position was read from state.json, in progress or for a review or self-test. */
   readonly reopened: boolean;
   /** The unit's status and each objective's, as `unit_status` tells the page. */
   status(): PageEvent;
@@ -164,7 +171,7 @@ export interface UnitRecord {
   /**
    * Writes the id of the unit's tutor session into its position, or takes
    * it out, so the next start of the unit makes a new session. A finished
-   * unit with no review keeps the id only in memory.
+   * unit with no review or self-test keeps the id only in memory.
    */
   keepSession(id: string | undefined): Promise<void>;
   /**
@@ -239,6 +246,17 @@ export interface UnitRecord {
    * page, once it is written.
    */
   startTest(tell: (run: AssessmentRun) => void): Promise<AssessmentRun>;
+  /**
+   * Starts a self-test the learner set up, under way at once with no card:
+   * its answers are the evidence from here on, `log` being the course's
+   * evidence as read now, from which the evidence on its objectives is
+   * taken. `tell` tells the page, once it is written.
+   */
+  startSelfTest(
+    setUp: SelfTestSetUp,
+    log: readonly EvidenceEntry[],
+    tell: (run: AssessmentRun) => void,
+  ): Promise<AssessmentRun>;
   /**
    * Ends the assessment, every objective asked or skipped: takes it out of
    * the position with its detour, withdraws its open question with nothing
@@ -352,21 +370,21 @@ export async function openUnitRecord(options: {
   const stored = Object.hasOwn(positions, unitId)
     ? positions[unitId]
     : undefined;
-  const storedReview = Object.hasOwn(finishedReviews, unitId)
+  const storedRun = Object.hasOwn(finishedReviews, unitId)
     ? finishedReviews[unitId]
     : undefined;
   const allEvidence = await dataRoot.readEvidence(courseId);
   // An older build could restart teaching and leave both entries for a
   // finished unit. An ordinary position alone still means in progress.
   const before =
-    stored === undefined || storedReview !== undefined
+    stored === undefined || storedRun !== undefined
       ? unitStatus(unit, allEvidence, undefined)
       : undefined;
   let finished: "passed" | "overridden" | undefined =
     before === "passed" || before === "overridden" ? before : undefined;
   let testedOut = finished !== undefined && tests?.[unitId] === true;
-  const reviewing = finished === undefined ? undefined : storedReview;
-  const kept = reviewing ?? stored;
+  const runningFinished = finished === undefined ? undefined : storedRun;
+  const kept = runningFinished ?? stored;
   if (kept !== undefined) checkPosition(plan, kept);
   let sessionId = kept?.tutorSessionId;
   let notices: readonly TutorNotice[] = kept?.tutorNotices ?? [];
@@ -387,9 +405,9 @@ export async function openUnitRecord(options: {
     });
   }
 
-  if (reviewing !== undefined && stored !== undefined) {
+  if (runningFinished !== undefined && stored !== undefined) {
     await dataRoot.writePosition(courseId, unitId, null);
-  } else if (storedReview !== undefined && finished === undefined) {
+  } else if (storedRun !== undefined && finished === undefined) {
     await dataRoot.writePosition(courseId, unitId, null, { finished: true });
   }
   let position: UnitPosition =
@@ -414,8 +432,9 @@ export async function openUnitRecord(options: {
 
   /**
    * Saves a move and notices an Apply recovered before or during the write.
-   * A finished unit's position is saved only while it holds a review, in
-   * `finishedReviews`; null leaves it as it is.
+   * A finished unit's position is saved only while it holds an assessment
+   * (a review or a self-test the learner asked for), in `finishedReviews`;
+   * null leaves it as it is.
    */
   async function savePosition(
     given: UnitPosition | null,
@@ -426,12 +445,12 @@ export async function openUnitRecord(options: {
     const next = given === null ? null : withNotices(given);
     if (finished !== undefined) {
       const kept = next ?? withNotices(position);
-      const review = kept.assessment?.mode === "review" ? kept : null;
-      const saved = await dataRoot.writePosition(courseId, unitId, review, {
+      const holding = kept.assessment === undefined ? null : kept;
+      const saved = await dataRoot.writePosition(courseId, unitId, holding, {
         ...outcome,
         finished: true,
       });
-      position = review ?? closedPosition();
+      position = holding ?? closedPosition();
       return saved;
     }
     const waiting = position.curriculumChange;
@@ -894,6 +913,20 @@ export async function openUnitRecord(options: {
       };
       const { testOut: _, ...rest } = position;
       await move({ ...rest, assessment: run }, () => tell(run));
+      runAnswers = [];
+      return run;
+    },
+
+    async startSelfTest({ objectives, kinds }, log, tell) {
+      const run: AssessmentRun = {
+        mode: "self-test",
+        stage: "on",
+        objectives,
+        kinds,
+        from: log.length,
+      };
+      readAgain(log, { ...position, assessment: run });
+      await move({ ...position, assessment: run }, () => tell(run));
       runAnswers = [];
       return run;
     },

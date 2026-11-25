@@ -357,10 +357,11 @@ export const State = z.object({
   /** The units in progress, by id. */
   units: z.record(Slug, UnitPosition),
   /**
-   * Finished units holding a review the learner asked for (task 5.25), by
-   * id: the unit's position while the review runs, with its run, open
-   * question, detour and tutor session. The unit stays finished, so it is
-   * not in `units`; its entry goes once the review ends.
+   * Finished units holding an assessment the learner asked for, a review
+   * or a self-test, by id: the unit's position while it runs, with its
+   * run, open question, detour and tutor session. The unit stays finished,
+   * so it is not in `units`; its entry goes once the run ends. (Named when
+   * only a review could run there; the name stays so older records read.)
    */
   finishedReviews: z.record(Slug, UnitPosition).optional(),
   /** Units finished without teaching after the learner accepted a full pass. */

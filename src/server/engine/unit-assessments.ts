@@ -1,8 +1,10 @@
 // An assessment run (task 5.4), from its start to its end: review, the
-// gate, or the test before a unit. While it is offered or under way the
-// unit's own steps and a teaching turn that waits hold. When a review ends
-// or is skipped the unit goes on where it was; when the gate ends or is
-// skipped, the unit returns to its end (unit-end.ts).
+// gate, the test before a unit, or a self-test. While it is offered or
+// under way the unit's own steps and a teaching turn that waits hold. When
+// a review or a self-test ends or is skipped the unit goes on where it was;
+// when the gate ends or is skipped, the unit returns to its end
+// (unit-end.ts). A self-test the learner sets up starts at once, with no
+// card.
 // The test before a unit (task 5.6): chosen on the course view for a unit
 // not started, it opens the unit, planned as any is, and runs over all its
 // objectives in place of the teaching turn, after a review that is due. It
@@ -18,6 +20,7 @@
 
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent, TestShown } from "../../shared/events.ts";
+import type { EvidenceEntry } from "../../shared/evidence.ts";
 import { firstTaught } from "../../shared/plan.ts";
 import type { AssessmentHead } from "../../shared/question.ts";
 import type { AssessmentRun, OpenQuestion } from "../../shared/state.ts";
@@ -33,11 +36,16 @@ import type { ChatResult } from "./conversation.ts";
 import type { UnitAgents } from "./unit-agents.ts";
 import { sameObjectives } from "./unit-end.ts";
 import type { UnitProgression } from "./unit-progression.ts";
-import { assessmentEvent, type UnitRecord } from "./unit-record.ts";
+import {
+  assessmentEvent,
+  type SelfTestSetUp,
+  type UnitRecord,
+} from "./unit-record.ts";
 import {
   type RunWhere,
   runEndNote,
   runName,
+  runWaitsText,
   testAnsweredNote,
   testEndTurn,
   type UnitContext,
@@ -72,6 +80,15 @@ export interface UnitAssessments {
   goOnInRun(): Promise<void>;
   /** Starts the assessment offered: the tutor is asked for its first question. Runs inside the chat's queue. */
   startRun(offered: AssessmentRun): Promise<void>;
+  /**
+   * Starts a self-test the learner set up, at once and with no card: the
+   * tutor is asked for its first question. `log` is the course's evidence
+   * as read now. Runs inside the chat's queue.
+   */
+  startSelfTest(
+    setUp: SelfTestSetUp,
+    log: readonly EvidenceEntry[],
+  ): Promise<void>;
   /** Ends the assessment, every objective asked or skipped. Runs inside the chat's queue. */
   endRun(skipped: boolean): Promise<void>;
   /**
@@ -97,7 +114,7 @@ export interface UnitAssessments {
 
 /** The other units' handoff notes for a run, read when it starts or resumes. */
 export async function readAssessmentHandoffs(
-  run: AssessmentRun,
+  run: Pick<AssessmentRun, "mode" | "objectives">,
   unitId: Slug,
   readHandoff: (unit: string) => Promise<{ note: string } | undefined>,
 ): Promise<ReadonlyMap<string, string> | undefined> {
@@ -141,6 +158,7 @@ export function createUnitAssessments({
     | "finished"
     | "reopened"
     | "startTest"
+    | "startSelfTest"
     | "startAssessment"
     | "endAssessment"
     | "move"
@@ -267,13 +285,28 @@ export function createUnitAssessments({
     progression.askInRun({ after: "start" }, stops);
   }
 
+  /** Starts a self-test the learner set up, at once and with no card. Runs inside `exclusive`. */
+  async function startSelfTest(
+    setUp: SelfTestSetUp,
+    log: readonly EvidenceEntry[],
+  ): Promise<void> {
+    const stops = stopCount();
+    handoffs = await readAssessmentHandoffs(
+      { mode: "self-test", ...setUp },
+      unitId,
+      readHandoff,
+    );
+    await record.startSelfTest(setUp, log, (run) => showRun(run));
+    progression.askInRun({ after: "start" }, stops);
+  }
+
   /**
    * Ends the assessment: every objective asked, or skipped. The tutor is
    * told in its next header if it was asking. After the gate the unit comes
    * to its end; after a test, the tutor is asked what it showed, and its
-   * result card follows; after a review the unit goes on where it stood: a
-   * test that waited starts, a teaching turn that waited is sent, and a
-   * check takes up again. Runs inside `exclusive`.
+   * result card follows; after a review or a self-test the unit goes on
+   * where it stood: a test that waited starts, a teaching turn that waited
+   * is sent, and a check takes up again. Runs inside `exclusive`.
    */
   async function endRun(skipped: boolean): Promise<void> {
     const { run, withdrawn, statuses } = await record.endAssessment(skipped);
@@ -324,12 +357,7 @@ export function createUnitAssessments({
       return refused("Answer the test's result card first.");
     }
     if (run === undefined) return undefined;
-    const name = runName(run.mode);
-    return refused(
-      run.stage === "offered"
-        ? `Start or skip the ${name} first.`
-        : `Finish or skip the ${name} first.`,
-    );
+    return refused(runWaitsText(run));
   }
 
   /**
@@ -464,6 +492,7 @@ export function createUnitAssessments({
     nextOf,
     goOnInRun,
     startRun,
+    startSelfTest,
     endRun,
     runWaits,
     headOf,
