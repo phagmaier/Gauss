@@ -290,8 +290,12 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   repository, where the Playwright tool reads: put it in `.playwright-mcp/`
   (git-ignored) and remove it afterwards. Section labels are uppercased by
   CSS and a page's text reads them so ("THE WEB"): wait on a selector or
-  an `aria-label`. After opening a unit, wait until Send is enabled: the
-  message box sends nothing until the chat has opened.
+  an `aria-label`. A tutor turn runs while the composer shows
+  `[aria-label="Stop the tutor"]` in place of Send, and has ended once it
+  is gone; wait on that. Send stays disabled while the message box is
+  empty, so it shows readiness only after typing. Target a question's
+  confidence buttons inside its open card: "90%" also matches an earlier
+  grade's "90% sure".
 - **Chromium**: on NixOS, get its path with
   `nix build nixpkgs#chromium --no-link --print-out-paths` and pass
   `app: "<that path>/bin/chromium"` to `browser.open`. Omp's managed
@@ -301,7 +305,11 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   a composition, and an Enter sent then by `Input.dispatchKeyEvent`
   arrives with `isComposing` set.
 - **Authorized real-model checks** use `mise exec -- pnpm check:live`.
-  It starts the app on port 4320 in a fresh temporary data root.
+  It starts the app on port 4320 in a fresh temporary data root. To
+  restart on the same root, pass it inside the launcher, which otherwise
+  makes a new one: `mise exec -- pnpm check:live env
+  GAUSS_DATA_ROOT=<the first run's root> pnpm dev`. The launcher's pins
+  and unset API key still apply.
   `createClaudeBackend` pins every role to the `AGENTS.md` model and
   effort, overriding both login defaults and harness options; for Codex,
   `codexOptions` in `backends/codex.ts` does the same. Opening a
@@ -350,4 +358,15 @@ and both test suites. Focused: `pnpm exec vitest run <file>` or
   For Codex, a thread's rollout in Gauss's Codex home
   (`sessions/<yyyy>/<mm>/<dd>/rollout-*-<thread id>.jsonl`) holds every
   item the model was given and gave; Codex's own log is the `logs` table
-  of `logs_2.sqlite` there, by `thread_id`.
+  of `logs_2.sqlite` there, by `thread_id`, its text in
+  `feedback_log_body`. The tutor's thread id is the course's
+  `state.json` `tutorSessionId`. A Codex run's model, effort and tier:
+
+  ```sh
+  jq -r 'select(.type=="turn_context") | [.payload.model, .payload.effort]
+    | @tsv' <rollout>.jsonl | sort | uniq -c
+  rg -o '"model":"[^"]*","model_provider_id":"[^"]*","service_tier":"[^"]*"' \
+    <rollout>.jsonl | sort | uniq -c
+  sqlite3 -readonly logs_2.sqlite "select count(*) from logs where
+    thread_id='<id>' and feedback_log_body like '%\"service_tier\":\"priority\"%'"
+  ```
