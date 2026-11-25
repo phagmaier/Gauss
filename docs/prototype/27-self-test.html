@@ -1,0 +1,291 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Stage 6, piece 27: the self-test, in the
+  redesign's look (look.css).
+  SETTLED 2026-11-25: the user took direction A, as shown, and the run in
+  the thread as drawn. Rejected: B (an entry on each unit's row and
+  segment, with a popover for the kinds and the count: three entry points)
+  and C (a setup card in the thread: the thread is chosen before the
+  scope).
+
+  What it answers, from the user's decisions of 2026-11-25 (brief.md,
+  "Assessment modes"):
+  - The learner picks the scope (a segment, a unit, the course, or a random
+    mix of what they have passed), the kinds of question (choice, math,
+    written, code) and how many objectives (5, 10 or 20).
+  - A scope holds the objectives with an answer or an override; a random
+    mix only passed ones (passed, retained or slipping). Objectives
+    answered within the hour are left out, as in review, and the setup
+    says how many.
+  - It runs in a unit's thread, asked by that unit's tutor: a segment or
+    unit scope in that unit's, the course or a mix where "Review now"
+    would run.
+  - Answers count as review answers do: a right one marks its objective
+    retained, a miss on a passed one makes it slipping.
+  - After a miss, a short detour; the fresh question on that objective
+    comes after at least one other.
+  - The tutor asks only the picked kinds; an objective none of them fits is
+    passed over, with the tutor's reason, and counts nothing.
+  - "End the self-test" stays beside the question or the detour's control;
+    what was answered stays recorded.
+
+  The directions (the bar still switches them):
+  - A, a panel on the course view (chosen): "Self-test" beside "Review
+    now" opens a panel in place with the scope, the kinds and the count,
+    and "Start the self-test", which opens the unit and starts at once.
+  - B, from where you are (rejected): each started unit's row has
+    "Self-test" (that unit), and the line beside "Review now" offers the
+    course and a mix; in a unit, the outline has "Self-test" on each
+    segment begun. A small popover asks only the kinds and the count.
+  - C, a card in the thread (rejected): "Self-test" on the course view
+    opens the unit where it will run with a setup card, as review's card,
+    which becomes its marker. The thread is chosen before the scope, so a
+    unit scope can sit in another unit's thread.
+
+  The bar at the bottom left picks the direction, the moment and the
+  theme. Keys: H hides the bar.
+
+  Everything is simulated: the course, its objectives and the grading.
+  The controls of the setup work; Start jumps to the run.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 27: the self-test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="look.css">
+<style>
+.hint{font-size:13.5px;color:var(--ink-3);margin:.9em 0 0}
+.st-panel{border:1px solid var(--rule-2);border-radius:12px;padding:14px 18px;margin:12px 0 20px}
+.st-panel .card-h{margin-bottom:.6em}
+.st-q{margin:.8em 0 0}
+.st-q>.lbl{display:block;margin-bottom:.4em}
+.st-opts{display:flex;flex-direction:column;gap:.35em;font-size:15px}
+.st-opts label{display:flex;align-items:baseline;gap:.55em;cursor:pointer}
+.st-opts select{font:inherit;font-size:14px;background:transparent;color:var(--ink);border:1px solid var(--rule-2);border-radius:6px;padding:1px 4px;margin-left:.3em}
+.st-row{display:flex;flex-wrap:wrap;gap:.4em 1.2em;font-size:15px}
+.st-row label{display:flex;align-items:baseline;gap:.45em;cursor:pointer}
+.st-count{display:flex;gap:6px}
+.st-sum{font-size:13.5px;color:var(--ink-2);margin:.9em 0 0}
+.st-foot{display:flex;justify-content:flex-end;align-items:center;gap:1.2em;margin-top:.9em}
+.pop-st{position:absolute;right:0;top:1.7em;z-index:5;width:330px;background:var(--bg-2, var(--bg));border:1px solid var(--rule-2);border-radius:12px;padding:12px 16px;box-shadow:0 8px 24px #0006;text-align:left}
+.unit-st{position:relative}
+.passed-over{font-size:14px;color:var(--ink-2);border-left:2px solid var(--rule-2);padding:.2em 0 .2em .8em;margin:1em 0}
+.cv-units{list-style:none;margin:0;padding:0;font-size:15px;color:var(--ink-2)}
+.cv-units li{display:flex;align-items:baseline;gap:1em;padding:.35em 0;border-bottom:1px solid var(--rule)}
+.cv-units li .r{margin-left:auto;display:flex;gap:1em}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="bar"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Calculus I';
+const UNITS = [
+  ['Limits', 'finished', [['Limits from a table of values', 2], ['Limits by simplifying first', 2]]],
+  ['The derivative', 'finished', [['The derivative as a limit', 2], ['The derivative as a slope', 1]]],
+  ['Differentiation rules', 'progress', [['Products and quotients', 3], ['The chain rule', 2], ['Implicit differentiation', 1]]],
+  ['Optimisation', 'not', null],
+];
+const SUP = ['under 50%', '50%', '75%', '90%', '100%'];
+
+/* ---------------- state ---------------- */
+const st = {dir: 'a', moment: 'course', theme: 'frappe', scope: 'unit', unit: '3', seg: '1', kinds: new Set(['choice', 'math']), count: '10', ending: false};
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const sg = s => `<i class="sg ${s}" aria-hidden="true"></i>`;
+const tutor = html => `<div class="tutor read">${html}</div>`;
+const ph = (k, note = '') => `<div class="ph"><span class="lbl">${k}</span>${note ? `<span class="note">${note}</span>` : ''}</div>`;
+
+/** What the setup would ask, as the engine counts it. */
+function counted() {
+  if (st.scope === 'seg') return {can: 2, hour: 0, where: `unit ${st.unit}, segment ${st.seg}`};
+  if (st.scope === 'unit') return {can: 5, hour: 1, where: `unit ${st.unit}`};
+  if (st.scope === 'course') return {can: 11, hour: 1, where: 'the course'};
+  return {can: 8, hour: 1, where: 'what you have passed'};
+}
+function summary() {
+  const c = counted(), n = Math.min(c.can, +st.count);
+  const left = c.hour ? ` ${c.hour === 1 ? 'One objective' : c.hour + ' objectives'} answered within the hour ${c.hour === 1 ? 'is' : 'are'} left out.` : '';
+  const kinds = st.kinds.size === 0 ? '<b>Pick at least one kind.</b>' : '';
+  return `${kinds} ${n} of the ${c.can} objectives you can be asked in ${c.where}, mixed, one question each and one more after a miss.${left} A right answer marks its objective retained.`;
+}
+function kindsBoxes() {
+  return `<div class="st-row">${[['choice', 'Choice'], ['math', 'Math'], ['written', 'Written'], ['code', 'Code']].map(([k, w]) =>
+    `<label><input type="checkbox" data-kind="${k}" ${st.kinds.has(k) ? 'checked' : ''}>${w}</label>`).join('')}</div>`;
+}
+function countChips() {
+  return `<div class="st-count">${['5', '10', '20'].map(n => `<button class="chip" type="button" data-count="${n}" aria-pressed="${st.count === n}">${n}</button>`).join('')}</div>`;
+}
+function scopeRadios() {
+  const r = (v, html) => `<label><input type="radio" name="scope" data-scope="${v}" ${st.scope === v ? 'checked' : ''}><span>${html}</span></label>`;
+  const unitSel = `<select data-sel="unit">${UNITS.filter(u => u[2]).map((u, i) => `<option value="${i + 1}" ${st.unit === String(i + 1) ? 'selected' : ''}>Unit ${i + 1}, ${u[0]}</option>`).join('')}</select>`;
+  const segSel = `<select data-sel="seg">${[1, 2, 3].map(s => `<option value="${s}" ${st.seg === String(s) ? 'selected' : ''}>Segment ${s}</option>`).join('')}</select>`;
+  return `<div class="st-opts">${r('seg', `A segment ${unitSel.replace('data-sel="unit"', 'data-sel="unit"')} ${segSel}`)}${r('unit', `A unit ${st.scope === 'seg' ? '' : unitSel}`)}
+    ${r('course', 'The whole course')}${r('mix', 'A random mix of what you have passed')}</div>`;
+}
+function setup({scope = true, title = 'Self-test', foot = ''} = {}) {
+  return `<div class="card-h"><span class="lbl">${title}</span></div>
+    ${scope ? `<div class="st-q"><span class="lbl">On</span>${scopeRadios()}</div>` : ''}
+    <div class="st-q"><span class="lbl">Kinds of question</span>${kindsBoxes()}</div>
+    <div class="st-q"><span class="lbl">How many objectives</span>${countChips()}</div>
+    <p class="st-sum">${summary()}</p>
+    <div class="st-foot">${foot}<button class="btn" type="button" data-act="start" ${st.kinds.size ? '' : 'disabled'}>Start the self-test</button></div>`;
+}
+
+/* ---------------- the course view ---------------- */
+function courseView() {
+  const a = st.dir === 'a', b = st.dir === 'b', open = st.moment === 'setup';
+  const rows = UNITS.map(([t, s], i) => {
+    const n = i + 1;
+    const stBtn = b && s !== 'not' ? `<span class="unit-st"><button class="link" type="button" data-act="setup" data-unit="${n}">Self-test</button>${open && st.scope === 'unit' && st.unit === String(n) ? popover() : ''}</span>` : '';
+    const act = s === 'not' ? '<button class="link" type="button">Start</button><button class="link" type="button">Test out</button>'
+      : s === 'finished' ? '<button class="link" type="button">Open</button>' : '<button class="link" type="button">Continue</button>';
+    return `<li>${sg(s === 'finished' ? 'pass' : s === 'progress' ? 'now' : 'not')}<span>Unit ${n} · ${t}</span><span class="r">${stBtn}${act}</span></li>`;
+  }).join('');
+  const duebar = `<div class="duebar"><span class="due-dot"></span><span><b style="font-weight:500">3 objectives</b> <span class="k">are due for review</span></span>
+    <button class="btn sm quiet" type="button">Review now</button>
+    ${b ? `<span class="unit-st"><button class="link" type="button" data-act="setup" data-scope="course">Self-test the course</button>${open && (st.scope === 'course' || st.scope === 'mix') ? popover(true) : ''}</span>`
+      : `<button class="link" type="button" data-act="setup">Self-test</button>`}</div>`;
+  const panel = a && open ? `<div class="st-panel">${setup({foot: '<button class="link" type="button" data-act="cancel">Cancel</button>'})}</div>` : '';
+  return `<div class="pg"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span><span class="here"><span class="t">${COURSE}</span></span></nav>
+      <div class="acts"><button class="tb" type="button">What I know</button></div></header>
+    <div class="pg-scroll"><div class="pg-col"><h1 class="title">${COURSE}</h1>
+      <p class="proto">The units are cut short here; piece 20 shows them. Only the self-test's place is new.</p>
+      ${duebar}${panel}
+      <div class="sec"><span class="lbl">Units</span><div class="acts"><button class="link" type="button">Change the curriculum</button></div></div>
+      <ul class="cv-units">${rows}</ul>
+      ${b ? '<p class="hint">In a unit, the outline has "Self-test" on each segment begun, for a segment\'s objectives.</p>' : ''}
+    </div></div></div>`;
+}
+function popover(course) {
+  const scope = course
+    ? `<div class="st-q"><span class="lbl">On</span><div class="st-opts"><label><input type="radio" data-scope="course" ${st.scope === 'course' ? 'checked' : ''}>The whole course</label>
+        <label><input type="radio" data-scope="mix" ${st.scope === 'mix' ? 'checked' : ''}>A random mix of what you have passed</label></div></div>` : '';
+  return `<div class="pop-st" role="dialog" aria-label="Self-test">${scope}${setup({scope: false, title: course ? 'Self-test' : `Self-test unit ${st.unit}`, foot: '<button class="link" type="button" data-act="cancel">Cancel</button>'})}</div>`;
+}
+
+/* ---------------- the run, in the unit's thread ---------------- */
+function graded({n, of, head = '', prompt, answer, verdict}) {
+  return `<div class="card"><div class="card-h"><span class="lbl">Question ${n} of ${of}</span>${head ? `<span class="r">${head}</span>` : ''}</div>
+    <p class="prompt">${prompt}</p><div class="ans"><span class="k">Your answer</span><span>${answer}</span></div>
+    <div class="verdict">${verdict}<button class="link act" type="button">Dispute this grade</button></div></div>`;
+}
+function live({n, of, head = '', prompt, opts}) {
+  return `<div class="card live"><div class="card-h"><span class="lbl">Question ${n} of ${of}</span>${head ? `<span class="r">${head}</span>` : ''}</div>
+    <p class="prompt">${prompt}</p>
+    <div class="opts">${opts.map((v, i) => `<button class="opt" type="button"><kbd>${'ABCD'[i]}</kbd><span>${v}</span></button>`).join('')}</div>
+    <div class="conf"><span>How sure?</span><span style="display:flex;gap:5px">${SUP.map(c => `<button class="chip" type="button">${c}</button>`).join('')}</span></div>
+    <div class="card-foot"><button class="link" type="button">I don't know</button><button class="btn" type="button" disabled>Submit</button></div></div>`;
+}
+function endStep(control) {
+  if (st.ending) {
+    return `<div class="step"><div class="confirm"><div class="says"><p>End the self-test? Your 3 answers count. Any open question is dropped.</p></div>
+      <button class="btn sm quiet" type="button" data-act="end">End the self-test</button><button class="link" type="button" data-act="keep">Keep going</button></div></div>`;
+  }
+  return `<div class="step">${control}<button class="link" type="button" data-act="ending">End the self-test</button></div>`;
+}
+function thread() {
+  const of = 5;
+  const kinds = [...st.kinds].join(' and ') || 'choice';
+  let h = '';
+  if (st.dir === 'c' && st.moment === 'setup') {
+    return `<div class="card live">${setup({foot: '<button class="link" type="button" data-act="cancel">Not now</button>'})}</div>`;
+  }
+  h += `<section class="seg"><div class="lbl">Self-test</div><h2 class="title">Unit 3, Differentiation rules</h2>
+    <ul class="seg-objs"><li>${sg('not')}<span>${of} objectives, ${kinds} questions, mixed. Nothing is taught first; each answer is recorded.</span></li></ul></section>`;
+  h += tutor('<p>First, one on products.</p>');
+  h += graded({n: 1, of, prompt: 'What is the derivative of $x^2 \\sin x$?', answer: 'B. $2x\\sin x + x^2\\cos x$',
+    verdict: '<b class="ok">Correct</b><span class="dot">·</span><span>90% sure</span>'});
+  h += tutor('<p>Right: each factor takes its turn.</p><p>Next, another.</p>');
+  if (st.moment === 'run') {
+    return h + live({n: 2, of, prompt: 'If $h(x) = f(g(x))$ with $g(1) = 2$, $g\'(1) = 3$ and $f\'(2) = 5$, what is $h\'(1)$?', opts: ['$8$', '$15$', '$10$', '$6$']})
+      + endStep('');
+  }
+  h += graded({n: 2, of, prompt: 'If $h(x) = f(g(x))$ with $g(1) = 2$, $g\'(1) = 3$ and $f\'(2) = 5$, what is $h\'(1)$?', answer: 'A. $8$',
+    verdict: '<b class="no">Incorrect</b><span class="dot">·</span><span>75% sure</span><span class="dot">·</span><span>Expected C. $15$</span>'});
+  h += ph('Detour', 'Nothing here is graded.');
+  h += tutor('<p>It is $15$: the chain rule multiplies, $f\'(g(1))\\cdot g\'(1) = 5 \\cdot 3$. You added the two rates. Which of the two steps did you think of as happening "after" the other?</p>');
+  if (st.moment === 'miss') return h + endStep('<button class="btn" type="button">Ready for another question</button>');
+  h += `<div class="you">I thought you add them because one happens after the other.</div>`;
+  h += tutor('<p>That is the picture to change: one step feeds the next, so its rate scales the next one\'s. Doubling inside, then tripling outside, triples a doubling: six times, not five.</p>');
+  h += `<p class="note-line">The next question on the chain rule comes after another objective.</p>`;
+  h += `<div class="passed-over"><b>Passed over</b>: Explain why implicit differentiation needs the chain rule. No ${[...st.kinds].join(' or ') || 'choice'} question fits it, the tutor says: it asks for an explanation in words. Nothing is recorded.</div>`;
+  h += graded({n: 3, of, prompt: 'What is $\\frac{dy}{dx}$ for $x^2 + y^2 = 25$ at $(3, 4)$?', answer: '$-\\tfrac34$',
+    verdict: '<b class="ok">Correct</b><span class="dot">·</span><span>90% sure</span>'});
+  if (st.moment === 'later') {
+    return h + live({n: 2, of, head: 'A second question, after question 2\'s miss', prompt: 'If $k(x) = \\sin(3x)$, what is $k\'(0)$?', opts: ['$0$', '$1$', '$3$', '$\\cos 3$']})
+      + endStep('');
+  }
+  h += graded({n: 2, of, head: 'A second question, after question 2\'s miss', prompt: 'If $k(x) = \\sin(3x)$, what is $k\'(0)$?', answer: 'C. $3$',
+    verdict: '<b class="ok">Correct</b><span class="dot">·</span><span>75% sure</span>'});
+  h += `<p class="note-line">Questions 4 and 5 are cut here.</p>`;
+  h += `<section class="seg"><div class="lbl">Self-test over</div><h2 class="title">Two retained, one slipping, one not passed</h2>
+    <ul class="seg-objs"><li>${sg('not')}<span>One objective passed over. The unit goes on where it was: segment 3, in its discussion.</span></li></ul></section>`;
+  return h;
+}
+function unitView() {
+  const pos = st.moment === 'setup' ? '<span class="lbl">Segment 3 of 5</span><span class="t">The chain rule</span>'
+    : `<span class="lbl">Self-test</span><span class="t">${st.moment === 'end' ? 'Over' : st.moment === 'later' ? 'Question 2 again' : 'Question 2 of 5'}</span>`;
+  return `<div class="th"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span><a href="#" data-act="course">${COURSE}</a><span class="sep">/</span>
+      <span class="here"><span class="lbl">Unit 3</span><span class="t">Differentiation rules</span></span></nav>
+      <div class="acts"><button class="tb" type="button">${pos}</button></div></header>
+    <div class="th-scroll" id="scroll"><div class="th-col">${thread()}</div></div>
+    <div class="th-foot"><form class="box"><textarea rows="1" placeholder="Message the tutor" aria-label="Message"></textarea><button class="send" aria-label="Send" disabled>↑</button></form></div></div>`;
+}
+
+/* ---------------- render and input ---------------- */
+function inCourse() { return st.moment === 'course' || (st.moment === 'setup' && st.dir !== 'c'); }
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  app.innerHTML = inCourse() ? courseView() : unitView();
+  const s = $('#scroll'); if (s) { s.style.scrollBehavior = 'auto'; s.scrollTop = s.scrollHeight; }
+  if (window.renderMathInElement) renderMathInElement(app, {delimiters: [{left: '$', right: '$', display: false}]});
+  bar();
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-act],[data-bar],[data-count]');
+  if (!t) return;
+  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; st.ending = false; render(); return; }
+  if (t.dataset.count) { st.count = t.dataset.count; render(); return; }
+  const act = t.dataset.act;
+  if (act === 'setup') {
+    st.moment = 'setup';
+    if (t.dataset.unit) { st.scope = 'unit'; st.unit = t.dataset.unit; }
+    if (t.dataset.scope) st.scope = 'course';
+    render();
+  }
+  if (act === 'cancel' || act === 'course') { e.preventDefault(); st.moment = 'course'; render(); }
+  if (act === 'start') { st.moment = 'run'; render(); }
+  if (act === 'ending') { st.ending = true; render(); }
+  if (act === 'keep') { st.ending = false; render(); }
+  if (act === 'end') { st.ending = false; st.moment = 'end'; render(); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.kind) { t.checked ? st.kinds.add(t.dataset.kind) : st.kinds.delete(t.dataset.kind); render(); }
+  if (t.dataset.scope) { st.scope = t.dataset.scope; render(); }
+  if (t.dataset.sel) { st[t.dataset.sel] = t.value; render(); }
+});
+app.addEventListener('submit', e => e.preventDefault());
+document.addEventListener('keydown', e => { if (e.key === 'h' && !e.target.matches?.('textarea,input,select')) document.body.classList.toggle('nobar'); });
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, n]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${st[k] === v}">${n}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('dir', 'Direction', [['a', 'A: a panel on the course view'], ['b', 'B: from where you are'], ['c', 'C: a card in the thread']])
+    + grp('moment', 'Moment', [['course', 'The course view'], ['setup', 'Setting it up'], ['run', 'A question open'], ['miss', 'A miss, its detour'], ['later', 'The second question, later'], ['end', 'Over']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">The setup works · H hides this</div>';
+}
+</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="render()"></script>
+<script>if (!window.renderMathInElement) render();</script>
+</body>
+</html>

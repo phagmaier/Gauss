@@ -37,25 +37,82 @@ because code and documents use them.
 
 ## Stage 6
 
-Self-test, cheat sheets, photo input; starred messages for the notes, if
-the generated notes miss what the learner wants kept; text recognition
-for scanned PDFs, and questions on a source's figure (left out of stage
-4); ranking passage matches with a cheap model, if the learner's use
-shows local search leaves too many plausible matches. Each is planned
-when chosen.
+Cheat sheets, photo input; starred messages for the notes, if the
+generated notes miss what the learner wants kept; text recognition for
+scanned PDFs, and questions on a source's figure (left out of stage 4);
+ranking passage matches with a cheap model, if the learner's use shows
+local search leaves too many plausible matches. Each is planned when
+chosen.
 
-Self-test, as the user described it on 2026-11-19 (optional, after
-everything else): the learner picks the scope (a segment, a unit, the
-course, or a random mix of what they have passed) and the kinds of
-question. They found "playground" the wrong name; the brief's term is
-self-test.
+Self-test (6.23 to 6.26): `brief.md`, "Assessment modes" and "Page";
+piece 27, direction A. It is a fourth assessment mode, run in a unit's
+thread by its tutor, as review is (a separate examiner session is a
+rejected design, `findings.md`). No shipped prompt text is moved or
+reworded: what a self-test asks of the tutor is said in the header of its
+turns, and in the new pass-over tool's description and fields, all of it
+model-facing and new. LearnHarness's practice prompt
+(`src/agent/prompts/practice/10-doctrine.md` there, AGPL: ideas only, no
+text) is the input for that header: mix objectives; a retry after
+feedback is a fresh problem; before posing, fix the model solution and
+look for a shortcut that skips the target; give the smallest hint that
+unblocks, one per request. The new text is tried on a real model only in
+the user check (the user's choice, 2026-11-25).
 
-For self-test, LearnHarness's practice prompt
-(`src/agent/prompts/practice/10-doctrine.md` in that project) is input:
-mix objectives rather than ask several problems on one in a row; a retry
-after feedback is a fresh problem; before posing, fix the model solution
-and look for a shortcut that skips the target; give the smallest hint
-that unblocks, one per request.
+### 6.23 Self-test in the record — todo
+
+**Needs:** nothing open.
+**Why:** The record knows three assessment modes (`AssessmentMode` in `shared/evidence.ts`). Status counts only review and gate answers as cold (`collectStandings` in `record/status.ts`), and only review and the gate pick objectives (`record/review.ts`). A self-test's answers count as review answers do, and it picks from a scope the learner chose.
+**Do:** Add `"self-test"` to `AssessmentMode`. `AssessmentRun` (`shared/state.ts`) gets optional `kinds` (the question kinds picked) and `passedOver` (each objective with the tutor's reason), allowed only in a self-test. A self-test request (scope: a unit's segment, a unit, the course or a mix; the kinds, at least one; the count, 5, 10 or 20) is a zod schema in `shared/`, for the routes. In `status.ts` a self-test answer counts as a review answer: retained, slipping, the review schedule's row, and an override left in place. In `record/review.ts`, `pickForSelfTest` returns the objectives to ask, with how many the scope holds and how many the hour left out (for the setup's line). The scope holds its objectives with an answer or an override, and a mix only those passed at least once. It leaves out those answered within review's hour. When the scope holds more than the count, the weakest come first: slipping, then attempted or overridden, then passed or retained by the oldest last correct answer. A mix picks at random. The picked ones come in random order, through an injected source of randomness.
+**Done when:** unit tests with picks and statuses worked out by hand show the following. A self-test miss on a passed objective makes it slipping. A correct answer marks it retained and lengthens its review interval. Each scope holds the objectives it should, and the hour rule leaves out the right ones, with its count. When the count cuts the scope, the weakest come first, and a seeded mix draws only objectives passed at least once. `mise run check` passes.
+
+### 6.24 Running a self-test — todo
+
+**Needs:** 6.23.
+**Why:** An assessment runs in a unit's thread, offered on a card or started by "Review now" (`reviewThread` and `reviewCourse` in `engine/unit-chat.ts`, `engine/review-admission.ts`). Its rules are in `engine/assessment-rules.ts` (`runObjective`, `nextInRun`), and its header words in `engine/unit-turns.ts` (`runName` and the assessment header). A review in a finished unit is kept in `finishedReviews` (`shared/state.ts`, `engine/unit-record.ts`). A self-test starts at once from the course view, on the learner's scope, and asks a missed objective again only after another.
+**Do:** `UnitChats.selfTest`, and two routes under `/api/courses/:id/self-test`: one starts it, the other answers the setup's counts for a request. Thread choice: a segment or unit scope runs in that unit's thread, and the course or a mix where "Review now" would (`reviewThread`, made general). It is refused for Review now's reasons and when there is nothing to ask. In a finished unit it runs as a review does there, with `finishedReviews` made general to any assessment kept for a finished unit. In a self-test, `nextInRun` holds a missed objective's second question back until another objective has been asked since the miss, when one is still undone. Ending is the existing skip partway (`skipAssessment`). The header of a self-test turn is new model-facing text. It says what is under way and where it stands, and gives the lead-in rule: say only that a question follows, or the unit it comes from, never its subject. Before posing, fix the model solution and look for a shortcut that skips the target. When the learner writes while a question is open, give the smallest hint that unblocks, one per request. Feedback and the detour are as in review. `handoff.ts` names a self-test (`runWords`). The scripted backend runs a self-test, for `pnpm dev:fake`.
+**Done when:** engine tests on the fake backend with a temporary root show the following. A unit-scope self-test starts in that unit's thread, and a course one where Review now would. It is refused with a question or detour open, and with nothing to ask. After a miss, the next question is on another objective and the missed one comes back later; with one objective left, its second question follows the detour. Ending partway keeps what was answered and leaves the unit where it was. In a finished unit, the unit stays finished. A restart mid-run resumes it. The header's new lines arrive where they apply. `mise run check` passes.
+
+### 6.25 The kinds picked, and passing over — todo
+
+**Needs:** 6.24.
+**Why:** The learner picks the kinds of question. The tutor asks only those, and passes over an objective none of them fits, saying why, which records nothing.
+**Do:** In a self-test, `ask_question` refuses a kind not picked. The refusal names the kinds picked and the pass-over tool. A new teaching tool in `src/server/tools/` passes over the objective asked next, with a reason. Its description and fields are new model-facing text. It is accepted only in a self-test, with no question or detour open. It adds the objective and reason to the run's `passedOver` and an event to the thread, and the run moves on. The header names the kinds picked. Both backends get the tool. A Codex thread begun before this task lacks it until a new conversation (`findings.md`, "Codex"); add that to the Known gap on a Codex thread's tools. Outside a coding course, the scripted backend passes over every objective of a self-test whose only kind picked is code.
+**Done when:** fake-backend tests show the following. A question of a kind not picked is refused with that reason. Passing over is refused outside a self-test and with a question open. Once accepted, it writes no evidence, the run asks the next objective, and the end counts the objective as passed over. Reopening the unit shows its line again. `mise run check` passes.
+
+### 6.26 The page for a self-test — todo
+
+**Needs:** 6.24 and 6.25.
+**Why:** Piece 27, direction A. The course view has only "Review now" (`DueCount` in `web/Course.tsx`, shown only when something is due). The thread's assessment words know review, the gate and the test (`shared/assessment-view.ts`; `skipLabel`, `assessmentDetourStep` and `WHY` in `web/session.ts`).
+**Do:** In `Course.tsx`, "Self-test" beside "Review now", shown whether or not anything is due. It opens the panel in place: the scope (a segment and a unit by their lists, the course, a mix), the kinds (at least one), 5, 10 or 20, the line from the counts route, Cancel, and "Start the self-test", which opens the unit's page with the run started. In the thread:
+- the start marker, and the end marker with what the run did and how many it passed over;
+- "End the self-test" beside the question or the detour's control, with its confirmation;
+- the head of a missed objective's second question ("A second question, after question N's miss");
+- the passed-over line;
+- the top line's position.
+"What I know" and the exported transcript name a self-test answer; the slipping reason reads "missed in a review, a gate or a self-test".
+**Done when:** in Chromium on `pnpm dev:fake` with a fresh root, on "Calculus I": a self-test of unit 1 with choice questions runs in unit 1's thread, through a miss, its detour, the other objective, the second question and the end marker. The panel then leaves unit 1's objectives out for the hour, and its counts match the record. A self-test of unit 2 with only code passes over each objective, each with its line. A course self-test starts where Review now would, and ending it partway works. The pages read as piece 27, direction A shows. `mise run check` passes.
+
+User check for the self-test, after 6.26. First, with `pnpm dev:fake`
+on a fresh root, open "Calculus I" and press "Self-test" beside "Review
+now". Pick unit 1 with only choice questions: the panel says how many
+objectives it will ask. Start it. Answer the first question wrong: a
+detour follows, and after "Ready for another question" the next question
+is on unit 1's other objective; the missed one comes back after it. Read
+the end marker. Back on the course view, pick unit 1 again: the panel
+says its objectives were answered within the hour and are left out.
+Self-test unit 2 with only code questions: the scripted tutor passes
+over each objective with its reason, and the end marker counts them.
+Then self-test the whole course: it runs in unit 5, where "Review now"
+would; end it after one answer and read its end marker. Then, with
+`pnpm dev` on your own logins, in a Claude course with a unit you passed
+more than an hour ago, self-test that unit with choice and written
+questions. The lead-ins name no subject, and a missed objective's fresh
+question comes after another objective. A message asking for a hint
+gets the smallest one, and the answer is marked as helped. Self-test
+again with only math or only code, on a scope where some objective fits
+neither: the tutor passes it over and says why. The self-test's header
+lines and the pass-over tool have not run on a real model before this
+check.
 
 ## Known-gap fixes
 

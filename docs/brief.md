@@ -151,10 +151,11 @@ stop anywhere and resume at the same segment and phase.
   or the learner overrides. Passing is short-term evidence, given minutes
   after the teaching.
 - **Retained**: confirmed by a correct answer after time has passed. Evidence
-  for this comes from two places: the unit gate and review (below).
-- **Slipping**: an objective that had passed and was then missed, in review
-  or a gate, until it passes again. A finished unit stays finished when one
-  of its objectives slips.
+  for this comes from three places: the unit gate, review and self-test
+  (below).
+- **Slipping**: an objective that had passed and was then missed, in
+  review, a gate or a self-test, until it passes again. A finished unit
+  stays finished when one of its objectives slips.
 - **Unit gate**: the check that closes a unit. It covers the unit's own
   objectives plus a few objectives from earlier units, which are cold by then.
   A missed earlier objective gets a short refresher and a re-ask. The learner
@@ -239,12 +240,12 @@ what is due, and on-demand self-test.
 - **Review** picks objectives passed in earlier sittings: slipping ones
   first, then the ones most overdue. An objective is due again 1, 3, 7, 21,
   then 60 days after its last unassisted correct answer, the step growing
-  with each correct answer it gets in a review or a gate; a slipping one is
-  due at once. It asks fresh questions each time, at most three, never on
-  an objective answered within the hour. When something is due, a sitting
-  offers it on a card between segments, never between a segment's teaching
-  and its check, at most once an hour in a course; the course view starts
-  it on request at any time; nobody is made to review.
+  with each correct answer it gets in a review, a gate or a self-test; a
+  slipping one is due at once. It asks fresh questions each time, at most
+  three, never on an objective answered within the hour. When something
+  is due, a sitting offers it on a card between segments, never between a
+  segment's teaching and its check, at most once an hour in a course; the
+  course view starts it on request at any time; nobody is made to review.
 - **A miss in review or the gate** starts a detour, then one more question
   on the objective.
 - **Testing out** is the learner's choice, confirmed before it starts. It
@@ -252,6 +253,26 @@ what is due, and on-demand self-test.
   against the objective afterwards; an answer in it is never evidence of
   retention, and the gate leaves out the objectives it passed. Nothing is
   skipped until the learner has seen what they passed and agreed.
+- **Self-test** is the learner's to start, from the course view, at any
+  time. They pick the scope (a segment, a unit, the whole course, or a
+  random mix of what they have passed), the kinds of question (choice,
+  math, written, code: at least one) and how many objectives (5, 10 or
+  20). A segment, unit or course holds its objectives that have an answer
+  or an override, never one not yet reached; a random mix only those
+  passed at least once. Objectives answered within the hour are left out,
+  and the setup says how many. When the scope holds more than the count,
+  the weakest come first (slipping, then not passed, then passed by the
+  oldest correct answer); a mix picks at random. The picked objectives are
+  asked in mixed order. A segment or unit scope runs in that unit's
+  thread; the course or a mix runs where "Review now" would. Its answers
+  count as review answers do. Each objective gets one question; a miss
+  starts a short detour, and the fresh question on it comes after at
+  least one other objective, when one is left. The tutor asks only the
+  kinds picked, and passes over an objective none of them fits, saying
+  why; that records nothing. A message while a question is open is judged
+  for help as anywhere, and the tutor gives the smallest hint that
+  unblocks, one per request. The learner can end it at any time; what was
+  answered stays recorded (the user's choices, 2026-11-25).
 
 ## Sources
 
@@ -432,10 +453,11 @@ what it tried and what was turned down. Beyond them:
   the gate comes next.
 - **Course view**: a library row opens it, drafts too. It lists the
   sources, ending with a line that says a source is added in "Change the
-  curriculum", and each unit's sections, with "Review now" and "Change the
-  curriculum" ("Plan what comes next" once the course is finished). An
-  attached source can be removed until the first proposal; a verified
-  quote's citation carries a check.
+  curriculum", and each unit's sections, with "Review now", "Self-test",
+  which opens a panel in place to set one up (piece 27, direction A), and
+  "Change the curriculum" ("Plan what comes next" once the course is
+  finished). An attached source can be removed until the first proposal;
+  a verified quote's citation carries a check.
 - **Planning**: a source is attached as in the intake (piece 26, direction
   A). Its card says it joins when a change is applied, and the change card
   lists the sources it adds.
