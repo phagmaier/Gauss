@@ -451,6 +451,7 @@ test("starting a unit plans it, sends segment 1's teaching turn, and the end of 
   expect(setup.backend.sessions).toHaveLength(2);
   expect(setup.backend.sessions[1]?.tools.map((t) => t.name)).toEqual([
     "ask_question",
+    "pass_over_objective",
     "show_artifact",
     "propose_style",
     "amend_curriculum",

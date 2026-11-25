@@ -830,6 +830,135 @@ test("in a self-test of finished unit 1, the scripted tutor asks each objective,
   expect(await dataRoot.readState(COURSE)).toEqual({ units: {} });
 });
 
+test("in a self-test with only code picked, outside a coding course, the scripted tutor passes over each objective with its reason, and the end counts them", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  await dataRoot.storePlan(COURSE, "limits", scriptedPlan("limits"));
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString();
+  for (const objective of ["limits-idea", "limits-proof"]) {
+    await dataRoot.appendEvidence(COURSE, {
+      kind: "answer",
+      recordedAt: twoDaysAgo,
+      objective,
+      question: {
+        kind: "choice",
+        prompt: `Choice question 1 on "${objective}": what is $1 + 1$?`,
+        choices: ["$2$", "$3$", "$1$"],
+        answer: "A",
+      },
+      answer: {
+        kind: "choice",
+        questionId: `earlier-${objective}`,
+        choice: "A",
+        confidence: "90",
+      },
+      assisted: false,
+      verdict: "correct",
+    });
+  }
+
+  expect(
+    await units.selfTest(COURSE, {
+      scope: { kind: "unit", unit: "limits" },
+      kinds: ["code"],
+      count: 5,
+    }),
+  ).toEqual({ ok: true, unitId: "limits" });
+  const chat = units.get(COURSE, "limits");
+  if (chat === undefined) throw new Error("No chat.");
+  await chat.settled();
+
+  const passed = chat.events().filter((e) => e.type === "passed_over");
+  expect(
+    passed.map((e) => e.type === "passed_over" && e.objective).sort(),
+  ).toEqual(["limits-idea", "limits-proof"]);
+  expect(passed[0]).toMatchObject({
+    reason: expect.stringContaining("only code questions were picked"),
+  });
+  expect(chat.events().some((e) => e.type === "question")).toBe(false);
+  expect(chat.events()).toContainEqual({
+    type: "assessment_end",
+    mode: "self-test",
+    skipped: false,
+    statuses: {},
+    passedOver: 2,
+  });
+  expect(await dataRoot.readEvidence(COURSE)).toHaveLength(2);
+  expect(await dataRoot.readState(COURSE)).toEqual({ units: {} });
+});
+
+test('in a self-test with only choice picked, the scripted tutor asks a choice question on every objective, a "-proof" one too, and the self-test runs to its end', async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  await dataRoot.storePlan(COURSE, "limits", scriptedPlan("limits"));
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString();
+  for (const objective of ["limits-idea", "limits-proof"]) {
+    await dataRoot.appendEvidence(COURSE, {
+      kind: "answer",
+      recordedAt: twoDaysAgo,
+      objective,
+      question: {
+        kind: "choice",
+        prompt: `Choice question 1 on "${objective}": what is $1 + 1$?`,
+        choices: ["$2$", "$3$", "$1$"],
+        answer: "A",
+      },
+      answer: {
+        kind: "choice",
+        questionId: `earlier-${objective}`,
+        choice: "A",
+        confidence: "90",
+      },
+      assisted: false,
+      verdict: "correct",
+    });
+  }
+
+  expect(
+    await units.selfTest(COURSE, {
+      scope: { kind: "unit", unit: "limits" },
+      kinds: ["choice"],
+      count: 5,
+    }),
+  ).toEqual({ ok: true, unitId: "limits" });
+  const chat = units.get(COURSE, "limits");
+  if (chat === undefined) throw new Error("No chat.");
+  await chat.settled();
+
+  const asked: string[] = [];
+  for (let i = 0; i < 2; i++) {
+    const event = chat.events().findLast((e) => e.type === "question");
+    if (event?.type !== "question") throw new Error("No question posted.");
+    const { question } = event;
+    expect(question.kind).toBe("choice");
+    if (question.kind !== "choice") throw new Error("Not a choice.");
+    asked.push(/on "([^"]+)"/.exec(question.prompt)?.[1] ?? "");
+    const sum = /what is \$(\d+) \+ \1\$/.exec(question.prompt)?.[1];
+    expect(
+      await chat.answer({
+        kind: "choice",
+        questionId: question.id,
+        choice:
+          CHOICE_LETTERS[
+            question.choices.findIndex((c) => c === `$${2 * Number(sum)}$`)
+          ] ?? "A",
+        confidence: "90",
+      }),
+    ).toEqual({ ok: true });
+    await chat.settled();
+  }
+
+  expect(asked.sort()).toEqual(["limits-idea", "limits-proof"]);
+  expect(chat.events().some((e) => e.type === "passed_over")).toBe(false);
+  expect(chat.events()).toContainEqual(
+    expect.objectContaining({
+      type: "assessment_end",
+      mode: "self-test",
+      skipped: false,
+    }),
+  );
+});
+
 test("question history is not interpreted as a scripted tutor instruction", async () => {
   const { dataRoot, units } = setUp();
   await approvedCourse(dataRoot);

@@ -114,6 +114,7 @@ import { unitStatus } from "../record/status.ts";
 import { amendCurriculumTool } from "../tools/amend-curriculum.ts";
 import { askQuestionTool } from "../tools/ask-question.ts";
 import { installPackagesTool } from "../tools/install-packages.ts";
+import { passOverObjectiveTool } from "../tools/pass-over-objective.ts";
 import { proposeStyleTool } from "../tools/propose-style.ts";
 import { showArtifactTool } from "../tools/show-artifact.ts";
 import {
@@ -1667,6 +1668,21 @@ function createUnitChat(
         },
         tools: () => [
           askQuestionTool(questions.board),
+          passOverObjectiveTool({
+            passOver: (passed) => {
+              const stops = stopCount;
+              return exclusive(async () => {
+                if (closing || stopCount !== stops) {
+                  return {
+                    refused: "Stop canceled passing over this objective.",
+                  };
+                }
+                return running === undefined
+                  ? { refused: "The unit is not open." }
+                  : running.assessments.passOver(passed);
+              });
+            },
+          }),
           showArtifactTool(aids.artifactShelf),
           ...(options.installer === undefined
             ? []

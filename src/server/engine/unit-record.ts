@@ -71,6 +71,7 @@ import {
   type Detour,
   isBeforeTest,
   type OpenQuestion,
+  type PassedOver,
   type TutorNotice,
   type UnitPosition,
 } from "../../shared/state.ts";
@@ -257,6 +258,12 @@ export interface UnitRecord {
     log: readonly EvidenceEntry[],
     tell: (run: AssessmentRun) => void,
   ): Promise<AssessmentRun>;
+  /**
+   * Keeps the objective as passed over in the self-test under way, with the
+   * tutor's reason; nothing goes in the evidence. `tell` tells the page,
+   * once it is written.
+   */
+  passOver(passed: PassedOver, tell: () => void): Promise<void>;
   /**
    * Ends the assessment, every objective asked or skipped: takes it out of
    * the position with its detour, withdraws its open question with nothing
@@ -917,6 +924,23 @@ export async function openUnitRecord(options: {
       return run;
     },
 
+    async passOver(passed, tell) {
+      const run = position.assessment;
+      if (run?.mode !== "self-test" || run.stage !== "on") {
+        throw new Error("No self-test is under way.");
+      }
+      await move(
+        {
+          ...position,
+          assessment: {
+            ...run,
+            passedOver: [...(run.passedOver ?? []), passed],
+          },
+        },
+        tell,
+      );
+    },
+
     async startSelfTest({ objectives, kinds }, log, tell) {
       const run: AssessmentRun = {
         mode: "self-test",
@@ -988,6 +1012,9 @@ export async function openUnitRecord(options: {
             ...(withdrawn === undefined
               ? {}
               : { withdrawnQuestionId: withdrawn.id }),
+            ...(run.passedOver === undefined
+              ? {}
+              : { passedOver: run.passedOver.length }),
           }),
       );
       runAnswers = [];

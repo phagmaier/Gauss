@@ -44,6 +44,7 @@ import type { UnitRecord } from "./unit-record.ts";
 import {
   checkText,
   detourButton,
+  pickedKinds,
   quoted,
   type RunWhere,
   runName,
@@ -209,7 +210,7 @@ export function createUnitQuestions<U extends PostingUnit>({
           const asked =
             run === undefined
               ? checkAsks(r, question.objective)
-              : runAsks(r, run, question.objective);
+              : runAsks(r, run, question.objective, question.kind);
           if ("refused" in asked) return asked;
           const posted = postedQuestion(question);
           const workspace = folder();
@@ -326,6 +327,7 @@ export function createUnitQuestions<U extends PostingUnit>({
     r: U,
     run: AssessmentRun,
     objective: string,
+    kind: QuestionInput["kind"],
   ): { number: number } | { refused: string } {
     const next = nextOf(r, run);
     const name = runName(run.mode);
@@ -337,6 +339,13 @@ export function createUnitQuestions<U extends PostingUnit>({
     if (next.objective !== objective) {
       return {
         refused: `The ${name} asks about "${next.objective}" now, and about no other objective: post the question on it.`,
+      };
+    }
+    if (run.kinds !== undefined && !run.kinds.includes(kind)) {
+      return {
+        refused:
+          `The learner picked only ${pickedKinds(run)} questions for this self-test, so a ${kind} question is refused. ` +
+          `Ask "${next.objective}" with one of those kinds${next.second ? "." : "; if none fits it, call pass_over_objective on it with why."}`,
       };
     }
     // A test counts its questions, one or two on each objective; the others

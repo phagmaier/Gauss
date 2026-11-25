@@ -156,22 +156,40 @@ async function makeCourse(): Promise<DataRoot> {
 /**
  * A tutor that does what each header allows: posts a choice question,
  * numbered on from those before, on the objective a header asks about (its
- * right choice is A); opens a detour; gives feedback; or replies.
+ * right choice is A); opens a detour; gives feedback; or replies. Asked
+ * about an objective `pass` names, it passes over the objective named
+ * there instead; a learner's "/pass id" has it pass over that one; and in
+ * a feedback turn it passes over `inFeedback`, if given, instead.
  */
-function tutor() {
+function tutor(
+  pass: Readonly<Record<string, string>> = {},
+  inFeedback?: string,
+) {
   let asked = 0;
+  const passOver = (objective: string): FakeStep[] => [
+    {
+      call: "pass_over_objective",
+      input: { objective, reason: `No picked kind fits ${objective}.` },
+    },
+  ];
   return (turn: EngineTurn): FakeStep[] => {
     const { text } = turn;
     const objective = /a question on "([^"]+)" with ask_question/.exec(
       text,
     )?.[1];
+    const said = /\/pass (\S+)/.exec(text)?.[1];
+    if (said !== undefined) return passOver(said);
     if (text.includes("The miss opens a detour")) return [{ text: "Detour." }];
     if (
       objective === undefined &&
       /^\[[^\]]*The learner answered question/.test(text)
     ) {
-      return [{ text: "Feedback." }];
+      return inFeedback === undefined
+        ? [{ text: "Feedback." }]
+        : passOver(inFeedback);
     }
+    const instead = objective === undefined ? undefined : pass[objective];
+    if (instead !== undefined) return passOver(instead);
     if (objective !== undefined) {
       asked += 1;
       return [
@@ -202,8 +220,11 @@ const HELP: FakeReply = {
  * `random`'s default makes Fisher-Yates swap nothing: the pick's order,
  * weakest first and then the course's, is the order asked.
  */
-function setUp(judgments: FakeReply[] = [], random = () => 0.99) {
-  const script = tutor();
+function setUp(
+  judgments: FakeReply[] = [],
+  random = () => 0.99,
+  script = tutor(),
+) {
   const backend = createFakeBackend((turn) => script(turn), [], { kept });
   const dataRoot = openDataRoot({ path: dir, now: () => clock });
   const units = createUnitChats({
@@ -385,9 +406,12 @@ test("a unit's self-test starts at once in that unit's thread with no card, leav
       '"limit-value" is an objective of this unit: Find a limit\'s value from ' +
       "a graph or a table. Before posting, work out its model solution, and " +
       "look for a shortcut that would answer it without that objective's " +
-      "skill; if there is one, ask another question. No teaching in a " +
-      "self-test: before the question, no reminder of the idea, rule or " +
-      "method, and no example. Posting ends your turn.",
+      "skill; if there is one, ask another question. Ask only choice or " +
+      "written questions, the kinds the learner picked; if none of them " +
+      "fits this objective, do not ask it: call pass_over_objective on " +
+      '"limit-value" with why. No teaching in a self-test: before the ' +
+      "question, no reminder of the idea, rule or method, and no example. " +
+      "Posting ends your turn.",
   );
   expect(lastQuestion(chat)).toMatchObject({
     prompt: "Question 1 on limit-value?",
@@ -787,4 +811,254 @@ test("the pick is asked in random order, from the injected source", async () => 
       ?.objectives,
   ).toEqual([BOTH[1], BOTH[0]]);
   expect(lastQuestion(chat).prompt).toBe("Question 1 on one-sided?");
+});
+
+// --- The kinds picked, and passing over --------------------------------------
+
+test("a question of a kind the learner did not pick is refused, naming the kinds picked and the pass-over tool", async () => {
+  await makeCourse();
+  const setup = setUp();
+  const chat = await started(
+    setup,
+    { ...UNIT_1, kinds: ["math", "written"] },
+    "limits",
+  );
+  expect(ofType(chat, "question")).toEqual([]);
+  expect(setup.backend.calls.at(-1)).toMatchObject({
+    name: "ask_question",
+    result: {
+      status: "refused",
+      text:
+        "The learner picked only math or written questions for this " +
+        'self-test, so a choice question is refused. Ask "limit-value" ' +
+        "with one of those kinds; if none fits it, call " +
+        "pass_over_objective on it with why.",
+    },
+  });
+});
+
+test("passing over is refused outside a self-test, with a question open, in a detour, while feedback is pending, for an objective not asked next, and for a missed objective's fresh question", async () => {
+  await makeCourse();
+  const refusal = (setup: ReturnType<typeof setUp>) =>
+    setup.backend.calls.findLast((c) => c.name === "pass_over_objective")
+      ?.result;
+
+  // In a review the learner asked for, under way with question 1 open.
+  const inReview = setUp();
+  expect(await inReview.units.reviewNow(COURSE)).toMatchObject({ ok: true });
+  const reviewing = inReview.units.get(COURSE, "limits");
+  if (reviewing === undefined) throw new Error("No chat.");
+  await reviewing.settled();
+  expect(lastQuestion(reviewing).number).toBe(1);
+  expect(reviewing.say("/pass limit-value")).toEqual({ ok: true });
+  await reviewing.settled();
+  expect(ofType(reviewing, "assessment_end")).toEqual([]);
+  expect(refusal(inReview)).toEqual({
+    status: "refused",
+    text: "pass_over_objective is only for a self-test under way. Do as the header allows.",
+  });
+  await step(reviewing.skipAssessment(), reviewing);
+  await inReview.units.close();
+
+  // With question 1 open in a self-test.
+  clock = new Date(Date.parse(NOW) + 2 * HOUR);
+  const open = setUp();
+  const chat = await started(open, UNIT_1, "limits");
+  expect(chat.say("/pass limit-value")).toEqual({ ok: true });
+  await chat.settled();
+  expect(refusal(open)).toEqual({
+    status: "refused",
+    text: "Question 1 is open: nothing is passed over until the learner answers it. End your turn.",
+  });
+  await step(chat.skipAssessment(), chat);
+  await open.units.close();
+
+  // Asked about limit-value, the tutor tries to pass over one-sided.
+  clock = new Date(Date.parse(NOW) + 4 * HOUR);
+  const wrong = setUp([], () => 0.99, tutor({ "limit-value": "one-sided" }));
+  const passing = await started(wrong, UNIT_1, "limits");
+  expect(refusal(wrong)).toEqual({
+    status: "refused",
+    text: 'The self-test asks about "limit-value" now: pass over only that objective, or ask it.',
+  });
+  expect(ofType(passing, "passed_over")).toEqual([]);
+  await step(passing.skipAssessment(), passing);
+  await wrong.units.close();
+
+  // In the detour after a miss.
+  clock = new Date(Date.parse(NOW) + 6 * HOUR);
+  const detoured = setUp();
+  const inDetour = await started(detoured, UNIT_1, "limits");
+  await answer(inDetour, "B");
+  expect(inDetour.say("/pass one-sided")).toEqual({ ok: true });
+  await inDetour.settled();
+  expect(refusal(detoured)).toEqual({
+    status: "refused",
+    text: "A detour is open: work through it with the learner. The self-test goes on once they end it.",
+  });
+  expect(ofType(inDetour, "passed_over")).toEqual([]);
+  await step(inDetour.skipAssessment(), inDetour);
+  await detoured.units.close();
+
+  // In the feedback turn on question 1.
+  clock = new Date(Date.parse(NOW) + 8 * HOUR);
+  const feeding = setUp([], () => 0.99, tutor({}, "one-sided"));
+  const inFeedback = await started(feeding, UNIT_1, "limits");
+  await answer(inFeedback, "A");
+  expect(refusal(feeding)).toEqual({
+    status: "refused",
+    text: "Your feedback on the last answer comes first; the app asks for the next question in a message of its own.",
+  });
+  expect(ofType(inFeedback, "passed_over")).toEqual([]);
+  expect(lastQuestion(inFeedback).prompt).toBe("Question 2 on one-sided?");
+  await step(inFeedback.skipAssessment(), inFeedback);
+  await feeding.units.close();
+
+  // Missed, then asked again after the other objective: the tutor tries to
+  // pass over its fresh question.
+  clock = new Date(Date.parse(NOW) + 10 * HOUR);
+  const base = tutor();
+  const missed = setUp(
+    [],
+    () => 0.99,
+    (turn) =>
+      turn.text.includes("a fresh question on the same idea")
+        ? [
+            {
+              call: "pass_over_objective",
+              input: { objective: "limit-value", reason: "None fits." },
+            },
+          ]
+        : base(turn),
+  );
+  const again = await started(missed, UNIT_1, "limits");
+  await answer(again, "B");
+  await step(again.anotherQuestion(), again);
+  expect(lastQuestion(again).prompt).toBe("Question 2 on one-sided?");
+  await answer(again, "A");
+  expect(sent(missed.backend).at(-1)).toContain(
+    "Ask only choice questions, the kinds the learner picked. No teaching",
+  );
+  expect(refusal(missed)).toEqual({
+    status: "refused",
+    text: '"limit-value" was asked with a kind picked and missed: ask its fresh question with ask_question.',
+  });
+  expect(ofType(again, "passed_over")).toEqual([]);
+});
+
+test("passing over every objective ends the self-test, and the next header says so", async () => {
+  await makeCourse();
+  const setup = setUp(
+    [],
+    () => 0.99,
+    tutor({ "limit-value": "limit-value", "one-sided": "one-sided" }),
+  );
+  const chat = await started(setup, UNIT_1, "limits");
+  expect(setup.backend.calls.map((c) => c.result)).toEqual([
+    {
+      status: "done",
+      text: 'Passed over "limit-value". The app asks for the next question in a message of its own. Your turn is over.',
+      endTurn: true,
+    },
+    {
+      status: "done",
+      text: 'Passed over "one-sided". It was the self-test\'s last objective, and the self-test is over. Your turn is over.',
+      endTurn: true,
+    },
+  ]);
+  expect(ofType(chat, "question")).toEqual([]);
+  expect(ofType(chat, "assessment_end")).toEqual([
+    {
+      type: "assessment_end",
+      mode: "self-test",
+      skipped: false,
+      statuses: {},
+      passedOver: 2,
+    },
+  ]);
+  expect(chat.say("Hello.")).toEqual({ ok: true });
+  await chat.settled();
+  expect(sent(setup.backend).at(-1)).toContain(
+    "The self-test is over: nothing answered. Passed over, since no kind " +
+      'picked fits them: "limit-value" and "one-sided". The unit goes on ' +
+      "where it stood before the self-test. Do not go back over the " +
+      "self-test unless the learner asks.",
+  );
+});
+
+test("an objective passed over records nothing, the self-test asks the next, its end counts it, and reopening the unit shows it again", async () => {
+  await makeCourse();
+  const first = setUp([], () => 0.99, tutor({ "limit-value": "limit-value" }));
+  const chat = await started(first, UNIT_1, "limits");
+
+  expect(first.backend.calls[0]).toEqual({
+    name: "pass_over_objective",
+    input: {
+      objective: "limit-value",
+      reason: "No picked kind fits limit-value.",
+    },
+    result: {
+      status: "done",
+      text: 'Passed over "limit-value". The app asks for the next question in a message of its own. Your turn is over.',
+      endTurn: true,
+    },
+  });
+  expect(ofType(chat, "passed_over")).toEqual([
+    {
+      type: "passed_over",
+      objective: "limit-value",
+      reason: "No picked kind fits limit-value.",
+    },
+  ]);
+  expect(
+    (await reload().readState(COURSE)).finishedReviews?.limits?.assessment
+      ?.passedOver,
+  ).toEqual([
+    { objective: "limit-value", reason: "No picked kind fits limit-value." },
+  ]);
+  // Only the two seeded answers: passing over records no evidence.
+  expect(await reload().readEvidence(COURSE)).toHaveLength(2);
+  expect(sent(first.backend)[1]).toContain(
+    'You passed over "limit-value": nothing is recorded on it, and the ' +
+      'self-test goes on. In this self-test, question 1, "limit-value": ' +
+      'passed over: no kind picked fits it; question 2, "one-sided": not ' +
+      "asked yet.",
+  );
+  expect(lastQuestion(chat)).toMatchObject({
+    prompt: "Question 1 on one-sided?",
+    number: 2,
+  });
+  await first.units.close();
+
+  // Reopened, the thread shows it again, and the run goes on to its end.
+  const second = setUp();
+  const opened = await second.units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const reopened = opened.chat;
+  await reopened.settled();
+  expect(ofType(reopened, "passed_over")).toHaveLength(1);
+  expect(replay(reopened).items).toContainEqual(
+    expect.objectContaining({
+      kind: "passed_over",
+      objective: "limit-value",
+      reason: "No picked kind fits limit-value.",
+    }),
+  );
+  await answer(reopened, "A");
+  expect(ofType(reopened, "assessment_end")).toEqual([
+    {
+      type: "assessment_end",
+      mode: "self-test",
+      skipped: false,
+      statuses: { "one-sided": "retained" },
+      passedOver: 1,
+    },
+  ]);
+  expect(reopened.say("Hello.")).toEqual({ ok: true });
+  await reopened.settled();
+  expect(sent(second.backend).at(-1)).toContain(
+    'The self-test is over: "one-sided" retained. Passed over, since no ' +
+      'kind picked fits it: "limit-value". The unit goes on where it stood ' +
+      "before the self-test.",
+  );
 });

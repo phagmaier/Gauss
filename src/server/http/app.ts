@@ -774,7 +774,14 @@ export function createApp(options: {
       dataRoot.readSources(id),
     ]);
     return c.html(
-      renderTranscript(stored.course.title, entry, number, sessions, sources),
+      renderTranscript(
+        stored.course.title,
+        entry,
+        number,
+        sessions,
+        sources,
+        curriculum.units,
+      ),
       200,
       {
         ...ARTIFACT_TEXT_HEADERS,

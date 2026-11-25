@@ -139,6 +139,8 @@ export function renderTranscript(
   transcripts: readonly Transcript[],
   /** The course's sources, which name what the tutor read. */
   sources: readonly Outline[],
+  /** The course's units, whose plans state an objective a review passed over. */
+  courseUnits: readonly StoredUnit[],
 ): string {
   let thread = emptyTimeline;
   let index = 0;
@@ -174,6 +176,15 @@ export function renderTranscript(
   const objectives = new Map(
     plan?.objectives.map(({ id, statement }) => [id, statement]),
   );
+  // A review passes over objectives of any unit: the plan of the one shown
+  // comes last, so its statements win.
+  const courseObjectives = new Map(
+    [...courseUnits.map((u) => u.plan), plan].flatMap(
+      (p) =>
+        p?.objectives.map(({ id, statement }) => [id, statement] as const) ??
+        [],
+    ),
+  );
   // As in the thread, only the tutor's replies read their section links.
   const tutorMarkdown = markdownProcessor(false, sectionsByRef(sources));
   const title = escapeHtml(unit.title);
@@ -208,7 +219,16 @@ export function renderTranscript(
     while (at < thread.items.length) {
       const item = thread.items[at];
       if (item === undefined || item.key >= session.end) break;
-      html.push(renderItem(item, plan, objectives, sources, tutorMarkdown));
+      html.push(
+        renderItem(
+          item,
+          plan,
+          objectives,
+          courseObjectives,
+          sources,
+          tutorMarkdown,
+        ),
+      );
       at += 1;
     }
     if (session.closed !== null) {
@@ -238,6 +258,8 @@ function renderItem(
   item: Item,
   plan: Plan | undefined,
   objectives: ReadonlyMap<string, string>,
+  /** Every unit's objectives, by id. */
+  courseObjectives: ReadonlyMap<string, string>,
   sources: readonly Outline[],
   tutorMarkdown: typeof markdown,
 ): string {
@@ -292,6 +314,14 @@ function renderItem(
       return renderQuestion(item);
     case "answered-below":
       return `<p class="note">Question ${item.number} was answered further down.</p>`;
+    case "passed_over": {
+      const statement = courseObjectives.get(item.objective);
+      const said =
+        statement === undefined
+          ? escapeHtml(`"${item.objective}"`)
+          : prose(statement, true);
+      return `<p class="marker"><b>Passed over</b> ${said} No kind of question picked fits it: ${escapeHtml(item.reason)}</p>`;
+    }
     case "file":
       return `<p class="note">The tutor wrote <code>${escapeHtml(item.path)}</code></p>`;
     case "read":

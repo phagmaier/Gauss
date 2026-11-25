@@ -532,17 +532,19 @@ export function runWaitsText(run: AssessmentRun): string {
  */
 function selfTestLine(run: AssessmentRun): string {
   const count = run.objectives.length;
-  const kinds = run.kinds ?? [];
-  // "choice", "choice or math", "choice, math or code".
-  const asked =
-    kinds.length <= 1
-      ? (kinds[0] ?? "")
-      : `${kinds.slice(0, -1).join(", ")} or ${kinds.at(-1)}`;
   return (
     `The learner set up a self-test, under way here: ${count === 1 ? "one objective" : `${count} objectives`}, ` +
-    `asked with ${asked} questions, one question on each; ` +
+    `asked with ${pickedKinds(run)} questions, one question on each; ` +
     "after a miss, a detour, then a fresh question on that objective after another objective, when one is still to ask."
   );
+}
+
+/** The kinds of question a self-test's learner picked: "choice", "choice or math", "choice, math or code". */
+export function pickedKinds(run: Pick<AssessmentRun, "kinds">): string {
+  const kinds = run.kinds ?? [];
+  return kinds.length <= 1
+    ? (kinds[0] ?? "")
+    : `${kinds.slice(0, -1).join(", ")} or ${kinds.at(-1)}`;
 }
 
 /**
@@ -555,7 +557,8 @@ export function runTurn(
   where: Where,
   event:
     | { after: "start" | "reopened" }
-    | { after: "feedback" | "detour"; number: number; objective?: string },
+    | { after: "feedback" | "detour"; number: number; objective?: string }
+    | { after: "passed-over"; objective: string },
 ): string {
   const run = where.assessment?.run;
   const name = runName(run?.mode ?? "review");
@@ -592,6 +595,9 @@ export function runTurn(
         `The learner pressed "${detourButton(where.assessment, event.objective ?? "")}": ` +
         `the detour after question ${event.number} is over, and the ${name} goes on.`;
       break;
+    case "passed-over":
+      said = `You passed over "${event.objective}": nothing is recorded on it, and the ${name} goes on.`;
+      break;
   }
   return turn(where, said);
 }
@@ -605,19 +611,24 @@ export function runEndNote(
   ended:
     | { skipped: true; withdrawn: number | undefined }
     | { skipped: false; statuses: Record<string, ObjectiveStatus> },
+  passedOver: readonly string[] = [],
 ): string {
   const name = runName(mode);
   const goesOn =
     mode === "gate"
       ? "The learner now sees the unit's closing card, with each objective's status as it stands."
       : `The unit goes on where it stood before the ${name}.`;
+  const passed =
+    passedOver.length === 0
+      ? ""
+      : ` Passed over, since no kind picked fits ${passedOver.length === 1 ? "it" : "them"}: ${quoted(passedOver)}.`;
   if (ended.skipped) {
     const withdrawn =
       ended.withdrawn === undefined
         ? ""
         : `, and question ${ended.withdrawn} was withdrawn`;
     return mode === "self-test"
-      ? `The learner ended the self-test partway${withdrawn}. ${goesOn}`
+      ? `The learner ended the self-test partway${withdrawn}.${passed} ${goesOn}`
       : `The learner skipped the rest of the ${name}${withdrawn}. ${goesOn}`;
   }
   const said = Object.entries(ended.statuses).map(
@@ -625,8 +636,8 @@ export function runEndNote(
       `"${id}" ${status === "slipping" ? "slipping (passed before, now missed, so it must pass again)" : status}`,
   );
   return (
-    `The ${name} is over: ${said.join("; ")}. ${goesOn} Do not go back ` +
-    `over the ${name} unless the learner asks.`
+    `The ${name} is over: ${said.length === 0 ? "nothing answered" : said.join("; ")}.${passed} ` +
+    `${goesOn} Do not go back over the ${name} unless the learner asks.`
   );
 }
 
@@ -737,9 +748,11 @@ function runStanding(where: Where): string {
               : assessment.next?.objective === objective
                 ? "missed, so a fresh question on it comes next"
                 : "missed, so a fresh question on it comes later, after another objective"
-            : standing.missed
-              ? "missed, then asked once more"
-              : "answered correctly";
+            : standing.state === "passed-over"
+              ? "passed over: no kind picked fits it"
+              : standing.missed
+                ? "missed, then asked once more"
+                : "answered correctly";
       return `question ${i + 1}, "${objective}": ${said}`;
     })
     .join("; ");
@@ -755,13 +768,15 @@ function testStanding(assessment: RunWhere): string {
           ? "not asked yet"
           : standing.state === "again"
             ? "answered correctly, which does not pass alone, so a second question follows"
-            : standing.asked >= 2
-              ? standing.missed
-                ? "asked twice, the second missed"
-                : "answered correctly twice"
-              : standing.missed
-                ? "missed"
-                : "answered correctly";
+            : standing.state === "passed-over"
+              ? "passed over"
+              : standing.asked >= 2
+                ? standing.missed
+                  ? "asked twice, the second missed"
+                  : "answered correctly twice"
+                : standing.missed
+                  ? "missed"
+                  : "answered correctly";
       return `"${objective}": ${said}`;
     })
     .join("; ");
@@ -886,6 +901,10 @@ function runAllowed(where: Where): string | undefined {
     const fresh = next.second
       ? ", and unlike the one missed before: a fresh question on the same idea"
       : "";
+    const passOverClause = next.second
+      ? "."
+      : "; if none of them fits this objective, do not ask it: " +
+        `call pass_over_objective on "${next.objective}" with why.`;
     return (
       `In this self-test, ${standing}. Allowed now: a lead-in of one short ` +
       "sentence that says only that a question follows, or which unit it " +
@@ -894,7 +913,9 @@ function runAllowed(where: Where): string | undefined {
       `before${fresh}. ${aboutObjective(where, next)} Before posting, work ` +
       "out its model solution, and look for a shortcut that would answer it " +
       "without that objective's skill; if there is one, ask another " +
-      "question. No teaching in a self-test: before the question, no " +
+      `question. Ask only ${pickedKinds(run)} questions, the kinds the ` +
+      `learner picked${passOverClause} No ` +
+      "teaching in a self-test: before the question, no " +
       "reminder of the idea, rule or method, and no example. Posting ends " +
       `your turn.${after}`
     );

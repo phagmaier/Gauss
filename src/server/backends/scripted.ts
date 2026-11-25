@@ -39,8 +39,11 @@
 //   task 2.16a), opens the detour a miss starts with a reply that repeats
 //   where an "I don't know" got stuck (the learner then asks for another
 //   question, task 2.20), posts a question when the header allows one, in a
-//   check or an assessment (task 5.4: review, a gate or a self-test, whose
-//   kinds picked it does not read: it asks as it would in a review),
+//   check or an assessment (task 5.4: review, a gate or a self-test, where
+//   it asks as in a review, except that in a self-test with only code
+//   picked it passes over, with pass_over_objective and a reason, each
+//   objective it would not ask with code: every one outside a coding
+//   course, and a "-proof" one in it),
 //   teaches in the teach phase, first reading with read_section each
 //   section the header says the segment draws on (task 4.8) and, in a
 //   source segment, presenting a lecture with
@@ -878,13 +881,47 @@ function teaching(
     return [{ text: `Scripted feedback on question ${answered}.` }];
   }
   if (objective !== undefined) {
+    // In a self-test the header names the kinds picked: the kind it would
+    // post (code on a non-"-proof" objective in a coding course, written on
+    // a "-proof" one, math every second question with math tools, else
+    // choice) is posted if picked; if not, choice, written, or math, the
+    // first picked; and if none of those is picked either (only code,
+    // outside a coding course or on a "-proof" objective), it passes over
+    // the objective. No kinds in the header: not a self-test, any kind.
+    const picked = / asked with (.+?) questions,/
+      .exec(header)?.[1]
+      ?.split(/, | or /);
     const number = askedBefore(history, objective) + 1;
-    if (kinds === "code" && !objective.endsWith(WRITTEN)) {
-      return codeQuestion(objective, number, cwd);
+    const proof = objective.endsWith(WRITTEN);
+    const wanted: Kind =
+      kinds === "code" && !proof
+        ? "code"
+        : proof
+          ? "written"
+          : kinds === "math" && number % 2 === 0
+            ? "math"
+            : "choice";
+    const kind =
+      picked === undefined || picked.includes(wanted)
+        ? wanted
+        : (["choice", "written", "math"] as const).find((k) =>
+            picked.includes(k),
+          );
+    if (kind === undefined) {
+      return [
+        {
+          call: "pass_over_objective",
+          input: {
+            objective,
+            reason: `Scripted: "${objective}" is not checked with code here, and only code questions were picked.`,
+          },
+        },
+      ];
     }
+    if (kind === "code") return codeQuestion(objective, number, cwd);
     const posting: FakeStep = {
       call: "ask_question",
-      input: question(objective, number, kinds === "math"),
+      input: question(objective, number, kind),
     };
     // A test's question comes with no lead-in.
     return header.includes("no lead-in")
@@ -1185,12 +1222,19 @@ function askedBefore(history: string, objective: string): number {
   return 0;
 }
 
+/** A kind of question the scripted tutor posts. */
+type Kind = "choice" | "written" | "math" | "code";
+
 /**
- * The objective's question, different for each number, so none is asked
- * twice in a check: a math one every second question, if `math`.
+ * The objective's question of `kind`, different for each number, so none is
+ * asked twice in a check.
  */
-function question(objective: string, number: number, math: boolean): unknown {
-  if (math && !objective.endsWith(WRITTEN) && number % 2 === 0) {
+function question(
+  objective: string,
+  number: number,
+  kind: Exclude<Kind, "code">,
+): unknown {
+  if (kind === "math") {
     return {
       objective,
       kind: "math",
@@ -1202,7 +1246,7 @@ function question(objective: string, number: number, math: boolean): unknown {
       expected: `${2 * number}x`,
     };
   }
-  return objective.endsWith(WRITTEN)
+  return kind === "written"
     ? {
         objective,
         kind: "written",

@@ -23,6 +23,7 @@ import type { PageEvent, TestShown } from "../../shared/events.ts";
 import type { EvidenceEntry } from "../../shared/evidence.ts";
 import { firstTaught } from "../../shared/plan.ts";
 import type { AssessmentHead } from "../../shared/question.ts";
+import type { PassOverInput } from "../../shared/self-test.ts";
 import type { AssessmentRun, OpenQuestion } from "../../shared/state.ts";
 import { hasPassed } from "../../shared/status.ts";
 import { objectiveStatus } from "../record/status.ts";
@@ -106,6 +107,10 @@ export interface UnitAssessments {
   startAssessment(): Promise<ChatResult>;
   /** The body of the chat's skipAssessment, inside its guard. */
   skipAssessment(): Promise<ChatResult>;
+  /** The body of pass_over_objective, inside the chat's queue. */
+  passOver(
+    passed: PassOverInput,
+  ): Promise<{ next: string | undefined } | { refused: string }>;
   /** The body of the chat's skipTested, inside its guard. */
   skipTested(shown: readonly string[]): Promise<ChatResult>;
   /** The body of the chat's teachWhole, inside its guard. */
@@ -159,6 +164,7 @@ export function createUnitAssessments({
     | "reopened"
     | "startTest"
     | "startSelfTest"
+    | "passOver"
     | "startAssessment"
     | "endAssessment"
     | "move"
@@ -245,7 +251,7 @@ export function createUnitAssessments({
     return {
       run,
       standing: run.objectives.map(({ objective }) =>
-        runObjective(objective, runAnswers, evidence, run.mode),
+        runObjective(objective, runAnswers, evidence, run),
       ),
       next,
       ...(sourceHandoff === undefined ? {} : { sourceHandoff }),
@@ -329,6 +335,7 @@ export function createUnitAssessments({
           skipped
             ? { skipped: true, withdrawn: withdrawn?.number }
             : { skipped: false, statuses },
+          run.passedOver?.map((p) => p.objective),
         ),
       );
     }
@@ -345,6 +352,78 @@ export function createUnitAssessments({
     } else {
       await progression.afterReview();
     }
+  }
+
+  /**
+   * The body of pass_over_objective, inside the chat's queue: in a
+   * self-test under way, with nothing open or owed, the objective it asks
+   * next is kept as passed over, the page is told, and the self-test asks
+   * its next objective, or ends. Answers the objective asked next, if any.
+   */
+  async function passOver(
+    passed: PassOverInput,
+  ): Promise<{ next: string | undefined } | { refused: string }> {
+    const run = runOn();
+    const { openQuestion, detour } = record.position;
+    if (run?.mode !== "self-test") {
+      return {
+        refused:
+          "pass_over_objective is only for a self-test under way. Do as the header allows.",
+      };
+    }
+    if (openQuestion !== undefined) {
+      const n = openQuestion.number;
+      return {
+        refused:
+          openQuestion.answer !== undefined
+            ? `Question ${n} is answered and its answer is being graded. End your turn; the grade arrives in a message of its own.`
+            : `Question ${n} is open: nothing is passed over until the learner answers it. End your turn.`,
+      };
+    }
+    if (detour !== undefined) {
+      return {
+        refused:
+          "A detour is open: work through it with the learner. The self-test goes on once they end it.",
+      };
+    }
+    if (progression.feedback() !== undefined) {
+      return {
+        refused:
+          "Your feedback on the last answer comes first; the app asks for the next question in a message of its own.",
+      };
+    }
+    const next = nextOf(run);
+    if (next === undefined) {
+      return {
+        refused:
+          "Every objective of the self-test has been asked, and it is ending: nothing is left to pass over.",
+      };
+    }
+    if (next.objective !== passed.objective) {
+      return {
+        refused: `The self-test asks about "${next.objective}" now: pass over only that objective, or ask it.`,
+      };
+    }
+    if (next.second) {
+      return {
+        refused: `"${next.objective}" was asked with a kind picked and missed: ask its fresh question with ask_question.`,
+      };
+    }
+    const stops = stopCount();
+    await record.passOver(passed, () =>
+      emit({ type: "passed_over", ...passed }),
+    );
+    const now = runOn();
+    const after = now === undefined ? undefined : nextOf(now);
+    if (after === undefined) {
+      await endRun(false);
+    } else {
+      progression.askInRun(
+        { after: "passed-over", objective: passed.objective },
+        stops,
+      );
+    }
+    return { next: after?.objective };
   }
 
   /**
@@ -493,6 +572,7 @@ export function createUnitAssessments({
     goOnInRun,
     startRun,
     startSelfTest,
+    passOver,
     endRun,
     runWaits,
     headOf,

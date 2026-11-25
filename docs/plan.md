@@ -58,13 +58,6 @@ look for a shortcut that skips the target; give the smallest hint that
 unblocks, one per request. The new text is tried on a real model only in
 the user check (the user's choice, 2026-11-25).
 
-### 6.25 The kinds picked, and passing over — todo
-
-**Needs:** 6.24.
-**Why:** The learner picks the kinds of question. The tutor asks only those, and passes over an objective none of them fits, saying why, which records nothing.
-**Do:** In a self-test, `ask_question` refuses a kind not picked. The refusal names the kinds picked and the pass-over tool. A new teaching tool in `src/server/tools/` passes over the objective asked next, with a reason. Its description and fields are new model-facing text. It is accepted only in a self-test, with no question or detour open. It adds the objective and reason to the run's `passedOver` and an event to the thread, and the run moves on. The header names the kinds picked. Both backends get the tool. A Codex thread begun before this task lacks it until a new conversation (`findings.md`, "Codex"); add that to the Known gap on a Codex thread's tools. Outside a coding course, the scripted backend passes over every objective of a self-test whose only kind picked is code.
-**Done when:** fake-backend tests show the following. A question of a kind not picked is refused with that reason. Passing over is refused outside a self-test and with a question open. Once accepted, it writes no evidence, the run asks the next objective, and the end counts the objective as passed over. Reopening the unit shows its line again. `mise run check` passes.
-
 ### 6.26 The page for a self-test — todo
 
 **Needs:** 6.24 and 6.25.
@@ -154,8 +147,11 @@ work for Stage 6. A task that closes a gap deletes it here.
   keeps lacking the source tools after the course gains one. Once a
   restart resumes it, its instructions and headers offer the source and
   the tools it lacks, and a line saying it cannot read the source, not yet
-  delivered, is lost. Decide whether Gauss should record which tools a
-  thread began with, or start a new one.
+  delivered, is lost. Likewise a Codex thread begun before the self-test's
+  pass-over tool existed lacks it: its self-test header offers a tool the
+  thread does not have, until "Start fresh" or another unit. Decide
+  whether Gauss should record which tools a thread began with, or start a
+  new one.
 - A check question on a one-claim explanation objective can ask for
   reasoning the lesson or detour already gave (`findings.md`, "Tutor";
   a Codex tutor too, "Codex"),

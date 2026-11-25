@@ -419,6 +419,7 @@ test("a source lecture publishes only verified blocks, in order through replay a
       1,
       await root.readTranscripts(id, "preface"),
       [BOOK],
+      [],
     );
     expect(html).toMatch(
       /Start with the claim\.[\s\S]*<blockquote>The true is the whole\.<\/blockquote>[\s\S]*The first sentence sets the standard\.[\s\S]*<blockquote>it is essentially a result\.<\/blockquote>[\s\S]*The second says that the standard takes time to reach\./,
@@ -1045,6 +1046,7 @@ test("the exported transcript gives a section link's words with its section and 
     1,
     await root.readTranscripts(id, "preface"),
     [BOOK],
+    [],
   );
   expect(html).toContain(
     '<span>the whole <span class="note">(Preface (part 1 of 2), p. 9)</span></span>',
@@ -1057,4 +1059,49 @@ test("the exported transcript gives a section link's words with its section and 
     '<blockquote>it is essentially a result.</blockquote><figcaption class="note">Verified in the source: Preface, p. 10</figcaption>',
   );
   expect(html).not.toContain("source:phenomenology");
+});
+
+test("the exported transcript states an objective passed over from another unit's plan, as prose, and quotes an id no plan has", () => {
+  const html = renderTranscript(
+    CURRICULUM.title,
+    { ...PREFACE, plan: PLAN },
+    1,
+    [
+      {
+        session: 1,
+        events: [
+          { type: "session", startedAt: NOW },
+          {
+            type: "passed_over",
+            objective: "testing",
+            reason: "Only <code> questions were picked.",
+          },
+          { type: "passed_over", objective: "lost", reason: "None fits." },
+        ],
+        unreadable: [],
+      },
+    ],
+    [BOOK],
+    [
+      { ...PREFACE, plan: PLAN },
+      {
+        id: "introduction",
+        title: "The Introduction",
+        goal: "Say how knowing tests itself.",
+        prerequisites: ["preface"],
+        plan: {
+          ...PLAN,
+          objectives: [
+            { id: "testing", statement: "Say how *knowing* tests itself." },
+          ],
+        },
+      },
+    ],
+  );
+  expect(html).toContain(
+    '<p class="marker"><b>Passed over</b> Say how <em>knowing</em> tests itself. No kind of question picked fits it: Only &lt;code&gt; questions were picked.</p>',
+  );
+  expect(html).toContain(
+    '<p class="marker"><b>Passed over</b> &quot;lost&quot; No kind of question picked fits it: None fits.</p>',
+  );
 });

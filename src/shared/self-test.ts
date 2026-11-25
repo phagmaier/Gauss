@@ -48,3 +48,19 @@ export const SelfTestCounts = z.object({
   withinHour: z.number().int().nonnegative(),
 });
 export type SelfTestCounts = z.infer<typeof SelfTestCounts>;
+
+/** What the tutor gives `pass_over_objective` in a self-test. */
+export const PassOverInput = z.object({
+  objective: Slug.describe(
+    "The id of the objective the self-test asks next, which you pass over.",
+  ),
+  reason: z
+    .string()
+    .trim()
+    .min(1)
+    .max(300)
+    .describe(
+      "Why no kind of question the learner picked fits this objective, in a sentence the learner reads.",
+    ),
+});
+export type PassOverInput = z.infer<typeof PassOverInput>;

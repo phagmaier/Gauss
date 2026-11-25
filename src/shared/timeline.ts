@@ -137,6 +137,8 @@ export interface AssessmentEndItem {
   skipped: boolean;
   /** The objectives it recorded an answer on, with their statuses then. */
   statuses: Record<string, ObjectiveStatus>;
+  /** In a self-test: how many objectives the tutor passed over, when any. */
+  passedOver?: number;
   /**
    * Where the unit goes on: the phase the thread was in, or "finished" for
    * a review the learner asked for in a finished unit (task 5.25).
@@ -286,6 +288,8 @@ export type Item =
   | AssessmentItem
   | AssessmentEndItem
   | TestResultItem
+  /** A self-test passed over this objective: no kind picked fits it, by the tutor's reason. */
+  | { kind: "passed_over"; key: number; objective: string; reason: string }
   /** Where a question was posted that was answered further down (task 2.18). */
   | { kind: "answered-below"; key: number; number: number }
   /** A detour began after the miss on this question (task 2.20). */
@@ -1312,11 +1316,27 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             mode: event.mode,
             skipped: event.skipped,
             statuses: event.statuses,
+            ...(event.passedOver === undefined
+              ? {}
+              : { passedOver: event.passedOver }),
             at: state.finished === null ? state.position : "finished",
           },
         ],
       };
     }
+    case "passed_over":
+      return {
+        ...next,
+        items: [
+          ...state.items,
+          {
+            kind: "passed_over",
+            key: index,
+            objective: event.objective,
+            reason: event.reason,
+          },
+        ],
+      };
     case "unit_end": {
       // The card standing is shown again: by a chat that opened at it, or
       // with the statuses a dispute changed (task 3.8).

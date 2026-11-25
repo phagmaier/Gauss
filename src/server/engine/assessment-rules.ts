@@ -10,7 +10,10 @@
 // detour too, and no third question follows. In a self-test that second
 // question waits until another objective has been answered since the miss,
 // while another is still to ask, so that it does not follow the detour
-// that worked through the miss.
+// that worked through the miss. A self-test asks only the kinds of question
+// the learner picked: the tutor may pass over an objective none of them
+// fits, before its first question only, and it counts as asked, with no
+// answer and no status.
 //
 // A test has no feedback and no detour. A correct answer that passes its
 // objective alone (at 90% or 100%, without help) ends its questions; any
@@ -45,7 +48,9 @@ export type RunObjective =
    * Asked all it will be: answered correctly, or asked a second time; in a
    * test, missed at its first question too.
    */
-  | { state: "done"; asked: number; missed: boolean };
+  | { state: "done"; asked: number; missed: boolean }
+  /** In a self-test: passed over by the tutor, since no kind picked fits it; asked no more. */
+  | { state: "passed-over"; reason: string };
 
 /**
  * @param answers the answers given in the assessment, in order, as recorded
@@ -55,8 +60,13 @@ export function runObjective(
   objective: string,
   answers: readonly AnswerEvidence[],
   evidence: readonly EvidenceEntry[],
-  mode: AssessmentMode,
+  run: Pick<AssessmentRun, "mode" | "passedOver">,
 ): RunObjective {
+  const passed = run.passedOver?.find((p) => p.objective === objective);
+  if (passed !== undefined) {
+    return { state: "passed-over", reason: passed.reason };
+  }
+  const { mode } = run;
   const given = countedAnswers(
     answers.filter((a) => a.objective === objective),
     evidence,
@@ -105,8 +115,8 @@ export function nextInRun(
   evidence: readonly EvidenceEntry[],
 ): RunStep | undefined {
   const steps = run.objectives.flatMap(({ unit, objective }, index) => {
-    const standing = runObjective(objective, answers, evidence, run.mode);
-    return standing.state === "done"
+    const standing = runObjective(objective, answers, evidence, run);
+    return standing.state === "done" || standing.state === "passed-over"
       ? []
       : [{ index, unit, objective, second: standing.state === "again" }];
   });

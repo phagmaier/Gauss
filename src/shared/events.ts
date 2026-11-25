@@ -395,6 +395,18 @@ export const PageEvent = z.discriminatedUnion("type", [
     /** The objectives it recorded an answer on, with their statuses now. */
     statuses: z.record(Slug, ObjectiveStatus),
     withdrawnQuestionId: z.string().optional(),
+    /** In a self-test: how many objectives the tutor passed over, when any. */
+    passedOver: z.number().int().positive().optional(),
+  }),
+  /**
+   * In a self-test: the tutor passed over the objective it asks next, since
+   * no kind of question the learner picked fits it, with its reason. Nothing
+   * is recorded, and the self-test asks its next objective or ends.
+   */
+  z.object({
+    type: z.literal("passed_over"),
+    objective: Slug,
+    reason: z.string().min(1),
   }),
   /**
    * The test before the unit is over, or the learner ended it with "Start
