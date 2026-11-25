@@ -1076,7 +1076,15 @@ test("the exported transcript states an objective passed over from another unit'
             objective: "testing",
             reason: "Only <code> questions were picked.",
           },
-          { type: "passed_over", objective: "lost", reason: "None fits." },
+          // A self-test that says its kinds names them; the line before it cannot.
+          {
+            type: "assessment",
+            mode: "self-test",
+            stage: "on",
+            count: 2,
+            kinds: ["choice", "math"],
+          },
+          { type: "passed_over", objective: "lost", reason: "none fits" },
         ],
         unreadable: [],
       },
@@ -1099,9 +1107,9 @@ test("the exported transcript states an objective passed over from another unit'
     ],
   );
   expect(html).toContain(
-    '<p class="marker"><b>Passed over</b> Say how <em>knowing</em> tests itself. No kind of question picked fits it: Only &lt;code&gt; questions were picked.</p>',
+    '<p class="marker"><b>Passed over</b>: Say how <em>knowing</em> tests itself. No kind of question picked fits it, the tutor says: Only &lt;code&gt; questions were picked. Nothing is recorded.</p>',
   );
   expect(html).toContain(
-    '<p class="marker"><b>Passed over</b> &quot;lost&quot; No kind of question picked fits it: None fits.</p>',
+    '<p class="marker"><b>Passed over</b>: &quot;lost&quot;. No choice or math question fits it, the tutor says: None fits. Nothing is recorded.</p>',
   );
 });

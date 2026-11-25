@@ -114,6 +114,7 @@ async function open(
     [...host.querySelectorAll("button")].find((b) => b.textContent === name);
   return {
     stream: events,
+    host,
     sourceLines: () =>
       [...host.querySelectorAll(".did")].map((line) =>
         [...line.children]
@@ -326,4 +327,64 @@ test("a closing card after the gate asks for its own Move on confirmation", asyn
   expect(button("Go over it again")?.disabled).toBe(false);
   expect(button("Move on without them")?.disabled).toBe(false);
   expect(button("Stay")).toBeUndefined();
+});
+
+test("a self-test's second question says which miss it follows, pinned and in the thread; its passed-over line and End ask as piece 27", async () => {
+  const { stream, host, click, confirmation } = await open("discuss");
+  const ask = (id: string, number: number, second?: true): PageEvent => ({
+    type: "question",
+    question: {
+      kind: "written",
+      id,
+      number,
+      prompt: "Why?",
+      assessment: second === undefined ? { of: 2 } : { of: 2, second },
+    },
+  });
+  const grade = (id: string, verdict: "correct" | "incorrect"): PageEvent => ({
+    type: "graded",
+    questionId: id,
+    verdict,
+    answer: { kind: "written", questionId: id, text: "So.", confidence: "75" },
+    assisted: false,
+  });
+  await stream.emit(
+    {
+      type: "assessment",
+      mode: "self-test",
+      stage: "on",
+      count: 2,
+      kinds: ["written"],
+    },
+    ask("a1", 1),
+    grade("a1", "incorrect"),
+    {
+      type: "passed_over",
+      objective: "product-rule",
+      reason: "it needs a drawing",
+    },
+    ask("b1", 2),
+    grade("b1", "correct"),
+    ask("a2", 1, true),
+  );
+  const heads = () =>
+    [...host.querySelectorAll(".q-count")].map((h) => h.textContent);
+  // Open, it is the pinned card.
+  expect(host.querySelector(".th-pin .q-count")?.textContent).toContain(
+    "A second question, after question 1's miss",
+  );
+  expect(host.querySelector(".th-passed")?.textContent).toBe(
+    "Passed over: Differentiate a product. No written question fits it, the tutor says: It needs a drawing. Nothing is recorded.",
+  );
+  await click("End the self-test");
+  expect(confirmation()).toBe(
+    "End the self-test? Your two answers count. Any open question is dropped.",
+  );
+  await click("Keep going");
+
+  // Answered, it is in the thread.
+  await stream.emit(grade("a2", "incorrect"));
+  expect(heads().filter((h) => h?.includes("A second question"))).toEqual([
+    expect.stringContaining("A second question, after question 1's miss"),
+  ]);
 });

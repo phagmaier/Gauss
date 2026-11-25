@@ -43,6 +43,7 @@ import {
   assessmentCard,
   assessmentEndMarker,
   assessmentMarker,
+  passedOverLine,
   type ResultRow,
   testResultCard,
 } from "../shared/assessment-view.ts";
@@ -109,11 +110,13 @@ import {
   closingCard,
   detourSays,
   divided,
+  endSelfTestAsks,
   finishedByTest,
   helpNotice,
   judgmentSays,
   lastCard,
   nextStep,
+  objectiveStatements,
   openQuestion,
   outline,
   type Placement,
@@ -123,6 +126,7 @@ import {
   SKIP_GATE_ASKS,
   type SkipGateAsks,
   segmentHeading,
+  selfTestQuestions,
   skipGatePartway,
   skipLabel,
   type UnitOutline,
@@ -387,6 +391,14 @@ export function Session(props: { courseId: string; unitId: string }) {
 
   const { plan, busy } = timeline;
   const where = plan === null ? null : whereInUnit(plan, timeline);
+  const selfTest = useMemo(
+    () => selfTestQuestions(timeline.items),
+    [timeline.items],
+  );
+  const statements = useMemo(
+    () => objectiveStatements(stored, plan),
+    [stored, plan],
+  );
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
   const parts = conversations(timeline.items);
@@ -656,6 +668,11 @@ export function Session(props: { courseId: string; unitId: string }) {
                       }
                       onCourse={toCourse}
                       onNext={toNext}
+                      inSelfTest={
+                        item.kind === "question" &&
+                        selfTest.has(item.question.id)
+                      }
+                      statements={statements}
                     />
                   </Fragment>
                 );
@@ -722,6 +739,7 @@ export function Session(props: { courseId: string; unitId: string }) {
               item={asked}
               disputes={disputes}
               hidden={hidden}
+              inSelfTest={selfTest.has(asked.question.id)}
               onAnswer={(submission) => post(path("answers"), submission)}
               onGradeAgain={() => post(path("grade-again"))}
               onOpenFile={(questionId, file) =>
@@ -1119,6 +1137,10 @@ function ThreadItem(props: {
   onSkipAssessment(): void;
   /** "Skip the gate" asks before it skips. */
   confirmingSkip: boolean;
+  /** A question asked in a self-test. */
+  inSelfTest: boolean;
+  /** The course's objectives' statements by id, for a passed-over objective. */
+  statements: ReadonlyMap<string, string>;
   /** The course's sources, once loaded, for a curriculum change's reads and what the tutor read. */
   sources: readonly SourceOutline[] | undefined;
   reader: NonNullable<ContextType<typeof SourceLinks>>;
@@ -1293,6 +1315,17 @@ function ThreadItem(props: {
           </span>
         </div>
       );
+    case "passed_over": {
+      const line = passedOverLine({
+        ...item,
+        statement: props.statements.get(item.objective),
+      });
+      return (
+        <p className="th-passed">
+          <b>Passed over</b>: <InlineProse text={line.statement} /> {line.rest}
+        </p>
+      );
+    }
     case "assessment": {
       if (item.stage === "offered") {
         return (
@@ -1350,6 +1383,7 @@ function ThreadItem(props: {
         <QuestionCard
           item={item}
           disputes={props.disputes}
+          inSelfTest={props.inSelfTest}
           onAnswer={props.onAnswer}
           onGradeAgain={props.onGradeAgain}
         />
@@ -1991,6 +2025,7 @@ function AssessmentCard(props: {
         <div className="qa-foot">
           <SkipGate
             asks={SKIP_GATE_ASKS}
+            label="Skip the gate"
             busy={props.busy}
             confirming={props.confirmingSkip}
             onConfirm={props.onConfirmSkip}
@@ -2031,9 +2066,13 @@ function AssessmentCard(props: {
   );
 }
 
-/** "Skip the gate", which asks once before it skips: on its card, or partway with its own text. */
+/**
+ * "Skip the gate" or "End the self-test", which asks once before it acts:
+ * the gate on its card, or partway with its own text.
+ */
 function SkipGate(props: {
   asks: SkipGateAsks;
+  label: string;
   busy: boolean;
   confirming: boolean;
   onConfirm(asking: boolean): void;
@@ -2069,7 +2108,7 @@ function SkipGate(props: {
       disabled={props.busy}
       onClick={() => props.onConfirm(true)}
     >
-      Skip the gate
+      {props.label}
     </button>
   );
 }
@@ -2091,25 +2130,32 @@ function NextStepControl(props: {
   onNext: (() => void) | undefined;
 }) {
   const { step, busy } = props;
-  const gate = props.timeline.assessment?.mode === "gate";
-  const skip = gate ? (
-    <SkipGate
-      asks={skipGatePartway(props.timeline)}
-      busy={busy}
-      confirming={props.confirmingSkip}
-      onConfirm={props.onConfirmSkip}
-      onSkip={() => props.onAct("assessment/skip")}
-    />
-  ) : (
-    <button
-      type="button"
-      className="textbtn"
-      disabled={busy}
-      onClick={() => props.onAct("assessment/skip")}
-    >
-      {skipLabel(props.timeline)}
-    </button>
-  );
+  // The gate's skip and the self-test's end ask first.
+  const mode = props.timeline.assessment?.mode;
+  const skip =
+    mode === "gate" || mode === "self-test" ? (
+      <SkipGate
+        asks={
+          mode === "gate"
+            ? skipGatePartway(props.timeline)
+            : endSelfTestAsks(props.timeline)
+        }
+        label={skipLabel(props.timeline)}
+        busy={busy}
+        confirming={props.confirmingSkip}
+        onConfirm={props.onConfirmSkip}
+        onSkip={() => props.onAct("assessment/skip")}
+      />
+    ) : (
+      <button
+        type="button"
+        className="textbtn"
+        disabled={busy}
+        onClick={() => props.onAct("assessment/skip")}
+      >
+        {skipLabel(props.timeline)}
+      </button>
+    );
   const next = props.place?.next ?? null;
   switch (step) {
     case null:

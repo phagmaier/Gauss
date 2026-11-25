@@ -4,7 +4,7 @@ import { capital, word } from "./display-words.ts";
 import type { TestShown } from "./events.ts";
 import type { AssessmentMode } from "./evidence.ts";
 import { firstTaught, type Plan, skipping } from "./plan.ts";
-import { confidenceLabel } from "./question.ts";
+import { confidenceLabel, type QuestionKind } from "./question.ts";
 import type {
   AssessmentEndItem,
   AssessmentItem,
@@ -14,7 +14,16 @@ import type {
 
 /** What an assessment is called on the page, capitalised for a marker's name. */
 export function assessmentTitle(mode: AssessmentMode): string {
-  return mode === "review" ? "Review" : mode === "gate" ? "Gate" : "Test";
+  switch (mode) {
+    case "review":
+      return "Review";
+    case "gate":
+      return "Gate";
+    case "test-out":
+      return "Test";
+    case "self-test":
+      return "Self-test";
+  }
 }
 
 /** "unit 2", or "units 1 and 2", or "other units" when the numbers are not known. */
@@ -104,6 +113,19 @@ export function assessmentMarker(item: AssessmentItem): {
       says: "Questions on this unit's objectives, before anything is taught. Nothing is explained until it ends; each answer is recorded.",
     };
   }
+  if (item.mode === "self-test") {
+    const kinds =
+      item.kinds === undefined
+        ? ""
+        : `, ${listed(item.kinds, "and")} questions`;
+    return {
+      name: title,
+      says:
+        item.count === 1
+          ? `One objective${kinds}. Nothing is taught first; each answer is recorded.`
+          : `${capital(word(item.count))} objectives${kinds}, mixed. Nothing is taught first; each answer is recorded.`,
+    };
+  }
   if (item.stage === "skipped") {
     return {
       name: `${title} skipped`,
@@ -150,6 +172,20 @@ export function assessmentEndMarker(item: AssessmentEndItem): {
   // After the gate, the closing card says where the unit stands.
   const where = gate ? "" : ` ${goesOn(item.at)}`;
   const statuses = Object.values(item.statuses);
+  if (item.mode === "self-test") {
+    const passed =
+      item.passedOver === undefined
+        ? ""
+        : item.passedOver === 1
+          ? " One objective passed over."
+          : ` ${capital(word(item.passedOver))} objectives passed over.`;
+    const said = item.skipped
+      ? statuses.length === 0
+        ? "Ended before any answer."
+        : "Ended partway; what you answered is recorded."
+      : statusesSaid(statuses);
+    return { name: `${title} over`, says: `${said}${passed}${where}` };
+  }
   if (item.skipped) {
     return {
       name: `${title} skipped`,
@@ -162,6 +198,13 @@ export function assessmentEndMarker(item: AssessmentEndItem): {
           : `What you answered is recorded.${where}`,
     };
   }
+  return { name: `${title} over`, says: `${statusesSaid(statuses)}${where}` };
+}
+
+/** "Two retained, one slipping.", or "All three retained.": what an assessment's answers left. */
+function statusesSaid(
+  statuses: readonly AssessmentEndItem["statuses"][string][],
+): string {
   const counts: [number, string][] = [
     [statuses.filter((s) => s === "retained").length, "retained"],
     [statuses.filter((s) => s === "slipping").length, "slipping"],
@@ -175,11 +218,44 @@ export function assessmentEndMarker(item: AssessmentEndItem): {
   ];
   const parts = counts.filter(([n]) => n > 0);
   const [only] = parts;
-  const said =
-    parts.length === 1 && only !== undefined && only[0] > 1
-      ? `All ${word(only[0])} ${only[1]}.`
-      : `${capital(parts.map(([n, what]) => `${word(n)} ${what}`).join(", "))}.`;
-  return { name: `${title} over`, says: `${said}${where}` };
+  if (only === undefined) return "Nothing was answered.";
+  if (parts.length === 1 && only[0] === 2) return `Both ${only[1]}.`;
+  return parts.length === 1 && only[0] > 1
+    ? `All ${word(only[0])} ${only[1]}.`
+    : `${capital(parts.map(([n, what]) => `${word(n)} ${what}`).join(", "))}.`;
+}
+
+/** "choice", "choice and math", "choice, math or code": the kinds as words, in a list. */
+function listed(kinds: readonly QuestionKind[], conjunction: "and" | "or") {
+  return kinds.length === 1
+    ? kinds.join("")
+    : `${kinds.slice(0, -1).join(", ")} ${conjunction} ${kinds.at(-1)}`;
+}
+
+/**
+ * The line a self-test leaves where it passed over an objective (piece 27),
+ * after "Passed over:": its statement, ended as a sentence; then that no
+ * kind picked fits it, naming the kinds when known, with the tutor's reason
+ * as a sentence, and that nothing is recorded. The thread and the export
+ * both say it.
+ */
+export function passedOverLine(item: {
+  objective: string;
+  reason: string;
+  kinds?: readonly QuestionKind[];
+  /** The objective's statement, when known. */
+  statement: string | undefined;
+}): { statement: string; rest: string } {
+  const sentence = (text: string) =>
+    /[.?!]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
+  const fits =
+    item.kinds === undefined
+      ? "No kind of question picked fits it"
+      : `No ${listed(item.kinds, "or")} question fits it`;
+  return {
+    statement: sentence(item.statement ?? `"${item.objective}"`),
+    rest: `${fits}, the tutor says: ${capital(sentence(item.reason))} Nothing is recorded.`,
+  };
 }
 
 /** Where the unit goes on after an assessment, from the phase it was in. */

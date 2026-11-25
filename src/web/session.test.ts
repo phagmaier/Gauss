@@ -3,6 +3,7 @@ import {
   assessmentCard,
   assessmentEndMarker,
   assessmentMarker,
+  passedOverLine,
 } from "../shared/assessment-view.ts";
 import type { Unit } from "../shared/curriculum.ts";
 import type { PageEvent } from "../shared/events.ts";
@@ -20,8 +21,10 @@ import {
 } from "../shared/timeline.ts";
 import type { WhereInUnit } from "./progress.ts";
 import {
+  assessmentDetourStep,
   closingCard,
   divided,
+  endSelfTestAsks,
   helpNotice,
   judgmentSays,
   nextStep,
@@ -30,6 +33,7 @@ import {
   placement,
   SKIP_GATE_ASKS,
   segmentHeading,
+  selfTestQuestions,
   skipGatePartway,
   skipLabel,
   whereInUnit,
@@ -1316,7 +1320,7 @@ test("a closing card counts a retained objective as passed, and a slipping one a
       status: "slipping",
       passed: false,
       word: { text: "Slipping", className: "slip" },
-      why: "It passed, then was missed in a review or a gate",
+      why: "It passed, then was missed in a review, a gate or a self-test",
     },
   ]);
   expect(card.notPassed).toBe(1);
@@ -1840,4 +1844,327 @@ test("the card after a gate that left nothing to go over finishes the unit as it
     steps: false,
   });
   expect(nextStep(state)).toBeNull();
+});
+
+// --- The self-test (piece 27) -----------------------------------------------
+
+const selfTest: PageEvent = {
+  type: "assessment",
+  mode: "self-test",
+  stage: "on",
+  count: 2,
+};
+/** A self-test's question: its number is its objective's place, its second after a miss says so. */
+const stQuestion = (id: string, number: number, second?: true): PageEvent => ({
+  type: "question",
+  question: {
+    kind: "written",
+    id,
+    number,
+    prompt: "Why?",
+    assessment: second === undefined ? { of: 2 } : { of: 2, second },
+  },
+});
+const stGraded = (
+  questionId: string,
+  verdict: "correct" | "incorrect",
+): PageEvent => ({
+  type: "graded",
+  questionId,
+  verdict,
+  answer: { kind: "written", questionId, text: "Because.", confidence: "75" },
+  assisted: false,
+});
+const stDetour = (questionId: string, number: number): PageEvent => ({
+  type: "detour",
+  questionId,
+  number,
+});
+
+test("a self-test's detour after a's first miss asks for another question, with End beside it", () => {
+  const state = play([
+    planned,
+    phase(1, "discuss"),
+    selfTest,
+    stQuestion("a1", 1),
+    stGraded("a1", "incorrect"),
+    stDetour("a1", 1),
+  ]);
+  expect(assessmentDetourStep(state)).toEqual({
+    label: "Ready for another question",
+    skip: true,
+  });
+  expect(skipLabel(state)).toBe("End the self-test");
+});
+
+test("the interleave: a missed, b right, then a's second missed finishes the self-test, though question 1 is not the last number", () => {
+  const state = play([
+    planned,
+    phase(1, "discuss"),
+    selfTest,
+    stQuestion("a1", 1),
+    stGraded("a1", "incorrect"),
+    stDetour("a1", 1),
+    { type: "detour_end" },
+    stQuestion("b1", 2),
+    stGraded("b1", "correct"),
+    stQuestion("a2", 1, true),
+    stGraded("a2", "incorrect"),
+    stDetour("a2", 1),
+  ]);
+  // a asked twice, b right once: both are asked all they will be.
+  expect(assessmentDetourStep(state)).toEqual({
+    label: "Finish the self-test",
+    skip: false,
+  });
+});
+
+test("a's second miss with b still to ask goes on, and a passed-over objective counts as asked", () => {
+  const twice = [
+    planned,
+    phase(1, "discuss"),
+    selfTest,
+    stQuestion("a1", 1),
+    stGraded("a1", "incorrect"),
+    stDetour("a1", 1),
+    { type: "detour_end" },
+    stQuestion("a2", 1, true),
+    stGraded("a2", "incorrect"),
+    stDetour("a2", 1),
+  ] satisfies PageEvent[];
+  expect(assessmentDetourStep(play(twice))).toEqual({
+    label: "Go on with the self-test",
+    skip: true,
+  });
+  // b passed over before a's second question: nothing is left after it.
+  const passed = twice.toSpliced(7, 0, {
+    type: "passed_over",
+    objective: "chain-rule",
+    reason: "No written question fits it.",
+  });
+  expect(assessmentDetourStep(play(passed))).toEqual({
+    label: "Finish the self-test",
+    skip: false,
+  });
+});
+
+test("a self-test's top line names it, and its second question reads as the question again", () => {
+  const first = play([
+    planned,
+    phase(1, "discuss"),
+    selfTest,
+    stQuestion("a1", 1),
+  ]);
+  expect(whereInUnit(PLAN, first)).toEqual({
+    label: "Self-test",
+    title: "Question 1 of 2",
+    ticks: ["past", "now", ""],
+  });
+  const again = play([
+    planned,
+    phase(1, "discuss"),
+    selfTest,
+    stQuestion("a1", 1),
+    stGraded("a1", "incorrect"),
+    stQuestion("b1", 2),
+    stGraded("b1", "correct"),
+    stQuestion("a2", 1, true),
+  ]);
+  expect(whereInUnit(PLAN, again)?.title).toBe("Question 1 again");
+  expect([...selfTestQuestions(again.items)]).toEqual(["a1", "b1", "a2"]);
+});
+
+test("ending a self-test asks first, counting the answers given", () => {
+  const none = play([
+    planned,
+    phase(1, "discuss"),
+    selfTest,
+    stQuestion("a1", 1),
+  ]);
+  expect(endSelfTestAsks(none)).toEqual({
+    says: ["End the self-test? Any open question is dropped."],
+    skip: "End the self-test",
+    stay: "Keep going",
+  });
+  const three = play([
+    planned,
+    phase(1, "discuss"),
+    { ...selfTest, count: 3 },
+    stQuestion("a1", 1),
+    stGraded("a1", "correct"),
+    stQuestion("b1", 2),
+    stGraded("b1", "incorrect"),
+    stQuestion("c1", 3),
+    stGraded("c1", "correct"),
+  ]);
+  expect(endSelfTestAsks(three).says).toEqual([
+    "End the self-test? Your three answers count. Any open question is dropped.",
+  ]);
+});
+
+test("a self-test's markers: what it asks, what it did with what it passed over, and an end partway", () => {
+  const started = play([
+    planned,
+    phase(1, "discuss"),
+    { ...selfTest, count: 5 },
+  ]);
+  const marker = started.items.at(-1);
+  if (marker?.kind !== "assessment") throw new Error("No marker.");
+  // An event from before the kinds were sent says none.
+  expect(assessmentMarker(marker)).toEqual({
+    name: "Self-test",
+    says: "Five objectives, mixed. Nothing is taught first; each answer is recorded.",
+  });
+  const named = play([
+    planned,
+    phase(1, "discuss"),
+    { ...selfTest, count: 5, kinds: ["choice", "math"] },
+  ]).items.at(-1);
+  if (named?.kind !== "assessment") throw new Error("No marker.");
+  expect(assessmentMarker(named).says).toBe(
+    "Five objectives, choice and math questions, mixed. Nothing is taught first; each answer is recorded.",
+  );
+  const one = play([
+    planned,
+    phase(1, "discuss"),
+    { ...selfTest, count: 1, kinds: ["written"] },
+  ]).items.at(-1);
+  if (one?.kind !== "assessment") throw new Error("No marker.");
+  expect(assessmentMarker(one).says).toBe(
+    "One objective, written questions. Nothing is taught first; each answer is recorded.",
+  );
+
+  const ended = (
+    end: Partial<Extract<PageEvent, { type: "assessment_end" }>>,
+  ) => {
+    const item = play([
+      planned,
+      phase(1, "discuss"),
+      selfTest,
+      {
+        type: "assessment_end",
+        mode: "self-test",
+        skipped: false,
+        statuses: {},
+        ...end,
+      },
+    ]).items.at(-1);
+    if (item?.kind !== "assessment_end") throw new Error("No end marker.");
+    return assessmentEndMarker(item);
+  };
+  expect(
+    ended({
+      statuses: {
+        "power-rule": "retained",
+        "product-rule": "retained",
+        "chain-rule": "slipping",
+      },
+      passedOver: 1,
+    }),
+  ).toEqual({
+    name: "Self-test over",
+    says: "Two retained, one slipping. One objective passed over. Back to segment 2, in its discussion.",
+  });
+  expect(ended({ passedOver: 2 })).toEqual({
+    name: "Self-test over",
+    says: "Nothing was answered. Two objectives passed over. Back to segment 2, in its discussion.",
+  });
+  expect(
+    ended({ skipped: true, statuses: { "power-rule": "retained" } }),
+  ).toEqual({
+    name: "Self-test over",
+    says: "Ended partway; what you answered is recorded. Back to segment 2, in its discussion.",
+  });
+  expect(ended({ skipped: true })).toEqual({
+    name: "Self-test over",
+    says: "Ended before any answer. Back to segment 2, in its discussion.",
+  });
+});
+
+test("the passed-over line: the statement as a sentence, the kinds that do not fit, the tutor's reason as a sentence, and that nothing is recorded", () => {
+  expect(
+    passedOverLine({
+      statement: "Explain why implicit differentiation needs the chain rule.",
+      objective: "implicit",
+      reason: "it asks for an explanation in words",
+      kinds: ["choice", "math"],
+    }),
+  ).toEqual({
+    statement: "Explain why implicit differentiation needs the chain rule.",
+    rest: "No choice or math question fits it, the tutor says: It asks for an explanation in words. Nothing is recorded.",
+  });
+  expect(
+    passedOverLine({
+      statement: undefined,
+      objective: "lost",
+      reason: "None fits.",
+      kinds: ["choice", "math", "code"],
+    }),
+  ).toEqual({
+    statement: '"lost".',
+    rest: "No choice, math or code question fits it, the tutor says: None fits. Nothing is recorded.",
+  });
+  // Without the kinds, as an event from before they were sent.
+  expect(
+    passedOverLine({ statement: "Say it.", objective: "say", reason: "No." })
+      .rest,
+  ).toBe(
+    "No kind of question picked fits it, the tutor says: No. Nothing is recorded.",
+  );
+});
+
+test("the passed-over item takes its self-test's kinds", () => {
+  const state = play([
+    planned,
+    phase(1, "discuss"),
+    { ...selfTest, kinds: ["code"] },
+    { type: "passed_over", objective: "chain-rule", reason: "No code." },
+  ]);
+  expect(state.items.at(-1)).toMatchObject({
+    kind: "passed_over",
+    kinds: ["code"],
+  });
+});
+
+test("a dispute in the detour after the last objective's second miss, turning an earlier right answer into a miss, goes on with the review, as the engine asks that objective again", () => {
+  const review: PageEvent = {
+    type: "assessment",
+    mode: "review",
+    stage: "on",
+    count: 2,
+  };
+  const before = [
+    planned,
+    phase(1, "discuss"),
+    review,
+    stQuestion("a1", 1),
+    stGraded("a1", "correct"),
+    stQuestion("b1", 2),
+    stGraded("b1", "incorrect"),
+    stDetour("b1", 2),
+    { type: "detour_end" },
+    stQuestion("b2", 2, true),
+    stGraded("b2", "incorrect"),
+    stDetour("b2", 2),
+  ] satisfies PageEvent[];
+  expect(assessmentDetourStep(play(before))).toEqual({
+    label: "Finish the review",
+    skip: false,
+  });
+  const disputed = play([
+    ...before,
+    {
+      type: "disputed",
+      questionId: "a1",
+      dispute: {
+        recordedAt: "2026-11-25T10:00:00.000Z",
+        reason: "I guessed.",
+        outcome: { verdict: "incorrect", reason: "The answer is wrong." },
+      },
+    },
+  ]);
+  expect(assessmentDetourStep(disputed)).toEqual({
+    label: "Go on with the review",
+    skip: true,
+  });
 });

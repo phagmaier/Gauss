@@ -58,20 +58,6 @@ look for a shortcut that skips the target; give the smallest hint that
 unblocks, one per request. The new text is tried on a real model only in
 the user check (the user's choice, 2026-11-25).
 
-### 6.26 The page for a self-test — todo
-
-**Needs:** 6.24 and 6.25.
-**Why:** Piece 27, direction A. The course view has only "Review now" (`DueCount` in `web/Course.tsx`, shown only when something is due). The thread's assessment words know review, the gate and the test (`shared/assessment-view.ts`; `skipLabel`, `assessmentDetourStep` and `WHY` in `web/session.ts`).
-**Do:** In `Course.tsx`, "Self-test" beside "Review now", shown whether or not anything is due. It opens the panel in place: the scope (a segment and a unit by their lists, the course, a mix), the kinds (at least one), 5, 10 or 20, the line from the counts route, Cancel, and "Start the self-test", which opens the unit's page with the run started. In the thread:
-- the start marker, and the end marker with what the run did and how many it passed over;
-- "End the self-test" beside the question or the detour's control, with its confirmation;
-- the head of a missed objective's second question ("A second question, after question N's miss");
-- the passed-over line;
-- the top line's position;
-- the detour's control: `assessmentDetourStep` decides "Finish" by the question's number reaching `head.of`, which the self-test's interleave breaks (with a missed, b right, then a's second missed, it must read "Finish the self-test"); take it from the engine's next step, as the header's `detourButton` does.
-"What I know" and the exported transcript name a self-test answer; the slipping reason reads "missed in a review, a gate or a self-test".
-**Done when:** in Chromium on `pnpm dev:fake` with a fresh root, on "Calculus I": a self-test of unit 1 with choice questions runs in unit 1's thread, through a miss, its detour, the other objective, the second question and the end marker. The panel then leaves unit 1's objectives out for the hour, and its counts match the record. A self-test of unit 2 with only code passes over each objective, each with its line. A course self-test starts where Review now would, and ending it partway works. The pages read as piece 27, direction A shows. `mise run check` passes.
-
 User check for the self-test, after 6.26. First, with `pnpm dev:fake`
 on a fresh root, open "Calculus I" and press "Self-test" beside "Review
 now". Pick unit 1 with only choice questions: the panel says how many
@@ -217,11 +203,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   leaves the check done keeps “Ready for another question”, which then
   closes the segment; the tutor's header and refusals name the same
   label. Decide what the control should say there.
-- **B:** A dispute that turns an earlier objective's correct answer into
-  a miss, made in the detour after the last objective's second miss,
-  leaves the card on “Finish the review” (or the gate) while the engine
-  asks that objective again (found by review). Decide whether so rare a
-  case needs the card to read the whole run.
 - **D:** WebKit reports opaque aid errors; recovering callback errors
   needs a reporter design and WebKit checks. DNS-prefetch is also untested
   in WebKit.

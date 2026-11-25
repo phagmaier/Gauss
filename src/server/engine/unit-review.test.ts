@@ -713,7 +713,7 @@ test("each objective gets one question; a correct answer gets feedback alone, th
   if (marker?.kind !== "assessment_end") throw new Error("No end marker.");
   expect(assessmentEndMarker(marker)).toEqual({
     name: "Review over",
-    says: "All two retained. Segment 1 is taught next.",
+    says: "Both retained. Segment 1 is taught next.",
   });
   expect(nextStep(timeline)).toBe("ready");
 });
@@ -1179,7 +1179,7 @@ test("a review asked for in the discussion starts there; after it nothing is sen
   const marker = timeline.items.find((i) => i.kind === "assessment_end");
   if (marker?.kind !== "assessment_end") throw new Error("No end marker.");
   expect(assessmentEndMarker(marker).says).toBe(
-    "All two retained. Back to segment 1, in its discussion.",
+    "Both retained. Back to segment 1, in its discussion.",
   );
 
   expect(chat.say("Where were we?")).toEqual({ ok: true });

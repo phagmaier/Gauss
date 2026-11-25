@@ -8,6 +8,7 @@
 import { assessmentTitle } from "../shared/assessment-view.ts";
 import { capital, word } from "../shared/display-words.ts";
 import { countedVerdict } from "../shared/dispute.ts";
+import type { AssessmentMode } from "../shared/evidence.ts";
 import type { CourseWithProgress } from "../shared/library.ts";
 import {
   currentObjective,
@@ -74,17 +75,24 @@ function latestAgainIndex(items: readonly Item[]): number {
 
 /**
  * Where the assessment under way has got to, as its question's head says
- * it: "Question 2 of 4" in a review or a gate, "Objective 2 of 3" in a
- * test, whose questions on one objective can be two. None before its first
- * question.
+ * it: "Question 2 of 4" in a review, a gate or a self-test, "Question 2
+ * again" for a self-test's second question on an objective, "Objective 2
+ * of 3" in a test, whose questions on one objective can be two. None
+ * before its first question.
  */
-function assessmentCount(items: readonly Item[]): string | undefined {
+function assessmentCount(
+  items: readonly Item[],
+  mode: AssessmentMode | undefined,
+): string | undefined {
   const from = items.findLastIndex((i) => i.kind === "assessment");
   const asked = items
     .slice(from + 1)
     .findLast((i): i is QuestionItem => i.kind === "question");
   const head = asked?.question.assessment;
   if (asked === undefined || head === undefined) return undefined;
+  if (mode === "self-test" && head.second === true) {
+    return `Question ${asked.question.number} again`;
+  }
   return head.objective === undefined
     ? `Question ${asked.question.number} of ${head.of}`
     : `Objective ${head.objective} of ${head.of}`;
@@ -92,7 +100,7 @@ function assessmentCount(items: readonly Item[]): string | undefined {
 
 /**
  * The position in the top line (piece 19): "Segment 2 of 5" with the
- * segment's title, "Going over again", "Review" while a review runs,
+ * segment's title, "Going over again", "Review" or "Self-test" while one runs,
  * "Unit gate" from its card through the decision after it, "Testing out"
  * from the test's choice through its summary and result (a review that
  * holds the test is "Review" while it runs), or "Finished". An assessment
@@ -105,13 +113,19 @@ export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
   const marked = (ticks: Mark[]) =>
     markSkipped(plan, position?.skipping, ticks);
   const at = (label: string, ticks: Mark[]): WhereInUnit => {
-    const title = assessmentCount(t.items);
+    const title = assessmentCount(t.items, assessment?.mode);
     return title === undefined ? { label, ticks } : { label, title, ticks };
   };
+  // A review or a self-test under way names itself, wherever the unit is.
+  const asking =
+    assessment?.stage === "on" &&
+    (assessment.mode === "review" || assessment.mode === "self-test")
+      ? assessmentTitle(assessment.mode)
+      : undefined;
   if (t.finished !== null) {
-    // A review the learner asked for in a finished unit's thread.
-    if (assessment?.mode === "review" && assessment.stage === "on") {
-      return at(assessmentTitle("review"), marked(Array(count).fill("past")));
+    // A review or a self-test the learner asked for in a finished unit's thread.
+    if (asking !== undefined) {
+      return at(asking, marked(Array(count).fill("past")));
     }
     return { label: "Finished", ticks: marked(Array(count).fill("past")) };
   }
@@ -128,9 +142,7 @@ export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
   if (testing(t)) {
     // No segment is reached before the test, nor in a review held first.
     const ticks = Array<Mark>(count).fill("");
-    if (assessment?.mode === "review" && assessment.stage === "on") {
-      return at(assessmentTitle("review"), ticks);
-    }
+    if (asking !== undefined) return at(asking, ticks);
     // The count is the test's own: none from a review held first that ended.
     return assessment?.mode === "test-out"
       ? at(TESTING, ticks)
@@ -142,9 +154,7 @@ export function whereInUnit(plan: Plan, t: Where): WhereInUnit | null {
     position.again !== undefined,
   );
   const ticks = marked(stand.ticks);
-  if (assessment?.mode === "review" && assessment.stage === "on") {
-    return at(assessmentTitle("review"), ticks);
-  }
+  if (asking !== undefined) return at(asking, ticks);
   const title =
     position.again === undefined
       ? plan.segments[position.segment]?.title
@@ -622,14 +632,10 @@ export const SKIP_GATE_ASKS: SkipGateAsks = {
   stay: "Stay",
 };
 
-/**
- * What "Skip the gate" asks once the gate has started (piece 19), with the
- * answers given in it so far. Leaving instead keeps the open question or
- * detour for the next sitting.
- */
-export function skipGatePartway(timeline: Timeline): SkipGateAsks {
+/** How many answers have been graded in the assessment under way. */
+function answersSoFar(timeline: Timeline): number {
   const at = timeline.items.findLastIndex((i) => i.kind === "assessment");
-  const answers = timeline.items
+  return timeline.items
     .slice(at + 1)
     .filter(
       (i) =>
@@ -637,6 +643,15 @@ export function skipGatePartway(timeline: Timeline): SkipGateAsks {
         i.question.assessment !== undefined &&
         i.graded !== undefined,
     ).length;
+}
+
+/**
+ * What "Skip the gate" asks once the gate has started (piece 19), with the
+ * answers given in it so far. Leaving instead keeps the open question or
+ * detour for the next sitting.
+ */
+export function skipGatePartway(timeline: Timeline): SkipGateAsks {
+  const answers = answersSoFar(timeline);
   const count =
     answers === 0
       ? ""
@@ -653,12 +668,30 @@ export function skipGatePartway(timeline: Timeline): SkipGateAsks {
   };
 }
 
+/** What "End the self-test" asks before it ends (piece 27), with the answers given in it so far. */
+export function endSelfTestAsks(timeline: Timeline): SkipGateAsks {
+  const answers = answersSoFar(timeline);
+  const count =
+    answers === 0
+      ? ""
+      : answers === 1
+        ? " Your one answer counts."
+        : ` Your ${word(answers)} answers count.`;
+  return {
+    says: [`End the self-test?${count} Any open question is dropped.`],
+    skip: "End the self-test",
+    stay: "Keep going",
+  };
+}
+
 /**
  * What ends a detour in an assessment: another question on its objective
  * after a first miss; after a second, or a first that a dispute overturned,
  * going on to the next objective, or the end. Skip stays beside it, but for
  * the end. The engine decides the same from the counted verdicts
- * (`runObjective` in assessment-rules.ts).
+ * (`runObjective` and `nextInRun` in assessment-rules.ts): the end comes
+ * once every objective is asked all it will be, or passed over. Not from
+ * the question's number, which a self-test's interleave puts out of order.
  */
 export function assessmentDetourStep(timeline: Timeline): {
   label: string;
@@ -679,19 +712,95 @@ export function assessmentDetourStep(timeline: Timeline): {
   if (head === undefined || (head.second !== true && verdict !== "correct")) {
     return { label: "Ready for another question", skip: true };
   }
-  return missed !== undefined && missed.question.number >= head.of
+  const of = timeline.assessment?.count ?? head.of;
+  return objectivesSettled(timeline.items) >= of
     ? { label: `Finish the ${title}`, skip: false }
     : { label: `Go on with the ${title}`, skip: true };
 }
 
-/** "Skip review", "Skip the gate", or the test's "Start learning instead", beside an assessment's question or detour. */
+/**
+ * How many of the assessment's objectives under way are asked all they will
+ * be: answered right at the first question, or asked twice (a review's,
+ * a gate's or a self-test's), or passed over. An objective is known by its
+ * place: the question's number, or in a test its `objective`.
+ */
+function objectivesSettled(items: readonly Item[]): number {
+  const from = items.findLastIndex((i) => i.kind === "assessment");
+  const verdicts = new Map<number, string[]>();
+  let passedOver = 0;
+  for (const item of items.slice(from + 1)) {
+    if (item.kind === "passed_over") passedOver += 1;
+    if (item.kind !== "question" || item.graded === undefined) continue;
+    const head = item.question.assessment;
+    if (head === undefined) continue;
+    const place = head.objective ?? item.question.number;
+    verdicts.set(place, [
+      ...(verdicts.get(place) ?? []),
+      countedVerdict(item.graded.verdict, item.dispute),
+    ]);
+  }
+  const asked = [...verdicts.values()].filter(
+    (given) => given.length >= 2 || given[0] === "correct",
+  ).length;
+  return asked + passedOver;
+}
+
+/**
+ * "Skip review", "Skip the gate", the test's "Start learning instead", or
+ * "End the self-test", beside an assessment's question or detour.
+ */
 export function skipLabel(timeline: Timeline): string {
-  const mode = timeline.assessment?.mode ?? "review";
-  return mode === "gate"
-    ? "Skip the gate"
-    : mode === "test-out"
-      ? "Start learning instead"
-      : "Skip review";
+  switch (timeline.assessment?.mode ?? "review") {
+    case "gate":
+      return "Skip the gate";
+    case "test-out":
+      return "Start learning instead";
+    case "self-test":
+      return "End the self-test";
+    case "review":
+      return "Skip review";
+  }
+}
+
+/**
+ * The ids of the questions asked in a self-test, whose second question on
+ * an objective says which miss it follows (piece 27).
+ */
+export function selfTestQuestions(items: readonly Item[]): Set<string> {
+  const ids = new Set<string>();
+  let mode: AssessmentMode | undefined;
+  for (const item of items) {
+    if (item.kind === "assessment") mode = item.mode;
+    if (item.kind === "assessment_end") mode = undefined;
+    if (
+      item.kind === "question" &&
+      mode === "self-test" &&
+      item.question.assessment !== undefined
+    ) {
+      ids.add(item.question.id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * The statements of the course's objectives by id, for the objective a
+ * self-test passed over, which can be another unit's: the unit's own plan,
+ * the thread's, wins.
+ */
+export function objectiveStatements(
+  stored: CourseWithProgress | null | undefined,
+  plan: Plan | null,
+): Map<string, string> {
+  const plans = [
+    ...(stored?.curriculum?.units.map((u) => u.plan) ?? []),
+    plan ?? undefined,
+  ];
+  return new Map(
+    plans.flatMap(
+      (p) => p?.objectives.map((o) => [o.id, o.statement] as const) ?? [],
+    ),
+  );
 }
 
 /** The unit was finished by skipping what the test passed, every objective of it. */
@@ -714,7 +823,7 @@ export function finishedByTest(timeline: Timeline): boolean {
  * attempted at the unit's end is from a check closed at the old limit.
  */
 const WHY: Record<Exclude<ObjectiveStatus, "passed" | "retained">, string> = {
-  slipping: "It passed, then was missed in a review or a gate",
+  slipping: "It passed, then was missed in a review, a gate or a self-test",
   attempted: "Its check ended before it passed",
   overridden: "You moved on before it passed",
   "not-started": "Not checked yet",

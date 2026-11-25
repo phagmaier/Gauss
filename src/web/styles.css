@@ -138,7 +138,8 @@ code {
 .lc-title small,
 .seg-k,
 .srcc-k,
-.bk-k {
+.bk-k,
+.st-k {
   font: 500 11px / 1.3 var(--f-label);
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -979,6 +980,17 @@ details.why summary:hover {
   background: var(--rule);
   align-self: center;
 }
+/* piece 27: an objective a self-test passed over */
+.th-passed {
+  margin: 1em 0;
+  padding: 0.2em 0 0.2em 0.8em;
+  border-left: 2px solid var(--rule-2);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.th-passed b {
+  font-weight: 500;
+}
 /* a step that is asked once before it is taken */
 .confirm {
   display: inline-flex;
@@ -1470,8 +1482,73 @@ a.nl-pos {
 .cv-due .k {
   color: var(--ink-2);
 }
-.cv-due .btn {
+.cv-due-acts {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1.2em;
+}
+/* piece 27: the self-test's panel, opened in place under the due line */
+.st-panel {
+  margin: 12px 0 20px;
+  padding: 14px 18px;
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r);
+}
+.st-q {
+  min-width: 0;
+  margin: 0.8em 0 0;
+  padding: 0;
+  border: 0;
+}
+.st-q > legend {
+  padding: 0;
+  margin-bottom: 0.4em;
+}
+.st-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  font-size: 15px;
+}
+.st-opts label,
+.st-row label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  cursor: pointer;
+}
+.st-opts select {
+  margin-left: 0.3em;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule-2);
+  border-radius: 6px;
+}
+.st-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em 1.2em;
+  font-size: 15px;
+}
+.st-sum {
+  margin: 0.9em 0 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.st-sum b {
+  font-weight: 500;
+  color: var(--ink);
+}
+.st-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1.2em;
+  margin-top: 0.9em;
 }
 
 /* ---- The course view, pieces 7 and 20: the title, its counts, the card, the units ---- */

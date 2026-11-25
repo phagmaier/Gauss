@@ -372,7 +372,13 @@ test("a unit's self-test starts at once in that unit's thread with no card, leav
   );
 
   expect(ofType(chat, "assessment")).toEqual([
-    { type: "assessment", mode: "self-test", stage: "on", count: 2 },
+    {
+      type: "assessment",
+      mode: "self-test",
+      stage: "on",
+      count: 2,
+      kinds: ["choice", "written"],
+    },
   ]);
   expect(ofType(chat, "unit_closed")).toEqual([
     { type: "unit_closed", status: "passed" },
@@ -467,7 +473,13 @@ test("a course self-test starts in the unit in progress opened last; a review ca
   // self-test takes its place.
   expect(ofType(chat, "assessment")).toEqual([
     { type: "assessment", mode: "review", stage: "offered", count: 2 },
-    { type: "assessment", mode: "self-test", stage: "on", count: 2 },
+    {
+      type: "assessment",
+      mode: "self-test",
+      stage: "on",
+      count: 2,
+      kinds: ["choice"],
+    },
   ]);
   expect(ofType(chat, "assessment_end")).toEqual([
     { type: "assessment_end", mode: "review", skipped: true, statuses: {} },

@@ -10,6 +10,7 @@ import {
   assessmentCard,
   assessmentEndMarker,
   assessmentMarker,
+  passedOverLine,
   type ResultRow,
   testResultCard,
 } from "../../shared/assessment-view.ts";
@@ -316,11 +317,13 @@ function renderItem(
       return `<p class="note">Question ${item.number} was answered further down.</p>`;
     case "passed_over": {
       const statement = courseObjectives.get(item.objective);
+      const line = passedOverLine({ ...item, statement });
+      // A statement is prose; an id no plan has is quoted as it is.
       const said =
         statement === undefined
-          ? escapeHtml(`"${item.objective}"`)
-          : prose(statement, true);
-      return `<p class="marker"><b>Passed over</b> ${said} No kind of question picked fits it: ${escapeHtml(item.reason)}</p>`;
+          ? escapeHtml(line.statement)
+          : prose(line.statement, true);
+      return `<p class="marker"><b>Passed over</b>: ${said} ${escapeHtml(line.rest)}</p>`;
     }
     case "file":
       return `<p class="note">The tutor wrote <code>${escapeHtml(item.path)}</code></p>`;

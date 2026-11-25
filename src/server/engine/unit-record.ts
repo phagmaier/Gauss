@@ -1207,7 +1207,8 @@ export function detourEvent(detour: Detour): PageEvent {
 /**
  * An `assessment` event: its card offered, or it began, or the chat opened
  * with it. A gate's says how many of its objectives are the unit's own, and
- * from which of the course's `units` the rest come.
+ * from which of the course's `units` the rest come; a self-test's, the
+ * kinds of question picked.
  */
 export function assessmentEvent(
   run: AssessmentRun,
@@ -1220,6 +1221,9 @@ export function assessmentEvent(
     stage: run.stage,
     count: run.objectives.length,
   };
+  if (run.mode === "self-test") {
+    return run.kinds === undefined ? event : { ...event, kinds: run.kinds };
+  }
   if (run.mode !== "gate") return event;
   const others = run.objectives.filter((o) => o.unit !== unitId);
   const from = new Set(

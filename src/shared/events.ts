@@ -15,6 +15,7 @@ import {
   ChoiceLetter,
   Confidence,
   GradedAnswer,
+  QuestionKind,
   QuestionView,
   Unsettled,
   Verdict,
@@ -380,6 +381,8 @@ export const PageEvent = z.discriminatedUnion("type", [
     own: z.number().int().nonnegative().optional(),
     /** For a gate: the numbers, in the course, of the other units the rest come from, in order. */
     from: z.array(z.number().int().positive()).optional(),
+    /** For a self-test: the kinds of question the learner picked. Absent in events from before 6.26. */
+    kinds: z.array(QuestionKind).min(1).optional(),
   }),
   /**
    * The assessment ended, every objective asked, or the learner skipped it,

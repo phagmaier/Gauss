@@ -1122,7 +1122,13 @@ test("the self-test routes check the request, answer the setup's counts, start i
       .filter((e) => e.type === "assessment"),
   ).toEqual([
     { type: "assessment", mode: "review", stage: "offered", count: 1 },
-    { type: "assessment", mode: "self-test", stage: "on", count: 1 },
+    {
+      type: "assessment",
+      mode: "self-test",
+      stage: "on",
+      count: 1,
+      kinds: ["choice"],
+    },
   ]);
 });
 

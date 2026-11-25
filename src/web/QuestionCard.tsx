@@ -28,7 +28,15 @@
 // verdict, and the right choice or expected answer of a miss, are then the
 // ones the dispute left, and a verdict the dispute changed is marked.
 
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import type { ShownDispute } from "../shared/dispute.ts";
 import { standing } from "../shared/dispute-view.ts";
 import {
@@ -67,9 +75,24 @@ const CONFIDENCE: { value: Confidence; label: string }[] = [
   { value: "100", label: "100%" },
 ];
 
-export function QuestionCard(props: {
+/** The card is a self-test's: a second question says which miss it follows (piece 27). */
+const InSelfTest = createContext(false);
+
+type QuestionCardProps = Parameters<typeof CardFor>[0];
+
+export function QuestionCard(props: QuestionCardProps) {
+  return (
+    <InSelfTest.Provider value={props.inSelfTest === true}>
+      <CardFor {...props} />
+    </InSelfTest.Provider>
+  );
+}
+
+function CardFor(props: {
   item: QuestionItem;
   disputes: DisputeApi;
+  /** Asked in a self-test. */
+  inSelfTest?: boolean;
   /** The learner hid the pinned card: it keeps its state, and its keys are off (task 3.21). */
   hidden?: boolean;
   onAnswer(submission: AnswerPost): Promise<string | undefined>;
@@ -854,6 +877,7 @@ function GradedCard(props: {
  * What follows it, the verdict or the state, comes between.
  */
 function QuestionHead(props: { question: QuestionView; children?: ReactNode }) {
+  const selfTest = useContext(InSelfTest);
   const { number, assessment } = props.question;
   if (assessment?.objective !== undefined) {
     return (
@@ -874,7 +898,13 @@ function QuestionHead(props: { question: QuestionView; children?: ReactNode }) {
           ? `Question ${number}`
           : `Question ${number} of ${assessment.of}`}
       </b>
-      {assessment?.second === true ? <span>second question</span> : null}
+      {assessment?.second === true ? (
+        <span>
+          {selfTest
+            ? `A second question, after question ${number}'s miss`
+            : "second question"}
+        </span>
+      ) : null}
       {props.children}
       {assessment?.from === undefined ? null : (
         <span className="q-from">

@@ -1,7 +1,8 @@
 // The course view (docs/prototype/20-course.html, with 12-unit-order.html's
 // card and Start): the title, a line of counts, how many objectives are due
 // for review when any are (task 5.24) with "Review now", which starts a
-// review in a unit's thread and opens it (task 5.25), the card that leads
+// review in a unit's thread and opens it (task 5.25), and "Self-test" beside
+// it, which opens its panel in place (piece 27), the card that leads
 // on, and the unit list down to objectives. Each unit is a heading that opens and
 // folds; a started unit lists its objectives, "Next" on the one to do in the
 // card's unit, and a unit not started its goal. "Course map" in the top line
@@ -59,8 +60,10 @@ import {
 import { InlineProse } from "./prose.tsx";
 import { courseSourceLine } from "./reads.ts";
 import { navigate, paths } from "./route.ts";
+import { SelfTestPanel } from "./SelfTestPanel.tsx";
 import { SourcePane } from "./SourcePane.tsx";
 import { StatusForm } from "./StatusForm.tsx";
+import { pickableUnits } from "./self-test.ts";
 import { useCourseSources } from "./sources.ts";
 import { buildsOn, unitNumbers } from "./units.ts";
 import { objectiveMark, unitWord } from "./what-i-know.ts";
@@ -96,6 +99,8 @@ export function Course(props: { courseId: string }) {
   const [asking, setAsking] = useState<Asking>();
   /** "Review now" is starting a review, so it is not pressed twice. */
   const [starting, setStarting] = useState(false);
+  /** The self-test's panel is open under the due line. */
+  const [selfTesting, setSelfTesting] = useState(false);
   const closePane = useCallback(() => {
     setPane(undefined);
     setSelected(undefined);
@@ -319,13 +324,26 @@ export function Course(props: { courseId: string }) {
                   Runs on <b>{BACKEND_TITLES[stored.course.backend]}</b>
                 </span>
               </p>
-              {stored.due === undefined ? null : (
+              {!approved || unreadable !== undefined ? null : (
                 <DueCount
                   due={stored.due}
                   starting={starting}
                   onReview={() => void reviewNow()}
+                  onSelfTest={() => setSelfTesting(true)}
                 />
               )}
+              {approved &&
+              unreadable === undefined &&
+              selfTesting &&
+              curriculum !== null ? (
+                <SelfTestPanel
+                  courseId={courseId}
+                  units={pickableUnits(curriculum.units)}
+                  onCancel={() => setSelfTesting(false)}
+                  onStarted={(unit) => navigate(paths.unit(courseId, unit))}
+                  onProblem={setProblem}
+                />
+              ) : null}
               {finished ? (
                 <FinishedCard
                   onPlan={() => navigate(paths.planning(courseId))}
@@ -640,26 +658,47 @@ function Counts(props: { counts: CourseCounts; finished: boolean }) {
   );
 }
 
-/** How many of the course's objectives are due for review, under the counts, with "Review now" (piece 20). */
-function DueCount(props: { due: number; starting: boolean; onReview(): void }) {
+/**
+ * How many of the course's objectives are due for review, under the counts,
+ * with "Review now" (piece 20); and "Self-test", due or not (piece 27).
+ */
+export function DueCount(props: {
+  due: number | undefined;
+  starting: boolean;
+  onReview(): void;
+  onSelfTest(): void;
+}) {
   const { due } = props;
   return (
     <div className="cv-due">
-      <span className="due-dot" aria-hidden="true" />
-      <span>
-        <b>
-          {due} {due === 1 ? "objective" : "objectives"}
-        </b>{" "}
-        <span className="k">{due === 1 ? "is" : "are"} due for review</span>
+      {due === undefined ? (
+        <span className="k">Nothing is due for review.</span>
+      ) : (
+        <>
+          <span className="due-dot" aria-hidden="true" />
+          <span>
+            <b>
+              {due} {due === 1 ? "objective" : "objectives"}
+            </b>{" "}
+            <span className="k">{due === 1 ? "is" : "are"} due for review</span>
+          </span>
+        </>
+      )}
+      <span className="cv-due-acts">
+        {due === undefined ? null : (
+          <button
+            type="button"
+            className="btn sm quiet"
+            disabled={props.starting}
+            onClick={props.onReview}
+          >
+            Review now
+          </button>
+        )}
+        <button type="button" className="textbtn" onClick={props.onSelfTest}>
+          Self-test
+        </button>
       </span>
-      <button
-        type="button"
-        className="btn sm quiet"
-        disabled={props.starting}
-        onClick={props.onReview}
-      >
-        Review now
-      </button>
     </div>
   );
 }

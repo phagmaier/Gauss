@@ -20,6 +20,7 @@ import { firstTaught, type Plan } from "./plan.ts";
 import type {
   AnswerSubmission,
   GradedAnswer,
+  QuestionKind,
   QuestionView,
 } from "./question.ts";
 import type {
@@ -123,6 +124,8 @@ export interface AssessmentItem {
   /** For a gate: how many are the unit's own, and the numbers of the units the rest come from. */
   own?: number;
   from?: number[];
+  /** For a self-test: the kinds of question picked, when its event says them. */
+  kinds?: QuestionKind[];
   /** "offered": the card waits; "on": started; "skipped": skipped on the card. */
   stage: "offered" | "on" | "skipped";
   /** A review offered first, which the test before the unit waits behind. */
@@ -288,8 +291,17 @@ export type Item =
   | AssessmentItem
   | AssessmentEndItem
   | TestResultItem
-  /** A self-test passed over this objective: no kind picked fits it, by the tutor's reason. */
-  | { kind: "passed_over"; key: number; objective: string; reason: string }
+  /**
+   * A self-test passed over this objective: no kind picked fits it, by the
+   * tutor's reason; with the kinds its self-test picked, when known.
+   */
+  | {
+      kind: "passed_over";
+      key: number;
+      objective: string;
+      reason: string;
+      kinds?: QuestionKind[];
+    }
   /** Where a question was posted that was answered further down (task 2.18). */
   | { kind: "answered-below"; key: number; number: number }
   /** A detour began after the miss on this question (task 2.20). */
@@ -1231,6 +1243,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
       const split = {
         ...(event.own === undefined ? {} : { own: event.own }),
         ...(event.from === undefined ? {} : { from: event.from }),
+        ...(event.kinds === undefined ? {} : { kinds: event.kinds }),
       };
       const at = state.items.findLastIndex((i) => i.kind === "assessment");
       const card = state.items[at];
@@ -1324,7 +1337,9 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
         ],
       };
     }
-    case "passed_over":
+    case "passed_over": {
+      const run = state.items.findLast((i) => i.kind === "assessment");
+      const kinds = run?.kind === "assessment" ? run.kinds : undefined;
       return {
         ...next,
         items: [
@@ -1334,9 +1349,11 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             key: index,
             objective: event.objective,
             reason: event.reason,
+            ...(kinds === undefined ? {} : { kinds }),
           },
         ],
       };
+    }
     case "unit_end": {
       // The card standing is shown again: by a chat that opened at it, or
       // with the statuses a dispute changed (task 3.8).
