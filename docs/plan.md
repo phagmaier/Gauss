@@ -26,18 +26,21 @@ because code and documents use them.
 - Stage 6, the `unit-chat.ts` split (6.0 to 6.9): its user check passed on
   2026-11-23, walked through in Chromium on `pnpm dev:fake` by the agent at
   the user's direction.
+- Stage 6, the Codex backend (6.10 to 6.16): its user check passed on
+  2026-11-24, walked through in Chromium on `pnpm check:live` (Codex on
+  gpt-6.1-terra, Claude on Sonnet 5.5, both at medium) by the agent at the
+  user's direction.
 
 ## Stage 6
 
-Codex backend (`findings.md`, "Codex"), self-test, cheat sheets, photo
-input; starred messages for the notes, if the generated notes miss what the
-learner wants kept; a model chosen in the app's settings, which the user
-wants eventually (2026-11-19); teaching instructions the learner can add
-to or edit (below); a source added to a course after its intake, text
-recognition for scanned PDFs, and questions on a source's figure (left out
-of stage 4); ranking passage matches with a cheap model, if the learner's
-use shows local search leaves too many plausible matches. Each is planned
-when chosen.
+Self-test, cheat sheets, photo input; starred messages for the notes, if
+the generated notes miss what the learner wants kept; a model chosen in
+the app's settings, which the user wants eventually (2026-11-19);
+teaching instructions the learner can add to or edit (below); a source
+added to a course after its intake, text recognition for scanned PDFs,
+and questions on a source's figure (left out of stage 4); ranking passage
+matches with a cheap model, if the learner's use shows local search
+leaves too many plausible matches. Each is planned when chosen.
 
 Self-test, as the user described it on 2026-11-19 (optional, after
 everything else): the learner picks the scope (a segment, a unit, the
@@ -59,25 +62,6 @@ fixed (the tools, the assessment and help rules, the question formats);
 the shipped prompt is kept, and the learner can revert to it. Where the
 line between fixed and editable falls in `prompts/tutor.md` is for that
 task.
-
-The Codex backend, broken down on 2026-11-24. The user's choices are in
-`brief.md`, "Backends and stack": a course runs on Codex or Claude, picked
-at its intake and fixed after; on Codex only its tutor and unit planner
-run there. The adapter drives Codex's app-server protocol, not the SDK,
-which runs each turn as a new `codex exec` with no system prompt, hook or
-streamed text (`findings.md`, "Codex"). Unit opening checks Codex
-availability, even when the unit's chat is already loaded (`brief.md`,
-"Backends and stack"). Live runs use gpt-6.1-terra at medium on the
-standard service tier through `check:live` (`codexOptions` in
-`backends/codex.ts`), each asked of the user before it runs.
-
-User check for the Codex backend: with `pnpm dev` (the
-learner's Claude login, and Gauss's Codex home signed in), make a course
-on Codex at intake; its course view says so and web search is off. Take a
-unit through its planning and lecture, a discussion message, Ready, a
-question answered right and one missed with its detour, a code question
-in a course about code, a Stop mid-reply, and a server restart followed
-by reopening the unit. A Claude course behaves as before.
 
 ## Known-gap fixes
 
