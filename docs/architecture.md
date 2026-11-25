@@ -243,7 +243,9 @@ every other role on Claude. Each prompt starts one model's instructions:
 
 Run commands under mise. `mise install` and `mise run setup` give the
 pinned toolchain and dependencies; `mise run check` runs lint, type-check
-and both test suites. Focused: `pnpm exec vitest run <file>` or
+and both test suites. `pnpm format` rewrites files: run it once after the
+edits, before `mise run check` and the review, not between edits.
+Focused: `pnpm exec vitest run <file>` or
 `uv run --directory pytools pytest <path>`. The Linux sandbox needs
 `bwrap`, `socat` and `rg` on the machine. Fault injection
 (`scripts/faults.ts`) only in an isolated worktree (`AGENTS.md`).
