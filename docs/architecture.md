@@ -223,10 +223,12 @@ every other role on Claude. Each prompt starts one model's instructions:
   repeated rule, check that the same model receives it on every turn
   where it applies.
 - Codex receives the role prompt as base instructions when a thread
-  starts or resumes, and its teaching tools, with a tutor's file and
-  command tools (`tools/workspace.ts`), in the direct `gauss` namespace;
-  Codex's own shell and patch tools are removed. `prompts/tutor.md` names
-  no backend's tools. `codexOptions` sets the model, effort and tier on each turn.
+  starts or resumes, but its teaching tools, with a tutor's file and
+  command tools (`tools/workspace.ts`), only when it starts: a thread keeps
+  those it began with (`findings.md`, "Codex"). They sit in the direct
+  `gauss` namespace; Codex's own shell and patch tools are removed.
+  `prompts/tutor.md` names no backend's tools. `codexOptions` sets the
+  model, effort and tier on each turn.
 - The scripted backend reads header wording; changing it can break
   `pnpm dev:fake` (`backends/scripted.test.ts` catches most of it).
 - Thread text is Markdown with `$...$` and `$$` math and `\$` for a

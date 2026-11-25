@@ -92,6 +92,8 @@ document never restates them.
 - **Describe the present.** Rewrite or delete text that a change makes
   false. Do not append "since task 2.19" or "before this, ..." to a
   document, and do not cite task ids in `architecture.md` or `brief.md`.
+  A user check in the plan gives its own steps: it does not point at task
+  entries, which are deleted when done.
 - **One place per fact.** Elsewhere, point to it. Point at files and
   symbols rather than restating what the code shows.
 - **A `findings.md` entry is a line or two**: the finding, what follows
