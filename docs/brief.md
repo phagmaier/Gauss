@@ -361,11 +361,15 @@ what is due, and on-demand self-test.
   not answers.
 - **Backup**: the data folder keeps a history of the record, so a wrong
   write can be undone.
+  It does not include Claude Code's session transcripts outside the data folder.
 - **Deleting**: a course or a draft is deleted from its course view, with no
   archive and no undo but the backup's history. A draft asks a plain
   confirmation; a course that has started asks for its title to be typed.
   Deletion is refused while a page shows one of the course's chats or
   anything of it runs.
+  Gauss leaves Claude Code's sessions outside the data folder untouched,
+  because it cannot establish that they belong exclusively to the course
+  being deleted. Claude Code manages their retention.
 - **Curriculum diagram**: generated from the stored curriculum and progress, so
   it cannot drift from the record.
 

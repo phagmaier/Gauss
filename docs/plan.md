@@ -75,8 +75,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 - **B:** Legacy parked courses and remnants whose deletion receipts cannot
   be verified stay in `courses/`. Cleanup requires manual inspection:
   neither the directory name nor its contents prove Gauss parked it.
-- **B:** Deleting a course leaves Claude Code's sessions outside the data root.
-  Decide whether deletion should remove them; identify ownership before doing so.
 - **B:** A test skip is fixed at confirmation: a later miss in another
   unit's review can leave a still-upcoming objective skipped. Decide whether
   and when to reopen confirmed skips.
