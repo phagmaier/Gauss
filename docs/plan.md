@@ -72,10 +72,8 @@ work for Stage 6. A task that closes a gap deletes it here.
   but a resumed tutor session can still remember the refusal. Decide
   whether to clear that stale instruction or recover an undelivered
   planner decision.
-- **B:** Startup clears only interrupted record writes and uploads. A crash
-  while a page image renders leaves its `.render-*` scratch folder in the
-  source's `pages/`, and a deleted course whose removal failed stays parked
-  in `courses/`; nothing removes either later. Decide whether startup should.
+- **B:** A deleted course whose removal failed stays parked in `courses/`.
+  Decide whether startup should remove it.
 - **B:** Deleting a course leaves Claude Code's sessions outside the data root.
   Decide whether deletion should remove them; identify ownership before doing so.
 - **B:** A test skip is fixed at confirmation: a later miss in another

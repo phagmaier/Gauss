@@ -1,17 +1,20 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
+  readlink,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
+import { openDataRoot } from "./record/data-root.ts";
 
 const script = fileURLToPath(
   new URL("../../scripts/dev-fake.ts", import.meta.url),
@@ -109,6 +112,54 @@ test("fake servers keep a data root exclusive until their process exits", async 
   await writeFile(upload, "staged source");
   await writeFile(temporary, "write in progress");
 
+  const courses = join(root, "courses");
+  const course = join(courses, "calculus");
+  const sources = join(course, "sources");
+  const source = join(sources, "textbook");
+  const pages = join(source, "pages");
+  const outsideCourses = join(dir, "outside-courses");
+  const outsideCourse = join(outsideCourses, "calculus");
+  const outsideSources = join(outsideCourse, "sources");
+  const outsideSource = join(outsideSources, "textbook");
+  const outsidePages = join(outsideSource, "pages");
+  const preserved = [
+    join(pages, "1.png"),
+    join(pages, ".render-a1b2c3"),
+    join(pages, ".render-notes", "notes.txt"),
+    join(source, "original.pdf"),
+    join(course, "workspace", "pages", ".render-a1b2c3", "page.png"),
+    join(
+      courses,
+      ".calculus.12345678-1234-1234-1234-123456789abc.tmp",
+      "sources",
+      "textbook",
+      "pages",
+      ".render-a1b2c3",
+      "page.png",
+    ),
+    join(outsidePages, ".render-a1b2c3", "page.png"),
+  ];
+  for (const path of preserved) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, path);
+  }
+  const otherRoot = join(dir, "independent");
+  const links = [
+    [join(otherRoot, "courses"), outsideCourses],
+    [join(courses, "external-course"), outsideCourse],
+    [join(courses, "linked-course", "sources"), outsideSources],
+    [join(sources, "external-source"), outsideSource],
+    [join(sources, "linked-book", "pages"), outsidePages],
+    [join(pages, ".render-d4e5f6"), outsidePages],
+  ] as const;
+  for (const [link, target] of links) {
+    await mkdir(dirname(link), { recursive: true });
+    await symlink(target, link, "dir");
+  }
+  const scratch = await mkdtemp(join(pages, ".render-"));
+  const partial = join(scratch, "page.png");
+  await writeFile(partial, "unfinished render");
+
   // The owner is unseeded; this contender would seed it before recovery.
   const refused = launch(root, port === 4330 ? 4331 : 4330, []);
   expect(await refused.startup()).toMatchObject({
@@ -118,12 +169,12 @@ test("fake servers keep a data root exclusive until their process exits", async 
     ),
   });
   expect(await readFile(upload, "utf8")).toBe("staged source");
+  expect(await readFile(partial, "utf8")).toBe("unfinished render");
   expect(await readFile(temporary, "utf8")).toBe("write in progress");
   const url = `http://127.0.0.1:${port}`;
   const library = await fetch(`${url}/api/courses`, { signal });
   expect(await library.json()).toEqual({ courses: [] });
 
-  const otherRoot = join(dir, "independent");
   const independent = launch(otherRoot);
   expect(await listening(independent)).not.toBe(port);
 
@@ -139,10 +190,55 @@ test("fake servers keep a data root exclusive until their process exits", async 
 
   active.child.kill("SIGTERM");
   expect(await active.exited).toMatchObject({ code: 0, signal: null });
+
+  // Startup promotes the journal's staged source before sweeping its cache.
+  const record = openDataRoot({ path: root });
+  const intakeId = "0f8fad5b-d9cb-469f-a165-70867728950e";
+  const stagedPages = join(
+    await record.uploadsFolder(intakeId),
+    "atlas",
+    "pages",
+  );
+  const stagedScratch = ".render-g7h8i9";
+  await mkdir(join(stagedPages, stagedScratch), { recursive: true });
+  await writeFile(join(stagedPages, "1.png"), "published atlas page");
+  const title = "Geometry";
+  const { id } = await record.createCourse({
+    title,
+    firstProposal: {
+      intakeId,
+      sources: ["atlas"],
+      proposal: {
+        title,
+        units: [
+          {
+            id: "angles",
+            title: "Angles",
+            goal: "Compare angles.",
+            prerequisites: [],
+          },
+        ],
+        style: "Use diagrams.",
+        background: "The learner knows basic shapes.",
+      },
+    },
+  });
+
   const restarted = launch(root);
   await listening(restarted);
   await expect(readFile(upload)).rejects.toMatchObject({ code: "ENOENT" });
   await expect(readFile(temporary)).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(lstat(scratch)).rejects.toMatchObject({ code: "ENOENT" });
+  for (const path of preserved) expect(await readFile(path, "utf8")).toBe(path);
+  for (const [link, target] of links) expect(await readlink(link)).toBe(target);
+  const recoveredPages = join(courses, id, "sources", "atlas", "pages");
+  expect(await readFile(join(recoveredPages, "1.png"), "utf8")).toBe(
+    "published atlas page",
+  );
+  const recoveredScratch = join(recoveredPages, stagedScratch);
+  await expect(lstat(recoveredScratch)).rejects.toMatchObject({
+    code: "ENOENT",
+  });
 
   restarted.child.kill("SIGKILL");
   expect(await restarted.exited).toMatchObject({

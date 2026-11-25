@@ -93,6 +93,10 @@ export async function serve(
   // Recover a first proposal before taking the startup snapshot. An intake
   // that had not made a proposal ends with the server, along with its uploads.
   await dataRoot.clearUploads();
+  // Recovery can move a source (and its cache) from uploads into a course.
+  await dataRoot.clearPageRenderScratch((line) =>
+    process.stdout.write(`${line}\n`),
+  );
   // The engine's commands run in it (task 3.2); it says once if it cannot,
   // and tutors then get no file and shell tools, and math and code
   // questions are refused with the reason. Its commands read nothing in

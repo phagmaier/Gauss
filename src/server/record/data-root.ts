@@ -14,7 +14,7 @@
 // in an intake's uploads or a course's sources/, moved from one to the
 // other, removed from uploads, the outlines and sections read, and a PDF
 // page's image kept once rendered (task 4.8). At start it removes what
-// interrupted writes left, and an intake's uploads.
+// interrupted writes and page renders left, and an intake's uploads.
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -431,6 +431,8 @@ export interface DataRoot {
    * removed is logged and left; it never throws.
    */
   clearInterruptedWrites(log: (line: string) => void): Promise<void>;
+  /** Removes abandoned pageImage scratch in course sources. Call only at locked startup. */
+  clearPageRenderScratch(log: (line: string) => void): Promise<void>;
   /**
    * Puts a folder `convert.py ingest` wrote in place: in the course's
    * `sources/`, or in the intake's uploads, under a slug of its title
@@ -1911,6 +1913,52 @@ export function openDataRoot(options: {
       }
     },
 
+    async clearPageRenderScratch(log) {
+      const directories = async (folder: string): Promise<Dirent[]> => {
+        try {
+          // The fixed path components (courses/, sources/, pages/) must
+          // be directories too, not links to somebody else's cache.
+          if (!(await lstat(folder)).isDirectory()) return [];
+          return (await readdir(folder, { withFileTypes: true })).filter(
+            (entry) => entry.isDirectory(),
+          );
+        } catch (error) {
+          if (!hasCode(error, "ENOENT")) {
+            log(
+              `Could not look for abandoned page renders in ${folder}: ${error}`,
+            );
+          }
+          return [];
+        }
+      };
+      for (const course of await directories(courses)) {
+        if (!Slug.safeParse(course.name).success) continue;
+        const sources = join(courses, course.name, "sources");
+        for (const source of await directories(sources)) {
+          if (!Slug.safeParse(source.name).success) continue;
+          const pages = join(sources, source.name, "pages");
+          for (const entry of await directories(pages)) {
+            if (
+              !entry.name.startsWith(PAGE_RENDER_SCRATCH_PREFIX) ||
+              !/^[a-zA-Z0-9]{6}$/.test(
+                entry.name.slice(PAGE_RENDER_SCRATCH_PREFIX.length),
+              )
+            ) {
+              continue;
+            }
+            const scratch = join(pages, entry.name);
+            try {
+              await rm(scratch, { recursive: true, force: true });
+            } catch (error) {
+              log(
+                `Could not remove abandoned page render ${scratch}: ${error}`,
+              );
+            }
+          }
+        }
+      }
+    },
+
     async placeSource(converted, into, besides) {
       const file = join(converted, "outline.json");
       const outline = await readJson(file, Outline);
@@ -1999,7 +2047,7 @@ export function openDataRoot(options: {
         if (kept !== undefined) return kept;
         await mkdir(pages, { recursive: true });
         // The renderer can write to dirname(output), not the cache itself.
-        const scratch = await mkdtemp(join(pages, ".render-"));
+        const scratch = await mkdtemp(join(pages, PAGE_RENDER_SCRATCH_PREFIX));
         try {
           const output = join(scratch, "page.png");
           await render(join(folder, "original.pdf"), output);
@@ -2247,6 +2295,9 @@ async function publishSource(from: string, to: string): Promise<void> {
   const previous = dirname(from);
   if (previous !== parent) await syncFolder(previous);
 }
+
+// mkdtemp appends six alphanumeric characters to this prefix.
+const PAGE_RENDER_SCRATCH_PREFIX = ".render-";
 
 const PAGE_PNG_MAX_BYTES = 16 * 1024 * 1024;
 const PAGE_PNG_MAX_PIXELS = 64 * 1024 * 1024;
