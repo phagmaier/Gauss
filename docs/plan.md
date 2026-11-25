@@ -59,16 +59,10 @@ A source added after the intake (6.20 to 6.22): `brief.md`, "Sources" and
 "Page"; piece 26, direction A. No shipped prompt text is moved or
 reworded: `course-planner.md` still says the first message gives the
 sources; what a later source is and when it joins is said in the header
-that delivers its `<sources>` block, reusing the intake's wording for a
-removed or refused file. The new text is tried on a real model only in
+that delivers its `<attached_sources>` block (`ATTACHED_GIVEN` in
+`engine/course-planning.ts`), reusing the intake's wording for a removed
+or refused file. The new text is tried on a real model only in
 the user check (the user's choice, 2026-11-24).
-
-### 6.20 A source attached in the planning conversation — todo
-
-**Needs:** nothing open.
-**Why:** Only the intake attaches sources (`engine/intake-sources.ts`); the course planner is given the course's sources in its first turn only, since they never changed after approval (`sourcesBlock` in `engine/course-planning.ts`). The learner now attaches one in the planning conversation, and it joins the course when a change is applied.
-**Do:** Generalise `intake-sources.ts` so a planning conversation holds its attachments in `uploads/<planning id>/` until Apply, each under an id that no source of the course nor another waiting one has (`moveUpload` refuses a taken path). Routes under the planning path to attach, remove, and read a waiting source's outline and sections, as the intake's. The planner's next turn gets the `<sources>` block for what was attached, removed or refused since, under a header saying an attached source joins the course when a change is applied. `amend_curriculum` in the conversation checks sections against the course's sources and the waiting ones, and refuses a waiting one the planner has not been shown, as the intake does. Remove is refused while the proposal waiting reads the source. Apply is refused while a file converts; otherwise it moves every waiting source into the course, then writes the change (a crash between leaves the sources in the course with no change: say so beside the code). A conversation that ends without Apply, or a restart, leaves the course's sources as they were; startup clears the uploads.
-**Done when:** engine tests on the fake backend with a temporary root show: after an attach the planner's next turn carries the source's outline and the header's rule; a proposal reading it is accepted and one reading a removed source refused; Remove is refused while the waiting proposal reads it and allowed after "Keep the current one"; Apply adds every waiting source with the change; a conversation closed without Apply leaves `readSources` unchanged and its uploads removed; an id taken by the course's source gets another. `mise run check` passes.
 
 ### 6.21 Open units take in a source added — todo
 

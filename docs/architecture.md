@@ -59,7 +59,7 @@ the root as an argument). File shapes are the schemas in `src/shared/`
   .profile-approval.json       journal, only while a profile-changing approval is unfinished
   .notes-write.json            journal, only while unit notes are being published
   intake/                      working folder of intake and planning sessions; Gauss writes nothing here
-  uploads/<intake-id>/         staged sources; .first-proposal.json journals promotion before startup clears uploads
+  uploads/<conversation id>/   staged sources of an intake or a planning conversation; .first-proposal.json journals an intake's promotion before startup clears uploads
   cache/package-uv/            uv's install cache
   courses/<course-id>/
     course.json  style.md  background.md  curriculum.json  state.json
@@ -109,7 +109,8 @@ Rules no single file shows:
   `dev-seed.ts` (the dev server's courses).
 - **`src/server/engine/`**: the chats and their rules. `conversation.ts`
   (event log and turn queue under every chat); `intake.ts`,
-  `intake-sources.ts`, `course-planning.ts`, `unit-planning.ts`;
+  `attached-sources.ts` (the files attached in the intake or a planning
+  conversation), `course-planning.ts`, `unit-planning.ts`;
   `unit-chat.ts` (the course level: open chats, the course's queue and
   desks; each chat's state and queue, `load`'s composition of the record,
   agents and modules with its error path, the segment's phases and own

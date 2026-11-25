@@ -67,6 +67,7 @@ import {
 } from "../../shared/source.ts";
 import { StyleAnswer } from "../../shared/style.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
+import type { AttachResult, Upload } from "../engine/attached-sources.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import {
@@ -210,8 +211,11 @@ export function createApp(options: {
     return c.json({ sources } satisfies CourseSources);
   });
 
-  for (const scope of ["courses", "intakes"] as const) {
-    const base = `/api/${scope}/:id/sources/:source` as const;
+  for (const scope of ["courses", "intakes", "planning"] as const) {
+    const base =
+      scope === "planning"
+        ? "/api/courses/:id/planning/:planning/sources/:source"
+        : (`/api/${scope}/:id/sources/:source` as const);
     async function withSource(
       c: Context,
       read: (home: SourceHome, source: Slug) => Promise<Response>,
@@ -226,6 +230,16 @@ export function createApp(options: {
         if (!(await dataRoot.readCourse(id)))
           return c.json({ error: "No such course." }, 404);
         return read({ course: id }, source.data);
+      }
+      if (scope === "planning") {
+        const planning = plannings.get(id, c.req.param("planning") ?? "");
+        if (planning === undefined)
+          return c.json({ error: "No such planning conversation." }, 404);
+        // On the placement queue, as an Apply moving the source runs there.
+        const response = await planning.withSourceHome(source.data, (home) =>
+          read(home, source.data),
+        );
+        return response ?? c.json({ error: "No such source." }, 404);
       }
       const intake = intakes.get(id);
       if (intake === undefined)
@@ -593,39 +607,48 @@ export function createApp(options: {
     );
   });
 
+  /**
+   * A file the learner attached, from a request whose body is the file and
+   * a header its name; or the answer refusing it.
+   */
+  async function attachFrom(
+    c: Context,
+    attach: (upload: Upload) => Promise<AttachResult>,
+  ): Promise<Response> {
+    let name: string;
+    try {
+      name = decodeURIComponent(c.req.header(FILE_NAME_HEADER) ?? "");
+    } catch {
+      return c.json({ error: "The file's name could not be read." }, 400);
+    }
+    const length = c.req.header("Content-Length");
+    const size = length === undefined ? undefined : Number(length);
+    if (size !== undefined && !(Number.isSafeInteger(size) && size >= 0)) {
+      return c.json({ error: "The file's length could not be read." }, 400);
+    }
+    const attached = await attach({
+      name,
+      size,
+      body: c.req.raw.body ?? emptyBody(),
+    });
+    if (attached.ok) {
+      return c.json(
+        { attachment: attached.attachment } satisfies SourceUploaded,
+        202,
+      );
+    }
+    const { status, error, attachment } = attached;
+    return c.json(
+      { error, ...(attachment === undefined ? {} : { attachment }) },
+      status,
+    );
+  }
+
   // A source attached in the intake (piece 22): the body is the file, its
   // name in a header. The answer comes once the file is received; its card
   // then shows the conversion over the event stream.
   app.post("/api/intakes/:id/sources", (c) =>
-    withIntake(c, async (intake) => {
-      let name: string;
-      try {
-        name = decodeURIComponent(c.req.header(FILE_NAME_HEADER) ?? "");
-      } catch {
-        return c.json({ error: "The file's name could not be read." }, 400);
-      }
-      const length = c.req.header("Content-Length");
-      const size = length === undefined ? undefined : Number(length);
-      if (size !== undefined && !(Number.isSafeInteger(size) && size >= 0)) {
-        return c.json({ error: "The file's length could not be read." }, 400);
-      }
-      const attached = await intake.attach({
-        name,
-        size,
-        body: c.req.raw.body ?? emptyBody(),
-      });
-      if (attached.ok) {
-        return c.json(
-          { attachment: attached.attachment } satisfies SourceUploaded,
-          202,
-        );
-      }
-      const { status, error, attachment } = attached;
-      return c.json(
-        { error, ...(attachment === undefined ? {} : { attachment }) },
-        status,
-      );
-    }),
+    withIntake(c, (intake) => attachFrom(c, intake.attach)),
   );
 
   // "Remove" on a source's card, until the first proposal.
@@ -703,6 +726,25 @@ export function createApp(options: {
       await planning.interrupt();
       return c.json({ ok: true });
     }),
+  );
+
+  // A source attached in the planning conversation (piece 26), as in the
+  // intake; it joins the course when a change is applied.
+  app.post(
+    `${planningPath}/sources`,
+    withPlanning((c, planning) => attachFrom(c, planning.attach)),
+  );
+
+  // "Remove" on a source's card, until the change is applied.
+  app.post(
+    `${planningPath}/sources/:attachment/remove`,
+    withPlanning(async (c, planning) =>
+      reply(
+        c,
+        await planning.removeSource(c.req.param("attachment") ?? ""),
+        200,
+      ),
+    ),
   );
 
   // --- Unit chats: opening a unit starts it or picks it up where it was ----

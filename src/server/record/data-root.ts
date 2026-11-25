@@ -300,9 +300,15 @@ export interface DataRoot {
    * writing nothing, if it would drop a unit that has started or breaks the
    * curriculum's rules. The write counts as applied if the curriculum on
    * disk already has these units, including after an error following rename.
-   * Returns the committed units with their plans.
+   * With `admit`, the conversation's uploads move into the course's
+   * `sources/` once the change is checked, before it is written. Returns the
+   * committed units with their plans.
    */
-  changeCurriculum(id: string, units: readonly Unit[]): Promise<StoredUnit[]>;
+  changeCurriculum(
+    id: string,
+    units: readonly Unit[],
+    admit?: { uploads: string; sources: readonly Slug[] },
+  ): Promise<StoredUnit[]>;
   /** Appends one entry to evidence.jsonl. Appends land in the order called. */
   appendEvidence(id: string, entry: EvidenceEntry): Promise<void>;
   /** Makes a pending override durable without appending its id twice. Returns the current log. */
@@ -401,13 +407,16 @@ export interface DataRoot {
   readMisconceptions(id: string): Promise<Misconception[]>;
   /**
    * The absolute path of the folder where an intake's sources wait,
-   * `uploads/<intake id>/`, until its first proposal creates the course;
-   * made if it is missing. Throws for an id that cannot be an intake's.
+   * `uploads/<intake id>/`, until its first proposal creates the course, or
+   * a planning conversation's, under its id, until its change is applied;
+   * made if it is missing. Throws for an id that cannot be a conversation's.
    */
   uploadsFolder(intakeId: string): Promise<string>;
+  /** Removes one conversation's uploads, whatever they hold. */
+  removeUploads(intakeId: string): Promise<void>;
   /**
-   * Removes every intake's uploads. Called at start, when no intake is
-   * running: an intake ends with the server.
+   * Removes every conversation's uploads. Called at start, when none is
+   * running: an intake or a planning conversation ends with the server.
    */
   clearUploads(): Promise<void>;
   /**
@@ -425,11 +434,16 @@ export interface DataRoot {
   /**
    * Puts a folder `convert.py ingest` wrote in place: in the course's
    * `sources/`, or in the intake's uploads, under a slug of its title
-   * unique there, which becomes its outline's id before it is published by
-   * rename. The folder must be on the data root's file system, as a scratch
-   * folder inside it is. Returns the outline as written.
+   * unique there and, if `besides` names a course, among its sources too,
+   * which becomes its outline's id before it is published by rename. The
+   * folder must be on the data root's file system, as a scratch folder
+   * inside it is. Returns the outline as written.
    */
-  placeSource(converted: string, into: SourceHome): Promise<Outline>;
+  placeSource(
+    converted: string,
+    into: SourceHome,
+    besides?: Slug,
+  ): Promise<Outline>;
   /** Moves an upload into the course's `sources/` under its id; throws if the path is taken. */
   moveUpload(intakeId: string, sourceId: Slug, courseId: Slug): Promise<void>;
   /** Deletes an upload, or returns false if the first proposal has claimed it. */
@@ -1527,7 +1541,7 @@ export function openDataRoot(options: {
       });
     },
 
-    async changeCurriculum(id, units) {
+    async changeCurriculum(id, units, admit) {
       const path = courseFile(id, "state.json");
       const file = courseFile(id, "curriculum.json");
       // The state's lock first, as writePosition takes it, so no unit's
@@ -1543,6 +1557,14 @@ export function openDataRoot(options: {
           withFileLock(courses, async () => {
             const current = (await readCourse(id))?.curriculum;
             const changed = changedCurriculum(id, current, state, units);
+            // Moved before the change is written: a unit it adds may read
+            // them. A crash between leaves them in the course with no change,
+            // which reads them nowhere; a retry finds them moved.
+            if (admit !== undefined) {
+              for (const source of admit.sources) {
+                await moveUpload(admit.uploads, source, id, true);
+              }
+            }
             if (current != null && sameUnits(current.units, units)) {
               return current.units;
             }
@@ -1814,6 +1836,10 @@ export function openDataRoot(options: {
 
     uploadsFolder: intakeUploads,
 
+    async removeUploads(intakeId) {
+      await rm(uploadsPath(intakeId), { recursive: true, force: true });
+    },
+
     async clearUploads() {
       const intakes = await readdir(uploads, { withFileTypes: true }).catch(
         (error: unknown) => {
@@ -1885,7 +1911,7 @@ export function openDataRoot(options: {
       }
     },
 
-    async placeSource(converted, into) {
+    async placeSource(converted, into, besides) {
       const file = join(converted, "outline.json");
       const outline = await readJson(file, Outline);
       if (outline === undefined) throw new Error(`${file} is missing.`);
@@ -1893,12 +1919,16 @@ export function openDataRoot(options: {
         "course" in into
           ? await courseSources(into.course)
           : await intakeUploads(into.intake);
+      const others =
+        besides === undefined ? undefined : await courseSources(besides);
       return withFileLock(parent, async () => {
         const base = idFromTitle(outline.title, ID_LENGTH, "source");
         for (let n = 1; ; n++) {
           const id = n === 1 ? base : `${base}-${n}`;
           const at = join(parent, id);
           if (await sourcePathTaken(at)) continue;
+          if (others !== undefined && (await sourcePathTaken(join(others, id))))
+            continue;
           const placed: Outline = { ...outline, id };
           await writeJson(file, Outline, placed);
           await publishSource(converted, at);

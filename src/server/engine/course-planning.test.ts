@@ -3,7 +3,9 @@
 // card, Apply and "Keep the current one", the rules a unit tutor's change
 // keeps, and the open unit chats told of an applied change.
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -21,13 +23,15 @@ import {
 import { createScriptedBackend } from "../backends/scripted.ts";
 import type * as AtomicWrite from "../record/atomic-write.ts";
 import { type DataRoot, openDataRoot } from "../record/data-root.ts";
+import { createAttachedSources } from "./attached-sources.ts";
 import { givenOrder } from "./choice-order.ts";
 import { IDLE_MS } from "./conversation.ts";
 import { createCoursePlannings } from "./course-planning.ts";
-import { placeTestSource } from "./fake-converter.ts";
+import { fakeConverter, placeTestSource, upload } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
+import type { SourceConverter } from "./source-convert.ts";
 import { createUnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
 
@@ -197,6 +201,8 @@ async function setUp(options: {
   finished?: boolean;
   /** The course has NOTES as its source, and its units read it (READING). */
   source?: boolean;
+  /** Converts the files attached in the conversation; the fake's own if not given. */
+  converter?: SourceConverter;
 }) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
   const { id } = await root.createCourse({ title: CURRICULUM.title });
@@ -265,6 +271,7 @@ async function setUp(options: {
     backup,
     timer,
     now: () => new Date(NOW),
+    converter: options.converter ?? fakeConverter(),
   });
   async function planning() {
     const opened = await plannings.open(COURSE);
@@ -441,6 +448,255 @@ test("in a course with a source, the planner is given each unit's sections and t
     { ...units[1], plan: plan("set-count", ["counting/s2"]) },
     maps("counting/s3"),
   ]);
+});
+
+// Task 6.20: a source attached in the planning conversation (piece 26).
+const PINKARD = "# Counting\n\nArrangements and choices.\n";
+/** The id the record gives PINKARD in a course whose source is NOTES. */
+const ADDED = "counting-2";
+const mapsReading = (ref: string): Unit => ({ ...MAPS, sections: [ref] });
+
+/** The ids of the course's sources, and the conversation's uploads left. */
+async function sourcesAndUploads(root: DataRoot, planningId: string) {
+  const sources = (await root.readSources(COURSE)).map((s) => s.id);
+  const folder = join(dir, "uploads", planningId);
+  const uploads = existsSync(folder)
+    ? (await readdir(folder)).filter((name) => !name.startsWith("."))
+    : undefined;
+  return { sources, uploads };
+}
+
+test("a source attached in the planning conversation waits under an id the course's sources lack, the planner is told of it once, a proposal can read it, and Apply moves it into the course with the change", async () => {
+  const { backend, planning, root, stored, commits } = await setUp({
+    source: true,
+    planner: [
+      [amend([...READING.units, mapsReading(`${ADDED}/s1`)])],
+      [{ text: "It reads the new notes." }],
+    ],
+  });
+  const chat = await planning();
+  const attached = await chat.attach(upload("arrangements.md", PINKARD));
+  expect(attached).toMatchObject({ ok: true });
+  chat.say("Add a unit on these notes.");
+  await chat.settled();
+
+  const first = backend.received[0]?.text ?? "";
+  expect(first).toContain(
+    "in <sources>. <attached_sources> says what changed in the files the learner attached in this conversation since you were last told: each attached, with its outline; each they removed; and each that could not be attached. An attached source joins the course's sources when the learner applies a change, whether or not a unit reads it;",
+  );
+  expect(first).toContain(
+    [
+      "</sources>",
+      "<attached_sources>",
+      `Attached: "Counting" (source id "${ADDED}"), a Markdown file, from the learner's file "arrangements.md". Its outline, one line per entry, indented by depth: a heading's title, or a section's id, title, place and size in characters.`,
+      '- "Counting"',
+      '  - s1: "Counting", paragraphs 1–2, 38 characters',
+      "</attached_sources>",
+      "",
+      "Add a unit on these notes.",
+    ].join("\n"),
+  );
+  expect(refusals(backend)).toEqual([]);
+  const card = lastCard(chat.events());
+  expect(card.units.at(-1)).toEqual(mapsReading(`${ADDED}/s1`));
+  expect(await sourcesAndUploads(root, chat.id)).toEqual({
+    sources: ["counting"],
+    uploads: [ADDED],
+  });
+
+  chat.say("Why that one?");
+  await chat.settled();
+  // Told once: the next turn carries no news of the files.
+  expect(backend.received[1]?.text).not.toContain("<attached_sources>");
+
+  expect(await chat.apply(card.proposalId)).toEqual({ ok: true });
+  expect(await sourcesAndUploads(root, chat.id)).toEqual({
+    sources: ["counting", ADDED],
+    uploads: undefined,
+  });
+  expect((await stored())?.at(-1)).toEqual(mapsReading(`${ADDED}/s1`));
+  expect(await root.readSection({ course: COURSE }, `${ADDED}/s1`)).toBe(
+    PINKARD,
+  );
+  expect(commits).toEqual(["counting: curriculum changed"]);
+});
+
+test("Remove is refused while the proposal waiting reads the source and allowed once it is kept; the planner is told, and a proposal reading the removed source is refused", async () => {
+  const { backend, planning, root } = await setUp({
+    source: true,
+    planner: [
+      [amend([...READING.units, mapsReading(`${ADDED}/s1`)])],
+      [amend([...READING.units, mapsReading(`${ADDED}/s1`)])],
+    ],
+  });
+  const chat = await planning();
+  const attached = await chat.attach(upload("arrangements.md", PINKARD));
+  if (!attached.ok) throw new Error(attached.error);
+  chat.say("Add a unit on these notes.");
+  await chat.settled();
+  const card = lastCard(chat.events());
+
+  expect(await chat.removeSource(attached.attachment)).toMatchObject({
+    ok: false,
+    status: 409,
+    error: expect.stringMatching(/^The proposal waiting reads this source\./),
+  });
+  expect(await chat.keep(card.proposalId)).toEqual({ ok: true });
+  expect(await chat.removeSource(attached.attachment)).toEqual({ ok: true });
+  expect(chat.events().at(-1)).toEqual({
+    type: "source_removed",
+    attachment: attached.attachment,
+  });
+  expect(await sourcesAndUploads(root, chat.id)).toEqual({
+    sources: ["counting"],
+    uploads: [],
+  });
+
+  chat.say("Use it anyway.");
+  await chat.settled();
+  expect(backend.received[1]?.text).toContain(
+    `<attached_sources>\nRemoved by the learner: "Counting" (source id "${ADDED}"). It is not one of the course's sources.\n</attached_sources>`,
+  );
+  expect(refusals(backend)).toEqual([
+    `Unit "maps" names "${ADDED}/s1", but the course has no source "${ADDED}": its sources are "counting".`,
+  ]);
+});
+
+test("Apply waits for a file converting, then adds every source attached, read by a unit or not; a conversation closed without Apply adds none and leaves no uploads", async () => {
+  const gate = Promise.withResolvers<void>();
+  const fake = fakeConverter();
+  let conversions = 0;
+  const converter: SourceConverter = {
+    ...fake,
+    async convert(original, folder, signal) {
+      if (++conversions === 2) await gate.promise;
+      return fake.convert(original, folder, signal);
+    },
+  };
+  const { planning, plannings, root } = await setUp({
+    source: true,
+    converter,
+    planner: [[amend([...READING.units, mapsReading(`${ADDED}/s1`)])]],
+  });
+  const chat = await planning();
+  await chat.attach(upload("arrangements.md", PINKARD));
+  chat.say("Add a unit on these notes.");
+  await chat.settled();
+  const card = lastCard(chat.events());
+  await chat.attach(upload("aside.md", "# Aside\n\nNot read by any unit.\n"));
+
+  expect(await chat.apply(card.proposalId)).toEqual({
+    ok: false,
+    status: 409,
+    error:
+      "Wait until the file is converted: it joins the course with the change.",
+  });
+  expect(chat.inUse()).toBe("planning");
+  gate.resolve();
+  await chat.settled();
+  expect(await chat.apply(card.proposalId)).toEqual({ ok: true });
+  expect((await sourcesAndUploads(root, chat.id)).sources).toEqual([
+    "aside",
+    "counting",
+    ADDED,
+  ]);
+
+  // A new conversation's file, closed with the server before any Apply.
+  const next = await planning();
+  await next.attach(upload("more.md", "# More\n\nSomething else.\n"));
+  await next.settled();
+  expect(await sourcesAndUploads(root, next.id)).toEqual({
+    sources: ["aside", "counting", ADDED],
+    uploads: ["more"],
+  });
+  await plannings.close();
+  expect(await sourcesAndUploads(root, next.id)).toEqual({
+    sources: ["aside", "counting", ADDED],
+    uploads: undefined,
+  });
+});
+
+test("a proposal reading a source attached since the planner was last told is refused until a turn has told it", async () => {
+  const { root } = await setUp({ source: true, planner: [] });
+  const sources = createAttachedSources({
+    uploadsId: randomUUID(),
+    dataRoot: root,
+    converter: fakeConverter(),
+    destination: { planning: COURSE, reads: () => false },
+    emit: () => {},
+  });
+  await sources.attach(upload("arrangements.md", PINKARD));
+  await sources.settled();
+  const units = [...READING.units, mapsReading(`${ADDED}/s1`)];
+
+  expect(await sources.checkProposal(units)).toBe(
+    `The proposal names a source you have not seen in its current form: "${ADDED}". Wait for the updated outline on the next learner turn before proposing units that read it.`,
+  );
+  (await sources.forTurn(false)).sent();
+  expect(await sources.checkProposal(units)).toBeUndefined();
+  await sources.close();
+});
+
+test("an Apply refused because a unit has since started adds no source: it still waits, and can be removed once the proposal is kept", async () => {
+  const { planning, root } = await setUp({
+    source: true,
+    planner: [[amend(READING.units)]],
+  });
+  // A third unit, not started, that the planner's change drops.
+  await root.changeCurriculum(COURSE, [...READING.units, MAPS]);
+  const chat = await planning();
+  const attached = await chat.attach(upload("arrangements.md", PINKARD));
+  if (!attached.ok) throw new Error(attached.error);
+  chat.say("Drop maps, and keep these notes.");
+  await chat.settled();
+  const card = lastCard(chat.events());
+
+  await root.storePlan(COURSE, "maps", plan("map-count"));
+  expect(await chat.apply(card.proposalId)).toMatchObject({
+    ok: false,
+    status: 409,
+  });
+  expect(await sourcesAndUploads(root, chat.id)).toEqual({
+    sources: ["counting"],
+    uploads: [ADDED],
+  });
+  expect(await chat.keep(card.proposalId)).toEqual({ ok: true });
+  expect(await chat.removeSource(attached.attachment)).toEqual({ ok: true });
+});
+
+test("a curriculum write that fails after the sources were moved leaves them the course's: they stay, and the planner is not told they were removed", async () => {
+  const { backend, planning, root, stored } = await setUp({
+    source: true,
+    planner: [
+      [amend([...READING.units, mapsReading(`${ADDED}/s1`)])],
+      [{ text: "Noted." }],
+    ],
+  });
+  const chat = await planning();
+  const attached = await chat.attach(upload("arrangements.md", PINKARD));
+  if (!attached.ok) throw new Error(attached.error);
+  chat.say("Add a unit on these notes.");
+  await chat.settled();
+  const card = lastCard(chat.events());
+
+  disk.failure = "before rename";
+  await expect(chat.apply(card.proposalId)).rejects.toThrow(
+    "Injected write error",
+  );
+  expect((await stored())?.map((u) => u.id)).toEqual(["loops", "sets"]);
+  expect(await sourcesAndUploads(root, chat.id)).toEqual({
+    sources: ["counting", ADDED],
+    uploads: [],
+  });
+  expect(await chat.keep(card.proposalId)).toEqual({ ok: true });
+  expect(await chat.removeSource(attached.attachment)).toEqual({
+    ok: false,
+    status: 409,
+    error: "The source has joined the course, so it stays with it.",
+  });
+  chat.say("Fine.");
+  await chat.settled();
+  expect(backend.received[1]?.text).not.toContain("<attached_sources>");
 });
 
 test("a change that drops a started unit, changes its id or nothing, or breaks the curriculum's rules, is refused with the reason and shows no card", async () => {

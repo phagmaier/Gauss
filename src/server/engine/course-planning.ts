@@ -16,11 +16,18 @@
 // open unit chats, and ends the conversation; "Keep the current one" is said
 // in the planner's next header.
 //
-// A conversation is kept in memory, as an intake is: a restart loses it and
-// its waiting proposal, and nothing has changed. It has no transcript. Its
-// session is kept in the intakes' folder, so that it can be closed while
-// idle and resumed (task 2.15); one that cannot be found gives way to a new
-// session, which is given the earlier messages and proposals with their outcomes.
+// A conversation is kept in memory, as an intake is: a restart loses it,
+// its waiting proposal and the sources waiting, and nothing has changed. It
+// has no transcript. Its session is kept in the intakes' folder, so that it
+// can be closed while idle and resumed (task 2.15); one that cannot be found
+// gives way to a new session, which is given the earlier messages and
+// proposals with their outcomes.
+//
+// The learner can attach sources here (attached-sources.ts, piece 26), as in
+// the intake: each turn waits for the files being converted and tells the
+// planner of each attached, removed or refused since it was last told. They
+// wait in the conversation's uploads; Apply moves them into the course with
+// the change, and a conversation that applies nothing adds none.
 
 import { randomUUID } from "node:crypto";
 import type { Slug } from "../../shared/course.ts";
@@ -40,6 +47,13 @@ import { CurriculumChangeRefused, type DataRoot } from "../record/data-root.ts";
 import { courseProgress } from "../record/progress.ts";
 import { planCurriculumChangeTool } from "../tools/amend-curriculum.ts";
 import {
+  type AttachedSources,
+  type AttachResult,
+  createAttachedSources,
+  type SourcesTold,
+  type Upload,
+} from "./attached-sources.ts";
+import {
   type ChatResult,
   createConversation,
   createEventLog,
@@ -47,7 +61,8 @@ import {
 } from "./conversation.ts";
 import type { CourseHolder } from "./course-deletion.ts";
 import { conversationBefore, type Said } from "./intake.ts";
-import { sectionsRefused, sourceLines } from "./source-text.ts";
+import type { SourceConverter } from "./source-convert.ts";
+import { sourceLines } from "./source-text.ts";
 import type { CourseDesk, UnitChats } from "./unit-chat.ts";
 
 export interface CoursePlanning {
@@ -61,15 +76,26 @@ export interface CoursePlanning {
   ended(): boolean;
   /** A message from the learner; the first one starts the planner's session. */
   say(text: string): ChatResult;
+  /**
+   * A file the learner attached: received now, then converted. It joins the
+   * course when a change is applied.
+   */
+  attach(upload: Upload): Promise<AttachResult>;
+  /** Removes an attached source, unless the proposal waiting reads it. */
+  removeSource(attachment: string): Promise<ChatResult>;
+  withSourceHome: AttachedSources["withSourceHome"];
   /** Apply on the card of the proposal waiting, while the planner is not writing. */
   apply(proposalId: string): Promise<ChatResult>;
   /** "Keep the current one" on the card of the proposal waiting. */
   keep(proposalId: string): Promise<ChatResult>;
   /** Stops the planner's turn in progress, if there is one. */
   interrupt(): Promise<void>;
-  /** Resolves once every turn sent so far has finished. */
+  /** Resolves once every file attached is converted and every turn sent so far has finished. */
   settled(): Promise<void>;
-  /** Its page reads the event stream, or the planner writes, or its change is being applied. */
+  /**
+   * Its page reads the event stream, or the planner writes, a file
+   * converts, or its change is being applied.
+   */
   inUse(): "planning-page" | "planning" | undefined;
   close(): Promise<void>;
 }
@@ -87,6 +113,10 @@ interface PlanningOptions {
   timer?: Timer;
   /** The clock for a proposal's time; the system's if not given. */
   now?: () => Date;
+  /** Converts the sources attached; none can be attached if not given. */
+  converter?: SourceConverter;
+  /** The largest source taken, in bytes; SOURCE_SIZE_LIMIT unless a test sets it. */
+  sourceSizeLimit?: number;
 }
 
 export function createCoursePlanning(
@@ -105,6 +135,22 @@ export function createCoursePlanning(
   let lost = false;
   /** The course as the running session was last given it; none before its first turn. */
   let told: string | undefined;
+  const sources = createAttachedSources({
+    uploadsId: log.id,
+    dataRoot,
+    converter: options.converter,
+    destination: {
+      planning: courseId,
+      reads: (sourceId) =>
+        waiting?.units.some((unit) =>
+          unitSections(unit).some((ref) => ref.startsWith(`${sourceId}/`)),
+        ) === true,
+    },
+    emit: log.emit,
+    ...(options.sourceSizeLimit === undefined
+      ? {}
+      : { sizeLimit: options.sourceSizeLimit }),
+  });
 
   const amend = planCurriculumChangeTool({
     async propose({ units, why }, signal) {
@@ -122,10 +168,7 @@ export function createCoursePlanning(
         }
         const dropped = droppedStarted(current.units, units, state);
         if (dropped !== undefined) return { refused: dropped };
-        const sections = sectionsRefused(
-          units,
-          await dataRoot.readSources(courseId),
-        );
+        const sections = await sources.checkProposal(units);
         if (sections !== undefined) return { refused: sections };
         // A turn stopped while this waited for the course shows nothing,
         // replaces nothing and blocks no unit tutor, as in a unit's chat.
@@ -219,11 +262,15 @@ export function createCoursePlanning(
       log.emit({ type: "learner", id, text });
       let given: string | undefined;
       let answered = false;
+      let attached: SourcesTold | undefined;
       planner.send({
         learnerId: id,
         learnerMessage: text,
         // Composed when sent, so it says how the course stands then.
         async text() {
+          // The planner's turn has the outline of every file sent before.
+          await sources.settled();
+          attached = await sources.forTurn(lost || !planner.started());
           const course = await courseContext(dataRoot, courseId);
           given = course.text;
           answered = kept;
@@ -234,28 +281,45 @@ export function createCoursePlanning(
               text,
               conversationBefore(events, id),
               previousProposals(events),
-              course.text,
-              await sourcesBlock(dataRoot, courseId),
+              {
+                course: course.text,
+                sources: await sourcesBlock(dataRoot, courseId),
+                attached: attached.block,
+              },
             );
           }
           if (!planner.started()) {
-            return openingTurn(
-              text,
-              course.finished,
-              course.text,
-              await sourcesBlock(dataRoot, courseId),
-            );
+            return openingTurn(text, course.finished, {
+              course: course.text,
+              sources: await sourcesBlock(dataRoot, courseId),
+              attached: attached.block,
+            });
           }
-          return messageTurn(text, waiting !== undefined, answered, changed);
+          return messageTurn(text, waiting !== undefined, answered, {
+            course: changed,
+            attached: attached.block,
+          });
         },
         sent() {
           told = given;
           lost = false;
           if (answered) kept = false;
+          attached?.sent();
         },
       });
       return { ok: true };
     },
+    async attach(upload) {
+      const refused = notOpen();
+      if (refused !== undefined) return refused;
+      return sources.attach(upload);
+    },
+    async removeSource(attachment) {
+      const refused = notOpen();
+      if (refused !== undefined) return refused;
+      return sources.remove(attachment);
+    },
+    withSourceHome: sources.withSourceHome,
     async apply(proposalId) {
       const refused = notWaiting(proposalId);
       if (refused !== undefined) return refused;
@@ -266,6 +330,14 @@ export function createCoursePlanning(
           error: "Wait until the planner has finished.",
         };
       }
+      if (sources.converting()) {
+        return {
+          ok: false,
+          status: 409,
+          error:
+            "Wait until the file is converted: it joins the course with the change.",
+        };
+      }
       const change = waiting;
       if (change === undefined) return { ok: false, status: 409, error: OVER };
       // Block new work without letting open() create a second conversation
@@ -273,7 +345,15 @@ export function createCoursePlanning(
       status = "applying";
       let units: StoredUnit[];
       try {
-        units = await dataRoot.changeCurriculum(courseId, change.units);
+        units = await sources.admit((admitted) =>
+          dataRoot.changeCurriculum(
+            courseId,
+            change.units,
+            admitted.length === 0
+              ? undefined
+              : { uploads: log.id, sources: admitted },
+          ),
+        );
       } catch (error) {
         status = "open";
         if (error instanceof CurriculumChangeRefused) {
@@ -294,7 +374,7 @@ export function createCoursePlanning(
         proposalId,
         outcome: "applied",
       });
-      await planner.close();
+      await Promise.all([planner.close(), sources.close()]);
       return { ok: true };
     },
     async keep(proposalId) {
@@ -311,12 +391,19 @@ export function createCoursePlanning(
       return { ok: true };
     },
     interrupt: planner.interrupt,
-    settled: planner.settled,
+    async settled() {
+      await sources.settled();
+      await planner.settled();
+    },
     inUse() {
       if (log.watched()) return "planning-page";
-      return planner.busy() || status === "applying" ? "planning" : undefined;
+      return planner.busy() || status === "applying" || sources.converting()
+        ? "planning"
+        : undefined;
     },
-    close: planner.close,
+    async close() {
+      await Promise.all([planner.close(), sources.close()]);
+    },
   };
 }
 
@@ -344,7 +431,7 @@ export interface CoursePlannings extends CourseHolder {
     | { ok: false; status: 404 | 409; error: string }
   >;
   get(courseId: string, id: string): CoursePlanning | undefined;
-  /** Closes the planner session of every conversation. */
+  /** Closes the planner session of every conversation, and drops its sources waiting. */
   close(): Promise<void>;
 }
 
@@ -409,8 +496,8 @@ async function courseTitle(dataRoot: DataRoot, courseId: Slug) {
 }
 
 // --- Turns: a header saying what is allowed now, then the course when the
-// turn gives it, and the sources in a session's first turn, then the
-// learner's text ---
+// turn gives it, the sources in a session's first turn, and the files
+// attached here when there is news of them, then the learner's text ---
 
 /**
  * The course as the planner sees it, in `<course>`, with what Gauss keeps
@@ -488,8 +575,8 @@ async function courseContext(
 
 /**
  * The course's sources, each with its outline, in `<sources>`; none for a
- * course with no source. Given in a session's first turn only: a course's
- * sources do not change once it is approved.
+ * course with no source. Given in a session's first turn only: they change
+ * only when this conversation's change is applied, which ends it.
  */
 async function sourcesBlock(
   dataRoot: DataRoot,
@@ -514,20 +601,47 @@ const GIVEN =
 const SOURCES_GIVEN =
   "After them come the course's sources, each with its outline, in <sources>.";
 
+/** Said in a header whose turn tells the planner of the files attached here. */
+const ATTACHED_GIVEN =
+  "<attached_sources> says what changed in the files the learner attached " +
+  "in this conversation since you were last told: each attached, with its " +
+  "outline; each they removed; and each that could not be attached. " +
+  "An attached source joins the course's sources when the learner applies " +
+  "a change, whether or not a unit reads it; a unit names its sections as " +
+  '"<source id>/<section id>", as it does those of the course\'s sources.';
+
+/** What a turn gives the planner before the learner's text, each when there is one. */
+interface Blocks {
+  course?: string | undefined;
+  /** The course's sources; only with the course. */
+  sources?: string | undefined;
+  attached?: string | undefined;
+}
+
 /**
- * A turn: the header, then the course if the turn gives it, and the sources
- * if it gives them, then their text.
+ * A turn: the header, then the course if the turn gives it, the course's
+ * sources if it gives them, and the files attached if there is news of
+ * them, then their text.
  */
-function withCourse(
-  header: string,
-  course: string | undefined,
-  text: string,
-  sources?: string,
-): string {
-  if (course === undefined) return `[${header}]\n${text}`;
-  return sources === undefined
-    ? `[${header} ${GIVEN}]\n${course}\n\n${text}`
-    : `[${header} ${GIVEN} ${SOURCES_GIVEN}]\n${course}\n${sources}\n\n${text}`;
+function withBlocks(header: string, blocks: Blocks, text: string): string {
+  const { course, sources, attached } = blocks;
+  const said = [header];
+  const given: string[] = [];
+  if (course !== undefined) {
+    said.push(GIVEN);
+    given.push(course);
+    if (sources !== undefined) {
+      said.push(SOURCES_GIVEN);
+      given.push(sources);
+    }
+  }
+  if (attached !== undefined) {
+    said.push(ATTACHED_GIVEN);
+    given.push(attached);
+  }
+  return given.length === 0
+    ? `[${header}]\n${text}`
+    : `[${said.join(" ")}]\n${given.join("\n")}\n\n${text}`;
 }
 
 const ALLOWED =
@@ -540,13 +654,8 @@ const WAITING =
   "amend_curriculum with the whole revised list, which replaces it.";
 
 /** The page's opening question, which the learner's first message answers. */
-function openingTurn(
-  text: string,
-  finished: boolean,
-  course: string,
-  sources: string | undefined,
-): string {
-  return withCourse(
+function openingTurn(text: string, finished: boolean, blocks: Blocks): string {
+  return withBlocks(
     "Start of a planning conversation of this course. " +
       (finished
         ? "Every unit is finished, and the app has asked the learner what " +
@@ -554,9 +663,8 @@ function openingTurn(
         : "The app has asked the learner what they would like to change " +
           "in the curriculum. ") +
       ALLOWED,
-    course,
+    blocks,
     text,
-    sources,
   );
 }
 
@@ -564,7 +672,7 @@ function messageTurn(
   text: string,
   waits: boolean,
   kept: boolean,
-  course: string | undefined,
+  blocks: Pick<Blocks, "course" | "attached">,
 ): string {
   const header = [
     "Message from the learner.",
@@ -575,12 +683,12 @@ function messageTurn(
             "unless they ask for it.",
         ]
       : []),
-    ...(course === undefined
+    ...(blocks.course === undefined
       ? []
       : ["The course or their profile changed since you were given them."]),
     waits ? WAITING : ALLOWED,
   ].join(" ");
-  return withCourse(header, course, text);
+  return withBlocks(header, blocks, text);
 }
 
 type PreviousProposal = Pick<CurriculumChange, "units" | "why"> & {
@@ -613,11 +721,10 @@ function lostTurn(
   text: string,
   said: readonly Said[],
   proposals: readonly PreviousProposal[],
-  course: string,
-  sources: string | undefined,
+  blocks: Blocks,
 ): string {
   const allowed = proposals.at(-1)?.outcome === "waiting" ? WAITING : ALLOWED;
-  return withCourse(
+  return withBlocks(
     "This conversation is new: the one before it with the learner was " +
       "lost, so you have not seen it. What was said in it, oldest first, as " +
       'JSON (the "planner" messages are your replies):\n' +
@@ -630,8 +737,7 @@ function lostTurn(
           '"kept" means they chose to keep the current curriculum instead. ' +
           "Do not repeat those proposals unless the learner asks for them. ") +
       `Their new message follows. ${allowed}`,
-    course,
+    blocks,
     text,
-    sources,
   );
 }

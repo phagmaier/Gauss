@@ -27,7 +27,7 @@
 // proposal carries the profile's whole text, and its card compares it with
 // profile.md as it was then, which approval expects to replace.
 //
-// The learner can attach sources (intake-sources.ts, piece 22): each turn
+// The learner can attach sources (attached-sources.ts, piece 22): each turn
 // waits for the files being converted, and tells the planner of each source
 // attached, removed or refused since it was last told; a session's first
 // turn tells it of every source the course has. The first proposal moves
@@ -51,19 +51,19 @@ import {
 import { finishedCourses } from "../record/progress.ts";
 import { proposeCurriculumTool } from "../tools/propose-curriculum.ts";
 import {
+  type AttachedSources,
+  type AttachResult,
+  createAttachedSources,
+  type SourcesTold,
+  type Upload,
+} from "./attached-sources.ts";
+import {
   type ChatResult,
   createConversation,
   createEventLog,
   type Timer,
 } from "./conversation.ts";
 import type { CourseHolder } from "./course-deletion.ts";
-import {
-  type AttachResult,
-  createIntakeSources,
-  type IntakeSources,
-  type SourcesTold,
-  type Upload,
-} from "./intake-sources.ts";
 import type { SourceConverter } from "./source-convert.ts";
 
 export interface Intake {
@@ -88,7 +88,7 @@ export interface Intake {
    * course. Codex is refused with the reason when it cannot run here.
    */
   chooseBackend(backend: BackendName): Promise<ChatResult>;
-  withSourceHome: IntakeSources["withSourceHome"];
+  withSourceHome: AttachedSources["withSourceHome"];
   /**
    * Approves the proposal with this revision number, which must be the
    * latest, while the tutor is not writing.
@@ -165,11 +165,11 @@ export function createIntake(options: {
   let opening = false;
   /** The profile the running session was last given; none before its first turn. */
   let told: string | undefined;
-  const sources = createIntakeSources({
-    intakeId: log.id,
+  const sources = createAttachedSources({
+    uploadsId: log.id,
     dataRoot,
-    converter: options.converter ?? NO_CONVERTER,
-    courseId: draft?.id,
+    converter: options.converter,
+    destination: { intake: draft?.id },
     emit: log.emit,
     ...(options.sourceSizeLimit === undefined
       ? {}
@@ -464,7 +464,7 @@ export function createIntake(options: {
         : undefined;
     },
     close() {
-      sources.close();
+      void sources.close();
       return tutor.close();
     },
   };
@@ -475,13 +475,6 @@ const INTAKE_OVER = "The curriculum is approved; this intake is over.";
 function backendFixed(backend: BackendName): string {
   return `The course is made, and it runs on ${BACKEND_TITLES[backend]}.`;
 }
-
-/** For an intake given no converter: attaching is refused, as without the sandbox. */
-const NO_CONVERTER: SourceConverter = {
-  unavailable: "no converter was set up",
-  convert: async () => ({ result: "failed", reason: "no converter" }),
-  renderPage: async () => ({ result: "failed", reason: "no converter" }),
-};
 
 /** Why propose_curriculum is refused in the intake's first turn. */
 const FIRST_TURN =

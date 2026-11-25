@@ -1,16 +1,24 @@
-// The sources of one intake (piece 22). A file the
-// learner attaches is received into a scratch folder in the intake's
-// uploads, `.<attachment>.tmp/`, converted there in the sandbox
-// (source-convert.ts), and put in place by the record under a slug of its
-// title: in the intake's uploads before the first proposal creates the
-// course, which then moves them into its `sources/`, and in the course's
-// `sources/` after. Until then the learner can remove one. Each step shows on
-// the file's card through the intake's event log.
+// The sources the learner attaches in a conversation with a planner: the
+// intake's (piece 22) and a planning conversation's (piece 26). A file is
+// received into a scratch folder in the conversation's uploads,
+// `.<attachment>.tmp/`, converted there in the sandbox (source-convert.ts),
+// and put in place by the record under a slug of its title. Each step shows
+// on the file's card through the conversation's event log.
+//
+// In the intake, a source goes in the intake's uploads before the first
+// proposal creates the course, which then moves them into its `sources/`,
+// and in the course's `sources/` after; until then the learner can remove
+// one. In a planning conversation, it waits in the uploads, under an id
+// none of the course's sources has, until Apply moves every waiting source
+// into the course with the change (`admit`); until then the learner can
+// remove one the proposal waiting does not read.
 //
 // The planner is told, on its next turn, of each source attached (its
 // outline), removed or refused. What a session has been told is kept by
-// source, so a new session, as after a lost one or in a reopened draft's
-// intake, is told of every source the course has.
+// source, so a new session, as after a lost one, is told of every source
+// attached: in the intake, every source the course has, as in a reopened
+// draft's; in a planning conversation, every one attached there, since the
+// course's own are given apart.
 
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
@@ -41,6 +49,17 @@ export interface Upload {
   body: AsyncIterable<Uint8Array>;
 }
 
+/** Where the sources attached go, and when. */
+export type Destination =
+  /** An intake's: the course its first proposal makes, once it is made. */
+  | { intake: Slug | undefined }
+  | {
+      /** A planning conversation's, of this course: they wait for Apply. */
+      planning: Slug;
+      /** The proposal waiting reads this source, so it cannot be removed. */
+      reads(sourceId: Slug): boolean;
+    };
+
 /**
  * The file was taken and converts now, with its card's id; or why not. A
  * refusal its card shows has the card's id too.
@@ -56,13 +75,13 @@ export type AttachResult =
 
 /** What a planner's turn says of the sources, and how to note it was sent. */
 export interface SourcesTold {
-  /** The `<sources>` block, or nothing when there is nothing to tell. */
+  /** The block, or nothing when there is nothing to tell. */
   block: string | undefined;
   /** Notes that the session has been told: call once the turn is sent. */
   sent(): void;
 }
 
-export interface IntakeSources {
+export interface AttachedSources {
   attach(upload: Upload): Promise<AttachResult>;
   /** Deletes an attached source before it becomes part of the course. */
   remove(attachment: string): Promise<ChatResult>;
@@ -72,24 +91,40 @@ export interface IntakeSources {
     read: (home: SourceHome) => Promise<T>,
   ): Promise<T | undefined>;
   /**
-   * Checks the proposal against the sources on the placement queue. Only then
-   * makes the course if necessary, moves the uploads and fixes their destination.
+   * In the intake: checks the proposal against the sources on the placement
+   * queue. Only then makes the course if necessary, moves the uploads and
+   * fixes their destination.
    */
   prepareProposal(
     units: readonly Unit[],
     createCourse: (sources: Slug[]) => Promise<Slug>,
   ): Promise<{ courseId: Slug } | { refused: string }>;
+  /**
+   * In a planning conversation: why the proposal cannot be shown, checked
+   * against the course's sources and those waiting; or nothing.
+   */
+  checkProposal(units: readonly Unit[]): Promise<string | undefined>;
+  /**
+   * In a planning conversation: runs the change's write, given the ids of
+   * the sources waiting, on the placement queue, so none is placed or
+   * removed meanwhile. Once it succeeds they are the course's; if it fails,
+   * those it moved into the course are.
+   */
+  admit<T>(write: (sources: Slug[]) => Promise<T>): Promise<T>;
   /** A file is being received or converted. */
   converting(): boolean;
   /** Resolves once no file is being received or converted. */
   settled(): Promise<void>;
   /**
    * What the planner's next turn is told: with `fresh`, for a session that
-   * has been told nothing, every source the course has.
+   * has been told nothing, every source attached.
    */
   forTurn(fresh: boolean): Promise<SourcesTold>;
-  /** Stops the conversions under way; their files are removed. */
-  close(): void;
+  /**
+   * Stops the conversions under way; their files are removed. A planning
+   * conversation's uploads go too.
+   */
+  close(): Promise<void>;
 }
 
 /** A source placed: in the intake's uploads, or in the course's sources/. */
@@ -115,17 +150,27 @@ interface ToldSource {
   attachment: string | undefined;
 }
 
-export function createIntakeSources(options: {
-  intakeId: string;
+/** For a conversation given no converter: attaching is refused, as without the sandbox. */
+const NO_CONVERTER: SourceConverter = {
+  unavailable: "no converter was set up",
+  convert: async () => ({ result: "failed", reason: "no converter" }),
+  renderPage: async () => ({ result: "failed", reason: "no converter" }),
+};
+
+export function createAttachedSources(options: {
+  /** The conversation's id, which names its folder in uploads/. */
+  uploadsId: string;
   dataRoot: DataRoot;
-  converter: SourceConverter;
-  /** The initial destination if a draft was reopened. */
-  courseId: Slug | undefined;
+  /** Converts the sources attached; none can be attached if not given. */
+  converter: SourceConverter | undefined;
+  /** Where the sources go: the intake's course, if a draft was reopened, or a planning conversation's. */
+  destination: Destination;
   emit(event: PageEvent): void;
   /** The largest file taken, in bytes; SOURCE_SIZE_LIMIT unless a test sets it. */
   sizeLimit?: number;
-}): IntakeSources {
-  const { intakeId, dataRoot, converter, emit } = options;
+}): AttachedSources {
+  const { uploadsId, dataRoot, destination, emit } = options;
+  const converter = options.converter ?? NO_CONVERTER;
   const limit = options.sizeLimit ?? SOURCE_SIZE_LIMIT;
   const attachments = new Map<string, Attachment>();
   /** The conversions under way, each resolving once its file is placed or refused. */
@@ -137,10 +182,15 @@ export function createIntakeSources(options: {
   let refusals: { name: string; detail: string }[] = [];
   /** Placing, reading, removing and preparing a proposal run one at a time. */
   let placing: Promise<unknown> = Promise.resolve();
+  /** A planning conversation's course, whose sources wait for Apply. */
+  const planning = "planning" in destination ? destination : undefined;
+  /** The intake's course, once there is one. */
   let course =
-    options.courseId === undefined
-      ? undefined
-      : { id: options.courseId, uploadsMoved: true };
+    "intake" in destination && destination.intake !== undefined
+      ? { id: destination.intake, uploadsMoved: true }
+      : undefined;
+  /** The course whose sources a proposal can read, if there is one yet. */
+  const courseId = () => course?.id ?? planning?.planning;
 
   function serially<T>(work: () => Promise<T>): Promise<T> {
     const run = placing.then(work, work);
@@ -153,7 +203,7 @@ export function createIntakeSources(options: {
     for (const found of attachments.values()) {
       const { source } = found;
       if (source?.place !== "upload") continue;
-      await dataRoot.moveUpload(intakeId, source.outline.id, destination.id);
+      await dataRoot.moveUpload(uploadsId, source.outline.id, destination.id);
       source.place = "course";
     }
     destination.uploadsMoved = true;
@@ -213,18 +263,20 @@ export function createIntakeSources(options: {
         return;
       }
       await serially(async () => {
+        if (stop.signal.aborted) return;
         if (course?.uploadsMoved === false) await moveWaitingUploads(course);
-        const courseId = course?.id;
+        const into = course?.id;
         const outline = await dataRoot.placeSource(
           folder,
-          courseId === undefined ? { intake: intakeId } : { course: courseId },
+          into === undefined ? { intake: uploadsId } : { course: into },
+          planning?.planning,
         );
         attachments.set(attachment, {
           name,
           state: "attached",
           source: {
             outline,
-            place: courseId === undefined ? "upload" : "course",
+            place: into === undefined ? "upload" : "course",
           },
         });
         emit({
@@ -253,46 +305,73 @@ export function createIntakeSources(options: {
     }
   }
 
-  /** The sources the course has now, or will have from the first proposal. */
+  /** The sources attached that wait in the uploads. */
+  function waiting(): IdentifiedSource[] {
+    const found: IdentifiedSource[] = [];
+    for (const [attachment, { source }] of attachments) {
+      if (source?.place === "upload") {
+        found.push({ outline: source.outline, attachment });
+      }
+    }
+    return found;
+  }
+
+  /** The sources the course has now, or will have once those waiting join it. */
   async function current(): Promise<IdentifiedSource[]> {
-    const waiting: IdentifiedSource[] = [];
+    const id = courseId();
+    if (id === undefined) return waiting();
     const placedCards = new Map<Slug, string>();
     for (const [attachment, { source }] of attachments) {
-      if (source === undefined) continue;
-      if (source.place === "upload") {
-        waiting.push({ outline: source.outline, attachment });
-      } else {
+      if (source?.place === "course") {
         placedCards.set(source.outline.id, attachment);
       }
     }
-    if (course === undefined) return waiting;
-    const placed = await dataRoot.readSources(course.id);
+    const placed = await dataRoot.readSources(id);
     return [
       ...placed.map((outline) => ({
         outline,
         attachment: placedCards.get(outline.id),
       })),
-      ...waiting,
+      ...waiting(),
     ];
   }
 
-  /** Sources a proposal names must be the same attachments the planner saw. */
-  function unseenSources(
+  /**
+   * The sources a planner's turn tells of: in a planning conversation,
+   * every one attached here, since its turns give the course's own apart.
+   */
+  async function tellable(): Promise<IdentifiedSource[]> {
+    if (planning === undefined) return current();
+    return [...attachments].flatMap(([attachment, { source }]) =>
+      source === undefined ? [] : [{ outline: source.outline, attachment }],
+    );
+  }
+
+  /**
+   * Why a proposal cannot read a source it names that the planner has not
+   * seen in its current form, or nothing.
+   */
+  function unseenRefusal(
     units: readonly Unit[],
     sources: readonly IdentifiedSource[],
-  ): string[] {
+  ): string | undefined {
     const named = new Set(
       units.flatMap((unit) =>
         unitSections(unit).map((ref) => ref.slice(0, ref.indexOf("/"))),
       ),
     );
-    return sources.flatMap(({ outline, attachment }) => {
+    const unseen = sources.flatMap(({ outline, attachment }) => {
       if (!named.has(outline.id)) return [];
       const seen = told.get(outline.id);
       return seen === undefined || seen.attachment !== attachment
         ? [JSON.stringify(outline.id)]
         : [];
     });
+    if (unseen.length === 0) return undefined;
+    return (
+      `The proposal names a source you have not seen in its current form: ${unseen.join(", ")}. ` +
+      "Wait for the updated outline on the next learner turn before proposing units that read it."
+    );
   }
 
   return {
@@ -324,7 +403,7 @@ export function createIntakeSources(options: {
       pending.add(received.promise);
       try {
         const scratch = join(
-          await dataRoot.uploadsFolder(intakeId),
+          await dataRoot.uploadsFolder(uploadsId),
           `.${attachment}.tmp`,
         );
         const original = join(scratch, "original", name);
@@ -377,15 +456,28 @@ export function createIntakeSources(options: {
             error: "That file is not attached.",
           };
         }
+        if (planning?.reads(source.outline.id) === true) {
+          return {
+            ok: false,
+            status: 409,
+            error:
+              "The proposal waiting reads this source. Keep the current " +
+              "curriculum, or ask the planner for a proposal without it, " +
+              "before removing it.",
+          };
+        }
         if (
+          source.place !== "upload" ||
           course !== undefined ||
-          !(await dataRoot.removeUpload(intakeId, source.outline.id))
+          !(await dataRoot.removeUpload(uploadsId, source.outline.id))
         ) {
           return {
             ok: false,
             status: 409,
             error:
-              "The first proposal has made the course, so the source stays with it.",
+              planning === undefined
+                ? "The first proposal has made the course, so the source stays with it."
+                : "The source has joined the course, so it stays with it.",
           };
         }
         attachments.set(attachment, { name: found.name, state: "removed" });
@@ -399,30 +491,27 @@ export function createIntakeSources(options: {
         // A partial move can leave some uploads here even after the course exists.
         for (const { source } of attachments.values()) {
           if (source?.outline.id === sourceId && source.place === "upload") {
-            return read({ intake: intakeId });
+            return read({ intake: uploadsId });
           }
         }
-        if (course !== undefined) return read({ course: course.id });
+        const id = courseId();
+        if (id !== undefined) return read({ course: id });
         return undefined;
       });
     },
 
     prepareProposal(units, createCourse) {
+      if (planning !== undefined) {
+        throw new Error("A planning conversation's sources wait for Apply.");
+      }
       return serially(async () => {
         const sources = await current();
-        const refused = sectionsRefused(
-          units,
-          sources.map((source) => source.outline),
-        );
+        const refused =
+          sectionsRefused(
+            units,
+            sources.map((source) => source.outline),
+          ) ?? unseenRefusal(units, sources);
         if (refused !== undefined) return { refused };
-        const unseen = unseenSources(units, sources);
-        if (unseen.length > 0) {
-          return {
-            refused:
-              `The proposal names a source you have not seen in its current form: ${unseen.join(", ")}. ` +
-              "Wait for the updated outline on the next learner turn before proposing units that read it.",
-          };
-        }
         course ??= {
           id: await createCourse(sources.map(({ outline }) => outline.id)),
           uploadsMoved: false,
@@ -430,6 +519,48 @@ export function createIntakeSources(options: {
         if (!course.uploadsMoved) await moveWaitingUploads(course);
         return { courseId: course.id };
       });
+    },
+
+    checkProposal(units) {
+      return serially(
+        async () =>
+          sectionsRefused(
+            units,
+            (await current()).map((source) => source.outline),
+          ) ?? unseenRefusal(units, waiting()),
+      );
+    },
+
+    admit(write) {
+      return serially(() =>
+        write(waiting().map(({ outline }) => outline.id)).then(
+          (result) => {
+            for (const { source } of attachments.values()) {
+              if (source?.place === "upload") source.place = "course";
+            }
+            return result;
+          },
+          async (error: unknown) => {
+            // The record moves the sources before it writes the change, so
+            // a write that fails can leave some in the course: they are its
+            // now.
+            const id = courseId();
+            const moved = new Set(
+              id === undefined
+                ? []
+                : (await dataRoot.readSources(id).catch(() => [])).map(
+                    (outline) => outline.id,
+                  ),
+            );
+            for (const { source } of attachments.values()) {
+              if (source?.place === "upload" && moved.has(source.outline.id)) {
+                source.place = "course";
+              }
+            }
+            throw error;
+          },
+        ),
+      );
     },
 
     converting: () =>
@@ -443,7 +574,7 @@ export function createIntakeSources(options: {
       const known = fresh ? new Map<Slug, ToldSource>() : told;
       const now = new Map<Slug, ToldSource>();
       const added: Outline[] = [];
-      for (const { outline, attachment } of await current()) {
+      for (const { outline, attachment } of await tellable()) {
         now.set(outline.id, { title: outline.title, attachment });
         const before = known.get(outline.id);
         if (before === undefined || before.attachment !== attachment) {
@@ -473,11 +604,15 @@ export function createIntakeSources(options: {
             `Not attached: the learner's file ${JSON.stringify(name)}. ${detail} It is not one of the course's sources.`,
         ),
       ];
-      return { block: `<sources>\n${items.join("\n\n")}\n</sources>`, sent };
+      const tag = planning === undefined ? "sources" : "attached_sources";
+      return { block: `<${tag}>\n${items.join("\n\n")}\n</${tag}>`, sent };
     },
 
-    close() {
+    async close() {
       stop.abort();
+      if (planning !== undefined) {
+        await serially(() => dataRoot.removeUploads(uploadsId));
+      }
     },
   };
 }

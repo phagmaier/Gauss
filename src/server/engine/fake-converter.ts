@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Outline } from "../../shared/source.ts";
 import type { DataRoot } from "../record/data-root.ts";
-import type { Upload } from "./intake-sources.ts";
+import type { Upload } from "./attached-sources.ts";
 import type {
   Conversion,
   Rendering,

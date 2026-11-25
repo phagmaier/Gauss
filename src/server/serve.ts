@@ -256,6 +256,7 @@ export async function wireEngine(
     dataRoot,
     units,
     backup,
+    converter,
   });
   const disputes = createDisputes({
     dataRoot,
