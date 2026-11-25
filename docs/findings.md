@@ -116,6 +116,12 @@ one idea each, in three segments.
   first turn or when named (`thread/name/set`); until then another
   app-server process cannot resume it. An `ephemeral` thread writes
   nothing and refuses a name.
+- **`thread/resume` takes no `dynamicTools`**: a thread keeps the tools it
+  started with, while new base instructions do reach it (below). A tool a
+  Codex tutor lacks reaches it only in a new thread, as the source tools
+  when a course with no source gains one mid-unit. Evidence:
+  `ThreadResumeParams` in the 0.171 types (`codex app-server generate-ts
+  --experimental`, no model call) has no such field.
 - **`thread/resume` finds a written thread from its own folder or
   another** and moves it to the `cwd` given. An unknown id answers error
   -32600 "no rollout found for thread id <id>"; a malformed one, -32600

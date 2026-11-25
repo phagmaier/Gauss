@@ -263,7 +263,10 @@ what is due, and on-demand self-test.
   conversation that applies nothing adds nothing. Until then the learner
   can remove it, except while the proposal waiting reads it. A source in a
   course stays, and open units' tutors get a new one from the learner's
-  next message (the user's choices, 2026-11-24).
+  next message. A Codex tutor whose conversation began in a course with no
+  source is told of it then, but reads it only in a new conversation
+  ("Start fresh", or another unit), since a Codex conversation keeps the
+  tools it began with (the user's choices, 2026-11-24).
 - Converted once into per-section text files with an outline. Units point at
   sections. A segment can narrow its reading to specific pages or paragraphs;
   the tutor starts there and can read surrounding text as needed. In

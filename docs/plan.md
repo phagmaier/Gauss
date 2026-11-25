@@ -67,9 +67,9 @@ the user check (the user's choice, 2026-11-24).
 ### 6.21 Open units take in a source added — todo
 
 **Needs:** 6.20.
-**Why:** An open unit reads its course's sources once when it loads (`unit-chat.ts`, "A course's sources do not change once it has units"), and the quote index keys a course's texts by course and instance alone (`source-quote-index.ts`). A source added by Apply reaches open units' tutors from the learner's next message.
-**Do:** When Apply adds sources, each open chat of the course reloads them into its context and source shelf, the quote index's key includes the course's source ids, and the chat renews its session so that the next turn's system prompt carries the new outline; that turn's header names the source added, once. Fix `architecture.md`'s passage rule ("a course's sources do not change after intake") to what holds now: a source never changes once in a course.
-**Done when:** a fake-backend test with a unit open across a planning Apply that adds a source shows: the next turn resumes with the new outline in the system prompt and the header's line once; `read_section` and `quote_source` work on the new source; a quote of an earlier source still verifies. `mise run check` passes.
+**Why:** An open unit reads its course's sources once when it loads (`unit-chat.ts`, "A course's sources do not change once it has units"), gives a tutor in a course with no source no source tools, and the quote index keys a course's texts by course and instance alone (`source-quote-index.ts`). A source added by Apply reaches open units' tutors from the learner's next message; a Codex thread keeps the tools it started with (`findings.md`, "Codex"), so a Codex tutor whose thread began with no source reads it only in a new conversation (`brief.md`, "Sources").
+**Do:** When Apply adds sources, each open chat of the course reloads them into its context and source shelf, the quote index's key includes the course's source ids, and the chat renews its session so that the next turn's system prompt carries the new outline. The tutor's tools are read at each session start and resume, so a Claude tutor in a course that had no source gets the source tools. That turn's header names the source added, once; for a Codex tutor whose session began with no source tools, it says the source can be read in a new conversation ("Start fresh", or another unit). Fix `architecture.md`'s passage rule ("a course's sources do not change after intake") to what holds now: a source never changes once in a course.
+**Done when:** fake-backend tests with a unit open across a planning Apply that adds a source show: the next turn resumes with the new outline in the system prompt and the header's line once; `read_section` and `quote_source` work on the new source; a quote of an earlier source still verifies; in a course that had no source, a Claude tutor's resumed session has the source tools, and a Codex course's header gives the new-conversation line. `mise run check` passes.
 
 ### 6.22 The page for a source added later — todo
 
@@ -136,6 +136,11 @@ work for Stage 6. A task that closes a gap deletes it here.
 
 **Tutor, grading and judging**
 
+- **B:** A Codex tutor's thread that began in a course with no source
+  keeps lacking the source tools after the course gains one, also when a
+  restart resumes it, while its instructions list the source; a header
+  line not yet delivered before the restart is lost. Decide whether Gauss
+  should record which tools a thread began with, or start a new one.
 - A check question on a one-claim explanation objective can ask for
   reasoning the lesson or detour already gave (`findings.md`, "Tutor";
   a Codex tutor too, "Codex"),
