@@ -30,6 +30,8 @@ because code and documents use them.
   2026-11-24, walked through in Chromium on `pnpm check:live` (Codex on
   gpt-6.1-terra, Claude on Sonnet 5.5, both at medium) by the agent at the
   user's direction.
+- Stage 6, the tutor's model and teaching instructions (6.17 to 6.19): its
+  user check passed on 2026-11-24, walked by the user.
 
 ## Stage 6
 
@@ -52,24 +54,6 @@ mix objectives rather than ask several problems on one in a row; a retry
 after feedback is a fresh problem; before posing, fix the model solution
 and look for a shortcut that skips the target; give the smallest hint
 that unblocks, one per request.
-
-The tutor's model and teaching instructions (6.17 to 6.19) are built
-(`brief.md`, "Teaching style", "Backends and stack" and "Page"; piece 25,
-direction A).
-
-User check for the tutor's model and teaching instructions:
-with `pnpm dev:fake`, open Settings from the library, pick each model,
-edit the instructions, reload, and restore Gauss's text; the page reads
-as piece 25 shows. Then with `pnpm dev` on your own logins (not
-`check:live`, which pins the model): in a Claude course's unit in
-progress, switch to Sonnet 5.5, add a line to the instructions (say,
-"Use British spelling"), and send a message. The tutor goes on with the
-conversation and follows the line, and Claude Code's session log for the
-course's workspace shows the new model. The same in a Codex course with
-gpt-6.2-sol, if you want to spend the turns: its rollout's
-`turn_context` shows the model. A conversation switching model
-mid-unit has never run in Gauss, and no automated or live check can try
-it.
 
 ## Known-gap fixes
 
