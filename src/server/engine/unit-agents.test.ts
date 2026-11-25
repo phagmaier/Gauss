@@ -17,7 +17,7 @@ test.each(["before judging starts", "before a queued judgment records"])(
     const agents = createUnitAgents({
       backend,
       systemPrompt: async () => "Tutor.",
-      tools: [],
+      tools: () => [],
       cwd: "unused-fake-course",
       title: "Review regression",
       keep: async () => {},

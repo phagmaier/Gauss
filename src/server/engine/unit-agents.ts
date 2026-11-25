@@ -143,7 +143,14 @@ export function createUnitAgents(options: {
    * instructions changed gets the new one.
    */
   systemPrompt: () => Promise<string>;
-  tools: TeachingTool[];
+  /**
+   * The tutor's teaching tools, read whenever a session starts or resumes,
+   * so one resumed after the course gained its first source gets the
+   * source tools (a Codex thread keeps those it started with).
+   */
+  tools: () => TeachingTool[];
+  /** Called as a new session starts, before its instructions and tools are read. */
+  starting?: () => void;
   /** The course's workspace, where the tutor's sessions run and are kept. */
   cwd: string;
   /** The file and shell tools in the workspace; none if not given. */
@@ -204,9 +211,10 @@ export function createUnitAgents(options: {
   }
 
   async function startNew(): Promise<TutorSession> {
+    options.starting?.();
     const session = await backend.startSession({
       systemPrompt: await systemPrompt(),
-      tools,
+      tools: tools(),
       cwd,
       ...workspace,
       ...(await settings()),
@@ -230,7 +238,7 @@ export function createUnitAgents(options: {
           try {
             return await backend.startSession({
               systemPrompt: await systemPrompt(),
-              tools,
+              tools: tools(),
               cwd,
               ...workspace,
               ...(await settings()),

@@ -26,7 +26,10 @@ import { type DataRoot, openDataRoot } from "../record/data-root.ts";
 import { createAttachedSources } from "./attached-sources.ts";
 import { givenOrder } from "./choice-order.ts";
 import { IDLE_MS } from "./conversation.ts";
-import { createCoursePlannings } from "./course-planning.ts";
+import {
+  type CoursePlanning,
+  createCoursePlannings,
+} from "./course-planning.ts";
 import { fakeConverter, placeTestSource, upload } from "./fake-converter.ts";
 import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
@@ -203,13 +206,18 @@ async function setUp(options: {
   source?: boolean;
   /** Converts the files attached in the conversation; the fake's own if not given. */
   converter?: SourceConverter;
+  /** The course runs on Codex, its tutors on the tutor backend as Codex. */
+  codex?: boolean;
 }) {
   const root = openDataRoot({ path: dir, now: () => new Date(NOW) });
-  const { id } = await root.createCourse({ title: CURRICULUM.title });
+  const { id } = await root.createCourse({
+    title: CURRICULUM.title,
+    ...(options.codex === true ? { backend: "codex" as const } : {}),
+  });
   const curriculum = options.source === true ? READING : CURRICULUM;
   if (options.source === true) {
     await placeTestSource(root, dir, id, NOTES, {
-      s1: "Loops.\n",
+      s1: "Loops count each item once.\n",
       s2: "Sets.\n",
       s3: "Maps.\n",
     });
@@ -243,11 +251,11 @@ async function setUp(options: {
       : options.tutor;
   const tutorTimer = createFakeTimer();
   const units = createUnitChats({
-    backends: { claude: tutorBackend },
+    backends: { claude: tutorBackend, codex: tutorBackend },
     systemPrompt: "Tutor.",
     dataRoot: root,
     planner: createUnitPlanner({
-      backends: { claude: tutorBackend },
+      backends: { claude: tutorBackend, codex: tutorBackend },
       systemPrompt: "Plan.",
       dataRoot: root,
     }),
@@ -697,6 +705,205 @@ test("a curriculum write that fails after the sources were moved leaves them the
   chat.say("Fine.");
   await chat.settled();
   expect(backend.received[1]?.text).not.toContain("<attached_sources>");
+});
+
+// Task 6.21: open units take in a source added.
+const readsNew = (id: string) =>
+  `The course has a new source: "Counting" (source id "${id}"). Your instructions now list it with its outline, and you can read, search and quote it as the course's sources.`;
+
+/** Attaches PINKARD in a planning conversation, has it proposed and applied. */
+async function applyNewSource(planning: () => Promise<CoursePlanning>) {
+  const chat = await planning();
+  await chat.attach(upload("arrangements.md", PINKARD));
+  chat.say("Add a unit on these notes.");
+  await chat.settled();
+  expect(await chat.apply(lastCard(chat.events()).proposalId)).toEqual({
+    ok: true,
+  });
+}
+
+test("a unit open across an Apply that adds a source resumes with its outline, says so once, and can read and quote it, while an earlier source's quote still verifies", async () => {
+  const { planning, open, tutorBackend } = await setUp({
+    source: true,
+    planner: [[amend([...READING.units, mapsReading(`${ADDED}/s1`)])]],
+    tutor: [
+      // A lecture quoting it before the Apply, so the course's texts are
+      // indexed already.
+      [
+        {
+          call: "present_lecture",
+          input: {
+            blocks: [
+              { kind: "prose", text: "Here is how loops count." },
+              {
+                kind: "quote",
+                section: "counting/s1",
+                text: "Loops count each item once.",
+              },
+            ],
+          },
+        },
+      ],
+      [
+        { call: "read_section", input: { section: `${ADDED}/s1` } },
+        { call: "quote_source", input: { text: "Arrangements and choices." } },
+        {
+          call: "quote_source",
+          input: { text: "Loops count each item once." },
+        },
+        { text: "Both are there." },
+      ],
+      [{ text: "On we go." }],
+    ],
+  });
+  const loops = await open("loops");
+  expect(tutorBackend.calls.at(-1)?.result).toMatchObject({ status: "done" });
+  const before = tutorBackend.sessions.length;
+  await applyNewSource(planning);
+  await loops.settled();
+
+  loops.say("Read me the new notes.");
+  await loops.settled();
+  const resumed = tutorBackend.sessions.slice(before);
+  expect(resumed).toHaveLength(1);
+  expect(resumed[0]?.resumeId).toBeDefined();
+  expect(resumed[0]?.systemPrompt).toContain(`(source id "${ADDED}")`);
+  expect(
+    tutorBackend.received.at(-1)?.text.split(readsNew(ADDED)),
+  ).toHaveLength(2);
+  const [read, added, earlier] = tutorBackend.calls.slice(-3);
+  expect(read?.result).toMatchObject({ status: "done" });
+  expect(read?.result.text).toContain("Arrangements and choices.");
+  expect(added?.result).toMatchObject({ status: "done" });
+  expect(earlier?.result).toMatchObject({ status: "done" });
+
+  loops.say("Go on.");
+  await loops.settled();
+  expect(tutorBackend.received.at(-1)?.text).not.toContain(
+    "The course has a new source",
+  );
+});
+
+const UNREADABLE = `The course has a new source: "Counting" (source id "counting"). This conversation has no tools to read a source, so you cannot read it here: it can be read in a new conversation, which the learner starts with "Start fresh" in the unit's outline, or in another unit.`;
+const toolNames = (session: { tools: { name: string }[] } | undefined) =>
+  session?.tools.map((t) => t.name) ?? [];
+
+test("in a course that had no source, a Claude tutor's open unit resumes with the source, its tools and the line saying so", async () => {
+  const { planning, open, tutorBackend } = await setUp({
+    planner: [[amend([LOOPS, SETS, mapsReading("counting/s1")])]],
+    tutor: [[{ text: "Loops, then." }], [{ text: "Noted." }]],
+  });
+  const loops = await open("loops");
+  expect(toolNames(tutorBackend.sessions.at(-1))).not.toContain("read_section");
+  await applyNewSource(planning);
+  await loops.settled();
+
+  loops.say("Is there anything to read now?");
+  await loops.settled();
+  const resumed = tutorBackend.sessions.at(-1);
+  expect(resumed?.resumeId).toBeDefined();
+  expect(resumed?.systemPrompt).toContain('(source id "counting")');
+  expect(toolNames(resumed)).toContain("read_section");
+  expect(
+    tutorBackend.received.at(-1)?.text.split(readsNew("counting")),
+  ).toHaveLength(2);
+});
+
+test("in a course that had no source, a Codex thread is told it cannot read the source and is not offered it, until a new conversation gives the source and its tools", async () => {
+  const { planning, open, tutorBackend } = await setUp({
+    codex: true,
+    planner: [[amend([LOOPS, SETS, mapsReading("counting/s1")])]],
+    tutor: [
+      [{ text: "Loops, then." }],
+      [{ text: "Not in this conversation." }],
+      [{ text: "Now I can." }],
+    ],
+  });
+  const loops = await open("loops");
+  const sessions = tutorBackend.sessions.length;
+  await applyNewSource(planning);
+  await loops.settled();
+
+  loops.say("Is there anything to read now?");
+  await loops.settled();
+  const header = tutorBackend.received.at(-1)?.text ?? "";
+  expect(header.split(UNREADABLE)).toHaveLength(2);
+  expect(header).not.toContain("read_section");
+  // Nothing it could read changed, so the thread goes on without a resume.
+  expect(tutorBackend.sessions).toHaveLength(sessions);
+  expect(tutorBackend.sessions.at(-1)?.systemPrompt).not.toContain(
+    '(source id "counting")',
+  );
+
+  expect(await loops.startFresh()).toEqual({ ok: true });
+  loops.say("And now?");
+  await loops.settled();
+  const fresh = tutorBackend.sessions.at(-1);
+  expect(fresh?.resumeId).toBeUndefined();
+  expect(fresh?.systemPrompt).toContain('(source id "counting")');
+  expect(toolNames(fresh)).toContain("read_section");
+  expect(tutorBackend.received.at(-1)?.text).not.toContain(
+    "The course has a new source",
+  );
+});
+
+test("a Codex thread that began with a source is told it can read one added, and resumes with it", async () => {
+  const { planning, open, tutorBackend } = await setUp({
+    codex: true,
+    source: true,
+    planner: [[amend([...READING.units, mapsReading(`${ADDED}/s1`)])]],
+    tutor: [[{ text: "Loops, then." }], [{ text: "Noted." }]],
+  });
+  const loops = await open("loops");
+  await applyNewSource(planning);
+  await loops.settled();
+  loops.say("Anything new?");
+  await loops.settled();
+  expect(
+    tutorBackend.received.at(-1)?.text.split(readsNew(ADDED)),
+  ).toHaveLength(2);
+  expect(tutorBackend.sessions.at(-1)?.systemPrompt).toContain(
+    `(source id "${ADDED}")`,
+  );
+});
+
+test("Codex notes that the thread cannot read a source, not yet delivered, give way to a new conversation that reads them", async () => {
+  const more: Unit = {
+    id: "more",
+    title: "More",
+    goal: "Count more.",
+    prerequisites: ["maps"],
+    sections: ["counting-2/s1"],
+  };
+  const { planning, open, tutorBackend } = await setUp({
+    codex: true,
+    planner: [
+      [amend([LOOPS, SETS, mapsReading("counting/s1")])],
+      [amend([LOOPS, SETS, mapsReading("counting/s1"), more])],
+    ],
+    tutor: [
+      [{ text: "Loops, then." }],
+      [{ text: "Starting again." }],
+      [{ text: "Now I can." }],
+    ],
+  });
+  const loops = await open("loops");
+  const before = tutorBackend.received.length;
+  // Two Applies, each adding a source, before any turn is sent.
+  await applyNewSource(planning);
+  await applyNewSource(planning);
+  await loops.settled();
+  expect(await loops.startFresh()).toEqual({ ok: true });
+  loops.say("Is there anything to read?");
+  await loops.settled();
+  const after = tutorBackend.received.slice(before);
+  expect(after.length).toBeGreaterThan(0);
+  for (const turn of after) {
+    expect(turn.text).not.toContain("The course has a new source");
+  }
+  const fresh = tutorBackend.sessions.at(-1);
+  expect(toolNames(fresh)).toContain("read_section");
+  expect(fresh?.systemPrompt).toContain('(source id "counting-2")');
 });
 
 test("a change that drops a started unit, changes its id or nothing, or breaks the curriculum's rules, is refused with the reason and shows no card", async () => {

@@ -55,7 +55,7 @@ export function createSourceShelf(options: {
   dataRoot: DataRoot;
   courseId: Slug;
   courseInstance: string | undefined;
-  /** The course's sources, which do not change once it has units. */
+  /** The course's sources; a chat makes a new shelf when an Apply adds some. */
   sources: readonly Outline[];
   /** Renders pages not kept yet; none when nothing can be rendered. */
   converter: SourceConverter | undefined;

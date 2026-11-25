@@ -90,6 +90,7 @@ import {
   type TutorModelPost,
   tutorModel,
 } from "../../shared/settings.ts";
+import type { Outline } from "../../shared/source.ts";
 import type { OpenQuestion, State, UnitPosition } from "../../shared/state.ts";
 import type { SessionBackends, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
@@ -1163,8 +1164,8 @@ interface OpenableChat extends UnitChat {
    */
   learnStyle(note: string): Promise<void>;
   /**
-   * Refreshes the course's curriculum after an Apply elsewhere,
-   * notifying the page and telling the tutor in its next header.
+   * Refreshes the course's curriculum, and its sources, after an Apply
+   * elsewhere, notifying the page and telling the tutor in its next header.
    */
   learnCurriculum(
     units?: readonly StoredUnit[],
@@ -1202,6 +1203,12 @@ interface Running {
   unitEnd: UnitEnd;
   assessments: UnitAssessments;
   opening: UnitOpening;
+  /**
+   * Takes in the sources a planning conversation's Apply added to the
+   * course: a session that can read them resumes with them, and the next
+   * header says either way.
+   */
+  takeSources(): Promise<void>;
 }
 
 function createUnitChat(
@@ -1304,39 +1311,57 @@ function createUnitChat(
         testOut,
         handoff: () => handoffs?.request(),
       });
-      // A course's sources do not change once it has units.
-      const sources = await dataRoot.readSources(courseId);
+      // A course's sources change only when a planning conversation's Apply
+      // adds some (`takeSources`); none is ever changed or removed.
+      let courseSources = await dataRoot.readSources(courseId);
+      /**
+       * The sources the tutor's session reads: the course's, but for a Codex
+       * thread that began with none, which keeps the tools it began with
+       * (findings.md, "Codex") and gets the others in its next new session.
+       * A thread resumed after a restart is taken to have begun as the
+       * course stood then (plan.md, "Known gaps").
+       */
+      let sessionSources = courseSources;
+      const shelfFor = (from: readonly Outline[]) =>
+        createSourceShelf({
+          dataRoot,
+          courseId,
+          courseInstance: stored.course.instance,
+          sources: from,
+          converter: options.converter,
+          emit: log.emit,
+          quotes: aids.quoteDesk,
+          plannedRange(section) {
+            const { position } = record;
+            if (
+              record.finished !== undefined ||
+              position.phase !== "teach" ||
+              position.assessment !== undefined ||
+              (position.testOut !== undefined &&
+                position.testOut.stage !== "skip") ||
+              position.again !== undefined
+            )
+              return;
+            return plan.segments[position.segment]?.passages?.find(
+              (passage) => passage.section === section,
+            )?.range;
+          },
+        });
+      let sourceShelf = shelfFor(sessionSources);
+      /** The context as the tutor's session sees it: with the sources it reads. */
+      const seen = (from: UnitContext): UnitContext =>
+        from.sources === sessionSources
+          ? from
+          : { ...from, sources: sessionSources };
+      /** The notes that this session cannot read a source, while they wait. */
+      const unreadable = new Set<string>();
       const context: UnitContext = {
         courseTitle: stored.course.title,
         units,
         unitId,
         plan,
-        sources,
+        sources: courseSources,
       };
-      const sourceShelf = createSourceShelf({
-        dataRoot,
-        courseId,
-        courseInstance: stored.course.instance,
-        sources,
-        converter: options.converter,
-        emit: log.emit,
-        quotes: aids.quoteDesk,
-        plannedRange(section) {
-          const { position } = record;
-          if (
-            record.finished !== undefined ||
-            position.phase !== "teach" ||
-            position.assessment !== undefined ||
-            (position.testOut !== undefined &&
-              position.testOut.stage !== "skip") ||
-            position.again !== undefined
-          )
-            return;
-          return plan.segments[position.segment]?.passages?.find(
-            (passage) => passage.section === section,
-          )?.range;
-        },
-      });
       const readHandoff = (unit: string) =>
         dataRoot.readHandoff(courseId, unit);
       const [
@@ -1377,7 +1402,7 @@ function createUnitChat(
           dataRoot,
           courseId,
           unitId,
-          context: () => running?.context ?? context,
+          context: () => seen(running?.context ?? context),
           flushed: log.flushed,
           now,
           ...(options.backup === undefined ? {} : { backup: options.backup }),
@@ -1405,11 +1430,23 @@ function createUnitChat(
               options.tutorPrompt,
               await dataRoot.readTeaching(),
             ),
-            running?.plannerContext ?? running?.context ?? context,
+            seen(running?.plannerContext ?? running?.context ?? context),
             { style, background, profile },
             earlier,
           ),
-        tools: [
+        // A new session reads every source the course has.
+        starting: () => {
+          if (sessionSources !== courseSources) {
+            sessionSources = courseSources;
+            sourceShelf = shelfFor(courseSources);
+          }
+          const r = running;
+          if (r !== undefined && unreadable.size > 0) {
+            r.notes = r.notes.filter((note) => !unreadable.has(note));
+          }
+          unreadable.clear();
+        },
+        tools: () => [
           askQuestionTool(questions.board),
           showArtifactTool(aids.artifactShelf),
           ...(options.installer === undefined
@@ -1417,7 +1454,7 @@ function createUnitChat(
             : [installPackagesTool(packages.desk)]),
           proposeStyleTool(proposals.styleDesk),
           amendCurriculumTool(proposals.curriculumDesk),
-          ...(sources.length === 0
+          ...(sessionSources.length === 0
             ? []
             : [
                 readSectionTool(sourceShelf),
@@ -1466,8 +1503,9 @@ function createUnitChat(
           record,
           exclusive,
           emit: log.emit,
-          context: () => r.context,
-          plannerContext: () => r.plannerContext,
+          context: () => seen(r.context),
+          plannerContext: () =>
+            r.plannerContext === undefined ? undefined : seen(r.plannerContext),
           notes: () => r.notes,
           clearNotes: () => {
             r.notes = [];
@@ -1642,6 +1680,31 @@ function createUnitChat(
             showWaiting: (position) => proposals.showWaiting(position),
           },
         }),
+        async takeSources() {
+          const now = await dataRoot.readSources(courseId);
+          const added = now.filter(
+            (s) => !courseSources.some((o) => o.id === s.id),
+          );
+          if (added.length === 0) return;
+          courseSources = now;
+          // A Claude session takes the tools it is given at its next resume;
+          // a Codex thread has the source tools only if it began with them.
+          const readable =
+            stored.course.backend !== "codex" || sessionSources.length > 0;
+          const note = addedSourcesNote(
+            added,
+            readable,
+            record.finished !== undefined,
+          );
+          r.notes.push(note);
+          if (!readable) {
+            unreadable.add(note);
+            return;
+          }
+          sessionSources = now;
+          sourceShelf = shelfFor(now);
+          loaded.renew();
+        },
       };
       if (record.reopened) {
         // A unit under way resumes its tutor's conversation with its first
@@ -2102,9 +2165,16 @@ function createUnitChat(
       const update = install === undefined ? undefined : exclusive(install);
       // The page hears of it only once the install, if any, is queued.
       log.emit({ type: "curriculum_changed" });
-      if (update !== undefined) return update;
-      if (loading !== undefined) await loading;
-      await exclusive(() => proposals.refreshUnits(outcome));
+      if (update !== undefined) {
+        await update;
+      } else {
+        if (loading !== undefined) await loading;
+        await exclusive(() => proposals.refreshUnits(outcome));
+      }
+      // An Apply in the course's planning conversation can add sources.
+      await exclusive(async () => {
+        await running?.takeSources();
+      });
     },
     async learnAnswer(entry) {
       await loading;
@@ -2172,6 +2242,40 @@ const NOTHING_DUE = "Nothing is due for review.";
 
 function refused(error: string): ChatResult {
   return { ok: false, status: 409, error };
+}
+
+/**
+ * Said once in the next header after an Apply added sources: whether the
+ * tutor can read them in this conversation, or only in a new one, which a
+ * finished unit's outline does not offer.
+ */
+function addedSourcesNote(
+  added: readonly Outline[],
+  readable: boolean,
+  finished: boolean,
+) {
+  const it = added.length === 1 ? "it" : "them";
+  const named = added
+    .map((s) => `${JSON.stringify(s.title)} (source id "${s.id}")`)
+    .join("; ");
+  const what =
+    added.length === 1
+      ? `The course has a new source: ${named}.`
+      : `The course has new sources: ${named}.`;
+  if (readable) {
+    return (
+      `${what} Your instructions now list ${it} with ` +
+      `${added.length === 1 ? "its outline" : "their outlines"}, and you ` +
+      `can read, search and quote ${it} as the course's sources.`
+    );
+  }
+  return (
+    `${what} This conversation has no tools to read a source, so you ` +
+    `cannot read ${it} here: ${it} can be read in ` +
+    (finished
+      ? "another unit."
+      : 'a new conversation, which the learner starts with "Start fresh" in the unit\'s outline, or in another unit.')
+  );
 }
 
 /** Why the learner's action is refused in the phase the segment is in. */

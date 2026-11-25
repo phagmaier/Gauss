@@ -91,7 +91,8 @@ async function lookup(
     root = ++nextRoot;
     roots.set(course.dataRoot, root);
   }
-  const key = `${root}/${course.courseId}/${course.courseInstance ?? ""}`;
+  // Sources added by a planning conversation's Apply make a new index.
+  const key = `${root}/${course.courseId}/${course.courseInstance ?? ""}/${course.sources.map((s) => s.id).join(",")}`;
   const batch = batches.get(key) ?? { course, searches: new Set<Search>() };
   batches.set(key, batch);
   const { promise, resolve, reject } = Promise.withResolvers<LookupReply>();

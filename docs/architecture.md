@@ -163,8 +163,9 @@ Rules no single file shows:
   course's texts off the server thread, for quote verification and for
   `source-passage-search.ts`; only previews and coordinates cross back).
   A planned passage is a range in a converted section, stable because a
-  course's sources do not change after intake; quotes are verified against
-  the converted text, never against what a read returned. Test doubles:
+  source never changes once in a course (a planning conversation's Apply
+  only adds sources); quotes are verified against the converted text,
+  never against what a read returned. Test doubles:
   `fake-timer.ts`, `fake-converter.ts`.
   Each of `unit-chat.ts`'s modules is a `createX({ ... })` factory whose
   argument names what it takes from the chat (a `Pick<UnitRecord, ...>`,
