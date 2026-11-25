@@ -27,6 +27,7 @@ import { createNotes } from "./engine/notes.ts";
 import { createPackageInstaller } from "./engine/packages.ts";
 import { type Sandbox, startSandbox } from "./engine/sandbox.ts";
 import { createSourceConverter } from "./engine/source-convert.ts";
+import { splitTutorPrompt } from "./engine/teaching.ts";
 import { createUnitChats } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
 import { createApp } from "./http/app.ts";
@@ -188,6 +189,13 @@ export async function wireEngine(
     prompt("notes.md"),
     prompt("course-planner.md"),
   ]);
+  // The learner's teaching instructions replace the paragraph between the
+  // tutor prompt's marks; without them there would be nothing to replace.
+  if (splitTutorPrompt(tutorPrompt).shipped === undefined) {
+    throw new Error(
+      "prompts/tutor.md has lost the marks around the learner's paragraph.",
+    );
+  }
   // Without the sandbox, attaching a source and rendering a page for
   // view_page are refused with the reason.
   const converter = createSourceConverter({ sandbox });

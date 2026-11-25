@@ -55,6 +55,7 @@ the root as an argument). File shapes are the schemas in `src/shared/`
   .git/, .gitignore            the record's history (below)
   profile.md                   learner profile, shared across courses
   settings.json                the app's settings: the tutor's model for each backend's courses
+  teaching.md                  the learner's own default style for the tutor, absent while they keep Gauss's
   .profile-approval.json       journal, only while a profile-changing approval is unfinished
   .notes-write.json            journal, only while unit notes are being published
   intake/                      working folder of intake and planning sessions; Gauss writes nothing here
@@ -205,7 +206,7 @@ every other role on Claude. Each prompt starts one model's instructions:
 
 | Prompt | Model | Assembled in |
 | --- | --- | --- |
-| `tutor.md` | unit tutor; assessments are a section of it | `engine/unit-turns.ts`: `tutor.md`, the course's units, the unit and its plan, its sources' outlines, "# The learner" (profile, background note), "# Earlier units", then `style.md`; rebuilt when a session starts or resumes |
+| `tutor.md` | unit tutor; assessments are a section of it | `engine/unit-turns.ts`: `tutor.md` (its marked paragraph replaced by the learner's `teaching.md`, if any: `engine/teaching.ts`), the course's units, the unit and its plan, its sources' outlines, "# The learner" (profile, background note), "# Earlier units", then `style.md`; rebuilt when a session starts or resumes |
 | `planner.md` | intake planner | `engine/intake.ts` |
 | `course-planner.md` | a course's planning conversation | `engine/course-planning.ts` |
 | `unit-planner.md` | a unit's planning session | `engine/unit-planning.ts` |

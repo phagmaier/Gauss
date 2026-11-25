@@ -84,6 +84,7 @@ import { WorkspacePath } from "../../shared/question.ts";
 import {
   AppSettings,
   NO_SETTINGS,
+  TeachingText,
   type TutorModelPost,
 } from "../../shared/settings.ts";
 import { Outline, SectionRef } from "../../shared/source.ts";
@@ -205,6 +206,20 @@ export interface DataRoot {
   readSettings(): Promise<AppSettings>;
   /** Writes the tutor's model for one backend's courses, and answers the settings as written. */
   setTutorModel(choice: TutorModelPost): Promise<AppSettings>;
+  /**
+   * The learner's teaching instructions, teaching.md in the data root,
+   * trimmed; undefined while they keep Gauss's.
+   */
+  readTeaching(): Promise<string | undefined>;
+  /**
+   * Writes the learner's teaching instructions, or removes them (undefined),
+   * if teaching.md still holds `was` (undefined: none) or holds this text
+   * already. Otherwise it throws TeachingChanged and writes nothing.
+   */
+  writeTeaching(
+    text: string | undefined,
+    was: string | undefined,
+  ): Promise<void>;
   /** Stages a backup outside the record's multi-file writes. */
   withConsistentSnapshot<T>(work: () => Promise<T>): Promise<T>;
   /**
@@ -510,6 +525,17 @@ export class ProfileChanged extends Error {
   }
 }
 
+/**
+ * teaching.md is not the text a save expected to replace: the learner saved
+ * other instructions, in another tab, since the page read them.
+ */
+export class TeachingChanged extends Error {
+  constructor() {
+    super("The teaching instructions changed since they were read.");
+    this.name = "TeachingChanged";
+  }
+}
+
 /** The plain-text notes kept with a course's curriculum. */
 type Note = "style.md" | "background.md";
 
@@ -524,6 +550,7 @@ export function openDataRoot(options: {
   const pendingFile = join(options.path, ".profile-approval.json");
   const pendingNotesFile = join(options.path, ".notes-write.json");
   const settingsFile = join(options.path, "settings.json");
+  const teachingFile = join(options.path, "teaching.md");
   const now = options.now ?? (() => new Date());
 
   async function readCourse(id: string): Promise<StoredCourse | undefined> {
@@ -1140,6 +1167,21 @@ export function openDataRoot(options: {
         };
         await writeJson(settingsFile, AppSettings, settings);
         return settings;
+      });
+    },
+
+    readTeaching: () => readText(teachingFile),
+
+    async writeTeaching(text, was) {
+      const checked = text === undefined ? undefined : TeachingText.parse(text);
+      await withFileLock(teachingFile, async () => {
+        const current = await readText(teachingFile);
+        if (current === checked) return;
+        if (current !== (was?.trim() || undefined)) throw new TeachingChanged();
+        if (checked === undefined) {
+          await rm(teachingFile, { force: true });
+          await syncFolder(options.path);
+        } else await writeFileAtomic(teachingFile, `${checked}\n`);
       });
     },
 

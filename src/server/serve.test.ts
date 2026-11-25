@@ -4,6 +4,7 @@
 // judges and the writers always on Claude. Two scripted backends stand for
 // Claude and Codex, and each call is told apart by its role's prompt.
 
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,10 +15,19 @@ import type { TutorModelPost } from "../shared/settings.ts";
 import type { SessionBackends, TutorBackend } from "./backends/backend.ts";
 import { createScriptedBackend, scriptedPlan } from "./backends/scripted.ts";
 import type { Sandbox } from "./engine/sandbox.ts";
+import {
+  gaussTeaching,
+  splitTutorPrompt,
+  tutorInstructions,
+} from "./engine/teaching.ts";
 import type { UnitChat } from "./engine/unit-chat.ts";
 import { createUnitPlanner } from "./engine/unit-planning.ts";
 import { noBackup } from "./record/backup.ts";
-import { type DataRoot, openDataRoot } from "./record/data-root.ts";
+import {
+  type DataRoot,
+  openDataRoot,
+  TeachingChanged,
+} from "./record/data-root.ts";
 import { wireEngine } from "./serve.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
@@ -43,15 +53,19 @@ const ROLES = [
 let prompts: [string, string][];
 beforeAll(async () => {
   prompts = await Promise.all(
-    ROLES.map(
-      async (role) =>
-        [
-          role,
-          await readFile(new URL(`../../prompts/${role}.md`, import.meta.url), {
-            encoding: "utf8",
-          }),
-        ] as [string, string],
-    ),
+    ROLES.map(async (role) => {
+      const text = await readFile(
+        new URL(`../../prompts/${role}.md`, import.meta.url),
+        { encoding: "utf8" },
+      );
+      // The tutor's is sent without its marks.
+      return [
+        role,
+        role === "tutor"
+          ? tutorInstructions(splitTutorPrompt(text), undefined)
+          : text,
+      ] as [string, string];
+    }),
   );
 });
 
@@ -332,6 +346,73 @@ test.each([
       expect(await openDataRoot({ path: dir }).readSettings()).toEqual({
         tutorModels: { [other]: otherModel, [backend]: chosen },
       });
+    } finally {
+      await close(engine);
+    }
+  },
+);
+
+test.each(["claude", "codex"] as const)(
+  "a %s course's tutor gets the learner's teaching instructions in place of Gauss's paragraph from the next message after a save, and Gauss's text again once restored",
+  async (backend) => {
+    const sent: { resumed: boolean; prompt: string }[] = [];
+    const noting = (): TutorBackend => {
+      const scripted = createScriptedBackend();
+      return {
+        ...scripted,
+        startSession(options) {
+          if (role(options.systemPrompt) !== "unit-planner") {
+            sent.push({
+              resumed: options.resumeId !== undefined,
+              prompt: options.systemPrompt,
+            });
+          }
+          return scripted.startSession(options);
+        },
+      };
+    };
+    const tutor = splitTutorPrompt(
+      await readFile(new URL("../../prompts/tutor.md", import.meta.url), {
+        encoding: "utf8",
+      }),
+    );
+    const gauss = tutor.shipped?.trimEnd() ?? "";
+    const edit = "Use British spelling.\n\nPrefer a picture to a formula.";
+    const teachingFile = join(dir, "teaching.md");
+    const dataRoot = openDataRoot({ path: dir });
+    const courseId = await makeCourse(dataRoot, backend);
+    const engine = await wire(dataRoot, noting(), { codex: noting() });
+    try {
+      const chat = await opened(engine, courseId);
+      const first = sent[0]?.prompt;
+      expect(sent).toHaveLength(1);
+      expect(first).toContain(gauss);
+
+      expect(await engine.units.setTeaching(`${edit}\n`, undefined)).toBe(edit);
+      expect(await readFile(teachingFile, "utf8")).toBe(`${edit}\n`);
+      expect(chat.say("Go on.")).toEqual({ ok: true });
+      await chat.settled();
+      expect(sent.slice(1)).toEqual([
+        { resumed: true, prompt: first?.replace(gauss, edit) },
+      ]);
+
+      // Saved, or restored, in another tab since this page read it:
+      // nothing is written. The same text saved again is no conflict.
+      for (const text of ["Shorter.", gaussTeaching(tutor)]) {
+        await expect(
+          engine.units.setTeaching(text, undefined),
+        ).rejects.toBeInstanceOf(TeachingChanged);
+        expect(await readFile(teachingFile, "utf8")).toBe(`${edit}\n`);
+      }
+      expect(await engine.units.setTeaching(edit, undefined)).toBe(edit);
+
+      expect(
+        await engine.units.setTeaching(gaussTeaching(tutor), edit),
+      ).toBeUndefined();
+      expect(existsSync(teachingFile)).toBe(false);
+      expect(chat.say("And then?")).toEqual({ ok: true });
+      await chat.settled();
+      expect(sent.slice(2)).toEqual([{ resumed: true, prompt: first }]);
     } finally {
       await close(engine);
     }

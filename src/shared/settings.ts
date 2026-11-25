@@ -1,6 +1,8 @@
-// The app's settings (brief.md, "Backends and stack"): `settings.json` in
-// the data root, app-wide. The tutor's model is chosen per backend, from the
-// models offered here; one not chosen is the backend's default.
+// The app's settings (brief.md, "Teaching style" and "Backends and stack"):
+// `settings.json` in the data root, app-wide, and the learner's teaching
+// instructions, `teaching.md` beside it. The tutor's model is chosen per
+// backend, from the models offered here; one not chosen is the backend's
+// default.
 
 import { z } from "zod";
 import type { BackendName } from "./course.ts";
@@ -75,3 +77,20 @@ export const TutorModelPost = z.discriminatedUnion("backend", [
   z.object({ backend: z.literal("codex"), model: z.enum(ids("codex")) }),
 ]);
 export type TutorModelPost = z.infer<typeof TutorModelPost>;
+
+/** The most characters the learner's teaching instructions may hold, trimmed. */
+export const TEACHING_LIMIT = 2000;
+
+/**
+ * The learner's own text for the tutor's default style, `teaching.md` in the
+ * data root, in place of Gauss's paragraph in `prompts/tutor.md`. Absent
+ * while the learner keeps Gauss's.
+ */
+export const TeachingText = z
+  .string()
+  .trim()
+  .min(1, { error: "The instructions are empty." })
+  .max(TEACHING_LIMIT, {
+    error: `The instructions are longer than ${TEACHING_LIMIT.toLocaleString("en-GB")} characters.`,
+  });
+export type TeachingText = z.infer<typeof TeachingText>;

@@ -61,13 +61,6 @@ override everything; otherwise `GAUSS_CLAUDE_MODEL` and `GAUSS_CODEX_MODEL`
 override the setting, and the setting overrides the default. Settings
 live in the data root only, never in a Codex home or `~/.claude`.
 
-### 6.18 Teaching instructions the learner can edit — todo
-
-**Needs:** 6.17 (the settings record, and renewing open units on a save).
-**Why:** The learner can rewrite or add to the tutor's default style app-wide, while the rules the app relies on stay fixed and Gauss's text is kept to revert to.
-**Do:** Mark the first paragraph of "Default style" in `prompts/tutor.md` as the editable part. The loader splits the prompt there, refuses to start if the marks are missing, and never sends them to a model. The learner's text is `teaching.md` in the data root, with its schema and length limit in `src/shared/settings.ts` as the profile's are, and the backup keeps it. Saving text identical to Gauss's removes the file. A save is refused if the file changed since the page read it, as the Profile page's `was` does. `tutorSystemPrompt` puts the learner's text in place of Gauss's paragraph, for Claude and Codex courses alike. A save renews every open unit.
-**Done when:** tests show that with no edit the tutor's system prompt holds `tutor.md`'s text unchanged, without the marks; that an edit replaces only that paragraph, with the fixed paragraph and every other section unchanged; that a Codex course's tutor session receives the edited prompt; that after a save an open unit's next message resumes on the new prompt; that saving Gauss's text removes the edit; and that a stale `was` is refused. `mise run check` passes.
-
 ### 6.19 The Settings page — todo
 
 **Needs:** 6.17, 6.18.

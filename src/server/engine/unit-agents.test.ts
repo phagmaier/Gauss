@@ -16,7 +16,7 @@ test.each(["before judging starts", "before a queued judgment records"])(
     const log = createEventLog();
     const agents = createUnitAgents({
       backend,
-      systemPrompt: () => "Tutor.",
+      systemPrompt: async () => "Tutor.",
       tools: [],
       cwd: "unused-fake-course",
       title: "Review regression",

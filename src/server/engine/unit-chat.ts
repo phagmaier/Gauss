@@ -139,6 +139,12 @@ import {
 } from "./review-admission.ts";
 import type { SourceConverter } from "./source-convert.ts";
 import { createSourceShelf } from "./source-shelf.ts";
+import {
+  gaussTeaching,
+  splitTutorPrompt,
+  type TutorPrompt,
+  tutorInstructions,
+} from "./teaching.ts";
 import { createTranscribedLog } from "./transcript.ts";
 import { createUnitAgents, type UnitAgents } from "./unit-agents.ts";
 import { createUnitAids } from "./unit-aids.ts";
@@ -337,6 +343,17 @@ export interface UnitChats extends CourseHolder {
    * written.
    */
   setTutorModel(choice: TutorModelPost): Promise<AppSettings>;
+  /**
+   * Saves the learner's teaching instructions in place of Gauss's
+   * paragraph, or removes them when the text is Gauss's, if teaching.md
+   * still holds `was` (TeachingChanged otherwise), and closes every open
+   * chat's tutor session once it is between turns, so that they apply from
+   * the next turn. Answers the learner's text as kept, undefined for none.
+   */
+  setTeaching(
+    text: string,
+    was: string | undefined,
+  ): Promise<string | undefined>;
   /** Closes the tutor session of every chat. */
   close(): Promise<void>;
 }
@@ -372,7 +389,10 @@ interface ChatOptions {
   backends: SessionBackends;
   /** Checks whether Codex can run now; undefined means the unit can open. */
   codexUnavailable?: () => Promise<string | undefined>;
-  /** `prompts/tutor.md`. */
+  /**
+   * `prompts/tutor.md`, its learner's paragraph between its marks
+   * (`engine/teaching.ts`); a prompt with no marks has nothing to edit.
+   */
   systemPrompt: string;
   dataRoot: DataRoot;
   planner: UnitPlanner;
@@ -432,6 +452,7 @@ interface ChatOptions {
 
 export function createUnitChats(options: ChatOptions): UnitChats {
   const { dataRoot } = options;
+  const tutorPrompt = splitTutorPrompt(options.systemPrompt);
   const testStarted = {
     ok: false,
     status: 409,
@@ -541,6 +562,7 @@ export function createUnitChats(options: ChatOptions): UnitChats {
         courseId,
         unitId,
         workspace: workspace(courseId),
+        tutorPrompt,
         tell: (unit, entry) => {
           void chats.get(key(courseId, unit))?.learnAnswer(entry);
         },
@@ -662,6 +684,16 @@ export function createUnitChats(options: ChatOptions): UnitChats {
         for (const chat of othersIn(courseId, undefined)) chat.renew();
       }
       return settings;
+    },
+    async setTeaching(text, was) {
+      if (tutorPrompt.shipped === undefined) {
+        throw new Error("This tutor prompt has nothing the learner can edit.");
+      }
+      const trimmed = text.trim();
+      const kept = trimmed === gaussTeaching(tutorPrompt) ? undefined : trimmed;
+      await dataRoot.writeTeaching(kept, was);
+      for (const chat of chats.values()) chat.renew();
+      return kept;
     },
     async close() {
       await Promise.allSettled([...chats.values()].map((c) => c.close()));
@@ -1168,6 +1200,8 @@ function createUnitChat(
     courseId: Slug;
     unitId: Slug;
     workspace: CourseWorkspace;
+    /** `systemPrompt`, split at its marks. */
+    tutorPrompt: TutorPrompt;
     /** Tells the chat of another unit, if it is open, an answer on its objective. */
     tell?: (unitId: Slug, entry: AnswerEvidence) => void;
     /** Tells the chats of the course's other open units a style note the learner applied. */
@@ -1354,11 +1388,14 @@ function createUnitChat(
       }
       const loaded = createUnitAgents({
         backend: runsOn.backend,
-        // A session started after a new style note or curriculum is applied
-        // starts with it.
-        systemPrompt: () =>
+        // A session started after a new style note, curriculum or teaching
+        // instructions are applied starts with them.
+        systemPrompt: async () =>
           tutorSystemPrompt(
-            options.systemPrompt,
+            tutorInstructions(
+              options.tutorPrompt,
+              await dataRoot.readTeaching(),
+            ),
             running?.plannerContext ?? running?.context ?? context,
             { style, background, profile },
             earlier,
