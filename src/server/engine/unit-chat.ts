@@ -85,6 +85,11 @@ import type {
 import type { Misconception } from "../../shared/misconception.ts";
 import type { PackageReceipt } from "../../shared/packages.ts";
 import type { AnswerPost } from "../../shared/question.ts";
+import {
+  type AppSettings,
+  type TutorModelPost,
+  tutorModel,
+} from "../../shared/settings.ts";
 import type { OpenQuestion, State, UnitPosition } from "../../shared/state.ts";
 import type { SessionBackends, WorkspaceTools } from "../backends/backend.ts";
 import type { Backup } from "../record/backup.ts";
@@ -325,6 +330,13 @@ export interface UnitChats extends CourseHolder {
    * course as written; throws for a course not approved.
    */
   setWebSearch(courseId: Slug, on: boolean): Promise<Course>;
+  /**
+   * Sets the tutor's model for one backend's courses, and closes the tutor
+   * session of each open chat of those courses once it is between turns,
+   * so that the model applies from the next turn. Answers the settings as
+   * written.
+   */
+  setTutorModel(choice: TutorModelPost): Promise<AppSettings>;
   /** Closes the tutor session of every chat. */
   close(): Promise<void>;
 }
@@ -638,6 +650,18 @@ export function createUnitChats(options: ChatOptions): UnitChats {
       // A session starting now reads the setting written; one open renews.
       for (const chat of othersIn(courseId, undefined)) chat.renew();
       return course;
+    },
+    async setTutorModel(choice) {
+      const settings = await dataRoot.setTutorModel(choice);
+      const open = new Set(
+        [...chats.keys()].map((at) => (JSON.parse(at) as [string])[0]),
+      );
+      for (const courseId of open) {
+        const stored = await dataRoot.readCourse(courseId);
+        if (stored?.course.backend !== choice.backend) continue;
+        for (const chat of othersIn(courseId, undefined)) chat.renew();
+      }
+      return settings;
     },
     async close() {
       await Promise.allSettled([...chats.values()].map((c) => c.close()));
@@ -1362,6 +1386,9 @@ function createUnitChat(
           (await dataRoot.readCourse(courseId))?.course.settings.webSearch ===
           true,
         searchRefusal: aids.webSearchRefusal,
+        // Read whenever a session starts or resumes, as the setting stands.
+        model: async () =>
+          tutorModel(await dataRoot.readSettings(), stored.course.backend),
         cwd: workspace,
         ...(options.workspaceTools === undefined
           ? {}

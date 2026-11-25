@@ -450,11 +450,11 @@ where `convert.py` handles them.
   the go-ahead, a revision and a large topic. Cutting `tutor.md` from 634
   to 356 lines and `planner.md` from 214 to 133 this way found two and one
   regressions.
-- **Live checks run on Sonnet 5.5 at medium effort (`AGENTS.md`), not the
-  models the app uses**: the tutor takes the login's default, Opus 5.5 on
-  the user's plan, and the help judge Haiku. Sonnet follows the source rules
-  worse (see "Tutor"), so a live result is evidence for a wording, not proof
-  of how Opus or Haiku will take it.
+- **Live checks run on Sonnet 5.5 at medium effort (`AGENTS.md`), not
+  always the models the app uses**: the tutor runs on the model chosen in
+  Settings (Opus 5.5 by default), and the help judge on Haiku. Sonnet
+  follows the source rules worse (see "Tutor"), so a live result is
+  evidence for a wording, not proof of how Opus or Haiku will take it.
 - **A prompt says only what headers, tool and field descriptions and
   refusals do not**, and rewording any of those changes what the model is
   told.

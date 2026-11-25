@@ -5,7 +5,8 @@
 // package does it.
 //
 // A data root that is not a repository becomes one, with a `.gitignore`
-// that keeps `courses/` and `profile.md` (docs/architecture.md, "Data
+// that keeps `courses/`, `profile.md` and the app's settings (`settings.json`,
+// `teaching.md`) (docs/architecture.md, "Data
 // root") and leaves out `intake/`, `uploads/`, the record's temporary files
 // (atomic-write.ts), in a course's workspace what its tools make again (a
 // Python environment and Python's caches), and a source's page images,
@@ -44,6 +45,8 @@ const GITIGNORE = `# Written by Gauss. The backup keeps the course record only.
 !/.gitignore
 !/courses/
 !/profile.md
+!/settings.json
+!/teaching.md
 .*.tmp
 .venv/
 __pycache__/
@@ -71,6 +74,18 @@ const GITIGNORES_BEFORE = [
 .venv/
 __pycache__/
 .pytest_cache/
+`,
+  // Before the app had settings.
+  `# Written by Gauss. The backup keeps the course record only.
+/*
+!/.gitignore
+!/courses/
+!/profile.md
+.*.tmp
+.venv/
+__pycache__/
+.pytest_cache/
+/courses/*/sources/*/pages/
 `,
 ];
 

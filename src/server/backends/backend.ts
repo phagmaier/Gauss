@@ -47,6 +47,12 @@ export interface SessionOptions {
    * request of its own. A resumed session keeps the title it has.
    */
   title?: string;
+  /**
+   * The model the session runs on, given again with each resume, as the
+   * learner's setting stands then: a tutor's. Absent, the backend's own.
+   * A live check's pin and the backend's own override win over it.
+   */
+  model?: string;
 }
 
 /**

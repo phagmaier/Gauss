@@ -47,12 +47,14 @@ without books, transcripts or progress: `GAUSS_DATA_ROOT`, else `~/gauss/`
 (`resolveDataRoot` in `record/data-root.ts`; the rest of the record takes
 the root as an argument). File shapes are the schemas in `src/shared/`
 (`course.ts`, `curriculum.ts` with `plan.ts`, `state.ts`, `evidence.ts`,
-`misconception.ts`, `handoff.ts`, `notes.ts`, `profile.ts`, `source.ts`).
+`misconception.ts`, `handoff.ts`, `notes.ts`, `profile.ts`, `settings.ts`,
+`source.ts`).
 
 ```
 <data root>/
   .git/, .gitignore            the record's history (below)
   profile.md                   learner profile, shared across courses
+  settings.json                the app's settings: the tutor's model for each backend's courses
   .profile-approval.json       journal, only while a profile-changing approval is unfinished
   .notes-write.json            journal, only while unit notes are being published
   intake/                      working folder of intake and planning sessions; Gauss writes nothing here
@@ -91,7 +93,8 @@ Rules no single file shows:
   the page hears of a change; an answer is appended before its question
   closes.
 - **Backup.** The root is a git repository (`record/backup.ts`) keeping
-  `courses/` and `profile.md`, without `.venv/`, Python caches, a source's
+  `courses/`, `profile.md` and the settings (`settings.json`,
+  `teaching.md`), without `.venv/`, Python caches, a source's
   `pages/` or `uploads/`. Commits follow each durable step and never fail
   the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for
   `pnpm dev:fake` unless `=on`.
@@ -218,16 +221,21 @@ every other role on Claude. Each prompt starts one model's instructions:
   starts or resumes, and its teaching tools, with a tutor's file and
   command tools (`tools/workspace.ts`), in the direct `gauss` namespace;
   Codex's own shell and patch tools are removed. `prompts/tutor.md` names
-  no backend's tools. `codexOptions` sets the model, effort and tier on each turn;
-  `GAUSS_CODEX_MODEL` changes the model outside the live-check launcher.
+  no backend's tools. `codexOptions` sets the model, effort and tier on each turn.
 - The scripted backend reads header wording; changing it can break
   `pnpm dev:fake` (`backends/scripted.test.ts` catches most of it).
 - Thread text is Markdown with `$...$` and `$$` math and `\$` for a
   dollar; no `\(...\)`, HTML or images.
-- In the normal app, one-shot models are constants in `backends/claude.ts`;
-  `GAUSS_CLAUDE_MODEL` overrides all roles. The live-check launcher pins
-  model and effort instead. Fake backend tests cover routing and
-  validation, not judgment.
+- Models: a course's tutor runs on the model chosen for its backend
+  (`tutorModel` in `shared/settings.ts`), which its sessions read at each
+  start and resume (`SessionOptions.model`). No other role reads the
+  setting: one-shot models are constants in `backends/claude.ts`, Claude
+  planners take the login's default, and the Codex unit planner
+  gpt-6.1-terra.
+  `GAUSS_CLAUDE_MODEL` overrides every Claude role's model and
+  `GAUSS_CODEX_MODEL` every Codex one's, the setting included; the
+  live-check launcher pins model and effort over all of them. Fake backend
+  tests cover routing and validation, not judgment.
 
 ## Working here
 

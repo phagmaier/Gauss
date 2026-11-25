@@ -14,7 +14,9 @@ import { resolveDataRoot } from "./record/data-root.ts";
 import { serve } from "./serve.ts";
 
 // GAUSS_CLAUDE_MODEL overrides the model for all roles in the normal app.
-// Otherwise, the tutor uses the login's default and each helper has its own.
+// Otherwise, the tutor runs on the model chosen in the settings
+// (`tutorModel` in `shared/settings.ts`), the planners on the login's
+// default, and each helper on its own.
 const model = process.env.GAUSS_CLAUDE_MODEL;
 
 await serve({

@@ -154,6 +154,11 @@ export function createUnitAgents(options: {
   webSearch?: () => Promise<boolean>;
   /** Why a search is refused now, if it is; asked before each search. */
   searchRefusal?: () => Promise<string | undefined>;
+  /**
+   * The model the learner chose for the course's tutor, read whenever a
+   * session starts or resumes; the backend's own if not given.
+   */
+  model?: () => Promise<string | undefined>;
   /** What the tutor's sessions are called among the backend's kept sessions. */
   title: string;
   /**
@@ -185,14 +190,16 @@ export function createUnitAgents(options: {
   const workspace =
     options.workspace === undefined ? {} : { workspace: options.workspace };
 
-  /** The course's settings as they are now, for a session starting or resuming. */
+  /** The settings as they are now, for a session starting or resuming. */
   async function settings(): Promise<
-    Pick<SessionOptions, "webSearch" | "searchRefusal">
+    Pick<SessionOptions, "webSearch" | "searchRefusal" | "model">
   > {
-    if ((await options.webSearch?.()) !== true) return {};
+    const model = await options.model?.();
+    const chosen = model === undefined ? {} : { model };
+    if ((await options.webSearch?.()) !== true) return chosen;
     return options.searchRefusal === undefined
-      ? { webSearch: true }
-      : { webSearch: true, searchRefusal: options.searchRefusal };
+      ? { ...chosen, webSearch: true }
+      : { ...chosen, webSearch: true, searchRefusal: options.searchRefusal };
   }
 
   async function startNew(): Promise<TutorSession> {

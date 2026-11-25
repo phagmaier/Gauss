@@ -7,7 +7,8 @@
 // appends to and reads the units' session transcripts, stores and reads the artifacts the tutor shows,
 // writes and reads each unit's handoff note and the misconception log (task 5.7),
 // and reads and writes the learner profile, writing it too when a curriculum
-// that proposes one is approved (task 5.8), and applies the changes to an
+// that proposes one is approved (task 5.8), reads and writes the app's
+// settings, and applies the changes to an
 // approved curriculum that the learner accepts (tasks 5.12 and 5.38),
 // deletes a course (task 5.18), and keeps sources: a converted folder put
 // in an intake's uploads or a course's sources/, moved from one to the
@@ -80,6 +81,11 @@ import {
 } from "../../shared/plan.ts";
 import { LearnerProfile } from "../../shared/profile.ts";
 import { WorkspacePath } from "../../shared/question.ts";
+import {
+  AppSettings,
+  NO_SETTINGS,
+  type TutorModelPost,
+} from "../../shared/settings.ts";
 import { Outline, SectionRef } from "../../shared/source.ts";
 import { State, UnitPosition } from "../../shared/state.ts";
 import { StyleDecision } from "../../shared/style.ts";
@@ -195,6 +201,10 @@ export interface DataRoot {
    * read is not lost unseen.
    */
   writeProfile(text: string, was: string | undefined): Promise<void>;
+  /** The app's settings, settings.json in the data root; none chosen when it is absent. */
+  readSettings(): Promise<AppSettings>;
+  /** Writes the tutor's model for one backend's courses, and answers the settings as written. */
+  setTutorModel(choice: TutorModelPost): Promise<AppSettings>;
   /** Stages a backup outside the record's multi-file writes. */
   withConsistentSnapshot<T>(work: () => Promise<T>): Promise<T>;
   /**
@@ -513,6 +523,7 @@ export function openDataRoot(options: {
   const profileFile = join(options.path, "profile.md");
   const pendingFile = join(options.path, ".profile-approval.json");
   const pendingNotesFile = join(options.path, ".notes-write.json");
+  const settingsFile = join(options.path, "settings.json");
   const now = options.now ?? (() => new Date());
 
   async function readCourse(id: string): Promise<StoredCourse | undefined> {
@@ -1114,6 +1125,22 @@ export function openDataRoot(options: {
 
     async writeProfile(text, was) {
       await withConsistentApproval(() => replaceProfile(text, was));
+    },
+
+    async readSettings() {
+      return (await readJson(settingsFile, AppSettings)) ?? NO_SETTINGS;
+    },
+
+    async setTutorModel({ backend, model }) {
+      return withFileLock(settingsFile, async () => {
+        const was = (await readJson(settingsFile, AppSettings)) ?? NO_SETTINGS;
+        const settings: AppSettings = {
+          ...was,
+          tutorModels: { ...was.tutorModels, [backend]: model },
+        };
+        await writeJson(settingsFile, AppSettings, settings);
+        return settings;
+      });
     },
 
     withConsistentSnapshot,

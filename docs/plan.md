@@ -61,13 +61,6 @@ override everything; otherwise `GAUSS_CLAUDE_MODEL` and `GAUSS_CODEX_MODEL`
 override the setting, and the setting overrides the default. Settings
 live in the data root only, never in a Codex home or `~/.claude`.
 
-### 6.17 The tutor's model, chosen in the record — todo
-
-**Needs:** nothing open.
-**Why:** The tutor's model is fixed when its backend is made: the Claude login's default (`createClaudeBackend({})` in `main.ts`) and gpt-6.1-terra (`codexOptions`). The learner chooses it app-wide, one choice per backend.
-**Do:** In `src/shared/settings.ts`, the zod schema of `settings.json` in the data root: the tutor's model for Claude courses and for Codex courses, each absent until chosen, with the models offered and their defaults (`brief.md`). The record reads it and writes it whole, and the backup keeps it. `SessionOptions` takes the model a session runs on; `createClaudeBackend` and `createCodexBackend` apply it below the overrides above, and Codex keeps medium effort and the standard tier. A unit's tutor sessions take the chosen model for their course's backend whenever they start or resume. The unit planner, the intake, course planning and the one-shot roles take none. Saving a model renews the open units of that backend's courses, as the web search setting does, so the change applies from the next message.
-**Done when:** fake-backend tests show a unit's tutor session starting on the chosen model, and the next message after a save resuming on the new one; the planners' sessions get no model. Backend tests show that under `GAUSS_LIVE_CHECK=1` a session given a model still runs on `LIVE_CHECK_OPTIONS` (Claude) and `CODEX_LIVE_CHECK_OPTIONS` (Codex), and that `GAUSS_CLAUDE_MODEL` and `GAUSS_CODEX_MODEL` win over the setting. `mise run check` passes.
-
 ### 6.18 Teaching instructions the learner can edit — todo
 
 **Needs:** 6.17 (the settings record, and renewing open units on a save).

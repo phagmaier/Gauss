@@ -1,0 +1,77 @@
+// The app's settings (brief.md, "Backends and stack"): `settings.json` in
+// the data root, app-wide. The tutor's model is chosen per backend, from the
+// models offered here; one not chosen is the backend's default.
+
+import { z } from "zod";
+import type { BackendName } from "./course.ts";
+
+/** A model the tutor of a course on this backend can run on: its id, as the learner reads it, and what the page says of it. */
+export interface TutorModelOffer {
+  id: string;
+  title: string;
+  says: string;
+}
+
+/**
+ * The models offered for each backend's tutor, the default first. Only
+ * these: Haiku broke a tutor's aids and claimed tool calls it never made
+ * (docs/findings.md, "Tutor"), and the other Codex models were never tried.
+ */
+export const TUTOR_MODELS = {
+  claude: [
+    { id: "claude-opus-5-5", title: "Opus 5.5", says: "Gauss's default." },
+    {
+      id: "claude-sonnet-5-5",
+      title: "Sonnet 5.5",
+      says: "Quicker and lighter on your plan; in Gauss's trials it kept to the rules on quoting sources less well.",
+    },
+  ],
+  codex: [
+    {
+      id: "gpt-6.1-terra",
+      title: "gpt-6.1-terra",
+      says: "Gauss's default. Medium effort, standard tier.",
+    },
+    {
+      id: "gpt-6.2-sol",
+      title: "gpt-6.2-sol",
+      says: "The model Gauss's Codex trials ran on. Medium effort, standard tier.",
+    },
+  ],
+} as const satisfies Record<BackendName, readonly TutorModelOffer[]>;
+
+const ids = <B extends BackendName>(backend: B) =>
+  TUTOR_MODELS[backend].map((offer) => offer.id) as [
+    (typeof TUTOR_MODELS)[B][number]["id"],
+    ...(typeof TUTOR_MODELS)[B][number]["id"][],
+  ];
+
+export const TutorModels = z.object({
+  claude: z.enum(ids("claude")).optional(),
+  codex: z.enum(ids("codex")).optional(),
+});
+export type TutorModels = z.infer<typeof TutorModels>;
+
+export const AppSettings = z.object({
+  /** The tutor's model for each backend's courses, once the learner chose one. */
+  tutorModels: TutorModels,
+});
+export type AppSettings = z.infer<typeof AppSettings>;
+
+/** The settings of a data root with no settings.json. */
+export const NO_SETTINGS: AppSettings = { tutorModels: {} };
+
+/** The model a course on this backend runs its tutor on: the one chosen, else the default. */
+export function tutorModel(
+  settings: AppSettings,
+  backend: BackendName,
+): string {
+  return settings.tutorModels[backend] ?? TUTOR_MODELS[backend][0].id;
+}
+
+/** A model chosen on the Settings page, for one backend's courses. */
+export const TutorModelPost = z.discriminatedUnion("backend", [
+  z.object({ backend: z.literal("claude"), model: z.enum(ids("claude")) }),
+  z.object({ backend: z.literal("codex"), model: z.enum(ids("codex")) }),
+]);
+export type TutorModelPost = z.infer<typeof TutorModelPost>;

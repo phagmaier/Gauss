@@ -23,6 +23,7 @@ export interface CodexBackendOptions {
   command?: string;
   /** Gauss's isolated Codex home by default. */
   home?: string;
+  /** Wins over a session's own model (`SessionOptions.model`); tests set it. */
   model?: string;
   /** A caller cannot change the course's medium effort or standard tier. */
   effort?: string;
@@ -36,7 +37,10 @@ export const CODEX_LIVE_CHECK_OPTIONS = {
   serviceTier: "default",
 } as const satisfies CodexBackendOptions;
 
-/** A live check also pins the model, bypassing every override. */
+/**
+ * A live check also pins the model, bypassing every override; outside one,
+ * `GAUSS_CODEX_MODEL` wins over the model asked for.
+ */
 export function codexOptions(requested: CodexBackendOptions = {}) {
   if (process.env.GAUSS_LIVE_CHECK === "1") return CODEX_LIVE_CHECK_OPTIONS;
   return {
@@ -176,7 +180,7 @@ export function createCodexBackend(
   options: CodexBackendOptions = {},
 ): SessionBackend {
   const { command = "codex", home = GAUSS_CODEX_HOME } = options;
-  const model = codexOptions(options);
+  const { effort } = codexOptions(options);
   // Written once per backend; a failure (a home not made yet) is tried again.
   let catalog: Promise<string> | undefined;
   const open = async () => {
@@ -204,12 +208,16 @@ export function createCodexBackend(
           network: { enabled: false },
         },
       },
-      model_reasoning_effort: model.effort,
+      model_reasoning_effort: effort,
     },
   };
   return {
     async startSession(session): Promise<TutorSession> {
       const { cwd, resumeId, title, systemPrompt, workspace } = session;
+      // Given on every resume and turn, so a session resumed after the
+      // learner chose another model runs on it.
+      const asked = options.model ?? session.model;
+      const model = codexOptions(asked === undefined ? {} : { model: asked });
       if (workspace !== undefined && cwd === undefined) {
         throw new Error("The file and shell tools need a working folder.");
       }

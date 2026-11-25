@@ -37,10 +37,12 @@ const subjects = () => git("log", "--format=%s").split("\n");
 const tracked = () => git("ls-files").split("\n");
 
 describe("starting", () => {
-  test("a new data root becomes a repository whose first commit holds the courses and the profile, not the intake or temporary files", async () => {
+  test("a new data root becomes a repository whose first commit holds the courses, the profile and the settings, not the intake or temporary files", async () => {
     await put("courses/limits/course.json");
     await put("courses/limits/.state.json.0c1d.tmp");
     await put("profile.md", "A learner.\n");
+    await put("settings.json");
+    await put("teaching.md", "Plain and direct.\n");
     await put("intake/session.txt", "kept by the intake\n");
     await put("uploads/current/source/outline.json");
     await put("courses/limits/workspace/count.py", "print(1)\n");
@@ -59,6 +61,8 @@ describe("starting", () => {
       "courses/limits/course.json",
       "courses/limits/workspace/count.py",
       "profile.md",
+      "settings.json",
+      "teaching.md",
     ]);
     expect(said).toEqual([`The record is backed up with git in ${dir}.`]);
   });
@@ -160,6 +164,29 @@ __pycache__/
       `${source}/sections/s1.md`,
       "courses/hegel/workspace/pages/index.md",
     ]);
+  });
+
+  test("a .gitignore Gauss wrote before the app had settings is brought up to today's, and the settings are kept", async () => {
+    git("init", "-q");
+    const before = `# Written by Gauss. The backup keeps the course record only.
+/*
+!/.gitignore
+!/courses/
+!/profile.md
+.*.tmp
+.venv/
+__pycache__/
+.pytest_cache/
+/courses/*/sources/*/pages/
+`;
+    await put(".gitignore", before);
+    await put("settings.json");
+    await put("teaching.md", "Plain and direct.\n");
+
+    const backup = await startBackup({ path: dir, log });
+    await backup.settled();
+
+    expect(tracked()).toEqual([".gitignore", "settings.json", "teaching.md"]);
   });
 
   test("a custom .gitignore is kept and uploads stay out of startup and later snapshots", async () => {

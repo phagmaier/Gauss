@@ -262,29 +262,58 @@ test("a session resumed by its id runs in the folder given, under that id, and i
   await session.close();
 });
 
-test("a live check's tutor session runs on the pinned model and effort, whatever the caller asks for", async () => {
-  vi.stubEnv("GAUSS_LIVE_CHECK", "1");
-  startingQuery(Promise.resolve({}));
-  try {
-    const session = await createClaudeBackend({
-      model: "claude-opus-5-5",
-      effort: "high",
-    }).startSession({
-      systemPrompt: "Test tutor.",
-      tools: [],
-      cwd: "/data/courses/vectors",
-      resumeId: RESUMED,
-    });
+test.each<{
+  name: string;
+  backend: { model?: string; effort?: "high" };
+  live?: string;
+  runs: { model?: string; effort?: string };
+}>([
+  {
+    name: "the session's own model, at the model's default effort",
+    backend: {},
+    runs: { model: "claude-sonnet-5-5" },
+  },
+  {
+    name: "GAUSS_CLAUDE_MODEL's backend model over the session's",
+    backend: { model: "claude-haiku-5-5" },
+    runs: { model: "claude-haiku-5-5" },
+  },
+  {
+    name: "a live check's pinned model and effort over both",
+    backend: { model: "claude-opus-5-5", effort: "high" },
+    live: "1",
+    runs: { model: "claude-sonnet-5-5", effort: "medium" },
+  },
+  {
+    name: "a live check's pin over the session's model alone",
+    backend: {},
+    live: "1",
+    runs: { model: "claude-sonnet-5-5", effort: "medium" },
+  },
+])(
+  "a tutor session asking for a model runs on $name",
+  async ({ backend, live, runs }) => {
+    vi.stubEnv("GAUSS_LIVE_CHECK", live);
+    startingQuery(Promise.resolve({}));
+    try {
+      const session = await createClaudeBackend(backend).startSession({
+        systemPrompt: "Test tutor.",
+        tools: [],
+        cwd: "/data/courses/vectors",
+        resumeId: RESUMED,
+        // Opus where a live check pins Sonnet, so the pin must replace it.
+        model: live === "1" ? "claude-opus-5-5" : "claude-sonnet-5-5",
+      });
 
-    expect(vi.mocked(query).mock.lastCall?.[0].options).toMatchObject({
-      model: "claude-sonnet-5-5",
-      effort: "medium",
-    });
-    await session.close();
-  } finally {
-    vi.unstubAllEnvs();
-  }
-});
+      const options = vi.mocked(query).mock.lastCall?.[0].options;
+      expect(options?.model).toBe(runs.model);
+      expect(options?.effort).toBe(runs.effort);
+      await session.close();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  },
+);
 
 test("a session Claude Code cannot find is a failure of its own, and its query is closed", async () => {
   const { closed } = startingQuery(

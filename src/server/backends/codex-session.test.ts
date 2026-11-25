@@ -482,15 +482,37 @@ test.each<{
   name: string;
   model: string;
   options: ModelOptions;
+  /** The model the session asks for: the learner's setting. */
+  asked?: string;
   env?: string;
   live?: string;
 }>([
   { name: "defaults", model: terra, options: {} },
   {
-    name: "environment model over the caller model",
+    name: "the session's own model",
+    model: "gpt-6.2-sol",
+    options: {},
+    asked: "gpt-6.2-sol",
+  },
+  {
+    name: "the caller model over the session's",
+    model: "caller-model",
+    options: { model: "caller-model" },
+    asked: "gpt-6.2-sol",
+  },
+  {
+    name: "environment model over the caller and session models",
     model: "gauss-test-model",
     env: "gauss-test-model",
     options: { model: "caller-model" },
+    asked: "gpt-6.2-sol",
+  },
+  {
+    name: "environment model over the session's",
+    model: "gauss-test-model",
+    env: "gauss-test-model",
+    options: {},
+    asked: "gpt-6.2-sol",
   },
   {
     name: "caller model, but not priority or high effort",
@@ -498,19 +520,30 @@ test.each<{
     options: { model: "caller-model", serviceTier: "priority", effort: "high" },
   },
   {
-    name: "live pin over both model overrides, priority and high effort",
+    name: "live pin over every model override, priority and high effort",
     model: terra,
     env: "gauss-test-model",
     live: "1",
     options: { model: "caller-model", serviceTier: "priority", effort: "high" },
+    asked: "gpt-6.2-sol",
+  },
+  {
+    name: "live pin over the session's model alone",
+    model: terra,
+    live: "1",
+    options: {},
+    asked: "gpt-6.2-sol",
   },
 ])(
   "ephemeral turns use $name on the wire",
-  async ({ model, options, env, live }) => {
+  async ({ model, options, asked, env, live }) => {
     vi.stubEnv("GAUSS_CODEX_MODEL", env);
     vi.stubEnv("GAUSS_LIVE_CHECK", live);
     const session = await open(
-      { title: "Cannot name an ephemeral thread" },
+      {
+        title: "Cannot name an ephemeral thread",
+        ...(asked === undefined ? {} : { model: asked }),
+      },
       backend(options),
     );
     await expectUsable(session);
@@ -518,7 +551,7 @@ test.each<{
     await close(session);
     const log = await trace();
     const start = only(requests(log, "thread/start"));
-    expect(start.message.params).toMatchObject({ ephemeral: true });
+    expect(start.message.params).toMatchObject({ ephemeral: true, model });
     expect(bootFor(log, start.pid).cwd).toBe(home);
     expect(requests(log, "thread/name/set")).toEqual([]);
     expectTurnSettings(log, model, 2);

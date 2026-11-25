@@ -68,8 +68,10 @@ const SESSION_LOOKUP = `
 
 export interface ClaudeBackendOptions {
   /**
-   * The model, such as "claude-haiku-5-5". Left out, the session uses the
-   * default of the learner's Claude Code login.
+   * The model, such as "claude-haiku-5-5": `GAUSS_CLAUDE_MODEL`, or a
+   * one-shot role's own. It wins over a session's own model
+   * (`SessionOptions.model`). Left out, with none given by the session,
+   * the session uses the default of the learner's Claude Code login.
    */
   model?: string;
   /**
@@ -121,10 +123,17 @@ export function createClaudeBackend(
   backendOptions: ClaudeBackendOptions = {},
 ): TutorBackend {
   // Apply to every role, even if an older harness passes its own options.
+  // The pin and GAUSS_CLAUDE_MODEL name a model, so a session's cannot win.
   const settings =
     process.env.GAUSS_LIVE_CHECK === "1" ? LIVE_CHECK_OPTIONS : backendOptions;
   return {
-    startSession: (options) => startSession(options, settings),
+    startSession: (options) =>
+      startSession(
+        options,
+        settings.model === undefined && options.model !== undefined
+          ? { ...settings, model: options.model }
+          : settings,
+      ),
     hasSession,
     oneShot: (request) => oneShot(request, settings),
   };

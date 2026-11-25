@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import type { BackendName } from "../shared/course.ts";
 import type { CurriculumProposal } from "../shared/curriculum.ts";
+import type { TutorModelPost } from "../shared/settings.ts";
 import type { SessionBackends, TutorBackend } from "./backends/backend.ts";
 import { createScriptedBackend, scriptedPlan } from "./backends/scripted.ts";
 import type { Sandbox } from "./engine/sandbox.ts";
@@ -281,6 +282,61 @@ test("a Claude course runs every role on Claude and never reaches Codex", async 
   expect(codexCalls).toEqual([]);
   expect(kinds(claudeCalls)).toEqual(new Set([...SESSIONS, ...OTHERS]));
 });
+
+test.each([
+  ["claude", "claude-opus-5-5", "claude-sonnet-5-5", "codex", "gpt-6.2-sol"],
+  ["codex", "gpt-6.1-terra", "gpt-6.2-sol", "claude", "claude-sonnet-5-5"],
+] as const)(
+  "a %s course's tutor runs on the model chosen for its backend, from the next message after a save, and its unit planner on the backend's own",
+  async (backend, byDefault, chosen, other, otherModel) => {
+    const sessions: string[] = [];
+    const noting = (): TutorBackend => {
+      const scripted = createScriptedBackend();
+      return {
+        ...scripted,
+        startSession(options) {
+          const kind = options.resumeId === undefined ? "start" : "resume";
+          sessions.push(
+            `${kind} ${role(options.systemPrompt)} on ${options.model ?? "its own"}`,
+          );
+          return scripted.startSession(options);
+        },
+      };
+    };
+    const dataRoot = openDataRoot({ path: dir });
+    const courseId = await makeCourse(dataRoot, backend);
+    const engine = await wire(dataRoot, noting(), { codex: noting() });
+    try {
+      const chat = await opened(engine, courseId);
+      expect(sessions).toEqual([
+        "start unit-planner on its own",
+        `start tutor on ${byDefault}`,
+      ]);
+
+      // The other backend's model leaves this course's session running.
+      await engine.units.setTutorModel({
+        backend: other,
+        model: otherModel,
+      } as TutorModelPost);
+      expect(chat.say("Go on.")).toEqual({ ok: true });
+      await chat.settled();
+      expect(sessions).toHaveLength(2);
+
+      await engine.units.setTutorModel({
+        backend,
+        model: chosen,
+      } as TutorModelPost);
+      expect(chat.say("And then?")).toEqual({ ok: true });
+      await chat.settled();
+      expect(sessions.slice(2)).toEqual([`resume tutor on ${chosen}`]);
+      expect(await openDataRoot({ path: dir }).readSettings()).toEqual({
+        tutorModels: { [other]: otherModel, [backend]: chosen },
+      });
+    } finally {
+      await close(engine);
+    }
+  },
+);
 
 test("a unit of a course whose backend the server lacks fails to open with the reason, and starts no session", async () => {
   const claudeCalls: string[] = [];
