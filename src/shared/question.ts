@@ -227,6 +227,10 @@ function answerIsAChoice(q: {
 }
 const NOT_A_CHOICE = "The answer must be the letter of one of the choices.";
 
+/** The four kinds of question. */
+export const QuestionKind = z.enum(["choice", "math", "written", "code"]);
+export type QuestionKind = z.infer<typeof QuestionKind>;
+
 // --- What the tutor posts ----------------------------------------------------
 
 /**
@@ -239,11 +243,9 @@ export const QuestionInput = z
     objective: Slug.describe(
       "The id of the objective the question checks: one of the segment's objectives, as the header lists them",
     ),
-    kind: z
-      .enum(["choice", "math", "written", "code"])
-      .describe(
-        '"choice": the learner picks one of the choices, graded against `answer`. "math": the learner types an expression, graded against `expected` according to `mathGrading`. "written": the learner writes the answer (a proof, a derivation, an explanation), graded against `rubric` by a separate grader. "code": the learner edits `files` in the workspace, graded by running `tests` with `command`.',
-      ),
+    kind: QuestionKind.describe(
+      '"choice": the learner picks one of the choices, graded against `answer`. "math": the learner types an expression, graded against `expected` according to `mathGrading`. "written": the learner writes the answer (a proof, a derivation, an explanation), graded against `rubric` by a separate grader. "code": the learner edits `files` in the workspace, graded by running `tests` with `command`.',
+    ),
     prompt,
     choices: choices.optional(),
     answer: answer.optional(),

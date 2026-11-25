@@ -27,13 +27,12 @@ import { countedEvidence } from "./disputes.ts";
  *   it was never missed, one unassisted correct answer given at 90% or
  *   100% (task 2.23).
  * - A correct answer given with help counts for nothing either way.
- * - Passed, it is retained if one of those answers was given in a review or
- *   a gate.
- * - Missed in a review or a gate while it was passed, it is slipping until
- *   it passes again.
+ * - Passed, it is retained if one of those answers was cold: given in a
+ *   review, a gate or a self-test.
+ * - Missed cold while it was passed, it is slipping until it passes again.
  * - An override marks it overridden, but never takes away a pass. A later
- *   answer takes its place, except in a review or gate: those answers
- *   leave the override in place until the objective passes again.
+ *   answer takes its place, except a cold one: those answers leave the
+ *   override in place until the objective passes again.
  */
 export function objectiveStatus(
   evidence: readonly EvidenceEntry[],
@@ -44,14 +43,14 @@ export function objectiveStatus(
 
 interface ObjectiveStanding {
   status: ObjectiveStatus;
-  /** The unassisted correct answers given in a review or a gate since the last miss. */
+  /** The unassisted cold correct answers (review, gate, self-test) since the last miss. */
   row: number;
   /** When the last unassisted correct answer since the last miss was recorded, in ms; undefined if none. */
   lastCorrectAt: number | undefined;
   /**
    * One of the unassisted correct answers since the last miss was given
    * while testing out: the unit's gate leaves the objective out, since that
-   * answer was cold when given (docs/brief.md, "Assessment modes").
+   * answer was given before any teaching (docs/brief.md, "Assessment modes").
    */
   tested: boolean;
 }
@@ -82,7 +81,7 @@ interface Standing {
   problems: Set<string>;
   confident: boolean;
   tested: boolean;
-  // Unassisted correct answers in a review or a gate since the last miss: retained when passed with one.
+  // Unassisted cold correct answers since the last miss: retained when passed with one.
   row: number;
   lastCorrectAt: number | undefined;
 }
@@ -122,7 +121,8 @@ function collectStandings(
 
     standing.answered = true;
     const mode = entry.assessment?.mode;
-    const cold = mode === "review" || mode === "gate";
+    // A self-test's answers count as review's (docs/brief.md, "Assessment modes").
+    const cold = mode === "review" || mode === "gate" || mode === "self-test";
     if (!cold) standing.overridden = false;
     if (entry.verdict !== "correct") {
       if (mode === "test-out") continue;

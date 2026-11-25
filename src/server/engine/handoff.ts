@@ -581,6 +581,7 @@ const runWords = {
   review: "a review",
   gate: "the unit's gate",
   "test-out": "the test before the unit",
+  "self-test": "a self-test the learner set up",
 } as const;
 
 function segmentName(

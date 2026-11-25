@@ -10,7 +10,7 @@ import { Slug, Timestamp } from "./course.ts";
 import { CurriculumChange, CurriculumDecision } from "./curriculum-change.ts";
 import { AssessmentMode, OverrideEvidence } from "./evidence.ts";
 import { PackageCompletion, PackageRequest } from "./packages.ts";
-import { AnswerSubmission, Question } from "./question.ts";
+import { AnswerSubmission, Question, QuestionKind } from "./question.ts";
 import { StyleDecision, StyleProposal } from "./style.ts";
 
 /** A segment's phases, in order. */
@@ -92,11 +92,19 @@ export type Detour = z.infer<typeof Detour>;
 export const AssessedObjective = z.object({ unit: Slug, objective: Slug });
 export type AssessedObjective = z.infer<typeof AssessedObjective>;
 
+/** An objective a self-test passed over: no kind picked fits it, by the tutor's reason. */
+export const PassedOver = z.object({
+  objective: Slug,
+  reason: z.string().trim().min(1),
+});
+export type PassedOver = z.infer<typeof PassedOver>;
+
 /**
  * A run of questions without teaching, asked by the unit's tutor in the
  * unit's thread: review at the start of
- * a sitting, the unit's gate once its last segment has closed, or the test
- * before the unit is taught, which is under way as soon as it starts. It is
+ * a sitting, the unit's gate once its last segment has closed, the test
+ * before the unit is taught, which is under way as soon as it starts, or
+ * a self-test, under way as soon as the learner sets it up. It is
  * kept beside the phase, which it leaves alone, so a restart reopens it;
  * once it ends, the unit goes on where it was, after a gate comes to its
  * end, and after a test waits on its result card. While it is under way,
@@ -115,11 +123,24 @@ export const AssessmentRun = z
      * unit (`Assessment` in evidence.ts).
      */
     from: z.number().int().nonnegative().optional(),
+    /** In a self-test, and only there: the kinds of question the learner picked. */
+    kinds: z.array(QuestionKind).min(1).optional(),
+    /** In a self-test: the objectives passed over so far, in order. */
+    passedOver: z.array(PassedOver).min(1).optional(),
   })
   .refine((a) => (a.stage === "on") === (a.from !== undefined), {
     message:
       "Where an assessment began in the evidence is kept once it is under way, and only then.",
     path: ["from"],
+  })
+  .refine((a) => (a.mode === "self-test") === (a.kinds !== undefined), {
+    message:
+      "A self-test keeps the kinds of question picked, and no other run does.",
+    path: ["kinds"],
+  })
+  .refine((a) => a.passedOver === undefined || a.mode === "self-test", {
+    message: "Only a self-test passes over an objective.",
+    path: ["passedOver"],
   });
 export type AssessmentRun = z.infer<typeof AssessmentRun>;
 

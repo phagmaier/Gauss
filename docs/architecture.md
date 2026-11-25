@@ -104,8 +104,8 @@ Rules no single file shows:
 
 - **`src/server/record/`**: all reading and writing of the data root.
   `data-root.ts` (the `DataRoot` interface), `status.ts` (passing,
-  retained, slipping), `review.ts` (what review and the gate pick),
-  `progress.ts`, `what-i-know.ts`, `calibration.ts`, `backup.ts`,
+  retained, slipping), `review.ts` (what review, the gate and a self-test
+  pick), `progress.ts`, `what-i-know.ts`, `calibration.ts`, `backup.ts`,
   `dev-seed.ts` (the dev server's courses).
 - **`src/server/engine/`**: the chats and their rules. `conversation.ts`
   (event log and turn queue under every chat); `intake.ts`,

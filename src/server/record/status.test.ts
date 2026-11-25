@@ -433,8 +433,9 @@ describe("retained and slipping", () => {
       is: "attempted",
     },
     {
-      // Slipping needs the miss to be in a review or a gate, as the brief
-      // has it; an old record could miss a passed objective in a check.
+      // Slipping needs the miss to be cold (a review, a gate or a
+      // self-test), as the brief has it; an old record could miss a passed
+      // objective in a check.
       name: "a pass, then a miss in a check",
       log: [right("90"), wrong("50")],
       is: "attempted",
@@ -485,6 +486,23 @@ describe("retained and slipping", () => {
       name: "overridden, then passed and missed in a review",
       log: [override(CHAIN), right("90"), wrong("75", { in: "review" })],
       is: "slipping",
+    },
+    {
+      name: "a pass, then a correct answer in a self-test",
+      log: [right("90"), right("50", { in: "self-test" })],
+      is: "retained",
+    },
+    {
+      name: "a pass, then a miss in a self-test",
+      log: [right("90"), wrong("90", { in: "self-test" })],
+      is: "slipping",
+    },
+    {
+      // As in a review, and unlike a check's miss, which would take the
+      // override's place and leave it attempted.
+      name: "overridden, then missed in a self-test",
+      log: [override(CHAIN), wrong("75", { in: "self-test" })],
+      is: "overridden",
     },
   ];
 

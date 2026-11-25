@@ -3,13 +3,19 @@ import type { StoredUnit } from "../../shared/curriculum.ts";
 import { SESSION_GAP_MS } from "../../shared/events.ts";
 import { type AssessmentMode, EvidenceEntry } from "../../shared/evidence.ts";
 import type { Confidence } from "../../shared/question.ts";
-import { dueCount, pickForGate, pickForReview } from "./review.ts";
+import type { SelfTestScope } from "../../shared/self-test.ts";
+import {
+  dueCount,
+  pickForGate,
+  pickForReview,
+  pickForSelfTest,
+} from "./review.ts";
 
 // Every expected pick below was worked out by hand from the rules in
 // docs/brief.md, "Assessment modes" (review is due after 1, 3, 7, 21, then
-// 60 days by the correct answers in a row in reviews and gates; the most
-// overdue for its interval first), and the statuses from "Mastery and
-// evidence", not by running the code.
+// 60 days by the correct answers in a row in reviews, gates and
+// self-tests; the most overdue for its interval first), and the statuses
+// from "Mastery and evidence", not by running the code.
 
 const AT = new Date("2026-11-18T12:00:00.000Z");
 const MINUTE = 60 * 1000;
@@ -179,8 +185,9 @@ describe("the hour", () => {
 });
 
 describe("when an objective is due", () => {
-  // The row is the correct answers in a review or a gate since the last
-  // miss; the interval is counted from the last correct answer.
+  // The row is the correct answers in a review, a gate or a self-test
+  // since the last miss; the interval is counted from the last correct
+  // answer.
   test.each([
     { row: 0, days: 1 },
     { row: 1, days: 3 },
@@ -246,6 +253,20 @@ describe("when an objective is due", () => {
     // l-one, retained, five days into its 3-day interval, so after l-two;
     // undisputed it would be slipping and first.
     expect(pick(evidence)).toEqual(["l-two", "l-one"]);
+  });
+
+  test("a self-test's correct answer counts in the row, as a review's does", () => {
+    const evidence = [
+      // l-one: passed five days ago, right in a self-test two days ago: a
+      // row of one, due three days after it, so not yet.
+      pass("l-one", ago(5 * DAY)),
+      right("l-one", { in: "self-test", at: ago(2 * DAY) }),
+      // l-two the same, but right in a check: a row of none, due a day
+      // after it, so due.
+      pass("l-two", ago(5 * DAY)),
+      right("l-two", { at: ago(2 * DAY) }),
+    ];
+    expect(pick(evidence)).toEqual(["l-two"]);
   });
 });
 
@@ -486,5 +507,190 @@ describe("what the unit gate asks", () => {
       "l-two",
       "l-three",
     ]);
+  });
+});
+
+describe("what a self-test asks", () => {
+  // Limits in two segments, derivatives in one, integrals not planned.
+  const units: StoredUnit[] = [
+    {
+      ...unit("limits", ["l-one", "l-two", "l-three"]),
+      plan: {
+        objectives: ["l-one", "l-two", "l-three"].map((id) => ({
+          id,
+          statement: `Do ${id}.`,
+        })),
+        segments: [
+          { title: "First", objectives: ["l-one", "l-two"] },
+          { title: "Second", objectives: ["l-three"] },
+        ],
+      },
+    },
+    unit("derivatives", ["d-one", "d-two", "d-three", "d-four", "d-five"]),
+    {
+      id: "integrals",
+      title: "Integrals",
+      goal: "Integrate.",
+      prerequisites: ["derivatives"],
+    },
+  ];
+  const evidence = [
+    // l-one passed thirty days ago; l-two attempted, missed thirty days
+    // ago; l-three passed ten minutes ago, within the hour.
+    pass("l-one"),
+    wrong("l-two"),
+    pass("l-three", ago(10 * MINUTE)),
+    // d-one slipping, missed in a review two days ago; d-two overridden
+    // with no answer; d-three passed fifty days ago and retained by a
+    // review forty days ago, then answered right with help a day ago,
+    // which counts for nothing; d-four never reached; d-five attempted,
+    // missed five minutes ago, within the hour.
+    pass("d-one"),
+    wrong("d-one", { in: "review", at: ago(2 * DAY) }),
+    EvidenceEntry.parse({
+      kind: "override",
+      recordedAt: ago(3 * DAY),
+      objectives: ["d-two"],
+    }),
+    pass("d-three", ago(50 * DAY)),
+    right("d-three", { in: "review", at: ago(40 * DAY) }),
+    right("d-three", { assisted: true, at: ago(DAY) }),
+    wrong("d-five", { at: ago(5 * MINUTE) }),
+  ];
+  /** A seeded source of numbers in [0, 1): Park and Miller's generator, the seed spread first. */
+  const seeded = (seed: number) => {
+    let state = 1 + ((seed * 2_654_435_761) % 2_147_483_646);
+    return () => {
+      state = (state * 16_807) % 2_147_483_647;
+      return (state - 1) / 2_147_483_646;
+    };
+  };
+  const selfTest = (scope: SelfTestScope, count = 10, seed = 1) =>
+    pickForSelfTest(units, evidence, {
+      scope,
+      count,
+      at: AT,
+      random: seeded(seed),
+    });
+  const picked = (scope: SelfTestScope, count = 10, seed = 1) =>
+    selfTest(scope, count, seed)
+      .objectives.map((p) => p.objective)
+      .toSorted();
+
+  test("a unit, a segment and the course hold what has an answer or an override, less what the hour leaves out", () => {
+    expect(selfTest({ kind: "unit", unit: "limits" })).toMatchObject({
+      holds: 3,
+      withinHour: 1,
+    });
+    expect(picked({ kind: "unit", unit: "limits" })).toEqual([
+      "l-one",
+      "l-two",
+    ]);
+    expect(
+      selfTest({ kind: "segment", unit: "limits", segment: 0 }),
+    ).toMatchObject({ holds: 2, withinHour: 0 });
+    expect(picked({ kind: "segment", unit: "limits", segment: 0 })).toEqual([
+      "l-one",
+      "l-two",
+    ]);
+    expect(selfTest({ kind: "segment", unit: "limits", segment: 1 })).toEqual({
+      objectives: [],
+      holds: 1,
+      withinHour: 1,
+    });
+    // d-four never reached, and integrals has no plan; l-three and d-five
+    // answered within the hour.
+    expect(selfTest({ kind: "course" })).toMatchObject({
+      holds: 7,
+      withinHour: 2,
+    });
+    expect(picked({ kind: "course" })).toEqual([
+      "d-one",
+      "d-three",
+      "d-two",
+      "l-one",
+      "l-two",
+    ]);
+    expect(selfTest({ kind: "unit", unit: "integrals" })).toEqual({
+      objectives: [],
+      holds: 0,
+      withinHour: 0,
+    });
+  });
+
+  test("each objective comes with the unit whose plan holds it", () => {
+    expect(
+      selfTest({ kind: "course" })
+        .objectives.toSorted((a, b) => a.objective.localeCompare(b.objective))
+        .map((p) => p.unit),
+    ).toEqual([
+      "derivatives",
+      "derivatives",
+      "derivatives",
+      "limits",
+      "limits",
+    ]);
+  });
+
+  test("when the count cuts the scope, the weakest come first", () => {
+    // d-one slipping; then d-two (no answer) and l-two (missed thirty days
+    // ago), not passed; then, passed or retained, d-three (last right
+    // without help forty days ago) before l-one (thirty days ago).
+    expect(picked({ kind: "course" }, 1)).toEqual(["d-one"]);
+    expect(picked({ kind: "course" }, 2)).toEqual(["d-one", "d-two"]);
+    expect(picked({ kind: "course" }, 3)).toEqual(["d-one", "d-two", "l-two"]);
+    expect(picked({ kind: "course" }, 4)).toEqual([
+      "d-one",
+      "d-three",
+      "d-two",
+      "l-two",
+    ]);
+  });
+
+  test("a mix holds only what has passed, and draws at random", () => {
+    // Passed at least once: l-one, d-one (slipping), d-three, and l-three
+    // within the hour; not l-two (attempted), d-two (overridden) nor d-five
+    // (attempted, within the hour).
+    expect(selfTest({ kind: "mix" })).toMatchObject({
+      holds: 4,
+      withinHour: 1,
+    });
+    expect(picked({ kind: "mix" })).toEqual(["d-one", "d-three", "l-one"]);
+    const draws = new Set<string>();
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const two = picked({ kind: "mix" }, 2, seed);
+      expect(two).toHaveLength(2);
+      for (const id of two) expect(["d-one", "d-three", "l-one"]).toContain(id);
+      draws.add(two.join());
+    }
+    // Weakest first would always draw d-one and d-three.
+    expect(draws.size).toBeGreaterThan(1);
+  });
+
+  test("the objectives are asked in random order", () => {
+    const orders = new Set<string>();
+    for (let seed = 1; seed <= 20; seed += 1) {
+      orders.add(
+        selfTest({ kind: "course" }, 10, seed)
+          .objectives.map((p) => p.objective)
+          .join(),
+      );
+    }
+    expect(orders.size).toBeGreaterThan(1);
+  });
+
+  test("an objective answered exactly an hour ago is asked, as in review", () => {
+    expect(
+      pickForSelfTest(units, [pass("l-one", ago(SESSION_GAP_MS))], {
+        scope: { kind: "unit", unit: "limits" },
+        count: 5,
+        at: AT,
+        random: seeded(1),
+      }),
+    ).toEqual({
+      objectives: [{ unit: "limits", objective: "l-one" }],
+      holds: 1,
+      withinHour: 0,
+    });
   });
 });

@@ -185,6 +185,8 @@ function givenIn(
       return verdict === "correct"
         ? "Testing out"
         : "Testing out, so not counted as a miss";
+    case "self-test":
+      return "In a self-test";
   }
 }
 

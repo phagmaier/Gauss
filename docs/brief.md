@@ -259,20 +259,21 @@ what is due, and on-demand self-test.
   math, written, code: at least one) and how many objectives (5, 10 or
   20). A segment, unit or course holds its objectives that have an answer
   or an override, never one not yet reached; a random mix only those
-  passed at least once. Objectives answered within the hour are left out,
-  and the setup says how many. When the scope holds more than the count,
-  the weakest come first (slipping, then not passed, then passed by the
-  oldest correct answer); a mix picks at random. The picked objectives are
-  asked in mixed order. A segment or unit scope runs in that unit's
-  thread; the course or a mix runs where "Review now" would. Its answers
-  count as review answers do. Each objective gets one question; a miss
-  starts a short detour, and the fresh question on it comes after at
-  least one other objective, when one is left. The tutor asks only the
-  kinds picked, and passes over an objective none of them fits, saying
-  why; that records nothing. A message while a question is open is judged
-  for help as anywhere, and the tutor gives the smallest hint that
-  unblocks, one per request. The learner can end it at any time; what was
-  answered stays recorded (the user's choices, 2026-11-25).
+  passed, retained or slipping. Objectives answered within the hour are
+  left out, and the setup says how many. When the scope holds more than
+  the count, the weakest come first (slipping, then not passed, then
+  passed by the oldest correct answer); a mix picks at random. The picked
+  objectives are asked in mixed order. A segment or unit scope runs in
+  that unit's thread; the course or a mix runs where "Review now" would.
+  Its answers count as review answers do. Each objective gets one
+  question; a miss starts a short detour, and the fresh question on it
+  comes after at least one other objective, when one is left. The tutor
+  asks only the kinds picked, and passes over an objective none of them
+  fits, saying why; that records nothing. A message while a question is
+  open is judged for help as anywhere, and the tutor gives the smallest
+  hint that unblocks, one per request. The learner can end it at any
+  time; what was answered stays recorded (the user's choices,
+  2026-11-25).
 
 ## Sources
 

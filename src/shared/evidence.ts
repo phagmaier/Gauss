@@ -12,10 +12,16 @@ import { AnswerSubmission, Question, Unsettled, Verdict } from "./question.ts";
 
 /**
  * The runs of questions without teaching that a unit's tutor asks: review
- * at the start of a sitting, the unit gate, and the test before a unit is
- * taught.
+ * at the start of a sitting, the unit gate, the test before a unit is
+ * taught, and the self-test the learner sets up (docs/brief.md,
+ * "Assessment modes").
  */
-export const AssessmentMode = z.enum(["review", "gate", "test-out"]);
+export const AssessmentMode = z.enum([
+  "review",
+  "gate",
+  "test-out",
+  "self-test",
+]);
 export type AssessmentMode = z.infer<typeof AssessmentMode>;
 
 /** The assessment an answer was given in, and the unit whose thread held it. */

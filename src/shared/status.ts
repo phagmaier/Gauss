@@ -10,11 +10,11 @@ export const ObjectiveStatus = z.enum([
   "not-started",
   /** Answered, but not passed, slipping or overridden. */
   "attempted",
-  /** Passed, with no answer given in a review or a gate to confirm it. */
+  /** Passed, with no answer given in a review, a gate or a self-test to confirm it. */
   "passed",
-  /** Passed, and confirmed since its last miss by an answer given in a review or a gate. */
+  /** Passed, and confirmed since its last miss by an answer given in a review, a gate or a self-test. */
   "retained",
-  /** It had passed, was then missed in a review or a gate, and has not passed again. Not passed. */
+  /** It had passed, was then missed in a review, a gate or a self-test, and has not passed again. Not passed. */
   "slipping",
   /** The learner moved on without passing it. */
   "overridden",
