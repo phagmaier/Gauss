@@ -76,6 +76,8 @@ the root as an argument). File shapes are the schemas in `src/shared/`
 
 Rules no single file shows:
 
+- **One server per root.** `serve.ts` locks the root directory before
+  seeding or startup recovery. Use a local filesystem.
 - **Derived, never stored.** Objective and unit status, where a course
   stands, progress, review due counts, finished courses, "what I know"
   and calibration are computed from the logs when asked (`record/status.ts`,
@@ -252,9 +254,10 @@ pinned toolchain and dependencies; `mise run check` runs lint, type-check
 and both test suites. `pnpm format` rewrites files: run it once after the
 edits, before `mise run check` and the review, not between edits.
 Focused: `pnpm exec vitest run <file>` or
-`uv run --directory pytools pytest <path>`. The Linux sandbox needs
-`bwrap`, `socat` and `rg` on the machine. Fault injection
-(`scripts/faults.ts`) only in an isolated worktree (`AGENTS.md`).
+`uv run --directory pytools pytest <path>`. The server needs `flock` from
+util-linux. The Linux sandbox needs `bwrap`, `socat` and `rg` on the
+machine. Fault injection (`scripts/faults.ts`) only in an isolated
+worktree (`AGENTS.md`).
 
 - **Vitest**: tests sit beside the code; expected results are worked out
   by hand. Engine flows run on the fake backend; idle closing on

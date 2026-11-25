@@ -34,15 +34,6 @@ try {
   process.exit(1);
 }
 
-if (values.empty !== true) {
-  const seeded = await seedCourses({ path: dataRootPath, plan: scriptedPlan });
-  process.stdout.write(
-    seeded === undefined
-      ? "The data root has courses already; they are used as they are.\n"
-      : `Seeded ${seeded.length} courses: ${seeded.join(", ")}.\n`,
-  );
-}
-
 const backend = createScriptedBackend();
 process.stdout.write("Scripted backend: no model is called.\n");
 await serve({
@@ -56,6 +47,15 @@ await serve({
   // A Codex course needs no Codex here: every role runs on the scripted backend.
   codexUnavailable: async () => undefined,
   dataRootPath,
+  async prepareDataRoot(path) {
+    if (values.empty === true) return;
+    const seeded = await seedCourses({ path, plan: scriptedPlan });
+    process.stdout.write(
+      seeded === undefined
+        ? "The data root has courses already; they are used as they are.\n"
+        : `Seeded ${seeded.length} courses: ${seeded.join(", ")}.\n`,
+    );
+  },
   port: Number(process.env.GAUSS_PORT ?? 4330),
   // Off unless asked for with GAUSS_BACKUP=on (task 2.25).
   backup: process.env.GAUSS_BACKUP === "on",

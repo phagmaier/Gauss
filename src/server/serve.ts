@@ -4,7 +4,9 @@
 // so both run the same server and differ only in the backends and the data
 // root.
 
-import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { closeSync, constants, openSync } from "node:fs";
+import { mkdir, readFile, realpath } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { getRequestListener } from "@hono/node-server";
@@ -72,15 +74,19 @@ export interface EngineBackends {
 export async function serve(
   options: EngineBackends & {
     dataRootPath: string;
+    /** The fake server seeds its record here, only after claiming the root. */
+    prepareDataRoot?: (path: string) => Promise<void>;
     port: number;
     /** Keeps the record's history in git (task 2.25). */
     backup: boolean;
   },
 ): Promise<void> {
-  const { dataRootPath, port } = options;
+  const { port } = options;
+  const dataRootPath = await claimDataRoot(options.dataRootPath);
+  await options.prepareDataRoot?.(dataRootPath);
   const dataRoot = openDataRoot({ path: dataRootPath });
-  // The first use of the record, before the recovery below writes and
-  // before any chat or route exists, so no write of this server is running.
+  // With the root claimed and before any chat or route exists, no other
+  // server can write the files the recovery below treats as interrupted.
   await dataRoot.clearInterruptedWrites((line) =>
     process.stdout.write(`${line}\n`),
   );
@@ -103,7 +109,7 @@ export async function serve(
       })
     : noBackup;
   const { converter, intakes, plannings, units, disputes, notes } =
-    await wireEngine({ ...options, dataRoot, sandbox, backup });
+    await wireEngine({ ...options, dataRootPath, dataRoot, sandbox, backup });
   const api = getRequestListener(
     createApp({
       dataRoot,
@@ -131,8 +137,11 @@ export async function serve(
     }
   });
   server.listen(port, host, () => {
+    const address = server.address();
+    const listeningPort =
+      typeof address === "string" ? port : (address?.port ?? port);
     process.stdout.write(
-      `Gauss is running at http://localhost:${port}/ with its record in ${dataRootPath}\n`,
+      `Gauss is running at http://localhost:${listeningPort}/ with its record in ${dataRootPath}\n`,
     );
   });
 
@@ -151,6 +160,38 @@ export async function serve(
   }
   process.once("SIGINT", () => void shutDown());
   process.once("SIGTERM", () => void shutDown());
+}
+
+/** Claims the directory inode and returns the path the server must use. */
+async function claimDataRoot(path: string): Promise<string> {
+  await mkdir(path, { recursive: true });
+  // Keep record I/O on the locked directory even if an alias is retargeted.
+  const directory = await realpath(path);
+  const fd = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY);
+  try {
+    // The child locks the parent's open file description via fd 3. On
+    // success keep our raw fd open: the kernel releases it with the process,
+    // even on SIGKILL. No lock file or cleanup handler is needed.
+    const { status, error, stderr, signal } = spawnSync("flock", ["-n", "3"], {
+      encoding: "utf8",
+      stdio: ["ignore", "ignore", "pipe", fd],
+    });
+    if (status === 0) return directory;
+    if (status === 1) {
+      throw new Error(
+        `Data root "${path}" is already in use by another Gauss server. Stop that server or choose a different GAUSS_DATA_ROOT.`,
+      );
+    }
+    const detail =
+      error?.message ??
+      (stderr?.trim() || `flock exited with ${signal ?? status}`);
+    throw new Error(
+      `Could not lock data root "${path}" with util-linux flock: ${detail}`,
+    );
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
 }
 
 /**

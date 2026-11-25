@@ -72,10 +72,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   but a resumed tutor session can still remember the refusal. Decide
   whether to clear that stale instruction or recover an undelivered
   planner decision.
-- **B:** Nothing stops two servers from opening one data root (on
-  different ports): the second's start clears the first's uploads and the
-  temporary files of its writes in progress. Decide whether a data root in
-  use should be refused.
 - **B:** Startup clears only interrupted record writes and uploads. A crash
   while a page image renders leaves its `.render-*` scratch folder in the
   source's `pages/`, and a deleted course whose removal failed stays parked
