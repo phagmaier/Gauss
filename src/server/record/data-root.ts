@@ -103,6 +103,7 @@ import {
   appendJsonLines,
   readJsonLines,
 } from "./json-lines.ts";
+import { parkCourse, retryParkedCourses } from "./parked-courses.ts";
 
 /** `GAUSS_DATA_ROOT` when it is set and not empty, otherwise `~/gauss`. */
 export function resolveDataRoot(
@@ -144,6 +145,8 @@ export interface DataRoot {
    * fails after the rename is logged with the folder left behind.
    */
   deleteCourse(id: string): Promise<boolean>;
+  /** Finishes verified course deletions. Call only at locked startup. */
+  clearParkedCourses(log: (line: string) => void): Promise<void>;
   /**
    * The absolute path of the course's workspace (task 3.3): the tutor's
    * working folder, where its sessions run and are kept, and the only one
@@ -1047,32 +1050,23 @@ export function openDataRoot(options: {
 
     async deleteCourse(id) {
       if (!Slug.safeParse(id).success) return false;
-      const folder = join(courses, id);
-      // Hidden and ending in .tmp, so the library and the backup skip it.
-      const parked = join(courses, `.${id}.${randomUUID()}.tmp`);
       // Wait for record recovery and backup staging before moving the folder.
-      const moved = await withFileLock(courseFile(id, "state.json"), () =>
-        withConsistentSnapshot(async () => {
-          try {
-            await rename(folder, parked);
-            return true;
-          } catch (error) {
-            if (hasCode(error, "ENOENT")) return false;
-            throw error;
-          }
-        }),
+      const parked = await withFileLock(courseFile(id, "state.json"), () =>
+        withConsistentSnapshot(() => parkCourse(courses, id)),
       );
-      if (!moved) return false;
+      if (parked === undefined) return false;
       try {
-        await rm(parked, { recursive: true, force: true });
+        await parked.remove();
       } catch (error) {
         console.error(
-          `The deleted course "${id}" could not be removed from ${parked}:`,
+          `The deleted course "${id}" could not be removed from ${parked.path}:`,
           error,
         );
       }
       return true;
     },
+
+    clearParkedCourses: (log) => retryParkedCourses(courses, log),
 
     async workspaceFolder(id) {
       const folder = resolve(courseFile(id, "workspace"));

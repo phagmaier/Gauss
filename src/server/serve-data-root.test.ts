@@ -1,20 +1,29 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import type * as FsPromises from "node:fs/promises";
 import {
   lstat,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   readlink,
+  rename,
   rm,
   symlink,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { openDataRoot } from "./record/data-root.ts";
+
+vi.mock(import("node:fs/promises"), async (original) => {
+  const fs = await original();
+  return { ...fs, rename: vi.fn(fs.rename), unlink: vi.fn(fs.unlink) };
+});
 
 const script = fileURLToPath(
   new URL("../../scripts/dev-fake.ts", import.meta.url),
@@ -246,4 +255,149 @@ test("fake servers keep a data root exclusive until their process exits", async 
     signal: "SIGKILL",
   });
   await listening(launch(root));
+});
+
+test("locked startup finishes only verified parked course deletions", async ({
+  onTestFinished,
+  signal,
+}) => {
+  const dir = await mkdtemp(join(tmpdir(), "gauss-serve-deletion-"));
+  const shutdowns: (() => Promise<unknown>)[] = [];
+  onTestFinished(async () => {
+    await Promise.allSettled(shutdowns.map((stop) => stop()));
+    await rm(dir, { recursive: true, force: true });
+  });
+  function launch(path: string) {
+    signal.throwIfAborted();
+    const server = start(path);
+    shutdowns.push(() => {
+      server.child.kill("SIGTERM");
+      return server.exited;
+    });
+    return listening(server);
+  }
+
+  const root = join(dir, "record");
+  const courses = join(root, "courses");
+  const record = openDataRoot({ path: root });
+
+  const fs = await vi.importActual<typeof FsPromises>("node:fs/promises");
+  async function parked(id: string) {
+    const name = (await readdir(courses)).find((name) =>
+      name.startsWith(`.${id}.`),
+    );
+    if (name === undefined) throw new Error(`No parked entry for ${id}`);
+    const parking = join(courses, name);
+    return { id, parking, course: join(parking, "course") };
+  }
+
+  async function park(title: string) {
+    const { id } = await record.createCourse({ title });
+    // Remove one real file, then fail before the recursive removal can return.
+    vi.mocked(unlink).mockImplementationOnce(async (path) => {
+      await fs.unlink(path);
+      throw new Error("Interrupted recursive removal");
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await record.deleteCourse(id)).toBe(true);
+    } finally {
+      vi.mocked(unlink).mockReset();
+      errors.mockRestore();
+    }
+    const entry = await parked(id);
+    await expect(
+      readFile(join(entry.course, "course.json")),
+    ).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    return entry;
+  }
+
+  const partial = await park("Calculus");
+  await writeFile(join(partial.course, "remaining"), "partially removed");
+  const replacement = await record.createCourse({ title: "Calculus" });
+  expect(replacement.id).toBe(partial.id);
+  const activeWork = join(
+    await record.workspaceFolder(replacement.id),
+    "notes",
+  );
+  await writeFile(activeWork, "active course");
+
+  const { id: unmoved } = await record.createCourse({ title: "Before rename" });
+  vi.mocked(rename).mockImplementation(async (from, to) => {
+    if (String(from).endsWith(`/${unmoved}`))
+      throw new Error("Interrupted move");
+    await fs.rename(from, to);
+  });
+  try {
+    await expect(record.deleteCourse(unmoved)).rejects.toThrow(
+      "Interrupted move",
+    );
+  } finally {
+    vi.mocked(rename).mockReset();
+  }
+  const beforeRename = await parked(unmoved);
+
+  const replaced = await park("Replaced payload");
+  await rename(replaced.course, join(dir, "moved-course"));
+  await mkdir(replaced.course);
+  const unrelated = join(replaced.course, "notes");
+  await writeFile(unrelated, "unrelated replacement");
+
+  const linked = await park("Linked payload");
+  const outside = join(dir, "outside-course");
+  await rename(linked.course, outside);
+  await writeFile(join(outside, "sentinel"), "external target");
+  await symlink(outside, linked.course, "dir");
+  await symlink(outside, join(partial.course, "external"), "dir");
+
+  const legacy = join(
+    courses,
+    ".calculus.12345678-1234-4234-8234-123456789abc.tmp",
+    "course.json",
+  );
+  const lookalike = join(
+    courses,
+    ".lookalike.12345678-1234-4234-8234-123456789abc.tmp",
+    "course",
+    "course.json",
+  );
+  const activeCourseJson = await readFile(
+    join(courses, replacement.id, "course.json"),
+    "utf8",
+  );
+  for (const path of [legacy, lookalike]) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, activeCourseJson);
+  }
+
+  // Even a verified remnant must not be removed through a linked courses/.
+  const aliasRoot = join(dir, "alias-record");
+  await mkdir(aliasRoot);
+  await symlink(courses, join(aliasRoot, "courses"), "dir");
+  await launch(aliasRoot);
+  expect(await readFile(join(partial.course, "remaining"), "utf8")).toBe(
+    "partially removed",
+  );
+
+  await launch(root);
+  await expect(lstat(partial.parking)).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await expect(lstat(beforeRename.parking)).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  expect((await record.readCourse(beforeRename.id))?.course.title).toBe(
+    "Before rename",
+  );
+  expect(await readFile(activeWork, "utf8")).toBe("active course");
+  expect(await readFile(unrelated, "utf8")).toBe("unrelated replacement");
+  for (const path of [legacy, lookalike]) {
+    expect(await readFile(path, "utf8")).toBe(activeCourseJson);
+  }
+  expect(await readlink(linked.course)).toBe(outside);
+  expect(await readFile(join(outside, "sentinel"), "utf8")).toBe(
+    "external target",
+  );
 });

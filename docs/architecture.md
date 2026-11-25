@@ -61,6 +61,7 @@ the root as an argument). File shapes are the schemas in `src/shared/`
   intake/                      working folder of intake and planning sessions; Gauss writes nothing here
   uploads/<conversation id>/   staged sources of an intake or a planning conversation; .first-proposal.json journals an intake's promotion before startup clears uploads
   cache/package-uv/            uv's install cache
+  courses/.<course-id>.<uuid>.tmp/  a deletion's receipt.json and parked course/ (`record/parked-courses.ts`)
   courses/<course-id>/
     course.json  style.md  background.md  curriculum.json  state.json
     .first-proposal-instance.tmp                  identifies the reservation until its first proposal is saved

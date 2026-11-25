@@ -78,3 +78,10 @@ export const Course = z.object({
   reviewOfferedAt: Timestamp.optional(),
 });
 export type Course = z.infer<typeof Course>;
+
+/** The proof stored beside a parked course, never inside its removable tree. */
+export const CourseDeletionReceipt = z.object({
+  operation: z.uuid(),
+  parkingDirectory: z.string().regex(/^\d+:-?\d+$/),
+  courseDirectory: z.string().regex(/^\d+:-?\d+$/),
+});

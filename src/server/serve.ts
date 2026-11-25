@@ -90,6 +90,9 @@ export async function serve(
   await dataRoot.clearInterruptedWrites((line) =>
     process.stdout.write(`${line}\n`),
   );
+  await dataRoot.clearParkedCourses((line) =>
+    process.stdout.write(`${line}\n`),
+  );
   // Recover a first proposal before taking the startup snapshot. An intake
   // that had not made a proposal ends with the server, along with its uploads.
   await dataRoot.clearUploads();
