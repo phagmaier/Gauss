@@ -32,6 +32,8 @@ because code and documents use them.
   user's direction.
 - Stage 6, the tutor's model and teaching instructions (6.17 to 6.19): its
   user check passed on 2026-11-24, walked by the user.
+- Stage 6, a source added after the intake (6.20 to 6.22): its user check
+  passed on 2026-11-25, walked by the user.
 
 ## Stage 6
 
@@ -54,31 +56,6 @@ mix objectives rather than ask several problems on one in a row; a retry
 after feedback is a fresh problem; before posing, fix the model solution
 and look for a shortcut that skips the target; give the smallest hint
 that unblocks, one per request.
-
-A source added after the intake (6.20 to 6.22) is built (`brief.md`,
-"Sources" and "Page"; piece 26, direction A). No shipped prompt text is
-moved or reworded: `course-planner.md` still says the first message gives
-the sources; what a later source is and when it joins is said in the
-header that delivers its `<attached_sources>` block (`ATTACHED_GIVEN` in
-`engine/course-planning.ts`), reusing the intake's wording for a removed
-or refused file, and an open unit's tutor is told in its next header
-(`addedSourcesNote` in `engine/unit-chat.ts`). The new text is tried on a
-real model only in the user check (the user's choice, 2026-11-24).
-
-User check for a source added later: with `pnpm dev:fake`, open "Change
-the curriculum" in a course, attach a file and watch it convert, remove
-it, and attach it again. Send a message with "/read" in it: the scripted
-planner proposes a unit reading the file, the card lists it under
-"Sources it adds", and the file's card shows "The proposal waiting reads
-it" in place of Remove. Apply: the course view lists the source, with
-the line pointing to "Change the curriculum" (a course with no source
-shows that line alone). The pages read as piece 26 shows. Then with
-`pnpm dev` on your own logins: in a course with a unit in progress, open
-"Change the curriculum", attach a paper, ask for units on it, and Apply.
-In the unit open across the Apply, your next message finds a tutor that
-knows the paper and can read from it; a new unit that reads it quotes it
-with verified quotes. The planner's and the tutor's new header lines have
-not run on a real model before this check.
 
 ## Known-gap fixes
 
