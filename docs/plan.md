@@ -53,22 +53,11 @@ after feedback is a fresh problem; before posing, fix the model solution
 and look for a shortcut that skips the target; give the smallest hint
 that unblocks, one per request.
 
-The tutor's model and teaching instructions (6.17 to 6.19): `brief.md`,
-"Teaching style", "Backends and stack" and "Page"; piece 25, direction A.
-Every task keeps one order of precedence for a model: under
-`GAUSS_LIVE_CHECK=1`, `LIVE_CHECK_OPTIONS` and `CODEX_LIVE_CHECK_OPTIONS`
-override everything; otherwise `GAUSS_CLAUDE_MODEL` and `GAUSS_CODEX_MODEL`
-override the setting, and the setting overrides the default. Settings
-live in the data root only, never in a Codex home or `~/.claude`.
+The tutor's model and teaching instructions (6.17 to 6.19) are built
+(`brief.md`, "Teaching style", "Backends and stack" and "Page"; piece 25,
+direction A).
 
-### 6.19 The Settings page — todo
-
-**Needs:** 6.17, 6.18.
-**Why:** The learner reaches both settings from one page (piece 25, direction A).
-**Do:** Routes to read the settings (each backend's chosen and offered models with their descriptions; the learner's text if any, Gauss's text, the fixed paragraph and the limit), to save a model and to save the instructions. The page at `/settings`, opened by "Settings" beside "Profile" in the library's top line, as piece 25's direction A shows it. Remove the pair from `brief.md`'s "Later".
-**Done when:** in Chromium on `pnpm dev:fake` with a fresh root: Settings opens from the library. Picking Sonnet 5.5 and gpt-6.2-sol saves them: `settings.json` holds them and a reload shows them. An edited text saves, shows "Your edit" and Gauss's text in its fold, survives a reload, and `teaching.md` holds it. "Restore Gauss's text" then Save removes `teaching.md`. Text over the limit cannot be saved. `mise run check` passes.
-
-User check for the tutor's model and teaching instructions, after 6.19:
+User check for the tutor's model and teaching instructions:
 with `pnpm dev:fake`, open Settings from the library, pick each model,
 edit the instructions, reload, and restore Gauss's text; the page reads
 as piece 25 shows. Then with `pnpm dev` on your own logins (not

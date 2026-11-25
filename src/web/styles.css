@@ -2766,6 +2766,110 @@ button.uo-head:focus-visible::after {
   white-space: nowrap;
 }
 
+/* the Settings page (piece 25) */
+.set-say {
+  margin: 0 0 1em;
+  color: var(--ink-2);
+  max-width: 36em;
+}
+.set-mc {
+  margin: 0;
+  padding: 0.7em 0 0.9em;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  min-width: 0;
+}
+/* a floated legend sits beside the choices instead of in the border */
+.set-k {
+  float: left;
+  width: 9.5em;
+  padding: 0.5em 0 0;
+  font-weight: 500;
+}
+.set-opts {
+  display: grid;
+  gap: 6px;
+  margin-left: 10.7em;
+}
+.set-opt {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.8em;
+  align-items: baseline;
+  padding: 0.55em 0.85em 0.6em;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.set-opt:hover {
+  border-color: var(--rule-2);
+}
+.set-opt.on {
+  border-color: var(--accent);
+  background: var(--wash);
+}
+.set-opt input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.set-name {
+  font-weight: 500;
+}
+.set-says {
+  grid-column: 2;
+  margin-top: 0.1em;
+  color: var(--ink-2);
+  font-size: 0.9em;
+}
+.set-applied {
+  margin: 0.8em 0 0;
+  color: var(--ink-3);
+  font-size: 0.9em;
+}
+.set-applied.on {
+  color: var(--ink-2);
+}
+.set-text {
+  min-height: 12.5em;
+  resize: vertical;
+  font-family: var(--f-read);
+  font-size: 1.1em;
+  line-height: 1.55;
+}
+.set-whose {
+  color: var(--ink-2);
+}
+.set-fold {
+  margin-top: 1.1em;
+}
+.set-gauss {
+  margin: 0.6em 0 0;
+  padding-left: 1em;
+  border-left: 2px solid var(--rule-2);
+  font-family: var(--f-read);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.set-fixed {
+  margin-top: 1.3em;
+  padding: 0.7em 1em;
+  border: 1px dashed var(--rule-2);
+  border-radius: 10px;
+  font-size: 0.93em;
+  color: var(--ink-2);
+}
+.set-fixed-t {
+  margin: 0;
+}
+.set-fixed-k {
+  display: block;
+  margin-bottom: 0.35em;
+  font: 500 11px / 1.3 var(--f-label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 /* ---- Unit notes, piece 17 ---- */
 .nt-row {
   display: flex;

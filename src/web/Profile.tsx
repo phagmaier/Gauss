@@ -6,11 +6,11 @@
 // changed since the page loaded it, as an approval in another tab can.
 
 import { useEffect, useState } from "react";
-import { ProfileSaved, ProfileView } from "../shared/profile.ts";
+import { PROFILE_LIMIT, ProfileSaved, ProfileView } from "../shared/profile.ts";
 import { getJson, postFor } from "./api.ts";
 import { TopLine } from "./Frame.tsx";
-import { profileFoot } from "./profile.ts";
 import { paths } from "./route.ts";
+import { textFoot } from "./text-foot.ts";
 
 export function Profile() {
   const [view, setView] = useState<ProfileView>();
@@ -47,7 +47,7 @@ export function Profile() {
     } else setProblem(answer.error);
   }
 
-  const foot = profileFoot(text, saved ?? "", justSaved);
+  const foot = textFoot(text, saved ?? "", justSaved, PROFILE_LIMIT);
   return (
     <div className="pg">
       <TopLine

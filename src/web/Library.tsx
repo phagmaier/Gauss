@@ -1,10 +1,11 @@
 // The library (docs/prototype/21-library.html): the courses grouped as in
 // progress, drafts and finished, each group with its count, and "Profile"
-// (18-profile.html) and "New course" at the right of the top line. Every
-// row opens its course view (task 2.28), whose card continues a unit in
-// progress and whose "Review the curriculum" reviews a draft; a row says
-// how many of the course's objectives are due for review, when any are
-// (task 5.24). Calibration is per course, on its "What I know" (task 2.29).
+// (18-profile.html), "Settings" (25-settings.html) and "New course" at the
+// right of the top line. Every row opens its course view (task 2.28), whose
+// card continues a unit in progress and whose "Review the curriculum"
+// reviews a draft; a row says how many of the course's objectives are due
+// for review, when any are (task 5.24). Calibration is per course, on its
+// "What I know" (task 2.29).
 
 import { useEffect, useState } from "react";
 import { IntakeStarted } from "../shared/events.ts";
@@ -52,6 +53,13 @@ export function Library() {
               onClick={() => navigate(paths.profile)}
             >
               Profile
+            </button>
+            <button
+              type="button"
+              className="textbtn"
+              onClick={() => navigate(paths.settings)}
+            >
+              Settings
             </button>
             <button
               type="button"

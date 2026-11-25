@@ -190,9 +190,10 @@ Rules no single file shows:
 - **`src/server/http/`**: `app.ts` (every route, the event stream, the
   host and origin checks), `artifact-frame.ts` (an aid served to its frame).
 - **`src/web/`**: a component per view (`Library`, `Intake`, `Profile`,
-  `Course`, `Planning`, `Session`, `WhatIKnow`, `Notes`, `SourcePane`),
-  its logic in a tested pure module beside it (`session.ts`, `progress.ts`,
-  `diagram.ts`, ...); the thread's timeline is `src/shared/timeline.ts`.
+  `Settings`, `Course`, `Planning`, `Session`, `WhatIKnow`, `Notes`,
+  `SourcePane`), its logic in a tested pure module beside it (`session.ts`,
+  `progress.ts`, `diagram.ts`, ...); the thread's timeline is
+  `src/shared/timeline.ts`.
   `prose.tsx` renders model and learner text as React elements, never
   HTML. `styles.css`: colours as named roles in one block, type registers
   near the top. CMU Serif is in `fonts/`; IBM Plex comes from Google Fonts.

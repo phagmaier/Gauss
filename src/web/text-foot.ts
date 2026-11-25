@@ -1,10 +1,9 @@
-// What the Profile page's foot says about the text in its box
-// (docs/prototype/18-profile.html): its length against the limit, whether
-// it is saved, and whether it can be.
+// What the foot of a text box saved whole says about its text (the Profile
+// page, docs/prototype/18-profile.html; the Settings page's instructions,
+// 25-settings.html): its length against the limit, whether it is saved,
+// and whether it can be.
 
-import { PROFILE_LIMIT } from "../shared/profile.ts";
-
-export interface ProfileFoot {
+export interface TextFoot {
   /** "1,234 of 2,000 characters". */
   count: string;
   /** Longer than the limit. */
@@ -21,17 +20,18 @@ export interface ProfileFoot {
  * save has landed and nothing was typed since. Counted, compared and saved
  * trimmed, as the server keeps it.
  */
-export function profileFoot(
+export function textFoot(
   text: string,
   saved: string,
   justSaved: boolean,
-): ProfileFoot {
+  limit: number,
+): TextFoot {
   const length = text.trim().length;
-  const over = length > PROFILE_LIMIT;
+  const over = length > limit;
   const changed = text.trim() !== saved.trim();
   const number = (n: number) => n.toLocaleString("en-GB");
   return {
-    count: `${number(length)} of ${number(PROFILE_LIMIT)} characters`,
+    count: `${number(length)} of ${number(limit)} characters`,
     over,
     changed,
     canSave: changed && !over && length > 0,

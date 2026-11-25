@@ -54,6 +54,7 @@ import {
   createPackageInstaller,
   type PackageInstaller,
 } from "../engine/packages.ts";
+import { TEACHING_END, TEACHING_START } from "../engine/teaching.ts";
 import { createUnitChats } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
 import type { FileOpener } from "../open-file.ts";
@@ -105,6 +106,20 @@ const OPENING: FakeTurn = [
   { text: "What do you know already? Shall I propose?" },
 ];
 
+/** A tutor prompt with a paragraph the learner can rewrite. */
+const TUTOR = [
+  "You are a test tutor.",
+  "",
+  TEACHING_START,
+  "Plain and",
+  "warm.",
+  TEACHING_END,
+  "",
+  "A style note adjusts",
+  "this.",
+  "",
+].join("\n");
+
 function setUp(
   script: FakeTurn[],
   replies: FakeReply[] = [],
@@ -125,7 +140,7 @@ function setUp(
   });
   const units = createUnitChats({
     backends: { claude: backend },
-    systemPrompt: "You are a test tutor.",
+    systemPrompt: TUTOR,
     dataRoot,
     planner: createUnitPlanner({
       backends: { claude: backend },
@@ -895,6 +910,76 @@ test("the profile route reads the profile with the finished courses, and saves o
     200,
   );
   expect(await root.readProfile()).toBe(full);
+});
+
+test("the settings route reads each backend's tutor model and the instructions with Gauss's texts, and saves a model and the instructions with a backup commit, refusing a model of another backend, text too long, and a stale save", async () => {
+  const { app, commits } = setUp([]);
+  const read = async () => (await app.request("/api/settings")).json();
+  const gauss = {
+    gauss: "Plain and warm.",
+    fixed: "A style note adjusts this.",
+  };
+
+  expect(await read()).toEqual({
+    tutorModels: { claude: "claude-opus-5-5", codex: "gpt-6.1-terra" },
+    teaching: gauss,
+  });
+
+  const chosen = await post(app, "/api/settings/tutor-model", {
+    backend: "codex",
+    model: "gpt-6.2-sol",
+  });
+  expect(chosen.status).toBe(200);
+  expect(await chosen.json()).toEqual({
+    claude: "claude-opus-5-5",
+    codex: "gpt-6.2-sol",
+  });
+  const wrongBackend = await post(app, "/api/settings/tutor-model", {
+    backend: "claude",
+    model: "gpt-6.2-sol",
+  });
+  expect(wrongBackend.status).toBe(400);
+
+  const saved = await post(app, "/api/settings/teaching", {
+    text: " Use British spelling.\n",
+  });
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toEqual({ text: "Use British spelling." });
+  const was = "Use British spelling.";
+  const refused = [
+    [
+      { text: "x".repeat(2001), was },
+      400,
+      "The instructions are longer than 2,000 characters.",
+    ],
+    [
+      { text: "Shorter." },
+      409,
+      "Your instructions were saved in another tab since this page loaded them. Copy your text, reload the page, and edit the saved instructions.",
+    ],
+  ] as const;
+  for (const [body, status, error] of refused) {
+    const response = await post(app, "/api/settings/teaching", body);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error });
+  }
+  expect(await read()).toEqual({
+    tutorModels: { claude: "claude-opus-5-5", codex: "gpt-6.2-sol" },
+    teaching: { text: was, ...gauss },
+  });
+
+  // Gauss's text saved: the learner keeps no text of their own.
+  const restored = await post(app, "/api/settings/teaching", {
+    text: "Plain and warm.",
+    was,
+  });
+  expect(await restored.json()).toEqual({});
+  expect((await read()).teaching).toEqual(gauss);
+  expect(commits).toEqual([
+    "tutor model chosen",
+    "teaching instructions saved",
+    "teaching instructions saved",
+  ]);
 });
 
 // --- Unit chats ----------------------------------------------------------------

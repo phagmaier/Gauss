@@ -441,10 +441,9 @@ detours, source ingestion with verified quotes, artifacts, workspace,
 transcripts, unit notes, library view, backup.
 
 Later: on-demand self-test on a scope the learner picks, cheat sheets,
-handwritten-work photos, teaching instructions the learner can edit, a
-model chosen in the app's settings; starred messages for the notes,
-if the generated notes miss what the learner wants kept. A desktop app only
-once everything else works, if at all.
+handwritten-work photos; starred messages for the notes, if the generated
+notes miss what the learner wants kept. A desktop app only once everything
+else works, if at all.
 
 ## Dropped
 

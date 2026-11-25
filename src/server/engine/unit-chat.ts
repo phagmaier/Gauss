@@ -140,6 +140,7 @@ import {
 import type { SourceConverter } from "./source-convert.ts";
 import { createSourceShelf } from "./source-shelf.ts";
 import {
+  fixedTeaching,
   gaussTeaching,
   splitTutorPrompt,
   type TutorPrompt,
@@ -354,6 +355,8 @@ export interface UnitChats extends CourseHolder {
     text: string,
     was: string | undefined,
   ): Promise<string | undefined>;
+  /** Gauss's paragraph of the tutor prompt and the fixed one after it, as the Settings page shows them. */
+  teachingDefaults(): { gauss: string; fixed: string };
   /** Closes the tutor session of every chat. */
   close(): Promise<void>;
 }
@@ -694,6 +697,12 @@ export function createUnitChats(options: ChatOptions): UnitChats {
       await dataRoot.writeTeaching(kept, was);
       for (const chat of chats.values()) chat.renew();
       return kept;
+    },
+    teachingDefaults() {
+      return {
+        gauss: gaussTeaching(tutorPrompt),
+        fixed: fixedTeaching(tutorPrompt),
+      };
     },
     async close() {
       await Promise.allSettled([...chats.values()].map((c) => c.close()));

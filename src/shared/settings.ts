@@ -94,3 +94,38 @@ export const TeachingText = z
     error: `The instructions are longer than ${TEACHING_LIMIT.toLocaleString("en-GB")} characters.`,
   });
 export type TeachingText = z.infer<typeof TeachingText>;
+
+/** What the Settings page shows. */
+export const SettingsView = z.object({
+  /** The tutor's model for each backend's courses: the one chosen, else the default. */
+  tutorModels: z.object({ claude: z.string(), codex: z.string() }),
+  teaching: z.object({
+    /** The learner's own text; absent while they keep Gauss's. */
+    text: z.string().optional(),
+    /** Gauss's paragraph, its lines joined. */
+    gauss: z.string(),
+    /** The paragraph after it, which the learner cannot change. */
+    fixed: z.string(),
+  }),
+});
+export type SettingsView = z.infer<typeof SettingsView>;
+
+/** A model choice's answer: each backend's tutor model as it now stands. */
+export const TutorModelSaved = SettingsView.shape.tutorModels;
+export type TutorModelSaved = z.infer<typeof TutorModelSaved>;
+
+/**
+ * A save of the teaching instructions: the box's text, and the learner's
+ * text the page loaded (none while they kept Gauss's), so that a save from
+ * another tab meanwhile is not written over unseen. Gauss's text saved
+ * removes the learner's.
+ */
+export const TeachingPost = z.object({
+  text: TeachingText,
+  was: z.string().optional(),
+});
+export type TeachingPost = z.infer<typeof TeachingPost>;
+
+/** A save's answer: the learner's text as kept, absent when it is Gauss's. */
+export const TeachingSaved = z.object({ text: z.string().optional() });
+export type TeachingSaved = z.infer<typeof TeachingSaved>;

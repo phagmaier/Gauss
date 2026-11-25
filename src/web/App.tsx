@@ -1,7 +1,7 @@
 // The page (plan tasks 1.6, 2.11, 2.26, 5.8 and 5.38): the library, the
-// learner profile, an intake, a course, its "What I know", its planning
-// conversation, a unit's session or its notes, chosen by the address. Each
-// view loads its data from the server.
+// learner profile, the settings, an intake, a course, its "What I know",
+// its planning conversation, a unit's session or its notes, chosen by the
+// address. Each view loads its data from the server.
 
 import { Course } from "./Course.tsx";
 import { Intake } from "./Intake.tsx";
@@ -11,6 +11,7 @@ import { Planning } from "./Planning.tsx";
 import { Profile } from "./Profile.tsx";
 import { paths, useRoute } from "./route.ts";
 import { Session } from "./Session.tsx";
+import { Settings } from "./Settings.tsx";
 import { WhatIKnow } from "./WhatIKnow.tsx";
 
 export function App() {
@@ -20,6 +21,8 @@ export function App() {
       return <Library />;
     case "profile":
       return <Profile />;
+    case "settings":
+      return <Settings />;
     // A new key gives each intake and course a view of its own.
     case "intake":
       return <Intake key={route.intakeId} intakeId={route.intakeId} />;

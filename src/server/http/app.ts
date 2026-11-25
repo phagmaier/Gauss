@@ -52,6 +52,15 @@ import {
 } from "../../shared/profile.ts";
 import { AnswerPost, OpenFilePost } from "../../shared/question.ts";
 import {
+  type AppSettings,
+  type SettingsView,
+  TeachingPost,
+  type TeachingSaved,
+  TutorModelPost,
+  type TutorModelSaved,
+  tutorModel,
+} from "../../shared/settings.ts";
+import {
   type CourseSources,
   SectionId,
   sectionsByRef,
@@ -85,6 +94,7 @@ import {
   type DataRoot,
   ProfileChanged,
   type SourceHome,
+  TeachingChanged,
 } from "../record/data-root.ts";
 import { finishedCourses, withProgress } from "../record/progress.ts";
 import { whatIKnow } from "../record/what-i-know.ts";
@@ -475,6 +485,48 @@ export function createApp(options: {
     }
     options.backup?.commit("profile saved");
     return c.json({ text: body.data.text } satisfies ProfileSaved);
+  });
+
+  // --- The app's settings: the tutor's model for each backend's courses,
+  // and the learner's teaching instructions ----------------------------------
+
+  app.get("/api/settings", async (c) => {
+    const [settings, text] = await Promise.all([
+      dataRoot.readSettings(),
+      dataRoot.readTeaching(),
+    ]);
+    return c.json({
+      tutorModels: tutorModels(settings),
+      teaching: {
+        ...(text === undefined ? {} : { text }),
+        ...units.teachingDefaults(),
+      },
+    } satisfies SettingsView);
+  });
+
+  app.post("/api/settings/tutor-model", async (c) => {
+    const body = await readBody(c, TutorModelPost);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const settings = await units.setTutorModel(body.data);
+    options.backup?.commit("tutor model chosen");
+    return c.json(tutorModels(settings) satisfies TutorModelSaved);
+  });
+
+  // Saved only over the text the page loaded, as the profile is.
+  app.post("/api/settings/teaching", async (c) => {
+    const body = await readBody(c, TeachingPost);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    let text: string | undefined;
+    try {
+      text = await units.setTeaching(body.data.text, body.data.was);
+    } catch (error) {
+      if (error instanceof TeachingChanged) {
+        return c.json({ error: TEACHING_CHANGED }, 409);
+      }
+      throw error;
+    }
+    options.backup?.commit("teaching instructions saved");
+    return c.json((text === undefined ? {} : { text }) satisfies TeachingSaved);
   });
 
   // --- Intakes: "New course" starts one; its first proposal makes the course
@@ -971,6 +1023,18 @@ const PROFILE_CHANGED =
   "Your profile was changed since this page loaded it, by a curriculum " +
   "you approved or in another tab. Copy your text, reload the page, and " +
   "edit the saved profile.";
+
+const TEACHING_CHANGED =
+  "Your instructions were saved in another tab since this page loaded " +
+  "them. Copy your text, reload the page, and edit the saved instructions.";
+
+/** Each backend's tutor model as it stands: the one chosen, else the default. */
+function tutorModels(settings: AppSettings): TutorModelSaved {
+  return {
+    claude: tutorModel(settings, "claude"),
+    codex: tutorModel(settings, "codex"),
+  };
+}
 
 /**
  * An artifact's policy. `sandbox` without `allow-same-origin` gives it an
