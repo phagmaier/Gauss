@@ -255,8 +255,15 @@ what is due, and on-demand self-test.
 
 ## Sources
 
-- Accepted: PDF, EPUB, TXT, Markdown, attached in the intake, when a course
-  starts. Adding a source to a course later is not offered yet.
+- Accepted: PDF, EPUB, TXT, Markdown, attached in the intake when a course
+  starts, or later in the course's planning conversation ("Change the
+  curriculum", "Plan what comes next"). A source attached there waits
+  until a change is applied, then joins the course with every other
+  source attached in that conversation, whether or not a unit reads it; a
+  conversation that applies nothing adds nothing. Until then the learner
+  can remove it, except while the proposal waiting reads it. A source in a
+  course stays, and open units' tutors get a new one from the learner's
+  next message (the user's choices, 2026-11-24).
 - Converted once into per-section text files with an outline. Units point at
   sections. A segment can narrow its reading to specific pages or paragraphs;
   the tutor starts there and can read surrounding text as needed. In
@@ -421,15 +428,20 @@ what it tried and what was turned down. Beyond them:
   or when the install failed. The card closing a unit's last segment says
   the gate comes next.
 - **Course view**: a library row opens it, drafts too. It lists the
-  sources and each unit's sections, with "Review now" and "Change the
+  sources, ending with a line that says a source is added in "Change the
+  curriculum", and each unit's sections, with "Review now" and "Change the
   curriculum" ("Plan what comes next" once the course is finished). An
   attached source can be removed until the first proposal; a verified
   quote's citation carries a check.
+- **Planning**: a source is attached as in the intake (piece 26, direction
+  A). Its card says it joins when a change is applied, and the change card
+  lists the sources it adds.
 - **Settings**: one app-wide page, opened by "Settings" beside "Profile"
   in the library's top line (piece 25, direction A). Picking a model
   saves it at once. The instructions box works as the Profile page's,
   with "Restore Gauss's text" added, and under an edit Gauss's text in a
-  fold. The paragraph that cannot be changed is shown apart from the box.
+  fold. The paragraph that cannot be changed is shown apart from the box,
+  in `tutor.md`'s own words (the user's choice, 2026-11-24).
 
 ## Scope
 

@@ -1,0 +1,224 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Stage 6, piece 26: a source added to an approved
+  course, in the planning conversation that "Change the curriculum" (or
+  "Plan what comes next") opens, in the redesign's look (look.css).
+  SETTLED 2026-11-24: the user took direction A, as shown. Rejected: B (the
+  sources waiting in a strip above the message box) and C (said only by
+  Apply's button and the line at the top of the page).
+
+  What it answers, from the user's decisions of 2026-11-24 (brief.md,
+  "Sources" and "Page"):
+  - A source is added in the planning conversation, with the clip in its
+    message box or by dropping a file, as in the intake (piece 22). Not on
+    the course view.
+  - It joins the course only when a change is applied. Until then it
+    waits in the conversation and can be removed. Apply adds every source
+    attached in that conversation, whether or not a unit reads it. A
+    conversation that applies nothing adds nothing, and a restart before
+    Apply drops the file.
+  - The card while converting, what was found and why a file was refused
+    are piece 22's. The refusal cards are not repeated here.
+
+  The directions (the bar still switches them):
+  - A, on its card (chosen): the source's card in the thread says it
+    "Joins when you apply", with "Remove" until a proposal reads it. The
+    change card has a section "Sources it adds", as it has one for the
+    style note. After Apply the card says "Added to the course".
+  - B, a strip above the box: the sources waiting to join sit in a strip
+    over the message box, each with Outline and Remove, so they stay in
+    view however long the conversation runs. The card in the thread only
+    reports the conversion. The change card's foot says that Apply adds
+    them.
+  - C, said at Apply: the card as in A but with no section on the change
+    card. Instead, the button reads "Apply and add 1 source", and the
+    line at the top of the page names what waits.
+
+  The same in every direction:
+  - The page's own opening question says that a source can be attached
+    here and joins the course when a change is applied.
+  - The course view's Sources section ends with a line that sends the
+    learner to "Change the curriculum" to add one. A course with no source
+    shows the section with that line alone.
+  - "Remove" is gone while the proposal waiting reads the source: removing
+    it would leave the proposal reading a missing source. Removing it after
+    "Keep the current one", or before any proposal, works, and the
+    planner's next turn is told.
+
+  The bar at the bottom left picks the direction, the moment and the
+  theme. Keys: H hides the bar.
+
+  Everything is simulated: the second book, its outline and the units are
+  invented. Send, the clip, Outline and the diagram do nothing here.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 26: a source added later</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="look.css">
+<style>
+.mk{font:500 9.5px/1 var(--f-label);letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-left:.6em;vertical-align:.25em}
+.cpu>li.same{opacity:.62}
+/* B: the sources waiting to join, above the message box */
+.wait-strip{max-width:calc(var(--measure) + 24px);margin:0 auto 8px;display:flex;flex-wrap:wrap;align-items:baseline;gap:.4em 1.2em;
+  padding:8px 14px;border:1px dashed var(--rule-2);border-radius:12px;font-size:13.5px;color:var(--ink-2)}
+.wait-strip .t{color:var(--ink)}
+.wait-strip .r{margin-left:auto;display:flex;gap:1.1em}
+.hint{font-size:13.5px;color:var(--ink-3);margin:.9em 0 0}
+.hint button{font-size:13.5px}
+.cv-units{list-style:none;margin:0;padding:0;font-size:15px;color:var(--ink-2)}
+.cv-units li{padding:.35em 0;border-bottom:1px solid var(--rule)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="bar"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+const COURSE = 'Reading Hegel\'s Phenomenology';
+const BOOK = {title: 'The Phenomenology of Spirit', file: 'hegel-phenomenology-inwood.pdf', format: 'PDF', size: '543 pages', sections: 141, read: 13};
+const NEW = {title: 'Hegel\'s Phenomenology: The Sociality of Reason', short: 'Pinkard', file: 'pinkard-sociality-of-reason.pdf', bytes: '3.1 MB', format: 'PDF',
+  pages: 452, sections: 38, entries: 31, cut: 'Chapter 4 into 3 parts, Chapter 6 into 4, and 2 more'};
+const UNITS = [
+  ['What a preface cannot do', 'started'],
+  ['Substance as subject'],
+  ['Knowing as a test'],
+  ['Consciousness'],
+];
+const ADDED = [
+  ['Recognition and its failures', 'Explain why, for Hegel, self-consciousness needs another self-consciousness, and how mastery and bondage fail to give it.',
+    [['IV. The Truth of Self-certainty', 'pp. 104–108'], ['Pinkard, Chapter 3: The sociality of self-consciousness', 'pp. 46–78']], [4]],
+  ['Freedom in thought', 'Say what stoicism and scepticism get right about freedom, and why the unhappy consciousness follows from them.',
+    [['B. Freedom of Self-consciousness, parts 1 and 2', 'pp. 116–133'], ['Pinkard, Chapter 4, part 1', 'pp. 79–96']], [5]],
+];
+
+/* ---------------- state ---------------- */
+const st = {dir: 'a', moment: 'opening', removed: false, theme: 'frappe'};
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const order = ['opening', 'converting', 'waiting', 'proposal', 'applied', 'course'];
+const past = m => order.indexOf(st.moment) >= order.indexOf(m);
+const SEND = '<svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const CLIP = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 8.6 9 14.1a3.6 3.6 0 0 1-5.1-5.1l5.8-5.8a2.4 2.4 0 0 1 3.4 3.4L7.4 12.3a1.2 1.2 0 0 1-1.7-1.7l5.2-5.2"/></svg>';
+const DOC = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z"/><path d="M9 1.8V5.2h3.5"/></svg>';
+const BK = '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.2c2-.9 4-.9 6 .4 2-1.3 4-1.3 6-.4v9.6c-2-.9-4-.9-6 .4-2-1.3-4-1.3-6-.4z"/><path d="M8 3.6v9.6"/></svg>';
+
+/* ---------------- the planning conversation ---------------- */
+const tutor = html => `<div class="tutor read">${html}</div>`;
+const you = text => `<div class="you">${text}</div>`;
+const OPENING = 'What would you like to change? The planner can add, drop, reorder or reword units. A unit you have started can be renamed or given a new prerequisite, but not dropped. To teach from another book or paper, attach it here; it joins the course when you apply a change.';
+
+function head() {
+  const waits = st.dir === 'c' && past('waiting') && !past('applied') && !st.removed;
+  return `<section class="seg"><span class="lbl">Change the curriculum</span><h2 class="title">${COURSE}</h2>
+    <ul class="seg-objs"><li>4 units and 1 source now. Nothing changes until you apply a proposal.${waits ? ` <i>${NEW.title}</i> waits to join the course with it.` : ''}</li></ul></section>`;
+}
+function sourceCard() {
+  if (st.moment === 'converting') {
+    return `<div class="srcc" aria-live="polite"><div class="srcc-h"><span class="lbl">Source</span><span>${NEW.format}</span><span class="r"><span class="spin" aria-hidden="true"></span>Converting</span></div>
+      <div class="file">${DOC}<span>${NEW.file} · ${NEW.bytes}</span></div>
+      <p class="says" style="border:0;padding:0;margin-top:.5em">Finding the text, its pages and its sections. You can write meanwhile; your message goes once this is done.</p></div>`;
+  }
+  const applied = past('applied');
+  const reads = st.moment === 'proposal';
+  const state = applied ? 'Added to the course' : st.dir === 'b' ? 'Converted' : 'Joins when you apply';
+  const foot = st.dir === 'b' || applied ? '<button class="link" type="button">Outline</button>'
+    : `<button class="link" type="button">Outline</button>${reads ? '<span class="hint" style="margin:0">The proposal waiting reads it</span>' : '<button class="link" type="button" data-act="remove">Remove</button>'}`;
+  return `<div class="srcc"><div class="srcc-h"><span class="lbl">Source</span><span>${NEW.format}</span><span class="r">${state}</span></div>
+    <div class="title">${NEW.title}</div><div class="file">${DOC}<span>${NEW.file} · ${NEW.bytes}</span></div>
+    <ul class="facts"><li><b>${NEW.pages} pages</b>, with its own page numbers</li>
+      <li><b>${NEW.sections} sections</b>, from the book's ${NEW.entries} bookmarks</li>
+      <li><b>4 long stretches cut into parts</b>, between paragraphs: ${NEW.cut}</li></ul>
+    <div class="srcc-foot">${foot}</div></div>`;
+}
+function reads(list) {
+  return `<div class="reads"><span class="k">Reads</span><ul>${list.map(([t, p]) => `<li>${t}<span class="pl">${p}</span></li>`).join('')}</ul></div>`;
+}
+function proposal() {
+  const kept = UNITS.map(([t], i) => `<li class="same"><span class="n">${i + 1}</span><div><div class="title">${t}</div></div></li>`).join('');
+  const added = ADDED.map(([t, g, r, pre], i) => `<li><span class="n">${i + 5}</span><div><div class="title">${t}<span class="mk">New</span></div><div class="g">${g}</div>${reads(r)}
+    <div class="m">Builds on unit ${pre.join(' and ')}</div></div></li>`).join('');
+  const applied = past('applied');
+  const sec = st.dir === 'a' ? `<section class="cs"><div class="cs-h"><span class="lbl">Sources it adds</span></div>
+      <p class="cs-t"><i>${NEW.title}</i>, ${NEW.pages} pages. The new units read 4 of its ${NEW.sections} sections. <button class="link" type="button">Outline</button></p></section>` : '';
+  const footNote = st.dir === 'b' && !applied ? `<span class="hint" style="margin:0">Applying also adds <i>${NEW.short}</i> to the course's sources.</span>` : '';
+  const button = applied ? '<span class="hint" style="margin:0">Applied</span>'
+    : `<div style="display:flex;gap:1.2em;align-items:center"><button class="link" type="button">Keep the current one</button><button class="btn" type="button" data-act="apply">${st.dir === 'c' ? 'Apply and add 1 source' : 'Apply'}</button></div>`;
+  return `<div class="card ${applied ? '' : 'live'}"><div class="card-h"><span class="lbl">Proposed change</span><span class="r">2 new units</span></div>
+    <ul class="cpu">${kept}${added}</ul>${sec}
+    <div class="card-foot"><button class="link" type="button">Show the diagram</button>${footNote}${button}</div></div>`;
+}
+function thread() {
+  let h = head() + tutor(`<p>${OPENING}</p>`);
+  if (st.moment === 'opening') return h;
+  if (st.removed) return h + `<p class="note-line">You removed <i>${NEW.title}</i>. The planner will be told when you next write.</p>`;
+  h += sourceCard();
+  if (st.moment === 'converting') return h;
+  h += you('After Consciousness, I want to go on into Self-consciousness, reading Pinkard beside Hegel.');
+  if (st.moment === 'waiting') return h;
+  h += tutor('<p>I have Pinkard\'s outline. Two new units take you through Self-consciousness, each reading Hegel\'s text first and then the chapter of Pinkard on it. The four units you have stay as they are.</p>') + proposal();
+  if (past('applied')) h += '<p class="note-line">Applied. Back to the <a href="#">course</a>.</p>';
+  return h;
+}
+function strip() {
+  if (st.dir !== 'b' || !past('waiting') || past('applied') || st.removed) return '';
+  const rm = st.moment === 'proposal' ? '<span>The proposal waiting reads it</span>' : '<button class="link" type="button" data-act="remove">Remove</button>';
+  return `<div class="wait-strip"><span class="lbl">Joins when you apply</span><span class="t">${NEW.title}</span><span class="r"><button class="link" type="button">Outline</button>${rm}</span></div>`;
+}
+
+/* ---------------- the course view, after Apply ---------------- */
+function courseView() {
+  const units = [...UNITS.map(([t]) => t), ...ADDED.map(([t]) => t)].map((t, i) => `<li>Unit ${i + 1} · ${t}</li>`).join('');
+  const row = (s, m) => `<li><button type="button">${BK}<span class="title">${s.title}</span><span class="go">Outline</span><span class="m">${m}</span></button></li>`;
+  return `<div class="pg"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span><span class="here"><span class="t">${COURSE}</span></span></nav></header>
+    <div class="pg-scroll"><div class="pg-col"><h1 class="title">${COURSE}</h1>
+      <p class="proto">The units are cut short here; piece 20 shows them. Only the Sources section is new.</p>
+      <div class="sec"><span class="lbl">Units</span></div><ul class="cv-units">${units}</ul>
+      <div class="sec"><span class="lbl">Sources</span></div>
+      <ul class="srcs">${row(BOOK, `${BOOK.format} · ${BOOK.size} · ${BOOK.sections} sections · the units read ${BOOK.read} · ${BOOK.file}`)}
+        ${row(NEW, `${NEW.format} · ${NEW.pages} pages · ${NEW.sections} sections · the units read 4 · ${NEW.file}`)}</ul>
+      <p class="hint">To add a book or paper, attach it in <button class="link" type="button">Change the curriculum</button>. It joins the course when you apply a change.</p>
+    </div></div></div>`;
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  if (st.moment === 'course') { app.innerHTML = courseView(); bar(); return; }
+  const converting = st.moment === 'converting';
+  const box = `${strip()}<form class="box"><button class="att" type="button" aria-label="Attach a source: PDF, EPUB, text or Markdown" title="Attach a source: PDF, EPUB, text or Markdown">${CLIP}</button>
+    <textarea rows="1" placeholder="${st.moment === 'proposal' ? 'Push back, or ask a question' : 'Message the planner'}" aria-label="Message">${converting ? 'After Consciousness, I want to go on into Self-consciousness, reading Pinkard beside Hegel.' : ''}</textarea>
+    <button class="send" aria-label="Send" disabled>${SEND}</button></form>`;
+  app.innerHTML = `<div class="th"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span>
+      <a href="#">${COURSE}</a><span class="sep">/</span><span class="here"><span class="t">Change the curriculum</span></span></nav></header>
+    <div class="th-scroll" id="scroll"><div class="th-col">${thread()}</div></div>
+    <div class="th-foot">${box}</div></div>`;
+  const s = $('#scroll'); s.style.scrollBehavior = 'auto'; s.scrollTop = s.scrollHeight; s.style.scrollBehavior = '';
+  bar();
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-act],[data-bar]');
+  if (!t) return;
+  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; st.removed = false; render(); return; }
+  if (t.dataset.act === 'remove') { st.removed = true; render(); }
+  if (t.dataset.act === 'apply') { st.moment = 'applied'; render(); }
+});
+app.addEventListener('submit', e => e.preventDefault());
+document.addEventListener('keydown', e => { if (e.key === 'h' && !e.target.matches?.('textarea,input')) document.body.classList.toggle('nobar'); });
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, n]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${st[k] === v}">${n}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('dir', 'Direction', [['a', 'A: on its card (chosen)'], ['b', 'B: a strip above the box (rejected)'], ['c', 'C: said at Apply (rejected)']])
+    + grp('moment', 'Moment', [['opening', 'Opened'], ['converting', 'Converting'], ['waiting', 'Waiting'], ['proposal', 'A proposal reads it'], ['applied', 'Applied'], ['course', 'The course view after']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">Remove and Apply work · H hides this</div>';
+}
+render();
+</script>
+</body>
+</html>

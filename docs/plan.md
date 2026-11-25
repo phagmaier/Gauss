@@ -36,11 +36,11 @@ because code and documents use them.
 ## Stage 6
 
 Self-test, cheat sheets, photo input; starred messages for the notes, if
-the generated notes miss what the learner wants kept; a source added to a
-course after its intake, text recognition for scanned PDFs, and questions
-on a source's figure (left out of stage 4); ranking passage matches with a
-cheap model, if the learner's use shows local search leaves too many
-plausible matches. Each is planned when chosen.
+the generated notes miss what the learner wants kept; text recognition
+for scanned PDFs, and questions on a source's figure (left out of stage
+4); ranking passage matches with a cheap model, if the learner's use
+shows local search leaves too many plausible matches. Each is planned
+when chosen.
 
 Self-test, as the user described it on 2026-11-19 (optional, after
 everything else): the learner picks the scope (a segment, a unit, the
@@ -54,6 +54,44 @@ mix objectives rather than ask several problems on one in a row; a retry
 after feedback is a fresh problem; before posing, fix the model solution
 and look for a shortcut that skips the target; give the smallest hint
 that unblocks, one per request.
+
+A source added after the intake (6.20 to 6.22): `brief.md`, "Sources" and
+"Page"; piece 26, direction A. No shipped prompt text is moved or
+reworded: `course-planner.md` still says the first message gives the
+sources; what a later source is and when it joins is said in the header
+that delivers its `<sources>` block, reusing the intake's wording for a
+removed or refused file. The new text is tried on a real model only in
+the user check (the user's choice, 2026-11-24).
+
+### 6.20 A source attached in the planning conversation — todo
+
+**Needs:** nothing open.
+**Why:** Only the intake attaches sources (`engine/intake-sources.ts`); the course planner is given the course's sources in its first turn only, since they never changed after approval (`sourcesBlock` in `engine/course-planning.ts`). The learner now attaches one in the planning conversation, and it joins the course when a change is applied.
+**Do:** Generalise `intake-sources.ts` so a planning conversation holds its attachments in `uploads/<planning id>/` until Apply, each under an id that no source of the course nor another waiting one has (`moveUpload` refuses a taken path). Routes under the planning path to attach, remove, and read a waiting source's outline and sections, as the intake's. The planner's next turn gets the `<sources>` block for what was attached, removed or refused since, under a header saying an attached source joins the course when a change is applied. `amend_curriculum` in the conversation checks sections against the course's sources and the waiting ones, and refuses a waiting one the planner has not been shown, as the intake does. Remove is refused while the proposal waiting reads the source. Apply is refused while a file converts; otherwise it moves every waiting source into the course, then writes the change (a crash between leaves the sources in the course with no change: say so beside the code). A conversation that ends without Apply, or a restart, leaves the course's sources as they were; startup clears the uploads.
+**Done when:** engine tests on the fake backend with a temporary root show: after an attach the planner's next turn carries the source's outline and the header's rule; a proposal reading it is accepted and one reading a removed source refused; Remove is refused while the waiting proposal reads it and allowed after "Keep the current one"; Apply adds every waiting source with the change; a conversation closed without Apply leaves `readSources` unchanged and its uploads removed; an id taken by the course's source gets another. `mise run check` passes.
+
+### 6.21 Open units take in a source added — todo
+
+**Needs:** 6.20.
+**Why:** An open unit reads its course's sources once when it loads (`unit-chat.ts`, "A course's sources do not change once it has units"), and the quote index keys a course's texts by course and instance alone (`source-quote-index.ts`). A source added by Apply reaches open units' tutors from the learner's next message.
+**Do:** When Apply adds sources, each open chat of the course reloads them into its context and source shelf, the quote index's key includes the course's source ids, and the chat renews its session so that the next turn's system prompt carries the new outline; that turn's header names the source added, once. Fix `architecture.md`'s passage rule ("a course's sources do not change after intake") to what holds now: a source never changes once in a course.
+**Done when:** a fake-backend test with a unit open across a planning Apply that adds a source shows: the next turn resumes with the new outline in the system prompt and the header's line once; `read_section` and `quote_source` work on the new source; a quote of an earlier source still verifies. `mise run check` passes.
+
+### 6.22 The page for a source added later — todo
+
+**Needs:** 6.20; 6.21 for the user check.
+**Why:** The learner attaches a source in "Change the curriculum" or "Plan what comes next" (piece 26, direction A).
+**Do:** In `Planning.tsx`: the clip in the message box and a dropped file, as `Intake.tsx` has them; piece 22's card, saying "Joins when you apply" with Remove (none while the proposal waiting reads it), and "Added to the course" after Apply; its outline in the side pane. The page's opening question says a source can be attached there. The change card, in the planning conversation, has "Sources it adds", and its "Reads" lines name a waiting source's sections. The course view's Sources section ends with the line to "Change the curriculum", alone in a course with no source. A scripted-backend command proposes a unit reading the newest waiting source, for `pnpm dev:fake`.
+**Done when:** in Chromium on `pnpm dev:fake` with a fresh root: in "Change the curriculum" a file is attached, converts, is removed, is attached again; a scripted proposal reads it and lists it under "Sources it adds"; its card shows no Remove then; Apply returns to the course view, which lists the source and the line. The page reads as piece 26 shows. `mise run check` passes.
+
+User check for a source added later, after 6.22: with `pnpm dev:fake`,
+walk 6.22's steps and see that the pages read as piece 26 shows. Then
+with `pnpm dev` on your own logins: in a course with a unit in progress,
+open "Change the curriculum", attach a paper, ask for units on it, and
+Apply. In the unit open across the Apply, your next message finds a tutor
+that knows the paper and can read from it; a new unit that reads it
+quotes it with verified quotes. The planner's and the tutor's new header
+lines have not run on a real model before this check.
 
 ## Known-gap fixes
 
