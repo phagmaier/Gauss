@@ -48,7 +48,37 @@ chosen.
 
 ## Known-gap fixes
 
-None open.
+### K.27 A resumed Codex thread lacking tools starts anew (todo)
+
+A Codex thread keeps the tools it began with (`findings.md`, "Codex"),
+so one begun in a course with no source lacks the source tools once the
+course gains one, and one begun before the self-test lacks
+`pass_over_objective`; after a restart its instructions and headers
+offer what it lacks. The user's choice (2026-11-25): start a new
+conversation rather than keep the thread with only its tools.
+
+Keep, beside `tutorSessionId`, the names of every tool a Codex thread
+began with (teaching, file and command): the app-server reports none.
+A unit resuming a kept Codex thread whose names differ from a new
+thread's, or with none kept, starts a new conversation instead, as for
+a thread not found: "This conversation is new" and the handoff in its
+header, and on the page a fresh-start line of its own: "The earlier
+conversation lacks tools the tutor needs now, so it started a new one
+from your progress." An open thread, or one resumed in the same
+process, is unchanged (a source added mid-conversation still waits for
+"Start fresh"). Update brief "Sources", findings "Codex" and the
+comment on `sessionSources` in `unit-chat.ts`.
+
+Done when: engine tests on the fake backend in a temporary data root
+show, for a Codex course: (1) a unit whose thread began without a
+source, reopened after the course gains one, sends its next turn to a
+new session with the source tools, the source in its instructions,
+"This conversation is new" and the new fresh-start reason; (2) a kept
+thread whose recorded tools lack `pass_over_objective`, or that has
+none recorded, reopened during a self-test, starts a new session that
+has it; (3) a thread whose names match resumes, including after a
+second source joins a course that had one; a Claude course resumes as
+before. `mise run check` passes.
 
 ## Known gaps
 
@@ -88,15 +118,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 
 **Tutor, grading and judging**
 
-- **B:** A Codex tutor's thread that began in a course with no source
-  keeps lacking the source tools after the course gains one. Once a
-  restart resumes it, its instructions and headers offer the source and
-  the tools it lacks, and a line saying it cannot read the source, not yet
-  delivered, is lost. Likewise a Codex thread begun before the self-test's
-  pass-over tool existed lacks it: its self-test header offers a tool the
-  thread does not have, until "Start fresh" or another unit. Decide
-  whether Gauss should record which tools a thread began with, or start a
-  new one.
 - A check question on a one-claim explanation objective can ask for
   reasoning the lesson or detour already gave (`findings.md`, "Tutor";
   a Codex tutor too, "Codex"),
