@@ -39,6 +39,8 @@ because code and documents use them.
 - Known-gap fixes K.31 and K.32 (the test's word and a tested-out unit):
   their user check passed on 2026-11-25, walked through in Chromium on
   `pnpm dev:fake` by the agent at the user's direction.
+- Stage 6, photos in messages (6.27 to 6.29): its user check passed on
+  2026-11-26, walked by the user.
 
 ## Stage 6
 
@@ -47,30 +49,6 @@ what the learner wants kept; text recognition for scanned PDFs, and
 questions on a source's figure (left out of stage 4); ranking passage
 matches with a cheap model, if the learner's use shows local search leaves
 too many plausible matches. Each is planned when chosen.
-
-Photos in messages (6.27 to 6.29): `brief.md`, "Other features",
-"Photos"; piece 28. A photo goes to the tutor inside the learner's turn.
-A tool the tutor would have to call is not used, because a tutor sent to
-a page image looked at it only when asked (the C gap on `tutor.md`'s
-garbled page, below). No shipped prompt text is reworded. The words
-telling the tutor and the help judge that a message has photos are new
-model-facing text, first read by a real model in the user check, as is a
-user turn's image on either backend.
-
-User check for photos. First, on `pnpm dev:fake` with a fresh root, open
-"Calculus I", unit 1. Attach a photo from disk, paste a screenshot,
-remove one, and send with a line of text: the thread shows the photo, and
-the scripted tutor says it sees one. Open the photo at full size. Try a
-HEIC file and a fifth photo: each is refused with its reason. Unit 1 is
-finished in the seed, so open unit 5, "The integral": press "I'm ready
-for the check", send a photo while the check question is open, then
-answer it. Restart the server: the photos are still in unit 1's thread.
-Export its transcript and open it from disk: the photos are in it. Then,
-on `pnpm check:live` with a fresh root (a real model, run when you do
-this check), start a small course on Claude and another on Codex. In
-each, photograph a page of handwritten working with one deliberate slip,
-send it with "Where did I go wrong?", and see whether the tutor reads the
-working and finds the slip.
 
 ## Known gaps
 
