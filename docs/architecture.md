@@ -33,7 +33,8 @@ src/shared/    zod schemas (record files, questions, events, route bodies) and p
 src/server/    main.ts, serve.ts (start, and wiring shared with the dev server); sandbox-command.ts (what a
                sandboxed command gets); open-file.ts (the system's opener); record/ engine/ tools/ backends/ http/
 src/web/       the React page, built by Vite
-pytools/       convert.py (a source into outline and sections; PDF page images), mathcheck.py (symbolic check),
+pytools/       convert.py (a source into outline and sections; PDF page images), photo.py (a learner's photo as the
+               tutor's JPEG), mathcheck.py (symbolic check),
                sandbox_exec.py (seccomp workload filter), sandbox_verify.py (exit status apart from output); tests/
 scripts/       dev-fake.ts (server with no model); faults.ts (fault injection);
                grade-set.ts, judge-set.ts, decide-set.ts run grader-set.ts, help-set.ts, dispute-set.ts on a real model
@@ -60,6 +61,7 @@ the root as an argument). File shapes are the schemas in `src/shared/`
   .notes-write.json            journal, only while unit notes are being published
   intake/                      working folder of intake and planning sessions; Gauss writes nothing here
   uploads/<conversation id>/   staged sources of an intake or a planning conversation; .first-proposal.json journals an intake's promotion before startup clears uploads
+  uploads/photos/<id>.jpg      a photo staged for a message not yet sent
   cache/package-uv/            uv's install cache
   courses/.<course-id>.<uuid>.tmp/  a deletion's receipt.json and parked course/ (`record/parked-courses.ts`)
   courses/<course-id>/
@@ -70,6 +72,7 @@ the root as an argument). File shapes are the schemas in `src/shared/`
     sessions/<unit-id>.<n>.jsonl                  a unit's session n: its page events
     sources/<source-id>/                          original.<ext>, outline.json, sections/<id>.md, pages/ (PNG cache)
     artifacts/<n>-<title>.html                    the tutor's aids, never overwritten
+    photos/<id>.jpg                               the learner's photos, kept when their message is sent
     notes/<unit-id>.html, .json                   unit notes, and the writer's document
     packages/, .package-install.tmp/              the course's uv project; an install's rollback journal
     workspace/                                    the tutor's working folder; holds the installed .venv/
@@ -160,7 +163,9 @@ Rules no single file shows:
   `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,
   `math-check.ts`, `code-run.ts`, `help-judge.ts`, `disputes.ts`,
   `dispute-judge.ts`. Commands: `sandbox.ts` (the only way the engine runs
-  model- or learner-written input), `source-convert.ts`, `packages.ts`.
+  model- or learner-written input), `pytool.ts` (a `pytools/` script run
+  in it on a file from outside), `source-convert.ts`, `photos.ts` (a
+  photo taken in and staged), `packages.ts`.
   Sources: `source-text.ts` (an outline and a section as a model reads
   them), `source-shelf.ts` (what the source tools read, view, quote and
   search), `source-quote-index.ts` with `source-quote-worker.ts` (a

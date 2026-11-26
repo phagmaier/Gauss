@@ -624,7 +624,7 @@ function attachedText(outline: Outline): string {
 }
 
 /** Why a file is too large: its size, where it is known and reads apart from the limit. */
-function tooLarge(size: number | undefined, limit: number): string {
+export function tooLarge(size: number | undefined, limit: number): string {
   const most = formatBytes(limit);
   return size === undefined || formatBytes(size) === most
     ? `It is more than ${most}, the most Gauss takes.`
@@ -648,7 +648,7 @@ function nameProblem(name: string): string | undefined {
 class TooLarge extends Error {}
 
 /** Writes the body to a new file at `path`, counting it, up to `limit` bytes. */
-async function receive(
+export async function receive(
   body: AsyncIterable<Uint8Array>,
   path: string,
   limit: number,

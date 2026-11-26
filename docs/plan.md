@@ -58,62 +58,24 @@ an image in a user turn is new on both. No shipped prompt text is
 reworded. The words telling the tutor that a message has photos are new
 header text, first read by a real model in the user check.
 
-### 6.27 A photo taken in — todo
-
-**Needs:** nothing open.
-**Why:** Nothing in Gauss reads an image from the learner. A phone photo
-is several megabytes, can be turned by an EXIF tag, and carries metadata
-such as where it was taken. An image file is untrusted input, which Gauss
-decodes only in the sandbox, as it does a source
-(`engine/source-convert.ts`).
-**Do:** `pytools/photo.py` is run by `sandboxPython` as `convert.py` is.
-It:
-- reads JPEG, PNG or WebP by content, not by name;
-- applies the EXIF orientation;
-- puts transparency on white;
-- scales the long side down to Claude's recommended limit (1568 px when
-  this plan was written: check it with Context7 and note it beside the
-  constant);
-- writes a JPEG with no metadata.
-
-It refuses each of these with a reason the page can show: another format
-(HEIC by name, with "save it as JPEG"), a damaged file, more than 20 MB,
-or more than 50 megapixels (Pillow's decompression-bomb guard).
-`engine/photos.ts` stages an upload (`Upload`, as in `attached-sources.ts`)
-as `uploads/photos/<uuid>.jpg`, which startup clears with the rest of
-`uploads/`. When the photo's message is sent, it moves into
-`courses/<id>/photos/<uuid>.jpg`. `DataRoot` reads a photo back by id and
-refuses anything that is not a photo id. The id and the staging result
-are zod schemas in `shared/`. Photos are kept in the backup; add `photos/`
-to the data root map in `architecture.md`.
-**Done when:** pytest, on images Pillow makes in the test, shows:
-- a 4000×3000 JPEG tagged to turn 90° comes out 1176×1568, upright (a
-  marked corner's colour at its worked-out place), with no EXIF;
-- a PNG's transparent area comes out white;
-- a WebP is read, and a small image is not enlarged;
-- a text file named `.jpg`, a cut-off JPEG and a HEIC header are refused,
-  each with its reason.
-
-Vitest in a temporary root shows that staging and then sending moves the
-file into the course, that a photo staged and never sent is gone after a
-startup, and that reading `../state.json` as a photo is refused.
-`mise run check` passes.
-
 ### 6.28 A message with photos reaches the tutor — todo
 
-**Needs:** 6.27.
+**Needs:** nothing open.
 **Why:** From the route to the backend, a learner message is text alone:
 `LearnerMessage` (the route's body), the `learner` page event
 (`shared/events.ts`), `UnitChat.say` and `EngineTurn`
 (`backends/backend.ts`). The Claude adapter sends it as a string
 (`messages` in `claude.ts`), and the Codex one as a single text item
-(`turn/start` in `codex-turn.ts`).
+(`turn/start` in `codex-turn.ts`). A photo is taken in and staged by
+`createPhotoTaker` (`engine/photos.ts`), made nowhere yet, and kept or
+read by `DataRoot.keepPhotos` and `readPhoto`.
 **Do:**
-- A new route under the unit stages one photo, with the file as the body
-  and its name in a header, as `attachFrom` in `http/app.ts` does, and
-  answers with its id or the refusal. The unit message route takes 1 to
-  4 staged photo ids, and its text may then be empty. An id that is not
-  staged is refused.
+- Make the photo taker in `serve.ts`. A new route under the unit stages
+  one photo with it, with the file as the body and its name in a header,
+  as `attachFrom` in `http/app.ts` does, and answers with `PhotoStaged`
+  (`shared/photo.ts`) or the refusal and its status. The unit message
+  route takes 1 to 4 staged photo ids, and its text may then be empty.
+  An id that is not staged is refused.
 - `say` moves the photos into the course before it logs the message. The
   `learner` event gets optional `photos`, the stored names.
 - `EngineTurn` gets optional images. Claude gets image blocks before the

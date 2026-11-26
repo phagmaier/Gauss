@@ -13,8 +13,10 @@
 // deletes a course (task 5.18), and keeps sources: a converted folder put
 // in an intake's uploads or a course's sources/, moved from one to the
 // other, removed from uploads, the outlines and sections read, and a PDF
-// page's image kept once rendered (task 4.8). At start it removes what
-// interrupted writes and page renders left, and an intake's uploads.
+// page's image kept once rendered (task 4.8), and keeps the learner's
+// photos, staged in uploads/photos/ and moved into the course when their
+// message is sent. At start it removes what interrupted writes and page
+// renders left, an intake's uploads and the photos never sent.
 // Every write of a whole file goes through writeFileAtomic, the logs are
 // appended to, and every file read or written is checked against its schema
 // in src/shared/. Work that reads a file and writes it back, and every
@@ -74,6 +76,7 @@ import {
   PendingNotes,
 } from "../../shared/notes.ts";
 import { PackageCompletion } from "../../shared/packages.ts";
+import { PhotoId } from "../../shared/photo.ts";
 import {
   Plan,
   planPassageProblems,
@@ -420,10 +423,27 @@ export interface DataRoot {
   /** Removes one conversation's uploads, whatever they hold. */
   removeUploads(intakeId: string): Promise<void>;
   /**
-   * Removes every conversation's uploads. Called at start, when none is
-   * running: an intake or a planning conversation ends with the server.
+   * Removes every conversation's uploads, and the photos staged and never
+   * sent. Called at start, when none is running: an intake or a planning
+   * conversation ends with the server, and so does a message being written.
    */
   clearUploads(): Promise<void>;
+  /**
+   * The absolute path of `uploads/photos/`, made if it is missing, where a
+   * photo waits as `<photo id>.jpg` from staging until its message is sent.
+   */
+  photoUploads(): Promise<string>;
+  /**
+   * Moves staged photos into the course's `photos/`, keeping their names.
+   * False, moving none, when one of them is not staged. A crash partway
+   * leaves some kept and the rest staged, which startup removes.
+   */
+  keepPhotos(id: string, photos: readonly PhotoId[]): Promise<boolean>;
+  /**
+   * A photo kept in the course, as its JPEG's bytes; undefined if there is
+   * none. Throws for a name that cannot be a photo's id.
+   */
+  readPhoto(id: string, photo: string): Promise<Buffer | undefined>;
   /**
    * Removes the temporary files of whole-file writes a crash interrupted
    * (`isTemporaryName`): plain files only, and only in these of the
@@ -567,6 +587,7 @@ export function openDataRoot(options: {
 }): DataRoot {
   const courses = join(options.path, "courses");
   const uploads = join(options.path, "uploads");
+  const stagedPhotos = resolve(uploads, "photos");
   const profileFile = join(options.path, "profile.md");
   const pendingFile = join(options.path, ".profile-approval.json");
   const pendingNotesFile = join(options.path, ".notes-write.json");

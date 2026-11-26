@@ -10,11 +10,9 @@
 // out of shape into a failure, never an exception.
 
 import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { sandboxPython } from "../sandbox-command.ts";
-import { duration } from "./grading.ts";
-import type { Sandbox, SandboxResult } from "./sandbox.ts";
+import { pytool, runPytool } from "./pytool.ts";
+import type { Sandbox } from "./sandbox.ts";
 
 /** What converting a file came to. */
 export type Conversion =
@@ -95,9 +93,7 @@ export const CONVERSION_TIME_LIMIT_MS = 5 * 60_000;
 /** A minute: a page of the Inwood PDF renders in about a quarter of a second. */
 export const PAGE_TIME_LIMIT_MS = 60_000;
 
-const script = fileURLToPath(
-  new URL("../../../pytools/convert.py", import.meta.url),
-);
+const script = pytool("convert.py");
 
 /** The sandbox's status-only output; the full outline is read from disk. */
 const Output = z.discriminatedUnion("result", [
@@ -129,49 +125,14 @@ export function createSourceConverter(options: {
   const { run } = sandbox;
 
   /** Runs convert.py with these arguments, and reads its line of output in the shape given. */
-  async function convertPy<T>(
+  function convertPy<T>(
     args: string[],
     within: { writable: string; readable: string },
     shape: z.ZodType<T>,
     limitMs: number,
     signal: AbortSignal | undefined,
-  ): Promise<
-    | T
-    | { result: "failed"; reason: string }
-    | { result: "timed-out"; limit: string }
-  > {
-    let ran: SandboxResult;
-    try {
-      ran = await run({
-        argv: [sandboxPython, "-I", script, ...args],
-        cwd: "/",
-        writable: [within.writable],
-        readable: [within.readable],
-        timeLimitMs: limitMs,
-        outputLimit: 64 * 1024,
-        ...(signal === undefined ? {} : { signal }),
-      });
-    } catch (error) {
-      return {
-        result: "failed",
-        reason: error instanceof Error ? error.message : String(error),
-      };
-    }
-    if (ran.timedOut) {
-      return { result: "timed-out", limit: duration(limitMs) };
-    }
-    if (ran.exitCode !== 0) {
-      const said = ran.stderr.trim().split("\n").at(-1)?.trim();
-      return {
-        result: "failed",
-        reason: `it stopped with exit status ${ran.exitCode}${said ? `: ${said}` : ""}`,
-      };
-    }
-    try {
-      return shape.parse(JSON.parse(ran.stdout));
-    } catch {
-      return { result: "failed", reason: "its output could not be read" };
-    }
+  ) {
+    return runPytool(run, script, args, within, shape, limitMs, signal);
   }
 
   return {
