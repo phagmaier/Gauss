@@ -48,7 +48,75 @@ chosen.
 
 ## Known-gap fixes
 
-None open.
+### K.28 A finished unit resumes its tutor's conversation (todo)
+
+A finished unit keeps its tutor's conversation id only in memory, so
+reopened after a restart, or after its chat closed, it starts a new
+session without "This conversation is new", the handoff block or the
+page's fresh-start line. The user's choice (2026-11-25): resume it, as
+an unfinished unit does.
+
+Keep a finished unit's tutor conversation id, its Codex tool names and
+its waiting notices in state.json once its position goes, so reopening
+resumes it. One that cannot be resumed (not found, tools differ, or
+none kept while its thread holds an earlier conversation) gives way to
+a new one as for an unfinished unit: "This conversation is new" and the
+handoff in its first header, and a not-resumed fresh-start line.
+
+Done when: engine tests on the fake backend in a temporary data root
+show (1) a finished unit reopened on a new server resumes the same
+session with the learner's next message; (2) one whose session is
+missing, or one finished with no id kept whose thread holds an earlier
+conversation, starts a new session whose first header holds "This
+conversation is new" and the handoff note, and the thread gets a
+not-resumed fresh-start event; (3) a review in a finished unit still
+resumes, and the id stays kept after it ends. `mise run check` passes.
+
+### K.29 A tutor refused during course planning is told the block lifted (todo)
+
+A tutor refused while the course planner's proposal waits is told to
+look for the learner's decision in a later header. The proposal and the
+chats it refused are in memory by design, so a restart drops both and a
+resumed tutor keeps holding back. The user's choice (2026-11-25): tell
+it the block has lifted, without recovering the decision.
+
+The refusal writes a notice into the unit's record, kept out of headers
+while the block stands. Apply or Keep in the same run gives the existing
+notes and takes it. After a restart the next header says the course
+view's proposal no longer waits, the units in its instructions are as
+they now are, and it may propose again.
+
+Done when: engine tests on the fake backend in a temporary data root
+show a tutor refused while the planner's proposal waits, after a
+restart, gets the lifted note once in its next header and its next
+proposal is accepted; without a restart, Apply and Keep give only their
+existing notes. `mise run check` passes.
+
+### K.30 Header notes that state record facts survive (todo)
+
+Header notes other than the override and unseen-lecture notices are
+kept in memory and taken when a header is composed: a Stop before the
+turn is sent loses them (with "This conversation is new" and its
+handoff block), and a restart before the next turn loses a dispute's
+outcome, an assessment's end, the answer to the test's result card and
+a package install's outcome. After a restart the test's "Start learning
+instead" summary says only that a restart came. The user's choice
+(2026-11-25): keep the notes that state record facts.
+
+Those four become record notices, delivered once by the turn that
+carries them. The test's waiting result keeps how the test ended, so
+the summary after a restart says what the learner pressed. Notes a
+header took return to the chat if the turn is stopped before it is
+sent. Curriculum, style and source notes stay in memory: a resumed
+tutor's rebuilt instructions carry them.
+
+Done when: engine tests on the fake backend in a temporary data root
+show each of the four notes, with a restart before the turn carrying
+it, once in the first header after reopening; a turn stopped before
+dispatch leaves its notes, "This conversation is new" and the handoff
+block for the next header; after "Start learning instead" with a
+question withdrawn and a restart before the tutor's summary, the
+summary turn says the learner pressed it. `mise run check` passes.
 
 ## Known gaps
 
@@ -58,20 +126,6 @@ work for Stage 6. A task that closes a gap deletes it here.
 
 **Engine and record**
 
-- **B:** A finished unit opened after a restart starts a new tutor session
-  without the note saying the conversation is new. Decide what reopening a
-  finished unit should do with its conversation.
-- **B:** Header notes other than the move-on and unseen-lecture notices
-  are kept in memory and taken when a header is composed. A Stop after
-  composing, before sending, loses them (with "This conversation is new"
-  and its handoff block); a restart before the next turn loses an
-  assessment's end, a dispute's outcome and the answer to the test's
-  result card. After a restart the test's "Start learning instead" summary
-  says only that a restart came. Decide which must survive.
-- **B:** A restart ends course planning and clears its proposal block,
-  but a resumed tutor session can still remember the refusal. Decide
-  whether to clear that stale instruction or recover an undelivered
-  planner decision.
 - **B:** Legacy parked courses and remnants whose deletion receipts cannot
   be verified stay in `courses/`. Cleanup requires manual inspection:
   neither the directory name nor its contents prove Gauss parked it.
