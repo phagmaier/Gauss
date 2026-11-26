@@ -4,9 +4,10 @@
 // 3.6), disputes of recorded answers' grades (task 3.8), "Open" on a code
 // question's files (task 3.22), the learner profile (task 5.8), the
 // course's planning conversation (task 5.38), Review now and the self-test
-// from the course view, deleting a course (task 5.18), and the sources
-// attached in an intake (piece 22). Each chat has an event stream from the
-// server to the page, and a POST for each thing the learner does in it.
+// from the course view, deleting a course (task 5.18), the sources
+// attached in an intake (piece 22), and the photos attached to a unit's
+// messages. Each chat has an event stream from the server to the page, and
+// a POST for each thing the learner does in it.
 // Only Gauss's own page may use any of them.
 
 import { type Context, Hono, type MiddlewareHandler } from "hono";
@@ -36,6 +37,7 @@ import {
   type ReviewStarted,
   SkipTestedPost,
   type SourceUploaded,
+  UnitMessage,
   type UnitOpened,
 } from "../../shared/events.ts";
 import {
@@ -45,6 +47,7 @@ import {
 } from "../../shared/library.ts";
 import { NotesPost } from "../../shared/notes.ts";
 import { PackagesAnswer } from "../../shared/packages.ts";
+import type { PhotoStaged } from "../../shared/photo.ts";
 import {
   ProfilePost,
   type ProfileSaved,
@@ -85,6 +88,7 @@ import type {
 import type { Disputes } from "../engine/disputes.ts";
 import type { Intake, Intakes } from "../engine/intake.ts";
 import type { Notes } from "../engine/notes.ts";
+import type { PhotoTaker } from "../engine/photos.ts";
 import {
   NotRendered,
   renderSourcePage,
@@ -113,6 +117,8 @@ export function createApp(options: {
   units: UnitChats;
   disputes: Disputes;
   notes: Notes;
+  /** Takes in the photos the learner attaches to a unit's messages. */
+  photos: PhotoTaker;
   /** Renders a PDF page not already in the source's cache. */
   converter?: SourceConverter;
   /** "Open" on a code question's card; the system's opener, or a stub in tests. */
@@ -121,8 +127,16 @@ export function createApp(options: {
   backup?: Backup;
   heartbeatMs?: number;
 }) {
-  const { dataRoot, intakes, plannings, units, disputes, notes, openFile } =
-    options;
+  const {
+    dataRoot,
+    intakes,
+    plannings,
+    units,
+    disputes,
+    notes,
+    photos,
+    openFile,
+  } = options;
   const heartbeatMs = options.heartbeatMs ?? 20_000;
   const app = new Hono();
   app.use("/api/*", localOnly);
@@ -619,22 +633,9 @@ export function createApp(options: {
     c: Context,
     attach: (upload: Upload) => Promise<AttachResult>,
   ): Promise<Response> {
-    let name: string;
-    try {
-      name = decodeURIComponent(c.req.header(FILE_NAME_HEADER) ?? "");
-    } catch {
-      return c.json({ error: "The file's name could not be read." }, 400);
-    }
-    const length = c.req.header("Content-Length");
-    const size = length === undefined ? undefined : Number(length);
-    if (size !== undefined && !(Number.isSafeInteger(size) && size >= 0)) {
-      return c.json({ error: "The file's length could not be read." }, 400);
-    }
-    const attached = await attach({
-      name,
-      size,
-      body: c.req.raw.body ?? emptyBody(),
-    });
+    const read = readUpload(c);
+    if ("refused" in read) return read.refused;
+    const attached = await attach(read.upload);
     if (attached.ok) {
       return c.json(
         { attachment: attached.attachment } satisfies SourceUploaded,
@@ -925,12 +926,27 @@ export function createApp(options: {
     withUnit((c, chat) => streamLog(c, chat, heartbeatMs)),
   );
 
+  // A photo attached to a message not yet sent: the body is the file, its
+  // name in a header. The answer comes once it is staged, with the id the
+  // message names it by.
+  app.post(
+    `${unitPath}/photos`,
+    withUnit(async (c) => {
+      const read = readUpload(c);
+      if ("refused" in read) return read.refused;
+      const staged = await photos.stage(read.upload, c.req.raw.signal);
+      return staged.ok
+        ? c.json({ photo: staged.photo } satisfies PhotoStaged)
+        : c.json({ error: staged.error }, staged.status);
+    }),
+  );
+
   app.post(
     `${unitPath}/messages`,
     withUnit(async (c, chat) => {
-      const body = await readBody(c, LearnerMessage);
+      const body = await readBody(c, UnitMessage);
       if (!body.ok) return c.json({ error: body.error }, 400);
-      return reply(c, chat.say(body.data.text), 202);
+      return reply(c, await chat.say(body.data.text, body.data.photos), 202);
     }),
   );
 
@@ -1252,6 +1268,29 @@ async function readBody<Schema extends z.ZodType>(
         ok: false,
         error: parsed.error.issues.map((i) => i.message).join("; "),
       };
+}
+
+/**
+ * A file the learner attached, from a request whose body is the file and a
+ * header its name; or the answer refusing a request that cannot be read.
+ */
+function readUpload(c: Context): { upload: Upload } | { refused: Response } {
+  let name: string;
+  try {
+    name = decodeURIComponent(c.req.header(FILE_NAME_HEADER) ?? "");
+  } catch {
+    return {
+      refused: c.json({ error: "The file's name could not be read." }, 400),
+    };
+  }
+  const length = c.req.header("Content-Length");
+  const size = length === undefined ? undefined : Number(length);
+  if (size !== undefined && !(Number.isSafeInteger(size) && size >= 0)) {
+    return {
+      refused: c.json({ error: "The file's length could not be read." }, 400),
+    };
+  }
+  return { upload: { name, size, body: c.req.raw.body ?? emptyBody() } };
 }
 
 /** A request with no body, read as one of no bytes. */

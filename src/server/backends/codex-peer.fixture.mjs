@@ -212,9 +212,14 @@ function toolResponse({ id, result }) {
 function startTurn(id, params) {
   assert.equal(active, undefined);
   assert.equal(params.threadId, thread.id);
-  assert.equal(params.input.length, 1);
-  assert.equal(params.input[0].type, "text");
-  const script = params.input[0].text;
+  // A learner's photos come as image items before the one text item.
+  const text = params.input.at(-1);
+  assert.equal(text?.type, "text");
+  for (const item of params.input.slice(0, -1)) {
+    assert.equal(item.type, "image");
+    assert.match(item.url, /^data:image\/jpeg;base64,/);
+  }
+  const script = text.text;
   active = { id: `turn-${++nextTurn}`, script };
   notify("turn/started", { turn: turn("inProgress") });
   reply(id, { turn: turn("inProgress") });

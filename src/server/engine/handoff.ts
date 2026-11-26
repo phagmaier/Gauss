@@ -369,7 +369,12 @@ export function readStretch(
       case "learner": {
         worthReading = true;
         const words = event.text.trim();
-        say(`Learner:\n${words}`, [{ text: words }]);
+        // The writers do not see photos: each is marked where it was sent.
+        const photos = (event.photos ?? []).map(() => "[photo]").join(" ");
+        say(
+          ["Learner:", photos, words].filter((line) => line !== "").join("\n"),
+          words === "" ? [] : [{ text: words }],
+        );
         break;
       }
       case "file_written":

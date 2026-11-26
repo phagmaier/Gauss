@@ -4,13 +4,15 @@
 // engine's sandbox, since an image comes from outside the machine and Pillow
 // is native code that parses it, and writes the JPEG the tutor will see. The
 // photo waits staged as `<id>.jpg` until its message moves it into the course
-// (`DataRoot.keepPhotos`); startup removes what was never sent.
+// (`DataRoot.keepPhotos`); startup removes what was never sent. The tutor's
+// turn reads it from the course when the turn is sent (`photoImages`).
 
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { PHOTO_SIZE_LIMIT, type PhotoId } from "../../shared/photo.ts";
+import type { TurnImage } from "../backends/backend.ts";
 import type { DataRoot } from "../record/data-root.ts";
 import { receive, tooLarge, type Upload } from "./attached-sources.ts";
 import { pytool, runPytool } from "./pytool.ts";
@@ -149,4 +151,21 @@ export function createPhotoTaker(options: {
   }
 
   return { stage };
+}
+
+/** The kept photos of a message, in order, as its turn gives them to the tutor. */
+export function photoImages(
+  dataRoot: Pick<DataRoot, "readPhoto">,
+  courseId: string,
+  photos: readonly PhotoId[],
+): Promise<TurnImage[]> {
+  return Promise.all(
+    photos.map(async (photo) => {
+      const data = await dataRoot.readPhoto(courseId, photo);
+      if (data === undefined) {
+        throw new Error(`The photo ${photo} is missing from the course.`);
+      }
+      return { data, mimeType: "image/jpeg" as const };
+    }),
+  );
 }

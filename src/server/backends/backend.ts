@@ -94,6 +94,17 @@ export interface EngineTurn {
   text: string;
   /** Raw text from the message box, when the turn delivers a learner message. */
   learnerMessage?: string;
+  /**
+   * The photos of the learner's message, in order: given to the model
+   * before the text, as the header that counts them says.
+   */
+  images?: readonly TurnImage[];
+}
+
+/** A photo the learner sent, as the tutor sees it (`engine/photos.ts`). */
+export interface TurnImage {
+  data: Buffer;
+  mimeType: "image/jpeg";
 }
 
 export type BackendEvent =

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -453,7 +454,9 @@ test("the scripted tutor reads each section its teaching turn's header names bef
         .map((call) => call.input),
     ).toEqual([{ section: "notes/s1" }, { section: "notes/s2" }]);
 
-    expect(opened.chat.say("/quote the second part")).toEqual({ ok: true });
+    expect(await opened.chat.say("/quote the second part")).toEqual({
+      ok: true,
+    });
     await opened.chat.settled();
     expect(
       opened.chat.events().filter((e) => e.type === "source_quoted"),
@@ -517,7 +520,7 @@ test("the scripted tutor searches the web on /search in a course that allows it,
   const chat = opened.chat;
   /** What the tutor's reply to a message put in the thread. */
   const reply = async (message: string) => {
-    expect(chat.say(message)).toEqual({ ok: true });
+    expect(await chat.say(message)).toEqual({ ok: true });
     await chat.settled();
     const events = chat.events();
     return events
@@ -1519,7 +1522,7 @@ test("the teaching of a unit's first segment shows the scripted artifact, and /a
   expect(html).toContain('<input id="x" type="range"');
   expect(html).toContain("fetch(url)");
 
-  expect(chat.say("Again, please. /artifact")).toEqual({ ok: true });
+  expect(await chat.say("Again, please. /artifact")).toEqual({ ok: true });
   await chat.settled();
   expect(shown()).toEqual([
     "1-the-tangent-to-y-x2.html",
@@ -1532,6 +1535,68 @@ test("the teaching of a unit's first segment shows the scripted artifact, and /a
   expect(shown()).toHaveLength(2);
 });
 
+test("a message with photos is answered first by saying how many the tutor sees, with or without text, and when held", async () => {
+  const { dataRoot, units } = setUp();
+  await approvedCourse(dataRoot);
+  const opened = await units.open(COURSE, "limits");
+  if (!opened.ok) throw new Error(opened.error);
+  const { chat } = opened;
+  await chat.settled();
+  // Staged as `engine/photos.ts` leaves them; the scripted tutor counts
+  // the images its turn receives and reads none of them.
+  const staged = await dataRoot.photoUploads();
+  const photos = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+  for (const photo of photos) {
+    await writeFile(join(staged, `${photo}.jpg`), "a photo");
+  }
+  const replies = (from: number) =>
+    chat
+      .events()
+      .slice(from)
+      .flatMap((e) => (e.type === "tutor_text" ? [e.text] : []));
+
+  try {
+    let from = chat.events().length;
+    expect(await chat.say("Where did I slip?", photos.slice(0, 2))).toEqual({
+      ok: true,
+    });
+    await chat.settled();
+    expect(replies(from)).toEqual([
+      "**Scripted:** I see 2 photos.",
+      'A scripted reply to "Where did I slip?".',
+    ]);
+
+    from = chat.events().length;
+    expect(await chat.say("", photos.slice(2, 3))).toEqual({ ok: true });
+    await chat.settled();
+    expect(replies(from)).toEqual([
+      "**Scripted:** I see 1 photo.",
+      "A scripted reply.",
+    ]);
+
+    from = chat.events().length;
+    const held = Promise.withResolvers<void>();
+    const unsubscribe = chat.subscribe((event) => {
+      if (event.type === "tutor_text" && event.text.startsWith("Holding")) {
+        held.resolve();
+      }
+    });
+    expect(await chat.say("Wait. /hold", photos.slice(3))).toEqual({
+      ok: true,
+    });
+    await held.promise;
+    unsubscribe();
+    await chat.interrupt();
+    await chat.settled();
+    expect(replies(from)).toEqual([
+      "**Scripted:** I see 1 photo.",
+      "Holding this turn open until you stop it.",
+    ]);
+  } finally {
+    await units.close();
+  }
+});
+
 test("/hold keeps the tutor's turn open until it is stopped, and /fail in a written answer fails its grading", async () => {
   const { dataRoot, units, backend } = setUp();
   await approvedCourse(dataRoot);
@@ -1542,7 +1607,7 @@ test("/hold keeps the tutor's turn open until it is stopped, and /fail in a writ
 
   try {
     const reply = nextTutorEvent(chat);
-    expect(chat.say("Wait. /hold")).toEqual({ ok: true });
+    expect(await chat.say("Wait. /hold")).toEqual({ ok: true });
     expect(await reply).toEqual({
       type: "tutor_text",
       text: "Holding this turn open until you stop it.",
@@ -1644,7 +1709,7 @@ test("a unit reopened after a restart resumes its scripted tutor; one whose sess
   if (!resumed.ok) throw new Error(resumed.error);
   await resumed.chat.settled();
   const beforeMessage = resumed.chat.events().length;
-  expect(resumed.chat.say("Tell me more.")).toEqual({ ok: true });
+  expect(await resumed.chat.say("Tell me more.")).toEqual({ ok: true });
   await resumed.chat.settled();
   expect(
     resumed.chat
@@ -1765,7 +1830,7 @@ test("/packages asks to install the names after it, pytest if none; the turn wit
   };
   const lastText = () => chat.events().findLast((e) => e.type === "tutor_text");
 
-  expect(chat.say("Set up the tests. /packages")).toEqual({ ok: true });
+  expect(await chat.say("Set up the tests. /packages")).toEqual({ ok: true });
   await chat.settled();
   expect(request().packages).toEqual([{ name: "pytest" }]);
   expect(await chat.installPackages(request().requestId)).toEqual({ ok: true });
@@ -1776,7 +1841,7 @@ test("/packages asks to install the names after it, pytest if none; the turn wit
     text: "**Scripted:** the packages: they are installed.",
   });
 
-  expect(chat.say("/packages numpy sympy")).toEqual({ ok: true });
+  expect(await chat.say("/packages numpy sympy")).toEqual({ ok: true });
   await chat.settled();
   expect(request().packages).toEqual([{ name: "numpy" }, { name: "sympy" }]);
   expect(await chat.declinePackages(request().requestId)).toEqual({ ok: true });
@@ -1796,7 +1861,7 @@ test("/style proposes the course's note with a sentence on shorter explanations 
   const { chat } = opened;
   await chat.settled();
 
-  expect(chat.say("Shorter, please. /style")).toEqual({ ok: true });
+  expect(await chat.say("Shorter, please. /style")).toEqual({ ok: true });
   await chat.settled();
   expect(chat.events().findLast((e) => e.type === "style_proposed")).toEqual({
     type: "style_proposed",
@@ -1815,7 +1880,7 @@ test("/amend adds practice to the latest curriculum, including after an interven
   const { chat } = opened;
   await chat.settled();
 
-  expect(chat.say("More practice, please. /amend")).toEqual({ ok: true });
+  expect(await chat.say("More practice, please. /amend")).toEqual({ ok: true });
   await chat.settled();
   const practice = {
     id: "practice-3",
@@ -1839,9 +1904,9 @@ test("/amend adds practice to the latest curriculum, including after an interven
     (await dataRoot.readCourse(COURSE))?.curriculum?.units.map((u) => u.id),
   ).toEqual(["limits", "derivative", "practice-3"]);
 
-  expect(chat.say("Let's keep going.")).toEqual({ ok: true });
+  expect(await chat.say("Let's keep going.")).toEqual({ ok: true });
   await chat.settled();
-  expect(chat.say("/amend")).toEqual({ ok: true });
+  expect(await chat.say("/amend")).toEqual({ ok: true });
   await chat.settled();
   const next = chat
     .events()

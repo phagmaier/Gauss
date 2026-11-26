@@ -36,6 +36,7 @@ import { createGrader } from "../engine/grading.ts";
 import { createHelpJudge } from "../engine/help-judge.ts";
 import { createIntakes } from "../engine/intake.ts";
 import { createNotes } from "../engine/notes.ts";
+import { createPhotoTaker } from "../engine/photos.ts";
 import { type Sandbox, startSandbox } from "../engine/sandbox.ts";
 import {
   createSourceConverter,
@@ -127,6 +128,7 @@ function setUp(script: FakeTurn[] = [], pages?: SourceConverter) {
       ready: async () => {},
     }),
     openFile: vi.fn<FileOpener>(async () => ({ ok: true })),
+    photos: createPhotoTaker({ sandbox, dataRoot }),
   });
   return { app, intakes, dataRoot };
 }

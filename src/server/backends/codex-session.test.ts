@@ -784,3 +784,32 @@ test("app-server exit fails the active turn and subsequent turns on the dead ses
   ]);
   expectTurnSettings(await trace(), terra, 1);
 });
+
+test("a turn with photos starts with an image item per photo, as a JPEG data URL, before its text item", async () => {
+  const session = await open();
+  const events: BackendEvent[] = [];
+  for await (const event of session.send({
+    text: "continue",
+    images: [
+      { data: Buffer.from([0xff, 0xd8, 0xff]), mimeType: "image/jpeg" },
+      { data: Buffer.from([0xff, 0xd8, 0x00]), mimeType: "image/jpeg" },
+    ],
+  })) {
+    events.push(event);
+  }
+  expect(events).toEqual([
+    { type: "text", text: "Still here." },
+    { type: "turn_end", outcome: "done" },
+  ]);
+  // The pinned CLI's `UserInput` (`codex app-server generate-ts`): an
+  // image item has a url, and the text item its text elements.
+  expect(only(requests(await trace(), "turn/start")).message.params).toEqual(
+    expect.objectContaining({
+      input: [
+        { type: "image", url: "data:image/jpeg;base64,/9j/" },
+        { type: "image", url: "data:image/jpeg;base64,/9gA" },
+        { type: "text", text: "continue", text_elements: [] },
+      ],
+    }),
+  );
+});

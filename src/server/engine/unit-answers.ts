@@ -65,11 +65,15 @@ export interface UnitAnswers {
     tell?: () => void,
   ): Promise<void>;
   /**
-   * The turn's text and end for the learner's message `id`: the exchange
-   * that has the tutor's reply judged, if a question waits for its answer
-   * when the tutor receives it. One per message.
+   * The turn's text and end for the learner's message `id`, with its number
+   * of photos: the exchange that has the tutor's reply judged, if a
+   * question waits for its answer when the tutor receives it. One per message.
    */
-  message(id: string, text: string): Required<Pick<Turn, "text" | "ended">>;
+  message(
+    id: string,
+    text: string,
+    photos: number,
+  ): Required<Pick<Turn, "text" | "ended">>;
   /** The body of the chat's `answer`, inside its guard. */
   answer(sent: AnswerPost): Promise<ChatResult>;
   /** The body of the chat's `gradeAgain`, inside its guard. */
@@ -218,12 +222,9 @@ export function createUnitAnswers({
    * question has been withdrawn since. A reply with no text gave the learner
    * nothing, so it is not judged and is no help. Runs inside `exclusive`.
    */
-  async function replyEnded(
-    exchange: { learnerId: string; questionId: string; message: string },
-    reply: string,
-  ): Promise<void> {
+  async function replyEnded(exchange: Exchange, reply: string): Promise<void> {
     if (closing()) return;
-    const { learnerId, questionId, message } = exchange;
+    const { learnerId, questionId, message, photos } = exchange;
     const open = record.position.openQuestion;
     if (open?.id !== questionId || !open.judging?.includes(learnerId)) return;
     if (reply.trim() === "") {
@@ -236,6 +237,7 @@ export function createUnitAnswers({
       number,
       question,
       message,
+      photos,
       reply,
       record: (outcome) => judged(questionId, learnerId, number, outcome),
     });
@@ -365,11 +367,9 @@ export function createUnitAnswers({
     });
   }
 
-  function message(id: string, text: string) {
+  function message(id: string, text: string, photos: number) {
     /** Set if the tutor received the message while a question waited for its answer. */
-    let exchange:
-      | { learnerId: string; questionId: string; message: string }
-      | undefined;
+    let exchange: Exchange | undefined;
     return {
       // Help is judged on what the tutor received while a question was
       // open (task 2.21), so the exchange begins when the message is sent
@@ -392,9 +392,10 @@ export function createUnitAnswers({
               learnerId: id,
               questionId: open.id,
               message: text,
+              photos,
             };
           }
-          return messageTurn(where(), text);
+          return messageTurn(where(), text, photos);
         }),
       ended: (_: TurnOutcome, reply: string) => {
         const asked = exchange;
@@ -516,6 +517,15 @@ export function createUnitAnswers({
     gradeAgain,
     answerAwaitingJudge: () => answerStops !== undefined,
   };
+}
+
+/** A message the tutor received while a question waited for its answer. */
+interface Exchange {
+  learnerId: string;
+  questionId: string;
+  message: string;
+  /** How many photos the message had, which the judge does not see. */
+  photos: number;
 }
 
 /** An answer kept while the tutor's replies during its question are judged (task 2.21). */

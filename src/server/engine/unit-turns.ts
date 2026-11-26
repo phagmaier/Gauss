@@ -26,6 +26,7 @@ import {
   type PackagesOutcome,
   requirement,
 } from "../../shared/packages.ts";
+import { photoCount } from "../../shared/photo.ts";
 import { firstTaught, type Plan, skipping } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, confidenceLabel } from "../../shared/question.ts";
 import type { Outline } from "../../shared/source.ts";
@@ -248,8 +249,15 @@ export function teachTurn(where: Where, cutOff: boolean): string {
   );
 }
 
-export function messageTurn(where: Where, text: string): string {
-  return turn(where, "Message from the learner.", text);
+/** A learner's message; its photos, if it has any, come before this text. */
+export function messageTurn(where: Where, text: string, photos = 0): string {
+  return turn(
+    where,
+    photos === 0
+      ? "Message from the learner."
+      : `Message from the learner, with ${photoCount(photos)}, given before this header.`,
+    text,
+  );
 }
 
 export function readyTurn(where: Where): string {

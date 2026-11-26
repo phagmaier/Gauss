@@ -568,7 +568,7 @@ test("stopping the teaching turn opens the discussion, and a message sent during
   const chat = opened.chat;
   await waitFor(chat, "tutor_text");
 
-  expect(chat.say("Wait, why divide by h?")).toEqual({ ok: true });
+  expect(await chat.say("Wait, why divide by h?")).toEqual({ ok: true });
   await chat.interrupt();
   await chat.settled();
 
@@ -939,7 +939,7 @@ test.each(["open", "missed", "stopped"] as const)(
       ending = true;
       const ready = chat.anotherQuestion();
       await writing.promise;
-      expect(chat.say(message)).toEqual({ ok: true });
+      expect(await chat.say(message)).toEqual({ ok: true });
       finishWrite.resolve();
       expect(await ready).toEqual({ ok: true });
 
@@ -1426,7 +1426,7 @@ test("a move-on notice a restart came before is told in the next header, and not
   const after = setUp([[{ text: "Yes." }]]);
   try {
     const chat = await open(after);
-    expect(chat.say("Go on.")).toEqual({ ok: true });
+    expect(await chat.say("Go on.")).toEqual({ ok: true });
     await chat.settled();
     expect(after.backend.received).toHaveLength(1);
     expect(after.backend.received[0]?.text).not.toContain("moved on");
@@ -1481,7 +1481,7 @@ test("a turn stopped once its header was composed, before it was sent, leaves th
   const keep = chat.keepStyle(card.proposalId);
   await held.promise;
   const started = waitFor(chat, "turn_start", chat.events().length);
-  expect(chat.say("Hello?")).toEqual({ ok: true });
+  expect(await chat.say("Hello?")).toEqual({ ok: true });
   await started;
   // The session is running, so from turn_start to the message's header
   // waiting in the queue there are only settled promises: a macrotask later
@@ -1500,7 +1500,7 @@ test("a turn stopped once its header was composed, before it was sent, leaves th
   expect(setup.backend.received).toHaveLength(sent);
   expect((await positionWritten())?.tutorNotices).toEqual([overrideNotice(1)]);
 
-  expect(chat.say("Are you there?")).toEqual({ ok: true });
+  expect(await chat.say("Are you there?")).toEqual({ ok: true });
   await chat.settled();
   expect(setup.backend.received).toHaveLength(sent + 1);
   const header = setup.backend.received.at(-1)?.text;
@@ -1546,7 +1546,7 @@ test("a turn stopped once its header was composed, before it was sent, leaves th
   const chat = await open(after);
   const release = Promise.withResolvers<void>();
   hold = release.promise;
-  expect(chat.say("A hint?")).toEqual({ ok: true });
+  expect(await chat.say("A hint?")).toEqual({ ok: true });
   await held.promise;
   await chat.interrupt();
   release.resolve();
@@ -1557,7 +1557,7 @@ test("a turn stopped once its header was composed, before it was sent, leaves th
   });
   expect(after.backend.received).toEqual([]);
 
-  expect(chat.say("Are you there?")).toEqual({ ok: true });
+  expect(await chat.say("Are you there?")).toEqual({ ok: true });
   await chat.settled();
   expect(after.backend.received).toHaveLength(1);
   const header = after.backend.received[0]?.text;
@@ -1609,7 +1609,7 @@ test("a Stop after the header carrying a move-on notice was sent does not tell i
   const after = setUp([[{ text: "Yes." }]]);
   try {
     const reopened = await open(after);
-    expect(reopened.say("Go on.")).toEqual({ ok: true });
+    expect(await reopened.say("Go on.")).toEqual({ ok: true });
     await reopened.settled();
     expect(after.backend.received).toHaveLength(1);
     expect(after.backend.received[0]?.text).not.toContain("moved on");
@@ -1721,7 +1721,7 @@ test("the learner starts each next segment, and once the last closes with every 
     });
   }
 
-  expect(chat.say("Thanks!")).toEqual({ ok: true });
+  expect(await chat.say("Thanks!")).toEqual({ ok: true });
   await chat.settled();
 
   expect(setup.backend.received[8]?.text).toBe(
@@ -2024,7 +2024,7 @@ test("a unit that cannot be planned says so in its thread, takes no action, and 
     status: 409,
     error: "The unit could not be opened. Open it again to try again.",
   };
-  expect(chat.say("Hello?")).toEqual(notOpen);
+  expect(await chat.say("Hello?")).toEqual(notOpen);
   expect(await chat.ready()).toEqual(notOpen);
   // No conversation with the tutor failed to resume, so there is none to give up.
   expect(await chat.startFresh()).toEqual(notOpen);
@@ -3058,9 +3058,9 @@ test("a move-on notice still waiting when the unit finishes is kept with its ses
 
   const after = setUp([[{ text: "Yes." }], [{ text: "Yes." }]]);
   const chat = await open(after);
-  expect(chat.say("Hello.")).toEqual({ ok: true });
+  expect(await chat.say("Hello.")).toEqual({ ok: true });
   await chat.settled();
-  expect(chat.say("Again.")).toEqual({ ok: true });
+  expect(await chat.say("Again.")).toEqual({ ok: true });
   await chat.settled();
   const [told, next] = after.backend.received.map((t) => t.text);
   const moved =
@@ -3123,7 +3123,7 @@ test("a finished unit missed since in another unit's review stays finished, and 
   expect(after.backend.received).toEqual([]);
   expect(await position()).toEqual({});
 
-  expect(chat.say("Hello.")).toEqual({ ok: true });
+  expect(await chat.say("Hello.")).toEqual({ ok: true });
   await chat.settled();
   expect(after.backend.received[0]?.text).toBe(
     '[Unit 1 of 2, "The derivative". The unit is finished: every objective passed. Since then, "secant-slope" was missed in a review, a gate or a self-test, and is slipping. Message from the learner. Allowed now: reply to the learner. No teaching tools.]\nHello.',
@@ -3985,7 +3985,7 @@ test("a unit reopened after a restart shows the thread of its earlier session fr
   ]);
   await makeCourse();
   const first = await open(before);
-  expect(first.say("Why divide by h?")).toEqual({ ok: true });
+  expect(await first.say("Why divide by h?")).toEqual({ ok: true });
   await first.settled();
   await toCheck(first);
   // What the page was shown before the restart.
@@ -4081,7 +4081,7 @@ test("two sessions of a unit are shown in order, each from its own transcript, b
     now: () => new Date(at(6)),
   });
   const second = await open(two);
-  expect(second.say("I am back.")).toEqual({ ok: true });
+  expect(await second.say("I am back.")).toEqual({ ok: true });
   await second.settled();
   await two.units.close();
 
@@ -4124,7 +4124,7 @@ test("something that happens after the unit has been quiet for an hour starts a 
   const chat = await open(setup);
   const minutes = (n: number) => n * 60_000;
   const say = async (text: string) => {
-    expect(chat.say(text)).toEqual({ ok: true });
+    expect(await chat.say(text)).toEqual({ ok: true });
     await chat.settled();
   };
 
@@ -4225,7 +4225,7 @@ test("a reply the machine slept through stays in its session, and the next thing
     }
   });
 
-  expect(chat.say("Why divide by h?")).toEqual({ ok: true });
+  expect(await chat.say("Why divide by h?")).toEqual({ ok: true });
   await chat.settled();
   stop();
 
@@ -4238,7 +4238,7 @@ test("a reply the machine slept through stays in its session, and the next thing
     { type: "turn_end", outcome: "done" },
   ]);
 
-  expect(chat.say("I am back.")).toEqual({ ok: true });
+  expect(await chat.say("I am back.")).toEqual({ ok: true });
   await chat.settled();
 
   expect(since(chat, "session")).toMatchObject([

@@ -851,3 +851,28 @@ test("a read of part of a section names the range it read, and a viewed page its
     }).text,
   ).toBe('[The tutor looked at page 1 of the source "phenomenology".]');
 });
+
+test("a message's photos are each marked [photo] where they were sent, before its words, and are not the learner's words", () => {
+  const events: PageEvent[] = [
+    {
+      type: "learner",
+      text: "Where did I slip?",
+      photos: [
+        "0b7e1f9a-2c3d-4e5f-8a9b-0c1d2e3f4a5b",
+        "1c8f2a0b-3d4e-4f60-9b0c-1d2e3f4a5b6c",
+      ],
+    },
+    {
+      type: "learner",
+      text: "",
+      photos: ["2d9a3b1c-4e5f-4a71-8c1d-2e3f4a5b6c7d"],
+    },
+  ];
+  const stretch = readStretch(events, { plan: PLAN, answers });
+  expect(stretch.text).toBe(
+    "Learner:\n[photo] [photo]\nWhere did I slip?\n\nLearner:\n[photo]",
+  );
+  expect(stretch.said.map((words) => words.text)).toEqual([
+    "Where did I slip?",
+  ]);
+});

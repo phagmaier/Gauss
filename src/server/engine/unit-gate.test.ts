@@ -391,7 +391,7 @@ test("the last segment's close, every objective passed, offers the gate on a car
     skip: "Skip the gate",
   });
 
-  await step(Promise.resolve(chat.say("Can I take it tomorrow?")), chat);
+  await step(chat.say("Can I take it tomorrow?"), chat);
 
   expect(sent(setup.backend)[2]).toBe(
     '[Unit 2 of 2, "The derivative"; segment 2 of 2, "Powers", on "power-rule". Phase: closed. Message from the learner. ' +
@@ -558,7 +558,7 @@ test("after moving on before the gate, the closing card after it offers its step
     steps: true,
     again: "Go over it again",
   });
-  await step(Promise.resolve(chat.say("What now?")), chat);
+  await step(chat.say("What now?"), chat);
   expect(sent(setup.backend).at(-1)).toContain(
     'Message from the learner. The gate is over: "slope" slipping (passed before, now missed, so it must pass again). ' +
       "The learner now sees the unit's closing card, with each objective's status as it stands. Do not go back over the gate unless the learner asks. " +

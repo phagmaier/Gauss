@@ -89,6 +89,7 @@ import type {
 } from "../../shared/evidence.ts";
 import type { Misconception } from "../../shared/misconception.ts";
 import type { PackageReceipt } from "../../shared/packages.ts";
+import type { PhotoId } from "../../shared/photo.ts";
 import type { AnswerPost } from "../../shared/question.ts";
 import type {
   SelfTestCounts,
@@ -150,6 +151,7 @@ import {
   type PackageInstaller,
   recoverPackageInstall,
 } from "./packages.ts";
+import { photoImages } from "./photos.ts";
 import {
   createReviewAdmission,
   type ReviewAdmission,
@@ -202,8 +204,12 @@ export interface UnitChat {
   events(): readonly PageEvent[];
   /** Calls the listener with every new event and its index in the log. */
   subscribe(listener: (event: PageEvent, index: number) => void): () => void;
-  /** A message from the learner, in any phase. */
-  say(text: string): ChatResult;
+  /**
+   * A message from the learner, in any phase, with the staged photos it
+   * names, in order; refused if one is not staged. Text alone is logged
+   * before this returns, unless a message with photos is still being taken.
+   */
+  say(text: string, photos?: readonly PhotoId[]): Promise<ChatResult>;
   /** The learner is ready for the check. */
   ready(): Promise<ChatResult>;
   /**
@@ -1488,6 +1494,8 @@ function createUnitChat(
   let stopCount = 0;
   /** A message cannot be admitted while the override is entering the queue. */
   let overrideWrite: Promise<ChatResult> | undefined;
+  /** A message whose photos are being kept: a message sent after it waits for it. */
+  let takingPhotos: Promise<void> | undefined;
   /** The course's workspace, where the tutor works and packages go. */
   let folder: string | undefined;
   /**
@@ -2178,15 +2186,25 @@ function createUnitChat(
   // --- What the learner does -------------------------------------------------
 
   /**
-   * Runs the action once the unit is open and the tutor is not writing. In a
-   * finished unit only an action `inRun`, on a review the learner asked for
-   * there, is taken, and only while that review is offered or under way.
+   * Runs the action once the unit is open and the tutor is not writing, and
+   * not once it has begun closing, which an action queued behind others can
+   * find. In a finished unit only an action `inRun`, on a review the learner
+   * asked for there, is taken, and only while that review is offered or
+   * under way. Given `after`, it takes its place in the queue at once, and
+   * is checked and run once `after` has settled.
    */
   function act(
     work: (r: Running) => Promise<ChatResult>,
-    { whileWriting = false, inRun = false, overriding = false } = {},
+    {
+      whileWriting = false,
+      inRun = false,
+      overriding = false,
+      after = undefined as Promise<void> | undefined,
+    } = {},
   ): Promise<ChatResult> {
     return exclusive(async () => {
+      if (after !== undefined) await after;
+      if (closing) return refused(CLOSING);
       const r = running;
       if (r === undefined) return notOpen();
       if (
@@ -2222,6 +2240,44 @@ function createUnitChat(
     };
   }
 
+  /** The open unit, if it takes a learner's message now; otherwise why not. */
+  function admit(): { r: Running } | { refused: ChatResult } {
+    const r = running;
+    if (r === undefined) return { refused: notOpen() };
+    if (closing) return { refused: refused(CLOSING) };
+    if (overrideWrite !== undefined) {
+      return { refused: refused("Wait for Move on to finish.") };
+    }
+    if (r.record.position.pendingSegmentOverride !== undefined) {
+      return { refused: refused(OVERRIDE_PENDING) };
+    }
+    return { r };
+  }
+
+  /** Logs an admitted message, its photos kept in the course, and queues its turn. */
+  function take(r: Running, text: string, photos: readonly PhotoId[]) {
+    const id = randomUUID();
+    log.emit({
+      type: "learner",
+      id,
+      text,
+      ...(photos.length === 0 ? {} : { photos: [...photos] }),
+    });
+    // One per message, shared by its turn's text and end.
+    const turn = r.answers.message(id, text, photos.length);
+    const send = () =>
+      r.agents.send({
+        learnerId: id,
+        learnerMessage: text,
+        text: turn.text,
+        ended: turn.ended,
+        ...(photos.length === 0
+          ? {}
+          : { images: () => photoImages(dataRoot, courseId, photos) }),
+      });
+    r.review.sendMessage(send);
+  }
+
   const chat: OpenableChat = {
     id: log.id,
     events: log.events,
@@ -2242,28 +2298,43 @@ function createUnitChat(
       return true;
     },
 
-    say(text) {
-      const r = running;
-      if (r === undefined) return notOpen();
-      if (overrideWrite !== undefined) {
-        return refused("Wait for Move on to finish.");
+    say(text, photos = []) {
+      const admitted = admit();
+      if ("refused" in admitted) return Promise.resolve(admitted.refused);
+      const before = takingPhotos;
+      // Text alone, with no message ahead of it, is logged at once.
+      if (before === undefined && photos.length === 0) {
+        take(admitted.r, text, []);
+        return Promise.resolve({ ok: true });
       }
-      if (r.record.position.pendingSegmentOverride !== undefined) {
-        return refused(OVERRIDE_PENDING);
-      }
-      const id = randomUUID();
-      log.emit({ type: "learner", id, text });
-      // One per message, shared by its turn's text and end.
-      const turn = r.answers.message(id, text);
-      const send = () =>
-        r.agents.send({
-          learnerId: id,
-          learnerMessage: text,
-          text: turn.text,
-          ended: turn.ended,
-        });
-      r.review.sendMessage(send);
-      return { ok: true };
+      // Admitted now, so Move on waits for it (`override`). A message waits
+      // for the one ahead, so the thread keeps their order.
+      const taking = (async (): Promise<ChatResult> => {
+        await before;
+        if (
+          photos.length > 0 &&
+          !(await dataRoot.keepPhotos(courseId, photos))
+        ) {
+          return refused(
+            "A photo of this message is not waiting to be sent: attach it again.",
+          );
+        }
+        // Closed meanwhile, the unit sends nothing more; the photos stay in
+        // the course unsent, which is harmless.
+        const r = running;
+        if (r === undefined || closing) return refused(CLOSING);
+        take(r, text, photos);
+        return { ok: true };
+      })();
+      const settled = taking.then(
+        () => {},
+        () => {},
+      );
+      takingPhotos = settled;
+      void settled.then(() => {
+        if (takingPhotos === settled) takingPhotos = undefined;
+      });
+      return taking;
     },
 
     ready: () =>
@@ -2354,7 +2425,10 @@ function createUnitChat(
           if (last) await r.unitEnd.end(true);
           return { ok: true };
         },
-        { overriding: true },
+        // A message admitted before Move on, its photos still being kept,
+        // is taken first: Move on then finds the tutor writing, as it
+        // would after a message of text alone.
+        { overriding: true, after: takingPhotos },
       ).finally(() => {
         overrideWrite = undefined;
       });
@@ -2529,6 +2603,8 @@ function createUnitChat(
 
 const UNIT_FINISHED = "The unit is finished.";
 const OVERRIDE_PENDING = "Choose Move on again to finish the override.";
+/** A message sent as the unit closes, as when the server stops. */
+const CLOSING = "The unit is closing.";
 
 /** How many objectives review asks about (docs/brief.md, "Assessment modes"). */
 const REVIEW_COUNT = 3;

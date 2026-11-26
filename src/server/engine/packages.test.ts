@@ -465,7 +465,7 @@ test.each([
     const waiting = async () =>
       (await root.readState(COURSE)).units.loops?.packageRequest;
 
-    expect(chat.say("Can we test it?")).toEqual({ ok: true });
+    expect(await chat.say("Can we test it?")).toEqual({ ok: true });
     await reading.promise;
     if (stopped) await chat.interrupt();
     release.resolve();
@@ -474,7 +474,7 @@ test.each([
       expect.soft(cards(chat.events())).toEqual([]);
       expect.soft(await waiting()).toBeUndefined();
       // Nothing the stopped call held is left blocking the next.
-      expect(chat.say("Please.")).toEqual({ ok: true });
+      expect(await chat.say("Please.")).toEqual({ ok: true });
       await chat.settled();
     }
 
@@ -619,8 +619,8 @@ test("an answer is told once: a learner's message queued when the install ends c
   const id = requestId(chat.events());
   expect(await chat.installPackages(id)).toEqual({ ok: true });
   // While it installs: one message the tutor is answering, one queued.
-  expect(chat.say("Hold on. /hold")).toEqual({ ok: true });
-  expect(chat.say("Something else.")).toEqual({ ok: true });
+  expect(await chat.say("Hold on. /hold")).toEqual({ ok: true });
+  expect(await chat.say("Something else.")).toEqual({ ok: true });
   held.resolve(ok());
   while (!chat.events().some((e) => e.type === "packages_answered")) {
     await new Promise((r) => setTimeout(r, 5));
@@ -679,7 +679,7 @@ test("the request that waits is said in every header until it is answered, and k
     [{ text: "A reply." }],
   ]);
   const id = requestId(first.chat.events());
-  expect(first.chat.say("And?")).toEqual({ ok: true });
+  expect(await first.chat.say("And?")).toEqual({ ok: true });
   await first.chat.settled();
   expect(first.backend.received.at(-1)?.text).toContain(
     "Your request to install pytest waits for the learner's answer",
@@ -709,7 +709,9 @@ test("a request is refused while a question is open in the course, and while ano
   ]);
   expect(await first.chat.ready()).toEqual({ ok: true });
   await first.chat.settled();
-  expect(first.chat.say("Can we install something?")).toEqual({ ok: true });
+  expect(await first.chat.say("Can we install something?")).toEqual({
+    ok: true,
+  });
   await first.chat.settled();
   expect(first.backend.calls.at(-1)?.result).toEqual({
     status: "refused",
@@ -780,7 +782,7 @@ test("while the packages install, no question is posted and the tutor writes not
     error: "The packages are being installed.",
   });
   expect(await chat.ready()).toEqual({ ok: true });
-  expect(chat.say("Write the file?")).toEqual({ ok: true });
+  expect(await chat.say("Write the file?")).toEqual({ ok: true });
   // Until the install ends, only the turns before it run.
   while (backend.calls.length < 3) await new Promise((r) => setTimeout(r, 5));
 
@@ -1036,7 +1038,7 @@ test('"Not now" during its own open question waits for a safe tutor turn', async
     }),
   ).toEqual({ ok: true });
   await chat.settled();
-  expect(chat.say("Can we review why?")).toEqual({ ok: true });
+  expect(await chat.say("Can we review why?")).toEqual({ ok: true });
   await chat.settled();
 
   expect(
@@ -1077,7 +1079,7 @@ test('"Not now" waiting for a safe turn is told in the first header after a rest
     }),
   ).toEqual({ ok: true });
   await second.chat.settled();
-  expect(second.chat.say("Can we review why?")).toEqual({ ok: true });
+  expect(await second.chat.say("Can we review why?")).toEqual({ ok: true });
   await second.chat.settled();
 
   expect(
@@ -1472,7 +1474,7 @@ test.each([
     expect(launches).toHaveLength(1);
     expect(second.backend.received).toEqual([]);
     // The tutor hears the outcome the restart saved in its next header.
-    expect(second.chat.say("Did it work?")).toEqual({ ok: true });
+    expect(await second.chat.say("Did it work?")).toEqual({ ok: true });
     await second.chat.settled();
     expect(second.backend.received.at(-1)?.text).toContain(
       outcome === "installed"

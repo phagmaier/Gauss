@@ -258,7 +258,7 @@ export function runCodexTurn(options: {
   void app
     .request<{ turn: { id: string } }>("turn/start", {
       threadId,
-      input: [{ type: "text", text: turn.text, text_elements: [] }],
+      input: turnInput(turn),
       ...model,
     })
     .then(({ turn }) => identify(turn.id))
@@ -280,4 +280,20 @@ export function runCodexTurn(options: {
   }
 
   return { dispatch, failed, stop, events };
+}
+
+/**
+ * A turn as `turn/start`'s input: a learner's photos as image items, before
+ * the text whose header counts them. A user turn's image item is not a
+ * tool result's `inputImage` (findings.md, "Codex"). Its `detail` is left
+ * to Codex, as a tool result's image, which has none, is.
+ */
+function turnInput({ text, images = [] }: EngineTurn) {
+  return [
+    ...images.map((image) => ({
+      type: "image",
+      url: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
+    })),
+    { type: "text", text, text_elements: [] },
+  ];
 }

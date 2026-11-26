@@ -982,3 +982,63 @@ test("a temporary folder another user could reach refuses the session", async ()
     await rm(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("a turn with photos gives Claude a user message with a base64 image block per photo before its text, and a turn without them its text alone", async () => {
+  const inputs: SDKUserMessage[] = [];
+  vi.mocked(query).mockImplementation(
+    ({ prompt }) =>
+      ({
+        async *[Symbol.asyncIterator]() {
+          for await (const input of prompt as AsyncIterable<SDKUserMessage>) {
+            inputs.push(input);
+            yield sdk({ type: "result", subtype: "success", is_error: false });
+          }
+        },
+        close() {},
+      }) as unknown as Query,
+  );
+  const session = await createClaudeBackend().startSession({
+    systemPrompt: "Test tutor.",
+    tools: [],
+  });
+  const read = async (turn: Parameters<typeof session.send>[0]) => {
+    const events: BackendEvent[] = [];
+    for await (const event of session.send(turn)) events.push(event);
+    return events;
+  };
+  try {
+    await read({ text: "Hello." });
+    expect(
+      await read({
+        text: "[Message from the learner, with 2 photos.]\nWhere?",
+        images: [
+          { data: Buffer.from([0xff, 0xd8, 0xff]), mimeType: "image/jpeg" },
+          { data: Buffer.from([0xff, 0xd8, 0x00]), mimeType: "image/jpeg" },
+        ],
+      }),
+    ).toEqual([{ type: "turn_end", outcome: "done" }]);
+    const photos = {
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/jpeg", data: "/9j/" },
+        },
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/jpeg", data: "/9gA" },
+        },
+        {
+          type: "text",
+          text: "[Message from the learner, with 2 photos.]\nWhere?",
+        },
+      ],
+    } satisfies SDKUserMessage["message"];
+    expect(inputs.map((input) => input.message)).toEqual([
+      { role: "user", content: "Hello." },
+      photos,
+    ]);
+  } finally {
+    await session.close();
+  }
+});

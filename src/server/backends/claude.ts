@@ -672,7 +672,7 @@ async function startSession(
     interruptRequested = false;
     endTurnAfter = undefined;
     turnSignal = signal;
-    inbox.push(turn.text);
+    inbox.push(turn);
     const reader = createTurnReader(cwd);
     let interruptedOnStart = false;
     while (true) {
@@ -937,10 +937,27 @@ function createInbox() {
   }
   return {
     messages: messages(),
-    push(text: string) {
+    push({ text, images = [] }: EngineTurn) {
       pending.push({
         type: "user",
-        message: { role: "user", content: text },
+        message: {
+          role: "user",
+          // A learner's photos come before the text whose header counts them.
+          content:
+            images.length === 0
+              ? text
+              : [
+                  ...images.map((image) => ({
+                    type: "image" as const,
+                    source: {
+                      type: "base64" as const,
+                      media_type: image.mimeType,
+                      data: image.data.toString("base64"),
+                    },
+                  })),
+                  { type: "text" as const, text },
+                ],
+        },
         parent_tool_use_id: null,
         // The engine relays what the learner did.
         origin: { kind: "human" },

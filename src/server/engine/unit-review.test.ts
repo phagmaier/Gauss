@@ -969,7 +969,7 @@ test("a message sent while the card waits skips it; the teaching that waited goe
   const setup = setUp();
   const chat = await open(setup);
 
-  expect(chat.say("Can we just carry on?")).toEqual({ ok: true });
+  expect(await chat.say("Can we just carry on?")).toEqual({ ok: true });
   await chat.settled();
 
   expect(ofType(chat, "assessment_end")).toEqual([
@@ -1014,7 +1014,7 @@ test.each(["cooldown mark", "card write"])(
     await saving.promise;
     try {
       expect(ofType(chat, "assessment")).toEqual([]);
-      expect(chat.say("Can we start learning?")).toEqual({ ok: true });
+      expect(await chat.say("Can we start learning?")).toEqual({ ok: true });
     } finally {
       release.resolve();
       await chat.settled();
@@ -1182,7 +1182,7 @@ test("a review asked for in the discussion starts there; after it nothing is sen
     "Both retained. Back to segment 1, in its discussion.",
   );
 
-  expect(chat.say("Where were we?")).toEqual({ ok: true });
+  expect(await chat.say("Where were we?")).toEqual({ ok: true });
   await chat.settled();
   expect(sent(setup.backend).at(-1)).toContain(
     'Phase: discuss. Message from the learner. The review is over: "limit-value" retained; "one-sided" retained.',
@@ -1212,8 +1212,8 @@ test("a review's end in the discussion, with a restart before the next turn, is 
   const second = setUp();
   const chat = await open(second);
   expect(sent(second.backend)).toEqual([]);
-  await step(Promise.resolve(chat.say("Where were we?")), chat);
-  await step(Promise.resolve(chat.say("Go on.")), chat);
+  await step(chat.say("Where were we?"), chat);
+  await step(chat.say("Go on."), chat);
   expect(
     sent(second.backend).map((text) =>
       text.includes(
@@ -1707,7 +1707,7 @@ test("a finished review keeps the tutor session already used in its thread", asy
   await makeCourse();
   const first = setUp();
   const chat = await open(first, "limits");
-  expect(chat.say("Hello.")).toEqual({ ok: true });
+  expect(await chat.say("Hello.")).toEqual({ ok: true });
   await chat.settled();
   expect(await first.units.reviewNow(COURSE)).toEqual({
     ok: true,

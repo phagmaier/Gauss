@@ -78,6 +78,8 @@ export interface Judging {
   number: number;
   question: Question;
   message: string;
+  /** How many photos the message had. */
+  photos: number;
   reply: string;
   /** Records the judge's call, or its failure. Runs inside the chat's queue. */
   record(outcome: HelpOutcome): Promise<void>;
@@ -401,13 +403,13 @@ export function createUnitAgents(options: {
 
     judge(judging) {
       if (closed) return;
-      const { learnerId, number, question, message, reply } = judging;
+      const { learnerId, number, question, message, photos, reply } = judging;
       const stop = new AbortController();
       log.emit({ type: "judging", learnerId, number });
       const work = { stop, done: Promise.resolve() };
       work.done = (async () => {
         const outcome = await judge.judge(
-          { question, message, reply },
+          { question, message, photos, reply },
           stop.signal,
         );
         // Stopped because the chat is closing: the reply is still waiting

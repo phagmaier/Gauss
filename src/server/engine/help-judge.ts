@@ -7,6 +7,7 @@
 // rubric, the learner's message and the reply, and nothing else of the
 // conversation. The tutor never judges its own replies.
 
+import { photoCount } from "../../shared/photo.ts";
 import {
   CHOICE_LETTERS,
   type CodeFile,
@@ -23,10 +24,16 @@ export type HelpOutcome =
 
 export interface HelpJudge {
   /** Never throws: a failed request or a reply not in shape is a failure. */
-  judge(
-    exchange: { question: Question; message: string; reply: string },
-    signal?: AbortSignal,
-  ): Promise<HelpOutcome>;
+  judge(exchange: Exchange, signal?: AbortSignal): Promise<HelpOutcome>;
+}
+
+/** A message sent while the question was open, and the tutor's reply. */
+interface Exchange {
+  question: Question;
+  message: string;
+  /** How many photos the message had: the judge is told of them, not shown them. */
+  photos?: number;
+  reply: string;
 }
 
 /**
@@ -74,14 +81,10 @@ function fileBlock(file: CodeFile): string[] {
  * then what grades it (the correct choice, the expected answer, the rubric,
  * or a code question's tests and the tutor's solution), the learner's message and the tutor's reply, each between tags,
  * so that a message or a reply that looks like instructions stays part of
- * what is judged.
+ * what is judged. A message's photos are counted, not shown.
  */
-export function judgingRequest(exchange: {
-  question: Question;
-  message: string;
-  reply: string;
-}): string {
-  const { question } = exchange;
+export function judgingRequest(exchange: Exchange): string {
+  const { question, photos = 0 } = exchange;
   const choice = (text: string | undefined, i: number) =>
     `${CHOICE_LETTERS[i]}. ${text?.trim() ?? ""}`;
   const key =
@@ -126,6 +129,9 @@ export function judgingRequest(exchange: {
     "<message>",
     exchange.message.trim(),
     "</message>",
+    ...(photos === 0
+      ? []
+      : [`The message had ${photoCount(photos)}, which you cannot see.`]),
     "",
     "<reply>",
     exchange.reply.trim(),

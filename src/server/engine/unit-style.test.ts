@@ -164,7 +164,7 @@ test("a proposal shows its card against the current note, is kept in the positio
     proposedAt: NOW,
   });
 
-  expect(chat.say("And?")).toEqual({ ok: true });
+  expect(await chat.say("And?")).toEqual({ ok: true });
   await chat.settled();
   expect(backend.received.at(-1)?.text).toContain(
     "Your proposed style note waits for the learner's answer",
@@ -198,7 +198,7 @@ test.each([
   const waiting = async () =>
     (await root.readState(COURSE)).units.loops?.styleProposal;
 
-  expect(chat.say("More examples, please.")).toEqual({ ok: true });
+  expect(await chat.say("More examples, please.")).toEqual({ ok: true });
   await reading.promise;
   if (stopped) await chat.interrupt();
   release.resolve();
@@ -207,7 +207,7 @@ test.each([
     expect.soft(cards()).toEqual([]);
     expect.soft(await waiting()).toBeUndefined();
     // Nothing the stopped call held is left blocking the next.
-    expect(chat.say("Please.")).toEqual({ ok: true });
+    expect(await chat.say("Please.")).toEqual({ ok: true });
     await chat.settled();
   }
 
@@ -239,7 +239,7 @@ test("Apply writes style.md and asks for a backup commit; the running session is
   expect(commits).toContain(`${COURSE}: style note changed`);
 
   // The session already running keeps the prompt it was opened with.
-  expect(chat.say("Go on.")).toEqual({ ok: true });
+  expect(await chat.say("Go on.")).toEqual({ ok: true });
   await chat.settled();
   const header = backend.received.at(-1)?.text ?? "";
   expect(header).toContain("The learner applied the style note you proposed");
@@ -283,7 +283,7 @@ test('"Keep the current one" leaves style.md as it was, and the tutor is told in
     error: "That proposed style note is not waiting.",
   });
 
-  expect(chat.say("Go on.")).toEqual({ ok: true });
+  expect(await chat.say("Go on.")).toEqual({ ok: true });
   await chat.settled();
   expect(backend.received.at(-1)?.text).toContain(
     'The learner chose "Keep the current one"',
@@ -338,7 +338,7 @@ test.each([`${STYLE}\n\n`, null])(
       was === null ? undefined : STYLE,
     );
     expect(await chat.keepStyle(id)).toEqual({ ok: true });
-    expect(chat.say("Go on.")).toEqual({ ok: true });
+    expect(await chat.say("Go on.")).toEqual({ ok: true });
     await chat.settled();
     expect(second.backend.sessions.at(-1)?.systemPrompt).not.toContain(NOTE);
     if (was === null) {
@@ -363,7 +363,7 @@ test.each(["applied", "kept"] as const)(
 
     const second = await server([], kept);
     const reopened = await second.open();
-    expect(reopened.say("Go on.")).toEqual({ ok: true });
+    expect(await reopened.say("Go on.")).toEqual({ ok: true });
     await reopened.settled();
     expect(second.backend.sessions.at(-1)?.resumeId).toBe(first.backend.ids[0]);
     expect(reopened.events().at(-1)).toMatchObject({
@@ -381,7 +381,7 @@ test.each(["applied", "kept"] as const)(
       outcome === "applied"
         ? "The learner applied the style note you proposed"
         : 'The learner chose "Keep the current one"';
-    expect(chat.say("Try again.")).toEqual({ ok: true });
+    expect(await chat.say("Try again.")).toEqual({ ok: true });
     await chat.settled();
     expect(third.backend.received[0]?.text).toContain(decision);
     if (outcome === "applied") {
@@ -389,7 +389,7 @@ test.each(["applied", "kept"] as const)(
         `<style_note>\n${NOTE}\n</style_note>`,
       );
     }
-    expect(chat.say("And now?")).toEqual({ ok: true });
+    expect(await chat.say("And now?")).toEqual({ ok: true });
     await chat.settled();
     expect(third.backend.received[1]?.text).not.toContain(decision);
     await third.units.close();
@@ -434,7 +434,7 @@ test("a proposal is refused while a question of the unit is open, and when it is
 
   expect(await chat.ready()).toEqual({ ok: true });
   await chat.settled();
-  expect(chat.say("Could you explain less?")).toEqual({ ok: true });
+  expect(await chat.say("Could you explain less?")).toEqual({ ok: true });
   await chat.settled();
   expect(backend.calls.at(-1)?.result).toEqual({
     status: "refused",
@@ -494,7 +494,7 @@ test("another unit open when the note is applied is told it in its next header, 
     ok: true,
   });
   await sets.settled();
-  expect(sets.say("Go on.")).toEqual({ ok: true });
+  expect(await sets.say("Go on.")).toEqual({ ok: true });
   await sets.settled();
   expect(backend.received.at(-1)?.text).toContain(
     `The learner applied a new style note for this course in another unit.`,

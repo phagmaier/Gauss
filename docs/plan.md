@@ -52,68 +52,18 @@ Photos in messages (6.27 to 6.29): `brief.md`, "Other features",
 "Photos"; piece 28, which 6.29 mocks. A photo goes to the tutor inside
 the learner's turn. A tool the tutor would have to call is not used,
 because a tutor sent to a page image looked at it only when asked (the C
-gap on `tutor.md`'s garbled page, below). Both backends already pass
-images in tool results (`view_page` in `claude.ts` and `codex-turn.ts`);
-an image in a user turn is new on both. No shipped prompt text is
-reworded. The words telling the tutor that a message has photos are new
-header text, first read by a real model in the user check.
-
-### 6.28 A message with photos reaches the tutor — todo
-
-**Needs:** nothing open.
-**Why:** From the route to the backend, a learner message is text alone:
-`LearnerMessage` (the route's body), the `learner` page event
-(`shared/events.ts`), `UnitChat.say` and `EngineTurn`
-(`backends/backend.ts`). The Claude adapter sends it as a string
-(`messages` in `claude.ts`), and the Codex one as a single text item
-(`turn/start` in `codex-turn.ts`). A photo is taken in and staged by
-`createPhotoTaker` (`engine/photos.ts`), made nowhere yet, and kept or
-read by `DataRoot.keepPhotos` and `readPhoto`.
-**Do:**
-- Make the photo taker in `serve.ts`. A new route under the unit stages
-  one photo with it, with the file as the body and its name in a header,
-  as `attachFrom` in `http/app.ts` does, and answers with `PhotoStaged`
-  (`shared/photo.ts`) or the refusal and its status. The unit message
-  route takes 1 to 4 staged photo ids, and its text may then be empty.
-  An id that is not staged is refused.
-- `say` moves the photos into the course before it logs the message. The
-  `learner` event gets optional `photos`, the stored names.
-- `EngineTurn` gets optional images. Claude gets image blocks before the
-  text. Codex gets image input items as data URLs: check the item's shape
-  against the pinned CLI's protocol types (`codex app-server
-  generate-ts`). If it differs from a tool result's image, note that in
-  `findings.md`, "Codex".
-- The turn's header says how many photos the message has. This is new
-  model-facing text.
-- The help judge's input says the message had that many photos, which
-  the judge cannot see.
-- In the transcripts the handoff and notes writers read, `[photo]` takes
-  each photo's place.
-- The fake backend records a turn's images. The scripted backend answers
-  a message with photos by saying how many it sees.
-- The intake and planning conversations take no photos.
-**Done when:** fake-backend tests in a temporary root show the following.
-- A message with two photos and no text logs one event with both names,
-  and the backend gets one turn with both images' bytes, in order.
-- With a question open, the message is taken, and the tutor's reply goes
-  to the help judge with the photo line.
-- An unknown id, an already-sent id and a fifth photo are each refused,
-  and nothing is logged.
-- A message queued behind a running turn keeps its photos when its turn
-  runs.
-- After a restart, reopening the unit replays the event, and nothing is
-  sent again.
-
-Unit tests, with no model call, show that each adapter builds its request
-with the images: Claude's against the SDK's user message type, Codex's
-against the `turn/start` request. `mise run check` passes.
+gap on `tutor.md`'s garbled page, below). No shipped prompt text is
+reworded. The words telling the tutor and the help judge that a message
+has photos are new model-facing text, first read by a real model in the
+user check, as is a user turn's image on either backend.
 
 ### 6.29 Photos on the page — todo
 
-**Needs:** 6.28, and the user's pick of a direction for piece 28.
-**Why:** The composer (`web/Composer.tsx`) sends text alone. Neither the
-thread's learner item (`shared/timeline.ts`) nor the exported transcript
-(`engine/transcript-html.ts`) shows photos.
+**Needs:** the user's pick of a direction for piece 28.
+**Why:** The composer (`web/Composer.tsx`) sends text alone, though the
+routes take photos (`POST …/units/:unit/photos`, and `UnitMessage`'s
+`photos`). Neither the thread's learner item (`shared/timeline.ts`) nor
+the exported transcript (`engine/transcript-html.ts`) shows photos.
 **Do:** First mock piece 28 in `docs/prototype/` in two or three
 directions, add it to `index.html`, and ask the user to pick one. It
 covers attaching in the composer (picker, paste and drop, thumbnails with

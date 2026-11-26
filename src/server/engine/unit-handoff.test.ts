@@ -324,11 +324,11 @@ test("the writer is called as each segment closes and as the unit finishes, each
   expect(setup.handoffBackend.oneShots).toHaveLength(0);
 
   // Segment 1: a message, a confident miss and its detour, then two correct answers.
-  await step(Promise.resolve(chat.say("Is it the value at the point?")), chat);
+  await step(chat.say("Is it the value at the point?"), chat);
   await step(chat.ready(), chat);
   await answer(chat, "B", "90");
   const missed = ofType(chat, "question").at(-1)?.question;
-  await step(Promise.resolve(chat.say("I thought it was f(2).")), chat);
+  await step(chat.say("I thought it was f(2)."), chat);
   await step(chat.anotherQuestion(), chat);
   await answer(chat, "A", "75");
   expect(setup.handoffBackend.oneShots).toHaveLength(0);
@@ -437,7 +437,7 @@ test("malformed quotes do not prevent the handoff note or another misconception 
       },
     ]),
   );
-  await step(Promise.resolve(chat.say(`${words}\n${longQuote}`)), chat);
+  await step(chat.say(`${words}\n${longQuote}`), chat);
   await step(chat.override(), chat);
 
   expect((await dataRoot.readHandoff(COURSE, "limits"))?.note).toBe(
@@ -533,7 +533,7 @@ test("moving on closes a segment and calls the writer; a failed call records not
     { output: { note: "Both segments.", misconceptions: [] } },
   ]);
   const chat = await open(setup);
-  await step(Promise.resolve(chat.say("A first question.")), chat);
+  await step(chat.say("A first question."), chat);
   await step(chat.override(), chat);
   expect(setup.handoffBackend.oneShots).toHaveLength(1);
   expect(await reload().readHandoff(COURSE, "limits")).toBeUndefined();
@@ -594,7 +594,7 @@ test("a fresh session's first turn carries the unit's handoff note and its open 
   // "limit-value" passed, so its misconception is cleared and not named.
   expect(first).not.toContain("Values at the point decide the limit.");
   // Said once: the turn after it carries no note.
-  await step(Promise.resolve(chat.say("Hello again.")), chat);
+  await step(chat.say("Hello again."), chat);
   expect(setup.backend.received.at(-1)?.text).not.toContain("<handoff_note>");
 
   const stored = await root.readCourse(COURSE);

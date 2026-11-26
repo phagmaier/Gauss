@@ -87,7 +87,7 @@ export interface FakeCall {
 }
 
 export interface FakeBackend extends TutorBackend {
-  /** Every turn the engine sent, in order. */
+  /** Every turn the engine sent, in order, with its photos' bytes. */
   readonly received: EngineTurn[];
   /** Every tool call the script made, with what the tool returned. */
   readonly calls: FakeCall[];

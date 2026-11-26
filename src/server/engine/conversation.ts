@@ -12,7 +12,11 @@
 
 import { randomUUID } from "node:crypto";
 import type { PageEvent } from "../../shared/events.ts";
-import { SessionNotFound, type TutorSession } from "../backends/backend.ts";
+import {
+  SessionNotFound,
+  type TurnImage,
+  type TutorSession,
+} from "../backends/backend.ts";
 
 /** What a chat says to something the learner did: done, or why not. */
 export type ChatResult =
@@ -73,6 +77,11 @@ export interface Turn {
   learnerId?: string;
   /** The message itself, separate from the composed text sent to the tutor. */
   learnerMessage?: string;
+  /**
+   * Reads the photos of the learner's message, in order, when the turn is
+   * sent: kept in the course by then, so a queued turn holds no bytes.
+   */
+  images?(): Promise<readonly TurnImage[]>;
   /**
    * What the tutor receives. A function is called when the turn is sent to
    * the tutor, after the turns before it, so its header says how things
@@ -349,6 +358,7 @@ export function createConversation(options: {
       if (current.stop.signal.aborted) return stoppedBeforeSending;
       const text =
         typeof turn.text === "string" ? turn.text : await turn.text();
+      const images = await turn.images?.();
       if (current.stop.signal.aborted) return stoppedBeforeSending;
       // From here a Stop goes to the backend. Setting this, sending, and the
       // backend clearing its flag happen without a pause between them, so a
@@ -360,7 +370,11 @@ export function createConversation(options: {
       const written = new Set<string>();
       const { learnerMessage } = turn;
       for await (const event of tutor.send(
-        learnerMessage === undefined ? { text } : { text, learnerMessage },
+        {
+          text,
+          ...(learnerMessage === undefined ? {} : { learnerMessage }),
+          ...(images === undefined ? {} : { images }),
+        },
         current.stop.signal,
       )) {
         if (event.type === "text" && turn.toolReplyProblem === undefined) {

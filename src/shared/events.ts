@@ -9,6 +9,7 @@ import { CurriculumChangeOutcome } from "./curriculum-change.ts";
 import { ShownDispute } from "./dispute.ts";
 import { AssessmentMode } from "./evidence.ts";
 import { PackageSpec, PackagesOutcome } from "./packages.ts";
+import { PHOTOS_PER_MESSAGE, PhotoId } from "./photo.ts";
 import { Plan } from "./plan.ts";
 import {
   AnswerSubmission,
@@ -108,11 +109,16 @@ export const PageEvent = z.discriminatedUnion("type", [
     /** The learner message delivered by this turn; absent for non-message turns and old transcripts. */
     learnerId: z.string().optional(),
   }),
-  /** The learner's own message, echoed so a replay shows it. Old transcripts have no id. */
+  /**
+   * The learner's own message, echoed so a replay shows it. Old transcripts
+   * have no id. `photos`: the photos it carries, in order, kept in the
+   * course's `photos/`; its text may then be empty.
+   */
   z.object({
     type: z.literal("learner"),
     text: z.string(),
     id: z.string().optional(),
+    photos: z.array(PhotoId).min(1).optional(),
   }),
   /** The tutor has been sent a turn and is writing. */
   z.object({ type: z.literal("turn_start") }),
@@ -656,6 +662,31 @@ export const LearnerMessage = z.object({
   text: z.string().trim().min(1).max(20_000),
 });
 export type LearnerMessage = z.infer<typeof LearnerMessage>;
+
+/**
+ * A message in a unit's thread: its text and the photos staged for it, in
+ * order, by their ids. With a photo, the text may be empty.
+ */
+export const UnitMessage = z
+  .object({
+    text: z.string().trim().max(20_000),
+    photos: z
+      .array(PhotoId)
+      .max(
+        PHOTOS_PER_MESSAGE,
+        `A message takes at most ${PHOTOS_PER_MESSAGE} photos.`,
+      )
+      .refine(
+        (photos) => new Set(photos).size === photos.length,
+        "A message names each photo once.",
+      )
+      .optional(),
+  })
+  .refine(
+    ({ text, photos }) => text !== "" || (photos?.length ?? 0) > 0,
+    "Write a message or attach a photo.",
+  );
+export type UnitMessage = z.infer<typeof UnitMessage>;
 
 /**
  * The answer to starting a new course: the id of its intake, which the page

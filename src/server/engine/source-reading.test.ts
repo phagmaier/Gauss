@@ -277,7 +277,7 @@ test("the tutor reads its segment's section, another segment's that starts partw
     { position: { segment: 0, phase: "discuss" } },
   );
   try {
-    expect(chat.say("Check the other sections?")).toEqual({ ok: true });
+    expect(await chat.say("Check the other sections?")).toEqual({ ok: true });
     await chat.settled();
     expect(backend.calls.map((c) => c.result)).toEqual([
       // s1 and s3 start at a page's top, with its marker.
@@ -339,7 +339,7 @@ test("discussion can find an off-segment passage, read its page, then quote it",
     { position: { segment: 0, phase: "discuss" } },
   );
   try {
-    expect(chat.say("Where does he discuss knowing as a test?")).toEqual({
+    expect(await chat.say("Where does he discuss knowing as a test?")).toEqual({
       ok: true,
     });
     await chat.settled();
@@ -579,7 +579,7 @@ test("stopping a turn aborts its page render and shows no page view", async () =
     },
   );
   try {
-    expect(chat.say("Look at the page.")).toEqual({ ok: true });
+    expect(await chat.say("Look at the page.")).toEqual({ ok: true });
     const signal = await rendering.promise;
     await chat.interrupt();
     const aborted = signal?.aborted;
@@ -609,7 +609,7 @@ test("a new session's first turn names the segment's sections", async () => {
     position: { segment: 1, phase: "discuss" },
   });
   try {
-    expect(chat.say("Is substance subject?")).toEqual({ ok: true });
+    expect(await chat.say("Is substance subject?")).toEqual({ ok: true });
     await chat.settled();
     const text = backend.received[0]?.text ?? "";
     expect(text).toMatch(
@@ -694,7 +694,7 @@ test("outside the segment's teaching, as in its discussion or going over it agai
     );
     try {
       if (position.phase === "discuss") {
-        expect(chat.say("Read it again?")).toEqual({ ok: true });
+        expect(await chat.say("Read it again?")).toEqual({ ok: true });
       }
       await chat.settled();
       expect(backend.calls[0]?.result, JSON.stringify(position)).toEqual({
@@ -734,7 +734,7 @@ test("a detour in the check finds a section that starts partway down a page and 
   );
   try {
     if (backend.calls.length === 0) {
-      expect(chat.say("Where is the universal?")).toEqual({ ok: true });
+      expect(await chat.say("Where is the universal?")).toEqual({ ok: true });
     }
     await chat.settled();
     expect(backend.calls[0]?.result).toMatchObject({
@@ -790,7 +790,7 @@ test("search is refused in teaching for the planned passages, and elsewhere outs
     );
     try {
       if (backend.calls.length === 0) {
-        expect(chat.say("Where is the universal?")).toEqual({ ok: true });
+        expect(await chat.say("Where is the universal?")).toEqual({ ok: true });
         await chat.settled();
       }
       expect(backend.calls[0]?.result, position.phase).toEqual({

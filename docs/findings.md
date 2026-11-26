@@ -326,6 +326,13 @@ one idea each, in three segments.
 - **Codex's web search can open a page and search in it** (the protocol's
   `WebSearchAction`: `openPage`, `findInPage`); `exec`'s search item
   carries the query, not the pages found.
+- **An image in a user turn is not a tool result's item.** `turn/start`'s
+  `input` takes `{ type: "image", url }`, with an optional `detail`
+  (`auto`, `low`, `high`, `original`); a tool result's image is
+  `{ type: "inputImage", imageUrl }`, with no detail. Evidence: `UserInput`
+  and `DynamicToolCallOutputContentItem` in the 0.171 types (`codex
+  app-server generate-ts --experimental`, no model call, 2026-11-25). A
+  learner's photo in a user turn is untried on a model.
 
 ## Sandbox and confinement
 

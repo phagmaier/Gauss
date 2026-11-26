@@ -27,6 +27,7 @@ import { createIntakes } from "./engine/intake.ts";
 import { createMathCheck } from "./engine/math-check.ts";
 import { createNotes } from "./engine/notes.ts";
 import { createPackageInstaller } from "./engine/packages.ts";
+import { createPhotoTaker } from "./engine/photos.ts";
 import { type Sandbox, startSandbox } from "./engine/sandbox.ts";
 import { createSourceConverter } from "./engine/source-convert.ts";
 import { splitTutorPrompt } from "./engine/teaching.ts";
@@ -115,7 +116,7 @@ export async function serve(
         log: (line) => process.stdout.write(`${line}\n`),
       })
     : noBackup;
-  const { converter, intakes, plannings, units, disputes, notes } =
+  const { converter, intakes, plannings, units, disputes, notes, photos } =
     await wireEngine({ ...options, dataRootPath, dataRoot, sandbox, backup });
   const api = getRequestListener(
     createApp({
@@ -126,6 +127,7 @@ export async function serve(
       units,
       disputes,
       notes,
+      photos,
       openFile: systemOpener(),
       backup,
     }).fetch,
@@ -322,5 +324,7 @@ export async function wireEngine(
       units.get(courseId, unitId)?.settleNotesContext(),
     backup,
   });
-  return { converter, intakes, plannings, units, disputes, notes };
+  // Without the sandbox, a photo is refused with the reason.
+  const photos = createPhotoTaker({ sandbox, dataRoot });
+  return { converter, intakes, plannings, units, disputes, notes, photos };
 }

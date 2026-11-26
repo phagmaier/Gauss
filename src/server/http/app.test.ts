@@ -54,6 +54,7 @@ import {
   createPackageInstaller,
   type PackageInstaller,
 } from "../engine/packages.ts";
+import { createPhotoTaker } from "../engine/photos.ts";
 import { TEACHING_END, TEACHING_START } from "../engine/teaching.ts";
 import { createUnitChats } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
@@ -195,6 +196,15 @@ function setUp(
     units,
     disputes,
     notes,
+    // These routes' tests have no sandbox, so a photo is refused.
+    photos: createPhotoTaker({
+      sandbox: {
+        available: false,
+        reason: "no sandbox in this test",
+        close: async () => {},
+      },
+      dataRoot,
+    }),
     openFile,
     backup,
   });

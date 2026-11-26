@@ -400,7 +400,7 @@ test("a source lecture publishes only verified blocks, in order through replay a
       "quote each part in a quote block of its own",
     );
     expect(said(first.chat.events())).toEqual(expected);
-    expect(first.chat.say("Is that all?")).toEqual({ ok: true });
+    expect(await first.chat.say("Is that all?")).toEqual({ ok: true });
     await first.chat.settled();
     expect(first.backend.received[1]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
   } finally {
@@ -446,9 +446,9 @@ test("a source teaching turn that never submits a lecture reports the failure", 
       error: expect.stringContaining("lecture"),
     });
     // The tutor hears that its hidden text was not seen, once.
-    expect(chat.say("What did I miss?")).toEqual({ ok: true });
+    expect(await chat.say("What did I miss?")).toEqual({ ok: true });
     await chat.settled();
-    expect(chat.say("Is that all?")).toEqual({ ok: true });
+    expect(await chat.say("Is that all?")).toEqual({ ok: true });
     await chat.settled();
     expect(backend.received[1]?.text).toContain(UNSHOWN_LECTURE_NOTE);
     expect(backend.received[2]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
@@ -488,7 +488,7 @@ test("a lecture turn stopped after it reached the tutor tells the tutor the lear
     await chat.interrupt();
     await chat.settled();
     expect(said(chat.events())).toEqual([]);
-    expect(chat.say("What did I miss?")).toEqual({ ok: true });
+    expect(await chat.say("What did I miss?")).toEqual({ ok: true });
     await chat.settled();
     expect(backend.received[1]?.text).toContain(UNSHOWN_LECTURE_NOTE);
   } finally {
@@ -541,7 +541,7 @@ test("a restart before the tutor hears that a stopped lecture went unseen tells 
   });
   try {
     expect(middle.backend.received).toEqual([]);
-    expect(middle.chat.say("What did I miss?")).toEqual({ ok: true });
+    expect(await middle.chat.say("What did I miss?")).toEqual({ ok: true });
     await middle.chat.settled();
     expect(middle.backend.received).toHaveLength(1);
     expect(middle.backend.received[0]?.text).toContain(UNSHOWN_LECTURE_NOTE);
@@ -555,7 +555,7 @@ test("a restart before the tutor hears that a stopped lecture went unseen tells 
 
   const after = await open(root, id, [[{ text: "Yes." }]], [], { kept });
   try {
-    expect(after.chat.say("Is that all?")).toEqual({ ok: true });
+    expect(await after.chat.say("Is that all?")).toEqual({ ok: true });
     await after.chat.settled();
     expect(after.backend.received).toHaveLength(1);
     expect(after.backend.received[0]?.text).not.toContain(UNSHOWN_LECTURE_NOTE);
@@ -591,7 +591,7 @@ test("a lecture turn stopped before it reached the tutor adds no note", async ()
     await chat.interrupt();
     release.resolve();
     await chat.settled();
-    expect(chat.say("A question.")).toEqual({ ok: true });
+    expect(await chat.say("A question.")).toEqual({ ok: true });
     await chat.settled();
     // The message is the first turn the tutor gets.
     expect(backend.received).toHaveLength(1);
@@ -637,7 +637,7 @@ test("a quote across a cut is shown where the tutor made it, in the source's wor
       { text: "So the Absolute is a result." },
     ],
   ]);
-  expect(first.chat.say("Where is the Absolute a result?")).toEqual({
+  expect(await first.chat.say("Where is the Absolute a result?")).toEqual({
     ok: true,
   });
   await first.chat.settled();
@@ -686,7 +686,7 @@ test("of two matches, the one in the section named comes first, then the one in 
     ],
   ]);
   try {
-    expect(chat.say("Where does he say it?")).toEqual({ ok: true });
+    expect(await chat.say("Where does he say it?")).toEqual({ ok: true });
     await chat.settled();
     expect(
       chat.events().flatMap((e) => (e.type === "source_quoted" ? [e] : [])),
@@ -721,7 +721,7 @@ test("a passage the sources lack, a section they lack, and a passage too short a
     ],
   ]);
   try {
-    expect(chat.say("Can you quote all three?")).toEqual({ ok: true });
+    expect(await chat.say("Can you quote all three?")).toEqual({ ok: true });
     await chat.settled();
     expect(backend.calls.map((c) => c.result)).toEqual([
       { status: "refused", text: QUOTE_NOT_FOUND },
@@ -793,7 +793,7 @@ test("while a question is open nothing is quoted, with the reason; once it is gr
   try {
     expect(await chat.ready()).toEqual({ ok: true });
     await chat.settled();
-    expect(chat.say("Where is this in the text?")).toEqual({ ok: true });
+    expect(await chat.say("Where is this in the text?")).toEqual({ ok: true });
     await chat.settled();
     // In a source course the tutor is told that pointing to the passage
     // is help, as the judge counts it.

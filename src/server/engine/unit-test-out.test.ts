@@ -620,13 +620,13 @@ test("a unit finished by skipping what the test passed, every objective, tells i
     { type: "unit_closed", status: "passed" },
   ]);
 
-  await step(Promise.resolve(chat.say("Thanks!")), chat);
+  await step(chat.say("Thanks!"), chat);
   expect(sent(first.backend).at(-1)).toBe(`${TESTED_OUT_SAID}Thanks!`);
   await first.units.close();
 
   const second = setUp();
   const reopened = await open(second);
-  await step(Promise.resolve(reopened.say("Back again.")), reopened);
+  await step(reopened.say("Back again."), reopened);
   expect(sent(second.backend)).toEqual([`${TESTED_OUT_SAID}Back again.`]);
 });
 
@@ -726,7 +726,7 @@ test("a partial result skips nothing while its card waits, across a restart too;
   expect(reopened.testWaits).toBe(true);
   expect(nextStep(reopened)).toBeNull();
   // A message on the card is answered, and teaches nothing.
-  await step(Promise.resolve(chat.say("What now?")), chat);
+  await step(chat.say("What now?"), chat);
   expect(sent(second.backend).at(-1)).toContain(
     "The test before the unit is over, and its result card waits for the learner, who chooses to skip what it passed or to be taught the whole unit; " +
       "the teaching waits until they do. Message from the learner. " +
@@ -832,7 +832,7 @@ test("the unit's gate, after the segments taught, leaves out what the test passe
   expect(ofType(chat, "unit_closed")).toEqual([
     { type: "unit_closed", status: "passed" },
   ]);
-  await step(Promise.resolve(chat.say("Thanks!")), chat);
+  await step(chat.say("Thanks!"), chat);
   expect(sent(setup.backend).at(-1)).toBe(
     '[Unit 2 of 2, "The derivative". The unit is finished: every objective passed. ' +
       "Message from the learner. Allowed now: reply to the learner. No teaching tools.]\nThanks!",
@@ -1025,9 +1025,7 @@ test("a misconception the handoff writer quotes from a test answer is found in t
   // passes and closes it, so the writer reads the test and the segment.
   await step(chat.skipTested(["power-rule", "chain-rule"]), chat);
   await step(
-    Promise.resolve(
-      chat.say("So it is the rise over the run between two points?"),
-    ),
+    chat.say("So it is the rise over the run between two points?"),
     chat,
   );
   await step(chat.ready(), chat);
@@ -1286,8 +1284,8 @@ const SHOWED =
 test("the tutor's word on the test, when its turn fails, is asked for by the learner's next message, with what the test showed, and not by the one after", async () => {
   const { setup, chat } = await failedSummary();
 
-  await step(Promise.resolve(chat.say("What now?")), chat);
-  await step(Promise.resolve(chat.say("And then?")), chat);
+  await step(chat.say("What now?"), chat);
+  await step(chat.say("And then?"), chat);
 
   const [asked, after] = sent(setup.backend);
   expect(asked).toContain(
@@ -1334,7 +1332,7 @@ test("the tutor's word on the test, when its turn fails and a restart comes, is 
   expect(await positionOf()).toMatchObject({ testOut: { stage: "result" } });
   expect((await positionOf())?.testOut).not.toHaveProperty("summaryOwed");
 
-  await step(Promise.resolve(chat.say("What now?")), chat);
+  await step(chat.say("What now?"), chat);
   expect(sent(restarted.backend)[1]).not.toContain("What it showed: ");
 });
 
@@ -1375,7 +1373,7 @@ test("the tutor's word on the test, stopped once its turn was sent, is not asked
     testOut: { stage: "result" },
   });
 
-  await step(Promise.resolve(chat.say("What now?")), chat);
+  await step(chat.say("What now?"), chat);
   expect(sent(setup.backend).at(-1)).not.toContain("What it showed: ");
 });
 
@@ -1392,7 +1390,7 @@ test("a message sent with the test's last answer, queued ahead of the turn askin
     choice: "A",
     confidence: "90",
   });
-  expect(chat.say("Is that all?")).toEqual({ ok: true });
+  expect(await chat.say("Is that all?")).toEqual({ ok: true });
   expect(await answering).toEqual({ ok: true });
   await chat.settled();
 
@@ -1432,8 +1430,8 @@ test("the learner's answer to the result card, when the turn carrying it failed 
   const last = setUp();
   const after = await open(last);
   expect(sent(last.backend)).toEqual([]);
-  await step(Promise.resolve(after.say("Shall we start?")), after);
-  await step(Promise.resolve(after.say("Go on.")), after);
+  await step(after.say("Shall we start?"), after);
+  await step(after.say("Go on."), after);
   const told =
     'The learner chose to be taught the whole unit, though the test passed "slope", "power-rule" and "chain-rule"';
   expect(sent(last.backend).map((text) => text.includes(told))).toEqual([

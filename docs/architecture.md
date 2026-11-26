@@ -165,7 +165,8 @@ Rules no single file shows:
   `dispute-judge.ts`. Commands: `sandbox.ts` (the only way the engine runs
   model- or learner-written input), `pytool.ts` (a `pytools/` script run
   in it on a file from outside), `source-convert.ts`, `photos.ts` (a
-  photo taken in and staged), `packages.ts`.
+  photo taken in and staged, and read for the turn that sends it),
+  `packages.ts`.
   Sources: `source-text.ts` (an outline and a section as a model reads
   them), `source-shelf.ts` (what the source tools read, view, quote and
   search), `source-quote-index.ts` with `source-quote-worker.ts` (a

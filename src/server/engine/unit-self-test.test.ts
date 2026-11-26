@@ -435,7 +435,7 @@ test("a unit's self-test starts at once in that unit's thread with no card, leav
   });
 
   // A message while the question is open: the smallest hint, one per request.
-  expect(chat.say("Can I have a hint?")).toEqual({ ok: true });
+  expect(await chat.say("Can I have a hint?")).toEqual({ ok: true });
   await chat.settled();
   expect(sent(setup.backend).at(-1)).toContain(
     'Question 1, on "limit-value", is open. Allowed now: reply without ' +
@@ -539,7 +539,7 @@ test("a course self-test starts in the unit in progress opened last; a review ca
     ["limit-value", { mode: "self-test", unit: "derivative" }],
   ]);
 
-  expect(chat.say("Hello.")).toEqual({ ok: true });
+  expect(await chat.say("Hello.")).toEqual({ ok: true });
   await chat.settled();
   expect(sent(setup.backend).at(-1)).toContain(
     "The learner ended the self-test partway, and question 2 was withdrawn. " +
@@ -739,7 +739,7 @@ test("after a miss the next question is on the other objective, and the missed o
     'When they press it, a question on another objective follows; the fresh one on "limit-value" comes later.',
   );
   // A message in the detour hears the same.
-  expect(chat.say("Why?")).toEqual({ ok: true });
+  expect(await chat.say("Why?")).toEqual({ ok: true });
   await chat.settled();
   expect(sent(first.backend).at(-1)).toContain(
     'you may suggest it once the confusion seems cleared. When they press it, a question on another objective follows; the fresh one on "limit-value" comes later.',
@@ -946,7 +946,7 @@ test("passing over is refused outside a self-test, with a question open, in a de
   if (reviewing === undefined) throw new Error("No chat.");
   await reviewing.settled();
   expect(lastQuestion(reviewing).number).toBe(1);
-  expect(reviewing.say("/pass limit-value")).toEqual({ ok: true });
+  expect(await reviewing.say("/pass limit-value")).toEqual({ ok: true });
   await reviewing.settled();
   expect(ofType(reviewing, "assessment_end")).toEqual([]);
   expect(refusal(inReview)).toEqual({
@@ -960,7 +960,7 @@ test("passing over is refused outside a self-test, with a question open, in a de
   clock = new Date(Date.parse(NOW) + 2 * HOUR);
   const open = setUp();
   const chat = await started(open, UNIT_1, "limits");
-  expect(chat.say("/pass limit-value")).toEqual({ ok: true });
+  expect(await chat.say("/pass limit-value")).toEqual({ ok: true });
   await chat.settled();
   expect(refusal(open)).toEqual({
     status: "refused",
@@ -986,7 +986,7 @@ test("passing over is refused outside a self-test, with a question open, in a de
   const detoured = setUp();
   const inDetour = await started(detoured, UNIT_1, "limits");
   await answer(inDetour, "B");
-  expect(inDetour.say("/pass one-sided")).toEqual({ ok: true });
+  expect(await inDetour.say("/pass one-sided")).toEqual({ ok: true });
   await inDetour.settled();
   expect(refusal(detoured)).toEqual({
     status: "refused",
@@ -1072,7 +1072,7 @@ test("passing over every objective ends the self-test, and the next header says 
       passedOver: 2,
     },
   ]);
-  expect(chat.say("Hello.")).toEqual({ ok: true });
+  expect(await chat.say("Hello.")).toEqual({ ok: true });
   await chat.settled();
   expect(sent(setup.backend).at(-1)).toContain(
     "The self-test is over: nothing answered. Passed over, since no kind " +
@@ -1150,7 +1150,7 @@ test("an objective passed over records nothing, the self-test asks the next, its
       passedOver: 1,
     },
   ]);
-  expect(reopened.say("Hello.")).toEqual({ ok: true });
+  expect(await reopened.say("Hello.")).toEqual({ ok: true });
   await reopened.settled();
   expect(sent(second.backend).at(-1)).toContain(
     'The self-test is over: "one-sided" retained. Passed over, since no ' +

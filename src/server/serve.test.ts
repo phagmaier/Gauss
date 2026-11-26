@@ -183,7 +183,7 @@ async function check(dataRoot: DataRoot, courseId: string, chat: UnitChat) {
     const open = at.openQuestion;
     if (open === undefined) throw new Error("No question is open.");
     if (!asked) {
-      expect(chat.say("What does $h$ mean?")).toEqual({ ok: true });
+      expect(await chat.say("What does $h$ mean?")).toEqual({ ok: true });
       await chat.settled();
       asked = true;
     }
@@ -332,7 +332,7 @@ test.each([
         backend: other,
         model: otherModel,
       } as TutorModelPost);
-      expect(chat.say("Go on.")).toEqual({ ok: true });
+      expect(await chat.say("Go on.")).toEqual({ ok: true });
       await chat.settled();
       expect(sessions).toHaveLength(2);
 
@@ -340,7 +340,7 @@ test.each([
         backend,
         model: chosen,
       } as TutorModelPost);
-      expect(chat.say("And then?")).toEqual({ ok: true });
+      expect(await chat.say("And then?")).toEqual({ ok: true });
       await chat.settled();
       expect(sessions.slice(2)).toEqual([`resume tutor on ${chosen}`]);
       expect(await openDataRoot({ path: dir }).readSettings()).toEqual({
@@ -390,7 +390,7 @@ test.each(["claude", "codex"] as const)(
 
       expect(await engine.units.setTeaching(`${edit}\n`, undefined)).toBe(edit);
       expect(await readFile(teachingFile, "utf8")).toBe(`${edit}\n`);
-      expect(chat.say("Go on.")).toEqual({ ok: true });
+      expect(await chat.say("Go on.")).toEqual({ ok: true });
       await chat.settled();
       expect(sent.slice(1)).toEqual([
         { resumed: true, prompt: first?.replace(gauss, edit) },
@@ -410,7 +410,7 @@ test.each(["claude", "codex"] as const)(
         await engine.units.setTeaching(gaussTeaching(tutor), edit),
       ).toBeUndefined();
       expect(existsSync(teachingFile)).toBe(false);
-      expect(chat.say("And then?")).toEqual({ ok: true });
+      expect(await chat.say("And then?")).toEqual({ ok: true });
       await chat.settled();
       expect(sent.slice(2)).toEqual([{ resumed: true, prompt: first }]);
     } finally {

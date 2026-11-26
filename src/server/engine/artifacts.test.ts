@@ -144,7 +144,7 @@ test("an artifact shown while teaching is stored, numbered, and referred to in t
   );
 
   // In the discussion, the next one is numbered after it.
-  expect(chat.say("Show me another?")).toEqual({ ok: true });
+  expect(await chat.say("Show me another?")).toEqual({ ok: true });
   await chat.settled();
   expect(said(chat.events()).slice(3)).toEqual([
     { file: "2-another-one.html", title: "Another one" },
@@ -197,7 +197,7 @@ test("while a question is open nothing is shown, with the reason; once it is gra
   expect(await chat.ready()).toEqual({ ok: true });
   await chat.settled();
 
-  expect(chat.say("Can you draw it?")).toEqual({ ok: true });
+  expect(await chat.say("Can you draw it?")).toEqual({ ok: true });
   await chat.settled();
   expect(backend.calls.at(-1)?.result).toEqual({
     status: "refused",
@@ -245,14 +245,14 @@ test("an aid whose write ends after a Stop is not shown, and the next one is", a
     },
   );
 
-  expect(chat.say("Can you draw it?")).toEqual({ ok: true });
+  expect(await chat.say("Can you draw it?")).toEqual({ ok: true });
   await writing.promise;
   await chat.interrupt();
   release.resolve();
   await chat.settled();
   expect(said(chat.events())).toEqual(["Teaching."]);
 
-  expect(chat.say("Draw it again?")).toEqual({ ok: true });
+  expect(await chat.say("Draw it again?")).toEqual({ ok: true });
   await chat.settled();
   const shown = chat.events().filter((event) => event.type === "artifact");
   expect(shown).toMatchObject([{ title: "Shown" }]);
@@ -288,7 +288,7 @@ test("a finished unit can still reply but cannot store a new artifact", async ()
     status: "passed",
   });
 
-  expect(chat.say("Can you show it once more?")).toEqual({ ok: true });
+  expect(await chat.say("Can you show it once more?")).toEqual({ ok: true });
   await chat.settled();
   expect(backend.calls.at(-1)?.result).toEqual({
     status: "refused",

@@ -174,7 +174,7 @@ test("a proposal shows its card against the current units, waits in the position
     proposedAt: NOW,
   });
 
-  expect(chat.say("And?")).toEqual({ ok: true });
+  expect(await chat.say("And?")).toEqual({ ok: true });
   await chat.settled();
   expect(backend.received.at(-1)?.text).toContain(WAITING);
   expect((await stored())?.map((u) => u.id)).toEqual(["loops", "sets", "maps"]);
@@ -209,7 +209,7 @@ test.each([
     const waiting = async () =>
       (await root.readState(COURSE)).units.loops?.curriculumChange;
 
-    expect(chat.say("More practice, please.")).toEqual({ ok: true });
+    expect(await chat.say("More practice, please.")).toEqual({ ok: true });
     await reading.promise;
     if (stopped) await chat.interrupt();
     release.resolve();
@@ -218,7 +218,7 @@ test.each([
       expect.soft(cards()).toEqual([]);
       expect.soft(await waiting()).toBeUndefined();
       // Nothing the stopped call held is left blocking the next.
-      expect(chat.say("Please.")).toEqual({ ok: true });
+      expect(await chat.say("Please.")).toEqual({ ok: true });
       await chat.settled();
     }
 
@@ -250,7 +250,7 @@ test("Apply writes the new units, each kept unit with its plan, asks for a backu
   });
   expect(commits).toContain(`${COURSE}: curriculum changed`);
 
-  expect(chat.say("Go on.")).toEqual({ ok: true });
+  expect(await chat.say("Go on.")).toEqual({ ok: true });
   await chat.settled();
   const header = backend.received.at(-1)?.text ?? "";
   expect(header).toContain(
@@ -368,7 +368,7 @@ test('"Keep the current one" leaves curriculum.json as it was and tells the tuto
     error: "That proposed curriculum change is not waiting.",
   });
 
-  expect(chat.say("Go on.")).toEqual({ ok: true });
+  expect(await chat.say("Go on.")).toEqual({ ok: true });
   await chat.settled();
   const header = backend.received.at(-1)?.text ?? "";
   expect(header).toContain('The learner chose "Keep the current one"');
@@ -453,7 +453,7 @@ test("a proposal is refused while a question of the unit is open", async () => {
   const chat = await open();
   expect(await chat.ready()).toEqual({ ok: true });
   await chat.settled();
-  expect(chat.say("Could we add a unit?")).toEqual({ ok: true });
+  expect(await chat.say("Could we add a unit?")).toEqual({ ok: true });
   await chat.settled();
   expect(backend.calls.at(-1)?.result).toEqual({
     status: "refused",
@@ -569,7 +569,7 @@ test("an Apply a restart cut short after writing curriculum.json is recorded as 
     outcome: "applied",
   });
   expect(await chat.keepCurriculum(id)).toMatchObject({ ok: false });
-  expect(chat.say("Go on.")).toEqual({ ok: true });
+  expect(await chat.say("Go on.")).toEqual({ ok: true });
   await chat.settled();
   expect(second.backend.received.at(-1)?.text).toContain(
     "The learner applied the curriculum change you proposed.",
@@ -618,7 +618,7 @@ test("another unit open when a change is applied is told the units in its next h
   });
   await sets.settled();
   expect(sets.events()).toContainEqual({ type: "curriculum_changed" });
-  expect(sets.say("Go on.")).toEqual({ ok: true });
+  expect(await sets.say("Go on.")).toEqual({ ok: true });
   await sets.settled();
   const header = backend.received.at(-1)?.text ?? "";
   expect(header).toContain(

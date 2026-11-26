@@ -260,7 +260,7 @@ test("an overturned miss with a corrected key keeps the first grade, passes the 
   });
 
   // The tutor hears it with its next turn, once.
-  expect(chat.say("Did my dispute go through?")).toEqual({ ok: true });
+  expect(await chat.say("Did my dispute go through?")).toEqual({ ok: true });
   await chat.settled();
   const header = setup.backend.received.at(-1)?.text ?? "";
   expect(header).toContain(
@@ -446,7 +446,7 @@ test("an \"I don't know\" whose answer shown the judge corrects stays a miss for
     dispute.outcome,
   );
 
-  expect(chat.say("Was I right about A?")).toEqual({ ok: true });
+  expect(await chat.say("Was I right about A?")).toEqual({ ok: true });
   await chat.settled();
   const header = setup.backend.received.at(-1)?.text ?? "";
   expect(header).toContain(
@@ -559,7 +559,7 @@ test("in a finished unit whose chat is open, an overturned pass is recorded thro
     objectives: { quotient: "passed", limit: "overridden" },
   });
   // The tutor of a finished unit is told nothing.
-  expect(chat.say("Hello.")).toEqual({ ok: true });
+  expect(await chat.say("Hello.")).toEqual({ ok: true });
   await chat.settled();
   expect(setup.backend.received.at(-1)?.text).not.toContain("disputed");
   expect(setup.backend.received.at(-1)?.text).toContain(
@@ -597,7 +597,7 @@ test("a dispute raised while the unit's chat is not open is shown on its card, a
   expect(statusOf(chat)).toMatchObject({
     objectives: { quotient: "attempted", limit: "not-started" },
   });
-  expect(chat.say("Where are we?")).toEqual({ ok: true });
+  expect(await chat.say("Where are we?")).toEqual({ ok: true });
   await chat.settled();
   const header = setup.backend.received.at(-1)?.text ?? "";
   expect(header).toContain(
@@ -643,9 +643,9 @@ test("a dispute decided while the unit's chat is open is kept for the tutor befo
 
   const after = setUp([[{ text: "Hello again." }], [{ text: "Yes." }]], []);
   const chat = await open(after);
-  expect(chat.say("Where are we?")).toEqual({ ok: true });
+  expect(await chat.say("Where are we?")).toEqual({ ok: true });
   await chat.settled();
-  expect(chat.say("Go on.")).toEqual({ ok: true });
+  expect(await chat.say("Go on.")).toEqual({ ok: true });
   await chat.settled();
   expect(
     after.backend.received.map((t) =>

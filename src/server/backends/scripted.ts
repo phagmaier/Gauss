@@ -54,7 +54,8 @@
 //   feedback, and the turn that ends the test says in a line what it showed;
 //   a later turn whose header says that word is owed gives it first (after
 //   a fresh start's greeting), then replies to the learner's message, if
-//   there is one.
+//   there is one. A message with photos is answered first by saying how
+//   many it sees.
 //   Its questions on an objective are numbered past those the header lists
 //   as asked before, so none repeats one, whichever unit's thread asked it.
 //   A choice question asks for a sum, and the right choice is that sum; the
@@ -145,6 +146,7 @@ import { DisputeJudgment } from "../../shared/dispute.ts";
 import { HandoffReply } from "../../shared/handoff.ts";
 import { MISCONCEPTION_WORDS_LIMIT } from "../../shared/misconception.ts";
 import { NotesReply } from "../../shared/notes.ts";
+import { photoCount } from "../../shared/photo.ts";
 import type { Plan } from "../../shared/plan.ts";
 import { sentences } from "../../shared/profile.ts";
 import { CHOICE_LETTERS, HelpJudgment } from "../../shared/question.ts";
@@ -254,7 +256,7 @@ export function scriptedPlan(
 }
 
 function scriptedTurn(
-  { text, learnerMessage = "" }: EngineTurn,
+  { text, learnerMessage = "", images = [] }: EngineTurn,
   session: SessionOptions,
 ): FakeStep[] {
   const { header, body } = parts(text);
@@ -264,9 +266,15 @@ function scriptedTurn(
     has("amend_curriculum") && has("ask_question")
       ? listedCourse(session, header)
       : undefined;
+  // A message's photos are counted first, whatever the reply goes on to do.
+  const sees: FakeStep[] =
+    images.length === 0
+      ? []
+      : [{ text: `**Scripted:** I see ${photoCount(images.length)}.` }];
   // A composed body can include files, test output or other engine context.
   if (/(^|\s)\/hold\b/.test(learnerMessage)) {
     return [
+      ...sees,
       { text: "Holding this turn open until you stop it." },
       { hold: true },
     ];
@@ -294,6 +302,7 @@ function scriptedTurn(
     const said = learnerMessage.trim();
     const fresh = header.indexOf(" The learner started a fresh conversation");
     return [
+      ...sees,
       ...(fresh === -1
         ? []
         : [{ text: `**Scripted fresh start.** ${header.slice(1, fresh)}` }]),
@@ -305,18 +314,24 @@ function scriptedTurn(
   }
   const searching = /(?:^|\s)\/search\b(.*)$/m.exec(learnerMessage);
   if (searching !== null) {
-    return webSearch(searching[1] ?? "", session.webSearch === true);
+    return [
+      ...sees,
+      ...webSearch(searching[1] ?? "", session.webSearch === true),
+    ];
   }
-  return teaching(
-    controls,
-    history,
-    body,
-    learnerMessage,
-    tools ? (coding ? "code" : "math") : "none",
-    session.cwd,
-    courseStyle(session.systemPrompt),
-    course,
-  );
+  return [
+    ...sees,
+    ...teaching(
+      controls,
+      history,
+      body,
+      learnerMessage,
+      tools ? (coding ? "code" : "math") : "none",
+      session.cwd,
+      courseStyle(session.systemPrompt),
+      course,
+    ),
+  ];
 }
 
 /** The tutor's word on the test before a unit, from what its header says it showed. */

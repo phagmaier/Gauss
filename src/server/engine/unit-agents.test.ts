@@ -42,6 +42,7 @@ test.each(["before judging starts", "before a queued judgment records"])(
           answer: "A",
         },
         message: "How do I start?",
+        photos: 0,
         reply: "The answer is 4.",
         record: async () => {
           log.emit({
