@@ -275,9 +275,10 @@ export interface DataRoot {
    * marked delivered. An applied curriculum decision writes curriculum.json
    * first, with each kept unit's plan, and throws CurriculumChangeRefused
    * if the change would now drop a unit that has started. With `finished`,
-   * the position is a finished unit's, held for a review or a self-test
-   * the learner asked for: it goes in `finishedReviews`, and null takes it
-   * out, while the units in progress stay as they are.
+   * the position is a finished unit's (`finishedReviews`), and null takes
+   * it out, while the units in progress stay as they are. With `held`, the
+   * unit finishes in this write: null takes it out of the units in
+   * progress, and `held` is kept as its finished position.
    * Writes land in the order they were called, each on the one before.
    */
   writePosition(
@@ -294,6 +295,7 @@ export interface DataRoot {
         | { decision: CurriculumDecision }
         | { delivered: readonly CurriculumDecision[] };
       finished?: boolean;
+      held?: UnitPosition;
     },
   ): Promise<State>;
   /**
@@ -1400,12 +1402,13 @@ export function openDataRoot(options: {
       id,
       unitId,
       position,
-      { completion, testedOut, style, curriculum, finished } = {},
+      { completion, testedOut, style, curriculum, finished, held } = {},
     ) {
       const unit = Slug.parse(unitId);
       // Checked and copied now, so a later change to the caller's object
       // cannot reach a write still waiting its turn.
       const checked = position === null ? null : UnitPosition.parse(position);
+      const finishedAt = held === undefined ? null : UnitPosition.parse(held);
       const completed =
         completion === undefined
           ? undefined
@@ -1464,7 +1467,7 @@ export function openDataRoot(options: {
           const { curriculumChange: _, ...rest } = checked;
           position = rest;
         }
-        const state: State =
+        const moved: State =
           finished === true
             ? withReview(before, unit, position)
             : {
@@ -1478,6 +1481,8 @@ export function openDataRoot(options: {
                       )
                     : { ...before.units, [unit]: position },
               };
+        const state =
+          finishedAt === null ? moved : withReview(moved, unit, finishedAt);
         if (checked === null && testedOut === true) {
           state.testedOut = { ...before.testedOut, [unit]: true };
         }
@@ -2166,7 +2171,7 @@ function changeWaits(state: State): boolean {
   );
 }
 
-/** The state with the finished unit's position, held for a review or a self-test, set, or taken out with null. */
+/** The state with the finished unit's position, held for a review, a self-test or its tutor's session, set, or taken out with null. */
 function withReview(
   state: State,
   unit: Slug,

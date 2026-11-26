@@ -9,10 +9,10 @@
 // question, so a restart never finds the question closed and no detour.
 //
 // The position also keeps the id of the unit's tutor session, so a unit
-// reopened after a restart resumes it (task 2.14). A finished unit without
-// a review or self-test keeps the id only in memory. The notices waiting
-// for the tutor's next header are kept the same way, from the write that
-// makes them due until a turn carrying them is sent.
+// reopened after a restart resumes it (task 2.14). The notices waiting for
+// the tutor's next header are kept the same way, from the write that makes
+// them due until a turn carrying them is sent. A finished unit keeps both
+// in its finished position, which goes once neither is left.
 //
 // Once a segment's close or the unit's end is written, the backup is asked
 // for a commit (task 2.25), and the handoff writer for a note (task 5.7).
@@ -111,7 +111,7 @@ export interface SelfTestSetUp {
 export interface UnitRecord {
   /**
    * Where the unit stands, with its tutor session's id once one is kept;
-   * kept once the unit is finished and out of state.json.
+   * a finished unit's is its closed position, unless it holds an assessment.
    */
   readonly position: UnitPosition;
   /**
@@ -131,11 +131,14 @@ export interface UnitRecord {
   readonly pendingCurriculumDecisions: readonly CurriculumDecision[];
   /** The notices waiting for the tutor's next header, in order. */
   readonly tutorNotices: readonly TutorNotice[];
-  /** Set once the unit is finished and taken out of state.json. */
+  /** Set once the unit is finished and out of the units in progress. */
   readonly finished: "passed" | "overridden" | undefined;
   /** The learner skipped every segment and finished at the test's result. */
   readonly testedOut: boolean;
-  /** A position was read from state.json, in progress or for a review or self-test. */
+  /**
+   * A position was read from state.json: in progress, or a finished unit's,
+   * held for a review or a self-test or for its tutor's session.
+   */
   readonly reopened: boolean;
   /** The unit's status and each objective's, as `unit_status` tells the page. */
   status(): PageEvent;
@@ -172,8 +175,7 @@ export interface UnitRecord {
   /**
    * Writes the id of the unit's tutor session into its position, with the
    * names of the tools it began with if the backend keeps them, or takes
-   * them out, so the next start of the unit makes a new session. A finished
-   * unit with no review or self-test keeps them only in memory.
+   * them out, so the next start of the unit makes a new session.
    */
   keepSession(id: string | undefined, tools?: readonly string[]): Promise<void>;
   /**
@@ -319,7 +321,9 @@ export interface UnitRecord {
     gate: AssessedObjective[];
   }): Promise<NonNullable<UnitPosition["pendingMoveOn"]>>;
   /**
-   * Removes the position and keeps any full test-out finish, then shows it.
+   * Takes the unit out of the units in progress, keeping its closed
+   * position if it holds the tutor's session or a notice, and any full
+   * test-out finish, then shows it.
    * A style proposal still waiting is withdrawn.
    */
   finish(
@@ -449,9 +453,10 @@ export async function openUnitRecord(options: {
 
   /**
    * Saves a move and notices an Apply recovered before or during the write.
-   * A finished unit's position is saved only while it holds an assessment
-   * (a review or a self-test the learner asked for), in `finishedReviews`;
-   * null leaves it as it is.
+   * A finished unit's position is saved in `finishedReviews` while it holds
+   * an assessment (a review or a self-test the learner asked for), and
+   * otherwise as its closed position while that holds the tutor's session
+   * or a notice; null leaves it as it is.
    */
   async function savePosition(
     given: UnitPosition | null,
@@ -462,7 +467,12 @@ export async function openUnitRecord(options: {
     const next = given === null ? null : withNotices(given);
     if (finished !== undefined) {
       const kept = next ?? withNotices(position);
-      const holding = kept.assessment === undefined ? null : kept;
+      const holding =
+        kept.assessment !== undefined
+          ? kept
+          : sessionId !== undefined || notices.length > 0
+            ? closedPosition()
+            : null;
       const saved = await dataRoot.writePosition(courseId, unitId, holding, {
         ...outcome,
         finished: true,
@@ -664,7 +674,15 @@ export async function openUnitRecord(options: {
             preview: options.packagePreview(packageRequest),
             outcome: "withdrawn",
           };
-    const saved = await savePosition(null, { completion, testedOut: byTest });
+    // The unit's finished position keeps its tutor's session, in the same
+    // write that takes it out of the units in progress.
+    const saved = await savePosition(null, {
+      completion,
+      testedOut: byTest,
+      ...(sessionId !== undefined || notices.length > 0
+        ? { held: closedPosition() }
+        : {}),
+    });
     finished = how;
     testedOut = byTest;
     position = closedPosition();
@@ -774,10 +792,6 @@ export async function openUnitRecord(options: {
       sessionId = id;
       sessionTools =
         id === undefined || tools === undefined ? undefined : [...tools];
-      if (finished !== undefined && position.assessment === undefined) {
-        position = closedPosition();
-        return;
-      }
       try {
         await move(position);
       } catch (error) {
@@ -879,10 +893,6 @@ export async function openUnitRecord(options: {
       const left = notices.filter((notice) => !ids.includes(notice.id));
       if (left.length === notices.length) return;
       notices = left;
-      if (finished !== undefined && position.assessment === undefined) {
-        position = closedPosition();
-        return;
-      }
       await move(position);
     },
 

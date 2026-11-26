@@ -112,7 +112,11 @@ Moving on is offered in the discussion, beside "ready", as well as in the
 check.
 
 Progress is saved after every segment and every answer, so a session can
-stop anywhere and resume at the same segment and phase.
+stop anywhere and resume at the same segment and phase. A unit reopened
+after a restart resumes its tutor's conversation, a finished unit's too
+(the user's choice, 2026-11-25); one that cannot be resumed gives way to a
+new conversation, which takes over from the learner's progress, and the
+thread says so.
 
 ## Teaching style
 

@@ -48,30 +48,6 @@ chosen.
 
 ## Known-gap fixes
 
-### K.28 A finished unit resumes its tutor's conversation (todo)
-
-A finished unit keeps its tutor's conversation id only in memory, so
-reopened after a restart, or after its chat closed, it starts a new
-session without "This conversation is new", the handoff block or the
-page's fresh-start line. The user's choice (2026-11-25): resume it, as
-an unfinished unit does.
-
-Keep a finished unit's tutor conversation id, its Codex tool names and
-its waiting notices in state.json once its position goes, so reopening
-resumes it. One that cannot be resumed (not found, tools differ, or
-none kept while its thread holds an earlier conversation) gives way to
-a new one as for an unfinished unit: "This conversation is new" and the
-handoff in its first header, and a not-resumed fresh-start line.
-
-Done when: engine tests on the fake backend in a temporary data root
-show (1) a finished unit reopened on a new server resumes the same
-session with the learner's next message; (2) one whose session is
-missing, or one finished with no id kept whose thread holds an earlier
-conversation, starts a new session whose first header holds "This
-conversation is new" and the handoff note, and the thread gets a
-not-resumed fresh-start event; (3) a review in a finished unit still
-resumes, and the id stays kept after it ends. `mise run check` passes.
-
 ### K.29 A tutor refused during course planning is told the block lifted (todo)
 
 A tutor refused while the course planner's proposal waits is told to

@@ -2850,6 +2850,170 @@ test("a unit finished before a restart opens finished, and is not started again"
   });
 });
 
+/** Teaches the SHORT unit, answers both its questions right and skips the gate: the unit is finished. */
+async function finishShort(setup: ReturnType<typeof setUp>): Promise<void> {
+  const chat = await open(setup);
+  await toCheck(chat);
+  await answer(chat, "A");
+  await answer(chat, "B");
+  await skipGate(chat);
+}
+
+const FINISHED_SCRIPT = (): FakeTurn[] => [
+  TEACH,
+  ask(Q_QUOTIENT),
+  FEEDBACK,
+  ask(Q_SECANT),
+  FEEDBACK,
+];
+
+/** As a unit finished before a finished unit kept its session: its finished position goes. */
+async function forgetFinishedSession(): Promise<void> {
+  const file = join(dir, "courses", COURSE, "state.json");
+  const { finishedReviews: _, ...state } = JSON.parse(
+    await readFile(file, "utf8"),
+  );
+  await writeFile(file, JSON.stringify(state));
+}
+
+test("a finished unit keeps its tutor's session, which a restart resumes with the learner's next message, not told it is new", async () => {
+  const before = setUp(FINISHED_SCRIPT());
+  await makeCourse(true, SHORT);
+  await finishShort(before);
+  const [id] = before.backend.ids;
+  expect((await reload().readState(COURSE)).finishedReviews).toEqual({
+    derivative: { segment: 0, phase: "closed", tutorSessionId: id },
+  });
+  await before.units.close();
+
+  const after = setUp([[{ text: "As we said, the slope of a secant." }]]);
+  const chat = await open(after);
+  expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([]);
+  expect(after.backend.sessions).toEqual([]);
+
+  chat.say("Remind me?");
+  await chat.settled();
+
+  expect(after.backend.sessions).toEqual([
+    expect.objectContaining({ cwd: FOLDER(), resumeId: id }),
+  ]);
+  expect(after.backend.received.map((t) => t.text)).toEqual([
+    expect.not.stringContaining(JOINED_NOTE),
+  ]);
+});
+
+test.each([
+  ["whose kept session the backend no longer has", false],
+  ["finished before its session was kept", true],
+])(
+  "a finished unit %s gives way to a new session after a restart: the thread says so, and its first header says it is new, with the handoff note",
+  async (_, unkept) => {
+    const before = setUp(FINISHED_SCRIPT());
+    await makeCourse(true, SHORT);
+    await finishShort(before);
+    await before.units.close();
+    if (unkept) await forgetFinishedSession();
+    await reload().writeHandoff(COURSE, "derivative", "Note 1.", {
+      writtenAt: NOW,
+      through: { session: 1, events: 0 },
+    });
+
+    const after = setUp([[{ text: "Let us look at it together." }]], {
+      kept: unkept ? keptSessions : new KeptSessions(),
+    });
+    const chat = await open(after);
+    expect(since(chat, "session")).toEqual([
+      SESSION,
+      { type: "unit_plan", plan: SHORT },
+      { type: "fresh_start", reason: "not-resumed" },
+      shortStatus("passed", "passed", "passed"),
+      { type: "unit_closed", status: "passed" },
+    ]);
+
+    chat.say("Where were we?");
+    await chat.settled();
+
+    expect(after.backend.sessions).toHaveLength(1);
+    expect(after.backend.sessions[0]?.resumeId).toBeUndefined();
+    const header = after.backend.received[0]?.text ?? "";
+    expect(header).toContain(JOINED_NOTE);
+    expect(header).toContain("<handoff_note>\nNote 1.\n</handoff_note>");
+    const [made] = after.backend.ids;
+    expect(
+      (await reload().readState(COURSE)).finishedReviews?.derivative
+        ?.tutorSessionId,
+    ).toBe(made);
+  },
+);
+
+test("a finished unit whose session was never kept says once that a new conversation takes over, however often it is opened before the learner writes", async () => {
+  const before = setUp(FINISHED_SCRIPT());
+  await makeCourse(true, SHORT);
+  await finishShort(before);
+  await before.units.close();
+  await forgetFinishedSession();
+
+  const looked = setUp([]);
+  await open(looked);
+  await looked.units.close();
+
+  const after = setUp([[{ text: "Let us look at it together." }]]);
+  const chat = await open(after);
+  expect(chat.events().filter((e) => e.type === "fresh_start")).toEqual([
+    { type: "fresh_start", reason: "not-resumed" },
+  ]);
+  chat.say("Where were we?");
+  await chat.settled();
+  expect(after.backend.received[0]?.text).toContain(JOINED_NOTE);
+});
+
+test("a move-on notice still waiting when the unit finishes is kept with its session, and after a restart the next header tells it once", async () => {
+  const before = setUp([
+    TEACH,
+    ask(Q_QUOTIENT),
+    FEEDBACK,
+    ask(Q_SECANT),
+    FEEDBACK,
+    ask(Q_QUOTIENT_2),
+  ]);
+  await makeCourse(true, SHORT);
+  const first = await open(before);
+  await toCheck(first);
+  await answer(first, "B"); // missed
+  await anotherQuestion(first);
+  await answer(first, "B"); // passed
+  // Moving on and finishing cost no reply, so no header has told it.
+  expect(await first.override()).toEqual({ ok: true });
+  await first.settled();
+  expect(await first.finishUnit(finishId(first))).toEqual({ ok: true });
+  await skipGate(first);
+  const [id] = before.backend.ids;
+  expect((await reload().readState(COURSE)).finishedReviews).toEqual({
+    derivative: {
+      segment: 0,
+      phase: "closed",
+      tutorSessionId: id,
+      tutorNotices: [expect.objectContaining({ kind: "override" })],
+    },
+  });
+  await before.units.close();
+
+  const after = setUp([[{ text: "Yes." }], [{ text: "Yes." }]]);
+  const chat = await open(after);
+  expect(chat.say("Hello.")).toEqual({ ok: true });
+  await chat.settled();
+  expect(chat.say("Again.")).toEqual({ ok: true });
+  await chat.settled();
+  const [told, next] = after.backend.received.map((t) => t.text);
+  const moved =
+    "The learner moved on without finishing the check of the segment just closed";
+  expect(told).toContain(moved);
+  expect(next).not.toContain(moved);
+  expect((await reload().readState(COURSE)).finishedReviews).toEqual({
+    derivative: { segment: 0, phase: "closed", tutorSessionId: id },
+  });
+});
+
 test("a finished unit missed since in another unit's review stays finished, and its tutor is told what slipped", async () => {
   const before = setUp([
     TEACH,

@@ -827,7 +827,17 @@ test("in a self-test of finished unit 1, the scripted tutor asks each objective,
   expect(chat.events().filter((e) => e.type === "unit_closed")).toEqual([
     { type: "unit_closed", status: "passed" },
   ]);
-  expect(await dataRoot.readState(COURSE)).toEqual({ units: {} });
+  // The self-test's entry goes; the closed position keeps the tutor's session.
+  expect(await dataRoot.readState(COURSE)).toEqual({
+    units: {},
+    finishedReviews: {
+      limits: {
+        segment: 1,
+        phase: "closed",
+        tutorSessionId: expect.any(String),
+      },
+    },
+  });
 });
 
 test("in a self-test with only code picked, outside a coding course, the scripted tutor passes over each objective with its reason, and the end counts them", async () => {
@@ -884,7 +894,16 @@ test("in a self-test with only code picked, outside a coding course, the scripte
     passedOver: 2,
   });
   expect(await dataRoot.readEvidence(COURSE)).toHaveLength(2);
-  expect(await dataRoot.readState(COURSE)).toEqual({ units: {} });
+  expect(await dataRoot.readState(COURSE)).toEqual({
+    units: {},
+    finishedReviews: {
+      limits: {
+        segment: 1,
+        phase: "closed",
+        tutorSessionId: expect.any(String),
+      },
+    },
+  });
 });
 
 test('in a self-test with only choice picked, the scripted tutor asks a choice question on every objective, a "-proof" one too, and the self-test runs to its end', async () => {

@@ -1500,7 +1500,14 @@ test("in a finished course the review runs in the thread of the unit whose objec
   expect(nextStep(replay(reopened))).toBe("leave");
   const after = await reload().readState(COURSE);
   expect(after.units).toEqual({});
-  expect(after.finishedReviews).toBeUndefined();
+  // The run's entry goes; the closed position keeps the tutor's session.
+  expect(after.finishedReviews).toEqual({
+    derivative: {
+      segment: 1,
+      phase: "closed",
+      tutorSessionId: expect.any(String),
+    },
+  });
   const answers = (await reload().readEvidence(COURSE)).filter(
     (e): e is AnswerEvidence =>
       e.kind === "answer" && e.assessment !== undefined,
@@ -1575,7 +1582,13 @@ test("a disputed pass and a review miss leave the finished unit closed and its p
   expect(openQuestion(replay(resumed))?.question.id).toBe(pending.id);
   expect((await reload().readState(COURSE)).units).toEqual({});
   await step(resumed.skipAssessment(), resumed);
-  expect((await reload().readState(COURSE)).finishedReviews).toBeUndefined();
+  expect((await reload().readState(COURSE)).finishedReviews).toEqual({
+    derivative: {
+      segment: 1,
+      phase: "closed",
+      tutorSessionId: expect.any(String),
+    },
+  });
   expect(sent(second.backend)).toEqual([]);
 });
 
@@ -1614,6 +1627,13 @@ test("a unit tested out in this process can run a review without teaching or a g
   expect(await reload().readState(COURSE)).toEqual({
     units: {},
     testedOut: { derivative: true },
+    finishedReviews: {
+      derivative: {
+        segment: 1,
+        phase: "closed",
+        tutorSessionId: expect.any(String),
+      },
+    },
   });
 });
 

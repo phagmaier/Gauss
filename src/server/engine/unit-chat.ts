@@ -1728,19 +1728,9 @@ function createUnitChat(
         ...(options.timer === undefined ? {} : { timer: options.timer }),
       });
       agents = loaded;
-      /**
-       * A review offered, or a self-test started, reads the units as they
-       * now are; in a finished unit with no tutor session, the new session
-       * is told it joins the unit.
-       */
+      /** A review offered, or a self-test started, reads the units as they now are. */
       const runBegins = (units: readonly StoredUnit[]) => {
         r.context = { ...r.context, units };
-        if (
-          record.finished !== undefined &&
-          record.position.tutorSessionId === undefined
-        ) {
-          r.header.joined();
-        }
       };
       const r: Running = {
         context,
@@ -1957,10 +1947,10 @@ function createUnitChat(
         },
       };
       if (record.reopened) {
-        // A unit under way resumes its tutor's conversation with its first
-        // turn. One that cannot be found, was never kept, or lacks tools a
-        // new one has, gives way to a new session at once, so the thread
-        // says so before anything else.
+        // A unit under way, or finished with its tutor's session kept,
+        // resumes the conversation with its first turn. One that cannot be
+        // found, was never kept, or lacks tools a new one has, gives way to
+        // a new session at once, so the thread says so before anything else.
         const id = record.position.tutorSessionId;
         const resumes =
           id === undefined
@@ -1968,6 +1958,25 @@ function createUnitChat(
             : await loaded.resume(id, record.position.tutorTools);
         if (resumes === "missing") r.header.fallBack("not-resumed");
         else if (resumes === "tools") r.header.fallBack("tools");
+      } else if (record.finished !== undefined) {
+        // No session kept for a finished unit: it finished before finished
+        // units kept theirs, or a restart came after Start fresh and before
+        // the new session's id was kept. A conversation in its thread gives
+        // way to a new one. A fresh start after the last turn has said so
+        // already: the thread says it once, not at every opening before the
+        // learner writes. One inside a turn (a lost resume) was followed by
+        // that turn's new conversation.
+        const events = log.events();
+        const turned = events.findLastIndex(
+          (e) => e.type === "turn_start" || e.type === "turn_end",
+        );
+        if (turned !== -1) {
+          if (events.findLastIndex((e) => e.type === "fresh_start") > turned) {
+            r.header.joined();
+          } else {
+            r.header.fallBack("not-resumed");
+          }
+        }
       }
       const recoveringOverride =
         record.position.pendingSegmentOverride !== undefined;

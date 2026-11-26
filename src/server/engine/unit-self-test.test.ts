@@ -790,7 +790,14 @@ test("after a miss the next question is on the other objective, and the missed o
   });
   const after = await reload().readState(COURSE);
   expect(after.units).toEqual({});
-  expect(after.finishedReviews).toBeUndefined();
+  // The run's entry goes; the closed position keeps the tutor's session.
+  expect(after.finishedReviews).toEqual({
+    limits: {
+      segment: 1,
+      phase: "closed",
+      tutorSessionId: expect.any(String),
+    },
+  });
   const answers = (await reload().readEvidence(COURSE)).filter(
     (e): e is AnswerEvidence =>
       e.kind === "answer" && e.assessment !== undefined,
