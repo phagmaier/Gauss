@@ -957,7 +957,8 @@ test("in a self-test with only code picked, outside a coding course, the scripte
             mode: "self-test",
             skipped: false,
             statuses: {},
-            passedOver: ["limits-idea", "limits-proof"],
+            // Passed over in the self-test's random order, as above.
+            passedOver: expect.arrayContaining(["limits-idea", "limits-proof"]),
           },
         ],
       },
