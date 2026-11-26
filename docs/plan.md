@@ -71,6 +71,20 @@ work for Stage 6. A task that closes a gap deletes it here.
   places of their own.
 - **C:** The unit planner splits contexts into objectives (“a setting is
   not a skill” is unsettled) and names implementations (“using zip”).
+- **B:** The test's result card shows when the tutor's summary turn ends,
+  however it ends: if that turn fails or is stopped before it is sent,
+  the card shows, and a restart then sends no summary, so the tutor never
+  says what the test showed. Decide whether the card waits for a summary
+  that reached the tutor, or the record keeps that the summary is owed.
+- **B:** Testing out of every objective finishes the unit with no
+  test-answered notice: the finished unit's header says every objective
+  passed, but not that the learner chose to skip the teaching. Decide
+  whether the tutor should hear the choice.
+- **B:** A dispute's notice whose write fails is kept in memory and saved
+  by the record's next write; a restart before any other write loses it,
+  though the thread shows the outcome, so reopening does not tell it
+  again. Decide whether a failed notice write should keep the thread from
+  showing the outcome until it is saved.
 
 **Tutor, grading and judging**
 
