@@ -358,6 +358,16 @@ what is due, and on-demand self-test.
   learner approves them: the tutor names them, Gauss builds the command,
   and it is the only command that reaches the network, PyPI alone.
 - **Math input**: typed plain text or LaTeX with live preview.
+- **Photos**: in a unit's chat, the learner can attach up to four images
+  (JPEG, PNG or WebP) to a message, with or without text, whenever a
+  message can be sent. That includes while a question is open, where the
+  tutor's reply is judged for help as any reply is. Photos go in messages
+  only, never in an answer (the user's choices, 2026-11-25). Gauss
+  removes a photo's metadata, such as where it was taken, and stores it
+  reduced in size with the course. The thread and the exported transcript
+  show it. The tutor sees it with the message; a new conversation that
+  takes over does not. The handoff and notes writers read only the text
+  around it.
 - **Transcripts**: every session can be exported as a document.
 - **Notes**: HTML notes per finished unit, kept in a course notes folder,
   written when the learner asks for them; a finished unit offers them. They
@@ -501,10 +511,10 @@ and calibration, unit gates, testing out of a unit, review of what is due,
 detours, source ingestion with verified quotes, artifacts, workspace,
 transcripts, unit notes, library view, backup.
 
-Later: on-demand self-test on a scope the learner picks, cheat sheets,
-handwritten-work photos; starred messages for the notes, if the generated
-notes miss what the learner wants kept. A desktop app only once everything
-else works, if at all.
+Later: on-demand self-test on a scope the learner picks, cheat sheets;
+starred messages for the notes, if the generated notes miss what the
+learner wants kept. A desktop app only once everything else works, if at
+all.
 
 ## Dropped
 

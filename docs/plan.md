@@ -42,12 +42,157 @@ because code and documents use them.
 
 ## Stage 6
 
-Cheat sheets, photo input; starred messages for the notes, if the
-generated notes miss what the learner wants kept; text recognition for
-scanned PDFs, and questions on a source's figure (left out of stage 4);
-ranking passage matches with a cheap model, if the learner's use shows
-local search leaves too many plausible matches. Each is planned when
-chosen.
+Cheat sheets; starred messages for the notes, if the generated notes miss
+what the learner wants kept; text recognition for scanned PDFs, and
+questions on a source's figure (left out of stage 4); ranking passage
+matches with a cheap model, if the learner's use shows local search leaves
+too many plausible matches. Each is planned when chosen.
+
+Photos in messages (6.27 to 6.29): `brief.md`, "Other features",
+"Photos"; piece 28, which 6.29 mocks. A photo goes to the tutor inside
+the learner's turn. A tool the tutor would have to call is not used,
+because a tutor sent to a page image looked at it only when asked (the C
+gap on `tutor.md`'s garbled page, below). Both backends already pass
+images in tool results (`view_page` in `claude.ts` and `codex-turn.ts`);
+an image in a user turn is new on both. No shipped prompt text is
+reworded. The words telling the tutor that a message has photos are new
+header text, first read by a real model in the user check.
+
+### 6.27 A photo taken in — todo
+
+**Needs:** nothing open.
+**Why:** Nothing in Gauss reads an image from the learner. A phone photo
+is several megabytes, can be turned by an EXIF tag, and carries metadata
+such as where it was taken. An image file is untrusted input, which Gauss
+decodes only in the sandbox, as it does a source
+(`engine/source-convert.ts`).
+**Do:** `pytools/photo.py` is run by `sandboxPython` as `convert.py` is.
+It:
+- reads JPEG, PNG or WebP by content, not by name;
+- applies the EXIF orientation;
+- puts transparency on white;
+- scales the long side down to Claude's recommended limit (1568 px when
+  this plan was written: check it with Context7 and note it beside the
+  constant);
+- writes a JPEG with no metadata.
+
+It refuses each of these with a reason the page can show: another format
+(HEIC by name, with "save it as JPEG"), a damaged file, more than 20 MB,
+or more than 50 megapixels (Pillow's decompression-bomb guard).
+`engine/photos.ts` stages an upload (`Upload`, as in `attached-sources.ts`)
+as `uploads/photos/<uuid>.jpg`, which startup clears with the rest of
+`uploads/`. When the photo's message is sent, it moves into
+`courses/<id>/photos/<uuid>.jpg`. `DataRoot` reads a photo back by id and
+refuses anything that is not a photo id. The id and the staging result
+are zod schemas in `shared/`. Photos are kept in the backup; add `photos/`
+to the data root map in `architecture.md`.
+**Done when:** pytest, on images Pillow makes in the test, shows:
+- a 4000×3000 JPEG tagged to turn 90° comes out 1176×1568, upright (a
+  marked corner's colour at its worked-out place), with no EXIF;
+- a PNG's transparent area comes out white;
+- a WebP is read, and a small image is not enlarged;
+- a text file named `.jpg`, a cut-off JPEG and a HEIC header are refused,
+  each with its reason.
+
+Vitest in a temporary root shows that staging and then sending moves the
+file into the course, that a photo staged and never sent is gone after a
+startup, and that reading `../state.json` as a photo is refused.
+`mise run check` passes.
+
+### 6.28 A message with photos reaches the tutor — todo
+
+**Needs:** 6.27.
+**Why:** From the route to the backend, a learner message is text alone:
+`LearnerMessage` (the route's body), the `learner` page event
+(`shared/events.ts`), `UnitChat.say` and `EngineTurn`
+(`backends/backend.ts`). The Claude adapter sends it as a string
+(`messages` in `claude.ts`), and the Codex one as a single text item
+(`turn/start` in `codex-turn.ts`).
+**Do:**
+- A new route under the unit stages one photo, with the file as the body
+  and its name in a header, as `attachFrom` in `http/app.ts` does, and
+  answers with its id or the refusal. The unit message route takes 1 to
+  4 staged photo ids, and its text may then be empty. An id that is not
+  staged is refused.
+- `say` moves the photos into the course before it logs the message. The
+  `learner` event gets optional `photos`, the stored names.
+- `EngineTurn` gets optional images. Claude gets image blocks before the
+  text. Codex gets image input items as data URLs: check the item's shape
+  against the pinned CLI's protocol types (`codex app-server
+  generate-ts`). If it differs from a tool result's image, note that in
+  `findings.md`, "Codex".
+- The turn's header says how many photos the message has. This is new
+  model-facing text.
+- The help judge's input says the message had that many photos, which
+  the judge cannot see.
+- In the transcripts the handoff and notes writers read, `[photo]` takes
+  each photo's place.
+- The fake backend records a turn's images. The scripted backend answers
+  a message with photos by saying how many it sees.
+- The intake and planning conversations take no photos.
+**Done when:** fake-backend tests in a temporary root show the following.
+- A message with two photos and no text logs one event with both names,
+  and the backend gets one turn with both images' bytes, in order.
+- With a question open, the message is taken, and the tutor's reply goes
+  to the help judge with the photo line.
+- An unknown id, an already-sent id and a fifth photo are each refused,
+  and nothing is logged.
+- A message queued behind a running turn keeps its photos when its turn
+  runs.
+- After a restart, reopening the unit replays the event, and nothing is
+  sent again.
+
+Unit tests, with no model call, show that each adapter builds its request
+with the images: Claude's against the SDK's user message type, Codex's
+against the `turn/start` request. `mise run check` passes.
+
+### 6.29 Photos on the page — todo
+
+**Needs:** 6.28, and the user's pick of a direction for piece 28.
+**Why:** The composer (`web/Composer.tsx`) sends text alone. Neither the
+thread's learner item (`shared/timeline.ts`) nor the exported transcript
+(`engine/transcript-html.ts`) shows photos.
+**Do:** First mock piece 28 in `docs/prototype/` in two or three
+directions, add it to `index.html`, and ask the user to pick one. It
+covers attaching in the composer (picker, paste and drop, thumbnails with
+Remove, and a refusal), a message with photos in the thread, and a photo
+opened at full size. Record the pick in `brief.md`, "Page", and the
+rejected directions in the piece's header.
+
+Then build the pick:
+- Each photo is staged when attached, and Send waits until staging ends.
+  A refusal shows beside its photo. There are at most four photos.
+- The thread shows a message's photos, served by a new GET route under
+  the unit that serves only that course's photos, and opens one at full
+  size.
+- The exported transcript embeds them as data URLs: its policy allows
+  `img-src data:`.
+**Done when:** in Chromium on `pnpm dev:fake` with a fresh root, in
+"Calculus I", unit 1:
+- attach a photo with the picker and paste a second, remove one, and
+  send the message with text: the thread shows the photo, and the
+  scripted tutor says it sees one;
+- a photo is sent with no text;
+- a `.heic` file and a fifth photo are refused with their reasons;
+- a photo sent while a question is open is taken;
+- after a server restart, the unit shows the photos again;
+- the exported transcript, opened from disk, shows them.
+
+The page reads as the picked direction. `mise run check` passes.
+
+User check for photos, after 6.29. First, on `pnpm dev:fake` with a fresh
+root, open "Calculus I", unit 1. Attach a photo from disk, paste a
+screenshot, remove one, and send with a line of text: the thread shows the
+photo, and the scripted tutor says it sees one. Open the photo at full
+size. Try a HEIC file and a fifth photo: each is refused with its reason.
+Press "Ready", send a photo while the check question is open, then answer
+it. Restart the server: the photos are still in the thread. Export the
+transcript and open it from disk: the photos are in it. Then, on `pnpm
+check:live` with a fresh root (a real model, run when you do this check),
+start a small course on Claude and another on Codex. In each, photograph
+a page of handwritten working with one deliberate slip, send it with
+"Where did I go wrong?", and see whether the tutor reads the working and
+finds the slip.
 
 ## Known gaps
 
