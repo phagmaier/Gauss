@@ -25,6 +25,7 @@ import {
 import { startSandbox } from "../engine/sandbox.ts";
 import { createUnitChats, type UnitChat } from "../engine/unit-chat.ts";
 import { createUnitPlanner } from "../engine/unit-planning.ts";
+import { LATE_TEST_SUMMARY } from "../engine/unit-turns.ts";
 import { openDataRoot } from "../record/data-root.ts";
 import { seedCourses } from "../record/dev-seed.ts";
 import { withProgress } from "../record/progress.ts";
@@ -721,6 +722,40 @@ test("testing out of unit 1, the scripted tutor asks each objective with no feed
       ),
     }),
   );
+});
+
+test("a turn whose header says the word on the test is owed gives that word first, the card above, then replies to the learner's message, /search too; a fresh start greets first", async () => {
+  const session = await createScriptedBackend().startSession({
+    systemPrompt: "Tutor.",
+    tools: [],
+  });
+  const where =
+    'Unit 1 of 2, "Limits"; segment 1 of 2, "The idea", on "limits-idea". Phase: teach.';
+  const owed =
+    `${LATE_TEST_SUMMARY}: your turn on it did not complete. ` +
+    'What it showed: "limits-idea" passed (correct at 90%); "limits-proof" not passed (incorrect at 50%). ' +
+    "Allowed now, as text, with no tool: first say what the test showed; then reply to the learner, if they wrote.]";
+  const word =
+    "**Scripted word on the test:** you passed 1 of its 2 objectives. The card above says what that would skip; you choose.";
+  const says = async (text: string, learnerMessage = "") => {
+    const said: string[] = [];
+    for await (const event of session.send({ text, learnerMessage })) {
+      if (event.type === "text") said.push(event.text);
+    }
+    return said;
+  };
+
+  expect(
+    await says(
+      `[${where} Message from the learner. ${owed}\n/search limits`,
+      "/search limits",
+    ),
+  ).toEqual([word, 'A scripted reply to "/search limits".']);
+  expect(
+    await says(
+      `[${where} The learner started a fresh conversation with you, from their progress. ${owed}\nGreet them.`,
+    ),
+  ).toEqual([`**Scripted fresh start.** ${where}`, word]);
 });
 
 test("in a self-test of finished unit 1, the scripted tutor asks each objective, opens a detour after a miss, asks the other objective, then the missed one's fresh question, and the self-test ends with the unit still finished", async () => {

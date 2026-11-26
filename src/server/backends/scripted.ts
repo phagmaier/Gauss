@@ -51,7 +51,10 @@
 //   section, and otherwise replies in text, which after a fresh start says
 //   where the unit stands. In the test before a unit (task 5.6),
 //   the turn with an answer's grade posts the next question with no
-//   feedback, and the turn that ends the test says in a line what it showed.
+//   feedback, and the turn that ends the test says in a line what it showed;
+//   a later turn whose header says that word is owed gives it first (after
+//   a fresh start's greeting), then replies to the learner's message, if
+//   there is one.
 //   Its questions on an objective are numbered past those the header lists
 //   as asked before, so none repeats one, whichever unit's thread asked it.
 //   A choice question asks for a sum, and the right choice is that sum; the
@@ -150,6 +153,7 @@ import {
   UNIT_TEXT_LIMIT,
 } from "../../shared/source.ts";
 import {
+  LATE_TEST_SUMMARY,
   QUESTION_HISTORY_START,
   SEGMENT_SECTION_REFS,
 } from "../engine/unit-turns.ts";
@@ -283,6 +287,22 @@ function scriptedTurn(
   const historyAt = header.lastIndexOf(QUESTION_HISTORY_START);
   const controls = historyAt === -1 ? header : header.slice(0, historyAt);
   const history = historyAt === -1 ? "" : header.slice(historyAt);
+  // A word on the test owed since its turn failed comes first, after a
+  // fresh start's greeting, then the reply to what the learner wrote,
+  // whatever it asks for.
+  if (header.includes(LATE_TEST_SUMMARY)) {
+    const said = learnerMessage.trim();
+    const fresh = header.indexOf(" The learner started a fresh conversation");
+    return [
+      ...(fresh === -1
+        ? []
+        : [{ text: `**Scripted fresh start.** ${header.slice(1, fresh)}` }]),
+      testWord(header, "above"),
+      ...(said === ""
+        ? []
+        : [{ text: `A scripted reply to "${said.slice(0, 200)}".` }]),
+    ];
+  }
   const searching = /(?:^|\s)\/search\b(.*)$/m.exec(learnerMessage);
   if (searching !== null) {
     return webSearch(searching[1] ?? "", session.webSearch === true);
@@ -297,6 +317,17 @@ function scriptedTurn(
     courseStyle(session.systemPrompt),
     course,
   );
+}
+
+/** The tutor's word on the test before a unit, from what its header says it showed. */
+function testWord(header: string, card: "above" | "below"): FakeStep {
+  const passed = (header.match(/" passed \(/g) ?? []).length;
+  const asked = (header.match(/" (not )?passed \(/g) ?? []).length;
+  return {
+    text:
+      `**Scripted word on the test:** you passed ${passed} of its ${asked} ` +
+      `objectives. The card ${card} says what that would skip; you choose.`,
+  };
 }
 
 /** "/search" in a tutor's session (task 4.11): five pages found, the first cited. */
@@ -871,15 +902,7 @@ function teaching(
     header,
   )?.[1];
   if (header.includes("What it showed: ")) {
-    const passed = (header.match(/" passed \(/g) ?? []).length;
-    const asked = (header.match(/" (not )?passed \(/g) ?? []).length;
-    return [
-      {
-        text:
-          `**Scripted word on the test:** you passed ${passed} of its ${asked} ` +
-          "objectives. The card below says what that would skip; you choose.",
-      },
-    ];
+    return [testWord(header, "below")];
   }
   if (answered !== undefined && objective === undefined) {
     return [{ text: `Scripted feedback on question ${answered}.` }];

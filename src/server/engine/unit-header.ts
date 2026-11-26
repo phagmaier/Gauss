@@ -8,7 +8,11 @@
 // composed, and return to the chat if the turn is stopped before it is
 // sent; a restart loses them, but a resumed tutor's rebuilt instructions
 // carry what they say. The learner's style and curriculum decisions are
-// delivered only once a turn carrying them completes. A tutor refused while
+// delivered only once a turn carrying them completes. The tutor's word on
+// the test before the unit, while the record says it is owed and no turn
+// of its own is queued to ask for it, is asked for by every header, and is
+// given once a turn asking for it completes or the learner stops it after
+// it was sent. A tutor refused while
 // the course view's proposal waits gets a notice that stays out of headers
 // while it waits; the learner's answer, a note in memory, stands in for it
 // in this run, so only a tutor the answer did not reach hears that the
@@ -87,7 +91,8 @@ export interface UnitHeader {
   plannerAnswered(): void;
   /**
    * The agents' hook once a turn ends: a completed one delivers its
-   * header's decisions, and one not sent returns the notes it took.
+   * header's decisions, one sent that did not fail gives the tutor's owed
+   * word on the test, and one not sent returns the notes it took.
    */
   turnEnded(outcome: TurnOutcome): Promise<void>;
 }
@@ -106,6 +111,8 @@ export function createUnitHeader({
   feedback,
   runWhere,
   shownByTest,
+  summaryQueued,
+  closing,
   handoff,
 }: {
   record: Pick<
@@ -116,6 +123,7 @@ export function createUnitHeader({
     | "deliverNotices"
     | "deliverDecisions"
     | "keepNotice"
+    | "testSummaryGiven"
     | "position"
     | "evidence"
     | "finished"
@@ -145,17 +153,22 @@ export function createUnitHeader({
   runWhere(run: AssessmentRun): RunWhere;
   /** What the test before the unit showed, while its result waits. */
   shownByTest(): TestShown[];
+  /** A turn of its own that asks what the test showed is queued or running. */
+  summaryQueued(): boolean;
   /** The unit's handoff note and the course's misconceptions, as the chat holds them now. */
   handoff(): {
     note: string | undefined;
     misconceptions: readonly Misconception[];
   };
+  /** The chat is closing: a turn it interrupts was not the learner's Stop. */
+  closing(): boolean;
 }): UnitHeader {
   /**
    * What the current turn's header carries, if it got as far as composing
    * one: decisions, the record's notices, with the write of the notices'
-   * delivery once the turn is sent, and the chat's notes and answered
-   * refusals it took, which return to the chat if it is not sent.
+   * delivery once the turn is sent, the chat's notes and answered
+   * refusals it took, which return to the chat if it is not sent, and
+   * whether it asked for the tutor's owed word on the test.
    */
   let inHeader:
     | {
@@ -164,6 +177,7 @@ export function createUnitHeader({
         notices: readonly string[];
         notes: readonly string[];
         answered: readonly string[];
+        summary: boolean;
         sent: boolean;
         delivered?: Promise<void>;
       }
@@ -267,12 +281,20 @@ export function createUnitHeader({
     const answers = record.pendingCurriculumDecisions;
     // A turn composed twice before it is sent carries what both took.
     const before = inHeader;
+    const { testOut } = record.position;
+    // The tutor's owed word on the test is asked for here unless a turn of
+    // its own, which acknowledges itself, is queued to ask for it.
+    const asksSummary =
+      testOut?.stage === "result" &&
+      testOut.summaryOwed === true &&
+      !summaryQueued();
     inHeader = {
       style: decisions,
       curriculum: answers,
       notices: [...new Set([...(before?.notices ?? []), ...carried])],
       notes: [...(before?.notes ?? []), ...took.notes],
       answered: [...(before?.answered ?? []), ...took.answered],
+      summary: before?.summary === true || asksSummary,
       sent: false,
     };
     for (const decision of decisions) {
@@ -314,6 +336,7 @@ export function createUnitHeader({
       ...(record.position.testOut?.stage === "result"
         ? { test: shownByTest() }
         : {}),
+      ...(asksSummary ? { testSummaryOwed: true as const } : {}),
       misconceptions: kept.misconceptions,
       ...(kept.note === undefined ? {} : { handoffNote: kept.note }),
     };
@@ -351,6 +374,9 @@ export function createUnitHeader({
       }
     },
     async turnEnded(outcome) {
+      // Sampled before waiting on the writes below: a close that starts
+      // later did not cut this turn off.
+      const closed = closing();
       const ended = inHeader;
       inHeader = undefined;
       if (ended === undefined) return;
@@ -367,6 +393,23 @@ export function createUnitHeader({
         (ended.style.length > 0 || ended.curriculum.length > 0)
       ) {
         await exclusive(() => record.deliverDecisions(ended));
+      }
+      // A learner's Stop once the tutor had it ends what was owed, as they
+      // chose; a failure, or a close that cut the turn off, however the
+      // backend ends it then, leaves it for the next turn, or for reopening.
+      if (
+        ended.summary &&
+        !closed &&
+        (outcome === "done" || outcome === "interrupted")
+      ) {
+        await exclusive(() => record.testSummaryGiven()).catch(
+          (error: unknown) => {
+            console.error(
+              "The tutor's word on the test could not be saved:",
+              error,
+            );
+          },
+        );
       }
     },
   };

@@ -239,19 +239,24 @@ export function createUnitOpening({
       // Closing a saved answer above can end the test and schedule its
       // summary. Only recover a result that was already waiting on disk.
       if (position.testOut?.stage !== "result") return;
-      // The result card waits on the learner. If a restart cut off the
-      // tutor's word on the test, before the card was shown, it is asked
-      // for again, and the card follows it.
-      if (events().some((e) => e.type === "test_result")) {
+      // The result card waits on the learner. If the tutor's word on the
+      // test is still owed, as after a restart or a turn that failed, it is
+      // asked for again, and the card follows it; a card the thread shows
+      // already stays where it is, and the tutor is told it is shown.
+      if (position.testOut.summaryOwed !== true) {
         assessments.showTestResult();
       } else {
         const { stopped } = position.testOut;
+        // Read when the turn is composed: a dispute can show the card while
+        // the turn waits.
+        const shown = () => events().some((e) => e.type === "test_result");
         assessments.sendTestSummary(() =>
           testEndTurn(
             where(),
             stopped === undefined
               ? { stopped: false }
               : { stopped: true, withdrawn: stopped.withdrawn },
+            shown(),
           ),
         );
       }

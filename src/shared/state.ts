@@ -159,12 +159,16 @@ export const TestOut = z.discriminatedUnion("stage", [
    * until they answer it. `stopped` once the learner pressed "Start
    * learning instead", with the number of the question it withdrew, if one
    * was open, so the tutor's word on the test says so after a restart too.
+   * `summaryOwed` from the write that ends the test until a turn asking for
+   * that word is sent and ends in anything but an error; until then each
+   * turn's header asks for it, and reopening sends the turn that does.
    */
   z.object({
     stage: z.literal("result"),
     stopped: z
       .object({ withdrawn: z.number().int().positive().optional() })
       .optional(),
+    summaryOwed: z.literal(true).optional(),
   }),
   /**
    * The learner chose to skip what it passed: these objectives, as they

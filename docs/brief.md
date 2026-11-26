@@ -259,7 +259,11 @@ what is due, and on-demand self-test.
   gives no feedback between questions, and a miss in it does not count
   against the objective afterwards; an answer in it is never evidence of
   retention, and the gate leaves out the objectives it passed. Nothing is
-  skipped until the learner has seen what they passed and agreed.
+  skipped until the learner has seen what they passed and agreed. When it
+  ends, the tutor says what it showed, and its result card follows; if
+  that turn never reaches the tutor, fails, or is cut off by a restart,
+  the card shows anyway, and the tutor's next turn says it first (the
+  user's choice, 2026-11-25).
 - **Self-test** is the learner's to start, from the course view, at any
   time. They pick the scope (a segment, a unit, the whole course, or a
   random mix of what they have passed), the kinds of question (choice,

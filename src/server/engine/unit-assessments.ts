@@ -60,9 +60,13 @@ export interface UnitAssessments {
   showTestResult(): void;
   /**
    * Sends the turn that asks the tutor what the test showed, and shows the
-   * result card once it ends, however it ends, while the result waits.
+   * result card once it ends, however it ends, while the result waits. The
+   * word is given once the turn is sent and completes, or the learner stops
+   * it; otherwise it stays owed.
    */
   sendTestSummary(text: () => string): void;
+  /** A turn of its own that asks what the test showed is queued or running. */
+  summaryQueued(): boolean;
   /** The assessment under way, if one is. */
   runOn(): AssessmentRun | undefined;
   /** Tells the page of the assessment: its card offered, or it began, or the chat opened with it. */
@@ -145,6 +149,7 @@ export function createUnitAssessments({
   where,
   progression,
   stopCount,
+  closing,
   end,
   sendTeaching,
   context,
@@ -166,6 +171,7 @@ export function createUnitAssessments({
     | "endAssessment"
     | "move"
     | "finish"
+    | "testSummaryGiven"
   >;
   agents: Pick<UnitAgents, "send" | "canMoveOn" | "grading">;
   exclusive<T>(work: () => Promise<T>): Promise<T>;
@@ -177,6 +183,8 @@ export function createUnitAssessments({
     feedback(): UnitProgression["feedback"];
   };
   stopCount(): number;
+  /** The chat is closing: a turn it interrupts was not the learner's Stop. */
+  closing(): boolean;
   /** The unit end's `end`, with the statuses as they now are. */
   end(): Promise<void>;
   sendTeaching(cutOff: boolean): void;
@@ -188,6 +196,8 @@ export function createUnitAssessments({
 }): UnitAssessments {
   /** The other units' handoff notes, read when an assessment starts or resumes. */
   let handoffs = read;
+  /** The turns of their own asking what the test showed, queued or running. */
+  let summaries = 0;
 
   /** Starts the test that is due, in place of the teaching turn. Runs inside `exclusive`. */
   async function startTest(): Promise<void> {
@@ -210,19 +220,64 @@ export function createUnitAssessments({
     emit({ type: "test_result", objectives: shownByTest() });
   }
 
+  /** Whether the tutor's word on the test is owed, while its result waits. */
+  function summaryOwed(): boolean {
+    const { testOut } = record.position;
+    return testOut?.stage === "result" && testOut.summaryOwed === true;
+  }
+
+  /** Shows the result card while it waits for the learner. */
+  function showWaitingResult(): Promise<void> {
+    return exclusive(async () => {
+      if (record.position.testOut?.stage === "result") showTestResult();
+    });
+  }
+
   /**
    * Sends the turn that asks the tutor what the test showed, and shows the
    * result card once it ends, however it ends, while the result waits.
    */
   function sendTestSummary(text: () => string): void {
+    summaries += 1;
+    let sent = false;
     agents.send({
+      // A message that reopening let in ahead of it may have given the
+      // word already: then only the card is shown.
+      skip: () => {
+        if (summaryOwed()) return false;
+        summaries -= 1;
+        void showWaitingResult();
+        return true;
+      },
       text,
-      ended: () =>
-        exclusive(async () => {
-          if (record.position.testOut?.stage === "result") {
-            showTestResult();
+      sent: () => {
+        sent = true;
+      },
+      // Before the page sees the turn end, as feedback is saved: a close
+      // that cuts it off, however the backend ends it then, leaves the word
+      // owed, and a Stop before it was sent too. A close that starts while
+      // this waits for the queue did not cut it off.
+      beforeEnd: (outcome) => {
+        const given =
+          sent &&
+          !closing() &&
+          (outcome === "done" || outcome === "interrupted");
+        return exclusive(async () => {
+          if (given) {
+            await record.testSummaryGiven().catch((error: unknown) => {
+              console.error(
+                "The tutor's word on the test could not be saved:",
+                error,
+              );
+            });
           }
-        }),
+          return outcome;
+        });
+      },
+      ended: () => {
+        summaries -= 1;
+        return showWaitingResult();
+      },
     });
   }
 
@@ -550,6 +605,7 @@ export function createUnitAssessments({
     shownByTest,
     showTestResult,
     sendTestSummary,
+    summaryQueued: () => summaries > 0,
     runOn,
     showRun,
     runWhere,

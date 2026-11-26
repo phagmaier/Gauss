@@ -184,6 +184,12 @@ export interface Where {
   /** Once the test before the unit is over and its result waits: what it showed. */
   test?: readonly TestShown[];
   /**
+   * The tutor's word on the test is owed, after a turn asking for it failed
+   * or was cut off, and no turn of its own is queued to ask for it: this
+   * turn asks for it first.
+   */
+  testSummaryOwed?: true;
+  /**
    * The course's misconceptions as the chat holds them (task 5.7): a new
    * session's first turn names the unit's open ones, and a review's or a
    * gate's question turn those on its objective.
@@ -650,11 +656,13 @@ export function checkGoesOnTurn(where: Where): string {
 /**
  * The turn that asks what the test before the unit showed, when no answer
  * ended it: the learner pressed "Start learning instead", with question
- * `withdrawn` open or none; or a restart cut the tutor's word on it off.
+ * `withdrawn` open or none; or a restart cut the tutor's word on it off,
+ * after its result card showed (`cardShown`) or before.
  */
 export function testEndTurn(
   where: Where,
   ended: { stopped: true; withdrawn: number | undefined } | { stopped: false },
+  cardShown = false,
 ): string {
   const event = ended.stopped
     ? 'The learner pressed "Start learning instead", which ends the test' +
@@ -668,21 +676,38 @@ export function testEndTurn(
     undefined,
     where.test === undefined
       ? undefined
-      : testSummaryAllowed(where, where.test),
+      : testSummaryAllowed(where, where.test, cardShown),
   );
 }
 
-/** What the turn that ends the test allows: a few sentences on what it showed. */
-function testSummaryAllowed(where: Where, test: readonly TestShown[]): string {
-  return (
-    `What it showed: ${test.map(testLine).join("; ")}. Allowed now, ${textOnly(where)}: ` +
-    "say in a few sentences what the test showed, what " +
-    "the learner has and what it did not show, which is where you would " +
-    "teach. No teaching yet, and no going over single answers. The learner " +
-    "then sees a card with what passed and what skipping it would skip, and " +
-    "chooses: to skip what passed, or to be taught the whole unit. Do not " +
-    "press them either way."
-  );
+/** How a header begins asking for the tutor's word on the test once its own turn failed. */
+export const LATE_TEST_SUMMARY =
+  "The learner has not heard from you what the test showed";
+
+/**
+ * What a turn asking for the tutor's word on the test allows: a few
+ * sentences on what it showed. `late` in a turn that came after the one
+ * asking for it failed or was cut off, once its card is shown.
+ */
+function testSummaryAllowed(
+  where: Where,
+  test: readonly TestShown[],
+  late = false,
+): string {
+  const showed = `What it showed: ${test.map(testLine).join("; ")}.`;
+  const say =
+    "say in a few sentences what the test showed, what the learner has and " +
+    "what it did not show, which is where you would teach";
+  const noTeaching = "No teaching yet, and no going over single answers.";
+  return late
+    ? `${LATE_TEST_SUMMARY}: your turn on it did not complete. ` +
+        `${showed} Allowed now, ${textOnly(where)}: first ${say}; then reply to the learner, if they wrote. ` +
+        `${noTeaching} The learner chooses on the result card, already shown: to skip what passed, ` +
+        "or to be taught the whole unit. Do not press them either way."
+    : `${showed} Allowed now, ${textOnly(where)}: ${say}. ${noTeaching} The learner ` +
+        "then sees a card with what passed and what skipping it would skip, and " +
+        "chooses: to skip what passed, or to be taught the whole unit. Do not " +
+        "press them either way.";
 }
 
 /** One objective of the test, for the tutor: whether it passed, and on what answers. */
@@ -1499,6 +1524,9 @@ function allowed(where: Where): string {
     return `Allowed now: reply to the learner. ${noTeachingTools(where)}.`;
   }
   const stage = position.testOut?.stage;
+  if (where.testSummaryOwed === true && where.test !== undefined) {
+    return testSummaryAllowed(where, where.test, true);
+  }
   if (stage === "result" || stage === "due") {
     return (
       "Allowed now: reply to the learner, without teaching and without " +

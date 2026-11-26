@@ -1777,7 +1777,9 @@ function createUnitChat(
           feedback: () => r.progression.feedback,
           runWhere: (run) => r.assessments.runWhere(run),
           shownByTest: () => r.assessments.shownByTest(),
+          summaryQueued: () => r.assessments.summaryQueued(),
           handoff: () => r.handoff,
+          closing: () => closing,
         }),
         progression: createUnitProgression({
           record,
@@ -1886,6 +1888,7 @@ function createUnitChat(
             feedback: () => r.progression.feedback,
           },
           stopCount: () => stopCount,
+          closing: () => closing,
           end: () => r.unitEnd.end(),
           sendTeaching: (cutOff) => sendTeaching(r, cutOff),
           context: () => r.context,

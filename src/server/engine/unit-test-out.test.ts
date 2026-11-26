@@ -8,7 +8,7 @@
 // answer in it showed. The fake backend's tutor does what each header
 // allows.
 
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -286,6 +286,25 @@ function ofType<T extends PageEvent["type"]>(
     .filter((e): e is Extract<PageEvent, { type: T }> => e.type === type);
 }
 
+/** Resolves once the chat emits an event of this type at or after `from`. */
+function waitFor(
+  chat: UnitChat,
+  type: PageEvent["type"],
+  from: number,
+): Promise<void> {
+  if (chat.events().some((e, i) => i >= from && e.type === type)) {
+    return Promise.resolve();
+  }
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const stop = chat.subscribe((event, index) => {
+    if (index >= from && event.type === type) {
+      stop();
+      resolve();
+    }
+  });
+  return promise;
+}
+
 function lastQuestion(chat: UnitChat) {
   const posted = ofType(chat, "question").at(-1);
   if (posted === undefined) throw new Error("No question was posted.");
@@ -327,20 +346,6 @@ function resultOf(timeline: Timeline): TestResultItem {
   const card = timeline.items.findLast((i) => i.kind === "test_result");
   if (card?.kind !== "test_result") throw new Error("No result card.");
   return card;
-}
-
-/** Cuts the unit's transcript before its first event of this type, as a restart before it was written leaves it. */
-async function loseTranscriptFrom(type: PageEvent["type"]) {
-  const folder = join(dir, "courses", COURSE, "sessions");
-  const files = (await readdir(folder)).filter((f) =>
-    f.startsWith("derivative."),
-  );
-  expect(files).toHaveLength(1);
-  const path = join(folder, files[0] ?? "");
-  const lines = (await readFile(path, "utf8")).split("\n").filter(Boolean);
-  const from = lines.findIndex((line) => line.includes(`"type":"${type}"`));
-  expect(from).toBeGreaterThan(0);
-  await writeFile(path, `${lines.slice(0, from).join("\n")}\n`);
 }
 
 const TEST_RUN = {
@@ -1170,27 +1175,201 @@ test("a restart after saving the last test answer but before closing its questio
   ]);
 });
 
-test('"Start learning instead", then a restart before the tutor\'s word on the test: the turn asking for it says what the learner pressed', async () => {
+test('"Start learning instead", then a restart that cuts off the tutor\'s word on the test: reopening asks for it again, saying what the learner pressed and that the card shows already', async () => {
   await makeCourse();
-  const first = setUp();
+  const script = tutor();
+  const first = setUp((turn, session) =>
+    turn.text.includes("What it showed: ")
+      ? [{ text: "The test showed" }, { hold: true }]
+      : script(turn, session),
+  );
   const before = await testOut(first);
   await answer(before, "A", "75");
-  await step(before.skipAssessment(), before);
-  expect(await positionOf()).toMatchObject({
-    testOut: { stage: "result", stopped: { withdrawn: 2 } },
-  });
+  const from = before.events().length;
+  expect(await before.skipAssessment()).toEqual({ ok: true });
+  await waitFor(before, "tutor_text", from);
+  // The server stops while the tutor is saying it; the card the turn's
+  // end shows is in the thread.
   await first.units.close();
-  // The restart came once the test's end was written, before the turn.
-  await loseTranscriptFrom("assessment_end");
+  expect(ofType(before, "test_result")).toHaveLength(1);
+  expect(await positionOf()).toMatchObject({
+    testOut: { stage: "result", stopped: { withdrawn: 2 }, summaryOwed: true },
+  });
 
   const second = setUp();
   const after = await open(second);
   expect(sent(second.backend)).toHaveLength(1);
   expect(sent(second.backend)[0]).toContain(
     'The learner pressed "Start learning instead", which ends the test; question 2 was withdrawn, with nothing recorded. ' +
+      "The learner has not heard from you what the test showed: your turn on it did not complete. " +
       'What it showed: "slope" not passed (correct at 75%);',
   );
-  expect(ofType(after, "test_result")).toHaveLength(1);
+  expect(after.events().at(-1)?.type).toBe("test_result");
+  expect((await positionOf())?.testOut).toEqual({
+    stage: "result",
+    stopped: { withdrawn: 2 },
+  });
+});
+
+/**
+ * Every objective passed, but the turn with the last answer's grade, which
+ * asks what the test showed, fails: the tutor cannot be reached once the
+ * server restarted with the last question open.
+ */
+async function failedSummary() {
+  await makeCourse();
+  const first = setUp();
+  const before = await testOut(first);
+  await answer(before, "A", "90");
+  await answer(before, "A", "100");
+  await first.units.close();
+
+  const setup = setUp();
+  const reach = setup.backend.startSession;
+  setup.backend.startSession = () =>
+    Promise.reject(new Error("The tutor cannot be reached."));
+  const chat = await open(setup);
+  await answer(chat, "A", "90");
+  expect(sent(setup.backend)).toEqual([]);
+  expect(ofType(chat, "turn_end").at(-1)).toMatchObject({ outcome: "error" });
+  // The card shows at once; the tutor's word on the test is still owed.
+  expect(ofType(chat, "test_result")).toHaveLength(1);
+  expect(await positionOf()).toEqual({
+    segment: 0,
+    phase: "teach",
+    testOut: { stage: "result", summaryOwed: true },
+  });
+  setup.backend.startSession = reach;
+  return { setup, chat };
+}
+
+const SHOWED =
+  'What it showed: "slope" passed (correct at 90%); "power-rule" passed (correct at 100%); "chain-rule" passed (correct at 90%).';
+
+test("the tutor's word on the test, when its turn fails, is asked for by the learner's next message, with what the test showed, and not by the one after", async () => {
+  const { setup, chat } = await failedSummary();
+
+  await step(Promise.resolve(chat.say("What now?")), chat);
+  await step(Promise.resolve(chat.say("And then?")), chat);
+
+  const [asked, after] = sent(setup.backend);
+  expect(asked).toContain(
+    "the teaching waits until they do. Message from the learner. " +
+      "The learner has not heard from you what the test showed: your turn on it did not complete. " +
+      `${SHOWED} Allowed now, as text, with no tool: first say in a few sentences what the test showed, ` +
+      "what the learner has and what it did not show, which is where you would teach; then reply to the learner, if they wrote. " +
+      "No teaching yet, and no going over single answers. The learner chooses on the result card, already shown: " +
+      "to skip what passed, or to be taught the whole unit. Do not press them either way.]\nWhat now?",
+  );
+  expect(after).toContain(
+    "Message from the learner. Allowed now: reply to the learner, without teaching and without pressing them either way.",
+  );
+  expect(after).not.toContain("What it showed: ");
+  expect(await positionOf()).toEqual({
+    segment: 0,
+    phase: "teach",
+    testOut: { stage: "result" },
+  });
+  expect(ofType(chat, "test_result")).toHaveLength(1);
+});
+
+test("the tutor's word on the test, when its turn fails and a restart comes, is asked for on reopening, told the card is shown already, and only once", async () => {
+  const { setup } = await failedSummary();
+  await setup.units.close();
+
+  const restarted = setUp();
+  const chat = await open(restarted);
+  expect(sent(restarted.backend)).toHaveLength(1);
+  expect(sent(restarted.backend)[0]).toContain(
+    "a restart came before you said what it showed. " +
+      "The learner has not heard from you what the test showed: your turn on it did not complete. " +
+      `${SHOWED} Allowed now, as text, with no tool: first say in a few sentences what the test showed`,
+  );
+  expect(sent(restarted.backend)[0]).toContain(
+    "The learner chooses on the result card, already shown",
+  );
+  expect(
+    chat
+      .events()
+      .slice(-4)
+      .map((e) => e.type),
+  ).toEqual(["turn_start", "tutor_text", "turn_end", "test_result"]);
+  expect(await positionOf()).toMatchObject({ testOut: { stage: "result" } });
+  expect((await positionOf())?.testOut).not.toHaveProperty("summaryOwed");
+
+  await step(Promise.resolve(chat.say("What now?")), chat);
+  expect(sent(restarted.backend)[1]).not.toContain("What it showed: ");
+});
+
+test("the tutor's word on the test, stopped once its turn was sent, is not asked for again", async () => {
+  await makeCourse();
+  let held = false;
+  const script = tutor();
+  const setup = setUp((turn, session) => {
+    if (!held && turn.text.includes("What it showed: ")) {
+      held = true;
+      return [{ text: "The test showed" }, { hold: true }];
+    }
+    return script(turn, session);
+  });
+  const chat = await testOut(setup);
+  await answer(chat, "A", "90");
+  await answer(chat, "A", "100");
+  const from = chat.events().length;
+  const questionId = lastQuestion(chat).id;
+  expect(
+    await chat.answer({
+      kind: "choice",
+      questionId,
+      choice: "A",
+      confidence: "90",
+    }),
+  ).toEqual({ ok: true });
+  await waitFor(chat, "tutor_text", from);
+  await chat.interrupt();
+  await chat.settled();
+  expect(ofType(chat, "turn_end").at(-1)).toMatchObject({
+    outcome: "interrupted",
+  });
+  expect(ofType(chat, "test_result")).toHaveLength(1);
+  expect(await positionOf()).toEqual({
+    segment: 0,
+    phase: "teach",
+    testOut: { stage: "result" },
+  });
+
+  await step(Promise.resolve(chat.say("What now?")), chat);
+  expect(sent(setup.backend).at(-1)).not.toContain("What it showed: ");
+});
+
+test("a message sent with the test's last answer, queued ahead of the turn asking what the test showed, does not ask for it too: the tutor is asked once", async () => {
+  await makeCourse();
+  const setup = setUp();
+  const chat = await testOut(setup);
+  await answer(chat, "A", "90");
+  await answer(chat, "A", "100");
+  const questionId = lastQuestion(chat).id;
+  const answering = chat.answer({
+    kind: "choice",
+    questionId,
+    choice: "A",
+    confidence: "90",
+  });
+  expect(chat.say("Is that all?")).toEqual({ ok: true });
+  expect(await answering).toEqual({ ok: true });
+  await chat.settled();
+
+  const turns = sent(setup.backend);
+  const message = turns.find((t) => t.endsWith("\nIs that all?")) ?? "";
+  expect(message).toContain("Message from the learner.");
+  expect(message).not.toContain("What it showed: ");
+  expect(turns.filter((t) => t.includes("What it showed: "))).toHaveLength(1);
+  expect(await positionOf()).toEqual({
+    segment: 0,
+    phase: "teach",
+    testOut: { stage: "result" },
+  });
+  expect(chat.events().at(-1)?.type).toBe("test_result");
 });
 
 test("the learner's answer to the result card, when the turn carrying it failed before it was sent and a restart came, is told in the first header after reopening, once", async () => {

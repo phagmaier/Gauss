@@ -238,6 +238,11 @@ export interface UnitRecord {
    * takes them out of state.json.
    */
   deliverNotices(ids: readonly string[]): Promise<void>;
+  /**
+   * Takes out of the test's waiting result that the tutor's word on it is
+   * owed; nothing if it is not.
+   */
+  testSummaryGiven(): Promise<void>;
   /** Marks only the decisions that were in a completed turn's header. */
   deliverDecisions(sent: {
     style: readonly StyleDecision[];
@@ -821,6 +826,13 @@ export async function openUnitRecord(options: {
     objectiveStatuses,
     move: (given, tell, notice) => withNotice(notice, () => move(given, tell)),
 
+    async testSummaryGiven() {
+      const { testOut, ...rest } = position;
+      if (testOut?.stage !== "result" || testOut.summaryOwed !== true) return;
+      const { summaryOwed: _, ...given } = testOut;
+      await move({ ...rest, testOut: given });
+    },
+
     async dispute(entry, notice) {
       const answered = recordedAnswer(entry.questionId);
       const override: OverrideEvidence | undefined =
@@ -1108,6 +1120,7 @@ export async function openUnitRecord(options: {
                 ...rest,
                 testOut: {
                   stage: "result",
+                  summaryOwed: true,
                   ...(skipped
                     ? {
                         stopped:
