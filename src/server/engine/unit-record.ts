@@ -668,7 +668,12 @@ export async function openUnitRecord(options: {
     if (override !== undefined) evidence.push(override);
     if (notice !== undefined) {
       // The dispute is recorded already: a failed write leaves the notice
-      // in memory, and the record's next write saves it.
+      // in memory, and the record's next write saves it. A restart before
+      // that loses it while the thread shows the outcome, so the tutor is
+      // never told. Accepted (the user's choice, 2026-11-25): it takes a
+      // failed state write, and the evidence and the thread stay right;
+      // withholding the outcome from the thread until the notice is saved
+      // was turned down.
       await keepNotice(notice).catch((error: unknown) => {
         console.error("The tutor's notice could not be saved:", error);
       });

@@ -48,7 +48,75 @@ chosen.
 
 ## Known-gap fixes
 
-None open.
+Both close gaps K.30's review left open. The user's choices (2026-11-25):
+the tutor's word on the test is owed until it reaches the tutor, and a
+unit finished by testing out tells its tutor the teaching was skipped. A
+dispute notice lost to a failed write and a restart is accepted (a
+comment at `keepDispute` in `unit-record.ts` says why).
+
+### K.31 The tutor's word on the test is owed until it reaches the tutor (todo)
+
+The result card shows when the summary turn ends, however it ends, and
+reopening asks for the summary only if the thread has no result card. A
+summary turn that fails or is stopped before it is sent therefore leaves
+the tutor never saying what the test showed, and the test's end has no
+notice, so the tutor does not hear what it showed until the learner
+answers the card.
+
+The waiting result (`TestOut` in `shared/state.ts`) keeps that the
+summary is owed, from the write that ends the test until a turn asking
+for it is sent and ends other than in an error; the card still shows at
+once. While it is owed, every turn's header asks for it first (a
+learner's message, "Start fresh"), with what the test showed, and
+reopening sends the summary turn, the card after it, in place of reading
+the thread. Answering the card ends what is owed. A record kept before
+this change has nothing owed.
+
+Depends on: nothing.
+
+Done when: engine tests on the fake backend in a temporary data root
+show that a summary turn failing before it is sent leaves the card
+shown, and the next message's header asks for the summary with what the
+test showed, while the header after that does not; that a restart after
+such a failure sends the summary on reopening and then shows the card;
+that a summary turn the learner stops after it was sent is not asked for
+again; and that a result whose summary was given shows only the card on
+reopening. `mise run check` passes.
+
+### K.32 A unit finished by testing out says the teaching was skipped (todo)
+
+Skipping what the test passed, when it passed every objective, finishes
+the unit without a test-answered notice: the finished unit's header says
+every objective passed, not that the learner chose to skip the teaching.
+The finished unit's header says so whenever the record has the unit
+tested out (`State.testedOut`), as a partial skip's header names what it
+leaves out.
+
+Depends on: K.31 (both change `unit-turns.ts`'s headers).
+
+Done when: an engine test on the fake backend in a temporary data root
+shows that, after a test that passed every objective and "Skip what
+passed", the header of the learner's next message in the finished unit,
+and after a restart too, says the test passed every objective and the
+learner chose to skip the teaching; a unit finished by being taught
+does not say so. `mise run check` passes.
+
+### User check: the test's word and a tested-out unit
+
+On `pnpm dev:fake` with a fresh data root, in Chromium:
+
+1. Test out of a unit not started, and with its last question open,
+   stop the server. Replace the unit's `tutorSessionId` in `state.json`
+   with the same id ending in `broken`, start the server and reopen the
+   unit. Answer the question: the turn fails and the result card shows.
+   Press "Start fresh": the tutor's reply says what the test showed
+   before anything else.
+2. Stop and start the server again with the card waiting: reopening
+   shows the card and no second word on the test.
+3. In another unit, test out with every answer right and take the
+   card's step that skips what passed: the unit finishes. Headers are not
+   on the page: the agent shows the next message's header from the
+   course's session log.
 
 ## Known gaps
 
@@ -71,20 +139,6 @@ work for Stage 6. A task that closes a gap deletes it here.
   places of their own.
 - **C:** The unit planner splits contexts into objectives (“a setting is
   not a skill” is unsettled) and names implementations (“using zip”).
-- **B:** The test's result card shows when the tutor's summary turn ends,
-  however it ends: if that turn fails or is stopped before it is sent,
-  the card shows, and a restart then sends no summary, so the tutor never
-  says what the test showed. Decide whether the card waits for a summary
-  that reached the tutor, or the record keeps that the summary is owed.
-- **B:** Testing out of every objective finishes the unit with no
-  test-answered notice: the finished unit's header says every objective
-  passed, but not that the learner chose to skip the teaching. Decide
-  whether the tutor should hear the choice.
-- **B:** A dispute's notice whose write fails is kept in memory and saved
-  by the record's next write; a restart before any other write loses it,
-  though the thread shows the outcome, so reopening does not tell it
-  again. Decide whether a failed notice write should keep the thread from
-  showing the outcome until it is saved.
 
 **Tutor, grading and judging**
 
