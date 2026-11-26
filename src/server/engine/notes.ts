@@ -74,7 +74,11 @@ export function createNotes(options: NotesOptions): Notes {
   const backup = options.backup ?? noBackup;
   const now = options.now ?? (() => new Date());
   const attempts = new Map<string, NotesAttempt>();
-  const starting = new Set<string>();
+  /**
+   * By `<course>/<unit>`: a start between its reservation and its attempt,
+   * settled once it has set the attempt or refused.
+   */
+  const starting = new Map<string, Promise<void>>();
   const jobs = new Set<Promise<void>>();
   const stop = new AbortController();
   const missing = { ok: false, status: 404, error: "No such unit." } as const;
@@ -151,9 +155,13 @@ export function createNotes(options: NotesOptions): Notes {
     async view(courseId: string, unitId: string): Promise<Result> {
       const unit = await locate(courseId, unitId);
       if (unit === undefined) return missing;
+      const key = `${courseId}/${unitId}`;
+      // A read in a start's window waits for its outcome: answering before
+      // the attempt is set would show no write, and the page would not poll.
+      while (starting.has(key)) await starting.get(key);
       return {
         ok: true,
-        view: await view(courseId, unit, attempts.get(`${courseId}/${unitId}`)),
+        view: await view(courseId, unit, attempts.get(key)),
       };
     },
     async start(
@@ -188,7 +196,8 @@ export function createNotes(options: NotesOptions): Notes {
       }
       // Reserve the unit before reading its current revision. A concurrent
       // request must not publish between that check and claiming the job.
-      starting.add(key);
+      const reserved = Promise.withResolvers<void>();
+      starting.set(key, reserved.promise);
       try {
         const previous = await view(courseId, unit, undefined);
         if (stop.signal.aborted) return busy;
@@ -215,13 +224,14 @@ export function createNotes(options: NotesOptions): Notes {
         return { ok: true, view: { ...previous, attempt } };
       } finally {
         starting.delete(key);
+        reserved.resolve();
       }
     },
     inUse(courseId) {
       // Keys are `<course>/<unit>`, and a course id has no slash.
       const prefix = `${courseId}/`;
       const busy = [
-        ...starting,
+        ...starting.keys(),
         ...[...attempts]
           .filter(([, attempt]) => attempt.state === "writing")
           .map(([key]) => key),

@@ -79,7 +79,11 @@ export function createCheatSheets(options: CheatSheetsOptions): CheatSheets {
   const timer = options.timer ?? systemTimer;
   /** By course: the write running, or the last one, which failed. */
   const attempts = new Map<string, CheatSheetAttempt>();
-  const starting = new Set<string>();
+  /**
+   * By course: a start between its reservation and its attempt, settled
+   * once it has set the attempt or refused.
+   */
+  const starting = new Map<string, Promise<void>>();
   const jobs = new Set<Promise<void>>();
   const stop = new AbortController();
   /**
@@ -131,6 +135,9 @@ export function createCheatSheets(options: CheatSheetsOptions): CheatSheets {
     courseId: string,
     units: readonly StoredUnit[],
   ): Promise<CheatSheetList> {
+    // A read in a start's window waits for its outcome: answering before
+    // the attempt is set would show no write, and the page would not poll.
+    while (starting.has(courseId)) await starting.get(courseId);
     // The attempt first: a write that ends between the two reads then
     // shows twice, as writing and kept, rather than not at all.
     const attempt = attempts.get(courseId);
@@ -224,7 +231,8 @@ export function createCheatSheets(options: CheatSheetsOptions): CheatSheets {
       }
       // Reserve the course before reading which units are finished, so a
       // second request cannot start between that read and the write.
-      starting.add(courseId);
+      const reserved = Promise.withResolvers<void>();
+      starting.set(courseId, reserved.promise);
       try {
         const unknown = units.find(
           (id) => !course.units.some((unit) => unit.id === id),
@@ -281,6 +289,7 @@ export function createCheatSheets(options: CheatSheetsOptions): CheatSheets {
         };
       } finally {
         starting.delete(courseId);
+        reserved.resolve();
       }
     },
     async delete(courseId, sheetId) {

@@ -1793,7 +1793,7 @@ test("a finished unit writes only on request, retries a failure and replaces its
   }
 });
 
-test("a unit tested out of whole can write notes without instructions or another tutor turn", async () => {
+test("a unit tested out of whole can write notes without instructions or another tutor turn, and a read while the write is reserved shows it", async () => {
   const second = {
     ...QUESTION,
     objective: "matrix-columns",
@@ -1849,7 +1849,41 @@ test("a unit tested out of whole can write notes without instructions or another
     );
     expect(setup.notesBackend.oneShots).toEqual([]);
     const turns = setup.backend.received.length;
-    expect((await post(setup.app, `${UNIT}/notes`, {})).status).toBe(202);
+    // Hold the start between its reservation and its attempt, at its read
+    // of the saved notes; then read the notes as another page would. The
+    // read takes the attempt right after reading the course, with no other
+    // wait: once that read is done and the event loop has turned, a read
+    // that does not wait for the reservation has missed the write.
+    const held = Promise.withResolvers<void>();
+    const reached = Promise.withResolvers<void>();
+    const readNotes = setup.dataRoot.readNotes;
+    vi.spyOn(setup.dataRoot, "readNotes").mockImplementationOnce(
+      async (id, unit) => {
+        reached.resolve();
+        await held.promise;
+        return readNotes(id, unit);
+      },
+    );
+    const started = post(setup.app, `${UNIT}/notes`, {});
+    await reached.promise;
+    const courseRead = Promise.withResolvers<void>();
+    const readCourse = setup.dataRoot.readCourse;
+    vi.spyOn(setup.dataRoot, "readCourse").mockImplementationOnce(
+      async (id) => {
+        const stored = await readCourse(id);
+        courseRead.resolve();
+        return stored;
+      },
+    );
+    const read = setup.app.request(`${UNIT}/notes`);
+    await courseRead.promise;
+    await new Promise((resolve) => setImmediate(resolve));
+    held.resolve();
+    expect((await started).status).toBe(202);
+    expect(NotesView.parse(await (await read).json()).attempt).toEqual({
+      state: "writing",
+      instructions: "",
+    });
     await setup.notes.settled();
     expect(
       (await setup.dataRoot.readNotes(COURSE, "vectors"))?.instructions,

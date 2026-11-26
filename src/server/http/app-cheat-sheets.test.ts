@@ -436,6 +436,46 @@ test("an unfinished, unknown or empty pick and a second write while one runs are
   expect(sheets.map((sheet) => sheet.units)).toEqual([["pca"]]);
 });
 
+test("a list read while a write is reserved but not yet started shows it writing", async () => {
+  const setup = setUp([{ output: { html: PAGE } }]);
+  await course();
+  // Hold the start between its reservation and its attempt: its read of
+  // the kept sheets comes last before the attempt is set.
+  const held = Promise.withResolvers<void>();
+  const reached = Promise.withResolvers<void>();
+  const listSheets = setup.dataRoot.listCheatSheets;
+  vi.spyOn(setup.dataRoot, "listCheatSheets").mockImplementationOnce(
+    async (id) => {
+      reached.resolve();
+      await held.promise;
+      return listSheets(id);
+    },
+  );
+  const started = post(setup, SHEETS, { units: ["vectors"] });
+  await reached.promise;
+  // The read takes the attempt right after reading the course, with no
+  // other wait: once that read is done and the event loop has turned, a
+  // read that does not wait for the reservation has missed the write.
+  const courseRead = Promise.withResolvers<void>();
+  const readCourse = setup.dataRoot.readCourse;
+  vi.spyOn(setup.dataRoot, "readCourse").mockImplementationOnce(async (id) => {
+    const stored = await readCourse(id);
+    courseRead.resolve();
+    return stored;
+  });
+  const read = listed(setup);
+  await courseRead.promise;
+  await new Promise((resolve) => setImmediate(resolve));
+  held.resolve();
+  expect((await started).status).toBe(202);
+  expect((await read).attempt).toEqual({
+    state: "writing",
+    units: ["vectors"],
+    instructions: "",
+  });
+  await setup.cheatSheets.settled();
+});
+
 test("a writer's failure and the time limit each leave a failed attempt with its reason and no file", async () => {
   const setup = setUp([{ fail: "The reply was cut off." }, { hold: true }]);
   await course();
