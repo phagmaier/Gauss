@@ -21,11 +21,12 @@ import type {
 } from "../../shared/evidence.ts";
 import type { Misconception } from "../../shared/misconception.ts";
 import {
+  type PackageCompletion,
   type PackageSpec,
   type PackagesOutcome,
   requirement,
 } from "../../shared/packages.ts";
-import { type Plan, skipping } from "../../shared/plan.ts";
+import { firstTaught, type Plan, skipping } from "../../shared/plan.ts";
 import { CHOICE_LETTERS, confidenceLabel } from "../../shared/question.ts";
 import type { Outline } from "../../shared/source.ts";
 import type {
@@ -1256,8 +1257,23 @@ const PLANNER_LIFTED_NOTE =
   `${PLANNER_UNBLOCKED} The course's units are as your instructions list ` +
   "them now.";
 
-/** The header note for a notice the record keeps until a turn carries it. */
-export function noticeText(notice: TutorNotice): string {
+/** What the record holds that a notice names, which its text gives. */
+export interface NoticeFacts {
+  /** The unit's plan. */
+  plan: Plan;
+  recordedAnswer(questionId: string): AnswerEvidence | undefined;
+  disputeOf(questionId: string): DisputeEvidence | undefined;
+  packageCompletions: readonly PackageCompletion[];
+}
+
+/**
+ * The header note for a notice the record keeps until a turn carries it;
+ * none if the record no longer holds what it names.
+ */
+export function noticeText(
+  notice: TutorNotice,
+  facts: NoticeFacts,
+): string | undefined {
   switch (notice.kind) {
     case "override":
       return overrideNote(notice.objectives, notice.withdrawn);
@@ -1265,6 +1281,42 @@ export function noticeText(notice: TutorNotice): string {
       return UNSHOWN_LECTURE_NOTE;
     case "planner-blocked":
       return PLANNER_LIFTED_NOTE;
+    case "dispute": {
+      const answer = facts.recordedAnswer(notice.questionId);
+      const dispute = facts.disputeOf(notice.questionId);
+      return answer === undefined || dispute === undefined
+        ? undefined
+        : disputeNote(answer, dispute);
+    }
+    case "assessment-end":
+      return runEndNote(
+        notice.mode,
+        notice.skipped
+          ? { skipped: true, withdrawn: notice.withdrawn }
+          : { skipped: false, statuses: notice.statuses },
+        notice.passedOver,
+      );
+    case "test-answered": {
+      const { skip, passed } = notice;
+      if (!skip) return testAnsweredNote({ skip, passed });
+      const { plan } = facts;
+      const first = firstTaught(plan, passed);
+      return first === undefined
+        ? undefined
+        : testAnsweredNote({ skip, passed, plan, first });
+    }
+    case "packages": {
+      const completion = facts.packageCompletions.find(
+        (c) => c.request.id === notice.requestId,
+      );
+      return completion === undefined
+        ? undefined
+        : packagesNote(
+            completion.outcome,
+            completion.request.packages,
+            completion.output,
+          );
+    }
   }
 }
 

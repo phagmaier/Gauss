@@ -1,14 +1,20 @@
 // Each turn's header: where the unit stands, in unit-turns.ts's words, and
-// what it says once. A note is taken when a header is composed. The
-// record's notices stay in the record until the turn carrying them is
-// dispatched, so a Stop or restart after that does not send them again;
-// the learner's style and curriculum decisions are delivered only once a
-// turn carrying them completes. A tutor refused while the course view's
-// proposal waits gets a notice that stays out of headers while it waits;
-// the learner's answer, a note in memory, stands in for it in this run, so
-// only a tutor the answer did not reach hears that the block lifted. When
-// the tutor's conversation cannot be resumed, a new session takes over,
-// told in its first header that it is new, and the thread says so.
+// what it says once. The record's notices, which include the record's facts
+// the tutor hears of (a dispute's outcome, an assessment's end, the answer
+// to the test's result card, a package install's outcome), stay in the
+// record until the turn carrying them is dispatched, so a Stop or restart
+// after that does not send them again, and a restart before it does not
+// lose them. The chat's notes in memory are taken when a header is
+// composed, and return to the chat if the turn is stopped before it is
+// sent; a restart loses them, but a resumed tutor's rebuilt instructions
+// carry what they say. The learner's style and curriculum decisions are
+// delivered only once a turn carrying them completes. A tutor refused while
+// the course view's proposal waits gets a notice that stays out of headers
+// while it waits; the learner's answer, a note in memory, stands in for it
+// in this run, so only a tutor the answer did not reach hears that the
+// block lifted. When the tutor's conversation cannot be resumed, a new
+// session takes over, told in its first header that it is new, and the
+// thread says so.
 
 // Made for each loaded unit. The chat keeps the notes, which several parts
 // add to and a header empties, read at each call; the course's style note;
@@ -48,9 +54,12 @@ export interface UnitHeader {
   /**
    * Where the unit stands now, with the notes not yet given, which this
    * takes. The record's notices stay in the record until the turn is sent
-   * (`turnSent`), so a turn stopped before then leaves them for the next.
+   * (`turnSent`), so a turn stopped before then leaves them, and the notes
+   * it took, for the next.
    */
   where(): Where;
+  /** Whether a notice `match` picks waits in the record for a header to carry it. */
+  waits(match: (notice: TutorNotice) => boolean): boolean;
   /**
    * Tells the next header that the conversation is new. A notice about a
    * turn of the old conversation is dropped: the new one has no such turn.
@@ -76,7 +85,10 @@ export interface UnitHeader {
    * the answer takes it.
    */
   plannerAnswered(): void;
-  /** The agents' hook once a turn ends: a completed one delivers its header's decisions. */
+  /**
+   * The agents' hook once a turn ends: a completed one delivers its
+   * header's decisions, and one not sent returns the notes it took.
+   */
   turnEnded(outcome: TurnOutcome): Promise<void>;
 }
 
@@ -107,6 +119,9 @@ export function createUnitHeader({
     | "position"
     | "evidence"
     | "finished"
+    | "recordedAnswer"
+    | "disputeOf"
+    | "packageCompletions"
   >;
   exclusive<T>(work: () => Promise<T>): Promise<T>;
   emit(event: PageEvent): void;
@@ -137,15 +152,19 @@ export function createUnitHeader({
   };
 }): UnitHeader {
   /**
-   * Decisions and the record's notices in the current turn's header, if it
-   * got as far as composing one, with the write of the notices' delivery
-   * once the turn is sent.
+   * What the current turn's header carries, if it got as far as composing
+   * one: decisions, the record's notices, with the write of the notices'
+   * delivery once the turn is sent, and the chat's notes and answered
+   * refusals it took, which return to the chat if it is not sent.
    */
   let inHeader:
     | {
         style: readonly StyleDecision[];
         curriculum: readonly CurriculumDecision[];
         notices: readonly string[];
+        notes: readonly string[];
+        answered: readonly string[];
+        sent: boolean;
         delivered?: Promise<void>;
       }
     | undefined;
@@ -213,8 +232,8 @@ export function createUnitHeader({
       (notice) => !noticesTaken.has(notice.id),
     );
     // An answer in the notes stands in for its refusal's notice, which the
-    // header carries with it; a turn not sent loses the note, and the
-    // notice is said in the next header instead.
+    // header carries with it; a turn not sent returns the note, and a
+    // restart loses it, so the notice is said in the next header instead.
     const notices = left.filter(
       (notice) =>
         notice.kind !== "planner-blocked" ||
@@ -224,32 +243,51 @@ export function createUnitHeader({
       ...notices.map((notice) => notice.id),
       ...left.flatMap((notice) => (answered.has(notice.id) ? [notice.id] : [])),
     ];
+    const took = { notes: [...notes()], answered: [...answered] };
     answered.clear();
-    // Refusals under two of the course view's proposals are told as one.
-    const said = [...new Set(notices.map(noticeText)), ...notes()];
     clearNotes();
+    const facts = {
+      plan: unitContext().plan,
+      recordedAnswer: (id: string) => record.recordedAnswer(id),
+      disputeOf: (id: string) => record.disputeOf(id),
+      packageCompletions: record.packageCompletions,
+    };
+    // Refusals under two of the course view's proposals are told as one.
+    // Two record facts are each told, however alike their words.
+    const said: string[] = [];
+    for (const notice of notices) {
+      const text = noticeText(notice, facts);
+      if (text === undefined) continue;
+      if (!said.includes(text) || RECORD_FACT[notice.kind]) {
+        said.push(text);
+      }
+    }
+    said.push(...took.notes);
     const decisions = record.pendingStyleDecisions;
     const answers = record.pendingCurriculumDecisions;
-    if (carried.length > 0 || decisions.length > 0 || answers.length > 0) {
-      inHeader = {
-        style: decisions,
-        curriculum: answers,
-        notices: carried,
-      };
-      for (const decision of decisions) {
-        said.push(
-          decision.outcome === "applied"
-            ? styleNote(
-                decision.note === style() ? "applied" : "superseded",
-                decision.note,
-              )
-            : styleNote("kept", ""),
-        );
-      }
-      // An applied change is told with the units as they now are.
-      for (const answer of answers) {
-        said.push(curriculumNote(answer.outcome, context.units));
-      }
+    // A turn composed twice before it is sent carries what both took.
+    const before = inHeader;
+    inHeader = {
+      style: decisions,
+      curriculum: answers,
+      notices: [...new Set([...(before?.notices ?? []), ...carried])],
+      notes: [...(before?.notes ?? []), ...took.notes],
+      answered: [...(before?.answered ?? []), ...took.answered],
+      sent: false,
+    };
+    for (const decision of decisions) {
+      said.push(
+        decision.outcome === "applied"
+          ? styleNote(
+              decision.note === style() ? "applied" : "superseded",
+              decision.note,
+            )
+          : styleNote("kept", ""),
+      );
+    }
+    // An applied change is told with the units as they now are.
+    for (const answer of answers) {
+      said.push(curriculumNote(answer.outcome, context.units));
     }
     const pending = feedback();
     const kept = handoff();
@@ -283,6 +321,10 @@ export function createUnitHeader({
 
   return {
     where,
+    waits: (match) =>
+      record.tutorNotices.some(
+        (notice) => !noticesTaken.has(notice.id) && match(notice),
+      ),
     joined,
     fallBack,
     plannerRefused() {
@@ -302,20 +344,41 @@ export function createUnitHeader({
     },
     turnSent() {
       const header = inHeader;
-      if (header === undefined || header.notices.length === 0) return;
-      header.delivered = takeNotices(header.notices);
+      if (header === undefined) return;
+      header.sent = true;
+      if (header.notices.length > 0) {
+        header.delivered = takeNotices(header.notices);
+      }
     },
     async turnEnded(outcome) {
-      const sent = inHeader;
+      const ended = inHeader;
       inHeader = undefined;
-      await sent?.delivered;
+      if (ended === undefined) return;
+      if (!ended.sent) {
+        // Ahead of any added since, as the header would have said them.
+        const held = notes();
+        held.unshift(...ended.notes.filter((note) => !held.includes(note)));
+        for (const id of ended.answered) answered.add(id);
+        return;
+      }
+      await ended.delivered;
       if (
         outcome === "done" &&
-        sent !== undefined &&
-        (sent.style.length > 0 || sent.curriculum.length > 0)
+        (ended.style.length > 0 || ended.curriculum.length > 0)
       ) {
-        await exclusive(() => record.deliverDecisions(sent));
+        await exclusive(() => record.deliverDecisions(ended));
       }
     },
   };
 }
+
+/** Whether a notice of each kind states a fact of the record. */
+const RECORD_FACT: Record<TutorNotice["kind"], boolean> = {
+  override: false,
+  "unshown-lecture": false,
+  "planner-blocked": false,
+  dispute: true,
+  "assessment-end": true,
+  "test-answered": true,
+  packages: true,
+};

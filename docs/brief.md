@@ -116,7 +116,10 @@ stop anywhere and resume at the same segment and phase. A unit reopened
 after a restart resumes its tutor's conversation, a finished unit's too
 (the user's choice, 2026-11-25); one that cannot be resumed gives way to a
 new conversation, which takes over from the learner's progress, and the
-thread says so.
+thread says so. What the tutor is yet to be told of the record, such as a
+dispute's outcome, an assessment's end, the learner's answer to the test's
+result card or how a package install ended, it is told in its next turn,
+after a restart or a Stop too (the user's choice, 2026-11-25).
 
 ## Teaching style
 

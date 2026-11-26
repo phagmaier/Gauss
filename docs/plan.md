@@ -48,33 +48,7 @@ chosen.
 
 ## Known-gap fixes
 
-### K.30 Header notes that state record facts survive (todo)
-
-Header notes other than the override and unseen-lecture notices are
-kept in memory and taken when a header is composed: a Stop before the
-turn is sent loses them (with "This conversation is new" and its
-handoff block), and a restart before the next turn loses a dispute's
-outcome, an assessment's end, the answer to the test's result card and
-a package install's outcome. After a restart the test's "Start learning
-instead" summary says only that a restart came. The user's choice
-(2026-11-25): keep the notes that state record facts.
-
-Those four become record notices, delivered once by the turn that
-carries them. The test's waiting result keeps how the test ended, so
-the summary after a restart says what the learner pressed. Notes a
-header took return to the chat if the turn is stopped before it is
-sent; a returned answer to the course view's proposal hides its
-refusal's notice again (`answered` in `unit-header.ts`). Curriculum,
-style and source notes stay in memory: a resumed tutor's rebuilt
-instructions carry them.
-
-Done when: engine tests on the fake backend in a temporary data root
-show each of the four notes, with a restart before the turn carrying
-it, once in the first header after reopening; a turn stopped before
-dispatch leaves its notes, "This conversation is new" and the handoff
-block for the next header; after "Start learning instead" with a
-question withdrawn and a restart before the tutor's summary, the
-summary turn says the learner pressed it. `mise run check` passes.
+None open.
 
 ## Known gaps
 

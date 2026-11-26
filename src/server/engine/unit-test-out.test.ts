@@ -8,7 +8,7 @@
 // answer in it showed. The fake backend's tutor does what each header
 // allows.
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -327,6 +327,20 @@ function resultOf(timeline: Timeline): TestResultItem {
   const card = timeline.items.findLast((i) => i.kind === "test_result");
   if (card?.kind !== "test_result") throw new Error("No result card.");
   return card;
+}
+
+/** Cuts the unit's transcript before its first event of this type, as a restart before it was written leaves it. */
+async function loseTranscriptFrom(type: PageEvent["type"]) {
+  const folder = join(dir, "courses", COURSE, "sessions");
+  const files = (await readdir(folder)).filter((f) =>
+    f.startsWith("derivative."),
+  );
+  expect(files).toHaveLength(1);
+  const path = join(folder, files[0] ?? "");
+  const lines = (await readFile(path, "utf8")).split("\n").filter(Boolean);
+  const from = lines.findIndex((line) => line.includes(`"type":"${type}"`));
+  expect(from).toBeGreaterThan(0);
+  await writeFile(path, `${lines.slice(0, from).join("\n")}\n`);
 }
 
 const TEST_RUN = {
@@ -1153,6 +1167,62 @@ test("a restart after saving the last test answer but before closing its questio
     { objective: "slope", passed: true },
     { objective: "power-rule", passed: true },
     { objective: "chain-rule", passed: true },
+  ]);
+});
+
+test('"Start learning instead", then a restart before the tutor\'s word on the test: the turn asking for it says what the learner pressed', async () => {
+  await makeCourse();
+  const first = setUp();
+  const before = await testOut(first);
+  await answer(before, "A", "75");
+  await step(before.skipAssessment(), before);
+  expect(await positionOf()).toMatchObject({
+    testOut: { stage: "result", stopped: { withdrawn: 2 } },
+  });
+  await first.units.close();
+  // The restart came once the test's end was written, before the turn.
+  await loseTranscriptFrom("assessment_end");
+
+  const second = setUp();
+  const after = await open(second);
+  expect(sent(second.backend)).toHaveLength(1);
+  expect(sent(second.backend)[0]).toContain(
+    'The learner pressed "Start learning instead", which ends the test; question 2 was withdrawn, with nothing recorded. ' +
+      'What it showed: "slope" not passed (correct at 75%);',
+  );
+  expect(ofType(after, "test_result")).toHaveLength(1);
+});
+
+test("the learner's answer to the result card, when the turn carrying it failed before it was sent and a restart came, is told in the first header after reopening, once", async () => {
+  await makeCourse();
+  const first = setUp();
+  const before = await testOut(first);
+  for (const confidence of ["90", "100", "90"] as const) {
+    await answer(before, "A", confidence);
+  }
+  await first.units.close();
+
+  // The tutor cannot be reached, so the teaching turn fails before it is
+  // sent; then the server stops.
+  const middle = setUp();
+  middle.backend.startSession = () =>
+    Promise.reject(new Error("The tutor cannot be reached."));
+  const down = await open(middle);
+  await step(down.teachWhole(), down);
+  expect(sent(middle.backend)).toEqual([]);
+  expect(ofType(down, "turn_end").at(-1)).toMatchObject({ outcome: "error" });
+  await middle.units.close();
+
+  const last = setUp();
+  const after = await open(last);
+  expect(sent(last.backend)).toEqual([]);
+  await step(Promise.resolve(after.say("Shall we start?")), after);
+  await step(Promise.resolve(after.say("Go on.")), after);
+  const told =
+    'The learner chose to be taught the whole unit, though the test passed "slope", "power-rule" and "chain-rule"';
+  expect(sent(last.backend).map((text) => text.includes(told))).toEqual([
+    true,
+    false,
   ]);
 });
 

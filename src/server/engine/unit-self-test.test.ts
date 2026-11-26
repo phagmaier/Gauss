@@ -520,6 +520,16 @@ test("a course self-test starts in the unit in progress opened last; a review ca
   expect(await positionOf("derivative")).toEqual({
     segment: 0,
     phase: "closed",
+    tutorNotices: [
+      {
+        id: expect.any(String),
+        kind: "assessment-end",
+        mode: "self-test",
+        skipped: true,
+        withdrawn: 2,
+        statuses: { "limit-value": "retained" },
+      },
+    ],
   });
   const answers = (await reload().readEvidence(COURSE)).filter(
     (e): e is AnswerEvidence =>
@@ -790,12 +800,22 @@ test("after a miss the next question is on the other objective, and the missed o
   });
   const after = await reload().readState(COURSE);
   expect(after.units).toEqual({});
-  // The run's entry goes; the closed position keeps the tutor's session.
+  // The run's entry goes; the closed position keeps the tutor's session,
+  // and the notice of the end for its next turn.
   expect(after.finishedReviews).toEqual({
     limits: {
       segment: 1,
       phase: "closed",
       tutorSessionId: expect.any(String),
+      tutorNotices: [
+        {
+          id: expect.any(String),
+          kind: "assessment-end",
+          mode: "self-test",
+          skipped: false,
+          statuses: { "limit-value": "slipping", "one-sided": "retained" },
+        },
+      ],
     },
   });
   const answers = (await reload().readEvidence(COURSE)).filter(

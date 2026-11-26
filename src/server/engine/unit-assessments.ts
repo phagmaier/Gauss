@@ -44,10 +44,8 @@ import {
 } from "./unit-record.ts";
 import {
   type RunWhere,
-  runEndNote,
   runName,
   runWaitsText,
-  testAnsweredNote,
   testEndTurn,
   type UnitContext,
   type Where,
@@ -150,7 +148,6 @@ export function createUnitAssessments({
   end,
   sendTeaching,
   context,
-  note,
   readHandoff,
   handoffs: read,
   unitId,
@@ -184,8 +181,6 @@ export function createUnitAssessments({
   end(): Promise<void>;
   sendTeaching(cutOff: boolean): void;
   context(): Pick<UnitContext, "plan" | "units">;
-  /** Adds a note to the next turn's header. */
-  note(text: string): void;
   readHandoff(unit: string): Promise<{ note: string } | undefined>;
   /** The other units' handoff notes `load` read for a run already under way. */
   handoffs: ReadonlyMap<string, string> | undefined;
@@ -307,15 +302,15 @@ export function createUnitAssessments({
   }
 
   /**
-   * Ends the assessment: every objective asked, or skipped. The tutor is
-   * told in its next header if it was asking. After the gate the unit comes
+   * Ends the assessment: every objective asked, or skipped. The record keeps
+   * the tutor's notice of it if it was asking. After the gate the unit comes
    * to its end; after a test, the tutor is asked what it showed, and its
    * result card follows; after a review or a self-test the unit goes on
    * where it stood: a test that waited starts, a teaching turn that waited
    * is sent, and a check takes up again. Runs inside `exclusive`.
    */
   async function endRun(skipped: boolean): Promise<void> {
-    const { run, withdrawn, statuses } = await record.endAssessment(skipped);
+    const { run, withdrawn } = await record.endAssessment(skipped);
     handoffs = undefined;
     if (run.mode === "test-out") {
       sendTestSummary(() =>
@@ -327,17 +322,6 @@ export function createUnitAssessments({
         ),
       );
       return;
-    }
-    if (run.stage === "on") {
-      note(
-        runEndNote(
-          run.mode,
-          skipped
-            ? { skipped: true, withdrawn: withdrawn?.number }
-            : { skipped: false, statuses },
-          run.passedOver?.map((p) => p.objective),
-        ),
-      );
     }
     if (record.finished !== undefined) return;
     if (run.mode === "gate") {
@@ -542,8 +526,8 @@ export function createUnitAssessments({
         testOut: { stage: "skip", passed },
       },
       tell,
+      { kind: "test-answered", skip: true, passed },
     );
-    note(testAnsweredNote({ skip: true, passed, plan, first }));
     sendTeaching(false);
     return { ok: true };
   }
@@ -552,10 +536,11 @@ export function createUnitAssessments({
     const waits = answersResult();
     if (waits !== undefined) return waits;
     const passed = passedNow();
-    await record.move({ segment: 0, phase: "teach" }, () =>
-      emit({ type: "test_answered", skipped: [] }),
+    await record.move(
+      { segment: 0, phase: "teach" },
+      () => emit({ type: "test_answered", skipped: [] }),
+      { kind: "test-answered", skip: false, passed },
     );
-    note(testAnsweredNote({ skip: false, passed }));
     sendTeaching(false);
     return { ok: true };
   }

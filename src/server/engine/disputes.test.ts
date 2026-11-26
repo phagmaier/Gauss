@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -614,6 +615,45 @@ test("a dispute raised while the unit's chat is not open is shown on its card, a
   expect(reopened.events().filter((e) => e.type === "disputed")).toHaveLength(
     1,
   );
+});
+
+test("a dispute decided while the unit's chat is open is kept for the tutor before the page hears of it, and with a restart before the tutor's next turn is told in the first header after reopening, once", async () => {
+  await makeCourse();
+  await reload().appendEvidence(COURSE, choiceAnswer("q1", "quotient", "B"));
+  await reload().writePosition(COURSE, UNIT, { segment: 1, phase: "discuss" });
+  const before = setUp([], [ruling("incorrect", "C")]);
+  const opened = await open(before);
+  // What a restart just after the thread got the outcome would find.
+  let whenShown: unknown;
+  opened.subscribe((event) => {
+    if (event.type === "disputed") {
+      whenShown = JSON.parse(
+        readFileSync(join(dir, "courses", COURSE, "state.json"), "utf8"),
+      ).units[UNIT].tutorNotices;
+    }
+  });
+  expect((await before.disputes.raise(COURSE, "q1", "C is right.")).ok).toBe(
+    true,
+  );
+  expect(whenShown).toEqual([
+    { id: expect.any(String), kind: "dispute", questionId: "q1" },
+  ]);
+  expect(before.backend.received).toEqual([]);
+  await before.units.close();
+
+  const after = setUp([[{ text: "Hello again." }], [{ text: "Yes." }]], []);
+  const chat = await open(after);
+  expect(chat.say("Where are we?")).toEqual({ ok: true });
+  await chat.settled();
+  expect(chat.say("Go on.")).toEqual({ ok: true });
+  await chat.settled();
+  expect(
+    after.backend.received.map((t) =>
+      t.text.includes(
+        "changed the grade from correct to incorrect. The key was wrong: the correct choice is C, not B.",
+      ),
+    ),
+  ).toEqual([true, false]);
 });
 
 test("at the unit's closing card, an overturned miss that leaves every objective passed shows the card again, then the unit's gate, after which the unit finishes", async () => {

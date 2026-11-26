@@ -150,15 +150,24 @@ export interface UnitRecord {
    * Records the dispute of one of the unit's answers, with an override of
    * its objective if the unit is finished and the dispute takes its pass,
    * and tells the page. Throws DisputeRefused if the record refuses it.
-   * Resolves to the override written with it, if there is one.
+   * Resolves to the override written with it, if there is one. A `notice`
+   * for the tutor is kept before the page is told, as `keepNotice` keeps
+   * one, so a thread that shows the outcome after a restart has it too.
    */
-  dispute(entry: DisputeEvidence): Promise<OverrideEvidence | undefined>;
+  dispute(
+    entry: DisputeEvidence,
+    notice?: NewNotice,
+  ): Promise<OverrideEvidence | undefined>;
   /**
    * Keeps a dispute written to the record without this unit, with the
-   * override written with it, and tells the page; nothing if it is kept
-   * already. False if it was.
+   * override written with it, and tells the page, after keeping `notice`
+   * as `dispute` does; nothing if it is kept already. False if it was.
    */
-  learnDispute(entry: DisputeEvidence, override?: OverrideEvidence): boolean;
+  learnDispute(
+    entry: DisputeEvidence,
+    override?: OverrideEvidence,
+    notice?: NewNotice,
+  ): Promise<boolean>;
   /**
    * Keeps an answer on one of the unit's objectives that another unit's
    * assessment recorded, and tells the page its status; nothing if it is
@@ -169,9 +178,14 @@ export interface UnitRecord {
   /**
    * Writes the position to state.json, with the tutor session's id kept, then
    * keeps it and tells the page: first what `tell` emits, if anything, then
-   * the phase if it changed.
+   * the phase if it changed. A `notice` is written with it, and kept only
+   * once the write lands.
    */
-  move(position: UnitPosition, tell?: () => void): Promise<void>;
+  move(
+    position: UnitPosition,
+    tell?: () => void,
+    notice?: NewNotice,
+  ): Promise<void>;
   /**
    * Writes the id of the unit's tutor session into its position, with the
    * names of the tools it began with if the backend keeps them, or takes
@@ -183,7 +197,10 @@ export interface UnitRecord {
    * kept across moves, as the session's id is.
    */
   keepPackageRequest(request: PackageRequest, tell: () => void): Promise<void>;
-  /** Saves and shows the completion, removing the matching pending request. */
+  /**
+   * Saves and shows the completion, removing the matching pending request.
+   * A unit in progress keeps a notice of it for the tutor in the same write.
+   */
   completePackageRequest(completion: PackageCompletion): Promise<boolean>;
   /**
    * Writes the tutor's proposed style note into the position. It is kept
@@ -268,12 +285,14 @@ export interface UnitRecord {
    */
   passOver(passed: PassedOver, tell: () => void): Promise<void>;
   /**
-   * Ends the assessment, every objective asked or skipped: takes it out of
+   * Ends the assessment, every objective asked, or skipped: takes it out of
    * the position with its detour, withdraws its open question with nothing
    * recorded, and tells the page what it did to the record. The statuses
    * come from the evidence read again: other units' chats write on its
    * objectives too, while its card waits and while it runs. A test's
-   * result then waits in the position.
+   * result then waits in the position, with whether the learner stopped
+   * it; any other run that was under way leaves a notice of how it ended
+   * for the tutor, in the same write.
    */
   endAssessment(skipped: boolean): Promise<{
     run: AssessmentRun;
@@ -401,6 +420,8 @@ export async function openUnitRecord(options: {
   let sessionId = kept?.tutorSessionId;
   let sessionTools = kept?.tutorTools;
   let notices: readonly TutorNotice[] = kept?.tutorNotices ?? [];
+  /** A notice being written with a change, kept once the write lands (`withNotice`). */
+  let adding: TutorNotice | undefined;
 
   /** The tutor's session as the position keeps it: its id, and the tools it began with. */
   function session(): Pick<UnitPosition, "tutorSessionId" | "tutorTools"> {
@@ -410,12 +431,16 @@ export async function openUnitRecord(options: {
     };
   }
 
+  /** The notices a write saves: those kept, with one being written. */
+  function noticesSaved(): readonly TutorNotice[] {
+    return adding === undefined ? notices : [...notices, adding];
+  }
+
   /** The position with the notices as they stand: none, or at least one. */
   function withNotices(given: UnitPosition): UnitPosition {
     const { tutorNotices: _, ...rest } = given;
-    return notices.length === 0
-      ? rest
-      : { ...rest, tutorNotices: [...notices] };
+    const saved = noticesSaved();
+    return saved.length === 0 ? rest : { ...rest, tutorNotices: [...saved] };
   }
 
   function closedPosition(): UnitPosition {
@@ -470,7 +495,7 @@ export async function openUnitRecord(options: {
       const holding =
         kept.assessment !== undefined
           ? kept
-          : sessionId !== undefined || notices.length > 0
+          : sessionId !== undefined || noticesSaved().length > 0
             ? closedPosition()
             : null;
       const saved = await dataRoot.writePosition(courseId, unitId, holding, {
@@ -495,6 +520,27 @@ export async function openUnitRecord(options: {
       }
     }
     return saved;
+  }
+
+  /**
+   * Runs a write that saves `notice` with it for the tutor's next header.
+   * The notice is kept only once the write lands, so no header carries a
+   * notice of a change not saved, or before what it names is kept.
+   */
+  async function withNotice<T>(
+    notice: NewNotice | undefined,
+    write: () => Promise<T>,
+  ): Promise<T> {
+    if (notice === undefined) return write();
+    const added: TutorNotice = { ...notice, id: randomUUID() };
+    adding = added;
+    try {
+      const done = await write();
+      notices = [...notices, added];
+      return done;
+    } finally {
+      adding = undefined;
+    }
   }
 
   async function move(given: UnitPosition, tell?: () => void): Promise<void> {
@@ -608,18 +654,32 @@ export async function openUnitRecord(options: {
   }
 
   /**
-   * Keeps the dispute and its override, and tells the page. A finished
-   * unit's status can change with it: overridden once a pass is taken, or
-   * passed once a miss is overturned.
+   * Keeps the dispute and its override, and tells the page, once `notice`,
+   * if given, is kept for the tutor. A finished unit's status can change
+   * with it: overridden once a pass is taken, or passed once a miss is
+   * overturned.
    */
-  function keepDispute(
+  async function keepDispute(
     entry: DisputeEvidence,
     override: OverrideEvidence | undefined,
-  ): void {
+    notice: NewNotice | undefined,
+  ): Promise<void> {
     evidence.push(entry);
     if (override !== undefined) evidence.push(override);
+    if (notice !== undefined) {
+      // The dispute is recorded already: a failed write leaves the notice
+      // in memory, and the record's next write saves it.
+      await keepNotice(notice).catch((error: unknown) => {
+        console.error("The tutor's notice could not be saved:", error);
+      });
+    }
     emit(disputedEvent(entry));
     tellStatus();
+  }
+
+  async function keepNotice(notice: NewNotice, next = position): Promise<void> {
+    notices = [...notices, { ...notice, id: randomUUID() }];
+    await move(next);
   }
 
   /**
@@ -679,7 +739,7 @@ export async function openUnitRecord(options: {
     const saved = await savePosition(null, {
       completion,
       testedOut: byTest,
-      ...(sessionId !== undefined || notices.length > 0
+      ...(sessionId !== undefined || noticesSaved().length > 0
         ? { held: closedPosition() }
         : {}),
     });
@@ -754,9 +814,9 @@ export async function openUnitRecord(options: {
     recordedAnswer,
     disputeOf: (questionId) => disputesIn(evidence).get(questionId),
     objectiveStatuses,
-    move,
+    move: (given, tell, notice) => withNotice(notice, () => move(given, tell)),
 
-    async dispute(entry) {
+    async dispute(entry, notice) {
       const answered = recordedAnswer(entry.questionId);
       const override: OverrideEvidence | undefined =
         finished !== undefined &&
@@ -769,13 +829,13 @@ export async function openUnitRecord(options: {
             }
           : undefined;
       await dataRoot.appendDispute(courseId, entry, override);
-      keepDispute(entry, override);
+      await keepDispute(entry, override, notice);
       return override;
     },
 
-    learnDispute(entry, override) {
+    async learnDispute(entry, override, notice) {
       if (disputesIn(evidence).has(entry.questionId)) return false;
-      keepDispute(entry, override);
+      await keepDispute(entry, override, notice);
       return true;
     },
 
@@ -826,7 +886,13 @@ export async function openUnitRecord(options: {
         await savePosition(null, { completion });
       } else {
         if (packageRequest?.id !== id) return false;
-        await savePosition(next, { completion });
+        // Kept within the write, so the notice never names a completion
+        // the record does not hold yet.
+        await withNotice({ kind: "packages", requestId: id }, async () => {
+          await savePosition(next, { completion });
+          keepCompletion(completion);
+        });
+        return true;
       }
       keepCompletion(completion);
       return true;
@@ -884,10 +950,7 @@ export async function openUnitRecord(options: {
       return recorded;
     },
 
-    async keepNotice(notice, next = position) {
-      notices = [...notices, { ...notice, id: randomUUID() }];
-      await move(next);
-    },
+    keepNotice,
 
     async deliverNotices(ids) {
       const left = notices.filter((notice) => !ids.includes(notice.id));
@@ -1018,28 +1081,58 @@ export async function openUnitRecord(options: {
       const statuses = Object.fromEntries(
         answered.map((id) => [id, objectiveStatus(evidence, id)]),
       );
-      await move(
-        run.mode === "test-out"
-          ? { ...rest, testOut: { stage: "result" } }
-          : gateUnanswered === undefined
+      const ended: NewNotice | undefined =
+        run.stage !== "on" || run.mode === "test-out"
+          ? undefined
+          : {
+              kind: "assessment-end",
+              mode: run.mode,
+              skipped,
+              ...(skipped && withdrawn !== undefined
+                ? { withdrawn: withdrawn.number }
+                : {}),
+              statuses,
+              ...(run.passedOver === undefined
+                ? {}
+                : { passedOver: run.passedOver.map((p) => p.objective) }),
+            };
+      await withNotice(ended, () =>
+        move(
+          run.mode === "test-out"
             ? {
                 ...rest,
-                ...(resume === undefined ? {} : { afterAnswer: resume }),
+                testOut: {
+                  stage: "result",
+                  ...(skipped
+                    ? {
+                        stopped:
+                          withdrawn === undefined
+                            ? {}
+                            : { withdrawn: withdrawn.number },
+                      }
+                    : {}),
+                },
               }
-            : { ...rest, gateUnanswered },
-        () =>
-          emit({
-            type: "assessment_end",
-            mode: run.mode,
-            skipped,
-            statuses,
-            ...(withdrawn === undefined
-              ? {}
-              : { withdrawnQuestionId: withdrawn.id }),
-            ...(run.passedOver === undefined
-              ? {}
-              : { passedOver: run.passedOver.length }),
-          }),
+            : gateUnanswered === undefined
+              ? {
+                  ...rest,
+                  ...(resume === undefined ? {} : { afterAnswer: resume }),
+                }
+              : { ...rest, gateUnanswered },
+          () =>
+            emit({
+              type: "assessment_end",
+              mode: run.mode,
+              skipped,
+              statuses,
+              ...(withdrawn === undefined
+                ? {}
+                : { withdrawnQuestionId: withdrawn.id }),
+              ...(run.passedOver === undefined
+                ? {}
+                : { passedOver: run.passedOver.length }),
+            }),
+        ),
       );
       runAnswers = [];
       if (answered.length > 0) {
@@ -1120,32 +1213,25 @@ export async function openUnitRecord(options: {
         pendingSegmentOverride: ____,
         ...rest
       } = position;
-      const was = notices;
-      notices = [
-        ...notices,
+      await withNotice(
         {
-          id: randomUUID(),
           kind: "override",
           objectives,
           ...(withdrawn === undefined ? {} : { withdrawn: withdrawn.number }),
         },
-      ];
-      try {
-        await move({ ...rest, phase: "closed" }, () => {
-          emit({
-            type: "overridden",
-            segment,
-            objectives,
-            ...(withdrawn === undefined
-              ? {}
-              : { withdrawnQuestionId: withdrawn.id }),
-          });
-          emit(status());
-        });
-      } catch (error) {
-        notices = was;
-        throw error;
-      }
+        () =>
+          move({ ...rest, phase: "closed" }, () => {
+            emit({
+              type: "overridden",
+              segment,
+              objectives,
+              ...(withdrawn === undefined
+                ? {}
+                : { withdrawnQuestionId: withdrawn.id }),
+            });
+            emit(status());
+          }),
+      );
       checkAnswers = [];
     },
 

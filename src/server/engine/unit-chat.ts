@@ -1126,8 +1126,20 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
       : undefined;
     let next: UnitPosition | null;
     if (position?.packageRequest?.id === completion.request.id) {
-      const { packageRequest: _, ...rest } = position;
-      next = rest;
+      const { packageRequest: _, tutorNotices = [], ...rest } = position;
+      // The tutor hears the outcome in its next header, as after an install
+      // the chat saved itself.
+      next = {
+        ...rest,
+        tutorNotices: [
+          ...tutorNotices,
+          {
+            id: randomUUID(),
+            kind: "packages",
+            requestId: completion.request.id,
+          },
+        ],
+      };
     } else if (position === undefined && recorded?.outcome === "withdrawn") {
       next = null;
     } else {
@@ -1877,9 +1889,6 @@ function createUnitChat(
           end: () => r.unitEnd.end(),
           sendTeaching: (cutOff) => sendTeaching(r, cutOff),
           context: () => r.context,
-          note: (text) => {
-            r.notes.push(text);
-          },
           readHandoff,
           handoffs: assessmentHandoffs,
           unitId,
@@ -1893,9 +1902,6 @@ function createUnitChat(
           context: () => r.context,
           folder: () => folder,
           unitId,
-          note: (text) => {
-            r.notes.push(text);
-          },
           checkDone: () => checkDone(r),
           closeSegment: () => closeSegment(r),
           sendTeaching: (cutOff) => sendTeaching(r, cutOff),

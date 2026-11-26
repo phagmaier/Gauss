@@ -2423,7 +2423,20 @@ test("review's card is answered through its routes: Start asks for the first que
   const skipped = await post(setup.app, `${UNIT}/assessment/skip`);
   expect(skipped.status).toBe(200);
   expect(await skipped.json()).toEqual({ ok: true });
-  expect(await unitState()).toEqual({ segment: 0, phase: "closed" });
+  expect(await unitState()).toEqual({
+    segment: 0,
+    phase: "closed",
+    tutorNotices: [
+      {
+        id: expect.any(String),
+        kind: "assessment-end",
+        mode: "review",
+        skipped: true,
+        withdrawn: 1,
+        statuses: {},
+      },
+    ],
+  });
   const again = await post(setup.app, `${UNIT}/assessment/skip`);
   expect(again.status).toBe(409);
   expect(await again.json()).toEqual({

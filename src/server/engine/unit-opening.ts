@@ -17,7 +17,7 @@
 // corrected verdict.
 
 // Made for each loaded unit. The chat keeps `load`'s composition and error
-// path, the queue, the actions' guards and the notes, read at each call.
+// path, the queue and the actions' guards, read at each call.
 
 import type { Slug } from "../../shared/course.ts";
 import type { PageEvent } from "../../shared/events.ts";
@@ -43,15 +43,11 @@ import {
   detourEvent,
   disputedEvent,
   gradedEvent,
+  type NewNotice,
   phaseEvent,
   type UnitRecord,
 } from "./unit-record.ts";
-import {
-  disputeNote,
-  testEndTurn,
-  type UnitContext,
-  type Where,
-} from "./unit-turns.ts";
+import { testEndTurn, type UnitContext, type Where } from "./unit-turns.ts";
 
 export interface UnitOpening {
   /**
@@ -83,7 +79,6 @@ export function createUnitOpening({
   context,
   folder,
   unitId,
-  note,
   checkDone,
   closeSegment,
   sendTeaching,
@@ -110,6 +105,8 @@ export function createUnitOpening({
     | "dispute"
     | "learnDispute"
     | "learnAnswer"
+    | "tutorNotices"
+    | "keepNotice"
   >;
   exclusive<T>(work: () => Promise<T>): Promise<T>;
   emit(event: PageEvent): void;
@@ -122,8 +119,6 @@ export function createUnitOpening({
   /** The course's workspace, where a code question's files are. */
   folder(): string | undefined;
   unitId: Slug;
-  /** Adds a note to the next turn's header. */
-  note(text: string): void;
   /** Every objective of the segment is done in this check. */
   checkDone(): boolean;
   /** Closes the segment, and ends the unit after its last. Runs inside `exclusive`. */
@@ -170,7 +165,7 @@ export function createUnitOpening({
 }): UnitOpening {
   async function resume(recoveringOverride: boolean): Promise<void> {
     restoreQuestions();
-    restoreDisputes();
+    await restoreDisputes();
     packages.restorePackages(record.packageCompletions);
     proposals.showAnswered();
     packages.showUnsaved();
@@ -250,8 +245,14 @@ export function createUnitOpening({
       if (events().some((e) => e.type === "test_result")) {
         assessments.showTestResult();
       } else {
+        const { stopped } = position.testOut;
         assessments.sendTestSummary(() =>
-          testEndTurn(where(), { stopped: false }),
+          testEndTurn(
+            where(),
+            stopped === undefined
+              ? { stopped: false }
+              : { stopped: true, withdrawn: stopped.withdrawn },
+          ),
         );
       }
     } else if (position.phase === "teach") {
@@ -352,35 +353,59 @@ export function createUnitOpening({
    * was not open, or whose line was lost. In a unit in progress, the tutor
    * is told it in its next header.
    */
-  function restoreDisputes(): void {
+  async function restoreDisputes(): Promise<void> {
     const shown = new Set<string>();
     for (const event of events()) {
       if (event.type === "disputed") shown.add(event.questionId);
     }
+    const untold: DisputeEvidence[] = [];
     for (const entry of record.evidence) {
       if (entry.kind !== "dispute" || shown.has(entry.questionId)) continue;
       if (record.disputeOf(entry.questionId) !== entry) continue;
       const answered = record.recordedAnswer(entry.questionId);
       if (answered === undefined || !askedHere(answered)) continue;
       shown.add(entry.questionId);
-      emit(disputedEvent(entry));
-      tellDispute(entry);
+      untold.push(entry);
     }
+    if (untold.length === 0) return;
+    // In one turn of the queue, so a message's header, which waits for it,
+    // carries all of them or none; each kept before the thread shows it, as
+    // the record does for a dispute decided while the chat is open.
+    await exclusive(async () => {
+      for (const entry of untold) {
+        const notice = disputeNotice(entry);
+        if (notice !== undefined) {
+          await record.keepNotice(notice).catch((error: unknown) => {
+            console.error("The tutor's notice could not be saved:", error);
+          });
+        }
+        emit(disputedEvent(entry));
+      }
+    });
   }
 
   /**
-   * Tells the tutor of a unit in progress the outcome, in its next header,
-   * of a dispute of an answer given in this unit's thread.
+   * The notice that tells the tutor of a unit in progress the outcome, in
+   * its next header, of a dispute of an answer given in this unit's thread,
+   * unless one waits already. The record keeps it before the page hears of
+   * the outcome, so a thread that shows the outcome after a restart has the
+   * notice too. The dispute is in the evidence before either: a restart
+   * after it and before them shows it, and tells it, at the next opening.
    */
-  function tellDispute(entry: DisputeEvidence): void {
+  function disputeNotice(entry: DisputeEvidence): NewNotice | undefined {
     const answered = record.recordedAnswer(entry.questionId);
     if (
-      record.finished === undefined &&
-      answered !== undefined &&
-      askedHere(answered)
+      record.finished !== undefined ||
+      answered === undefined ||
+      !askedHere(answered) ||
+      record.tutorNotices.some(
+        (notice) =>
+          notice.kind === "dispute" && notice.questionId === entry.questionId,
+      )
     ) {
-      note(disputeNote(answered, entry));
+      return undefined;
     }
+    return { kind: "dispute", questionId: entry.questionId };
   }
 
   /**
@@ -394,16 +419,15 @@ export function createUnitOpening({
   }
 
   /**
-   * After a dispute's outcome is kept: the tutor is told, and the check rules
-   * decide with the corrected verdict where nothing else is waiting for
-   * them. A check with no question open, no detour and no feedback to come
-   * closes if nothing is left to ask; at the unit's end, the closing card is
-   * shown again with the statuses as they are now, and the unit finishes if
-   * every objective has passed. A detour stays open until the learner asks
-   * for another question. Runs inside `exclusive`.
+   * After a dispute's outcome is kept, with the tutor's notice of it: the
+   * check rules decide with the corrected verdict where nothing else is
+   * waiting for them. A check with no question open, no detour and no
+   * feedback to come closes if nothing is left to ask; at the unit's end,
+   * the closing card is shown again with the statuses as they are now, and
+   * the unit finishes if every objective has passed. A detour stays open
+   * until the learner asks for another question. Runs inside `exclusive`.
    */
-  async function disputeKept(entry: DisputeEvidence): Promise<void> {
-    tellDispute(entry);
+  async function disputeKept(): Promise<void> {
     const { position, finished } = record;
     // An assessment's answers are its own rules', read when it next moves.
     if (finished !== undefined || position.assessment !== undefined) return;
@@ -432,12 +456,15 @@ export function createUnitOpening({
   return {
     resume,
     async recordDispute(entry) {
-      const override = await record.dispute(entry);
-      await disputeKept(entry);
+      const override = await record.dispute(entry, disputeNotice(entry));
+      await disputeKept();
       return { override };
     },
     async learnDispute(entry, override) {
-      if (record.learnDispute(entry, override)) await disputeKept(entry);
+      const notice = disputeNotice(entry);
+      if (await record.learnDispute(entry, override, notice)) {
+        await disputeKept();
+      }
     },
     async learnAnswer(entry) {
       if (!record.learnAnswer(entry)) return;

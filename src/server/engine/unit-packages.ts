@@ -7,10 +7,9 @@
 // Retry saving saves that result without running the install again.
 // Reopening shows the completed cards the thread lacks, an install whose
 // result is still unsaved, and the request that waits. The unit chat keeps
-// the running unit and the workspace's folder, read at each call; the
-// notes the tutor's next header gives; each action's guard and entry into
-// its queue; and the course's workspace, whose queue admits a request and
-// an install.
+// the running unit and the workspace's folder, read at each call; each
+// action's guard and entry into its queue; and the course's workspace,
+// whose queue admits a request and an install.
 
 import { randomUUID } from "node:crypto";
 import type { PageEvent } from "../../shared/events.ts";
@@ -24,8 +23,9 @@ import type { PackageDesk } from "../tools/install-packages.ts";
 import type { ChatResult } from "./conversation.ts";
 import type { PackageInstaller } from "./packages.ts";
 import type { UnitAgents } from "./unit-agents.ts";
+import type { UnitHeader } from "./unit-header.ts";
 import { packagesAnsweredEvent, type UnitRecord } from "./unit-record.ts";
-import { packagesNote, packagesTurn, type Where } from "./unit-turns.ts";
+import { packagesTurn, type Where } from "./unit-turns.ts";
 
 /** The loaded unit, as the package requests read and change it. */
 interface PackageUnit {
@@ -34,7 +34,7 @@ interface PackageUnit {
     "position" | "finished" | "keepPackageRequest" | "completePackageRequest"
   >;
   agents: Pick<UnitAgents, "send">;
-  notes: string[];
+  header: Pick<UnitHeader, "waits">;
 }
 
 export interface UnitPackages<U extends PackageUnit> {
@@ -183,20 +183,21 @@ export function createUnitPackages<U extends PackageUnit>({
   }
 
   /**
-   * Tells the tutor in the next header, with a turn of its own only if no
-   * question is open and something else has not delivered it first.
+   * Sends the turn that tells the tutor, from the notice the record kept
+   * with the completion, only if no question is open and no other turn has
+   * carried the notice first.
    */
   function tellPackageOutcome(r: U, completion: PackageCompletion): void {
     if (r.record.finished !== undefined) return;
-    const { request, outcome, output } = completion;
-    const note = packagesNote(outcome, request.packages, output);
-    r.notes.push(note);
     if (r.record.position.openQuestion !== undefined) return;
+    const { id } = completion.request;
     r.agents.send({
       skip: () =>
         r.record.finished !== undefined ||
         r.record.position.openQuestion !== undefined ||
-        !r.notes.includes(note),
+        !r.header.waits(
+          (notice) => notice.kind === "packages" && notice.requestId === id,
+        ),
       text: () => packagesTurn(where(r)),
     });
   }

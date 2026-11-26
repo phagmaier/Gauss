@@ -885,6 +885,16 @@ test("a miss on the unit's own objective: its detour and a second question, the 
     segment: 1,
     phase: "closed",
     gated: true,
+    // Told in the tutor's next turn.
+    tutorNotices: [
+      {
+        id: expect.any(String),
+        kind: "assessment-end",
+        mode: "gate",
+        skipped: false,
+        statuses: { slope: "slipping", "power-rule": "retained" },
+      },
+    ],
   });
   expect(
     closingCard(PLANS.derivative as Plan, cardOf(replay(first))),

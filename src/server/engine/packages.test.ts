@@ -1049,6 +1049,45 @@ test('"Not now" during its own open question waits for a safe tutor turn', async
   await units.close();
 });
 
+test('"Not now" waiting for a safe turn is told in the first header after a restart, once', async () => {
+  const first = await start([
+    [{ text: "Teaching." }, ask([{ name: "pytest" }])],
+    [{ call: "ask_question", input: CHOICE }],
+  ]);
+  const id = requestId(first.chat.events());
+  expect(await first.chat.ready()).toEqual({ ok: true });
+  await first.chat.settled();
+  expect(await first.chat.declinePackages(id)).toEqual({ ok: true });
+  await first.chat.settled();
+  expect(first.backend.received).toHaveLength(2);
+  await first.units.close();
+
+  const second = await start([
+    [{ text: "Not quite: the detour." }],
+    [{ text: "Let's review the loop." }],
+  ]);
+  const posted = second.chat.events().findLast((e) => e.type === "question");
+  if (posted?.type !== "question") throw new Error("no question");
+  expect(
+    await second.chat.answer({
+      kind: "choice",
+      questionId: posted.question.id,
+      choice: "B",
+      confidence: "90",
+    }),
+  ).toEqual({ ok: true });
+  await second.chat.settled();
+  expect(second.chat.say("Can we review why?")).toEqual({ ok: true });
+  await second.chat.settled();
+
+  expect(
+    second.backend.received.map((t) =>
+      t.text.includes('The learner answered "Not now" to installing pytest.'),
+    ),
+  ).toEqual([true, false]);
+  await second.units.close();
+});
+
 test("a finished unit recovers its withdrawn package card even when both transcript lines are lost", async () => {
   const first = await start([
     [{ text: "Teaching." }, ask([{ name: "pytest" }])],
@@ -1393,7 +1432,9 @@ test.each([
     ).toBe(id);
     await first.units.close();
 
-    const second = await start([], run, "loops", { withoutInstaller: true });
+    const second = await start([[{ text: "Noted." }]], run, "loops", {
+      withoutInstaller: true,
+    });
     expect(
       cards(second.chat.events()).filter(
         (e) => e.type === "packages_requested" && !e.historical,
@@ -1430,6 +1471,14 @@ test.each([
     ).toBe(false);
     expect(launches).toHaveLength(1);
     expect(second.backend.received).toEqual([]);
+    // The tutor hears the outcome the restart saved in its next header.
+    expect(second.chat.say("Did it work?")).toEqual({ ok: true });
+    await second.chat.settled();
+    expect(second.backend.received.at(-1)?.text).toContain(
+      outcome === "installed"
+        ? "The learner installed the packages you asked for: pytest."
+        : "Installing the packages you asked for, pytest, failed.",
+    );
     await second.units.close();
   },
 );

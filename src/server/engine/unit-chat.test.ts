@@ -1509,6 +1509,64 @@ test("a turn stopped once its header was composed, before it was sent, leaves th
   expect((await positionWritten())?.tutorNotices).toBeUndefined();
 });
 
+test("a turn stopped once its header was composed, before it was sent, leaves the new conversation's note and its handoff note for the next turn", async () => {
+  await makeCourse();
+  const before = setUp([TEACH, ask(Q_QUOTIENT)]);
+  await toCheck(await open(before));
+  await before.units.close();
+  await reload().writeHandoff(COURSE, "derivative", "Likes pictures.", {
+    writtenAt: NOW,
+    through: { session: 1, events: 1 },
+  });
+
+  // The kept session is gone, so a new conversation takes over. The
+  // message's own write, which notes it is sent while the question is open,
+  // holds its header's composing; Stop comes while it waits.
+  let hold: Promise<void> | undefined;
+  const held = Promise.withResolvers<void>();
+  const after = setUp([[{ text: "Yes." }]], {
+    kept: new KeptSessions(),
+    judgments: [CLARIFICATION],
+    record: (root) => ({
+      ...root,
+      async writePosition(...args) {
+        const wait = hold;
+        if (
+          wait !== undefined &&
+          args[2]?.openQuestion?.judging !== undefined
+        ) {
+          hold = undefined;
+          held.resolve();
+          await wait;
+        }
+        return root.writePosition(...args);
+      },
+    }),
+  });
+  const chat = await open(after);
+  const release = Promise.withResolvers<void>();
+  hold = release.promise;
+  expect(chat.say("A hint?")).toEqual({ ok: true });
+  await held.promise;
+  await chat.interrupt();
+  release.resolve();
+  await chat.settled();
+  expect(chat.events().findLast((e) => e.type === "turn_end")).toEqual({
+    type: "turn_end",
+    outcome: "interrupted",
+  });
+  expect(after.backend.received).toEqual([]);
+
+  expect(chat.say("Are you there?")).toEqual({ ok: true });
+  await chat.settled();
+  expect(after.backend.received).toHaveLength(1);
+  const header = after.backend.received[0]?.text;
+  expect(header).toContain(JOINED_NOTE);
+  expect(header).toContain(
+    "This unit's handoff note, written from the earlier conversation as its segments closed:\n<handoff_note>\nLikes pictures.\n</handoff_note>",
+  );
+});
+
 test("a Stop after the header carrying a move-on notice was sent does not tell it again, after a restart either", async () => {
   const teaching = Promise.withResolvers<void>();
   const before = setUp(

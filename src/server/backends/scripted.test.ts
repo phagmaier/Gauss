@@ -827,7 +827,8 @@ test("in a self-test of finished unit 1, the scripted tutor asks each objective,
   expect(chat.events().filter((e) => e.type === "unit_closed")).toEqual([
     { type: "unit_closed", status: "passed" },
   ]);
-  // The self-test's entry goes; the closed position keeps the tutor's session.
+  // The self-test's entry goes; the closed position keeps the tutor's
+  // session, and the notice of the end for its next turn.
   expect(await dataRoot.readState(COURSE)).toEqual({
     units: {},
     finishedReviews: {
@@ -835,6 +836,19 @@ test("in a self-test of finished unit 1, the scripted tutor asks each objective,
         segment: 1,
         phase: "closed",
         tutorSessionId: expect.any(String),
+        tutorNotices: [
+          {
+            id: expect.any(String),
+            kind: "assessment-end",
+            mode: "self-test",
+            skipped: false,
+            // The objective asked first was missed, then passed again.
+            statuses: {
+              [`${on(first.prompt)}`]: "slipping",
+              [`${on(other.prompt)}`]: "retained",
+            },
+          },
+        ],
       },
     },
   });
@@ -901,6 +915,16 @@ test("in a self-test with only code picked, outside a coding course, the scripte
         segment: 1,
         phase: "closed",
         tutorSessionId: expect.any(String),
+        tutorNotices: [
+          {
+            id: expect.any(String),
+            kind: "assessment-end",
+            mode: "self-test",
+            skipped: false,
+            statuses: {},
+            passedOver: ["limits-idea", "limits-proof"],
+          },
+        ],
       },
     },
   });

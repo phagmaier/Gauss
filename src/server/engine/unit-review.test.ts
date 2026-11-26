@@ -1191,6 +1191,38 @@ test("a review asked for in the discussion starts there; after it nothing is sen
   await chat.settled();
 });
 
+test("a review's end in the discussion, with a restart before the next turn, is told in the first header after reopening, once", async () => {
+  await makeCourse();
+  await reload().writePosition(COURSE, "derivative", {
+    segment: 0,
+    phase: "discuss",
+  });
+  const first = setUp();
+  const before = await open(first);
+  expect(await first.units.reviewNow(COURSE)).toEqual({
+    ok: true,
+    unitId: "derivative",
+  });
+  await before.settled();
+  await answer(before, "A");
+  await answer(before, "A");
+  expect(ofType(before, "assessment_end")).toHaveLength(1);
+  await first.units.close();
+
+  const second = setUp();
+  const chat = await open(second);
+  expect(sent(second.backend)).toEqual([]);
+  await step(Promise.resolve(chat.say("Where were we?")), chat);
+  await step(Promise.resolve(chat.say("Go on.")), chat);
+  expect(
+    sent(second.backend).map((text) =>
+      text.includes(
+        'The review is over: "limit-value" retained; "one-sided" retained.',
+      ),
+    ),
+  ).toEqual([true, false]);
+});
+
 test("after a review asked for in the check, the check goes on: the tutor is asked for its question", async () => {
   await makeCourse();
   await reload().writePosition(COURSE, "derivative", {
@@ -1500,12 +1532,26 @@ test("in a finished course the review runs in the thread of the unit whose objec
   expect(nextStep(replay(reopened))).toBe("leave");
   const after = await reload().readState(COURSE);
   expect(after.units).toEqual({});
-  // The run's entry goes; the closed position keeps the tutor's session.
+  // The run's entry goes; the closed position keeps the tutor's session,
+  // and the notice of the end for its next turn.
   expect(after.finishedReviews).toEqual({
     derivative: {
       segment: 1,
       phase: "closed",
       tutorSessionId: expect.any(String),
+      tutorNotices: [
+        {
+          id: expect.any(String),
+          kind: "assessment-end",
+          mode: "review",
+          skipped: false,
+          statuses: {
+            area: "retained",
+            "power-rule": "retained",
+            slope: "retained",
+          },
+        },
+      ],
     },
   });
   const answers = (await reload().readEvidence(COURSE)).filter(
@@ -1587,6 +1633,16 @@ test("a disputed pass and a review miss leave the finished unit closed and its p
       segment: 1,
       phase: "closed",
       tutorSessionId: expect.any(String),
+      tutorNotices: [
+        {
+          id: expect.any(String),
+          kind: "assessment-end",
+          mode: "review",
+          skipped: true,
+          withdrawn: 1,
+          statuses: { slope: "overridden" },
+        },
+      ],
     },
   });
   expect(sent(second.backend)).toEqual([]);
@@ -1632,6 +1688,16 @@ test("a unit tested out in this process can run a review without teaching or a g
         segment: 1,
         phase: "closed",
         tutorSessionId: expect.any(String),
+        tutorNotices: [
+          {
+            id: expect.any(String),
+            kind: "assessment-end",
+            mode: "review",
+            skipped: true,
+            withdrawn: 1,
+            statuses: {},
+          },
+        ],
       },
     },
   });

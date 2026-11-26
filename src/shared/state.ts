@@ -11,6 +11,7 @@ import { CurriculumChange, CurriculumDecision } from "./curriculum-change.ts";
 import { AssessmentMode, OverrideEvidence } from "./evidence.ts";
 import { PackageCompletion, PackageRequest } from "./packages.ts";
 import { AnswerSubmission, Question, QuestionKind } from "./question.ts";
+import { ObjectiveStatus } from "./status.ts";
 import { StyleDecision, StyleProposal } from "./style.ts";
 
 /** A segment's phases, in order. */
@@ -153,8 +154,18 @@ export type AssessmentRun = z.infer<typeof AssessmentRun>;
 export const TestOut = z.discriminatedUnion("stage", [
   /** Chosen before the unit started; it starts once a review offered first ends. */
   z.object({ stage: z.literal("due") }),
-  /** Over: its result card waits for the learner, and nothing is skipped until they answer it. */
-  z.object({ stage: z.literal("result") }),
+  /**
+   * Over: its result card waits for the learner, and nothing is skipped
+   * until they answer it. `stopped` once the learner pressed "Start
+   * learning instead", with the number of the question it withdrew, if one
+   * was open, so the tutor's word on the test says so after a restart too.
+   */
+  z.object({
+    stage: z.literal("result"),
+    stopped: z
+      .object({ withdrawn: z.number().int().positive().optional() })
+      .optional(),
+  }),
   /**
    * The learner chose to skip what it passed: these objectives, as they
    * stood then. A segment with every objective among them is skipped, and
@@ -172,6 +183,10 @@ export type TestOut = z.infer<typeof TestOut>;
  * none of a source teaching turn that reached the tutor; or the tutor was
  * refused a proposal while the course view's waited, which it hears once
  * that no longer waits, unless it hears the learner's answer first. The
+ * record's facts it hears of: a dispute's outcome on an answer given in
+ * the unit's thread, by the answer's question; an assessment it was asking
+ * that ended, as it ended; the learner's answer to the test's result card;
+ * and how its request to install packages ended, by the request. The
  * wording is the engine's (`noticeText` in `engine/unit-turns.ts`).
  */
 export const TutorNotice = z.discriminatedUnion("kind", [
@@ -183,6 +198,36 @@ export const TutorNotice = z.discriminatedUnion("kind", [
   }),
   z.object({ id: z.uuid(), kind: z.literal("unshown-lecture") }),
   z.object({ id: z.uuid(), kind: z.literal("planner-blocked") }),
+  z.object({
+    id: z.uuid(),
+    kind: z.literal("dispute"),
+    questionId: z.string().min(1),
+  }),
+  z.object({
+    id: z.uuid(),
+    kind: z.literal("assessment-end"),
+    mode: AssessmentMode,
+    skipped: z.boolean(),
+    /** Skipped partway: the number of the question withdrawn, if one was open. */
+    withdrawn: z.number().int().positive().optional(),
+    /** The objectives it recorded an answer on, with their statuses then. */
+    statuses: z.record(Slug, ObjectiveStatus),
+    /** In a self-test: the objectives passed over. */
+    passedOver: z.array(Slug).min(1).optional(),
+  }),
+  z.object({
+    id: z.uuid(),
+    kind: z.literal("test-answered"),
+    /** True: skip what passed; false: the whole unit taught. */
+    skip: z.boolean(),
+    /** The objectives the test had passed when the learner answered. */
+    passed: z.array(Slug),
+  }),
+  z.object({
+    id: z.uuid(),
+    kind: z.literal("packages"),
+    requestId: z.string().min(1),
+  }),
 ]);
 export type TutorNotice = z.infer<typeof TutorNotice>;
 
