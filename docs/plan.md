@@ -52,6 +52,21 @@ source's figure (left out of stage 4); ranking passage matches with a
 cheap model, if the learner's use shows local search leaves too many
 plausible matches. Each is planned when chosen.
 
+### 6.33 A read during a write's reservation — in progress
+
+**Needs:** nothing open.
+**Why:** A cheat sheet write reserves its course (`starting` in
+`engine/cheat-sheets.ts`) before it sets its attempt. A list read from
+another page that lands between the two shows no attempt, so that page
+does not poll and misses the write and its sheet until it reads again. A
+unit's notes have the same window (`starting` in `engine/notes.ts`).
+**Do:** Have the cheat sheet list and the notes view answer only once a
+reserved start has set its attempt or refused, so a read in the window
+shows the write.
+**Done when:** route tests hold a cheat sheet start and a notes start in
+that window and read meanwhile: each read shows the attempt as writing,
+and fails without the change. `mise run check` passes.
+
 ## Known gaps
 
 **A:** ready for a focused code fix (task above). **B:** product or design
