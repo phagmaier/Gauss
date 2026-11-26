@@ -1,8 +1,9 @@
 // The course view (docs/prototype/20-course.html, with 12-unit-order.html's
 // card and Start): the title, a line of counts, how many objectives are due
 // for review when any are (task 5.24) with "Review now", which starts a
-// review in a unit's thread and opens it (task 5.25), and "Self-test" beside
-// it, which opens its panel in place (piece 27), the card that leads
+// review in a unit's thread and opens it (task 5.25), "Self-test" beside
+// it, which opens its panel in place (piece 27), and "Cheat sheets", which
+// opens theirs (piece 29), the card that leads
 // on, and the unit list down to objectives. Each unit is a heading that opens and
 // folds; a started unit lists its objectives, "Next" on the one to do in the
 // card's unit, and a unit not started its goal. "Course map" in the top line
@@ -44,6 +45,11 @@ import type { Outline } from "../shared/source.ts";
 import type { SourceTarget } from "../shared/source-target.ts";
 import { isFinished } from "../shared/status.ts";
 import { getJson, post, postFor } from "./api.ts";
+import {
+  CheatSheetsLine,
+  CheatSheetsPanel,
+  useCheatSheets,
+} from "./CheatSheets.tsx";
 import { Diagram, UnitList, UnitReadLines } from "./Curriculum.tsx";
 import { CourseMapButton, Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
@@ -99,8 +105,8 @@ export function Course(props: { courseId: string }) {
   const [asking, setAsking] = useState<Asking>();
   /** "Review now" is starting a review, so it is not pressed twice. */
   const [starting, setStarting] = useState(false);
-  /** The self-test's panel is open under the due line. */
-  const [selfTesting, setSelfTesting] = useState(false);
+  /** The panel open under the due line, the self-test's or the cheat sheets'. */
+  const [panel, setPanel] = useState<"self-test" | "cheat-sheets">();
   const closePane = useCallback(() => {
     setPane(undefined);
     setSelected(undefined);
@@ -158,6 +164,9 @@ export function Course(props: { courseId: string }) {
     stored == null || unreadable !== undefined ? null : lead(stored);
   // An approved course with nothing to lead to has every unit finished.
   const finished = approved && leadsTo === null;
+  // Asked for as soon as the course reads as approved, so the due line says
+  // how many are kept, and a write in progress shows, before the panel opens.
+  const sheets = useCheatSheets(courseId, approved && unreadable === undefined);
 
   /** Opens the unit with its test, then follows it to its session. */
   async function testOut(unit: StoredUnit) {
@@ -329,21 +338,42 @@ export function Course(props: { courseId: string }) {
                   due={stored.due}
                   starting={starting}
                   onReview={() => void reviewNow()}
-                  onSelfTest={() => setSelfTesting(true)}
+                  onSelfTest={() => setPanel("self-test")}
+                  kept={sheets.list?.sheets.length}
+                  sheetsOpen={panel === "cheat-sheets"}
+                  onCheatSheets={() => {
+                    if (panel === "cheat-sheets") setPanel(undefined);
+                    else {
+                      // A unit may have finished since the list was read.
+                      sheets.refresh();
+                      setPanel("cheat-sheets");
+                    }
+                  }}
                 />
               )}
-              {approved &&
-              unreadable === undefined &&
-              selfTesting &&
-              curriculum !== null ? (
-                <SelfTestPanel
+              {!approved ||
+              unreadable !== undefined ||
+              curriculum === null ? null : panel === "cheat-sheets" ? (
+                <CheatSheetsPanel
                   courseId={courseId}
-                  units={pickableUnits(curriculum.units)}
-                  onCancel={() => setSelfTesting(false)}
-                  onStarted={(unit) => navigate(paths.unit(courseId, unit))}
-                  onProblem={setProblem}
+                  sheets={sheets}
+                  units={curriculum.units}
+                  onClose={() => setPanel(undefined)}
                 />
-              ) : null}
+              ) : (
+                <>
+                  <CheatSheetsLine sheets={sheets} units={curriculum.units} />
+                  {panel === "self-test" ? (
+                    <SelfTestPanel
+                      courseId={courseId}
+                      units={pickableUnits(curriculum.units)}
+                      onCancel={() => setPanel(undefined)}
+                      onStarted={(unit) => navigate(paths.unit(courseId, unit))}
+                      onProblem={setProblem}
+                    />
+                  ) : null}
+                </>
+              )}
               {finished ? (
                 <FinishedCard
                   onPlan={() => navigate(paths.planning(courseId))}
@@ -660,13 +690,18 @@ function Counts(props: { counts: CourseCounts; finished: boolean }) {
 
 /**
  * How many of the course's objectives are due for review, under the counts,
- * with "Review now" (piece 20); and "Self-test", due or not (piece 27).
+ * with "Review now" (piece 20); "Self-test", due or not (piece 27); and
+ * "Cheat sheets", with how many are kept (piece 29).
  */
 export function DueCount(props: {
   due: number | undefined;
   starting: boolean;
   onReview(): void;
   onSelfTest(): void;
+  /** How many cheat sheets are kept; undefined until the list is read. */
+  kept: number | undefined;
+  sheetsOpen: boolean;
+  onCheatSheets(): void;
 }) {
   const { due } = props;
   return (
@@ -698,6 +733,17 @@ export function DueCount(props: {
         <button type="button" className="textbtn" onClick={props.onSelfTest}>
           Self-test
         </button>
+        <button
+          type="button"
+          className="textbtn"
+          aria-expanded={props.sheetsOpen}
+          onClick={props.onCheatSheets}
+        >
+          Cheat sheets
+        </button>
+        {props.kept === undefined || props.kept === 0 ? null : (
+          <span className="cv-due-n">{props.kept} kept</span>
+        )}
       </span>
     </div>
   );
@@ -966,8 +1012,8 @@ function DeleteOffer(props: { course: CourseWithProgress }) {
               <>
                 <span>
                   Deleting the course removes everything in it: your progress,
-                  the unit notes, the transcripts, and the files in its
-                  workspace. The app cannot bring it back.
+                  the unit notes, the cheat sheets, the transcripts, and the
+                  files in its workspace. The app cannot bring it back.
                 </span>
                 <span>
                   To delete it, type its title: <b>{title}</b>

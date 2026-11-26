@@ -1,6 +1,6 @@
 // Which view the address shows: the library, the learner profile, the
 // settings, an intake, a course, its "What I know", its planning
-// conversation, a unit's session or its notes.
+// conversation, one of its cheat sheets, a unit's session or its notes.
 // The page moves between them without reloading, and the browser's Back works.
 
 import { useEffect, useState } from "react";
@@ -14,7 +14,8 @@ export type Route =
   | { view: "known"; courseId: string }
   | { view: "planning"; courseId: string }
   | { view: "unit"; courseId: string; unitId: string }
-  | { view: "notes"; courseId: string; unitId: string };
+  | { view: "notes"; courseId: string; unitId: string }
+  | { view: "cheatSheet"; courseId: string; sheetId: string };
 
 export const paths = {
   library: "/",
@@ -28,6 +29,8 @@ export const paths = {
     `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}`,
   notes: (courseId: string, unitId: string) =>
     `${paths.unit(courseId, unitId)}/notes`,
+  cheatSheet: (courseId: string, sheetId: string) =>
+    `${paths.course(courseId)}/cheat-sheets/${encodeURIComponent(sheetId)}`,
 };
 
 /** Any address that names no view shows the library. */
@@ -43,6 +46,16 @@ export function parseRoute(pathname: string): Route {
   if (kind === "courses" && name !== undefined && rest.length === 1) {
     if (rest[0] === "what-i-know") return { view: "known", courseId: name };
     if (rest[0] === "planning") return { view: "planning", courseId: name };
+  }
+  const sheetName = rest[1] === undefined ? undefined : decoded(rest[1]);
+  if (
+    kind === "courses" &&
+    name !== undefined &&
+    rest.length === 2 &&
+    rest[0] === "cheat-sheets" &&
+    sheetName !== undefined
+  ) {
+    return { view: "cheatSheet", courseId: name, sheetId: sheetName };
   }
   const [units, unit, ...beyond] = rest;
   const unitName = unit === undefined ? undefined : decoded(unit);

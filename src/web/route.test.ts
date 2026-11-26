@@ -39,6 +39,13 @@ test.each([
   ["/intakes/3eb7af09/units/vectors", { view: "library" }],
   ["/elsewhere/x", { view: "library" }],
   ["/courses/%E0%A4", { view: "library" }],
+  [
+    "/courses/calculus/cheat-sheets/0b5f",
+    { view: "cheatSheet", courseId: "calculus", sheetId: "0b5f" },
+  ],
+  ["/courses/calculus/cheat-sheets", { view: "library" }],
+  ["/courses/calculus/cheat-sheets/0b5f/html", { view: "library" }],
+  ["/courses/calculus/cheat-sheets/%E0%A4", { view: "library" }],
 ])("%s shows %o", (path, route) => {
   expect(parseRoute(path)).toEqual(route);
 });
@@ -66,5 +73,10 @@ test("the paths the page makes lead back to their views", () => {
     view: "notes",
     courseId: "a/b",
     unitId: "x y",
+  });
+  expect(parseRoute(paths.cheatSheet("a/b", "x y"))).toEqual({
+    view: "cheatSheet",
+    courseId: "a/b",
+    sheetId: "x y",
   });
 });

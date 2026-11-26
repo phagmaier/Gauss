@@ -50,40 +50,20 @@ source's figure (left out of stage 4); ranking passage matches with a
 cheap model, if the learner's use shows local search leaves too many
 plausible matches. Each is planned when chosen.
 
-Cheat sheets (6.32 and its user check): `brief.md`, "Other features",
-"Cheat sheets"; piece 29, direction A. The writer, its record and its
-routes are built (`engine/cheat-sheets.ts`, `shared/cheat-sheet.ts`); a
+Cheat sheets (the user check below): `brief.md`, "Other features",
+"Cheat sheets"; piece 29, direction A. The writer, its record, its routes
+and the page are built (`engine/cheat-sheets.ts`, `shared/cheat-sheet.ts`,
+`web/CheatSheets.tsx`); a
 sheet runs on the notes writer's backend (`notesBackend`, Sonnet),
 whatever the course's backend, and its request leaves the transcripts
 out. `prompts/cheat-sheet.md` is new model-facing text, which a real model
 first reads in the user check. A page holds at most 128 formulas
 (`MAX_FORMULAS` in `engine/standalone-html.ts`), and the hand-made example
 for two units has 109: the request names the limit, and the user check
-shows whether a sheet of many units keeps to it.
-
-### 6.32 Cheat sheets on the page — todo
-
-**Needs:** nothing open.
-**Why:** Nothing on the page asks for, lists or opens a cheat sheet.
-**Do:** Build piece 29's direction A in the course view, on the cheat
-sheet routes in `http/app.ts`, and a reader page for a sheet, at its own
-route in `web/route.ts`, as `NotesReader` is for notes. A write in
-progress survives leaving the course view and coming back, as a notes
-write does.
-**Done when:** in Chromium on `pnpm dev:fake` with a fresh root, in
-"Calculus 1 to 3":
-- units 5 and later cannot be picked;
-- a sheet for units 2 and 3, written with an instruction, shows as
-  writing, then is listed with its units and date;
-- "Open" shows the scripted sheet naming both units, and its HTML route
-  serves the same page;
-- "all finished units" writes a second sheet, listed above the first;
-- deleting the first, confirmed, removes it from the list, and after a
-  server restart only the second is listed.
-
-"Linear algebra for PCA" shows the mock's state for a course with no
-finished unit. The page reads as the picked direction. `mise run check`
-passes.
+shows whether a sheet of many units keeps to it. The panel says a sheet
+is one printed page for up to six units and two at most beyond
+(`ONE_PAGE_UNITS` in `web/cheat-sheets.ts`, the mock's number); the
+prompt leaves "many" to the writer, so a real sheet may not match it.
 
 User check for cheat sheets. First, on `pnpm dev:fake` with a fresh root,
 open "Calculus 1 to 3". Units 5 and later cannot be picked. Pick units 1

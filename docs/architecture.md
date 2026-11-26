@@ -209,8 +209,8 @@ Rules no single file shows:
   host and origin checks), `artifact-frame.ts` (an aid served to its frame).
 - **`src/web/`**: a component per view (`Library`, `Intake`, `Profile`,
   `Settings`, `Course`, `Planning`, `Session`, `WhatIKnow`, `Notes`,
-  `SourcePane`), its logic in a tested pure module beside it (`session.ts`,
-  `progress.ts`, `diagram.ts`, ...); the thread's timeline is
+  `CheatSheets`, `SourcePane`), its logic in a tested pure module beside it
+  (`session.ts`, `progress.ts`, `diagram.ts`, ...); the thread's timeline is
   `src/shared/timeline.ts`. `attach.tsx` holds attaching a source, shared
   by the intake and the planning conversation, and the drop on a page;
   `Photos.tsx` the photos of a unit's messages: those waiting in the
@@ -346,7 +346,10 @@ worktree (`AGENTS.md`).
   "Script error.". With no input method, DevTools'
   `Input.imeSetComposition` (a CDP session from `tab.run`'s `page`) opens
   a composition, and an Enter sent then by `Input.dispatchKeyEvent`
-  arrives with `isComposing` set.
+  arrives with `isComposing` set. A page in a `sandbox=""` frame (notes,
+  cheat sheets) runs in a process of its own: it is missing from the
+  page's `Page.getFrameTree`, and is read through its own target, listed
+  as `iframe` by the DevTools endpoint's `/json/list`.
 - **Authorized real-model checks** use `mise exec -- pnpm check:live`.
   It starts the app on port 4320 in a fresh temporary data root. To
   restart on the same root, pass it inside the launcher, which otherwise

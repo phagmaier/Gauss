@@ -177,7 +177,7 @@ test("a late answer for the scope left behind is not shown under the new one", a
   expect(said()).toContain("in the course");
 });
 
-test("the due line says nothing is due, and offers only Self-test, when nothing is", async () => {
+test("the due line says nothing is due, and offers no Review now, when nothing is; and says how many cheat sheets are kept", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div");
   document.body.append(host);
@@ -187,7 +187,7 @@ test("the due line says nothing is due, and offers only Self-test, when nothing 
     host.remove();
   };
   const opened: string[] = [];
-  const render = (due: number | undefined) =>
+  const render = (due: number | undefined, kept: number | undefined) =>
     act(async () =>
       root.render(
         createElement(DueCount, {
@@ -195,18 +195,23 @@ test("the due line says nothing is due, and offers only Self-test, when nothing 
           starting: false,
           onReview: () => opened.push("review"),
           onSelfTest: () => opened.push("self-test"),
+          kept,
+          sheetsOpen: false,
+          onCheatSheets: () => opened.push("cheat-sheets"),
         }),
       ),
     );
   const buttons = () =>
     [...host.querySelectorAll("button")].map((b) => b.textContent);
-  await render(undefined);
+  await render(undefined, 0);
   expect(host.querySelector(".cv-due")?.textContent).toBe(
-    "Nothing is due for review.Self-test",
+    "Nothing is due for review.Self-testCheat sheets",
   );
-  expect(buttons()).toEqual(["Self-test"]);
-  await render(3);
-  expect(buttons()).toEqual(["Review now", "Self-test"]);
+  expect(buttons()).toEqual(["Self-test", "Cheat sheets"]);
+  await render(3, 2);
+  expect(buttons()).toEqual(["Review now", "Self-test", "Cheat sheets"]);
+  expect(host.querySelector(".cv-due-n")?.textContent).toBe("2 kept");
   await act(async () => host.querySelectorAll("button")[1]?.click());
-  expect(opened).toEqual(["self-test"]);
+  await act(async () => host.querySelectorAll("button")[2]?.click());
+  expect(opened).toEqual(["self-test", "cheat-sheets"]);
 });

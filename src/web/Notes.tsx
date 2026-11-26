@@ -86,7 +86,8 @@ function useNotes({ courseId, unitId }: UnitAddress): NotesControl {
   };
 }
 
-function date(writtenAt: string) {
+/** "26 November 2026", in the reader's locale: when notes or a cheat sheet were written. */
+export function longDate(writtenAt: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(
     new Date(writtenAt),
   );
@@ -294,7 +295,9 @@ export function NotesOffer(props: UnitAddress & { row?: boolean }) {
             <div className="nt-state">
               <span>
                 Written{" "}
-                <time dateTime={saved.writtenAt}>{date(saved.writtenAt)}</time>
+                <time dateTime={saved.writtenAt}>
+                  {longDate(saved.writtenAt)}
+                </time>
                 {saved.instructions === "" ? "" : ", with your instructions"}.
               </span>
               <Link to={notes.to} className="textbtn">
@@ -376,7 +379,9 @@ export function NotesReader(props: UnitAddress) {
           <>
             <span>
               Written{" "}
-              <time dateTime={saved.writtenAt}>{date(saved.writtenAt)}</time>{" "}
+              <time dateTime={saved.writtenAt}>
+                {longDate(saved.writtenAt)}
+              </time>{" "}
               from this unit’s sessions
               {saved.instructions === ""
                 ? ", with no instructions of yours."

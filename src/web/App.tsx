@@ -1,8 +1,9 @@
 // The page (plan tasks 1.6, 2.11, 2.26, 5.8 and 5.38): the library, the
 // learner profile, the settings, an intake, a course, its "What I know",
-// its planning conversation, a unit's session or its notes, chosen by the
-// address. Each view loads its data from the server.
+// its planning conversation, a cheat sheet, a unit's session or its notes,
+// chosen by the address. Each view loads its data from the server.
 
+import { CheatSheetReader } from "./CheatSheets.tsx";
 import { Course } from "./Course.tsx";
 import { Intake } from "./Intake.tsx";
 import { Library } from "./Library.tsx";
@@ -46,6 +47,14 @@ export function App() {
           key={paths.notes(route.courseId, route.unitId)}
           courseId={route.courseId}
           unitId={route.unitId}
+        />
+      );
+    case "cheatSheet":
+      return (
+        <CheatSheetReader
+          key={paths.cheatSheet(route.courseId, route.sheetId)}
+          courseId={route.courseId}
+          sheetId={route.sheetId}
         />
       );
   }
