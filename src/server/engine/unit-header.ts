@@ -212,7 +212,21 @@ export function createUnitHeader({
     const left = record.tutorNotices.filter(
       (notice) => !noticesTaken.has(notice.id),
     );
-    const said = [...notices.map(noticeText), ...notes()];
+    // An answer in the notes stands in for its refusal's notice, which the
+    // header carries with it; a turn not sent loses the note, and the
+    // notice is said in the next header instead.
+    const notices = left.filter(
+      (notice) =>
+        notice.kind !== "planner-blocked" ||
+        !(waits || answered.has(notice.id)),
+    );
+    const carried = [
+      ...notices.map((notice) => notice.id),
+      ...left.flatMap((notice) => (answered.has(notice.id) ? [notice.id] : [])),
+    ];
+    answered.clear();
+    // Refusals under two of the course view's proposals are told as one.
+    const said = [...new Set(notices.map(noticeText)), ...notes()];
     clearNotes();
     const decisions = record.pendingStyleDecisions;
     const answers = record.pendingCurriculumDecisions;
