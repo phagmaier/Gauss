@@ -41,6 +41,8 @@ because code and documents use them.
   `pnpm dev:fake` by the agent at the user's direction.
 - Stage 6, photos in messages (6.27 to 6.29): its user check passed on
   2026-11-26, walked by the user.
+- Stage 6, cheat sheets (6.30 to 6.32): its user check passed on
+  2026-11-26, walked by the user.
 
 ## Stage 6
 
@@ -49,37 +51,6 @@ learner wants kept; text recognition for scanned PDFs, and questions on a
 source's figure (left out of stage 4); ranking passage matches with a
 cheap model, if the learner's use shows local search leaves too many
 plausible matches. Each is planned when chosen.
-
-Cheat sheets (the user check below): `brief.md`, "Other features",
-"Cheat sheets"; piece 29, direction A. The writer, its record, its routes
-and the page are built (`engine/cheat-sheets.ts`, `shared/cheat-sheet.ts`,
-`web/CheatSheets.tsx`); a
-sheet runs on the notes writer's backend (`notesBackend`, Sonnet),
-whatever the course's backend, and its request leaves the transcripts
-out. `prompts/cheat-sheet.md` is new model-facing text, which a real model
-first reads in the user check. A page holds at most 128 formulas
-(`MAX_FORMULAS` in `engine/standalone-html.ts`), and the hand-made example
-for two units has 109: the request names the limit, and the user check
-shows whether a sheet of many units keeps to it. The panel says a sheet
-is one printed page for up to six units and two at most beyond
-(`ONE_PAGE_UNITS` in `web/cheat-sheets.ts`, the mock's number); the
-prompt leaves "many" to the writer, so a real sheet may not match it.
-
-User check for cheat sheets. First, on `pnpm dev:fake` with a fresh root,
-open "Calculus 1 to 3". Units 5 and later cannot be picked. Pick units 1
-to 3, add an instruction, and write a sheet. Leave the course view and
-come back: the sheet is listed with its units and date.
-Open it in the app and then in your browser. Write another for all
-finished units: both are listed, the newer first. Delete the first.
-Restart the server: only the second is listed. Then, on `pnpm check:live`
-with a fresh root (a real model, run when you do this check), start a
-small course and finish two units, missing at least one check question
-on purpose. Write a cheat sheet for both units. See whether it covers
-what the units taught, its values are right, and its "watch for" list
-names your miss correctly. Print preview in the browser should show one
-page, dark text on white. If you have a course taught from a source with
-a finished unit, write one there too: any quote should be in the
-source's words, with its citation.
 
 ## Known gaps
 
@@ -166,6 +137,15 @@ work for Stage 6. A task that closes a gap deletes it here.
   1,200 formulas). Decide how earlier sessions should fold.
 - **B:** After sending a message, keys go to the message box, not the
   pinned card. Decide where focus should go after sending.
+- **B:** On narrow screens, a cheat sheet's row in the course view's panel
+  is cramped: its actions sit in a second grid column and its units on one
+  ellipsized line (`.ch-row`, `.ch-acts`, `.ch-u` in `web/styles.css`).
+  Narrow screens are not designed yet (`brief.md`, "Page", "Look").
+- A list read that lands while another page's cheat sheet write is
+  reserved but its attempt not yet set (`starting` in
+  `engine/cheat-sheets.ts`) shows no attempt, and that page stops polling.
+  A unit's notes have the same window (`starting` in `engine/notes.ts`).
+  A fix means the list exposing the reservation.
 - **B:** In a check's detour, a dispute that overturns the miss and
   leaves the check done keeps “Ready for another question”, which then
   closes the segment; the tutor's header and refusals name the same
