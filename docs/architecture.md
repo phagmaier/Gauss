@@ -104,7 +104,11 @@ Rules no single file shows:
   `courses/`, `profile.md` and the settings (`settings.json`,
   `teaching.md`), without `.venv/`, Python caches, a source's
   `pages/` or `uploads/`. Commits follow each durable step and never fail
-  the engine. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for
+  the engine. A commit takes the record when it runs, not when asked: write
+  a record of several files under the snapshot's lock
+  (`withConsistentSnapshot`, or `withFileLock` on `courses/`), and before
+  removing something a pending commit should keep, wait for
+  `backup.settled()`. On for `pnpm dev` unless `GAUSS_BACKUP=off`; off for
   `pnpm dev:fake` unless `=on`.
 
 ## Modules
@@ -265,8 +269,9 @@ every other role on Claude. Each prompt starts one model's instructions:
 
 Run commands under mise. `mise install` and `mise run setup` give the
 pinned toolchain and dependencies; `mise run check` runs lint, type-check
-and both test suites. `pnpm format` rewrites files: run it once after the
-edits, before `mise run check` and the review, not between edits.
+and both test suites, in about 5 minutes. Iterate with the focused runs
+below; `pnpm format` rewrites files, so run it once after the edits, then
+`mise run check` once, before the review, not between edits.
 Focused: `pnpm exec vitest run <file>` or
 `uv run --directory pytools pytest <path>`. The server needs `flock` from
 util-linux. The Linux sandbox needs `bwrap`, `socat` and `rg` on the
