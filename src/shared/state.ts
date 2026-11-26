@@ -169,8 +169,10 @@ export type TestOut = z.infer<typeof TestOut>;
  * Something the tutor is told in its next header, kept until a turn
  * carrying it is sent, so a restart does not lose it: the learner moved on
  * without the check (with the question withdrawn, if one was open), or saw
- * none of a source teaching turn that reached the tutor. The wording is the
- * engine's (`noticeText` in `engine/unit-turns.ts`).
+ * none of a source teaching turn that reached the tutor; or the tutor was
+ * refused a proposal while the course view's waited, which it hears once
+ * that no longer waits, unless it hears the learner's answer first. The
+ * wording is the engine's (`noticeText` in `engine/unit-turns.ts`).
  */
 export const TutorNotice = z.discriminatedUnion("kind", [
   z.object({
@@ -180,6 +182,7 @@ export const TutorNotice = z.discriminatedUnion("kind", [
     withdrawn: z.number().int().positive().optional(),
   }),
   z.object({ id: z.uuid(), kind: z.literal("unshown-lecture") }),
+  z.object({ id: z.uuid(), kind: z.literal("planner-blocked") }),
 ]);
 export type TutorNotice = z.infer<typeof TutorNotice>;
 

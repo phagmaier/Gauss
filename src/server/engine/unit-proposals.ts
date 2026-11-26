@@ -7,9 +7,10 @@
 // proposal of either kind waits in a course: the course's queue refuses a
 // tutor's proposal while another waits in a unit or in the course's
 // planning conversation (task 5.38), and a chat refused for the planning
-// conversation's is told how the learner answered it. An Apply in another
-// unit's chat or in the planning conversation reaches this chat, which
-// takes the new note or curriculum in.
+// conversation's is told how the learner answered it, or, if that answer
+// does not reach it, that the block lifted (unit-header.ts). An Apply in
+// another unit's chat or in the planning conversation reaches this chat,
+// which takes the new note or curriculum in.
 // Reopening shows the answers the thread lacks and the cards that wait. The
 // unit chat keeps the style note its system prompt and headers give, which
 // an Apply replaces; the running unit and whether the chat is closing, read
@@ -33,6 +34,7 @@ import type { CurriculumDesk } from "../tools/amend-curriculum.ts";
 import type { StyleDesk } from "../tools/propose-style.ts";
 import type { ChatResult } from "./conversation.ts";
 import { sectionsRefused } from "./source-text.ts";
+import type { UnitHeader } from "./unit-header.ts";
 import type { UnitProgression } from "./unit-progression.ts";
 import type { UnitRecord } from "./unit-record.ts";
 import { curriculumNote, styleNote, type UnitContext } from "./unit-turns.ts";
@@ -51,6 +53,7 @@ interface ProposalUnit {
     | "answerCurriculumChange"
   >;
   notes: string[];
+  header: Pick<UnitHeader, "plannerAnswered">;
   progression: Pick<UnitProgression, "feedback">;
 }
 
@@ -319,6 +322,7 @@ export function createUnitProposals({
       r.notes.push(
         curriculumNote(outcome, (r.plannerContext ?? r.context).units),
       );
+      if (outcome === "planner-applied") r.header.plannerAnswered();
     }
   }
 
@@ -369,6 +373,7 @@ export function createUnitProposals({
     const r = running();
     if (r !== undefined && !closing()) {
       r.notes.push(curriculumNote("planner-kept", r.context.units));
+      r.header.plannerAnswered();
     }
   }
 

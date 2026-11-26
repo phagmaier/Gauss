@@ -1000,6 +1000,8 @@ function requestedThread(
 
 type WorkspaceDesk = Pick<CourseDesk, "propose"> & {
   answered(): ReadonlySet<OpenableChat> | undefined;
+  /** Whether the planning conversation's proposal waits. */
+  waits(): boolean;
 };
 
 interface CourseWorkspace {
@@ -1273,7 +1275,9 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
     ): Promise<T | { refused: string }> {
       return exclusive(async () => {
         if (planned !== undefined) {
+          // In the tick that adds it, so an answer finds its notice.
           planned.add(chat);
+          await chat.plannerRefused();
           return { refused: PLANNED };
         }
         const state = await dataRoot.readState(courseId);
@@ -1310,6 +1314,7 @@ function courseWorkspace(dataRoot: DataRoot, courseId: Slug): CourseWorkspace {
         planned = undefined;
         return blocked;
       },
+      waits: () => planned !== undefined,
     },
     beginInstall(owner) {
       return exclusive(async () => {
@@ -1393,6 +1398,11 @@ interface OpenableChat extends UnitChat {
   ): Promise<void>;
   /** Tells a refused tutor the learner kept the curriculum from the course view. */
   learnPlannerKept(): void;
+  /**
+   * Keeps the notice of a refusal while the course view's proposal waits,
+   * in memory at once (`UnitHeader.plannerRefused`).
+   */
+  plannerRefused(): Promise<void>;
   /**
    * Closes the tutor's session once it is between turns, so that the next
    * turn resumes it with the course's settings as they are then (task 4.11).
@@ -1745,6 +1755,7 @@ function createUnitChat(
           context: () => seen(r.context),
           plannerContext: () =>
             r.plannerContext === undefined ? undefined : seen(r.plannerContext),
+          plannerWaits: () => options.workspace.desk.waits(),
           notes: () => r.notes,
           clearNotes: () => {
             r.notes = [];
@@ -2432,6 +2443,9 @@ function createUnitChat(
     },
     learnPlannerKept() {
       proposals.learnPlannerKept();
+    },
+    plannerRefused() {
+      return running?.header.plannerRefused() ?? Promise.resolve();
     },
     async learnCurriculum(units, outcome = "changed") {
       const install = proposals.takeUnits(units, outcome);

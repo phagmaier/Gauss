@@ -1244,11 +1244,28 @@ export const JOINED_NOTE =
 export const UNSHOWN_LECTURE_NOTE =
   "The learner saw none of your last teaching turn: only a lecture shown with present_lecture reaches them there, and none was. Do not refer to it as seen.";
 
+/**
+ * The note for a tutor refused while the course view's proposal waited,
+ * once that no longer waits and no note of the learner's answer reached
+ * it, as after a restart, which drops both: a resumed session's
+ * instructions list the units as they now are.
+ */
+const PLANNER_LIFTED_NOTE =
+  "The curriculum change proposed from the course view no longer waits: " +
+  "it was answered or dropped, and how is not known here. " +
+  `${PLANNER_UNBLOCKED} The course's units are as your instructions list ` +
+  "them now.";
+
 /** The header note for a notice the record keeps until a turn carries it. */
 export function noticeText(notice: TutorNotice): string {
-  return notice.kind === "override"
-    ? overrideNote(notice.objectives, notice.withdrawn)
-    : UNSHOWN_LECTURE_NOTE;
+  switch (notice.kind) {
+    case "override":
+      return overrideNote(notice.objectives, notice.withdrawn);
+    case "unshown-lecture":
+      return UNSHOWN_LECTURE_NOTE;
+    case "planner-blocked":
+      return PLANNER_LIFTED_NOTE;
+  }
 }
 
 // --- The header ------------------------------------------------------------

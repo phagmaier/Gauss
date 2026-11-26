@@ -48,26 +48,6 @@ chosen.
 
 ## Known-gap fixes
 
-### K.29 A tutor refused during course planning is told the block lifted (todo)
-
-A tutor refused while the course planner's proposal waits is told to
-look for the learner's decision in a later header. The proposal and the
-chats it refused are in memory by design, so a restart drops both and a
-resumed tutor keeps holding back. The user's choice (2026-11-25): tell
-it the block has lifted, without recovering the decision.
-
-The refusal writes a notice into the unit's record, kept out of headers
-while the block stands. Apply or Keep in the same run gives the existing
-notes and takes it. After a restart the next header says the course
-view's proposal no longer waits, the units in its instructions are as
-they now are, and it may propose again.
-
-Done when: engine tests on the fake backend in a temporary data root
-show a tutor refused while the planner's proposal waits, after a
-restart, gets the lifted note once in its next header and its next
-proposal is accepted; without a restart, Apply and Keep give only their
-existing notes. `mise run check` passes.
-
 ### K.30 Header notes that state record facts survive (todo)
 
 Header notes other than the override and unseen-lecture notices are
@@ -83,8 +63,10 @@ Those four become record notices, delivered once by the turn that
 carries them. The test's waiting result keeps how the test ended, so
 the summary after a restart says what the learner pressed. Notes a
 header took return to the chat if the turn is stopped before it is
-sent. Curriculum, style and source notes stay in memory: a resumed
-tutor's rebuilt instructions carry them.
+sent; a returned answer to the course view's proposal hides its
+refusal's notice again (`answered` in `unit-header.ts`). Curriculum,
+style and source notes stay in memory: a resumed tutor's rebuilt
+instructions carry them.
 
 Done when: engine tests on the fake backend in a temporary data root
 show each of the four notes, with a restart before the turn carrying

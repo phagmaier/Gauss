@@ -3,9 +3,12 @@
 // record's notices stay in the record until the turn carrying them is
 // dispatched, so a Stop or restart after that does not send them again;
 // the learner's style and curriculum decisions are delivered only once a
-// turn carrying them completes. When the tutor's conversation cannot be
-// resumed, a new session takes over, told in its first header that it is
-// new, and the thread says so.
+// turn carrying them completes. A tutor refused while the course view's
+// proposal waits gets a notice that stays out of headers while it waits;
+// the learner's answer, a note in memory, stands in for it in this run, so
+// only a tutor the answer did not reach hears that the block lifted. When
+// the tutor's conversation cannot be resumed, a new session takes over,
+// told in its first header that it is new, and the thread says so.
 
 // Made for each loaded unit. The chat keeps the notes, which several parts
 // add to and a header empties, read at each call; the course's style note;
@@ -14,7 +17,7 @@
 import type { CurriculumDecision } from "../../shared/curriculum-change.ts";
 import type { PageEvent, TestShown } from "../../shared/events.ts";
 import type { Misconception } from "../../shared/misconception.ts";
-import type { AssessmentRun } from "../../shared/state.ts";
+import type { AssessmentRun, TutorNotice } from "../../shared/state.ts";
 import type { StyleDecision } from "../../shared/style.ts";
 import {
   notPassed,
@@ -61,6 +64,18 @@ export interface UnitHeader {
   fallBack(reason: FallBackReason, learnerId?: string): void;
   /** The agents' hook once a turn is dispatched: its header's notices are delivered. */
   turnSent(): void;
+  /**
+   * The course view's proposal refused the tutor: unless one waits, a
+   * notice is kept in the record, in memory before this returns, so that
+   * an answer right after finds it. Called inside the chat's queue.
+   */
+  plannerRefused(): Promise<void>;
+  /**
+   * The chat's notes now carry the learner's answer to the course view's
+   * proposal: the refusal's notice is not said, and the header carrying
+   * the answer takes it.
+   */
+  plannerAnswered(): void;
   /** The agents' hook once a turn ends: a completed one delivers its header's decisions. */
   turnEnded(outcome: TurnOutcome): Promise<void>;
 }
@@ -71,6 +86,7 @@ export function createUnitHeader({
   emit,
   context: unitContext,
   plannerContext,
+  plannerWaits,
   notes,
   clearNotes,
   style,
@@ -87,6 +103,7 @@ export function createUnitHeader({
     | "pendingCurriculumDecisions"
     | "deliverNotices"
     | "deliverDecisions"
+    | "keepNotice"
     | "position"
     | "evidence"
     | "finished"
@@ -97,6 +114,8 @@ export function createUnitHeader({
   context(): UnitContext;
   /** The course planner's committed curriculum, which a header gives first. */
   plannerContext(): UnitContext | undefined;
+  /** Whether the course view's proposal waits, blocking the tutor's. */
+  plannerWaits(): boolean;
   /** The notes the next header gives once, as the chat holds them now. */
   notes(): string[];
   /** Gives the chat no notes, once a header has taken them. */
@@ -136,11 +155,25 @@ export function createUnitHeader({
    * landed yet.
    */
   const noticesTaken = new Set<string>();
+  /**
+   * The planner-blocked notices whose answer the chat's notes carry, until
+   * the next header carries both.
+   */
+  const answered = new Set<string>();
+
+  /** The notices of `kind` not yet taken. */
+  function waitingNotices(kind: TutorNotice["kind"]): string[] {
+    return record.tutorNotices.flatMap((notice) =>
+      notice.kind === kind && !noticesTaken.has(notice.id) ? [notice.id] : [],
+    );
+  }
 
   function joined(): void {
-    const old = record.tutorNotices.flatMap((notice) =>
-      notice.kind === "unshown-lecture" ? [notice.id] : [],
-    );
+    // The refusal was in the old conversation too.
+    const old = [
+      ...waitingNotices("unshown-lecture"),
+      ...waitingNotices("planner-blocked"),
+    ];
     if (old.length > 0) void takeNotices(old);
     const held = notes();
     if (!held.includes(JOINED_NOTE)) held.push(JOINED_NOTE);
@@ -175,18 +208,19 @@ export function createUnitHeader({
 
   function where(): Where {
     const context = plannerContext() ?? unitContext();
-    const notices = record.tutorNotices.filter(
+    const waits = plannerWaits();
+    const left = record.tutorNotices.filter(
       (notice) => !noticesTaken.has(notice.id),
     );
     const said = [...notices.map(noticeText), ...notes()];
     clearNotes();
     const decisions = record.pendingStyleDecisions;
     const answers = record.pendingCurriculumDecisions;
-    if (notices.length > 0 || decisions.length > 0 || answers.length > 0) {
+    if (carried.length > 0 || decisions.length > 0 || answers.length > 0) {
       inHeader = {
         style: decisions,
         curriculum: answers,
-        notices: notices.map((notice) => notice.id),
+        notices: carried,
       };
       for (const decision of decisions) {
         said.push(
@@ -237,6 +271,21 @@ export function createUnitHeader({
     where,
     joined,
     fallBack,
+    plannerRefused() {
+      const unanswered = waitingNotices("planner-blocked").some(
+        (id) => !answered.has(id),
+      );
+      if (unanswered) return Promise.resolve();
+      // The tool that was refused holds the chat's queue.
+      return record
+        .keepNotice({ kind: "planner-blocked" })
+        .catch((error: unknown) => {
+          console.error("The tutor's notice could not be saved:", error);
+        });
+    },
+    plannerAnswered() {
+      for (const id of waitingNotices("planner-blocked")) answered.add(id);
+    },
     turnSent() {
       const header = inHeader;
       if (header === undefined || header.notices.length === 0) return;
