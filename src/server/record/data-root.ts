@@ -1885,6 +1885,52 @@ export function openDataRoot(options: {
       await rm(uploads, { recursive: true, force: true });
     },
 
+    async photoUploads() {
+      await mkdir(stagedPhotos, { recursive: true });
+      return stagedPhotos;
+    },
+
+    async keepPhotos(id, photos) {
+      const names = photos.map((photo) => `${PhotoId.parse(photo)}.jpg`);
+      await existingCourse(id);
+      const kept = resolve(courseFile(id, "photos"));
+      // One move at a time, so two messages cannot both find a photo staged.
+      return withFileLock(stagedPhotos, async () => {
+        if (new Set(names).size !== names.length) return false;
+        for (const name of names) {
+          const found = await lstat(join(stagedPhotos, name)).catch(
+            (error: unknown) => {
+              if (hasCode(error, "ENOENT")) return undefined;
+              throw error;
+            },
+          );
+          if (!found?.isFile()) return false;
+        }
+        if ((await mkdir(kept, { recursive: true })) !== undefined) {
+          await syncFolder(dirname(kept));
+        }
+        for (const name of names) {
+          await rename(join(stagedPhotos, name), join(kept, name));
+        }
+        await syncFolder(kept);
+        await syncFolder(stagedPhotos);
+        return true;
+      });
+    },
+
+    async readPhoto(id, photo) {
+      const file = courseFile(
+        id,
+        join("photos", `${PhotoId.parse(photo)}.jpg`),
+      );
+      try {
+        return await readFile(file);
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return undefined;
+        throw error;
+      }
+    },
+
     async clearInterruptedWrites(log) {
       const entries = async (folder: string): Promise<Dirent[]> => {
         try {
