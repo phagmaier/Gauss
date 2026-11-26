@@ -35,6 +35,12 @@ import {
   type Where,
 } from "./unit-turns.ts";
 
+/** Why a new session took over without the learner asking. */
+type FallBackReason = Exclude<
+  Extract<PageEvent, { type: "fresh_start" }>["reason"],
+  "learner"
+>;
+
 export interface UnitHeader {
   /**
    * Where the unit stands now, with the notes not yet given, which this
@@ -48,10 +54,11 @@ export interface UnitHeader {
    */
   joined(): void;
   /**
-   * The tutor's conversation could not be resumed: a new session takes over,
-   * told in its first header that it is new, and the thread says so.
+   * The tutor's conversation could not be resumed, or its tools differ from
+   * a new one's: a new session takes over, told in its first header that it
+   * is new, and the thread says so and why.
    */
-  fallBack(learnerId?: string): void;
+  fallBack(reason: FallBackReason, learnerId?: string): void;
   /** The agents' hook once a turn is dispatched: its header's notices are delivered. */
   turnSent(): void;
   /** The agents' hook once a turn ends: a completed one delivers its header's decisions. */
@@ -157,11 +164,11 @@ export function createUnitHeader({
     );
   }
 
-  function fallBack(learnerId?: string): void {
+  function fallBack(reason: FallBackReason, learnerId?: string): void {
     joined();
     emit({
       type: "fresh_start",
-      reason: "not-resumed",
+      reason,
       ...(learnerId === undefined ? {} : { learnerId }),
     });
   }

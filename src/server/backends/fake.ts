@@ -18,7 +18,9 @@
 // resumed by its id only in that folder. An unavailable resume fails with
 // SessionNotFound. Backends sharing their kept sessions can resume each
 // other's sessions, as a server does after a restart. The script goes on
-// across a resume: the fake has no conversation to carry.
+// across a resume: the fake has no conversation to carry. Created with
+// `keepsTools`, it reports the tools a session begins with, as Codex's
+// adapter does (`SessionBackend.toolNames`).
 
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -131,6 +133,8 @@ export function createFakeBackend(
   options: {
     /** Shared between backends to resume across a restart; its own if not given. */
     kept?: Pick<KeptSessions, "create" | "has">;
+    /** Reports `toolNames`, as a backend whose sessions keep their tools. */
+    keepsTools?: boolean;
   } = {},
 ): FakeBackend {
   const received: EngineTurn[] = [];
@@ -319,6 +323,21 @@ export function createFakeBackend(
     oneShots,
     startSession,
     hasSession: async (id, cwd) => kept.has(id, cwd),
+    ...(options.keepsTools === true
+      ? {
+          toolNames: ({
+            tools,
+            cwd,
+            workspace,
+          }: Pick<SessionOptions, "tools" | "cwd" | "workspace">) =>
+            [
+              ...tools.map((tool) => tool.name),
+              ...(workspace === undefined || cwd === undefined
+                ? []
+                : ["Bash", "Edit", "Read", "Write"]),
+            ].sort(),
+        }
+      : {}),
     oneShot,
   };
 }

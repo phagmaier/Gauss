@@ -248,6 +248,12 @@ export const UnitPosition = z
     /** The tutor's session on the backend, once the backend has reported it. */
     tutorSessionId: z.string().min(1).optional(),
     /**
+     * The names of the tools the tutor's session began with, kept with its
+     * id for a backend whose sessions keep them (a Codex thread): one whose
+     * tools differ from a new session's, or with none kept, is not resumed.
+     */
+    tutorTools: z.array(z.string().min(1)).optional(),
+    /**
      * The tutor's request to install packages in the course's workspace,
      * from when it asks until the learner answers it (task 3.11). Kept
      * across the unit's moves, as the session's id is.

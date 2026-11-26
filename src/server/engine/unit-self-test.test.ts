@@ -5,7 +5,7 @@
 // it partway; a finished unit staying finished; a restart; and the header's
 // lines. The fake backend's tutor does what each header allows.
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -33,6 +33,7 @@ import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
 import { createUnitChats, type UnitChat } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
+import { JOINED_NOTE } from "./unit-turns.ts";
 
 // Each test gets its own data root; none touches ~/gauss (AGENTS.md).
 let dir: string;
@@ -139,10 +140,14 @@ function correct(objective: string, at: string, n = 1): AnswerEvidence {
 /**
  * The course, approved and planned the day before, with unit 1's two
  * objectives passed then: unit 1 is finished, and nothing else is started.
+ * It runs on Claude unless Codex is given.
  */
-async function makeCourse(): Promise<DataRoot> {
+async function makeCourse(backend?: "codex"): Promise<DataRoot> {
   const root = openDataRoot({ path: dir, now: () => new Date(YESTERDAY) });
-  const { id } = await root.createCourse({ title: CURRICULUM.title });
+  const { id } = await root.createCourse({
+    title: CURRICULUM.title,
+    ...(backend === undefined ? {} : { backend }),
+  });
   await root.saveProposal(id, CURRICULUM);
   await root.approveCurriculum(id, CURRICULUM);
   for (const [unit, plan] of Object.entries(PLANS)) {
@@ -224,15 +229,20 @@ function setUp(
   judgments: FakeReply[] = [],
   random = () => 0.99,
   script = tutor(),
+  /** The backend keeps the tools a session began with, as Codex does. */
+  keepsTools = false,
 ) {
-  const backend = createFakeBackend((turn) => script(turn), [], { kept });
+  const backend = createFakeBackend((turn) => script(turn), [], {
+    kept,
+    keepsTools,
+  });
   const dataRoot = openDataRoot({ path: dir, now: () => clock });
   const units = createUnitChats({
-    backends: { claude: backend },
+    backends: { claude: backend, codex: backend },
     systemPrompt: "Tutor.",
     dataRoot,
     planner: createUnitPlanner({
-      backends: { claude: backend },
+      backends: { claude: backend, codex: backend },
       systemPrompt: "Plan.",
       dataRoot,
     }),

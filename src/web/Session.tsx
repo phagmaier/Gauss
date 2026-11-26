@@ -77,6 +77,7 @@ import {
   type CurriculumItem,
   conversations,
   emptyTimeline,
+  freshStartLine,
   type Item,
   offersSteps,
   reduce,

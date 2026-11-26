@@ -121,7 +121,11 @@ one idea each, in three segments.
   Codex tutor lacks reaches it only in a new thread, as the source tools
   when a course with no source gains one mid-unit. Evidence:
   `ThreadResumeParams` in the 0.171 types (`codex app-server generate-ts
-  --experimental`, no model call) has no such field.
+  --experimental`, no model call) has no such field. **Nor does the
+  app-server report a thread's tools** (no field in `Thread` or the
+  read and resume responses; only the rollout's `session_meta`, behind the
+  unstable `Thread.path`), so Gauss keeps the names with the thread's id
+  (`tutorTools`). Evidence: the same types, and a 2026-11-24 rollout.
 - **`thread/resume` finds a written thread from its own folder or
   another** and moves it to the `cwd` given. An unknown id answers error
   -32600 "no rollout found for thread id <id>"; a malformed one, -32600

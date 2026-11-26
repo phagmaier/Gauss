@@ -175,12 +175,16 @@ export function brokenSessionId(cwd: string): string {
   return `${sessionPrefix(cwd)}broken`;
 }
 
-export function createScriptedBackend(): FakeBackend {
+/** The scripted backend; with `keepsTools`, a Codex course's, whose sessions keep their tools. */
+export function createScriptedBackend(
+  options: { keepsTools?: boolean } = {},
+): FakeBackend {
   const backend = createFakeBackend(scriptedTurn, scriptedReply, {
     kept: {
       create: (cwd) => `${sessionPrefix(cwd)}${randomUUID()}`,
       has: (id, cwd) => id.startsWith(sessionPrefix(cwd)),
     },
+    keepsTools: options.keepsTools === true,
   });
   return {
     ...backend,

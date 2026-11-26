@@ -164,6 +164,15 @@ export interface SessionBackend {
    * folder, to resume. Found without starting it (task 2.15).
    */
   hasSession(id: string, cwd: string): Promise<boolean>;
+  /**
+   * For a backend whose sessions keep the tools they began with, as a Codex
+   * thread does (findings.md, "Codex"): the names of every tool a session
+   * started with these options has, sorted. Absent for a backend whose
+   * resumed session takes the tools given then.
+   */
+  toolNames?(
+    options: Pick<SessionOptions, "tools" | "cwd" | "workspace">,
+  ): string[];
 }
 
 /**

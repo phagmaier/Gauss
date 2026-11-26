@@ -383,28 +383,26 @@ test("an unknown Codex thread cannot be resumed", async () => {
   ]);
 });
 
-test("a session given a workspace gets Gauss's file and command tools beside its teaching tools, and reports each file written; one without gets none", async () => {
+test("a session given a workspace gets Gauss's file and command tools beside its teaching tools, reports each file written, and names them in toolNames; one without gets none", async () => {
   const desk = { acquired: 0, released: 0 };
   const driver = backend();
-  const tutor = await open(
-    {
-      cwd,
-      tools: [viewPage(() => ({ status: "done", text: "Read." }))],
-      workspace: {
-        reads: { allowed: [], denied: [dir] },
-        acquire: async () => {
-          desk.acquired += 1;
-          return {
-            release: () => {
-              desk.released += 1;
-            },
-          };
-        },
-        run: () => Promise.reject(new Error("No command is run here.")),
+  const tutorOptions = {
+    cwd,
+    tools: [viewPage(() => ({ status: "done", text: "Read." }))],
+    workspace: {
+      reads: { allowed: [], denied: [dir] },
+      acquire: async () => {
+        desk.acquired += 1;
+        return {
+          release: () => {
+            desk.released += 1;
+          },
+        };
       },
+      run: () => Promise.reject(new Error("No command is run here.")),
     },
-    driver,
-  );
+  };
+  const tutor = await open(tutorOptions, driver);
   const afterWrite = (name: string) => [
     { type: "tool_call", name },
     { type: "file_written", path: "notes/hello.py" },
@@ -422,10 +420,11 @@ test("a session given a workspace gets Gauss's file and command tools beside its
   );
   expect(desk).toEqual({ acquired: 2, released: 2 });
   await close(tutor);
-  const planner = await open(
-    { cwd, tools: [viewPage(() => ({ status: "done", text: "Read." }))] },
-    driver,
-  );
+  const plannerOptions = {
+    cwd,
+    tools: [viewPage(() => ({ status: "done", text: "Read." }))],
+  };
+  const planner = await open(plannerOptions, driver);
   await close(planner);
 
   const log = await trace();
@@ -446,6 +445,11 @@ test("a session given a workspace gets Gauss's file and command tools beside its
     ],
     ["view_page"],
   ]);
+  // What a resumed thread is checked against: the names it began with.
+  expect([
+    driver.toolNames?.(tutorOptions),
+    driver.toolNames?.(plannerOptions),
+  ]).toEqual(names.map((started) => [...started].sort()));
   // Codex's patch tool goes with its catalog entry: the catalog given is
   // the CLI's own, dumped once for the backend, with no patch tool.
   const dumps = log.filter(

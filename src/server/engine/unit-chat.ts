@@ -1538,8 +1538,8 @@ function createUnitChat(
        * The sources the tutor's session reads: the course's, but for a Codex
        * thread that began with none, which keeps the tools it began with
        * (findings.md, "Codex") and gets the others in its next new session.
-       * A thread resumed after a restart is taken to have begun as the
-       * course stood then (plan.md, "Known gaps").
+       * A thread reopened after a restart is resumed only if it has the
+       * tools the course's sources give (`UnitAgents.resume`).
        */
       let sessionSources = courseSources;
       const shelfFor = (from: readonly Outline[]) =>
@@ -1717,9 +1717,9 @@ function createUnitChat(
               },
             }),
         title: `Gauss: ${stored.course.title}, ${storedUnit.title}`,
-        keep: (id) => exclusive(() => record.keepSession(id)),
+        keep: (id, tools) => exclusive(() => record.keepSession(id, tools)),
         // Only a turn calls these, once `r` is set.
-        lost: (learnerId) => r.header.fallBack(learnerId),
+        lost: (learnerId) => r.header.fallBack("not-resumed", learnerId),
         turnSent: () => r.header.turnSent(),
         turnEnded: (outcome) => r.header.turnEnded(outcome),
         judge: options.judge,
@@ -1940,7 +1940,7 @@ function createUnitChat(
           // A Claude session takes the tools it is given at its next resume;
           // a Codex thread has the source tools only if it began with them.
           const readable =
-            stored.course.backend !== "codex" || sessionSources.length > 0;
+            runsOn.backend.toolNames === undefined || sessionSources.length > 0;
           const note = addedSourcesNote(
             added,
             readable,
@@ -1958,11 +1958,16 @@ function createUnitChat(
       };
       if (record.reopened) {
         // A unit under way resumes its tutor's conversation with its first
-        // turn. One that cannot be found, or was never kept, gives way to a
-        // new session at once, so the thread says so before anything else.
+        // turn. One that cannot be found, was never kept, or lacks tools a
+        // new one has, gives way to a new session at once, so the thread
+        // says so before anything else.
         const id = record.position.tutorSessionId;
-        const resumes = id !== undefined && (await loaded.resume(id));
-        if (!resumes) r.header.fallBack();
+        const resumes =
+          id === undefined
+            ? "missing"
+            : await loaded.resume(id, record.position.tutorTools);
+        if (resumes === "missing") r.header.fallBack("not-resumed");
+        else if (resumes === "tools") r.header.fallBack("tools");
       }
       const recoveringOverride =
         record.position.pendingSegmentOverride !== undefined;

@@ -321,7 +321,7 @@ export type Item =
   | {
       kind: "fresh";
       key: number;
-      reason: "learner" | "not-resumed";
+      reason: "learner" | "not-resumed" | "tools";
       learnerId?: string;
     }
   | {
@@ -1511,6 +1511,20 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             : [...state.items, { kind: "note", key: index, text: note }],
       };
     }
+  }
+}
+
+/** What the thread's "Fresh start" marker says, on the page and in an exported transcript. */
+export function freshStartLine(
+  reason: Extract<Item, { kind: "fresh" }>["reason"],
+): string {
+  switch (reason) {
+    case "learner":
+      return "The tutor has your progress, not the conversation above.";
+    case "not-resumed":
+      return "The earlier conversation could not be resumed, so the tutor started a new one from your progress.";
+    case "tools":
+      return "The earlier conversation lacks tools the tutor needs now, so it started a new one from your progress.";
   }
 }
 

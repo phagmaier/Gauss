@@ -15,6 +15,9 @@
 // opening it only asks the backend whether the session is there. A change
 // of the course's web search setting closes the session once it is between
 // turns, and the next turn resumes it with the setting's tools (task 4.11).
+// A backend whose sessions keep the tools they began with (Codex) has the
+// names kept with the id; a reopened unit whose session's names differ from
+// a new one's starts a new session rather than offer tools it lacks.
 
 import type {
   GradedAnswer,
@@ -84,10 +87,15 @@ export interface UnitAgents {
   /**
    * Has the first turn resume the tutor's kept session with this id, if the
    * backend has it; asked before any turn is sent, and without starting the
-   * session. False if the backend cannot find it: the first turn then starts
-   * a new session.
+   * session. "missing" if the backend cannot find it, and "tools" if its
+   * sessions keep the tools they began with and `began`, the names kept with
+   * the id (none for a session from before they were kept), differ from a
+   * new session's: the first turn then starts a new session.
    */
-  resume(id: string): Promise<boolean>;
+  resume(
+    id: string,
+    began: readonly string[] | undefined,
+  ): Promise<"found" | "missing" | "tools">;
   /**
    * Ends the tutor's session; the next turn starts a new one. Only while no
    * turn is queued or running.
@@ -146,7 +154,8 @@ export function createUnitAgents(options: {
   /**
    * The tutor's teaching tools, read whenever a session starts or resumes,
    * so one resumed after the course gained its first source gets the
-   * source tools (a Codex thread keeps those it started with).
+   * source tools (a Codex thread keeps those it started with, which `resume`
+   * checks).
    */
   tools: () => TeachingTool[];
   /** Called as a new session starts, before its instructions and tools are read. */
@@ -170,10 +179,11 @@ export function createUnitAgents(options: {
   /** What the tutor's sessions are called among the backend's kept sessions. */
   title: string;
   /**
-   * Keeps the id of a session just started, before its first turn is sent.
-   * A failure is logged, and the session goes on.
+   * Keeps the id of a session just started, before its first turn is sent,
+   * with the names of its tools if the backend's sessions keep them. A
+   * failure is logged, and the session goes on.
    */
-  keep: (id: string) => Promise<void>;
+  keep: (id: string, tools: string[] | undefined) => Promise<void>;
   /**
    * A turn found that the session to resume is gone, so a new one starts.
    * Called before the turn's text is composed.
@@ -212,16 +222,20 @@ export function createUnitAgents(options: {
 
   async function startNew(): Promise<TutorSession> {
     options.starting?.();
+    const given = tools();
     const session = await backend.startSession({
       systemPrompt: await systemPrompt(),
-      tools: tools(),
+      tools: given,
       cwd,
       ...workspace,
       ...(await settings()),
       title: options.title,
     });
     try {
-      await options.keep(session.backendSessionId);
+      await options.keep(
+        session.backendSessionId,
+        backend.toolNames?.({ tools: given, cwd, ...workspace }),
+      );
     } catch (error) {
       // Only a restart needs the id, and it then starts the unit fresh.
       console.error("The tutor's session id could not be kept:", error);
@@ -277,7 +291,16 @@ export function createUnitAgents(options: {
   let closed = false;
 
   return {
-    async resume(id) {
+    async resume(id, began) {
+      const now = backend.toolNames?.({ tools: tools(), cwd, ...workspace });
+      if (
+        now !== undefined &&
+        (began === undefined ||
+          began.length !== now.length ||
+          began.some((name) => !now.includes(name)))
+      ) {
+        return "tools";
+      }
       let found: boolean;
       try {
         found = await backend.hasSession(id, cwd);
@@ -290,7 +313,7 @@ export function createUnitAgents(options: {
         found = true;
       }
       if (found && !closed) tutor = conversation(id);
-      return found;
+      return found ? "found" : "missing";
     },
 
     startFresh() {

@@ -37,8 +37,12 @@ try {
 const backend = createScriptedBackend();
 process.stdout.write("Scripted backend: no model is called.\n");
 await serve({
-  // A Codex course's tutor and unit planner run here too, as on Claude.
-  sessionBackends: { claude: backend, codex: backend },
+  // A Codex course's tutor and unit planner run here too, on a scripted
+  // backend whose sessions keep the tools they began with, as Codex's do.
+  sessionBackends: {
+    claude: backend,
+    codex: createScriptedBackend({ keepsTools: true }),
+  },
   graderBackend: backend,
   judgeBackend: backend,
   disputeBackend: backend,

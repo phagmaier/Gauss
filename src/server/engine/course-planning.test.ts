@@ -35,8 +35,9 @@ import { createFakeTimer } from "./fake-timer.ts";
 import { createGrader } from "./grading.ts";
 import { createHelpJudge } from "./help-judge.ts";
 import type { SourceConverter } from "./source-convert.ts";
-import { createUnitChats } from "./unit-chat.ts";
+import { createUnitChats, type UnitChats } from "./unit-chat.ts";
 import { createUnitPlanner } from "./unit-planning.ts";
+import { JOINED_NOTE } from "./unit-turns.ts";
 
 // Fail a curriculum write on either side of publication, leaving the real
 // record I/O in place. A directory sync error can occur after the rename.
@@ -245,27 +246,43 @@ async function setUp(options: {
     commit: (message: string) => void commits.push(message),
     settled: () => Promise.resolve(),
   };
+  // Kept across `restart`, as Codex and Claude keep sessions on disk.
+  const tutorKept = new KeptSessions();
+  const keepsTools = options.codex === true;
   const tutorBackend =
     Array.isArray(options.tutor) || options.tutor === undefined
-      ? createFakeBackend(options.tutor ?? [], [])
+      ? createFakeBackend(options.tutor ?? [], [], {
+          kept: tutorKept,
+          keepsTools,
+        })
       : options.tutor;
   const tutorTimer = createFakeTimer();
-  const units = createUnitChats({
-    backends: { claude: tutorBackend, codex: tutorBackend },
-    systemPrompt: "Tutor.",
-    dataRoot: root,
-    planner: createUnitPlanner({
-      backends: { claude: tutorBackend, codex: tutorBackend },
-      systemPrompt: "Plan.",
+  const chats = (tutor: FakeBackend) =>
+    createUnitChats({
+      backends: { claude: tutor, codex: tutor },
+      systemPrompt: "Tutor.",
       dataRoot: root,
-    }),
-    grader: createGrader({ backend: tutorBackend, systemPrompt: "Grader." }),
-    judge: createHelpJudge({ backend: tutorBackend, systemPrompt: "Judge." }),
-    now: () => new Date(NOW),
-    timer: tutorTimer,
-    order: givenOrder,
-    backup,
-  });
+      planner: createUnitPlanner({
+        backends: { claude: tutor, codex: tutor },
+        systemPrompt: "Plan.",
+        dataRoot: root,
+      }),
+      grader: createGrader({ backend: tutor, systemPrompt: "Grader." }),
+      judge: createHelpJudge({ backend: tutor, systemPrompt: "Judge." }),
+      now: () => new Date(NOW),
+      timer: tutorTimer,
+      order: givenOrder,
+      backup,
+    });
+  const units = chats(tutorBackend);
+  /** Unit chats as a restarted server makes them, after `units` closed. */
+  function restart(tutor: FakeTurn[]) {
+    const backend = createFakeBackend(tutor, [], {
+      kept: tutorKept,
+      keepsTools,
+    });
+    return { tutorBackend: backend, units: chats(backend) };
+  }
   const keptSessions = new KeptSessions();
   const backend = createFakeBackend(options.planner, [], {
     kept: keptSessions,
@@ -305,6 +322,7 @@ async function setUp(options: {
     root,
     plannings,
     units,
+    restart,
     commits,
     planning,
     open,

@@ -50,6 +50,7 @@ import {
 import { resolveSourceLink } from "../../shared/source-target.ts";
 import {
   emptyTimeline,
+  freshStartLine,
   type Item,
   type QuestionItem,
   reduce,
@@ -285,12 +286,7 @@ function renderItem(
           : "Going over objectives again.",
       );
     case "fresh":
-      return marker(
-        "Fresh start",
-        item.reason === "learner"
-          ? "The tutor has your progress, not the conversation above."
-          : "The earlier conversation could not be resumed, so the tutor started a new one from your progress.",
-      );
+      return marker("Fresh start", freshStartLine(item.reason));
     case "detour":
       return marker(
         "Detour",

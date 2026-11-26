@@ -99,11 +99,12 @@ export const PageEvent = z.discriminatedUnion("type", [
    * "not-resumed": the earlier conversation could not be found to resume,
    * when a unit was reopened, or at a turn after its session was closed for
    * being idle (task 2.15); a turn's comes after the message it sends, and
-   * an intake's new conversation has the latest proposal.
+   * an intake's new conversation has the latest proposal. "tools": a unit
+   * reopened with a Codex thread whose tools differ from a new one's.
    */
   z.object({
     type: z.literal("fresh_start"),
-    reason: z.enum(["learner", "not-resumed"]),
+    reason: z.enum(["learner", "not-resumed", "tools"]),
     /** The learner message delivered by this turn; absent for non-message turns and old transcripts. */
     learnerId: z.string().optional(),
   }),

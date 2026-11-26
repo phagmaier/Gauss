@@ -13,6 +13,7 @@ import {
   type EngineTurn,
   type SessionBackend,
   SessionNotFound,
+  type SessionOptions,
   type TutorSession,
 } from "./backend.ts";
 import { CodexRpcError, messageOf, openCodexAppServer } from "./codex-rpc.ts";
@@ -221,16 +222,7 @@ export function createCodexBackend(
       if (workspace !== undefined && cwd === undefined) {
         throw new Error("The file and shell tools need a working folder.");
       }
-      // A tutor's file and command tools are Gauss's, beside its teaching
-      // tools; Codex's own sandbox gives it no writable path or network.
-      const tools = new Map(
-        [
-          ...session.tools,
-          ...(workspace === undefined || cwd === undefined
-            ? []
-            : workspaceTools(cwd, workspace)),
-        ].map((tool) => [tool.name, tool]),
-      );
+      const tools = sessionTools(session);
       const app = await open();
       let threadId: string;
       try {
@@ -367,6 +359,8 @@ export function createCodexBackend(
       }
     },
 
+    toolNames: (session) => Array.from(sessionTools(session).keys()).sort(),
+
     async hasSession(id, cwd) {
       const app = await open();
       try {
@@ -383,6 +377,26 @@ export function createCodexBackend(
       }
     },
   };
+}
+
+/**
+ * A thread's tools by name: the teaching tools, and with a working folder
+ * a tutor's file and command tools, which are Gauss's, since Codex's own
+ * sandbox gives it no writable path or network.
+ */
+function sessionTools({
+  tools,
+  cwd,
+  workspace,
+}: Pick<SessionOptions, "tools" | "cwd" | "workspace">) {
+  return new Map(
+    [
+      ...tools,
+      ...(workspace === undefined || cwd === undefined
+        ? []
+        : workspaceTools(cwd, workspace)),
+    ].map((tool) => [tool.name, tool]),
+  );
 }
 
 /** The Codex CLI version `mise.toml` pins, whose app-server protocol Gauss speaks. */

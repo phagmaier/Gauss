@@ -170,9 +170,10 @@ export interface UnitRecord {
    */
   move(position: UnitPosition, tell?: () => void): Promise<void>;
   /**
-   * Writes the id of the unit's tutor session into its position, or takes
-   * it out, so the next start of the unit makes a new session. A finished
-   * unit with no review or self-test keeps the id only in memory.
+   * Writes the id of the unit's tutor session into its position, with the
+   * names of the tools it began with if the backend keeps them, or takes
+   * them out, so the next start of the unit makes a new session. A finished
+   * unit with no review or self-test keeps them only in memory.
    */
   keepSession(id: string | undefined): Promise<void>;
   /**
@@ -394,7 +395,16 @@ export async function openUnitRecord(options: {
   const kept = runningFinished ?? stored;
   if (kept !== undefined) checkPosition(plan, kept);
   let sessionId = kept?.tutorSessionId;
+  let sessionTools = kept?.tutorTools;
   let notices: readonly TutorNotice[] = kept?.tutorNotices ?? [];
+
+  /** The tutor's session as the position keeps it: its id, and the tools it began with. */
+  function session(): Pick<UnitPosition, "tutorSessionId" | "tutorTools"> {
+    return {
+      ...(sessionId === undefined ? {} : { tutorSessionId: sessionId }),
+      ...(sessionTools === undefined ? {} : { tutorTools: sessionTools }),
+    };
+  }
 
   /** The position with the notices as they stand: none, or at least one. */
   function withNotices(given: UnitPosition): UnitPosition {
@@ -408,7 +418,7 @@ export async function openUnitRecord(options: {
     return withNotices({
       segment: plan.segments.length - 1,
       phase: "closed",
-      ...(sessionId === undefined ? {} : { tutorSessionId: sessionId }),
+      ...session(),
     });
   }
 
@@ -480,6 +490,7 @@ export async function openUnitRecord(options: {
   async function move(given: UnitPosition, tell?: () => void): Promise<void> {
     const {
       tutorSessionId: _,
+      tutorTools: _____,
       packageRequest: __,
       styleProposal: ___,
       curriculumChange: ____,
@@ -487,7 +498,7 @@ export async function openUnitRecord(options: {
     } = given;
     const next: UnitPosition = {
       ...rest,
-      ...(sessionId === undefined ? {} : { tutorSessionId: sessionId }),
+      ...session(),
       ...(position.packageRequest === undefined
         ? {}
         : { packageRequest: position.packageRequest }),
@@ -757,9 +768,9 @@ export async function openUnitRecord(options: {
       return true;
     },
 
-    async keepSession(id) {
+    async keepSession(id, tools) {
       if (id === sessionId) return;
-      const was = sessionId;
+      const was = { id: sessionId, tools: sessionTools };
       sessionId = id;
       if (finished !== undefined && position.assessment === undefined) {
         position = closedPosition();
@@ -768,7 +779,8 @@ export async function openUnitRecord(options: {
       try {
         await move(position);
       } catch (error) {
-        sessionId = was;
+        sessionId = was.id;
+        sessionTools = was.tools;
         throw error;
       }
     },

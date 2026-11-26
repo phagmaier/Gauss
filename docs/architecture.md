@@ -229,7 +229,9 @@ every other role on Claude. Each prompt starts one model's instructions:
 - Codex receives the role prompt as base instructions when a thread
   starts or resumes, but its teaching tools, with a tutor's file and
   command tools (`tools/workspace.ts`), only when it starts: a thread keeps
-  those it began with (`findings.md`, "Codex"). They sit in the direct
+  those it began with (`findings.md`, "Codex"), so a reopened unit whose
+  thread's kept tool names differ from a new one's starts a new thread
+  (`SessionBackend.toolNames`, `UnitAgents.resume`). They sit in the direct
   `gauss` namespace; Codex's own shell and patch tools are removed.
   `prompts/tutor.md` names no backend's tools. `codexOptions` sets the
   model, effort and tier on each turn.
